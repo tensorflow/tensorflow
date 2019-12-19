@@ -113,7 +113,7 @@ that only legal operations will remain after the conversion.
 
 Looking back at our current working example:
 
-```.mlir
+```mlir
 func @main() {
   %0 = "toy.constant"() {value = dense<[[1.000000e+00, 2.000000e+00, 3.000000e+00], [4.000000e+00, 5.000000e+00, 6.000000e+00]]> : tensor<2x3xf64>} : () -> tensor<2x3xf64>
   %2 = "toy.transpose"(%0) : (tensor<2x3xf64>) -> tensor<3x2xf64>
@@ -125,7 +125,7 @@ func @main() {
 
 We can now lower down to the LLVM dialect, which produces the following code:
 
-```.mlir
+```mlir
 llvm.func @free(!llvm<"i8*">)
 llvm.func @printf(!llvm<"i8*">, ...) -> !llvm.i32
 llvm.func @malloc(!llvm.i64) -> !llvm<"i8*">

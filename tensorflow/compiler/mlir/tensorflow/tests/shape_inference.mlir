@@ -79,4 +79,87 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     %1 = "tf.Conv2DBackpropInput"(%0, %arg0, %arg1) {data_format = "NHWC", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "VALID", strides = [1, 1, 1, 1], use_cudnn_on_gpu = true} : (tensor<4xi32>, tensor<3x3x32x64xf32>, tensor<200x24x24x64xf32>) -> tensor<?x?x?x?xf32>
     return %1 : tensor<?x?x?x?xf32>
   }
+
+  // CHECK-LABEL: func @shape_from_if_to_branch_functions
+  func @shape_from_if_to_branch_functions(%arg0: tensor<i1>, %arg1: tensor<1x2x3xf32>) -> tensor<1x2x3xf32> {
+    %0 = "tf.If"(%arg0, %arg1) {Tcond = i1, Tin = ["tfdtype$DT_FLOAT"], Tout = ["tfdtype$DT_FLOAT"], _xla_propagate_compile_time_consts = true, device = "", else_branch = @if_else_branch, is_stateless = true, name = "if", output_shapes = ["tfshape$"], then_branch = @if_then_branch} : (tensor<i1>, tensor<1x2x3xf32>) -> tensor<1x2x3xf32>
+    return %0 : tensor<1x2x3xf32>
+  }
+
+  // CHECK-LABEL: func @if_then_branch
+  // CHECK-SAME: (%arg0: tensor<1x2x3xf32>) -> tensor<1x2x3xf32>
+  func @if_then_branch(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+    // CHECK: return
+    // CHECK-SAME: tensor<1x2x3xf32>
+    return %arg0 : tensor<*xf32>
+  }
+
+  // CHECK-LABEL: func @if_else_branch
+  // CHECK-SAME: (%arg0: tensor<1x2x3xf32>) -> tensor<1x2x3xf32>
+  func @if_else_branch(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+    // CHECK: "tf.Identity"(%arg0) : (tensor<1x2x3xf32>) -> tensor<1x2x3xf32>
+    %0 = "tf.Identity"(%arg0) : (tensor<*xf32>) -> (tensor<*xf32>)
+    // CHECK: return
+    // CHECK-SAME: tensor<1x2x3xf32>
+    return %0 : tensor<*xf32>
+  }
+
+  // CHECK-LABEL: func @shape_from_while_to_cond_body_functions
+  func @shape_from_while_to_cond_body_functions(%arg0: tensor<4xf32>) -> tensor<4xf32> {
+    %0 = "tf.While"(%arg0) {cond = @while_cond_func, body = @while_body_func, is_stateless = true} : (tensor<4xf32>) -> tensor<4xf32>
+    return %0 : tensor<4xf32>
+  }
+
+  // CHECK-LABEL: func @while_cond_func
+  // CHECK-SAME: %arg0: tensor<4xf32>) -> tensor<i1>
+  func @while_cond_func(%arg0: tensor<*xf32>) -> tensor<i1> {
+    %0 = "tf.Const"() {value = dense<[1.000000e-04,2.000000e-04,3.000000e-04,4.000000e-04]> : tensor<4xf32>} : () -> tensor<4xf32>
+    %1 = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+    // CHECK: tf.Equal
+    // CHECK-SAME: (tensor<4xf32>, tensor<4xf32>) -> tensor<*xi1>
+    // TODO(ycao): Investigate why result type of tf.Equal is not inferred.
+    %2 = "tf.Equal"(%0, %arg0) : (tensor<4xf32>, tensor<*xf32>) -> tensor<*xi1>
+    %3 = "tf.Any"(%2, %1) : (tensor<*xi1>, tensor<i32>) -> (tensor<i1>)
+    return %3 : tensor<i1>
+  }
+
+  // CHECK-LABEL: func @while_body_func
+  func @while_body_func(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+    %0 = "tf.Const"() {value = dense<1.000000e-04> : tensor<f32>} : () -> tensor<f32>
+    // CHECK: tf.AddV2
+    // CHECK-SAME: (tensor<4xf32>, tensor<f32>) -> tensor<4xf32>
+    %1 = "tf.AddV2"(%arg0, %0) : (tensor<*xf32>, tensor<f32>) -> tensor<*xf32>
+    // CHECK: return
+    // CHECK-SAME: tensor<4xf32>
+    return %1 : tensor<*xf32>
+  }
+
+  // CHECK-LABEL: func @invalid_function_reused_by_control_flows
+  func @invalid_function_reused_by_control_flows(%arg0: tensor<i1>, %arg1: tensor<1x2x3xf32>) -> tensor<1x2x3xf32> {
+	  // expected-warning @+1 {{unable to refine shape}}
+    %0 = "tf.If"(%arg0, %arg1) {Tcond = i1, Tin = ["tfdtype$DT_FLOAT"], Tout = ["tfdtype$DT_FLOAT"], _xla_propagate_compile_time_consts = true, device = "", else_branch = @reused_if_else_branch, is_stateless = true, name = "if", output_shapes = ["tfshape$"], then_branch = @reused_if_then_branch} : (tensor<i1>, tensor<1x2x3xf32>) -> tensor<1x2x3xf32>
+	  // expected-warning @+1 {{unable to refine shape}}
+    %1 = "tf.If"(%arg0, %0) {Tcond = i1, Tin = ["tfdtype$DT_FLOAT"], Tout = ["tfdtype$DT_FLOAT"], _xla_propagate_compile_time_consts = true, device = "", else_branch = @reused_if_else_branch, is_stateless = true, name = "if", output_shapes = ["tfshape$"], then_branch = @reused_if_then_branch} : (tensor<i1>, tensor<1x2x3xf32>) -> tensor<1x2x3xf32>
+    return %0 : tensor<1x2x3xf32>
+  }
+
+  // CHECK-LABEL: func @reused_if_then_branch
+  // CHECK-SAME: (%arg0: tensor<*xf32>) -> tensor<*xf32>
+	// expected-error @+1 {{expected control flow function reused_if_then_branch to have exactly 1 use}}
+  func @reused_if_then_branch(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+    // CHECK: return
+    // CHECK-SAME: tensor<*xf32>
+    return %arg0 : tensor<*xf32>
+  }
+
+  // CHECK-LABEL: func @reused_if_else_branch
+  // CHECK-SAME: (%arg0: tensor<*xf32>) -> tensor<*xf32>
+	// expected-error @+1 {{expected control flow function reused_if_else_branch to have exactly 1 use}}
+  func @reused_if_else_branch(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+    // CHECK: "tf.Identity"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
+    %0 = "tf.Identity"(%arg0) : (tensor<*xf32>) -> (tensor<*xf32>)
+    // CHECK: return
+    // CHECK-SAME: tensor<*xf32>
+    return %0 : tensor<*xf32>
+  }
 }

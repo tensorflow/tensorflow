@@ -83,12 +83,6 @@ StringRef getEntryPointABIAttrName();
 EntryPointABIAttr getEntryPointABIAttr(ArrayRef<int32_t> localSize,
                                        MLIRContext *context);
 
-/// Legalizes a function as an entry function.
-FuncOp lowerAsEntryFunction(FuncOp funcOp, SPIRVTypeConverter &typeConverter,
-                            ConversionPatternRewriter &rewriter,
-                            spirv::EntryPointABIAttr entryPointInfo,
-                            ArrayRef<spirv::InterfaceVarABIAttr> argABIInfo);
-
 /// Sets the InterfaceVarABIAttr and EntryPointABIAttr for a function and its
 /// arguments
 LogicalResult setABIAttrs(FuncOp funcOp,

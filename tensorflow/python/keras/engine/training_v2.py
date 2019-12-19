@@ -239,7 +239,7 @@ class Loop(training_utils.TrainingLoop):
       do_validation = (validation_adapter is not None)
 
       recreate_training_iterator = (
-          training_data_adapter.should_recreate_iterator(steps_per_epoch))
+          training_data_adapter.should_recreate_iterator())
       if not steps_per_epoch:
         # TODO(b/139762795): Add step inference for when steps is None to
         # prevent end of sequence warning message.
@@ -549,6 +549,7 @@ def _process_training_inputs(model,
         x,
         y,
         batch_size=batch_size,
+        steps=steps_per_epoch,
         epochs=epochs,
         sample_weights=sample_weights,
         sample_weight_modes=sample_weight_modes,
@@ -558,6 +559,7 @@ def _process_training_inputs(model,
     val_adapter = adapter_cls(
         val_x,
         val_y,
+        steps=validation_steps,
         sample_weights=val_sample_weights,
         sample_weight_modes=sample_weight_modes,
         batch_size=batch_size,
@@ -570,10 +572,10 @@ def _process_training_inputs(model,
         y,
         sample_weights=sample_weights,
         batch_size=batch_size,
+        steps=steps_per_epoch,
         epochs=epochs,
         class_weights=class_weights,
         shuffle=shuffle,
-        steps=steps_per_epoch,
         distribution_strategy=distribution_strategy,
         max_queue_size=max_queue_size,
         workers=workers,
@@ -594,10 +596,10 @@ def _process_training_inputs(model,
           ModeKeys.TEST,
           val_x,
           val_y,
+          steps=validation_steps,
           sample_weights=val_sample_weights,
           batch_size=batch_size,
           class_weights=class_weights,
-          steps=validation_steps,
           distribution_strategy=distribution_strategy)
     elif validation_steps:
       raise ValueError('`validation_steps` should not be specified if '

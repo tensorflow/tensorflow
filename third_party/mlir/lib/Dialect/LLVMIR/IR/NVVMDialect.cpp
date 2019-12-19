@@ -37,18 +37,17 @@
 #include "llvm/IR/Type.h"
 #include "llvm/Support/SourceMgr.h"
 
-namespace mlir {
-namespace NVVM {
+using namespace mlir;
+using namespace NVVM;
 
 //===----------------------------------------------------------------------===//
 // Printing/parsing for NVVM ops
 //===----------------------------------------------------------------------===//
 
 static void printNVVMIntrinsicOp(OpAsmPrinter &p, Operation *op) {
-  p << op->getName() << " ";
-  p.printOperands(op->getOperands());
+  p << op->getName() << " " << op->getOperands();
   if (op->getNumResults() > 0)
-    interleaveComma(op->getResultTypes(), p << " : ");
+    p << " : " << op->getResultTypes();
 }
 
 // <operation> ::= `llvm.nvvm.XYZ` : type
@@ -141,8 +140,7 @@ static ParseResult parseNVVMMmaOp(OpAsmParser &parser, OperationState &result) {
 }
 
 static void printNVVMMmaOp(OpAsmPrinter &p, MmaOp &op) {
-  p << op.getOperationName() << " ";
-  p.printOperands(op.getOperands());
+  p << op.getOperationName() << " " << op.getOperands();
   p.printOptionalAttrDict(op.getAttrs());
   p << " : "
     << FunctionType::get(llvm::to_vector<12>(op.getOperandTypes()),
@@ -210,10 +208,11 @@ NVVMDialect::NVVMDialect(MLIRContext *context) : Dialect("nvvm", context) {
   allowUnknownOperations();
 }
 
+namespace mlir {
+namespace NVVM {
 #define GET_OP_CLASSES
 #include "mlir/Dialect/LLVMIR/NVVMOps.cpp.inc"
-
-static DialectRegistration<NVVMDialect> nvvmDialect;
-
 } // namespace NVVM
 } // namespace mlir
+
+static DialectRegistration<NVVMDialect> nvvmDialect;

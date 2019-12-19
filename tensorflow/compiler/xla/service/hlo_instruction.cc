@@ -1637,7 +1637,7 @@ HloInstruction::~HloInstruction() {
     operands_[operand_num] = nullptr;
   }
 
-  // Update users. Set `nullptr` to the correpsonding operand slot for users.
+  // Update users. Set `nullptr` to the corresponding operand slot for users.
   for (auto& user : this->users()) {
     for (int i = 0; i < user->operand_count(); ++i) {
       if (user->operands_[i] == this) {
@@ -1818,6 +1818,12 @@ void HloInstruction::AddUser(HloInstruction* user) {
     user_map_.emplace(user, users_.size());
     users_.push_back(user);
   }
+}
+
+int64 HloInstruction::UserId(HloInstruction* user) {
+  auto result = user_map_.find(user);
+  CHECK(result != user_map_.end());
+  return result->second;
 }
 
 bool HloInstruction::HasConstantOperand() const {
@@ -2693,7 +2699,7 @@ bool HloInstruction::IsFusible() const {
     case HloOpcode::kReduce:
     case HloOpcode::kReduceWindow:
       return true;
-    // Side effecting instrutions cannot be fused.
+    // Side effecting instructions cannot be fused.
     default:
       return !HasSideEffect();
   }

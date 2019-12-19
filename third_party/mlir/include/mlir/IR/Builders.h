@@ -315,8 +315,17 @@ public:
   template <typename OpTy, typename... Args>
   void createOrFold(SmallVectorImpl<Value *> &results, Location location,
                     Args &&... args) {
-    auto op = create<OpTy>(location, std::forward<Args>(args)...);
-    tryFold(op.getOperation(), results);
+    // Create the operation without using 'createOperation' as we don't want to
+    // insert it yet.
+    OperationState state(location, OpTy::getOperationName());
+    OpTy::build(this, state, std::forward<Args>(args)...);
+    Operation *op = Operation::create(state);
+
+    // Fold the operation. If successful destroy it, otherwise insert it.
+    if (succeeded(tryFold(op, results)))
+      op->destroy();
+    else
+      insert(op);
   }
 
   /// Overload to create or fold a single result operation.
@@ -343,6 +352,11 @@ public:
     return op;
   }
 
+  /// Attempts to fold the given operation and places new results within
+  /// 'results'. Returns success if the operation was folded, failure otherwise.
+  /// Note: This function does not erase the operation on a successful fold.
+  LogicalResult tryFold(Operation *op, SmallVectorImpl<Value *> &results);
+
   /// Creates a deep copy of the specified operation, remapping any operands
   /// that use values outside of the operation using the map that is provided
   /// ( leaving them alone if no entry is present).  Replaces references to
@@ -367,10 +381,6 @@ public:
   }
 
 private:
-  /// Attempts to fold the given operation and places new results within
-  /// 'results'.
-  void tryFold(Operation *op, SmallVectorImpl<Value *> &results);
-
   Block *block = nullptr;
   Block::iterator insertPoint;
 };

@@ -866,9 +866,10 @@ AffineExpr mlir::simplifyAffineExpr(AffineExpr expr, unsigned numDims,
 // Flattens the expressions in map. Returns true on success or false
 // if 'expr' was unable to be flattened (i.e., semi-affine expressions not
 // handled yet).
-static bool getFlattenedAffineExprs(
-    ArrayRef<AffineExpr> exprs, unsigned numDims, unsigned numSymbols,
-    std::vector<llvm::SmallVector<int64_t, 8>> *flattenedExprs) {
+static bool
+getFlattenedAffineExprs(ArrayRef<AffineExpr> exprs, unsigned numDims,
+                        unsigned numSymbols,
+                        std::vector<SmallVector<int64_t, 8>> *flattenedExprs) {
   if (exprs.empty()) {
     return true;
   }
@@ -894,9 +895,9 @@ static bool getFlattenedAffineExprs(
 // Flattens 'expr' into 'flattenedExpr'. Returns true on success or false
 // if 'expr' was unable to be flattened (semi-affine expressions not handled
 // yet).
-bool mlir::getFlattenedAffineExpr(
-    AffineExpr expr, unsigned numDims, unsigned numSymbols,
-    llvm::SmallVectorImpl<int64_t> *flattenedExpr) {
+bool mlir::getFlattenedAffineExpr(AffineExpr expr, unsigned numDims,
+                                  unsigned numSymbols,
+                                  SmallVectorImpl<int64_t> *flattenedExpr) {
   std::vector<SmallVector<int64_t, 8>> flattenedExprs;
   bool ret =
       ::getFlattenedAffineExprs({expr}, numDims, numSymbols, &flattenedExprs);
@@ -908,7 +909,7 @@ bool mlir::getFlattenedAffineExpr(
 /// if 'expr' was unable to be flattened (i.e., semi-affine expressions not
 /// handled yet).
 bool mlir::getFlattenedAffineExprs(
-    AffineMap map, std::vector<llvm::SmallVector<int64_t, 8>> *flattenedExprs) {
+    AffineMap map, std::vector<SmallVector<int64_t, 8>> *flattenedExprs) {
   if (map.getNumResults() == 0) {
     return true;
   }
@@ -917,8 +918,7 @@ bool mlir::getFlattenedAffineExprs(
 }
 
 bool mlir::getFlattenedAffineExprs(
-    IntegerSet set,
-    std::vector<llvm::SmallVector<int64_t, 8>> *flattenedExprs) {
+    IntegerSet set, std::vector<SmallVector<int64_t, 8>> *flattenedExprs) {
   if (set.getNumConstraints() == 0) {
     return true;
   }

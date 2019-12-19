@@ -50,7 +50,7 @@ void buildTripCountMapAndOperands(AffineForOp forOp, AffineMap *map,
 /// Returns the trip count of the loop if it's a constant, None otherwise. This
 /// uses affine expression analysis and is able to determine constant trip count
 /// in non-trivial cases.
-llvm::Optional<uint64_t> getConstantTripCount(AffineForOp forOp);
+Optional<uint64_t> getConstantTripCount(AffineForOp forOp);
 
 /// Returns the greatest known integral divisor of the trip count. Affine
 /// expression analysis is used (indirectly through getTripCount), and
@@ -66,8 +66,8 @@ uint64_t getLargestDivisorOfTripCount(AffineForOp forOp);
 ///
 /// Emits a note if it encounters a chain of affine.apply and conservatively
 ///  those cases.
-llvm::DenseSet<Value *, llvm::DenseMapInfo<Value *>>
-getInvariantAccesses(Value *iv, llvm::ArrayRef<Value *> indices);
+DenseSet<Value *, DenseMapInfo<Value *>>
+getInvariantAccesses(Value *iv, ArrayRef<Value *> indices);
 
 using VectorizableLoopFun = std::function<bool(AffineForOp)>;
 
@@ -91,7 +91,7 @@ bool isVectorizableLoopBody(AffineForOp loop, int *memRefDim,
 /// 'def' and all its uses have the same shift factor.
 // TODO(mlir-team): extend this to check for memory-based dependence
 // violation when we have the support.
-bool isInstwiseShiftValid(AffineForOp forOp, llvm::ArrayRef<uint64_t> shifts);
+bool isInstwiseShiftValid(AffineForOp forOp, ArrayRef<uint64_t> shifts);
 } // end namespace mlir
 
 #endif // MLIR_ANALYSIS_LOOP_ANALYSIS_H

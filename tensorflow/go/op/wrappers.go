@@ -16898,7 +16898,7 @@ func CompareAndBitpack(scope *Scope, input tf.Output, threshold tf.Output) (outp
 //      Considering the batch matrix multiplication equation again
 //      (`bij,bjk->bik`), the contracted axis label is `j`.
 //
-//  (e) Expand Diagonal: If the output subcripts contain repeated (explicit) axis
+//  (e) Expand Diagonal: If the output subscripts contain repeated (explicit) axis
 //      labels, the opposite operation of (a) is applied. For example, in the
 //      equation `i->iii`, and input shape `[3]`, the output of shape `[3, 3, 3]`
 //      are all zeros, except for the (generalized) diagonal which is populated
@@ -16906,7 +16906,7 @@ func CompareAndBitpack(scope *Scope, input tf.Output, threshold tf.Output) (outp
 //      Note: This operation is not supported by `np.einsum` or `tf.einsum`; it is
 //      provided to enable computing the symbolic gradient of `tf.einsum`.
 //
-// The output subcripts must contain only labels appearing in at least one of the
+// The output subscripts must contain only labels appearing in at least one of the
 // input subscripts. Furthermore, all dimensions mapping to the same axis label
 // must be equal.
 //
@@ -16918,7 +16918,7 @@ func CompareAndBitpack(scope *Scope, input tf.Output, threshold tf.Output) (outp
 //
 // The broadcasted dimensions are placed in the corresponding location of the
 // ellipsis in the output subscript. If the broadcasted dimensions are non-empty
-// and the output subcripts do not contain ellipsis, then an InvalidArgument error
+// and the output subscripts do not contain ellipsis, then an InvalidArgument error
 // is raised.
 //
 // @compatibility(numpy)
@@ -18404,6 +18404,22 @@ func SnapshotDatasetSeed(value int64) SnapshotDatasetAttr {
 func SnapshotDatasetSeed2(value int64) SnapshotDatasetAttr {
 	return func(m optionalAttr) {
 		m["seed2"] = value
+	}
+}
+
+// SnapshotDatasetMode sets the optional mode attribute to value.
+// If not specified, defaults to "auto"
+func SnapshotDatasetMode(value string) SnapshotDatasetAttr {
+	return func(m optionalAttr) {
+		m["mode"] = value
+	}
+}
+
+// SnapshotDatasetSnapshotName sets the optional snapshot_name attribute to value.
+// If not specified, defaults to ""
+func SnapshotDatasetSnapshotName(value string) SnapshotDatasetAttr {
+	return func(m optionalAttr) {
+		m["snapshot_name"] = value
 	}
 }
 
@@ -41347,7 +41363,7 @@ func ResourceApplyAdamUseNesterov(value bool) ResourceApplyAdamAttr {
 // Update '*var' according to the Adam algorithm.
 //
 // $$\text{lr}_t := \mathrm{learning_rate} * \sqrt{1 - \beta_2^t} / (1 - \beta_1^t)$$
-// $$m_t := \beta_1 * m_{t-1} + (1 - \beta_1) * g$$\
+// $$m_t := \beta_1 * m_{t-1} + (1 - \beta_1) * g$$
 // $$v_t := \beta_2 * v_{t-1} + (1 - \beta_2) * g * g$$
 // $$\text{variable} := \text{variable} - \text{lr}_t * m_t / (\sqrt{v_t} + \epsilon)$$
 //
@@ -45823,6 +45839,17 @@ func UnsortedSegmentJoin(scope *Scope, inputs tf.Output, segment_ids tf.Output, 
 	return op.Output(0)
 }
 
+// SerializeIteratorAttr is an optional argument to SerializeIterator.
+type SerializeIteratorAttr func(optionalAttr)
+
+// SerializeIteratorExternalStatePolicy sets the optional external_state_policy attribute to value.
+// If not specified, defaults to 0
+func SerializeIteratorExternalStatePolicy(value int64) SerializeIteratorAttr {
+	return func(m optionalAttr) {
+		m["external_state_policy"] = value
+	}
+}
+
 // Converts the given `resource_handle` representing an iterator to a variant tensor.
 //
 // Arguments:
@@ -45830,15 +45857,20 @@ func UnsortedSegmentJoin(scope *Scope, inputs tf.Output, segment_ids tf.Output, 
 //
 // Returns A variant tensor storing the state of the iterator contained in the
 // resource.
-func SerializeIterator(scope *Scope, resource_handle tf.Output) (serialized tf.Output) {
+func SerializeIterator(scope *Scope, resource_handle tf.Output, optional ...SerializeIteratorAttr) (serialized tf.Output) {
 	if scope.Err() != nil {
 		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
 	}
 	opspec := tf.OpSpec{
 		Type: "SerializeIterator",
 		Input: []tf.Input{
 			resource_handle,
 		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)

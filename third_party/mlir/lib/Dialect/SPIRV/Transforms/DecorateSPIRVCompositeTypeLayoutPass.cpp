@@ -93,6 +93,7 @@ class DecorateSPIRVCompositeTypeLayoutPass
 private:
   void runOnModule() override;
 };
+} // namespace
 
 void DecorateSPIRVCompositeTypeLayoutPass::runOnModule() {
   auto module = getModule();
@@ -120,7 +121,6 @@ void DecorateSPIRVCompositeTypeLayoutPass::runOnModule() {
     }
   }
 }
-} // namespace
 
 std::unique_ptr<OpPassBase<ModuleOp>>
 mlir::spirv::createDecorateSPIRVCompositeTypeLayoutPass() {

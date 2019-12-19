@@ -199,7 +199,7 @@ def master_job(master, cluster_def):
 
   if (not cluster_def or not cluster_def.job):
     return _DEFAULT_JOB_NAME
-  job_names = set([job.name for job in cluster_def.job])
+  job_names = set(job.name for job in cluster_def.job)
   if _DEFAULT_JOB_NAME in job_names:
     # b/37868888 tracks allowing ClusterSpec propagation to reuse job names.
     raise ValueError('Currently, tpu_worker is not an allowed job name.')

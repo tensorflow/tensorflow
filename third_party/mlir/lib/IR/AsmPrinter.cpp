@@ -437,9 +437,9 @@ public:
   void printLocation(LocationAttr loc);
 
   void printAffineMap(AffineMap map);
-  void printAffineExpr(
-      AffineExpr expr,
-      llvm::function_ref<void(unsigned, bool)> printValueName = nullptr);
+  void
+  printAffineExpr(AffineExpr expr,
+                  function_ref<void(unsigned, bool)> printValueName = nullptr);
   void printAffineConstraint(AffineExpr expr, bool isEq);
   void printIntegerSet(IntegerSet set);
 
@@ -463,7 +463,7 @@ protected:
   };
   void printAffineExprInternal(
       AffineExpr expr, BindingStrength enclosingTightness,
-      llvm::function_ref<void(unsigned, bool)> printValueName = nullptr);
+      function_ref<void(unsigned, bool)> printValueName = nullptr);
 
   /// The output stream for the printer.
   raw_ostream &os;
@@ -1175,13 +1175,13 @@ void ModulePrinter::printDialectType(Type type) {
 //===----------------------------------------------------------------------===//
 
 void ModulePrinter::printAffineExpr(
-    AffineExpr expr, llvm::function_ref<void(unsigned, bool)> printValueName) {
+    AffineExpr expr, function_ref<void(unsigned, bool)> printValueName) {
   printAffineExprInternal(expr, BindingStrength::Weak, printValueName);
 }
 
 void ModulePrinter::printAffineExprInternal(
     AffineExpr expr, BindingStrength enclosingTightness,
-    llvm::function_ref<void(unsigned, bool)> printValueName) {
+    function_ref<void(unsigned, bool)> printValueName) {
   const char *binopSpelling = nullptr;
   switch (expr.getKind()) {
   case AffineExprKind::SymbolId: {

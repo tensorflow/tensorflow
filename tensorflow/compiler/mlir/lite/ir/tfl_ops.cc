@@ -1439,6 +1439,56 @@ OpFoldResult ConstOp::fold(ArrayRef<Attribute> operands) {
 }
 
 //===----------------------------------------------------------------------===//
+// SelectV2Op
+//===----------------------------------------------------------------------===//
+
+static void BuildSelectV2Op(Builder *builder, OperationState &result,
+                            Value *cond, Value *x, Value *y) {
+  auto operand_type =
+      OpTrait::util::getBroadcastedType(x->getType(), y->getType());
+
+  if (!operand_type)
+    emitError(result.location) << "non-broadcastable operands: " << x->getType()
+                               << " and " << y->getType();
+
+  bool has_static_cond_shape = false;
+  bool has_static_operand_shape = false;
+  ArrayRef<int64_t> cond_shape;
+  ArrayRef<int64_t> operand_shape;
+
+  if (auto shaped_type = cond->getType().dyn_cast<ShapedType>()) {
+    if (shaped_type.hasStaticShape()) {
+      has_static_cond_shape = true;
+      cond_shape = shaped_type.getShape();
+    }
+  }
+  if (auto shaped_type = operand_type.dyn_cast<ShapedType>()) {
+    if (shaped_type.hasStaticShape()) {
+      has_static_operand_shape = true;
+      operand_shape = shaped_type.getShape();
+    }
+  }
+
+  SmallVector<int64_t, 4> broadcastedShape;
+  if (has_static_cond_shape && has_static_operand_shape &&
+      !OpTrait::util::getBroadcastedShape(cond_shape, operand_shape,
+                                          broadcastedShape)) {
+    emitError(result.location) << "non-broadcastable operands: " << operand_type
+                               << " and " << cond->getType();
+  }
+
+  result.addOperands({cond, x, y});
+
+  auto elementType = x->getType().dyn_cast<ShapedType>().getElementType();
+  if (has_static_cond_shape && has_static_operand_shape) {
+    result.types.push_back(
+        RankedTensorType::get(broadcastedShape, elementType));
+  } else {
+    result.types.push_back(UnrankedTensorType::get(elementType));
+  }
+}
+
+//===----------------------------------------------------------------------===//
 // RangeOp
 //===----------------------------------------------------------------------===//
 

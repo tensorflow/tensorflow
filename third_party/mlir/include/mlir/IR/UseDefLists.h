@@ -46,7 +46,7 @@ public:
   inline bool hasOneUse() const;
 
   using use_iterator = ValueUseIterator<IROperand>;
-  using use_range = llvm::iterator_range<use_iterator>;
+  using use_range = iterator_range<use_iterator>;
 
   inline use_iterator use_begin() const;
   inline use_iterator use_end() const;
@@ -55,7 +55,7 @@ public:
   inline use_range getUses() const;
 
   using user_iterator = ValueUserIterator<IROperand>;
-  using user_range = llvm::iterator_range<user_iterator>;
+  using user_range = iterator_range<user_iterator>;
 
   inline user_iterator user_begin() const;
   inline user_iterator user_end() const;

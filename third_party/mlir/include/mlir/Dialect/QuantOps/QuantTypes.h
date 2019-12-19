@@ -361,7 +361,7 @@ public:
 
   /// Verifies construction invariants and issues errors/warnings.
   static LogicalResult verifyConstructionInvariants(
-      llvm::Optional<Location> loc, MLIRContext *context, unsigned flags,
+      Optional<Location> loc, MLIRContext *context, unsigned flags,
       Type storageType, Type expressedType, ArrayRef<double> scales,
       ArrayRef<int64_t> zeroPoints, int32_t quantizedDimension,
       int64_t storageTypeMin, int64_t storageTypeMax);

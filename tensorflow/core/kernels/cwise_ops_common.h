@@ -17,6 +17,8 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_CWISE_OPS_COMMON_H_
 
 // See docs in ../ops/math_ops.cc.
+#define _USE_MATH_DEFINES
+#include <cmath>
 
 #define EIGEN_USE_THREADS
 

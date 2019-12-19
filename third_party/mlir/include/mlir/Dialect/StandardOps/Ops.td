@@ -659,6 +659,7 @@ def DeallocOp : Std_Op<"dealloc"> {
   let arguments = (ins AnyMemRef:$memref);
 
   let hasCanonicalizer = 1;
+  let hasFolder = 1;
 }
 
 def DimOp : Std_Op<"dim", [NoSideEffect]> {
@@ -691,7 +692,6 @@ def DimOp : Std_Op<"dim", [NoSideEffect]> {
   }];
 
   let hasFolder = 1;
-  let hasCanonicalizer = 1;
 }
 
 def DivFOp : FloatArithmeticOp<"divf"> {
@@ -834,7 +834,7 @@ def LoadOp : Std_Op<"load"> {
     operand_range getIndices() { return {operand_begin() + 1, operand_end()}; }
   }];
 
-  let hasCanonicalizer = 1;
+  let hasFolder = 1;
 }
 
 def LogOp : FloatUnaryOp<"log"> {
@@ -925,6 +925,55 @@ def NegFOp : FloatUnaryOp<"negf"> {
 
 def OrOp : IntArithmeticOp<"or", [Commutative]> {
   let summary = "integer binary or";
+  let hasFolder = 1;
+}
+
+def PrefetchOp : Std_Op<"prefetch"> {
+  let summary = "prefetch operation";
+  let description = [{
+    The "prefetch" op prefetches data from a memref location described with
+    subscript indices similar to std.load, and with three attributes: a
+    read/write specifier, a locality hint, and a cache type specifier as shown
+    below:
+
+      prefetch %0[%i, %j], read, locality<3>, data : memref<400x400xi32>
+
+    The read/write specifier is either 'read' or 'write', the locality hint
+    ranges from locality<0> (no locality) to locality<3> (extremely local keep
+    in cache). The cache type specifier is either 'data' or 'instr'
+    and specifies whether the prefetch is performed on data cache or on
+    instruction cache.
+  }];
+
+  let arguments = (ins AnyMemRef:$memref, Variadic<Index>:$indices,
+                   BoolAttr:$isWrite,
+                   Confined<I32Attr, [IntMinValue<0>,
+                     IntMaxValue<3>]>:$localityHint,
+                   BoolAttr:$isDataCache);
+
+  let builders = [OpBuilder<
+    "Builder *builder, OperationState &result, Value *memref,"
+    "ArrayRef<Value *> indices, bool isWrite, unsigned hint, bool isData",
+    [{
+      auto hintAttr = builder->getI32IntegerAttr(hint);
+      auto isWriteAttr = builder->getBoolAttr(isWrite);
+      auto isDataCacheAttr = builder->getBoolAttr(isData);
+      result.addOperands(memref);
+      result.addOperands(indices);
+      result.addAttribute("localityHint", hintAttr);
+      result.addAttribute("isWrite", isWriteAttr);
+      result.addAttribute("isDataCache", isDataCacheAttr);
+    }]>];
+
+  let extraClassDeclaration = [{
+    MemRefType getMemRefType() {
+      return memref()->getType().cast<MemRefType>();
+    }
+    static StringRef getLocalityHintAttrName() { return "localityHint"; }
+    static StringRef getIsWriteAttrName() { return "isWrite"; }
+    static StringRef getIsDataCacheAttrName() { return "isDataCache"; }
+  }];
+
   let hasFolder = 1;
 }
 
@@ -1086,7 +1135,16 @@ def SplatOp : Std_Op<"splat", [NoSideEffect]> {
       %1 = splat %0 : vector<8xi32>
       %2 = splat %0 : tensor<4x8xi32>
 
-    // TODO: handle broadcast to dynamically shaped tensors.
+    TODO: Extend this operation to broadcast to dynamically shaped tensors in
+    the same way dynamically shaped memrefs are handled.
+
+    // Broadcasts %s to a 2-d dynamically shaped tensor, with %m, %n binding
+    // to the sizes of the two dynamic dimensions.
+
+      %m = "foo"() : () -> (index)
+      %n = "bar"() : () -> (index)
+      %t = splat %s [%m, %n] : tensor<?x?xi32>
+
   }];
 
   let arguments = (ins AnyTypeOf<[AnyInteger, AnyFloat],
@@ -1137,7 +1195,7 @@ def StoreOp : Std_Op<"store"> {
       }
   }];
 
-  let hasCanonicalizer = 1;
+  let hasFolder = 1;
 }
 
 def SubFOp : FloatArithmeticOp<"subf"> {

@@ -810,7 +810,7 @@ class Literal : public MutableLiteralBase {
   Literal(const Shape& shape, bool allocate_arrays);
   Literal& operator=(Literal&& other);
 
-  // Similar to CopyFrom, but with move semantincs. The subshape of this literal
+  // Similar to CopyFrom, but with move semantics. The subshape of this literal
   // rooted at 'dest_shape_index' must be *equal* to the shape 'src_literal'
   // (layouts and shapes must match), but need not be arrays. The memory
   // allocated in this literal for the subshape at dest_shape_index is
@@ -883,7 +883,7 @@ class BorrowingLiteral : public LiteralBase {
   BorrowingLiteral() : LiteralBase() {}
 
   // 'src_buf_ptr' is not owned by this class and must outlive the
-  // lifetime of this class. It points to an appropirately sized buffer with
+  // lifetime of this class. It points to an appropriately sized buffer with
   // data interpretered as indicated by 'shape'.
   // This constructor is only used for array shapes.
   BorrowingLiteral(const char* src_buf_ptr, const Shape& shape);

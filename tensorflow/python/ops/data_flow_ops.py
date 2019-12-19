@@ -82,7 +82,7 @@ def _as_shape_list(shapes,
     if any(not shape.is_fully_defined() for shape in shapes):
       raise ValueError("All shapes must be fully defined: %s" % shapes)
   if not unknown_rank_allowed:
-    if any([shape.dims is None for shape in shapes]):
+    if any(shape.dims is None for shape in shapes):
       raise ValueError("All shapes must have a defined rank: %s" % shapes)
 
   return shapes
@@ -171,7 +171,7 @@ class QueueBase(object):
     else:
       self._names = None
     self._queue_ref = queue_ref
-    if context.executing_eagerly():
+    if isinstance(queue_ref, ops.EagerTensor):
       if context.context().scope_name:
         self._name = context.context().scope_name
       else:
@@ -754,12 +754,13 @@ class FIFOQueue(QueueBase):
     dtypes = _as_type_list(dtypes)
     shapes = _as_shape_list(shapes, dtypes)
     names = _as_name_list(names, dtypes)
-    queue_ref = gen_data_flow_ops.fifo_queue_v2(
-        component_types=dtypes,
-        shapes=shapes,
-        capacity=capacity,
-        shared_name=_shared_name(shared_name),
-        name=name)
+    with ops.init_scope():
+      queue_ref = gen_data_flow_ops.fifo_queue_v2(
+          component_types=dtypes,
+          shapes=shapes,
+          capacity=capacity,
+          shared_name=_shared_name(shared_name),
+          name=name)
 
     super(FIFOQueue, self).__init__(dtypes, shapes, names, queue_ref)
 

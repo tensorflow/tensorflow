@@ -387,7 +387,7 @@ class HloDotDumper {
   const HloExecutionProfile* profile_;  // may be null
   const NodeFilter filter_;
 
-  // Each HloInstruction dumped gets a monotically-increasing node ID.  This
+  // Each HloInstruction dumped gets a monotonically-increasing node ID.  This
   // must start at 1, because that's where graphviz's accounting starts.
   int64 next_node_id_ = 1;
   absl::flat_hash_map<const HloInstruction*, int64> node_ids_;

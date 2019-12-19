@@ -1476,17 +1476,9 @@ class TrainingTest(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes
   def test_add_loss_correctness(self):
-    class Bias(keras.layers.Layer):
-
-      def build(self, input_shape):
-        self.bias = self.add_variable('bias', (1,), initializer='zeros')
-
-      def call(self, inputs):
-        return inputs + self.bias
-
     inputs = keras.Input(shape=(1,))
     targets = keras.Input(shape=(1,))
-    outputs = Bias()(inputs)
+    outputs = testing_utils.Bias()(inputs)
     model = keras.Model([inputs, targets], outputs)
 
     model.add_loss(2 * math_ops.reduce_mean(
@@ -1507,19 +1499,10 @@ class TrainingTest(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes
   def test_add_loss_with_sample_weight_correctness(self):
-
-    class Bias(keras.layers.Layer):
-
-      def build(self, input_shape):
-        self.bias = self.add_variable('bias', (1,), initializer='zeros')
-
-      def call(self, inputs):
-        return inputs + self.bias
-
     inputs = keras.Input(shape=(1,))
     targets = keras.Input(shape=(1,))
     sw = keras.Input(shape=(1,))
-    outputs = Bias()(inputs)
+    outputs = testing_utils.Bias()(inputs)
     model = keras.Model([inputs, targets, sw], outputs)
 
     model.add_loss(2 * math_ops.reduce_mean(

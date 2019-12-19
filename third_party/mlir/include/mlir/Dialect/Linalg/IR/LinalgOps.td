@@ -128,7 +128,7 @@ def Linalg_SliceOp : Linalg_Op<"slice", [NoSideEffect]>,
 
     // Get the subset of indexings that are of RangeType.
     SmallVector<Value *, 8> getRanges() {
-      llvm::SmallVector<Value *, 8> res;
+      SmallVector<Value *, 8> res;
       for (auto *operand : indexings())
         if (!operand->getType().isa<IndexType>())
           res.push_back(operand);

@@ -61,6 +61,38 @@ static VectorType reducedVectorTypeBack(VectorType tp) {
   return VectorType::get(tp.getShape().take_back(), tp.getElementType());
 }
 
+// Helper that picks the proper sequence for inserting.
+static Value *insertOne(ConversionPatternRewriter &rewriter,
+                        LLVMTypeConverter &lowering, Location loc, Value *val1,
+                        Value *val2, Type llvmType, int64_t rank, int64_t pos) {
+  if (rank == 1) {
+    auto idxType = rewriter.getIndexType();
+    auto constant = rewriter.create<LLVM::ConstantOp>(
+        loc, lowering.convertType(idxType),
+        rewriter.getIntegerAttr(idxType, pos));
+    return rewriter.create<LLVM::InsertElementOp>(loc, llvmType, val1, val2,
+                                                  constant);
+  }
+  return rewriter.create<LLVM::InsertValueOp>(loc, llvmType, val1, val2,
+                                              rewriter.getI64ArrayAttr(pos));
+}
+
+// Helper that picks the proper sequence for extracting.
+static Value *extractOne(ConversionPatternRewriter &rewriter,
+                         LLVMTypeConverter &lowering, Location loc, Value *val,
+                         Type llvmType, int64_t rank, int64_t pos) {
+  if (rank == 1) {
+    auto idxType = rewriter.getIndexType();
+    auto constant = rewriter.create<LLVM::ConstantOp>(
+        loc, lowering.convertType(idxType),
+        rewriter.getIntegerAttr(idxType, pos));
+    return rewriter.create<LLVM::ExtractElementOp>(loc, llvmType, val,
+                                                   constant);
+  }
+  return rewriter.create<LLVM::ExtractValueOp>(loc, llvmType, val,
+                                               rewriter.getI64ArrayAttr(pos));
+}
+
 class VectorBroadcastOpConversion : public LLVMOpLowering {
 public:
   explicit VectorBroadcastOpConversion(MLIRContext *context,
@@ -77,11 +109,12 @@ public:
       return matchFailure();
     // Rewrite when the full vector type can be lowered (which
     // implies all 'reduced' types can be lowered too).
+    auto adaptor = vector::BroadcastOpOperandAdaptor(operands);
     VectorType srcVectorType =
         broadcastOp.getSourceType().dyn_cast<VectorType>();
     rewriter.replaceOp(
-        op, expandRanks(operands[0],  // source value to be expanded
-                        op->getLoc(), // location of original broadcast
+        op, expandRanks(adaptor.source(), // source value to be expanded
+                        op->getLoc(),     // location of original broadcast
                         srcVectorType, dstVectorType, rewriter));
     return matchSuccess();
   }
@@ -142,7 +175,8 @@ private:
     assert((llvmType != nullptr) && "unlowerable vector type");
     if (rank == 1) {
       Value *undef = rewriter.create<LLVM::UndefOp>(loc, llvmType);
-      Value *expand = insertOne(undef, value, loc, llvmType, rank, 0, rewriter);
+      Value *expand =
+          insertOne(rewriter, lowering, loc, undef, value, llvmType, rank, 0);
       SmallVector<int32_t, 4> zeroValues(dim, 0);
       return rewriter.create<LLVM::ShuffleVectorOp>(
           loc, expand, undef, rewriter.getI32ArrayAttr(zeroValues));
@@ -152,7 +186,8 @@ private:
                     reducedVectorTypeFront(dstVectorType), rewriter);
     Value *result = rewriter.create<LLVM::UndefOp>(loc, llvmType);
     for (int64_t d = 0; d < dim; ++d) {
-      result = insertOne(result, expand, loc, llvmType, rank, d, rewriter);
+      result =
+          insertOne(rewriter, lowering, loc, result, expand, llvmType, rank, d);
     }
     return result;
   }
@@ -182,62 +217,111 @@ private:
     Value *result = rewriter.create<LLVM::UndefOp>(loc, llvmType);
     bool atStretch = dim != srcVectorType.getDimSize(0);
     if (rank == 1) {
+      assert(atStretch);
       Type redLlvmType = lowering.convertType(dstVectorType.getElementType());
-      if (atStretch) {
-        Value *one = extractOne(value, loc, redLlvmType, rank, 0, rewriter);
-        Value *expand =
-            insertOne(result, one, loc, llvmType, rank, 0, rewriter);
-        SmallVector<int32_t, 4> zeroValues(dim, 0);
-        return rewriter.create<LLVM::ShuffleVectorOp>(
-            loc, expand, result, rewriter.getI32ArrayAttr(zeroValues));
-      }
-      for (int64_t d = 0; d < dim; ++d) {
-        Value *one = extractOne(value, loc, redLlvmType, rank, d, rewriter);
-        result = insertOne(result, one, loc, llvmType, rank, d, rewriter);
-      }
-    } else {
-      VectorType redSrcType = reducedVectorTypeFront(srcVectorType);
-      VectorType redDstType = reducedVectorTypeFront(dstVectorType);
-      Type redLlvmType = lowering.convertType(redSrcType);
-      for (int64_t d = 0; d < dim; ++d) {
-        int64_t pos = atStretch ? 0 : d;
-        Value *one = extractOne(value, loc, redLlvmType, rank, pos, rewriter);
-        Value *expand = expandRanks(one, loc, redSrcType, redDstType, rewriter);
-        result = insertOne(result, expand, loc, llvmType, rank, d, rewriter);
-      }
+      Value *one =
+          extractOne(rewriter, lowering, loc, value, redLlvmType, rank, 0);
+      Value *expand =
+          insertOne(rewriter, lowering, loc, result, one, llvmType, rank, 0);
+      SmallVector<int32_t, 4> zeroValues(dim, 0);
+      return rewriter.create<LLVM::ShuffleVectorOp>(
+          loc, expand, result, rewriter.getI32ArrayAttr(zeroValues));
+    }
+    VectorType redSrcType = reducedVectorTypeFront(srcVectorType);
+    VectorType redDstType = reducedVectorTypeFront(dstVectorType);
+    Type redLlvmType = lowering.convertType(redSrcType);
+    for (int64_t d = 0; d < dim; ++d) {
+      int64_t pos = atStretch ? 0 : d;
+      Value *one =
+          extractOne(rewriter, lowering, loc, value, redLlvmType, rank, pos);
+      Value *expand = expandRanks(one, loc, redSrcType, redDstType, rewriter);
+      result =
+          insertOne(rewriter, lowering, loc, result, expand, llvmType, rank, d);
     }
     return result;
   }
+};
 
-  // Picks the proper sequence for inserting.
-  Value *insertOne(Value *val1, Value *val2, Location loc, Type llvmType,
-                   int64_t rank, int64_t pos,
-                   ConversionPatternRewriter &rewriter) const {
-    if (rank == 1) {
-      auto idxType = rewriter.getIndexType();
-      auto constant = rewriter.create<LLVM::ConstantOp>(
-          loc, lowering.convertType(idxType),
-          rewriter.getIntegerAttr(idxType, pos));
-      return rewriter.create<LLVM::InsertElementOp>(loc, llvmType, val1, val2,
-                                                    constant);
+class VectorShuffleOpConversion : public LLVMOpLowering {
+public:
+  explicit VectorShuffleOpConversion(MLIRContext *context,
+                                     LLVMTypeConverter &typeConverter)
+      : LLVMOpLowering(vector::ShuffleOp::getOperationName(), context,
+                       typeConverter) {}
+
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto loc = op->getLoc();
+    auto adaptor = vector::ShuffleOpOperandAdaptor(operands);
+    auto shuffleOp = cast<vector::ShuffleOp>(op);
+    auto v1Type = shuffleOp.getV1VectorType();
+    auto v2Type = shuffleOp.getV2VectorType();
+    auto vectorType = shuffleOp.getVectorType();
+    Type llvmType = lowering.convertType(vectorType);
+    auto maskArrayAttr = shuffleOp.mask();
+
+    // Bail if result type cannot be lowered.
+    if (!llvmType)
+      return matchFailure();
+
+    // Get rank and dimension sizes.
+    int64_t rank = vectorType.getRank();
+    assert(v1Type.getRank() == rank);
+    assert(v2Type.getRank() == rank);
+    int64_t v1Dim = v1Type.getDimSize(0);
+
+    // For rank 1, where both operands have *exactly* the same vector type,
+    // there is direct shuffle support in LLVM. Use it!
+    if (rank == 1 && v1Type == v2Type) {
+      Value *shuffle = rewriter.create<LLVM::ShuffleVectorOp>(
+          loc, adaptor.v1(), adaptor.v2(), maskArrayAttr);
+      rewriter.replaceOp(op, shuffle);
+      return matchSuccess();
     }
-    return rewriter.create<LLVM::InsertValueOp>(loc, llvmType, val1, val2,
-                                                rewriter.getI64ArrayAttr(pos));
+
+    // For all other cases, insert the individual values individually.
+    Value *insert = rewriter.create<LLVM::UndefOp>(loc, llvmType);
+    int64_t insPos = 0;
+    for (auto en : llvm::enumerate(maskArrayAttr)) {
+      int64_t extPos = en.value().cast<IntegerAttr>().getInt();
+      Value *value = adaptor.v1();
+      if (extPos >= v1Dim) {
+        extPos -= v1Dim;
+        value = adaptor.v2();
+      }
+      Value *extract =
+          extractOne(rewriter, lowering, loc, value, llvmType, rank, extPos);
+      insert = insertOne(rewriter, lowering, loc, insert, extract, llvmType,
+                         rank, insPos++);
+    }
+    rewriter.replaceOp(op, insert);
+    return matchSuccess();
   }
+};
 
-  // Picks the proper sequence for extracting.
-  Value *extractOne(Value *value, Location loc, Type llvmType, int64_t rank,
-                    int64_t pos, ConversionPatternRewriter &rewriter) const {
-    if (rank == 1) {
-      auto idxType = rewriter.getIndexType();
-      auto constant = rewriter.create<LLVM::ConstantOp>(
-          loc, lowering.convertType(idxType),
-          rewriter.getIntegerAttr(idxType, pos));
-      return rewriter.create<LLVM::ExtractElementOp>(loc, llvmType, value,
-                                                     constant);
-    }
-    return rewriter.create<LLVM::ExtractValueOp>(loc, llvmType, value,
-                                                 rewriter.getI64ArrayAttr(pos));
+class VectorExtractElementOpConversion : public LLVMOpLowering {
+public:
+  explicit VectorExtractElementOpConversion(MLIRContext *context,
+                                            LLVMTypeConverter &typeConverter)
+      : LLVMOpLowering(vector::ExtractElementOp::getOperationName(), context,
+                       typeConverter) {}
+
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto adaptor = vector::ExtractElementOpOperandAdaptor(operands);
+    auto extractEltOp = cast<vector::ExtractElementOp>(op);
+    auto vectorType = extractEltOp.getVectorType();
+    auto llvmType = lowering.convertType(vectorType.getElementType());
+
+    // Bail if result type cannot be lowered.
+    if (!llvmType)
+      return matchFailure();
+
+    rewriter.replaceOpWithNewOp<LLVM::ExtractElementOp>(
+        op, llvmType, adaptor.vector(), adaptor.position());
+    return matchSuccess();
   }
 };
 
@@ -292,6 +376,31 @@ public:
         rewriter.create<LLVM::ExtractElementOp>(loc, extracted, constant);
     rewriter.replaceOp(op, extracted);
 
+    return matchSuccess();
+  }
+};
+
+class VectorInsertElementOpConversion : public LLVMOpLowering {
+public:
+  explicit VectorInsertElementOpConversion(MLIRContext *context,
+                                           LLVMTypeConverter &typeConverter)
+      : LLVMOpLowering(vector::InsertElementOp::getOperationName(), context,
+                       typeConverter) {}
+
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto adaptor = vector::InsertElementOpOperandAdaptor(operands);
+    auto insertEltOp = cast<vector::InsertElementOp>(op);
+    auto vectorType = insertEltOp.getDestVectorType();
+    auto llvmType = lowering.convertType(vectorType);
+
+    // Bail if result type cannot be lowered.
+    if (!llvmType)
+      return matchFailure();
+
+    rewriter.replaceOpWithNewOp<LLVM::InsertElementOp>(
+        op, llvmType, adaptor.dest(), adaptor.source(), adaptor.position());
     return matchSuccess();
   }
 };
@@ -503,13 +612,136 @@ public:
   }
 };
 
+class VectorPrintOpConversion : public LLVMOpLowering {
+public:
+  explicit VectorPrintOpConversion(MLIRContext *context,
+                                   LLVMTypeConverter &typeConverter)
+      : LLVMOpLowering(vector::PrintOp::getOperationName(), context,
+                       typeConverter) {}
+
+  // Proof-of-concept lowering implementation that relies on a small
+  // runtime support library, which only needs to provide a few
+  // printing methods (single value for all data types, opening/closing
+  // bracket, comma, newline). The lowering fully unrolls a vector
+  // in terms of these elementary printing operations. The advantage
+  // of this approach is that the library can remain unaware of all
+  // low-level implementation details of vectors while still supporting
+  // output of any shaped and dimensioned vector. Due to full unrolling,
+  // this approach is less suited for very large vectors though.
+  //
+  // TODO(ajcbik): rely solely on libc in future? something else?
+  //
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto printOp = cast<vector::PrintOp>(op);
+    auto adaptor = vector::PrintOpOperandAdaptor(operands);
+    Type printType = printOp.getPrintType();
+
+    if (lowering.convertType(printType) == nullptr)
+      return matchFailure();
+
+    // Make sure element type has runtime support (currently just Float/Double).
+    VectorType vectorType = printType.dyn_cast<VectorType>();
+    Type eltType = vectorType ? vectorType.getElementType() : printType;
+    int64_t rank = vectorType ? vectorType.getRank() : 0;
+    Operation *printer;
+    if (eltType.isF32())
+      printer = getPrintFloat(op);
+    else if (eltType.isF64())
+      printer = getPrintDouble(op);
+    else
+      return matchFailure();
+
+    // Unroll vector into elementary print calls.
+    emitRanks(rewriter, op, adaptor.source(), vectorType, printer, rank);
+    emitCall(rewriter, op->getLoc(), getPrintNewline(op));
+    rewriter.eraseOp(op);
+    return matchSuccess();
+  }
+
+private:
+  void emitRanks(ConversionPatternRewriter &rewriter, Operation *op,
+                 Value *value, VectorType vectorType, Operation *printer,
+                 int64_t rank) const {
+    Location loc = op->getLoc();
+    if (rank == 0) {
+      emitCall(rewriter, loc, printer, value);
+      return;
+    }
+
+    emitCall(rewriter, loc, getPrintOpen(op));
+    Operation *printComma = getPrintComma(op);
+    int64_t dim = vectorType.getDimSize(0);
+    for (int64_t d = 0; d < dim; ++d) {
+      auto reducedType =
+          rank > 1 ? reducedVectorTypeFront(vectorType) : nullptr;
+      auto llvmType = lowering.convertType(
+          rank > 1 ? reducedType : vectorType.getElementType());
+      Value *nestedVal =
+          extractOne(rewriter, lowering, loc, value, llvmType, rank, d);
+      emitRanks(rewriter, op, nestedVal, reducedType, printer, rank - 1);
+      if (d != dim - 1)
+        emitCall(rewriter, loc, printComma);
+    }
+    emitCall(rewriter, loc, getPrintClose(op));
+  }
+
+  // Helper to emit a call.
+  static void emitCall(ConversionPatternRewriter &rewriter, Location loc,
+                       Operation *ref, ValueRange params = ValueRange()) {
+    rewriter.create<LLVM::CallOp>(loc, ArrayRef<Type>{},
+                                  rewriter.getSymbolRefAttr(ref), params);
+  }
+
+  // Helper for printer method declaration (first hit) and lookup.
+  static Operation *getPrint(Operation *op, LLVM::LLVMDialect *dialect,
+                             StringRef name, ArrayRef<LLVM::LLVMType> params) {
+    auto module = op->getParentOfType<ModuleOp>();
+    auto func = module.lookupSymbol<LLVM::LLVMFuncOp>(name);
+    if (func)
+      return func;
+    OpBuilder moduleBuilder(module.getBodyRegion());
+    return moduleBuilder.create<LLVM::LLVMFuncOp>(
+        op->getLoc(), name,
+        LLVM::LLVMType::getFunctionTy(LLVM::LLVMType::getVoidTy(dialect),
+                                      params, /*isVarArg=*/false));
+  }
+
+  // Helpers for method names.
+  Operation *getPrintFloat(Operation *op) const {
+    LLVM::LLVMDialect *dialect = lowering.getDialect();
+    return getPrint(op, dialect, "print_f32",
+                    LLVM::LLVMType::getFloatTy(dialect));
+  }
+  Operation *getPrintDouble(Operation *op) const {
+    LLVM::LLVMDialect *dialect = lowering.getDialect();
+    return getPrint(op, dialect, "print_f64",
+                    LLVM::LLVMType::getDoubleTy(dialect));
+  }
+  Operation *getPrintOpen(Operation *op) const {
+    return getPrint(op, lowering.getDialect(), "print_open", {});
+  }
+  Operation *getPrintClose(Operation *op) const {
+    return getPrint(op, lowering.getDialect(), "print_close", {});
+  }
+  Operation *getPrintComma(Operation *op) const {
+    return getPrint(op, lowering.getDialect(), "print_comma", {});
+  }
+  Operation *getPrintNewline(Operation *op) const {
+    return getPrint(op, lowering.getDialect(), "print_newline", {});
+  }
+};
+
 /// Populate the given list with patterns that convert from Vector to LLVM.
 void mlir::populateVectorToLLVMConversionPatterns(
     LLVMTypeConverter &converter, OwningRewritePatternList &patterns) {
-  patterns.insert<VectorBroadcastOpConversion, VectorExtractOpConversion,
-                  VectorInsertOpConversion, VectorOuterProductOpConversion,
-                  VectorTypeCastOpConversion>(
-      converter.getDialect()->getContext(), converter);
+  patterns.insert<VectorBroadcastOpConversion, VectorShuffleOpConversion,
+                  VectorExtractElementOpConversion, VectorExtractOpConversion,
+                  VectorInsertElementOpConversion, VectorInsertOpConversion,
+                  VectorOuterProductOpConversion, VectorTypeCastOpConversion,
+                  VectorPrintOpConversion>(converter.getDialect()->getContext(),
+                                           converter);
 }
 
 namespace {

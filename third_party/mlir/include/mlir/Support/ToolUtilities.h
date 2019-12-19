@@ -22,6 +22,7 @@
 #ifndef MLIR_SUPPORT_TOOLUTILITIES_H
 #define MLIR_SUPPORT_TOOLUTILITIES_H
 
+#include "mlir/Support/LLVM.h"
 #include "llvm/ADT/STLExtras.h"
 #include <memory>
 
@@ -32,8 +33,8 @@ class MemoryBuffer;
 namespace mlir {
 struct LogicalResult;
 
-using ChunkBufferHandler = llvm::function_ref<LogicalResult(
-    std::unique_ptr<llvm::MemoryBuffer> chunkBuffer, llvm::raw_ostream &os)>;
+using ChunkBufferHandler = function_ref<LogicalResult(
+    std::unique_ptr<llvm::MemoryBuffer> chunkBuffer, raw_ostream &os)>;
 
 /// Splits the specified buffer on a marker (`// -----`), processes each chunk
 /// independently according to the normal `processChunkBuffer` logic, and writes
@@ -43,8 +44,7 @@ using ChunkBufferHandler = llvm::function_ref<LogicalResult(
 /// into a single file.
 LogicalResult
 splitAndProcessBuffer(std::unique_ptr<llvm::MemoryBuffer> originalBuffer,
-                      ChunkBufferHandler processChunkBuffer,
-                      llvm::raw_ostream &os);
+                      ChunkBufferHandler processChunkBuffer, raw_ostream &os);
 } // namespace mlir
 
 #endif // MLIR_SUPPORT_TOOLUTILITIES_H

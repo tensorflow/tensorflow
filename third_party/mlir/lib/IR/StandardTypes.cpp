@@ -375,7 +375,7 @@ MemRefType MemRefType::getImpl(ArrayRef<int64_t> shape, Type elementType,
   // Drop identity maps from the composition.
   // This may lead to the composition becoming empty, which is interpreted as an
   // implicit identity.
-  llvm::SmallVector<AffineMap, 2> cleanedAffineMapComposition;
+  SmallVector<AffineMap, 2> cleanedAffineMapComposition;
   for (const auto &map : affineMapComposition) {
     if (map.isIdentity())
       continue;
@@ -417,7 +417,7 @@ unsigned UnrankedMemRefType::getMemorySpace() const {
 }
 
 LogicalResult UnrankedMemRefType::verifyConstructionInvariants(
-    llvm::Optional<Location> loc, MLIRContext *context, Type elementType,
+    Optional<Location> loc, MLIRContext *context, Type elementType,
     unsigned memorySpace) {
   // Check that memref is formed from allowed types.
   if (!elementType.isIntOrFloat() && !elementType.isa<VectorType>())
@@ -647,8 +647,9 @@ ComplexType ComplexType::getChecked(Type elementType, Location location) {
 }
 
 /// Verify the construction of an integer type.
-LogicalResult ComplexType::verifyConstructionInvariants(
-    llvm::Optional<Location> loc, MLIRContext *context, Type elementType) {
+LogicalResult ComplexType::verifyConstructionInvariants(Optional<Location> loc,
+                                                        MLIRContext *context,
+                                                        Type elementType) {
   if (!elementType.isa<FloatType>() && !elementType.isa<IntegerType>())
     return emitOptionalError(loc, "invalid element type for complex");
   return success();

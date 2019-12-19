@@ -144,7 +144,7 @@ TEST_F(HloLiveRangeTest, MultiplyAdd) {
 }
 
 TEST_F(HloLiveRangeTest, LiveOutBuffers) {
-  // If a buffer is live out, its life range is extened to the end of
+  // If a buffer is live out, its life range is extended to the end of
   // computation.
   auto builder = HloComputation::Builder(TestName());
   auto paramA = builder.AddInstruction(
@@ -181,7 +181,7 @@ TEST_F(HloLiveRangeTest, LiveOutBuffers) {
 }
 
 TEST_F(HloLiveRangeTest, InstructionScheduledAfterRoot) {
-  // If a buffer is live out, its life range is extened to the end of
+  // If a buffer is live out, its life range is extended to the end of
   // computation.
   auto builder = HloComputation::Builder(TestName());
   auto paramA = builder.AddInstruction(

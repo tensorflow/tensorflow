@@ -54,8 +54,8 @@ class CsvDatasetBenchmark(test.Benchmark):
       with open(fn, 'wb') as f:
         # Just write 100 rows and use `repeat`... Assumes the cost
         # of creating an iterator is not significant
-        row = ','.join([str_val for _ in range(n)])
-        f.write('\n'.join([row for _ in range(100)]))
+        row = ','.join(str_val for _ in range(n))
+        f.write('\n'.join(row for _ in range(100)))
       self._filenames.append(fn)
 
   def _tear_down(self):

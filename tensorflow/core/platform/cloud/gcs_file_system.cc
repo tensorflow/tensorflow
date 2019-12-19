@@ -1745,6 +1745,17 @@ void GcsFileSystem::SetStats(GcsStatsInterface* stats) {
   stats_->Configure(this, &throttle_, file_block_cache_.get());
 }
 
+void GcsFileSystem::SetCacheStats(FileBlockCacheStatsInterface* cache_stats) {
+  tf_shared_lock l(block_cache_lock_);
+  if (file_block_cache_ == nullptr) {
+    LOG(ERROR) << "Tried to set cache stats of non-initialized file block "
+                  "cache object. This may result in not exporting the intended "
+                  "monitoring data";
+    return;
+  }
+  file_block_cache_->SetStats(cache_stats);
+}
+
 void GcsFileSystem::SetAuthProvider(
     std::unique_ptr<AuthProvider> auth_provider) {
   mutex_lock l(mu_);

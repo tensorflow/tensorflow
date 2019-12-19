@@ -16,15 +16,53 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_XPLANE_SCHEMA_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_XPLANE_SCHEMA_H_
 
+#include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 namespace profiler {
 
-constexpr int kNumStatTypes = 27;
+// Name of XPlane that contains TraceMe events.
+ABSL_CONST_INIT extern const absl::string_view kHostThreads;
+
+// Interesting event types (i.e., TraceMe names).
+enum HostEventType {
+  kFirstHostEventType = 0,
+  kUnknownHostEventType = kFirstHostEventType,
+  kTraceContext,
+  kSessionRun,
+  kFunctionRun,
+  kRunGraph,
+  kEagerKernelExecute,
+  kExecutorStateProcess,
+  kExecutorDoneCallback,
+  // tf.data captured function events.
+  kTfDataCapturedFunctionRun,
+  kTfDataCapturedFunctionRunWithBorrowedArgs,
+  kTfDataCapturedFunctionRunInstantiated,
+  kTfDataCapturedFunctionRunAsync,
+  // Functional ops.
+  kCallOp,
+  kParallelForOp,
+  kForeverOp,
+  kNumericalGradientOpEvalRight,
+  kNumericalGradientOpEvalLeft,
+  kSymbolicGradientOp,
+  kRemoteCallOp,
+  kIfOp,
+  kCaseOp,
+  kWhileOpEvalCond,
+  kWhileOpStartBody,
+  kForOp,
+  kPartitionedCallOp,
+  kLastHostEventType = kPartitionedCallOp,
+};
 
 enum StatType {
-  kUnknown = 0,
+  kFirstStatType = 0,
+  kUnknownStatType = kFirstStatType,
   // TraceMe arguments.
   kStepId,
   kParentStepId,
@@ -53,31 +91,28 @@ enum StatType {
   kTfOp,
   kHloOp,
   kHloModule,
+  kLastStatType = kHloModule,
 };
 
-constexpr absl::string_view kStatTypeStrMap[] = {
-    "unknown",         "id",
-    "parent_step_id",  "function_step_id",
-    "device_ordinal",  "chip_ordinal",
-    "node_ordinal",    "model_id",
-    "queue_addr",      "request_id",
-    "run_id",          "correlation_id",
-    "graph_type",      "step_num",
-    "iter_num",        "index_on_host",
-    "bytes_reserved",  "bytes_allocated",
-    "bytes_available", "fragmentation",
-    "kernel_details",  "group_id",
-    "step_name",       "level 0",
-    "tf_op",           "hlo_op",
-    "hlo_module",
-};
+absl::Span<const absl::string_view> GetHostEventTypeStrMap();
+
+inline absl::string_view GetHostEventTypeStr(HostEventType event_type) {
+  return GetHostEventTypeStrMap()[event_type];
+}
+
+inline bool IsHostEventType(HostEventType event_type,
+                            absl::string_view event_name) {
+  return GetHostEventTypeStrMap()[event_type] == event_name;
+}
+
+absl::Span<const absl::string_view> GetStatTypeStrMap();
 
 inline absl::string_view GetStatTypeStr(StatType stat_type) {
-  return kStatTypeStrMap[stat_type];
+  return GetStatTypeStrMap()[stat_type];
 }
 
 inline bool IsStatType(StatType stat_type, absl::string_view stat_name) {
-  return kStatTypeStrMap[stat_type] == stat_name;
+  return GetStatTypeStr(stat_type) == stat_name;
 }
 
 }  // namespace profiler

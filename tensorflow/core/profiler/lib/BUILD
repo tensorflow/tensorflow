@@ -43,6 +43,17 @@ tf_cuda_library(
     alwayslink = True,
 )
 
+filegroup(
+    name = "pywrap_eager_hdrs",
+    srcs = [
+        "profiler_session.h",
+    ],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/python:__pkg__",
+    ],
+)
+
 cc_library(
     name = "traceme",
     hdrs = ["traceme.h"],
@@ -79,7 +90,6 @@ filegroup(
     srcs = [
         "profiler_session.cc",
         "profiler_session.h",
-        "profiler_utils.h",
         "scoped_annotation.h",
         "traceme.h",
     ],

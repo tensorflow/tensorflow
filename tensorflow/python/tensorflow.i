@@ -17,14 +17,11 @@ limitations under the License.
  * The includes are intentionally not alphabetically sorted, as the order of
  * includes follows dependency order */
 
-%include "tensorflow/python/pywrap_tfe.i"
-
 %include "tensorflow/python/client/tf_session.i"
 
 %include "tensorflow/python/lib/io/file_io.i"
 
 %include "tensorflow/python/lib/io/py_record_reader.i"
-%include "tensorflow/python/lib/io/py_record_writer.i"
 
 %include "tensorflow/python/grappler/cluster.i"
 %include "tensorflow/python/grappler/item.i"

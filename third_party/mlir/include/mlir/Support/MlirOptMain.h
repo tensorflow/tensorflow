@@ -26,6 +26,7 @@ namespace llvm {
 class raw_ostream;
 class MemoryBuffer;
 } // end namespace llvm
+
 namespace mlir {
 struct LogicalResult;
 class PassPipelineCLParser;

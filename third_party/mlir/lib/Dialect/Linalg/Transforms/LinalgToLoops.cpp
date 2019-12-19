@@ -430,7 +430,8 @@ LogicalResult LinalgOpToLoopsImpl<LoopTy, IndexedValueTy, ConcreteOpTy>::doit(
   auto nRed = linalgOp.getNumReductionLoops();
   auto nWin = linalgOp.getNumWindowLoops();
   SmallVector<IndexHandle, 4> allIvs(nPar + nRed + nWin);
-  SmallVector<ValueHandle *, 4> allPIvs = makeIndexHandlePointers(allIvs);
+  SmallVector<ValueHandle *, 4> allPIvs =
+      makeHandlePointers(MutableArrayRef<IndexHandle>(allIvs));
   auto loopRanges = emitLoopRanges(scope.getBuilder(), scope.getLocation(),
                                    invertedMap, getViewSizes(linalgOp));
   assert(loopRanges.size() == allIvs.size());

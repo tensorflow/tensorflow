@@ -3,8 +3,8 @@ op {
   in_arg {
     name: "boxes"
     description: <<END
-A 4-D float tensor of shape `[batch_size, num_boxes, q, 4]`. If `q` is 1 then 
-same boxes are used for all classes otherwise, if `q` is equal to number of 
+A 4-D float tensor of shape `[batch_size, num_boxes, q, 4]`. If `q` is 1 then
+same boxes are used for all classes otherwise, if `q` is equal to number of
 classes, class-specific boxes are used.
 END
   }
@@ -18,7 +18,7 @@ END
   in_arg {
     name: "max_output_size_per_class"
     description: <<END
-A scalar integer tensor representing the maximum number of 
+A scalar integer tensor representing the maximum number of
 boxes to be selected by non max suppression per class
 END
   }
@@ -63,21 +63,21 @@ END
   out_arg {
     name: "nmsed_boxes"
     description: <<END
-A [batch_size, max_detections, 4] float32 tensor 
+A [batch_size, max_detections, 4] float32 tensor
 containing the non-max suppressed boxes.
 END
   }
   out_arg {
     name: "nmsed_scores"
     description: <<END
-A [batch_size, max_detections] float32 tensor 
+A [batch_size, max_detections] float32 tensor
 containing the scores for the boxes.
 END
   }
   out_arg {
     name: "nmsed_classes"
     description: <<END
-A [batch_size, max_detections] float32 tensor 
+A [batch_size, max_detections] float32 tensor
 containing the classes for the boxes.
 END
   }

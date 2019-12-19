@@ -330,7 +330,7 @@ def _init_from_checkpoint(ckpt_dir_or_file, assignment_map):
               ))
         var_name = var.name
       else:
-        var_name = ",".join([v.name for v in var])
+        var_name = ",".join(v.name for v in var)
       _set_variable_or_list_initializer(var, ckpt_file, tensor_name_in_ckpt)
       logging.debug("Initialize variable %s from checkpoint %s with %s",
                     var_name, ckpt_dir_or_file, tensor_name_in_ckpt)

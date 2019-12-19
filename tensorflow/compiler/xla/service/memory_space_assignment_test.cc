@@ -1240,7 +1240,7 @@ TEST_P(MemorySpaceAssignmentTest, NonEntryComputationSchedule5) {
   //
   // If a copy to alternate memory is inserted before foo, and if the size of
   // the while body is less than max prefetch interval so that the copy-done is
-  // kept in the alternate memory, then we end up refering to the copy-done in
+  // kept in the alternate memory, then we end up referring to the copy-done in
   // the root instruction of the while loop body. I.e.,
   //
   // cs = copy-start(a)
@@ -1929,12 +1929,12 @@ TEST_P(MemorySpaceAssignmentTest, MemoryBoundednessBufferIntervalCompare) {
   //             \          /  \           /
   //              +--------+    +---------+
   //
-  // The alternate memory is sized to fit only one f32[4,6] tensor at a time.
+  // The alternate memory is sized to fit only two f32[4,3] tensors at a time.
   // Also, transcendentals are made to be lower bandwidth than FLOPs. So, the
   // MemoryBoundednessBufferIntervalCompare should prioritize the negates, which
   // are more memory bound.
   HloComputation::Builder builder(TestName());
-  Shape shape = ShapeUtil::MakeShape(F32, {4, 6});
+  Shape shape = ShapeUtil::MakeShape(F32, {4, 3});
   HloInstruction* p0 =
       builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
   HloInstruction* p1 =
@@ -1959,8 +1959,8 @@ TEST_P(MemorySpaceAssignmentTest, MemoryBoundednessBufferIntervalCompare) {
       HloInstruction::CreateUnary(shape, HloOpcode::kTanh, tanh3));
   HloInstruction* negate4 = builder.AddInstruction(
       HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate3));
-  HloInstruction* add = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, tanh4, negate4));
+  HloInstruction* tuple =
+      builder.AddInstruction(HloInstruction::CreateTuple({tanh4, negate4}));
 
   auto module = CreateNewVerifiedModule();
   HloComputation* computation = module->AddEntryComputation(builder.Build());
@@ -1968,7 +1968,7 @@ TEST_P(MemorySpaceAssignmentTest, MemoryBoundednessBufferIntervalCompare) {
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation,
                         {p0, p1, tanh0, negate0, tanh1, negate1, tanh2, negate2,
-                         tanh3, negate3, tanh4, negate4, add});
+                         tanh3, negate3, tanh4, negate4, tuple});
   TF_CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpaceUsingCostAnalysis(module.get());
@@ -1976,7 +1976,7 @@ TEST_P(MemorySpaceAssignmentTest, MemoryBoundednessBufferIntervalCompare) {
   EXPECT_THAT(p0, op::ShapeWithLayout(shape));
   EXPECT_THAT(p1, op::ShapeWithLayout(shape));
   Shape shape_in_default_mem = ShapeUtil::MakeShapeWithLayout(
-      F32, {4, 6},
+      F32, {4, 3},
       /*minor_to_major=*/{1, 0}, /*tiles=*/{}, /*element_size_in_bits=*/0,
       kDefaultMemorySpace);
   // Expect only negates to be in alternate memory space. Not all might fit but

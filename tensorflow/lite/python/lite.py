@@ -22,6 +22,7 @@ from __future__ import print_function
 import enum
 import warnings
 
+from absl import logging
 import six
 from six import PY3
 
@@ -469,6 +470,17 @@ class TFLiteConverterV2(TFLiteConverterBase):
           graph_def)
 
     converter_kwargs = self._get_base_converter_args()
+
+    if not self.experimental_new_converter:
+      logging.warning(
+          "Please consider switching to use new converter by setting "
+          "experimental_new_converter to true. "
+          "Old converter (TOCO) is deprecated and flow will be switched on "
+          "by default to use new converter soon.")
+    else:
+      logging.info("Using experimental converter: If you encountered a problem "
+                   "please file a bug. You can opt-out "
+                   "by setting experimental_new_converter=False")
 
     # Converts model.
     result = _toco_convert_impl(
@@ -986,7 +998,12 @@ class TFLiteConverter(TFLiteConverterBase):
           "are not enabled.")
 
     optimized_graph = self._graph_def
-    if self.inference_type != constants.QUANTIZED_UINT8:
+    # if it is not uint8 or int8 with post-training quantization, it is not
+    # quantization aware training, then graph optimization is applied.
+    # Graph optimization is disabled for quantization aware training.
+    if (self.inference_type != constants.QUANTIZED_UINT8 or
+        (self.inference_type == constants.INT8 and
+         (post_training_optimize or weight_only_quantize))):
       try:
         optimized_graph = _run_graph_optimizations(
             self._graph_def,
@@ -1013,6 +1030,17 @@ class TFLiteConverter(TFLiteConverterBase):
         "conversion_summary_dir": self.conversion_summary_dir,
         "custom_opdefs": self._custom_opdefs,
     })
+
+    if not self.experimental_new_converter:
+      logging.warning(
+          "Please consider switching to use new converter by setting "
+          "experimental_new_converter to true. "
+          "Old converter (TOCO) is deprecated and flow will be switched on "
+          "by default to use new converter soon.")
+    else:
+      logging.info("Using experimental converter: If you encountered a problem "
+                   "please file a bug. You can opt-out "
+                   "by setting experimental_new_converter=False")
 
     # Converts model.
     if self._has_valid_tensors():

@@ -74,7 +74,7 @@ def for_loop(loop_fn, loop_fn_dtypes, iters, parallel_iterations=None):
                                                 len(fn_output)))
     outputs = []
     del is_none_list[:]
-    is_none_list.extend([x is None for x in fn_output])
+    is_none_list.extend(x is None for x in fn_output)
     for out, ta in zip(fn_output, ta_list):
       # TODO(agarwal): support returning Operation objects from loop_fn.
       if out is not None:

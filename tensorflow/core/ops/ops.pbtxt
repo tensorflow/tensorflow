@@ -40455,6 +40455,13 @@ op {
     name: "serialized"
     type: DT_VARIANT
   }
+  attr {
+    name: "external_state_policy"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
   is_stateful: true
 }
 op {
@@ -41343,6 +41350,20 @@ op {
     type: "int"
     default_value {
       i: 0
+    }
+  }
+  attr {
+    name: "mode"
+    type: "string"
+    default_value {
+      s: "auto"
+    }
+  }
+  attr {
+    name: "snapshot_name"
+    type: "string"
+    default_value {
+      s: ""
     }
   }
 }

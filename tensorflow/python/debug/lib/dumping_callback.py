@@ -23,7 +23,6 @@ import re
 import socket
 import threading
 import uuid
-import weakref
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
@@ -88,7 +87,7 @@ class _DumpingCallback(object):
     self._stack_frame_to_id = dict()
     # Mapping op context to unique ID.
     self._context_to_id = dict()
-    self._function_weakref_to_graph_id = dict()
+    self._function_to_graph_id = dict()
     # pylint:disable=protected-access
     self._function_prefixes = (
         compat.as_bytes(function_lib._FORWARD_PREFIX),
@@ -112,10 +111,15 @@ class _DumpingCallback(object):
     Args:
       function: The just-created Function.
     """
-    function_weakref = weakref.ref(function)
     graph_id = self._get_context_id(function.graph)
     with self._context_lock:
-      self._function_weakref_to_graph_id[function_weakref] = graph_id
+      # NOTE(cais): We currently store the function (_EagerDefinedFunction)
+      # as keys of this dict, because weakrefs to them sometimes become
+      # unreferenceable by the time the op callback is called. This approach
+      # may cause memory leaks due to the holding of the functions. If that's
+      # the case, calling `tf.debugging.disable_dump_debug_info()` should
+      # cause GC of this object and this dict.
+      self._function_to_graph_id[function] = graph_id
 
   @property
   def dump_root(self):
@@ -320,10 +324,20 @@ class _DumpingCallback(object):
               debug_tensor.op)
           instrumented_tensors.append(identity)
       return instrumented_tensors
-    elif tensor_debug_mode == debug_event_pb2.TensorDebugMode.CURT_HEALTH:
+    elif tensor_debug_mode in (debug_event_pb2.TensorDebugMode.CURT_HEALTH,
+                               debug_event_pb2.TensorDebugMode.CONCISE_HEALTH,
+                               debug_event_pb2.TensorDebugMode.SHAPE):
       for output_slot, tensor in enumerate(tensors):
+        dtype = tensor.dtype
+        dtype_is_dumpable = (
+            tensor_debug_mode in (
+                debug_event_pb2.TensorDebugMode.CURT_HEALTH,
+                debug_event_pb2.TensorDebugMode.CONCISE_HEALTH) and
+            dtype.is_floating or
+            tensor_debug_mode == debug_event_pb2.TensorDebugMode.SHAPE and
+            (dtype.is_floating or dtype.is_integer or dtype.is_bool))
         if (not self._should_dump_tensor(op_type, tensor.dtype) or
-            not tensor.dtype.is_floating):
+            not dtype_is_dumpable):
           if is_v1_graph_mode:
             instrumented_tensors.append(tensor)
           continue
@@ -405,6 +419,8 @@ class _DumpingCallback(object):
           tensor_debug_mode=tensor_debug_mode,
           code_location=self._process_stack_frames())
     elif tensor_debug_mode in (debug_event_pb2.TensorDebugMode.CURT_HEALTH,
+                               debug_event_pb2.TensorDebugMode.CONCISE_HEALTH,
+                               debug_event_pb2.TensorDebugMode.SHAPE,
                                debug_event_pb2.TensorDebugMode.FULL_TENSOR):
       execution_proto = debug_event_pb2.Execution(
           op_type=op_type,
@@ -417,8 +433,21 @@ class _DumpingCallback(object):
       for tensor in tensors:
         if (self._should_dump_tensor(op_type, tensor.dtype) and
             tensor.dtype.is_numpy_compatible):
-          if tensor_debug_mode == debug_event_pb2.TensorDebugMode.CURT_HEALTH:
+          if tensor_debug_mode in (
+              debug_event_pb2.TensorDebugMode.CURT_HEALTH,
+              debug_event_pb2.TensorDebugMode.CONCISE_HEALTH):
             if tensor.dtype.is_floating:
+              tensor_proto = _concrete_tensor_to_proto(
+                  gen_debug_ops.debug_numeric_summary_v2(
+                      tensor,
+                      tensor_debug_mode=tensor_debug_mode,
+                      output_dtype=dtypes.float64))
+            else:
+              # A placeholder for non-floating-type output tensors.
+              tensor_proto = tensor_pb2.TensorProto()
+          elif tensor_debug_mode == debug_event_pb2.TensorDebugMode.SHAPE:
+            if (tensor.dtype.is_floating or tensor.dtype.is_integer or
+                tensor.dtype.is_bool):
               tensor_proto = _concrete_tensor_to_proto(
                   gen_debug_ops.debug_numeric_summary_v2(
                       tensor,
@@ -505,9 +534,9 @@ class _DumpingCallback(object):
       if op_type in self._op_type_to_context_id:
         return self._op_type_to_context_id[op_type]
       with self._context_lock:
-        for function_weakref in self._function_weakref_to_graph_id:
-          if function_weakref().name == op_type:
-            graph_id = self._function_weakref_to_graph_id[function_weakref]
+        for function in self._function_to_graph_id:
+          if function.name == op_type:
+            graph_id = self._function_to_graph_id[function]
             self._op_type_to_context_id[op_type] = graph_id
             return graph_id
       return None
@@ -653,6 +682,8 @@ def enable_dump_debug_info(dump_root,
   tensor_debug_mode = debug_event_pb2.TensorDebugMode.Value(tensor_debug_mode)
   if tensor_debug_mode not in (debug_event_pb2.TensorDebugMode.NO_TENSOR,
                                debug_event_pb2.TensorDebugMode.CURT_HEALTH,
+                               debug_event_pb2.TensorDebugMode.CONCISE_HEALTH,
+                               debug_event_pb2.TensorDebugMode.SHAPE,
                                debug_event_pb2.TensorDebugMode.FULL_TENSOR):
     raise NotImplementedError(
         "tfdbg dumping: support for tensor debug mode %s is not "

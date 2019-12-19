@@ -83,11 +83,10 @@ Status GetUnregisteredAttrs(
   TF_ASSIGN_OR_RETURN(auto op_name,
                       GetTensorFlowOpName(inst->getName().getStringRef()));
 
-  const tensorflow::OpRegistrationData* op_reg_data;
-  auto status = tensorflow::OpRegistry::Global()->LookUp(op_name, &op_reg_data);
-  if (!status.ok()) {
+  const tensorflow::OpRegistrationData* op_reg_data =
+      tensorflow::OpRegistry::Global()->LookUp(op_name);
+  if (!op_reg_data) {
     // This is likely a function call node, so we should continue.
-    VLOG(1) << status.ToString();
     return Status::OK();
   }
 

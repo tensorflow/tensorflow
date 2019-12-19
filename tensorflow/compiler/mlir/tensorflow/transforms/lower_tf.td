@@ -21,6 +21,16 @@ include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 class GetScalarOfType<int value> : NativeCodeCall<
   "GetScalarOfType(getElementTypeOrSelf($0)," # value # ")">;
 
+class GetScalarOfFloatType<string value> : NativeCodeCall<
+  "GetScalarOfFloatType(getElementTypeOrSelf($0)," # value # ")">;
+
+def GetScalarNanOfType : NativeCodeCall<
+  "GetScalarOfFloatType(getElementTypeOrSelf($0), "
+  "std::numeric_limits<double>::quiet_NaN())">;
+
+class GetI64ScalarElementsAttr<int value> :
+  NativeCodeCall<"GetI64ElementsAttr({" # value # "}, &$_builder)">;
+
 //===----------------------------------------------------------------------===//
 // BiasAddGrad op patterns.
 //===----------------------------------------------------------------------===//
@@ -56,18 +66,56 @@ def LowerBiasAddGradOp :
 // TODO(hinsu): Support scalar inputs by introducing reshape to 1D.
 def NonScalarType : Type<Neg<HasAnyRankOfPred<[0]>>, "Non scalar type">;
 
-def GetLastDimReductionAxis :
-  NativeCodeCall<"GetI64ElementsAttr({-1}, &$_builder)">;
-
 def LowerSoftmaxCrossEntropyWithLogitsOp : Pattern<
   (TF_SoftmaxCrossEntropyWithLogitsOp AnyRankedTensor:$features,
                                       AnyRankedTensor:$labels),
   [(TF_SumOp (TF_MulOp:$sum_input (TF_NegOp $labels),
                                   (TF_LogSoftmaxOp $features)),
-             (TF_ConstOp (GetLastDimReductionAxis)),
+             (TF_ConstOp (GetI64ScalarElementsAttr<-1>)),
              /*keep_dims=*/ConstBoolAttrFalse),
    (TF_SubOp (TF_SoftmaxOp $features), $labels)],
   [(NonScalarType $features), (NonScalarType $labels)]>;
+
+// Returns size of the specified dimension as scalar elements attribute of type
+// $1.
+// Requires $0 to be of RankedTensorType with rank greater than `dim` and the
+// dimension should be known.
+class GetDimSizeOfType<int dim> : NativeCodeCall<
+  "GetScalarOfType(getElementTypeOrSelf($1), "
+  "$0->getType().cast<RankedTensorType>().getDimSize(" # dim # "))">;
+
+// Same as the above with i32 element type.
+class GetDimSizeAsI32<int dim> : NativeCodeCall<
+  "GetScalarOfType($_builder.getIntegerType(32), "
+  "$0->getType().cast<RankedTensorType>().getDimSize(" # dim # "))">;
+
+// Sparse version of SoftmaxCrossEntropyWithLogits is lowered to dense by
+// expanding the sparse labels using:
+//
+// labels = OneHotOp(sparse_labels, depth, 1.0, 0.0)
+//
+// If any of the indices are out of range, we must populate the labels with
+// NaNs to follow the semantics of the op.
+def LowerSparseSoftmaxCrossEntropyWithLogitsOp : Pattern<
+  (TF_SparseSoftmaxCrossEntropyWithLogitsOp:$src_op
+    AnyStaticShapeTensor:$features, $sparse_labels),
+  [(TF_OneHotOp:$labels $sparse_labels,
+     (TF_ConstOp (GetDimSizeAsI32<1> $features, $src_op__0)),
+     (TF_ConstOp (GetScalarOfType<1> $features)),
+     (TF_ConstOp (GetScalarOfType<0> $features)),
+     ConstantAttr<I64Attr, "1">),
+   (TF_SelectV2Op:$zero_or_nan
+     (TF_LogicalAndOp
+       (TF_LessEqualOp
+         (TF_ConstOp (GetScalarOfType<0> $sparse_labels)), $sparse_labels),
+       (TF_LessOp $sparse_labels,
+         (TF_ConstOp (GetDimSizeOfType<1> $features, $sparse_labels)))),
+     (TF_ConstOp (GetScalarOfType<0> $features)),
+     (TF_ConstOp (GetScalarNanOfType $labels))),
+   (TF_AddV2Op:$adjusted_labels $labels,
+     (TF_ExpandDimsOp $zero_or_nan,
+       (TF_ConstOp (GetI64ScalarElementsAttr<-1>)))),
+  (TF_SoftmaxCrossEntropyWithLogitsOp $features, $adjusted_labels)]>;
 
 //===----------------------------------------------------------------------===//
 // Difference op patterns.

@@ -315,7 +315,7 @@ class BitwiseTest(PForTestCase):
         y1 = array_ops.gather(y, i)
         outputs = [op(x, y), op(x1, y), op(x, y1), op(x1, y1), op(x1, x1)]
         del output_dtypes[:]
-        output_dtypes.extend([t.dtype for t in outputs])
+        output_dtypes.extend(t.dtype for t in outputs)
         return outputs
       # pylint: enable=cell-var-from-loop
       self._test_loop_fn(loop_fn, 3)

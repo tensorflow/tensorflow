@@ -11,7 +11,6 @@ package_group(
     includes = ["@local_config_mlir//:subpackages"],
     packages = [
         "//tensorflow/compiler/...",
-        "//tensorflow/core/tfrt_delegate/...",
         "//tensorflow/python/...",
     ],
 )
@@ -176,6 +175,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite:validators",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/platform:logging",
         "@llvm//:support",
         "@local_config_mlir//:Analysis",
         "@local_config_mlir//:CallOpInterfacesIncGen",
@@ -252,6 +252,7 @@ cc_library(
         "transforms/sink_constant.cc",
         "transforms/test_side_effect_analysis.cc",
         "transforms/tpu_cluster_formation.cc",
+        "transforms/tpu_dynamic_padding_mapper.cc",
         "transforms/tpu_merge_variables_with_execute.cc",
         "transforms/tpu_rewrite_pass.cc",
         "translate/breakup-islands.cc",
@@ -624,6 +625,7 @@ cc_library(
         "//tensorflow/c:tf_status",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/stream_executor",
         "//tensorflow/stream_executor/lib",
         "@llvm//:support",
@@ -696,18 +698,15 @@ cc_library(
 
 cc_library(
     name = "translate_lib",
-    srcs = [
-        "translate/tf_mlir_translate.cc",
-    ],
-    hdrs = [
-        "translate/tf_mlir_translate.h",
-    ],
+    srcs = ["translate/tf_mlir_translate.cc"],
+    hdrs = ["translate/tf_mlir_translate.h"],
     deps = [
         ":convert_graphdef",
         ":error_util",
         ":import_utils",
         ":mangling_util",
         ":mlir_roundtrip_flags",
+        "//tensorflow/cc/saved_model:bundle_v2",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:ops",
@@ -921,6 +920,7 @@ cc_library(
         ":lower_tf_inc_gen",
         ":tensorflow",
         "//tensorflow/core:framework",
+        "@llvm//:support",
         "@local_config_mlir//:IR",
     ],
     alwayslink = 1,

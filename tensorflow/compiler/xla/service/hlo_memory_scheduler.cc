@@ -68,7 +68,7 @@ using ::tensorflow::strings::HumanReadableNumBytes;
 //   A D E F B C G
 // , which has a maximum memory usage of 6 (B is alive while F is executing).
 //
-// An optimal way to shedule the previous graph is:
+// An optimal way to schedule the previous graph is:
 //   A B C D E F G
 // , which has a maximum memory usage of 5 (when F is executing).
 //

@@ -341,7 +341,7 @@ std::pair<float, float> SplitF64ToF32(double x) {
   CHECK(std::isfinite(x_f32)) << x;
 
   // The high float is simply the double rounded to the nearest float. Because
-  // we are roundinng to nearest with ties to even, the error introduced in
+  // we are rounding to nearest with ties to even, the error introduced in
   // rounding is less than half an ULP in the high ULP.
   const float hi = x_f32;
   // We can compute the low term using Sterbenz' lemma: If a and b are two

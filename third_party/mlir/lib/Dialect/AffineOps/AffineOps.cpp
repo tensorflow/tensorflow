@@ -99,6 +99,14 @@ AffineOpsDialect::AffineOpsDialect(MLIRContext *context)
   addInterfaces<AffineInlinerInterface, AffineSideEffectsInterface>();
 }
 
+/// Materialize a single constant operation from a given attribute value with
+/// the desired resultant type.
+Operation *AffineOpsDialect::materializeConstant(OpBuilder &builder,
+                                                 Attribute value, Type type,
+                                                 Location loc) {
+  return builder.create<ConstantOp>(loc, type, value);
+}
+
 /// A utility function to check if a given region is attached to a function.
 static bool isFunctionRegion(Region *region) {
   return llvm::isa<FuncOp>(region->getParentOp());
@@ -608,9 +616,8 @@ AffineApplyOp mlir::makeComposedAffineApply(OpBuilder &b, Location loc,
 // A symbol may appear as a dim in affine.apply operations. This function
 // canonicalizes dims that are valid symbols into actual symbols.
 template <class MapOrSet>
-static void
-canonicalizePromotedSymbols(MapOrSet *mapOrSet,
-                            llvm::SmallVectorImpl<Value *> *operands) {
+static void canonicalizePromotedSymbols(MapOrSet *mapOrSet,
+                                        SmallVectorImpl<Value *> *operands) {
   if (!mapOrSet || operands->empty())
     return;
 
@@ -654,7 +661,7 @@ canonicalizePromotedSymbols(MapOrSet *mapOrSet,
 template <class MapOrSet>
 static void
 canonicalizeMapOrSetAndOperands(MapOrSet *mapOrSet,
-                                llvm::SmallVectorImpl<Value *> *operands) {
+                                SmallVectorImpl<Value *> *operands) {
   static_assert(std::is_same<MapOrSet, AffineMap>::value ||
                     std::is_same<MapOrSet, IntegerSet>::value,
                 "Argument must be either of AffineMap or IntegerSet type");
@@ -730,13 +737,13 @@ canonicalizeMapOrSetAndOperands(MapOrSet *mapOrSet,
   *operands = resultOperands;
 }
 
-void mlir::canonicalizeMapAndOperands(
-    AffineMap *map, llvm::SmallVectorImpl<Value *> *operands) {
+void mlir::canonicalizeMapAndOperands(AffineMap *map,
+                                      SmallVectorImpl<Value *> *operands) {
   canonicalizeMapOrSetAndOperands<AffineMap>(map, operands);
 }
 
-void mlir::canonicalizeSetAndOperands(
-    IntegerSet *set, llvm::SmallVectorImpl<Value *> *operands) {
+void mlir::canonicalizeSetAndOperands(IntegerSet *set,
+                                      SmallVectorImpl<Value *> *operands) {
   canonicalizeMapOrSetAndOperands<IntegerSet>(set, operands);
 }
 
@@ -756,6 +763,7 @@ struct SimplifyAffineOp : public OpRewritePattern<AffineOpTy> {
   PatternMatchResult matchAndRewrite(AffineOpTy affineOp,
                                      PatternRewriter &rewriter) const override {
     static_assert(std::is_same<AffineOpTy, AffineLoadOp>::value ||
+                      std::is_same<AffineOpTy, AffinePrefetchOp>::value ||
                       std::is_same<AffineOpTy, AffineStoreOp>::value ||
                       std::is_same<AffineOpTy, AffineApplyOp>::value,
                   "affine load/store/apply op expected");
@@ -783,6 +791,15 @@ void SimplifyAffineOp<AffineLoadOp>::replaceAffineOp(
                                             mapOperands);
 }
 template <>
+void SimplifyAffineOp<AffinePrefetchOp>::replaceAffineOp(
+    PatternRewriter &rewriter, AffinePrefetchOp prefetch, AffineMap map,
+    ArrayRef<Value *> mapOperands) const {
+  rewriter.replaceOpWithNewOp<AffinePrefetchOp>(
+      prefetch, prefetch.memref(), map, mapOperands,
+      prefetch.localityHint().getZExtValue(), prefetch.isWrite(),
+      prefetch.isDataCache());
+}
+template <>
 void SimplifyAffineOp<AffineStoreOp>::replaceAffineOp(
     PatternRewriter &rewriter, AffineStoreOp store, AffineMap map,
     ArrayRef<Value *> mapOperands) const {
@@ -806,33 +823,20 @@ void AffineApplyOp::getCanonicalizationPatterns(
 // Common canonicalization pattern support logic
 //===----------------------------------------------------------------------===//
 
-namespace {
 /// This is a common class used for patterns of the form
 /// "someop(memrefcast) -> someop".  It folds the source of any memref_cast
 /// into the root operation directly.
-struct MemRefCastFolder : public RewritePattern {
-  /// The rootOpName is the name of the root operation to match against.
-  MemRefCastFolder(StringRef rootOpName, MLIRContext *context)
-      : RewritePattern(rootOpName, 1, context) {}
-
-  PatternMatchResult match(Operation *op) const override {
-    for (auto *operand : op->getOperands())
-      if (matchPattern(operand, m_Op<MemRefCastOp>()))
-        return matchSuccess();
-
-    return matchFailure();
+static LogicalResult foldMemRefCast(Operation *op) {
+  bool folded = false;
+  for (OpOperand &operand : op->getOpOperands()) {
+    auto cast = dyn_cast_or_null<MemRefCastOp>(operand.get()->getDefiningOp());
+    if (cast && !cast.getOperand()->getType().isa<UnrankedMemRefType>()) {
+      operand.set(cast.getOperand());
+      folded = true;
+    }
   }
-
-  void rewrite(Operation *op, PatternRewriter &rewriter) const override {
-    for (unsigned i = 0, e = op->getNumOperands(); i != e; ++i)
-      if (auto *memref = op->getOperand(i)->getDefiningOp())
-        if (auto cast = dyn_cast<MemRefCastOp>(memref))
-          op->setOperand(i, cast.getOperand());
-    rewriter.updatedRootInPlace(op);
-  }
-};
-
-} // end anonymous namespace.
+  return success(folded);
+}
 
 //===----------------------------------------------------------------------===//
 // AffineDmaStartOp
@@ -997,10 +1001,10 @@ LogicalResult AffineDmaStartOp::verify() {
   return success();
 }
 
-void AffineDmaStartOp::getCanonicalizationPatterns(
-    OwningRewritePatternList &results, MLIRContext *context) {
+LogicalResult AffineDmaStartOp::fold(ArrayRef<Attribute> cstOperands,
+                                     SmallVectorImpl<OpFoldResult> &results) {
   /// dma_start(memrefcast) -> dma_start
-  results.insert<MemRefCastFolder>(getOperationName(), context);
+  return foldMemRefCast(*this);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1073,10 +1077,10 @@ LogicalResult AffineDmaWaitOp::verify() {
   return success();
 }
 
-void AffineDmaWaitOp::getCanonicalizationPatterns(
-    OwningRewritePatternList &results, MLIRContext *context) {
+LogicalResult AffineDmaWaitOp::fold(ArrayRef<Attribute> cstOperands,
+                                    SmallVectorImpl<OpFoldResult> &results) {
   /// dma_wait(memrefcast) -> dma_wait
-  results.insert<MemRefCastFolder>(getOperationName(), context);
+  return foldMemRefCast(*this);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1247,7 +1251,8 @@ static ParseResult parseBound(bool isLower, OperationState &result,
       "expected valid affine map representation for loop bounds");
 }
 
-ParseResult parseAffineForOp(OpAsmParser &parser, OperationState &result) {
+static ParseResult parseAffineForOp(OpAsmParser &parser,
+                                    OperationState &result) {
   auto &builder = parser.getBuilder();
   OpAsmParser::OperandType inductionVariable;
   // Parse the induction variable followed by '='.
@@ -1336,7 +1341,7 @@ static void printBound(AffineMapAttr boundMap,
                         map.getNumDims(), p);
 }
 
-void print(OpAsmPrinter &p, AffineForOp op) {
+static void print(OpAsmPrinter &p, AffineForOp op) {
   p << "affine.for ";
   p.printOperand(op.getBody()->getArgument(0));
   p << " = ";
@@ -1355,6 +1360,76 @@ void print(OpAsmPrinter &p, AffineForOp op) {
                                            op.getStepAttrName()});
 }
 
+/// Fold the constant bounds of a loop.
+static LogicalResult foldLoopBounds(AffineForOp forOp) {
+  auto foldLowerOrUpperBound = [&forOp](bool lower) {
+    // Check to see if each of the operands is the result of a constant.  If
+    // so, get the value.  If not, ignore it.
+    SmallVector<Attribute, 8> operandConstants;
+    auto boundOperands =
+        lower ? forOp.getLowerBoundOperands() : forOp.getUpperBoundOperands();
+    for (auto *operand : boundOperands) {
+      Attribute operandCst;
+      matchPattern(operand, m_Constant(&operandCst));
+      operandConstants.push_back(operandCst);
+    }
+
+    AffineMap boundMap =
+        lower ? forOp.getLowerBoundMap() : forOp.getUpperBoundMap();
+    assert(boundMap.getNumResults() >= 1 &&
+           "bound maps should have at least one result");
+    SmallVector<Attribute, 4> foldedResults;
+    if (failed(boundMap.constantFold(operandConstants, foldedResults)))
+      return failure();
+
+    // Compute the max or min as applicable over the results.
+    assert(!foldedResults.empty() && "bounds should have at least one result");
+    auto maxOrMin = foldedResults[0].cast<IntegerAttr>().getValue();
+    for (unsigned i = 1, e = foldedResults.size(); i < e; i++) {
+      auto foldedResult = foldedResults[i].cast<IntegerAttr>().getValue();
+      maxOrMin = lower ? llvm::APIntOps::smax(maxOrMin, foldedResult)
+                       : llvm::APIntOps::smin(maxOrMin, foldedResult);
+    }
+    lower ? forOp.setConstantLowerBound(maxOrMin.getSExtValue())
+          : forOp.setConstantUpperBound(maxOrMin.getSExtValue());
+    return success();
+  };
+
+  // Try to fold the lower bound.
+  bool folded = false;
+  if (!forOp.hasConstantLowerBound())
+    folded |= succeeded(foldLowerOrUpperBound(/*lower=*/true));
+
+  // Try to fold the upper bound.
+  if (!forOp.hasConstantUpperBound())
+    folded |= succeeded(foldLowerOrUpperBound(/*lower=*/false));
+  return success(folded);
+}
+
+/// Canonicalize the bounds of the given loop.
+static LogicalResult canonicalizeLoopBounds(AffineForOp forOp) {
+  SmallVector<Value *, 4> lbOperands(forOp.getLowerBoundOperands());
+  SmallVector<Value *, 4> ubOperands(forOp.getUpperBoundOperands());
+
+  auto lbMap = forOp.getLowerBoundMap();
+  auto ubMap = forOp.getUpperBoundMap();
+  auto prevLbMap = lbMap;
+  auto prevUbMap = ubMap;
+
+  canonicalizeMapAndOperands(&lbMap, &lbOperands);
+  canonicalizeMapAndOperands(&ubMap, &ubOperands);
+
+  // Any canonicalization change always leads to updated map(s).
+  if (lbMap == prevLbMap && ubMap == prevUbMap)
+    return failure();
+
+  if (lbMap != prevLbMap)
+    forOp.setLowerBound(lbOperands, lbMap);
+  if (ubMap != prevUbMap)
+    forOp.setUpperBound(ubOperands, ubMap);
+  return success();
+}
+
 namespace {
 /// This is a pattern to fold trivially empty loops.
 struct AffineForEmptyLoopFolder : public OpRewritePattern<AffineForOp> {
@@ -1369,101 +1444,18 @@ struct AffineForEmptyLoopFolder : public OpRewritePattern<AffineForOp> {
     return matchSuccess();
   }
 };
-
-/// This is a pattern to fold constant loop bounds.
-struct AffineForOpBoundFolder : public OpRewritePattern<AffineForOp> {
-  using OpRewritePattern<AffineForOp>::OpRewritePattern;
-
-  PatternMatchResult matchAndRewrite(AffineForOp forOp,
-                                     PatternRewriter &rewriter) const override {
-    auto foldLowerOrUpperBound = [&forOp](bool lower) {
-      // Check to see if each of the operands is the result of a constant.  If
-      // so, get the value.  If not, ignore it.
-      SmallVector<Attribute, 8> operandConstants;
-      auto boundOperands =
-          lower ? forOp.getLowerBoundOperands() : forOp.getUpperBoundOperands();
-      for (auto *operand : boundOperands) {
-        Attribute operandCst;
-        matchPattern(operand, m_Constant(&operandCst));
-        operandConstants.push_back(operandCst);
-      }
-
-      AffineMap boundMap =
-          lower ? forOp.getLowerBoundMap() : forOp.getUpperBoundMap();
-      assert(boundMap.getNumResults() >= 1 &&
-             "bound maps should have at least one result");
-      SmallVector<Attribute, 4> foldedResults;
-      if (failed(boundMap.constantFold(operandConstants, foldedResults)))
-        return failure();
-
-      // Compute the max or min as applicable over the results.
-      assert(!foldedResults.empty() &&
-             "bounds should have at least one result");
-      auto maxOrMin = foldedResults[0].cast<IntegerAttr>().getValue();
-      for (unsigned i = 1, e = foldedResults.size(); i < e; i++) {
-        auto foldedResult = foldedResults[i].cast<IntegerAttr>().getValue();
-        maxOrMin = lower ? llvm::APIntOps::smax(maxOrMin, foldedResult)
-                         : llvm::APIntOps::smin(maxOrMin, foldedResult);
-      }
-      lower ? forOp.setConstantLowerBound(maxOrMin.getSExtValue())
-            : forOp.setConstantUpperBound(maxOrMin.getSExtValue());
-      return success();
-    };
-
-    // Try to fold the lower bound.
-    bool folded = false;
-    if (!forOp.hasConstantLowerBound())
-      folded |= succeeded(foldLowerOrUpperBound(/*lower=*/true));
-
-    // Try to fold the upper bound.
-    if (!forOp.hasConstantUpperBound())
-      folded |= succeeded(foldLowerOrUpperBound(/*lower=*/false));
-
-    // If any of the bounds were folded we return success.
-    if (!folded)
-      return matchFailure();
-    rewriter.updatedRootInPlace(forOp);
-    return matchSuccess();
-  }
-};
-
-// This is a pattern to canonicalize affine for op loop bounds.
-struct AffineForOpBoundCanonicalizer : public OpRewritePattern<AffineForOp> {
-  using OpRewritePattern<AffineForOp>::OpRewritePattern;
-
-  PatternMatchResult matchAndRewrite(AffineForOp forOp,
-                                     PatternRewriter &rewriter) const override {
-    SmallVector<Value *, 4> lbOperands(forOp.getLowerBoundOperands());
-    SmallVector<Value *, 4> ubOperands(forOp.getUpperBoundOperands());
-
-    auto lbMap = forOp.getLowerBoundMap();
-    auto ubMap = forOp.getUpperBoundMap();
-    auto prevLbMap = lbMap;
-    auto prevUbMap = ubMap;
-
-    canonicalizeMapAndOperands(&lbMap, &lbOperands);
-    canonicalizeMapAndOperands(&ubMap, &ubOperands);
-
-    // Any canonicalization change always leads to updated map(s).
-    if (lbMap == prevLbMap && ubMap == prevUbMap)
-      return matchFailure();
-
-    if (lbMap != prevLbMap)
-      forOp.setLowerBound(lbOperands, lbMap);
-    if (ubMap != prevUbMap)
-      forOp.setUpperBound(ubOperands, ubMap);
-
-    rewriter.updatedRootInPlace(forOp);
-    return matchSuccess();
-  }
-};
-
 } // end anonymous namespace
 
 void AffineForOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                               MLIRContext *context) {
-  results.insert<AffineForEmptyLoopFolder, AffineForOpBoundFolder,
-                 AffineForOpBoundCanonicalizer>(context);
+  results.insert<AffineForEmptyLoopFolder>(context);
+}
+
+LogicalResult AffineForOp::fold(ArrayRef<Attribute> operands,
+                                SmallVectorImpl<OpFoldResult> &results) {
+  bool folded = succeeded(foldLoopBounds(*this));
+  folded |= succeeded(canonicalizeLoopBounds(*this));
+  return success(folded);
 }
 
 AffineBound AffineForOp::getLowerBound() {
@@ -1733,37 +1725,23 @@ void AffineIfOp::build(Builder *builder, OperationState &result, IntegerSet set,
     AffineIfOp::ensureTerminator(*elseRegion, *builder, result.location);
 }
 
-namespace {
-// This is a pattern to canonicalize an affine if op's conditional (integer
-// set + operands).
-struct AffineIfOpCanonicalizer : public OpRewritePattern<AffineIfOp> {
-  using OpRewritePattern<AffineIfOp>::OpRewritePattern;
+/// Canonicalize an affine if op's conditional (integer set + operands).
+LogicalResult AffineIfOp::fold(ArrayRef<Attribute>,
+                               SmallVectorImpl<OpFoldResult> &) {
+  auto set = getIntegerSet();
+  SmallVector<Value *, 4> operands(getOperands());
+  canonicalizeSetAndOperands(&set, &operands);
 
-  PatternMatchResult matchAndRewrite(AffineIfOp ifOp,
-                                     PatternRewriter &rewriter) const override {
-    auto set = ifOp.getIntegerSet();
-    SmallVector<Value *, 4> operands(ifOp.getOperands());
-
-    canonicalizeSetAndOperands(&set, &operands);
-
-    // Any canonicalization change always leads to either a reduction in the
-    // number of operands or a change in the number of symbolic operands
-    // (promotion of dims to symbols).
-    if (operands.size() < ifOp.getIntegerSet().getNumInputs() ||
-        set.getNumSymbols() > ifOp.getIntegerSet().getNumSymbols()) {
-      ifOp.setConditional(set, operands);
-      rewriter.updatedRootInPlace(ifOp);
-      return matchSuccess();
-    }
-
-    return matchFailure();
+  // Any canonicalization change always leads to either a reduction in the
+  // number of operands or a change in the number of symbolic operands
+  // (promotion of dims to symbols).
+  if (operands.size() < getIntegerSet().getNumInputs() ||
+      set.getNumSymbols() > getIntegerSet().getNumSymbols()) {
+    setConditional(set, operands);
+    return success();
   }
-};
-} // end anonymous namespace
 
-void AffineIfOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
-                                             MLIRContext *context) {
-  results.insert<AffineIfOpCanonicalizer>(context);
+  return failure();
 }
 
 //===----------------------------------------------------------------------===//
@@ -1858,9 +1836,14 @@ LogicalResult AffineLoadOp::verify() {
 
 void AffineLoadOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
-  /// load(memrefcast) -> load
-  results.insert<MemRefCastFolder>(getOperationName(), context);
   results.insert<SimplifyAffineOp<AffineLoadOp>>(context);
+}
+
+OpFoldResult AffineLoadOp::fold(ArrayRef<Attribute> cstOperands) {
+  /// load(memrefcast) -> load
+  if (succeeded(foldMemRefCast(*this)))
+    return getResult();
+  return OpFoldResult();
 }
 
 //===----------------------------------------------------------------------===//
@@ -1951,9 +1934,13 @@ LogicalResult AffineStoreOp::verify() {
 
 void AffineStoreOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
-  /// load(memrefcast) -> load
-  results.insert<MemRefCastFolder>(getOperationName(), context);
   results.insert<SimplifyAffineOp<AffineStoreOp>>(context);
+}
+
+LogicalResult AffineStoreOp::fold(ArrayRef<Attribute> cstOperands,
+                                  SmallVectorImpl<OpFoldResult> &results) {
+  /// store(memrefcast) -> store
+  return foldMemRefCast(*this);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1985,18 +1972,12 @@ static ParseResult parseAffineMinOp(OpAsmParser &parser,
 static void print(OpAsmPrinter &p, AffineMinOp op) {
   p << op.getOperationName() << ' '
     << op.getAttr(AffineMinOp::getMapAttrName());
-  auto begin = op.operand_begin();
-  auto end = op.operand_end();
+  auto operands = op.getOperands();
   unsigned numDims = op.map().getNumDims();
-  p << '(';
-  p.printOperands(begin, begin + numDims);
-  p << ')';
+  p << '(' << operands.take_front(numDims) << ')';
 
-  if (begin + numDims != end) {
-    p << '[';
-    p.printOperands(begin + numDims, end);
-    p << ']';
-  }
+  if (operands.size() != numDims)
+    p << '[' << operands.drop_front(numDims) << ']';
   p.printOptionalAttrDict(op.getAttrs(), /*elidedAttrs=*/{"map"});
 }
 
@@ -2029,6 +2010,112 @@ OpFoldResult AffineMinOp::fold(ArrayRef<Attribute> operands) {
   if (minIndex < 0)
     return {};
   return results[minIndex];
+}
+
+//===----------------------------------------------------------------------===//
+// AffinePrefetchOp
+//===----------------------------------------------------------------------===//
+
+//
+// affine.prefetch %0[%i, %j + 5], read, locality<3>, data : memref<400x400xi32>
+//
+static ParseResult parseAffinePrefetchOp(OpAsmParser &parser,
+                                         OperationState &result) {
+  auto &builder = parser.getBuilder();
+  auto indexTy = builder.getIndexType();
+
+  MemRefType type;
+  OpAsmParser::OperandType memrefInfo;
+  IntegerAttr hintInfo;
+  auto i32Type = parser.getBuilder().getIntegerType(32);
+  StringRef readOrWrite, cacheType;
+
+  AffineMapAttr mapAttr;
+  SmallVector<OpAsmParser::OperandType, 1> mapOperands;
+  if (parser.parseOperand(memrefInfo) ||
+      parser.parseAffineMapOfSSAIds(mapOperands, mapAttr,
+                                    AffinePrefetchOp::getMapAttrName(),
+                                    result.attributes) ||
+      parser.parseComma() || parser.parseKeyword(&readOrWrite) ||
+      parser.parseComma() || parser.parseKeyword("locality") ||
+      parser.parseLess() ||
+      parser.parseAttribute(hintInfo, i32Type,
+                            AffinePrefetchOp::getLocalityHintAttrName(),
+                            result.attributes) ||
+      parser.parseGreater() || parser.parseComma() ||
+      parser.parseKeyword(&cacheType) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
+      parser.parseColonType(type) ||
+      parser.resolveOperand(memrefInfo, type, result.operands) ||
+      parser.resolveOperands(mapOperands, indexTy, result.operands))
+    return failure();
+
+  if (!readOrWrite.equals("read") && !readOrWrite.equals("write"))
+    return parser.emitError(parser.getNameLoc(),
+                            "rw specifier has to be 'read' or 'write'");
+  result.addAttribute(
+      AffinePrefetchOp::getIsWriteAttrName(),
+      parser.getBuilder().getBoolAttr(readOrWrite.equals("write")));
+
+  if (!cacheType.equals("data") && !cacheType.equals("instr"))
+    return parser.emitError(parser.getNameLoc(),
+                            "cache type has to be 'data' or 'instr'");
+
+  result.addAttribute(
+      AffinePrefetchOp::getIsDataCacheAttrName(),
+      parser.getBuilder().getBoolAttr(cacheType.equals("data")));
+
+  return success();
+}
+
+void print(OpAsmPrinter &p, AffinePrefetchOp op) {
+  p << AffinePrefetchOp::getOperationName() << " " << *op.memref() << '[';
+  AffineMapAttr mapAttr = op.getAttrOfType<AffineMapAttr>(op.getMapAttrName());
+  if (mapAttr) {
+    SmallVector<Value *, 2> operands(op.getMapOperands());
+    p.printAffineMapOfSSAIds(mapAttr, operands);
+  }
+  p << ']' << ", " << (op.isWrite() ? "write" : "read") << ", "
+    << "locality<" << op.localityHint() << ">, "
+    << (op.isDataCache() ? "data" : "instr");
+  p.printOptionalAttrDict(
+      op.getAttrs(),
+      /*elidedAttrs=*/{op.getMapAttrName(), op.getLocalityHintAttrName(),
+                       op.getIsDataCacheAttrName(), op.getIsWriteAttrName()});
+  p << " : " << op.getMemRefType();
+}
+
+LogicalResult verify(AffinePrefetchOp op) {
+  auto mapAttr = op.getAttrOfType<AffineMapAttr>(op.getMapAttrName());
+  if (mapAttr) {
+    AffineMap map = mapAttr.getValue();
+    if (map.getNumResults() != op.getMemRefType().getRank())
+      return op.emitOpError("affine.prefetch affine map num results must equal"
+                            " memref rank");
+    if (map.getNumInputs() + 1 != op.getNumOperands())
+      return op.emitOpError("too few operands");
+  } else {
+    if (op.getNumOperands() != 1)
+      return op.emitOpError("too few operands");
+  }
+
+  for (auto *idx : op.getMapOperands()) {
+    if (!isValidAffineIndexOperand(idx))
+      return op.emitOpError("index must be a dimension or symbol identifier");
+  }
+  return success();
+}
+
+void AffinePrefetchOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  // prefetch(memrefcast) -> prefetch
+  results.insert<SimplifyAffineOp<AffinePrefetchOp>>(context);
+}
+
+LogicalResult AffinePrefetchOp::fold(ArrayRef<Attribute> cstOperands,
+                                     SmallVectorImpl<OpFoldResult> &results) {
+  /// prefetch(memrefcast) -> prefetch
+  return foldMemRefCast(*this);
 }
 
 //===----------------------------------------------------------------------===//

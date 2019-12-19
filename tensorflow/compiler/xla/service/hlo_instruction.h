@@ -643,7 +643,7 @@ class HloInstruction {
       const std::vector<ReplicaGroup>& replica_groups,
       const absl::optional<int64>& channel_id);
 
-  // Creates a communitation instructions that permutes data cross replicas.
+  // Creates a communication instructions that permutes data cross replicas.
   // Data is sent/received according to the (source_replica_id,
   // target_replica_id) pairs in `source_target_pairs`. If a replica id is not a
   // target_replica_id in any pair, the output on that replica is a tensor
@@ -1000,6 +1000,11 @@ class HloInstruction {
 
   // Returns the users of this instruction.
   const std::vector<HloInstruction*>& users() const { return users_; }
+
+  // Returns the index of the user in the users() vector.
+  //
+  // Precondition: `user` is a user of the instruction.
+  int64 UserId(HloInstruction* user);
 
   // Returns true if this instruction is a user of 'instruction'.
   bool IsUserOf(const HloInstruction* instruction) const {

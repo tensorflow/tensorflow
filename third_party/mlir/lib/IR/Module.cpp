@@ -38,7 +38,7 @@ ModuleOp ModuleOp::create(Location loc, Optional<StringRef> name) {
   OperationState state(loc, "module");
   Builder builder(loc->getContext());
   ModuleOp::build(&builder, state, name);
-  return llvm::cast<ModuleOp>(Operation::create(state));
+  return cast<ModuleOp>(Operation::create(state));
 }
 
 ParseResult ModuleOp::parse(OpAsmParser &parser, OperationState &result) {

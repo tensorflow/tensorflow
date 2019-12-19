@@ -593,11 +593,11 @@ Status DatasetOpsTestBase::CheckIteratorSaveAndRestore(
   int cur_iteration = 0;
   std::vector<Tensor> out_tensors;
   for (int breakpoint : breakpoints) {
-    VariantTensorData data;
-    VariantTensorDataWriter writer(&data);
+    VariantTensorDataWriter writer;
     TF_EXPECT_OK(iterator->Save(serialization_ctx.get(), &writer));
-    TF_RETURN_IF_ERROR(writer.Flush());
-    VariantTensorDataReader reader(&data);
+    std::vector<const VariantTensorData*> data;
+    writer.GetData(&data);
+    VariantTensorDataReader reader(data);
     TF_EXPECT_OK(RestoreIterator(iterator_ctx_.get(), &reader, iterator_prefix,
                                  *dataset_, &iterator));
 
@@ -819,6 +819,14 @@ RangeDatasetParams::RangeDatasetParams(
 
 RangeDatasetParams::RangeDatasetParams(int64 start, int64 stop, int64 step)
     : DatasetParams({DT_INT64}, {PartialTensorShape({})}, "range_dataset"),
+      start_(start),
+      stop_(stop),
+      step_(step) {}
+
+RangeDatasetParams::RangeDatasetParams(int64 start, int64 stop, int64 step,
+                                       DataTypeVector output_dtypes)
+    : DatasetParams(std::move(output_dtypes), {PartialTensorShape({})},
+                    "range_dataset"),
       start_(start),
       stop_(stop),
       step_(step) {}

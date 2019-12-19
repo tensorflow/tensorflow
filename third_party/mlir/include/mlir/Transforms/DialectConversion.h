@@ -94,7 +94,7 @@ public:
 
   private:
     /// The remapping information for each of the original arguments.
-    SmallVector<llvm::Optional<InputMapping>, 4> remappedInputs;
+    SmallVector<Optional<InputMapping>, 4> remappedInputs;
 
     /// The set of new argument types.
     SmallVector<Type, 4> argTypes;
@@ -133,7 +133,7 @@ public:
   /// This function converts the type signature of the given block, by invoking
   /// 'convertSignatureArg' for each argument. This function should return a
   /// valid conversion for the signature on success, None otherwise.
-  llvm::Optional<SignatureConversion> convertBlockSignature(Block *block);
+  Optional<SignatureConversion> convertBlockSignature(Block *block);
 
   /// This hook allows for materializing a conversion from a set of types into
   /// one result type by generating a cast operation of some kind. The generated
@@ -236,13 +236,13 @@ struct OpConversionPattern : public ConversionPattern {
   /// type.
   void rewrite(Operation *op, ArrayRef<Value *> operands,
                ConversionPatternRewriter &rewriter) const final {
-    rewrite(llvm::cast<SourceOp>(op), operands, rewriter);
+    rewrite(cast<SourceOp>(op), operands, rewriter);
   }
   void rewrite(Operation *op, ArrayRef<Value *> properOperands,
                ArrayRef<Block *> destinations,
                ArrayRef<ArrayRef<Value *>> operands,
                ConversionPatternRewriter &rewriter) const final {
-    rewrite(llvm::cast<SourceOp>(op), properOperands, destinations, operands,
+    rewrite(cast<SourceOp>(op), properOperands, destinations, operands,
             rewriter);
   }
   PatternMatchResult
@@ -250,13 +250,13 @@ struct OpConversionPattern : public ConversionPattern {
                   ArrayRef<Block *> destinations,
                   ArrayRef<ArrayRef<Value *>> operands,
                   ConversionPatternRewriter &rewriter) const final {
-    return matchAndRewrite(llvm::cast<SourceOp>(op), properOperands,
-                           destinations, operands, rewriter);
+    return matchAndRewrite(cast<SourceOp>(op), properOperands, destinations,
+                           operands, rewriter);
   }
   PatternMatchResult
   matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
                   ConversionPatternRewriter &rewriter) const final {
-    return matchAndRewrite(llvm::cast<SourceOp>(op), operands, rewriter);
+    return matchAndRewrite(cast<SourceOp>(op), operands, rewriter);
   }
 
   // TODO(b/142763075): Use OperandAdaptor when it supports access to unnamed

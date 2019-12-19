@@ -1356,7 +1356,7 @@ void HloFusionInstruction::MergeFusionInstructionIntoMultiOutput(
     HloFusionInstruction* instruction_to_merge) {
   // Add all non-parameter fused instructions to 'unfused_instructions' to be
   // merged into 'this'. `old_to_new' maps the instructions in the fused node
-  // to the disaseembled fusion instructions.
+  // to the disassembled fusion instructions.
   // Note that we add the unfused instructions to this->parent_ computation.
   // This is necessary because the unique_id needs for an instruction and
   // it's only added when inserting to the computation.

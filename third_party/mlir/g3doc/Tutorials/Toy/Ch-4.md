@@ -107,7 +107,7 @@ and core to a single operation. The interface that we will be adding here is the
 To add this interface we just need to include the definition into our operation
 specification file (`Ops.td`):
 
-```.td
+```tablegen
 #ifdef MLIR_CALLINTERFACES
 #else
 include "mlir/Analysis/CallInterfaces.td"
@@ -116,7 +116,7 @@ include "mlir/Analysis/CallInterfaces.td"
 
 and add it to the traits list of `GenericCallOp`:
 
-```.td
+```tablegen
 def GenericCallOp : Toy_Op<"generic_call",
     [DeclareOpInterfaceMethods<CallOpInterface>]> {
   ...
@@ -176,7 +176,7 @@ the inliner expects an explicit cast operation to be inserted. For this, we need
 to add a new operation to the Toy dialect, `ToyCastOp`(toy.cast), to represent
 casts between two different shapes.
 
-```.td
+```tablegen
 def CastOp : Toy_Op<"cast", [NoSideEffect, SameOperandsAndResultShape]> {
   let summary = "shape cast operation";
   let description = [{
@@ -263,7 +263,7 @@ to be given to the generated C++ interface class as a template argument. For our
 purposes, we will name the generated class a simpler `ShapeInference`. We also
 provide a description for the interface.
 
-```.td
+```tablegen
 def ShapeInferenceOpInterface : OpInterface<"ShapeInference"> {
   let description = [{
     Interface to access a registered method to infer the return types for an
@@ -279,7 +279,7 @@ the need. See the
 [ODS documentation](../../OpDefinitions.md#operation-interfaces) for more
 information.
 
-```.td
+```tablegen
 def ShapeInferenceOpInterface : OpInterface<"ShapeInference"> {
   let description = [{
     Interface to access a registered method to infer the return types for an

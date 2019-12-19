@@ -130,7 +130,7 @@ class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
             (None, input_dim, 4, 4, 4),
         ],
         [
-            (keras.layers.GRU(output_dim)),
+            (keras.layers.GRUV1(output_dim)),
             [np.random.random((input_dim, output_dim)),
              np.random.random((output_dim, output_dim)),
              np.random.random((output_dim,)),
@@ -143,7 +143,7 @@ class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
             (None, 4, input_dim),
         ],
         [
-            (keras.layers.LSTM(output_dim)),
+            (keras.layers.LSTMV1(output_dim)),
             [np.random.random((input_dim, output_dim)),
              np.random.random((output_dim, output_dim)),
              np.random.random((output_dim,)),

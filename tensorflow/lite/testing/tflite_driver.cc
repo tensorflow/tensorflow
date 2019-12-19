@@ -18,9 +18,12 @@ limitations under the License.
 #include <complex>
 #include <memory>
 #include <vector>
+
 #include "absl/strings/escaping.h"
 #include "tensorflow/lite/builtin_op_data.h"
+#if !defined(__APPLE__)
 #include "tensorflow/lite/delegates/flex/delegate.h"
+#endif
 #include "tensorflow/lite/kernels/custom_ops_register.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/register_ref.h"
@@ -331,10 +334,12 @@ TfLiteDriver::TfLiteDriver(DelegateType delegate_type, bool reference_kernel)
       delegate_ = evaluation::CreateGPUDelegate(/*model=*/nullptr);
       break;
     case DelegateType::kFlex:
+#if !defined(__APPLE__)
       delegate_ = Interpreter::TfLiteDelegatePtr(
           FlexDelegate::Create().release(), [](TfLiteDelegate* delegate) {
             delete static_cast<tflite::FlexDelegate*>(delegate);
           });
+#endif
       break;
   }
 }

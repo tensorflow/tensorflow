@@ -101,6 +101,7 @@ FunctionDefLibrary GetFunctionDefLibraryStub(
     *(fn_stub->mutable_signature()) = fn.signature();
     *(fn_stub->mutable_attr()) = fn.attr();
     *(fn_stub->mutable_arg_attr()) = fn.arg_attr();
+    *(fn_stub->mutable_resource_arg_unique_id()) = fn.resource_arg_unique_id();
   }
   *stub.mutable_gradient() = fdef_lib.gradient();
   return stub;

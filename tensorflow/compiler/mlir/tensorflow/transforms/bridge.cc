@@ -40,6 +40,7 @@ void CreateTPUBridge(OpPassManager &pm) {
 
   pm.addPass(TF::CreateResourceDeviceInferencePass());
   pm.addPass(TFDevice::CreateClusterOutliningPass());
+  pm.addPass(CreateTPUDynamicPaddingMapperPass());
   pm.addPass(CreateTPURewritePass());
   pm.addNestedPass<FuncOp>(TFDevice::CreateReplicateInvariantOpHoistingPass());
   pm.addNestedPass<FuncOp>(CreateFunctionalToExecutorDialectConversionPass());
@@ -55,7 +56,7 @@ tensorflow::Status TPUBridge(ModuleOp module, bool enable_logging) {
 
   // Add logger to bridge passmanager.
   if (enable_logging)
-    bridge.addInstrumentation(std::make_unique<tensorflow::BridgeLogger>());
+    bridge.enableIRPrinting(std::make_unique<tensorflow::BridgeLoggerConfig>());
 
   // Populate a passmanager with the list of passes that implement the bridge.
   CreateTPUBridge(bridge);
@@ -79,7 +80,7 @@ tensorflow::Status RunBridgeWithStandardPipeline(ModuleOp module,
 
   // Add logger to bridge passmanager.
   if (enable_logging)
-    bridge.addInstrumentation(std::make_unique<tensorflow::BridgeLogger>());
+    bridge.enableIRPrinting(std::make_unique<tensorflow::BridgeLoggerConfig>());
 
   StandardPipelineOptions pipeline_options;
   pipeline_options.enable_inliner.setValue(enable_inliner);
