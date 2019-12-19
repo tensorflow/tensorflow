@@ -51,6 +51,18 @@ typedef struct TpuEvent*(PrototypeTpuDriver_Deallocate)(
     struct TpuDriver* driver, struct TpuBufferHandle* buffer_handle,
     int32_t eventc, struct TpuEvent** eventv);
 
+typedef struct TpuEvent*(PrototypeTpuDriver_TransferToDevice)(
+    struct TpuDriver* driver, const void* src, struct TpuBufferHandle* dst,
+    int32_t eventc, struct TpuEvent** eventv);
+
+typedef struct TpuEvent*(PrototypeTpuDriver_TransferFromDevice)(
+    struct TpuDriver* driver, struct TpuBufferHandle* src, void* dst,
+    int32_t eventc, struct TpuEvent** eventv);
+
+typedef struct TpuEvent*(PrototypeTpuDriver_TransferFromDeviceToDevice)(
+    struct TpuDriver* driver, struct TpuBufferHandle* src,
+    struct TpuBufferHandle* dst, int32_t eventc, struct TpuEvent** eventv);
+
 typedef void(PrototypeTpuDriver_FreeEvent)(struct TpuEvent* event);
 
 typedef const char*(PrototypeTpuDriver_Version)();
@@ -60,6 +72,12 @@ TPUDRIVER_CAPI_EXPORT extern PrototypeTpuDriver_Open TpuDriver_Open;
 TPUDRIVER_CAPI_EXPORT extern PrototypeTpuDriver_Close TpuDriver_Close;
 TPUDRIVER_CAPI_EXPORT extern PrototypeTpuDriver_Allocate TpuDriver_Allocate;
 TPUDRIVER_CAPI_EXPORT extern PrototypeTpuDriver_Deallocate TpuDriver_Deallocate;
+TPUDRIVER_CAPI_EXPORT extern PrototypeTpuDriver_TransferToDevice
+    TpuDriver_TransferToDevice;
+TPUDRIVER_CAPI_EXPORT extern PrototypeTpuDriver_TransferFromDevice
+    TpuDriver_TransferFromDevice;
+TPUDRIVER_CAPI_EXPORT extern PrototypeTpuDriver_TransferFromDeviceToDevice
+    TpuDriver_TransferFromDeviceToDevice;
 TPUDRIVER_CAPI_EXPORT extern PrototypeTpuDriver_FreeEvent TpuDriver_FreeEvent;
 TPUDRIVER_CAPI_EXPORT extern PrototypeTpuDriver_Version TpuDriver_Version;
 
@@ -68,12 +86,17 @@ TPUDRIVER_CAPI_EXPORT extern PrototypeTpuDriver_Version TpuDriver_Version;
 #endif
 
 struct TpuDriverFn {
-  PrototypeTpuDriver_Open* TpuDriver_Open;              // NOLINT
-  PrototypeTpuDriver_Close* TpuDriver_Close;            // NOLINT
-  PrototypeTpuDriver_Allocate* TpuDriver_Allocate;      // NOLINT
-  PrototypeTpuDriver_Deallocate* TpuDriver_Deallocate;  // NOLINT
-  PrototypeTpuDriver_FreeEvent* TpuDriver_FreeEvent;    // NOLINT
-  PrototypeTpuDriver_Version* TpuDriver_Version;        // NOLINT
+  PrototypeTpuDriver_Open* TpuDriver_Open;                          // NOLINT
+  PrototypeTpuDriver_Close* TpuDriver_Close;                        // NOLINT
+  PrototypeTpuDriver_Allocate* TpuDriver_Allocate;                  // NOLINT
+  PrototypeTpuDriver_Deallocate* TpuDriver_Deallocate;              // NOLINT
+  PrototypeTpuDriver_TransferToDevice* TpuDriver_TransferToDevice;  // NOLINT
+  PrototypeTpuDriver_TransferFromDevice*
+      TpuDriver_TransferFromDevice;  // NOLINT
+  PrototypeTpuDriver_TransferFromDeviceToDevice*
+      TpuDriver_TransferFromDeviceToDevice;           // NOLINT
+  PrototypeTpuDriver_FreeEvent* TpuDriver_FreeEvent;  // NOLINT
+  PrototypeTpuDriver_Version* TpuDriver_Version;      // NOLINT
 };
 
 #endif  // TENSORFLOW_COMPILER_XLA_PYTHON_TPU_DRIVER_CLIENT_C_API_H_
