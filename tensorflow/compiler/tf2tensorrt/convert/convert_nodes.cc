@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
+#include "tensorflow/compiler/tf2tensorrt/utils/trt_shape_optimization_profiles.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
 #include "tensorflow/core/framework/node_def.pb.h"  // NOLINT
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -1327,9 +1328,10 @@ Status Converter::RenameAndMarkOutputTensors(
 }
 
 Status Converter::BuildCudaEngine(
-    TrtUniquePtrType<nvinfer1::ICudaEngine>* engine, int max_batch_size,
-    size_t max_workspace_size_bytes, nvinfer1::IGpuAllocator* allocator,
-    TRTInt8Calibrator* calibrator) {
+    TrtUniquePtrType<nvinfer1::ICudaEngine>* engine,
+    int max_batch_size, size_t max_workspace_size_bytes,
+    nvinfer1::IGpuAllocator* allocator, TRTInt8Calibrator* calibrator,
+    TrtShapeOptimizationProfile& profiles) {
   VLOG(1) << "Configuring TensorRT builder";
   trt_builder_->setMaxBatchSize(max_batch_size);
   trt_builder_->setGpuAllocator(allocator);
@@ -1349,7 +1351,8 @@ Status Converter::BuildCudaEngine(
       builder_config->setInt8Calibrator(nullptr);
     }
   }
-
+  profiles.configureBuilder(trt_builder_.get(), builder_config.get(),
+                            network());
   VLOG(1) << "Building TensorRT engine";
   engine->reset(
       trt_builder_->buildEngineWithConfig(*network(), *builder_config));
@@ -5673,7 +5676,8 @@ Status ConvertGraphDefToEngine(
     nvinfer1::ILogger* trt_logger, nvinfer1::IGpuAllocator* allocator,
     TRTInt8Calibrator* calibrator,
     TrtUniquePtrType<nvinfer1::ICudaEngine>* engine, bool use_calibration,
-    const bool use_implicit_batch, bool* convert_successfully) {
+    const bool use_implicit_batch, bool* convert_successfully,
+    TrtShapeOptimizationProfile& profiles) {
   engine->reset();
   if (convert_successfully) *convert_successfully = false;
 
@@ -5772,7 +5776,8 @@ Status ConvertGraphDefToEngine(
 
   // Build the engine.
   TF_RETURN_IF_ERROR(converter->BuildCudaEngine(
-      engine, max_batch_size, max_workspace_size_bytes, allocator, calibrator));
+      engine, max_batch_size, max_workspace_size_bytes, allocator, calibrator,
+      profiles));
 
   VLOG(1) << "Finished conversion";
   return Status::OK();

@@ -423,12 +423,14 @@ Status CreateTRTNode(const ConversionParams& params,
     // Create static engine for fp32/fp16 mode.
     TrtUniquePtrType<nvinfer1::ICudaEngine> engine;
     // TODO(sami): What happens if 1st dim is not batch?
+    // We pass an empty profiles object to ConvertGraphDefToEngine
+    TrtShapeOptimizationProfile profile;
     TF_RETURN_IF_ERROR(ConvertGraphDefToEngine(
         info.segment_graph_def,
         calibrate_int8 ? TrtPrecisionMode::FP32 : info.precision_mode,
         max_batch_size, info.max_workspace_size_bytes, input_shapes, trt_logger,
         alloc, /*calibrator=*/nullptr, &engine, info.use_calibration,
-        params.use_implicit_batch, /*convert_successfully=*/nullptr));
+        params.use_implicit_batch,  /*convert_successfully=*/nullptr, profile));
     TrtUniquePtrType<nvinfer1::IHostMemory> engine_data(engine->serialize());
     segment_string = string(static_cast<const char*>(engine_data->data()),
                             engine_data->size());
