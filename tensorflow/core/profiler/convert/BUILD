@@ -67,6 +67,19 @@ cc_library(
 )
 
 cc_library(
+    name = "xplane_to_op_stats",
+    srcs = ["xplane_to_op_stats.cc"],
+    hdrs = ["xplane_to_op_stats.h"],
+    deps = [
+        ":host_threads_xplane_to_tf_metrics_db",
+        "//tensorflow/core/profiler/protobuf:op_stats_proto_cc",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/core/profiler/utils:xplane_schema",
+        "//tensorflow/core/profiler/utils:xplane_utils",
+    ],
+)
+
+cc_library(
     name = "op_stats_to_tf_stats",
     srcs = ["op_stats_to_tf_stats.cc"],
     hdrs = ["op_stats_to_tf_stats.h"],
