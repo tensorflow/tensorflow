@@ -40,7 +40,7 @@ def execute(unused_args):
   with open(FLAGS.model_input_file, "rb") as input_file:
     input_str = input_file.read()
 
-  debug_info_str = ""
+  debug_info_str = None
   if FLAGS.debug_proto_file:
     with open(FLAGS.debug_proto_file, "rb") as debug_info_file:
       debug_info_str = debug_info_file.read()

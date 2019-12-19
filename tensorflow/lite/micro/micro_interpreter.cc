@@ -71,7 +71,8 @@ MicroInterpreter::MicroInterpreter(const Model* model,
       allocator_(&context_, model_, tensor_arena, tensor_arena_size,
                  error_reporter_),
       tensors_allocated_(false) {
-  auto* subgraphs = model->subgraphs();
+  const flatbuffers::Vector<flatbuffers::Offset<SubGraph>>* subgraphs =
+      model->subgraphs();
   if (subgraphs->size() != 1) {
     error_reporter->Report("Only 1 subgraph is currently supported.\n");
     initialization_status_ = kTfLiteError;
@@ -136,11 +137,6 @@ void MicroInterpreter::CorrectTensorDataEndianness(T* data, int32_t size) {
   for (int32_t i = 0; i < size; ++i) {
     data[i] = flatbuffers::EndianScalar(data[i]);
   }
-}
-
-TfLiteStatus MicroInterpreter::RegisterPreallocatedInput(uint8_t* buffer,
-                                                         size_t input_index) {
-  return allocator_.RegisterPreallocatedInput(buffer, input_index);
 }
 
 TfLiteStatus MicroInterpreter::AllocateTensors() {

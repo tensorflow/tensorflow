@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_reachability.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -62,7 +63,19 @@ StatusOr<bool> MultiOutputFusion::Run(HloModule* module) {
           continue;
         }
         VLOG(10) << "Operand profitable: " << operand->name();
-        for (auto user : operand->users()) {
+        // We don't look at all users of operands as it's quadratic. Only look
+        // at one slice of users.
+        const int64 kUserSliceSize = 128;
+
+        const int64 user_slice_begin =
+            RoundDownToNearest(operand->UserId(instruction), kUserSliceSize);
+
+        const int64 user_slice_end =
+            std::min(static_cast<int64>(operand->users().size()),
+                     user_slice_begin + kUserSliceSize);
+
+        for (int64 i = user_slice_begin; i < user_slice_end; ++i) {
+          HloInstruction* user = operand->users()[i];
           VLOG(10) << "User: " << user->name();
           if (user == instruction || !IsFusible(user)) {
             VLOG(10) << "User is not fusible, or is the instruction itself: "

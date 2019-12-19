@@ -195,6 +195,22 @@ class EdscTest:
     # CHECK-LABEL: testCondBr
     #       CHECK:   cond_br %{{.*}}, ^bb{{.*}}, ^bb{{.*}}(%{{.*}} : index)
 
+  def testConstantAffineExpr(self):
+    self.setUp()
+    with self.module.function_context("constant_affine", [], []) as fun:
+      a1 = self.module.affine_dim_expr(0)
+      a2 = self.module.affine_dim_expr(1)
+      a3 = a1 + a2 + 3
+      composedExpr = a3.compose(
+          self.module.affine_map(2, 0, [
+              self.module.affine_constant_expr(4),
+              self.module.affine_constant_expr(7)
+          ]))
+      printWithCurrentFunctionName(str(fun))
+      print("constant value : %d" % composedExpr.get_constant_value())
+    # CHECK-LABEL: testConstantAffineExpr
+    #       CHECK: constant value : 14
+
   def testConstants(self):
     self.setUp()
     with self.module.function_context("constants", [], []) as fun:

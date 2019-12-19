@@ -11,6 +11,7 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
+# LINT.IfChange(micro_ops)
 cc_library(
     name = "micro_ops",
     srcs = [
@@ -32,6 +33,7 @@ cc_library(
         "mul.cc",
         "neg.cc",
         "pack.cc",
+        "pad.cc",
         "pooling.cc",
         "prelu.cc",
         "quantize.cc",
@@ -60,6 +62,7 @@ cc_library(
         "//tensorflow/lite/micro:micro_utils",
     ],
 )
+# LINT.ThenChange(//tensorflow/lite/micro/kernels/BUILD:portable_optimized_micro_ops)
 
 cc_library(
     name = "all_ops_resolver",
@@ -76,6 +79,7 @@ cc_library(
     ],
 )
 
+# LINT.IfChange(portable_optimized_micro_ops)
 cc_library(
     name = "portable_optimized_micro_ops",
     srcs = [
@@ -96,6 +100,7 @@ cc_library(
         "mul.cc",
         "neg.cc",
         "pack.cc",
+        "pad.cc",
         "pooling.cc",
         "portable_optimized/depthwise_conv.cc",
         "prelu.cc",
@@ -120,13 +125,13 @@ cc_library(
         "//tensorflow/lite/kernels/internal:common",
         "//tensorflow/lite/kernels/internal:quantization_util",
         "//tensorflow/lite/kernels/internal:reference_base",
-        "//tensorflow/lite/kernels/internal:strided_slice_logic",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/kernels/internal:types",
         "//tensorflow/lite/micro:micro_utils",
     ],
 )
 
+# LINT.ThenChange(//tensorflow/lite/micro/kernels/BUILD:micro_ops)
 cc_library(
     name = "portable_optimized_ops_resolver",
     srcs = [
@@ -545,6 +550,19 @@ tflite_micro_cc_test(
     deps = [
         ":all_ops_resolver",
         ":micro_utils",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:micro_framework",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+tflite_micro_cc_test(
+    name = "pad_test",
+    srcs = [
+        "pad_test.cc",
+    ],
+    deps = [
+        ":all_ops_resolver",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro/testing:micro_test",

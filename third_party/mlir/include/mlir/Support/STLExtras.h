@@ -147,9 +147,9 @@ using is_invocable = is_detected<detail::is_invocable, Callable, Args...>;
 //     Extra additions to <iterator>
 //===----------------------------------------------------------------------===//
 
-/// A utility class used to implement an iterator that contains some object and
-/// an index. The iterator moves the index but keeps the object constant.
-template <typename DerivedT, typename ObjectType, typename T,
+/// A utility class used to implement an iterator that contains some base object
+/// and an index. The iterator moves the index but keeps the base constant.
+template <typename DerivedT, typename BaseT, typename T,
           typename PointerT = T *, typename ReferenceT = T &>
 class indexed_accessor_iterator
     : public llvm::iterator_facade_base<DerivedT,
@@ -157,14 +157,14 @@ class indexed_accessor_iterator
                                         std::ptrdiff_t, PointerT, ReferenceT> {
 public:
   ptrdiff_t operator-(const indexed_accessor_iterator &rhs) const {
-    assert(object == rhs.object && "incompatible iterators");
+    assert(base == rhs.base && "incompatible iterators");
     return index - rhs.index;
   }
   bool operator==(const indexed_accessor_iterator &rhs) const {
-    return object == rhs.object && index == rhs.index;
+    return base == rhs.base && index == rhs.index;
   }
   bool operator<(const indexed_accessor_iterator &rhs) const {
-    assert(object == rhs.object && "incompatible iterators");
+    assert(base == rhs.base && "incompatible iterators");
     return index < rhs.index;
   }
 
@@ -180,14 +180,154 @@ public:
   /// Returns the current index of the iterator.
   ptrdiff_t getIndex() const { return index; }
 
-  /// Returns the current object of the iterator.
-  const ObjectType &getObject() const { return object; }
+  /// Returns the current base of the iterator.
+  const BaseT &getBase() const { return base; }
 
 protected:
-  indexed_accessor_iterator(ObjectType object, ptrdiff_t index)
-      : object(object), index(index) {}
-  ObjectType object;
+  indexed_accessor_iterator(BaseT base, ptrdiff_t index)
+      : base(base), index(index) {}
+  BaseT base;
   ptrdiff_t index;
+};
+
+namespace detail {
+/// The class represents the base of a range of indexed_accessor_iterators. It
+/// provides support for many different range functionalities, e.g.
+/// drop_front/slice/etc.. Derived range classes must implement the following
+/// static methods:
+///   * ReferenceT dereference_iterator(const BaseT &base, ptrdiff_t index)
+///     - Derefence an iterator pointing to the base object at the given index.
+///   * BaseT offset_base(const BaseT &base, ptrdiff_t index)
+///     - Return a new base that is offset from the provide base by 'index'
+///       elements.
+template <typename DerivedT, typename BaseT, typename T,
+          typename PointerT = T *, typename ReferenceT = T &>
+class indexed_accessor_range_base {
+public:
+  using RangeBaseT =
+      indexed_accessor_range_base<DerivedT, BaseT, T, PointerT, ReferenceT>;
+
+  /// An iterator element of this range.
+  class iterator : public indexed_accessor_iterator<iterator, BaseT, T,
+                                                    PointerT, ReferenceT> {
+  public:
+    // Index into this iterator, invoking a static method on the derived type.
+    ReferenceT operator*() const {
+      return DerivedT::dereference_iterator(this->getBase(), this->getIndex());
+    }
+
+  private:
+    iterator(BaseT owner, ptrdiff_t curIndex)
+        : indexed_accessor_iterator<iterator, BaseT, T, PointerT, ReferenceT>(
+              owner, curIndex) {}
+
+    /// Allow access to the constructor.
+    friend indexed_accessor_range_base<DerivedT, BaseT, T, PointerT,
+                                       ReferenceT>;
+  };
+
+  indexed_accessor_range_base(iterator begin, iterator end)
+      : base(DerivedT::offset_base(begin.getBase(), begin.getIndex())),
+        count(end.getIndex() - begin.getIndex()) {}
+  indexed_accessor_range_base(const iterator_range<iterator> &range)
+      : indexed_accessor_range_base(range.begin(), range.end()) {}
+
+  iterator begin() const { return iterator(base, 0); }
+  iterator end() const { return iterator(base, count); }
+  ReferenceT operator[](unsigned index) const {
+    assert(index < size() && "invalid index for value range");
+    return DerivedT::dereference_iterator(base, index);
+  }
+
+  /// Return the size of this range.
+  size_t size() const { return count; }
+
+  /// Return if the range is empty.
+  bool empty() const { return size() == 0; }
+
+  /// Drop the first N elements, and keep M elements.
+  DerivedT slice(size_t n, size_t m) const {
+    assert(n + m <= size() && "invalid size specifiers");
+    return DerivedT(DerivedT::offset_base(base, n), m);
+  }
+
+  /// Drop the first n elements.
+  DerivedT drop_front(size_t n = 1) const {
+    assert(size() >= n && "Dropping more elements than exist");
+    return slice(n, size() - n);
+  }
+  /// Drop the last n elements.
+  DerivedT drop_back(size_t n = 1) const {
+    assert(size() >= n && "Dropping more elements than exist");
+    return DerivedT(base, size() - n);
+  }
+
+  /// Take the first n elements.
+  DerivedT take_front(size_t n = 1) const {
+    return n < size() ? drop_back(size() - n)
+                      : static_cast<const DerivedT &>(*this);
+  }
+
+  /// Allow conversion to SmallVector if necessary.
+  /// TODO(riverriddle) Remove this when SmallVector accepts different range
+  /// types in its constructor.
+  template <typename SVT, unsigned N> operator SmallVector<SVT, N>() const {
+    return {begin(), end()};
+  }
+
+protected:
+  indexed_accessor_range_base(BaseT base, ptrdiff_t count)
+      : base(base), count(count) {}
+  indexed_accessor_range_base(const indexed_accessor_range_base &) = default;
+  indexed_accessor_range_base(indexed_accessor_range_base &&) = default;
+  indexed_accessor_range_base &
+  operator=(const indexed_accessor_range_base &) = default;
+
+  /// The base that owns the provided range of values.
+  BaseT base;
+  /// The size from the owning range.
+  ptrdiff_t count;
+};
+} // end namespace detail
+
+/// This class provides an implementation of a range of
+/// indexed_accessor_iterators where the base is not indexable. Ranges with
+/// bases that are offsetable should derive from indexed_accessor_range_base
+/// instead. Derived range classes are expected to implement the following
+/// static method:
+///   * ReferenceT dereference_iterator(const BaseT &base, ptrdiff_t index)
+///     - Derefence an iterator pointing to a parent base at the given index.
+template <typename DerivedT, typename BaseT, typename T,
+          typename PointerT = T *, typename ReferenceT = T &>
+class indexed_accessor_range
+    : public detail::indexed_accessor_range_base<
+          indexed_accessor_range<DerivedT, BaseT, T, PointerT, ReferenceT>,
+          std::pair<BaseT, ptrdiff_t>, T, PointerT, ReferenceT> {
+protected:
+  indexed_accessor_range(BaseT base, ptrdiff_t startIndex, ptrdiff_t count)
+      : detail::indexed_accessor_range_base<
+            DerivedT, std::pair<BaseT, ptrdiff_t>, T, PointerT, ReferenceT>(
+            std::make_pair(base, startIndex), count) {}
+
+private:
+  /// See `detail::indexed_accessor_range_base` for details.
+  static std::pair<BaseT, ptrdiff_t>
+  offset_base(const std::pair<BaseT, ptrdiff_t> &base, ptrdiff_t index) {
+    // We encode the internal base as a pair of the derived base and a start
+    // index into the derived base.
+    return std::make_pair(base.first, base.second + index);
+  }
+  /// See `detail::indexed_accessor_range_base` for details.
+  static ReferenceT
+  dereference_iterator(const std::pair<BaseT, ptrdiff_t> &base,
+                       ptrdiff_t index) {
+    return DerivedT::dereference_iterator(base.first, base.second + index);
+  }
+
+  /// Allow access to `offset_base` and `dereference_iterator`.
+  friend detail::indexed_accessor_range_base<
+      indexed_accessor_range<DerivedT, BaseT, T, PointerT, ReferenceT>,
+      std::pair<BaseT, ptrdiff_t>, T, PointerT, ReferenceT>;
 };
 
 /// Given a container of pairs, return a range over the second elements.

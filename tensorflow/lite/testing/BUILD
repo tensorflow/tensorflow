@@ -131,7 +131,7 @@ py_library(
 py_binary(
     name = "generate_examples",
     srcs = ["generate_examples.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         ":generate_examples_lib",

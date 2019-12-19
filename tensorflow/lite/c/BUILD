@@ -3,6 +3,10 @@ load(
     "tflite_cc_shared_object",
     "tflite_copts",
 )
+load(
+    "//tensorflow/lite/micro:build_def.bzl",
+    "cc_library",
+)
 
 package(
     default_visibility = [":experimental"],
@@ -130,6 +134,7 @@ cc_library(
         "builtin_op_data.h",
         "common.h",
     ],
+    build_for_embedded = True,
     visibility = [
         "//tensorflow/lite:__subpackages__",
     ],

@@ -21,8 +21,8 @@
 
 #include <type_traits>
 
-#include "mlir/Dialect/VectorOps/VectorOps.h"
 #include "mlir/Conversion/VectorToLoops/ConvertVectorToLoops.h"
+#include "mlir/Dialect/VectorOps/VectorOps.h"
 #include "mlir/EDSC/Builders.h"
 #include "mlir/EDSC/Helpers.h"
 #include "mlir/IR/AffineExpr.h"
@@ -51,7 +51,7 @@ using vector_type_cast = edsc::intrinsics::ValueBuilder<vector::TypeCastOp>;
 ///
 /// Consider the case:
 ///
-/// ```mlir {.mlir}
+/// ```mlir
 ///    // Read the slice `%A[%i0, %i1:%i1+256, %i2:%i2+32]` into
 ///    // vector<32x256xf32> and pad with %f0 to handle the boundary case:
 ///    %f0 = constant 0.0f : f32
@@ -68,7 +68,7 @@ using vector_type_cast = edsc::intrinsics::ValueBuilder<vector::TypeCastOp>;
 /// resembling the following (while guaranteeing an always full-tile
 /// abstraction):
 ///
-/// ```mlir {.mlir}
+/// ```mlir
 ///    loop.for %d2 = 0 to %c256 {
 ///      loop.for %d1 = 0 to %c32 {
 ///        %s = %A[%i0, %i1 + %d1, %i2 + %d2] : f32
@@ -270,7 +270,7 @@ PatternMatchResult VectorTransferRewriter<TransferReadOp>::matchAndRewrite(
   VectorView vectorView(transfer.vector());
   SmallVector<IndexHandle, 8> ivs = makeIndexHandles(vectorView.rank());
   SmallVector<ValueHandle *, 8> pivs =
-      makeIndexHandlePointers(MutableArrayRef<IndexHandle>(ivs));
+      makeHandlePointers(MutableArrayRef<IndexHandle>(ivs));
   coalesceCopy(transfer, &pivs, &vectorView);
 
   auto lbs = vectorView.getLbs();
@@ -332,7 +332,8 @@ PatternMatchResult VectorTransferRewriter<TransferWriteOp>::matchAndRewrite(
   ValueHandle vectorValue(transfer.vector());
   VectorView vectorView(transfer.vector());
   SmallVector<IndexHandle, 8> ivs = makeIndexHandles(vectorView.rank());
-  SmallVector<ValueHandle *, 8> pivs = makeIndexHandlePointers(ivs);
+  SmallVector<ValueHandle *, 8> pivs =
+      makeHandlePointers(MutableArrayRef<IndexHandle>(ivs));
   coalesceCopy(transfer, &pivs, &vectorView);
 
   auto lbs = vectorView.getLbs();

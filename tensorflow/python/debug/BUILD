@@ -695,36 +695,21 @@ cuda_py_test(
     name = "check_numerics_callback_test",
     size = "medium",
     srcs = ["lib/check_numerics_callback_test.py"],
-    additional_deps = [
+    python_version = "PY3",
+    deps = [
         ":check_numerics_callback",
-        "//third_party/py/numpy",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:variables",
+        "//third_party/py/numpy",
     ],
-    python_version = "PY3",
 )
 
 cuda_py_test(
     name = "distributed_callbacks_test",
     size = "medium",
     srcs = ["lib/distributed_callbacks_test.py"],
-    additional_deps = [
-        ":check_numerics_callback",
-        ":debug_events_writer",
-        ":dumping_callback",
-        ":dumping_callback_test_lib",
-        "//third_party/py/numpy",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform_test",
-        "//tensorflow/python:variables",
-        "//tensorflow/python/distribute:combinations",
-        "//tensorflow/python/distribute:mirrored_strategy",
-        "//tensorflow/python/distribute:strategy_combinations",
-        "//tensorflow/python/keras",
-    ],
     python_version = "PY3",
     shard_count = 4,
     tags = [
@@ -734,41 +719,59 @@ cuda_py_test(
         "no_windows_gpu",  # TODO(b/130551176)
     ],
     xla_enable_strict_auto_jit = False,  # Node names are different with autojit
+    deps = [
+        ":check_numerics_callback",
+        ":debug_events_writer",
+        ":dumping_callback",
+        ":dumping_callback_test_lib",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:mirrored_strategy",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/keras",
+        "//third_party/py/numpy",
+    ],
 )
 
 cuda_py_test(
     name = "dumping_callback_test",
     size = "medium",
     srcs = ["lib/dumping_callback_test.py"],
-    additional_deps = [
-        ":debug_events_reader",
-        ":debug_events_writer",
-        ":dumping_callback",
-        ":dumping_callback_test_lib",
-        "//third_party/py/numpy",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform_test",
-        "//tensorflow/python:variables",
-        "//tensorflow/python/keras",
-    ],
     python_version = "PY3",
     shard_count = 8,
     tags = [
         "no_windows",  # TODO(b/142475891): Enable this test on Windows.
     ],
     xla_enable_strict_auto_jit = False,  # Node names are different with autojit
+    deps = [
+        ":debug_events_reader",
+        ":debug_events_writer",
+        ":dumping_callback",
+        ":dumping_callback_test_lib",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/keras",
+        "//third_party/py/numpy",
+    ],
 )
 
 cuda_py_test(
     name = "debug_v2_ops_test",
     size = "medium",
     srcs = ["lib/debug_v2_ops_test.py"],
-    additional_deps = [
+    python_version = "PY3",
+    tags = [
+        "no_windows",  # b/142475891
+    ],
+    deps = [
         ":debug_events_reader",
         ":debug_events_writer",
         ":dumping_callback_test_lib",
-        "//third_party/py/numpy",
         "//tensorflow/python:debug_ops_gen",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:gradients",
@@ -778,10 +781,7 @@ cuda_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/keras",
-    ],
-    python_version = "PY3",
-    tags = [
-        "no_windows",  # b/142475891
+        "//third_party/py/numpy",
     ],
 )
 
@@ -789,7 +789,9 @@ cuda_py_test(
     name = "debug_gradients_test",
     size = "small",
     srcs = ["lib/debug_gradients_test.py"],
-    additional_deps = [
+    python_version = "PY3",
+    xla_enable_strict_auto_jit = False,  # Node names are different with autojit
+    deps = [
         ":debug_data",
         ":debug_gradients",
         ":debug_utils",
@@ -801,8 +803,6 @@ cuda_py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
     ],
-    python_version = "PY3",
-    xla_enable_strict_auto_jit = False,  # Node names are different with autojit
 )
 
 py_test(
@@ -1033,7 +1033,9 @@ cuda_py_test(
     name = "debug_grappler_test",
     size = "small",
     srcs = ["lib/debug_grappler_test.py"],
-    additional_deps = [
+    python_version = "PY3",
+    xla_enable_strict_auto_jit = False,  # Tests TF:Classic implementation.
+    deps = [
         ":debug_data",
         ":debug_utils",
         "//tensorflow/python:client",
@@ -1042,15 +1044,16 @@ cuda_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:variables",
     ],
-    python_version = "PY3",
-    xla_enable_strict_auto_jit = False,  # Tests TF:Classic implementation.
 )
 
 cuda_py_test(
     name = "session_debug_file_test",
     size = "small",
     srcs = ["lib/session_debug_file_test.py"],
-    additional_deps = [
+    python_version = "PY3",
+    tags = ["notsan"],
+    xla_enable_strict_auto_jit = False,  # Node names are different with autojit
+    deps = [
         ":debug_data",
         ":debug_utils",
         ":session_debug_testlib",
@@ -1060,16 +1063,15 @@ cuda_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:variables",
     ],
-    python_version = "PY3",
-    tags = ["notsan"],
-    xla_enable_strict_auto_jit = False,  # Node names are different with autojit
 )
 
 cuda_py_test(
     name = "debug_graph_reconstruction_test",
     size = "small",
     srcs = ["lib/debug_graph_reconstruction_test.py"],
-    additional_deps = [
+    python_version = "PY3",
+    xla_enable_strict_auto_jit = False,  # Node names are different with autojit
+    deps = [
         ":debug_data",
         ":debug_utils",
         "//tensorflow/python:client",
@@ -1080,15 +1082,16 @@ cuda_py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
     ],
-    python_version = "PY3",
-    xla_enable_strict_auto_jit = False,  # Node names are different with autojit
 )
 
 cuda_py_test(
     name = "session_debug_multi_gpu_test",
     size = "small",
     srcs = ["lib/session_debug_multi_gpu_test.py"],
-    additional_deps = [
+    python_version = "PY3",
+    tags = ["no_windows_gpu"],
+    xla_enable_strict_auto_jit = False,  # Node names are different with autojit
+    deps = [
         ":debug_data",
         ":debug_utils",
         "//tensorflow/python:client",
@@ -1098,9 +1101,6 @@ cuda_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:variables",
     ],
-    python_version = "PY3",
-    tags = ["no_windows_gpu"],
-    xla_enable_strict_auto_jit = False,  # Node names are different with autojit
 )
 
 py_test(
@@ -1208,7 +1208,10 @@ cuda_py_test(
     name = "analyzer_cli_test",
     size = "small",
     srcs = ["cli/analyzer_cli_test.py"],
-    additional_deps = [
+    python_version = "PY3",
+    tags = ["no_windows"],  # TODO: needs investigation on Windows
+    xla_enable_strict_auto_jit = False,  # Node names are different with autojit
+    deps = [
         ":analyzer_cli",
         ":cli_config",
         ":cli_test_utils",
@@ -1217,8 +1220,6 @@ cuda_py_test(
         ":debug_utils",
         ":debugger_cli_common",
         ":source_utils",
-        "//third_party/py/numpy",
-        "@six_archive//:six",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
@@ -1230,10 +1231,9 @@ cuda_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
     ],
-    python_version = "PY3",
-    tags = ["no_windows"],  # TODO: needs investigation on Windows
-    xla_enable_strict_auto_jit = False,  # Node names are different with autojit
 )
 
 py_test(
@@ -1261,7 +1261,15 @@ cuda_py_test(
     name = "session_debug_grpc_test",
     size = "medium",
     srcs = ["lib/session_debug_grpc_test.py"],
-    additional_deps = [
+    python_version = "PY3",
+    tags = [
+        "no_oss",  # Test flaky due to port collisions.
+        "no_windows",
+        "notsan",
+        "oss_serial",
+    ],
+    xla_enable_strict_auto_jit = False,  # Node names are different with autojit
+    deps = [
         ":debug_data",
         ":debug_utils",
         ":dumping_wrapper",
@@ -1276,32 +1284,12 @@ cuda_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:variables",
     ],
-    python_version = "PY3",
-    tags = [
-        "no_oss",  # Test flaky due to port collisions.
-        "no_windows",
-        "notsan",
-        "oss_serial",
-    ],
-    xla_enable_strict_auto_jit = False,  # Node names are different with autojit
 )
 
 cuda_py_test(
     name = "grpc_large_data_test",
     size = "medium",
     srcs = ["lib/grpc_large_data_test.py"],
-    additional_deps = [
-        ":dumping_wrapper",
-        ":grpc_debug_test_server",
-        ":grpc_wrapper",
-        ":session_debug_testlib",
-        "//third_party/py/numpy",
-        "//tensorflow/python:client",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:platform_test",
-        "//tensorflow/python:variables",
-    ],
     python_version = "PY3",
     tags = [
         "no_oss",  # Test flaky due to port collisions.
@@ -1311,6 +1299,18 @@ cuda_py_test(
         "oss_serial",
     ],
     xla_enable_strict_auto_jit = False,  # Node names are different with autojit
+    deps = [
+        ":dumping_wrapper",
+        ":grpc_debug_test_server",
+        ":grpc_wrapper",
+        ":session_debug_testlib",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:variables",
+        "//third_party/py/numpy",
+    ],
 )
 
 # TODO(cais): Run the test in OSS, perhaps through a sh_test.
@@ -1318,7 +1318,15 @@ cuda_py_test(
     name = "dist_session_debug_grpc_test",
     size = "medium",
     srcs = ["lib/dist_session_debug_grpc_test.py"],
-    additional_deps = [
+    grpc_enabled = True,
+    python_version = "PY3",
+    tags = [
+        "no_oss",  # Incompatible with bazel_pip.
+        "no_windows",
+        "notsan",
+    ],
+    xla_enable_strict_auto_jit = False,  # Node names are different with autojit
+    deps = [
         ":debug_data",
         ":debug_utils",
         ":dumping_wrapper",
@@ -1332,14 +1340,6 @@ cuda_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:variables",
     ],
-    grpc_enabled = True,
-    python_version = "PY3",
-    tags = [
-        "no_oss",  # Incompatible with bazel_pip.
-        "no_windows",
-        "notsan",
-    ],
-    xla_enable_strict_auto_jit = False,  # Node names are different with autojit
 )
 
 py_test(

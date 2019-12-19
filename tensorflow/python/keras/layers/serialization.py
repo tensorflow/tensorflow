@@ -39,6 +39,7 @@ from tensorflow.python.keras.layers.merge import *
 from tensorflow.python.keras.layers.noise import *
 from tensorflow.python.keras.layers.normalization import *
 from tensorflow.python.keras.layers.pooling import *
+from tensorflow.python.keras.layers.preprocessing.image_preprocessing import *
 from tensorflow.python.keras.layers.recurrent import *
 from tensorflow.python.keras.layers.rnn_cell_wrapper_v2 import *
 from tensorflow.python.keras.layers.wrappers import *

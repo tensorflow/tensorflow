@@ -375,8 +375,6 @@ TfLiteStatus InterpreterBuilder::ParseQuantization(
     return kTfLiteError;
   }
 
-  // Affine-quantization.
-  quantization->type = kTfLiteAffineQuantization;
   const size_t num_scales = src_quantization->scale()->size();
 
   // Ensure that the quantization dimension is valid.
@@ -401,6 +399,8 @@ TfLiteStatus InterpreterBuilder::ParseQuantization(
     return kTfLiteError;
   }
 
+  // Affine-quantization.
+  quantization->type = kTfLiteAffineQuantization;
   auto* affine_quantization = reinterpret_cast<TfLiteAffineQuantization*>(
       malloc(sizeof(TfLiteAffineQuantization)));
   affine_quantization->scale = TfLiteFloatArrayCreate(num_scales);
@@ -424,18 +424,42 @@ TfLiteStatus InterpreterBuilder::ParseSparsity(
     return kTfLiteOk;
   }
 
+  if (src_sparsity->traversal_order() == nullptr ||
+      src_sparsity->dim_metadata() == nullptr) {
+    error_reporter_->Report("Invalid sparsity parameter.");
+    return kTfLiteError;
+  }
+
+  const size_t dim_metadata_size = src_sparsity->dim_metadata()->size();
+  // Validate sparsity params before allocating the TfLiteSparsity output.
+  for (int i = 0; i < dim_metadata_size; i++) {
+    const auto* src_metadata = src_sparsity->dim_metadata()->Get(i);
+    if (src_metadata->format() != DimensionType_DENSE &&
+        src_metadata->format() != DimensionType_SPARSE_CSR) {
+      error_reporter_->Report("The %dth dimension has unknown type: %d.", i,
+                              src_metadata->format());
+      return kTfLiteError;
+    }
+
+    if (src_metadata->format() == DimensionType_SPARSE_CSR &&
+        (src_metadata->array_indices() == nullptr ||
+         src_metadata->array_segments() == nullptr)) {
+      error_reporter_->Report(
+          "The %dth sparse dimension has invalid parameters.", i);
+      return kTfLiteError;
+    }
+  }
+
   auto* sparsity =
       reinterpret_cast<TfLiteSparsity*>(malloc(sizeof(TfLiteSparsity)));
   memset(sparsity, 0, sizeof(TfLiteSparsity));
   *sparsity_ptr = sparsity;
 
-  if (src_sparsity->traversal_order()) {
-    const size_t traversal_order_size = src_sparsity->traversal_order()->size();
-    sparsity->traversal_order = TfLiteIntArrayCreate(traversal_order_size);
-    for (int i = 0; i < traversal_order_size; i++) {
-      sparsity->traversal_order->data[i] =
-          src_sparsity->traversal_order()->Get(i);
-    }
+  const size_t traversal_order_size = src_sparsity->traversal_order()->size();
+  sparsity->traversal_order = TfLiteIntArrayCreate(traversal_order_size);
+  for (int i = 0; i < traversal_order_size; i++) {
+    sparsity->traversal_order->data[i] =
+        src_sparsity->traversal_order()->Get(i);
   }
 
   if (src_sparsity->block_map()) {
@@ -446,40 +470,33 @@ TfLiteStatus InterpreterBuilder::ParseSparsity(
     }
   }
 
-  if (src_sparsity->dim_metadata()) {
-    const size_t dim_metadata_size = src_sparsity->dim_metadata()->size();
-    sparsity->dim_metadata_size = dim_metadata_size;
-    sparsity->dim_metadata = reinterpret_cast<TfLiteDimensionMetadata*>(
-        malloc(dim_metadata_size * sizeof(TfLiteDimensionMetadata)));
-    memset(sparsity->dim_metadata, 0,
-           dim_metadata_size * sizeof(TfLiteDimensionMetadata));
+  sparsity->dim_metadata_size = dim_metadata_size;
+  sparsity->dim_metadata = reinterpret_cast<TfLiteDimensionMetadata*>(
+      malloc(dim_metadata_size * sizeof(TfLiteDimensionMetadata)));
+  memset(sparsity->dim_metadata, 0,
+         dim_metadata_size * sizeof(TfLiteDimensionMetadata));
 
-    for (int i = 0; i < dim_metadata_size; i++) {
-      const auto* src_metadata = src_sparsity->dim_metadata()->Get(i);
-      auto* tgt_metadata = &sparsity->dim_metadata[i];
+  for (int i = 0; i < dim_metadata_size; i++) {
+    const auto* src_metadata = src_sparsity->dim_metadata()->Get(i);
+    auto* tgt_metadata = &sparsity->dim_metadata[i];
 
-      tgt_metadata->format =
-          static_cast<TfLiteDimensionType>(src_metadata->format());
+    tgt_metadata->format =
+        static_cast<TfLiteDimensionType>(src_metadata->format());
 
-      if (tgt_metadata->format == kTfLiteDimDense) {
-        tgt_metadata->dense_size = src_metadata->dense_size();
-      } else if (tgt_metadata->format == kTfLiteDimSparseCSR) {
-        const int array_segments_size = src_metadata->array_segments()->size();
-        tgt_metadata->array_segments =
-            TfLiteIntArrayCreate(array_segments_size);
-        for (int j = 0; j < array_segments_size; j++) {
-          tgt_metadata->array_segments->data[j] =
-              src_metadata->array_segments()->Get(j);
-        }
-        const int array_indices_size = src_metadata->array_indices()->size();
-        tgt_metadata->array_indices = TfLiteIntArrayCreate(array_indices_size);
-        for (int j = 0; j < array_indices_size; j++) {
-          tgt_metadata->array_indices->data[j] =
-              src_metadata->array_indices()->Get(j);
-        }
-      } else {
-        error_reporter_->Report("Unsupported dimension type.");
-        return kTfLiteError;
+    if (tgt_metadata->format == kTfLiteDimDense) {
+      tgt_metadata->dense_size = src_metadata->dense_size();
+    } else {
+      const int array_segments_size = src_metadata->array_segments()->size();
+      tgt_metadata->array_segments = TfLiteIntArrayCreate(array_segments_size);
+      for (int j = 0; j < array_segments_size; j++) {
+        tgt_metadata->array_segments->data[j] =
+            src_metadata->array_segments()->Get(j);
+      }
+      const int array_indices_size = src_metadata->array_indices()->size();
+      tgt_metadata->array_indices = TfLiteIntArrayCreate(array_indices_size);
+      for (int j = 0; j < array_indices_size; j++) {
+        tgt_metadata->array_indices->data[j] =
+            src_metadata->array_indices()->Get(j);
       }
     }
   }
@@ -541,15 +558,9 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
     const auto* src_quantization = tensor->quantization();
     TfLiteQuantization quantization;
     if (ParseQuantization(src_quantization, &quantization, dims) != kTfLiteOk) {
+      error_reporter_->Report("Tensor %d has invalid quantization parameters.",
+                              i);
       status = kTfLiteError;
-      continue;
-    }
-
-    const auto* src_sparsity = tensor->sparsity();
-    TfLiteSparsity* sparsity = nullptr;
-    if (ParseSparsity(src_sparsity, &sparsity) != kTfLiteOk) {
-      status = kTfLiteError;
-      continue;
     }
 
     bool is_variable = tensor->is_variable();
@@ -562,6 +573,15 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
         status = kTfLiteError;
       }
 
+      // TODO(b/144999664): Only constant sparse tensor is supported now.
+      const auto* src_sparsity = tensor->sparsity();
+      TfLiteSparsity* sparsity = nullptr;
+      if (ParseSparsity(src_sparsity, &sparsity) != kTfLiteOk) {
+        error_reporter_->Report("Tensor %d has invalid sparsity parameters.",
+                                i);
+        status = kTfLiteError;
+      }
+
       if (subgraph->SetTensorParametersReadOnly(
               i, type, get_name(tensor), dims, quantization, buffer_ptr,
               buffer_size, allocation_, sparsity) != kTfLiteOk) {
@@ -570,7 +590,6 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
         status = kTfLiteError;
       }
     } else {
-      // TODO(b/144999664): Non-constant sparse tensor is not supported now.
       if (subgraph->SetTensorParametersReadWrite(i, type, get_name(tensor),
                                                  dims, quantization,
                                                  is_variable) != kTfLiteOk) {

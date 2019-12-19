@@ -27,6 +27,17 @@ package_group(
     ],
 )
 
+# defs.cc/h only contains string constants, and can be included in mobile
+# builds.
+filegroup(
+    name = "mobile_srcs_no_runtime",
+    srcs = [
+        "defs.cc",
+        "defs.h",
+    ],
+    visibility = [":friends"],
+)
+
 # Target that bundles up the XLA CPU and GPU JIT devices.
 cc_library(
     name = "jit",
@@ -67,6 +78,19 @@ cc_library(
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_dummy_ops",
         "//tensorflow/compiler/xla/service:gpu_plugin",
+    ]),
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "xla_mlir_gpu_jit",
+    visibility = ["//visibility:public"],
+    deps = if_cuda_or_rocm([
+        ":jit_compilation_passes",
+        "//tensorflow/compiler/jit/kernels:xla_ops",
+        "//tensorflow/compiler/tf2xla/kernels:xla_ops",
+        "//tensorflow/compiler/tf2xla/kernels:xla_dummy_ops",
+        "//tensorflow/compiler/xla/service:mlir_gpu_plugin",
     ]),
     alwayslink = 1,
 )

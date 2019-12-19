@@ -363,3 +363,12 @@ tf_cc_binary(
         "@com_google_absl//absl/strings",
     ],
 )
+
+# This target is used to reproduce miscompiles in OSS outside of TF, and it can
+# not have any dependencies apart from the standard library.
+cc_library(
+    name = "driver",
+    srcs = ["driver.cc"],
+    tags = ["nofixdeps"],
+    deps = [],
+)

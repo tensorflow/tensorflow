@@ -224,7 +224,7 @@ KernelFnConversion::matchAndRewrite(FuncOp funcOp, ArrayRef<Value *> operands,
   auto entryPointAttr =
       spirv::getEntryPointABIAttr(workGroupSizeAsInt32, context);
   FuncOp newFuncOp = spirv::lowerAsEntryFunction(
-      funcOp, typeConverter, rewriter, argABI, entryPointAttr);
+      funcOp, typeConverter, rewriter, entryPointAttr, argABI);
   if (!newFuncOp) {
     return matchFailure();
   }

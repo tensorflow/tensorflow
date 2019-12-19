@@ -123,9 +123,15 @@ LLVM::LLVMType LLVMTypeConverter::convertFunctionSignature(
     FunctionType type, bool isVariadic,
     LLVMTypeConverter::SignatureConversion &result) {
   // Convert argument types one by one and check for errors.
-  for (auto &en : llvm::enumerate(type.getInputs()))
-    if (failed(convertSignatureArg(en.index(), en.value(), result)))
+  for (auto &en : llvm::enumerate(type.getInputs())) {
+    Type type = en.value();
+    auto converted = convertType(type).dyn_cast_or_null<LLVM::LLVMType>();
+    if (!converted)
       return {};
+    if (type.isa<MemRefType>() || type.isa<UnrankedMemRefType>())
+      converted = converted.getPointerTo();
+    result.addInputs(en.index(), converted);
+  }
 
   SmallVector<LLVM::LLVMType, 8> argTypes;
   argTypes.reserve(llvm::size(result.getConvertedTypes()));
@@ -522,41 +528,23 @@ struct FuncOpConversion : public LLVMLegalizationPattern<FuncOp> {
                   ConversionPatternRewriter &rewriter) const override {
     auto funcOp = cast<FuncOp>(op);
     FunctionType type = funcOp.getType();
-    // Pack the result types into a struct.
-    Type packedResult;
-    if (type.getNumResults() != 0)
-      if (!(packedResult = lowering.packFunctionResults(type.getResults())))
-        return matchFailure();
-    LLVM::LLVMType resultType = packedResult
-                                    ? packedResult.cast<LLVM::LLVMType>()
-                                    : LLVM::LLVMType::getVoidTy(&dialect);
 
-    SmallVector<LLVM::LLVMType, 4> argTypes;
-    argTypes.reserve(type.getNumInputs());
+    // Store the positions of memref-typed arguments so that we can emit loads
+    // from them to follow the calling convention.
     SmallVector<unsigned, 4> promotedArgIndices;
     promotedArgIndices.reserve(type.getNumInputs());
+    for (auto en : llvm::enumerate(type.getInputs())) {
+      if (en.value().isa<MemRefType>() || en.value().isa<UnrankedMemRefType>())
+        promotedArgIndices.push_back(en.index());
+    }
 
     // Convert the original function arguments. Struct arguments are promoted to
     // pointer to struct arguments to allow calling external functions with
     // various ABIs (e.g. compiled from C/C++ on platform X).
     auto varargsAttr = funcOp.getAttrOfType<BoolAttr>("std.varargs");
     TypeConverter::SignatureConversion result(funcOp.getNumArguments());
-    for (auto en : llvm::enumerate(type.getInputs())) {
-      auto t = en.value();
-      auto converted = lowering.convertType(t).dyn_cast<LLVM::LLVMType>();
-      if (!converted)
-        return matchFailure();
-      if (t.isa<MemRefType>() || t.isa<UnrankedMemRefType>()) {
-        converted = converted.getPointerTo();
-        promotedArgIndices.push_back(en.index());
-      }
-      argTypes.push_back(converted);
-    }
-    for (unsigned idx = 0, e = argTypes.size(); idx < e; ++idx)
-      result.addInputs(idx, argTypes[idx]);
-
-    auto llvmType = LLVM::LLVMType::getFunctionTy(
-        resultType, argTypes, varargsAttr && varargsAttr.getValue());
+    auto llvmType = lowering.convertFunctionSignature(
+        funcOp.getType(), varargsAttr && varargsAttr.getValue(), result);
 
     // Only retain those attributes that are not constructed by build.
     SmallVector<NamedAttribute, 4> attributes;
@@ -810,6 +798,15 @@ using BinaryOpLLVMOpLowering = NaryOpLLVMOpLowering<SourceOp, TargetOp, 2>;
 // Specific lowerings.
 // FIXME: this should be tablegen'ed.
 struct ExpOpLowering : public UnaryOpLLVMOpLowering<ExpOp, LLVM::ExpOp> {
+  using Super::Super;
+};
+struct LogOpLowering : public UnaryOpLLVMOpLowering<LogOp, LLVM::LogOp> {
+  using Super::Super;
+};
+struct Log10OpLowering : public UnaryOpLLVMOpLowering<Log10Op, LLVM::Log10Op> {
+  using Super::Super;
+};
+struct Log2OpLowering : public UnaryOpLLVMOpLowering<Log2Op, LLVM::Log2Op> {
   using Super::Super;
 };
 struct AddIOpLowering : public BinaryOpLLVMOpLowering<AddIOp, LLVM::AddOp> {
@@ -1189,6 +1186,56 @@ struct DeallocOpLowering : public LLVMLegalizationPattern<DeallocOp> {
   }
 
   bool useAlloca;
+};
+
+// A `tanh` is converted into a call to the `tanh` function.
+struct TanhOpLowering : public LLVMLegalizationPattern<TanhOp> {
+  using LLVMLegalizationPattern<TanhOp>::LLVMLegalizationPattern;
+
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const override {
+
+    using LLVMFuncOpT = LLVM::LLVMFuncOp;
+    using LLVMTypeT = LLVM::LLVMType;
+
+    OperandAdaptor<TanhOp> transformed(operands);
+    LLVMTypeT operandType =
+        transformed.operand()->getType().dyn_cast_or_null<LLVM::LLVMType>();
+
+    if (!operandType)
+      return matchFailure();
+
+    std::string functionName;
+    if (operandType.isFloatTy())
+      functionName = "tanhf";
+    else if (operandType.isDoubleTy())
+      functionName = "tanh";
+    else
+      return matchFailure();
+
+    // Get a reference to the tanh function, inserting it if necessary.
+    Operation *tanhFunc =
+        SymbolTable::lookupNearestSymbolFrom(op, functionName);
+
+    LLVMFuncOpT tanhLLVMFunc;
+    if (tanhFunc) {
+      tanhLLVMFunc = cast<LLVMFuncOpT>(tanhFunc);
+    } else {
+      PatternRewriter::InsertionGuard insertGuard(rewriter);
+      auto module = op->getParentOfType<ModuleOp>();
+      rewriter.setInsertionPointToStart(module.getBody());
+      tanhLLVMFunc = rewriter.create<LLVMFuncOpT>(
+          module.getLoc(), functionName,
+          LLVMTypeT::getFunctionTy(operandType, operandType,
+                                   /*isVarArg=*/false));
+    }
+
+    rewriter.replaceOpWithNewOp<LLVM::CallOp>(
+        op, operandType, rewriter.getSymbolRefAttr(tanhLLVMFunc),
+        transformed.operand());
+    return matchSuccess();
+  }
 };
 
 struct MemRefCastOpLowering : public LLVMLegalizationPattern<MemRefCastOp> {
@@ -2004,6 +2051,9 @@ void mlir::populateStdToLLVMConversionPatterns(
       DivISOpLowering,
       DivIUOpLowering,
       ExpOpLowering,
+      LogOpLowering,
+      Log10OpLowering,
+      Log2OpLowering,
       FPExtLowering,
       FPTruncLowering,
       FuncOpConversion,
@@ -2026,6 +2076,7 @@ void mlir::populateStdToLLVMConversionPatterns(
       SubFOpLowering,
       SubIOpLowering,
       SubViewOpLowering,
+      TanhOpLowering,
       TruncateIOpLowering,
       ViewOpLowering,
       XOrOpLowering,

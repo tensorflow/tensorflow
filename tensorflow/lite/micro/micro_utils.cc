@@ -20,6 +20,7 @@ limitations under the License.
 #include <stdint.h>
 
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/kernels/op_macros.h"
 
 namespace tflite {
 
@@ -130,15 +131,24 @@ void SignedSymmetricPerChannelQuantize(const float* values,
   int input_size = ElementCount(*dims);
   int channel_count = dims->data[quantized_dimension];
   int per_channel_size = input_size / channel_count;
+
+  int stride;
+  int channel_stride;
+  if (quantized_dimension == 0) {
+    stride = 1;
+    channel_stride = per_channel_size;
+  } else if (quantized_dimension == 3) {
+    stride = channel_count;
+    channel_stride = 1;
+  } else {
+    TF_LITE_FATAL("quantized dimension must be 0 or 3");
+  }
+
+  // Calculate scales for each channel.
   for (int channel = 0; channel < channel_count; channel++) {
     float min = 0;
     float max = 0;
-    int stride = 1;
-    for (int i = 0; i < quantized_dimension; i++) {
-      stride *= dims->data[i];
-    }
-    int channel_stride = per_channel_size / stride;
-    // Calculate scales for each channel.
+
     for (int i = 0; i < per_channel_size; i++) {
       int idx = channel * channel_stride + i * stride;
       min = fminf(min, values[idx]);

@@ -87,7 +87,7 @@ py_library(
 #cuda_py_test(
 #    name = "run_and_gather_logs_test",
 #    srcs = ["run_and_gather_logs.py"],
-#    additional_deps = [
+#    deps = [
 #        ":run_and_gather_logs",
 #    ],
 #    args = [

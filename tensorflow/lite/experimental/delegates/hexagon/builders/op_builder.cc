@@ -1,0 +1,207 @@
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+#include "tensorflow/lite/experimental/delegates/hexagon/builders/op_builder.h"
+
+#include "tensorflow/lite/builtin_ops.h"
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/experimental/delegates/hexagon/builders/op_factory.h"
+
+namespace tflite {
+namespace delegates {
+namespace hexagon {
+
+OpBuilder* GraphBuilder::CreateOpBuilderFromTfLiteOp(int op_type) {
+  switch (op_type) {
+    case kTfLiteBuiltinAdd:
+      return CreateArithmeticBuilder(this, OP_QuantizedAdd_8p8to8);
+    case kTfLiteBuiltinArgMax:
+      return CreateArgMinMaxOpBuilder(this, OP_ArgMax_8toInt32);
+    case kTfLiteBuiltinArgMin:
+      return CreateArgMinMaxOpBuilder(this, OP_ArgMin_8);
+    case kTfLiteBuiltinMul:
+      return CreateArithmeticBuilder(this, OP_QuantizedMul_8x8to8);
+    case kTfLiteBuiltinSub:
+      return CreateArithmeticBuilder(this, OP_QuantizedSub_8p8to8);
+    case kTfLiteBuiltinMean:
+      return CreateReduceBuilder(this, OP_QuantizedMean_8);
+    case kTfLiteBuiltinSum:
+      return CreateReduceBuilder(this, OP_QuantizedSum_8to32);
+    case kTfLiteBuiltinPad:
+      return CreatePadBuilder(this, OP_QuantizedPad_8);
+    case kTfLiteBuiltinFullyConnected:
+      return CreateMatMulBuilder(this, OP_QuantizedMatMul_8x8to32);
+    case kTfLiteBuiltinAveragePool2d:
+      return CreatePool2DBuilder(this, OP_QuantizedAvgPool_8);
+    case kTfLiteBuiltinMaxPool2d:
+      return CreatePool2DBuilder(this, OP_QuantizedMaxPool_8);
+    case kTfLiteBuiltinConcatenation:
+      return CreateConcatBuilder(this, OP_QuantizedConcat_8);
+    case kTfLiteBuiltinConv2d:
+      return CreateConv2DBuilder(this, OP_Supernode_8x8p32to8);
+    case kTfLiteBuiltinTransposeConv:
+      return CreateTransposeConv2DBuilder(
+          this, OP_QuantizedTransposeConv2d_8x8p32to8);
+    case kTfLiteBuiltinDepthwiseConv2d:
+      return CreateConv2DBuilder(this, OP_DepthwiseSupernode_8x8p32to8);
+    case kTfLiteBuiltinReshape:
+      return CreateReshapeBuilder(this, OP_Reshape);
+    case kTfLiteBuiltinSoftmax:
+      return CreateSoftmaxBuilder(this, OP_QuantizedSoftmax_8);
+    case kTfLiteBuiltinResizeNearestNeighbor:
+      return CreateResizeNearestNeighborBuilder(this,
+                                                OP_ResizeNearestNeighbor_8);
+    case kTfLiteBuiltinL2Normalization:
+      return CreateL2NormalizationBuilder(this, OP_L2Normalize_8);
+    case kTfLiteBuiltinRelu:
+      return CreateActivationBuilder(this, OP_QuantizedRelu_8);
+    case kTfLiteBuiltinRelu6:
+      return CreateActivationBuilder(this, OP_QuantizedReluX_8);
+    case kTfLiteBuiltinTanh:
+      return CreateActivationBuilder(this, OP_QuantizedTanh_8);
+    case kTfLiteBuiltinLogistic:
+      return CreateActivationBuilder(this, OP_QuantizedSigmoid_8);
+    case kTfLiteBuiltinSplit:
+      return CreateSplitBuilder(this, OP_QuantizedSplit_8);
+    case kTfLiteBuiltinResizeBilinear:
+      return CreateResizeBilinearOpBuilder(this, OP_QuantizedResizeBilinear_8);
+    case kTfLiteBuiltinNeg:
+      return CreateNegOpBuilder(this, OP_QuantizedNeg_8);
+    case kTfLiteBuiltinTranspose:
+      return CreateTransposeBuilder(this, OP_Transpose_8);
+    default:
+      context_->ReportError(context_, "Op not supported: %d", op_type);
+      return nullptr;
+  }
+}
+
+OpBuilder* GraphBuilder::AddConstNodeWithData(const int shape[], char* data,
+                                              int data_size) {
+  builders_.emplace_back(new OpBuilder(this, OP_Const));
+  builders_.back()->SetConstNode();
+  builders_.back()->SetNodeId(builders_.size());
+  int error = hexagon_nn_->hexagon_nn_append_const_node(
+      graph_id_, builders_.size(), shape[0], shape[1], shape[2], shape[3],
+      reinterpret_cast<const uint8_t*>(data), data_size);
+  if (error != 0) {
+    context_->ReportError(context_, "Error adding const node with shape id: %d",
+                          (int)builders_.size());
+    return nullptr;
+  }
+  return builders_.back().get();
+}
+
+OpBuilder* GraphBuilder::AddConstNodeWithData(int tensor_id,
+                                              const TfLiteTensor& tensor) {
+  builders_.emplace_back(new OpBuilder(this, OP_Const));
+  const int node_id = builders_.size();
+  builders_.back()->SetConstNode();
+  builders_.back()->SetNodeId(node_id);
+  int batch_size, height_size, width_size, depth_size;
+  GetDims(&batch_size, &height_size, &width_size, &depth_size, tensor.dims);
+  int error = hexagon_nn_->hexagon_nn_append_const_node(
+      graph_id_, node_id, batch_size, height_size, width_size, depth_size,
+      reinterpret_cast<const uint8_t*>(tensor.data.raw), tensor.bytes);
+  if (error > 0) {
+    context_->ReportError(
+        context_, "Failed to add const node for tensor with id: %d", tensor_id);
+    return nullptr;
+  }
+  AddTensorWithID(tensor_id, node_id, 0);
+  return builders_.back().get();
+}
+
+void delegates::hexagon::GraphBuilder::AddInputTensors(
+    const TfLiteIntArray* input_tensors, TfLiteContext* context) {
+  builders_.emplace_back(new OpBuilder(this, OP_INPUT));
+  builders_.back()->SetNodeId(builders_.size());
+  // We need to track num_inputs since not all input_tensors are actual input
+  // data. Some are constants.
+  int num_inputs = 0;
+  for (int i = 0; i < input_tensors->size; ++i) {
+    const int tensor_id = input_tensors->data[i];
+    const auto& tensor = context->tensors[tensor_id];
+    if (tensor.allocation_type != kTfLiteMmapRo) {
+      AddTensorWithID(tensor_id, builders_.size(), num_inputs);
+      builders_.back()->AddOutput(tensor.dims);
+      ++num_inputs;
+    }
+  }
+}
+
+void delegates::hexagon::GraphBuilder::AddOutputTensors(
+    const TfLiteIntArray* output_tensors, TfLiteContext* context) {
+  builders_.emplace_back(new OpBuilder(this, OP_OUTPUT));
+  builders_.back()->SetNodeId(builders_.size());
+  for (int i = 0; i < output_tensors->size; ++i) {
+    const int tensor_id = output_tensors->data[i];
+    builders_.back()->AddInput(GetHexagonTensorId(tensor_id));
+  }
+}
+
+OpBuilder::TensorID OpBuilder::AddOutput(const TfLiteIntArray* dims) {
+  op_node_.outputs.push_back(hexagon_nn_output());
+  op_node_.outputs.back().elementsize = sizeof(float);
+  op_node_.outputs.back().rank = 4;
+  // TODO(karimnosseir): What is a good to estimate the max size ?
+  int batch_size, height_size, width_size, depth_size;
+  GetDims(&batch_size, &height_size, &width_size, &depth_size, dims);
+  auto& max_sizes = op_node_.outputs.back().max_sizes;
+  max_sizes[0] = batch_size;
+  max_sizes[1] = height_size;
+  max_sizes[2] = width_size;
+  max_sizes[3] = depth_size;
+  return TensorID(GetID(), op_node_.outputs.size() - 1);
+}
+
+OpBuilder::TensorID OpBuilder::AddOutput(
+    int elementsize, int rank, const std::vector<int>& max_sizes_vect) {
+  op_node_.outputs.push_back(hexagon_nn_output());
+  op_node_.outputs.back().elementsize = elementsize;
+  op_node_.outputs.back().rank = rank;
+  auto& max_sizes = op_node_.outputs.back().max_sizes;
+  for (int i = 0; i < max_sizes_vect.size(); ++i) {
+    max_sizes[i] = max_sizes_vect[i];
+  }
+  return TensorID(GetID(), op_node_.outputs.size() - 1);
+}
+
+const OpNode* OpBuilder::Build() {
+  for (const auto& id : input_ids_) {
+    op_node_.inputs.push_back(hexagon_nn_input());
+    op_node_.inputs.back().src_id = id.first;
+    op_node_.inputs.back().output_idx = id.second;
+  }
+  return &op_node_;
+}
+
+OpBuilder* GraphBuilder::AddNode() {
+  OpBuilder* op = new OpBuilder(this, OP_Nop);
+  builders_.emplace_back(op);
+  op->SetNodeId(builders_.size());
+  return op;
+}
+
+OpBuilder* GraphBuilder::AddNodeFromTfLiteOp(int op_type, TfLiteNode* node) {
+  OpBuilder* op = CreateOpBuilderFromTfLiteOp(op_type);
+  builders_.emplace_back(op);
+  op->SetNodeId(builders_.size());
+  op->SetBuiltinData(node->builtin_data);
+  op->SetTfLiteNode(node);
+  return op;
+}
+
+}  // namespace hexagon
+}  // namespace delegates
+}  // namespace tflite

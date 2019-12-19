@@ -1122,6 +1122,20 @@ PYBIND11_MODULE(pybind, m) {
            [](PythonAffineExpr lhs, PythonAffineExpr rhs) -> PythonAffineExpr {
              return PythonAffineExpr(lhs.get() % rhs.get());
            })
+      .def("compose",
+           [](PythonAffineExpr self, PythonAffineMap map) -> PythonAffineExpr {
+             return PythonAffineExpr(self.get().compose(map));
+           })
+      .def(
+          "get_constant_value",
+          [](PythonAffineExpr self) -> py::object {
+            auto const_expr = self.get().dyn_cast<AffineConstantExpr>();
+            if (const_expr)
+              return py::cast(const_expr.getValue());
+            return py::none();
+          },
+          "Returns the constant value for the affine expression if any, or "
+          "returns None.")
       .def("__str__", &PythonAffineExpr::str);
 
   py::class_<PythonAffineMap>(m, "AffineMap",

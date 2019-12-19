@@ -75,6 +75,7 @@ tf_xla_py_test(
     name = "adadelta_test",
     size = "medium",
     srcs = ["adadelta_test.py"],
+    python_version = "PY3",
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -88,6 +89,7 @@ tf_xla_py_test(
     name = "adagrad_test",
     size = "small",
     srcs = ["adagrad_test.py"],
+    python_version = "PY3",
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -102,6 +104,7 @@ tf_xla_py_test(
     name = "adagrad_da_test",
     size = "small",
     srcs = ["adagrad_da_test.py"],
+    python_version = "PY3",
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -115,6 +118,7 @@ tf_xla_py_test(
     name = "adam_test",
     size = "small",
     srcs = ["adam_test.py"],
+    python_version = "PY3",
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -131,6 +135,7 @@ tf_xla_py_test(
     srcs = ["add_n_test.py"],
     # TensorList ops are not implemented in the on-demand compilation model yet.
     disabled_backends = ["cpu_ondemand"],
+    python_version = "PY3",
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -145,6 +150,7 @@ tf_xla_py_test(
     name = "argminmax_test",
     size = "small",
     srcs = ["argminmax_test.py"],
+    python_version = "PY3",
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -158,6 +164,7 @@ tf_xla_py_test(
     name = "binary_ops_test",
     size = "medium",
     srcs = ["binary_ops_test.py"],
+    python_version = "PY3",
     shard_count = 5,
     tags = [
         "optonly",  # Times out frequently in fastbuild mode.
@@ -183,6 +190,7 @@ tf_xla_py_test(
         "cpu",
         "gpu",
     ],
+    python_version = "PY3",
     shard_count = 2,
     tags = [
         "optonly",  # Times out frequently in fastbuild mode.
@@ -202,6 +210,7 @@ tf_xla_py_test(
     name = "bucketize_op_test",
     size = "small",
     srcs = ["bucketize_op_test.py"],
+    python_version = "PY3",
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -215,6 +224,7 @@ tf_xla_py_test(
     name = "categorical_op_test",
     size = "small",
     srcs = ["categorical_op_test.py"],
+    python_version = "PY3",
     tags = ["optonly"],
     deps = [
         ":xla_test",
@@ -229,6 +239,7 @@ tf_xla_py_test(
     name = "cholesky_op_test",
     size = "medium",
     srcs = ["cholesky_op_test.py"],
+    python_version = "PY3",
     tags = ["optonly", "no_rocm"],
     deps = [
         ":xla_test",
@@ -245,6 +256,7 @@ tf_xla_py_test(
     name = "cond_test",
     size = "small",
     srcs = ["cond_test.py"],
+    python_version = "PY3",
     deps = [
         ":xla_test",
         "//tensorflow/compiler/tf2xla/python:xla",
@@ -261,6 +273,7 @@ tf_xla_py_test(
     name = "self_adjoint_eig_op_test",
     size = "medium",
     srcs = ["self_adjoint_eig_op_test.py"],
+    python_version = "PY3",
     tags = ["optonly"],
     deps = [
         ":xla_test",
@@ -283,6 +296,7 @@ tf_xla_py_test(
         "cpu",
         "cpu_ondemand",
     ],
+    python_version = "PY3",
     tags = ["optonly", "no_rocm"],
     deps = [
         ":xla_test",
@@ -301,6 +315,7 @@ tf_xla_py_test(
     size = "small",
     timeout = "moderate",
     srcs = ["matrix_inverse_op_test.py"],
+    python_version = "PY3",
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -316,6 +331,7 @@ tf_xla_py_test(
     size = "small",
     timeout = "moderate",
     srcs = ["matrix_solve_op_test.py"],
+    python_version = "PY3",
     deps = [
         ":xla_test",
         "//tensorflow/python:linalg_ops",
@@ -330,6 +346,7 @@ tf_xla_py_test(
     size = "small",
     timeout = "moderate",
     srcs = ["matrix_triangular_solve_op_test.py"],
+    python_version = "PY3",
     tags = [
         "optonly",
     ],
@@ -347,6 +364,7 @@ tf_xla_py_test(
     name = "clustering_test",
     size = "small",
     srcs = ["clustering_test.py"],
+    python_version = "PY3",
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -360,6 +378,7 @@ tf_xla_py_test(
     name = "concat_ops_test",
     size = "medium",
     srcs = ["concat_ops_test.py"],
+    python_version = "PY3",
     tags = [
         "many_xla_args",
         "no_rocm",
@@ -380,6 +399,7 @@ tf_xla_py_test(
     name = "conv2d_test",
     size = "medium",
     srcs = ["conv2d_test.py"],
+    python_version = "PY3",
     shard_count = 10,
     deps = [
         ":test_utils",
@@ -398,6 +418,7 @@ tf_xla_py_test(
     name = "conv3d_test",
     size = "medium",
     srcs = ["conv3d_test.py"],
+    python_version = "PY3",
     shard_count = 5,
     deps = [
         ":xla_test",
@@ -414,6 +435,7 @@ tf_xla_py_test(
     name = "depthwise_conv_op_test",
     size = "medium",
     srcs = ["depthwise_conv_op_test.py"],
+    python_version = "PY3",
     shard_count = 5,
     tags = [
         "no_rocm",
@@ -438,6 +460,7 @@ tf_xla_py_test(
     name = "dynamic_slice_ops_test",
     size = "small",
     srcs = ["dynamic_slice_ops_test.py"],
+    python_version = "PY3",
     deps = [
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/compiler/tf2xla/python:xla",
@@ -454,6 +477,7 @@ tf_xla_py_test(
         "cpu",
         "gpu",
     ],
+    python_version = "PY3",
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -467,6 +491,7 @@ tf_xla_py_test(
     name = "reshape_op_test",
     size = "small",
     srcs = ["reshape_op_test.py"],
+    python_version = "PY3",
     deps = [
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/compiler/tf2xla/python:xla",
@@ -480,6 +505,7 @@ tf_xla_py_test(
     name = "dynamic_stitch_test",
     size = "small",
     srcs = ["dynamic_stitch_test.py"],
+    python_version = "PY3",
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -493,6 +519,7 @@ tf_xla_py_test(
     name = "extract_image_patches_op_test",
     size = "small",
     srcs = ["extract_image_patches_op_test.py"],
+    python_version = "PY3",
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -505,6 +532,7 @@ tf_xla_py_test(
     name = "eager_test",
     size = "medium",
     srcs = ["eager_test.py"],
+    python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
     ],
@@ -524,6 +552,7 @@ tf_xla_py_test(
     name = "fifo_queue_test",
     size = "medium",
     srcs = ["fifo_queue_test.py"],
+    python_version = "PY3",
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -538,6 +567,7 @@ tf_xla_py_test(
     name = "fft_test",
     size = "medium",
     srcs = ["fft_test.py"],
+    python_version = "PY3",
     shard_count = 6,
     tags = ["optonly", "no_rocm"],
     deps = [
@@ -554,6 +584,7 @@ tf_xla_py_test(
     name = "slice_ops_test",
     size = "small",
     srcs = ["slice_ops_test.py"],
+    python_version = "PY3",
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -567,6 +598,7 @@ tf_xla_py_test(
     name = "ftrl_test",
     size = "medium",
     srcs = ["ftrl_test.py"],
+    python_version = "PY3",
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -581,6 +613,7 @@ tf_xla_py_test(
     name = "function_test",
     size = "small",
     srcs = ["function_test.py"],
+    python_version = "PY3",
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -593,6 +626,7 @@ tf_xla_py_test(
     name = "image_ops_test",
     size = "small",
     srcs = ["image_ops_test.py"],
+    python_version = "PY3",
     shard_count = 10,
     tags = [
         "optonly",  # Times out frequently in fastbuild mode.
@@ -610,6 +644,7 @@ tf_xla_py_test(
     name = "listdiff_op_test",
     size = "small",
     srcs = ["listdiff_op_test.py"],
+    python_version = "PY3",
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -625,6 +660,7 @@ tf_xla_py_test(
     name = "lrn_ops_test",
     size = "medium",
     srcs = ["lrn_ops_test.py"],
+    python_version = "PY3",
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -639,6 +675,7 @@ tf_xla_py_test(
     name = "manip_ops_test",
     size = "small",
     srcs = ["manip_ops_test.py"],
+    python_version = "PY3",
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -653,6 +690,7 @@ tf_xla_py_test(
     size = "medium",
     timeout = "long",
     srcs = ["matrix_band_part_test.py"],
+    python_version = "PY3",
     tags = ["optonly"],
     deps = [
         ":xla_test",
@@ -668,6 +706,7 @@ tf_xla_py_test(
     size = "medium",
     timeout = "long",
     srcs = ["matrix_diag_ops_test.py"],
+    python_version = "PY3",
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -680,6 +719,7 @@ tf_xla_py_test(
     name = "momentum_test",
     size = "small",
     srcs = ["momentum_test.py"],
+    python_version = "PY3",
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -694,6 +734,7 @@ tf_xla_py_test(
     name = "nary_ops_test",
     size = "small",
     srcs = ["nary_ops_test.py"],
+    python_version = "PY3",
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -707,6 +748,7 @@ tf_xla_py_test(
     name = "nullary_ops_test",
     size = "small",
     srcs = ["nullary_ops_test.py"],
+    python_version = "PY3",
     deps = [
         ":xla_test",
         "//tensorflow/python:control_flow_ops",
@@ -719,6 +761,7 @@ tf_xla_py_test(
     name = "pooling_ops_test",
     size = "medium",
     srcs = ["pooling_ops_test.py"],
+    python_version = "PY3",
     shard_count = 10,
     deps = [
         ":xla_test",
@@ -734,6 +777,7 @@ tf_xla_py_test(
     name = "pooling_ops_3d_test",
     size = "medium",
     srcs = ["pooling_ops_3d_test.py"],
+    python_version = "PY3",
     shard_count = 10,
     deps = [
         ":xla_test",
@@ -749,6 +793,7 @@ tf_xla_py_test(
     name = "proximal_adagrad_test",
     size = "medium",
     srcs = ["proximal_adagrad_test.py"],
+    python_version = "PY3",
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -762,6 +807,7 @@ tf_xla_py_test(
     name = "proximal_gradient_descent_test",
     size = "medium",
     srcs = ["proximal_gradient_descent_test.py"],
+    python_version = "PY3",
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -780,6 +826,25 @@ tf_xla_py_test(
         "cpu",
         "cpu_ondemand",
     ],
+    python_version = "PY3",
+    shard_count = 5,
+    tags = ["optonly"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_xla_py_test(
+    name = "unstack_test",
+    size = "medium",
+    srcs = ["unstack_test.py"],
+    python_version = "PY3",
     shard_count = 5,
     tags = [
         "no_rocm",
@@ -800,6 +865,7 @@ tf_xla_py_test(
     name = "random_ops_test",
     size = "small",
     srcs = ["random_ops_test.py"],
+    python_version = "PY3",
     shard_count = 10,
     tags = [
         "notap",  # TODO(b/141057424): flaky on TPU
@@ -819,6 +885,7 @@ tf_xla_py_test(
     name = "reduce_ops_test",
     size = "medium",
     srcs = ["reduce_ops_test.py"],
+    python_version = "PY3",
     shard_count = 5,
     deps = [
         ":xla_test",
@@ -835,6 +902,7 @@ tf_xla_py_test(
     name = "reduce_window_test",
     size = "small",
     srcs = ["reduce_window_test.py"],
+    python_version = "PY3",
     deps = [
         ":xla_test",
         "//tensorflow/compiler/tf2xla/python:xla",
@@ -850,6 +918,7 @@ tf_xla_py_test(
     name = "reverse_ops_test",
     size = "medium",
     srcs = ["reverse_ops_test.py"],
+    python_version = "PY3",
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -861,6 +930,7 @@ tf_xla_py_test(
     name = "reverse_sequence_op_test",
     size = "medium",
     srcs = ["reverse_sequence_op_test.py"],
+    python_version = "PY3",
     tags = ["optonly"],
     deps = [
         ":xla_test",
@@ -874,6 +944,7 @@ tf_xla_py_test(
     name = "rmsprop_test",
     size = "small",
     srcs = ["rmsprop_test.py"],
+    python_version = "PY3",
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -888,6 +959,7 @@ tf_xla_py_test(
     name = "scan_ops_test",
     size = "small",
     srcs = ["scan_ops_test.py"],
+    python_version = "PY3",
     tags = ["optonly"],
     deps = [
         ":xla_test",
@@ -902,6 +974,7 @@ tf_xla_py_test(
     name = "segment_reduction_ops_test",
     size = "medium",
     srcs = ["segment_reduction_ops_test.py"],
+    python_version = "PY3",
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -916,6 +989,7 @@ tf_xla_py_test(
     name = "spacetobatch_op_test",
     size = "medium",
     srcs = ["spacetobatch_op_test.py"],
+    python_version = "PY3",
     shard_count = 3,
     deps = [
         ":xla_test",
@@ -930,6 +1004,7 @@ tf_xla_py_test(
     name = "sparse_to_dense_op_test",
     size = "small",
     srcs = ["sparse_to_dense_op_test.py"],
+    python_version = "PY3",
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -943,6 +1018,7 @@ tf_xla_py_test(
     name = "stack_ops_test",
     size = "small",
     srcs = ["stack_ops_test.py"],
+    python_version = "PY3",
     tags = ["config-cuda-only"],
     use_xla_device = False,
     deps = [
@@ -958,6 +1034,7 @@ tf_xla_py_test(
     name = "stateful_random_ops_test",
     size = "medium",
     srcs = ["stateful_random_ops_test.py"],
+    python_version = "PY3",
     shard_count = 10,
     tags = ["optonly"],
     deps = [
@@ -974,6 +1051,7 @@ tf_xla_py_test(
     name = "stateless_random_ops_test",
     size = "medium",
     srcs = ["stateless_random_ops_test.py"],
+    python_version = "PY3",
     tags = ["optonly"],
     deps = [
         ":xla_test",
@@ -991,6 +1069,7 @@ tf_xla_py_test(
     srcs = ["tensor_array_ops_test.py"],
     # TensorArray ops are not implemented in the on-demand compilation model yet.
     disabled_backends = ["cpu_ondemand"],
+    python_version = "PY3",
     tags = [
         "config-cuda-only",
     ],
@@ -1016,6 +1095,7 @@ tf_xla_py_test(
     srcs = ["tensor_list_ops_test.py"],
     # TensorList ops are not implemented in the on-demand compilation model yet.
     disabled_backends = ["cpu_ondemand"],
+    python_version = "PY3",
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -1030,6 +1110,7 @@ tf_xla_py_test(
     name = "ternary_ops_test",
     size = "medium",
     srcs = ["ternary_ops_test.py"],
+    python_version = "PY3",
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -1045,6 +1126,7 @@ tf_xla_py_test(
     name = "unary_ops_test",
     size = "medium",
     srcs = ["unary_ops_test.py"],
+    python_version = "PY3",
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -1060,6 +1142,7 @@ tf_xla_py_test(
     name = "fused_batchnorm_test",
     size = "medium",
     srcs = ["fused_batchnorm_test.py"],
+    python_version = "PY3",
     deps = [
         ":test_utils",
         ":xla_test",
@@ -1079,6 +1162,7 @@ tf_xla_py_test(
     name = "variable_ops_test",
     size = "small",
     srcs = ["variable_ops_test.py"],
+    python_version = "PY3",
     tags = ["optonly"],
     deps = [
         ":xla_test",
@@ -1097,6 +1181,7 @@ tf_xla_py_test(
     name = "while_test",
     size = "small",
     srcs = ["while_test.py"],
+    python_version = "PY3",
     deps = [
         ":xla_test",
         "//tensorflow/compiler/tf2xla/python:xla",
@@ -1111,6 +1196,7 @@ tf_xla_py_test(
     name = "gather_test",
     size = "medium",
     srcs = ["gather_test.py"],
+    python_version = "PY3",
     tags = ["optonly"],
     deps = [
         ":xla_test",
@@ -1125,6 +1211,7 @@ tf_xla_py_test(
     name = "gather_nd_op_test",
     size = "medium",
     srcs = ["gather_nd_op_test.py"],
+    python_version = "PY3",
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -1137,6 +1224,7 @@ tf_xla_py_test(
     name = "scatter_nd_op_test",
     size = "medium",
     srcs = ["scatter_nd_op_test.py"],
+    python_version = "PY3",
     tags = ["optonly"],
     deps = [
         ":xla_test",
@@ -1150,6 +1238,7 @@ tf_xla_py_test(
     name = "sort_ops_test",
     size = "medium",
     srcs = ["sort_ops_test.py"],
+    python_version = "PY3",
     shard_count = 1,
     # Times out in fastbuild mode.
     tags = ["optonly"],
@@ -1165,6 +1254,7 @@ tf_xla_py_test(
     name = "data_format_ops_test",
     size = "small",
     srcs = ["data_format_ops_test.py"],
+    python_version = "PY3",
     deps = [
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:array_ops",
@@ -1178,6 +1268,7 @@ tf_xla_py_test(
     name = "xla_device_test",
     size = "small",
     srcs = ["xla_device_test.py"],
+    python_version = "PY3",
     tags = ["optonly"],
     deps = [
         ":xla_test",
@@ -1191,7 +1282,8 @@ cuda_py_test(
     name = "xla_device_gpu_test",
     size = "small",
     srcs = ["xla_device_gpu_test.py"],
-    additional_deps = [
+    xla_enable_strict_auto_jit = False,
+    deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
@@ -1199,16 +1291,17 @@ cuda_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:math_ops",
     ],
-    xla_enable_strict_auto_jit = False,
 )
 
 cuda_py_test(
     name = "jit_test",
     size = "medium",
     srcs = ["jit_test.py"],
-    additional_deps = [
+    shard_count = 5,
+    tags = ["no_rocm"],
+    xla_enable_strict_auto_jit = False,
+    deps = [
         ":test_utils",
-        "//tensorflow/python/compiler/xla:compiler_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
@@ -1218,25 +1311,25 @@ cuda_py_test(
         "//tensorflow/python:gradients",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_ops",
+        "//tensorflow/python/compiler/xla:compiler_py",
     ],
-    shard_count = 5,
-    xla_enable_strict_auto_jit = False,
 )
 
 cuda_py_test(
     name = "dense_layer_test",
     size = "medium",
     srcs = ["dense_layer_test.py"],
-    additional_deps = [
+    tags = ["no_rocm"],
+    xla_enable_strict_auto_jit = False,
+    deps = [
         ":test_utils",
-        "//tensorflow/python/compiler/xla:compiler_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:layers",
         "//tensorflow/python:variables",
+        "//tensorflow/python/compiler/xla:compiler_py",
     ],
-    xla_enable_strict_auto_jit = False,
 )
 
 cc_library(
@@ -1311,7 +1404,9 @@ py_library(
 cuda_py_test(
     name = "lstm_test",
     srcs = ["lstm_test.py"],
-    additional_deps = [
+    tags = ["no_rocm"],
+    xla_enable_strict_auto_jit = False,
+    deps = [
         ":lstm",
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -1323,8 +1418,6 @@ cuda_py_test(
         "//tensorflow/python:platform",
         "//tensorflow/python:variables",
     ],
-    tags = ["no_rocm"],
-    xla_enable_strict_auto_jit = False,
 )
 
 # An example of ahead-of-time compilation using tfcompile.  The
@@ -1354,6 +1447,7 @@ tf_xla_py_test(
     name = "fake_quant_ops_test",
     size = "medium",
     srcs = ["fake_quant_ops_test.py"],
+    python_version = "PY3",
     deps = [
         ":xla_test",
         "//tensorflow/python:framework",
@@ -1365,6 +1459,7 @@ tf_xla_py_test(
     name = "placeholder_test",
     size = "small",
     srcs = ["placeholder_test.py"],
+    python_version = "PY3",
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -1377,6 +1472,7 @@ tf_xla_py_test(
     name = "quantized_ops_test",
     size = "medium",
     srcs = ["quantized_ops_test.py"],
+    python_version = "PY3",
     deps = [
         ":xla_test",
         "//tensorflow/compiler/tf2xla/python:xla",
@@ -1393,6 +1489,7 @@ tf_xla_py_test(
     name = "xla_ops_test",
     size = "medium",
     srcs = ["xla_ops_test.py"],
+    python_version = "PY3",
     deps = [
         ":xla_test",
         "//tensorflow/compiler/tf2xla/python:xla",
@@ -1408,6 +1505,7 @@ tf_xla_py_test(
     name = "conv_node_name_test",
     size = "medium",
     srcs = ["conv_node_name_test.py"],
+    python_version = "PY3",
     shard_count = 5,
     tags = ["no_rocm"],
     deps = [
@@ -1431,6 +1529,7 @@ tf_xla_py_test(
         "cpu",
         "gpu",
     ],
+    python_version = "PY3",
     tags = [
         "optonly",
     ],
@@ -1452,6 +1551,7 @@ tf_xla_py_test(
         "cpu",
         "gpu",
     ],
+    python_version = "PY3",
     tags = [
         "optonly",
     ],

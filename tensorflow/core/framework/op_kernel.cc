@@ -92,8 +92,12 @@ Status MatchSignatureHelper(const DataTypeSlice expected_inputs,
 OpKernel::OpKernel(OpKernelConstruction* context)
     : OpKernel(context, MakeUnique<const NodeDef>(context->def())) {}
 
+OpKernel::OpKernel(OpKernelConstruction* context, bool is_deferred)
+    : OpKernel(context, MakeUnique<const NodeDef>(context->def()),
+               is_deferred) {}
+
 OpKernel::OpKernel(OpKernelConstruction* context,
-                   std::unique_ptr<const NodeDef> node_def)
+                   std::unique_ptr<const NodeDef> node_def, bool is_deferred)
     : def_(std::move(node_def)),
       input_types_(context->input_types().begin(),
                    context->input_types().end()),
@@ -106,6 +110,7 @@ OpKernel::OpKernel(OpKernelConstruction* context,
       input_name_map_(context->num_inputs()),
       output_name_map_(context->num_outputs()),
       graph_def_version_(context->graph_def_version()),
+      is_deferred_(is_deferred),
       cost_estimate_(OpKernel::kInitialCostEstimateCycles) {
   OP_REQUIRES_OK(context,
                  NameRangesForNode(*def_, *context->op_def_, &input_name_map_,
@@ -1135,8 +1140,11 @@ void LoadDynamicKernelsInternal() {
 
   // Override to allow loading unsafe packages for development.
   // DO NOT USE UNLESS YOU KNOW WHAT ABI ISSUES YOU CAN ENCOUNTER.
-  bool override_abi_check =
-      strcmp(getenv("TF_REALLY_LOAD_UNSAFE_PACKAGES"), "1") == 0;
+  char* _abi_check_env_var = getenv("TF_REALLY_LOAD_UNSAFE_PACKAGES");
+  bool override_abi_check = false;
+  if (_abi_check_env_var != nullptr) {
+    override_abi_check = strcmp(_abi_check_env_var, "1") == 0;
+  }
 
   string bazel_kernel_dir =
       io::JoinPath(env->GetRunfilesDir(), "tensorflow", "core", "kernels");

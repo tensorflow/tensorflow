@@ -527,7 +527,7 @@ DenseElementsAttr::AttributeElementIterator::AttributeElementIterator(
 
 /// Accesses the Attribute value at this iterator position.
 Attribute DenseElementsAttr::AttributeElementIterator::operator*() const {
-  auto owner = getFromOpaquePointer(object).cast<DenseElementsAttr>();
+  auto owner = getFromOpaquePointer(base).cast<DenseElementsAttr>();
   Type eltTy = owner.getType().getElementType();
   if (auto intEltTy = eltTy.dyn_cast<IntegerType>()) {
     if (intEltTy.getWidth() == 1)

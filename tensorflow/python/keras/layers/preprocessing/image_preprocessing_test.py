@@ -22,11 +22,13 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.layers.preprocessing import image_preprocessing
 from tensorflow.python.keras.utils.generic_utils import CustomObjectScope
 from tensorflow.python.ops import image_ops_impl as image_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.platform import test
 
@@ -248,6 +250,39 @@ class RandomCropTest(keras_parameterized.TestCase):
     layer = image_preprocessing.RandomCrop(5, 5, name='image_preproc')
     config = layer.get_config()
     layer_1 = image_preprocessing.RandomCrop.from_config(config)
+    self.assertEqual(layer_1.name, layer.name)
+
+
+class RescalingTest(keras_parameterized.TestCase):
+
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_rescaling_base(self):
+    kwargs = {'scale': 0.004}
+    testing_utils.layer_test(
+        image_preprocessing.Rescaling,
+        kwargs=kwargs,
+        input_shape=(2, 5, 6, 3),
+        expected_output_shape=(None, 5, 6, 3))
+
+  @tf_test_util.run_v2_only
+  def test_rescaling_correctness_float(self):
+    layer = image_preprocessing.Rescaling(0.004)
+    inputs = random_ops.random_uniform((2, 4, 5, 3))
+    outputs = layer(inputs)
+    self.assertAllClose(outputs.numpy(), inputs.numpy() * 0.004)
+
+  @tf_test_util.run_v2_only
+  def test_rescaling_correctness_int(self):
+    layer = image_preprocessing.Rescaling(0.004)
+    inputs = random_ops.random_uniform((2, 4, 5, 3), 0, 100, dtype='int32')
+    outputs = layer(inputs)
+    self.assertEqual(outputs.dtype.name, 'float32')
+    self.assertAllClose(outputs.numpy(), inputs.numpy() * 0.004)
+
+  def test_config_with_custom_name(self):
+    layer = image_preprocessing.Rescaling(0.5, name='rescaling')
+    config = layer.get_config()
+    layer_1 = image_preprocessing.Rescaling.from_config(config)
     self.assertEqual(layer_1.name, layer.name)
 
 

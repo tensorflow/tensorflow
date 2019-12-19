@@ -34,11 +34,25 @@ tf_proto_library(
 )
 
 tf_proto_library(
+    name = "steps_db_proto",
+    srcs = ["steps_db.proto"],
+    cc_api_version = 2,
+    protodeps = [":op_metrics_proto"],
+    visibility = [
+        ":friends",
+    ],
+)
+
+tf_proto_library(
     name = "op_stats_proto",
     srcs = ["op_stats.proto"],
     cc_api_version = 2,
     protodeps = [
         ":op_metrics_proto",
+        ":steps_db_proto",
+    ],
+    visibility = [
+        ":friends",
     ],
 )
 

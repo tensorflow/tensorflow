@@ -32,6 +32,19 @@ def TrueBoolAttr : AttrConstraint<CPred<"$_self.getValue()">>;
 def CastValueToI64: NativeCodeCall<
   "CastValueToI64($0->getLoc(), $1, &$_builder)">;
 
+// Here, $0 is an ElementsAttr with exactly one element of type integer. $1 is
+// the corresponding value of ranked tensor type whose axis is referred in $0.
+def GetHLOAxisFromTFAxis : NativeCodeCall<
+  "GetHLOAxisFromTFAxis("
+  "$0, $1->getType().cast<RankedTensorType>().getRank(), &$_builder)">;
+
+// Same as the above but with $1 of type operand_range from variadic TensorFlow
+// input.
+def GetHLOAxisFromTFAxisVariadic : NativeCodeCall<
+  "GetHLOAxisFromTFAxis("
+  "$0, (*$1.begin())->getType().cast<RankedTensorType>().getRank(), "
+  "&$_builder)">;
+
 def : Pattern<
     (TF_FusedBatchNormOp:$root $x, $scale, $offset, $mean, $variance, $epsilon,
                                $data_format, FalseBoolAttr:$is_training),
@@ -221,11 +234,6 @@ def OneElementAttr
   : ElementsAttrBase<And<[ElementsAttr.predicate, OneElementAttrPred]>,
                      "Scalar ElementsAttr">;
 
-def GetHLOAxisFromTFAxis : NativeCodeCall<
-  "GetHLOAxisFromTFAxis("
-  "$0, (*$1.begin())->getType().cast<RankedTensorType>().getRank(), "
-  "&$_builder)">;
-
 def HasRankedFirstOperand
   : Constraint<CPred<"(*$0.begin())->getType().isa<RankedTensorType>()">>;
 
@@ -241,7 +249,8 @@ def IsShapedTensor
 // if HLO constant op is introduced as an replacement for the TensorFlow
 // Constant op.
 def : Pat<(TF_ConcatV2Op $inputs, (TF_ConstOp OneElementAttr:$axis)),
-          (HLO_ConcatenateOp $inputs, (GetHLOAxisFromTFAxis $axis, $inputs)),
+          (HLO_ConcatenateOp $inputs,
+            (GetHLOAxisFromTFAxisVariadic $axis, $inputs)),
           [(HasRankedFirstOperand $inputs)]>;
 
 //===----------------------------------------------------------------------===//
@@ -263,6 +272,20 @@ def : Pat<(TF_CrossReplicaSumOp $input, (TF_ConstOp $group_assignment)),
 def : Pat<(TF_RFFTOp $input, (TF_ConstOp I32ElementsAttr:$fft_length)),
           (HLO_FftOp $input, HLO_FFT_TYPE_RFFT,
            (CastElementsToI64Elements $fft_length))>;
+
+//===----------------------------------------------------------------------===//
+// GatherV2 op patterns.
+//===----------------------------------------------------------------------===//
+
+// Here, $params and $indices needs to be ranked so that $axis and $batch_dims
+// attributes can be converted from TensorFlow axis format supporting negative
+// indexing to the HLO format.
+def LegalizeGatherV2 :
+  Pat<(TF_GatherV2Op AnyRankedTensor:$params, AnyRankedTensor:$indices,
+        (TF_ConstOp $axis), $batch_dims),
+      (HLO_TorchIndexSelectOp $params, $indices,
+        (GetHLOAxisFromTFAxis $axis, $params),
+        (GetHLOAxisFromTFAxis $batch_dims, $indices))>;
 
 //===----------------------------------------------------------------------===//
 // Pad op patterns.

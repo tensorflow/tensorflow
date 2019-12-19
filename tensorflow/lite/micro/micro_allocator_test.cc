@@ -116,44 +116,4 @@ TF_LITE_MICRO_TEST(TestFinishTensorAllocation) {
                           context.tensors[2].data.raw);
 }
 
-TF_LITE_MICRO_TEST(TestPreallocatedInput) {
-  const tflite::Model* model = tflite::testing::GetMockModel();
-  TfLiteContext context;
-  constexpr size_t arena_size = 1024;
-  uint8_t arena[arena_size];
-  tflite::MicroAllocator allocator(&context, model, arena, arena_size,
-                                   micro_test::reporter);
-  TF_LITE_MICRO_EXPECT_EQ(3, context.tensors_size);
-
-  uint8_t preallocated_input_buffer[4];
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, allocator.RegisterPreallocatedInput(
-                                         preallocated_input_buffer, 0));
-
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, allocator.FinishTensorAllocation());
-
-  constexpr int kExpectedAlignment = 4;
-
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteInt32, context.tensors[0].type);
-  TF_LITE_MICRO_EXPECT_EQ(1, context.tensors[0].dims->size);
-  TF_LITE_MICRO_EXPECT_EQ(1, context.tensors[0].dims->data[0]);
-  TF_LITE_MICRO_EXPECT_EQ(4, context.tensors[0].bytes);
-  TF_LITE_MICRO_EXPECT_EQ(preallocated_input_buffer,
-                          context.tensors[0].data.uint8);
-
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteUInt8, context.tensors[1].type);
-  TF_LITE_MICRO_EXPECT_EQ(1, context.tensors[1].dims->size);
-  TF_LITE_MICRO_EXPECT_EQ(1, context.tensors[1].dims->data[0]);
-  TF_LITE_MICRO_EXPECT_EQ(1, context.tensors[1].bytes);
-  TF_LITE_MICRO_EXPECT_NE(nullptr, context.tensors[1].data.raw);
-
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteInt32, context.tensors[2].type);
-  TF_LITE_MICRO_EXPECT_EQ(1, context.tensors[2].dims->size);
-  TF_LITE_MICRO_EXPECT_EQ(1, context.tensors[2].dims->data[0]);
-  TF_LITE_MICRO_EXPECT_EQ(4, context.tensors[2].bytes);
-  TF_LITE_MICRO_EXPECT_NE(nullptr, context.tensors[2].data.raw);
-  TF_LITE_MICRO_EXPECT_EQ(
-      0, (reinterpret_cast<std::uintptr_t>(context.tensors[2].data.raw) %
-          kExpectedAlignment));
-}
-
 TF_LITE_MICRO_TESTS_END
