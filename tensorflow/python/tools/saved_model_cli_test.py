@@ -244,7 +244,7 @@ Defined Functions:
     with captured_output() as (out, err):
       saved_model_cli.show(args)
     output = out.getvalue().strip()
-    exp_out = 'The given SavedModel contains the following tag-sets:\nserve'
+    exp_out = 'The given SavedModel contains the following tag-sets:\n\'serve\''
     self.assertMultiLineEqual(output, exp_out)
     self.assertEqual(err.getvalue().strip(), '')
 

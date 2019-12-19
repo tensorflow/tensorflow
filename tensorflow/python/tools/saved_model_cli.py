@@ -62,7 +62,7 @@ def _show_tag_sets(saved_model_dir):
   tag_sets = saved_model_utils.get_saved_model_tag_sets(saved_model_dir)
   print('The given SavedModel contains the following tag-sets:')
   for tag_set in sorted(tag_sets):
-    print(', '.join(sorted(tag_set)))
+    print('%r' % ', '.join(sorted(tag_set)))
 
 
 def _show_signature_def_map_keys(saved_model_dir, tag_set):
