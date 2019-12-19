@@ -45839,6 +45839,17 @@ func UnsortedSegmentJoin(scope *Scope, inputs tf.Output, segment_ids tf.Output, 
 	return op.Output(0)
 }
 
+// SerializeIteratorAttr is an optional argument to SerializeIterator.
+type SerializeIteratorAttr func(optionalAttr)
+
+// SerializeIteratorExternalStatePolicy sets the optional external_state_policy attribute to value.
+// If not specified, defaults to 0
+func SerializeIteratorExternalStatePolicy(value int64) SerializeIteratorAttr {
+	return func(m optionalAttr) {
+		m["external_state_policy"] = value
+	}
+}
+
 // Converts the given `resource_handle` representing an iterator to a variant tensor.
 //
 // Arguments:
@@ -45846,15 +45857,20 @@ func UnsortedSegmentJoin(scope *Scope, inputs tf.Output, segment_ids tf.Output, 
 //
 // Returns A variant tensor storing the state of the iterator contained in the
 // resource.
-func SerializeIterator(scope *Scope, resource_handle tf.Output) (serialized tf.Output) {
+func SerializeIterator(scope *Scope, resource_handle tf.Output, optional ...SerializeIteratorAttr) (serialized tf.Output) {
 	if scope.Err() != nil {
 		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
 	}
 	opspec := tf.OpSpec{
 		Type: "SerializeIterator",
 		Input: []tf.Input{
 			resource_handle,
 		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
