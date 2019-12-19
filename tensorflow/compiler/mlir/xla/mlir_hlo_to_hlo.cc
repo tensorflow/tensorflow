@@ -115,6 +115,15 @@ static std::vector<int64> Convert_broadcast_dimensions(
   return ConvertDenseIntAttr(*broadcast_dimensions);
 }
 
+// Converts StringRef to xla FftType enum
+static xla::FftType Convert_fft_type(llvm::StringRef fft_type_str) {
+  xla::FftType fft_type_enum;
+  // Illegal fft_type string would be caught by the verifier, so 'FftType_Parse'
+  // call below should never return false.
+  if (!FftType_Parse(fft_type_str, &fft_type_enum)) return xla::FftType::FFT;
+  return fft_type_enum;
+}
+
 // Convert a nx2 dense attribute to a list of tuples. This is the way padding
 // is defined in hlo.
 static std::vector<std::pair<int64, int64>> Convert_padding(
@@ -163,6 +172,7 @@ I64_ELEMENTS_ATTR_TO_VECTOR(start_indices);
 I64_ELEMENTS_ATTR_TO_VECTOR(limit_indices);
 I64_ELEMENTS_ATTR_TO_VECTOR(strides);
 I64_ELEMENTS_ATTR_TO_VECTOR(slice_sizes);
+I64_ELEMENTS_ATTR_TO_VECTOR(fft_length);
 
 #undef I64_ELEMENTS_ATTR_TO_VECTOR
 

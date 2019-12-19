@@ -356,6 +356,18 @@ func @main(%arg0: tensor<3x4xi32>, %arg1: tensor<4x5xi32>) -> tensor<3x5xi32> {
 // -----
 
 // CHECK:  HloModule
+func @main(%arg0: tensor<3x9xf32>) -> tensor<3x5xcomplex<f32>> {
+  %0 = "xla_hlo.fft"(%arg0) {fft_length = dense<9> : tensor<1xi64>, fft_type = "RFFT"} : (tensor<3x9xf32>) -> tensor<3x5xcomplex<f32>>
+  return %0 : tensor<3x5xcomplex<f32>>
+}
+
+// CHECK:  ENTRY
+// CHECK:  [[ARG:%.*]] = f32[3,9] parameter(0)
+// CHECK:  c64[3,5] fft(f32[3,9] [[ARG]]), fft_type=RFFT, fft_length={9}
+
+// -----
+
+// CHECK:  HloModule
 func @main(%arg0: tensor<200x100x300xf32>, %arg1: tensor<10x2xi32>) -> tensor<10x300xf32> {
   // CHECK:  [[ARG0:%.*]] = f32[200,100,300] parameter(0)
   // CHECK:  [[ARG1:%.*]] = s32[10,2] parameter(1)

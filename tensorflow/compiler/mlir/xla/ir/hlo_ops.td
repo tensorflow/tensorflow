@@ -846,9 +846,6 @@ def HLO_FftOp: HLO_Op<"fft", [NoSideEffect]>, BASE_HLO_FftOp {
   );
 
   let results = (outs HLO_Tensor);
-
-  // TODO(b/129422361) Attributes are not supported by the codegen.
-  let hasCustomHLOConverter = 1;
 }
 
 def GatherDimensionNumbers : StructAttr<"GatherDimensionNumbers", HLO_Dialect,
