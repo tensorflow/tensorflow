@@ -4829,6 +4829,23 @@ py_test(
 )
 
 cuda_py_test(
+    name = "sobol_ops_test",
+    size = "small",
+    srcs = ["ops/sobol_ops_test.py"],
+    additional_deps = [
+        ":framework_for_generated_wrappers",
+        ":framework_test_lib",
+        ":math_ops",
+        ":platform_test",
+        "//third_party/py/numpy",
+    ],
+    kernels = [
+        "//tensorflow/core/kernels:libtfkernel_sobol_op.so",
+    ],
+    tags = ["no_windows_gpu"],
+)
+
+cuda_py_test(
     name = "special_math_ops_test",
     size = "medium",
     srcs = ["ops/special_math_ops_test.py"],

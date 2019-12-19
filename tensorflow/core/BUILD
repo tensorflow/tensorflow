@@ -1254,7 +1254,9 @@ cc_library(
 cc_library(
     name = "dynamic_kernels_impl",
     visibility = [":__subpackages__"],
-    deps = [],
+    deps = [
+        "//tensorflow/core/kernels:sobol_op",
+    ],
 )
 
 cc_library(

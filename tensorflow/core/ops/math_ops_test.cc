@@ -593,4 +593,15 @@ TEST(MathOpsTest, Bincount_ShapeFn) {
   INFER_OK(op, "[?];[];?", "[?]");
   INFER_OK(op, "[?];[];[?]", "[?]");
 }
+
+TEST(MathOpsTest, SobolSample) {
+  ShapeInferenceTestOp op("SobolSample");
+
+  // All inputs should be scalar.
+  INFER_ERROR("must be rank 0", op, "[1];?;?");
+  INFER_ERROR("must be rank 0", op, "?;[1];?");
+  INFER_ERROR("must be rank 0", op, "?;?;[1]");
+
+  INFER_OK(op, "[];[];[]", "[?]");
+}
 }  // end namespace tensorflow

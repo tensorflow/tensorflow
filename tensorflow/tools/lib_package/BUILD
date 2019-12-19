@@ -161,6 +161,7 @@ genrule(
         "@png//:LICENSE",
         "@com_google_protobuf//:LICENSE",
         "@snappy//:COPYING",
+        "@sobol_data//:LICENSE",
         "@zlib_archive//:zlib.h",
         "@six_archive//:LICENSE",
     ] + select({
@@ -232,6 +233,7 @@ genrule(
         "@png//:LICENSE",
         "@com_google_protobuf//:LICENSE",
         "@snappy//:COPYING",
+        "@sobol_data//:LICENSE",
         "@zlib_archive//:zlib.h",
         "@grpc//:LICENSE",
         "@grpc//third_party/address_sorting:LICENSE",
