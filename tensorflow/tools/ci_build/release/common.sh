@@ -204,7 +204,7 @@ function install_macos_pip_deps {
   # TODO(aselle): Change all these to be --user instead of sudo.
   ${SUDO_CMD} ${PIP_CMD} install --upgrade setuptools==39.1.0
   ${SUDO_CMD} ${PIP_CMD} install keras_preprocessing==1.1.0 --no-deps
-  ${SUDO_CMD} ${PIP_CMD} install --upgrade mock portpicker scipy==1.4.1 grpcio
+  ${SUDO_CMD} ${PIP_CMD} install --upgrade mock portpicker scipy grpcio
   ${SUDO_CMD} ${PIP_CMD} install six==1.12.0
   ${SUDO_CMD} ${PIP_CMD} install scikit-learn==0.20.3
   ${SUDO_CMD} ${PIP_CMD} install numpy==1.14.5
