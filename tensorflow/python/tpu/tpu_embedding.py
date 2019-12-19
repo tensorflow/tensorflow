@@ -22,6 +22,7 @@ import collections
 import copy
 import math
 import re
+
 import six
 
 from tensorflow.core.protobuf.tpu import optimization_parameters_pb2

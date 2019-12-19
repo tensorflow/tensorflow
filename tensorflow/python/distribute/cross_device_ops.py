@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import collections
 import enum
+
 import six
 
 from tensorflow.python.client import device_lib

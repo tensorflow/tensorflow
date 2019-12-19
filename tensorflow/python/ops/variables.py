@@ -21,6 +21,7 @@ import enum  # pylint: disable=g-bad-import-order
 import itertools
 import functools
 import os
+
 import six
 
 from tensorflow.core.framework import attr_value_pb2

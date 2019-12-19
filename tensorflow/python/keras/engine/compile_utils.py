@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
+
 import six
 
 from tensorflow.python.keras import losses as losses_mod
