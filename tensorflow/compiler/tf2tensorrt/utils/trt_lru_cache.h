@@ -21,6 +21,7 @@ limitations under the License.
 #include <unordered_map>
 
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
+#include "tensorflow/compiler/tf2tensorrt/utils/shape_optimization_profiles.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_allocator.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_int8_calibrator.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
@@ -183,6 +184,9 @@ class TRTEngineCacheResource : public ResourceBase {
   // TODO(hinsu): Use different calibration context for the available shapes and
   // attach it to each item of the cache.
   std::unique_ptr<CalibrationContext> calib_ctx_;
+
+  // Optimization Profiles
+  TrtShapeOptimizationProfile profiles_;
 };
 
 #endif  // GOOGLE_TENSORRT

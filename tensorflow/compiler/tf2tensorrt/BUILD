@@ -17,7 +17,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
 load(
-    "//tensorflow/core/platform:build_config.bzl",
+    "//tensorflow/core/platform:default/build_config.bzl",
     "tf_additional_all_protos",
     "tf_proto_library",
 )
@@ -240,10 +240,12 @@ tf_custom_op_py_library(
 tf_cuda_library(
     name = "trt_resources",
     srcs = [
+        "utils/trt_shape_optimization_profiles.cc",
         "utils/trt_int8_calibrator.cc",
         "utils/trt_lru_cache.cc",
     ],
     hdrs = [
+        "utils/trt_shape_optimization_profiles.h",
         "utils/trt_int8_calibrator.h",
         "utils/trt_lru_cache.h",
     ],
