@@ -107,4 +107,23 @@ cc_test(
     ],
 )
 
+cc_binary(
+    name = "libtensorflowlite_hexagon_delegate.so",
+    linkopts = [
+        "-Wl,-soname=libtensorflowlite_hexagon_delegate.so",
+    ] + select({
+        "//tensorflow:windows": [],
+        "//conditions:default": [
+            "-fvisibility=hidden",
+        ],
+    }),
+    linkshared = 1,
+    linkstatic = 1,
+    tags = [
+        "nobuilder",
+        "notap",
+    ],
+    deps = [":hexagon_delegate"],
+)
+
 exports_files(["version_script.lds"])
