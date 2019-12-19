@@ -2574,16 +2574,15 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
   // here for lowering to HLO.
   TF::PopulateLoweringTFPatterns(context, &patterns);
   patterns.insert<
-      ConvertArgMaxOp, ConvertBF16FloorDivOp, ConvertConv2D,
-      ConvertFusedBatchNormV3Op, ConvertEinsumOp, ConvertMaxPoolOp,
-      ConvertRangeOp, ConvertSigmoidOp, ConvertSizeOp, ConvertMaxPoolOp,
-      ConvertRangeOp, ConvertSigmoidOp,
+      ConvertAllOp, ConvertAnyOp, ConvertArgMaxOp, ConvertBF16FloorDivOp,
+      ConvertConv2D, ConvertConv2DBackpropFilterOp,
+      ConvertConv2DBackpropInputOp, ConvertEinsumOp, ConvertFusedBatchNormV3Op,
+      ConvertMaxOp, ConvertMaxPoolOp, ConvertMaxPoolGradOp, ConvertMeanOp,
+      ConvertOneHotOp, ConvertRangeOp, ConvertSigmoidOp, ConvertSizeOp,
       ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
       ConvertSoftmaxOp<TF::SoftmaxOp, false>, ConvertSplitOp, ConvertSplitVOp,
-      ConvertStridedSliceOp, ConvertStridedSliceGradOp, ConvertTopKV2Op,
-      ConvertUnpackOp, ConvertMeanOp, ConvertSumOp, ConvertMaxOp, ConvertAllOp,
-      ConvertAnyOp, ConvertTileOp, ConvertMaxPoolGradOp, ConvertOneHotOp,
-      ConvertConv2DBackpropInputOp, ConvertConv2DBackpropFilterOp,
+      ConvertStridedSliceOp, ConvertStridedSliceGradOp, ConvertSumOp,
+      ConvertTileOp, ConvertTopKV2Op, ConvertUnpackOp,
       ConvertUnsortedSegmentMaxOp, ConvertUnsortedSegmentMinOp,
       ConvertUnsortedSegmentProdOp, ConvertUnsortedSegmentSumOp>(
       op->getContext());
