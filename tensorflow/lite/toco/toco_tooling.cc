@@ -67,7 +67,7 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new PropagateActivationFunctionIntoConstants);
   transformations->Add(new PropagateArrayDataTypes);
   transformations->Add(new PropagateFixedSizes);
-  transformations->Add(new RemoveSuccesiveTranspose);
+  transformations->Add(new RemoveSuccessiveTranspose);
   transformations->Add(new RemoveTensorFlowAssert);
   transformations->Add(new RemoveTensorFlowIdentity);
   transformations->Add(new RemoveTrivialConcatenation);
@@ -415,10 +415,10 @@ tensorflow::Status TransformWithStatus(const TocoFlags& toco_flags,
   // is:
   //    Input [1, 20, 1, 20, 1, 64] * ones [1, 3, 1, 3, 1, 1]
   // The problem is if the input is quantized, then the quantization parameters
-  // will be slightly different for the input and the output. (althought the
+  // will be slightly different for the input and the output. (although the
   // difference is really small).
   // But, since we're changing this pattern to be pack-based which enforce
-  // the quantization paramters to be exactly the same.
+  // the quantization parameters to be exactly the same.
   // So we have to wait for all quantization parameters being resolved and
   // propagated and create our own.
   // We may need to revisit this logic later.

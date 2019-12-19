@@ -1248,7 +1248,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   }
 
   // Create a scratch buffer tensor for float case and hybrid case.
-  // TODO(jianlijianli): Create a is_float boolean and reorginze the temporary
+  // TODO(jianlijianli): Create a is_float boolean and reorganize the temporary
   // buffer allocation logic.
   if (!is_integer) {
     node->temporaries->data[0] = op_data->scratch_tensor_index;

@@ -171,7 +171,7 @@ bool ParseTocoFlagsFromCommandLineFlags(
            "Ignored if the output format is not TFLite."),
       Flag("quantize_to_float16", parsed_flags.quantize_to_float16.bind(),
            parsed_flags.quantize_to_float16.default_value(),
-           "Used in conjuction with post_training_quantize. Specifies that "
+           "Used in conjunction with post_training_quantize. Specifies that "
            "the weights should be quantized to fp16 instead of the default "
            "(int8)"),
       Flag("quantize_weights", parsed_flags.quantize_weights.bind(),

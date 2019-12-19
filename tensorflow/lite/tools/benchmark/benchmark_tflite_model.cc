@@ -456,7 +456,7 @@ BenchmarkTfLiteModel::CreateRandomTensorData(const TfLiteTensor& t,
 #else
       // You need to build with -DTFLITE_ENABLE_FP16_CPU_BENCHMARKS=1 using a
       // compiler that supports __fp16 type. Note: when using Clang and *not*
-      // linking with compiler-rt, a defintion of __gnu_h2f_ieee and
+      // linking with compiler-rt, a definition of __gnu_h2f_ieee and
       // __gnu_f2h_ieee must be supplied.
       TFLITE_LOG(FATAL) << "Populating the tensor " << t.name
                         << " of type FLOAT16 is disabled.";

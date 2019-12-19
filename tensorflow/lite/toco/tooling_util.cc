@@ -929,7 +929,7 @@ void CheckNonExistentIOArrays(const Model& model) {
   }
   static constexpr char general_comment[] =
       "Is it a typo? This should not happen. If you trigger this error "
-      "please send a bug report (with code to reporduce this error), to the "
+      "please send a bug report (with code to reproduce this error), to the "
       "TensorFlow Lite team.";
   for (const string& output_array : model.flags.output_arrays()) {
     if (IsConstantParameterArray(model, output_array)) {

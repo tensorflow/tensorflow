@@ -671,7 +671,7 @@ void ProcessConcatenationOperator(Model* model, ConcatenationOperator* op) {
       break;
     }
   }
-  // Determine the concat size, and enfore that all inputs have
+  // Determine the concat size, and enforce that all inputs have
   // the same dimensions count.
   int concat_size = 0;
   for (const auto& input_name : op->inputs) {
@@ -1098,7 +1098,7 @@ void ProcessUnidirectionalSequenceLstmOperator(
   constexpr int kInputActivationStateTensor = 18;
   constexpr int kInputCellStateTensor = 19;
 
-  // TFlite intepreter does not support array which is variable and contains a
+  // TFlite interpreter does not support array which is variable and contains a
   // buffer (see b/115961645 for more discussion).
   // The follow block remove buffer from the array to work around the
   // restriction, as a consequence, downstream applications should not
@@ -1142,7 +1142,7 @@ void ProcessUnidirectionalSequenceRnnOperator(
   }
 
   constexpr int kHiddenStateTensor = 4;
-  // TFlite intepreter does not support array which is variable and contains a
+  // TFlite interpreter does not support array which is variable and contains a
   // buffer (see b/115961645 for more discussion).
   // The follow block remove buffer from the array to work around the
   // restriction, as a consequence, downstream applications should not
@@ -1651,7 +1651,7 @@ void ProcessStridedSliceOperator(Model* model, StridedSliceOperator* op) {
   }
 
   if (op->ellipsis_mask != 0) {
-    // Something like LOG_FIRST_N(WARNING, 10) would be prefferable to reduce
+    // Something like LOG_FIRST_N(WARNING, 10) would be preferable to reduce
     // log noise. However, the TensorFlow logging library does not appear to
     // support this.
     LOG(WARNING) << "Skipping StridedSlice op with output \"" << op->outputs[0]
@@ -2427,7 +2427,7 @@ void ProcessMatrixSetDiagOperator(Model* model, MatrixSetDiagOperator* op) {
       break;
     case OperatorType::kCTCBeamSearchDecoder:
       // The sizes of the outputs are only known in runtime based on the input.
-      // Ignore shape progapation here and defer that to the interpreter.
+      // Ignore shape propagation here and defer that to the interpreter.
       break;
     case OperatorType::kMatrixSetDiagV2:
       // MatrixSetDiagV2 operators are converted to MatrixSetDiag,

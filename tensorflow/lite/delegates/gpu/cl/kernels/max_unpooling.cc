@@ -25,7 +25,7 @@ namespace gpu {
 namespace cl {
 namespace {
 
-std::string GetMaxUnoolingKernelCode(
+std::string GetMaxUnroolingKernelCode(
     const OperationDef& op_def, const CLDevice& device,
     const std::vector<ElementwiseOperation*>& linked_operations) {
   TensorCodeGenerator src("src_data",
@@ -219,7 +219,7 @@ MaxUnpooling& MaxUnpooling::operator=(MaxUnpooling&& kernel) {
 }
 
 Status MaxUnpooling::Compile(const CreationContext& creation_context) {
-  const auto code = GetMaxUnoolingKernelCode(
+  const auto code = GetMaxUnroolingKernelCode(
       definition_, *creation_context.device, linked_operations_);
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", *creation_context.context,

@@ -587,7 +587,7 @@ class _LiteAggregateOperand(_LiteOperand):
 
     In particular, if you have 4 inputs to a hint stub, this will be the
     node that you can use as an output. I.e. you have 4 timesteps from a
-    static rnn, then a fused UnidriecitonalLSTM will expect 1 input with
+    static rnn, then a fused UndirecitonalLSTM will expect 1 input with
     all 4 time steps. So here we make a pack and return the output name of
     that pack.
 

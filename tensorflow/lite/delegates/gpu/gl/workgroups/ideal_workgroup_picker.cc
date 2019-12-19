@@ -34,7 +34,7 @@ namespace {
 
 // Describes the ideal convolution for the specific operation case
 // Case here means specific "kernel + strides" conbination for specific
-// operatoins type, not sizes of input and output tensors, they can be any.
+// operations type, not sizes of input and output tensors, they can be any.
 struct IdealByCase {
   bool ParamsAccepted(OperationType in_op_type, HW in_kernel,
                       HW in_strides) const {

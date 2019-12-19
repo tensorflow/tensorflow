@@ -500,7 +500,7 @@ def _get_tf1_flags(parser):
   parser.add_argument(
       "--conversion_summary_dir",
       type=str,
-      help=("Full filepath to store the conversion logs, which inclues graphviz"
+      help=("Full filepath to store the conversion logs, which includes graphviz"
             " of the model before/after the conversion, an HTML report and the "
             "conversion proto buffers. This will only be generated when passing"
             " --experimental_new_converter"))

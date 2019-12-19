@@ -136,7 +136,7 @@ void Interpreter::SetExternalContext(TfLiteExternalContextType type,
   // If it's overwritten here, we will release the resource of the internally
   // owned external context.
   // Note: the 'max thread count' info associated with the overwritten context
-  // will be lost here, and such info is now detemined by the new context, thus
+  // will be lost here, and such info is now determined by the new context, thus
   // affecting how much parallelism a TFLite op would have.
   if (kTfLiteCpuBackendContext == type &&
       external_contexts_[kTfLiteCpuBackendContext] ==

@@ -178,7 +178,7 @@ bool TryOneUniformSoftmax() {
   return true;
 }
 
-// Runs the Int8 quatnized Softmax and compares reference implementation with
+// Runs the Int8 quantized Softmax and compares reference implementation with
 // optimized implementation.
 void RunOneSoftmaxTestInt8(const int8* input_data,
                            const RuntimeShape& shape_common, int32 input_offset,
@@ -209,7 +209,7 @@ void RunOneSoftmaxTestInt8(const int8* input_data,
 
   CheckOutputData<int8_t>(optimized_quant_softmax_output.data(),
                           reference_quant_softmax_output.data(), shape_common,
-                          "Int8 quant refernece vs optimized", true);
+                          "Int8 quant reference vs optimized", true);
 }
 
 // This function picks some random Softmax params, which are checked for

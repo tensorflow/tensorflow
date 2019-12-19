@@ -870,7 +870,7 @@ inline void LstmStepHybrid(
 //
 // Layer norm coefficients of size 'n_cell', representing diagonal matrices.
 //   layer_norm_input_weight_ptr    - optional
-//   layer_norm_forput_weight_ptr   - optional
+//   layer_norm_forget_weight_ptr   - optional
 //   layer_norm_cell_weight_ptr     - optional
 //   layer_norm_output_weight_ptr   - optional
 //

@@ -2766,11 +2766,11 @@ TEST_P(LSTMOpTest, BlackBoxTestWithAuxInputZeroAuxWeight) {
   // Aux input and input are the same, so we should observe the same outputs
   // as there's no aux input.
   lstm.SetAuxInput(0, batch0_start, batch0_end);
-  std::vector<float> dummpy_weights(n_cell * n_input, 0.0f);
-  lstm.SetAuxInputToInputWeights(dummpy_weights);
-  lstm.SetAuxInputToForgetWeights(dummpy_weights);
-  lstm.SetAuxInputToCellWeights(dummpy_weights);
-  lstm.SetAuxInputToOutputWeights(dummpy_weights);
+  std::vector<float> dummy_weights(n_cell * n_input, 0.0f);
+  lstm.SetAuxInputToInputWeights(dummy_weights);
+  lstm.SetAuxInputToForgetWeights(dummy_weights);
+  lstm.SetAuxInputToCellWeights(dummy_weights);
+  lstm.SetAuxInputToOutputWeights(dummy_weights);
 
   lstm.Invoke();
 

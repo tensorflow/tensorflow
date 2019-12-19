@@ -36,7 +36,7 @@ namespace gpu {
 // gap;
 // - If such a gap has been found, current tensor should be allocated into this
 // gap. Otherwise we can allocate it after the rightmost tensor, which usage
-// interval intersects with usage inteval of current tensor. So we assign
+// interval intersects with usage interval of current tensor. So we assign
 // corresponding offset to current tensor and the tensor becomes assigned.
 Status GreedyBySizeAssignment(
     const std::vector<TensorUsageRecord<size_t>>& usage_records,
@@ -47,7 +47,7 @@ Status GreedyBySizeAssignment(
 // - We have tensor usage records of all intermideate tensors as an input. Each
 // record consists of tensor size, first and last tasks, that use it. Let's call
 // [first_task..last_task] a tensor usage interval;
-// - Distance between two usage intervals is the absoulte difference between
+// - Distance between two usage intervals is the absolute difference between
 // closest tasks in their intervals. If two usage intervals don't intersect,
 // than the distance between them is positive;
 // - Calculate positional maximums vector, e.g. the vector of lower bounds on

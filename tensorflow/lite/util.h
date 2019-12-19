@@ -43,7 +43,7 @@ TfLiteIntArray* ConvertVectorToTfLiteIntArray(const std::vector<int>& input);
 
 // Converts an array (of the given size) to a `TfLiteIntArray`. The caller
 // takes ownership of the returned pointer, and must make sure 'dims' has at
-// least 'rank' elemnts.
+// least 'rank' elements.
 TfLiteIntArray* ConvertArrayToTfLiteIntArray(const int rank, const int* dims);
 
 // Checks whether a `TfLiteIntArray` and an int array have matching elements.
@@ -65,7 +65,7 @@ TfLiteStatus GetSizeOfType(TfLiteContext* context, const TfLiteType type,
                            size_t* bytes);
 
 // Creates a stub TfLiteRegistration instance with the provided
-// `custom_op_name`. The op will fail if invoked, and is useful as a placeholde
+// `custom_op_name`. The op will fail if invoked, and is useful as a placeholder
 // to defer op resolution.
 // Note that `custom_op_name` must remain valid for the returned op's lifetime..
 TfLiteRegistration CreateUnresolvedCustomOp(const char* custom_op_name);

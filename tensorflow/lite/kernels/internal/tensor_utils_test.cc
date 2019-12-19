@@ -380,14 +380,14 @@ TEST(uKernels, QuantMatrixBatchVectorMultiplyAccumulate8x8_16Test) {
   const int32_t multiplier = 2080364544;
   const int32_t shift = -2;
 
-  std::vector<int32_t> scrach(2 * 9, 0);
+  std::vector<int32_t> scratch(2 * 9, 0);
   std::vector<int16_t> output = {10, 2, 33, 4, 5,  6,  65, 4,  3,
                                  52, 1, 2,  8, -1, -2, 11, 17, -18};
   MatrixBatchVectorMultiplyAccumulate(
       input.data(), input_zeropoint_times_weights.data(),
       input_to_gate_weights.data(), multiplier, shift,
       /*n_batch=*/2, /*n_input=*/30, /*n_output=*/9, /*output_zp=*/0,
-      scrach.data(), output.data(), &context);
+      scratch.data(), output.data(), &context);
   const std::vector<int16_t> expected_output = {
       -210, 331,  153, 139, -570, -657, 258, 515,  -495,
       91,   -243, -73, 603, -744, -269, 169, -748, -174,
@@ -468,7 +468,7 @@ TEST(uKernels, HybridMatrixBatchVectorMultiplyAccumulate8x8_16Test) {
   EXPECT_THAT(output2, testing::ElementsAreArray(expected_output));
 }
 
-// Qautnized matmul with 2 * 30 input and 9 * 30 matrix.
+// Quantized matmul with 2 * 30 input and 9 * 30 matrix.
 TEST(uKernels, QuantMatrixBatchVectorMultiplyAccumulate8x8_8Test) {
   CpuBackendContext context;
   const std::vector<int8_t> input = {
@@ -506,11 +506,11 @@ TEST(uKernels, QuantMatrixBatchVectorMultiplyAccumulate8x8_8Test) {
 
   std::vector<int8_t> output = {1, 2, 3, 4, 5,  6,  5,  4,  3,
                                 2, 1, 2, 8, -1, -2, 11, 17, 18};
-  std::vector<int32_t> scrach(2 * 9, 0);
+  std::vector<int32_t> scratch(2 * 9, 0);
   MatrixBatchVectorMultiplyAccumulate(
       input.data(), input_zeropoint_times_weights.data(),
       input_to_gate_weights.data(), multiplier, shift,
-      /*n_batch=*/2, /*n_input=*/30, /*n_output=*/9, output_zp, scrach.data(),
+      /*n_batch=*/2, /*n_input=*/30, /*n_output=*/9, output_zp, scratch.data(),
       output.data(), &context);
   const std::vector<int8_t> expected_output = {
       5,   -9, -2, -30, -5, -11, -22, -18, 18,

@@ -71,7 +71,7 @@ class TrivialResolver : public OpResolver {
   TfLiteRegistration* constant_return_;
 };
 
-TEST(BasicFlatBufferModel, TestNonExistantFiles) {
+TEST(BasicFlatBufferModel, TestNonExistentFiles) {
   ASSERT_TRUE(!FlatBufferModel::BuildFromFile("/tmp/tflite_model_1234"));
 }
 

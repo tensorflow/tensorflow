@@ -474,8 +474,8 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
         tensor_property_9.number_of_bits = 16;
         tensor_property_9.symmetric = true;
         // Without layer norm, we choose to quantize bias with the scale of
-        // input and its correpsonding weight. The other choice will
-        // be to ues the scale of recurrent and its correpsonding weight but we
+        // input and its corresponding weight. The other choice will
+        // be to ues the scale of recurrent and its corresponding weight but we
         // choose to use the smaller scale, which means higher resolution.
         TensorProperty tensor_property_12;
         tensor_property_12.use_derived_scale = true;
@@ -526,7 +526,7 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
         };
         property.outputs = {{0, {}}};
         property.intermediates = {
-            // Without layer normliazation, intermediate tensors 0, 1, 2, 3 are
+            // Without layer normalization, intermediate tensors 0, 1, 2, 3 are
             // not used and and their quantization parameters are ignored.
             {0, {}},
             {1, {}},
@@ -541,8 +541,8 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       if (!op_variant.use_layer_norm && op_variant.use_projection &&
           !op_variant.use_peephole) {
         // Without layer norm, we choose to quantize bias with the scale of
-        // input and its correpsonding weight. The other choice will
-        // be to ues the scale of recurrent and its correpsonding weight but we
+        // input and its corresponding weight. The other choice will
+        // be to ues the scale of recurrent and its corresponding weight but we
         // choose to use the smaller scale, which means higher resolution.
         TensorProperty tensor_property_12;
         tensor_property_12.use_derived_scale = true;
@@ -590,7 +590,7 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
         };
         property.outputs = {{0, {}}};
         property.intermediates = {
-            // Without layer normliazation, intermediate tensors 0, 1, 2, 3 are
+            // Without layer normalization, intermediate tensors 0, 1, 2, 3 are
             // not used and their quantization parameters are ignored.
             {0, {}},
             {1, {}},
@@ -608,8 +608,8 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
         tensor_property_9.number_of_bits = 16;
         tensor_property_9.symmetric = true;
         // Without layer norm, we choose to quantize bias with the scale of
-        // input and its correpsonding weight. The other choice will
-        // be to ues the scale of recurrent and its correpsonding weight but we
+        // input and its corresponding weight. The other choice will
+        // be to ues the scale of recurrent and its corresponding weight but we
         // choose to use the smaller scale, which means higher resolution.
         TensorProperty tensor_property_12;
         tensor_property_12.use_derived_scale = true;
@@ -654,7 +654,7 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
         };
         property.outputs = {{0, {}}};
         property.intermediates = {
-            // Without layer normliazation, intermediate tensors 0, 1, 2, 3 are
+            // Without layer normalization, intermediate tensors 0, 1, 2, 3 are
             // not used and their quantization parameters are ignored.
             {0, {}},
             {1, {}},
@@ -674,8 +674,8 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       if (!op_variant.use_layer_norm && !op_variant.use_projection &&
           !op_variant.use_peephole) {
         // Without layer norm, we choose to quantize bias with the scale of
-        // input and its correpsonding weight. The other choice will
-        // be to ues the scale of recurrent and its correpsonding weight but we
+        // input and its corresponding weight. The other choice will
+        // be to ues the scale of recurrent and its corresponding weight but we
         // choose to use the smaller scale, which means higher resolution.
         TensorProperty tensor_property_12;
         tensor_property_12.use_derived_scale = true;
@@ -717,7 +717,7 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
         };
         property.outputs = {{0, {}}};
         property.intermediates = {
-            // Without layer normliazation, intermediate tensors 0, 1, 2, 3 are
+            // Without layer normalization, intermediate tensors 0, 1, 2, 3 are
             // not used and their quantization parameters are ignored.
             {0, {}},
             {1, {}},

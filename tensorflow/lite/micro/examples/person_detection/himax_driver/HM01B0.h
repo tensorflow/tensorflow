@@ -265,7 +265,7 @@ uint32_t hm01b0_get_modelid(hm01b0_cfg_t *psCfg, uint16_t *pui16MID);
 //! @param ui32ScriptCmdNum     - No. of commands in HM01B0 initialization
 //! script.
 //!
-//! This function initilizes HM01B0 with a given script.
+//! This function initializes HM01B0 with a given script.
 //!
 //! @return Error code.
 //

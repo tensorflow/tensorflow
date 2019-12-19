@@ -2337,7 +2337,7 @@ void NeonSymmetricQuantizeFloats(const float* values, const int size,
     const int32x4_t f2i0_i32x4 = RoundToNearest(mul0_f32x4);
     const int32x4_t f2i1_i32x4 = RoundToNearest(mul1_f32x4);
 
-    // Implements the vectorized version of the folowing block:
+    // Implements the vectorized version of the following block:
     //  quantized_values[i] = std::min(kScale, std::max(-kScale,
     //  quantized_value));
     int32x4_t max0_i32x4 = vmaxq_s32(f2i0_i32x4, neg_scale_i32x4);

@@ -971,7 +971,7 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     quantized_converter.experimental_new_converter = enable_mlir
     quantized_converter.optimizations = [lite.Optimize.DEFAULT]
     quantized_converter.target_spec.supported_types = [lite.constants.FLOAT16]
-    # Specifiy only int8 builtin ops
+    # Specify only int8 builtin ops
     quantized_converter.target_spec.supported_ops = [
         lite.OpsSet.TFLITE_BUILTINS_INT8
     ]

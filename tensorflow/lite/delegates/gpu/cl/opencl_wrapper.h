@@ -620,7 +620,7 @@ extern PFN_clEnqueueReleaseGLObjects clEnqueueReleaseGLObjects;
 // cl_khr_egl_event extension
 extern PFN_clCreateEventFromEGLSyncKHR clCreateEventFromEGLSyncKHR;
 
-// For convinient image creation
+// For convenient image creation
 // It uses clCreateImage if it available (clCreateImage available since cl 1.2)
 // otherwise it will use legacy clCreateImage2D
 cl_mem CreateImage2DLegacy(cl_context context, cl_mem_flags flags,

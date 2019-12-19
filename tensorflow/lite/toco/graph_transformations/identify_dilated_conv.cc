@@ -225,7 +225,7 @@ bool ResolveDilatedConv(Model* model, Operator* conv_base_op, Operator* stb_op,
         dilation_factor);
     if (changed) {
       LOG(INFO)
-          << "Replaced sub-netork with Dilated DepthwiseConv2D op outputting \""
+          << "Replaced sub-network with Dilated DepthwiseConv2D op outputting \""
           << conv_base_op->outputs[0] << "\".";
     }
   }
