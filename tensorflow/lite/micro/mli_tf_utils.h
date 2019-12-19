@@ -16,44 +16,92 @@ limitations under the License.
 #ifndef MLI_TF_UTILS_H_
 #define MLI_TF_UTILS_H_
 
-#include "mli_api.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
-#include <math.h>
 
-#define Q15_FRAC_BITS 15
+#include "mli_api.h"
+
+constexpr int kFracBitsQ15 = 15;
 
 namespace tflite {
 namespace ops {
 namespace micro {
 
-template <typename datatype>
-static void TfLiteTensor2mli_tensor(const TfLiteTensor* tfT, mli_tensor* mliT) {
+template <typename datatype> 
+static void ConvertToMliTensorData(const TfLiteTensor* tfT, mli_tensor* mliT){
   mliT->data = (void*)GetTensorData<datatype>(tfT);
-  mliT->capacity = tfT->bytes;
-  for (int i = 0; i <  GetTensorShape(tfT).DimensionsCount(); i++) {
-    mliT->shape[i] =  GetTensorShape(tfT).Dims(i);
-  }
-  mliT->rank = GetTensorShape(tfT).DimensionsCount();
   if (tfT->type == kTfLiteInt8) {
     mliT->el_type = MLI_EL_ASYM_I8;
   } else if (tfT->type == kTfLiteInt32) {
     mliT->el_type = MLI_EL_ASYM_I32;
   } else {
-    //return kTfLiteError;
+    TF_LITE_FATAL("Wrong data type. Expected int8 or int32.");
   }
-  // for now only support per tensor quantization paramters
+
+  mliT->capacity = tfT->bytes;
+  mliT->rank = GetTensorShape(tfT).DimensionsCount();
+  for (int i = 0; i < GetTensorShape(tfT).DimensionsCount(); i++) {
+    mliT->shape[i] = GetTensorShape(tfT).Dims(i);
+  }
+}
+
+
+static void ConvertToMliQuantParams(const TfLiteTensor* tfT, mli_tensor* mliT){
   mliT->el_params.asym.dim = -1;
   mliT->el_params.asym.zero_point.i16 = tfT->params.zero_point;
   float fscale = tfT->params.scale;
   int exp;
   frexpf(fscale, &exp);
-  int frac_bits = Q15_FRAC_BITS - exp;
+  int frac_bits = kFracBitsQ15 - exp;
   int32_t iscale = (1<<frac_bits) * fscale + 0.5f;
   mliT->el_params.asym.scale_frac_bits = frac_bits;
   mliT->el_params.asym.scale.i16 = (int16_t)iscale;
 }
 
+
+static void ConvertToMliQuantParamsPerChannel(const TfLiteTensor* tfT, mli_tensor* mliT){
+  //mli tensor scale and zero_point arrays should be allocated at this point
+  TFLITE_DCHECK_NE(mliT->el_params.asym.scale.pi16, 0);
+  TFLITE_DCHECK_NE(mliT->el_params.asym.zero_point.pi16, 0);
+  
+  //get per channel quantization parameters
+  const auto* affine_quantization = reinterpret_cast<TfLiteAffineQuantization*>(
+        tfT->quantization.params);
+  mliT->el_params.asym.dim = affine_quantization->quantized_dimension;
+
+  //find frac_bits
+  const int num_channels = mliT->shape[affine_quantization->quantized_dimension];
+  int min_frac_bits;
+  float* fscale = affine_quantization->scale->data;
+  for (int i = 0; i < num_channels; i++) {
+    int exp;
+    frexpf(fscale[i], &exp);
+    int cur_frac_bits = kFracBitsQ15 - exp;
+    if (i == 0) {
+      min_frac_bits = cur_frac_bits;
+    } else {
+      min_frac_bits = min_frac_bits < cur_frac_bits ? min_frac_bits : cur_frac_bits;
+    }
+  }
+  mliT->el_params.asym.scale_frac_bits = min_frac_bits;
+  
+  for (int i = 0; i < num_channels; i++) {
+    int16_t iscale = (int16_t)((1 << min_frac_bits) * fscale[i] + 0.5f);
+    mliT->el_params.asym.scale.pi16[i] = iscale;
+  }
+}
+
+template <typename datatype>
+static void ConvertToMliTensor(const TfLiteTensor* tfT, mli_tensor* mliT) {
+  ConvertToMliTensorData<datatype>(tfT, mliT);
+  ConvertToMliQuantParams(tfT, mliT);
+}
+
+template <typename datatype>
+static void ConvertToMliTensorPerChannel(const TfLiteTensor* tfT, mli_tensor* mliT) {
+  ConvertToMliTensorData<datatype>(tfT, mliT);
+  ConvertToMliQuantParamsPerChannel(tfT, mliT);
+}
 }  // namespace micro
 }  // namespace ops
 }  // namespace tflite

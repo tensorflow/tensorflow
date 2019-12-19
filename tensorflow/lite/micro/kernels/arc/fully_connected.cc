@@ -23,7 +23,9 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/mli_tf_utils.h"
+
 #include "mli_api.h"
+
 
 namespace tflite {
 namespace ops {
@@ -87,22 +89,36 @@ TfLiteStatus EvalQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
                                const TfLiteTensor* input,
                                const TfLiteTensor* filter,
                                const TfLiteTensor* bias, TfLiteTensor* output) {
-
-  // MLI optimized version only supports int8 dataype
-  if (input->type == kTfLiteInt8){
+  // Run Fully Connected MLI kernel
+  // MLI optimized version only supports int8 dataype and no fused Relu
+  // TODO: subject to add mli_saturate kernel
+  if (input->type == kTfLiteInt8 && params->activation == kTfLiteActNone) {
     mli_tensor mli_in = {0};
     mli_tensor mli_weights = {0};
     mli_tensor mli_bias = {0};
     mli_tensor mli_out = {0};
 
-    TfLiteTensor2mli_tensor<int8_t>(input, &mli_in);
-    TfLiteTensor2mli_tensor<int8_t>(filter, &mli_weights);
-    TfLiteTensor2mli_tensor<int32_t>(bias, &mli_bias);
-    TfLiteTensor2mli_tensor<int8_t>(output, &mli_out);
+    ConvertToMliTensor<int8_t>(input, &mli_in);
+    ConvertToMliTensor<int8_t>(filter, &mli_weights);
+    ConvertToMliTensor<int32_t>(bias, &mli_bias);
+    ConvertToMliTensor<int8_t>(output, &mli_out);
 
-    mli_krn_fully_connected_sa8_sa8_sa32(&mli_in, &mli_weights, &mli_bias, &mli_out);
-  } else
-  {
+    mli_point_to_subtsr_cfg substr_cfg_in = {{0, 0}, 2, static_cast<uint8_t>(mli_in.shape[1])};
+    mli_point_to_subtsr_cfg substr_cfg_out = {{0, 0}, 2, static_cast<uint8_t>(mli_out.shape[1])};
+    mli_tensor sub_mli_in = {0};
+    mli_tensor sub_mli_out = {0};
+
+    const int batches = MatchingDim(GetTensorShape(input), 0, GetTensorShape(output), 0);
+
+    for (int i = 0; i < batches; i++) {
+      substr_cfg_in.start_coord[0] = i;
+      substr_cfg_out.start_coord[0] = i;
+      mli_hlp_point_to_subtensor(&mli_in, &substr_cfg_in, &sub_mli_in);
+      mli_hlp_point_to_subtensor(&mli_out, &substr_cfg_out, &sub_mli_out);
+
+      mli_krn_fully_connected_sa8_sa8_sa32(&sub_mli_in, &mli_weights, &mli_bias, &sub_mli_out);
+    }
+  } else {
     FullyConnectedParams op_params;
     op_params.input_offset = -input->params.zero_point;
     op_params.weights_offset = -filter->params.zero_point;
@@ -119,7 +135,6 @@ TfLiteStatus EvalQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
         GetTensorShape(bias), GetTensorData<int32_t>(bias),
         GetTensorShape(output), GetTensorData<int8_t>(output));
   }
-
   return kTfLiteOk;
 }
 
