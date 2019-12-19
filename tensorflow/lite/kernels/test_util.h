@@ -236,21 +236,21 @@ class SingleOpModel {
     TfLiteTensor* t = interpreter_->tensor(index);
     auto* params =
         reinterpret_cast<TfLiteAffineQuantization*>(t->quantization.params);
-    CHECK(t->type==kTfLiteInt32 || t->type==kTfLiteInt64);
-    if (t->type==kTfLiteInt32) {
+    CHECK(t->type == kTfLiteInt32 || t->type == kTfLiteInt64);
+    if (t->type == kTfLiteInt32) {
       std::vector<int32_t> quantized_output(num_inputs);
       for (int i = 0; i < num_inputs; ++i) {
         quantized_output[i] = input_data[i] / params->scale->data[i];
       }
       PopulateTensor(index, /*offset=*/0, quantized_output.data(),
-                    quantized_output.data() + quantized_output.size());
+                     quantized_output.data() + quantized_output.size());
     } else {
       std::vector<int64_t> quantized_output(num_inputs);
       for (int i = 0; i < num_inputs; ++i) {
         quantized_output[i] = input_data[i] / params->scale->data[i];
       }
       PopulateTensor(index, /*offset=*/0, quantized_output.data(),
-                    quantized_output.data() + quantized_output.size());
+                     quantized_output.data() + quantized_output.size());
     }
   }
 

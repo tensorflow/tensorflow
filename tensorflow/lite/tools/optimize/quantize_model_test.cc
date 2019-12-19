@@ -100,10 +100,9 @@ TEST_F(QuantizeConvModelTest, QuantizationSucceeds) {
 }
 
 TEST_F(QuantizeConvModelTest, SkipUnspecifiedLayer) {
-  auto status =
-      QuantizeModel(&builder_, &model_, TensorType_FLOAT32, TensorType_FLOAT32,
-                    /*allow_float=*/true, {}, TensorType_INT8,
-                    &error_reporter_);
+  auto status = QuantizeModel(
+      &builder_, &model_, TensorType_FLOAT32, TensorType_FLOAT32,
+      /*allow_float=*/true, {}, TensorType_INT8, &error_reporter_);
   EXPECT_EQ(status, kTfLiteOk);
   ASSERT_EQ(model_.subgraphs.size(), readonly_model_->subgraphs()->size());
   // The resulting model should be the same.
@@ -733,8 +732,9 @@ struct QuantizeAvgPoolTestTestParam {
   TensorType tensor_type_;
 };
 
-class QuantizeAvgPoolTest : public QuantizeModelTest,
-  public ::testing::WithParamInterface<QuantizeAvgPoolTestTestParam> {
+class QuantizeAvgPoolTest
+    : public QuantizeModelTest,
+      public ::testing::WithParamInterface<QuantizeAvgPoolTestTestParam> {
  protected:
   QuantizeAvgPoolTest() {
     input_model_ = ReadModel(internal::kSingleAvgPoolModelMinMinus5MaxPlus5);
@@ -745,10 +745,8 @@ class QuantizeAvgPoolTest : public QuantizeModelTest,
 
 INSTANTIATE_TEST_SUITE_P(
     QuantizeAvgPoolTest_Instantiation, QuantizeAvgPoolTest,
-    ::testing::Values(
-        QuantizeAvgPoolTestTestParam{TensorType_INT8},
-        QuantizeAvgPoolTestTestParam{TensorType_INT16}
-        ));
+    ::testing::Values(QuantizeAvgPoolTestTestParam{TensorType_INT8},
+                      QuantizeAvgPoolTestTestParam{TensorType_INT16}));
 
 TEST_P(QuantizeAvgPoolTest, VerifyAvgPoolQuantization) {
   auto status = QuantizeModel(&builder_, &model_, GetParam().tensor_type_,
@@ -771,18 +769,20 @@ TEST_P(QuantizeAvgPoolTest, VerifyAvgPoolQuantization) {
   ASSERT_EQ(float_graph->tensors()->Get(op->outputs[0])->type(),
             TensorType_FLOAT32);
 
-  EXPECT_EQ(subgraph->tensors[op->inputs[0]].get()->type, GetParam().tensor_type_);
-  EXPECT_EQ(subgraph->tensors[op->outputs[0]].get()->type, GetParam().tensor_type_);
+  EXPECT_EQ(subgraph->tensors[op->inputs[0]].get()->type,
+            GetParam().tensor_type_);
+  EXPECT_EQ(subgraph->tensors[op->outputs[0]].get()->type,
+            GetParam().tensor_type_);
 
   auto float_input_quant_params =
       float_graph->tensors()->Get(op->inputs[0])->quantization();
   auto input_quant_params =
       subgraph->tensors[op->inputs[0]]->quantization.get();
 
-  int32_t max_diff_quantization = GetParam().tensor_type_ == TensorType_INT16 ? 65535 : 255;
+  int32_t max_diff_quantization =
+      GetParam().tensor_type_ == TensorType_INT16 ? 65535 : 255;
   VerifyAsymmetricQuantizationScale(*float_input_quant_params,
-                                    *input_quant_params,
-                                    max_diff_quantization);
+                                    *input_quant_params, max_diff_quantization);
 
   auto float_output_quant_params =
       float_graph->tensors()->Get(op->outputs[0])->quantization();

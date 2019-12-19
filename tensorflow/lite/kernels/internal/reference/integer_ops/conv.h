@@ -193,9 +193,10 @@ inline void ConvPerChannel(
                   // guarantees that the input_offset is a int16, even though it
                   // is represented using int32.
                   // int64 += int8 * (int16 - int16) so the highest value we can
-                  // get from each accumulation is [-127, 127] * ([-32768, 32767] -
-                  // [-32768, 32767]), which is [-8322945, 8322945]. log2(8322945)
-                  // = 22.99.
+                  // get from each accumulation is [-127, 127] * ([-32768,
+                  // 32767] -
+                  // [-32768, 32767]), which is [-8322945, 8322945].
+                  // log2(8322945) = 22.99.
                   acc += filter_val * (input_val + input_offset);
                 }
               }

@@ -252,10 +252,9 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
 
   // Check types. (We assume that UINT8 refers to quantized tensors)
   TfLiteType input_type = input->type;
-  TF_LITE_ENSURE(context, input_type == kTfLiteFloat32 ||
-                              input_type == kTfLiteUInt8 ||
-                              input_type == kTfLiteInt8 ||
-                              input_type == kTfLiteInt16);
+  TF_LITE_ENSURE(context,
+                 input_type == kTfLiteFloat32 || input_type == kTfLiteUInt8 ||
+                     input_type == kTfLiteInt8 || input_type == kTfLiteInt16);
   TF_LITE_ENSURE_EQ(context, output->type, input_type);
 
   TfLiteTensor* bias = nullptr;
@@ -865,9 +864,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                                            filter, bias, output, im2col);
       break;
     case kTfLiteInt16:
-      EvalQuantizedPerChannel16x8<kernel_type>(context, node, params, data,
-                                               input, filter, bias, output,
-                                               im2col);
+      EvalQuantizedPerChannel16x8<kernel_type>(
+          context, node, params, data, input, filter, bias, output, im2col);
       break;
     default:
       context->ReportError(context, "Type %d not currently supported.",

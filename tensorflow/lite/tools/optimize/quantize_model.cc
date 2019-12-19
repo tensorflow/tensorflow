@@ -134,12 +134,12 @@ TfLiteStatus QuantizeBias(ModelT* model, const TensorT* input_tensor,
     }
     if (activations_type == tflite::TensorType_INT16) {
       return utils::SymmetricPerChannelBiasQuantize<std::int64_t>(
-        model, bias_tensor, input_tensor->quantization->scale[0],
-        weight_scales.data(), channel_dim_size, error_reporter);
+          model, bias_tensor, input_tensor->quantization->scale[0],
+          weight_scales.data(), channel_dim_size, error_reporter);
     } else {
       return utils::SymmetricPerChannelBiasQuantize<std::int32_t>(
-        model, bias_tensor, input_tensor->quantization->scale[0],
-        weight_scales.data(), channel_dim_size, error_reporter);
+          model, bias_tensor, input_tensor->quantization->scale[0],
+          weight_scales.data(), channel_dim_size, error_reporter);
     }
   } else {
     if (weight_scales.size() != 1) {
@@ -150,14 +150,14 @@ TfLiteStatus QuantizeBias(ModelT* model, const TensorT* input_tensor,
     }
     if (activations_type == tflite::TensorType_INT16) {
       return utils::SymmetricPerLayerBiasQuantize<std::int64_t>(
-          model, bias_tensor, 
+          model, bias_tensor,
           input_tensor->quantization->scale[0] * weight_scales[0],
           error_reporter);
     } else {
       return utils::SymmetricPerLayerBiasQuantize<std::int32_t>(
-              model, bias_tensor, 
-              input_tensor->quantization->scale[0] * weight_scales[0],
-              error_reporter);
+          model, bias_tensor,
+          input_tensor->quantization->scale[0] * weight_scales[0],
+          error_reporter);
     }
   }
   return kTfLiteError;
@@ -842,8 +842,7 @@ TfLiteStatus QuantizeSharedRange(ModelT* model, ErrorReporter* error_reporter) {
 TfLiteStatus QuantizeWeightsInputOutput(
     ModelT* model, bool allow_float,
     const std::unordered_set<string>& operator_names,
-    TensorType activations_type,
-    ErrorReporter* error_reporter) {
+    TensorType activations_type, ErrorReporter* error_reporter) {
   for (size_t subgraph_idx = 0; subgraph_idx < model->subgraphs.size();
        subgraph_idx++) {
     SubGraphT* subgraph = model->subgraphs.at(subgraph_idx).get();
@@ -872,8 +871,9 @@ TfLiteStatus QuantizeWeightsInputOutput(
       // Quantize operator outputs.
       for (const std::pair<int, operator_property::TensorProperty>& output :
            GetOutputs(op, property)) {
-        TF_LITE_ENSURE_STATUS(QuantizeOpOutput(
-            model, subgraph_idx, op_idx, property, output, activations_type, error_reporter));
+        TF_LITE_ENSURE_STATUS(
+            QuantizeOpOutput(model, subgraph_idx, op_idx, property, output,
+                             activations_type, error_reporter));
       }
     }
   }
@@ -929,12 +929,10 @@ TfLiteStatus QuantizeBiases(ModelT* model,
                 subgraph->tensors[op->inputs[property.inputs[1].first]].get();
             operator_property::TensorProperty weight_property =
                 property.inputs[1].second;
-            TF_LITE_ENSURE_STATUS(
-                QuantizeBias(model, input_tensor, weight_tensor, bias_tensor,
-                             weight_property.per_axis,
-                             weight_property.per_axis_index,
-                             activations_type,
-                             error_reporter));
+            TF_LITE_ENSURE_STATUS(QuantizeBias(
+                model, input_tensor, weight_tensor, bias_tensor,
+                weight_property.per_axis, weight_property.per_axis_index,
+                activations_type, error_reporter));
           }
         }
       }
@@ -1185,8 +1183,9 @@ TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
                            const std::unordered_set<string>& operator_names,
                            const TensorType& activation_type,
                            ErrorReporter* error_reporter) {
-  TensorType tensor_type =  (activation_type == TensorType_INT16) ?
-    TensorType_INT16 : TensorType_INT8;
+  TensorType tensor_type = (activation_type == TensorType_INT16)
+                               ? TensorType_INT16
+                               : TensorType_INT8;
 
   TF_LITE_ENSURE_STATUS(
       FillQuantizationParams(model, operator_names, error_reporter));
@@ -1198,10 +1197,11 @@ TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
       model, allow_float, operator_names, tensor_type, error_reporter));
   TF_LITE_ENSURE_STATUS(
       ApplyConstraints(model, operator_names, error_reporter));
-  TF_LITE_ENSURE_STATUS(QuantizeBiases(model, operator_names, tensor_type, error_reporter));
+  TF_LITE_ENSURE_STATUS(
+      QuantizeBiases(model, operator_names, tensor_type, error_reporter));
   utils::SetOperatorCodeVersion(model);
-  TF_LITE_ENSURE_STATUS(SetInputAndOutputTypes(
-      model, input_type, output_type, tensor_type, error_reporter));
+  TF_LITE_ENSURE_STATUS(SetInputAndOutputTypes(model, input_type, output_type,
+                                               tensor_type, error_reporter));
 
   flatbuffers::Offset<Model> output_model_location =
       Model::Pack(*builder, model);
@@ -1216,8 +1216,7 @@ TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
                            const TensorType& activations_type,
                            ErrorReporter* error_reporter) {
   return QuantizeModel(builder, model, input_type, output_type, allow_float,
-                       GetAllOperatorOutputs(model),
-                       activations_type,
+                       GetAllOperatorOutputs(model), activations_type,
                        error_reporter);
 }
 
@@ -1225,9 +1224,8 @@ TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
                            ModelT* model, const TensorType& input_type,
                            const TensorType& output_type,
                            ErrorReporter* error_reporter) {
-
-  TensorType tensor_type =  (output_type == TensorType_INT16) ?
-        TensorType_INT16 : TensorType_INT8;
+  TensorType tensor_type =
+      (output_type == TensorType_INT16) ? TensorType_INT16 : TensorType_INT8;
   return QuantizeModel(builder, model, input_type, output_type,
                        /*allow_float=*/false, tensor_type, error_reporter);
 }

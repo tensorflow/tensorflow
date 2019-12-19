@@ -113,14 +113,14 @@ TfLiteStatus SymmetricQuantizeFloatsToInt16(ModelT* model, TensorT* tensor,
                                             ErrorReporter* error_reporter);
 
 // Symmetrically quantized the bias for per-layer ops (i.e. FullyConnected).
-template<class BiasType>
+template <class BiasType>
 TfLiteStatus SymmetricPerLayerBiasQuantize(ModelT* model, TensorT* tensor,
                                            float scaling_factor,
                                            ErrorReporter* error_reporter);
 
 // Symmetrically quantizes the bias for ops like Conv and DepthwiseConv.
 // The scale of bias if weight_per_channel_scale[channel] * input_scale
-template<class BiasType>
+template <class BiasType>
 TfLiteStatus SymmetricPerChannelBiasQuantize(ModelT* model, TensorT* tensor,
                                              float input_scale,
                                              const float* weight_scales,

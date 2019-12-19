@@ -71,7 +71,7 @@ class BaseConvolutionOpModel : public SingleOpModel {
         }
         tflite::TensorType bias_type = TensorType_INT32;
         if (input.type == TensorType_INT16) {
-            bias_type = TensorType_INT64;
+          bias_type = TensorType_INT64;
         }
         TensorData bias{bias_type,
                         {bias_size},
@@ -1398,8 +1398,9 @@ TEST_P(ConvolutionOpTest, SimplePerChannelTest) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({61, 127, -115, -93}));
 }
 
-class PerChannelQuantizedConvolutionOpModel16x8 : public BaseConvolutionOpModel {
-public:
+class PerChannelQuantizedConvolutionOpModel16x8
+    : public BaseConvolutionOpModel {
+ public:
   using BaseConvolutionOpModel::BaseConvolutionOpModel;
 
   void SetInput(std::initializer_list<float> data) {
@@ -1416,31 +1417,39 @@ public:
 
   std::vector<int16_t> GetOutput() { return ExtractVector<int16_t>(output_); }
   std::vector<float> GetDequantizedOutput() {
-    return Dequantize<int16_t>(ExtractVector<int16_t>(output_), GetScale(output_),
-                              GetZeroPoint(output_));
+    return Dequantize<int16_t>(ExtractVector<int16_t>(output_),
+                               GetScale(output_), GetZeroPoint(output_));
   }
 };
 
 TEST_P(ConvolutionOpTest, SimplePerChannelTest16x8) {
-  const float ulp = (float)1/(float)512;
+  const float ulp = (float)1 / (float)512;
   PerChannelQuantizedConvolutionOpModel16x8 m(
       GetRegistration(),
       {TensorType_INT16,  // input tensor type
        {1, 2, 3, 2},      // shape
-        -64+ulp, 64,      // min, max
-        ulp, -1},         // scale, zero point
-      {TensorType_INT8,   // filter tensor type
-       // [2 * 2 * 2 * 2] as [output_channel, y, x, input_channel]
-       {2, 2, 2, 2},      // shape
-       0, 0, 0, 0,
+       -64 + ulp,
+       64,  // min, max
+       ulp,
+       -1},              // scale, zero point
+      {TensorType_INT8,  // filter tensor type
+                         // [2 * 2 * 2 * 2] as [output_channel, y, x,
+                         // input_channel]
+       {2, 2, 2, 2},  // shape
+       0,
+       0,
+       0,
+       0,
        /*per_channel=*/true,
        /*per_channel_scales=*/{1, 2},
        /*per_channel_zeros=*/{0, 0},
        /*channel_index=*/0},
       {TensorType_INT16,  // output tensor type
        {},                // shape
-       -64+ulp, 64,         // min, max
-        0.5, -1},         // scale, zero point
+       -64 + ulp,
+       64,  // min, max
+       0.5,
+       -1},  // scale, zero point
       /*stride_width=*/1,
       /*stride_height=*/1);
   m.SetInput({
@@ -1470,11 +1479,11 @@ TEST_P(ConvolutionOpTest, SimplePerChannelTest16x8) {
   m.Invoke();
   EXPECT_THAT(m.GetDequantizedOutput(),
               ElementsAreArray(ArrayFloatNear({31, 64, -57, -46})));
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({31*512-1, 32767, -57*512-1, -46*512-1}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({31 * 512 - 1, 32767,
+                                               -57 * 512 - 1, -46 * 512 - 1}));
 }
 
 class HybridPerChannelConvolutionOpModel : public BaseConvolutionOpModel {
-
  public:
   using BaseConvolutionOpModel::BaseConvolutionOpModel;
 

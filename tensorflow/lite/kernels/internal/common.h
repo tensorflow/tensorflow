@@ -156,7 +156,8 @@ inline int32 MultiplyByQuantizedMultiplier(int32 x, int32 quantized_multiplier,
                              right_shift);
 }
 
-inline int32 MultiplyByQuantizedMultiplier(std::int64_t x, int32 quantized_multiplier,
+inline int32 MultiplyByQuantizedMultiplier(std::int64_t x,
+                                           int32 quantized_multiplier,
                                            int shift) {
   // Inputs:
   // - quantized_multiplier has fixed point at bit 31
@@ -169,9 +170,9 @@ inline int32 MultiplyByQuantizedMultiplier(std::int64_t x, int32 quantized_multi
   assert(quantized_multiplier >= 0);
   assert(shift >= -31 && shift < 8);
 
-  int32_t reduced_multiplier = (quantized_multiplier+(1<<15))>>16;
+  int32_t reduced_multiplier = (quantized_multiplier + (1 << 15)) >> 16;
   int total_shift = 15 - shift;
-  x = (x * (int64_t)reduced_multiplier) + (1<<(total_shift-1));
+  x = (x * (int64_t)reduced_multiplier) + (1 << (total_shift - 1));
   int32_t result = x >> total_shift;
   return result;
 }

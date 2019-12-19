@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <sys/types.h>
 
+#include <stdio.h>
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -23,13 +24,12 @@ limitations under the License.
 #include <string>
 #include <type_traits>
 #include <vector>
-#include <stdio.h>
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
-#include "tensorflow/lite/kernels/internal/reference/integer_ops/conv.h"
 #include "tensorflow/lite/kernels/internal/reference/conv.h"
+#include "tensorflow/lite/kernels/internal/reference/integer_ops/conv.h"
 #include "tensorflow/lite/kernels/internal/test_util.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
@@ -66,7 +66,8 @@ void PickOutputMultiplier(
   for (int batch = 0; batch < batches; ++batch) {
     for (int out_y = 0; out_y < output_height; ++out_y) {
       for (int out_x = 0; out_x < output_width; ++out_x) {
-        for (int output_channel = 0; output_channel < output_depth; ++output_channel) {
+        for (int output_channel = 0; output_channel < output_depth;
+             ++output_channel) {
           const int in_x_origin = (out_x * stride_width) - pad_width;
           const int in_y_origin = (out_y * stride_height) - pad_height;
           std::int64_t acc = 0;
@@ -83,9 +84,11 @@ void PickOutputMultiplier(
                 if (is_point_inside_image) {
                   int32 input_val = input_data[Offset(input_shape, batch, in_y,
                                                       in_x, in_channel)];
-                  int32 filter_val = filter_data[Offset(
-                      filter_shape, output_channel, filter_y, filter_x, in_channel)];
-                  acc += (std::int64_t)filter_val * (std::int64_t)(input_val + input_offset);
+                  int32 filter_val =
+                      filter_data[Offset(filter_shape, output_channel, filter_y,
+                                         filter_x, in_channel)];
+                  acc += (std::int64_t)filter_val *
+                         (std::int64_t)(input_val + input_offset);
                 }
               }
             }
@@ -138,11 +141,10 @@ void PickReasonableMultiplier(
 }
 
 bool GenerateValidShapeConfigurations(
-    int filter_width, int filter_height,
-    int dilation_width_factor, int dilation_height_factor,
-    RuntimeShape* input_shape_inference, RuntimeShape* filter_shape_inference,
-    RuntimeShape* output_shape_inference, int* pad_width, int* pad_height,
-    int* stride) {
+    int filter_width, int filter_height, int dilation_width_factor,
+    int dilation_height_factor, RuntimeShape* input_shape_inference,
+    RuntimeShape* filter_shape_inference, RuntimeShape* output_shape_inference,
+    int* pad_width, int* pad_height, int* stride) {
   const int batch = UniformRandomInt(1, 3);
   const int input_depth = 8 * ExponentialRandomPositiveInt(0.9f, 10, 50);
   const int input_width = UniformRandomInt(5, 50);
@@ -167,18 +169,14 @@ bool GenerateValidShapeConfigurations(
   return true;
 }
 
-void IntToFloat(std::vector<float> *d, std::vector<std::int8_t> *s)
-{
-  for (unsigned int i=0; i<s->size(); i++)
-  {
+void IntToFloat(std::vector<float>* d, std::vector<std::int8_t>* s) {
+  for (unsigned int i = 0; i < s->size(); i++) {
     d->data()[i] = (float)s->data()[i];
   }
 }
 
-void IntToFloat(std::vector<float> *d, std::vector<std::int64_t> *s)
-{
-  for (unsigned int i=0; i<s->size(); i++)
-  {
+void IntToFloat(std::vector<float>* d, std::vector<std::int64_t>* s) {
+  for (unsigned int i = 0; i < s->size(); i++) {
     d->data()[i] = (float)s->data()[i];
   }
 }
@@ -186,7 +184,8 @@ void IntToFloat(std::vector<float> *d, std::vector<std::int64_t> *s)
 void TryTestOneConvFilter(int test_num) {
   const int filter_width = UniformRandomInt(2, 5);
   const int filter_height = UniformRandomInt(2, 5);
-  std::cout << "Test number " << test_num << " (" << filter_width << "," << filter_height << ")\n";
+  std::cout << "Test number " << test_num << " (" << filter_width << ","
+            << filter_height << ")\n";
   // We don't support dilations in the 3x3 filter.
   const int dilation_width_factor = 1;
   const int dilation_height_factor = 1;
@@ -208,10 +207,10 @@ void TryTestOneConvFilter(int test_num) {
   while (!generated_valid_configurations_for_3x3_kernel) {
     generated_valid_configurations_for_3x3_kernel =
         GenerateValidShapeConfigurations(
-            filter_width, filter_height,
-            dilation_width_factor, dilation_height_factor,
-            &input_shape_inference, &filter_shape_inference,
-            &output_shape_inference, &pad_width, &pad_height, &stride);
+            filter_width, filter_height, dilation_width_factor,
+            dilation_height_factor, &input_shape_inference,
+            &filter_shape_inference, &output_shape_inference, &pad_width,
+            &pad_height, &stride);
   }
 
   const int output_depth = output_shape_inference.Dims(3);
@@ -224,22 +223,18 @@ void TryTestOneConvFilter(int test_num) {
   std::vector<std::int8_t> filter_data(filter_buffer_size);
   std::vector<std::int64_t> bias_data(output_depth);
 
-  if (test_num & 1 )
-  {
+  if (test_num & 1) {
     // Use high values samples to give large accumulator
     FillRandom(&input_data, (std::int16_t)32700, (std::int16_t)32767);
     FillRandom(&filter_data, (std::int8_t)120, (std::int8_t)127);
     input_offset = 0;
-  }
-  else
-  {
+  } else {
     FillRandom(&input_data);
     FillRandom(&filter_data);
     input_offset = UniformRandomInt(-25, 25);
   }
-  for (int i=0; i<output_depth; i++)
-  {
-	  bias_data.data()[i]=0;
+  for (int i = 0; i < output_depth; i++) {
+    bias_data.data()[i] = 0;
   }
 
   ConvParams params;
@@ -254,8 +249,8 @@ void TryTestOneConvFilter(int test_num) {
   params.weights_offset = 0;
   params.quantized_activation_min = output_activation_min;
   params.quantized_activation_max = output_activation_max;
-  params.float_activation_max = (float)(1LL<<40);
-  params.float_activation_min = - params.float_activation_max;
+  params.float_activation_max = (float)(1LL << 40);
+  params.float_activation_min = -params.float_activation_max;
 
   std::vector<std::int16_t> reference_output_data(output_buffer_size);
   std::vector<std::int16_t> neon_output_data(output_buffer_size);
@@ -289,8 +284,7 @@ void TryTestOneConvFilter(int test_num) {
   std::vector<float> bias_data_float(output_depth);
   std::vector<float> output_data_float(output_buffer_size);
 
-  for (int i=0; i<input_buffer_size; i++)
-  {
+  for (int i = 0; i < input_buffer_size; i++) {
     input_data_float.data()[i] = (float)(input_data.data()[i] + input_offset);
   }
   IntToFloat(&filter_data_float, &filter_data);
@@ -298,38 +292,34 @@ void TryTestOneConvFilter(int test_num) {
   RuntimeShape im2col_shape;
   float im2col_data;
 
-  reference_ops::Conv(
-      params,
-      input_shape_inference, input_data_float.data(),
-      filter_shape_inference, filter_data_float.data(),
-      bias_shape_inference, bias_data_float.data(),
-      output_shape_inference, output_data_float.data(),
-      im2col_shape, &im2col_data);
+  reference_ops::Conv(params, input_shape_inference, input_data_float.data(),
+                      filter_shape_inference, filter_data_float.data(),
+                      bias_shape_inference, bias_data_float.data(),
+                      output_shape_inference, output_data_float.data(),
+                      im2col_shape, &im2col_data);
 
-  for (int n=0; n<output_shape_inference.Dims(0); n++)
-  {
-    for (int h=0; h<output_shape_inference.Dims(1); h++)
-    {
-      for (int w=0; w<output_shape_inference.Dims(2); w++)
-      {
-        for (int c=0; c<output_shape_inference.Dims(3); c++)
-        {
-          int offset = Offset(output_shape_inference,n,h,w,c);
+  for (int n = 0; n < output_shape_inference.Dims(0); n++) {
+    for (int h = 0; h < output_shape_inference.Dims(1); h++) {
+      for (int w = 0; w < output_shape_inference.Dims(2); w++) {
+        for (int c = 0; c < output_shape_inference.Dims(3); c++) {
+          int offset = Offset(output_shape_inference, n, h, w, c);
           float float_res = output_data_float.data()[offset];
           int16 int16_res = reference_output_data.data()[offset];
           int32 output_mul = output_multiplier.data()[c];
           int shift = output_shift.data()[c];
-          float scale = (float)output_mul/(float)(1ULL<<31);
-          if (shift > 0) scale = scale * (float)(1<<shift);
-          if (shift < 0) scale = scale / (float)(1<<-shift);
+          float scale = (float)output_mul / (float)(1ULL << 31);
+          if (shift > 0) scale = scale * (float)(1 << shift);
+          if (shift < 0) scale = scale / (float)(1 << -shift);
           int ref_res = floor(float_res * scale + 0.5) + output_offset;
           if (ref_res < output_activation_min) ref_res = output_activation_min;
           if (ref_res > output_activation_max) ref_res = output_activation_max;
           int e = (ref_res - int16_res);
-          if (e<0) e=-e;
-          if (e>2) {
-            printf("(%d,%d,%d,%d) scale=%08x shift=%d res=%d float=%f (%f,%f)\n",
-              n, h, w, c, output_mul, shift, int16_res, float_res*scale+(float)output_offset, float_res, scale);
+          if (e < 0) e = -e;
+          if (e > 2) {
+            printf(
+                "(%d,%d,%d,%d) scale=%08x shift=%d res=%d float=%f (%f,%f)\n",
+                n, h, w, c, output_mul, shift, int16_res,
+                float_res * scale + (float)output_offset, float_res, scale);
             EXPECT_TRUE(false);
           }
         }
