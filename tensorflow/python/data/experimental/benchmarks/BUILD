@@ -15,7 +15,6 @@ exports_files(
 tf_py_test(
     name = "autotune_benchmark",
     srcs = ["autotune_benchmark.py"],
-    python_version = "PY2",
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:math_ops",
@@ -28,7 +27,6 @@ tf_py_test(
 tf_py_test(
     name = "choose_fastest_benchmark",
     srcs = ["choose_fastest_benchmark.py"],
-    python_version = "PY2",
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_ops",
@@ -57,7 +55,6 @@ tf_py_test(
 tf_py_test(
     name = "csv_dataset_benchmark",
     srcs = ["csv_dataset_benchmark.py"],
-    python_version = "PY2",
     tags = ["no_pip"],
     deps = [
         "//tensorflow/python:client_testlib",
@@ -74,7 +71,6 @@ tf_py_test(
 tf_py_test(
     name = "map_and_batch_benchmark",
     srcs = ["map_and_batch_benchmark.py"],
-    python_version = "PY2",
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
@@ -93,7 +89,6 @@ tf_py_test(
 tf_py_test(
     name = "map_defun_benchmark",
     srcs = ["map_defun_benchmark.py"],
-    python_version = "PY2",
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -109,7 +104,6 @@ tf_py_test(
 tf_py_test(
     name = "map_vectorization_benchmark",
     srcs = ["map_vectorization_benchmark.py"],
-    python_version = "PY2",
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
@@ -129,7 +123,6 @@ tf_py_test(
     name = "matching_files_benchmark",
     size = "small",
     srcs = ["matching_files_benchmark.py"],
-    python_version = "PY2",
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -145,7 +138,6 @@ tf_py_test(
 tf_py_test(
     name = "optimize_benchmark",
     srcs = ["optimize_benchmark.py"],
-    python_version = "PY2",
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_ops",
@@ -159,7 +151,6 @@ tf_py_test(
 tf_py_test(
     name = "parallel_interleave_benchmark",
     srcs = ["parallel_interleave_benchmark.py"],
-    python_version = "PY2",
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:math_ops",
@@ -174,7 +165,6 @@ tf_py_test(
 tf_py_test(
     name = "rejection_resample_benchmark",
     srcs = ["rejection_resample_benchmark.py"],
-    python_version = "PY2",
     tags = ["no_pip"],
     deps = [
         "//tensorflow/python:client_testlib",
@@ -188,7 +178,6 @@ tf_py_test(
 tf_py_test(
     name = "snapshot_dataset_benchmark",
     srcs = ["snapshot_dataset_benchmark.py"],
-    python_version = "PY2",
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -207,7 +196,6 @@ tf_py_test(
 tf_py_test(
     name = "unbatch_benchmark",
     srcs = ["unbatch_benchmark.py"],
-    python_version = "PY2",
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
