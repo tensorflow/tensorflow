@@ -91,7 +91,6 @@ $(MAKEFILE_DIR)/downloads/$(AM_SDK_DEST)/$(SF_BSPS_DEST): $(MAKEFILE_DIR)/downlo
   INCLUDES += \
     -isystem$(MAKEFILE_DIR)/downloads/cmsis/CMSIS/Core/Include/ \
     -isystem$(MAKEFILE_DIR)/downloads/cmsis/CMSIS/DSP/Include/ \
-    -I$(MAKEFILE_DIR)/downloads/CMSIS_ext/ \
     -I$(GCC_ARM)/arm-none-eabi/ \
     -I$(APOLLO3_SDK)/mcu/apollo3/ \
     -I$(APOLLO3_SDK)/CMSIS/AmbiqMicro/Include/ \
