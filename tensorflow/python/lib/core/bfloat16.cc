@@ -21,18 +21,10 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/python/lib/core/numpy.h"
+#include "tensorflow/python/lib/core/safe_ptr.h"
 
 namespace tensorflow {
 namespace {
-
-struct PyDecrefDeleter {
-  void operator()(PyObject* p) const { Py_DECREF(p); }
-};
-
-using Safe_PyObjectPtr = std::unique_ptr<PyObject, PyDecrefDeleter>;
-Safe_PyObjectPtr make_safe(PyObject* object) {
-  return Safe_PyObjectPtr(object);
-}
 
 // Workarounds for Python 2 vs 3 API differences.
 #if PY_MAJOR_VERSION < 3

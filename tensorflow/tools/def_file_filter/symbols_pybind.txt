@@ -43,6 +43,10 @@ tensorflow::tfprof::SerializeToString
 [graph_analyzer_tool] # graph_analyzer
 tensorflow::grappler::graph_analyzer::GraphAnalyzerTool
 
+[bfloat16_lib] # bfloat16
+tensorflow::RegisterNumpyBfloat16
+tensorflow::Bfloat16PyType
+
 [events_writer] # events_writer
 tensorflow::EventsWriter::Init
 tensorflow::EventsWriter::InitWithSuffix
@@ -185,13 +189,3 @@ tensorflow::Set_TF_Status_from_Status
 
 [context] # tfe
 tensorflow::EagerContext::WaitForAndCloseRemoteContexts
-
-[ndarray_tensor_types] # _dtypes
-tensorflow::MaybeRegisterCustomNumPyTypes
-tensorflow::BFLOAT16_DESCR
-tensorflow::QINT8_DESCR
-tensorflow::QINT16_DESCR
-tensorflow::QINT32_DESCR
-tensorflow::QUINT8_DESCR
-tensorflow::QUINT16_DESCR
-tensorflow::RESOURCE_DESCR

@@ -21,12 +21,170 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/python/lib/core/bfloat16.h"
 #include "tensorflow/python/lib/core/ndarray_tensor_bridge.h"
-#include "tensorflow/python/lib/core/ndarray_tensor_types.h"
 #include "tensorflow/python/lib/core/numpy.h"
 
 namespace tensorflow {
 namespace {
+
+char const* numpy_type_name(int numpy_type) {
+  switch (numpy_type) {
+#define TYPE_CASE(s) \
+  case s:            \
+    return #s
+
+    TYPE_CASE(NPY_BOOL);
+    TYPE_CASE(NPY_BYTE);
+    TYPE_CASE(NPY_UBYTE);
+    TYPE_CASE(NPY_SHORT);
+    TYPE_CASE(NPY_USHORT);
+    TYPE_CASE(NPY_INT);
+    TYPE_CASE(NPY_UINT);
+    TYPE_CASE(NPY_LONG);
+    TYPE_CASE(NPY_ULONG);
+    TYPE_CASE(NPY_LONGLONG);
+    TYPE_CASE(NPY_ULONGLONG);
+    TYPE_CASE(NPY_FLOAT);
+    TYPE_CASE(NPY_DOUBLE);
+    TYPE_CASE(NPY_LONGDOUBLE);
+    TYPE_CASE(NPY_CFLOAT);
+    TYPE_CASE(NPY_CDOUBLE);
+    TYPE_CASE(NPY_CLONGDOUBLE);
+    TYPE_CASE(NPY_OBJECT);
+    TYPE_CASE(NPY_STRING);
+    TYPE_CASE(NPY_UNICODE);
+    TYPE_CASE(NPY_VOID);
+    TYPE_CASE(NPY_DATETIME);
+    TYPE_CASE(NPY_TIMEDELTA);
+    TYPE_CASE(NPY_HALF);
+    TYPE_CASE(NPY_NTYPES);
+    TYPE_CASE(NPY_NOTYPE);
+    TYPE_CASE(NPY_CHAR);
+    TYPE_CASE(NPY_USERDEF);
+    default:
+      return "not a numpy type";
+  }
+}
+
+Status PyArrayDescr_to_TF_DataType(PyArray_Descr* descr,
+                                   TF_DataType* out_tf_datatype) {
+  PyObject* key;
+  PyObject* value;
+  Py_ssize_t pos = 0;
+  if (PyDict_Next(descr->fields, &pos, &key, &value)) {
+    // In Python 3, the keys of numpy custom struct types are unicode, unlike
+    // Python 2, where the keys are bytes.
+    const char* key_string =
+        PyBytes_Check(key) ? PyBytes_AsString(key)
+                           : PyBytes_AsString(PyUnicode_AsASCIIString(key));
+    if (!key_string) {
+      return errors::Internal("Corrupt numpy type descriptor");
+    }
+    tensorflow::string key = key_string;
+    // The typenames here should match the field names in the custom struct
+    // types constructed in test_util.py.
+    // TODO(mrry,keveman): Investigate Numpy type registration to replace this
+    // hard-coding of names.
+    if (key == "quint8") {
+      *out_tf_datatype = TF_QUINT8;
+    } else if (key == "qint8") {
+      *out_tf_datatype = TF_QINT8;
+    } else if (key == "qint16") {
+      *out_tf_datatype = TF_QINT16;
+    } else if (key == "quint16") {
+      *out_tf_datatype = TF_QUINT16;
+    } else if (key == "qint32") {
+      *out_tf_datatype = TF_QINT32;
+    } else if (key == "resource") {
+      *out_tf_datatype = TF_RESOURCE;
+    } else {
+      return errors::Internal("Unsupported numpy data type");
+    }
+    return Status::OK();
+  }
+  return errors::Internal("Unsupported numpy data type");
+}
+
+Status PyArray_TYPE_to_TF_DataType(PyArrayObject* array,
+                                   TF_DataType* out_tf_datatype) {
+  int pyarray_type = PyArray_TYPE(array);
+  PyArray_Descr* descr = PyArray_DESCR(array);
+  switch (pyarray_type) {
+    case NPY_FLOAT16:
+      *out_tf_datatype = TF_HALF;
+      break;
+    case NPY_FLOAT32:
+      *out_tf_datatype = TF_FLOAT;
+      break;
+    case NPY_FLOAT64:
+      *out_tf_datatype = TF_DOUBLE;
+      break;
+    case NPY_INT32:
+      *out_tf_datatype = TF_INT32;
+      break;
+    case NPY_UINT8:
+      *out_tf_datatype = TF_UINT8;
+      break;
+    case NPY_UINT16:
+      *out_tf_datatype = TF_UINT16;
+      break;
+    case NPY_UINT32:
+      *out_tf_datatype = TF_UINT32;
+      break;
+    case NPY_UINT64:
+      *out_tf_datatype = TF_UINT64;
+      break;
+    case NPY_INT8:
+      *out_tf_datatype = TF_INT8;
+      break;
+    case NPY_INT16:
+      *out_tf_datatype = TF_INT16;
+      break;
+    case NPY_INT64:
+      *out_tf_datatype = TF_INT64;
+      break;
+    case NPY_BOOL:
+      *out_tf_datatype = TF_BOOL;
+      break;
+    case NPY_COMPLEX64:
+      *out_tf_datatype = TF_COMPLEX64;
+      break;
+    case NPY_COMPLEX128:
+      *out_tf_datatype = TF_COMPLEX128;
+      break;
+    case NPY_OBJECT:
+    case NPY_STRING:
+    case NPY_UNICODE:
+      *out_tf_datatype = TF_STRING;
+      break;
+    case NPY_VOID:
+      // Quantized types are currently represented as custom struct types.
+      // PyArray_TYPE returns NPY_VOID for structs, and we should look into
+      // descr to derive the actual type.
+      // Direct feeds of certain types of ResourceHandles are represented as a
+      // custom struct type.
+      return PyArrayDescr_to_TF_DataType(descr, out_tf_datatype);
+    default:
+      if (pyarray_type == Bfloat16NumpyType()) {
+        *out_tf_datatype = TF_BFLOAT16;
+        break;
+      } else if (pyarray_type == NPY_ULONGLONG) {
+        // NPY_ULONGLONG is equivalent to NPY_UINT64, while their enum values
+        // might be different on certain platforms.
+        *out_tf_datatype = TF_UINT64;
+        break;
+      } else if (pyarray_type == NPY_LONGLONG) {
+        // NPY_LONGLONG is equivalent to NPY_INT64, while their enum values
+        // might be different on certain platforms.
+        *out_tf_datatype = TF_INT64;
+        break;
+      }
+      return errors::Internal("Unsupported numpy type: ",
+                              numpy_type_name(pyarray_type));
+  }
+  return Status::OK();
+}
 
 Status PyObjectToString(PyObject* obj, const char** ptr, Py_ssize_t* len,
                         PyObject** ptr_owner) {
@@ -186,6 +344,38 @@ Status GetPyArrayDimensionsForTensor(const TF_Tensor* tensor,
   return Status::OK();
 }
 
+// Determine the type description (PyArray_Descr) of a numpy ndarray to be
+// created to represent an output Tensor.
+Status GetPyArrayDescrForTensor(const TF_Tensor* tensor,
+                                PyArray_Descr** descr) {
+  if (TF_TensorType(tensor) == TF_RESOURCE) {
+    PyObject* field = PyTuple_New(3);
+#if PY_MAJOR_VERSION < 3
+    PyTuple_SetItem(field, 0, PyBytes_FromString("resource"));
+#else
+    PyTuple_SetItem(field, 0, PyUnicode_FromString("resource"));
+#endif
+    PyTuple_SetItem(field, 1, PyArray_TypeObjectFromType(NPY_UBYTE));
+    PyTuple_SetItem(field, 2, PyLong_FromLong(1));
+    PyObject* fields = PyList_New(1);
+    PyList_SetItem(fields, 0, field);
+    int convert_result = PyArray_DescrConverter(fields, descr);
+    Py_CLEAR(field);
+    Py_CLEAR(fields);
+    if (convert_result != 1) {
+      return errors::Internal("Failed to create numpy array description for ",
+                              "TF_RESOURCE-type tensor");
+    }
+  } else {
+    int type_num = -1;
+    TF_RETURN_IF_ERROR(
+        TF_DataType_to_PyArray_TYPE(TF_TensorType(tensor), &type_num));
+    *descr = PyArray_DescrFromType(type_num);
+  }
+
+  return Status::OK();
+}
+
 inline void FastMemcpy(void* dst, const void* src, size_t size) {
   // clang-format off
   switch (size) {
@@ -271,8 +461,7 @@ Status TF_TensorToPyArray(Safe_TF_TensorPtr tensor, PyObject** out_ndarray) {
 
   // Copy the TF_TensorData into a newly-created ndarray and return it.
   PyArray_Descr* descr = nullptr;
-  TF_RETURN_IF_ERROR(DataTypeToPyArray_Descr(
-      static_cast<DataType>(TF_TensorType(tensor.get())), &descr));
+  TF_RETURN_IF_ERROR(GetPyArrayDescrForTensor(tensor.get(), &descr));
   Safe_PyObjectPtr safe_out_array =
       tensorflow::make_safe(PyArray_Empty(dims.size(), dims.data(), descr, 0));
   if (!safe_out_array) {
@@ -310,11 +499,7 @@ Status PyArrayToTF_Tensor(PyObject* ndarray, Safe_TF_TensorPtr* out_tensor) {
 
   // Convert numpy dtype to TensorFlow dtype.
   TF_DataType dtype = TF_FLOAT;
-  {
-    DataType tmp;
-    TF_RETURN_IF_ERROR(PyArray_DescrToDataType(PyArray_DESCR(array), &tmp));
-    dtype = static_cast<TF_DataType>(tmp);
-  }
+  TF_RETURN_IF_ERROR(PyArray_TYPE_to_TF_DataType(array, &dtype));
 
   tensorflow::int64 nelems = 1;
   gtl::InlinedVector<int64_t, 4> dims;

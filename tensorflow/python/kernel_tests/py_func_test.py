@@ -321,7 +321,7 @@ class PyFuncTest(PyFuncTestBase):
       y, = script_ops.py_func(bad, [], [dtypes.float32])
 
       with self.assertRaisesRegexp(errors.InternalError,
-                                   "Unsupported NumPy struct data type"):
+                                   "Unsupported numpy data type"):
         self.evaluate(y)
 
   @test_util.run_v1_only("b/120545219")

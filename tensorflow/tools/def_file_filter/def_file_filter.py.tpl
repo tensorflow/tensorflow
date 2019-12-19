@@ -175,7 +175,7 @@ def get_pybind_export_symbols(symbols_file, lib_paths_file):
       else:
         # If not a section header and not an empty line, then it's a symbol
         # line. e.g. `tensorflow::swig::IsSequence`
-        symbols[curr_lib].append(re.escape(line))
+        symbols[curr_lib].append(line)
 
   lib_paths = []
   with open(lib_paths_file, "r") as f:

@@ -31,7 +31,6 @@ limitations under the License.
 #include "tensorflow/python/eager/pywrap_tfe.h"
 #include "tensorflow/python/lib/core/ndarray_tensor.h"
 #include "tensorflow/python/lib/core/ndarray_tensor_bridge.h"
-#include "tensorflow/python/lib/core/ndarray_tensor_types.h"
 #include "tensorflow/python/lib/core/numpy.h"
 #include "tensorflow/python/lib/core/py_seq_tensor.h"
 #include "tensorflow/python/lib/core/safe_ptr.h"
@@ -289,15 +288,15 @@ TFE_TensorHandle* ConvertToEagerTensorUncached(TFE_Context* ctx,
   if (PyArray_Check(value)) {
     int desired_np_dtype = -1;
     if (dtype != tensorflow::DT_INVALID) {
-      PyArray_Descr* descr = nullptr;
-      if (!tensorflow::DataTypeToPyArray_Descr(dtype, &descr).ok()) {
+      if (!tensorflow::TF_DataType_to_PyArray_TYPE(
+               static_cast<TF_DataType>(dtype), &desired_np_dtype)
+               .ok()) {
         PyErr_SetString(
             PyExc_TypeError,
             tensorflow::strings::StrCat("Invalid dtype argument value ", dtype)
                 .c_str());
         return nullptr;
       }
-      desired_np_dtype = descr->type_num;
     }
     PyArrayObject* array = reinterpret_cast<PyArrayObject*>(value);
     int current_np_dtype = PyArray_TYPE(array);

@@ -13,19 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/python/lib/core/ndarray_tensor_bridge.h"
+// Must be included first.
+#include "tensorflow/python/lib/core/numpy.h"
 
 #include <vector>
-
-// Must be included first.
-// clang-format: off
-#include "tensorflow/python/lib/core/numpy.h"
-// clang-format: on
 
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/python/lib/core/ndarray_tensor_types.h"
+#include "tensorflow/python/lib/core/bfloat16.h"
+#include "tensorflow/python/lib/core/ndarray_tensor_bridge.h"
 
 namespace tensorflow {
 
@@ -110,6 +107,85 @@ PyTypeObject TensorReleaserType = {
     nullptr,                     /* tp_richcompare */
 };
 
+Status TF_DataType_to_PyArray_TYPE(TF_DataType tf_datatype,
+                                   int* out_pyarray_type) {
+  switch (tf_datatype) {
+    case TF_HALF:
+      *out_pyarray_type = NPY_FLOAT16;
+      break;
+    case TF_FLOAT:
+      *out_pyarray_type = NPY_FLOAT32;
+      break;
+    case TF_DOUBLE:
+      *out_pyarray_type = NPY_FLOAT64;
+      break;
+    case TF_INT32:
+      *out_pyarray_type = NPY_INT32;
+      break;
+    case TF_UINT32:
+      *out_pyarray_type = NPY_UINT32;
+      break;
+    case TF_UINT8:
+      *out_pyarray_type = NPY_UINT8;
+      break;
+    case TF_UINT16:
+      *out_pyarray_type = NPY_UINT16;
+      break;
+    case TF_INT8:
+      *out_pyarray_type = NPY_INT8;
+      break;
+    case TF_INT16:
+      *out_pyarray_type = NPY_INT16;
+      break;
+    case TF_INT64:
+      *out_pyarray_type = NPY_INT64;
+      break;
+    case TF_UINT64:
+      *out_pyarray_type = NPY_UINT64;
+      break;
+    case TF_BOOL:
+      *out_pyarray_type = NPY_BOOL;
+      break;
+    case TF_COMPLEX64:
+      *out_pyarray_type = NPY_COMPLEX64;
+      break;
+    case TF_COMPLEX128:
+      *out_pyarray_type = NPY_COMPLEX128;
+      break;
+    case TF_STRING:
+      *out_pyarray_type = NPY_OBJECT;
+      break;
+    case TF_RESOURCE:
+      *out_pyarray_type = NPY_VOID;
+      break;
+    // TODO(keveman): These should be changed to NPY_VOID, and the type used for
+    // the resulting numpy array should be the custom struct types that we
+    // expect for quantized types.
+    case TF_QINT8:
+      *out_pyarray_type = NPY_INT8;
+      break;
+    case TF_QUINT8:
+      *out_pyarray_type = NPY_UINT8;
+      break;
+    case TF_QINT16:
+      *out_pyarray_type = NPY_INT16;
+      break;
+    case TF_QUINT16:
+      *out_pyarray_type = NPY_UINT16;
+      break;
+    case TF_QINT32:
+      *out_pyarray_type = NPY_INT32;
+      break;
+    case TF_BFLOAT16:
+      *out_pyarray_type = Bfloat16NumpyType();
+      break;
+    default:
+      return errors::Internal("Tensorflow type ", tf_datatype,
+                              " not convertible to numpy dtype.");
+  }
+  return Status::OK();
+}
+
 Status ArrayFromMemory(int dim_size, npy_intp* dims, void* data, DataType dtype,
                        std::function<void()> destructor, PyObject** result) {
   if (dtype == DT_STRING || dtype == DT_RESOURCE) {
@@ -117,11 +193,15 @@ Status ArrayFromMemory(int dim_size, npy_intp* dims, void* data, DataType dtype,
         "Cannot convert string or resource Tensors.");
   }
 
-  PyArray_Descr* descr = nullptr;
-  TF_RETURN_IF_ERROR(DataTypeToPyArray_Descr(dtype, &descr));
+  int type_num = -1;
+  Status s =
+      TF_DataType_to_PyArray_TYPE(static_cast<TF_DataType>(dtype), &type_num);
+  if (!s.ok()) {
+    return s;
+  }
+
   auto* np_array = reinterpret_cast<PyArrayObject*>(
-      PyArray_SimpleNewFromData(dim_size, dims, descr->type_num, data));
-  CHECK_NE(np_array, nullptr);
+      PyArray_SimpleNewFromData(dim_size, dims, type_num, data));
   PyArray_CLEARFLAGS(np_array, NPY_ARRAY_OWNDATA);
   if (PyType_Ready(&TensorReleaserType) == -1) {
     return errors::Unknown("Python type initialization failed.");
