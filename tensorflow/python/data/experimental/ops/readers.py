@@ -345,37 +345,27 @@ def make_csv_dataset_v2(
   
   Using IRIS dataset to show how to convert .csv file into a dataset.
   
-  >>> train_dataset_url = "https://storage.googleapis.com/download.tensorflow.org/data/iris_training.csv"
-  >>> train_dataset_fp = tf.keras.utils.get_file(fname=os.path.basename(train_dataset_url), origin=train_dataset_url)
-  >>>
-  >>> column_names = ['sepal_length', 'sepal_width', 'petal_length', 'petal_width', 'species']
-  >>> feature_names = column_names[:-1]
-  >>> label_name = column_names[-1]
-  >>> 
-  >>> batch_size = 32
-  >>> train_dataset = tf.data.experimental.make_csv_dataset(
-  ...   train_dataset_fp,
-  ...   batch_size,
-  ...   column_names=column_names,
-  ...   label_name=label_name,
-  ...   num_epochs=1)
-  >>> features_batch, labels_batch = next(iter(train_dataset))
-  >>> print(features_batch)
-  <OrderedDict([('sepal_length', <tf.Tensor: shape=(32,), dtype=float32, numpy=
-  array([4.9, 5.1, 5.4, 6.8, 6.6, 6.7, 5. , 6.2, 5.1, 6.2, 6. , 6.4, 6.2,
-       4.9, 5. , 6.7, 5.7, 4.6, 6.7, 5.6, 6.5, 6.5, 7.4, 7.7, 4.4, 7.2,
-       4.8, 5.7, 6.5, 7.2, 6.4, 5.8], dtype=float32)>), ('sepal_width', <tf.Tensor: shape=(32,), dtype=float32, numpy=
-  array([3.1, 3.8, 3.7, 3.2, 2.9, 3.3, 3.2, 2.2, 2.5, 3.4, 3. , 2.8, 2.8,
-       3.1, 3.3, 3. , 2.9, 3.4, 3. , 2.9, 3. , 3. , 2.8, 3.8, 3.2, 3.6,
-       3.1, 2.8, 3.2, 3.2, 3.2, 2.7], dtype=float32)>), ('petal_length', <tf.Tensor: shape=(32,), dtype=float32, numpy=
-  array([1.5, 1.9, 1.5, 5.9, 4.6, 5.7, 1.2, 4.5, 3. , 5.4, 4.8, 5.6, 4.8,
-       1.5, 1.4, 5. , 4.2, 1.4, 5.2, 3.6, 5.5, 5.2, 6.1, 6.7, 1.3, 6.1,
-       1.6, 4.5, 5.1, 6. , 5.3, 5.1], dtype=float32)>), ('petal_width', <tf.Tensor: shape=(32,), dtype=float32, numpy=
-  array([0.1, 0.4, 0.2, 2.3, 1.3, 2.1, 0.2, 1.5, 1.1, 2.3, 1.8, 2.2, 1.8,
-       0.1, 0.2, 1.7, 1.3, 0.3, 2.3, 1.3, 1.8, 2. , 1.9, 2.2, 0.2, 2.5,
-       0.2, 1.3, 2. , 1.8, 2.3, 1.9], dtype=float32)>)])>
- 
+    ```python
+    train_dataset_url = "https://storage.googleapis.com/download.tensorflow.org/data/iris_training.csv"
+    train_dataset_fp = tf.keras.utils.get_file(fname=os.path.basename(train_dataset_url), origin=train_dataset_url)
 
+    column_names = ['sepal_length', 'sepal_width', 'petal_length', 'petal_width', 'species']
+    feature_names = column_names[:-1]
+    label_name = column_names[-1]
+     
+    batch_size = 32
+    train_dataset = tf.data.experimental.make_csv_dataset(
+      train_dataset_fp,
+      batch_size,
+      column_names=column_names,
+      label_name=label_name,
+      num_epochs=1)
+    features_batch, labels_batch = next(iter(train_dataset))
+    print(features_batch)
+    
+    <OrderedDict([(..., <tf.Tensor: shape=(32,), dtype=float32, numpy=array([...], dtype=float32)>)])>
+    ```
+ 
   Args:
     file_pattern: List of files or patterns of file paths containing CSV
       records. See `tf.io.gfile.glob` for pattern rules.
