@@ -887,7 +887,17 @@ class DatasetBaseIterator : public IteratorBase {
   }
 
   Status Save(SerializationContext* ctx, IteratorStateWriter* writer) final {
-    TF_RETURN_IF_ERROR(params_.dataset->CheckExternalState());
+    Status s = params_.dataset->CheckExternalState();
+    if (!s.ok()) {
+      if (ctx->external_state_policy() ==
+          SerializationContext::ExternalStatePolicy::kWarn) {
+        LOG(WARNING) << "Dataset contains external state: " << s.ToString();
+      }
+      if (ctx->external_state_policy() ==
+          SerializationContext::ExternalStatePolicy::kFail) {
+        return s;
+      }
+    }
     return IteratorBase::Save(ctx, writer);
   }
 

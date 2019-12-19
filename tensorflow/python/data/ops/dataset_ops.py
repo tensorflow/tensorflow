@@ -18,7 +18,6 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
-import enum
 import functools
 import sys
 import threading
@@ -92,12 +91,6 @@ ops.NotDifferentiable("ReduceDataset")
 # A constant that can be used to enable auto-tuning.
 AUTOTUNE = -1
 tf_export("data.experimental.AUTOTUNE").export_constant(__name__, "AUTOTUNE")
-
-
-class ExternalStatePolicy(enum.Enum):
-  WARN = 0
-  IGNORE = 1
-  FAIL = 2
 
 
 @tf_export("data.Dataset", v1=[])
@@ -210,10 +203,11 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
 
   @deprecation.deprecated_args(None, "Use external_state_policy instead",
                                "allow_stateful")
-  def _as_serialized_graph(self,
-                           allow_stateful=None,
-                           strip_device_assignment=None,
-                           external_state_policy=ExternalStatePolicy.WARN):
+  def _as_serialized_graph(
+      self,
+      allow_stateful=None,
+      strip_device_assignment=None,
+      external_state_policy=distribute_options.ExternalStatePolicy.WARN):
     """Produces serialized graph representation of the dataset.
 
     Args:
@@ -2660,7 +2654,7 @@ class Options(options_lib.OptionsBase):
 
   experimental_external_state_policy = options_lib.create_option(
       name="experimental_external_state_policy",
-      ty=ExternalStatePolicy,
+      ty=distribute_options.ExternalStatePolicy,
       docstring="By default, tf.data will refuse to serialize a dataset or "
       "checkpoint its iterator if the dataset contains a stateful op as the "
       "serialization / checkpointing won't be able to capture its state. "
@@ -2669,7 +2663,7 @@ class Options(options_lib.OptionsBase):
       "in these ops. There are three settings available - IGNORE: in which we"
       "completely ignore any state; WARN: We warn the user that some state "
       "might be thrown away; FAIL: We fail if any state is being captured.",
-      default_factory=lambda: ExternalStatePolicy.WARN)
+      default_factory=lambda: distribute_options.ExternalStatePolicy.WARN)
 
   def _graph_rewrites(self):
     """Produces the list of enabled static graph rewrites."""

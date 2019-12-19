@@ -3730,7 +3730,7 @@ tf_module {
   }
   member_method {
     name: "SerializeIterator"
-    argspec: "args=[\'resource_handle\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'resource_handle\', \'external_state_policy\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'None\'], "
   }
   member_method {
     name: "SerializeManySparse"

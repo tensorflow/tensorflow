@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/kernels/data/captured_function.h"
+#include "tensorflow/core/kernels/data/dataset_ops.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/kernels/data/optional_ops.h"
 #include "tensorflow/core/kernels/ops_util.h"
@@ -294,10 +295,10 @@ class IteratorVariantSerializer {
 
   // Calls `Save` on the iterator_resource to build up the list of
   // IteratorStateVariant objects.
-  Status InitializeFromIterator(IteratorResource* iterator_resource) {
-    SerializationContext serialization_ctx({});
+  Status InitializeFromIterator(SerializationContext* serialization_ctx,
+                                IteratorResource* iterator_resource) {
     VariantTensorDataWriter writer;
-    TF_RETURN_IF_ERROR(iterator_resource->Save(&serialization_ctx, &writer));
+    TF_RETURN_IF_ERROR(iterator_resource->Save(serialization_ctx, &writer));
     std::vector<std::unique_ptr<VariantTensorData>> data;
     writer.ReleaseData(&data);
     variants_.clear();
@@ -1070,13 +1071,20 @@ namespace {
 
 class SerializeIteratorOp : public OpKernel {
  public:
-  explicit SerializeIteratorOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  explicit SerializeIteratorOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+    if (ctx->HasAttr(DatasetToGraphOp::kExternalStatePolicy)) {
+      int64 state_change_option;
+      OP_REQUIRES_OK(ctx, ctx->GetAttr(DatasetToGraphOp::kExternalStatePolicy,
+                                       &state_change_option));
+      external_state_policy_ =
+          SerializationContext::ExternalStatePolicy(state_change_option);
+    }
+  }
 
   void Compute(OpKernelContext* ctx) override {
     const Tensor& resource_handle_t = ctx->input(0);
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(resource_handle_t.shape()),
                 errors::InvalidArgument("resource_handle must be a scalar"));
-
     // Validate that the handle corresponds to a real resource, and
     // that it is an IteratorResource.
     IteratorResource* iterator_resource;
@@ -1084,13 +1092,21 @@ class SerializeIteratorOp : public OpKernel {
         ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &iterator_resource));
     core::ScopedUnref unref_iterator(iterator_resource);
     IteratorVariantSerializer serializer;
-    OP_REQUIRES_OK(ctx, serializer.InitializeFromIterator(iterator_resource));
+    SerializationContext::Params params;
+    params.external_state_policy = external_state_policy_;
+    SerializationContext serialization_ctx(params);
+    OP_REQUIRES_OK(ctx, serializer.InitializeFromIterator(&serialization_ctx,
+                                                          iterator_resource));
     Tensor* serialized_t;
     OP_REQUIRES_OK(
         ctx, ctx->allocate_output(0, TensorShape({serializer.NumTensors()}),
                                   &serialized_t));
     OP_REQUIRES_OK(ctx, serializer.Serialize(serialized_t));
   }
+
+ private:
+  SerializationContext::ExternalStatePolicy external_state_policy_ =
+      SerializationContext::ExternalStatePolicy::kWarn;
 };
 
 class DeserializeIteratorOp : public OpKernel {

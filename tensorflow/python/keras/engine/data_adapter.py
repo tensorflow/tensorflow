@@ -399,7 +399,7 @@ class TensorLikeDataAdapter(DataAdapter):
     if self._shuffle:
       # See b/141490660 for more details.
       options.experimental_external_state_policy = (
-          dataset_ops.ExternalStatePolicy.IGNORE)
+          distribute_options.ExternalStatePolicy.IGNORE)
     dataset = dataset.with_options(options)
     return dataset
 

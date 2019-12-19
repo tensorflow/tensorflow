@@ -20,6 +20,7 @@ from __future__ import print_function
 import threading
 import warnings
 
+from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.ops import optional_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import structure
@@ -793,8 +794,13 @@ class IteratorSpec(type_spec.TypeSpec):
 class _IteratorSaveable(BaseSaverBuilder.SaveableObject):
   """SaveableObject for saving/restoring iterator state."""
 
-  def __init__(self, iterator_resource, name):
-    serialized_iterator = gen_dataset_ops.serialize_iterator(iterator_resource)
+  def __init__(
+      self,
+      iterator_resource,
+      name,
+      external_state_policy=distribute_options.ExternalStatePolicy.FAIL):
+    serialized_iterator = gen_dataset_ops.serialize_iterator(
+        iterator_resource, external_state_policy=external_state_policy.value)
     specs = [
         BaseSaverBuilder.SaveSpec(
             serialized_iterator,

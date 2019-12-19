@@ -24,6 +24,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.core.framework import graph_pb2
+from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import optional_ops
@@ -58,8 +59,9 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.range(10).map(
         lambda _: random_ops.random_uniform(()))
     with self.assertRaises(errors.FailedPreconditionError):
-      self.evaluate(dataset._as_serialized_graph(
-          external_state_policy=dataset_ops.ExternalStatePolicy.FAIL))
+      self.evaluate(
+          dataset._as_serialized_graph(external_state_policy=distribute_options
+                                       .ExternalStatePolicy.FAIL))
 
   @combinations.generate(test_base.default_test_combinations())
   def testAsFunctionWithMap(self):
