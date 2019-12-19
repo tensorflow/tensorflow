@@ -123,13 +123,21 @@ struct EngineContext {
   EngineContext() {}  // Creates an empty context.
   EngineContext(
       TrtUniquePtrType<nvinfer1::ICudaEngine>&& input_cuda_engine,
-      TrtUniquePtrType<nvinfer1::IExecutionContext>&& input_execution_context)
+      TrtUniquePtrType<nvinfer1::IExecutionContext>&&
+        input_execution_context)
+      : cuda_engine(std::move(input_cuda_engine)) {
+    execution_context.push_back(std::move(input_execution_context));
+  }
+  EngineContext(
+      TrtUniquePtrType<nvinfer1::ICudaEngine>&& input_cuda_engine,
+      std::vector<TrtUniquePtrType<nvinfer1::IExecutionContext>>&&
+        input_execution_context)
       : cuda_engine(std::move(input_cuda_engine)),
         execution_context(std::move(input_execution_context)) {}
 
   mutex mu;
   TrtUniquePtrType<nvinfer1::ICudaEngine> cuda_engine;
-  TrtUniquePtrType<nvinfer1::IExecutionContext> execution_context
+  std::vector<TrtUniquePtrType<nvinfer1::IExecutionContext>> execution_context
       GUARDED_BY(mu);
 };
 
