@@ -418,6 +418,28 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
   return result_;
 }
 
+bool operator<(const AsynchronousCopy& a, const AsynchronousCopy& b) {
+  return (a.start_time < b.start_time && a.end_time <= b.end_time) ||
+         (a.start_time <= b.start_time && a.end_time < b.end_time);
+}
+
+void AsynchronousCopyOrdering::AddCopy(const AsynchronousCopy& copy) {
+  auto it_and_inserted = ranges_.insert(copy);
+  CHECK(it_and_inserted.second ||
+        it_and_inserted.first->start_time == copy.start_time);
+}
+
+bool AsynchronousCopyOrdering::ViolatesOrdering(int64 start_time,
+                                                int64 end_time) const {
+  // We allow identical start and end times. It is enough to check for just the
+  // start time in case we find a match in ranges_ because the found value will
+  // either be identical to {start_time, end_time} (and this doesn't violate) or
+  // its start_time will be smaller and end_time will be larger (this violates).
+  auto copy_it = ranges_.find(
+      {start_time, end_time, MemorySpaceAssignment::MemorySpace::kAlternate});
+  return copy_it != ranges_.end() && copy_it->start_time != start_time;
+}
+
 void AlternateMemoryBestFitHeap::AddInputAndOutputRequiredAssignments() {
   // Go through the parameters and outputs and pin them to the corresponding
   // memory by adding a required assignment.
@@ -520,14 +542,7 @@ void AlternateMemoryBestFitHeap::CommitPendingChunks() {
                                     kDummyChunk);
     }
     if (interval.destination == MemorySpace::kAlternate) {
-      // If there is already an asynchronous copy ending the same time, pick
-      // the earliest copy start time.
-      auto range_it = async_copy_range_map_.find(interval.end_time);
-      if (range_it != async_copy_range_map_.end()) {
-        range_it->second = std::min(range_it->second, interval.start_time);
-      } else {
-        async_copy_range_map_[interval.end_time] = interval.start_time;
-      }
+      async_copy_ordering_.AddCopy(interval);
     }
   }
   pending_async_copies_.clear();
@@ -736,8 +751,8 @@ bool AlternateMemoryBestFitHeap::FindAllocation(
       VLOG(4) << "This would violate the outstanding async copy limit.";
       continue;
     }
-    if (ViolatesAsynchronousCopyOrdering(alternate_mem_interval.start,
-                                         alternate_mem_interval.end)) {
+    if (async_copy_ordering_.ViolatesOrdering(alternate_mem_interval.start,
+                                              alternate_mem_interval.end)) {
       VLOG(4) << "This would violate asynchronous copy ordering.";
       continue;
     }
@@ -810,13 +825,6 @@ bool AlternateMemoryBestFitHeap::ViolatesMaximumOutstandingAsyncCopies(
   // Add one because we are checking if adding an additional asynchronous copy
   // would violate the limit.
   return num_async_copies + 1 > options_.max_outstanding_async_copies;
-}
-
-bool AlternateMemoryBestFitHeap::ViolatesAsynchronousCopyOrdering(
-    int64 start_time, int64 end_time) const {
-  auto async_copy_range_it = async_copy_range_map_.lower_bound(end_time);
-  return async_copy_range_it != async_copy_range_map_.end() &&
-         async_copy_range_it->second < start_time;
 }
 
 bool AlternateMemoryBestFitHeap::TryAllocatingInAlternateMemoryNoCopy(
