@@ -1123,6 +1123,36 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
         expected = 0
       self.assertEqual(expected, result, aggregation)
 
+  # TODO(b/145574622): Re-enable this test once ReduceOp argument is
+  # respected on GPUs.
+  @combinations.generate(strategy_and_run_tf_function_combinations())
+  def disable_testAllReduce(self, distribution,
+                            experimental_run_tf_function):
+    with distribution.scope():
+      v = variable_scope.variable(
+          2.,
+          synchronization=variables_lib.VariableSynchronization.ON_WRITE,
+          aggregation=variables_lib.VariableAggregation.MEAN)
+    self.evaluate(variables_lib.global_variables_initializer())
+
+    def all_reduce():
+      ctx = distribution_strategy_context.get_replica_context()
+      replica_id = ctx.replica_id_in_sync_group
+      return ctx.all_reduce("SUM", v) + math_ops.cast(replica_id,
+                                                      dtypes.float32)
+
+    if experimental_run_tf_function:
+      all_reduce = def_function.function(all_reduce)
+
+    per_replica_results = self.evaluate(
+        distribution.experimental_local_results(
+            distribution.experimental_run_v2(all_reduce)))
+    expected_result = []
+    for i in range(distribution.num_replicas_in_sync):
+      expected_result.append(2.0 * distribution.num_replicas_in_sync +
+                             1.0 * i)
+    self.assertEqual(per_replica_results, tuple(expected_result))
+
   @combinations.generate(mirrored_and_tpu_strategy_combinations())
   def testReadValueWithAggregationNoneInCrossReplicaContext(self, distribution):
     with distribution.scope():
