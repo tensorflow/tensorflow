@@ -574,6 +574,123 @@ def Vector_OuterProductOp :
   }];
 }
 
+// TODO(andydavis) Add transformation which decomposes ReshapeOp into an
+// optimized sequence of vector rotate/shuffle/select operations.
+def Vector_ReshapeOp :
+  Vector_Op<"reshape", [AttrSizedOperandSegments, NoSideEffect]>,
+    Arguments<(ins AnyVector:$vector, Variadic<Index>:$input_shape,
+               Variadic<Index>:$output_shape,
+               I64ArrayAttr:$fixed_vector_sizes,
+               I32ElementsAttr:$operand_segment_sizes)>,
+    Results<(outs AnyVector)> {
+  let summary = "vector reshape operation";
+  let description = [{
+    Reshapes its vector operand from 'input_shape' to 'output_shape' maintaining
+    fixed vector dimension 'fixed_vector_sizes' on the innermost vector
+    dimensions.
+
+    The parameters 'input_shape' and 'output_shape' represent valid data shapes
+    across fixed vector shapes. For example, if a vector has a valid data
+    shape [6] with fixed vector size [8], then the valid data elements are
+    assumed to be stored at the beginning of the vector with the remaining
+    vector elements undefined.
+
+    In the examples below, valid data elements are represented by an alphabetic
+    character, and undefined data elements are represented by '-'.
+
+    Example
+
+      vector<1x8xf32> with valid data shape [6], fixed vector sizes [8]
+
+                input: [a, b, c, d, e, f]
+
+           layout map: (d0) -> (d0 floordiv 8, d0 mod 8)
+
+        vector layout: [a, b, c, d, e, f, -, -]
+
+    Example
+
+      vector<2x8xf32> with valid data shape [10], fixed vector sizes [8]
+
+                input: [a, b, c, d, e, f, g, h, i, j]
+
+           layout map: (d0) -> (d0 floordiv 8, d0 mod 8)
+
+        vector layout: [[a, b, c, d, e, f, g, h],
+                        [i, j, -, -, -, -, -, -]]
+
+    Example
+
+      vector<2x2x2x3xf32> with valid data shape [3, 5], fixed vector sizes
+      [2, 3]
+
+                input: [[a, b, c, d, e],
+                        [f, g, h, i, j],
+                        [k, l, m, n, o]]
+
+           layout map: (d0, d1) -> (d0 floordiv 3, d1 floordiv 5,
+                                    d0 mod 3, d1 mod 5)
+
+        vector layout: [[[[a, b, c],
+                          [f, g, h]]
+                         [[d, e, -],
+                          [i, j, -]]],
+                        [[[k, l, m],
+                          [-, -, -]]
+                         [[n, o, -],
+                          [-, -, -]]]]
+
+    Example
+
+      %1 = vector.reshape %0, [%c3, %c6], [%c2, %c9], [4]
+        : vector<3x2x4xf32> to vector<2x3x4xf32>
+
+             input: [[a, b, c, d, e, f],
+                     [g, h, i, j, k, l],
+                     [m, n, o, p, q, r]]
+
+        layout map: (d0, d1) -> (d0, d1 floordiv 4, d1 mod 4)
+
+
+      Input vector:  [[[a, b, c, d],
+                       [e, f, -, -]],
+                      [[g, h, i, j],
+                       [k, l, -, -]],
+                      [[m, n, o, p],
+                       [q, r, -, -]]]
+
+      Output vector:  [[[a, b, c, d],
+                        [e, f, g, h],
+                        [i, -, -, -]],
+                       [[j, k, l, m],
+                        [n, o, p, q],
+                        [r, -, -, -]]]
+  }];
+
+  let extraClassDeclaration = [{
+    VectorType getInputVectorType() {
+      return vector()->getType().cast<VectorType>();
+    }
+    VectorType getOutputVectorType() {
+      return getResult()->getType().cast<VectorType>();
+    }
+
+    /// Returns as integer value the number of input shape operands.
+    int64_t getNumInputShapeSizes() { return input_shape().size(); }
+
+    /// Returns as integer value the number of output shape operands.
+    int64_t getNumOutputShapeSizes() { return output_shape().size(); }
+
+    void getFixedVectorSizes(SmallVectorImpl<int64_t> &results);
+
+    static StringRef getFixedVectorSizesAttrName() {
+      return "fixed_vector_sizes";
+    }
+    static StringRef getInputShapeAttrName() { return "input_shape"; }
+    static StringRef getOutputShapeAttrName() { return "output_shape"; }
+  }];
+}
+
 def Vector_StridedSliceOp :
   Vector_Op<"strided_slice", [NoSideEffect,
     PredOpTrait<"operand and result have same element type",

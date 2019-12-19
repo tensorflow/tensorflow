@@ -1108,6 +1108,123 @@ static LogicalResult verify(OuterProductOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// ReshapeOp
+//===----------------------------------------------------------------------===//
+
+static void print(OpAsmPrinter &p, ReshapeOp op) {
+  p << op.getOperationName() << " " << *op.vector() << ", [" << op.input_shape()
+    << "], [" << op.output_shape() << "], " << op.fixed_vector_sizes();
+  SmallVector<StringRef, 2> elidedAttrs = {
+      ReshapeOp::getOperandSegmentSizeAttr(),
+      ReshapeOp::getFixedVectorSizesAttrName()};
+  p.printOptionalAttrDict(op.getAttrs(), elidedAttrs);
+  p << " : " << op.getInputVectorType() << " to " << op.getOutputVectorType();
+}
+
+// TODO(b/146516564) Consider passing number of inner vector dimensions that
+// are fixed, instead of their values in 'fixesVectorSizes' array attr.
+//
+// operation ::= ssa-id `=` `vector.reshape` ssa-use, `[` ssa-use-list `]`,
+//                          `[` ssa-use-list `]`, `[` array-attribute `]`
+//                          `:` vector-type 'to' vector-type
+//
+static ParseResult parseReshapeOp(OpAsmParser &parser, OperationState &result) {
+  OpAsmParser::OperandType inputInfo;
+  SmallVector<OpAsmParser::OperandType, 4> inputShapeInfo;
+  SmallVector<OpAsmParser::OperandType, 4> outputShapeInfo;
+  ArrayAttr fixedVectorSizesAttr;
+  StringRef attrName = ReshapeOp::getFixedVectorSizesAttrName();
+  auto indexType = parser.getBuilder().getIndexType();
+  if (parser.parseOperand(inputInfo) || parser.parseComma() ||
+      parser.parseOperandList(inputShapeInfo, OpAsmParser::Delimiter::Square) ||
+      parser.parseComma() ||
+      parser.parseOperandList(outputShapeInfo,
+                              OpAsmParser::Delimiter::Square) ||
+      parser.parseComma()) {
+    return failure();
+  }
+
+  auto builder = parser.getBuilder();
+  result.addAttribute(
+      ReshapeOp::getOperandSegmentSizeAttr(),
+      builder.getI32VectorAttr({1, static_cast<int32_t>(inputShapeInfo.size()),
+                                static_cast<int32_t>(outputShapeInfo.size())}));
+  Type inputType;
+  Type outputType;
+  return failure(
+      parser.parseAttribute(fixedVectorSizesAttr, attrName,
+                            result.attributes) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
+      parser.parseColonType(inputType) ||
+      parser.resolveOperand(inputInfo, inputType, result.operands) ||
+      parser.resolveOperands(inputShapeInfo, indexType, result.operands) ||
+      parser.resolveOperands(outputShapeInfo, indexType, result.operands) ||
+      parser.parseKeywordType("to", outputType) ||
+      parser.addTypeToList(outputType, result.types));
+}
+
+static LogicalResult verify(ReshapeOp op) {
+  // Verify that rank(numInputs/outputs) + numFixedVec dim matches vec rank.
+  auto inputVectorType = op.getInputVectorType();
+  auto outputVectorType = op.getOutputVectorType();
+  int64_t inputShapeRank = op.getNumInputShapeSizes();
+  int64_t outputShapeRank = op.getNumOutputShapeSizes();
+  SmallVector<int64_t, 4> fixedVectorSizes;
+  op.getFixedVectorSizes(fixedVectorSizes);
+  int64_t numFixedVectorSizes = fixedVectorSizes.size();
+
+  if (inputVectorType.getRank() != inputShapeRank + numFixedVectorSizes)
+    return op.emitError("invalid input shape for vector type ")
+           << inputVectorType;
+
+  if (outputVectorType.getRank() != outputShapeRank + numFixedVectorSizes)
+    return op.emitError("invalid output shape for vector type ")
+           << outputVectorType;
+
+  // Verify that the 'fixedVectorSizes' match a input/output vector shape
+  // suffix.
+  unsigned inputVectorRank = inputVectorType.getRank();
+  for (unsigned i = 0; i < numFixedVectorSizes; ++i) {
+    unsigned index = inputVectorRank - numFixedVectorSizes - i;
+    if (fixedVectorSizes[i] != inputVectorType.getShape()[index])
+      return op.emitError("fixed vector size must match input vector for dim ")
+             << i;
+  }
+
+  unsigned outputVectorRank = outputVectorType.getRank();
+  for (unsigned i = 0; i < numFixedVectorSizes; ++i) {
+    unsigned index = outputVectorRank - numFixedVectorSizes - i;
+    if (fixedVectorSizes[i] != outputVectorType.getShape()[index])
+      return op.emitError("fixed vector size must match output vector for dim ")
+             << i;
+  }
+
+  // If all shape operands are produced by constant ops, verify that product
+  // of dimensions for input/output shape match.
+  auto isDefByConstant = [](Value *operand) {
+    return isa_and_nonnull<ConstantIndexOp>(operand->getDefiningOp());
+  };
+  if (llvm::all_of(op.input_shape(), isDefByConstant) &&
+      llvm::all_of(op.output_shape(), isDefByConstant)) {
+    int64_t numInputElements = 1;
+    for (auto *operand : op.input_shape())
+      numInputElements *=
+          cast<ConstantIndexOp>(operand->getDefiningOp()).getValue();
+    int64_t numOutputElements = 1;
+    for (auto *operand : op.output_shape())
+      numOutputElements *=
+          cast<ConstantIndexOp>(operand->getDefiningOp()).getValue();
+    if (numInputElements != numOutputElements)
+      return op.emitError("product of input and output shape sizes must match");
+  }
+  return success();
+}
+
+void ReshapeOp::getFixedVectorSizes(SmallVectorImpl<int64_t> &results) {
+  populateFromInt64AttrArray(fixed_vector_sizes(), results);
+}
+
+//===----------------------------------------------------------------------===//
 // StridedSliceOp
 //===----------------------------------------------------------------------===//
 
