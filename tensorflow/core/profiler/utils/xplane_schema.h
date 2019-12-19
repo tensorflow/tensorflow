@@ -35,6 +35,7 @@ enum HostEventType {
   kSessionRun,
   kFunctionRun,
   kRunGraph,
+  kEagerKernelExecute,
   kExecutorStateProcess,
   kExecutorDoneCallback,
   // tf.data captured function events.
