@@ -52,6 +52,19 @@ patch_am_sdk() {
   # Add a delay after establishing serial connection
   sed -ir -E $'s/    with serial\.Serial\(args\.port, args\.baud, timeout=12\) as ser:/    with serial.Serial(args.port, args.baud, timeout=12) as ser:\\\n        # Patched.\\\n        import time\\\n        time.sleep(0.25)\\\n        # End patch./g' "${am_dir}/tools/apollo3_scripts/uart_wired_update.py"
 
+  # Add CPP include guards to "am_hal_iom.h"
+  sed -i -e '57a\
+  #ifdef __cplusplus // Patch\
+  extern "C" {\
+  #endif // End patch
+  ' "${am_dir}/mcu/apollo3/hal/am_hal_iom.h"
+
+  sed -i -e '836a\
+  #ifdef __cplusplus // Patch\
+  }\
+  #endif // End patch
+  ' "${am_dir}/mcu/apollo3/hal/am_hal_iom.h"
+
   echo "Finished preparing Apollo3 files"
 }
 

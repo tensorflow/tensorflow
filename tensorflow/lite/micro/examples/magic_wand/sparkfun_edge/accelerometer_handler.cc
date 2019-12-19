@@ -19,10 +19,12 @@ limitations under the License.
 #include "am_bsp.h"         // NOLINT
 #include "am_mcu_apollo.h"  // NOLINT
 #include "am_util.h"        // NOLINT
-extern "C" {
-#include "tf_accelerometer.h"  // NOLINT
-#include "tf_adc.h"            // NOLINT
-}
+#include "lis2dh12_platform_apollo3.h"
+
+#include <string.h>
+
+lis2dh12_platform_apollo3_if_t dev_if = {0};  // accelerometer device interface
+lis2dh12_ctx_t dev_ctx = {0};                 // accelerometer device control
 
 // A union representing either int16_t[3] or uint8_t[6],
 // storing the most recent data
@@ -33,6 +35,49 @@ float save_data[600] = {0.0};
 int begin_index = 0;
 // True if there is not yet enough data to run inference
 bool pending_initial_data = true;
+
+int initAccelerometer( void ){
+    uint32_t retVal32 = 0;
+    static uint8_t whoamI = 0;
+
+    am_hal_iom_config_t i2cConfig = {0};
+    i2cConfig.eInterfaceMode = AM_HAL_IOM_I2C_MODE;
+    i2cConfig.ui32ClockFreq = AM_HAL_IOM_100KHZ;
+
+    // Initialize the IOM.
+    retVal32 = am_hal_iom_initialize(AM_BSP_ACCELEROMETER_I2C_IOM, &(dev_if.iomHandle)); // set the iomHandle of the device interface
+    if(retVal32 != AM_HAL_STATUS_SUCCESS){ return (int)retVal32; }
+
+    retVal32 = am_hal_iom_power_ctrl((dev_if.iomHandle), AM_HAL_SYSCTRL_WAKE, false);
+    if(retVal32 != AM_HAL_STATUS_SUCCESS){ return (int)retVal32; }
+
+    retVal32 = am_hal_iom_configure((dev_if.iomHandle), &i2cConfig);
+    if(retVal32 != AM_HAL_STATUS_SUCCESS){ return (int)retVal32; }
+
+    // Configure the IOM pins.
+    am_hal_gpio_pinconfig(AM_BSP_ACCELEROMETER_I2C_SDA_PIN,  g_AM_BSP_ACCELEROMETER_I2C_SDA_PIN);
+    am_hal_gpio_pinconfig(AM_BSP_ACCELEROMETER_I2C_SCL_PIN,  g_AM_BSP_ACCELEROMETER_I2C_SDA_PIN);
+
+    // Enable the IOM.
+    retVal32 = am_hal_iom_enable((dev_if.iomHandle));
+    if(retVal32 != AM_HAL_STATUS_SUCCESS){ return (int)retVal32; }
+
+    //
+    // Apply accelerometer configuration
+    lis2dh12_device_id_get(&dev_ctx, &whoamI);
+    if (whoamI != LIS2DH12_ID){
+        return AM_HAL_STATUS_FAIL; 
+    }
+
+    lis2dh12_block_data_update_set(&dev_ctx, PROPERTY_ENABLE);
+    lis2dh12_temperature_meas_set(&dev_ctx, LIS2DH12_TEMP_ENABLE);
+    lis2dh12_data_rate_set(&dev_ctx, LIS2DH12_ODR_25Hz);
+    lis2dh12_full_scale_set(&dev_ctx, LIS2DH12_2g);
+    lis2dh12_temperature_meas_set(&dev_ctx, LIS2DH12_TEMP_ENABLE);
+    lis2dh12_operating_mode_set(&dev_ctx, LIS2DH12_HR_12bit);
+
+    return (int)AM_HAL_STATUS_SUCCESS;
+}
 
 TfLiteStatus SetupAccelerometer(tflite::ErrorReporter* error_reporter) {
   // Set the clock frequency.
@@ -45,8 +90,20 @@ TfLiteStatus SetupAccelerometer(tflite::ErrorReporter* error_reporter) {
   // Configure the board for low power operation.
   am_bsp_low_power_init();
 
+  // Initialize the device interface and control structures
+  dev_if.iomHandle  = NULL;                             // Gets initialized once iomHandle is known (in initAccel())
+  dev_if.addCS      = AM_BSP_ACCELEROMETER_I2C_ADDRESS; // Gets the accelerometer I2C address for the board
+  dev_if.useSPI     = false;                            // Using I2C
+
+  dev_ctx.write_reg  = lis2dh12_write_platform_apollo3;  // write bytes function
+  dev_ctx.read_reg   = lis2dh12_read_platform_apollo3;   // read bytes function
+  dev_ctx.handle     = (void*)&dev_if;                   // Apollo3-specific interface information
+
   // Collecting data at 25Hz.
   int accInitRes = initAccelerometer();
+  if(accInitRes != (int)AM_HAL_STATUS_SUCCESS){
+    error_reporter->Report("Failed to initialize the accelerometer. (code %d)", accInitRes);
+  }
 
   // Enable the accelerometer's FIFO buffer.
   // Note: LIS2DH12 has a FIFO buffer which holds up to 32 data entries. It
