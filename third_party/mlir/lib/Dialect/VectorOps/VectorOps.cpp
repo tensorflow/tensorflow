@@ -58,6 +58,15 @@ Operation *VectorOpsDialect::materializeConstant(OpBuilder &builder,
   return builder.create<ConstantOp>(loc, type, value);
 }
 
+IntegerType vector::getVectorSubscriptType(Builder &builder) {
+  return builder.getIntegerType(32);
+}
+
+ArrayAttr vector::getVectorSubscriptAttr(Builder &builder,
+                                         ArrayRef<int32_t> values) {
+  return builder.getI32ArrayAttr(values);
+}
+
 //===----------------------------------------------------------------------===//
 // ContractionOp
 //===----------------------------------------------------------------------===//
@@ -397,7 +406,7 @@ static Type inferExtractOpResultType(VectorType vectorType,
 void vector::ExtractOp::build(Builder *builder, OperationState &result,
                               Value *source, ArrayRef<int32_t> position) {
   result.addOperands(source);
-  auto positionAttr = builder->getI32ArrayAttr(position);
+  auto positionAttr = getVectorSubscriptAttr(*builder, position);
   result.addTypes(inferExtractOpResultType(source->getType().cast<VectorType>(),
                                            positionAttr));
   result.addAttribute(getPositionAttrName(), positionAttr);
@@ -641,7 +650,7 @@ static ParseResult parseBroadcastOp(OpAsmParser &parser,
 void ShuffleOp::build(Builder *builder, OperationState &result, Value *v1,
                       Value *v2, ArrayRef<int32_t> mask) {
   result.addOperands({v1, v2});
-  auto maskAttr = builder->getI32ArrayAttr(mask);
+  auto maskAttr = getVectorSubscriptAttr(*builder, mask);
   result.addTypes(v1->getType());
   result.addAttribute(getMaskAttrName(), maskAttr);
 }
@@ -765,7 +774,7 @@ static LogicalResult verify(InsertElementOp op) {
 void InsertOp::build(Builder *builder, OperationState &result, Value *source,
                      Value *dest, ArrayRef<int32_t> position) {
   result.addOperands({source, dest});
-  auto positionAttr = builder->getI32ArrayAttr(position);
+  auto positionAttr = getVectorSubscriptAttr(*builder, position);
   result.addTypes(dest->getType());
   result.addAttribute(getPositionAttrName(), positionAttr);
 }

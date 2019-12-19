@@ -271,7 +271,7 @@ def Vector_ExtractElementOp :
   Vector_Op<"extractelement", [NoSideEffect,
      PredOpTrait<"operand and result have same element type",
                  TCresVTEtIsSameAsOpBase<0, 0>>]>,
-    Arguments<(ins AnyVector:$vector, Index:$position)>,
+    Arguments<(ins AnyVector:$vector, I32:$position)>,
     Results<(outs AnyType)> {
   let summary = "extractelement operation";
   let description = [{
@@ -379,7 +379,7 @@ def Vector_InsertElementOp :
                  TCresVTEtIsSameAsOpBase<0, 0>>,
      PredOpTrait<"dest operand and result have same type",
                  TCresIsSameAsOpBase<0, 1>>]>,
-     Arguments<(ins AnyType:$source, AnyVector:$dest, Index:$position)>,
+     Arguments<(ins AnyType:$source, AnyVector:$dest, I32:$position)>,
      Results<(outs AnyVector)> {
   let summary = "insertelement operation";
   let description = [{
