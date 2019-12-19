@@ -40455,6 +40455,13 @@ op {
     name: "serialized"
     type: DT_VARIANT
   }
+  attr {
+    name: "external_state_policy"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
   is_stateful: true
 }
 op {
