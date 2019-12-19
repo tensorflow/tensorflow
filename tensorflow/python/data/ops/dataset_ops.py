@@ -1457,8 +1457,9 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
         maximum size of that dimension in each batch.
       padding_values: (Optional.) A nested structure of scalar-shaped
         `tf.Tensor`, representing the padding values to use for the respective
-        components.  Defaults are `0` for numeric types and the empty string for
-        string types.
+        components. None represents that the nested structure should be padded
+        with default values.  Defaults are `0` for numeric types and the empty
+        string for string types.
       drop_remainder: (Optional.) A `tf.bool` scalar `tf.Tensor`, representing
         whether the last batch should be dropped in the case it has fewer than
         `batch_size` elements; the default behavior is not to drop the smaller
@@ -3769,8 +3770,8 @@ def _padding_value_to_tensor(value, output_type):
   return value
 
 
-def _default_padding(input_dataset):
-  """Returns default padding tensors in a structure matching `input_dataset`."""
+def _padding_values_or_default(padding_values, input_dataset):
+  """Returns padding values with None elements replaced with default values."""
   def make_zero(t):
     if t.base_dtype == dtypes.string:
       return ""
@@ -3782,9 +3783,13 @@ def _default_padding(input_dataset):
       raise TypeError(error_msg)
     else:
       return np.zeros_like(t.as_numpy_dtype())
+  def value_or_default(value, default):
+    return default if value is None else value
 
-  return nest.map_structure(
-      make_zero, get_legacy_output_types(input_dataset))
+  default_padding = nest.map_structure(make_zero,
+                                       get_legacy_output_types(input_dataset))
+  return nest.map_structure_up_to(padding_values, value_or_default,
+                                  padding_values, default_padding)
 
 
 class PaddedBatchDataset(UnaryDataset):
@@ -3801,9 +3806,7 @@ class PaddedBatchDataset(UnaryDataset):
     self._input_dataset = input_dataset
     self._batch_size = ops.convert_to_tensor(
         batch_size, dtype=dtypes.int64, name="batch_size")
-    padding_values = (
-        padding_values
-        if padding_values is not None else _default_padding(input_dataset))
+    padding_values = _padding_values_or_default(padding_values, input_dataset)
 
     input_shapes = get_legacy_output_shapes(input_dataset)
     flat_padded_shapes = nest.flatten_up_to(input_shapes, padded_shapes)
