@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import os
 import tempfile
+
 import numpy as np
 
 from tensorflow.lite.python import lite

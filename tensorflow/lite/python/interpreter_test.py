@@ -21,6 +21,7 @@ from __future__ import print_function
 import ctypes
 import io
 import sys
+
 import numpy as np
 import six
 
