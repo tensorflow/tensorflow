@@ -538,7 +538,7 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
     string binding_types = "";
     for (int i=0; i < cuda_engine->getNbBindings(); i++) {
       binding_types += "    " + string(cuda_engine->getBindingName(i))
-                    + ": " + convert::DebugString(cuda_engine->getBindingDataType(i)) + "\n";
+                    + ": " + DebugString(cuda_engine->getBindingDataType(i)) + "\n";
     }
     VLOG(2) << binding_types;
   }
