@@ -156,7 +156,6 @@ py_test(
     deps = [
         ":convert",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:util",
     ],
 )

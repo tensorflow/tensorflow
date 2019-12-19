@@ -394,8 +394,6 @@ cc_library(
     srcs = ["lib/core/numpy.cc"],
     hdrs = ["lib/core/numpy.h"],
     deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",
     ],
@@ -407,21 +405,9 @@ cc_library(
     hdrs = ["lib/core/bfloat16.h"],
     deps = [
         ":numpy_lib",
-        ":safe_ptr",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//third_party/python_runtime:headers",
-    ],
-)
-
-tf_python_pybind_extension(
-    name = "_pywrap_bfloat16",
-    srcs = ["lib/core/bfloat16_wrapper.cc"],
-    hdrs = ["lib/core/bfloat16.h"],
-    module_name = "_pywrap_bfloat16",
-    deps = [
-        "//third_party/python_runtime:headers",
-        "@pybind11",
     ],
 )
 
@@ -435,7 +421,7 @@ cc_library(
         ],
     ),
     deps = [
-        ":bfloat16_lib",
+        ":ndarray_tensor_types",
         ":numpy_lib",
         "//tensorflow/c:c_api",
         "//tensorflow/core:lib",
@@ -797,6 +783,31 @@ cc_library(
 )
 
 cc_library(
+    name = "ndarray_tensor_types",
+    srcs = ["lib/core/ndarray_tensor_types.cc"],
+    hdrs = ["lib/core/ndarray_tensor_types.h"],
+    deps = [
+        ":bfloat16_lib",
+        ":numpy_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//third_party/python_runtime:headers",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+cc_library(
+    name = "ndarray_tensor_types_headers_lib",
+    hdrs = ["lib/core/ndarray_tensor_types.h"],
+    deps = [
+        ":numpy_lib",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+cc_library(
     name = "ndarray_tensor",
     srcs = ["lib/core/ndarray_tensor.cc"],
     hdrs = ["lib/core/ndarray_tensor.h"],
@@ -804,8 +815,8 @@ cc_library(
         "//learning/deepmind/courier:__subpackages__",
     ]),
     deps = [
-        ":bfloat16_lib",
         ":ndarray_tensor_bridge",
+        ":ndarray_tensor_types",
         ":numpy_lib",
         ":safe_ptr",
         "//tensorflow/c:c_api",
@@ -1165,6 +1176,7 @@ tf_python_pybind_extension(
     srcs = ["framework/dtypes.cc"],
     module_name = "_dtypes",
     deps = [
+        ":ndarray_tensor_types_headers_lib",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:protos_all_cc",
         "//third_party/eigen3",
@@ -1178,7 +1190,6 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":_dtypes",
-        ":_pywrap_bfloat16",
         ":pywrap_tensorflow",
         "//tensorflow/core:protos_all_py",
     ],
@@ -5507,7 +5518,6 @@ tf_py_wrap_cc(
         "//conditions:default": None,
     }),
     deps = [
-        ":bfloat16_lib",
         ":cost_analyzer_lib",
         ":model_analyzer_lib",
         ":cpp_python_util",
@@ -5577,7 +5587,8 @@ WIN_LIB_FILES_FOR_EXPORTED_SYMBOLS = [
     ":numpy_lib",  # checkpoint_reader
     ":safe_ptr",  # checkpoint_reader
     ":python_op_gen",  # python_op_gen
-    ":bfloat16_lib",  # bfloat16
+    ":bfloat16_lib",  # _dtypes
+    ":ndarray_tensor_types",  # _dtypes
     "//tensorflow/python/eager:pywrap_tfe_lib",  # pywrap_tfe_lib
     "//tensorflow/core/util/tensor_bundle",  # checkpoint_reader
     "//tensorflow/core/common_runtime/eager:eager_executor",  # tfe
@@ -6204,7 +6215,6 @@ cuda_py_test(
         ":client_testlib",
         ":constant_op",
         ":dtypes",
-        ":framework_for_generated_wrappers",
         ":framework_ops",
         ":training",
         ":variable_scope",

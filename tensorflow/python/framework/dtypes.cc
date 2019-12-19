@@ -17,6 +17,7 @@ limitations under the License.
 #include "include/pybind11/pybind11.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/python/lib/core/ndarray_tensor_types.h"
 
 namespace {
 
@@ -60,6 +61,18 @@ inline bool DataTypeIsNumPyCompatible(DataType dt) {
 namespace py = pybind11;
 
 PYBIND11_MODULE(_dtypes, m) {
+  tensorflow::MaybeRegisterCustomNumPyTypes();
+
+  m.attr("np_bfloat16") =
+      reinterpret_cast<PyObject*>(tensorflow::BFLOAT16_DESCR);
+  m.attr("np_qint8") = reinterpret_cast<PyObject*>(tensorflow::QINT8_DESCR);
+  m.attr("np_qint16") = reinterpret_cast<PyObject*>(tensorflow::QINT16_DESCR);
+  m.attr("np_qint32") = reinterpret_cast<PyObject*>(tensorflow::QINT32_DESCR);
+  m.attr("np_quint8") = reinterpret_cast<PyObject*>(tensorflow::QUINT8_DESCR);
+  m.attr("np_quint16") = reinterpret_cast<PyObject*>(tensorflow::QUINT16_DESCR);
+  m.attr("np_resource") =
+      reinterpret_cast<PyObject*>(tensorflow::RESOURCE_DESCR);
+
   py::class_<tensorflow::DataType>(m, "DType")
       .def(py::init([](py::object obj) {
         auto id = static_cast<int>(py::int_(obj));

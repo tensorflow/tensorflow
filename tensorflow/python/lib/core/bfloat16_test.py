@@ -24,12 +24,10 @@ import math
 import numpy as np
 
 # pylint: disable=unused-import,g-bad-import-order
-from tensorflow.python import _pywrap_bfloat16
 from tensorflow.python.framework import dtypes
 from tensorflow.python.platform import test
 
-
-bfloat16 = _pywrap_bfloat16.TF_bfloat16_type()
+bfloat16 = dtypes._np_bfloat16  # pylint: disable=protected-access
 
 
 class Bfloat16Test(test.TestCase):

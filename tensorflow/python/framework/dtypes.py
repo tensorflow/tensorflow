@@ -20,16 +20,15 @@ from __future__ import print_function
 import numpy as np
 from six.moves import builtins
 
+# TODO(b/143110113): This import has to come first. This is a temporary
+# workaround which fixes repeated proto registration on macOS.
+# pylint: disable=g-bad-import-order, unused-import
+from tensorflow.python import pywrap_tensorflow
+# pylint: enable=g-bad-import-order, unused-import
+
 from tensorflow.core.framework import types_pb2
-# We need to import pywrap_tensorflow prior to the bfloat wrapper to avoid
-# protobuf errors where a file is defined twice on MacOS.
-# pylint: disable=invalid-import-order,g-bad-import-order
-from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
-from tensorflow.python import _pywrap_bfloat16
 from tensorflow.python import _dtypes
 from tensorflow.python.util.tf_export import tf_export
-
-_np_bfloat16 = _pywrap_bfloat16.TF_bfloat16_type()
 
 
 # pylint: disable=slots-on-old-class
@@ -425,20 +424,18 @@ _STRING_TO_TF["double_ref"] = float64_ref
 
 # Numpy representation for quantized dtypes.
 #
-# These are magic strings that are used in the swig wrapper to identify
-# quantized types.
-# TODO(mrry,keveman): Investigate Numpy type registration to replace this
-# hard-coding of names.
-_np_qint8 = np.dtype([("qint8", np.int8)])
-_np_quint8 = np.dtype([("quint8", np.uint8)])
-_np_qint16 = np.dtype([("qint16", np.int16)])
-_np_quint16 = np.dtype([("quint16", np.uint16)])
-_np_qint32 = np.dtype([("qint32", np.int32)])
+_np_qint8 = _dtypes.np_qint8
+_np_qint16 = _dtypes.np_qint16
+_np_qint32 = _dtypes.np_qint32
+_np_quint8 = _dtypes.np_quint8
+_np_quint16 = _dtypes.np_quint16
 
-# _np_bfloat16 is defined by a module import.
+# Technically, _np_bfloat does not have to be a Python class, but existing
+# code expects it to.
+_np_bfloat16 = _dtypes.np_bfloat16.type
 
 # Custom struct dtype for directly-fed ResourceHandles of supported type(s).
-np_resource = np.dtype([("resource", np.ubyte)])
+np_resource = _dtypes.np_resource
 
 # Standard mappings between types_pb2.DataType values and numpy.dtypes.
 _NP_TO_TF = {

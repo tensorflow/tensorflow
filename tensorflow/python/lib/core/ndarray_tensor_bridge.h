@@ -42,10 +42,6 @@ void ClearDecrefCache();
 Status ArrayFromMemory(int dim_size, npy_intp* dims, void* data, DataType dtype,
                        std::function<void()> destructor, PyObject** result);
 
-// Converts TF_DataType to the corresponding numpy type.
-Status TF_DataType_to_PyArray_TYPE(TF_DataType tf_datatype,
-                                   int* out_pyarray_type);
-
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_PYTHON_LIB_CORE_NDARRAY_TENSOR_BRIDGE_H_
