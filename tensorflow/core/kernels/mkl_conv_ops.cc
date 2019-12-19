@@ -790,8 +790,7 @@ class MklConvOp : public OpKernel {
         // Tensorflow format to MKL format by caching the filter when it is
         // converted for the first time. This cached filter can then be reused
         // in subsequent iterations.
-        bool do_cache_filter =
-            src_dims[MklDnnDims::Dim_N] > kSmallBatchSize ? true : false;
+        bool do_cache_filter = src_dims[MklDnnDims::Dim_N] > kSmallBatchSize;
         if (is_filter_const_ && do_cache_filter) {
           if (IsFilterCacheEmpty(context)) {
             // Cache filter if it is not already cached.
