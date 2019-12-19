@@ -1115,7 +1115,6 @@ tf_kernel_library(
     hdrs = ["iterator_ops.h"],
     deps = [
         ":captured_function",
-        ":dataset_ops",
         ":dataset_utils",
         ":optional_ops",
         ":unbounded_thread_pool",
