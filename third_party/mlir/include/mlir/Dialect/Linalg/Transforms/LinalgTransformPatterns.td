@@ -43,6 +43,13 @@ class AffineMapDomainHasDim<int n> : CPred<[{
   $0.getAttrOfType<ArrayAttr>(getIndexingMapsAttrName()).getValue()[0].
   cast<AffineMapAttr>().getValue().getNumDims() ==}] # n # [{}]>;
 
+class HasOperandsOfType<string type>: CPred<[{
+    llvm::any_of($0.getOperands(),
+        [](Value* v) {
+          return dyn_cast_or_null<}] # type # [{>(v->getDefiningOp());
+        })
+}]>;
+
 //===----------------------------------------------------------------------===//
 // Linalg fusion patterns.
 //===----------------------------------------------------------------------===//
@@ -101,4 +108,10 @@ class PermuteGenericLinalgOp<list<int> permutation, string value> :
     StrJoinInt<permutation>.result # "}, \"" # value # "\"))) " #
     "  return matchFailure();">;
 
+//===----------------------------------------------------------------------===//
+// Linalg promote subview operands.
+//===----------------------------------------------------------------------===//
+class LinalgOpPromoteSubviews<string OpType> : NativeCodeCall<
+  "if (failed(linalgOpPromoteSubviews($_builder, $0))) " #
+  "  return matchFailure();">;
 #endif // LINALG_TRANSFORMS

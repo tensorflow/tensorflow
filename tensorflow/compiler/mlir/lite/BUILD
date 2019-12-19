@@ -119,6 +119,7 @@ gentbl(
     td_srcs = [
         ":tensorflow_lite_ops_td_files",
         "@local_config_mlir//:StdOpsTdFiles",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
     ],
 )
 

@@ -24,7 +24,7 @@
 using namespace mlir;
 using namespace mlir::quantizer;
 
-void CAGUniformMetadata::printSummary(llvm::raw_ostream &os) const {
+void CAGUniformMetadata::printSummary(raw_ostream &os) const {
   if (requiredRange.hasValue()) {
     os << "\n[" << requiredRange.getValue().first << ","
        << requiredRange.getValue().second << "]";

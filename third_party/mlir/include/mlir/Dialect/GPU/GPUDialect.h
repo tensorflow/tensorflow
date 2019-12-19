@@ -63,7 +63,11 @@ public:
 
   /// Returns the numeric value used to identify the workgroup memory address
   /// space.
-  static int getWorkgroupAddressSpace() { return 3; }
+  static unsigned getWorkgroupAddressSpace() { return 3; }
+
+  /// Returns the numeric value used to identify the private memory address
+  /// space.
+  static unsigned getPrivateAddressSpace() { return 5; }
 
   LogicalResult verifyOperationAttribute(Operation *op,
                                          NamedAttribute attr) override;

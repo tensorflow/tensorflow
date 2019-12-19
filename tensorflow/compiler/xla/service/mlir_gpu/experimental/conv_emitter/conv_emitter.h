@@ -24,7 +24,7 @@ namespace mlir_gpu {
 
 // Builds MLIR using custom_call that represents a foward convolution.
 //
-// The generated function has the following signautre:
+// The generated function has the following signature:
 // func @<function_name>(%output: memref<physical_layout...>,
 //                       %input: memref<physical_layout...>,
 //                       %filter: memref<physical_layout...>) { ... }

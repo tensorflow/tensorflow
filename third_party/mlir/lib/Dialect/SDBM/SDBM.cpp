@@ -88,11 +88,11 @@ namespace {
 struct SDBMBuilderResult {
   // Positions in the matrix of the variables taken with the "+" sign in the
   // difference expression, 0 if it is a constant rather than a variable.
-  llvm::SmallVector<unsigned, 2> positivePos;
+  SmallVector<unsigned, 2> positivePos;
 
   // Positions in the matrix of the variables taken with the "-" sign in the
   // difference expression, 0 if it is a constant rather than a variable.
-  llvm::SmallVector<unsigned, 2> negativePos;
+  SmallVector<unsigned, 2> negativePos;
 
   // Constant value in the difference expression.
   int64_t value = 0;
@@ -184,13 +184,12 @@ public:
     return lhs;
   }
 
-  SDBMBuilder(llvm::DenseMap<SDBMExpr, llvm::SmallVector<unsigned, 2>>
-                  &pointExprToStripe,
-              llvm::function_ref<unsigned(SDBMInputExpr)> callback)
+  SDBMBuilder(DenseMap<SDBMExpr, SmallVector<unsigned, 2>> &pointExprToStripe,
+              function_ref<unsigned(SDBMInputExpr)> callback)
       : pointExprToStripe(pointExprToStripe), linearPosition(callback) {}
 
-  llvm::DenseMap<SDBMExpr, llvm::SmallVector<unsigned, 2>> &pointExprToStripe;
-  llvm::function_ref<unsigned(SDBMInputExpr)> linearPosition;
+  DenseMap<SDBMExpr, SmallVector<unsigned, 2>> &pointExprToStripe;
+  function_ref<unsigned(SDBMInputExpr)> linearPosition;
 };
 } // namespace
 
@@ -239,7 +238,7 @@ SDBM SDBM::get(ArrayRef<SDBMExpr> inequalities, ArrayRef<SDBMExpr> equalities) {
   // expression.  Keep track of those in pointExprToStripe.
   // There may also be multiple stripe expressions equal to the same variable.
   // Introduce a temporary variable for each of those.
-  llvm::DenseMap<SDBMExpr, llvm::SmallVector<unsigned, 2>> pointExprToStripe;
+  DenseMap<SDBMExpr, SmallVector<unsigned, 2>> pointExprToStripe;
   unsigned numTemporaries = 0;
 
   auto updateStripePointMaps = [&numTemporaries, &result, &pointExprToStripe,
@@ -512,7 +511,7 @@ void SDBM::getSDBMExpressions(SDBMDialect *dialect,
   }
 }
 
-void SDBM::print(llvm::raw_ostream &os) {
+void SDBM::print(raw_ostream &os) {
   unsigned numVariables = getNumVariables();
 
   // Helper function that prints the name of the variable given its linearized

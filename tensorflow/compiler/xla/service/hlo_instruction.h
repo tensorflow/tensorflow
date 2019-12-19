@@ -643,7 +643,7 @@ class HloInstruction {
       const std::vector<ReplicaGroup>& replica_groups,
       const absl::optional<int64>& channel_id);
 
-  // Creates a communitation instructions that permutes data cross replicas.
+  // Creates a communication instructions that permutes data cross replicas.
   // Data is sent/received according to the (source_replica_id,
   // target_replica_id) pairs in `source_target_pairs`. If a replica id is not a
   // target_replica_id in any pair, the output on that replica is a tensor

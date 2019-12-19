@@ -382,13 +382,15 @@ struct CompileTimeEnabledReferenceMul</*ReferenceMulIsEnabled=*/false> {
   }
 };
 
-inline void HandlePrepackedCaching(TrMulParams* params, Context* context) {
+inline void HandlePrepackedCaching(TrMulParams* params,
+                                   const SidePair<bool>& cacheable,
+                                   Context* context) {
   if (context->cache_policy == CachePolicy::kNoCache) {
     return;
   }
 
   if (context->cache_policy == CachePolicy::kCacheLHSOnGemV) {
-    if (params->dst.layout.cols != 1) {
+    if (!cacheable[Side::kLhs] || params->dst.layout.cols != 1) {
       return;
     }
     PrepackedCache* prepacked_cache = context->GetPrepackedCache();
@@ -465,7 +467,8 @@ void DispatchMul(const Matrix<LhsScalar>& lhs, const Matrix<RhsScalar>& rhs,
   TrMulParams params;
   CreateTrMulParams<TrMulCompiledPaths>(transposed_lhs, rhs, spec, context, dst,
                                         the_path, &params);
-  HandlePrepackedCaching(&params, context);
+  SidePair<bool> cacheable(lhs.cacheable, rhs.cacheable);
+  HandlePrepackedCaching(&params, cacheable, context);
   TrMul(&params, context);
 }
 

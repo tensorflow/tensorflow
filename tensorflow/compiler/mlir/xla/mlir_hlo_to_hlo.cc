@@ -553,10 +553,28 @@ LogicalResult ExportXlaOp(GatherOp op, OpLoweringContext ctx) {
   return success();
 }
 
+LogicalResult ExportXlaOp(InfeedOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  // The shape argument expected by the xla client API is the type of the first
+  // element in the result tuple.
+  auto result_type = op.getType().cast<mlir::TupleType>().getType(0);
+  value_map[op] = xla::InfeedWithToken(
+      value_map[op.token()], xla::TypeToShape(result_type), op.infeed_config());
+  return success();
+}
+
 LogicalResult ExportXlaOp(IotaOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   value_map[op] = xla::Iota(ctx.builder, xla::TypeToShape(op.getType()),
                             op.iota_dimension().getSExtValue());
+  return success();
+}
+
+LogicalResult ExportXlaOp(OutfeedOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  value_map[op] = xla::OutfeedWithToken(
+      value_map[op.operand()], value_map[op.token()],
+      xla::TypeToShape(op.operand()->getType()), op.outfeed_config());
   return success();
 }
 

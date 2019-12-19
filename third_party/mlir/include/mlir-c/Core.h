@@ -87,6 +87,12 @@ mlir_attr_t makeIntegerAttr(mlir_type_t type, int64_t value);
 /// Returns an `mlir::BoolAttr` with the given value.
 mlir_attr_t makeBoolAttr(mlir_context_t context, bool value);
 
+/// Returns an `mlir::FloatAttr` with the given value.
+mlir_attr_t makeFloatAttr(mlir_context_t context, float value);
+
+/// Returns an `mlir::StringAttr` with the given value.
+mlir_attr_t makeStringAttr(mlir_context_t context, const char *value);
+
 /// Parses an MLIR type from the string `type` in the given context. Returns a
 /// NULL type on error. If non-NULL, `charsRead` will contain the number of
 /// characters that were processed by the parser.

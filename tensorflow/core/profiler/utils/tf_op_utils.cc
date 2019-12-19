@@ -19,14 +19,17 @@ limitations under the License.
 
 #include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_split.h"
+#include "absl/strings/strip.h"
 #include "tensorflow/core/platform/regexp.h"
 
 namespace tensorflow {
 namespace profiler {
 namespace {
 
-constexpr absl::string_view kIterator = "Iterator";
-constexpr absl::string_view kSeparator = "::";
+const absl::string_view kIterator = "Iterator";
+const absl::string_view kSeparator = "::";
 
 }  // namespace
 

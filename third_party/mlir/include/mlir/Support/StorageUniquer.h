@@ -202,7 +202,7 @@ private:
   /// Implementation for getting/creating an instance of a derived type with
   /// complex storage.
   BaseStorage *getImpl(unsigned kind, unsigned hashValue,
-                       llvm::function_ref<bool(const BaseStorage *)> isEqual,
+                       function_ref<bool(const BaseStorage *)> isEqual,
                        std::function<BaseStorage *(StorageAllocator &)> ctorFn);
 
   /// Implementation for getting/creating an instance of a derived type with
@@ -213,7 +213,7 @@ private:
   /// Implementation for erasing an instance of a derived type with complex
   /// storage.
   void eraseImpl(unsigned kind, unsigned hashValue,
-                 llvm::function_ref<bool(const BaseStorage *)> isEqual,
+                 function_ref<bool(const BaseStorage *)> isEqual,
                  std::function<void(BaseStorage *)> cleanupFn);
 
   /// The internal implementation class.
@@ -263,7 +263,7 @@ private:
       ::llvm::hash_code>::type
   getHash(unsigned kind, const DerivedKey &derivedKey) {
     return llvm::hash_combine(
-        kind, llvm::DenseMapInfo<DerivedKey>::getHashValue(derivedKey));
+        kind, DenseMapInfo<DerivedKey>::getHashValue(derivedKey));
   }
 };
 } // end namespace mlir

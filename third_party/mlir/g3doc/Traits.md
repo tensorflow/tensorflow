@@ -88,7 +88,7 @@ definition of the trait class. This can be done using the `NativeOpTrait` and
 `ParamNativeOpTrait` classes. `ParamNativeOpTrait` provides a mechanism in which
 to specify arguments to a parametric trait class with an internal `Impl`.
 
-```td
+```tablegen
 // The argument is the c++ trait class name.
 def MyTrait : NativeOpTrait<"MyTrait">;
 
@@ -100,7 +100,7 @@ class MyParametricTrait<int prop>
 
 These can then be used in the `traits` list of an op definition:
 
-```td
+```tablegen
 def OpWithInferTypeInterfaceOp : Op<...[MyTrait, MyParametricTrait<10>]> { ... }
 ```
 

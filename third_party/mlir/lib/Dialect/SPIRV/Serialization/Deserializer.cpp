@@ -2366,7 +2366,7 @@ Deserializer::processOp<spirv::FunctionCallOp>(ArrayRef<uint32_t> operands) {
 
   auto functionName = getFunctionSymbol(functionID);
 
-  llvm::SmallVector<Value *, 4> arguments;
+  SmallVector<Value *, 4> arguments;
   for (auto operand : llvm::drop_begin(operands, 3)) {
     auto *value = getValue(operand);
     if (!value) {

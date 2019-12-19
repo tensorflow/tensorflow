@@ -273,7 +273,7 @@ PYTHON_BIN_PATH_INIT=${PYTHON_BIN_PATH}
 PIP_BIN_PATH="$(which pip${PY_MAJOR_MINOR_VER})"
 
 # PIP packages
-INSTALL_EXTRA_PIP_PACKAGES="h5py portpicker scipy scikit-learn ${TF_BUILD_INSTALL_EXTRA_PIP_PACKAGES}"
+INSTALL_EXTRA_PIP_PACKAGES="h5py portpicker scipy==1.4.1 scikit-learn ${TF_BUILD_INSTALL_EXTRA_PIP_PACKAGES}"
 
 ###########################################################################
 # Build TF PIP Package

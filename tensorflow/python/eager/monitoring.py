@@ -21,80 +21,80 @@ from __future__ import print_function
 import collections
 
 from tensorflow.core.framework import summary_pb2
-from tensorflow.python import pywrap_tensorflow
-from tensorflow.python.framework import c_api_util
+from tensorflow.python import pywrap_tfe
+from tensorflow.python.eager import eager_util as c_api_util
 from tensorflow.python.util import compat
 
 _MetricMethod = collections.namedtuple('MetricMethod', 'create delete get_cell')
 _counter_methods = [
     _MetricMethod(
-        create=pywrap_tensorflow.TFE_MonitoringNewCounter0,
-        delete=pywrap_tensorflow.TFE_MonitoringDeleteCounter0,
-        get_cell=pywrap_tensorflow.TFE_MonitoringGetCellCounter0),
+        create=pywrap_tfe.TFE_MonitoringNewCounter0,
+        delete=pywrap_tfe.TFE_MonitoringDeleteCounter0,
+        get_cell=pywrap_tfe.TFE_MonitoringGetCellCounter0),
     _MetricMethod(
-        create=pywrap_tensorflow.TFE_MonitoringNewCounter1,
-        delete=pywrap_tensorflow.TFE_MonitoringDeleteCounter1,
-        get_cell=pywrap_tensorflow.TFE_MonitoringGetCellCounter1),
+        create=pywrap_tfe.TFE_MonitoringNewCounter1,
+        delete=pywrap_tfe.TFE_MonitoringDeleteCounter1,
+        get_cell=pywrap_tfe.TFE_MonitoringGetCellCounter1),
     _MetricMethod(
-        create=pywrap_tensorflow.TFE_MonitoringNewCounter2,
-        delete=pywrap_tensorflow.TFE_MonitoringDeleteCounter2,
-        get_cell=pywrap_tensorflow.TFE_MonitoringGetCellCounter2),
+        create=pywrap_tfe.TFE_MonitoringNewCounter2,
+        delete=pywrap_tfe.TFE_MonitoringDeleteCounter2,
+        get_cell=pywrap_tfe.TFE_MonitoringGetCellCounter2),
 ]
 _int_gauge_methods = [
     _MetricMethod(
-        create=pywrap_tensorflow.TFE_MonitoringNewIntGauge0,
-        delete=pywrap_tensorflow.TFE_MonitoringDeleteIntGauge0,
-        get_cell=pywrap_tensorflow.TFE_MonitoringGetCellIntGauge0),
+        create=pywrap_tfe.TFE_MonitoringNewIntGauge0,
+        delete=pywrap_tfe.TFE_MonitoringDeleteIntGauge0,
+        get_cell=pywrap_tfe.TFE_MonitoringGetCellIntGauge0),
     _MetricMethod(
-        create=pywrap_tensorflow.TFE_MonitoringNewIntGauge1,
-        delete=pywrap_tensorflow.TFE_MonitoringDeleteIntGauge1,
-        get_cell=pywrap_tensorflow.TFE_MonitoringGetCellIntGauge1),
+        create=pywrap_tfe.TFE_MonitoringNewIntGauge1,
+        delete=pywrap_tfe.TFE_MonitoringDeleteIntGauge1,
+        get_cell=pywrap_tfe.TFE_MonitoringGetCellIntGauge1),
     _MetricMethod(
-        create=pywrap_tensorflow.TFE_MonitoringNewIntGauge2,
-        delete=pywrap_tensorflow.TFE_MonitoringDeleteIntGauge2,
-        get_cell=pywrap_tensorflow.TFE_MonitoringGetCellIntGauge2),
+        create=pywrap_tfe.TFE_MonitoringNewIntGauge2,
+        delete=pywrap_tfe.TFE_MonitoringDeleteIntGauge2,
+        get_cell=pywrap_tfe.TFE_MonitoringGetCellIntGauge2),
 ]
 _string_gauge_methods = [
     _MetricMethod(
-        create=pywrap_tensorflow.TFE_MonitoringNewStringGauge0,
-        delete=pywrap_tensorflow.TFE_MonitoringDeleteStringGauge0,
-        get_cell=pywrap_tensorflow.TFE_MonitoringGetCellStringGauge0),
+        create=pywrap_tfe.TFE_MonitoringNewStringGauge0,
+        delete=pywrap_tfe.TFE_MonitoringDeleteStringGauge0,
+        get_cell=pywrap_tfe.TFE_MonitoringGetCellStringGauge0),
     _MetricMethod(
-        create=pywrap_tensorflow.TFE_MonitoringNewStringGauge1,
-        delete=pywrap_tensorflow.TFE_MonitoringDeleteStringGauge1,
-        get_cell=pywrap_tensorflow.TFE_MonitoringGetCellStringGauge1),
+        create=pywrap_tfe.TFE_MonitoringNewStringGauge1,
+        delete=pywrap_tfe.TFE_MonitoringDeleteStringGauge1,
+        get_cell=pywrap_tfe.TFE_MonitoringGetCellStringGauge1),
     _MetricMethod(
-        create=pywrap_tensorflow.TFE_MonitoringNewStringGauge2,
-        delete=pywrap_tensorflow.TFE_MonitoringDeleteStringGauge2,
-        get_cell=pywrap_tensorflow.TFE_MonitoringGetCellStringGauge2),
+        create=pywrap_tfe.TFE_MonitoringNewStringGauge2,
+        delete=pywrap_tfe.TFE_MonitoringDeleteStringGauge2,
+        get_cell=pywrap_tfe.TFE_MonitoringGetCellStringGauge2),
 ]
 _bool_gauge_methods = [
     _MetricMethod(
-        create=pywrap_tensorflow.TFE_MonitoringNewBoolGauge0,
-        delete=pywrap_tensorflow.TFE_MonitoringDeleteBoolGauge0,
-        get_cell=pywrap_tensorflow.TFE_MonitoringGetCellBoolGauge0),
+        create=pywrap_tfe.TFE_MonitoringNewBoolGauge0,
+        delete=pywrap_tfe.TFE_MonitoringDeleteBoolGauge0,
+        get_cell=pywrap_tfe.TFE_MonitoringGetCellBoolGauge0),
     _MetricMethod(
-        create=pywrap_tensorflow.TFE_MonitoringNewBoolGauge1,
-        delete=pywrap_tensorflow.TFE_MonitoringDeleteBoolGauge1,
-        get_cell=pywrap_tensorflow.TFE_MonitoringGetCellBoolGauge1),
+        create=pywrap_tfe.TFE_MonitoringNewBoolGauge1,
+        delete=pywrap_tfe.TFE_MonitoringDeleteBoolGauge1,
+        get_cell=pywrap_tfe.TFE_MonitoringGetCellBoolGauge1),
     _MetricMethod(
-        create=pywrap_tensorflow.TFE_MonitoringNewBoolGauge2,
-        delete=pywrap_tensorflow.TFE_MonitoringDeleteBoolGauge2,
-        get_cell=pywrap_tensorflow.TFE_MonitoringGetCellBoolGauge2),
+        create=pywrap_tfe.TFE_MonitoringNewBoolGauge2,
+        delete=pywrap_tfe.TFE_MonitoringDeleteBoolGauge2,
+        get_cell=pywrap_tfe.TFE_MonitoringGetCellBoolGauge2),
 ]
 _sampler_methods = [
     _MetricMethod(
-        create=pywrap_tensorflow.TFE_MonitoringNewSampler0,
-        delete=pywrap_tensorflow.TFE_MonitoringDeleteSampler0,
-        get_cell=pywrap_tensorflow.TFE_MonitoringGetCellSampler0),
+        create=pywrap_tfe.TFE_MonitoringNewSampler0,
+        delete=pywrap_tfe.TFE_MonitoringDeleteSampler0,
+        get_cell=pywrap_tfe.TFE_MonitoringGetCellSampler0),
     _MetricMethod(
-        create=pywrap_tensorflow.TFE_MonitoringNewSampler1,
-        delete=pywrap_tensorflow.TFE_MonitoringDeleteSampler1,
-        get_cell=pywrap_tensorflow.TFE_MonitoringGetCellSampler1),
+        create=pywrap_tfe.TFE_MonitoringNewSampler1,
+        delete=pywrap_tfe.TFE_MonitoringDeleteSampler1,
+        get_cell=pywrap_tfe.TFE_MonitoringGetCellSampler1),
     _MetricMethod(
-        create=pywrap_tensorflow.TFE_MonitoringNewSampler2,
-        delete=pywrap_tensorflow.TFE_MonitoringDeleteSampler2,
-        get_cell=pywrap_tensorflow.TFE_MonitoringGetCellSampler2),
+        create=pywrap_tfe.TFE_MonitoringNewSampler2,
+        delete=pywrap_tfe.TFE_MonitoringDeleteSampler2,
+        get_cell=pywrap_tfe.TFE_MonitoringGetCellSampler2),
 ]
 
 
@@ -156,11 +156,11 @@ class CounterCell(object):
     Args:
       value: non-negative value.
     """
-    pywrap_tensorflow.TFE_MonitoringCounterCellIncrementBy(self._cell, value)
+    pywrap_tfe.TFE_MonitoringCounterCellIncrementBy(self._cell, value)
 
   def value(self):
     """Retrieves the current value."""
-    return pywrap_tensorflow.TFE_MonitoringCounterCellValue(self._cell)
+    return pywrap_tfe.TFE_MonitoringCounterCellValue(self._cell)
 
 
 class Counter(Metric):
@@ -204,11 +204,11 @@ class IntGaugeCell(object):
     Args:
       value: integer value.
     """
-    pywrap_tensorflow.TFE_MonitoringIntGaugeCellSet(self._cell, value)
+    pywrap_tfe.TFE_MonitoringIntGaugeCellSet(self._cell, value)
 
   def value(self):
     """Retrieves the current value."""
-    return pywrap_tensorflow.TFE_MonitoringIntGaugeCellValue(self._cell)
+    return pywrap_tfe.TFE_MonitoringIntGaugeCellValue(self._cell)
 
 
 class IntGauge(Metric):
@@ -252,13 +252,13 @@ class StringGaugeCell(object):
     Args:
       value: string value.
     """
-    pywrap_tensorflow.TFE_MonitoringStringGaugeCellSet(self._cell, value)
+    pywrap_tfe.TFE_MonitoringStringGaugeCellSet(self._cell, value)
 
   def value(self):
     """Retrieves the current value."""
     with c_api_util.tf_buffer() as buffer_:
-      pywrap_tensorflow.TFE_MonitoringStringGaugeCellValue(self._cell, buffer_)
-      value = pywrap_tensorflow.TF_GetBuffer(buffer_).decode('utf-8')
+      pywrap_tfe.TFE_MonitoringStringGaugeCellValue(self._cell, buffer_)
+      value = pywrap_tfe.TF_GetBuffer(buffer_).decode('utf-8')
     return value
 
 
@@ -303,11 +303,11 @@ class BoolGaugeCell(object):
     Args:
       value: bool value.
     """
-    pywrap_tensorflow.TFE_MonitoringBoolGaugeCellSet(self._cell, value)
+    pywrap_tfe.TFE_MonitoringBoolGaugeCellSet(self._cell, value)
 
   def value(self):
     """Retrieves the current value."""
-    return pywrap_tensorflow.TFE_MonitoringBoolGaugeCellValue(self._cell)
+    return pywrap_tfe.TFE_MonitoringBoolGaugeCellValue(self._cell)
 
 
 class BoolGauge(Metric):
@@ -351,7 +351,7 @@ class SamplerCell(object):
     Args:
       value: float value.
     """
-    pywrap_tensorflow.TFE_MonitoringSamplerCellAdd(self._cell, value)
+    pywrap_tfe.TFE_MonitoringSamplerCellAdd(self._cell, value)
 
   def value(self):
     """Retrieves the current distribution of samples.
@@ -360,8 +360,8 @@ class SamplerCell(object):
       A HistogramProto describing the distribution of samples.
     """
     with c_api_util.tf_buffer() as buffer_:
-      pywrap_tensorflow.TFE_MonitoringSamplerCellValue(self._cell, buffer_)
-      proto_data = pywrap_tensorflow.TF_GetBuffer(buffer_)
+      pywrap_tfe.TFE_MonitoringSamplerCellValue(self._cell, buffer_)
+      proto_data = pywrap_tfe.TF_GetBuffer(buffer_)
     histogram_proto = summary_pb2.HistogramProto()
     histogram_proto.ParseFromString(compat.as_bytes(proto_data))
     return histogram_proto
@@ -379,7 +379,7 @@ class Buckets(object):
     self.buckets = buckets
 
   def __del__(self):
-    pywrap_tensorflow.TFE_MonitoringDeleteBuckets(self.buckets)
+    pywrap_tfe.TFE_MonitoringDeleteBuckets(self.buckets)
 
 
 class ExponentialBuckets(Buckets):
@@ -399,8 +399,8 @@ class ExponentialBuckets(Buckets):
       bucket_count: integer
     """
     super(ExponentialBuckets, self).__init__(
-        pywrap_tensorflow.TFE_MonitoringNewExponentialBuckets(
-            scale, growth_factor, bucket_count))
+        pywrap_tfe.TFE_MonitoringNewExponentialBuckets(scale, growth_factor,
+                                                       bucket_count))
 
 
 class Sampler(Metric):

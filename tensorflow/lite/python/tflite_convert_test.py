@@ -186,7 +186,7 @@ class TfLiteConvertV1Test(TestModels):
     keras_file = self._getKerasModelFile()
     log_dir = self.get_temp_dir()
 
-    flags_str = ('--keras_model_file={} '
+    flags_str = ('--keras_model_file={} --experimental_new_converter=false '
                  '--conversion_summary_dir={}'.format(keras_file, log_dir))
     self._run(flags_str, should_succeed=True)
     os.remove(keras_file)

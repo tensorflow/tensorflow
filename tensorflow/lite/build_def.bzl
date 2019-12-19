@@ -700,3 +700,18 @@ def gen_model_coverage_test(src, model_name, data, failure_type, tags):
                 "//tensorflow/python:client_testlib",
             ] + flex_dep(target_op_sets),
         )
+
+def if_tflite_experimental_runtime(if_true, if_false = []):
+    return select({
+        "//tensorflow/lite:tflite_experimental_runtime": if_true,
+        "//conditions:default": if_false,
+    })
+
+def tflite_experimental_runtime_linkopts():
+    return if_tflite_experimental_runtime(
+        if_true = [
+            # "//tensorflow/lite/experimental/tf_runtime:interpreter",
+            # "//tensorflow/lite/experimental/tf_runtime:model",
+        ],
+        if_false = [],
+    )

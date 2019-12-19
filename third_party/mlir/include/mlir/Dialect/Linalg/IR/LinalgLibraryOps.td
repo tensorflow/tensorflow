@@ -101,13 +101,13 @@ def LinalgLibraryInterface : OpInterface<"LinalgOp"> {
         Query the index of the given input value, or `None` if the value is not
         an input.
       }],
-      "llvm::Optional<unsigned>", "getIndexOfInput", (ins "Value *":$view)
+      "Optional<unsigned>", "getIndexOfInput", (ins "Value *":$view)
     >,
     InterfaceMethod<[{
         Query the index of the given view value, or `None` if the value is not
         an view.
       }],
-      "llvm::Optional<unsigned>", "getIndexOfOutput", (ins "Value *":$view)
+      "Optional<unsigned>", "getIndexOfOutput", (ins "Value *":$view)
     >,
     InterfaceMethod<[{
         Query the type of the input view at the given index.
@@ -247,13 +247,13 @@ def CopyOp : LinalgLibrary_Op<"copy", [NInputs<1>, NOutputs<1>]> {
 }
 
 def FillOp : LinalgLibrary_Op<"fill", [NInputs<0>, NOutputs<1>]> {
-  let arguments = (ins AnyStridedMemRef:$input,
+  let arguments = (ins AnyStridedMemRef:$output,
                    AnyTypeOf<[AnyFloat, AnyInteger, AnyVector]>:$value);
   let extraClassDeclaration = libraryCallName # [{
     ArrayAttr indexing_maps();
 
     ArrayAttr iterator_types() {
-      unsigned nPar = input()->getType().cast<ShapedType>().getRank();
+      unsigned nPar = output()->getType().cast<ShapedType>().getRank();
       MLIRContext *ctx = getContext();
       SmallVector<Attribute, 8> iters(
         nPar, StringAttr::get(getParallelIteratorTypeName(), ctx));

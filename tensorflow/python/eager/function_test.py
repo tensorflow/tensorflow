@@ -323,6 +323,29 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertTrue(unknown_dim[0])
     self.assertLen(total_function_cache(func), 2)
 
+  def testInputShapeRelaxationOnInstanceMethod(self):
+    # Test that experimental_relax_shapes is passed during
+    # instance method bounding.
+    unknown_dim = [False]
+
+    class Foo(object):
+
+      @def_function.function(experimental_relax_shapes=True)
+      def func(self, a):
+        if a._shape_tuple()[0] is None:
+          unknown_dim[0] = True
+        return a + 1
+
+    foo = Foo()
+    foo.func(constant_op.constant([]))
+    self.assertFalse(unknown_dim[0])
+
+    foo.func(constant_op.constant([1.0]))
+    self.assertFalse(unknown_dim[0])
+
+    foo.func(constant_op.constant([1.0, 2.0]))
+    self.assertTrue(unknown_dim[0])
+
   def testCapturesVariables(self):
     a = variables.Variable(1.0, trainable=False)
     b = variables.Variable(1.0)

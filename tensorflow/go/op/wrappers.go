@@ -6223,77 +6223,6 @@ func OrderedMapUnstageNoKey(scope *Scope, indices tf.Output, dtypes []tf.DataTyp
 	return key, values
 }
 
-// OrderedMapUnstageAttr is an optional argument to OrderedMapUnstage.
-type OrderedMapUnstageAttr func(optionalAttr)
-
-// OrderedMapUnstageCapacity sets the optional capacity attribute to value.
-// If not specified, defaults to 0
-//
-// REQUIRES: value >= 0
-func OrderedMapUnstageCapacity(value int64) OrderedMapUnstageAttr {
-	return func(m optionalAttr) {
-		m["capacity"] = value
-	}
-}
-
-// OrderedMapUnstageMemoryLimit sets the optional memory_limit attribute to value.
-// If not specified, defaults to 0
-//
-// REQUIRES: value >= 0
-func OrderedMapUnstageMemoryLimit(value int64) OrderedMapUnstageAttr {
-	return func(m optionalAttr) {
-		m["memory_limit"] = value
-	}
-}
-
-// OrderedMapUnstageContainer sets the optional container attribute to value.
-// If not specified, defaults to ""
-func OrderedMapUnstageContainer(value string) OrderedMapUnstageAttr {
-	return func(m optionalAttr) {
-		m["container"] = value
-	}
-}
-
-// OrderedMapUnstageSharedName sets the optional shared_name attribute to value.
-// If not specified, defaults to ""
-func OrderedMapUnstageSharedName(value string) OrderedMapUnstageAttr {
-	return func(m optionalAttr) {
-		m["shared_name"] = value
-	}
-}
-
-// Op removes and returns the values associated with the key
-//
-// from the underlying container.   If the underlying container
-// does not contain this key, the op will block until it does.
-func OrderedMapUnstage(scope *Scope, key tf.Output, indices tf.Output, dtypes []tf.DataType, optional ...OrderedMapUnstageAttr) (values []tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"dtypes": dtypes}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "OrderedMapUnstage",
-		Input: []tf.Input{
-			key, indices,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	if scope.Err() != nil {
-		return
-	}
-	var idx int
-	var err error
-	if values, idx, err = makeOutputList(op, idx, "values"); err != nil {
-		scope.UpdateErr("OrderedMapUnstage", err)
-		return
-	}
-	return values
-}
-
 // OrderedMapPeekAttr is an optional argument to OrderedMapPeek.
 type OrderedMapPeekAttr func(optionalAttr)
 
@@ -13545,58 +13474,6 @@ func FixedLengthRecordReaderV2(scope *Scope, record_bytes int64, optional ...Fix
 	return op.Output(0)
 }
 
-// RestoreSliceAttr is an optional argument to RestoreSlice.
-type RestoreSliceAttr func(optionalAttr)
-
-// RestoreSlicePreferredShard sets the optional preferred_shard attribute to value.
-//
-// value: Index of file to open first if multiple files match
-// `file_pattern`. See the documentation for `Restore`.
-// If not specified, defaults to -1
-func RestoreSlicePreferredShard(value int64) RestoreSliceAttr {
-	return func(m optionalAttr) {
-		m["preferred_shard"] = value
-	}
-}
-
-// Restores a tensor from checkpoint files.
-//
-// This is like `Restore` except that restored tensor can be listed as filling
-// only a slice of a larger tensor.  `shape_and_slice` specifies the shape of the
-// larger tensor and the slice that the restored tensor covers.
-//
-// The `shape_and_slice` input has the same format as the
-// elements of the `shapes_and_slices` input of the `SaveSlices` op.
-//
-// Arguments:
-//	file_pattern: Must have a single element. The pattern of the files from
-// which we read the tensor.
-//	tensor_name: Must have a single element. The name of the tensor to be
-// restored.
-//	shape_and_slice: Scalar. The shapes and slice specifications to use when
-// restoring a tensors.
-//	dt: The type of the tensor to be restored.
-//
-// Returns The restored tensor.
-func RestoreSlice(scope *Scope, file_pattern tf.Output, tensor_name tf.Output, shape_and_slice tf.Output, dt tf.DataType, optional ...RestoreSliceAttr) (tensor tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"dt": dt}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "RestoreSlice",
-		Input: []tf.Input{
-			file_pattern, tensor_name, shape_and_slice,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // Saves the input tensors to disk.
 //
 // The size of `tensor_names` must match the number of tensors in `data`. `data[i]`
@@ -16590,6 +16467,174 @@ func Roll(scope *Scope, input tf.Output, shift tf.Output, axis tf.Output) (outpu
 	return op.Output(0)
 }
 
+// RestoreSliceAttr is an optional argument to RestoreSlice.
+type RestoreSliceAttr func(optionalAttr)
+
+// RestoreSlicePreferredShard sets the optional preferred_shard attribute to value.
+//
+// value: Index of file to open first if multiple files match
+// `file_pattern`. See the documentation for `Restore`.
+// If not specified, defaults to -1
+func RestoreSlicePreferredShard(value int64) RestoreSliceAttr {
+	return func(m optionalAttr) {
+		m["preferred_shard"] = value
+	}
+}
+
+// Restores a tensor from checkpoint files.
+//
+// This is like `Restore` except that restored tensor can be listed as filling
+// only a slice of a larger tensor.  `shape_and_slice` specifies the shape of the
+// larger tensor and the slice that the restored tensor covers.
+//
+// The `shape_and_slice` input has the same format as the
+// elements of the `shapes_and_slices` input of the `SaveSlices` op.
+//
+// Arguments:
+//	file_pattern: Must have a single element. The pattern of the files from
+// which we read the tensor.
+//	tensor_name: Must have a single element. The name of the tensor to be
+// restored.
+//	shape_and_slice: Scalar. The shapes and slice specifications to use when
+// restoring a tensors.
+//	dt: The type of the tensor to be restored.
+//
+// Returns The restored tensor.
+func RestoreSlice(scope *Scope, file_pattern tf.Output, tensor_name tf.Output, shape_and_slice tf.Output, dt tf.DataType, optional ...RestoreSliceAttr) (tensor tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"dt": dt}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "RestoreSlice",
+		Input: []tf.Input{
+			file_pattern, tensor_name, shape_and_slice,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// OrderedMapUnstageAttr is an optional argument to OrderedMapUnstage.
+type OrderedMapUnstageAttr func(optionalAttr)
+
+// OrderedMapUnstageCapacity sets the optional capacity attribute to value.
+// If not specified, defaults to 0
+//
+// REQUIRES: value >= 0
+func OrderedMapUnstageCapacity(value int64) OrderedMapUnstageAttr {
+	return func(m optionalAttr) {
+		m["capacity"] = value
+	}
+}
+
+// OrderedMapUnstageMemoryLimit sets the optional memory_limit attribute to value.
+// If not specified, defaults to 0
+//
+// REQUIRES: value >= 0
+func OrderedMapUnstageMemoryLimit(value int64) OrderedMapUnstageAttr {
+	return func(m optionalAttr) {
+		m["memory_limit"] = value
+	}
+}
+
+// OrderedMapUnstageContainer sets the optional container attribute to value.
+// If not specified, defaults to ""
+func OrderedMapUnstageContainer(value string) OrderedMapUnstageAttr {
+	return func(m optionalAttr) {
+		m["container"] = value
+	}
+}
+
+// OrderedMapUnstageSharedName sets the optional shared_name attribute to value.
+// If not specified, defaults to ""
+func OrderedMapUnstageSharedName(value string) OrderedMapUnstageAttr {
+	return func(m optionalAttr) {
+		m["shared_name"] = value
+	}
+}
+
+// Op removes and returns the values associated with the key
+//
+// from the underlying container.   If the underlying container
+// does not contain this key, the op will block until it does.
+func OrderedMapUnstage(scope *Scope, key tf.Output, indices tf.Output, dtypes []tf.DataType, optional ...OrderedMapUnstageAttr) (values []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"dtypes": dtypes}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "OrderedMapUnstage",
+		Input: []tf.Input{
+			key, indices,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	if values, idx, err = makeOutputList(op, idx, "values"); err != nil {
+		scope.UpdateErr("OrderedMapUnstage", err)
+		return
+	}
+	return values
+}
+
+// SobolSampleAttr is an optional argument to SobolSample.
+type SobolSampleAttr func(optionalAttr)
+
+// SobolSampleDtype sets the optional dtype attribute to value.
+//
+// value: The type of the sample. One of: `float32` or `float64`.
+// If not specified, defaults to DT_DOUBLE
+func SobolSampleDtype(value tf.DataType) SobolSampleAttr {
+	return func(m optionalAttr) {
+		m["dtype"] = value
+	}
+}
+
+// Generates points from the Sobol sequence.
+//
+// Creates a Sobol sequence with `num_results` samples. Each sample has dimension
+// `dim`. Skips the first `skip` samples.
+//
+// Arguments:
+//	dim: Positive scalar `Tensor` representing each sample's dimension.
+//	num_results: Positive scalar `Tensor` of dtype int32. The number of Sobol points to return
+// in the output.
+//	skip: Positive scalar `Tensor` of dtype int32. The number of initial points of the
+// Sobol sequence to skip.
+//
+// Returns `Tensor` of samples from Sobol sequence with `shape` [num_results, dim].
+func SobolSample(scope *Scope, dim tf.Output, num_results tf.Output, skip tf.Output, optional ...SobolSampleAttr) (samples tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "SobolSample",
+		Input: []tf.Input{
+			dim, num_results, skip,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // QuantizedReluAttr is an optional argument to QuantizedRelu.
 type QuantizedReluAttr func(optionalAttr)
 
@@ -16898,7 +16943,7 @@ func CompareAndBitpack(scope *Scope, input tf.Output, threshold tf.Output) (outp
 //      Considering the batch matrix multiplication equation again
 //      (`bij,bjk->bik`), the contracted axis label is `j`.
 //
-//  (e) Expand Diagonal: If the output subcripts contain repeated (explicit) axis
+//  (e) Expand Diagonal: If the output subscripts contain repeated (explicit) axis
 //      labels, the opposite operation of (a) is applied. For example, in the
 //      equation `i->iii`, and input shape `[3]`, the output of shape `[3, 3, 3]`
 //      are all zeros, except for the (generalized) diagonal which is populated
@@ -16906,7 +16951,7 @@ func CompareAndBitpack(scope *Scope, input tf.Output, threshold tf.Output) (outp
 //      Note: This operation is not supported by `np.einsum` or `tf.einsum`; it is
 //      provided to enable computing the symbolic gradient of `tf.einsum`.
 //
-// The output subcripts must contain only labels appearing in at least one of the
+// The output subscripts must contain only labels appearing in at least one of the
 // input subscripts. Furthermore, all dimensions mapping to the same axis label
 // must be equal.
 //
@@ -16918,7 +16963,7 @@ func CompareAndBitpack(scope *Scope, input tf.Output, threshold tf.Output) (outp
 //
 // The broadcasted dimensions are placed in the corresponding location of the
 // ellipsis in the output subscript. If the broadcasted dimensions are non-empty
-// and the output subcripts do not contain ellipsis, then an InvalidArgument error
+// and the output subscripts do not contain ellipsis, then an InvalidArgument error
 // is raised.
 //
 // @compatibility(numpy)
@@ -18404,6 +18449,22 @@ func SnapshotDatasetSeed(value int64) SnapshotDatasetAttr {
 func SnapshotDatasetSeed2(value int64) SnapshotDatasetAttr {
 	return func(m optionalAttr) {
 		m["seed2"] = value
+	}
+}
+
+// SnapshotDatasetMode sets the optional mode attribute to value.
+// If not specified, defaults to "auto"
+func SnapshotDatasetMode(value string) SnapshotDatasetAttr {
+	return func(m optionalAttr) {
+		m["mode"] = value
+	}
+}
+
+// SnapshotDatasetSnapshotName sets the optional snapshot_name attribute to value.
+// If not specified, defaults to ""
+func SnapshotDatasetSnapshotName(value string) SnapshotDatasetAttr {
+	return func(m optionalAttr) {
+		m["snapshot_name"] = value
 	}
 }
 
@@ -45823,6 +45884,17 @@ func UnsortedSegmentJoin(scope *Scope, inputs tf.Output, segment_ids tf.Output, 
 	return op.Output(0)
 }
 
+// SerializeIteratorAttr is an optional argument to SerializeIterator.
+type SerializeIteratorAttr func(optionalAttr)
+
+// SerializeIteratorExternalStatePolicy sets the optional external_state_policy attribute to value.
+// If not specified, defaults to 0
+func SerializeIteratorExternalStatePolicy(value int64) SerializeIteratorAttr {
+	return func(m optionalAttr) {
+		m["external_state_policy"] = value
+	}
+}
+
 // Converts the given `resource_handle` representing an iterator to a variant tensor.
 //
 // Arguments:
@@ -45830,15 +45902,20 @@ func UnsortedSegmentJoin(scope *Scope, inputs tf.Output, segment_ids tf.Output, 
 //
 // Returns A variant tensor storing the state of the iterator contained in the
 // resource.
-func SerializeIterator(scope *Scope, resource_handle tf.Output) (serialized tf.Output) {
+func SerializeIterator(scope *Scope, resource_handle tf.Output, optional ...SerializeIteratorAttr) (serialized tf.Output) {
 	if scope.Err() != nil {
 		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
 	}
 	opspec := tf.OpSpec{
 		Type: "SerializeIterator",
 		Input: []tf.Input{
 			resource_handle,
 		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)

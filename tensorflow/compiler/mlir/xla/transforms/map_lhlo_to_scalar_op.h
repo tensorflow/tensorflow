@@ -157,7 +157,7 @@ inline Operation* MapLhloOpToStdScalarOp<xla_lhlo::CompareOp>(
   if (element_type.isa<IntegerType>()) {
     Optional<CmpIPredicate> predicate =
         getIntCmpPredicate(lhlo_op.comparison_direction());
-    assert(predicate.hasValue() && "expected valid comparision direction");
+    assert(predicate.hasValue() && "expected valid comparison direction");
     return b.create<ScalarIOp<CompareOp>>(lhlo_op.getLoc(),
                                           predicate.getValue(), lhs, rhs);
   }

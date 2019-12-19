@@ -37,7 +37,7 @@ bool IsLoopFusible(const HloInstruction& instr);
 
 // The code emitted for reduce-rooted input fusions (EmitReductionToVector)
 // suffers from poor data locality if the layouts of input parameters differ. In
-// such situtations it is better not to fuse. Only input params with
+// such situations it is better not to fuse. Only input params with
 // maximum rank are considered. Params with smaller ranks will be broadcasted
 // and have not been observed to cause data locality issues.
 // TODO(b/111977086): Improve reduce emitters to remove this limitation.

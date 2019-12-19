@@ -36,14 +36,13 @@ void mlir::replaceAllUsesInRegionWith(Value *orig, Value *replacement,
 }
 
 void mlir::visitUsedValuesDefinedAbove(
-    Region &region, Region &limit,
-    llvm::function_ref<void(OpOperand *)> callback) {
+    Region &region, Region &limit, function_ref<void(OpOperand *)> callback) {
   assert(limit.isAncestor(&region) &&
          "expected isolation limit to be an ancestor of the given region");
 
   // Collect proper ancestors of `limit` upfront to avoid traversing the region
   // tree for every value.
-  llvm::SmallPtrSet<Region *, 4> properAncestors;
+  SmallPtrSet<Region *, 4> properAncestors;
   for (auto *reg = limit.getParentRegion(); reg != nullptr;
        reg = reg->getParentRegion()) {
     properAncestors.insert(reg);
@@ -58,8 +57,7 @@ void mlir::visitUsedValuesDefinedAbove(
 }
 
 void mlir::visitUsedValuesDefinedAbove(
-    llvm::MutableArrayRef<Region> regions,
-    llvm::function_ref<void(OpOperand *)> callback) {
+    MutableArrayRef<Region> regions, function_ref<void(OpOperand *)> callback) {
   for (Region &region : regions)
     visitUsedValuesDefinedAbove(region, region, callback);
 }
@@ -71,7 +69,7 @@ void mlir::getUsedValuesDefinedAbove(Region &region, Region &limit,
   });
 }
 
-void mlir::getUsedValuesDefinedAbove(llvm::MutableArrayRef<Region> regions,
+void mlir::getUsedValuesDefinedAbove(MutableArrayRef<Region> regions,
                                      llvm::SetVector<Value *> &values) {
   for (Region &region : regions)
     getUsedValuesDefinedAbove(region, region, values);
@@ -352,7 +350,7 @@ static LogicalResult runRegionDCE(MutableArrayRef<Region> regions) {
 /// includes transformations like unreachable block elimination, dead argument
 /// elimination, as well as some other DCE. This function returns success if any
 /// of the regions were simplified, failure otherwise.
-LogicalResult mlir::simplifyRegions(llvm::MutableArrayRef<Region> regions) {
+LogicalResult mlir::simplifyRegions(MutableArrayRef<Region> regions) {
   LogicalResult eliminatedBlocks = eraseUnreachableBlocks(regions);
   LogicalResult eliminatedOpsOrArgs = runRegionDCE(regions);
   return success(succeeded(eliminatedBlocks) || succeeded(eliminatedOpsOrArgs));

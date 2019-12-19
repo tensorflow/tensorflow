@@ -287,6 +287,18 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
               llvm::ArrayRef<Value*>(operands.begin() + 2, operands.end()))
           .getOperation();
     }
+    case HloOpcode::kInfeed: {
+      attributes.push_back(builder_->getNamedAttr(
+          "infeed_config", mlir::StringAttr::get(instruction->infeed_config(),
+                                                 builder_->getContext())));
+      MakeAndReturn(InfeedOp);
+    }
+    case HloOpcode::kOutfeed: {
+      attributes.push_back(builder_->getNamedAttr(
+          "outfeed_config", mlir::StringAttr::get(instruction->outfeed_config(),
+                                                  builder_->getContext())));
+      MakeAndReturn(OutfeedOp);
+    }
     case HloOpcode::kPad: {
       const auto& padding_config = instruction->padding_config();
       llvm::SmallVector<int64_t, 4> edge_padding_low;

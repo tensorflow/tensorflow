@@ -1209,7 +1209,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         TfLiteTensor* scratch3 = GetTemporary(context, node, /*index=*/3);
         TfLiteTensor* scratch4 = GetTemporary(context, node, /*index=*/4);
         TfLiteTensor* scratch5 = GetTemporary(context, node, /*index=*/5);
-        return lstm_eval::EvalQuantized(
+        return lstm_eval::EvalInteger(
             input, input_to_input_weights, input_to_forget_weights,
             input_to_cell_weights, input_to_output_weights,
             recurrent_to_input_weights, recurrent_to_forget_weights,

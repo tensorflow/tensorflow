@@ -54,6 +54,8 @@ const char* kModelSplit = "split.bin";
 const char* kLstmCalibrated = "lstm_calibrated.bin";
 const char* kLstmQuantized = "lstm_quantized.bin";
 
+const char* kModelWithMinimumOp = "minimum.bin";
+const char* kModelWithMaximumOp = "maximum.bin";
 const char* kLstmCalibrated2 = "lstm_calibrated2.bin";
 const char* kLstmQuantized2 = "lstm_quantized2.bin";
 

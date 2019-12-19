@@ -47,7 +47,7 @@ void visitUsedValuesDefinedAbove(Region &region, Region &limit,
 
 /// Calls `callback` for each use of a value within any of the regions provided
 /// that was defined in one of the ancestors.
-void visitUsedValuesDefinedAbove(llvm::MutableArrayRef<Region> regions,
+void visitUsedValuesDefinedAbove(MutableArrayRef<Region> regions,
                                  function_ref<void(OpOperand *)> callback);
 
 /// Fill `values` with a list of values defined at the ancestors of the `limit`
@@ -57,14 +57,14 @@ void getUsedValuesDefinedAbove(Region &region, Region &limit,
 
 /// Fill `values` with a list of values used within any of the regions provided
 /// but defined in one of the ancestors.
-void getUsedValuesDefinedAbove(llvm::MutableArrayRef<Region> regions,
+void getUsedValuesDefinedAbove(MutableArrayRef<Region> regions,
                                llvm::SetVector<Value *> &values);
 
 /// Run a set of structural simplifications over the given regions. This
 /// includes transformations like unreachable block elimination, dead argument
 /// elimination, as well as some other DCE. This function returns success if any
 /// of the regions were simplified, failure otherwise.
-LogicalResult simplifyRegions(llvm::MutableArrayRef<Region> regions);
+LogicalResult simplifyRegions(MutableArrayRef<Region> regions);
 
 } // namespace mlir
 

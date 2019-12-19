@@ -1134,7 +1134,7 @@ TEST_F(LiteralUtilTest, CopyFromDifferentShapes) {
 TEST_F(LiteralUtilTest, F16) {
   // Verify that the internal data views are consistent and that they
   // are in little endian format
-  // TODO - modify if we make the data format machine endianess dependent
+  // TODO - modify if we make the data format machine endianness dependent
   Literal m1 = Literal::CreateFromShape(ShapeUtil::MakeShape(F16, {2, 2}));
   const char* d1 = reinterpret_cast<const char*>(m1.data<half>().data());
   EXPECT_EQ(d1[0], 0);

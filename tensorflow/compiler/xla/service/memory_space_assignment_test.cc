@@ -1240,7 +1240,7 @@ TEST_P(MemorySpaceAssignmentTest, NonEntryComputationSchedule5) {
   //
   // If a copy to alternate memory is inserted before foo, and if the size of
   // the while body is less than max prefetch interval so that the copy-done is
-  // kept in the alternate memory, then we end up refering to the copy-done in
+  // kept in the alternate memory, then we end up referring to the copy-done in
   // the root instruction of the while loop body. I.e.,
   //
   // cs = copy-start(a)
@@ -2265,6 +2265,39 @@ TEST_P(MemorySpaceAssignmentTest,
 INSTANTIATE_TEST_SUITE_P(MemorySpaceAssignmentInstantiation,
                          MemorySpaceAssignmentTest,
                          ::testing::Values(false, true));
+
+using AsynchronousCopyOrderingTest = ::testing::Test;
+
+TEST_F(AsynchronousCopyOrderingTest, Simple) {
+  // Given asynchronous copies like the following, ensure the pipelining order
+  // is maintained (earlier start time must have earlier end time).
+  // 3,11       +-------+         OK
+  // 1,8      +------+            OK
+  // 5,14         +--------+      OK
+  // 7,14           +------+      OK
+  // 2,16      +-------------+    Violate
+  // 9,12             +--+        Violate
+  // 6,17          +----------+   Violate
+  // 5,13         +-------+       OK (same start as 5,14)
+  // 5,14         +--------+      OK (same as 5,14)
+  auto alternate_mem_space = MemorySpaceAssignment::MemorySpace::kAlternate;
+  AsynchronousCopyOrdering ordering;
+  EXPECT_FALSE(ordering.ViolatesOrdering(3, 11));
+  ordering.AddCopy({3, 11, alternate_mem_space});
+  EXPECT_FALSE(ordering.ViolatesOrdering(1, 8));
+  ordering.AddCopy({1, 8, alternate_mem_space});
+  EXPECT_FALSE(ordering.ViolatesOrdering(5, 14));
+  ordering.AddCopy({5, 14, alternate_mem_space});
+  EXPECT_FALSE(ordering.ViolatesOrdering(7, 14));
+  ordering.AddCopy({7, 14, alternate_mem_space});
+  EXPECT_TRUE(ordering.ViolatesOrdering(2, 16));
+  EXPECT_TRUE(ordering.ViolatesOrdering(9, 12));
+  EXPECT_TRUE(ordering.ViolatesOrdering(6, 17));
+  EXPECT_FALSE(ordering.ViolatesOrdering(5, 13));
+  ordering.AddCopy({5, 13, alternate_mem_space});
+  EXPECT_FALSE(ordering.ViolatesOrdering(5, 14));
+  ordering.AddCopy({5, 14, alternate_mem_space});
+}
 
 }  // namespace
 }  // namespace xla

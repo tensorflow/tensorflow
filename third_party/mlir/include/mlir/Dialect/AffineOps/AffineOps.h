@@ -538,17 +538,17 @@ bool isValidSymbol(Value *value);
 ///    dimensional operands
 /// 4. propagate constant operands and drop them
 void canonicalizeMapAndOperands(AffineMap *map,
-                                llvm::SmallVectorImpl<Value *> *operands);
+                                SmallVectorImpl<Value *> *operands);
 /// Canonicalizes an integer set the same way canonicalizeMapAndOperands does
 /// for affine maps.
 void canonicalizeSetAndOperands(IntegerSet *set,
-                                llvm::SmallVectorImpl<Value *> *operands);
+                                SmallVectorImpl<Value *> *operands);
 
 /// Returns a composed AffineApplyOp by composing `map` and `operands` with
 /// other AffineApplyOps supplying those operands. The operands of the resulting
 /// AffineApplyOp do not change the length of  AffineApplyOp chains.
 AffineApplyOp makeComposedAffineApply(OpBuilder &b, Location loc, AffineMap map,
-                                      llvm::ArrayRef<Value *> operands);
+                                      ArrayRef<Value *> operands);
 
 /// Given an affine map `map` and its input `operands`, this method composes
 /// into `map`, maps of AffineApplyOps whose results are the values in
@@ -558,7 +558,7 @@ AffineApplyOp makeComposedAffineApply(OpBuilder &b, Location loc, AffineMap map,
 /// terminal symbol, i.e., a symbol defined at the top level or a block/function
 /// argument.
 void fullyComposeAffineMapAndOperands(AffineMap *map,
-                                      llvm::SmallVectorImpl<Value *> *operands);
+                                      SmallVectorImpl<Value *> *operands);
 
 #define GET_OP_CLASSES
 #include "mlir/Dialect/AffineOps/AffineOps.h.inc"

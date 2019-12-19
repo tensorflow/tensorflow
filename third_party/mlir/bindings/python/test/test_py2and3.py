@@ -347,6 +347,17 @@ class EdscTest:
     # CHECK-LABEL: testFunctionDeclarationWithArrayAttr
     #       CHECK: func @foo(memref<10xf32>, memref<10xf32> {array_attr = [43 : i32, 33 : i32]})
 
+  def testFunctionDeclarationWithFloatAndStringAttr(self):
+    self.setUp()
+    float_attr = self.module.floatAttr(23.3)
+    string_attr = self.module.stringAttr("TEST_STRING")
+
+    f = self.module.declare_function(
+        "foo", [], [], float_attr=float_attr, string_attr=string_attr)
+    printWithCurrentFunctionName(str(self.module))
+    # CHECK-LABEL: testFunctionDeclarationWithFloatAndStringAttr
+    #       CHECK: func @foo() attributes {float_attr = 2.330000e+01 : f32, string_attr = "TEST_STRING"}
+
   def testFunctionMultiple(self):
     self.setUp()
     with self.module.function_context("foo", [], []):

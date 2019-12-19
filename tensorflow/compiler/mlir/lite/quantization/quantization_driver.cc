@@ -362,7 +362,7 @@ bool QuantizationDriver::SetConstantResultParams(Operation *op) {
   } else {
     // per-tensor quantization weight
     final_type = GetUniformQuantizedTypeForWeight(
-        attr, /*symmetric=*/is_weight_with_per_channel_support,
+        attr, /*symmetric=*/is_weight && is_signed_,
         /*num_bits=*/8, is_signed_,
         /*narrow_range_=*/is_weight);
   }

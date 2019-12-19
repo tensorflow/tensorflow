@@ -557,7 +557,7 @@ static llvm::cl::list<int> clFastestVaryingPattern(
 
 /// Forward declaration.
 static FilterFunctionType
-isVectorizableLoopPtrFactory(const llvm::DenseSet<Operation *> &parallelLoops,
+isVectorizableLoopPtrFactory(const DenseSet<Operation *> &parallelLoops,
                              int fastestVaryingMemRefDimension);
 
 /// Creates a vectorization pattern from the command line arguments.
@@ -565,7 +565,7 @@ isVectorizableLoopPtrFactory(const llvm::DenseSet<Operation *> &parallelLoops,
 /// If the command line argument requests a pattern of higher order, returns an
 /// empty pattern list which will conservatively result in no vectorization.
 static std::vector<NestedPattern>
-makePatterns(const llvm::DenseSet<Operation *> &parallelLoops, int vectorRank,
+makePatterns(const DenseSet<Operation *> &parallelLoops, int vectorRank,
              ArrayRef<int64_t> fastestVaryingPattern) {
   using matcher::For;
   int64_t d0 = fastestVaryingPattern.empty() ? -1 : fastestVaryingPattern[0];
@@ -842,8 +842,8 @@ static LogicalResult vectorizeRootOrTerminal(Value *iv,
         map(makePtrDynCaster<Value>(), indices),
         AffineMapAttr::get(permutationMap),
         // TODO(b/144455320) add a proper padding value, not just 0.0 : f32
-        state->folder->create<ConstantFloatOp>(
-            b, opInst->getLoc(), llvm::APFloat(0.0f), b.getF32Type()));
+        state->folder->create<ConstantFloatOp>(b, opInst->getLoc(),
+                                               APFloat(0.0f), b.getF32Type()));
     state->registerReplacement(opInst, transfer.getOperation());
   } else {
     state->registerTerminal(opInst);
@@ -889,7 +889,7 @@ static LogicalResult vectorizeAffineForOp(AffineForOp loop, int64_t step,
 /// loop whose underlying load/store accesses are either invariant or all
 // varying along the `fastestVaryingMemRefDimension`.
 static FilterFunctionType
-isVectorizableLoopPtrFactory(const llvm::DenseSet<Operation *> &parallelLoops,
+isVectorizableLoopPtrFactory(const DenseSet<Operation *> &parallelLoops,
                              int fastestVaryingMemRefDimension) {
   return [&parallelLoops, fastestVaryingMemRefDimension](Operation &forOp) {
     auto loop = cast<AffineForOp>(forOp);
@@ -1255,7 +1255,7 @@ void Vectorize::runOnFunction() {
   // Thread-safe RAII local context, BumpPtrAllocator freed on exit.
   NestedPatternContext mlContext;
 
-  llvm::DenseSet<Operation *> parallelLoops;
+  DenseSet<Operation *> parallelLoops;
   f.walk([&parallelLoops](AffineForOp loop) {
     if (isLoopParallel(loop))
       parallelLoops.insert(loop);
@@ -1293,7 +1293,7 @@ void Vectorize::runOnFunction() {
 }
 
 std::unique_ptr<OpPassBase<FuncOp>>
-mlir::createVectorizePass(llvm::ArrayRef<int64_t> virtualVectorSize) {
+mlir::createVectorizePass(ArrayRef<int64_t> virtualVectorSize) {
   return std::make_unique<Vectorize>(virtualVectorSize);
 }
 

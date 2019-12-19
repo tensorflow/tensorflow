@@ -84,6 +84,9 @@ cc_test(
     name = "verifier_test",
     size = "small",
     srcs = ["verifier_test.cc"],
+    data = [
+        "//tensorflow/lite:testdata/sparse_tensor.bin",
+    ],
     tags = [
         "tflite_not_portable",
     ],

@@ -193,11 +193,17 @@ struct PythonMLIRModule {
                 const py::list &arguments, const py::list &successors,
                 py::kwargs attributes);
 
-  // Create an integer attribute.
+  // Creates an integer attribute.
   PythonAttribute integerAttr(PythonType type, int64_t value);
 
-  // Create a boolean attribute.
+  // Creates a boolean attribute.
   PythonAttribute boolAttr(bool value);
+
+  // Creates a float attribute.
+  PythonAttribute floatAttr(float value);
+
+  // Creates a string atrribute.
+  PythonAttribute stringAttr(const std::string &value);
 
   // Creates an Array attribute.
   PythonAttribute arrayAttr(const std::vector<PythonAttribute> &values);
@@ -713,6 +719,14 @@ PythonAttribute PythonMLIRModule::boolAttr(bool value) {
   return PythonAttribute(::makeBoolAttr(&mlirContext, value));
 }
 
+PythonAttribute PythonMLIRModule::floatAttr(float value) {
+  return PythonAttribute(::makeFloatAttr(&mlirContext, value));
+}
+
+PythonAttribute PythonMLIRModule::stringAttr(const std::string &value) {
+  return PythonAttribute(::makeStringAttr(&mlirContext, value.c_str()));
+}
+
 PythonAttribute
 PythonMLIRModule::arrayAttr(const std::vector<PythonAttribute> &values) {
   std::vector<mlir::Attribute> mlir_attributes(values.begin(), values.end());
@@ -910,6 +924,10 @@ PYBIND11_MODULE(pybind, m) {
           "integerAttr", &PythonMLIRModule::integerAttr,
           "Creates an mlir::IntegerAttr of the given type with the given value "
           "in the context associated with this MLIR module.")
+      .def("floatAttr", &PythonMLIRModule::floatAttr,
+           "Creates an mlir::FloatAttr with the given value")
+      .def("stringAttr", &PythonMLIRModule::stringAttr,
+           "Creates an mlir::StringAttr with the given value")
       .def("arrayAttr", &PythonMLIRModule::arrayAttr,
            "Creates an mlir::ArrayAttr of the given type with the given values "
            "in the context associated with this MLIR module.")

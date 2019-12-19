@@ -397,6 +397,18 @@ func @main(%arg0: tuple<tensor<f32>, tensor<i32>>) -> tensor<f32> {
 // -----
 
 // CHECK:  HloModule
+func @main(%arg0: !xla_hlo.token) -> tuple<tuple<tensor<3xi32>, tensor<i1>>, !xla_hlo.token> {
+  %0 = "xla_hlo.infeed"(%arg0) {infeed_config = "foobar"} : (!xla_hlo.token) -> tuple<tuple<tensor<3xi32>, tensor<i1>>, !xla_hlo.token>
+  return %0 : tuple<tuple<tensor<3xi32>, tensor<i1>>, !xla_hlo.token>
+}
+
+// CHECK:  ENTRY
+// CHECK:  [[ARG:%.*]] = token[] parameter(0)
+// CHECK:  ROOT %[[RESULT:.*]] = ((s32[3], pred[]), token[]) infeed(token[] [[ARG]]), infeed_config="foobar"
+
+// -----
+
+// CHECK:  HloModule
 func @main() -> tensor<1x10xf32> {
   %result = "xla_hlo.iota"() {
     iota_dimension = 1 : i64
@@ -406,6 +418,19 @@ func @main() -> tensor<1x10xf32> {
 
 // CHECK:  ENTRY
 // CHECK:  ROOT %[[RESULT:.*]] = f32[1,10] iota(), iota_dimension=1
+
+// -----
+
+// CHECK:  HloModule
+func @main(%data: tensor<3xi32>, %token: !xla_hlo.token) -> !xla_hlo.token {
+  %0 = "xla_hlo.outfeed"(%data, %token) {outfeed_config = "foobar"} : (tensor<3xi32>, !xla_hlo.token) -> !xla_hlo.token
+  return %0 : !xla_hlo.token
+}
+
+// CHECK:  ENTRY
+// CHECK:  [[DATA:%.*]] = s32[3] parameter(0)
+// CHECK:  [[TOKEN:%.*]] = token[] parameter(1)
+// CHECK:  ROOT %[[RESULT:.*]] = token[] outfeed(s32[3] [[DATA]], token[] [[TOKEN]]), outfeed_config="foobar"
 
 // -----
 

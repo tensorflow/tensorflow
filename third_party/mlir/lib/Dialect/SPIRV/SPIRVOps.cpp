@@ -49,6 +49,7 @@ static constexpr const char kIndicesAttrName[] = "indices";
 static constexpr const char kInitializerAttrName[] = "initializer";
 static constexpr const char kInterfaceAttrName[] = "interface";
 static constexpr const char kMemoryScopeAttrName[] = "memory_scope";
+static constexpr const char kSemanticsAttrName[] = "semantics";
 static constexpr const char kSpecConstAttrName[] = "spec_const";
 static constexpr const char kSpecIdAttrName[] = "spec_id";
 static constexpr const char kTypeAttrName[] = "type";
@@ -79,7 +80,7 @@ static LogicalResult extractValueFromConstOp(Operation *op,
 template <typename Ty>
 static ArrayAttr
 getStrArrayAttrForEnumList(Builder &builder, ArrayRef<Ty> enumValues,
-                           llvm::function_ref<StringRef(Ty)> stringifyFn) {
+                           function_ref<StringRef(Ty)> stringifyFn) {
   if (enumValues.empty()) {
     return nullptr;
   }
@@ -398,7 +399,7 @@ static unsigned getBitWidth(Type type) {
 /// emits errors with the given loc on failure.
 static Type
 getElementType(Type type, ArrayRef<int32_t> indices,
-               llvm::function_ref<InFlightDiagnostic(StringRef)> emitErrorFn) {
+               function_ref<InFlightDiagnostic(StringRef)> emitErrorFn) {
   if (indices.empty()) {
     emitErrorFn("expected at least one index for spv.CompositeExtract");
     return nullptr;
@@ -422,7 +423,7 @@ getElementType(Type type, ArrayRef<int32_t> indices,
 
 static Type
 getElementType(Type type, Attribute indices,
-               llvm::function_ref<InFlightDiagnostic(StringRef)> emitErrorFn) {
+               function_ref<InFlightDiagnostic(StringRef)> emitErrorFn) {
   auto indicesArrayAttr = indices.dyn_cast<ArrayAttr>();
   if (!indicesArrayAttr) {
     emitErrorFn("expected a 32-bit integer array attribute for 'indices'");
@@ -510,6 +511,70 @@ static LogicalResult verifyBitFieldExtractOp(Operation *op) {
                          "result, but provided ")
            << op->getOperand(0)->getType() << " and "
            << op->getResult(0)->getType();
+  }
+  return success();
+}
+
+// Parses an atomic update op. If the update op does not take a value (like
+// AtomicIIncrement) `hasValue` must be false.
+static ParseResult parseAtomicUpdateOp(OpAsmParser &parser,
+                                       OperationState &state, bool hasValue) {
+  spirv::Scope scope;
+  spirv::MemorySemantics memoryScope;
+  SmallVector<OpAsmParser::OperandType, 2> operandInfo;
+  OpAsmParser::OperandType ptrInfo, valueInfo;
+  Type type;
+  llvm::SMLoc loc;
+  if (parseEnumAttribute(scope, parser, state, kMemoryScopeAttrName) ||
+      parseEnumAttribute(memoryScope, parser, state, kSemanticsAttrName) ||
+      parser.parseOperandList(operandInfo, (hasValue ? 2 : 1)) ||
+      parser.getCurrentLocation(&loc) || parser.parseColonType(type))
+    return failure();
+
+  auto ptrType = type.dyn_cast<spirv::PointerType>();
+  if (!ptrType)
+    return parser.emitError(loc, "expected pointer type");
+
+  SmallVector<Type, 2> operandTypes;
+  operandTypes.push_back(ptrType);
+  if (hasValue)
+    operandTypes.push_back(ptrType.getPointeeType());
+  if (parser.resolveOperands(operandInfo, operandTypes, parser.getNameLoc(),
+                             state.operands))
+    return failure();
+  return parser.addTypeToList(ptrType.getPointeeType(), state.types);
+}
+
+// Prints an atomic update op.
+static void printAtomicUpdateOp(Operation *op, OpAsmPrinter &printer) {
+  printer << op->getName() << " \"";
+  auto scopeAttr = op->getAttrOfType<IntegerAttr>(kMemoryScopeAttrName);
+  printer << spirv::stringifyScope(
+                 static_cast<spirv::Scope>(scopeAttr.getInt()))
+          << "\" \"";
+  auto memorySemanticsAttr = op->getAttrOfType<IntegerAttr>(kSemanticsAttrName);
+  printer << spirv::stringifyMemorySemantics(
+                 static_cast<spirv::MemorySemantics>(
+                     memorySemanticsAttr.getInt()))
+          << "\" " << op->getOperands() << " : "
+          << op->getOperand(0)->getType();
+}
+
+// Verifies an atomic update op.
+static LogicalResult verifyAtomicUpdateOp(Operation *op) {
+  auto ptrType = op->getOperand(0)->getType().cast<spirv::PointerType>();
+  auto elementType = ptrType.getPointeeType();
+  if (!elementType.isa<IntegerType>())
+    return op->emitOpError(
+               "pointer operand must point to an integer value, found ")
+           << elementType;
+
+  if (op->getNumOperands() > 1) {
+    auto valueType = op->getOperand(1)->getType();
+    if (valueType != elementType)
+      return op->emitOpError("expected value to have the same type as the "
+                             "pointer operand's pointee type ")
+             << elementType << ", but found " << valueType;
   }
   return success();
 }
@@ -2252,7 +2317,7 @@ static LogicalResult verify(spirv::ModuleOp moduleOp) {
   auto &op = *moduleOp.getOperation();
   auto *dialect = op.getDialect();
   auto &body = op.getRegion(0).front();
-  llvm::DenseMap<std::pair<FuncOp, spirv::ExecutionModel>, spirv::EntryPointOp>
+  DenseMap<std::pair<FuncOp, spirv::ExecutionModel>, spirv::EntryPointOp>
       entryPoints;
   SymbolTable table(moduleOp);
 

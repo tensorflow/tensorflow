@@ -1665,7 +1665,7 @@ def categorical_column_with_vocabulary_file_v2(key,
     if not gfile.Exists(vocabulary_file):
       raise ValueError('vocabulary_file in {} does not exist.'.format(key))
 
-    with gfile.GFile(vocabulary_file) as f:
+    with gfile.GFile(vocabulary_file, mode='rb') as f:
       vocabulary_size = sum(1 for _ in f)
     logging.info(
         'vocabulary_size = %d in %s is inferred from the number of elements '

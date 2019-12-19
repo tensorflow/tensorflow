@@ -512,7 +512,7 @@ static LogicalResult verify(YieldOp op) {
 
 // A LinalgLibraryOp prints as:
 //
-// ```{.mlir}
+// ```mlir
 //   concrete_op_name (ssa-inputs, ssa-outputs) : view-types
 // ```
 //
@@ -632,7 +632,7 @@ namespace linalg {
 } // namespace linalg
 } // namespace mlir
 
-static AffineMap extractOrIdentityMap(llvm::Optional<AffineMap> maybeMap,
+static AffineMap extractOrIdentityMap(Optional<AffineMap> maybeMap,
                                       unsigned rank, MLIRContext *context) {
   if (maybeMap)
     return maybeMap.getValue();

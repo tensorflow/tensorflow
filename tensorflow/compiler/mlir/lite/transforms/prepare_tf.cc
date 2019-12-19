@@ -132,7 +132,7 @@ struct InsertTFLQuantOpsAfterTFFakeQuantOp
 
     int quant_dim = -1;
     if (PerAxis) {
-      // This is a special case that the quant_dim is the last dimentions.
+      // This is a special case that the quant_dim is the last dimensions.
       quant_dim = res->getType().template cast<ShapedType>().getRank() - 1;
     }
     // Use the min/max from the operands and the num_bits and narrow_range

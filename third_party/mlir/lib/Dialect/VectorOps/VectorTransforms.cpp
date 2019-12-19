@@ -142,6 +142,47 @@ static void getMappedElements(const DenseMap<int64_t, int64_t> &indexMap,
   }
 }
 
+// Returns a tuple type with vector element types for each resulting slice
+// of 'vectorType' unrolled by 'sizes' and 'strides'.
+// TODO(andydavis) Move this to a utility function and share it with
+// Extract/InsertSlicesOp verification.
+static TupleType generateExtractSlicesOpResultType(VectorType vectorType,
+                                                   ArrayRef<int64_t> sizes,
+                                                   ArrayRef<int64_t> strides,
+                                                   PatternRewriter &builder) {
+  assert(llvm::all_of(strides, [](int64_t s) { return s == 1; }));
+  unsigned rank = vectorType.getRank();
+  assert(sizes.size() == rank);
+  assert(strides.size() == rank);
+
+  // Compute shape ratio of 'shape' and 'sizes'.
+  auto shape = vectorType.getShape();
+  auto maybeDimSliceCounts = shapeRatio(shape, sizes);
+  assert(maybeDimSliceCounts.hasValue());
+  auto sliceDimCounts = *maybeDimSliceCounts;
+
+  // Compute strides w.r.t number of slices in each dimension.
+  auto basis = computeStrides(sliceDimCounts);
+  int64_t sliceCount = computeMaxLinearIndex(sliceDimCounts);
+  SmallVector<Type, 4> vectorTypes(sliceCount);
+  for (unsigned i = 0; i < sliceCount; ++i) {
+    // De-linearize w.r.t. 'basis'.
+    auto vectorOffsets = delinearize(i, basis);
+    // Convert from unrolled vector-space offsets to element-space offsets.
+    auto offsets = zipMap([](int64_t v1, int64_t v2) { return v1 * v2; },
+                          vectorOffsets, sizes);
+    // Initialize 'sliceSizes' to target 'sizes'
+    SmallVector<int64_t, 4> sliceSizes(sizes.begin(), sizes.end());
+    for (unsigned j = 0; j < rank; ++j) {
+      // Based on 'offsets' and 'shape' clip some dim sizes for partial tiles.
+      sliceSizes[j] = std::min(sliceSizes[j], shape[j] - offsets[j]);
+    }
+    // Create Vector type and add to 'vectorTypes[i]'.
+    vectorTypes[i] = VectorType::get(sliceSizes, vectorType.getElementType());
+  }
+  return TupleType::get(vectorTypes, builder.getContext());
+}
+
 // UnrolledVectorState aggregates per-operand/result vector state required for
 // unrolling.
 struct UnrolledVectorState {
@@ -149,14 +190,16 @@ struct UnrolledVectorState {
   SmallVector<int64_t, 4> unrollFactors;
   SmallVector<int64_t, 8> basis;
   int64_t numInstances;
+  Value *slicesTuple;
 };
 
 // Populates 'state' with unrolled shape, unroll factors, basis and
 // num unrolled instances for 'vectorType'.
-static void initUnrolledVectorState(VectorType vectorType,
+static void initUnrolledVectorState(VectorType vectorType, Value *initValue,
                                     const DenseMap<int64_t, int64_t> &indexMap,
                                     ArrayRef<int64_t> targetShape,
-                                    UnrolledVectorState &state) {
+                                    UnrolledVectorState &state,
+                                    PatternRewriter &builder) {
   // Compute unrolled shape of 'vectorType'.
   state.unrolledShape.resize(vectorType.getRank());
   getMappedElements(indexMap, targetShape, state.unrolledShape);
@@ -168,6 +211,16 @@ static void initUnrolledVectorState(VectorType vectorType,
   // Compute 'basis' and 'numInstances' based on 'state.unrollFactors'.
   state.basis = computeStrides(state.unrollFactors);
   state.numInstances = computeMaxLinearIndex(state.unrollFactors);
+  state.slicesTuple = nullptr;
+  if (initValue != nullptr) {
+    // Create ExtractSlicesOp.
+    SmallVector<int64_t, 4> sizes(state.unrolledShape);
+    SmallVector<int64_t, 4> strides(state.unrollFactors.size(), 1);
+    auto tupleType =
+        generateExtractSlicesOpResultType(vectorType, sizes, strides, builder);
+    state.slicesTuple = builder.create<vector::ExtractSlicesOp>(
+        initValue->getLoc(), tupleType, initValue, sizes, strides);
+  }
 }
 
 // Computes and returns the linear index of the unrolled vector at
@@ -202,10 +255,14 @@ static Value *getOrCreateUnrolledVectorSlice(
   assert(sliceLinearIndex < static_cast<int64_t>(cache.size()));
   auto *valueSlice = cache[sliceLinearIndex];
   if (valueSlice == nullptr) {
-    assert(initValue != nullptr);
-    // Initialize 'cache' with slice from 'state.value'.
-    valueSlice = builder.create<vector::StridedSliceOp>(
-        loc, initValue, sliceOffsets, state.unrolledShape, sliceStrides);
+    // Return tuple element at 'sliceLinearIndex'.
+    auto tupleIndex = builder.getI64IntegerAttr(sliceLinearIndex);
+    auto initValueType = initValue->getType().cast<VectorType>();
+    auto vectorType =
+        VectorType::get(state.unrolledShape, initValueType.getElementType());
+    // Initialize 'cache' with slice from 'initValue'.
+    valueSlice = builder.create<vector::TupleGetOp>(
+        loc, vectorType, state.slicesTuple, tupleIndex);
     // Store value back to 'cache'.
     cache[sliceLinearIndex] = valueSlice;
   }
@@ -293,8 +350,10 @@ static Value *unrollSingleResultStructuredOp(Operation *op,
   unsigned numVectors = vectors.size();
   SmallVector<UnrolledVectorState, 3> unrolledVectorState(numVectors);
   for (unsigned i = 0; i < numVectors; ++i) {
-    initUnrolledVectorState(vectors[i].type, vectors[i].indexMap, targetShape,
-                            unrolledVectorState[i]);
+    int64_t operandIndex = vectors[i].operandIndex;
+    auto *operand = operandIndex >= 0 ? op->getOperand(operandIndex) : nullptr;
+    initUnrolledVectorState(vectors[i].type, operand, vectors[i].indexMap,
+                            targetShape, unrolledVectorState[i], builder);
   }
   // Compute number of total unrolled instances.
   auto numUnrolledInstances = computeMaxLinearIndex(unrollFactors);
@@ -341,21 +400,26 @@ static Value *unrollSingleResultStructuredOp(Operation *op,
     caches[resultIndex][linearIndex] = resultVector;
   }
 
-  // Make zero splat into which we will insert results from
-  // 'cache[resultIndex]'
-  auto resultVectorType = op->getResult(0)->getType().cast<VectorType>();
-  auto *res = makeSplatZero(op->getLoc(), builder, resultVectorType);
-  SmallVector<int64_t, 4> strides(resultValueState.unrollFactors.size(), 1);
-  // Insert vector accumulators into output.
+  // Create TupleOp of unrolled result vectors.
+  SmallVector<Type, 4> vectorTupleTypes(resultValueState.numInstances);
+  SmallVector<Value *, 4> vectorTupleValues(resultValueState.numInstances);
   for (unsigned i = 0; i < resultValueState.numInstances; ++i) {
-    auto vectorOffsets = delinearize(i, resultValueState.basis);
-    // Convert from unrolled vector-space offsets to element-space offsets.
-    auto offsets = zipMap([](int64_t v1, int64_t v2) { return v1 * v2; },
-                          vectorOffsets, resultValueState.unrolledShape);
-    res = builder.create<vector::InsertStridedSliceOp>(
-        op->getLoc(), caches[resultIndex][i], res, offsets, strides);
+    vectorTupleTypes[i] = caches[resultIndex][i]->getType().cast<VectorType>();
+    vectorTupleValues[i] = caches[resultIndex][i];
   }
-  return res;
+  TupleType tupleType = builder.getTupleType(vectorTupleTypes);
+  Value *tupleOp = builder.create<vector::TupleOp>(op->getLoc(), tupleType,
+                                                   vectorTupleValues);
+
+  // Create InsertSlicesOp(Tuple(result_vectors)).
+  auto resultVectorType = op->getResult(0)->getType().cast<VectorType>();
+  SmallVector<int64_t, 4> sizes(resultValueState.unrolledShape);
+  SmallVector<int64_t, 4> strides(resultValueState.unrollFactors.size(), 1);
+
+  Value *insertSlicesOp = builder.create<vector::InsertSlicesOp>(
+      op->getLoc(), resultVectorType, tupleOp, builder.getI64ArrayAttr(sizes),
+      builder.getI64ArrayAttr(strides));
+  return insertSlicesOp;
 }
 
 static void getVectorContractionOpUnrollState(
@@ -381,10 +445,10 @@ static void getVectorContractionOpUnrollState(
   if (llvm::size(contractionOp.masks()) == 2) {
     // Add vectors for lhs/rhs vector mask arguments. Masks have the
     // same vector shape lhs/rhs args, so copy their index maps.
-    vectors.push_back(
-        {vectors[0].type, vectors[0].indexMap, accOperandIndex + 1, false});
-    vectors.push_back(
-        {vectors[1].type, vectors[1].indexMap, accOperandIndex + 2, false});
+    vectors.push_back({contractionOp.getLHSVectorMaskType(),
+                       vectors[0].indexMap, accOperandIndex + 1, false});
+    vectors.push_back({contractionOp.getRHSVectorMaskType(),
+                       vectors[1].indexMap, accOperandIndex + 2, false});
   }
   // Unroll 'op' 'iterationBounds' to 'targetShape'.
   // TODO(andydavis) Use linalg style 'args_in'/'args_out' to partition
@@ -447,7 +511,44 @@ Value *mlir::vector::unrollSingleResultOpMatchingType(
                                         resultIndex, targetShape, builder);
 }
 
-// Splits vector TransferReadOp into smaller TransferReadOps for each user.
+// Generates slices of 'vectorType' according to 'sizes' and 'strides, and
+// calls 'fn' with linear index and indices for each slice.
+static void
+generateTransferOpSlices(VectorType vectorType, TupleType tupleType,
+                         ArrayRef<int64_t> sizes, ArrayRef<int64_t> strides,
+                         ArrayRef<Value *> indices, PatternRewriter &rewriter,
+                         function_ref<void(unsigned, ArrayRef<Value *>)> fn) {
+  // Compute strides w.r.t. to slice counts in each dimension.
+  auto maybeDimSliceCounts = shapeRatio(vectorType.getShape(), sizes);
+  assert(maybeDimSliceCounts.hasValue());
+  auto sliceDimCounts = *maybeDimSliceCounts;
+  auto basis = computeStrides(sliceDimCounts);
+
+  int64_t numSlices = tupleType.size();
+  unsigned numSliceIndices = indices.size();
+  auto *ctx = rewriter.getContext();
+  for (unsigned i = 0; i < numSlices; ++i) {
+    // De-linearize w.r.t. 'basis'.
+    auto vectorOffsets = delinearize(i, basis);
+    // Convert from unrolled vector-space offsets to element-space offsets.
+    auto offsets = zipMap([](int64_t v1, int64_t v2) { return v1 * v2; },
+                          vectorOffsets, sizes);
+    // Compute 'sliceIndices' by adding 'sliceOffsets[i]' to 'indices[i]'.
+    SmallVector<Value *, 4> sliceIndices(numSliceIndices);
+    for (auto it : llvm::enumerate(indices)) {
+      auto expr = getAffineDimExpr(0, ctx) +
+                  getAffineConstantExpr(offsets[it.index()], ctx);
+      auto map = AffineMap::get(/*dimCount=*/1, /*symbolCount=*/0, expr);
+      sliceIndices[it.index()] = rewriter.create<AffineApplyOp>(
+          it.value()->getLoc(), map, ArrayRef<Value *>(it.value()));
+    }
+    // Call 'fn' to generate slice 'i' at 'sliceIndices'.
+    fn(i, sliceIndices);
+  }
+}
+
+// Splits vector TransferReadOp into smaller TransferReadOps based on slicing
+// scheme of its unique ExtractSlicesOp user.
 struct SplitTransferReadOp : public OpRewritePattern<vector::TransferReadOp> {
   using OpRewritePattern<vector::TransferReadOp>::OpRewritePattern;
 
@@ -457,60 +558,134 @@ struct SplitTransferReadOp : public OpRewritePattern<vector::TransferReadOp> {
     // permutation maps. Repurpose code from MaterializeVectors transformation.
     if (!xferReadOp.permutation_map().isIdentity())
       return matchFailure();
-    // Gather 'xferReadOp' users.
-    SmallVector<vector::StridedSliceOp, 2> sliceUsers;
-    sliceUsers.reserve(std::distance(xferReadOp.getResult()->use_begin(),
-                                     xferReadOp.getResult()->use_end()));
+    // Return unless the unique 'xferReadOp' user is an ExtractSlicesOp.
+    Value *xferReadResult = xferReadOp.getResult();
+    auto extractSlicesOp =
+        dyn_cast<vector::ExtractSlicesOp>(*xferReadResult->getUsers().begin());
+    if (!xferReadResult->hasOneUse() || !extractSlicesOp)
+      return matchFailure();
 
-    for (auto *user : xferReadOp.getResult()->getUsers()) {
-      auto sliceOp = dyn_cast<vector::StridedSliceOp>(user);
-      // Return if any user is not a vector::StridedSliceOp.
-      if (!sliceOp)
-        return matchFailure();
-      sliceUsers.push_back(sliceOp);
-    }
-    // Make zero splat into which we will insert split xferReadOp results.
+    // Get 'sizes' and 'strides' parameters from ExtractSlicesOp user.
+    auto sourceVectorType = extractSlicesOp.getSourceVectorType();
+    auto resultTupleType = extractSlicesOp.getResultTupleType();
+    SmallVector<int64_t, 4> sizes;
+    extractSlicesOp.getSizes(sizes);
+    SmallVector<int64_t, 4> strides;
+    extractSlicesOp.getStrides(strides);
+    assert(llvm::all_of(strides, [](int64_t s) { return s == 1; }));
+
     Location loc = xferReadOp.getLoc();
-    auto *res = makeSplatZero(loc, rewriter, xferReadOp.getVectorType());
-
-    // Update each user in 'sliceUser' to use 'res'.
-    unsigned numSliceIndices = llvm::size(xferReadOp.indices());
-    for (auto sliceUser : sliceUsers) {
-      // Gather static offsets from 'sliceUser'.
-      SmallVector<int64_t, 4> sliceOffsets;
-      sliceUser.getOffsets(sliceOffsets);
-      assert(sliceOffsets.size() == numSliceIndices);
-      auto *ctx = rewriter.getContext();
-      // Compute 'sliceIndices' by adding 'sliceOffsets[i]' to 'indices[i]'.
-      SmallVector<Value *, 4> sliceIndices(numSliceIndices);
-      for (auto it : llvm::enumerate(xferReadOp.indices())) {
-        auto expr = getAffineDimExpr(0, ctx) +
-                    getAffineConstantExpr(sliceOffsets[it.index()], ctx);
-        auto map = AffineMap::get(/*dimCount=*/1, /*symbolCount=*/0, expr);
-        SmallVector<Value *, 1> mapOperands = {it.value()};
-        sliceIndices[it.index()] =
-            rewriter.create<AffineApplyOp>(loc, map, mapOperands);
-      }
+    int64_t numSlices = resultTupleType.size();
+    SmallVector<Value *, 4> vectorTupleValues(numSlices);
+    SmallVector<Value *, 4> indices(xferReadOp.indices().begin(),
+                                    xferReadOp.indices().end());
+    auto createSlice = [&](unsigned index, ArrayRef<Value *> sliceIndices) {
+      // Get VectorType for slice 'i'.
+      auto sliceVectorType = resultTupleType.getType(index);
       // Create split TransferReadOp for 'sliceUser'.
-      auto sliceVectorType =
-          sliceUser.getResult()->getType().cast<VectorType>();
-      auto splitXferReadOp = rewriter.create<vector::TransferReadOp>(
+      vectorTupleValues[index] = rewriter.create<vector::TransferReadOp>(
           loc, sliceVectorType, xferReadOp.memref(), sliceIndices,
           xferReadOp.permutation_map(), xferReadOp.padding());
-      // Create InsertStridedSlice into splat at same offsets as slice.
-      res = rewriter.create<vector::InsertStridedSliceOp>(
-          loc, xferReadOp.getVectorType(), splitXferReadOp, res,
-          sliceUser.offsets(), sliceUser.strides());
-    }
+    };
+    generateTransferOpSlices(sourceVectorType, resultTupleType, sizes, strides,
+                             indices, rewriter, createSlice);
 
-    // Replace 'xferReadOp' with result 'res'.
-    rewriter.replaceOp(xferReadOp, res);
+    // Create tuple of splice xfer read operations.
+    Value *tupleOp = rewriter.create<vector::TupleOp>(loc, resultTupleType,
+                                                      vectorTupleValues);
+    // Replace 'xferReadOp' with result 'insertSlicesResult'.
+    rewriter.replaceOpWithNewOp<vector::InsertSlicesOp>(
+        xferReadOp, sourceVectorType, tupleOp, extractSlicesOp.sizes(),
+        extractSlicesOp.strides());
     return matchSuccess();
   }
 };
 
+// Splits vector TransferWriteOp into smaller TransferWriteOps for each source.
+struct SplitTransferWriteOp : public OpRewritePattern<vector::TransferWriteOp> {
+  using OpRewritePattern<vector::TransferWriteOp>::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(vector::TransferWriteOp xferWriteOp,
+                                     PatternRewriter &rewriter) const override {
+    // TODO(andydavis, ntv) Support spliting TransferWriteOp with non-identity
+    // permutation maps. Repurpose code from MaterializeVectors transformation.
+    if (!xferWriteOp.permutation_map().isIdentity())
+      return matchFailure();
+    // Return unless the 'xferWriteOp' 'vector' operand is an 'InsertSlicesOp'.
+    auto *vectorDefOp = xferWriteOp.vector()->getDefiningOp();
+    auto insertSlicesOp = dyn_cast_or_null<vector::InsertSlicesOp>(vectorDefOp);
+    if (!insertSlicesOp)
+      return matchFailure();
+
+    // Get TupleOp operand of 'insertSlicesOp'.
+    auto tupleOp = dyn_cast_or_null<vector::TupleOp>(
+        insertSlicesOp.vectors()->getDefiningOp());
+    if (!tupleOp)
+      return matchFailure();
+
+    // Get 'sizes' and 'strides' parameters from InsertSlicesOp user.
+    auto sourceTupleType = insertSlicesOp.getSourceTupleType();
+    auto resultVectorType = insertSlicesOp.getResultVectorType();
+    SmallVector<int64_t, 4> sizes;
+    insertSlicesOp.getSizes(sizes);
+    SmallVector<int64_t, 4> strides;
+    insertSlicesOp.getStrides(strides);
+
+    Location loc = xferWriteOp.getLoc();
+    SmallVector<Value *, 4> indices(xferWriteOp.indices().begin(),
+                                    xferWriteOp.indices().end());
+    auto createSlice = [&](unsigned index, ArrayRef<Value *> sliceIndices) {
+      // Create split TransferWriteOp for source vector 'tupleOp.operand[i]'.
+      rewriter.create<vector::TransferWriteOp>(
+          loc, tupleOp.getOperand(index), xferWriteOp.memref(), sliceIndices,
+          xferWriteOp.permutation_map());
+    };
+    generateTransferOpSlices(resultVectorType, sourceTupleType, sizes, strides,
+                             indices, rewriter, createSlice);
+
+    // Erase old 'xferWriteOp'.
+    rewriter.eraseOp(xferWriteOp);
+    return matchSuccess();
+  }
+};
+
+// Patter rewrite which forward tuple elements to their users.
+// User(TupleGetOp(ExtractSlicesOp(InsertSlicesOp(TupleOp(Producer)))))
+//   -> User(Producer)
+struct TupleGetFolderOp : public OpRewritePattern<vector::TupleGetOp> {
+  using OpRewritePattern<vector::TupleGetOp>::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(vector::TupleGetOp tupleGetOp,
+                                     PatternRewriter &rewriter) const override {
+    // Return if 'tupleGetOp.vectors' arg was not defined by ExtractSlicesOp.
+    auto extractSlicesOp = dyn_cast_or_null<vector::ExtractSlicesOp>(
+        tupleGetOp.vectors()->getDefiningOp());
+    if (!extractSlicesOp)
+      return matchFailure();
+
+    // Return if 'extractSlicesOp.vector' arg was not defined by InsertSlicesOp.
+    auto insertSlicesOp = dyn_cast_or_null<vector::InsertSlicesOp>(
+        extractSlicesOp.vector()->getDefiningOp());
+    if (!insertSlicesOp)
+      return matchFailure();
+
+    // Return if 'insertSlicesOp.vectors' arg was not defined by TupleOp.
+    auto tupleOp = dyn_cast_or_null<vector::TupleOp>(
+        insertSlicesOp.vectors()->getDefiningOp());
+    if (!tupleOp)
+      return matchFailure();
+
+    // Forward Value from 'tupleOp' at 'tupleGetOp.index'.
+    Value *tupleValue = tupleOp.getOperand(tupleGetOp.getIndex());
+    rewriter.replaceOp(tupleGetOp, tupleValue);
+    return matchSuccess();
+  }
+};
+
+// TODO(andydavis) Add pattern to rewrite ExtractSlices(ConstantMaskOp).
 // TODO(andydavis) Add this as DRR pattern.
 void mlir::vector::populateVectorToVectorTransformationPatterns(
     OwningRewritePatternList &patterns, MLIRContext *context) {
-  patterns.insert<SplitTransferReadOp>(context);
+  patterns.insert<SplitTransferReadOp, SplitTransferWriteOp, TupleGetFolderOp>(
+      context);
 }

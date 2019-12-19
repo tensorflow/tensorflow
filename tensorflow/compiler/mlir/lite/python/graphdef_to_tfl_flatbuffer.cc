@@ -151,10 +151,9 @@ Status RegisterCustomBuiltinOps(const std::vector<string> extra_tf_opdefs) {
       return errors::InvalidArgument("fail to parse extra OpDef");
     }
     // Make sure the op is not already registered. If registered continue.
-    const OpRegistrationData* op_reg = nullptr;
-    auto status =
-        tensorflow::OpRegistry::Global()->LookUp(opdef.name(), &op_reg);
-    if (status.ok()) continue;
+    const OpRegistrationData* op_reg =
+        tensorflow::OpRegistry::Global()->LookUp(opdef.name());
+    if (op_reg) continue;
 
     tensorflow::OpRegistry::Global()->Register(
         [opdef](tensorflow::OpRegistrationData* op_reg_data) -> Status {

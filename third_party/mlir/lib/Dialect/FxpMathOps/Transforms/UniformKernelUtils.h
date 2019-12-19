@@ -35,7 +35,7 @@ inline quant::UniformQuantizedType getUniformElementType(Type t) {
 }
 
 inline bool hasStorageBitWidth(quant::QuantizedType t,
-                               llvm::ArrayRef<unsigned> checkWidths) {
+                               ArrayRef<unsigned> checkWidths) {
   unsigned w = t.getStorageType().getIntOrFloatBitWidth();
   for (unsigned checkWidth : checkWidths) {
     if (w == checkWidth)

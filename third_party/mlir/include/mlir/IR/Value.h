@@ -82,7 +82,7 @@ public:
   Region *getParentRegion();
 
   using use_iterator = ValueUseIterator<OpOperand>;
-  using use_range = llvm::iterator_range<use_iterator>;
+  using use_range = iterator_range<use_iterator>;
 
   inline use_iterator use_begin();
   inline use_iterator use_end();
@@ -112,7 +112,7 @@ inline auto Value::use_begin() -> use_iterator {
 
 inline auto Value::use_end() -> use_iterator { return use_iterator(nullptr); }
 
-inline auto Value::getUses() -> llvm::iterator_range<use_iterator> {
+inline auto Value::getUses() -> iterator_range<use_iterator> {
   return {use_begin(), use_end()};
 }
 

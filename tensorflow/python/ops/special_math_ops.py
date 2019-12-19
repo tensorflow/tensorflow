@@ -360,8 +360,8 @@ def _einsum_v1_parse_and_resolve_equation(equation, input_shapes):
   # tensors of different length and unlabeled output.
   ellipsis_axes = ''
   if '...' in equation:
-    unused = ''.join([c for c in string.ascii_letters
-                      if c not in ''.join(input_axis_labels)])
+    unused = ''.join(
+        c for c in string.ascii_letters if c not in ''.join(input_axis_labels))
     for i, ax in enumerate(input_axis_labels):
       if '...' in ax:
         parts = ax.split('...')
@@ -381,7 +381,7 @@ def _einsum_v1_parse_and_resolve_equation(equation, input_shapes):
         if len(replace_axes) > len(ellipsis_axes):
           ellipsis_axes = replace_axes
 
-    if any(['.' in ax for ax in input_axis_labels]):
+    if any('.' in ax for ax in input_axis_labels):
       raise ValueError('period "." found outside of ellipsis')
 
     if output_axis_labels is not None:

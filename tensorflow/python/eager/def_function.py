@@ -405,7 +405,7 @@ class Function(object):
     self._implements = experimental_implements
     self._autograph = autograph
     self._experimental_autograph_options = experimental_autograph_options
-    self.experimental_relax_shapes = experimental_relax_shapes
+    self._experimental_relax_shapes = experimental_relax_shapes
     self._experimental_compile = experimental_compile
     self._created_variables = None  # GUARDED_BY(self._lock)
     self._stateful_fn = None  # GUARDED_BY(self._lock)
@@ -458,7 +458,7 @@ class Function(object):
         attributes=attributes,
         autograph=self._autograph,
         experimental_autograph_options=self._experimental_autograph_options,
-        experimental_relax_shapes=self.experimental_relax_shapes)
+        experimental_relax_shapes=self._experimental_relax_shapes)
 
   def _initialize(self, args, kwds, add_initializers_to=None):
     """Initializes, on the first call.
@@ -514,7 +514,7 @@ class Function(object):
         autograph=self._autograph,
         experimental_implements=self._implements,
         experimental_autograph_options=self._experimental_autograph_options,
-        experimental_relax_shapes=self.experimental_relax_shapes,
+        experimental_relax_shapes=self._experimental_relax_shapes,
         experimental_compile=self._experimental_compile)
 
   def _decorate(self, decorator):

@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+%include "tensorflow/python/lib/core/strings.i"
 %include "tensorflow/python/platform/base.i"
 
 %{
@@ -23,6 +24,13 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/python/client/tf_session_helper.h"
+#include "tensorflow/c/c_api_experimental.h"
+#include "tensorflow/python/lib/core/safe_ptr.h"
+#include "tensorflow/python/eager/pywrap_tfe.h"
+// We were getting lucky on imports with safe_ptr.h being placed prior to
+// tf_session which imported safe_ptr. We also need pywrap_tfe.h to cast
+// one of the inputs to a graph function from a Python string to const char*.
+
 
 // Helper function to convert a Python list of Tensors to a C++ vector of
 // TF_Outputs.
@@ -78,12 +86,23 @@ void PyInt64ListToVector(PyObject* py_int_seq, std::vector<int64_t>* vec) {
 
 %}
 
+%include "tensorflow/c/tf_datatype.h"
+%include "tensorflow/c/tf_status.h"
+
 %include "tensorflow/python/client/tf_sessionrun_wrapper.i"
 
 // Required to use PyArray_* functions.
 %init %{
 tensorflow::ImportNumpy();
 %}
+
+// For const parameters in a function, SWIG pretty much ignores the const.
+// See: http://www.swig.org/Doc2.0/SWIG.html#SWIG_nn13
+// Hence the 'const_cast'.
+%typemap(in) const char* op_name {
+  $1 = const_cast<char*>(TFE_GetPythonString($input));
+}
+
 
 // TensorFlow version and GraphDef versions
 %constant const char* __version__ = TF_VERSION_STRING;
@@ -173,6 +192,12 @@ tensorflow::ImportNumpy();
 %unignore TF_OperationGetControlInputs_wrapper;
 // See comment for "%noexception TF_SessionRun_wrapper;"
 %noexception TF_OperationGetControlInputs_wrapper;
+
+
+// Migrate one function from pywrap_tfe.i
+%include "tensorflow/c/c_api_experimental.h"
+%unignore TF_ImportGraphDefOptionsSetValidateColocationConstraints;
+%noexception TF_ImportGraphDefOptionsSetValidateColocationConstraints;
 
 // Build a Python list of TF_Operation* and return it.
 %typemap(out) std::vector<TF_Operation*> tensorflow::TF_OperationGetControlInputs_wrapper {

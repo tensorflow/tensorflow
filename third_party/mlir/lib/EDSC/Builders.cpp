@@ -142,21 +142,21 @@ BlockHandle mlir::edsc::BlockHandle::create(ArrayRef<Type> argTypes) {
   return res;
 }
 
-static llvm::Optional<ValueHandle> emitStaticFor(ArrayRef<ValueHandle> lbs,
-                                                 ArrayRef<ValueHandle> ubs,
-                                                 int64_t step) {
+static Optional<ValueHandle> emitStaticFor(ArrayRef<ValueHandle> lbs,
+                                           ArrayRef<ValueHandle> ubs,
+                                           int64_t step) {
   if (lbs.size() != 1 || ubs.size() != 1)
-    return llvm::Optional<ValueHandle>();
+    return Optional<ValueHandle>();
 
   auto *lbDef = lbs.front().getValue()->getDefiningOp();
   auto *ubDef = ubs.front().getValue()->getDefiningOp();
   if (!lbDef || !ubDef)
-    return llvm::Optional<ValueHandle>();
+    return Optional<ValueHandle>();
 
   auto lbConst = dyn_cast<ConstantIndexOp>(lbDef);
   auto ubConst = dyn_cast<ConstantIndexOp>(ubDef);
   if (!lbConst || !ubConst)
-    return llvm::Optional<ValueHandle>();
+    return Optional<ValueHandle>();
 
   return ValueHandle::create<AffineForOp>(lbConst.getValue(),
                                           ubConst.getValue(), step);
@@ -194,7 +194,7 @@ mlir::edsc::LoopBuilder::makeLoop(ValueHandle *iv, ValueHandle lbHandle,
   return result;
 }
 
-void mlir::edsc::LoopBuilder::operator()(llvm::function_ref<void(void)> fun) {
+void mlir::edsc::LoopBuilder::operator()(function_ref<void(void)> fun) {
   // Call to `exit` must be explicit and asymmetric (cannot happen in the
   // destructor) because of ordering wrt comma operator.
   /// The particular use case concerns nested blocks:
@@ -236,7 +236,7 @@ mlir::edsc::AffineLoopNestBuilder::AffineLoopNestBuilder(
 }
 
 void mlir::edsc::AffineLoopNestBuilder::operator()(
-    llvm::function_ref<void(void)> fun) {
+    function_ref<void(void)> fun) {
   if (fun)
     fun();
   // Iterate on the calling operator() on all the loops in the nest.
@@ -281,7 +281,7 @@ mlir::edsc::BlockBuilder::BlockBuilder(BlockHandle *bh,
                                        ArrayRef<ValueHandle *> args) {
   assert(!*bh && "BlockHandle already captures a block, use "
                  "the explicit BockBuilder(bh, Append())({}) syntax instead.");
-  llvm::SmallVector<Type, 8> types;
+  SmallVector<Type, 8> types;
   for (auto *a : args) {
     assert(!a->hasValue() &&
            "Expected delayed ValueHandle that has not yet captured.");
@@ -296,7 +296,7 @@ mlir::edsc::BlockBuilder::BlockBuilder(BlockHandle *bh,
 
 /// Only serves as an ordering point between entering nested block and creating
 /// stmts.
-void mlir::edsc::BlockBuilder::operator()(llvm::function_ref<void(void)> fun) {
+void mlir::edsc::BlockBuilder::operator()(function_ref<void(void)> fun) {
   // Call to `exit` must be explicit and asymmetric (cannot happen in the
   // destructor) because of ordering wrt comma operator.
   if (fun)
@@ -328,7 +328,7 @@ categorizeValueByAffineType(MLIRContext *context, Value *val, unsigned &numDims,
 
 static ValueHandle createBinaryIndexHandle(
     ValueHandle lhs, ValueHandle rhs,
-    llvm::function_ref<AffineExpr(AffineExpr, AffineExpr)> affCombiner) {
+    function_ref<AffineExpr(AffineExpr, AffineExpr)> affCombiner) {
   MLIRContext *context = ScopedContext::getContext();
   unsigned numDims = 0, numSymbols = 0;
   AffineExpr d0, d1;
@@ -352,7 +352,7 @@ static ValueHandle createBinaryIndexHandle(
 template <typename IOp, typename FOp>
 static ValueHandle createBinaryHandle(
     ValueHandle lhs, ValueHandle rhs,
-    llvm::function_ref<AffineExpr(AffineExpr, AffineExpr)> affCombiner) {
+    function_ref<AffineExpr(AffineExpr, AffineExpr)> affCombiner) {
   auto thisType = lhs.getValue()->getType();
   auto thatType = rhs.getValue()->getType();
   assert(thisType == thatType && "cannot mix types in operators");

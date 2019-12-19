@@ -85,7 +85,13 @@ static void emitAttributeSerialization(const Attribute &attr,
                                        StringRef attrName, raw_ostream &os) {
   os << tabs << formatv("auto attr = {0}.getAttr(\"{1}\");\n", opVar, attrName);
   os << tabs << "if (attr) {\n";
-  if (attr.getAttrDefName() == "I32ArrayAttr") {
+  if (attr.getAttrDefName() == "SPV_ScopeAttr" ||
+      attr.getAttrDefName() == "SPV_MemorySemanticsAttr") {
+    os << tabs
+       << formatv("  {0}.push_back(prepareConstantInt({1}.getLoc(), "
+                  "attr.cast<IntegerAttr>()));\n",
+                  operandList, opVar);
+  } else if (attr.getAttrDefName() == "I32ArrayAttr") {
     // Serialize all the elements of the array
     os << tabs << "  for (auto attrElem : attr.cast<ArrayAttr>()) {\n";
     os << tabs
@@ -284,7 +290,13 @@ static void emitAttributeDeserialization(const Attribute &attr,
                                          StringRef attrList, StringRef attrName,
                                          StringRef words, StringRef wordIndex,
                                          raw_ostream &os) {
-  if (attr.getAttrDefName() == "I32ArrayAttr") {
+  if (attr.getAttrDefName() == "SPV_ScopeAttr" ||
+      attr.getAttrDefName() == "SPV_MemorySemanticsAttr") {
+    os << tabs
+       << formatv("{0}.push_back(opBuilder.getNamedAttr(\"{1}\", "
+                  "getConstantInt({2}[{3}++])));\n",
+                  attrList, attrName, words, wordIndex);
+  } else if (attr.getAttrDefName() == "I32ArrayAttr") {
     os << tabs << "SmallVector<Attribute, 4> attrListElems;\n";
     os << tabs << formatv("while ({0} < {1}.size()) {{\n", wordIndex, words);
     os << tabs

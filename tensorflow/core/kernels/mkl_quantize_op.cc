@@ -293,26 +293,6 @@ class MklQuantizeV2Op : public OpKernel {
         ctx, ctx->GetAttr("ensure_minimum_range", &ensure_minimum_range_));
   }
 
-  ~MklQuantizeV2Op() {
-    if (minfirst_input_ != nullptr) {
-      delete minfirst_input_;
-      minfirst_input_ = nullptr;
-    }
-  }
-
-  float* GetMinfirstInputBuf(int size) {
-    if (!minfirst_input_) {
-      minfirst_input_ = new float[size];
-      minfirst_input_size_ = size;
-    } else if (size > minfirst_input_size_) {
-      delete minfirst_input_;
-      minfirst_input_ = new float[size];
-      minfirst_input_size_ = size;
-    }
-
-    return minfirst_input_;
-  }
-
   void ComputeScalar(OpKernelContext* ctx, float min_range, float max_range) {
     // TODO(intel-tf): Scalar support has to be added for SCALE mode
     OP_REQUIRES(ctx, (mode_ == QUANTIZE_MODE_MIN_FIRST),
@@ -434,8 +414,11 @@ class MklQuantizeV2Op : public OpKernel {
     // If the mode is min_first, input data has to be subtracted from
     // min_range, before being scaled
     auto flat_input = input.flat<float>().data();
+    Tensor minfirst_tmpinput;
+    OP_REQUIRES_OK(
+        ctx, ctx->allocate_temp(DT_FLOAT, input.shape(), &minfirst_tmpinput));
     if (mode_ == QUANTIZE_MODE_MIN_FIRST) {
-      float* minfirst_input = GetMinfirstInputBuf(input.NumElements());
+      auto minfirst_input = minfirst_tmpinput.flat<float>().data();
       const Eigen::TensorOpCost cost(
           sizeof(float), /*load bytes*/
           sizeof(float), /*saved bytes*/
@@ -557,8 +540,6 @@ class MklQuantizeV2Op : public OpKernel {
   int round_mode_;
   int axis_;
   bool narrow_range_;
-  float* minfirst_input_ = nullptr;
-  int minfirst_input_size_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("_MklQuantizeV2")

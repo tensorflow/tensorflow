@@ -115,7 +115,7 @@ public:
                           SmallVectorImpl<SDBMExpr> &inequalities,
                           SmallVectorImpl<SDBMExpr> &equalities);
 
-  void print(llvm::raw_ostream &os);
+  void print(raw_ostream &os);
   void dump();
 
   IntInfty operator()(int i, int j) { return at(i, j); }
@@ -198,7 +198,7 @@ private:
   /// temporaries can appear in these expressions.  This removes the need to
   /// iteratively substitute definitions of the temporaries in the reverse
   /// conversion.
-  llvm::DenseMap<unsigned, SDBMExpr> stripeToPoint;
+  DenseMap<unsigned, SDBMExpr> stripeToPoint;
 };
 
 } // namespace mlir

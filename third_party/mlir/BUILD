@@ -525,6 +525,7 @@ cc_library(
         "lib/Support/ToolUtilities.cpp",
     ],
     hdrs = [
+        "include/mlir/ADT/TypeSwitch.h",
         "include/mlir/Support/DebugStringHelper.h",
         "include/mlir/Support/FileUtilities.h",
         "include/mlir/Support/Functional.h",
@@ -2287,6 +2288,7 @@ cc_library(
     hdrs = [
         "include/mlir/Dialect/Linalg/Analysis/DependenceAnalysis.h",
         "include/mlir/Dialect/Linalg/EDSC/Builders.h",
+        "include/mlir/Dialect/Linalg/EDSC/Intrinsics.h",
         "include/mlir/Dialect/Linalg/IR/LinalgOps.h",
         "include/mlir/Dialect/Linalg/IR/LinalgTraits.h",
         "include/mlir/Dialect/Linalg/IR/LinalgTypes.h",
@@ -2360,6 +2362,7 @@ cc_library(
         ":IR",
         ":QuantOps",
         ":StandardOps",
+        ":Support",
         "@llvm//:support",
     ],
 )

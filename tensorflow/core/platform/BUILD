@@ -380,6 +380,10 @@ cc_library(
         "protobuf_util.cc",
     ],
     hdrs = ["protobuf.h"],
+    defines = select({
+        "//tensorflow:android": ["TENSORFLOW_LITE_PROTOS"],
+        "//conditions:default": [],
+    }),
     deps = [
         ":platform",
         ":types",
@@ -959,14 +963,15 @@ exports_files(
 
 exports_files(
     [
-        "stacktrace.h",
-        "cpu_info.h",
-        "types.h",
-        "macros.h",
         "abi.h",
-        "logging.h",
-        "platform.h",
         "byte_order.h",
+        "cpu_info.cc",
+        "cpu_info.h",
+        "logging.h",
+        "macros.h",
+        "platform.h",
+        "stacktrace.h",
+        "types.h",
     ],
     visibility = ["//tensorflow:__subpackages__"],
 )

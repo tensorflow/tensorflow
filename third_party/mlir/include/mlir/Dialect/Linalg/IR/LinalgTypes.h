@@ -46,7 +46,7 @@ public:
 /// It is constructed by calling the linalg.range op with three values index of
 /// index type:
 ///
-/// ```{.mlir}
+/// ```mlir
 ///    func @foo(%arg0 : index, %arg1 : index, %arg2 : index) {
 ///      %0 = linalg.range %arg0:%arg1:%arg2 : !linalg.range
 ///    }

@@ -39,7 +39,7 @@ namespace detail {
 // Implementation detail of isProducedByOpOfType avoids the need for explicit
 // template instantiations.
 bool isProducedByOpOfTypeImpl(Operation *consumerOp, Value *consumedView,
-                              llvm::function_ref<bool(Operation *)> isaOpType);
+                              function_ref<bool(Operation *)> isaOpType);
 } // namespace detail
 
 // Returns true if the `consumedView` value use in `consumerOp` is produced by
@@ -95,6 +95,10 @@ LogicalResult vectorizeGenericOp(PatternRewriter &rewriter, Operation *op);
 LogicalResult permuteGenericLinalgOp(PatternRewriter &rewriter, Operation *op,
                                      ArrayRef<unsigned> permutation,
                                      StringRef linalgMarker);
+
+/// Promote std.subviews feeding linalg operations
+LogicalResult linalgOpPromoteSubviews(PatternRewriter &rewriter, Operation *op);
+
 } // namespace linalg
 } // namespace mlir
 

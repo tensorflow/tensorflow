@@ -374,7 +374,7 @@ Example:
 
 TODO: This operation is easy to extend to broadcast to dynamically shaped
 tensors in the same way dynamically shaped memrefs are handled.
-```mlir {.mlir}
+```mlir
 // Broadcasts %s to a 2-d dynamically shaped tensor, with %m, %n binding
 // to the sizes of the two dynamic dimensions.
 %m = "foo"() : () -> (index)

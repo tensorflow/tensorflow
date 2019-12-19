@@ -82,7 +82,7 @@ def _as_shape_list(shapes,
     if any(not shape.is_fully_defined() for shape in shapes):
       raise ValueError("All shapes must be fully defined: %s" % shapes)
   if not unknown_rank_allowed:
-    if any([shape.dims is None for shape in shapes]):
+    if any(shape.dims is None for shape in shapes):
       raise ValueError("All shapes must have a defined rank: %s" % shapes)
 
   return shapes
