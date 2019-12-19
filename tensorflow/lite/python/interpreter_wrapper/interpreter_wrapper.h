@@ -26,6 +26,8 @@ limitations under the License.
 // automatically move <Python.h> before <locale>.
 #include <Python.h>
 
+#include "tensorflow/lite/experimental/tflite_api_dispatcher/tflite_api_dispatcher.h"
+
 struct TfLiteDelegate;
 
 // We forward declare TFLite classes here to avoid exposing them to SWIG.
@@ -91,15 +93,15 @@ class InterpreterWrapper {
   // It only returns InterpreterWrapper if it can construct an `Interpreter`.
   // Otherwise it returns `nullptr`.
   static InterpreterWrapper* CreateInterpreterWrapper(
-      std::unique_ptr<tflite::FlatBufferModel> model,
+      std::unique_ptr<tflite_api_dispatcher::TfLiteModel> model,
       std::unique_ptr<PythonErrorReporter> error_reporter,
       const std::vector<std::string>& registerers, std::string* error_msg);
 
   InterpreterWrapper(
-      std::unique_ptr<tflite::FlatBufferModel> model,
+      std::unique_ptr<tflite_api_dispatcher::TfLiteModel> model,
       std::unique_ptr<PythonErrorReporter> error_reporter,
       std::unique_ptr<tflite::ops::builtin::BuiltinOpResolver> resolver,
-      std::unique_ptr<tflite::Interpreter> interpreter);
+      std::unique_ptr<tflite_api_dispatcher::Interpreter> interpreter);
 
   // InterpreterWrapper is not copyable or assignable. We avoid the use of
   // InterpreterWrapper() = delete here for SWIG compatibility.
@@ -109,10 +111,10 @@ class InterpreterWrapper {
   // The public functions which creates `InterpreterWrapper` should ensure all
   // these member variables are initialized successfully. Otherwise it should
   // report the error and return `nullptr`.
-  const std::unique_ptr<tflite::FlatBufferModel> model_;
+  const std::unique_ptr<tflite_api_dispatcher::TfLiteModel> model_;
   const std::unique_ptr<PythonErrorReporter> error_reporter_;
   const std::unique_ptr<tflite::ops::builtin::BuiltinOpResolver> resolver_;
-  const std::unique_ptr<tflite::Interpreter> interpreter_;
+  const std::unique_ptr<tflite_api_dispatcher::Interpreter> interpreter_;
 };
 
 }  // namespace interpreter_wrapper
