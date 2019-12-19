@@ -817,7 +817,8 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
       # Remove all no ops that may have been added during 'tpu.replicate()'
       if isinstance(result[0], list):
         result[0] = [
-            output for output in result[0] if tensor_util.is_tensor(output)
+            output for output in result[0] if not isinstance(
+                output, ops.Operation)
         ]
 
       # Workaround for `tpu.replicate` behaviour when single `Tensor` returned.
