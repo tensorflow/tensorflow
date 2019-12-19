@@ -1,8 +1,9 @@
 # Settings for arc processors
 ifeq ($(TARGET_ARCH), arc)
-  CC = ccac
-  CXX = ccac
-  LD = ccac
+
+  CC_TOOL = ccac
+  AR_TOOL = arac
+  CXX_TOOL = ccac
 
 ifneq ($(TCF_FILE), )
   TARGET = $(basename $(notdir $(TCF_FILE)))
@@ -50,13 +51,14 @@ else
 
   MLI_INCLUDE_FOLDER = $(MLI_LIB_DIR)/include
   MLI_LIB = third_party/$(MLI_LIB_DIR)/bin/libmli.a
-  
+  MICROLITE_LIBS += $(MAKEFILE_DIR)/downloads/$(MLI_LIB_DIR)/bin/libmli.a
+
   THIRD_PARTY_CC_HDRS += \
     third_party/$(MLI_LIB_DIR)/LICENSE
 endif
 
   THIRD_PARTY_CC_HDRS += $(MLI_LIB)
-  MICROLITE_LIBS += $(MLI_LIB)
+  GENERATED_PROJECT_LIBS += $(MLI_LIB)
 
   INCLUDES += \
     -I$(MAKEFILE_DIR)/downloads/$(MLI_INCLUDE_FOLDER) \
