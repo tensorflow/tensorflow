@@ -724,6 +724,20 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "metrics_serialization_test",
+    size = "medium",
+    srcs = ["saving/metrics_serialization_test.py"],
+    python_version = "PY3",
+    shard_count = 4,
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
     name = "advanced_activations_test",
     size = "medium",
     srcs = ["layers/advanced_activations_test.py"],
