@@ -3,7 +3,7 @@ mlir_tablegen(SPIRVLowering.h.inc -gen-struct-attr-decls)
 mlir_tablegen(SPIRVLowering.cpp.inc -gen-struct-attr-defs)
 add_public_tablegen_target(MLIRSPIRVLoweringStructGen)
 
-add_mlir_dialect(SPIRVOps)
+add_mlir_dialect(SPIRVOps SPIRVOps)
 
 set(LLVM_TARGET_DEFINITIONS SPIRVBase.td)
 mlir_tablegen(SPIRVEnums.h.inc -gen-enum-decls)

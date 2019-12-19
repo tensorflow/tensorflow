@@ -488,7 +488,7 @@ template <typename LoopType, typename IndexedValueType>
 void FillRewritePatterns(OwningRewritePatternList &patterns, MLIRContext *ctx) {
   RewritePatternList<LoopType, IndexedValueType,
 #define GET_OP_LIST
-#include "mlir/Dialect/Linalg/IR/LinalgLibraryOps.cpp.inc"
+#include "mlir/Dialect/Linalg/IR/LinalgStructuredOps.cpp.inc"
                      >::build(patterns, ctx);
 }
 

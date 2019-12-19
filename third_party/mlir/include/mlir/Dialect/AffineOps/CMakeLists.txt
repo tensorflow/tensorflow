@@ -1,1 +1,1 @@
-add_mlir_dialect(AffineOps)
+add_mlir_dialect(AffineOps AffineOps)
