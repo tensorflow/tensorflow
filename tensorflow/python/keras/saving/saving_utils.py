@@ -188,26 +188,31 @@ def model_metadata(model, include_optimizer=True, require_config=True):
           'Prefer using a Keras optimizer instead '
           '(see keras.io/optimizers).')
     else:
-      metadata['training_config'] = {
-          'loss': model.loss,
-          # pylint: disable=protected-access
-          'metrics': model._compile_metrics,
-          'weighted_metrics': model._compile_weighted_metrics,
-          # pylint: enable=protected-access
-          'sample_weight_mode': model.sample_weight_mode,
-          'loss_weights': model.loss_weights,
-      }
-      if isinstance(model.optimizer, optimizer_v2.RestoredOptimizer):
-        raise NotImplementedError(
-            'As of now, Optimizers loaded from SavedModel cannot be saved. '
-            'If you\'re calling `model.save` or `tf.keras.models.save_model`, '
-            'please set the `include_optimizer` option to `False`. For '
-            '`tf.saved_model.save`, delete the optimizer from the model.')
-      else:
-        optimizer_config = {
-            'class_name': model.optimizer.__class__.__name__,
-            'config': model.optimizer.get_config()}
-      metadata['training_config']['optimizer_config'] = optimizer_config
+      try:
+        metadata['training_config'] = {
+            'loss': model.loss,
+            # pylint: disable=protected-access
+            'metrics': model._compile_metrics,
+            'weighted_metrics': model._compile_weighted_metrics,
+            # pylint: enable=protected-access
+            'sample_weight_mode': model.sample_weight_mode,
+            'loss_weights': model.loss_weights,
+        }
+        if isinstance(model.optimizer, optimizer_v2.RestoredOptimizer):
+          raise NotImplementedError(
+              'As of now, Optimizers loaded from SavedModel cannot be saved. '
+              'If you\'re calling `model.save` or `tf.keras.models.save_model`,'
+              ' please set the `include_optimizer` option to `False`. For '
+              '`tf.saved_model.save`, delete the optimizer from the model.')
+        else:
+          optimizer_config = {
+              'class_name': model.optimizer.__class__.__name__,
+              'config': model.optimizer.get_config()}
+        metadata['training_config']['optimizer_config'] = optimizer_config
+      except AttributeError:
+        pass  # If the model has an optimizer, but not all of the attributes
+              # loss, _compile_metrics, etc., then it was not compiled using
+              # model.compile. In this case, do not save the training config.
   return metadata
 
 
