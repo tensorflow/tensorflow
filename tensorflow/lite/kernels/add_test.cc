@@ -306,15 +306,18 @@ TEST(QuantizedAddOpModel, QuantizedTestsNoActivationInt16) {
   const float kMin = -1.f;
   const float kMax = 32767.f / 32768.f;
   float kQuantizedTolerance = GetToleranceInt16(kMin, kMax);
-  std::vector<std::vector<float>> inputs1 = {
-      {0.1, 0.2, 0.3, 0.4}, {-0.8, 0.2, 0.4, 0.7}, {-0.8, 0.2, 0.7, 0.3}};
-  std::vector<std::vector<float>> inputs2 = {
-      {0.6, 0.4, 0.3, 0.1}, {0.6, 0.4, 0.5, -0.8}, {0.6, 0.4, -0.8, 0.5}};
-  std::vector<std::vector<float>> results = {
-      {0.7, 0.6, 0.6, 0.5}, {-0.2, 0.6, 0.9, -0.1}, {-0.2, 0.6, -0.1, 0.8}};
+  std::vector<std::vector<float>> inputs1 = {{0.1, 0.2, 0.3, 0.4, 0.9, 0.7},
+                                             {-0.8, 0.2, 0.4, 0.7, 0.1, 0.0},
+                                             {-0.8, 0.2, 0.7, 0.3, 0.9, 0.1}};
+  std::vector<std::vector<float>> inputs2 = {{0.6, 0.4, 0.3, 0.1, -0.1, 0.3},
+                                             {0.6, 0.4, 0.5, -0.8, 0.0, -1.0},
+                                             {0.6, 0.4, -0.8, 0.5, -0.9, 0.1}};
+  std::vector<std::vector<float>> results = {{0.7, 0.6, 0.6, 0.5, 0.8, 1.0},
+                                             {-0.2, 0.6, 0.9, -0.1, 0.1, -1.0},
+                                             {-0.2, 0.6, -0.1, 0.8, 0.0, 0.2}};
   for (size_t i = 0; i < inputs1.size(); ++i) {
-    QuantizedAddOpModel m({TensorType_INT16, {1, 2, 2, 1}, kMin, kMax},
-                          {TensorType_INT16, {1, 2, 2, 1}, kMin, kMax},
+    QuantizedAddOpModel m({TensorType_INT16, {1, 2, 3, 1}, kMin, kMax},
+                          {TensorType_INT16, {1, 2, 3, 1}, kMin, kMax},
                           {TensorType_INT16, {}, kMin, kMax},
                           ActivationFunctionType_NONE);
     m.QuantizeAndPopulate<int16_t>(m.input1(), inputs1[i]);
@@ -435,6 +438,10 @@ TEST(QuantizedAddOpModel, QuantizedWithScalarBroadcastInt8) {
   QuantizedWithScalarBroadcast<TensorType_INT8, int8_t>();
 }
 
+TEST(QuantizedAddOpModel, QuantizedWithScalarBroadcastInt16) {
+  QuantizedWithScalarBroadcast<TensorType_INT16, int16_t>();
+}
+
 template <enum TensorType tensor_type, typename integer_dtype>
 void QuantizedWithMixedBroadcast() {
   float kQuantizedTolerance = GetTolerance(-3.f, 3.f);
@@ -497,6 +504,10 @@ TEST(QuantizedAddOpModel, QuantizedWithMixedBroadcastInt8) {
   QuantizedWithMixedBroadcast<TensorType_INT8, int8_t>();
 }
 
+TEST(QuantizedAddOpModel, QuantizedWithMixedBroadcastInt16) {
+  QuantizedWithMixedBroadcast<TensorType_INT16, int16_t>();
+}
+
 template <enum TensorType tensor_type, typename integer_dtype>
 void QuantizedWithGenericBroadcast() {
   float kQuantizedTolerance = GetTolerance(-1.0, 1.0);
@@ -521,6 +532,10 @@ TEST(QuantizedAddOpModel, QuantizedWithGenericBroadcastUInt8) {
 
 TEST(QuantizedAddOpModel, QuantizedWithGenericdBroadcastInt8) {
   QuantizedWithGenericBroadcast<TensorType_INT8, int8_t>();
+}
+
+TEST(QuantizedAddOpModel, QuantizedWithGenericdBroadcastInt16) {
+  QuantizedWithGenericBroadcast<TensorType_INT16, int16_t>();
 }
 
 }  // namespace

@@ -93,12 +93,24 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     output_size = TfLiteIntArrayCopy(input1->dims);
   }
 
-  if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt8) {
+  // 8bit -> 8bit general quantized path, with general rescalings
+  // as well as, 16bit -> 16bit with general rescalings
+  bool general_16bit = input1->type == kTfLiteInt16 &&
+                       input2->type == kTfLiteInt16 &&
+                       output->type == kTfLiteInt16;
+
+  if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt8 ||
+      general_16bit) {
     // 8bit -> 8bit general quantized path, with general rescalings
+    // as well as, 16bit -> 16bit with general rescalings
     data->input1_offset = -input1->params.zero_point;
     data->input2_offset = -input2->params.zero_point;
     data->output_offset = output->params.zero_point;
-    data->left_shift = 20;
+
+    // The shift is set to 15 for 16-bit and 20 in case of 8-bit, accordingly.
+    // In case of 16-bit we have 65535 << 15 which is less than 1 << 31,
+    // therefore the addition will still fit in a 32 bit accumulator.
+    data->left_shift = general_16bit ? 15 : 20;
     const double twice_max_input_scale =
         2 * std::max(input1->params.scale, input2->params.scale);
     const double real_input1_multiplier =
@@ -221,7 +233,12 @@ TfLiteStatus EvalAddQuantized(TfLiteContext* context, TfLiteNode* node,
                               const TfLiteTensor* input1,
                               const TfLiteTensor* input2,
                               TfLiteTensor* output) {
-  if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt8) {
+  bool general_16bit = input1->type == kTfLiteInt16 &&
+                       input2->type == kTfLiteInt16 &&
+                       output->type == kTfLiteInt16;
+
+  if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt8 ||
+      general_16bit) {
     tflite::ArithmeticParams op_params;
     op_params.left_shift = data->left_shift;
     op_params.input1_offset = data->input1_offset;
@@ -256,6 +273,12 @@ TfLiteStatus EvalAddQuantized(TfLiteContext* context, TfLiteNode* node,
           TF_LITE_ADD(optimized_integer_ops, Add, int8_t);
         }
       }
+    } else if (output->type == kTfLiteInt16) {
+      if (need_broadcast) {
+        TF_LITE_ADD(reference_ops, BroadcastAdd4DSlow, int16_t);
+      } else {
+        TF_LITE_ADD(reference_ops, Add, int16_t);
+      }
     } else {
       if (kernel_type == kReference) {
         if (need_broadcast) {
@@ -286,7 +309,7 @@ TfLiteStatus EvalAddQuantized(TfLiteContext* context, TfLiteNode* node,
     // The quantized version of Add doesn't support activations, so we
     // always use BroadcastAdd.
     if (kernel_type == kReference) {
-      TF_LITE_ADD(reference_ops, Add);
+      TF_LITE_ADD(reference_ops, AddLSTM);
     } else {
       TF_LITE_ADD(optimized_ops, Add);
     }

@@ -51,13 +51,18 @@ inline void Add(const ArithmeticParams& params,
 
 // Element-wise add that can often be used for inner loop of broadcast add as
 // well as the non-broadcast add.
+
+// This function is used for 8-bit as well as for 16-bit, but the accumulator
+// is 32-bit for both cases. The overflow does not happen due to the
+// choice of the shift (20 or 15, accordingly - see add.cc for more comments).
+template <typename T>
 inline void AddElementwise(int size, const ArithmeticParams& params,
-                           const uint8* input1_data, const uint8* input2_data,
-                           uint8* output_data) {
-  TFLITE_DCHECK_GT(params.input1_offset, -256);
-  TFLITE_DCHECK_GT(params.input2_offset, -256);
-  TFLITE_DCHECK_LT(params.input1_offset, 256);
-  TFLITE_DCHECK_LT(params.input2_offset, 256);
+                           const T* input1_data, const T* input2_data,
+                           T* output_data) {
+  TFLITE_DCHECK_GT(params.input1_offset, -std::numeric_limits<T>::max());
+  TFLITE_DCHECK_GT(params.input2_offset, -std::numeric_limits<T>::max());
+  TFLITE_DCHECK_LT(params.input1_offset, std::numeric_limits<T>::max());
+  TFLITE_DCHECK_LT(params.input2_offset, std::numeric_limits<T>::max());
 
   for (int i = 0; i < size; ++i) {
     const int32 input1_val = params.input1_offset + input1_data[i];
@@ -78,7 +83,7 @@ inline void AddElementwise(int size, const ArithmeticParams& params,
     const int32 clamped_output =
         std::min(params.quantized_activation_max,
                  std::max(params.quantized_activation_min, raw_output));
-    output_data[i] = static_cast<uint8>(clamped_output);
+    output_data[i] = static_cast<T>(clamped_output);
   }
 }
 
@@ -136,6 +141,24 @@ inline void Add(const ArithmeticParams& params,
                 const RuntimeShape& input1_shape, const int16* input1_data,
                 const RuntimeShape& input2_shape, const int16* input2_data,
                 const RuntimeShape& output_shape, int16* output_data) {
+  TFLITE_DCHECK_LE(params.quantized_activation_min,
+                   params.quantized_activation_max);
+  const int flat_size =
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
+
+  int max_value = std::numeric_limits<int16>::max();
+
+  TFLITE_DCHECK_GT(params.input1_offset, -max_value);
+  TFLITE_DCHECK_GT(params.input2_offset, -max_value);
+  TFLITE_DCHECK_LT(params.input1_offset, max_value);
+  TFLITE_DCHECK_LT(params.input2_offset, max_value);
+  AddElementwise(flat_size, params, input1_data, input2_data, output_data);
+}
+
+inline void AddLSTM(const ArithmeticParams& params,
+                    const RuntimeShape& input1_shape, const int16* input1_data,
+                    const RuntimeShape& input2_shape, const int16* input2_data,
+                    const RuntimeShape& output_shape, int16* output_data) {
   TFLITE_DCHECK_LE(params.quantized_activation_min,
                    params.quantized_activation_max);
 
@@ -257,13 +280,14 @@ inline void BroadcastAdd4DSlow(const ArithmeticParams& params,
   }
 }
 
-inline void BroadcastAdd4DSlow(const ArithmeticParams& params,
-                               const RuntimeShape& input1_shape,
-                               const uint8* input1_data,
-                               const RuntimeShape& input2_shape,
-                               const uint8* input2_data,
-                               const RuntimeShape& output_shape,
-                               uint8* output_data) {
+// This function is used for 8-bit as well as for 16-bit, but the accumulator
+// is 32-bit for both cases. The overflow does not happen due to the
+// choice of the shift (20 or 15, accordingly - see add.cc for more comments).
+template <typename T>
+inline void BroadcastAdd4DSlow(
+    const ArithmeticParams& params, const RuntimeShape& input1_shape,
+    const T* input1_data, const RuntimeShape& input2_shape,
+    const T* input2_data, const RuntimeShape& output_shape, T* output_data) {
   NdArrayDesc<4> desc1;
   NdArrayDesc<4> desc2;
   NdArrayDescsForElementwiseBroadcast(input1_shape, input2_shape, &desc1,
@@ -313,7 +337,7 @@ inline void BroadcastAdd4DSlow(const ArithmeticParams& params,
               std::min(params.quantized_activation_max,
                        std::max(params.quantized_activation_min, raw_output));
           output_data[Offset(extended_output_shape, b, y, x, c)] =
-              static_cast<uint8>(clamped_output);
+              static_cast<T>(clamped_output);
         }
       }
     }
