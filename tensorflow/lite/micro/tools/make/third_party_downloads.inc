@@ -27,12 +27,6 @@ AM_SDK_URL := "http://s3.asia.ambiqmicro.com/downloads/AmbiqSuite-Rel2.2.0.zip"
 AM_SDK_MD5 := "7605fa2d4d97e6bb7a1190c92b66b597"
 AM_SDK_DEST := AmbiqSuite-Rel2.2.0
 
-AP3_URL := "https://github.com/AmbiqMicro/TFLiteMicro_Apollo3/archive/dfbcef9a57276c087d95aab7cb234f1d4c9eaaba.zip"
-AP3_MD5 := "fc9cbda4562ea97ce21b6df542b66597"
-
-CUST_CMSIS_URL := "https://github.com/AmbiqMicro/TFLiteMicro_CustCMSIS/archive/8f63966c5692e6a3a83956efd2e4aed77c4c9949.zip"
-CUST_CMSIS_MD5 := "4fb327201034ee0a820b72de1e807d27"
-
 SPARKFUN_EDGE_BSP_URL := "https://github.com/sparkfun/SparkFun_Edge_BSP/archive/6ea7ef137132bb0cb4b27abe837c913c7643f11e.zip"
 SPARKFUN_EDGE_BSP_MD5 := "66635efe137298c2e1aebc2479bb8931"
 
