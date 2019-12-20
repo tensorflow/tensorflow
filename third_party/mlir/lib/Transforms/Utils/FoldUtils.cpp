@@ -82,9 +82,8 @@ static Operation *materializeConstant(Dialect *dialect, OpBuilder &builder,
 //===----------------------------------------------------------------------===//
 
 LogicalResult OperationFolder::tryToFold(
-    Operation *op,
-    llvm::function_ref<void(Operation *)> processGeneratedConstants,
-    llvm::function_ref<void(Operation *)> preReplaceAction) {
+    Operation *op, function_ref<void(Operation *)> processGeneratedConstants,
+    function_ref<void(Operation *)> preReplaceAction) {
   // If this is a unique'd constant, return failure as we know that it has
   // already been folded.
   if (referencedDialects.count(op))
@@ -140,7 +139,7 @@ void OperationFolder::notifyRemoval(Operation *op) {
 /// `results` with the results of the folding.
 LogicalResult OperationFolder::tryToFold(
     Operation *op, SmallVectorImpl<Value *> &results,
-    llvm::function_ref<void(Operation *)> processGeneratedConstants) {
+    function_ref<void(Operation *)> processGeneratedConstants) {
   SmallVector<Attribute, 8> operandConstants;
   SmallVector<OpFoldResult, 8> foldResults;
 

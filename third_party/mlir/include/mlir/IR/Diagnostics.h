@@ -239,10 +239,10 @@ public:
   Diagnostic &operator<<(OperationName val);
 
   /// Stream in a range.
-  template <typename T> Diagnostic &operator<<(llvm::iterator_range<T> range) {
+  template <typename T> Diagnostic &operator<<(iterator_range<T> range) {
     return appendRange(range);
   }
-  template <typename T> Diagnostic &operator<<(llvm::ArrayRef<T> range) {
+  template <typename T> Diagnostic &operator<<(ArrayRef<T> range) {
     return appendRange(range);
   }
 
@@ -277,16 +277,16 @@ public:
   /// Attaches a note to this diagnostic. A new location may be optionally
   /// provided, if not, then the location defaults to the one specified for this
   /// diagnostic. Notes may not be attached to other notes.
-  Diagnostic &attachNote(llvm::Optional<Location> noteLoc = llvm::None);
+  Diagnostic &attachNote(Optional<Location> noteLoc = llvm::None);
 
   using note_iterator = NoteIteratorImpl<NoteVector::iterator>;
   using const_note_iterator = NoteIteratorImpl<NoteVector::const_iterator>;
 
   /// Returns the notes held by this diagnostic.
-  llvm::iterator_range<note_iterator> getNotes() {
+  iterator_range<note_iterator> getNotes() {
     return {notes.begin(), notes.end()};
   }
-  llvm::iterator_range<const_note_iterator> getNotes() const {
+  iterator_range<const_note_iterator> getNotes() const {
     return {notes.begin(), notes.end()};
   }
 
@@ -360,7 +360,7 @@ public:
   }
 
   /// Attaches a note to this diagnostic.
-  Diagnostic &attachNote(llvm::Optional<Location> noteLoc = llvm::None) {
+  Diagnostic &attachNote(Optional<Location> noteLoc = llvm::None) {
     assert(isActive() && "diagnostic not active");
     return impl->attachNote(noteLoc);
   }
@@ -394,7 +394,7 @@ private:
   DiagnosticEngine *owner = nullptr;
 
   /// The raw diagnostic that is inflight to be reported.
-  llvm::Optional<Diagnostic> impl;
+  Optional<Diagnostic> impl;
 };
 
 //===----------------------------------------------------------------------===//
@@ -551,7 +551,7 @@ struct SourceMgrDiagnosticHandlerImpl;
 class SourceMgrDiagnosticHandler : public ScopedDiagnosticHandler {
 public:
   SourceMgrDiagnosticHandler(llvm::SourceMgr &mgr, MLIRContext *ctx,
-                             llvm::raw_ostream &os);
+                             raw_ostream &os);
   SourceMgrDiagnosticHandler(llvm::SourceMgr &mgr, MLIRContext *ctx);
   ~SourceMgrDiagnosticHandler();
 
@@ -570,7 +570,7 @@ protected:
   llvm::SourceMgr &mgr;
 
   /// The output stream to use when printing diagnostics.
-  llvm::raw_ostream &os;
+  raw_ostream &os;
 
 private:
   /// Convert a location into the given memory buffer into an SMLoc.
@@ -597,7 +597,7 @@ struct SourceMgrDiagnosticVerifierHandlerImpl;
 class SourceMgrDiagnosticVerifierHandler : public SourceMgrDiagnosticHandler {
 public:
   SourceMgrDiagnosticVerifierHandler(llvm::SourceMgr &srcMgr, MLIRContext *ctx,
-                                     llvm::raw_ostream &out);
+                                     raw_ostream &out);
   SourceMgrDiagnosticVerifierHandler(llvm::SourceMgr &srcMgr, MLIRContext *ctx);
   ~SourceMgrDiagnosticVerifierHandler();
 

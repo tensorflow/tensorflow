@@ -261,6 +261,81 @@ def AffineMinOp : Affine_Op<"min"> {
   let hasFolder = 1;
 }
 
+def AffinePrefetchOp : Affine_Op<"prefetch"> {
+  let summary = "affine prefetch operation";
+  let description = [{
+    The "affine.prefetch" op prefetches data from a memref location described
+    with an affine subscript similar to affine.load, and has three attributes:
+    a read/write specifier, a locality hint, and a cache type specifier as shown
+    below:
+
+      affine.prefetch %0[%i, %j + 5], read, locality<3>, data
+                          : memref<400x400xi32>
+
+    The read/write specifier is either 'read' or 'write', the locality hint
+    specifier ranges from locality<0> (no locality) to locality<3> (extremely
+    local keep in cache). The cache type specifier is either 'data' or 'instr'
+    and specifies whether the prefetch is performed on data cache or on
+    instruction cache.
+  }];
+
+  let arguments = (ins AnyMemRef:$memref, Variadic<Index>:$indices,
+                   BoolAttr:$isWrite,
+                   Confined<I32Attr, [IntMinValue<0>,
+                     IntMaxValue<3>]>:$localityHint,
+                   BoolAttr:$isDataCache);
+
+  let builders = [OpBuilder<
+    "Builder *builder, OperationState &result, Value *memref,"
+    "AffineMap map, ArrayRef<Value *> mapOperands, bool isWrite,"
+    "unsigned localityHint, bool isDataCache",
+    [{
+      assert(map.getNumInputs() == mapOperands.size()
+             && "inconsistent index info");
+      auto localityHintAttr = builder->getI32IntegerAttr(localityHint);
+      auto isWriteAttr = builder->getBoolAttr(isWrite);
+      auto isDataCacheAttr = builder->getBoolAttr(isDataCache);
+      result.addOperands(memref);
+      result.addAttribute(getMapAttrName(), AffineMapAttr::get(map));
+      result.addOperands(mapOperands);
+      result.addAttribute(getLocalityHintAttrName(), localityHintAttr);
+      result.addAttribute(getIsWriteAttrName(), isWriteAttr);
+      result.addAttribute(getIsDataCacheAttrName(), isDataCacheAttr);
+    }]>];
+
+  let extraClassDeclaration = [{
+    MemRefType getMemRefType() {
+      return memref()->getType().cast<MemRefType>();
+    }
+
+    /// Returns the affine map used to index the memref for this operation.
+    AffineMap getAffineMap() { return getAffineMapAttr().getValue(); }
+    AffineMapAttr getAffineMapAttr() {
+      return getAttr(getMapAttrName()).cast<AffineMapAttr>();
+    }
+
+    /// Returns the AffineMapAttr associated with 'memref'.
+    NamedAttribute getAffineMapAttrForMemRef(Value *mref) {
+      assert(mref == memref());
+      return {Identifier::get(getMapAttrName(), getContext()),
+        getAffineMapAttr()};
+    }
+
+    /// Get affine map operands.
+    operand_range getMapOperands() {
+      return {operand_begin() + 1, operand_end()};
+    }
+
+    static StringRef getMapAttrName() { return "map"; }
+    static StringRef getLocalityHintAttrName() { return "localityHint"; }
+    static StringRef getIsWriteAttrName() { return "isWrite"; }
+    static StringRef getIsDataCacheAttrName() { return "isDataCache"; }
+  }];
+
+  let hasCanonicalizer = 1;
+  let hasFolder = 1;
+}
+
 def AffineTerminatorOp :
     Affine_Op<"terminator", [Terminator]> {
   let summary = "affine terminator operation";

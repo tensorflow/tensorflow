@@ -94,7 +94,7 @@ static void checkDependences(ArrayRef<Operation *> loadsAndStores) {
           getNumCommonSurroundingLoops(*srcOpInst, *dstOpInst);
       for (unsigned d = 1; d <= numCommonLoops + 1; ++d) {
         FlatAffineConstraints dependenceConstraints;
-        llvm::SmallVector<DependenceComponent, 2> dependenceComponents;
+        SmallVector<DependenceComponent, 2> dependenceComponents;
         DependenceResult result = checkMemrefAccessDependence(
             srcAccess, dstAccess, d, &dependenceConstraints,
             &dependenceComponents);

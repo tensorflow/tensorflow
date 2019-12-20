@@ -19,6 +19,7 @@ limitations under the License.
 #include <array>
 #include <vector>
 
+#include "llvm/IR/IntrinsicsNVPTX.h"
 #include "llvm/IR/Module.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/gpu/target_util.h"
@@ -232,6 +233,31 @@ bool IsReductionFromOrToContiguousDimensions(const HloInstruction& reduce) {
   // are reducing along tile_size_y. Only tile_size_y needs to be
   // large enough to make the tiling implementation efficient.
   return reduction_dimensions.dimensions[1] >= kWarpSize;
+}
+
+bool IsInputFusibleSlices(const HloInstruction& unnested_hlo,
+                          bool verify_no_strides) {
+  if (!unnested_hlo.IsInputFusion()) {
+    return false;
+  }
+
+  auto is_non_strided = [](const std::vector<int64>& strides) -> bool {
+    return absl::c_all_of(strides, [](int stride) { return stride == 1; });
+  };
+
+  const HloInstruction* root = unnested_hlo.fused_expression_root();
+  if (root->opcode() == HloOpcode::kSlice) {
+    return !verify_no_strides || is_non_strided(root->slice_strides());
+  }
+
+  if (root->opcode() != HloOpcode::kTuple) {
+    return false;
+  }
+
+  return absl::c_all_of(root->operands(), [&](const HloInstruction* instr) {
+    return instr->opcode() == HloOpcode::kSlice &&
+           (!verify_no_strides || is_non_strided(instr->slice_strides()));
+  });
 }
 
 ReductionDimensions GetReductionKindAndContiguousComponents(

@@ -380,6 +380,10 @@ cc_library(
         "protobuf_util.cc",
     ],
     hdrs = ["protobuf.h"],
+    defines = select({
+        "//tensorflow:android": ["TENSORFLOW_LITE_PROTOS"],
+        "//conditions:default": [],
+    }),
     deps = [
         ":platform",
         ":types",

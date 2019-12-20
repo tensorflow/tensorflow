@@ -42,9 +42,15 @@ class LookupTableOp : public OpKernel {
   // ctx is not owned by this class.
   explicit LookupTableOp(OpKernelConstruction* ctx)
       : OpKernel(ctx), table_handle_set_(false) {
-    OP_REQUIRES_OK(ctx, ctx->allocate_persistent(tensorflow::DT_STRING,
-                                                 tensorflow::TensorShape({2}),
-                                                 &table_handle_, nullptr));
+    if (ctx->output_type(0) == DT_RESOURCE) {
+      OP_REQUIRES_OK(ctx, ctx->allocate_persistent(tensorflow::DT_RESOURCE,
+                                                   tensorflow::TensorShape({}),
+                                                   &table_handle_, nullptr));
+    } else {
+      OP_REQUIRES_OK(ctx, ctx->allocate_persistent(tensorflow::DT_STRING,
+                                                   tensorflow::TensorShape({2}),
+                                                   &table_handle_, nullptr));
+    }
     OP_REQUIRES_OK(
         ctx, ctx->GetAttr("use_node_name_sharing", &use_node_name_sharing_));
   }
@@ -86,11 +92,13 @@ class LookupTableOp : public OpKernel {
                             DataTypeToEnum<value_dtype>::v(), cinfo_.name()));
 
     if (ctx->expected_output_dtype(0) == DT_RESOURCE) {
-      Tensor* handle;
-      OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &handle));
-      handle->scalar<ResourceHandle>()() =
-          MakeResourceHandle<lookup::LookupInterface>(ctx, cinfo_.container(),
-                                                      cinfo_.name());
+      if (!table_handle_set_) {
+        auto h =
+            table_handle_.AccessTensor(ctx)->template scalar<ResourceHandle>();
+        h() = MakeResourceHandle<lookup::LookupInterface>(
+            ctx, cinfo_.container(), cinfo_.name());
+      }
+      ctx->set_output(0, *table_handle_.AccessTensor(ctx));
     } else {
       if (!table_handle_set_) {
         auto h = table_handle_.AccessTensor(ctx)->template flat<tstring>();
@@ -173,7 +181,12 @@ class HashTable : public InitializableLookupTable {
  public:
   HashTable(OpKernelContext* ctx, OpKernel* kernel) {}
 
-  size_t size() const override { return table_.size(); }
+  size_t size() const override {
+    if (!is_initialized())
+      return 0;
+    else
+      return table_.size();
+  }
 
   Status ExportValues(OpKernelContext* context) override {
     if (!is_initialized()) {
@@ -222,7 +235,7 @@ class HashTable : public InitializableLookupTable {
     for (int64 i = 0; i < key_values.size(); ++i) {
       auto&& key = SubtleMustCopyIfIntegral(key_values(i));
       auto&& value = SubtleMustCopyIfIntegral(value_values(i));
-      auto result = table_.emplace(key, value);
+      auto result = table_.try_emplace(key, value);
       if (!result.second && result.first->second != value) {
         return errors::FailedPrecondition(
             "HashTable has different value for same key. Key ", key, " has ",
@@ -246,6 +259,9 @@ class HashTable : public InitializableLookupTable {
   }
 
   int64 MemoryUsed() const override {
+    if (!is_initialized()) {
+      return 0;
+    }
     const int64 num_elements = table_.size();
     return num_elements * (sizeof(K) + sizeof(V));
   }

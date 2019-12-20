@@ -58,6 +58,15 @@ Operation *VectorOpsDialect::materializeConstant(OpBuilder &builder,
   return builder.create<ConstantOp>(loc, type, value);
 }
 
+IntegerType vector::getVectorSubscriptType(Builder &builder) {
+  return builder.getIntegerType(32);
+}
+
+ArrayAttr vector::getVectorSubscriptAttr(Builder &builder,
+                                         ArrayRef<int32_t> values) {
+  return builder.getI32ArrayAttr(values);
+}
+
 //===----------------------------------------------------------------------===//
 // ContractionOp
 //===----------------------------------------------------------------------===//
@@ -397,7 +406,7 @@ static Type inferExtractOpResultType(VectorType vectorType,
 void vector::ExtractOp::build(Builder *builder, OperationState &result,
                               Value *source, ArrayRef<int32_t> position) {
   result.addOperands(source);
-  auto positionAttr = builder->getI32ArrayAttr(position);
+  auto positionAttr = getVectorSubscriptAttr(*builder, position);
   result.addTypes(inferExtractOpResultType(source->getType().cast<VectorType>(),
                                            positionAttr));
   result.addAttribute(getPositionAttrName(), positionAttr);
@@ -543,8 +552,8 @@ isValidExtractOrInsertSlicesType(Operation *op, VectorType vectorType,
     SmallVector<int64_t, 4> vectorOffsets(rank);
     int64_t linearIndex = i;
     for (unsigned j = 0; j < rank; ++j) {
-      vectorOffsets.push_back(linearIndex / sliceStrides[i]);
-      linearIndex %= sliceStrides[i];
+      vectorOffsets[j] = linearIndex / sliceStrides[j];
+      linearIndex %= sliceStrides[j];
     }
     // Convert from unrolled vector-space offsets to element-space offsets.
     auto offsets = mlir::functional::zipMap(
@@ -641,7 +650,7 @@ static ParseResult parseBroadcastOp(OpAsmParser &parser,
 void ShuffleOp::build(Builder *builder, OperationState &result, Value *v1,
                       Value *v2, ArrayRef<int32_t> mask) {
   result.addOperands({v1, v2});
-  auto maskAttr = builder->getI32ArrayAttr(mask);
+  auto maskAttr = getVectorSubscriptAttr(*builder, mask);
   result.addTypes(v1->getType());
   result.addAttribute(getMaskAttrName(), maskAttr);
 }
@@ -765,7 +774,7 @@ static LogicalResult verify(InsertElementOp op) {
 void InsertOp::build(Builder *builder, OperationState &result, Value *source,
                      Value *dest, ArrayRef<int32_t> position) {
   result.addOperands({source, dest});
-  auto positionAttr = builder->getI32ArrayAttr(position);
+  auto positionAttr = getVectorSubscriptAttr(*builder, position);
   result.addTypes(dest->getType());
   result.addAttribute(getPositionAttrName(), positionAttr);
 }
@@ -1099,6 +1108,123 @@ static LogicalResult verify(OuterProductOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// ReshapeOp
+//===----------------------------------------------------------------------===//
+
+static void print(OpAsmPrinter &p, ReshapeOp op) {
+  p << op.getOperationName() << " " << *op.vector() << ", [" << op.input_shape()
+    << "], [" << op.output_shape() << "], " << op.fixed_vector_sizes();
+  SmallVector<StringRef, 2> elidedAttrs = {
+      ReshapeOp::getOperandSegmentSizeAttr(),
+      ReshapeOp::getFixedVectorSizesAttrName()};
+  p.printOptionalAttrDict(op.getAttrs(), elidedAttrs);
+  p << " : " << op.getInputVectorType() << " to " << op.getOutputVectorType();
+}
+
+// TODO(b/146516564) Consider passing number of inner vector dimensions that
+// are fixed, instead of their values in 'fixesVectorSizes' array attr.
+//
+// operation ::= ssa-id `=` `vector.reshape` ssa-use, `[` ssa-use-list `]`,
+//                          `[` ssa-use-list `]`, `[` array-attribute `]`
+//                          `:` vector-type 'to' vector-type
+//
+static ParseResult parseReshapeOp(OpAsmParser &parser, OperationState &result) {
+  OpAsmParser::OperandType inputInfo;
+  SmallVector<OpAsmParser::OperandType, 4> inputShapeInfo;
+  SmallVector<OpAsmParser::OperandType, 4> outputShapeInfo;
+  ArrayAttr fixedVectorSizesAttr;
+  StringRef attrName = ReshapeOp::getFixedVectorSizesAttrName();
+  auto indexType = parser.getBuilder().getIndexType();
+  if (parser.parseOperand(inputInfo) || parser.parseComma() ||
+      parser.parseOperandList(inputShapeInfo, OpAsmParser::Delimiter::Square) ||
+      parser.parseComma() ||
+      parser.parseOperandList(outputShapeInfo,
+                              OpAsmParser::Delimiter::Square) ||
+      parser.parseComma()) {
+    return failure();
+  }
+
+  auto builder = parser.getBuilder();
+  result.addAttribute(
+      ReshapeOp::getOperandSegmentSizeAttr(),
+      builder.getI32VectorAttr({1, static_cast<int32_t>(inputShapeInfo.size()),
+                                static_cast<int32_t>(outputShapeInfo.size())}));
+  Type inputType;
+  Type outputType;
+  return failure(
+      parser.parseAttribute(fixedVectorSizesAttr, attrName,
+                            result.attributes) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
+      parser.parseColonType(inputType) ||
+      parser.resolveOperand(inputInfo, inputType, result.operands) ||
+      parser.resolveOperands(inputShapeInfo, indexType, result.operands) ||
+      parser.resolveOperands(outputShapeInfo, indexType, result.operands) ||
+      parser.parseKeywordType("to", outputType) ||
+      parser.addTypeToList(outputType, result.types));
+}
+
+static LogicalResult verify(ReshapeOp op) {
+  // Verify that rank(numInputs/outputs) + numFixedVec dim matches vec rank.
+  auto inputVectorType = op.getInputVectorType();
+  auto outputVectorType = op.getOutputVectorType();
+  int64_t inputShapeRank = op.getNumInputShapeSizes();
+  int64_t outputShapeRank = op.getNumOutputShapeSizes();
+  SmallVector<int64_t, 4> fixedVectorSizes;
+  op.getFixedVectorSizes(fixedVectorSizes);
+  int64_t numFixedVectorSizes = fixedVectorSizes.size();
+
+  if (inputVectorType.getRank() != inputShapeRank + numFixedVectorSizes)
+    return op.emitError("invalid input shape for vector type ")
+           << inputVectorType;
+
+  if (outputVectorType.getRank() != outputShapeRank + numFixedVectorSizes)
+    return op.emitError("invalid output shape for vector type ")
+           << outputVectorType;
+
+  // Verify that the 'fixedVectorSizes' match a input/output vector shape
+  // suffix.
+  unsigned inputVectorRank = inputVectorType.getRank();
+  for (unsigned i = 0; i < numFixedVectorSizes; ++i) {
+    unsigned index = inputVectorRank - numFixedVectorSizes - i;
+    if (fixedVectorSizes[i] != inputVectorType.getShape()[index])
+      return op.emitError("fixed vector size must match input vector for dim ")
+             << i;
+  }
+
+  unsigned outputVectorRank = outputVectorType.getRank();
+  for (unsigned i = 0; i < numFixedVectorSizes; ++i) {
+    unsigned index = outputVectorRank - numFixedVectorSizes - i;
+    if (fixedVectorSizes[i] != outputVectorType.getShape()[index])
+      return op.emitError("fixed vector size must match output vector for dim ")
+             << i;
+  }
+
+  // If all shape operands are produced by constant ops, verify that product
+  // of dimensions for input/output shape match.
+  auto isDefByConstant = [](Value *operand) {
+    return isa_and_nonnull<ConstantIndexOp>(operand->getDefiningOp());
+  };
+  if (llvm::all_of(op.input_shape(), isDefByConstant) &&
+      llvm::all_of(op.output_shape(), isDefByConstant)) {
+    int64_t numInputElements = 1;
+    for (auto *operand : op.input_shape())
+      numInputElements *=
+          cast<ConstantIndexOp>(operand->getDefiningOp()).getValue();
+    int64_t numOutputElements = 1;
+    for (auto *operand : op.output_shape())
+      numOutputElements *=
+          cast<ConstantIndexOp>(operand->getDefiningOp()).getValue();
+    if (numInputElements != numOutputElements)
+      return op.emitError("product of input and output shape sizes must match");
+  }
+  return success();
+}
+
+void ReshapeOp::getFixedVectorSizes(SmallVectorImpl<int64_t> &results) {
+  populateFromInt64AttrArray(fixed_vector_sizes(), results);
+}
+
+//===----------------------------------------------------------------------===//
 // StridedSliceOp
 //===----------------------------------------------------------------------===//
 
@@ -1294,6 +1420,59 @@ static LogicalResult verifyPermutationMap(AffineMap permutationMap,
   return success();
 }
 
+static LogicalResult verifyTransferOp(Operation *op, MemRefType memrefType,
+                                      VectorType vectorType,
+                                      AffineMap permutationMap) {
+  auto memrefElementType = memrefType.getElementType();
+  if (auto memrefVectorElementType = memrefElementType.dyn_cast<VectorType>()) {
+    // Memref has vector element type.
+
+    // Check that 'memrefVectorElementType' and vector element types match.
+    if (memrefVectorElementType.getElementType() != vectorType.getElementType())
+      return op->emitOpError(
+          "requires memref and vector types of the same elemental type");
+
+    // Check that memref vector type is a suffix of 'vectorType.
+    unsigned memrefVecEltRank = memrefVectorElementType.getRank();
+    unsigned resultVecRank = vectorType.getRank();
+    if (memrefVecEltRank > resultVecRank)
+      return op->emitOpError(
+          "requires memref vector element and vector result ranks to match.");
+    // TODO(b/146516564) Move this to isSuffix in VectorOps/Utils.h.
+    unsigned rankOffset = resultVecRank - memrefVecEltRank;
+    auto memrefVecEltShape = memrefVectorElementType.getShape();
+    auto resultVecShape = vectorType.getShape();
+    for (unsigned i = 0; i < memrefVecEltRank; ++i)
+      if (memrefVecEltShape[i] != resultVecShape[rankOffset + i])
+        return op->emitOpError(
+            "requires memref vector element shape to match suffix of "
+            "vector result shape.");
+    // Check that permutation map results match 'rankOffset' of vector type.
+    if (permutationMap.getNumResults() != rankOffset)
+      return op->emitOpError("requires a permutation_map with result dims of "
+                             "the same rank as the vector type");
+  } else {
+    // Memref has scalar element type.
+
+    // Check that memref and vector element types match.
+    if (memrefType.getElementType() != vectorType.getElementType())
+      return op->emitOpError(
+          "requires memref and vector types of the same elemental type");
+
+    // Check that permutation map results match rank of vector type.
+    if (permutationMap.getNumResults() != vectorType.getRank())
+      return op->emitOpError("requires a permutation_map with result dims of "
+                             "the same rank as the vector type");
+  }
+
+  if (permutationMap.getNumSymbols() != 0)
+    return op->emitOpError("requires permutation_map without symbols");
+  if (permutationMap.getNumInputs() != memrefType.getRank())
+    return op->emitOpError("requires a permutation_map with input dims of the "
+                           "same rank as the memref type");
+  return success();
+}
+
 static void print(OpAsmPrinter &p, TransferReadOp op) {
   p << op.getOperationName() << " " << op.memref() << "[" << op.indices()
     << "], " << op.padding() << " ";
@@ -1333,26 +1512,35 @@ static LogicalResult verify(TransferReadOp op) {
   // Consistency of elemental types in memref and vector.
   MemRefType memrefType = op.getMemRefType();
   VectorType vectorType = op.getVectorType();
-  if (memrefType.getElementType() != vectorType.getElementType())
-    return op.emitOpError(
-        "requires memref and vector types of the same elemental type");
-  auto elementalType = op.padding()->getType();
-  if (!VectorType::isValidElementType(elementalType))
-    return op.emitOpError("requires valid padding vector elemental type");
-  if (elementalType != vectorType.getElementType())
-    return op.emitOpError(
-        "requires formal padding and vector of the same elemental type");
-  if (llvm::size(op.indices()) != memrefType.getRank())
-    return op.emitOpError("requires ") << memrefType.getRank() << " indices";
+  auto paddingType = op.padding()->getType();
   auto permutationMap = op.permutation_map();
-  if (permutationMap.getNumSymbols() != 0)
-    return op.emitOpError("requires permutation_map without symbols");
-  if (permutationMap.getNumInputs() != memrefType.getRank())
-    return op.emitOpError("requires a permutation_map with input dims of the "
-                          "same rank as the memref type");
-  if (permutationMap.getNumResults() != vectorType.getRank())
-    return op.emitOpError("requires a permutation_map with result dims of the "
-                          "same rank as the vector type");
+  auto memrefElementType = memrefType.getElementType();
+
+  if (static_cast<int64_t>(op.indices().size()) != memrefType.getRank())
+    return op.emitOpError("requires ") << memrefType.getRank() << " indices";
+
+  if (failed(verifyTransferOp(op.getOperation(), memrefType, vectorType,
+                              permutationMap)))
+    return failure();
+
+  if (auto memrefVectorElementType = memrefElementType.dyn_cast<VectorType>()) {
+    // Memref has vector element type.
+    // Check that 'memrefVectorElementType' and 'paddingType' types match.
+    if (memrefVectorElementType != paddingType)
+      return op.emitOpError(
+          "requires memref element type and padding type to match.");
+
+  } else {
+    // Check that 'paddingType' is valid to store in a vector type.
+    if (!VectorType::isValidElementType(paddingType))
+      return op.emitOpError("requires valid padding vector elemental type");
+
+    // Check that padding type and vector element types match.
+    if (paddingType != vectorType.getElementType())
+      return op.emitOpError(
+          "requires formal padding and vector of the same elemental type");
+  }
+
   return verifyPermutationMap(permutationMap,
                               [&op](Twine t) { return op.emitOpError(t); });
 }
@@ -1393,24 +1581,15 @@ static LogicalResult verify(TransferWriteOp op) {
   // Consistency of elemental types in memref and vector.
   MemRefType memrefType = op.getMemRefType();
   VectorType vectorType = op.getVectorType();
-  if (memrefType.getElementType() != vectorType.getElementType())
-    return op.emitOpError(
-        "requires memref and vector types of the same elemental type");
+  auto permutationMap = op.permutation_map();
+
   if (llvm::size(op.indices()) != memrefType.getRank())
     return op.emitOpError("requires ") << memrefType.getRank() << " indices";
 
-  // Consistency of AffineMap attribute.
-  auto permutationMap = op.permutation_map();
-  if (permutationMap.getNumSymbols() != 0)
-    return op.emitOpError("requires a symbol-less permutation_map");
-  if (permutationMap.getNumInputs() != memrefType.getRank())
-    return op.emitOpError("requires a permutation_map with input dims of the "
-                          "same rank as the memref type: ")
-           << permutationMap.getNumInputs() << " vs " << memrefType;
-  if (permutationMap.getNumResults() != vectorType.getRank())
-    return op.emitOpError("requires a permutation_map with result dims of the "
-                          "same rank as the vector type.")
-           << permutationMap.getNumResults() << " vs " << vectorType;
+  if (failed(verifyTransferOp(op.getOperation(), memrefType, vectorType,
+                              permutationMap)))
+    return failure();
+
   return verifyPermutationMap(permutationMap,
                               [&op](Twine t) { return op.emitOpError(t); });
 }
@@ -1505,7 +1684,8 @@ static void print(OpAsmPrinter &p, TupleGetOp op) {
 
 static LogicalResult verify(TupleGetOp op) {
   auto tupleType = op.getOperand()->getType().cast<TupleType>();
-  if (op.getIndex() < 0 || op.getIndex() >= tupleType.size())
+  if (op.getIndex() < 0 ||
+      op.getIndex() >= static_cast<int64_t>(tupleType.size()))
     return op.emitOpError("tuple get index out of range");
   return success();
 }
@@ -1584,6 +1764,23 @@ static LogicalResult verify(CreateMaskOp op) {
     return op.emitOpError(
         "must specify an operand for each result vector dimension");
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// PrintOp
+//===----------------------------------------------------------------------===//
+
+ParseResult parsePrintOp(OpAsmParser &parser, OperationState &result) {
+  OpAsmParser::OperandType source;
+  Type sourceType;
+  return failure(parser.parseOperand(source) ||
+                 parser.parseColonType(sourceType) ||
+                 parser.resolveOperand(source, sourceType, result.operands));
+}
+
+static void print(OpAsmPrinter &p, PrintOp op) {
+  p << op.getOperationName() << ' ' << *op.source() << " : "
+    << op.getPrintType();
 }
 
 namespace {

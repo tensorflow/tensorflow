@@ -38,6 +38,26 @@ using namespace mlir;
 
 namespace {
 
+/// Derived type converter for GPU to NVVM lowering. The GPU dialect uses memory
+/// space 5 for private memory attributions, but NVVM represents private
+/// memory allocations as local `alloca`s in the default address space. This
+/// converter drops the private memory space to support the use case above.
+class NVVMTypeConverter : public LLVMTypeConverter {
+public:
+  using LLVMTypeConverter::LLVMTypeConverter;
+
+  Type convertType(Type type) override {
+    auto memref = type.dyn_cast<MemRefType>();
+    if (memref &&
+        memref.getMemorySpace() == gpu::GPUDialect::getPrivateAddressSpace()) {
+      type = MemRefType::get(memref.getShape(), memref.getElementType(),
+                             memref.getAffineMaps());
+    }
+
+    return LLVMTypeConverter::convertType(type);
+  }
+};
+
 /// Converts all_reduce op to LLVM/NVVM ops.
 struct GPUAllReduceOpLowering : public LLVMOpLowering {
   using AccumulatorFactory = std::function<Value *(
@@ -350,13 +370,13 @@ private:
                 [&] {
                   Value *shflValue = rewriter.create<LLVM::ExtractValueOp>(
                       loc, type, shfl, rewriter.getIndexArrayAttr(0));
-                  return llvm::SmallVector<Value *, 1>{
+                  return SmallVector<Value *, 1>{
                       accumFactory(loc, value, shflValue, rewriter)};
                 },
                 [&] { return llvm::makeArrayRef(value); });
             value = rewriter.getInsertionBlock()->getArgument(0);
           }
-          return llvm::SmallVector<Value *, 1>{value};
+          return SmallVector<Value *, 1>{value};
         },
         // Generate a reduction over the entire warp. This is a specialization
         // of the above reduction with unconditional accumulation.
@@ -374,7 +394,7 @@ private:
                 /*return_value_and_is_valid=*/UnitAttr());
             value = accumFactory(loc, value, shflValue, rewriter);
           }
-          return llvm::SmallVector<Value *, 1>{value};
+          return SmallVector<Value *, 1>{value};
         });
     return rewriter.getInsertionBlock()->getArgument(0);
   }
@@ -559,9 +579,12 @@ struct GPUFuncOpLowering : LLVMOpLowering {
         assert(type && type.hasStaticShape() &&
                "unexpected type in attribution");
 
+        // Explicitly drop memory space when lowering private memory
+        // attributions since NVVM models it as `alloca`s in the default
+        // memory space and does not support `alloca`s with addrspace(5).
         auto ptrType = lowering.convertType(type.getElementType())
                            .cast<LLVM::LLVMType>()
-                           .getPointerTo(type.getMemorySpace());
+                           .getPointerTo();
         Value *numElements = rewriter.create<LLVM::ConstantOp>(
             gpuFuncOp.getLoc(), int64Ty,
             rewriter.getI64IntegerAttr(type.getNumElements()));
@@ -635,7 +658,7 @@ public:
       return;
 
     OwningRewritePatternList patterns;
-    LLVMTypeConverter converter(m.getContext());
+    NVVMTypeConverter converter(m.getContext());
     populateStdToLLVMConversionPatterns(converter, patterns);
     populateGpuToNVVMConversionPatterns(converter, patterns);
     ConversionTarget target(getContext());

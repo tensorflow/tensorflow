@@ -216,3 +216,16 @@ cc_library(
         "@com_google_absl//absl/types:optional",
     ],
 )
+
+filegroup(
+    name = "pywrap_eager_hdrs",
+    srcs = [
+        "eager_client.h",
+        "remote_tensor_handle.h",
+        "remote_tensor_handle_data.h",
+    ],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/python:__pkg__",
+    ],
+)

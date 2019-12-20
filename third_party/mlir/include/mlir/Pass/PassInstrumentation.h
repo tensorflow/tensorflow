@@ -83,14 +83,14 @@ public:
   /// A callback to run before an analysis is computed. This function takes the
   /// name of the analysis to be computed, its AnalysisID, as well as the
   /// current operation being analyzed.
-  virtual void runBeforeAnalysis(llvm::StringRef name, AnalysisID *id,
+  virtual void runBeforeAnalysis(StringRef name, AnalysisID *id,
                                  Operation *op) {}
 
   /// A callback to run before an analysis is computed. This function takes the
   /// name of the analysis that was computed, its AnalysisID, as well as the
   /// current operation being analyzed.
-  virtual void runAfterAnalysis(llvm::StringRef name, AnalysisID *id,
-                                Operation *op) {}
+  virtual void runAfterAnalysis(StringRef name, AnalysisID *id, Operation *op) {
+  }
 };
 
 /// This class holds a collection of PassInstrumentation objects, and invokes
@@ -122,10 +122,10 @@ public:
   void runAfterPassFailed(Pass *pass, Operation *op);
 
   /// See PassInstrumentation::runBeforeAnalysis for details.
-  void runBeforeAnalysis(llvm::StringRef name, AnalysisID *id, Operation *op);
+  void runBeforeAnalysis(StringRef name, AnalysisID *id, Operation *op);
 
   /// See PassInstrumentation::runAfterAnalysis for details.
-  void runAfterAnalysis(llvm::StringRef name, AnalysisID *id, Operation *op);
+  void runAfterAnalysis(StringRef name, AnalysisID *id, Operation *op);
 
   /// Add the given instrumentation to the collection.
   void addInstrumentation(std::unique_ptr<PassInstrumentation> pi);

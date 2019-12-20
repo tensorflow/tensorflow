@@ -50,7 +50,7 @@ public:
   std::unique_ptr<llvm::MemoryBuffer> getObject(const llvm::Module *M) override;
 
   /// Dump cached object to output file `filename`.
-  void dumpToObjectFile(llvm::StringRef filename);
+  void dumpToObjectFile(StringRef filename);
 
 private:
   llvm::StringMap<std::unique_ptr<llvm::MemoryBuffer>> cachedObjects;
@@ -103,7 +103,7 @@ public:
   static bool setupTargetTriple(llvm::Module *llvmModule);
 
   /// Dump object code to output file `filename`.
-  void dumpToObjectFile(llvm::StringRef filename);
+  void dumpToObjectFile(StringRef filename);
 
 private:
   // Ordering of llvmContext and jit is important for destruction purposes: the
@@ -124,7 +124,7 @@ llvm::Error ExecutionEngine::invoke(StringRef name, Args &... args) {
     return expectedFPtr.takeError();
   auto fptr = *expectedFPtr;
 
-  llvm::SmallVector<void *, 8> packedArgs{static_cast<void *>(&args)...};
+  SmallVector<void *, 8> packedArgs{static_cast<void *>(&args)...};
   (*fptr)(packedArgs.data());
 
   return llvm::Error::success();

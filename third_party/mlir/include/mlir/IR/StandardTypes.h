@@ -464,10 +464,10 @@ public:
                                        Location location);
 
   /// Verify the construction of a unranked memref type.
-  static LogicalResult
-  verifyConstructionInvariants(llvm::Optional<Location> loc,
-                               MLIRContext *context, Type elementType,
-                               unsigned memorySpace);
+  static LogicalResult verifyConstructionInvariants(Optional<Location> loc,
+                                                    MLIRContext *context,
+                                                    Type elementType,
+                                                    unsigned memorySpace);
 
   ArrayRef<int64_t> getShape() const { return llvm::None; }
 

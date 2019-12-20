@@ -97,7 +97,7 @@ void mlir::buildTripCountMapAndOperands(
 // being an analysis utility, it shouldn't. Replace with a version that just
 // works with analysis structures (FlatAffineConstraints) and thus doesn't
 // update the IR.
-llvm::Optional<uint64_t> mlir::getConstantTripCount(AffineForOp forOp) {
+Optional<uint64_t> mlir::getConstantTripCount(AffineForOp forOp) {
   SmallVector<Value *, 4> operands;
   AffineMap map;
   buildTripCountMapAndOperands(forOp, &map, &operands);
@@ -197,9 +197,9 @@ static bool isAccessIndexInvariant(Value *iv, Value *index) {
   return !(AffineValueMap(composeOp).isFunctionOf(0, iv));
 }
 
-llvm::DenseSet<Value *>
-mlir::getInvariantAccesses(Value *iv, llvm::ArrayRef<Value *> indices) {
-  llvm::DenseSet<Value *> res;
+DenseSet<Value *> mlir::getInvariantAccesses(Value *iv,
+                                             ArrayRef<Value *> indices) {
+  DenseSet<Value *> res;
   for (unsigned idx = 0, n = indices.size(); idx < n; ++idx) {
     auto *val = indices[idx];
     if (isAccessIndexInvariant(iv, val)) {

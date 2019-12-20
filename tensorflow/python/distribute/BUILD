@@ -268,7 +268,7 @@ py_library(
         "//tensorflow/python:device",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python:summary_ops_v2",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:training",
@@ -1056,10 +1056,10 @@ cuda_py_test(
     srcs = ["mirrored_strategy_test.py"],
     shard_count = 5,
     tags = [
-        "guitar",
         "multi_and_single_gpu",
         "no_rocm",
         "no_windows_gpu",  # TODO(b/130551176)
+        "noguitar",
     ],
     deps = [
         ":combinations",

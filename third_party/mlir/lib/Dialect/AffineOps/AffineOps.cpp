@@ -616,9 +616,8 @@ AffineApplyOp mlir::makeComposedAffineApply(OpBuilder &b, Location loc,
 // A symbol may appear as a dim in affine.apply operations. This function
 // canonicalizes dims that are valid symbols into actual symbols.
 template <class MapOrSet>
-static void
-canonicalizePromotedSymbols(MapOrSet *mapOrSet,
-                            llvm::SmallVectorImpl<Value *> *operands) {
+static void canonicalizePromotedSymbols(MapOrSet *mapOrSet,
+                                        SmallVectorImpl<Value *> *operands) {
   if (!mapOrSet || operands->empty())
     return;
 
@@ -662,7 +661,7 @@ canonicalizePromotedSymbols(MapOrSet *mapOrSet,
 template <class MapOrSet>
 static void
 canonicalizeMapOrSetAndOperands(MapOrSet *mapOrSet,
-                                llvm::SmallVectorImpl<Value *> *operands) {
+                                SmallVectorImpl<Value *> *operands) {
   static_assert(std::is_same<MapOrSet, AffineMap>::value ||
                     std::is_same<MapOrSet, IntegerSet>::value,
                 "Argument must be either of AffineMap or IntegerSet type");
@@ -738,13 +737,13 @@ canonicalizeMapOrSetAndOperands(MapOrSet *mapOrSet,
   *operands = resultOperands;
 }
 
-void mlir::canonicalizeMapAndOperands(
-    AffineMap *map, llvm::SmallVectorImpl<Value *> *operands) {
+void mlir::canonicalizeMapAndOperands(AffineMap *map,
+                                      SmallVectorImpl<Value *> *operands) {
   canonicalizeMapOrSetAndOperands<AffineMap>(map, operands);
 }
 
-void mlir::canonicalizeSetAndOperands(
-    IntegerSet *set, llvm::SmallVectorImpl<Value *> *operands) {
+void mlir::canonicalizeSetAndOperands(IntegerSet *set,
+                                      SmallVectorImpl<Value *> *operands) {
   canonicalizeMapOrSetAndOperands<IntegerSet>(set, operands);
 }
 
@@ -764,6 +763,7 @@ struct SimplifyAffineOp : public OpRewritePattern<AffineOpTy> {
   PatternMatchResult matchAndRewrite(AffineOpTy affineOp,
                                      PatternRewriter &rewriter) const override {
     static_assert(std::is_same<AffineOpTy, AffineLoadOp>::value ||
+                      std::is_same<AffineOpTy, AffinePrefetchOp>::value ||
                       std::is_same<AffineOpTy, AffineStoreOp>::value ||
                       std::is_same<AffineOpTy, AffineApplyOp>::value,
                   "affine load/store/apply op expected");
@@ -789,6 +789,15 @@ void SimplifyAffineOp<AffineLoadOp>::replaceAffineOp(
     ArrayRef<Value *> mapOperands) const {
   rewriter.replaceOpWithNewOp<AffineLoadOp>(load, load.getMemRef(), map,
                                             mapOperands);
+}
+template <>
+void SimplifyAffineOp<AffinePrefetchOp>::replaceAffineOp(
+    PatternRewriter &rewriter, AffinePrefetchOp prefetch, AffineMap map,
+    ArrayRef<Value *> mapOperands) const {
+  rewriter.replaceOpWithNewOp<AffinePrefetchOp>(
+      prefetch, prefetch.memref(), map, mapOperands,
+      prefetch.localityHint().getZExtValue(), prefetch.isWrite(),
+      prefetch.isDataCache());
 }
 template <>
 void SimplifyAffineOp<AffineStoreOp>::replaceAffineOp(
@@ -2001,6 +2010,112 @@ OpFoldResult AffineMinOp::fold(ArrayRef<Attribute> operands) {
   if (minIndex < 0)
     return {};
   return results[minIndex];
+}
+
+//===----------------------------------------------------------------------===//
+// AffinePrefetchOp
+//===----------------------------------------------------------------------===//
+
+//
+// affine.prefetch %0[%i, %j + 5], read, locality<3>, data : memref<400x400xi32>
+//
+static ParseResult parseAffinePrefetchOp(OpAsmParser &parser,
+                                         OperationState &result) {
+  auto &builder = parser.getBuilder();
+  auto indexTy = builder.getIndexType();
+
+  MemRefType type;
+  OpAsmParser::OperandType memrefInfo;
+  IntegerAttr hintInfo;
+  auto i32Type = parser.getBuilder().getIntegerType(32);
+  StringRef readOrWrite, cacheType;
+
+  AffineMapAttr mapAttr;
+  SmallVector<OpAsmParser::OperandType, 1> mapOperands;
+  if (parser.parseOperand(memrefInfo) ||
+      parser.parseAffineMapOfSSAIds(mapOperands, mapAttr,
+                                    AffinePrefetchOp::getMapAttrName(),
+                                    result.attributes) ||
+      parser.parseComma() || parser.parseKeyword(&readOrWrite) ||
+      parser.parseComma() || parser.parseKeyword("locality") ||
+      parser.parseLess() ||
+      parser.parseAttribute(hintInfo, i32Type,
+                            AffinePrefetchOp::getLocalityHintAttrName(),
+                            result.attributes) ||
+      parser.parseGreater() || parser.parseComma() ||
+      parser.parseKeyword(&cacheType) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
+      parser.parseColonType(type) ||
+      parser.resolveOperand(memrefInfo, type, result.operands) ||
+      parser.resolveOperands(mapOperands, indexTy, result.operands))
+    return failure();
+
+  if (!readOrWrite.equals("read") && !readOrWrite.equals("write"))
+    return parser.emitError(parser.getNameLoc(),
+                            "rw specifier has to be 'read' or 'write'");
+  result.addAttribute(
+      AffinePrefetchOp::getIsWriteAttrName(),
+      parser.getBuilder().getBoolAttr(readOrWrite.equals("write")));
+
+  if (!cacheType.equals("data") && !cacheType.equals("instr"))
+    return parser.emitError(parser.getNameLoc(),
+                            "cache type has to be 'data' or 'instr'");
+
+  result.addAttribute(
+      AffinePrefetchOp::getIsDataCacheAttrName(),
+      parser.getBuilder().getBoolAttr(cacheType.equals("data")));
+
+  return success();
+}
+
+void print(OpAsmPrinter &p, AffinePrefetchOp op) {
+  p << AffinePrefetchOp::getOperationName() << " " << *op.memref() << '[';
+  AffineMapAttr mapAttr = op.getAttrOfType<AffineMapAttr>(op.getMapAttrName());
+  if (mapAttr) {
+    SmallVector<Value *, 2> operands(op.getMapOperands());
+    p.printAffineMapOfSSAIds(mapAttr, operands);
+  }
+  p << ']' << ", " << (op.isWrite() ? "write" : "read") << ", "
+    << "locality<" << op.localityHint() << ">, "
+    << (op.isDataCache() ? "data" : "instr");
+  p.printOptionalAttrDict(
+      op.getAttrs(),
+      /*elidedAttrs=*/{op.getMapAttrName(), op.getLocalityHintAttrName(),
+                       op.getIsDataCacheAttrName(), op.getIsWriteAttrName()});
+  p << " : " << op.getMemRefType();
+}
+
+LogicalResult verify(AffinePrefetchOp op) {
+  auto mapAttr = op.getAttrOfType<AffineMapAttr>(op.getMapAttrName());
+  if (mapAttr) {
+    AffineMap map = mapAttr.getValue();
+    if (map.getNumResults() != op.getMemRefType().getRank())
+      return op.emitOpError("affine.prefetch affine map num results must equal"
+                            " memref rank");
+    if (map.getNumInputs() + 1 != op.getNumOperands())
+      return op.emitOpError("too few operands");
+  } else {
+    if (op.getNumOperands() != 1)
+      return op.emitOpError("too few operands");
+  }
+
+  for (auto *idx : op.getMapOperands()) {
+    if (!isValidAffineIndexOperand(idx))
+      return op.emitOpError("index must be a dimension or symbol identifier");
+  }
+  return success();
+}
+
+void AffinePrefetchOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  // prefetch(memrefcast) -> prefetch
+  results.insert<SimplifyAffineOp<AffinePrefetchOp>>(context);
+}
+
+LogicalResult AffinePrefetchOp::fold(ArrayRef<Attribute> cstOperands,
+                                     SmallVectorImpl<OpFoldResult> &results) {
+  /// prefetch(memrefcast) -> prefetch
+  return foldMemRefCast(*this);
 }
 
 //===----------------------------------------------------------------------===//

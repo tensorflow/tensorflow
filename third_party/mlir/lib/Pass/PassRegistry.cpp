@@ -27,8 +27,7 @@ using namespace mlir;
 using namespace detail;
 
 /// Static mapping of all of the registered passes.
-static llvm::ManagedStatic<llvm::DenseMap<const PassID *, PassInfo>>
-    passRegistry;
+static llvm::ManagedStatic<DenseMap<const PassID *, PassInfo>> passRegistry;
 
 /// Static mapping of all of the registered pass pipelines.
 static llvm::ManagedStatic<llvm::StringMap<PassPipelineInfo>>
@@ -138,7 +137,7 @@ private:
   /// A functor used to emit errors found during pipeline handling. The first
   /// parameter corresponds to the raw location within the pipeline string. This
   /// should always return failure.
-  using ErrorHandlerT = function_ref<LogicalResult(const char *, llvm::Twine)>;
+  using ErrorHandlerT = function_ref<LogicalResult(const char *, Twine)>;
 
   /// A struct to capture parsed pass pipeline names.
   ///
@@ -189,7 +188,7 @@ LogicalResult TextualPipeline::initialize(StringRef text,
   pipelineMgr.AddNewSourceBuffer(llvm::MemoryBuffer::getMemBuffer(
                                      text, "MLIR Textual PassPipeline Parser"),
                                  llvm::SMLoc());
-  auto errorHandler = [&](const char *rawLoc, llvm::Twine msg) {
+  auto errorHandler = [&](const char *rawLoc, Twine msg) {
     pipelineMgr.PrintMessage(errorStream, llvm::SMLoc::getFromPointer(rawLoc),
                              llvm::SourceMgr::DK_Error, msg);
     return failure();
@@ -401,7 +400,7 @@ namespace {
 
 /// The name for the command line option used for parsing the textual pass
 /// pipeline.
-static constexpr llvm::StringLiteral passPipelineArg = "pass-pipeline";
+static constexpr StringLiteral passPipelineArg = "pass-pipeline";
 
 /// Adds command line option for each registered pass or pass pipeline, as well
 /// as textual pass pipelines.

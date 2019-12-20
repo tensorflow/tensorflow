@@ -44,7 +44,7 @@ std::unique_ptr<Pass> createCSEPass();
 /// Creates a pass to vectorize loops, operations and data types using a
 /// target-independent, n-D super-vector abstraction.
 std::unique_ptr<OpPassBase<FuncOp>>
-createVectorizePass(llvm::ArrayRef<int64_t> virtualVectorSize);
+createVectorizePass(ArrayRef<int64_t> virtualVectorSize);
 
 /// Creates a pass to allow independent testing of vectorizer functionality with
 /// FileCheck.
@@ -52,7 +52,7 @@ std::unique_ptr<OpPassBase<FuncOp>> createVectorizerTestPass();
 
 /// Creates a pass to lower super-vectors to target-dependent HW vectors.
 std::unique_ptr<OpPassBase<FuncOp>>
-createMaterializeVectorsPass(llvm::ArrayRef<int64_t> vectorSize);
+createMaterializeVectorsPass(ArrayRef<int64_t> vectorSize);
 
 /// Creates a loop unrolling pass with the provided parameters.
 /// 'getUnrollFactor' is a function callback for clients to supply a function

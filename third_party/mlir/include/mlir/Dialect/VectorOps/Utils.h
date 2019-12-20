@@ -46,15 +46,15 @@ class VectorType;
 ///   - shapeRatio({3, 4, 5, 8}, {2, 5, 2}) returns {3, 2, 1, 4}
 ///   - shapeRatio({3, 4, 4, 8}, {2, 5, 2}) returns None
 ///   - shapeRatio({1, 2, 10, 32}, {2, 5, 2}) returns {1, 1, 2, 16}
-llvm::Optional<llvm::SmallVector<int64_t, 4>>
-shapeRatio(ArrayRef<int64_t> superShape, ArrayRef<int64_t> subShape);
+Optional<SmallVector<int64_t, 4>> shapeRatio(ArrayRef<int64_t> superShape,
+                                             ArrayRef<int64_t> subShape);
 
 /// Computes and returns the multi-dimensional ratio of the shapes of
 /// `superVector` to `subVector`. If integral division is not possible, returns
 /// None.
 /// Assumes and enforces that the VectorTypes have the same elemental type.
-llvm::Optional<llvm::SmallVector<int64_t, 4>>
-shapeRatio(VectorType superVectorType, VectorType subVectorType);
+Optional<SmallVector<int64_t, 4>> shapeRatio(VectorType superVectorType,
+                                             VectorType subVectorType);
 
 /// Constructs a permutation map of invariant memref indices to vector
 /// dimension.
@@ -121,9 +121,9 @@ shapeRatio(VectorType superVectorType, VectorType subVectorType);
 /// Meaning that vector.transfer_read will be responsible of reading the slice
 /// `%arg0[%c0, %c0]` into vector<128xf32> which needs a 1-D vector broadcast.
 ///
-AffineMap makePermutationMap(
-    Operation *op, ArrayRef<Value *> indices,
-    const llvm::DenseMap<Operation *, unsigned> &loopToVectorDim);
+AffineMap
+makePermutationMap(Operation *op, ArrayRef<Value *> indices,
+                   const DenseMap<Operation *, unsigned> &loopToVectorDim);
 
 namespace matcher {
 

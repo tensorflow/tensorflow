@@ -37,13 +37,13 @@ void viewGraph(Region &region, const Twine &name, bool shortNames = false,
                const Twine &title = "",
                llvm::GraphProgram::Name program = llvm::GraphProgram::DOT);
 
-llvm::raw_ostream &writeGraph(llvm::raw_ostream &os, Region &region,
-                              bool shortNames = false, const Twine &title = "");
+raw_ostream &writeGraph(raw_ostream &os, Region &region,
+                        bool shortNames = false, const Twine &title = "");
 
 /// Creates a pass to print CFG graphs.
 std::unique_ptr<mlir::OpPassBase<mlir::FuncOp>>
-createPrintCFGGraphPass(llvm::raw_ostream &os = llvm::errs(),
-                        bool shortNames = false, const llvm::Twine &title = "");
+createPrintCFGGraphPass(raw_ostream &os = llvm::errs(), bool shortNames = false,
+                        const Twine &title = "");
 
 } // end namespace mlir
 

@@ -20,8 +20,24 @@ limitations under the License.
 
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/Operation.h"  // TF:local_config_mlir
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
+
+// Creates a file to use for dumping and returns success if a file could be
+// created. The opened file is placed in 'os' and the path of the file used is
+// placed in 'filepath'.
+//
+// If the TF_DUMP_GRAPH_PREFIX environment variable is "-", then the LOG(INFO)
+// macro is used instead.
+//
+// This will create a file name via prefixing `name` with the value of the
+// TF_DUMP_GRAPH_PREFIX environment variable if `dirname` is empty and
+// suffixing `name` with ".mlir".
+Status CreateFileForDumping(llvm::StringRef name,
+                            std::unique_ptr<llvm::raw_ostream>* os,
+                            std::string* filepath,
+                            llvm::StringRef dirname = "");
 
 // Dumps MLIR operation to a file and returns the file name used.
 //

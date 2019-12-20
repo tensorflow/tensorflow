@@ -24,6 +24,7 @@
 #ifndef MLIR_TRANSFORMS_LOOP_FUSION_UTILS_H
 #define MLIR_TRANSFORMS_LOOP_FUSION_UTILS_H
 
+#include "mlir/Support/LLVM.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
 
@@ -64,11 +65,11 @@ FusionResult canFuseLoops(AffineForOp srcForOp, AffineForOp dstForOp,
 /// loop body.
 struct LoopNestStats {
   /// Map from AffineForOp to immediate child AffineForOps in its loop body.
-  llvm::DenseMap<Operation *, llvm::SmallVector<AffineForOp, 2>> loopMap;
+  DenseMap<Operation *, SmallVector<AffineForOp, 2>> loopMap;
   /// Map from AffineForOp to count of operations in its loop body.
-  llvm::DenseMap<Operation *, uint64_t> opCountMap;
+  DenseMap<Operation *, uint64_t> opCountMap;
   /// Map from AffineForOp to its constant trip count.
-  llvm::DenseMap<Operation *, uint64_t> tripCountMap;
+  DenseMap<Operation *, uint64_t> tripCountMap;
 };
 
 /// Collect loop nest statistics (eg. loop trip count and operation count)

@@ -56,7 +56,7 @@ def HLO_Tensor : TensorOf<[AnyFloat, AnyInteger, AnyComplex]>;
 
 def HLO_ComplexTensor : TensorOf<[AnyComplex]>;
 
-def HLO_Tuple : NestedTupleOf<[HLO_Tensor]>;
+def HLO_Tuple : NestedTupleOf<[HLO_Tensor, HLO_Token]>;
 
 def HLO_TensorOrTuple : AnyTypeOf<[HLO_Tensor, HLO_Tuple]>;
 
@@ -325,6 +325,56 @@ def HLO_OrOp: HLO_BinaryLogicalElementwiseOp<"or">, BASE_HLO_OrOp;
 def HLO_XorOp : HLO_BinaryLogicalElementwiseOp<"xor">, BASE_HLO_XorOp;
 
 //===----------------------------------------------------------------------===//
+// XLA communication op definitions.
+//===----------------------------------------------------------------------===//
+
+// InfeedOp corresponds to 'InfeedWithToken' xla client API and not 'Infeed'.
+// InfeedWithToken allows ordering of infeed HLO instructions using tokens.
+def HLO_InfeedOp : HLO_Op<"infeed", []> {
+
+  string summary = "Infeed operator";
+
+  string description = [{
+    Reads a single data item from the implicit Infeed streaming interface of
+    the device, interpreting the data as the given shape, and returns a XlaOp
+    of the data. Multiple Infeed operations are allowed in a computation, but
+    there must be a total order among the Infeed operations.
+
+    See https://www.tensorflow.org/xla/operation_semantics#infeed.
+  }];
+
+  let arguments = (ins
+    HLO_Token:$token,
+    DefaultValuedAttr<StrAttr, "">:$infeed_config
+  );
+  let results = (outs HLO_Tuple);
+  let hasCustomHLOConverter = 1;
+}
+
+// OutfeedOp corresponds to 'OutfeedWithToken' xla client API and not 'Outfeed'.
+// OutfeedWithToken allows ordering of outfeed HLO instructions using tokens.
+def HLO_OutfeedOp : HLO_Op<"outfeed", []> {
+
+  string summary = "Outfeed operator";
+
+  string description = [{
+    Generates outgoing data transfers for the given data. It takes data and a
+    token type operand and produces a token type value. Tokens are used for
+    ordering side-effecting operations.
+
+    See https://www.tensorflow.org/xla/operation_semantics#outfeed.
+  }];
+
+  let arguments = (ins
+    HLO_TensorOrTuple:$operand,
+    HLO_Token:$token,
+    DefaultValuedAttr<StrAttr, "">:$outfeed_config
+  );
+  let results = (outs HLO_Token);
+  let hasCustomHLOConverter = 1;
+}
+
+//===----------------------------------------------------------------------===//
 // XLA control flow op definitions.
 //===----------------------------------------------------------------------===//
 
@@ -572,8 +622,8 @@ def HLO_BatchNormGradOp : HLO_Op<"batch_norm_grad", [NoSideEffect]>,
   let results = (outs HLO_Tuple);
 }
 
-def HLO_BatchNormInferenceOp : HLO_Op<"batch_norm_inference", [NoSideEffect]>,
-    BASE_HLO_BatchNormInferenceOp {
+def HLO_BatchNormInferenceOp : HLO_Op<"batch_norm_inference",
+    [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_BatchNormInferenceOp {
 
   let arguments = (ins
     HLO_Tensor:$operand,
@@ -796,9 +846,6 @@ def HLO_FftOp: HLO_Op<"fft", [NoSideEffect]>, BASE_HLO_FftOp {
   );
 
   let results = (outs HLO_Tensor);
-
-  // TODO(b/129422361) Attributes are not supported by the codegen.
-  let hasCustomHLOConverter = 1;
 }
 
 def GatherDimensionNumbers : StructAttr<"GatherDimensionNumbers", HLO_Dialect,

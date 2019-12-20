@@ -22,6 +22,7 @@
 
 #include "mlir/Transforms/Utils.h"
 
+#include "mlir/ADT/TypeSwitch.h"
 #include "mlir/Analysis/AffineAnalysis.h"
 #include "mlir/Analysis/AffineStructures.h"
 #include "mlir/Analysis/Dominance.h"
@@ -47,14 +48,10 @@ static bool isMemRefDereferencingOp(Operation &op) {
 
 /// Return the AffineMapAttr associated with memory 'op' on 'memref'.
 static NamedAttribute getAffineMapAttrForMemRef(Operation *op, Value *memref) {
-  if (auto loadOp = dyn_cast<AffineLoadOp>(op))
-    return loadOp.getAffineMapAttrForMemRef(memref);
-  else if (auto storeOp = dyn_cast<AffineStoreOp>(op))
-    return storeOp.getAffineMapAttrForMemRef(memref);
-  else if (auto dmaStart = dyn_cast<AffineDmaStartOp>(op))
-    return dmaStart.getAffineMapAttrForMemRef(memref);
-  assert(isa<AffineDmaWaitOp>(op));
-  return cast<AffineDmaWaitOp>(op).getAffineMapAttrForMemRef(memref);
+  return TypeSwitch<Operation *, NamedAttribute>(op)
+      .Case<AffineDmaStartOp, AffineLoadOp, AffinePrefetchOp, AffineStoreOp,
+            AffineDmaWaitOp>(
+          [=](auto op) { return op.getAffineMapAttrForMemRef(memref); });
 }
 
 // Perform the replacement in `op`.

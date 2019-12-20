@@ -84,8 +84,7 @@ private:
   static Type unwrap(Value *value);
 };
 
-using OperandElementTypeRange =
-    llvm::iterator_range<OperandElementTypeIterator>;
+using OperandElementTypeRange = iterator_range<OperandElementTypeIterator>;
 
 // An iterator for the tensor element types of an op's results of shaped types.
 class ResultElementTypeIterator final
@@ -102,7 +101,7 @@ private:
   static Type unwrap(Value *value);
 };
 
-using ResultElementTypeRange = llvm::iterator_range<ResultElementTypeIterator>;
+using ResultElementTypeRange = iterator_range<ResultElementTypeIterator>;
 
 } // end namespace mlir
 

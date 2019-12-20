@@ -1033,9 +1033,7 @@ static LogicalResult verify(GlobalOp op) {
   if (!llvm::PointerType::isValidElementType(op.getType().getUnderlyingType()))
     return op.emitOpError(
         "expects type to be a valid element type for an LLVM pointer");
-  if (op.getParentOp() &&
-      !(op.getParentOp()->hasTrait<OpTrait::SymbolTable>() &&
-        op.getParentOp()->hasTrait<OpTrait::IsIsolatedFromAbove>()))
+  if (op.getParentOp() && !satisfiesLLVMModule(op.getParentOp()))
     return op.emitOpError("must appear at the module level");
 
   if (auto strAttr = op.getValueOrNull().dyn_cast_or_null<StringAttr>()) {
@@ -1117,8 +1115,22 @@ static ParseResult parseShuffleVectorOp(OpAsmParser &parser,
 }
 
 //===----------------------------------------------------------------------===//
-// Builder, printer and verifier for LLVM::LLVMFuncOp.
+// Implementations for LLVM::LLVMFuncOp.
 //===----------------------------------------------------------------------===//
+
+// Add the entry block to the function.
+Block *LLVMFuncOp::addEntryBlock() {
+  assert(empty() && "function already has an entry block");
+  assert(!isVarArg() && "unimplemented: non-external variadic functions");
+
+  auto *entry = new Block;
+  push_back(entry);
+
+  LLVMType type = getType();
+  for (unsigned i = 0, e = type.getFunctionNumParams(); i < e; ++i)
+    entry->addArgument(type.getFunctionParamType(i));
+  return entry;
+}
 
 void LLVMFuncOp::build(Builder *builder, OperationState &result, StringRef name,
                        LLVMType type, LLVM::Linkage linkage,
@@ -1229,7 +1241,7 @@ static ParseResult parseLLVMFuncOp(OpAsmParser &parser,
 
   auto *body = result.addRegion();
   return parser.parseOptionalRegion(
-      *body, entryArgs, entryArgs.empty() ? llvm::ArrayRef<Type>() : argTypes);
+      *body, entryArgs, entryArgs.empty() ? ArrayRef<Type>() : argTypes);
 }
 
 // Print the LLVMFuncOp. Collects argument and result types and passes them to
@@ -1501,7 +1513,7 @@ LLVMType LLVMType::get(MLIRContext *context, llvm::Type *llvmType) {
 /// Get an LLVMType with an llvm type that may cause changes to the underlying
 /// llvm context when constructed.
 LLVMType LLVMType::getLocked(LLVMDialect *dialect,
-                             llvm::function_ref<llvm::Type *()> typeBuilder) {
+                             function_ref<llvm::Type *()> typeBuilder) {
   // Lock access to the llvm context and build the type.
   llvm::sys::SmartScopedLock<true> lock(dialect->impl->mutex);
   return get(dialect->getContext(), typeBuilder());

@@ -101,13 +101,13 @@ def LinalgLibraryInterface : OpInterface<"LinalgOp"> {
         Query the index of the given input value, or `None` if the value is not
         an input.
       }],
-      "llvm::Optional<unsigned>", "getIndexOfInput", (ins "Value *":$view)
+      "Optional<unsigned>", "getIndexOfInput", (ins "Value *":$view)
     >,
     InterfaceMethod<[{
         Query the index of the given view value, or `None` if the value is not
         an view.
       }],
-      "llvm::Optional<unsigned>", "getIndexOfOutput", (ins "Value *":$view)
+      "Optional<unsigned>", "getIndexOfOutput", (ins "Value *":$view)
     >,
     InterfaceMethod<[{
         Query the type of the input view at the given index.

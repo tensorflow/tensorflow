@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_PYTHON_DEVICE_STATE_H_
-#define TENSORFLOW_COMPILER_XLA_PYTHON_DEVICE_STATE_H_
+#ifndef TENSORFLOW_COMPILER_XLA_PYTHON_LOCAL_DEVICE_STATE_H_
+#define TENSORFLOW_COMPILER_XLA_PYTHON_LOCAL_DEVICE_STATE_H_
 
 #include <memory>
 #include <vector>
@@ -29,9 +29,9 @@ limitations under the License.
 namespace xla {
 
 // Class that encapsulates state relating to a device (e.g., a GPU) on which we
-// can perform computation and transfers. DeviceState objects only exist for
-// devices local to this host.
-class DeviceState {
+// can perform computation and transfers. LocalDeviceState objects only exist
+// for devices local to this host.
+class LocalDeviceState {
  public:
   // If synchronous_deallocation is true, the host must not free buffers until
   // compute/transfers that use those buffers have completed. For example, this
@@ -40,9 +40,12 @@ class DeviceState {
   //
   // If asynchronous is false, the host will synchronize to the device after
   // each execution or transfer. This is intended for debugging only.
-  DeviceState(se::StreamExecutor* executor, bool synchronous_deallocation,
-              bool asynchronous, bool allow_event_reuse);
-  virtual ~DeviceState();
+  LocalDeviceState(se::StreamExecutor* executor, bool synchronous_deallocation,
+                   bool asynchronous, bool allow_event_reuse);
+  virtual ~LocalDeviceState();
+
+  // StreamExecutor (local) device ordinal.
+  int device_ordinal() const { return executor_->device_ordinal(); }
 
   bool synchronous_deallocation() const { return synchronous_deallocation_; }
 
@@ -52,9 +55,10 @@ class DeviceState {
   se::Stream* host_to_device_stream() const {
     return host_to_device_stream_.get();
   }
-  se::Stream* device_to_host_stream() const {
-    return device_to_host_stream_.get();
-  }
+
+  // Returns a device to host stream. Allocates streams in a round-robin fashion
+  // amongst the available streams.
+  se::Stream* GetDeviceToHostStream();
 
   // Returns a device to device stream. Allocates streams in a round-robin
   // fashion amongst the available streams.
@@ -104,15 +108,18 @@ class DeviceState {
   // stream by the host ahead of the device.
   Semaphore compute_semaphore_;
 
+  se::StreamExecutor* executor_;
   std::unique_ptr<se::Stream> compute_stream_;
   std::unique_ptr<se::Stream> host_to_device_stream_;
-  std::unique_ptr<se::Stream> device_to_host_stream_;
+  std::vector<std::unique_ptr<se::Stream>> device_to_host_streams_;
   std::vector<std::unique_ptr<se::Stream>> device_to_device_streams_;
 
-  // Number of device-to-device streams to create in the multistream case.
+  // Number of device-to-host and device-to-device streams.
+  static constexpr int kNumDeviceToHostStreams = 4;
   static constexpr int kNumDeviceToDeviceStreams = 4;
 
   absl::Mutex mu_;
+  int next_device_to_host_stream_ GUARDED_BY(mu_) = 0;
   int next_device_to_device_stream_ GUARDED_BY(mu_) = 0;
 
   // Callback stream is used for running short host-side callbacks after device
@@ -132,4 +139,4 @@ class DeviceState {
 
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_PYTHON_DEVICE_STATE_H_
+#endif  // TENSORFLOW_COMPILER_XLA_PYTHON_LOCAL_DEVICE_STATE_H_

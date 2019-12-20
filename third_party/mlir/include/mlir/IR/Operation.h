@@ -132,7 +132,7 @@ public:
   template <typename OpTy> OpTy getParentOfType() {
     auto *op = this;
     while ((op = op->getParentOp()))
-      if (auto parentOp = llvm::dyn_cast<OpTy>(op))
+      if (auto parentOp = dyn_cast<OpTy>(op))
         return parentOp;
     return OpTy();
   }
@@ -339,7 +339,7 @@ public:
     // Allow access to the constructor.
     friend Operation;
   };
-  using dialect_attr_range = llvm::iterator_range<dialect_attr_iterator>;
+  using dialect_attr_range = iterator_range<dialect_attr_iterator>;
 
   /// Return a range corresponding to the dialect attributes for this operation.
   dialect_attr_range getDialectAttrs() {

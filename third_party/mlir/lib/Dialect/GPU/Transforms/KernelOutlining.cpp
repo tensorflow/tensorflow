@@ -69,7 +69,7 @@ static gpu::LaunchFuncOp inlineBeneficiaryOps(gpu::GPUFuncOp kernelFunc,
                                               gpu::LaunchFuncOp launch) {
   OpBuilder kernelBuilder(kernelFunc.getBody());
   auto &firstBlock = kernelFunc.getBody().front();
-  llvm::SmallVector<Value *, 8> newLaunchArgs;
+  SmallVector<Value *, 8> newLaunchArgs;
   BlockAndValueMapping map;
   for (int i = 0, e = launch.getNumKernelOperands(); i < e; ++i) {
     map.map(launch.getKernelOperand(i), kernelFunc.getArgument(i));
@@ -195,7 +195,7 @@ private:
     SymbolTable symbolTable(kernelModule);
     symbolTable.insert(kernelFunc);
 
-    llvm::SmallVector<Operation *, 8> symbolDefWorklist = {kernelFunc};
+    SmallVector<Operation *, 8> symbolDefWorklist = {kernelFunc};
     while (!symbolDefWorklist.empty()) {
       if (Optional<SymbolTable::UseRange> symbolUses =
               SymbolTable::getSymbolUses(symbolDefWorklist.pop_back_val())) {

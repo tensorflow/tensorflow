@@ -525,6 +525,7 @@ cc_library(
         "lib/Support/ToolUtilities.cpp",
     ],
     hdrs = [
+        "include/mlir/ADT/TypeSwitch.h",
         "include/mlir/Support/DebugStringHelper.h",
         "include/mlir/Support/FileUtilities.h",
         "include/mlir/Support/Functional.h",
@@ -2152,6 +2153,7 @@ filegroup(
     srcs = [
         "include/mlir/Dialect/Linalg/IR/LinalgBase.td",
         "include/mlir/Dialect/Linalg/IR/LinalgOps.td",
+        "include/mlir/Dialect/Linalg/IR/LinalgStructuredOps.td",
         ":AffineOpsTdFiles",
         ":OpBaseTdFiles",
     ],
@@ -2178,40 +2180,64 @@ gentbl(
 )
 
 filegroup(
-    name = "LinalgLibraryOpsTdFiles",
+    name = "LinalgStructuredOpsTdFiles",
     srcs = [
         "include/mlir/Dialect/Linalg/IR/LinalgBase.td",
-        "include/mlir/Dialect/Linalg/IR/LinalgLibraryOps.td",
+        "include/mlir/Dialect/Linalg/IR/LinalgStructuredOps.td",
         ":AffineOpsTdFiles",
         ":OpBaseTdFiles",
     ],
 )
 
 gentbl(
-    name = "LinalgLibraryOpsIncGen",
+    name = "LinalgStructuredOpsIncGen",
     strip_include_prefix = "include",
     tbl_outs = [
         (
             "-gen-op-decls",
-            "include/mlir/Dialect/Linalg/IR/LinalgLibraryOps.h.inc",
+            "include/mlir/Dialect/Linalg/IR/LinalgStructuredOps.h.inc",
         ),
         (
             "-gen-op-defs",
-            "include/mlir/Dialect/Linalg/IR/LinalgLibraryOps.cpp.inc",
+            "include/mlir/Dialect/Linalg/IR/LinalgStructuredOps.cpp.inc",
         ),
         (
             "-gen-op-interface-decls",
-            "include/mlir/Dialect/Linalg/IR/LinalgLibraryOpInterfaces.h.inc",
+            "include/mlir/Dialect/Linalg/IR/LinalgStructuredOpsInterfaces.h.inc",
         ),
         (
             "-gen-op-interface-defs",
-            "include/mlir/Dialect/Linalg/IR/LinalgLibraryOpInterfaces.cpp.inc",
+            "include/mlir/Dialect/Linalg/IR/LinalgStructuredOpsInterfaces.cpp.inc",
         ),
     ],
     tblgen = ":mlir-tblgen",
-    td_file = "include/mlir/Dialect/Linalg/IR/LinalgLibraryOps.td",
+    td_file = "include/mlir/Dialect/Linalg/IR/LinalgStructuredOps.td",
     td_srcs = [
-        ":LinalgLibraryOpsTdFiles",
+        ":LinalgStructuredOpsTdFiles",
+    ],
+)
+
+filegroup(
+    name = "LinalgDocTdFiles",
+    srcs = [
+        "include/mlir/Dialect/Linalg/IR/LinalgDoc.td",
+        ":LinalgOpsTdFiles",
+    ],
+)
+
+gentbl(
+    name = "LinalgDocIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-op-doc",
+            "g3doc/Dialects/Linalg/LinalgOps.md",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/Linalg/IR/LinalgDoc.td",
+    td_srcs = [
+        ":LinalgDocTdFiles",
     ],
 )
 
@@ -2220,8 +2246,8 @@ filegroup(
     srcs = [
         "include/mlir/Dialect/Linalg/Transforms/LinalgTransformPatterns.td",
         ":AffineOpsTdFiles",
-        ":LinalgLibraryOpsTdFiles",
         ":LinalgOpsTdFiles",
+        ":LinalgStructuredOpsTdFiles",
         ":OpBaseTdFiles",
     ],
 )
@@ -2307,8 +2333,8 @@ cc_library(
         ":IR",
         ":LLVMDialect",
         ":LLVMTransforms",
-        ":LinalgLibraryOpsIncGen",
         ":LinalgOpsIncGen",
+        ":LinalgStructuredOpsIncGen",
         ":LinalgTransformPatternsIncGen",
         ":LoopOps",
         ":Parser",
@@ -2361,6 +2387,7 @@ cc_library(
         ":IR",
         ":QuantOps",
         ":StandardOps",
+        ":Support",
         "@llvm//:support",
     ],
 )
@@ -2425,8 +2452,8 @@ filegroup(
     srcs = [
         "include/mlir/Dialect/VectorOps/VectorTransformPatterns.td",
         ":AffineOpsTdFiles",
-        ":LinalgLibraryOpsTdFiles",
         ":LinalgOpsTdFiles",
+        ":LinalgStructuredOpsTdFiles",
         ":OpBaseTdFiles",
         ":StdOpsTdFiles",
         ":VectorOpsTdFiles",

@@ -23,7 +23,7 @@
 #define LINALG_TRANSFORMS
 
 include "mlir/Dialect/Linalg/IR/LinalgOps.td"
-include "mlir/Dialect/Linalg/IR/LinalgLibraryOps.td"
+include "mlir/Dialect/Linalg/IR/LinalgStructuredOps.td"
 include "mlir/Dialect/AffineOps/AffineOps.td"
 
 def HasNoLinalgTransformMarker : CPred<[{

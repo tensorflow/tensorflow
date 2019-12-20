@@ -390,7 +390,7 @@ class ApiCompatibilityTest(test.TestCase):
     # Also check that V1 API has contrib
     self.assertTrue(
         api_version == 2 or
-        'tensorflow.python.util.lazy_loader.LazyLoader'
+        'LazyLoader'
         in str(type(tf.contrib)))
     # Check that V2 API does not have contrib
     self.assertTrue(api_version == 1 or not hasattr(tf, 'contrib'))

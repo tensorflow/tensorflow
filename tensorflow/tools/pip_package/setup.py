@@ -73,6 +73,10 @@ REQUIRED_PACKAGES = [
     # functools comes with python3, need to install the backport for python2
     'functools32 >= 3.2.3;python_version<"3"',
     'six >= 1.12.0',
+    # scipy < 1.4.1 causes segfaults due to pybind11
+    # Latest scipy pip for py2 is scipy==1.2.2
+    'scipy == 1.4.1;python_version>="3"',
+    'scipy == 1.2.2;python_version<"3"',
 ]
 
 if sys.byteorder == 'little':
@@ -92,7 +96,7 @@ if '--project_name' in sys.argv:
 if 'tf_nightly' in project_name:
   for i, pkg in enumerate(REQUIRED_PACKAGES):
     if 'tensorboard' in pkg:
-      REQUIRED_PACKAGES[i] = 'tb-nightly >= 2.1.0a0, < 2.2.0a0'
+      REQUIRED_PACKAGES[i] = 'tb-nightly >= 2.2.0a0, < 2.3.0a0'
     elif 'tensorflow_estimator' in pkg and '2.0' in project_name:
       REQUIRED_PACKAGES[i] = 'tensorflow-estimator-2.0-preview'
     elif 'tensorflow_estimator' in pkg:

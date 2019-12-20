@@ -33,7 +33,6 @@ import six
 
 from tensorflow.python.autograph.pyct import origin_info
 from tensorflow.python.autograph.pyct import parser
-from tensorflow.python.autograph.utils import ag_logging
 
 
 def load_source(source, delete_on_exit):
@@ -49,7 +48,7 @@ def load_source(source, delete_on_exit):
     module_name = os.path.basename(f.name[:-3])
     f.write(source)
 
-  if delete_on_exit and ag_logging.get_verbosity() < 3:
+  if delete_on_exit:
     atexit.register(lambda: os.remove(f.name))
   return imp.load_source(module_name, f.name), f.name
 

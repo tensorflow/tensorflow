@@ -13,18 +13,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_PYTHON_TPU_DRIVER_C_API_H_
-#define TENSORFLOW_COMPILER_XLA_PYTHON_TPU_DRIVER_C_API_H_
+#ifndef TENSORFLOW_CORE_PROFILER_CONVERT_OP_METRICS_DB_COMBINER_H_
+#define TENSORFLOW_CORE_PROFILER_CONVERT_OP_METRICS_DB_COMBINER_H_
 
-#define TPUDRIVER_CAPI_EXPORT __attribute__((visibility("default")))
+#include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
+#include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
 
-extern "C" {
+namespace tensorflow {
+namespace profiler {
 
-TPUDRIVER_CAPI_EXPORT extern void TpuDriver_Initialize();
+// Helper to combine op metrics databases.
+class OpMetricsDbCombiner : public OpMetricsDbBuilder {
+ public:
+  explicit OpMetricsDbCombiner(OpMetricsDb* dst) : OpMetricsDbBuilder(dst) {}
 
-TPUDRIVER_CAPI_EXPORT extern void TpuDriver_Open(const char* worker);
+  void Combine(const OpMetricsDb& src);
+};
 
-TPUDRIVER_CAPI_EXPORT extern const char* TpuDriver_Version(void);
-}
+}  // namespace profiler
+}  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMPILER_XLA_PYTHON_TPU_DRIVER_C_API_H_
+#endif  // TENSORFLOW_CORE_PROFILER_CONVERT_OP_METRICS_DB_COMBINER_H_

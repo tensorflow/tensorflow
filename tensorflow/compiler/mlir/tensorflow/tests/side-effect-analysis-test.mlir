@@ -737,3 +737,43 @@ func @while_cond(
   // expected-remark@above {{ID: 6}}
   // expected-remark@above {{Predecessors: {5}}}
 }
+
+// -----
+
+// Tests that the pass tracks control dependencies based on TF op registry
+// statefulness flag, for ops not yet defined in ODS.
+
+// CHECK-LABEL: func @tf_registry_ops
+func @tf_registry_ops(
+  // expected-remark@above {{ID: 8}}
+  %arg0: tensor<!tf.string>, %arg1: tensor<!tf.string>) {
+  tf_executor.graph {
+  // expected-remark@above {{ID: 6}}
+  // expected-remark@above {{Successors: {7}}}
+    %island = tf_executor.island {
+    // expected-remark@above {{ID: 4}}
+    // expected-remark@above {{Successors: {5}}}
+      "tf.PrintV2"(%arg0) { output_stream = "stderr", end = "\n" }
+      // expected-remark@above {{ID: 0}}
+      // expected-remark@above {{Successors: {2}}}
+        : (tensor<!tf.string>) -> ()
+      %merge_summary = "tf.MergeSummary"(%arg0, %arg1) { N = 2 }
+      // expected-remark@above {{ID: 1}}
+        : (tensor<!tf.string>, tensor<!tf.string>) -> (tensor<!tf.string>)
+      "tf.PrintV2"(%merge_summary) { output_stream = "stderr", end = "\n" }
+      // expected-remark@above {{ID: 2}}
+      // expected-remark@above {{Predecessors: {0}}}
+      // expected-remark@above {{Successors: {3}}}
+        : (tensor<!tf.string>) -> ()
+      tf_executor.yield
+      // expected-remark@above {{ID: 3}}
+      // expected-remark@above {{Predecessors: {2}}}
+    }
+    tf_executor.fetch %island : !tf_executor.control
+    // expected-remark@above {{ID: 5}}
+    // expected-remark@above {{Predecessors: {4}}}
+  }
+  return
+  // expected-remark@above {{ID: 7}}
+  // expected-remark@above {{Predecessors: {6}}}
+}

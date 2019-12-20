@@ -83,7 +83,7 @@ public:
   }
   /// Return the index of `view` in the list of input views if found, llvm::None
   /// otherwise.
-  llvm::Optional<unsigned> getIndexOfInput(Value *view) {
+  Optional<unsigned> getIndexOfInput(Value *view) {
     auto it = llvm::find(getInputs(), view);
     if (it != getInputs().end())
       return it - getInputs().begin();
@@ -104,7 +104,7 @@ public:
   }
   /// Return the index of `view` in the list of output views if found,
   /// llvm::None otherwise.
-  llvm::Optional<unsigned> getIndexOfOutput(Value *view) {
+  Optional<unsigned> getIndexOfOutput(Value *view) {
     auto it = llvm::find(getOutputs(), view);
     if (it != getOutputs().end())
       return it - getOutputs().begin();

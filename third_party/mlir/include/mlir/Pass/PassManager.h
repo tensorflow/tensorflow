@@ -62,7 +62,7 @@ public:
       llvm::pointee_iterator<std::vector<std::unique_ptr<Pass>>::iterator>;
   pass_iterator begin();
   pass_iterator end();
-  llvm::iterator_range<pass_iterator> getPasses() { return {begin(), end()}; }
+  iterator_range<pass_iterator> getPasses() { return {begin(), end()}; }
 
   /// Run the held passes over the given operation.
   LogicalResult run(Operation *op, AnalysisManager am);

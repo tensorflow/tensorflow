@@ -50,7 +50,7 @@ public:
   static FuncOp create(Location location, StringRef name, FunctionType type,
                        ArrayRef<NamedAttribute> attrs = {});
   static FuncOp create(Location location, StringRef name, FunctionType type,
-                       llvm::iterator_range<dialect_attr_iterator> attrs);
+                       iterator_range<dialect_attr_iterator> attrs);
   static FuncOp create(Location location, StringRef name, FunctionType type,
                        ArrayRef<NamedAttribute> attrs,
                        ArrayRef<NamedAttributeList> argAttrs);

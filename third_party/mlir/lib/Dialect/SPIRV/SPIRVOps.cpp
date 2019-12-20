@@ -80,7 +80,7 @@ static LogicalResult extractValueFromConstOp(Operation *op,
 template <typename Ty>
 static ArrayAttr
 getStrArrayAttrForEnumList(Builder &builder, ArrayRef<Ty> enumValues,
-                           llvm::function_ref<StringRef(Ty)> stringifyFn) {
+                           function_ref<StringRef(Ty)> stringifyFn) {
   if (enumValues.empty()) {
     return nullptr;
   }
@@ -399,7 +399,7 @@ static unsigned getBitWidth(Type type) {
 /// emits errors with the given loc on failure.
 static Type
 getElementType(Type type, ArrayRef<int32_t> indices,
-               llvm::function_ref<InFlightDiagnostic(StringRef)> emitErrorFn) {
+               function_ref<InFlightDiagnostic(StringRef)> emitErrorFn) {
   if (indices.empty()) {
     emitErrorFn("expected at least one index for spv.CompositeExtract");
     return nullptr;
@@ -423,7 +423,7 @@ getElementType(Type type, ArrayRef<int32_t> indices,
 
 static Type
 getElementType(Type type, Attribute indices,
-               llvm::function_ref<InFlightDiagnostic(StringRef)> emitErrorFn) {
+               function_ref<InFlightDiagnostic(StringRef)> emitErrorFn) {
   auto indicesArrayAttr = indices.dyn_cast<ArrayAttr>();
   if (!indicesArrayAttr) {
     emitErrorFn("expected a 32-bit integer array attribute for 'indices'");
@@ -2317,7 +2317,7 @@ static LogicalResult verify(spirv::ModuleOp moduleOp) {
   auto &op = *moduleOp.getOperation();
   auto *dialect = op.getDialect();
   auto &body = op.getRegion(0).front();
-  llvm::DenseMap<std::pair<FuncOp, spirv::ExecutionModel>, spirv::EntryPointOp>
+  DenseMap<std::pair<FuncOp, spirv::ExecutionModel>, spirv::EntryPointOp>
       entryPoints;
   SymbolTable table(moduleOp);
 

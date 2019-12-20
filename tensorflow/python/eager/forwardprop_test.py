@@ -24,7 +24,7 @@ import weakref
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import pywrap_tfe
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
@@ -236,13 +236,13 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
       x = constant_op.constant(1.)
       with forwardprop.ForwardAccumulator(x, 2.) as acc:
         y = x + x
-        pywrap_tensorflow.TFE_Py_RegisterJVPFunction(
+        pywrap_tfe.TFE_Py_RegisterJVPFunction(
             lambda *args, **kwargs: [constant_op.constant(-15.)])
         z = x + x
       self.assertAllClose(4., acc.jvp(y))
       self.assertAllClose(-15., acc.jvp(z))
     finally:
-      pywrap_tensorflow.TFE_Py_RegisterJVPFunction(previous_fn)
+      pywrap_tfe.TFE_Py_RegisterJVPFunction(previous_fn)
 
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testFunctionCacheLimited(self):
@@ -738,19 +738,19 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
     with forwardprop.ForwardAccumulator(c, c_tangent) as acc:
       with backprop.GradientTape() as tape:
         self.assertFalse(tape_lib.should_record_backprop([c]))
-        self.assertEqual(
-            1, pywrap_tensorflow.TFE_Py_TapeSetPossibleGradientTypes([c]))
+        self.assertEqual(1,
+                         pywrap_tfe.TFE_Py_TapeSetPossibleGradientTypes([c]))
         tape.watch(c)
-        self.assertEqual(
-            2, pywrap_tensorflow.TFE_Py_TapeSetPossibleGradientTypes([c]))
+        self.assertEqual(2,
+                         pywrap_tfe.TFE_Py_TapeSetPossibleGradientTypes([c]))
         self.assertTrue(tape_lib.should_record_backprop([c]))
         with tape_lib.stop_recording():
-          self.assertEqual(
-              0, pywrap_tensorflow.TFE_Py_TapeSetPossibleGradientTypes([c]))
+          self.assertEqual(0,
+                           pywrap_tfe.TFE_Py_TapeSetPossibleGradientTypes([c]))
           self.assertFalse(tape_lib.should_record_backprop([c]))
           d = c * 2.
-        self.assertEqual(
-            2, pywrap_tensorflow.TFE_Py_TapeSetPossibleGradientTypes([c]))
+        self.assertEqual(2,
+                         pywrap_tfe.TFE_Py_TapeSetPossibleGradientTypes([c]))
         self.assertTrue(tape_lib.should_record_backprop([c]))
         self.assertFalse(tape_lib.should_record_backprop([d]))
         self.assertIsNone(acc.jvp(d))

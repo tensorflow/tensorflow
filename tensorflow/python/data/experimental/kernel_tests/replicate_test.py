@@ -25,6 +25,7 @@ from tensorflow.core.protobuf import tensorflow_server_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.ops import distribute
+from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
@@ -99,7 +100,7 @@ class LocalReplicateTest(test_base.DatasetTestBase, parameterized.TestCase):
                 dtype=dtypes.float32))
         opt = dataset_ops.Options()
         opt.experimental_external_state_policy = (
-            dataset_ops.ExternalStatePolicy.IGNORE)
+            distribute_options.ExternalStatePolicy.IGNORE)
         dataset0 = dataset0.with_options(opt)
       replicated_ds = distribute.replicate(dataset0,
                                            [self._device1, self._device2])
@@ -131,7 +132,7 @@ class LocalReplicateTest(test_base.DatasetTestBase, parameterized.TestCase):
                 dtype=dtypes.float32))
         opt = dataset_ops.Options()
         opt.experimental_external_state_policy = (
-            dataset_ops.ExternalStatePolicy.WARN)
+            distribute_options.ExternalStatePolicy.WARN)
         dataset0 = dataset0.with_options(opt)
       replicated_ds = distribute.replicate(dataset0,
                                            [self._device1, self._device2])
@@ -163,7 +164,7 @@ class LocalReplicateTest(test_base.DatasetTestBase, parameterized.TestCase):
                 dtype=dtypes.float32))
         opt = dataset_ops.Options()
         opt.experimental_external_state_policy = (
-            dataset_ops.ExternalStatePolicy.FAIL)
+            distribute_options.ExternalStatePolicy.FAIL)
         dataset0 = dataset0.with_options(opt)
       with self.assertRaises(errors.FailedPreconditionError):
         replicated_ds = distribute.replicate(dataset0,

@@ -637,7 +637,7 @@ def LLVM_LLVMFuncOp
 def LLVM_NullOp
     : LLVM_OneResultOp<"mlir.null", [NoSideEffect]>,
       LLVM_Builder<"$res = llvm::ConstantPointerNull::get("
-                   "    llvm::cast<llvm::PointerType>($_resultType));"> {
+                   "    cast<llvm::PointerType>($_resultType));"> {
   let parser = [{ return parseNullOp(parser, result); }];
   let printer = [{ printNullOp(p, *this); }];
   let verifier = [{ return ::verify(*this); }];
@@ -662,28 +662,39 @@ def LLVM_ConstantOp
 // operations and intrinsics. However, we systematically prefix them with
 // "intr." to avoid potential name clashes.
 
-def LLVM_FMulAddOp : LLVM_Op<"intr.fmuladd", [NoSideEffect]>,
-                   Arguments<(ins LLVM_Type:$a, LLVM_Type:$b, LLVM_Type:$c)>,
-                   Results<(outs LLVM_Type:$res)> {
-  let llvmBuilder = [{
-    llvm::Module *module = builder.GetInsertBlock()->getModule();
-    llvm::Function *fn = llvm::Intrinsic::getDeclaration(
-        module, llvm::Intrinsic::fmuladd,
-        {$a->getType(), $b->getType(), $c->getType()});
-    $res = builder.CreateCall(fn, {$a, $b, $c});
-  }];
+class LLVM_UnaryIntrinsicOp<string func, list<OpTrait> traits = []> :
+    LLVM_OneResultOp<"intr." # func,
+           !listconcat([NoSideEffect, SameOperandsAndResultType], traits)>,
+    Arguments<(ins LLVM_Type:$in)>,
+    LLVM_Builder<"$res = builder.CreateCall(llvm::Intrinsic::getDeclaration("
+      "builder.GetInsertBlock()->getModule(), llvm::Intrinsic::" # func # ","
+      "{$in->getType()}), {$in});"> {
 }
 
-def LLVM_ExpOp : LLVM_Op<"intr.exp", [NoSideEffect]>,
-                   Arguments<(ins LLVM_Type:$in)>,
-                   Results<(outs LLVM_Type:$res)> {
-  let llvmBuilder = [{
-    llvm::Module *module = builder.GetInsertBlock()->getModule();
-    llvm::Function *fn = llvm::Intrinsic::getDeclaration(
-        module, llvm::Intrinsic::exp, {$in->getType()});
-    $res = builder.CreateCall(fn, {$in});
-  }];
+class LLVM_BinaryIntrinsicOp<string func, list<OpTrait> traits = []> :
+    LLVM_OneResultOp<"intr." # func,
+           !listconcat([NoSideEffect, SameOperandsAndResultType], traits)>,
+    Arguments<(ins LLVM_Type:$a, LLVM_Type:$b)>,
+    LLVM_Builder<"$res = builder.CreateCall(llvm::Intrinsic::getDeclaration("
+      "builder.GetInsertBlock()->getModule(), llvm::Intrinsic::" # func # ","
+      "{$a->getType(), $b->getType()}), {$a, $b});"> {
 }
+
+class LLVM_TernaryIntrinsicOp<string func, list<OpTrait> traits = []> :
+    LLVM_OneResultOp<"intr." # func,
+           !listconcat([NoSideEffect, SameOperandsAndResultType], traits)>,
+    Arguments<(ins LLVM_Type:$a, LLVM_Type:$b, LLVM_Type:$c)>,
+    LLVM_Builder<"$res = builder.CreateCall(llvm::Intrinsic::getDeclaration("
+      "builder.GetInsertBlock()->getModule(), llvm::Intrinsic::" # func # ","
+      "{$a->getType(), $b->getType(), $c->getType()}), {$a, $b, $c});"> {
+}
+
+def LLVM_ExpOp : LLVM_UnaryIntrinsicOp<"exp">;
+def LLVM_FAbsOp : LLVM_UnaryIntrinsicOp<"fabs">;
+def LLVM_FCeilOp : LLVM_UnaryIntrinsicOp<"ceil">;
+def LLVM_CosOp : LLVM_UnaryIntrinsicOp<"cos">;
+def LLVM_CopySignOp : LLVM_BinaryIntrinsicOp<"copysign">;
+def LLVM_FMulAddOp : LLVM_TernaryIntrinsicOp<"fmuladd">;
 
 def LLVM_LogOp : LLVM_Op<"intr.log", [NoSideEffect]>,
                    Arguments<(ins LLVM_Type:$in)>,
@@ -715,6 +726,17 @@ def LLVM_Log2Op : LLVM_Op<"intr.log2", [NoSideEffect]>,
     llvm::Function *fn = llvm::Intrinsic::getDeclaration(
         module, llvm::Intrinsic::log2, {$in->getType()});
     $res = builder.CreateCall(fn, {$in});
+  }];
+}
+
+def LLVM_Prefetch : LLVM_ZeroResultOp<"intr.prefetch">,
+                    Arguments<(ins LLVM_Type:$addr, LLVM_Type:$rw,
+                    LLVM_Type:$hint, LLVM_Type:$cache)> {
+  let llvmBuilder = [{
+    llvm::Module *module = builder.GetInsertBlock()->getModule();
+    llvm::Function *fn = llvm::Intrinsic::getDeclaration(
+        module, llvm::Intrinsic::prefetch, $addr->getType());
+    builder.CreateCall(fn, {$addr, $rw, $hint, $cache});
   }];
 }
 

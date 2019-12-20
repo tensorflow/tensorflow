@@ -20,6 +20,7 @@ from __future__ import print_function
 import gzip
 import os
 import zlib
+
 from absl.testing import parameterized
 
 from tensorflow.python.data.kernel_tests import test_base

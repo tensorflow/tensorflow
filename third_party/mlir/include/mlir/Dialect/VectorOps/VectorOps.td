@@ -271,7 +271,7 @@ def Vector_ExtractElementOp :
   Vector_Op<"extractelement", [NoSideEffect,
      PredOpTrait<"operand and result have same element type",
                  TCresVTEtIsSameAsOpBase<0, 0>>]>,
-    Arguments<(ins AnyVector:$vector, Index:$position)>,
+    Arguments<(ins AnyVector:$vector, I32:$position)>,
     Results<(outs AnyType)> {
   let summary = "extractelement operation";
   let description = [{
@@ -379,7 +379,7 @@ def Vector_InsertElementOp :
                  TCresVTEtIsSameAsOpBase<0, 0>>,
      PredOpTrait<"dest operand and result have same type",
                  TCresIsSameAsOpBase<0, 1>>]>,
-     Arguments<(ins AnyType:$source, AnyVector:$dest, Index:$position)>,
+     Arguments<(ins AnyType:$source, AnyVector:$dest, I32:$position)>,
      Results<(outs AnyVector)> {
   let summary = "insertelement operation";
   let description = [{
@@ -574,6 +574,123 @@ def Vector_OuterProductOp :
   }];
 }
 
+// TODO(andydavis) Add transformation which decomposes ReshapeOp into an
+// optimized sequence of vector rotate/shuffle/select operations.
+def Vector_ReshapeOp :
+  Vector_Op<"reshape", [AttrSizedOperandSegments, NoSideEffect]>,
+    Arguments<(ins AnyVector:$vector, Variadic<Index>:$input_shape,
+               Variadic<Index>:$output_shape,
+               I64ArrayAttr:$fixed_vector_sizes,
+               I32ElementsAttr:$operand_segment_sizes)>,
+    Results<(outs AnyVector)> {
+  let summary = "vector reshape operation";
+  let description = [{
+    Reshapes its vector operand from 'input_shape' to 'output_shape' maintaining
+    fixed vector dimension 'fixed_vector_sizes' on the innermost vector
+    dimensions.
+
+    The parameters 'input_shape' and 'output_shape' represent valid data shapes
+    across fixed vector shapes. For example, if a vector has a valid data
+    shape [6] with fixed vector size [8], then the valid data elements are
+    assumed to be stored at the beginning of the vector with the remaining
+    vector elements undefined.
+
+    In the examples below, valid data elements are represented by an alphabetic
+    character, and undefined data elements are represented by '-'.
+
+    Example
+
+      vector<1x8xf32> with valid data shape [6], fixed vector sizes [8]
+
+                input: [a, b, c, d, e, f]
+
+           layout map: (d0) -> (d0 floordiv 8, d0 mod 8)
+
+        vector layout: [a, b, c, d, e, f, -, -]
+
+    Example
+
+      vector<2x8xf32> with valid data shape [10], fixed vector sizes [8]
+
+                input: [a, b, c, d, e, f, g, h, i, j]
+
+           layout map: (d0) -> (d0 floordiv 8, d0 mod 8)
+
+        vector layout: [[a, b, c, d, e, f, g, h],
+                        [i, j, -, -, -, -, -, -]]
+
+    Example
+
+      vector<2x2x2x3xf32> with valid data shape [3, 5], fixed vector sizes
+      [2, 3]
+
+                input: [[a, b, c, d, e],
+                        [f, g, h, i, j],
+                        [k, l, m, n, o]]
+
+           layout map: (d0, d1) -> (d0 floordiv 3, d1 floordiv 5,
+                                    d0 mod 3, d1 mod 5)
+
+        vector layout: [[[[a, b, c],
+                          [f, g, h]]
+                         [[d, e, -],
+                          [i, j, -]]],
+                        [[[k, l, m],
+                          [-, -, -]]
+                         [[n, o, -],
+                          [-, -, -]]]]
+
+    Example
+
+      %1 = vector.reshape %0, [%c3, %c6], [%c2, %c9], [4]
+        : vector<3x2x4xf32> to vector<2x3x4xf32>
+
+             input: [[a, b, c, d, e, f],
+                     [g, h, i, j, k, l],
+                     [m, n, o, p, q, r]]
+
+        layout map: (d0, d1) -> (d0, d1 floordiv 4, d1 mod 4)
+
+
+      Input vector:  [[[a, b, c, d],
+                       [e, f, -, -]],
+                      [[g, h, i, j],
+                       [k, l, -, -]],
+                      [[m, n, o, p],
+                       [q, r, -, -]]]
+
+      Output vector:  [[[a, b, c, d],
+                        [e, f, g, h],
+                        [i, -, -, -]],
+                       [[j, k, l, m],
+                        [n, o, p, q],
+                        [r, -, -, -]]]
+  }];
+
+  let extraClassDeclaration = [{
+    VectorType getInputVectorType() {
+      return vector()->getType().cast<VectorType>();
+    }
+    VectorType getOutputVectorType() {
+      return getResult()->getType().cast<VectorType>();
+    }
+
+    /// Returns as integer value the number of input shape operands.
+    int64_t getNumInputShapeSizes() { return input_shape().size(); }
+
+    /// Returns as integer value the number of output shape operands.
+    int64_t getNumOutputShapeSizes() { return output_shape().size(); }
+
+    void getFixedVectorSizes(SmallVectorImpl<int64_t> &results);
+
+    static StringRef getFixedVectorSizesAttrName() {
+      return "fixed_vector_sizes";
+    }
+    static StringRef getInputShapeAttrName() { return "input_shape"; }
+    static StringRef getOutputShapeAttrName() { return "output_shape"; }
+  }];
+}
+
 def Vector_StridedSliceOp :
   Vector_Op<"strided_slice", [NoSideEffect,
     PredOpTrait<"operand and result have same element type",
@@ -629,10 +746,15 @@ def Vector_TransferReadOp :
 
   let description = [{
     The `vector.transfer_read` op performs a blocking read from a slice within
-    a scalar [MemRef](../LangRef.md#memref-type) supplied as its first operand
-    into a [vector](../LangRef.md#vector-type) of the same elemental type. The
-    slice is further defined by a full-rank index within the MemRef, supplied as
-    the operands `2 .. 1 + rank(memref)`. The permutation_map
+    a [MemRef](../LangRef.md#memref-type) supplied as its first operand
+    into a [vector](../LangRef.md#vector-type) of the same base elemental type.
+
+    A vector memref operand must have its vector element type match a suffix
+    (shape and element type) of the vector (e.g. memref<3x2x6x4x3xf32>,
+    vector<1x1x4x3xf32>).
+
+    The slice is further defined by a full-rank index within the MemRef,
+    supplied as the operands `2 .. 1 + rank(memref)`. The permutation_map
     [attribute](../LangRef.md#attributes) is an
     [affine-map](Affine.md#affine-maps) which specifies the transposition on the
     slice to match the vector shape. The size of the slice is specified by the
@@ -737,6 +859,11 @@ def Vector_TransferReadOp :
              memref<?x?xf32>, vector<128xf32>
       }
     }
+
+    // Read from a memref with vector element type.
+    %4 = vector.transfer_read %arg1[%c3, %c3], %vf0
+      {permutation_map = (d0, d1)->(d0, d1)}
+        : memref<?x?xvector<4x3xf32>>, vector<1x1x4x3xf32>
     ```
   }];
 
@@ -761,10 +888,15 @@ def Vector_TransferWriteOp :
   let description = [{
     The `vector.transfer_write` performs a blocking write from a
     [vector](../LangRef.md#vector-type), supplied as its first operand, into a
-    slice within a scalar [MemRef](../LangRef.md#memref-type) of the same
-    elemental type, supplied as its second operand. The slice is further defined
-    by a full-rank index within the MemRef, supplied as the operands
-    `3 .. 2 + rank(memref)`.
+    slice within a [MemRef](../LangRef.md#memref-type) of the same base
+    elemental type, supplied as its second operand.
+
+    A vector memref operand must have its vector element type match a suffix
+    (shape and element type) of the vector (e.g. memref<3x2x6x4x3xf32>,
+    vector<1x1x4x3xf32>).
+
+    The slice is further defined by a full-rank index within the MemRef,
+    supplied as the operands `3 .. 2 + rank(memref)`.
     The permutation_map [attribute](../LangRef.md#attributes) is an
     [affine-map](Affine.md#affine-maps) which specifies the transposition on the
     slice to match the vector shape. The size of the slice is specified by the
@@ -798,6 +930,11 @@ def Vector_TransferWriteOp :
               {permutation_map: (d0, d1, d2, d3) -> (d3, d1, d2)} :
               vector<16x32x64xf32>, memref<?x?x?x?xf32>
     }}}}
+
+    // write to a memref with vector element type.
+    vector.transfer_write %4, %arg1[%c3, %c3]
+      {permutation_map = (d0, d1)->(d0, d1)}
+        : vector<1x1x4x3xf32>, memref<?x?xvector<4x3xf32>>
     ```
   }];
 
@@ -931,7 +1068,7 @@ def Vector_TupleOp :
     Note that this operation is used during the vector op unrolling
     transformation and should be removed before lowering to lower-level
     dialects.
-    
+
 
     Examples:
     ```
@@ -980,10 +1117,42 @@ def Vector_TupleGetOp :
     VectorType getResultVectorType() {
       return getResult()->getType().cast<VectorType>();
     }
-    unsigned getIndex() {
-      return getAttrOfType<IntegerAttr>("index").getValue().getZExtValue();
+    int64_t getIndex() {
+      return getAttrOfType<IntegerAttr>("index").getValue().getSExtValue();
     }
     static StringRef getIndexAttrName() { return "index"; }
+  }];
+}
+
+def Vector_PrintOp :
+  Vector_Op<"print", []>, Arguments<(ins AnyType:$source)> {
+  let summary = "print operation (for testing and debugging)";
+  let description = [{
+    Prints the source vector (or scalar) to stdout in human readable
+    format (for testing and debugging). No return value.
+
+    Examples:
+    ```
+      %0 = constant 0.0 : f32
+      %1 = vector.broadcast %0 : f32 to vector<4xf32>
+      vector.print %1 : vector<4xf32>
+
+      when lowered to LLVM, the vector print is unrolled into
+      elementary printing method calls that at runtime will yield
+
+      ( 0.0, 0.0, 0.0, 0.0 )
+
+      on stdout when linked with a small runtime support library,
+      which only needs to provide a few printing methods (single
+      value for all data types, opening/closing bracket, comma,
+      newline).
+    ```
+  }];
+  let verifier = ?;
+  let extraClassDeclaration = [{
+    Type getPrintType() {
+      return source()->getType();
+    }
   }];
 }
 

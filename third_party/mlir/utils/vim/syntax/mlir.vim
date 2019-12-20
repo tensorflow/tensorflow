@@ -44,6 +44,7 @@ syn match mlirOps /\<affine\.dma_wait\>/
 syn match mlirOps /\<affine\.for\>/
 syn match mlirOps /\<affine\.if\>/
 syn match mlirOps /\<affine\.load\>/
+syn match mlirOps /\<affine\.prefetch\>/
 syn match mlirOps /\<affine\.store\>/
 syn match mlirOps /\<loop\.for\>/
 syn match mlirOps /\<loop\.if\>/

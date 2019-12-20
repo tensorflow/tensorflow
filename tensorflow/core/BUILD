@@ -316,14 +316,10 @@ cc_library(
     ],
 )
 
-cc_library(
+alias(
     name = "framework_bounds_check",
-    hdrs = ["//tensorflow/core/framework:bounds_check.h"],
+    actual = "//tensorflow/core/framework:bounds_check",
     visibility = ["//tensorflow/core/kernels:friends"],
-    deps = [
-        ":platform_base",
-        "//third_party/eigen3",
-    ],
 )
 
 filegroup(
@@ -644,7 +640,7 @@ tf_cuda_library(
         "//tensorflow/core/framework:variant_tensor_data.h",
         "//tensorflow/core/util/sparse:framework_group",
         "//tensorflow/core/util:framework_srcs",
-        "public/version.h",
+        "//tensorflow/core/public:version.h",
     ] + select({
         "//tensorflow:windows": [],
         "//conditions:default": [
@@ -705,7 +701,7 @@ alias(
 
 cc_library(
     name = "session_options",
-    hdrs = ["public/session_options.h"],
+    hdrs = ["//tensorflow/core/public:session_options.h"],
     visibility = ["//visibility:public"],
     deps = [
         ":lib",
@@ -1132,8 +1128,8 @@ tf_cuda_library(
         "graph/node_builder.h",
         "graph/validate.h",
         "graph/while_context.h",
-        "public/session.h",
-        "public/session_options.h",
+        "//tensorflow/core/public:session.h",
+        "//tensorflow/core/public:session_options.h",
     ],
     visibility = ["//visibility:public"],
     deps = [
@@ -1258,7 +1254,9 @@ cc_library(
 cc_library(
     name = "dynamic_kernels_impl",
     visibility = [":__subpackages__"],
-    deps = [],
+    deps = [
+        "//tensorflow/core/kernels:sobol_op",
+    ],
 )
 
 cc_library(
@@ -1436,6 +1434,7 @@ filegroup(
         "//tensorflow/core/lib/strings:legacy_lib_strings_all_srcs",
         "//tensorflow/core/platform/default/build_config:android_srcs",
         "//tensorflow/core/profiler:mobile_srcs",
+        "//tensorflow/core/public:mobile_srcs_no_runtime",
         "//tensorflow/core/util/ctc:android_srcs",
         "//tensorflow/core/util/sparse:mobile_srcs_no_runtime_group",
         "//tensorflow/core/util:mobile_srcs_no_runtime",
@@ -1444,7 +1443,6 @@ filegroup(
             "client/**/*.cc",
             "lib/**/*.h",
             "lib/**/*.cc",
-            "public/**/*.h",
         ],
         exclude = [
             "**/*test.*",
@@ -2238,7 +2236,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":platform_base",
-        "//tensorflow/core/platform/default/build_config:logging",
+        "//tensorflow/core/platform:logging",
     ],
 )
 
@@ -2271,8 +2269,8 @@ cc_library(
         ":core_stringpiece",
         "//tensorflow/core/platform:dynamic_annotations",
         "//tensorflow/core/platform:jpeg",
+        "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:stringpiece",
-        "//tensorflow/core/platform/default/build_config:logging",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
     ],
@@ -2306,10 +2304,10 @@ cc_library(
         "//tensorflow/core/lib/strings:strcat",
         "//tensorflow/core/platform:dynamic_annotations",
         "//tensorflow/core/platform:gif",
+        "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:numbers",
         "//tensorflow/core/platform:strcat",
         "//tensorflow/core/platform:stringpiece",
-        "//tensorflow/core/platform/default/build_config:logging",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
     ],
@@ -2511,6 +2509,9 @@ tf_cuda_library(
         "//tensorflow/core/framework:attr_value_proto_text",
         "//tensorflow/core/framework:bfloat16",
         "//tensorflow/core/framework:numeric_types",
+        "//tensorflow/core/framework:resource_handle",
+        "//tensorflow/core/framework:tensor",
+        "//tensorflow/core/framework:tensor_shape",
         "//tensorflow/core/kernels:bounds_check",
         "//tensorflow/core/platform/default/build_config:platformlib",
         "//tensorflow/core/profiler/internal:annotation_stack_impl",
@@ -2670,7 +2671,7 @@ CORE_CPU_BASE_HDRS = GRAPH_HDRS + [
 
 tf_cuda_library(
     name = "core_cpu_base",
-    hdrs = CORE_CPU_BASE_HDRS + ["public/session.h"],
+    hdrs = CORE_CPU_BASE_HDRS + ["//tensorflow/core/public:session.h"],
     copts = tf_copts(),
     deps = [":core_cpu_base_no_ops"] + if_static([
         ":function_ops_op_lib",
@@ -2692,10 +2693,10 @@ tf_cuda_library(
         "common_runtime/graph_optimizer.h",
         "graph/graph_constructor.cc",  # Depends on common_runtime.
         "graph/graph_def_builder_util.cc",  # Depends on common_runtime.
-        "public/session_options.h",
-        "public/version.h",
+        "//tensorflow/core/public:session_options.h",
+        "//tensorflow/core/public:version.h",
     ] + CORE_CPU_BASE_HDRS,
-    hdrs = CORE_CPU_BASE_HDRS + ["public/session.h"],
+    hdrs = CORE_CPU_BASE_HDRS + ["//tensorflow/core/public:session.h"],
     copts = tf_copts(),
     deps = [
         ":graph",
@@ -2837,9 +2838,9 @@ tf_cuda_library(
         "graph/mkl_layout_pass.cc",
         "graph/mkl_tfconversion_pass.cc",
         "graph/quantize_training.cc",
-        "public/session.h",
-        "public/session_options.h",
-        "public/version.h",
+        "//tensorflow/core/public:session.h",
+        "//tensorflow/core/public:session_options.h",
+        "//tensorflow/core/public:version.h",
     ],
     hdrs = CORE_CPU_LIB_HEADERS,
     copts = tf_copts() + tf_openmp_copts(),

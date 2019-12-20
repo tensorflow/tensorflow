@@ -237,7 +237,7 @@ KernelDim3 LaunchOp::getBlockSizeOperandValues() {
   return KernelDim3{getOperand(3), getOperand(4), getOperand(5)};
 }
 
-llvm::iterator_range<Block::args_iterator> LaunchOp::getKernelArguments() {
+iterator_range<Block::args_iterator> LaunchOp::getKernelArguments() {
   auto args = body().getBlocks().front().getArguments();
   return llvm::drop_begin(args, LaunchOp::kNumConfigRegionAttributes);
 }
@@ -739,6 +739,22 @@ LogicalResult GPUFuncOp::verifyType() {
   return success();
 }
 
+static LogicalResult verifyAttributions(Operation *op,
+                                        ArrayRef<BlockArgument *> attributions,
+                                        unsigned memorySpace) {
+  for (Value *v : attributions) {
+    auto type = v->getType().dyn_cast<MemRefType>();
+    if (!type)
+      return op->emitOpError() << "expected memref type in attribution";
+
+    if (type.getMemorySpace() != memorySpace) {
+      return op->emitOpError()
+             << "expected memory space " << memorySpace << " in attribution";
+    }
+  }
+  return success();
+}
+
 /// Verifies the body of the function.
 LogicalResult GPUFuncOp::verifyBody() {
   unsigned numFuncArguments = getNumArguments();
@@ -757,6 +773,12 @@ LogicalResult GPUFuncOp::verifyBody() {
                            << " to be of type " << funcArgTypes[i] << ", got "
                            << blockArgType;
   }
+
+  if (failed(verifyAttributions(getOperation(), getWorkgroupAttributions(),
+                                GPUDialect::getWorkgroupAddressSpace())) ||
+      failed(verifyAttributions(getOperation(), getPrivateAttributions(),
+                                GPUDialect::getPrivateAddressSpace())))
+    return failure();
 
   return success();
 }

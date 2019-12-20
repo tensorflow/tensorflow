@@ -159,7 +159,7 @@ BlockArgument *Block::addArgument(Type type) {
 
 /// Add one argument to the argument list for each type specified in the list.
 auto Block::addArguments(ArrayRef<Type> types)
-    -> llvm::iterator_range<args_iterator> {
+    -> iterator_range<args_iterator> {
   arguments.reserve(arguments.size() + types.size());
   auto initialSize = arguments.size();
   for (auto type : types) {

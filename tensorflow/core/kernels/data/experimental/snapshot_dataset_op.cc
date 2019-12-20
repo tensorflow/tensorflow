@@ -71,6 +71,11 @@ const int64 kSnappyReaderOutputBufferSizeBytes = 16 << 20;  // 16 MiB
 
 const size_t kHeaderSize = sizeof(uint64);
 
+constexpr char kModeAuto[] = "auto";
+constexpr char kModeWrite[] = "write";
+constexpr char kModeRead[] = "read";
+constexpr char kModePassthrough[] = "passthrough";
+
 constexpr char kSnapshotFilename[] = "snapshot.metadata";
 constexpr char kSnapshotReaderWorkerPool[] = "snapshot_reader_worker_pool";
 constexpr char kSnapshotWriterWorkerPool[] = "snapshot_writer_worker_pool";
@@ -304,10 +309,29 @@ Status DumpDatasetGraph(const std::string& path, uint64 hash,
   return WriteTextProto(Env::Default(), graph_file, graph);
 }
 
-Status DetermineOpState(const Status& file_status,
+Status DetermineOpState(const std::string& mode_string,
+                        const Status& file_status,
                         const experimental::SnapshotMetadataRecord& metadata,
                         const uint64 pending_snapshot_expiry_seconds,
                         SnapshotMode* mode) {
+  if (mode_string == kModeRead) {
+    LOG(INFO) << "Overriding mode to reader.";
+    *mode = READER;
+    return Status::OK();
+  }
+
+  if (mode_string == kModeWrite) {
+    LOG(INFO) << "Overriding mode to writer.";
+    *mode = WRITER;
+    return Status::OK();
+  }
+
+  if (mode_string == kModePassthrough) {
+    LOG(INFO) << "Overriding mode to passthrough.";
+    *mode = PASSTHROUGH;
+    return Status::OK();
+  }
+
   if (errors::IsNotFound(file_status)) {
     *mode = WRITER;
     return Status::OK();
@@ -365,6 +389,16 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("seed", &seed_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("seed2", &seed2_));
 
+    mode_ = kModeAuto;
+    if (ctx->HasAttr("mode")) {
+      OP_REQUIRES_OK(ctx, ctx->GetAttr("mode", &mode_));
+    }
+
+    snapshot_name_ = "";
+    if (ctx->HasAttr("snapshot_name")) {
+      OP_REQUIRES_OK(ctx, ctx->GetAttr("snapshot_name", &snapshot_name_));
+    }
+
     if (shard_size_bytes_ == -1) shard_size_bytes_ = kDefaultShardSizeBytes;
 
     // Default to 1 day expiry for snapshots.
@@ -389,6 +423,13 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         ctx, pending_snapshot_expiry_seconds_ >= 1,
         errors::InvalidArgument(
             "pending_snapshot_expiry_seconds must be at least 1 second."));
+
+    OP_REQUIRES(ctx,
+                mode_ == kModeAuto || mode_ == kModeRead ||
+                    mode_ == kModeWrite || mode_ == kModePassthrough,
+                errors::InvalidArgument("mode must be either '", kModeAuto,
+                                        "', '", kModeRead, "', '", kModeWrite,
+                                        "', or '", kModePassthrough, "'."));
   }
 
  protected:
@@ -417,15 +458,16 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
                    << dump_status.ToString();
     }
 
-    LOG(INFO) << "Graph def serialized to hash: " << hash;
+    std::string graph_hash =
+        strings::StrCat(strings::Hex(hash, strings::kZeroPad16));
+    LOG(INFO) << "Graph def serialized to hash: " << graph_hash;
 
-    *output = new Dataset(
-        ctx, input, path,
-        strings::StrCat(strings::Hex(hash, strings::kZeroPad16)),
-        reader_path_prefix_, writer_path_prefix_, compression_,
-        shard_size_bytes_, pending_snapshot_expiry_seconds_,
-        num_reader_threads_, reader_buffer_size_, num_writer_threads_,
-        writer_buffer_size_, shuffle_on_read_, seed_, seed2_);
+    *output = new Dataset(ctx, input, path, graph_hash, reader_path_prefix_,
+                          writer_path_prefix_, compression_, shard_size_bytes_,
+                          pending_snapshot_expiry_seconds_, num_reader_threads_,
+                          reader_buffer_size_, num_writer_threads_,
+                          writer_buffer_size_, shuffle_on_read_, seed_, seed2_,
+                          mode_, snapshot_name_);
   }
 
  private:
@@ -438,7 +480,8 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
             const uint64 pending_snapshot_expiry_seconds,
             const uint64 num_reader_threads, const uint64 reader_buffer_size,
             const uint64 num_writer_threads, const uint64 writer_buffer_size,
-            const bool shuffle_on_read, const uint64 seed, const uint64 seed2)
+            const bool shuffle_on_read, const uint64 seed, const uint64 seed2,
+            const std::string& mode, const std::string& snapshot_name)
         : DatasetBase(DatasetContext(ctx)),
           input_(input),
           dir_(path),
@@ -454,7 +497,9 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           writer_buffer_size_(writer_buffer_size),
           shuffle_on_read_(shuffle_on_read),
           seed_(seed),
-          seed2_(seed2) {
+          seed2_(seed2),
+          mode_(mode),
+          snapshot_name_(snapshot_name) {
       input_->Ref();
     }
 
@@ -529,6 +574,12 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
       AttrValue seed2_attr;
       b->BuildAttrValue<int64>(seed2_, &seed2_attr);
 
+      AttrValue mode_attr;
+      b->BuildAttrValue(mode_, &mode_attr);
+
+      AttrValue snapshot_name_attr;
+      b->BuildAttrValue(snapshot_name_, &snapshot_name_attr);
+
       TF_RETURN_IF_ERROR(b->AddDataset(
           this,
           /*inputs=*/
@@ -548,7 +599,9 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
            {"writer_buffer_size", writer_buffer_size_attr},
            {"shuffle_on_read", shuffle_on_read_attr},
            {"seed", seed_attr},
-           {"seed2", seed2_attr}},
+           {"seed2", seed2_attr},
+           {"mode", mode_attr},
+           {"snapshot_name", snapshot_name_attr}},
           output));
       return Status::OK();
     }
@@ -558,7 +611,13 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
      public:
       explicit Iterator(const Params& params)
           : DatasetIterator<Dataset>(params) {
-        hash_dir_ = io::JoinPath(dataset()->dir_, dataset()->graph_hash_);
+        if (dataset()->snapshot_name_.empty()) {
+          hash_dir_ = io::JoinPath(dataset()->dir_, dataset()->graph_hash_);
+        } else {
+          hash_dir_ = io::JoinPath(
+              dataset()->dir_,
+              strings::StrCat("custom-", dataset()->snapshot_name_));
+        }
       }
 
       // We have a somewhat non traditional pattern for iterator initialization
@@ -581,8 +640,8 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           experimental::SnapshotMetadataRecord metadata;
           Status s = ReadMetadataFile(hash_dir_, &metadata);
           TF_RETURN_IF_ERROR(DetermineOpState(
-              s, metadata, dataset()->pending_snapshot_expiry_seconds_,
-              &state_));
+              dataset()->mode_, s, metadata,
+              dataset()->pending_snapshot_expiry_seconds_, &state_));
           TF_RETURN_IF_ERROR(InitializeIterator(ctx, metadata));
         }
         return iterator_->GetNext(ctx, out_tensors, end_of_sequence);
@@ -626,18 +685,32 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           IteratorContext* ctx,
           const experimental::SnapshotMetadataRecord& metadata)
           EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+        std::string run_id = "";
+        if (!dataset()->snapshot_name_.empty()) {
+          // We have overridden the snapshot with a custom name, so we don't
+          // generate random run ids, but just use the same one.
+          run_id = "custom";
+        }
+
         switch (state_) {
           case WRITER:
             iterator_ = absl::make_unique<SnapshotWriterIterator>(
                 SnapshotWriterIterator::Params{
                     dataset(), absl::StrCat(prefix(), "WriterImpl")},
-                hash_dir_);
+                hash_dir_, run_id);
             break;
           case READER:
+            if (run_id.empty() && metadata.run_id().empty()) {
+              return errors::NotFound(
+                  "Could not find a valid snapshot to read.");
+            }
+            if (run_id.empty()) {
+              run_id = metadata.run_id();
+            }
             iterator_ = absl::make_unique<SnapshotReaderIterator>(
                 SnapshotReaderIterator::Params{
                     dataset(), absl::StrCat(prefix(), "ReaderImpl")},
-                hash_dir_, metadata);
+                hash_dir_, run_id);
             break;
           case PASSTHROUGH:
             iterator_ = absl::make_unique<SnapshotPassthroughIterator>(
@@ -653,12 +726,12 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
        public:
         static constexpr const char* const kParse = "Parse";
 
-        explicit SnapshotReaderIterator(
-            const Params& params, const string& hash_dir,
-            const experimental::SnapshotMetadataRecord& metadata)
+        explicit SnapshotReaderIterator(const Params& params,
+                                        const string& hash_dir,
+                                        const string& run_id)
             : DatasetIterator<Dataset>(params),
               hash_dir_(hash_dir),
-              metadata_(metadata) {}
+              run_id_(run_id) {}
 
         ~SnapshotReaderIterator() override {
           mutex_lock l(mu_);
@@ -673,7 +746,6 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           mutex_lock l(mu_);
           thread_pool_ = ctx->CreateThreadPool(kSnapshotReaderWorkerPool,
                                                dataset()->num_reader_threads_);
-          run_id_ = metadata_.run_id();
           run_dir_ = io::JoinPath(hash_dir_, run_id_);
           // Get all the files in the run_dir.
           std::vector<std::string> filenames_str;
@@ -683,8 +755,8 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           std::copy(filenames_str.begin(), filenames_str.end(),
                     filenames_.begin());
           if (filenames_.empty()) {
-            return errors::InvalidArgument("Could not find any files in dir: ",
-                                           run_dir_);
+            return errors::NotFound("Could not find any files in dir: ",
+                                    run_dir_);
           }
 
           if (dataset()->shuffle_on_read_) {
@@ -1071,8 +1143,11 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
             "ProcessOneElement";
 
         explicit SnapshotWriterIterator(const Params& params,
-                                        const string& hash_dir)
-            : DatasetIterator<Dataset>(params), hash_dir_(hash_dir) {}
+                                        const string& hash_dir,
+                                        const string& run_id)
+            : DatasetIterator<Dataset>(params),
+              hash_dir_(hash_dir),
+              run_id_(run_id) {}
 
         ~SnapshotWriterIterator() override {
           mutex_lock l(mu_);
@@ -1087,8 +1162,10 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           mutex_lock l(mu_);
           thread_pool_ = ctx->CreateThreadPool(kSnapshotWriterWorkerPool,
                                                dataset()->num_writer_threads_);
-          run_id_ = strings::StrCat(
-              strings::Hex(random::New64(), strings::kZeroPad4));
+          if (run_id_.empty()) {
+            run_id_ = strings::StrCat(
+                strings::Hex(random::New64(), strings::kZeroPad4));
+          }
           run_dir_ =
               io::JoinPath(dataset()->writer_path_prefix_, hash_dir_, run_id_);
           return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
@@ -1619,6 +1696,9 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
 
     const uint64 seed_;
     const uint64 seed2_;
+
+    const std::string mode_;
+    const std::string snapshot_name_;
   };
 
   const int graph_def_version_;
@@ -1639,6 +1719,9 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
 
   int64 seed_;
   int64 seed2_;
+
+  std::string mode_;
+  std::string snapshot_name_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("SnapshotDataset").Device(DEVICE_CPU),

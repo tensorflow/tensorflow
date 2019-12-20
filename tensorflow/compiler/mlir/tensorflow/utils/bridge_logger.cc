@@ -23,20 +23,33 @@ limitations under the License.
 
 namespace tensorflow {
 
+BridgeLoggerConfig::BridgeLoggerConfig(bool print_module_scope,
+                                       bool print_after_only_on_change)
+    : mlir::PassManager::IRPrinterConfig(print_module_scope,
+                                         print_after_only_on_change) {}
+
 // Logs op to file with name of format `mlir_bridge-pass_name-file_suffix.mlir`.
-inline static void Log(mlir::Pass* pass, mlir::Operation* op,
+inline static void Log(BridgeLoggerConfig::PrintCallbackFn print_callback,
+                       mlir::Pass* pass, mlir::Operation* op,
                        llvm::StringRef file_suffix) {
-  DumpMlirOpToFile(
-      llvm::formatv("mlir_bridge-{0}-{1}", pass->getName(), file_suffix).str(),
-      op);
+  std::string name =
+      llvm::formatv("mlir_bridge_{0}_{1}", pass->getName(), file_suffix).str();
+
+  std::unique_ptr<llvm::raw_ostream> os;
+  std::string filepath;
+  if (CreateFileForDumping(name, &os, &filepath).ok()) print_callback(*os);
 }
 
-void BridgeLogger::runBeforePass(mlir::Pass* pass, mlir::Operation* op) {
-  Log(pass, op, "before");
+void BridgeLoggerConfig::printBeforeIfEnabled(mlir::Pass* pass,
+                                              mlir::Operation* operation,
+                                              PrintCallbackFn print_callback) {
+  Log(print_callback, pass, operation, "before");
 }
 
-void BridgeLogger::runAfterPass(mlir::Pass* pass, mlir::Operation* op) {
-  Log(pass, op, "after");
+void BridgeLoggerConfig::printAfterIfEnabled(mlir::Pass* pass,
+                                             mlir::Operation* operation,
+                                             PrintCallbackFn print_callback) {
+  Log(print_callback, pass, operation, "after");
 }
 
 }  // namespace tensorflow

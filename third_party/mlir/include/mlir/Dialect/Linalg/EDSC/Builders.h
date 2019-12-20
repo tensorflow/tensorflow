@@ -77,13 +77,13 @@ private:
 
 inline void defaultRegionBuilder(ArrayRef<BlockArgument *> args) {}
 
-Operation *makeLinalgGenericOp(
-    ArrayRef<IterType> iteratorTypes, ArrayRef<StructuredIndexed> inputs,
-    ArrayRef<StructuredIndexed> outputs,
-    llvm::function_ref<void(ArrayRef<BlockArgument *>)> regionBuilder =
-        defaultRegionBuilder,
-    ArrayRef<Value *> otherValues = {},
-    ArrayRef<Attribute> otherAttributes = {});
+Operation *makeLinalgGenericOp(ArrayRef<IterType> iteratorTypes,
+                               ArrayRef<StructuredIndexed> inputs,
+                               ArrayRef<StructuredIndexed> outputs,
+                               function_ref<void(ArrayRef<BlockArgument *>)>
+                                   regionBuilder = defaultRegionBuilder,
+                               ArrayRef<Value *> otherValues = {},
+                               ArrayRef<Attribute> otherAttributes = {});
 
 namespace ops {
 using edsc::StructuredIndexed;
@@ -120,7 +120,7 @@ void macRegionBuilder(ArrayRef<BlockArgument *> args);
 /// with in-place semantics and parallelism.
 
 /// Unary pointwise operation (with broadcast) entry point.
-using UnaryPointwiseOpBuilder = llvm::function_ref<Value *(ValueHandle)>;
+using UnaryPointwiseOpBuilder = function_ref<Value *(ValueHandle)>;
 Operation *linalg_pointwise(UnaryPointwiseOpBuilder unaryOp,
                             StructuredIndexed I, StructuredIndexed O);
 
@@ -131,7 +131,7 @@ Operation *linalg_pointwise_tanh(StructuredIndexed I, StructuredIndexed O);
 
 /// Binary pointwise operation (with broadcast) entry point.
 using BinaryPointwiseOpBuilder =
-    llvm::function_ref<Value *(ValueHandle, ValueHandle)>;
+    function_ref<Value *(ValueHandle, ValueHandle)>;
 Operation *linalg_pointwise(BinaryPointwiseOpBuilder binaryOp,
                             StructuredIndexed I1, StructuredIndexed I2,
                             StructuredIndexed O);

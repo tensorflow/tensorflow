@@ -3856,7 +3856,7 @@ TEST_F(OpConverterTest, ConvertConv2D) {
   };
 
   // Ok.
-  const int kConv2DOKCases = 7;
+  const int kConv2DOKCases = 9;
   TestParams ok_params[kConv2DOKCases] = {
       // Basic
       TestParams{/*input_dims=*/{1, 2, 3},
@@ -3942,6 +3942,31 @@ TEST_F(OpConverterTest, ConvertConv2D) {
                  /*is_conv2d_backprop_input=*/true,
                  /*expected_output_dims=*/{1, 2, 4},
                  /*expected_output=*/{0, 0, -1, 1, -2, 2, -3, 3}},
+      // Transpose Strided NHWC
+      TestParams{/*input_dims=*/{2, 2, 1},
+                 /*input=*/{0, 1, 2, 3},
+                 /*filter_dims=*/{1, 2, 1, 1},
+                 /*filter=*/{-1, 1},
+                 /*strides=*/{1, 1, 2, 1},
+                 /*padding=*/"SAME",
+                 /*data_format=*/"NHWC",
+                 /*dilations=*/{1, 1, 1, 1},
+                 /*is_conv2d_backprop_input=*/true,
+                 /*expected_output_dims=*/{2, 4, 1},
+                 /*expected_output=*/{0, 0, -1, 1, -2, 2, -3, 3}},
+      // Transpose Strided NHWC with VALID padding
+      TestParams{/*input_dims=*/{3, 1, 1},
+                 /*input=*/{0, 1, 2},
+                 /*filter_dims=*/{2, 1, 1, 1},
+                 /*filter=*/{-1, 1},
+                 /*strides=*/{1, 2, 1, 1},
+                 /*padding=*/"VALID",
+                 /*data_format=*/"NHWC",
+                 /*dilations=*/{1, 1, 1, 1},
+                 /*is_conv2d_backprop_input=*/true,
+                 /*expected_output_dims=*/{7, 1, 1},
+                 /*expected_output=*/{0, 0, -1, 1, -2, 2, 0}},
+
   };
 
   for (int i = 0; i < kConv2DOKCases; i++) {
@@ -3953,10 +3978,10 @@ TEST_F(OpConverterTest, ConvertConv2D) {
     AddTestWeights<float>("weights", ok_params[i].filter_dims,
                           ok_params[i].filter);
     if (ok_params[i].is_conv2d_backprop_input) {
-      AddTestWeights<float>(
-          "input_sizes",
-          {static_cast<int>(ok_params[i].expected_output.size())},
-          ok_params[i].expected_output);
+      std::vector<int> tf_input_sizes = ok_params[i].expected_output_dims;
+      tf_input_sizes.insert(tf_input_sizes.begin(), 1);  // Add batch dimension.
+      QCHECK_EQ(4, tf_input_sizes.size());
+      AddTestWeights<int>("input_sizes", {4}, tf_input_sizes);
     }
     RunValidationAndConversion(node_def);
     TRT_TensorOrWeights output;

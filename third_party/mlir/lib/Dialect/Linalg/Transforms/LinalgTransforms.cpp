@@ -100,7 +100,7 @@ LogicalResult mlir::linalg::tileAndFuseLinalgOpAndSetMarker(
 
 bool mlir::linalg::detail::isProducedByOpOfTypeImpl(
     Operation *consumerOp, Value *consumedView,
-    llvm::function_ref<bool(Operation *)> isaOpType) {
+    function_ref<bool(Operation *)> isaOpType) {
   LinalgOp consumer = dyn_cast<LinalgOp>(consumerOp);
   if (!consumer)
     return false;

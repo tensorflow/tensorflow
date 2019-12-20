@@ -32,8 +32,9 @@ from six.moves import map
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import pywrap_tfe
 from tensorflow.python import _pywrap_utils
+from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import context
@@ -1098,7 +1099,7 @@ class _TapeGradientFunctions(object):
           forward_function.signature.name,
           forward_outputs, forward_inputs, py_backward, None)
       output_indices, output_tangents = (
-          pywrap_tensorflow.TFE_Py_PackJVPs(forward_outputs))
+          pywrap_tfe.TFE_Py_PackJVPs(forward_outputs))
       output_tangents = [forward_wrapper_graph.capture(t)
                          for t in output_tangents]
     return _ForwardWrapper(
@@ -1732,7 +1733,7 @@ class ConcreteFunction(object):
                          "Tensor." % (self._func_graph.name, i, str(arg)))
     args = tensor_inputs + captured_inputs
     possible_gradient_type = (
-        pywrap_tensorflow.TFE_Py_TapeSetPossibleGradientTypes(args))
+        pywrap_tfe.TFE_Py_TapeSetPossibleGradientTypes(args))
     if (possible_gradient_type == _POSSIBLE_GRADIENT_TYPES_NONE
         and executing_eagerly):
       # No tape is watching; skip to running the function.
@@ -2552,8 +2553,8 @@ class Function(object):
     """Computes the cache key given inputs and execution context."""
     if self.input_signature is None:
       inputs = (args, kwargs) if kwargs else args
-      input_signature = pywrap_tensorflow.TFE_Py_EncodeArg(
-          inputs, include_tensor_ranks_only)
+      input_signature = pywrap_tfe.TFE_Py_EncodeArg(inputs,
+                                                    include_tensor_ranks_only)
     else:
       del args, kwargs
       assert not include_tensor_ranks_only

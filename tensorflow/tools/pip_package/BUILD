@@ -47,6 +47,7 @@ py_binary(
 
 # Add dynamic kernel dso files here.
 DYNAMIC_LOADED_KERNELS = [
+    "//tensorflow/core/kernels:libtfkernel_sobol_op.so",
 ]
 
 COMMON_PIP_DEPS = [
@@ -160,6 +161,7 @@ filegroup(
         "@com_google_protobuf//:LICENSE",
         "@six_archive//:LICENSE",
         "@snappy//:COPYING",
+        "@sobol_data//:LICENSE",
         "@swig//:LICENSE",
         "@termcolor_archive//:COPYING.txt",
         "@zlib_archive//:zlib.h",

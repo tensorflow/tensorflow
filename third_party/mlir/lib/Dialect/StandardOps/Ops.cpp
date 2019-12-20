@@ -1789,6 +1789,76 @@ OpFoldResult MulIOp::fold(ArrayRef<Attribute> operands) {
 }
 
 //===----------------------------------------------------------------------===//
+// PrefetchOp
+//===----------------------------------------------------------------------===//
+
+static void print(OpAsmPrinter &p, PrefetchOp op) {
+  p << PrefetchOp::getOperationName() << " " << *op.memref() << '[';
+  p.printOperands(op.indices());
+  p << ']' << ", " << (op.isWrite() ? "write" : "read");
+  p << ", locality<" << op.localityHint();
+  p << ">, " << (op.isDataCache() ? "data" : "instr");
+  p.printOptionalAttrDict(
+      op.getAttrs(),
+      /*elidedAttrs=*/{"localityHint", "isWrite", "isDataCache"});
+  p << " : " << op.getMemRefType();
+}
+
+static ParseResult parsePrefetchOp(OpAsmParser &parser,
+                                   OperationState &result) {
+  OpAsmParser::OperandType memrefInfo;
+  SmallVector<OpAsmParser::OperandType, 4> indexInfo;
+  IntegerAttr localityHint;
+  MemRefType type;
+  StringRef readOrWrite, cacheType;
+
+  auto indexTy = parser.getBuilder().getIndexType();
+  auto i32Type = parser.getBuilder().getIntegerType(32);
+  if (parser.parseOperand(memrefInfo) ||
+      parser.parseOperandList(indexInfo, OpAsmParser::Delimiter::Square) ||
+      parser.parseComma() || parser.parseKeyword(&readOrWrite) ||
+      parser.parseComma() || parser.parseKeyword("locality") ||
+      parser.parseLess() ||
+      parser.parseAttribute(localityHint, i32Type, "localityHint",
+                            result.attributes) ||
+      parser.parseGreater() || parser.parseComma() ||
+      parser.parseKeyword(&cacheType) || parser.parseColonType(type) ||
+      parser.resolveOperand(memrefInfo, type, result.operands) ||
+      parser.resolveOperands(indexInfo, indexTy, result.operands))
+    return failure();
+
+  if (!readOrWrite.equals("read") && !readOrWrite.equals("write"))
+    return parser.emitError(parser.getNameLoc(),
+                            "rw specifier has to be 'read' or 'write'");
+  result.addAttribute(
+      PrefetchOp::getIsWriteAttrName(),
+      parser.getBuilder().getBoolAttr(readOrWrite.equals("write")));
+
+  if (!cacheType.equals("data") && !cacheType.equals("instr"))
+    return parser.emitError(parser.getNameLoc(),
+                            "cache type has to be 'data' or 'instr'");
+
+  result.addAttribute(
+      PrefetchOp::getIsDataCacheAttrName(),
+      parser.getBuilder().getBoolAttr(cacheType.equals("data")));
+
+  return success();
+}
+
+static LogicalResult verify(PrefetchOp op) {
+  if (op.getNumOperands() != 1 + op.getMemRefType().getRank())
+    return op.emitOpError("too few indices");
+
+  return success();
+}
+
+LogicalResult PrefetchOp::fold(ArrayRef<Attribute> cstOperands,
+                               SmallVectorImpl<OpFoldResult> &results) {
+  // prefetch(memrefcast) -> prefetch
+  return foldMemRefCast(*this);
+}
+
+//===----------------------------------------------------------------------===//
 // RankOp
 //===----------------------------------------------------------------------===//
 
@@ -2297,7 +2367,7 @@ static void print(OpAsmPrinter &p, ViewOp op) {
 
 Value *ViewOp::getDynamicOffset() {
   int64_t offset;
-  llvm::SmallVector<int64_t, 4> strides;
+  SmallVector<int64_t, 4> strides;
   auto result =
       succeeded(mlir::getStridesAndOffset(getType(), strides, offset));
   assert(result);
@@ -2341,7 +2411,7 @@ static LogicalResult verify(ViewOp op) {
 
   // Verify that the result memref type has a strided layout map.
   int64_t offset;
-  llvm::SmallVector<int64_t, 4> strides;
+  SmallVector<int64_t, 4> strides;
   if (failed(getStridesAndOffset(viewType, strides, offset)))
     return op.emitError("result type ") << viewType << " is not strided";
 
@@ -2383,7 +2453,7 @@ struct ViewOpShapeFolder : public OpRewritePattern<ViewOp> {
 
     // Get offset from old memref view type 'memRefType'.
     int64_t oldOffset;
-    llvm::SmallVector<int64_t, 4> oldStrides;
+    SmallVector<int64_t, 4> oldStrides;
     if (failed(getStridesAndOffset(memrefType, oldStrides, oldOffset)))
       return matchFailure();
 
@@ -2585,13 +2655,13 @@ static LogicalResult verify(SubViewOp op) {
 
   // Verify that the base memref type has a strided layout map.
   int64_t baseOffset;
-  llvm::SmallVector<int64_t, 4> baseStrides;
+  SmallVector<int64_t, 4> baseStrides;
   if (failed(getStridesAndOffset(baseType, baseStrides, baseOffset)))
     return op.emitError("base type ") << subViewType << " is not strided";
 
   // Verify that the result memref type has a strided layout map.
   int64_t subViewOffset;
-  llvm::SmallVector<int64_t, 4> subViewStrides;
+  SmallVector<int64_t, 4> subViewStrides;
   if (failed(getStridesAndOffset(subViewType, subViewStrides, subViewOffset)))
     return op.emitError("result type ") << subViewType << " is not strided";
 
@@ -2677,8 +2747,7 @@ static LogicalResult verify(SubViewOp op) {
   return success();
 }
 
-llvm::raw_ostream &mlir::operator<<(llvm::raw_ostream &os,
-                                    SubViewOp::Range &range) {
+raw_ostream &mlir::operator<<(raw_ostream &os, SubViewOp::Range &range) {
   return os << "range " << *range.offset << ":" << *range.size << ":"
             << *range.stride;
 }
@@ -2734,7 +2803,7 @@ static bool hasConstantOffsetSizesAndStrides(MemRefType memrefType) {
     return false;
   // Get offset and strides.
   int64_t offset;
-  llvm::SmallVector<int64_t, 4> strides;
+  SmallVector<int64_t, 4> strides;
   if (failed(getStridesAndOffset(memrefType, strides, offset)))
     return false;
   // Return 'false' if any of offset or strides is dynamic.

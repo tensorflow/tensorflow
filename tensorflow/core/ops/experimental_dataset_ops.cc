@@ -823,6 +823,8 @@ REGISTER_OP("SnapshotDataset")
     .Attr("shuffle_on_read: bool = false")
     .Attr("seed: int = 0")
     .Attr("seed2: int = 0")
+    .Attr("mode: string = 'auto'")
+    .Attr("snapshot_name: string = ''")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
       // snapshot_path should be a scalar.

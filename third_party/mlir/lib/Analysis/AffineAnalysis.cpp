@@ -619,7 +619,7 @@ static void computeDirectionVector(
     const FlatAffineConstraints &srcDomain,
     const FlatAffineConstraints &dstDomain, unsigned loopDepth,
     FlatAffineConstraints *dependenceDomain,
-    llvm::SmallVector<DependenceComponent, 2> *dependenceComponents) {
+    SmallVector<DependenceComponent, 2> *dependenceComponents) {
   // Find the number of common loops shared by src and dst accesses.
   SmallVector<AffineForOp, 4> commonLoops;
   unsigned numCommonLoops =
@@ -772,8 +772,7 @@ void MemRefAccess::getAccessMap(AffineValueMap *accessMap) const {
 DependenceResult mlir::checkMemrefAccessDependence(
     const MemRefAccess &srcAccess, const MemRefAccess &dstAccess,
     unsigned loopDepth, FlatAffineConstraints *dependenceConstraints,
-    llvm::SmallVector<DependenceComponent, 2> *dependenceComponents,
-    bool allowRAR) {
+    SmallVector<DependenceComponent, 2> *dependenceComponents, bool allowRAR) {
   LLVM_DEBUG(llvm::dbgs() << "Checking for dependence at depth: "
                           << Twine(loopDepth) << " between:\n";);
   LLVM_DEBUG(srcAccess.opInst->dump(););
@@ -865,7 +864,7 @@ DependenceResult mlir::checkMemrefAccessDependence(
 /// rooted at 'forOp' at loop depths in range [1, maxLoopDepth].
 void mlir::getDependenceComponents(
     AffineForOp forOp, unsigned maxLoopDepth,
-    std::vector<llvm::SmallVector<DependenceComponent, 2>> *depCompsVec) {
+    std::vector<SmallVector<DependenceComponent, 2>> *depCompsVec) {
   // Collect all load and store ops in loop nest rooted at 'forOp'.
   SmallVector<Operation *, 8> loadAndStoreOpInsts;
   forOp.getOperation()->walk([&](Operation *opInst) {
@@ -883,7 +882,7 @@ void mlir::getDependenceComponents(
         MemRefAccess dstAccess(dstOpInst);
 
         FlatAffineConstraints dependenceConstraints;
-        llvm::SmallVector<DependenceComponent, 2> depComps;
+        SmallVector<DependenceComponent, 2> depComps;
         // TODO(andydavis,bondhugula) Explore whether it would be profitable
         // to pre-compute and store deps instead of repeatedly checking.
         DependenceResult result = checkMemrefAccessDependence(
