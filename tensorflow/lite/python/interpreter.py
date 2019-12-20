@@ -120,7 +120,7 @@ class Delegate(object):
       raise ValueError(capture.message)
 
   def __del__(self):
-    # __del__ can be called multiple times, so if the delegate is destroyed.
+    # __del__ can not be called multiple times, so if the delegate is destroyed.
     # don't try to destroy it twice.
     if self._library is not None:
       self._library.tflite_plugin_destroy_delegate.argtypes = [ctypes.c_void_p]
