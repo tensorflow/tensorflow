@@ -435,14 +435,28 @@ cc_library(
 
 cc_library(
     name = "profiler_factory",
-    srcs = ["profiler_factory.cc"],
     hdrs = ["profiler_factory.h"],
+    deps = [
+        ":profiler_interface",
+    ] + if_static([
+        ":profiler_factory_impl",
+    ]),
+)
+
+# Linked into "libtensorflow_framework.so" via ":profiler_impl".
+cc_library(
+    name = "profiler_factory_impl",
+    srcs = [
+        "profiler_factory.cc",
+        "profiler_factory.h",
+    ],
     deps = [
         ":profiler_interface",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
     ],
+    alwayslink = True,
 )
 
 filegroup(
@@ -521,16 +535,5 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-    ],
-)
-
-filegroup(
-    name = "pywrap_eager_hdrs",
-    srcs = [
-        "profiler_interface.h",
-    ],
-    visibility = [
-        "//tensorflow/core:__pkg__",
-        "//tensorflow/python:__pkg__",
     ],
 )

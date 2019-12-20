@@ -7620,8 +7620,6 @@ tf_python_pybind_extension(
         "//tensorflow/core/distributed_runtime:pywrap_eager_hdrs",
         "//tensorflow/core/distributed_runtime/eager:pywrap_eager_hdrs",
         "//tensorflow/core/framework:pywrap_eager_hdrs",
-        "//tensorflow/core/profiler/internal:pywrap_eager_hdrs",
-        "//tensorflow/core/profiler/lib:pywrap_eager_hdrs",
         "//tensorflow/python/eager:pywrap_eager_hdrs",
     ],
     module_name = "_pywrap_tfe",
@@ -7641,7 +7639,6 @@ tf_python_pybind_extension(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:platform",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
     ] + if_static(
         extra_deps = [
             "//tensorflow/core:eager_service_proto_cc",

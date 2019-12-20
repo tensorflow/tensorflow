@@ -200,9 +200,9 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":context",
-        ":eager_util",
         "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python:util",
+        "//tensorflow/python/profiler/internal:_pywrap_profiler_session",
     ],
 )
 
