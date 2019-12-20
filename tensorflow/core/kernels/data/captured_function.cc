@@ -481,7 +481,7 @@ void FunctionMetadata::ValidateMultiDevice() {
 /* static */
 Status CapturedFunction::Create(
     OpKernelContext* ctx,
-    const std::shared_ptr<const FunctionMetadata> metadata,
+    const std::shared_ptr<const FunctionMetadata>& metadata,
     const string& argument_name,
     std::unique_ptr<CapturedFunction>* out_function) {
   OpInputList inputs;
@@ -493,7 +493,7 @@ Status CapturedFunction::Create(
 /* static */
 Status CapturedFunction::Create(
     OpKernelContext* ctx,
-    const std::shared_ptr<const FunctionMetadata> metadata,
+    const std::shared_ptr<const FunctionMetadata>& metadata,
     std::vector<Tensor>&& captured_inputs,
     std::unique_ptr<CapturedFunction>* out_function) {
   *out_function = absl::WrapUnique(
@@ -602,8 +602,7 @@ Status CapturedFunction::Instantiate(
   *instantiated_captured_function =
       absl::WrapUnique<InstantiatedCapturedFunction>(
           new InstantiatedCapturedFunction(lib, f_handle, std::move(ret_types),
-                                           *ctx->runner(),
-                                           ctx->cancellation_manager(), this));
+                                           *ctx->runner(), this));
   return Status::OK();
 }
 
@@ -620,12 +619,11 @@ Status CapturedFunction::CheckExternalState() const {
 InstantiatedCapturedFunction::InstantiatedCapturedFunction(
     FunctionLibraryRuntime* lib, FunctionLibraryRuntime::Handle f_handle,
     DataTypeVector ret_types, std::function<void(std::function<void()>)> runner,
-    CancellationManager* cancellation_manager, CapturedFunction* captured_func)
+    CapturedFunction* captured_func)
     : lib_(lib),
       f_handle_(f_handle),
       ret_types_(std::move(ret_types)),
       captured_runner_(std::move(runner)),
-      captured_cancellation_manager_(cancellation_manager),
       captured_func_(captured_func) {}
 
 // NOTE: We don't release f_handle_ here and instead delegate the function
@@ -728,7 +726,7 @@ Status InstantiatedCapturedFunction::RunInstantiated(
   f_opts.step_container = &step_container;
   f_opts.runner = &captured_runner_;
   f_opts.create_rendezvous = ShouldCreateRendezvous();
-  CancellationManager cancellation_manager(captured_cancellation_manager_);
+  CancellationManager cancellation_manager;
   f_opts.cancellation_manager = &cancellation_manager;
 
   BorrowedArgsCallFrame frame(args, &captured_func_->captured_inputs(),
@@ -849,9 +847,10 @@ bool InstantiatedCapturedFunction::ShouldCreateRendezvous() const {
 }
 
 CapturedFunction::CapturedFunction(
-    const std::shared_ptr<const FunctionMetadata> metadata,
+    std::shared_ptr<const FunctionMetadata> metadata,
     std::vector<Tensor> captured_inputs)
-    : metadata_(metadata), captured_inputs_(std::move(captured_inputs)) {}
+    : metadata_(std::move(metadata)),
+      captured_inputs_(std::move(captured_inputs)) {}
 
 Status CapturedFunction::IsMultiDevice(IteratorContext* ctx,
                                        bool* is_multi_device) {

@@ -74,9 +74,9 @@ class IteratorResource : public ResourceBase {
           std::shared_ptr<ProcessFunctionLibraryRuntime> pflr,
           FunctionLibraryRuntime* flr,
           std::unique_ptr<DatasetBaseIterator> iterator)
-        : flib_def(flib_def),
+        : flib_def(std::move(flib_def)),
           flr(flr),
-          pflr(pflr),
+          pflr(std::move(pflr)),
           function_handle_cache(absl::make_unique<FunctionHandleCache>(flr)),
           iterator(std::move(iterator)) {}
 
