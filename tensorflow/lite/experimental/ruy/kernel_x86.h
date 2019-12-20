@@ -53,6 +53,7 @@ struct Kernel<Path::kAvx512, std::int8_t, std::int8_t, DstScalar,
 };
 
 void KernelFloatAvx512(const KernelParamsFloat<16, 16>& params);
+void KernelFloatAvx512SingleCol(const KernelParamsFloat<16, 16>& param);
 
 template <>
 struct Kernel<Path::kAvx512, float, float, float, BasicSpec<float, float>> {
@@ -66,7 +67,11 @@ struct Kernel<Path::kAvx512, float, float, float, BasicSpec<float, float>> {
     KernelParamsFloat<LhsLayout::kCols, RhsLayout::kCols> params;
     MakeKernelParamsFloat(lhs, rhs, spec, start_row, start_col, end_row,
                           end_col, dst, &params);
-    KernelFloatAvx512(params);
+    if (dst->layout.cols == 1) {
+      KernelFloatAvx512SingleCol(params);
+    } else {
+      KernelFloatAvx512(params);
+    }
   }
 };
 
