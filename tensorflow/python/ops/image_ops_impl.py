@@ -2942,7 +2942,7 @@ def rgb_to_yiq(images):
   The output is only well defined if the value in images are in [0,1].
   
   Usage Example:
-    ```
+    ```python
     >>> import tensorflow as tf
     >>> x = tf.constant([[[2.0, 5.0, 3.0]]])
     >>> y = tf.image.rgb_to_yiq(x)
