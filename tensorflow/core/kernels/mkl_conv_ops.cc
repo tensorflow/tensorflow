@@ -1591,8 +1591,6 @@ class MklQuantizedConv2DOp
     const float* min_filter = min_filter_vector.flat<float>().data();
     const float* max_filter = max_filter_vector.flat<float>().data();
 
-    std::vector<mkldnn::primitive> net;
-
     const float int_const_scale_limit =
         (std::is_same<Tinput, quint8>::value) ? 255.0 * 127.0 : 127.0 * 127.0;
     // Re-scale bias if either of following 2 conditions are met:

@@ -298,7 +298,6 @@ Status ReadMetadataFile(const string& hash_dir,
 
 Status DumpDatasetGraph(const std::string& path, uint64 hash,
                         const GraphDef& graph) {
-  std::unique_ptr<WritableFile> file;
   std::string hash_hex =
       strings::StrCat(strings::Hex(hash, strings::kZeroPad16));
   std::string graph_file =
