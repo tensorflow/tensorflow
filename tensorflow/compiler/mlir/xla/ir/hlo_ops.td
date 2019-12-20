@@ -801,7 +801,9 @@ def HLO_DotGeneralOp: HLO_Op<"dot_general", [NoSideEffect]>, BASE_HLO_DotGeneral
   let results = (outs HLO_Tensor);
 }
 
-def BASE_EinsumOp {
+// Define Base Einsum op within the HLO dialect as these are client ops and
+// therefore this class is not common between HLO and LHLO ops.
+class BASE_EinsumOp {
   string summary = "Einsum operator";
 
   string description = [{
@@ -810,7 +812,7 @@ def BASE_EinsumOp {
   }];
 }
 
-def HLO_EinsumOp: HLO_Op<"einsum", [NoSideEffect]> {
+def HLO_EinsumOp: HLO_Op<"einsum", [NoSideEffect]>, BASE_EinsumOp {
   let arguments = (ins
     HLO_Tensor:$lhs,
     HLO_Tensor:$rhs,
@@ -823,7 +825,7 @@ def HLO_EinsumOp: HLO_Op<"einsum", [NoSideEffect]> {
   // side HLO ops.
 }
 
-def HLO_UnaryEinsumOp: HLO_Op<"unary_einsum", [NoSideEffect]> {
+def HLO_UnaryEinsumOp: HLO_Op<"unary_einsum", [NoSideEffect]>, BASE_EinsumOp {
   let arguments = (ins
     HLO_Tensor:$operand,
     StrAttr:$einsum_config
