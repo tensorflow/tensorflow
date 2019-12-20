@@ -21,6 +21,7 @@ load(
 visibility = [
     "//engedu/ml/tf_from_scratch:__pkg__",
     "//third_party/cloud_tpu/convergence_tools:__subpackages__",
+    "//third_party/mlperf:__subpackages__",
     "//tensorflow:internal",
     "//tensorflow/lite/toco/python:__pkg__",
     "//tensorflow_models:__subpackages__",
