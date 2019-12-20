@@ -458,6 +458,7 @@ py_library(
         "layers/normalization.py",
         "layers/normalization_v2.py",
         "layers/pooling.py",
+        "layers/preprocessing/categorical.py",
         "layers/preprocessing/image_preprocessing.py",
         "layers/preprocessing/normalization.py",
         "layers/preprocessing/normalization_v1.py",
@@ -801,6 +802,28 @@ cuda_py_test(
     srcs = ["layers/convolutional_test.py"],
     python_version = "PY3",
     shard_count = 8,
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+filegroup(
+    name = "vocabulary_testdata",
+    srcs = [
+        "layers/preprocessing/testdata/wire_vocabulary.txt",
+    ],
+)
+
+cuda_py_test(
+    name = "categorical_test",
+    size = "medium",
+    srcs = ["layers/preprocessing/categorical_test.py"],
+    data = [":vocabulary_testdata"],
+    python_version = "PY3",
+    shard_count = 4,
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
