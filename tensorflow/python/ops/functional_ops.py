@@ -1125,7 +1125,7 @@ def partitioned_call(args,
   if executor_type is None:
     executor_type = ""
 
-  if executing_eagerly or len(tout):
+  if executing_eagerly:
     if f.stateful_ops:
       outputs = gen_functional_ops.stateful_partitioned_call(
           args=args,
@@ -1158,8 +1158,7 @@ def partitioned_call(args,
   # When running in graph mode, the graph and function graphs are optimized
   # (i.e. run through grappler) per the session options, so we can disable any
   # eager-specific rewriting.
-  config_proto = attr_value_pb2.AttrValue(
-      s=function_utils.get_disabled_rewriter_config())
+  config_proto = attr_value_pb2.AttrValue(s=config)
 
   graph = ops.get_default_graph()
   f.add_to_graph(graph)
@@ -1168,7 +1167,7 @@ def partitioned_call(args,
       op_name,
       args,
       tout,
-      name="PartitionedFunctionCall",
+      name=op_name,
       attrs={
           "Tin": tin_attr,
           "Tout": tout_attr,
