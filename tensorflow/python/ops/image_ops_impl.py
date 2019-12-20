@@ -1948,10 +1948,10 @@ def random_hue(image, max_delta, seed=None):
 
   Usage Example:
   ```python
-  >>> x = tf.constant([[[2.0, 4.0, 3.0]]])
-  >>> y = tf.image.random_hue(x, max_delta=0.5)
+  >>> x = tf.constant([[[1.0, 2.0, 3.0]]])
+  >>> y = tf.image.random_hue(x, max_delta=0.1)
   >>> print(y.numpy())
-  [[[2.2600288 2.        4.       ]]]
+  [[[1.        2.5... 3.       ]]]
   ```
   
   Args:
