@@ -75,7 +75,7 @@ Value MapLhloOpToStdScalarOp(LhloOp lhlo_op, ArrayRef<Type> result_types,
     return b->template create<ScalarFOp<LhloOp>>(lhlo_op.getLoc(), result_types,
                                                  args, mlir::None);
   }
-  return (op) ? op->getResult(0) : nullptr;
+  return nullptr;
 }
 
 template <>
@@ -95,7 +95,7 @@ inline Value MapLhloOpToStdScalarOp<xla_lhlo::MaxOp>(
         lhlo_op.getLoc(), CmpFPredicate::OGT, lhs, rhs);
     return b->create<::mlir::SelectOp>(lhlo_op.getLoc(), lhs_gt_rhs, lhs, rhs);
   }
-  return (op) ? op->getResult(0) : nullptr;
+  return nullptr;
 }
 
 template <>
@@ -115,7 +115,7 @@ inline Value MapLhloOpToStdScalarOp<xla_lhlo::MinOp>(
         lhlo_op.getLoc(), CmpFPredicate::OLT, lhs, rhs);
     return b->create<::mlir::SelectOp>(lhlo_op.getLoc(), lhs_lt_rhs, lhs, rhs);
   }
-  return (op) ? op->getResult(0) : nullptr;
+  return nullptr;
 }
 
 template <>
@@ -171,7 +171,7 @@ inline Value MapLhloOpToStdScalarOp<xla_lhlo::CompareOp>(
         lhlo_op.getLoc(), getFloatCmpPredicate(lhlo_op.comparison_direction()),
         lhs, rhs);
   }
-  return (op) ? op->getResult(0) : nullptr;
+  return nullptr;
 }
 
 template <>
@@ -251,7 +251,10 @@ inline Value MapLhloOpToStdScalarOp<xla_lhlo::ConvertOp>(
     } else {
       return block_args.front();
     }
-  } else if (sourceType.isa<IntegerType>() && targetType.isa<IntegerType>()) {
+    // No conversion is needed for the same width floats
+    return args.front();
+  }
+  if (sourceType.isa<IntegerType>() && targetType.isa<IntegerType>()) {
     IntegerType src = sourceType.cast<IntegerType>();
     IntegerType res = targetType.cast<IntegerType>();
     if (src.getWidth() > res.getWidth()) {
@@ -263,12 +266,13 @@ inline Value MapLhloOpToStdScalarOp<xla_lhlo::ConvertOp>(
     } else {
       return block_args.front();
     }
+    // No conversion is needed for the same width integers
+    return args.front();
   }
   // TODO: Add other primitive type conversions
-  // else if (mlir::FpToSiOp::areCastCompatible(sourceType, targetType)) {
+  // if (mlir::FpToSiOp::areCastCompatible(sourceType, targetType)) {
   //   return b.create<mlir::FpToSiOp>(lhlo_op.getLoc(), result_types,
-  //   block_args,
-  //                                   mlir::None);
+  //   args,mlir::None).getResult();
   // }
 
   return nullptr;
@@ -277,8 +281,8 @@ inline Value MapLhloOpToStdScalarOp<xla_lhlo::ConvertOp>(
 template <>
 inline Value MapLhloOpToStdScalarOp<xla_lhlo::ExpOp>(
     xla_lhlo::ExpOp lhlo_op, ArrayRef<Type> result_types,
-    ArrayRef<Value> block_args, OpBuilder b) {
-  Type element_type = block_args.front()->getType();
+    ArrayRef<Value*> args, OpBuilder b) {
+  Type element_type = args.front()->getType();
   if (element_type.isa<FloatType>()) {
     return b.create<::mlir::ExpOp>(lhlo_op.getLoc(), result_types,
                                             args, mlir::None);
