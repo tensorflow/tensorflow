@@ -190,14 +190,14 @@ class CapturedFunction {
   // Creates a new instance using a list of named attributes, fetching captured
   // inputs from a context argument.
   static Status Create(OpKernelContext* ctx,
-                       const std::shared_ptr<const FunctionMetadata>& metadata,
+                       std::shared_ptr<const FunctionMetadata> metadata,
                        const string& argument_name,
                        std::unique_ptr<CapturedFunction>* out_function);
 
   // Creates a new instance using a list of named attributes, using provided
   // captured inputs.
   static Status Create(OpKernelContext* ctx,
-                       const std::shared_ptr<const FunctionMetadata>& metadata,
+                       std::shared_ptr<const FunctionMetadata> metadata,
                        std::vector<Tensor>&& captured_inputs,
                        std::unique_ptr<CapturedFunction>* out_function);
 

@@ -480,24 +480,23 @@ void FunctionMetadata::ValidateMultiDevice() {
 
 /* static */
 Status CapturedFunction::Create(
-    OpKernelContext* ctx,
-    const std::shared_ptr<const FunctionMetadata>& metadata,
+    OpKernelContext* ctx, std::shared_ptr<const FunctionMetadata> metadata,
     const string& argument_name,
     std::unique_ptr<CapturedFunction>* out_function) {
   OpInputList inputs;
   TF_RETURN_IF_ERROR(ctx->input_list(argument_name, &inputs));
   std::vector<Tensor> captured_inputs(inputs.begin(), inputs.end());
-  return Create(ctx, metadata, std::move(captured_inputs), out_function);
+  return Create(ctx, std::move(metadata), std::move(captured_inputs),
+                out_function);
 }
 
 /* static */
 Status CapturedFunction::Create(
-    OpKernelContext* ctx,
-    const std::shared_ptr<const FunctionMetadata>& metadata,
+    OpKernelContext* ctx, std::shared_ptr<const FunctionMetadata> metadata,
     std::vector<Tensor>&& captured_inputs,
     std::unique_ptr<CapturedFunction>* out_function) {
   *out_function = absl::WrapUnique(
-      new CapturedFunction(metadata, std::move(captured_inputs)));
+      new CapturedFunction(std::move(metadata), std::move(captured_inputs)));
   return Status::OK();
 }
 
@@ -662,7 +661,7 @@ Status InstantiatedCapturedFunction::Run(IteratorContext* ctx,
             "InstantiatedCapturedFunction::Run#id=", f_opts.step_id, "#");
       },
       profiler::TraceMeLevel::kInfo);
-  lib_->Run(f_opts, f_handle_, &frame, [&n, &s](Status func_status) {
+  lib_->Run(f_opts, f_handle_, &frame, [&n, &s](const Status& func_status) {
     s.Update(func_status);
     n.Notify();
   });
@@ -702,7 +701,7 @@ Status InstantiatedCapturedFunction::RunWithBorrowedArgs(
             f_opts.step_id, "#");
       },
       profiler::TraceMeLevel::kInfo);
-  lib_->Run(f_opts, f_handle_, &frame, [&n, &s](Status func_status) {
+  lib_->Run(f_opts, f_handle_, &frame, [&n, &s](const Status& func_status) {
     s.Update(func_status);
     n.Notify();
   });
@@ -740,7 +739,7 @@ Status InstantiatedCapturedFunction::RunInstantiated(
                             f_opts.step_id, "#");
       },
       profiler::TraceMeLevel::kInfo);
-  lib_->Run(f_opts, f_handle_, &frame, [&n, &s](Status func_status) {
+  lib_->Run(f_opts, f_handle_, &frame, [&n, &s](const Status& func_status) {
     s.Update(func_status);
     n.Notify();
   });
