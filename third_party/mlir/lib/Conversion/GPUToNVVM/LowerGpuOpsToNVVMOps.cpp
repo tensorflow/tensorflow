@@ -473,6 +473,64 @@ private:
   static constexpr int kWarpSize = 32;
 };
 
+struct GPUShuffleOpLowering : public LLVMOpLowering {
+  explicit GPUShuffleOpLowering(LLVMTypeConverter &lowering_)
+      : LLVMOpLowering(gpu::ShuffleOp::getOperationName(),
+                       lowering_.getDialect()->getContext(), lowering_) {}
+
+  /// Lowers a shuffle to the corresponding NVVM op.
+  ///
+  /// Convert the `width` argument into an activeMask (a bitmask which specifies
+  /// which threads participate in the shuffle) and a maskAndClamp (specifying
+  /// the highest lane which participates in the shuffle).
+  ///
+  ///     %one = llvm.constant(1 : i32) : !llvm.i32
+  ///     %shl = llvm.shl %one, %width : !llvm.i32
+  ///     %active_mask = llvm.sub %shl, %one : !llvm.i32
+  ///     %mask_and_clamp = llvm.sub %width, %one : !llvm.i32
+  ///     %shfl = nvvm.shfl.sync.bfly %active_mask, %value, %offset,
+  ///         %mask_and_clamp : !llvm<"{ float, i1 }">
+  ///     %shfl_value = llvm.extractvalue %shfl[0 : index] :
+  ///         !llvm<"{ float, i1 }">
+  ///     %shfl_pred = llvm.extractvalue %shfl[1 : index] :
+  ///         !llvm<"{ float, i1 }">
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const override {
+    Location loc = op->getLoc();
+    gpu::ShuffleOpOperandAdaptor adaptor(operands);
+
+    auto dialect = lowering.getDialect();
+    auto valueTy = adaptor.value()->getType().cast<LLVM::LLVMType>();
+    auto int32Type = LLVM::LLVMType::getInt32Ty(dialect);
+    auto predTy = LLVM::LLVMType::getInt1Ty(dialect);
+    auto resultTy = LLVM::LLVMType::getStructTy(dialect, {valueTy, predTy});
+
+    Value *one = rewriter.create<LLVM::ConstantOp>(
+        loc, int32Type, rewriter.getI32IntegerAttr(1));
+    // Bit mask of active lanes: `(1 << activeWidth) - 1`.
+    Value *activeMask = rewriter.create<LLVM::SubOp>(
+        loc, int32Type,
+        rewriter.create<LLVM::ShlOp>(loc, int32Type, one, adaptor.width()),
+        one);
+    // Clamp lane: `activeWidth - 1`
+    Value *maskAndClamp =
+        rewriter.create<LLVM::SubOp>(loc, int32Type, adaptor.width(), one);
+
+    auto returnValueAndIsValidAttr = rewriter.getUnitAttr();
+    Value *shfl = rewriter.create<NVVM::ShflBflyOp>(
+        loc, resultTy, activeMask, adaptor.value(), adaptor.offset(),
+        maskAndClamp, returnValueAndIsValidAttr);
+    Value *shflValue = rewriter.create<LLVM::ExtractValueOp>(
+        loc, valueTy, shfl, rewriter.getIndexArrayAttr(0));
+    Value *isActiveSrcLane = rewriter.create<LLVM::ExtractValueOp>(
+        loc, predTy, shfl, rewriter.getIndexArrayAttr(1));
+
+    rewriter.replaceOp(op, {shflValue, isActiveSrcLane});
+    return matchSuccess();
+  }
+};
+
 struct GPUFuncOpLowering : LLVMOpLowering {
   explicit GPUFuncOpLowering(LLVMTypeConverter &typeConverter)
       : LLVMOpLowering(gpu::GPUFuncOp::getOperationName(),
@@ -688,8 +746,8 @@ void mlir::populateGpuToNVVMConversionPatterns(
                                           NVVM::BlockIdYOp, NVVM::BlockIdZOp>,
               GPUIndexIntrinsicOpLowering<gpu::GridDimOp, NVVM::GridDimXOp,
                                           NVVM::GridDimYOp, NVVM::GridDimZOp>,
-              GPUAllReduceOpLowering, GPUFuncOpLowering, GPUReturnOpLowering>(
-          converter);
+              GPUAllReduceOpLowering, GPUShuffleOpLowering, GPUFuncOpLowering,
+              GPUReturnOpLowering>(converter);
   patterns.insert<OpToFuncCallLowering<ExpOp>>(converter, "__nv_expf",
                                                "__nv_exp");
 }

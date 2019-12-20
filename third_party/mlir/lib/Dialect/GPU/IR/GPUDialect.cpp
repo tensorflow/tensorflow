@@ -165,6 +165,47 @@ static LogicalResult verifyAllReduce(gpu::AllReduceOp allReduce) {
   return success();
 }
 
+static LogicalResult verifyShuffleOp(gpu::ShuffleOp shuffleOp) {
+  auto type = shuffleOp.value()->getType();
+  if (shuffleOp.result()->getType() != type) {
+    return shuffleOp.emitOpError()
+           << "requires the same type for value operand and result";
+  }
+  if (!type.isIntOrFloat() || type.getIntOrFloatBitWidth() != 32) {
+    return shuffleOp.emitOpError()
+           << "requires value operand type to be f32 or i32";
+  }
+  return success();
+}
+
+static void printShuffleOp(OpAsmPrinter &p, ShuffleOp op) {
+  p << ShuffleOp::getOperationName() << ' ';
+  p.printOperands(op.getOperands());
+  p << ' ' << op.mode() << " : ";
+  p.printType(op.value()->getType());
+}
+
+static ParseResult parseShuffleOp(OpAsmParser &parser, OperationState &state) {
+  SmallVector<OpAsmParser::OperandType, 3> operandInfo;
+  if (parser.parseOperandList(operandInfo, 3))
+    return failure();
+
+  StringRef mode;
+  if (parser.parseKeyword(&mode))
+    return failure();
+  state.addAttribute("mode", parser.getBuilder().getStringAttr(mode));
+
+  Type valueType;
+  Type int32Type = parser.getBuilder().getIntegerType(32);
+  Type int1Type = parser.getBuilder().getI1Type();
+  if (parser.parseColonType(valueType) ||
+      parser.resolveOperands(operandInfo, {valueType, int32Type, int32Type},
+                             parser.getCurrentLocation(), state.operands) ||
+      parser.addTypesToList({valueType, int1Type}, state.types))
+    return failure();
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // LaunchOp
 //===----------------------------------------------------------------------===//

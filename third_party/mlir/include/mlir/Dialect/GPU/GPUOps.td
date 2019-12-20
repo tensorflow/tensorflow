@@ -536,6 +536,41 @@ def GPU_AllReduceOp : GPU_Op<"all_reduce",
   let verifier = [{ return ::verifyAllReduce(*this); }];
 }
 
+def GPU_ShuffleOpXor : StrEnumAttrCase<"xor">;
+
+def GPU_ShuffleModeAttr : StrEnumAttr<"ShuffleModeAttr",
+    "Indexing modes supported by gpu.shuffle.",
+    [
+      GPU_ShuffleOpXor,
+    ]>;
+
+def GPU_ShuffleOp : GPU_Op<"shuffle", [NoSideEffect]>,
+    Arguments<(ins AnyType:$value, I32:$offset, I32:$width,
+               GPU_ShuffleModeAttr:$mode)>,
+    Results<(outs AnyType:$result, I1:$valid)> {
+  let summary = "Shuffles values within a subgroup.";
+  let description = [{
+    The "shuffle" op moves values to a different invocation within the same
+    subgroup.
+
+    For example
+    ```
+      %1, %2 = gpu.shuffle %0, %offset, %width xor : f32
+    ```
+    for lane k returns the value from lane `k ^ offset` and `true` if that lane
+    is smaller than %width. Otherwise it returns an unspecified value and
+    `false`. A lane is the index of an invocation relative to its subgroup.
+
+    The width specifies the number of invocations that participate in the
+    shuffle. The width needs to be the same for all invocations that participate
+    in the shuffle. Exactly the first `width` invocations of a subgroup need to
+    execute this op in convergence.
+  }];
+  let verifier = [{ return ::verifyShuffleOp(*this); }];
+  let printer = [{ printShuffleOp(p, *this); }];
+  let parser = [{ return parseShuffleOp(parser, result); }];
+}
+
 def GPU_BarrierOp : GPU_Op<"barrier"> {
   let summary = "Synchronizes all work items of a workgroup.";
   let description = [{
