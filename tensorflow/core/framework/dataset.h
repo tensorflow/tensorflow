@@ -475,6 +475,14 @@ class SerializationContext {
     // latter makes sense to do when performing data agnostic graph rewrites to
     // reduce the memory usage.
     bool serialize_data_tensors = true;
+
+    // Indicates whether datasets that use random seeds should have the values
+    // of random seeds serialized or not. If the values of random seeds are
+    // serialized, the deserialized dataset will have the same seeds as the
+    // original dataset. Otherwise, the deserialized dataset will use different
+    // seeds. This param does not affect datasets that use fixed seeds; fixed
+    // seeds will always be preserved.
+    bool preserve_random_seeds = true;
   };
 
   explicit SerializationContext(Params params) : params_(params) {}
@@ -490,6 +498,8 @@ class SerializationContext {
   bool fail_if_unimplemented() const { return params_.fail_if_unimplemented; }
 
   bool serialize_data_tensors() const { return params_.serialize_data_tensors; }
+
+  bool preserve_random_seeds() const { return params_.preserve_random_seeds; }
 
  private:
   Params params_;
