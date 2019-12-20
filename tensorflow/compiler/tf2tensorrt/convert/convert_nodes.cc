@@ -1370,6 +1370,7 @@ Status Converter::BuildCudaEngine(
     }
   }
 
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
   string precision_mode_str;
   TF_RETURN_IF_ERROR(TrtPrecisionModeToName(
       precision_mode_, &precision_mode_str));
@@ -1382,6 +1383,7 @@ Status Converter::BuildCudaEngine(
       "Max-Workspace-Size:", max_workspace_size_bytes);
   VLOG(1) << "Setting TensorRT network name to " << trt_network_name;
   network()->setName(trt_network_name.c_str());
+#endif  // #if IS_TRT_VERSION_GE(6, 0, 0, 0)
 
   VLOG(1) << "Building TensorRT engine";
   engine->reset(trt_builder_->buildCudaEngine(*network()));

@@ -531,7 +531,9 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
   auto& cuda_engine = engine_context->cuda_engine;
 
   if (VLOG_IS_ON(2)) {
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
     VLOG(2) << "  Network name: " << cuda_engine->getName();
+#endif  // #if IS_TRT_VERSION_GE(6, 0, 0, 0)
     VLOG(2) << "  Activation size: " << cuda_engine->getDeviceMemorySize() << " bytes";
     VLOG(2) << "  Workspace size: " << cuda_engine->getWorkspaceSize() << " bytes";
     VLOG(2) << "  Datatype of " << cuda_engine->getNbBindings() << " inputs/outputs";
