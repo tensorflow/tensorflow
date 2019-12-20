@@ -184,6 +184,14 @@ def : Pat<(TF_PadOp TensorOf<[AnyInteger, AnyFloat]>:$input, $paddings),
              (TF_ConstOp (GetScalarOfType<0> $input)))>;
 
 //===----------------------------------------------------------------------===//
+// Reciprocal op patterns.
+//===----------------------------------------------------------------------===//
+
+// TODO(hinsu): Support complex and unsigned input types.
+def LowerReciprocal : Pat<(TF_ReciprocalOp TF_SintOrFpTensor:$x),
+                          (TF_DivOp (TF_ConstOp (GetScalarOfType<1> $x)), $x)>;
+
+//===----------------------------------------------------------------------===//
 // Rsqrt op patterns.
 //===----------------------------------------------------------------------===//
 
