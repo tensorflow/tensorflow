@@ -1848,7 +1848,7 @@ def conv2d_v2(input,  # pylint: disable=redefined-builtin
                           filter[di, dj, q, k]
 
   Must have `strides[0] = strides[3] = 1`.  For the most common case of the same
-  horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
+  horizontal and vertical strides, `strides = [1, stride, stride, 1]`.
 
   Args:
     input: A `Tensor`. Must be one of the following types:
@@ -1934,7 +1934,7 @@ def conv2d(  # pylint: disable=redefined-builtin,dangerous-default-value
                           * filter[di, dj, q, k]
 
   Must have `strides[0] = strides[3] = 1`.  For the most common case of the same
-  horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
+  horizontal and vertical strides, `strides = [1, stride, stride, 1]`.
 
   Args:
     input: A `Tensor`. Must be one of the following types:
