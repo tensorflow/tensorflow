@@ -364,7 +364,6 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
     instruction->set_raw_backend_config_string(backend_config);
   }
 
-  // return ::testing::AssertionSuccess();
   auto output = test_runner_.Execute(std::move(module), fake_argument_ptrs,
                                      /*run_hlo_passes=*/run_hlo_passes,
                                      /*profile=*/profile);
