@@ -35,6 +35,11 @@ void Kernel8bitAvx2(const KernelParams8bit<8, 8>& params) {
   RUY_DCHECK(false);
 }
 
+void Kernel8bitAvx2SingleCol(const KernelParams8bit<8, 8>& params) {
+  // CPU-ID-based checks should disable the path that would reach this point.
+  RUY_DCHECK(false);
+}
+
 void KernelFloatAvx2(const KernelParamsFloat<8, 8>& params) {
   // CPU-ID-based checks should disable the path that would reach this point.
   RUY_DCHECK(false);
@@ -351,6 +356,7 @@ inline void mm256_n_storeu_ps(float* dst, int residual_rows, const __m256 v) {
 
 void Kernel8bitAvx2(const KernelParams8bit<8, 8>& params) {
   gemmlowp::ScopedProfilingLabel label("Kernel kAvx2 8-bit");
+
   const std::int8_t splitter_idx_data[32] = {
       0, 1, 4, 5, 8,  9,  12, 13,  //
       2, 3, 6, 7, 10, 11, 14, 15,  //
@@ -1140,6 +1146,272 @@ void Kernel8bitAvx2(const KernelParams8bit<8, 8>& params) {
                                      kAvx8bitBlockSize * params.dst_stride);
     rhs_col_ptr += kAvx8bitBlockSize * params.rhs_stride;
   }  // End col-block loop.
+}  // NOLINT(readability/fn_size)
+
+void Kernel8bitAvx2SingleCol(const KernelParams8bit<8, 8>& params) {
+  gemmlowp::ScopedProfilingLabel label("Kernel kAvx2 8-bit GEMV");
+
+  RUY_DCHECK_EQ(params.dst_cols, 1);
+  RUY_DCHECK_EQ(params.last_col, 0);
+  RUY_DCHECK_EQ(params.start_col, 0);
+
+  const std::int8_t splitter_idx_data[32] = {
+      0, 1, 4, 5, 8,  9,  12, 13,  //
+      2, 3, 6, 7, 10, 11, 14, 15,  //
+      0, 1, 4, 5, 8,  9,  12, 13,  //
+      2, 3, 6, 7, 10, 11, 14, 15   //
+  };
+
+  int bias_ptr_block_increment =
+      params.flags & RUY_ASM_FLAG_HAS_BIAS ? kAvx8bitBlockSize : 0;
+
+  const std::int8_t* rhs_col_ptr = params.rhs_base_ptr;
+  void* dst_col_ptr = params.dst_base_ptr;
+  const std::int32_t* bias_col_ptr = params.bias;
+  if (params.flags & RUY_ASM_FLAG_HAS_BIAS) {
+    bias_col_ptr += params.start_row;
+  }
+
+  const std::int8_t* lhs_col_ptr = params.lhs_base_ptr;
+  void* dst_ptr = dst_col_ptr;
+  const std::int32_t* bias_ptr = bias_col_ptr;
+
+  const std::int32_t lhs_zero_point = params.lhs_zero_point;
+  const bool has_rhs_sums_offsets =
+      (params.flags & RUY_ASM_FLAG_HAS_RHS_SUMS) && lhs_zero_point;
+  std::int32_t rhs_sums_offsets[8];
+  if (has_rhs_sums_offsets) {
+    const __m256i rhs_sums_offset_v = _mm256_mullo_epi32(
+        _mm256_set1_epi32(lhs_zero_point),
+        _mm256_loadu_si256(
+            reinterpret_cast<__m256i const*>(&params.rhs_sums[0])));
+    _mm256_storeu_si256(reinterpret_cast<__m256i*>(rhs_sums_offsets),
+                        rhs_sums_offset_v);
+  }
+
+  for (int row = params.start_row; row <= params.last_row;
+       row += kAvx8bitBlockSize) {
+    const int residual_rows =
+        std::min(params.dst_rows - row, kAvx8bitBlockSize);
+
+    const __m256i splitter_idx =
+        _mm256_loadu_si256(reinterpret_cast<__m256i const*>(splitter_idx_data));
+
+    __m256i accum_data_v0;
+
+    // Initialize with bias.
+    __m256i initial_accum_data =
+        intrin_utils::mm256_n_loadu_epi32(residual_rows, bias_ptr);
+    bias_ptr += bias_ptr_block_increment;
+
+    // Adjustments common across columns.
+    const std::int32_t rhs_zero_point = params.rhs_zero_point;
+    if ((params.flags & RUY_ASM_FLAG_HAS_LHS_SUMS) && rhs_zero_point) {
+      const __m256i lhs_sums_offset = _mm256_mullo_epi32(
+          _mm256_set1_epi32(rhs_zero_point),
+          _mm256_loadu_si256(
+              reinterpret_cast<__m256i const*>(&params.lhs_sums[row])));
+      initial_accum_data =
+          _mm256_sub_epi32(initial_accum_data, lhs_sums_offset);
+    }
+    const std::int32_t prod_zp_depth = params.prod_zp_depth;
+    if (prod_zp_depth) {
+      initial_accum_data = _mm256_add_epi32(initial_accum_data,
+                                            _mm256_set1_epi32(prod_zp_depth));
+    }
+
+    // Adjustments differing across columns.
+    if (has_rhs_sums_offsets) {
+      accum_data_v0 = _mm256_sub_epi32(initial_accum_data,
+                                       _mm256_set1_epi32(rhs_sums_offsets[0]));
+    } else {
+      accum_data_v0 = initial_accum_data;
+    }
+
+    const std::int8_t* lhs_ptr = lhs_col_ptr;
+    const std::int8_t* rhs_ptr = rhs_col_ptr;
+    for (int d = 0; d < params.depth; d += kAvx8bitInnerSize) {
+      const __m256i lhs_data =
+          _mm256_load_si256(reinterpret_cast<const __m256i*>(lhs_ptr));
+      const __m128i rhs_data_8bit = _mm_loadu_si32(rhs_ptr);
+
+      // Each "int32" is two 16-bit RHS values, sign extended from 8-bit.
+      // For simplicity we load 4x the data that we need and process twice the
+      // data  that we need  and store only the data we need.
+      std::int32_t rhs_data[2];
+      const __m128i rhs_16_bit_dup = _mm_cvtepi8_epi16(rhs_data_8bit);
+      // Now that we have cast the RHS data, we store it so that each value
+      // can be separately loaded in the accumulation loop.
+      _mm_storeu_si64(reinterpret_cast<__m128i*>(rhs_data), rhs_16_bit_dup);
+
+      const __m256i lhs_data_split =
+          _mm256_shuffle_epi8(lhs_data, splitter_idx);
+      const __m256i lhs_data_split_expand_bottom =
+          _mm256_cvtepi8_epi16(_mm256_extracti128_si256(lhs_data_split, 0));
+      const __m256i lhs_data_split_expand_top =
+          _mm256_cvtepi8_epi16(_mm256_extracti128_si256(lhs_data_split, 1));
+
+      // Take bytes 0, 1, 4, 5, 8, 9, ... expanded to 16-bit.
+      const __m256i lhs_16_bit_low = _mm256_permute2x128_si256(
+          lhs_data_split_expand_bottom, lhs_data_split_expand_top, 0x20);
+      // Take bytes 2, 3, 6, 7, 10, 11, ... expanded to 16-bit.
+      const __m256i lhs_16_bit_high = _mm256_permute2x128_si256(
+          lhs_data_split_expand_bottom, lhs_data_split_expand_top, 0x31);
+      // Accumulate for column 0.
+      const std::int32_t low_rhs_value = rhs_data[0];
+      const std::int32_t high_rhs_value = rhs_data[1];
+
+      const __m256i rhs_16_bit_dup_low = _mm256_set1_epi32(low_rhs_value);
+      const __m256i rhs_16_bit_dup_high = _mm256_set1_epi32(high_rhs_value);
+
+      accum_data_v0 = _mm256_add_epi32(
+          accum_data_v0, _mm256_madd_epi16(lhs_16_bit_low, rhs_16_bit_dup_low));
+      accum_data_v0 = _mm256_add_epi32(
+          accum_data_v0,
+          _mm256_madd_epi16(lhs_16_bit_high, rhs_16_bit_dup_high));
+
+      lhs_ptr += kAvx8bitBlockSize * kAvx8bitInnerSize;
+      rhs_ptr += kAvx8bitBlockSize * kAvx8bitInnerSize;
+    }
+
+    if (params.dst_type_id != DstTypeId<std::int32_t>::kValue) {
+      __m256i m_vector;
+      __m256i e_vector;
+      // Does not make use of RUY_ASM_FLAG_NEEDS_LEFT_SHIFT.
+      if (params.flags & RUY_ASM_FLAG_HAS_PERCHANNEL) {
+        m_vector = intrin_utils::mm256_n_loadu_epi32(
+            residual_rows, &params.multiplier_fixedpoint[row]);
+        e_vector = intrin_utils::mm256_n_loadu_epi32(
+            residual_rows, &params.multiplier_exponent[row]);
+      } else {
+        // These arrays have size LhsCols, and are pre-filled.
+        m_vector = _mm256_set1_epi32(params.multiplier_fixedpoint[0]);
+        e_vector = _mm256_set1_epi32(params.multiplier_exponent[0]);
+      }
+
+      const __m256i m_64bit_low =
+          _mm256_cvtepi32_epi64(_mm256_extracti128_si256(m_vector, 0));
+      const __m256i m_64bit_high =
+          _mm256_cvtepi32_epi64(_mm256_extracti128_si256(m_vector, 1));
+
+      const __m256i zero_vector = _mm256_setzero_si256();
+      const __m256i left_shift = _mm256_max_epi32(e_vector, zero_vector);
+      const __m256i neg_e_vector = _mm256_sub_epi32(zero_vector, e_vector);
+      const __m256i right_shift = _mm256_max_epi32(neg_e_vector, zero_vector);
+      const __m256i final_right_shift =
+          _mm256_add_epi32(right_shift, _mm256_set1_epi32(31));
+      const __m256i final_right_shift_low =
+          _mm256_cvtepi32_epi64(_mm256_extracti128_si256(final_right_shift, 0));
+      const __m256i final_right_shift_high =
+          _mm256_cvtepi32_epi64(_mm256_extracti128_si256(final_right_shift, 1));
+      // Really we want 0x100000000, but use half to avoid overflowing.
+      const __m256i convert_to_signed_halved =
+          _mm256_srlv_epi32(_mm256_set1_epi32(0x80000000), right_shift);
+      const __m256i convert_to_unsigned_64 =
+          _mm256_set1_epi64x(0x8000000000000000);
+
+      __m256i post_scaling_offset =
+          _mm256_add_epi32(convert_to_signed_halved, convert_to_signed_halved);
+
+      const __m256i offset_vector =
+          _mm256_slli_epi64(_mm256_set1_epi64x(1), 30);
+      // Really these should be shifted by neg_e_vector, but tests pass when
+      // using right_shift.
+      const __m256i offset_vector_low = _mm256_add_epi64(
+          _mm256_sllv_epi64(
+              offset_vector,
+              _mm256_cvtepi32_epi64(_mm256_extracti128_si256(right_shift, 0))),
+          convert_to_unsigned_64);
+      const __m256i offset_vector_high = _mm256_add_epi64(
+          _mm256_sllv_epi64(
+              offset_vector,
+              _mm256_cvtepi32_epi64(_mm256_extracti128_si256(right_shift, 1))),
+          convert_to_unsigned_64);
+
+      if (params.dst_zero_point) {
+        const __m256i dst_zero_point = _mm256_set1_epi32(params.dst_zero_point);
+        // The post-scaling offset is subtracted later, so this has the effect
+        // of adding the zero point.
+        post_scaling_offset =
+            _mm256_sub_epi32(post_scaling_offset, dst_zero_point);
+      }
+
+#if !RUY_OPT_ENABLED(RUY_OPT_NATIVE_ROUNDING)
+      RUY_DCHECK(false);
+#endif
+      const __m256i repack_perm = _mm256_setr_epi32(0, 2, 4, 6, 1, 3, 5, 7);
+
+      // See GEMM version for details of this process.
+      {
+        __m256i shifted_accum = _mm256_sllv_epi32(accum_data_v0, left_shift);
+        // Apply the fixed-point part of the multiplier.
+        __m256i scaled_v_low = _mm256_mul_epi32(
+            _mm256_cvtepi32_epi64(_mm256_extracti128_si256(shifted_accum, 0)),
+            m_64bit_low);
+        __m256i scaled_v_high = _mm256_mul_epi32(
+            _mm256_cvtepi32_epi64(_mm256_extracti128_si256(shifted_accum, 1)),
+            m_64bit_high);
+
+        scaled_v_low = _mm256_add_epi64(scaled_v_low, offset_vector_low);
+        scaled_v_high = _mm256_add_epi64(scaled_v_high, offset_vector_high);
+
+        scaled_v_low = _mm256_srlv_epi64(scaled_v_low, final_right_shift_low);
+        scaled_v_high =
+            _mm256_srlv_epi64(scaled_v_high, final_right_shift_high);
+
+        scaled_v_high = _mm256_slli_epi64(scaled_v_high, 32);
+        __m256i results = _mm256_blend_epi32(scaled_v_low, scaled_v_high, 0xaa);
+        results = _mm256_permutevar8x32_epi32(results, repack_perm);
+
+        accum_data_v0 = _mm256_sub_epi32(results, post_scaling_offset);
+      }
+    }
+    const __m256i clamp_max_v = _mm256_set1_epi32(params.clamp_max);
+    const __m256i clamp_min_v = _mm256_set1_epi32(params.clamp_min);
+
+    if (params.dst_type_id == DstTypeId<std::int8_t>::kValue) {
+      std::int8_t* tmp_ptr = static_cast<std::int8_t*>(dst_ptr);
+      __m256 result = accum_data_v0;
+      result = _mm256_min_epi32(result, clamp_max_v);
+      result = _mm256_max_epi32(result, clamp_min_v);
+      intrin_utils::mm256_n_storeu_cvtepi32_epi8(tmp_ptr, residual_rows,
+                                                 result);
+      dst_ptr = static_cast<void*>(static_cast<std::int8_t*>(dst_ptr) +
+                                   kAvx8bitBlockSize);
+    } else if (params.dst_type_id == DstTypeId<std::uint8_t>::kValue) {
+      std::uint8_t* tmp_ptr = static_cast<std::uint8_t*>(dst_ptr);
+      __m256 result = accum_data_v0;
+      result = _mm256_min_epi32(result, clamp_max_v);
+      result = _mm256_max_epi32(result, clamp_min_v);
+      intrin_utils::mm256_n_storeu_cvtepi32_epi8(tmp_ptr, residual_rows,
+                                                 result);
+      dst_ptr = static_cast<void*>(static_cast<std::uint8_t*>(dst_ptr) +
+                                   kAvx8bitBlockSize);
+    } else if (params.dst_type_id == DstTypeId<std::int16_t>::kValue) {
+      std::int16_t* tmp_ptr = static_cast<std::int16_t*>(dst_ptr);
+      __m256 result = accum_data_v0;
+      result = _mm256_min_epi32(result, clamp_max_v);
+      result = _mm256_max_epi32(result, clamp_min_v);
+      intrin_utils::mm256_n_storeu_cvtepi32_epi16(tmp_ptr, residual_rows,
+                                                  result);
+      dst_ptr = static_cast<void*>(static_cast<std::int16_t*>(dst_ptr) +
+                                   kAvx8bitBlockSize);
+    } else if (params.dst_type_id == DstTypeId<std::int32_t>::kValue) {
+      std::int32_t* dst_block_ptr = static_cast<std::int32_t*>(dst_ptr);
+      intrin_utils::mm256_n_storeu_epi32(dst_block_ptr, residual_rows,
+                                         accum_data_v0);
+      dst_ptr = static_cast<void*>(static_cast<std::int32_t*>(dst_ptr) +
+                                   kAvx8bitBlockSize);
+    } else {
+      RUY_DCHECK(false);
+    }
+
+    lhs_col_ptr += kAvx8bitBlockSize * params.lhs_stride;
+  }  // End row-block loop.
+
+  dst_col_ptr = static_cast<void*>(static_cast<char*>(dst_col_ptr) +
+                                   kAvx8bitBlockSize * params.dst_stride);
+  rhs_col_ptr += kAvx8bitBlockSize * params.rhs_stride;
 }  // NOLINT(readability/fn_size)
 
 void KernelFloatAvx2(const KernelParamsFloat<8, 8>& params) {

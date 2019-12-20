@@ -71,6 +71,7 @@ struct Kernel<Path::kAvx512, float, float, float, BasicSpec<float, float>> {
 };
 
 void Kernel8bitAvx2(const KernelParams8bit<8, 8>& params);
+void Kernel8bitAvx2SingleCol(const KernelParams8bit<8, 8>& params);
 
 template <typename DstScalar>
 struct Kernel<Path::kAvx2, std::int8_t, std::int8_t, DstScalar,
@@ -87,7 +88,11 @@ struct Kernel<Path::kAvx2, std::int8_t, std::int8_t, DstScalar,
     KernelParams8bit<LhsLayout::kCols, RhsLayout::kCols> params;
     MakeKernelParams8bit(lhs, rhs, spec, start_row, start_col, end_row, end_col,
                          dst, &params);
-    Kernel8bitAvx2(params);
+    if (dst->layout.cols == 1) {
+      Kernel8bitAvx2SingleCol(params);
+    } else {
+      Kernel8bitAvx2(params);
+    }
   }
 };
 
