@@ -824,6 +824,7 @@ cuda_py_test(
     data = [":vocabulary_testdata"],
     python_version = "PY3",
     shard_count = 4,
+    tags = ["no_windows"],
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
