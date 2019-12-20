@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/multi_output_fusion.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
+#include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
@@ -34,6 +35,8 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 namespace {
+
+namespace op = xla::testing::opcode_matchers;
 
 class HorizontalFusionTest : public HloTestBase {};
 
@@ -70,19 +73,18 @@ TEST_F(HorizontalFusionTest, BasicTest) {
   EXPECT_TRUE(GpuHorizontalFusion().Run(module.get()).ValueOrDie());
   EXPECT_TRUE(HloDCE().Run(module.get()).ValueOrDie());
 
-  StatusOr<bool> filecheck_result = RunFileCheck(module->ToString(),
-                                                 R"(
-      CHECK-LABEL: horizontally_fused_computation
-      CHECK-DAG: multiply(
-      CHECK-DAG: add(
-      CHECK-DAG: reshape(
-      CHECK-DAG: reshape(
-      CHECK: concatenate(
-      CHECK-DAG: slice(
-      CHECK-DAG: slice(
-  )");
-  ASSERT_TRUE(filecheck_result.ok());
-  EXPECT_TRUE(filecheck_result.ValueOrDie());
+  const HloInstruction* entry_root =
+      module->entry_computation()->root_instruction();
+  EXPECT_THAT(entry_root,
+              op::Tuple(op::Bitcast(op::GetTupleElement(op::Fusion())),
+                        op::Bitcast(op::GetTupleElement(op::Fusion()))));
+
+  const HloInstruction* fusion = entry_root->operand(0)->operand(0)->operand(0);
+  ASSERT_TRUE(fusion->IsMultiOutputFusion());
+  EXPECT_THAT(
+      fusion->fused_expression_root(),
+      op::Tuple(op::Slice(op::Concatenate(op::Reshape(), op::Reshape())),
+                op::Slice(op::Concatenate(op::Reshape(), op::Reshape()))));
 }
 
 // Horizontal fusion should not be triggered as fusion will create cycles.
@@ -107,6 +109,8 @@ TEST_F(HorizontalFusionTest, NegativeTest) {
    arg.2 = f16[123]{0} parameter(1)
    arg.3 = f16[123]{0} parameter(2)
    arg.4 = f16[123]{0} parameter(3)
+   // fusion.1 and fusion.2 will not be horizontally fused as it will create
+   // a cycle through fusion.1 -> add.2 -> fusion.2
    fusion.1 = f16[123]{0}
        fusion(arg.1, arg.2), kind=kLoop, calls=fused_computation.1
    add.2 = f16[123]{0} add(fusion.1, arg.4)

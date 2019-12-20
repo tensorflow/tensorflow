@@ -28,28 +28,29 @@ namespace gpu {
 // This optimization pass horizontally fuses computations for reducing kernel
 // launch overhead while increasing kernel launch dims on GPU. The initial
 // motivation of this horizontal fusion is due to the observation that the
-// training optimizer phase typically has many small kernels as a result of
-// applying the same formula on many training parameters (or variables in
-// Tensorflow). Fusing these small kernels, hence, provides performance
-// gain.
+// training optimizer phase (e.g., AdamOptimizer and L2Loss, etc.) typically
+// has many small kernels as a result of applying the same formula on many
+// training parameters (or variables in Tensorflow). Fusing these small
+// kernels, hence, provides performance gain.
 //
 // Theoretically speaking, we can (horizontally) fuse kernels as long as no
-// cycles are created after the fusion. However, it requires a somewhat
-// cumbersome cycle detection checks; also, we observe that naive horizontal
-// fusion of arbitrary kernels may not be profitable due to control divergence
-// and possible increase of memory bandwidth pressure due to uncoalesced memory
+// cycles are created after the fusion. However, it requires somewhat cumbersome
+// cycle detection check; also, we observe that naive horizontal fusion of
+// arbitrary kernels may not be profitable due to control divergence and
+// possible increase of memory bandwidth pressure due to uncoalesced memory
 // accesses (note that horizontal fusion does not change the amount of memory
 // read+written at all). In practice, a simple yet effective heuristic is used
 // to avoid these issues while addressing the known beneficial cases. That is,
 // we simply search for fusion candidates by looking for instructions whose
-// outputs are all consumed by the same instruction. This addresses the training
-// optimizer cases well, as the candidate instructions are typically consumed
-// only by the ROOT tuple of the entry computation.
+// outputs are all consumed by the same instruction. This catches the cases in
+// the training optimizer phase, as the candidate instructions are typically
+// consumed only by the ROOT tuple of the entry computation.
 //
 // The following illustrates the mechanism of the horizontal fusion. Before
 // fusion, there are two trivial kernels in the illustrating example. One has
 // only a Mul op, while the other consists of only an Add op. Since they are
-// only consumed by the same tuple instruction, horizontal fusion is triggered.
+// only consumed by the same (ROOT) tuple instruction, horizontal fusion is
+// triggered.
 //
 // i0 i1   i2 i3
 //  | |     | |
@@ -57,10 +58,7 @@ namespace gpu {
 //  Mul     Add
 //   |       |
 //   v       v
-//   o0      o1
-//    |      |
-//    v      v
-//     tuple
+//  (ROOT) tuple
 //
 // We horizontally fuse them into the below pattern.
 //
@@ -82,12 +80,9 @@ namespace gpu {
 // Reshape2  Reshape3
 //   |       |
 //   v       v
-//   o0      o1
-//    |      |
-//    v      v
-//     tuple
+//  (ROOT) tuple
 //
-// Note that this style provides an important advantage that kernels of
+// Note that this fusion style provides an important advantage that kernels of
 // different shapes can be horizontally fused. The first pair of reshapes
 // (i.e., Reshape0 and Reshape1) reshape the dims to 1 dimension, so that the
 // outputs of the fused kernels can (always) be concatenated. The second pair
@@ -96,7 +91,7 @@ namespace gpu {
 //
 // No extra copies are introduced by the horizontal fusion. Besides Reshape2
 // and Reshape3, the other instructions are fused into an input fusion; the
-// output dims of the concatenate will be used as the dims for kernel launch.
+// output dims of the concatenate will be used as the kernel launch dims.
 // Reshape2 and Reshape3 are converted into bitcasts.
 class GpuHorizontalFusion : public HloModulePass {
  public:

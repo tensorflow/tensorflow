@@ -99,7 +99,7 @@ class HorizontalFusionImpl {
 };  // HorizontalFusionImpl
 
 bool IsFusionSupported(const HloInstruction& instr) {
-  // Support only kLoop fusion now.
+  // Supports only kLoop fusion now.
   if (!instr.IsLoopFusion()) {
     return false;
   }
@@ -114,7 +114,7 @@ bool IsConsumerTheOnlyNonRootUser(const HloInstruction& instr,
       // Skip GTE.
       return IsConsumerTheOnlyNonRootUser(*user, consumer);
     } else if (user == &consumer) {
-      // `user` is consumer.
+      // `user` is `consumer`.
       return true;
     } else if (user == user->parent()->root_instruction()) {
       // Consumed by ROOT is always fine, since it is impossible to create
@@ -215,7 +215,7 @@ void HorizontalFusionImpl::FusionCandidates::Initialize(
     }
   }
 
-  // Sort according to the number of outputs and instruciton counts, because
+  // Sort according to the number of outputs and instruction counts, because
   // we fuse only instructions with the same number of outputs and whose
   // computations have the same instruction counts.
   std::sort(fusion_instrs_.begin(), fusion_instrs_.end(),
@@ -266,7 +266,9 @@ HorizontalFusionImpl::FusionCandidates::GetNextSpanOfFusions() {
     } else if (fusion_instrs_[left]->fused_instruction_count() !=
                fusion_instrs_[right]->fused_instruction_count()) {
       // Do not fuse computations of different instruction counts as it may
-      // introduce control divergence.
+      // introduce control divergence. This is a very simple heuristic to avoid
+      // fusing computations with too much discrepancy and we may improve it
+      // when the needs arise.
       break;
     } else if (reach_max_fusion_batch_size(left, right)) {
       // Hit max fusion batch size.
