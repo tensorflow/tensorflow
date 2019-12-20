@@ -43,6 +43,15 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   ROOT %add.5 = f32[4] add(f32[4] %add.3, f32[] %add.4)
 }
 
+// CHECK-LABEL:  func @test_after_all
+// CHECK-SAME:    ([[VAL_0:%.*]]: !xla_hlo.token, [[VAL_1:%.*]]: !xla_hlo.token) -> !xla_hlo.token
+%test_after_all (token0: token[], token1: token[] ) -> token[] {
+  token0 = token[] parameter(0)
+  token1 = token[] parameter(1)
+  // CHECK-NEXT:  "xla_hlo.after_all"([[VAL_0]], [[VAL_1]]) {name = "{{.*}}"} : (!xla_hlo.token, !xla_hlo.token) -> !xla_hlo.token
+  ROOT after-all = token[] after-all(token0, token1)
+}
+
 // CHECK-LABEL:  func @test_and
 %test_and (Arg_0.1: pred[4], Arg_1.2: pred[4]) -> pred[4] {
   %Arg_0.1 = pred[4] parameter(0)
@@ -317,6 +326,28 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   ROOT %floor.2 = f32[16] floor(f32[16] %arg0.1)
 }
 
+// CHECK-LABEL:  func @test_gather(
+// CHECK-SAME:  [[ARG0:%.+]]: tensor<200x100x300xf32>, [[ARG1:%.+]]: tensor<10x2xi32>) -> tensor<10x300xf32> {
+%test_gather (arg.0: f32[200,100,300], arg.1: s32[10,2]) -> f32[10,300] {
+  %arg.0 = f32[200,100,300] parameter(0)
+  %arg.1 = s32[10,2] parameter(1)
+  // CHECK:  "xla_hlo.gather"([[ARG0]], [[ARG1]])
+  // CHECK-SAME:  dimension_numbers
+  // CHECK-SAME:  collapsed_slice_dims = dense<[0, 1]> : tensor<2xi64>
+  // CHECK-SAME:  index_vector_dim = 1 : i64
+  // CHECK-SAME:  offset_dims = dense<1> : tensor<1xi64>
+  // CHECK-SAME:  start_index_map = dense<[0, 1]> : tensor<2xi64>
+  // CHECK-SAME:  indices_are_sorted = true
+  // CHECK-SAME:  slice_sizes = dense<[1, 1, 300]> : tensor<3xi64>
+  ROOT gather = f32[10,300] gather(f32[200,100,300] %arg.0, s32[10,2] %arg.1),
+      collapsed_slice_dims={0,1},
+      index_vector_dim=1,
+      offset_dims={1},
+      start_index_map={0,1},
+      indices_are_sorted=true,
+      slice_sizes={1,1,300}
+}
+
 // CHECK-LABEL:  func @test_get_dimension_size
 // CHECK-SAME:  ([[ARG:%.*]]: tensor<4x2xf32>)
 %test_get_dimension_size (Arg_0.1: f32[4,2]) -> s32[] {
@@ -332,6 +363,16 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   // CHECK-NEXT:  "xla_hlo.imag"(%arg0) {name = "{{.*}}"} : (tensor<4xcomplex<f32>>) -> tensor<4xf32>
   ROOT %imag.3 = f32[4] imag(c64[4] %Arg_0.1)
 }
+
+// CHECK-LABEL:  func @test_infeed
+// CHECK-SAME: ([[TOKEN:%.*]]: !xla_hlo.token) -> tuple<tensor<3xi32>, !xla_hlo.token> {
+%test_infeed (token0: token[]) -> (s32[3], token[]) {
+  %token0 = token[] parameter(0)
+  // CHECK-NEXT:  "xla_hlo.infeed"([[TOKEN]])
+  // CHECK-SAME:  infeed_config = "foobar"
+  ROOT %infeed = (s32[3], token[]) infeed(token[] %token0), infeed_config="foobar"
+}
+
 
 // CHECK-LABEL:  func @test_iota_1() -> tensor<4xf32> {
 %test_iota_1 () -> f32[4] {
@@ -411,6 +452,16 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
 
   // CHECK-NEXT:  xla_hlo.or %arg0, %arg1
   ROOT %or.3 = pred[4] or(pred[4] %Arg_0.1, pred[4] %Arg_1.2)
+}
+
+// CHECK-LABEL:  func @test_outfeed
+// CHECK-SAME: ([[DATA:%.*]]: tensor<3xi32>, [[TOKEN:%.*]]: !xla_hlo.token) -> !xla_hlo.token {
+%test_outfeed (Arg_0.1: s32[3], Arg_1.2: token[]) -> token[] {
+  %Arg_0.1 = s32[3] parameter(0)
+  %Arg_1.2 = token[] parameter(1)
+  // CHECK-NEXT:  "xla_hlo.outfeed"([[DATA]], [[TOKEN]])
+  // CHECK-SAME:  outfeed_config = "foobar"
+  ROOT %outfeed.3 = token[] outfeed(s32[3] %Arg_0.1, token[] %Arg_1.2), outfeed_config="foobar"
 }
 
 // CHECK-LABEL:  func @test_pad(%arg0: tensor<4xf32>, %arg1: tensor<f32>) -> tensor<4xf32> {

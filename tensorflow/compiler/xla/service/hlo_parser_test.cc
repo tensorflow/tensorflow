@@ -1203,7 +1203,7 @@ ENTRY Rng {
 },
 // Reduce precision
 {
-"ReducePrevison",
+"ReducePrecision",
 R"(HloModule reduce_precision
 
 ENTRY ReducePrecision {
@@ -1470,6 +1470,24 @@ add {
 ENTRY AllReduceWithSubgroups {
   input = f32[128,32]{0,1} parameter(0)
   ROOT all-reduce = f32[128,32]{0,1} all-reduce(input), replica_groups={{0,1},{2,3}}, to_apply=add
+}
+
+)"
+},
+// all-reduce with constrained layout
+{
+"AllReduceWithLayout",
+R"(HloModule CRS
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY CRS {
+  input = f32[8]{0} parameter(0)
+  ROOT crs = f32[8]{0} all-reduce(input), replica_groups={}, constrain_layout=true, to_apply=add
 }
 
 )"
@@ -2077,7 +2095,7 @@ ENTRY %ShortConstant.v4 () -> f32[67,89] {
   EXPECT_EQ(result.ValueOrDie()->ToString(HloPrintOptions()), original);
 }
 
-TEST_F(HloParserTest, AttibutesAnyOrder) {
+TEST_F(HloParserTest, AttributesAnyOrder) {
   const string original = R"(HloModule any_order_module
 
 ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,1], filter: f32[1,1,1]) -> f32[1,4,1] {

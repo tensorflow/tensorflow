@@ -319,7 +319,7 @@ Status XRTMemoryManager::TryFreeMemoryStep(MemoryReclaimContext* mrctx,
   }
   if (!mrctx->done_freeing) {
     // If the caller passed us a zero requested_free_size, we try to free chunks
-    // of kMaxFreeSize memory, until either the run function suceeds, or we run
+    // of kMaxFreeSize memory, until either the run function succeeds, or we run
     // out of freeable memory.
     const size_t kMaxFreeSize = 1000000000;
     size_t free_size =

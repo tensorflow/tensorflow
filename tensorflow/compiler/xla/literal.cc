@@ -248,7 +248,7 @@ Status MutableLiteralBase::CopySliceFromInternal(
     TF_RET_CHECK(src_base.size() == copy_size.size());
 
     // Scan the source from minor, stepping in copy size blocks, then within
-    // the index enumaration functor, do a strided copy advancing source index
+    // the index enumeration functor, do a strided copy advancing source index
     // by one (walking through the minor dimension), and destination index by
     // proper stride size at the matching dimension.
     DimensionVector src_indexes(src_base.size(), 0);

@@ -34,10 +34,12 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/iterator_range.h"
+#include "llvm/Support/Casting.h"
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
 #include "mlir/IR/Identifier.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
+#include "mlir/IR/Operation.h"  // TF:local_config_mlir
 #include "mlir/IR/Types.h"  // TF:local_config_mlir
 #include "mlir/IR/Value.h"  // TF:local_config_mlir
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
@@ -57,8 +59,6 @@ constexpr char kTPUReplicateAttr[] = "_tpu_replicate";
 constexpr char kDeviceAttr[] = "device";
 constexpr char kNameAttr[] = "name";
 constexpr char kNumReplicasAttr[] = "num_replicas";
-constexpr char kTPUReplicatedInputOp[] = "tf.TPUReplicatedInput";
-constexpr char kTPUReplicatedOutputOp[] = "tf.TPUReplicatedOutput";
 
 constexpr char kBadTPUReplicateAttrMsg[] =
     "requires '_tpu_replicate' string attribute";
@@ -259,6 +259,39 @@ void MovePrecedingClusterUsers(tf_device::LaunchOp launch_op,
   for (Operation* user : preceding_users) user->moveBefore(op_after_launch_op);
 }
 
+// Sorts `tf.TPUReplicatedInput` ops by `index` attribute. Ops with an `index`
+// of -1 are always after ops with a non negative `index`, and an arbitrary
+// ordering is used as there are no dependencies on their relative ordering.
+LogicalResult SortTPUReplicatedInputsByIndex(
+    llvm::ArrayRef<Operation*> inputs,
+    llvm::SmallVectorImpl<Operation*>* sorted_inputs) {
+  const int input_size = inputs.size();
+  sorted_inputs->resize(input_size, nullptr);
+  int last_index = input_size - 1;
+
+  for (Operation* input : inputs) {
+    int64_t index =
+        llvm::cast<TF::TPUReplicatedInputOp>(input).index().getLimitedValue();
+
+    if (index >= input_size || index < -1)
+      return input->emitError() << "'" << input->getName().getStringRef()
+                                << "' index is not in range [-1, " << input_size
+                                << "), got " << index;
+
+    if (index == -1)
+      (*sorted_inputs)[last_index--] = input;
+    else
+      (*sorted_inputs)[index] = input;
+  }
+
+  if (llvm::any_of(*sorted_inputs, [](Operation* op) { return op == nullptr; }))
+    return inputs.front()->emitError()
+           << "failed to sort '" << inputs.front()->getName().getStringRef()
+           << "' ops, gap(s) found in indices";
+
+  return success();
+}
+
 // Creates a `tf_device.replicate` to represent replication for the cluster, if
 // necessary.
 LogicalResult ReplicateCluster(tf_device::LaunchOp launch_op,
@@ -270,15 +303,18 @@ LogicalResult ReplicateCluster(tf_device::LaunchOp launch_op,
     return launch_op.emitError() << "requires '" << kNumReplicasAttr
                                  << "' int attribute to be at least 1";
 
-  // Collect all used TPUReplicatedInput ops.
-  llvm::SmallSetVector<Operation*, 8> replicated_input_ops;
+  // Collect all used TPUReplicatedInput ops and sort by `index`.
+  llvm::SmallSetVector<Operation*, 8> unique_replicated_input_ops;
   mlir::visitUsedValuesDefinedAbove(
       launch_op.body(), launch_op.body(), [&](mlir::OpOperand* operand) {
         Operation* def = operand->get()->getDefiningOp();
-        if (def && def->getName().getStringRef() == kTPUReplicatedInputOp) {
-          replicated_input_ops.insert(def);
-        }
+        if (def && llvm::isa<TF::TPUReplicatedInputOp>(def))
+          unique_replicated_input_ops.insert(def);
       });
+  llvm::SmallVector<Operation*, 8> replicated_input_ops;
+  if (failed(SortTPUReplicatedInputsByIndex(
+          unique_replicated_input_ops.getArrayRef(), &replicated_input_ops)))
+    return failure();
 
   // Check if number of operands of each used TPUReplicatedInput op matches
   // `num_replicas`. Collect all their operands and associated type for creating
@@ -305,10 +341,10 @@ LogicalResult ReplicateCluster(tf_device::LaunchOp launch_op,
     int idx = result_and_idx.index();
     for (auto& use : result->getUses()) {
       Operation* def = use.getOwner();
-      if (!def || def->getName().getStringRef() != kTPUReplicatedOutputOp)
+      if (!def || !llvm::isa<TF::TPUReplicatedOutputOp>(def))
         return launch_op.emitError()
                << "requires output of " << launch_op.getOperationName()
-               << " to lead to a '" << kTPUReplicatedOutputOp << "' op";
+               << " to lead to a 'tf.TPUReplicatedOutput' op";
 
       if (def->getNumResults() != num_replicas)
         return def->emitOpError() << "requires " << num_replicas << " results";
@@ -331,9 +367,8 @@ LogicalResult ReplicateCluster(tf_device::LaunchOp launch_op,
 
   // Create terminator for replicate op and move launch into replicate.
   builder.setInsertionPointToEnd(&replicate_op.GetBody());
-  auto return_op = builder.create<tf_device::ReturnOp>(
-      replicate_op.getLoc(),
-      llvm::SmallVector<Value*, 8>(launch_op.getResults()));
+  auto return_op = builder.create<tf_device::ReturnOp>(replicate_op.getLoc(),
+                                                       launch_op.getResults());
   launch_op.getOperation()->moveBefore(return_op);
 
   return success();
@@ -427,8 +462,8 @@ void TPUClusterFormation::runOnFunction() {
 
   // Remove TPUReplicatedInput and TPUReplicatedOutput nodes.
   auto remove_result = getFunction().walk([&](Operation* op) {
-    auto op_name = op->getName().getStringRef();
-    if (op_name != kTPUReplicatedInputOp && op_name != kTPUReplicatedOutputOp)
+    if (!llvm::isa<TF::TPUReplicatedInputOp>(op) &&
+        !llvm::isa<TF::TPUReplicatedOutputOp>(op))
       return WalkResult::advance();
 
     // Forward operand to result. When `num_replicas` attribute is 1, no
@@ -440,7 +475,8 @@ void TPUClusterFormation::runOnFunction() {
     // Leftover TPUReplicatedInput/TPUReplicatedOutput that are not of
     // `num_replicas` to 1.
     if (!op->use_empty()) {
-      op->emitOpError() << "expects " << op_name << " to have no uses";
+      op->emitOpError() << "expects " << op->getName().getStringRef()
+                        << " to have no uses";
       return WalkResult::interrupt();
     }
 

@@ -254,7 +254,7 @@ form available under certain circumstances. The responsibility of our `Toy`
 parser and printer is to provide the `type-data` bits. We will define our
 `StructType` as having the following form:
 
-``` {.ebnf}
+```
   struct-type ::= `struct` `<` type (`,` type)* `>`
 ```
 
@@ -358,7 +358,7 @@ A few of our existing operations will need to be updated to handle `StructType`.
 The first step is to make the ODS framework aware of our Type so that we can use
 it in the operation definitions. A simple example is shown below:
 
-```td
+```tablegen
 // Provide a definition for the Toy StructType for use in ODS. This allows for
 // using StructType in a similar way to Tensor or MemRef.
 def Toy_StructType :
@@ -371,7 +371,7 @@ def Toy_Type : AnyTypeOf<[F64Tensor, Toy_StructType]>;
 We can then update our operations, e.g. `ReturnOp`, to also accept the
 `Toy_StructType`:
 
-```td
+```tablegen
 def ReturnOp : Toy_Op<"return", [Terminator, HasParent<"FuncOp">]> {
   ...
   let arguments = (ins Variadic<Toy_Type>:$input);

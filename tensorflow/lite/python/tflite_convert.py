@@ -205,10 +205,8 @@ def _convert_tf1_model(flags):
   if flags.conversion_summary_dir:
     converter.conversion_summary_dir = flags.conversion_summary_dir
 
-  if flags.experimental_new_converter:
-    converter.experimental_new_converter = True
-  if flags.experimental_legacy_converter:
-    converter.experimental_new_converter = False
+  if flags.experimental_new_converter is not None:
+    converter.experimental_new_converter = flags.experimental_new_converter
 
   # Convert model.
   output_data = converter.convert()
@@ -232,10 +230,8 @@ def _convert_tf2_model(flags):
     model = keras.models.load_model(flags.keras_model_file)
     converter = lite.TFLiteConverterV2.from_keras_model(model)
 
-  if flags.experimental_new_converter:
-    converter.experimental_new_converter = True
-  if flags.experimental_legacy_converter:
-    converter.experimental_new_converter = False
+  if flags.experimental_new_converter is not None:
+    converter.experimental_new_converter = flags.experimental_new_converter
 
   # Convert the model.
   tflite_model = converter.convert()
@@ -310,10 +306,6 @@ def _check_tf1_flags(flags, unparsed):
                      "--experimental_new_converter")
   if flags.custom_opdefs and not flags.allow_custom_ops:
     raise ValueError("--custom_opdefs must be used with --allow_custom_ops")
-  if flags.experimental_new_converter and flags.experimental_legacy_converter:
-    raise ValueError(
-        "--experimental_new_converter and experimental_legacy_converter "
-        "cannot be used together")
 
 
 def _check_tf2_flags(flags):
@@ -328,10 +320,6 @@ def _check_tf2_flags(flags):
   if not flags.keras_model_file and not flags.saved_model_dir:
     raise ValueError("one of the arguments --saved_model_dir "
                      "--keras_model_file is required")
-  if flags.experimental_new_converter and flags.experimental_legacy_converter:
-    raise ValueError(
-        "--experimental_new_converter and experimental_legacy_converter "
-        "cannot be used together")
 
 
 def _get_tf1_flags(parser):
@@ -542,6 +530,36 @@ def _get_tf2_flags(parser):
       help=("Enables the TensorFlow V1 converter in 2.0"))
 
 
+class _ParseExperimentalNewConverter(argparse.Action):
+  """Helper class to parse --experimental_new_converter argument."""
+
+  def __init__(self, option_strings, dest, nargs=None, **kwargs):
+    if nargs != "?":
+      # This should never happen. This class is only used once below with
+      # nargs="?".
+      raise ValueError(
+          "This parser only supports nargs='?' (0 or 1 additional arguments)")
+    super(_ParseExperimentalNewConverter, self).__init__(
+        option_strings, dest, nargs=nargs, **kwargs)
+
+  def __call__(self, parser, namespace, values, option_string=None):
+    if values is None:
+      # Handling `--experimental_new_converter`.
+      # Without additional arguments, it implies enabling the new converter.
+      experimental_new_converter = True
+    elif values.lower() == "true":
+      # Handling `--experimental_new_converter=true`.
+      # (Case insensitive after the equal sign)
+      experimental_new_converter = True
+    elif values.lower() == "false":
+      # Handling `--experimental_new_converter=false`.
+      # (Case insensitive after the equal sign)
+      experimental_new_converter = False
+    else:
+      raise ValueError("Invalid --experimental_new_converter argument.")
+    setattr(namespace, self.dest, experimental_new_converter)
+
+
 def _get_parser(use_v2_converter):
   """Returns an ArgumentParser for tflite_convert.
 
@@ -564,25 +582,17 @@ def _get_parser(use_v2_converter):
   else:
     _get_tf1_flags(parser)
 
-  # Note: When neither of the following command line argument is passed,
-  # it will use the default behavior defined in `lite.py`.
-  # Enable MLIR-based TFLite converter.
   parser.add_argument(
       "--experimental_new_converter",
-      action="store_true",
+      action=_ParseExperimentalNewConverter,
+      nargs="?",
       help=("Experimental flag, subject to change. Enables MLIR-based "
             "conversion instead of TOCO conversion."))
-  # Explicitly disable the MLIR-based TFLite converter.
-  parser.add_argument(
-      "--experimental_legacy_converter",
-      action="store_true",
-      help=("Experimental flag, subject to change. Disable MLIR-based "
-            "conversion and use the legacy converter."))
   return parser
 
 
 def run_main(_):
-  """Main in toco_convert.py."""
+  """Main in tflite_convert.py."""
   use_v2_converter = tf2.enabled()
   parser = _get_parser(use_v2_converter)
   tflite_flags, unparsed = parser.parse_known_args(args=sys.argv[1:])

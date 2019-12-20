@@ -29,10 +29,13 @@ namespace tflite {
 // If ordered_output_arrays is not empty, then the imported mlir function will
 // only return nodes in ordered_output_arrays in the same order. Returns nullptr
 // on failure, and more specific errors will be emitted via the context.
+// If `use_external_constant` is true, it will create `tfl.external_const`
+// instead of `tfl.const`.
 mlir::OwningModuleRef FlatBufferToMlir(
     absl::string_view buffer, mlir::MLIRContext* context,
     mlir::Location base_loc,
-    const std::vector<std::string>& ordered_output_arrays);
+    const std::vector<std::string>& ordered_output_arrays,
+    bool use_external_constant = false);
 }  // namespace tflite
 
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_FLATBUFFER_IMPORT_H_

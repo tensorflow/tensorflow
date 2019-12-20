@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+
 import numpy as np
 
 from tensorflow.python import tf2
@@ -175,8 +176,8 @@ class Model(training_lib.Model):
                 self._compile_time_distribution_strategy)
     if strategy:
       with strategy.scope():
-        return super(Model, self).get_weights()
-    return super(Model, self).get_weights()
+        return network.Network.get_weights(self)
+    return network.Network.get_weights(self)
 
   def load_weights(self, filepath, by_name=False, skip_mismatch=False):
     """Loads all layer weights, either from a TensorFlow or an HDF5 weight file.
@@ -1492,7 +1493,7 @@ class Model(training_lib.Model):
     """
     if not self._is_compiled:
       return
-    if sample_weights and any([s is not None for s in sample_weights]):
+    if sample_weights and any(s is not None for s in sample_weights):
       for endpoint in self._training_endpoints:
         endpoint.sample_weight_mode = (
             endpoint.sample_weight_mode or 'samplewise')

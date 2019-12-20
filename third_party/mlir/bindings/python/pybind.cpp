@@ -110,6 +110,10 @@ struct PythonValueHandle {
     return ValueHandle::create<CallIndirectOp>(value, argValues);
   }
 
+  PythonType type() const {
+    return PythonType(value.getType().getAsOpaquePointer());
+  }
+
   mlir::edsc::ValueHandle value;
 };
 
@@ -189,11 +193,17 @@ struct PythonMLIRModule {
                 const py::list &arguments, const py::list &successors,
                 py::kwargs attributes);
 
-  // Create an integer attribute.
+  // Creates an integer attribute.
   PythonAttribute integerAttr(PythonType type, int64_t value);
 
-  // Create a boolean attribute.
+  // Creates a boolean attribute.
   PythonAttribute boolAttr(bool value);
+
+  // Creates a float attribute.
+  PythonAttribute floatAttr(float value);
+
+  // Creates a string atrribute.
+  PythonAttribute stringAttr(const std::string &value);
 
   // Creates an Array attribute.
   PythonAttribute arrayAttr(const std::vector<PythonAttribute> &values);
@@ -709,6 +719,14 @@ PythonAttribute PythonMLIRModule::boolAttr(bool value) {
   return PythonAttribute(::makeBoolAttr(&mlirContext, value));
 }
 
+PythonAttribute PythonMLIRModule::floatAttr(float value) {
+  return PythonAttribute(::makeFloatAttr(&mlirContext, value));
+}
+
+PythonAttribute PythonMLIRModule::stringAttr(const std::string &value) {
+  return PythonAttribute(::makeStringAttr(&mlirContext, value.c_str()));
+}
+
 PythonAttribute
 PythonMLIRModule::arrayAttr(const std::vector<PythonAttribute> &values) {
   std::vector<mlir::Attribute> mlir_attributes(values.begin(), values.end());
@@ -906,6 +924,10 @@ PYBIND11_MODULE(pybind, m) {
           "integerAttr", &PythonMLIRModule::integerAttr,
           "Creates an mlir::IntegerAttr of the given type with the given value "
           "in the context associated with this MLIR module.")
+      .def("floatAttr", &PythonMLIRModule::floatAttr,
+           "Creates an mlir::FloatAttr with the given value")
+      .def("stringAttr", &PythonMLIRModule::stringAttr,
+           "Creates an mlir::StringAttr with the given value")
       .def("arrayAttr", &PythonMLIRModule::arrayAttr,
            "Creates an mlir::ArrayAttr of the given type with the given values "
            "in the context associated with this MLIR module.")
@@ -951,7 +973,7 @@ PYBIND11_MODULE(pybind, m) {
       .def("affine_constant_map", &PythonMLIRModule::affineConstantMap,
            "Returns an affine map with single constant result.")
       .def("affine_map", &PythonMLIRModule::affineMap, "Returns an affine map.",
-           py::arg("dimCount"), py::arg("symbolCount"), py::arg("resuls"))
+           py::arg("dimCount"), py::arg("symbolCount"), py::arg("results"))
       .def("__str__", &PythonMLIRModule::getIR,
            "Get the string representation of the module");
 
@@ -1034,7 +1056,8 @@ PYBIND11_MODULE(pybind, m) {
         .def("__or__",
              [](PythonValueHandle lhs, PythonValueHandle rhs)
                  -> PythonValueHandle { return lhs.value || rhs.value; })
-        .def("__call__", &PythonValueHandle::call);
+        .def("__call__", &PythonValueHandle::call)
+        .def("type", &PythonValueHandle::type);
   }
 
   py::class_<PythonBlockAppender>(
@@ -1117,6 +1140,20 @@ PYBIND11_MODULE(pybind, m) {
            [](PythonAffineExpr lhs, PythonAffineExpr rhs) -> PythonAffineExpr {
              return PythonAffineExpr(lhs.get() % rhs.get());
            })
+      .def("compose",
+           [](PythonAffineExpr self, PythonAffineMap map) -> PythonAffineExpr {
+             return PythonAffineExpr(self.get().compose(map));
+           })
+      .def(
+          "get_constant_value",
+          [](PythonAffineExpr self) -> py::object {
+            auto const_expr = self.get().dyn_cast<AffineConstantExpr>();
+            if (const_expr)
+              return py::cast(const_expr.getValue());
+            return py::none();
+          },
+          "Returns the constant value for the affine expression if any, or "
+          "returns None.")
       .def("__str__", &PythonAffineExpr::str);
 
   py::class_<PythonAffineMap>(m, "AffineMap",

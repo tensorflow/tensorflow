@@ -57,6 +57,9 @@ struct StandardPipelineOptions : public PassOptions<StandardPipelineOptions> {
 // NOLINTNEXTLINE - MLIR contract is pass by mutable reference.
 void CreateTFStandardPipeline(OpPassManager& pm,
                               const StandardPipelineOptions& options);
+
+// Propagates device attributes of resources from callers to callees.
+std::unique_ptr<OpPassBase<ModuleOp>> CreateResourceDeviceInferencePass();
 }  // namespace TF
 
 namespace TFControlFlow {
@@ -96,6 +99,11 @@ std::unique_ptr<OpPassBase<FuncOp>> CreateClusterFormationPass();
 // Creates a pass that outlines regions of tf_device.launch operations.
 std::unique_ptr<OpPassBase<ModuleOp>> CreateClusterOutliningPass();
 
+// A pass that decomposes composite resource operations into primitive ones like
+// ReadVariableOp, AssignVariableOp and other computations to facilitate
+// transformations like resource op lifting.
+std::unique_ptr<OpPassBase<FuncOp>> CreateDecomposeResourceOpsPass();
+
 // Creates a pass that lifts operations on external resource variables from
 // device computation nested in `tf_device::LaunchOp` out so that resource
 // variable load operations are all before device computation while resource
@@ -120,6 +128,10 @@ namespace TFTPU {
 // Creates a pass that forms clusters from operations of the same
 // `_tpu_replicate` attribute.
 std::unique_ptr<OpPassBase<FuncOp>> CreateTPUClusterFormationPass();
+
+// Creates a pass that remaps and assigns padding map from a
+// `tf_device.launch_func` `padding_map` attribute to its encapsulated function.
+std::unique_ptr<OpPassBase<ModuleOp>> CreateTPUDynamicPaddingMapperPass();
 
 // Creates a pass that rewrites `tf_device.launch_func` on TPUs into TPU runtime
 // ops.

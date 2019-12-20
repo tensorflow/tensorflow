@@ -84,7 +84,7 @@ instructions are represented in the SPIR-V dialect. Notably,
 The SPIR-V dialect reuses standard integer, float, and vector types and defines
 the following dialect-specific types:
 
-``` {.ebnf}
+```
 spirv-type ::= array-type
              | pointer-type
              | runtime-array-type
@@ -94,7 +94,7 @@ spirv-type ::= array-type
 
 This corresponds to SPIR-V [array type][ArrayType]. Its syntax is
 
-``` {.ebnf}
+```
 element-type ::= integer-type
                | floating-point-type
                | vector-type
@@ -105,7 +105,7 @@ array-type ::= `!spv.array<` integer-literal `x` element-type `>`
 
 For example,
 
-```{.mlir}
+```mlir
 !spv.array<4 x i32>
 !spv.array<16 x vector<4 x f32>>
 ```
@@ -114,7 +114,7 @@ For example,
 
 This corresponds to SPIR-V [image type][ImageType]. Its syntax is
 
-``` {.ebnf}
+```
 dim ::= `1D` | `2D` | `3D` | `Cube` | <and other SPIR-V Dim specifiers...>
 
 depth-info ::= `NoDepth` | `IsDepth` | `DepthUnknown`
@@ -134,7 +134,7 @@ image-type ::= `!spv.image<` element-type `,` dim `,` depth-info `,`
 
 For example,
 
-``` {.mlir}
+```
 !spv.image<f32, 1D, NoDepth, NonArrayed, SingleSampled, SamplerUnknown, Unknown>
 !spv.image<f32, Cube, IsDepth, Arrayed, MultiSampled, NeedSampler, Rgba32f>
 ```
@@ -143,7 +143,7 @@ For example,
 
 This corresponds to SPIR-V [pointer type][PointerType]. Its syntax is
 
-``` {.ebnf}
+```
 storage-class ::= `UniformConstant`
                 | `Uniform`
                 | `Workgroup`
@@ -154,7 +154,7 @@ pointer-type ::= `!spv.ptr<` element-type `,` storage-class `>`
 
 For example,
 
-```{.mlir}
+```mlir
 !spv.ptr<i32, Function>
 !spv.ptr<vector<4 x f32>, Uniform>
 ```
@@ -163,13 +163,13 @@ For example,
 
 This corresponds to SPIR-V [runtime array type][RuntimeArrayType]. Its syntax is
 
-``` {.ebnf}
+```
 runtime-array-type ::= `!spv.rtarray<` element-type `>`
 ```
 
 For example,
 
-```{.mlir}
+```mlir
 !spv.rtarray<i32>
 !spv.rtarray<vector<4 x f32>>
 ```
@@ -178,7 +178,7 @@ For example,
 
 This corresponds to SPIR-V [struct type][StructType]. Its syntax is
 
-``` {.ebnf}
+```
 struct-member-decoration ::= integer-literal? spirv-decoration*
 struct-type ::= `!spv.struct<` spirv-type (`[` struct-member-decoration `]`)?
                      (`, ` spirv-type (`[` struct-member-decoration `]`)?
@@ -186,7 +186,7 @@ struct-type ::= `!spv.struct<` spirv-type (`[` struct-member-decoration `]`)?
 
 For Example,
 
-``` {.mlir}
+```
 !spv.struct<f32>
 !spv.struct<f32 [0]>
 !spv.struct<f32, !spv.image<f32, 1D, NoDepth, NonArrayed, SingleSampled, SamplerUnknown, Unknown>>

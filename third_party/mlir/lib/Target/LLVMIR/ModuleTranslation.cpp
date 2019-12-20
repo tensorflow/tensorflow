@@ -36,13 +36,13 @@
 #include "llvm/IR/Module.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 
-namespace mlir {
-namespace LLVM {
+using namespace mlir;
+using namespace mlir::LLVM;
 
-// Create an LLVM IR constant of `llvmType` from the MLIR attribute `attr`.
-// This currently supports integer, floating point, splat and dense element
-// attributes and combinations thereof.  In case of error, report it to `loc`
-// and return nullptr.
+/// Create an LLVM IR constant of `llvmType` from the MLIR attribute `attr`.
+/// This currently supports integer, floating point, splat and dense element
+/// attributes and combinations thereof.  In case of error, report it to `loc`
+/// and return nullptr.
 llvm::Constant *ModuleTranslation::getLLVMConstant(llvm::Type *llvmType,
                                                    Attribute attr,
                                                    Location loc) {
@@ -94,7 +94,7 @@ llvm::Constant *ModuleTranslation::getLLVMConstant(llvm::Type *llvmType,
   return nullptr;
 }
 
-// Convert MLIR integer comparison predicate to LLVM IR comparison predicate.
+/// Convert MLIR integer comparison predicate to LLVM IR comparison predicate.
 static llvm::CmpInst::Predicate getLLVMCmpPredicate(ICmpPredicate p) {
   switch (p) {
   case LLVM::ICmpPredicate::eq:
@@ -159,21 +159,10 @@ static llvm::CmpInst::Predicate getLLVMCmpPredicate(FCmpPredicate p) {
   llvm_unreachable("incorrect comparison predicate");
 }
 
-// A helper to look up remapped operands in the value remapping table.
-template <typename Range>
-SmallVector<llvm::Value *, 8> ModuleTranslation::lookupValues(Range &&values) {
-  SmallVector<llvm::Value *, 8> remapped;
-  remapped.reserve(llvm::size(values));
-  for (Value *v : values) {
-    remapped.push_back(valueMapping.lookup(v));
-  }
-  return remapped;
-}
-
-// Given a single MLIR operation, create the corresponding LLVM IR operation
-// using the `builder`.  LLVM IR Builder does not have a generic interface so
-// this has to be a long chain of `if`s calling different functions with a
-// different number of arguments.
+/// Given a single MLIR operation, create the corresponding LLVM IR operation
+/// using the `builder`.  LLVM IR Builder does not have a generic interface so
+/// this has to be a long chain of `if`s calling different functions with a
+/// different number of arguments.
 LogicalResult ModuleTranslation::convertOperation(Operation &opInst,
                                                   llvm::IRBuilder<> &builder) {
   auto extractPosition = [](ArrayAttr attr) {
@@ -243,9 +232,9 @@ LogicalResult ModuleTranslation::convertOperation(Operation &opInst,
          << opInst.getName();
 }
 
-// Convert block to LLVM IR.  Unless `ignoreArguments` is set, emit PHI nodes
-// to define values corresponding to the MLIR block arguments.  These nodes
-// are not connected to the source basic blocks, which may not exist yet.
+/// Convert block to LLVM IR.  Unless `ignoreArguments` is set, emit PHI nodes
+/// to define values corresponding to the MLIR block arguments.  These nodes
+/// are not connected to the source basic blocks, which may not exist yet.
 LogicalResult ModuleTranslation::convertBlock(Block &bb, bool ignoreArguments) {
   llvm::IRBuilder<> builder(blockMapping[&bb]);
 
@@ -279,7 +268,7 @@ LogicalResult ModuleTranslation::convertBlock(Block &bb, bool ignoreArguments) {
   return success();
 }
 
-// Convert the LLVM dialect linkage type to LLVM IR linkage type.
+/// Convert the LLVM dialect linkage type to LLVM IR linkage type.
 llvm::GlobalVariable::LinkageTypes convertLinkageType(LLVM::Linkage linkage) {
   switch (linkage) {
   case LLVM::Linkage::Private:
@@ -308,10 +297,10 @@ llvm::GlobalVariable::LinkageTypes convertLinkageType(LLVM::Linkage linkage) {
   llvm_unreachable("unknown linkage type");
 }
 
-// Create named global variables that correspond to llvm.mlir.global
-// definitions.
+/// Create named global variables that correspond to llvm.mlir.global
+/// definitions.
 void ModuleTranslation::convertGlobals() {
-  for (auto op : mlirModule.getOps<LLVM::GlobalOp>()) {
+  for (auto op : getModuleBody(mlirModule).getOps<LLVM::GlobalOp>()) {
     llvm::Type *type = op.getType().getUnderlyingType();
     llvm::Constant *cst = llvm::UndefValue::get(type);
     if (op.getValueOrNull()) {
@@ -351,8 +340,8 @@ void ModuleTranslation::convertGlobals() {
   }
 }
 
-// Get the SSA value passed to the current block from the terminator operation
-// of its predecessor.
+/// Get the SSA value passed to the current block from the terminator operation
+/// of its predecessor.
 static Value *getPHISourceValue(Block *current, Block *pred,
                                 unsigned numArguments, unsigned index) {
   auto &terminator = *pred->getTerminator();
@@ -405,7 +394,7 @@ static void topologicalSortImpl(llvm::SetVector<Block *> &blocks, Block *b) {
   }
 }
 
-// Sort function blocks topologically.
+/// Sort function blocks topologically.
 static llvm::SetVector<Block *> topologicalSort(LLVMFuncOp f) {
   // For each blocks that has not been visited yet (i.e. that has no
   // predecessors), add it to the list and traverse its successors in DFS
@@ -470,10 +459,10 @@ LogicalResult ModuleTranslation::convertOneFunction(LLVMFuncOp func) {
   return success();
 }
 
-LogicalResult ModuleTranslation::checkSupportedModuleOps(ModuleOp m) {
-  for (Operation &o : m.getBody()->getOperations())
+LogicalResult ModuleTranslation::checkSupportedModuleOps(Operation *m) {
+  for (Operation &o : getModuleBody(m).getOperations())
     if (!isa<LLVM::LLVMFuncOp>(&o) && !isa<LLVM::GlobalOp>(&o) &&
-        !isa<ModuleTerminatorOp>(&o))
+        !o.isKnownTerminator())
       return o.emitOpError("unsupported module-level operation");
   return success();
 }
@@ -481,17 +470,17 @@ LogicalResult ModuleTranslation::checkSupportedModuleOps(ModuleOp m) {
 LogicalResult ModuleTranslation::convertFunctions() {
   // Declare all functions first because there may be function calls that form a
   // call graph with cycles.
-  for (auto function : mlirModule.getOps<LLVMFuncOp>()) {
+  for (auto function : getModuleBody(mlirModule).getOps<LLVMFuncOp>()) {
     llvm::FunctionCallee llvmFuncCst = llvmModule->getOrInsertFunction(
         function.getName(),
-        llvm::cast<llvm::FunctionType>(function.getType().getUnderlyingType()));
+        cast<llvm::FunctionType>(function.getType().getUnderlyingType()));
     assert(isa<llvm::Function>(llvmFuncCst.getCallee()));
     functionMapping[function.getName()] =
         cast<llvm::Function>(llvmFuncCst.getCallee());
   }
 
   // Convert functions.
-  for (auto function : mlirModule.getOps<LLVMFuncOp>()) {
+  for (auto function : getModuleBody(mlirModule).getOps<LLVMFuncOp>()) {
     // Ignore external functions.
     if (function.isExternal())
       continue;
@@ -503,8 +492,19 @@ LogicalResult ModuleTranslation::convertFunctions() {
   return success();
 }
 
-std::unique_ptr<llvm::Module> ModuleTranslation::prepareLLVMModule(ModuleOp m) {
-  auto *dialect = m.getContext()->getRegisteredDialect<LLVM::LLVMDialect>();
+/// A helper to look up remapped operands in the value remapping table.`
+SmallVector<llvm::Value *, 8>
+ModuleTranslation::lookupValues(ValueRange values) {
+  SmallVector<llvm::Value *, 8> remapped;
+  remapped.reserve(values.size());
+  for (Value *v : values)
+    remapped.push_back(valueMapping.lookup(v));
+  return remapped;
+}
+
+std::unique_ptr<llvm::Module>
+ModuleTranslation::prepareLLVMModule(Operation *m) {
+  auto *dialect = m->getContext()->getRegisteredDialect<LLVM::LLVMDialect>();
   assert(dialect && "LLVM dialect must be registered");
 
   auto llvmModule = llvm::CloneModule(dialect->getLLVMModule());
@@ -523,6 +523,3 @@ std::unique_ptr<llvm::Module> ModuleTranslation::prepareLLVMModule(ModuleOp m) {
 
   return llvmModule;
 }
-
-} // namespace LLVM
-} // namespace mlir

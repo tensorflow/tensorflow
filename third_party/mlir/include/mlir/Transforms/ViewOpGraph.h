@@ -37,13 +37,13 @@ void viewGraph(Block &block, const Twine &name, bool shortNames = false,
                const Twine &title = "",
                llvm::GraphProgram::Name program = llvm::GraphProgram::DOT);
 
-llvm::raw_ostream &writeGraph(llvm::raw_ostream &os, Block &block,
-                              bool shortNames = false, const Twine &title = "");
+raw_ostream &writeGraph(raw_ostream &os, Block &block, bool shortNames = false,
+                        const Twine &title = "");
 
 /// Creates a pass to print op graphs.
 std::unique_ptr<OpPassBase<ModuleOp>>
-createPrintOpGraphPass(llvm::raw_ostream &os = llvm::errs(),
-                       bool shortNames = false, const llvm::Twine &title = "");
+createPrintOpGraphPass(raw_ostream &os = llvm::errs(), bool shortNames = false,
+                       const Twine &title = "");
 
 } // end namespace mlir
 

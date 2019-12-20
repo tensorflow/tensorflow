@@ -23,6 +23,7 @@
 #include "mlir/Pass/PassRegistry.h"
 #include "mlir/Support/LogicalResult.h"
 #include "llvm/ADT/PointerIntPair.h"
+#include "llvm/ADT/Statistic.h"
 
 namespace mlir {
 namespace detail {
@@ -67,7 +68,7 @@ public:
 
   /// Returns the name of the operation that this pass operates on, or None if
   /// this is a generic OperationPass.
-  llvm::Optional<StringRef> getOpName() const { return opName; }
+  Optional<StringRef> getOpName() const { return opName; }
 
   /// Prints out the pass in the textual representation of pipelines. If this is
   /// an adaptor pass, print with the op_name(sub_pass,...) format.
@@ -76,9 +77,30 @@ public:
   /// pass to be to be round-trippable to the textual format.
   virtual void printAsTextualPipeline(raw_ostream &os);
 
+  /// This class represents a single pass statistic. This statistic functions
+  /// similarly to an unsigned integer value, and may be updated and incremented
+  /// accordingly. This class can be used to provide additional information
+  /// about the transformations and analyses performed by a pass.
+  class Statistic : public llvm::Statistic {
+  public:
+    /// The statistic is initialized by the pass owner, a name, and a
+    /// description.
+    Statistic(Pass *owner, const char *name, const char *description);
+
+    /// Assign the statistic to the given value.
+    Statistic &operator=(unsigned value);
+
+  private:
+    /// Hide some of the details of llvm::Statistic that we don't use.
+    using llvm::Statistic::getDebugType;
+  };
+
+  /// Returns the main statistics for this pass instance.
+  ArrayRef<Statistic *> getStatistics() const { return statistics; }
+  MutableArrayRef<Statistic *> getStatistics() { return statistics; }
+
 protected:
-  explicit Pass(const PassID *passID,
-                llvm::Optional<StringRef> opName = llvm::None)
+  explicit Pass(const PassID *passID, Optional<StringRef> opName = llvm::None)
       : passID(passID), opName(opName) {}
 
   /// Returns the current pass state.
@@ -120,10 +142,13 @@ private:
 
   /// The name of the operation that this pass operates on, or None if this is a
   /// generic OperationPass.
-  llvm::Optional<StringRef> opName;
+  Optional<StringRef> opName;
 
   /// The current execution state for the pass.
-  llvm::Optional<detail::PassExecutionState> passState;
+  Optional<detail::PassExecutionState> passState;
+
+  /// The set of statistics held by this pass.
+  std::vector<Statistic *> statistics;
 
   /// Allow access to 'clone' and 'run'.
   friend class OpPassManager;
@@ -144,7 +169,7 @@ public:
   }
 
 protected:
-  explicit PassModel(llvm::Optional<StringRef> opName = llvm::None)
+  explicit PassModel(Optional<StringRef> opName = llvm::None)
       : BasePassT(PassID::getID<PassT>(), opName) {}
 
   /// Signal that some invariant was broken when running. The IR is allowed to
@@ -161,7 +186,7 @@ protected:
   /// Query a cached instance of an analysis for the current ir unit if one
   /// exists.
   template <typename AnalysisT>
-  llvm::Optional<std::reference_wrapper<AnalysisT>> getCachedAnalysis() {
+  Optional<std::reference_wrapper<AnalysisT>> getCachedAnalysis() {
     return this->getAnalysisManager().template getCachedAnalysis<AnalysisT>();
   }
 
@@ -193,13 +218,13 @@ protected:
 
   /// Returns the analysis for the parent operation if it exists.
   template <typename AnalysisT>
-  llvm::Optional<std::reference_wrapper<AnalysisT>>
+  Optional<std::reference_wrapper<AnalysisT>>
   getCachedParentAnalysis(Operation *parent) {
     return this->getAnalysisManager()
         .template getCachedParentAnalysis<AnalysisT>(parent);
   }
   template <typename AnalysisT>
-  llvm::Optional<std::reference_wrapper<AnalysisT>> getCachedParentAnalysis() {
+  Optional<std::reference_wrapper<AnalysisT>> getCachedParentAnalysis() {
     return this->getAnalysisManager()
         .template getCachedParentAnalysis<AnalysisT>(
             this->getOperation()->getParentOp());
@@ -207,7 +232,7 @@ protected:
 
   /// Returns the analysis for the given child operation if it exists.
   template <typename AnalysisT>
-  llvm::Optional<std::reference_wrapper<AnalysisT>>
+  Optional<std::reference_wrapper<AnalysisT>>
   getCachedChildAnalysis(Operation *child) {
     return this->getAnalysisManager()
         .template getCachedChildAnalysis<AnalysisT>(child);

@@ -42,6 +42,11 @@ class StandardOpsDialect : public Dialect {
 public:
   StandardOpsDialect(MLIRContext *context);
   static StringRef getDialectNamespace() { return "std"; }
+
+  /// Materialize a single constant operation from a given attribute value with
+  /// the desired resultant type.
+  Operation *materializeConstant(OpBuilder &builder, Attribute value, Type type,
+                                 Location loc) override;
 };
 
 /// The predicate indicates the type of the comparison to perform:
@@ -178,9 +183,9 @@ public:
   using Op::Op;
 
   static void build(Builder *builder, OperationState &result, Value *srcMemRef,
-                    ArrayRef<Value *> srcIndices, Value *destMemRef,
-                    ArrayRef<Value *> destIndices, Value *numElements,
-                    Value *tagMemRef, ArrayRef<Value *> tagIndices,
+                    ValueRange srcIndices, Value *destMemRef,
+                    ValueRange destIndices, Value *numElements,
+                    Value *tagMemRef, ValueRange tagIndices,
                     Value *stride = nullptr,
                     Value *elementsPerStride = nullptr);
 
@@ -190,7 +195,7 @@ public:
   unsigned getSrcMemRefRank() {
     return getSrcMemRef()->getType().cast<MemRefType>().getRank();
   }
-  // Returns the source memerf indices for this DMA operation.
+  // Returns the source memref indices for this DMA operation.
   operand_range getSrcIndices() {
     return {getOperation()->operand_begin() + 1,
             getOperation()->operand_begin() + 1 + getSrcMemRefRank()};
@@ -263,8 +268,8 @@ public:
   void print(OpAsmPrinter &p);
   LogicalResult verify();
 
-  static void getCanonicalizationPatterns(OwningRewritePatternList &results,
-                                          MLIRContext *context);
+  LogicalResult fold(ArrayRef<Attribute> cstOperands,
+                     SmallVectorImpl<OpFoldResult> &results);
 
   bool isStrided() {
     return getNumOperands() != 1 + getSrcMemRefRank() + 1 + getDstMemRefRank() +
@@ -303,7 +308,7 @@ public:
   using Op::Op;
 
   static void build(Builder *builder, OperationState &result, Value *tagMemRef,
-                    ArrayRef<Value *> tagIndices, Value *numElements);
+                    ValueRange tagIndices, Value *numElements);
 
   static StringRef getOperationName() { return "std.dma_wait"; }
 
@@ -326,8 +331,8 @@ public:
 
   static ParseResult parse(OpAsmParser &parser, OperationState &result);
   void print(OpAsmPrinter &p);
-  static void getCanonicalizationPatterns(OwningRewritePatternList &results,
-                                          MLIRContext *context);
+  LogicalResult fold(ArrayRef<Attribute> cstOperands,
+                     SmallVectorImpl<OpFoldResult> &results);
 };
 
 /// Prints dimension and symbol list.
@@ -340,7 +345,7 @@ ParseResult parseDimAndSymbolList(OpAsmParser &parser,
                                   SmallVectorImpl<Value *> &operands,
                                   unsigned &numDims);
 
-llvm::raw_ostream &operator<<(llvm::raw_ostream &os, SubViewOp::Range &range);
+raw_ostream &operator<<(raw_ostream &os, SubViewOp::Range &range);
 
 } // end namespace mlir
 

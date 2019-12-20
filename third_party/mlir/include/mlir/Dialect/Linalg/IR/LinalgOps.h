@@ -20,6 +20,7 @@
 
 #include "mlir/Dialect/Linalg/IR/LinalgTraits.h"
 #include "mlir/Dialect/Linalg/IR/LinalgTypes.h"
+#include "mlir/Dialect/Utils/StructuredOpsUtils.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/Builders.h"
@@ -66,7 +67,7 @@ std::string generateLibraryCallName(Operation *op);
 /// `A(i, k) * B(k, j) -> C(i, j)` will have the following, ordered, list of
 /// affine maps:
 ///
-/// ```{.mlir}
+/// ```mlir
 ///    (
 ///      (i, j, k) -> (i, k),
 ///      (i, j, k) -> (k, j),
@@ -77,14 +78,13 @@ std::string generateLibraryCallName(Operation *op);
 /// Only permutation maps are currently supported.
 SmallVector<AffineMap, 4> loopToOperandRangesMaps(Operation *op);
 
-#include "mlir/Dialect/Linalg/IR/LinalgLibraryOpInterfaces.h.inc"
+#include "mlir/Dialect/Linalg/IR/LinalgStructuredOpsInterfaces.h.inc"
 
 #define GET_OP_CLASSES
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h.inc"
 
 #define GET_OP_CLASSES
-#include "mlir/Dialect/Linalg/IR/LinalgLibraryOps.h.inc"
-
+#include "mlir/Dialect/Linalg/IR/LinalgStructuredOps.h.inc"
 
 } // namespace linalg
 } // namespace mlir

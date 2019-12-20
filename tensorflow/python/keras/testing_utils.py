@@ -605,6 +605,15 @@ def get_model_from_layers(layers,
   raise ValueError('Unknown model type {}'.format(model_type))
 
 
+class Bias(keras.layers.Layer):
+
+  def build(self, input_shape):
+    self.bias = self.add_variable('bias', (1,), initializer='zeros')
+
+  def call(self, inputs):
+    return inputs + self.bias
+
+
 class _MultiIOSubclassModel(keras.Model):
   """Multi IO Keras subclass model."""
 

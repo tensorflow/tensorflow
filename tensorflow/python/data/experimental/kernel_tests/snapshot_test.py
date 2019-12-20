@@ -18,7 +18,9 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import shutil
 import time
+
 from absl.testing import parameterized
 
 from tensorflow.python.data.experimental.kernel_tests import reader_dataset_ops_test_base
@@ -27,6 +29,7 @@ from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers as core_readers
 from tensorflow.python.framework import combinations
+from tensorflow.python.framework import errors
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import test
@@ -110,9 +113,9 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
     dataset2 = dataset2.apply(snapshot.snapshot(tmpdir))
     next2 = self.getNext(dataset2)
 
-    for _ in range(1000):
-      self.evaluate(next1())
-      self.evaluate(next2())
+    for i in range(0, 1000):
+      self.assertEqual(i, self.evaluate(next1()))
+      self.assertEqual(i, self.evaluate(next2()))
 
     # we check that only one copy of the metadata has been written, and the
     # one that lost the race would be in passthrough mode.
@@ -163,6 +166,93 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
     self.assertDatasetProduces(dataset, list(range(10)) * 10)
 
     self.assertSnapshotDirectoryContains(tmpdir, 1, 1, 1)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testSpecifySnapshotNameWriteAndRead(self):
+    tmpdir = self.makeSnapshotDirectory()
+
+    dataset = dataset_ops.Dataset.range(10)
+    dataset = dataset.apply(
+        snapshot.snapshot(tmpdir, snapshot_name="my_custom_snapshot"))
+    dataset = dataset.repeat(10)
+    self.assertDatasetProduces(dataset, list(range(10)) * 10)
+
+    self.assertSnapshotDirectoryContains(tmpdir, 1, 1, 1)
+    self.assertTrue(
+        os.path.exists(os.path.join(tmpdir, "custom-my_custom_snapshot")))
+    self.assertTrue(
+        os.path.exists(
+            os.path.join(tmpdir, "custom-my_custom_snapshot", "custom")))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testForcePassthroughMode(self):
+    tmpdir = self.makeSnapshotDirectory()
+
+    dataset = dataset_ops.Dataset.range(10)
+    dataset = dataset.apply(snapshot.snapshot(tmpdir, mode="passthrough"))
+    dataset = dataset.repeat(10)
+    self.assertDatasetProduces(dataset, list(range(10)) * 10)
+
+    self.assertSnapshotDirectoryContains(tmpdir, 0, 0, 0)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testForceWriteMode(self):
+    tmpdir = self.makeSnapshotDirectory()
+
+    dataset = dataset_ops.Dataset.range(10)
+    dataset = dataset.apply(snapshot.snapshot(tmpdir, mode="write"))
+    dataset = dataset.repeat(10)
+    self.assertDatasetProduces(dataset, list(range(10)) * 10)
+
+    # We will end up writing 10 different runs.
+    self.assertSnapshotDirectoryContains(tmpdir, 1, 10, 1)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testForceReadMode(self):
+    tmpdir = self.makeSnapshotDirectory()
+
+    # We write a copy of the snapshot first.
+    dataset = dataset_ops.Dataset.range(10)
+    dataset = dataset.apply(
+        snapshot.snapshot(
+            tmpdir, mode="write", snapshot_name="my_custom_snapshot"))
+    self.assertDatasetProduces(dataset, list(range(10)))
+
+    # We move the run to a new name.
+    shutil.move(
+        os.path.join(tmpdir, "custom-my_custom_snapshot"),
+        os.path.join(tmpdir, "custom-my_custom_snapshot_2"))
+
+    # Even though the snapshot.metadata is pointing to the old run that no
+    # longer exists after we moved, we force it to read from the run we specify.
+    dataset = dataset_ops.Dataset.range(10)
+    dataset = dataset.apply(
+        snapshot.snapshot(
+            tmpdir, mode="read", snapshot_name="my_custom_snapshot_2"))
+    self.assertDatasetProduces(dataset, list(range(10)))
+
+    # We should still have one snapshot and one run.
+    self.assertSnapshotDirectoryContains(tmpdir, 1, 1, 1)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testForceReadNonexistentSnapshot(self):
+    tmpdir = self.makeSnapshotDirectory()
+    dataset = dataset_ops.Dataset.range(10)
+    with self.assertRaises(errors.NotFoundError):
+      dataset = dataset.apply(snapshot.snapshot(tmpdir, mode="read"))
+      get_next = self.getNext(dataset)
+      self.evaluate(get_next())
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testForceReadNonexistentNamedSnapshot(self):
+    tmpdir = self.makeSnapshotDirectory()
+    dataset = dataset_ops.Dataset.range(10)
+    with self.assertRaises(errors.NotFoundError):
+      dataset = dataset.apply(
+          snapshot.snapshot(
+              tmpdir, mode="read", snapshot_name="my_nonexistent_snapshot"))
+      get_next = self.getNext(dataset)
+      self.evaluate(get_next())
 
   @combinations.generate(
       combinations.times(

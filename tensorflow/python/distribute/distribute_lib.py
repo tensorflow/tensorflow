@@ -840,7 +840,7 @@ class Strategy(object):
         if dim is not None:
           # By returning a python value in the static shape case, we can
           # maybe get a fast path for reducing the denominator.
-          return numer, dim
+          return numer, array_ops.constant(dim, dtype=dtypes.int64)
       elif axis < 0:
         axis = axis + array_ops.rank(v)
       if v.shape.rank == 1:
@@ -1538,6 +1538,8 @@ class StrategyExtendedV2(object):
     _require_cross_replica_or_default_context_extended(self)
     if kwargs is None:
       kwargs = {}
+    fn = autograph.tf_convert(
+        fn, ag_ctx.control_status_ctx(), convert_by_default=False)
     with self._container_strategy().scope():
       return self._update(var, fn, args, kwargs, group)
 
@@ -1562,6 +1564,8 @@ class StrategyExtendedV2(object):
     _require_cross_replica_or_default_context_extended(self)
     if kwargs is None:
       kwargs = {}
+    fn = autograph.tf_convert(
+        fn, ag_ctx.control_status_ctx(), convert_by_default=False)
     with self._container_strategy().scope():
       return self._update_non_slot(colocate_with, fn, args, kwargs, group)
 
@@ -1945,6 +1949,8 @@ class ReplicaContext(object):
     require_replica_context(self)
     if kwargs is None:
       kwargs = {}
+    merge_fn = autograph.tf_convert(merge_fn, ag_ctx.control_status_ctx(),
+                                    convert_by_default=False)
     return self._merge_call(merge_fn, args, kwargs)
 
   def _merge_call(self, merge_fn, args, kwargs):

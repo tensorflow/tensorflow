@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import abc
 import collections
+
 import numpy as np
 
 from tensorflow.python.data.experimental.ops import cardinality

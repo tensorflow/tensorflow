@@ -988,5 +988,30 @@ TEST_F(HloVerifierTest, FusionShapeVerifier) {
               HasSubstr("Fused computation shape"));
 }
 
+TEST_F(HloVerifierTest, AllReduceVerifier) {
+  const char* const kModuleStr = R"(
+  HloModule test
+
+  add {
+    lhs = f32[] parameter(0)
+    rhs = f32[] parameter(1)
+    ROOT add = f32[] add(lhs, rhs)
+  }
+
+  ENTRY entry {
+    input = f32[8,12]{0,1} parameter(0)
+    crs0 = f32[8,12]{0,1} all-reduce(input), replica_groups={}, to_apply=add
+    crs1 = f32[8,12]{0,1} all-reduce(input), replica_groups={}, to_apply=add,
+      constrain_layout=true
+    ROOT result = (f32[8,12]{0,1}, f32[8,12]{0,1}) tuple(crs0, crs1)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr));
+  EXPECT_THAT(
+      verifier().Run(module.get()).status().error_message(),
+      HasSubstr("mix of layout constrained and unconstrained AllReduce"));
+}
+
 }  // namespace
 }  // namespace xla

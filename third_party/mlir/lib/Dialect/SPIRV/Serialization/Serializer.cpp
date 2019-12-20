@@ -21,6 +21,7 @@
 
 #include "mlir/Dialect/SPIRV/Serialization.h"
 
+#include "mlir/ADT/TypeSwitch.h"
 #include "mlir/Dialect/SPIRV/SPIRVBinaryUtils.h"
 #include "mlir/Dialect/SPIRV/SPIRVDialect.h"
 #include "mlir/Dialect/SPIRV/SPIRVOps.h"
@@ -68,7 +69,7 @@ static LogicalResult encodeInstructionInto(SmallVectorImpl<uint32_t> &binary,
 /// serialization of the merge block and the continue block, if exists, until
 /// after all other blocks have been processed.
 static LogicalResult visitInPrettyBlockOrder(
-    Block *headerBlock, llvm::function_ref<LogicalResult(Block *)> blockHandler,
+    Block *headerBlock, function_ref<LogicalResult(Block *)> blockHandler,
     bool skipHeader = false, ArrayRef<Block *> skipBlocks = {}) {
   llvm::df_iterator_default_set<Block *, 4> doneBlocks;
   doneBlocks.insert(skipBlocks.begin(), skipBlocks.end());
@@ -300,7 +301,7 @@ private:
   /// instruction if this is a SPIR-V selection/loop header block.
   LogicalResult
   processBlock(Block *block, bool omitLabel = false,
-               llvm::function_ref<void()> actionBeforeTerminator = nullptr);
+               function_ref<void()> actionBeforeTerminator = nullptr);
 
   /// Emits OpPhi instructions for the given block if it has block arguments.
   LogicalResult emitPhiForBlockArguments(Block *block);
@@ -450,13 +451,13 @@ private:
   /// But we don't know the <id> for %val0 and %val1 yet. One way is to visit
   /// all the blocks twice and use the first visit to assign an <id> to each
   /// value. But it's paying the overheads just for OpPhi emission. Instead,
-  /// we still visit the blocks once for emssion. When we emit the OpPhi
+  /// we still visit the blocks once for emission. When we emit the OpPhi
   /// instructions, we use 0 as a placeholder for the <id>s for %val0 and %val1.
   /// At the same time, we record their offsets in the emitted binary (which is
   /// placed inside `functions`) here. And then after emitting all blocks, we
   /// replace the dummy <id> 0 with the real result <id> by overwriting
   /// `functions[offset]`.
-  DenseMap<Value *, llvm::SmallVector<size_t, 1>> deferredPhiValues;
+  DenseMap<Value *, SmallVector<size_t, 1>> deferredPhiValues;
 };
 } // namespace
 
@@ -1340,7 +1341,7 @@ uint32_t Serializer::getOrCreateBlockID(Block *block) {
 
 LogicalResult
 Serializer::processBlock(Block *block, bool omitLabel,
-                         llvm::function_ref<void()> actionBeforeTerminator) {
+                         function_ref<void()> actionBeforeTerminator) {
   LLVM_DEBUG(llvm::dbgs() << "processing block " << block << ":\n");
   LLVM_DEBUG(block->print(llvm::dbgs()));
   LLVM_DEBUG(llvm::dbgs() << '\n');
@@ -1634,54 +1635,34 @@ Serializer::processReferenceOfOp(spirv::ReferenceOfOp referenceOfOp) {
   return success();
 }
 
-LogicalResult Serializer::processOperation(Operation *op) {
-  LLVM_DEBUG(llvm::dbgs() << "[op] '" << op->getName() << "'\n");
+LogicalResult Serializer::processOperation(Operation *opInst) {
+  LLVM_DEBUG(llvm::dbgs() << "[op] '" << opInst->getName() << "'\n");
 
   // First dispatch the ops that do not directly mirror an instruction from
   // the SPIR-V spec.
-  if (auto addressOfOp = dyn_cast<spirv::AddressOfOp>(op)) {
-    return processAddressOfOp(addressOfOp);
-  }
-  if (auto branchOp = dyn_cast<spirv::BranchOp>(op)) {
-    return processBranchOp(branchOp);
-  }
-  if (auto condBranchOp = dyn_cast<spirv::BranchConditionalOp>(op)) {
-    return processBranchConditionalOp(condBranchOp);
-  }
-  if (auto constOp = dyn_cast<spirv::ConstantOp>(op)) {
-    return processConstantOp(constOp);
-  }
-  if (auto fnOp = dyn_cast<FuncOp>(op)) {
-    return processFuncOp(fnOp);
-  }
-  if (auto varOp = dyn_cast<spirv::VariableOp>(op)) {
-    return processVariableOp(varOp);
-  }
-  if (auto varOp = dyn_cast<spirv::GlobalVariableOp>(op)) {
-    return processGlobalVariableOp(varOp);
-  }
-  if (auto selectionOp = dyn_cast<spirv::SelectionOp>(op)) {
-    return processSelectionOp(selectionOp);
-  }
-  if (auto loopOp = dyn_cast<spirv::LoopOp>(op)) {
-    return processLoopOp(loopOp);
-  }
-  if (isa<spirv::ModuleEndOp>(op)) {
-    return success();
-  }
-  if (auto refOpOp = dyn_cast<spirv::ReferenceOfOp>(op)) {
-    return processReferenceOfOp(refOpOp);
-  }
-  if (auto specConstOp = dyn_cast<spirv::SpecConstantOp>(op)) {
-    return processSpecConstantOp(specConstOp);
-  }
-  if (auto undefOp = dyn_cast<spirv::UndefOp>(op)) {
-    return processUndefOp(undefOp);
-  }
+  return TypeSwitch<Operation *, LogicalResult>(opInst)
+      .Case([&](spirv::AddressOfOp op) { return processAddressOfOp(op); })
+      .Case([&](spirv::BranchOp op) { return processBranchOp(op); })
+      .Case([&](spirv::BranchConditionalOp op) {
+        return processBranchConditionalOp(op);
+      })
+      .Case([&](spirv::ConstantOp op) { return processConstantOp(op); })
+      .Case([&](FuncOp op) { return processFuncOp(op); })
+      .Case([&](spirv::GlobalVariableOp op) {
+        return processGlobalVariableOp(op);
+      })
+      .Case([&](spirv::LoopOp op) { return processLoopOp(op); })
+      .Case([&](spirv::ModuleEndOp) { return success(); })
+      .Case([&](spirv::ReferenceOfOp op) { return processReferenceOfOp(op); })
+      .Case([&](spirv::SelectionOp op) { return processSelectionOp(op); })
+      .Case([&](spirv::SpecConstantOp op) { return processSpecConstantOp(op); })
+      .Case([&](spirv::UndefOp op) { return processUndefOp(op); })
+      .Case([&](spirv::VariableOp op) { return processVariableOp(op); })
 
-  // Then handle all the ops that directly mirror SPIR-V instructions with
-  // auto-generated methods.
-  return dispatchToAutogenSerialization(op);
+      // Then handle all the ops that directly mirror SPIR-V instructions with
+      // auto-generated methods.
+      .Default(
+          [&](Operation *op) { return dispatchToAutogenSerialization(op); });
 }
 
 namespace {
@@ -1792,7 +1773,7 @@ Serializer::processOp<spirv::FunctionCallOp>(spirv::FunctionCallOp op) {
   auto funcName = op.callee();
   uint32_t resTypeID = 0;
 
-  llvm::SmallVector<Type, 1> resultTypes(op.getResultTypes());
+  SmallVector<Type, 1> resultTypes(op.getResultTypes());
   if (failed(processType(op.getLoc(),
                          (resultTypes.empty() ? getVoidType() : resultTypes[0]),
                          resTypeID))) {

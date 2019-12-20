@@ -497,6 +497,9 @@ class BaseResourceVariable(variables.VariableV1):
     """The shape of this variable."""
     return self._shape
 
+  def set_shape(self, shape):
+    self._shape = self._shape.merge_with(shape)
+
   def _shape_as_list(self):
     if self.shape.ndims is None:
       return None
@@ -717,10 +720,6 @@ class BaseResourceVariable(variables.VariableV1):
       raise RuntimeError("from_proto not supported in EAGER mode.")
     return ResourceVariable(
         variable_def=variable_def, import_scope=import_scope)
-
-  def set_shape(self, shape):
-    """Unsupported."""
-    raise NotImplementedError("ResourceVariable does not implement set_shape()")
 
   __array_priority__ = 100
 

@@ -353,7 +353,7 @@ def map_spec_operand_to_ods_argument(operand):
     # and 'IdScope' given that they should be generated from OpConstant.
     assert quantifier == '', ('unexpected to have optional/variadic memory '
                               'semantics or scope <id>')
-    arg_type = 'I32'
+    arg_type = 'SPV_' + kind[2:] + 'Attr'
   elif kind == 'LiteralInteger':
     if quantifier == '':
       arg_type = 'I32Attr'
@@ -472,7 +472,7 @@ def get_op_definition(instruction, doc, existing_info):
 
   description = existing_info.get('description', None)
   if description is None:
-    assembly = '\n    ``` {.ebnf}\n'\
+    assembly = '\n    ```\n'\
                '    [TODO]\n'\
                '    ```\n\n'\
                '    For example:\n\n'\
@@ -651,8 +651,9 @@ def update_td_op_definitions(path, instructions, docs, filter_list,
       instruction = next(
           inst for inst in instructions if inst['opname'] == opname)
       op_defs.append(
-          get_op_definition(instruction, docs[opname],
-                            op_info_dict.get(opname, {})))
+          get_op_definition(
+              instruction, docs[opname],
+              op_info_dict.get(opname, {'inst_category': inst_category})))
     except StopIteration:
       # This is an op added by us; use the existing ODS definition.
       op_defs.append(name_op_map[opname])

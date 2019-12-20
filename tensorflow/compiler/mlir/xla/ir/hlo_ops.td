@@ -41,6 +41,9 @@ class HLO_Op<string mnemonic, list<OpTrait> traits> :
 // XLA type definitions.
 //===----------------------------------------------------------------------===//
 
+// Token type.
+def HLO_Token : Type<CPred<"$_self.isa<TokenType>()">, "token">;
+
 // Any integer tensor types
 def HLO_IntTensor : TensorOf<[HLO_Int]>;
 
@@ -53,7 +56,7 @@ def HLO_Tensor : TensorOf<[AnyFloat, AnyInteger, AnyComplex]>;
 
 def HLO_ComplexTensor : TensorOf<[AnyComplex]>;
 
-def HLO_Tuple : NestedTupleOf<[HLO_Tensor]>;
+def HLO_Tuple : NestedTupleOf<[HLO_Tensor, HLO_Token]>;
 
 def HLO_TensorOrTuple : AnyTypeOf<[HLO_Tensor, HLO_Tuple]>;
 
@@ -322,8 +325,77 @@ def HLO_OrOp: HLO_BinaryLogicalElementwiseOp<"or">, BASE_HLO_OrOp;
 def HLO_XorOp : HLO_BinaryLogicalElementwiseOp<"xor">, BASE_HLO_XorOp;
 
 //===----------------------------------------------------------------------===//
+// XLA communication op definitions.
+//===----------------------------------------------------------------------===//
+
+// InfeedOp corresponds to 'InfeedWithToken' xla client API and not 'Infeed'.
+// InfeedWithToken allows ordering of infeed HLO instructions using tokens.
+def HLO_InfeedOp : HLO_Op<"infeed", []> {
+
+  string summary = "Infeed operator";
+
+  string description = [{
+    Reads a single data item from the implicit Infeed streaming interface of
+    the device, interpreting the data as the given shape, and returns a XlaOp
+    of the data. Multiple Infeed operations are allowed in a computation, but
+    there must be a total order among the Infeed operations.
+
+    See https://www.tensorflow.org/xla/operation_semantics#infeed.
+  }];
+
+  let arguments = (ins
+    HLO_Token:$token,
+    DefaultValuedAttr<StrAttr, "">:$infeed_config
+  );
+  let results = (outs HLO_Tuple);
+  let hasCustomHLOConverter = 1;
+}
+
+// OutfeedOp corresponds to 'OutfeedWithToken' xla client API and not 'Outfeed'.
+// OutfeedWithToken allows ordering of outfeed HLO instructions using tokens.
+def HLO_OutfeedOp : HLO_Op<"outfeed", []> {
+
+  string summary = "Outfeed operator";
+
+  string description = [{
+    Generates outgoing data transfers for the given data. It takes data and a
+    token type operand and produces a token type value. Tokens are used for
+    ordering side-effecting operations.
+
+    See https://www.tensorflow.org/xla/operation_semantics#outfeed.
+  }];
+
+  let arguments = (ins
+    HLO_TensorOrTuple:$operand,
+    HLO_Token:$token,
+    DefaultValuedAttr<StrAttr, "">:$outfeed_config
+  );
+  let results = (outs HLO_Token);
+  let hasCustomHLOConverter = 1;
+}
+
+//===----------------------------------------------------------------------===//
 // XLA control flow op definitions.
 //===----------------------------------------------------------------------===//
+
+def HLO_AfterAllOp : HLO_Op<"after_all", []> {
+
+  string summary = "AfterAll operator";
+
+  string description = [{
+    AfterAll takes a variadic number of tokens and produces a single token.
+    Tokens are primitive types which can be threaded between side-effecting
+    operations to enforce ordering. AfterAll can be used as a join of tokens
+    for ordering a operation after a set operations.
+
+    See https://www.tensorflow.org/xla/operation_semantics#afterall.
+  }];
+
+  let arguments = (ins Variadic<HLO_Token>:$operands);
+  let results = (outs HLO_Token);
+  let hasCustomHLOConverter = 1;
+}
+
 def HLO_ConditionalOp: HLO_Op<"conditional", [NoSideEffect]> {
   string summary = "Conditional operator";
 
@@ -405,8 +477,8 @@ def HLO_ReduceOp: HLO_Op<"reduce", [
   let results = (outs Variadic<HLO_TensorOrTuple>);
 
   let builders = [OpBuilder<
-    "Builder *, OperationState &state, ArrayRef<Value *> operands, "
-    "ArrayRef<Value *> init_values, DenseIntElementsAttr dimensions"
+    "Builder *, OperationState &state, ValueRange operands, "
+    "ValueRange init_values, DenseIntElementsAttr dimensions"
   >];
 
   let hasFolder = 1;
@@ -445,7 +517,7 @@ def HLO_TupleOp : HLO_Op<"tuple", [NoSideEffect]>, BASE_HLO_TupleOp {
 
   let builders = [OpBuilder<
                   "Builder *builder, OperationState &results, "
-                  "ArrayRef<Value*> values">];
+                  "ValueRange values">];
 
   // TupleOp has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
@@ -515,9 +587,6 @@ def HLO_DynamicSliceOp: HLO_Op<"dynamic-slice",
   );
 
   let results = (outs HLO_Tensor:$result);
-
-  let hasCustomHLOConverter = 1;
-
   let hasCanonicalizer = 1;
 }
 
@@ -530,9 +599,6 @@ def HLO_DynamicUpdateSliceOp: HLO_Op<"dynamic-update-slice",
   );
 
   let results = (outs HLO_Tensor:$result);
-
-  // TODO(b/129422361) Requires a custom constructor.
-  let hasCustomHLOConverter = 1;
 }
 
 
@@ -556,8 +622,8 @@ def HLO_BatchNormGradOp : HLO_Op<"batch_norm_grad", [NoSideEffect]>,
   let results = (outs HLO_Tuple);
 }
 
-def HLO_BatchNormInferenceOp : HLO_Op<"batch_norm_inference", [NoSideEffect]>,
-    BASE_HLO_BatchNormInferenceOp {
+def HLO_BatchNormInferenceOp : HLO_Op<"batch_norm_inference",
+    [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_BatchNormInferenceOp {
 
   let arguments = (ins
     HLO_Tensor:$operand,
@@ -584,6 +650,14 @@ def HLO_BatchNormTrainingOp : HLO_Op<"batch_norm_training", [NoSideEffect]>,
   );
 
   let results = (outs HLO_Tuple);
+}
+
+def HLO_BitcastConvertOp : HLO_Op<"bitcast_convert",
+    [NoSideEffect, SameOperandsAndResultShape]>, BASE_HLO_BitcastConvertOp {
+
+  let arguments = (ins HLO_Tensor:$operand);
+  let results = (outs HLO_Tensor);
+  let hasCustomHLOConverter = 1;
 }
 
 def HLO_BroadcastOp : HLO_Op<"broadcast",
@@ -759,7 +833,7 @@ def HLO_UnaryEinsumOp: HLO_Op<"unary_einsum", [NoSideEffect]> {
 
   let hasCanonicalizer = 1;
 
-  // UnarayEinsumOp is unconditionally canonicalized to the binary EinsumOp so
+  // UnaryEinsumOp is unconditionally canonicalized to the binary EinsumOp so
   // the HLO converter shouldn't be invoked.
   let hasCustomHLOConverter = 1;
 }
@@ -772,26 +846,27 @@ def HLO_FftOp: HLO_Op<"fft", [NoSideEffect]>, BASE_HLO_FftOp {
   );
 
   let results = (outs HLO_Tensor);
+}
 
-  // TODO(b/129422361) Attributes are not supported by the codegen.
-  let hasCustomHLOConverter = 1;
+def GatherDimensionNumbers : StructAttr<"GatherDimensionNumbers", HLO_Dialect,
+      [StructFieldAttr<"offset_dims", I64ElementsAttr>,
+      StructFieldAttr<"collapsed_slice_dims", I64ElementsAttr>,
+      StructFieldAttr<"start_index_map", I64ElementsAttr>,
+      StructFieldAttr<"index_vector_dim", I64Attr>]> {
+  let description = "Structure of dimension information for gather";
 }
 
 def HLO_GatherOp: HLO_Op<"gather", [NoSideEffect]>, BASE_HLO_GatherOp {
   let arguments = (ins
     HLO_Tensor:$operand,
     HLO_IntTensor:$start_indices,
-    I64Attr:$index_vector_dim,
-    I64ElementsAttr:$offset_dims,
+    GatherDimensionNumbers:$dimension_numbers,
     I64ElementsAttr:$slice_sizes,
-    I64ElementsAttr:$collapsed_slice_dims,
-    I64ElementsAttr:$start_index_map
+    DefaultValuedAttr<BoolAttr, "false">:$indices_are_sorted
   );
 
   let results = (outs HLO_Tensor);
 
-  // TODO(b/129422361) Attributes are not supported by the codegen. The
-  // optional argument (dimensions) needs to be added as an attribute.
   let hasCustomHLOConverter = 1;
 }
 
@@ -880,7 +955,7 @@ def HLO_SortOp : HLO_Op<"sort", [NoSideEffect]>, BASE_HLO_SortOp {
   let regions = (region SizedRegion<1>:$comparator);
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState &state, ArrayRef<Value *> operands, "
+    "Builder *builder, OperationState &state, ValueRange operands, "
     "int64_t dimension, bool is_stable"
   >];
 
@@ -980,6 +1055,20 @@ def HLO_ReturnOp : HLO_Op<"return", [Terminator]> {
   let hasCustomHLOConverter = 1;
 
   // TODO(hinsu): Implement custom printer and parser.
+}
+
+def HLO_TorchIndexSelectOp : HLO_Op<"torch_index_select", [NoSideEffect]> {
+  let arguments = (ins
+    HLO_Tensor:$input,
+    HLO_Tensor:$index,
+    I64Attr:$dim,
+    I64Attr:$batch_dims
+  );
+
+  let results = (outs HLO_Tensor);
+
+  // TODO(hinsu): Canonicalize to lower this client side HLO op to server
+  // side HLO ops.
 }
 
 //===----------------------------------------------------------------------===//

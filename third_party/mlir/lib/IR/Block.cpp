@@ -57,7 +57,15 @@ bool Block::isEntryBlock() { return this == &getParent()->front(); }
 void Block::insertBefore(Block *block) {
   assert(!getParent() && "already inserted into a block!");
   assert(block->getParent() && "cannot insert before a block without a parent");
-  block->getParent()->getBlocks().insert(Region::iterator(block), this);
+  block->getParent()->getBlocks().insert(block->getIterator(), this);
+}
+
+/// Unlink this block from its current region and insert it right before the
+/// specific block.
+void Block::moveBefore(Block *block) {
+  assert(block->getParent() && "cannot insert before a block without a parent");
+  block->getParent()->getBlocks().splice(
+      block->getIterator(), getParent()->getBlocks(), getIterator());
 }
 
 /// Unlink this Block from its parent Region and delete it.
@@ -151,7 +159,7 @@ BlockArgument *Block::addArgument(Type type) {
 
 /// Add one argument to the argument list for each type specified in the list.
 auto Block::addArguments(ArrayRef<Type> types)
-    -> llvm::iterator_range<args_iterator> {
+    -> iterator_range<args_iterator> {
   arguments.reserve(arguments.size() + types.size());
   auto initialSize = arguments.size();
   for (auto type : types) {
@@ -256,4 +264,14 @@ Block *PredecessorIterator::unwrap(BlockOperand &value) {
 /// Get the successor number in the predecessor terminator.
 unsigned PredecessorIterator::getSuccessorIndex() const {
   return I->getOperandNumber();
+}
+
+//===----------------------------------------------------------------------===//
+// Successors
+//===----------------------------------------------------------------------===//
+
+SuccessorRange::SuccessorRange(Block *block) : SuccessorRange(nullptr, 0) {
+  if (Operation *term = block->getTerminator())
+    if ((count = term->getNumSuccessors()))
+      base = term->getBlockOperands().data();
 }

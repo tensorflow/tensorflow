@@ -30,12 +30,12 @@
 #include "mlir/Translation.h"
 
 #include "llvm/ADT/StringRef.h"
+#include "llvm/IR/IntrinsicsNVPTX.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Support/ToolOutputFile.h"
 
 using namespace mlir;
 
-namespace {
 static llvm::Value *createIntrinsicCall(llvm::IRBuilder<> &builder,
                                         llvm::Intrinsic::ID intrinsic,
                                         ArrayRef<llvm::Value *> args = {}) {
@@ -55,10 +55,11 @@ static llvm::Intrinsic::ID getShflBflyIntrinsicId(llvm::Type *resultType,
                                  : llvm::Intrinsic::nvvm_shfl_sync_bfly_i32;
 }
 
+namespace {
 class ModuleTranslation : public LLVM::ModuleTranslation {
 
 public:
-  explicit ModuleTranslation(ModuleOp module)
+  explicit ModuleTranslation(Operation *module)
       : LLVM::ModuleTranslation(module) {}
   ~ModuleTranslation() override {}
 
@@ -73,7 +74,7 @@ protected:
 };
 } // namespace
 
-std::unique_ptr<llvm::Module> mlir::translateModuleToNVVMIR(ModuleOp m) {
+std::unique_ptr<llvm::Module> mlir::translateModuleToNVVMIR(Operation *m) {
   ModuleTranslation translation(m);
   auto llvmModule =
       LLVM::ModuleTranslation::translateModule<ModuleTranslation>(m);
@@ -82,7 +83,8 @@ std::unique_ptr<llvm::Module> mlir::translateModuleToNVVMIR(ModuleOp m) {
 
   // Insert the nvvm.annotations kernel so that the NVVM backend recognizes the
   // function as a kernel.
-  for (auto func : m.getOps<LLVM::LLVMFuncOp>()) {
+  for (auto func :
+       ModuleTranslation::getModuleBody(m).getOps<LLVM::LLVMFuncOp>()) {
     if (!gpu::GPUDialect::isKernel(func))
       continue;
 
@@ -103,12 +105,11 @@ std::unique_ptr<llvm::Module> mlir::translateModuleToNVVMIR(ModuleOp m) {
 }
 
 static TranslateFromMLIRRegistration
-    registration("mlir-to-nvvmir",
-                 [](ModuleOp module, llvm::raw_ostream &output) {
-                   auto llvmModule = mlir::translateModuleToNVVMIR(module);
-                   if (!llvmModule)
-                     return failure();
+    registration("mlir-to-nvvmir", [](ModuleOp module, raw_ostream &output) {
+      auto llvmModule = mlir::translateModuleToNVVMIR(module);
+      if (!llvmModule)
+        return failure();
 
-                   llvmModule->print(output, nullptr);
-                   return success();
-                 });
+      llvmModule->print(output, nullptr);
+      return success();
+    });

@@ -60,16 +60,17 @@ allowed in a TableGen file (typically with filename suffix `.td`) can be found
 [here][TableGenIntro]. The formal language specification can be found
 [here][TableGenRef]. _Roughly_ speaking,
 
-* TableGen `class` is similar to C++ class; it can be templated and subclassed.
-* TableGen `def` is similar to C++ object; it can be declared by specializing
-  a TableGen `class` (e.g., `def MyDef : MyClass<...>;`) or completely
-  independently (e.g., `def MyDef;`). It cannot be further templated or
-  subclassed.
-* TableGen `dag` is a dedicated type for directed graph of elements. A `dag`
-  has one operator and zero or more arguments. Its syntax is `(operator arg0,
-  arg1, argN)`. The operator can be any TableGen `def`; an argument can be
-  anything, including `dag` itself. We can have names attached to both the
-  operator and the arguments like `(MyOp:$op_name MyArg:$arg_name)`.
+*   TableGen `class` is similar to C++ class; it can be templated and
+    subclassed.
+*   TableGen `def` is similar to C++ object; it can be declared by specializing
+    a TableGen `class` (e.g., `def MyDef : MyClass<...>;`) or completely
+    independently (e.g., `def MyDef;`). It cannot be further templated or
+    subclassed.
+*   TableGen `dag` is a dedicated type for directed acyclic graph of elements. A
+    `dag` has one operator and zero or more arguments. Its syntax is `(operator
+    arg0, arg1, argN)`. The operator can be any TableGen `def`; an argument can
+    be anything, including `dag` itself. We can have names attached to both the
+    operator and the arguments like `(MyOp:$op_name MyArg:$arg_name)`.
 
 Please see the [language introduction][TableGenIntro] to learn about all the
 types and expressions supported by TableGen.
@@ -186,7 +187,6 @@ led by `ins`:
 let arguments = (ins
   <type-constraint>:$<operand-name>,
   ...
-
   <attr-constraint>:$<attr-name>,
   ...
 );
@@ -198,29 +198,30 @@ hierarchy. Similarly, `<attr-constraint>` is a TableGen `def` from the
 information.
 
 There is no requirements on the relative order of operands and attributes; they
-can mix freely. But it is recommended to put all operands ahead of attributes,
-and use an empty line to separate them to make it more visually distinguishable
-if possible. The relative order of operands themselves matters.
+can mix freely. The relative order of operands themselves matters. From each
+named argument a named getter will be generated that returns the argument with
+the return type (in the case of attributes the return type will be
+constructed from the storage type, while for operands it will be `Value`). Each
+attribute's raw value (e.g., as stored) can also be accessed via generated
+`<name>Attr` getters for use in transformation passes where the more user
+friendly return type is less suitable.
 
 All the arguments should be named to 1) provide documentation, 2) drive
 auto-generation of getter methods, 3) provide a handle to reference for other
 places like constraints.
-
-> * Place attributes after operands if possible
-> * Give operands and attribute proper names
 
 #### Variadic operands
 
 To declare a variadic operand, wrap the `TypeConstraint` for the operand with
 `Variadic<...>`.
 
-Normally operations have no variadic operands or just one variadic operand.
-For the latter case, it is easily deduce which dynamic operands are for the
-static variadic operand definition. But if an operation has more than one
-variadic operands, it would be impossible to attribute dynamic operands to the
+Normally operations have no variadic operands or just one variadic operand. For
+the latter case, it is easy to deduce which dynamic operands are for the static
+variadic operand definition. But if an operation has more than one variadic
+operands, it would be impossible to attribute dynamic operands to the
 corresponding static variadic operand definitions without further information
-from the operation. Therefore, the `SameVariadicOperandSize` trait is needed
-to indicate that all variadic operands have the same number of dynamic values.
+from the operation. Therefore, the `SameVariadicOperandSize` trait is needed to
+indicate that all variadic operands have the same number of dynamic values.
 
 #### Optional attributes
 
@@ -242,19 +243,21 @@ like `"0.5f"`, and an integer array default value should be specified as like
 `Confined` is provided as a general mechanism to help modelling further
 constraints on attributes beyond the ones brought by value types. You can use
 `Confined` to compose complex constraints out of more primitive ones. For
-example, a 32-bit integer attribute whose minimal value must be 10 can be
+example, a 32-bit integer attribute whose minimum value must be 10 can be
 expressed as `Confined<I32Attr, [IntMinValue<10>]>`.
 
 Right now, the following primitive constraints are supported:
 
-* `IntMinValue<N>`: Specifying an integer attribute to be greater than or equal
-  to `N`
-* `ArrayMinCount<N>`: Specifying an array attribute to have at least `N`
-  elements
-* `IntArrayNthElemEq<I, N>`: Specifying an integer array attribute's `I`-th
-  element to be equal to `N`
-* `IntArrayNthElemMinValue<I, N>`: Specifying an integer array attribute's
-  `I`-th element to be greater than or equal to `N`
+*   `IntMinValue<N>`: Specifying an integer attribute to be greater than or
+    equal to `N`
+*   `IntMaxValue<N>`: Specifying an integer attribute to be less than or equal
+    to `N`
+*   `ArrayMinCount<N>`: Specifying an array attribute to have at least `N`
+    elements
+*   `IntArrayNthElemEq<I, N>`: Specifying an integer array attribute's `I`-th
+    element to be equal to `N`
+*   `IntArrayNthElemMinValue<I, N>`: Specifying an integer array attribute's
+    `I`-th element to be greater than or equal to `N`
 
 TODO: Design and implement more primitive constraints
 
@@ -289,7 +292,7 @@ class. See [Constraints](#constraints) for more information.
 ### Operation interfaces
 
 [Operation interfaces](Interfaces.md#operation-interfaces) are a mechanism by
-which to opaquely call methods and access information on an *Op instance,
+which to opaquely call methods and access information on an *Op instance*,
 without knowing the exact operation type. Operation interfaces defined in C++
 can be accessed in the ODS framework via the `OpInterfaceTrait` class. Aside
 from using pre-existing interfaces in the C++ API, the ODS framework also
@@ -329,6 +332,13 @@ An `InterfaceMethod` is comprised of the following components:
         to the type of the derived operation currently being operated on.
     -   In non-static methods, a variable 'ConcreteOp op' is defined and may be
         used to refer to an instance of the derived operation.
+*   DefaultImplementation (Optional)
+    -   An optional explicit default implementation of the interface method.
+    -   This method is placed within the `Trait` class that is attached to the
+        operation. As such, this method has the same characteristics as any
+        other [`Trait`](Traits.md) method.
+    -   `ConcreteOp` is an implicitly defined typename that can be used to refer
+        to the type of the derived operation currently being operated on.
 
 ODS also allows generating the declarations for the `InterfaceMethod` of the op
 if one specifies the interface with `DeclareOpInterfaceMethods` (see example
@@ -369,6 +379,14 @@ def MyInterface : OpInterface<"MyInterface"> {
     // Note: `op` corresponds to the derived operation variable.
     InterfaceMethod<"/*insert doc here*/",
       "unsigned", "getNumInputsAndOutputs", (ins), [{
+        return op.getNumInputs() + op.getNumOutputs();
+    }]>,
+
+    // Provide only a default definition of the method.
+    // Note: `ConcreteOp` corresponds to the derived operation typename.
+    InterfaceMethod<"/*insert doc here*/",
+      "unsigned", "getNumInputsAndOutputs", (ins), /*methodBody=*/[{}], [{
+        ConcreteOp op = cast<ConcreteOp>(getOperation());
         return op.getNumInputs() + op.getNumOutputs();
     }]>,
   ];
@@ -413,7 +431,7 @@ The following builders are generated:
 // All result-types/operands/attributes have one aggregate parameter.
 static void build(Builder *tblgen_builder, OperationState &tblgen_state,
                   ArrayRef<Type> resultTypes,
-                  ArrayRef<Value> operands,
+                  ValueRange operands,
                   ArrayRef<NamedAttribute> attributes);
 
 // Each result-type/operand/attribute has a separate parameter. The parameters
@@ -432,7 +450,19 @@ static void build(Builder *tblgen_builder, OperationState &tblgen_state,
                   Value *i32_operand, Value *f32_operand, ...,
                   APInt i32_attr, StringRef f32_attr, ...);
 
-// (And potentially others depending on the specific op.)
+// Each operand/attribute has a separate parameter but result type is aggregate.
+static void build(Builder *tblgen_builder, OperationState &tblgen_state,
+                  ArrayRef<Type> resultTypes,
+                  Value *i32_operand, Value *f32_operand, ...,
+                  IntegerAttr i32_attr, FloatAttr f32_attr, ...);
+
+// All operands/attributes have aggregate parameters.
+// Generated if InferTypeOpInterface interface is specified.
+static void build(Builder *tblgen_builder, OperationState &tblgen_state,
+                  ValueRange operands,
+                  ArrayRef<NamedAttribute> attributes);
+
+// (And manually specified builders depending on the specific op.)
 ```
 
 The first form provides basic uniformity so that we can create ops using the
@@ -492,7 +522,7 @@ def MyOp : ... {
   let builders = [
     OpBuilder<"Builder *builder, OperationState &state, float val = 0.5f", [{
       state.addAttribute("attr", builder->getF32FloatAttr(val));
-    ]}>
+    }]>
   ];
 }
 ```
@@ -776,7 +806,7 @@ duplication, which is being worked on right now.
 ### Enum attributes
 
 Some attributes can only take values from an predefined enum, e.g., the
-comparsion kind of a comparsion op. To define such attributes, ODS provides
+comparison kind of a comparison op. To define such attributes, ODS provides
 several mechanisms: `StrEnumAttr`, `IntEnumAttr`, and `BitEnumAttr`.
 
 *   `StrEnumAttr`: each enum case is a string, the attribute is stored as a
@@ -1042,53 +1072,54 @@ possible).
 We considered the approaches of several contemporary systems and focused on
 requirements that were desirable:
 
-* Ops registered using a registry separate from C++ code.
-  * Unknown ops are allowed in MLIR, so ops need not be registered. The
-    ability of the compiler to optimize those ops or graphs containing those
-    ops is constrained but correct.
-  * The current proposal does not include a runtime op description, but it
-    does not preclude such description, it can be added later.
-  * The op registry is essential for generating C++ classes that make
-    manipulating ops, verifying correct construction etc. in C++ easier by
-    providing a typed representation and accessors.
-* The op registry will be defined in
-  [TableGen](https://llvm.org/docs/TableGen/index.html) and be used to
-  generate C++ classes and utility functions
-  (builder/verifier/parser/printer).
-  * TableGen is a modelling specification language used by LLVM's backends
-    and fits in well with trait based modelling. This is an implementation
-    decision and there are alternative ways of doing this. But the
-    specification language is good for the requirements of modelling the
-    traits (as seen from usage in LLVM processor backend modelling) and easy
-    to extend, so a practical choice. If another good option comes up, we
-    will consider it.
-* MLIR allows both defined and undefined ops.
-  * Defined ops should have fixed semantics and could have a corresponding
-    reference implementation defined using, for example, EDSC.
-  * Dialects are under full control of the dialect owner and normally live
-    with the framework of the dialect.
-* The op's traits (e.g., commutative) are modelled along with the op in
-  the registry.
-* The op's operand/return type constraints are modelled along with the op in
-  the registry (see [Shape inference](#shape-inference) discussion below),
-  this allows (e.g.) optimized concise syntax in textual dumps.
-* Behavior of the op is documented along with the op with a summary and a
-  description. The description is written in markdown and extracted for
-  inclusion in the generated LangRef section of the dialect.
-* The generic assembly form of printing and parsing is available as normal,
-  but a custom parser and printer can either be specified or automatically
-  generated from an optional string representation showing the mapping of the
-  "assembly" string to operands/type.
-  * Parser-level remappings (e.g., `eq` to enum) will be supported as part
-    of the parser generation.
-* Matching patterns are specified separately from the op description.
-  * Contrasted with LLVM there is no "base" set of ops that every backend
-    needs to be aware of. Instead there are many different dialects and the
-    transformations/legalizations between these dialects form a graph of
-    transformations.
-* Reference implementation may be provided along with the op definition.
-  * The reference implementation may be in terms of either standard ops or
-    other reference implementations.
+*   Ops registered using a registry separate from C++ code.
+    *   Unknown ops are allowed in MLIR, so ops need not be registered. The
+        ability of the compiler to optimize those ops or graphs containing those
+        ops is constrained but correct.
+    *   The current proposal does not include a runtime op description, but it
+        does not preclude such description, it can be added later.
+    *   The op registry is essential for generating C++ classes that make
+        manipulating ops, verifying correct construction etc. in C++ easier by
+        providing a typed representation and accessors.
+*   The op registry will be defined in
+    [TableGen](https://llvm.org/docs/TableGen/index.html) and be used to
+    generate C++ classes and utility functions
+    (builder/verifier/parser/printer).
+    *   TableGen is a modelling specification language used by LLVM's backends
+        and fits in well with trait-based modelling. This is an implementation
+        decision and there are alternative ways of doing this. But the
+        specification language is good for the requirements of modelling the
+        traits (as seen from usage in LLVM processor backend modelling) and easy
+        to extend, so a practical choice. If another good option comes up, we
+        will consider it.
+*   MLIR allows both defined and undefined ops.
+    *   Defined ops should have fixed semantics and could have a corresponding
+        reference implementation defined using, for example, EDSC.
+    *   Dialects are under full control of the dialect owner and normally live
+        with the framework of the dialect.
+*   The op's traits (e.g., commutative) are modelled along with the op in the
+    registry.
+*   The op's operand/return type constraints are modelled along with the op in
+    the registry (see [Shape inference](#shape-inference) discussion below),
+    this allows (e.g.) optimized concise syntax in textual dumps.
+*   Behavior of the op is documented along with the op with a summary and a
+    description. The description is written in markdown and extracted for
+    inclusion in the generated LangRef section of the dialect.
+*   The generic assembly form of printing and parsing is available as normal,
+    but a custom parser and printer can either be specified or automatically
+    generated from an optional string representation showing the mapping of the
+    "assembly" string to operands/type.
+    *   Parser-level remappings (e.g., `eq` to enum) will be supported as part
+        of the parser generation.
+*   Matching patterns are specified separately from the op description.
+    *   Contrasted with LLVM there is no "base" set of ops that every backend
+        needs to be aware of. Instead there are many different dialects and the
+        transformations/legalizations between these dialects form a graph of
+        transformations.
+*   Reference implementation may be provided along with the op definition.
+
+    *   The reference implementation may be in terms of either standard ops or
+        other reference implementations.
 
     TODO: document expectation if the dependent op's definition changes.
 

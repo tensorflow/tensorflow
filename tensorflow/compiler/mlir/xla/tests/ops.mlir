@@ -1,6 +1,17 @@
 // RUN: tf-opt %s -verify-diagnostics -split-input-file | tf-opt | FileCheck %s
 
-// Tests for ops with custom constraints, verifiers, printer or parser methods.
+// Tests for types, ops with custom constraints, verifiers, printer or parser
+// methods.
+
+// CHECK-LABEL: func @token_type() -> !xla_hlo.token
+func @token_type() -> !xla_hlo.token
+
+// -----
+
+// expected-error@+1 {{unknown xla_hlo type: foobar}}
+func @invalid_type() -> !xla_hlo.foobar
+
+// -----
 
 // CHECK-LABEL: func @broadcast
 func @broadcast(%arg0: tensor<3xi32>) -> tensor<1x2x3xi32> {

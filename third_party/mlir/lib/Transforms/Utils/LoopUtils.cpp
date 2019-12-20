@@ -73,9 +73,8 @@ void mlir::getCleanupLoopLowerBound(AffineForOp forOp, unsigned unrollFactor,
   }
 
   unsigned step = forOp.getStep();
-
-  SmallVector<Value *, 4> lbOperands(forOp.getLowerBoundOperands());
-  auto lb = b.create<AffineApplyOp>(forOp.getLoc(), lbMap, lbOperands);
+  auto lb = b.create<AffineApplyOp>(forOp.getLoc(), lbMap,
+                                    forOp.getLowerBoundOperands());
 
   // For each upper bound expr, get the range.
   // Eg: affine.for %i = lb to min (ub1, ub2),
@@ -533,11 +532,11 @@ void mlir::interchangeLoops(AffineForOp forOpA, AffineForOp forOpB) {
 // desired loop interchange would violate dependences by making the
 // dependence component lexicographically negative.
 static bool checkLoopInterchangeDependences(
-    const std::vector<llvm::SmallVector<DependenceComponent, 2>> &depCompsVec,
+    const std::vector<SmallVector<DependenceComponent, 2>> &depCompsVec,
     ArrayRef<AffineForOp> loops, ArrayRef<unsigned> loopPermMap) {
   // Invert permutation map.
   unsigned maxLoopDepth = loops.size();
-  llvm::SmallVector<unsigned, 4> loopPermMapInv;
+  SmallVector<unsigned, 4> loopPermMapInv;
   loopPermMapInv.resize(maxLoopDepth);
   for (unsigned i = 0; i < maxLoopDepth; ++i)
     loopPermMapInv[loopPermMap[i]] = i;
@@ -548,7 +547,7 @@ static bool checkLoopInterchangeDependences(
   // Example 1: [-1, 1][0, 0]
   // Example 2: [0, 0][-1, 1]
   for (unsigned i = 0, e = depCompsVec.size(); i < e; ++i) {
-    const llvm::SmallVector<DependenceComponent, 2> &depComps = depCompsVec[i];
+    const SmallVector<DependenceComponent, 2> &depComps = depCompsVec[i];
     assert(depComps.size() >= maxLoopDepth);
     // Check if the first non-zero dependence component is positive.
     // This iterates through loops in the desired order.
@@ -573,7 +572,7 @@ bool mlir::isValidLoopInterchangePermutation(ArrayRef<AffineForOp> loops,
   // rooted at 'loops[0]', at loop depths in range [1, maxLoopDepth].
   assert(loopPermMap.size() == loops.size());
   unsigned maxLoopDepth = loops.size();
-  std::vector<llvm::SmallVector<DependenceComponent, 2>> depCompsVec;
+  std::vector<SmallVector<DependenceComponent, 2>> depCompsVec;
   getDependenceComponents(loops[0], maxLoopDepth, &depCompsVec);
   return checkLoopInterchangeDependences(depCompsVec, loops, loopPermMap);
 }
@@ -609,13 +608,13 @@ AffineForOp mlir::sinkSequentialLoops(AffineForOp forOp) {
   // Gather dependence components for dependences between all ops in loop nest
   // rooted at 'loops[0]', at loop depths in range [1, maxLoopDepth].
   unsigned maxLoopDepth = loops.size();
-  std::vector<llvm::SmallVector<DependenceComponent, 2>> depCompsVec;
+  std::vector<SmallVector<DependenceComponent, 2>> depCompsVec;
   getDependenceComponents(loops[0], maxLoopDepth, &depCompsVec);
 
   // Mark loops as either parallel or sequential.
-  llvm::SmallVector<bool, 8> isParallelLoop(maxLoopDepth, true);
+  SmallVector<bool, 8> isParallelLoop(maxLoopDepth, true);
   for (unsigned i = 0, e = depCompsVec.size(); i < e; ++i) {
-    llvm::SmallVector<DependenceComponent, 2> &depComps = depCompsVec[i];
+    SmallVector<DependenceComponent, 2> &depComps = depCompsVec[i];
     assert(depComps.size() >= maxLoopDepth);
     for (unsigned j = 0; j < maxLoopDepth; ++j) {
       DependenceComponent &depComp = depComps[j];
@@ -633,7 +632,7 @@ AffineForOp mlir::sinkSequentialLoops(AffineForOp forOp) {
 
   // Compute permutation of loops that sinks sequential loops (and thus raises
   // parallel loops) while preserving relative order.
-  llvm::SmallVector<unsigned, 4> loopPermMap(maxLoopDepth);
+  SmallVector<unsigned, 4> loopPermMap(maxLoopDepth);
   unsigned nextSequentialLoop = numParallelLoops;
   unsigned nextParallelLoop = 0;
   for (unsigned i = 0; i < maxLoopDepth; ++i) {
@@ -934,7 +933,7 @@ static LogicalResult tryIsolateBands(const TileLoops &tileLoops) {
 
 TileLoops mlir::extractFixedOuterLoops(loop::ForOp rootForOp,
                                        ArrayRef<int64_t> sizes) {
-  // Collect prefectly nested loops.  If more size values provided than nested
+  // Collect perfectly nested loops.  If more size values provided than nested
   // loops available, truncate `sizes`.
   SmallVector<loop::ForOp, 4> forOps;
   forOps.reserve(sizes.size());
@@ -1236,11 +1235,10 @@ static AffineForOp generatePointWiseCopy(Location loc, Value *memref,
                   memIndicesStart);
 
     // Construct the subscript for the slow memref being copied.
-    SmallVector<Value *, 2> operands = {memBase, forOp.getInductionVar()};
     auto memIndex = b.create<AffineApplyOp>(
         loc,
         AffineMap::get(2, 0, b.getAffineDimExpr(0) + b.getAffineDimExpr(1)),
-        operands);
+        ValueRange({memBase, forOp.getInductionVar()}));
     memIndices.push_back(memIndex);
   }
 

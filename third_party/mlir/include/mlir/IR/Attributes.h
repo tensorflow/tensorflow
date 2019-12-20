@@ -583,16 +583,14 @@ public:
   /// Generates a new ElementsAttr by mapping each int value to a new
   /// underlying APInt. The new values can represent either a integer or float.
   /// This ElementsAttr should contain integers.
-  ElementsAttr
-  mapValues(Type newElementType,
-            llvm::function_ref<APInt(const APInt &)> mapping) const;
+  ElementsAttr mapValues(Type newElementType,
+                         function_ref<APInt(const APInt &)> mapping) const;
 
   /// Generates a new ElementsAttr by mapping each float value to a new
   /// underlying APInt. The new values can represent either a integer or float.
   /// This ElementsAttr should contain floats.
-  ElementsAttr
-  mapValues(Type newElementType,
-            llvm::function_ref<APInt(const APFloat &)> mapping) const;
+  ElementsAttr mapValues(Type newElementType,
+                         function_ref<APInt(const APFloat &)> mapping) const;
 
   /// Method for support type inquiry through isa, cast and dyn_cast.
   static bool classof(Attribute attr) {
@@ -641,12 +639,12 @@ protected:
   /// Return the current index for this iterator, adjusted for the case of a
   /// splat.
   ptrdiff_t getDataIndex() const {
-    bool isSplat = this->object.getInt();
+    bool isSplat = this->base.getInt();
     return isSplat ? 0 : this->index;
   }
 
-  /// Return the data object pointer.
-  const char *getData() const { return this->object.getPointer(); }
+  /// Return the data base pointer.
+  const char *getData() const { return this->base.getPointer(); }
 };
 } // namespace detail
 
@@ -921,16 +919,15 @@ public:
   /// Generates a new DenseElementsAttr by mapping each int value to a new
   /// underlying APInt. The new values can represent either a integer or float.
   /// This underlying type must be an DenseIntElementsAttr.
-  DenseElementsAttr
-  mapValues(Type newElementType,
-            llvm::function_ref<APInt(const APInt &)> mapping) const;
+  DenseElementsAttr mapValues(Type newElementType,
+                              function_ref<APInt(const APInt &)> mapping) const;
 
   /// Generates a new DenseElementsAttr by mapping each float value to a new
   /// underlying APInt. the new values can represent either a integer or float.
   /// This underlying type must be an DenseFPElementsAttr.
   DenseElementsAttr
   mapValues(Type newElementType,
-            llvm::function_ref<APInt(const APFloat &)> mapping) const;
+            function_ref<APInt(const APFloat &)> mapping) const;
 
 protected:
   /// Return the raw storage data held by this attribute.
@@ -993,7 +990,7 @@ public:
   /// constructing the DenseElementsAttr given the new element type.
   DenseElementsAttr
   mapValues(Type newElementType,
-            llvm::function_ref<APInt(const APFloat &)> mapping) const;
+            function_ref<APInt(const APFloat &)> mapping) const;
 
   /// Iterator access to the float element values.
   iterator begin() const { return float_value_begin(); }
@@ -1029,9 +1026,8 @@ public:
 
   /// Generates a new DenseElementsAttr by mapping each value attribute, and
   /// constructing the DenseElementsAttr given the new element type.
-  DenseElementsAttr
-  mapValues(Type newElementType,
-            llvm::function_ref<APInt(const APInt &)> mapping) const;
+  DenseElementsAttr mapValues(Type newElementType,
+                              function_ref<APInt(const APInt &)> mapping) const;
 
   /// Iterator access to the integer element values.
   iterator begin() const { return raw_int_begin(); }

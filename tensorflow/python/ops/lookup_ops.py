@@ -21,6 +21,7 @@ from __future__ import print_function
 import collections
 import functools
 import uuid
+
 import six
 
 from tensorflow.python.eager import context

@@ -85,7 +85,7 @@ private:
     return it != valueMap.end() ? static_cast<T *>(it->second) : value;
   }
 
-  llvm::DenseMap<IRObjectWithUseList *, IRObjectWithUseList *> valueMap;
+  DenseMap<IRObjectWithUseList *, IRObjectWithUseList *> valueMap;
 };
 
 } // end namespace mlir

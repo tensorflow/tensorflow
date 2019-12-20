@@ -39,7 +39,7 @@ import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python import keras
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import pywrap_tfe
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import backprop  # pylint: disable=unused-import
 from tensorflow.python.eager import context
@@ -76,10 +76,10 @@ def c_tfe_py_fastpath_execute(a,
   assert ctx.executing_eagerly(
   ), "The prototype doesn't contain C code for graph construction"
   try:
-    return pywrap_tensorflow.TFE_Py_FastPathExecute(
-        ctx._handle, ctx.device_name, "MatMul", name,
-        ctx.op_callbacks, a, b, "transpose_a", transpose_a,
-        "transpose_b", transpose_b)
+    return pywrap_tfe.TFE_Py_FastPathExecute(ctx._handle, ctx.device_name,
+                                             "MatMul", name, ctx.op_callbacks,
+                                             a, b, "transpose_a", transpose_a,
+                                             "transpose_b", transpose_b)
   except core._NotOkStatusException as e:
     if name is not None:
       message = e.message + " name: " + name
@@ -339,8 +339,7 @@ class MicroBenchmarks(test.Benchmark):
     inputs = [m]
 
     def f():
-      pywrap_tensorflow.TFE_Py_Execute(ctx_handle, None, "Identity", inputs,
-                                       attrs, 1)
+      pywrap_tfe.TFE_Py_Execute(ctx_handle, None, "Identity", inputs, attrs, 1)
 
     self._run(f, 30000)
 
@@ -406,8 +405,7 @@ class MicroBenchmarks(test.Benchmark):
              m.dtype.as_datatype_enum)
 
     def func():
-      pywrap_tensorflow.TFE_Py_Execute(ctx_handle, device, "MatMul", inputs,
-                                       attrs, 1)
+      pywrap_tfe.TFE_Py_Execute(ctx_handle, device, "MatMul", inputs, attrs, 1)
 
     self._run(func, num_iters)
 
@@ -778,10 +776,17 @@ class MicroBenchmarks(test.Benchmark):
   def benchmark_forwardprop_of_defun_matmul_100_by_784_CPU(self):
     self._benchmark_forwardprop_of_defun_matmul_CPU(shape=(100, 784))
 
-  def _benchmark_tf_reduce_logsumexp(self, device=CPU, execution_mode=None):
+  def _benchmark_tf_reduce_logsumexp(self,
+                                     device=CPU,
+                                     execution_mode=None,
+                                     defunc=False):
     with context.device(device):
       x = constant_op.constant([[1, 0.], [0., 0.]])
-      func = lambda: math_ops.reduce_logsumexp(x)
+      if defunc:
+        reduce_func = def_function.function(math_ops.reduce_logsumexp)
+        func = lambda: reduce_func(x)
+      else:
+        func = lambda: math_ops.reduce_logsumexp(x)
       self._run(func, 3000, execution_mode=execution_mode)
 
   def benchmark_tf_reduce_logsumexp_CPU(self):
@@ -796,6 +801,20 @@ class MicroBenchmarks(test.Benchmark):
   def benchmark_tf_reduce_logsumexp_GPU_async(self):
     self._benchmark_tf_reduce_logsumexp(device=GPU,
                                         execution_mode=context.ASYNC)
+
+  def benchmark_tf_reduce_logsumexp_CPU_defunc(self):
+    self._benchmark_tf_reduce_logsumexp(defunc=True)
+
+  def benchmark_tf_reduce_logsumexp_CPU_async_defun(self):
+    self._benchmark_tf_reduce_logsumexp(
+        execution_mode=context.ASYNC, defunc=True)
+
+  def benchmark_tf_reduce_logsumexp_GPU_defun(self):
+    self._benchmark_tf_reduce_logsumexp(device=GPU, defunc=True)
+
+  def benchmark_tf_reduce_logsumexp_GPU_async_defun(self):
+    self._benchmark_tf_reduce_logsumexp(
+        device=GPU, execution_mode=context.ASYNC, defunc=True)
 
   def _benchmark_tf_tensordot(self, device=CPU, execution_mode=None):
     with context.device(device):

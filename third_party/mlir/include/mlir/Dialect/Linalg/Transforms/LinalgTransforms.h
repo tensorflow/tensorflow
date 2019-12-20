@@ -39,7 +39,7 @@ namespace detail {
 // Implementation detail of isProducedByOpOfType avoids the need for explicit
 // template instantiations.
 bool isProducedByOpOfTypeImpl(Operation *consumerOp, Value *consumedView,
-                              llvm::function_ref<bool(Operation *)> isaOpType);
+                              function_ref<bool(Operation *)> isaOpType);
 } // namespace detail
 
 // Returns true if the `consumedView` value use in `consumerOp` is produced by
@@ -58,25 +58,46 @@ bool isProducedByOpOfType(Operation *consumerOp, Value *consumedView) {
 // success.
 ////////////////////////////////////////////////////////////////////////////////
 
-// Tiles `op` by `sizes` and sets the attribute `kLinalgTransformMarker` to
-// `linalgMarker`.
+/// Tiles `op` by `sizes` permuting the looops according to `permutation`
+/// and sets the attribute `kLinalgTransformMarker` to `linalgMarker`.
+/// The permutation is expressed as a list of integers that specify
+/// the new ordering of the loop nest. The length of `permutation`
+/// must be equal to the length of `tileSizes`.
+/// E.g. the permutation `(i,j,k) -> (j,k,i)` will be expressed with
+/// `permutation = [1,2,0]`. All values in `permutation` must be
+/// integers, in the range 0..`tileSizes.size()` without duplications
+/// (i.e. `[1,1,2]` is an invalid permutation). An empty list
+/// states for the identity permutation.
 LogicalResult tileLinalgOpAndSetMarker(PatternRewriter &rewriter, Operation *op,
                                        ArrayRef<int64_t> sizes,
-                                       StringRef linalgMarker);
+                                       StringRef linalgMarker,
+                                       ArrayRef<unsigned> permutation);
 
-// Tiles `op` by `sizes`, fuses the producers of `operandIndicesToFuse` and sets
-// the attribute `kLinalgTransformMarker` to `linalgMarker`.
+/// Tiles `op` by `sizes`, fuses the producers of `operandIndicesToFuse` and
+/// sets the attribute `kLinalgTransformMarker` to `linalgMarker`.
 LogicalResult tileAndFuseLinalgOpAndSetMarker(
     PatternRewriter &rewriter, Operation *op, ArrayRef<int64_t> sizes,
     ArrayRef<int64_t> operandIndicesToFuse, StringRef linalgMarker);
 
-// Emits a loop nest of `loop.for` with the proper body for `op`.
+/// Emits a loop nest of `loop.for` with the proper body for `op`.
 template <typename ConcreteOp>
 LogicalResult linalgOpToLoops(PatternRewriter &rewriter, Operation *op);
 
-// Emits a loop nest of `affine.for` with the proper body for `op`.
+/// Emits a loop nest of `affine.for` with the proper body for `op`.
 template <typename ConcreteOp>
 LogicalResult linalgOpToAffineLoops(PatternRewriter &rewriter, Operation *op);
+
+/// Rewrite a linalg.generic into a suitable vector.contraction op.
+LogicalResult vectorizeGenericOp(PatternRewriter &rewriter, Operation *op);
+
+/// Emits a `generic` or `indexed_generic` operation with the `indexing_maps`
+/// and `iterator_types` permutated according to `permutation`.
+LogicalResult permuteGenericLinalgOp(PatternRewriter &rewriter, Operation *op,
+                                     ArrayRef<unsigned> permutation,
+                                     StringRef linalgMarker);
+
+/// Promote std.subviews feeding linalg operations
+LogicalResult linalgOpPromoteSubviews(PatternRewriter &rewriter, Operation *op);
 
 } // namespace linalg
 } // namespace mlir

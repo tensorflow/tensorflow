@@ -118,6 +118,14 @@ mlir::createLoopFusionPass(unsigned fastMemorySpace,
                                       maximalFusion);
 }
 
+// TODO(b/117228571) Replace when this is modeled through side-effects/op traits
+static bool isMemRefDereferencingOp(Operation &op) {
+  if (isa<AffineLoadOp>(op) || isa<AffineStoreOp>(op) ||
+      isa<AffineDmaStartOp>(op) || isa<AffineDmaWaitOp>(op))
+    return true;
+  return false;
+}
+
 namespace {
 
 // LoopNestStateCollector walks loop nests and collects load and store
@@ -141,14 +149,6 @@ struct LoopNestStateCollector {
     });
   }
 };
-
-// TODO(b/117228571) Replace when this is modeled through side-effects/op traits
-static bool isMemRefDereferencingOp(Operation &op) {
-  if (isa<AffineLoadOp>(op) || isa<AffineStoreOp>(op) ||
-      isa<AffineDmaStartOp>(op) || isa<AffineDmaWaitOp>(op))
-    return true;
-  return false;
-}
 
 // MemRefDependenceGraph is a graph data structure where graph nodes are
 // top-level operations in a FuncOp which contain load/store ops, and edges
@@ -674,6 +674,8 @@ public:
   void dump() const { print(llvm::errs()); }
 };
 
+} // end anonymous namespace
+
 // Initializes the data dependence graph by walking operations in 'f'.
 // Assigns each node in the graph a node id based on program order in 'f'.
 // TODO(andydavis) Add support for taking a Block arg to construct the
@@ -872,7 +874,7 @@ static void sinkSequentialLoops(MemRefDependenceGraph::Node *node) {
 }
 
 //  TODO(mlir-team): improve/complete this when we have target data.
-unsigned getMemRefEltSizeInBytes(MemRefType memRefType) {
+static unsigned getMemRefEltSizeInBytes(MemRefType memRefType) {
   auto elementType = memRefType.getElementType();
 
   unsigned sizeInBits;
@@ -1373,6 +1375,8 @@ static bool isFusionProfitable(Operation *srcOpInst, Operation *srcStoreOpInst,
   return true;
 }
 
+namespace {
+
 // GreedyFusion greedily fuses loop nests which have a producer/consumer or
 // input-reuse relationship on a memref, with the goal of improving locality.
 //
@@ -1561,10 +1565,10 @@ public:
               !canFuseSrcWhichWritesToLiveOut(srcId, dstId, srcStoreOp, mdg))
             continue;
 
-          // Dont create a private memref if 'writesToLiveInOrOut'.
+          // Don't create a private memref if 'writesToLiveInOrOut'.
           bool createPrivateMemref = !writesToLiveInOrOut;
-          // Dont create a private memref if 'srcNode' has in edges on 'memref',
-          // or if 'dstNode' has out edges on 'memref'.
+          // Don't create a private memref if 'srcNode' has in edges on
+          // 'memref', or if 'dstNode' has out edges on 'memref'.
           if (mdg->getIncomingMemRefAccesses(srcNode->id, memref) > 0 ||
               mdg->getOutEdgeCount(dstNode->id, memref) > 0) {
             createPrivateMemref = false;

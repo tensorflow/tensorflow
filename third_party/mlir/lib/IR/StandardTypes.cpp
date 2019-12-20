@@ -197,6 +197,10 @@ bool ShapedType::hasStaticShape() const {
   return hasRank() && llvm::none_of(getShape(), isDynamic);
 }
 
+bool ShapedType::hasStaticShape(ArrayRef<int64_t> shape) const {
+  return hasStaticShape() && getShape() == shape;
+}
+
 //===----------------------------------------------------------------------===//
 // VectorType
 //===----------------------------------------------------------------------===//
@@ -371,7 +375,7 @@ MemRefType MemRefType::getImpl(ArrayRef<int64_t> shape, Type elementType,
   // Drop identity maps from the composition.
   // This may lead to the composition becoming empty, which is interpreted as an
   // implicit identity.
-  llvm::SmallVector<AffineMap, 2> cleanedAffineMapComposition;
+  SmallVector<AffineMap, 2> cleanedAffineMapComposition;
   for (const auto &map : affineMapComposition) {
     if (map.isIdentity())
       continue;
@@ -389,6 +393,37 @@ ArrayRef<AffineMap> MemRefType::getAffineMaps() const {
 }
 
 unsigned MemRefType::getMemorySpace() const { return getImpl()->memorySpace; }
+
+//===----------------------------------------------------------------------===//
+// UnrankedMemRefType
+//===----------------------------------------------------------------------===//
+
+UnrankedMemRefType UnrankedMemRefType::get(Type elementType,
+                                           unsigned memorySpace) {
+  return Base::get(elementType.getContext(), StandardTypes::UnrankedMemRef,
+                   elementType, memorySpace);
+}
+
+UnrankedMemRefType UnrankedMemRefType::getChecked(Type elementType,
+                                                  unsigned memorySpace,
+                                                  Location location) {
+  return Base::getChecked(location, elementType.getContext(),
+                          StandardTypes::UnrankedMemRef, elementType,
+                          memorySpace);
+}
+
+unsigned UnrankedMemRefType::getMemorySpace() const {
+  return getImpl()->memorySpace;
+}
+
+LogicalResult UnrankedMemRefType::verifyConstructionInvariants(
+    Optional<Location> loc, MLIRContext *context, Type elementType,
+    unsigned memorySpace) {
+  // Check that memref is formed from allowed types.
+  if (!elementType.isIntOrFloat() && !elementType.isa<VectorType>())
+    return emitOptionalError(*loc, "invalid memref element type");
+  return success();
+}
 
 /// Given MemRef `sizes` that are either static or dynamic, returns the
 /// canonical "contiguous" strides AffineExpr. Strides are multiplicative and
@@ -612,8 +647,9 @@ ComplexType ComplexType::getChecked(Type elementType, Location location) {
 }
 
 /// Verify the construction of an integer type.
-LogicalResult ComplexType::verifyConstructionInvariants(
-    llvm::Optional<Location> loc, MLIRContext *context, Type elementType) {
+LogicalResult ComplexType::verifyConstructionInvariants(Optional<Location> loc,
+                                                        MLIRContext *context,
+                                                        Type elementType) {
   if (!elementType.isa<FloatType>() && !elementType.isa<IntegerType>())
     return emitOptionalError(loc, "invalid element type for complex");
   return success();

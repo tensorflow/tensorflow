@@ -21,6 +21,7 @@ from __future__ import print_function
 import json
 import math
 import os
+
 import numpy as np
 
 from tensorflow.python.eager import context

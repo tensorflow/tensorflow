@@ -46,7 +46,6 @@ namespace {
 
 // This transformation pass propagate shapes on the TensorFlow graph.
 // It is a ModulePass in order to be able to change function types.
-// TODO(aminim): at the moment the shape inference is intra-procedural.
 struct ShapeInference : public ModulePass<ShapeInference> {
   void runOnModule() override {
     auto module = getModule();
@@ -65,7 +64,11 @@ struct ShapeInference : public ModulePass<ShapeInference> {
       return;
     }
     for (auto func : module.getOps<FuncOp>()) {
-      TF::InferShapeUntilFixPoint(&func.getBody(), producer.getInt());
+      InferShapeUntilFixPoint(&func.getBody(), producer.getInt());
+    }
+
+    if (auto main_func = module.lookupSymbol<mlir::FuncOp>("main")) {
+      InferShapeForFunctionType(main_func);
     }
   }
 };

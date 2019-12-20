@@ -362,7 +362,7 @@ bool QuantizationDriver::SetConstantResultParams(Operation *op) {
   } else {
     // per-tensor quantization weight
     final_type = GetUniformQuantizedTypeForWeight(
-        attr, /*symmetric=*/is_weight_with_per_channel_support,
+        attr, /*symmetric=*/is_weight && is_signed_,
         /*num_bits=*/8, is_signed_,
         /*narrow_range_=*/is_weight);
   }
@@ -458,13 +458,15 @@ void QuantizationDriver::QuantizeValue(Value *value, QuantParams params,
 void QuantizationDriver::RequantizeOpResult(Operation *op, int index,
                                             RequantizeState *state) {
   if (state->pos == RequantizeState::NO_REQUANTIZE) return;
-  builder_.setInsertionPoint(op->getBlock(), ++Block::iterator(op));
+  builder_.setInsertionPointAfter(op);
   Value *value = op->getResult(index);
   if (state->pos == RequantizeState::ON_OUTPUT) {
-    Operation *op = value->getUses().begin().getUser();  // `quantize` op
-    // The requantize op is inserted between `quantize` and `dequantize` ops.
-    value = op->getResult(0);
-    builder_.setInsertionPoint(op->getBlock(), ++Block::iterator(op));
+    Operation *user = value->getUses().begin().getUser();
+    if (llvm::isa<TFL::QuantizeOp>(user)) {
+      // The requantize op is inserted between `quantize` and `dequantize` ops.
+      value = user->getResult(0);
+      builder_.setInsertionPointAfter(user);
+    }
   }
   RequantizeValue(value, state, op->getLoc());
 }

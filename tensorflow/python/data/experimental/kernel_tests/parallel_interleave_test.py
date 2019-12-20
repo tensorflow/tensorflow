@@ -22,24 +22,25 @@ import math
 import threading
 import time
 
+from absl.testing import parameterized
 import numpy as np
 from six.moves import zip_longest
 
 from tensorflow.python.data.experimental.ops import interleave_ops
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
-from tensorflow.python.framework import test_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.platform import test
 
 
-@test_util.run_all_in_graph_and_eager_modes
-class ParallelInterleaveTest(test_base.DatasetTestBase):
+# TODO(feihugis): refactor this test to be parameterized.
+class ParallelInterleaveTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   def setUp(self):
 
@@ -116,6 +117,7 @@ class ParallelInterleaveTest(test_base.DatasetTestBase):
             num_open -= 1
             break
 
+  @combinations.generate(test_base.default_test_combinations())
   def testPythonImplementation(self):
     input_lists = [[4, 4, 4, 4], [5, 5, 5, 5, 5], [6, 6, 6, 6, 6, 6],
                    [4, 4, 4, 4], [5, 5, 5, 5, 5], [6, 6, 6, 6, 6, 6]]
@@ -136,6 +138,7 @@ class ParallelInterleaveTest(test_base.DatasetTestBase):
       self.assertEqual(expected, produced, "Values differ at %s. %s != %s" %
                        (index, expected, produced))
 
+  @combinations.generate(test_base.default_test_combinations())
   def testPythonImplementationBlockLength(self):
     input_lists = [[4] * 4, [5] * 5, [6] * 6] * 2
     expected_elements = [
@@ -147,6 +150,7 @@ class ParallelInterleaveTest(test_base.DatasetTestBase):
       self.assertEqual(expected, produced, "Values differ at %s. %s != %s" %
                        (index, expected, produced))
 
+  @combinations.generate(test_base.default_test_combinations())
   def testPythonImplementationEmptyLists(self):
     input_lists = [[4, 4, 4, 4], [], [6, 6, 6, 6, 6, 6], [4, 4, 4, 4], [],
                    [6, 6, 6, 6, 6, 6]]
@@ -189,18 +193,23 @@ class ParallelInterleaveTest(test_base.DatasetTestBase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(next_element())
 
+  @combinations.generate(test_base.default_test_combinations())
   def testSingleThreaded(self):
     self._testSingleThreaded()
 
+  @combinations.generate(test_base.default_test_combinations())
   def testSingleThreadedSloppy(self):
     self._testSingleThreaded(sloppy=True)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testSingleThreadedPrefetch1Itr(self):
     self._testSingleThreaded(prefetch_input_elements=1)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testSingleThreadedPrefetch1ItrSloppy(self):
     self._testSingleThreaded(prefetch_input_elements=1, sloppy=True)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testSingleThreadedRagged(self):
     # Tests a sequence with wildly different elements per iterator.
     self.skipTest("b/131722904")
@@ -259,9 +268,11 @@ class ParallelInterleaveTest(test_base.DatasetTestBase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(next_element())
 
+  @combinations.generate(test_base.default_test_combinations())
   def testTwoThreadsNoContention(self):
     self._testTwoThreadsNoContention()
 
+  @combinations.generate(test_base.default_test_combinations())
   def testTwoThreadsNoContentionSloppy(self):
     self._testTwoThreadsNoContention(sloppy=True)
 
@@ -306,9 +317,11 @@ class ParallelInterleaveTest(test_base.DatasetTestBase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(next_element())
 
+  @combinations.generate(test_base.default_test_combinations())
   def testTwoThreadsNoContentionWithRaces(self):
     self._testTwoThreadsNoContentionWithRaces()
 
+  @combinations.generate(test_base.default_test_combinations())
   def testTwoThreadsNoContentionWithRacesSloppy(self):
     self._testTwoThreadsNoContentionWithRaces(sloppy=True)
 
@@ -343,9 +356,11 @@ class ParallelInterleaveTest(test_base.DatasetTestBase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(next_element())
 
+  @combinations.generate(test_base.default_test_combinations())
   def testTwoThreadsNoContentionBlockLength(self):
     self._testTwoThreadsNoContentionBlockLength()
 
+  @combinations.generate(test_base.default_test_combinations())
   def testTwoThreadsNoContentionBlockLengthSloppy(self):
     self._testTwoThreadsNoContentionBlockLength(sloppy=True)
 
@@ -391,9 +406,11 @@ class ParallelInterleaveTest(test_base.DatasetTestBase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(next_element())
 
+  @combinations.generate(test_base.default_test_combinations())
   def testTwoThreadsNoContentionWithRacesAndBlocking(self):
     self._testTwoThreadsNoContentionWithRacesAndBlocking()
 
+  @combinations.generate(test_base.default_test_combinations())
   def testTwoThreadsNoContentionWithRacesAndBlockingSloppy(self):
     self._testTwoThreadsNoContentionWithRacesAndBlocking(sloppy=True)
 
@@ -411,9 +428,11 @@ class ParallelInterleaveTest(test_base.DatasetTestBase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(next_element())
 
+  @combinations.generate(test_base.default_test_combinations())
   def testEmptyInput(self):
     self._testEmptyInput()
 
+  @combinations.generate(test_base.default_test_combinations())
   def testEmptyInputSloppy(self):
     self._testEmptyInput(sloppy=True)
 
@@ -431,9 +450,11 @@ class ParallelInterleaveTest(test_base.DatasetTestBase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(next_element())
 
+  @combinations.generate(test_base.default_test_combinations())
   def testNonEmptyInputIntoEmptyOutputs(self):
     self._testNonEmptyInputIntoEmptyOutputs()
 
+  @combinations.generate(test_base.default_test_combinations())
   def testNonEmptyInputIntoEmptyOutputsSloppy(self):
     self._testNonEmptyInputIntoEmptyOutputs(sloppy=True)
 
@@ -469,12 +490,15 @@ class ParallelInterleaveTest(test_base.DatasetTestBase):
           "At index %s: %s expected, got: %s" % (i, expected_element,
                                                  actual_element))
 
+  @combinations.generate(test_base.default_test_combinations())
   def testPartiallyEmptyOutputs(self):
     self._testPartiallyEmptyOutputs()
 
+  @combinations.generate(test_base.default_test_combinations())
   def testPartiallyEmptyOutputsSloppy(self):
     self._testPartiallyEmptyOutputs(sloppy=True, prefetch_input_elements=0)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testDelayedOutputSloppy(self):
     # Explicitly control the sequence of events to ensure we correctly avoid
     # head-of-line blocking.
@@ -500,6 +524,7 @@ class ParallelInterleaveTest(test_base.DatasetTestBase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(next_element())
 
+  @combinations.generate(test_base.default_test_combinations())
   def testBlockLengthWithContentionSloppy(self):
     self.skipTest("b/131722904")
     self._clear_coordination_events()
@@ -557,9 +582,11 @@ class ParallelInterleaveTest(test_base.DatasetTestBase):
       self.read_coordination_events[i].acquire()
       self.write_coordination_events[i].set()
 
+  @combinations.generate(test_base.default_test_combinations())
   def testEarlyExit(self):
     self._testEarlyExit()
 
+  @combinations.generate(test_base.default_test_combinations())
   def testEarlyExitSloppy(self):
     self._testEarlyExit(sloppy=True)
 
@@ -584,12 +611,15 @@ class ParallelInterleaveTest(test_base.DatasetTestBase):
         [[4] * 4, [5] * 5, [6] * 6] * self.repeat_count, 1, 2)
     self.assertItemsEqual(output_values, expected_values)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testTooManyReaders(self):
     self._testTooManyReaders()
 
+  @combinations.generate(test_base.default_test_combinations())
   def testTooManyReadersSloppy(self):
     self._testTooManyReaders(sloppy=True)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testSparse(self):
     def _map_fn(i):
       return sparse_tensor.SparseTensor(
@@ -610,6 +640,7 @@ class ParallelInterleaveTest(test_base.DatasetTestBase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
 
+  @combinations.generate(test_base.default_test_combinations())
   def testErrorsInOutputFn(self):
     self.skipTest("b/131722904")
     self._clear_coordination_events()
@@ -642,6 +673,7 @@ class ParallelInterleaveTest(test_base.DatasetTestBase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(next_element())
 
+  @combinations.generate(test_base.default_test_combinations())
   def testErrorsInInputFn(self):
 
     def map_py_fn(x):
@@ -687,6 +719,7 @@ class ParallelInterleaveTest(test_base.DatasetTestBase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(next_element())
 
+  @combinations.generate(test_base.default_test_combinations())
   def testErrorsInInterleaveFn(self):
 
     def map_py_fn(x):
@@ -730,6 +763,7 @@ class ParallelInterleaveTest(test_base.DatasetTestBase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(next_element())
 
+  @combinations.generate(test_base.default_test_combinations())
   def testShutdownRace(self):
     dataset = dataset_ops.Dataset.range(20)
     map_fn = lambda x: dataset_ops.Dataset.range(20 * x, 20 * (x + 1))

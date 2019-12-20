@@ -31,10 +31,16 @@ void CreateTPUBridge(OpPassManager &pm) {
   func_pm.addPass(tf_executor::CreateTFExecutorIslandCoarseningPass());
   func_pm.addPass(CreateTPUClusterFormationPass());
   func_pm.addPass(createCanonicalizerPass());
+  // Place DecomposeResourceOpsPass before TFExecutorConstantSinking pass
+  // because DecomposeResourceOpsPass uses pattern rewriter which hoists
+  // changed constants out of tf_device.Launch.
+  func_pm.addPass(TFDevice::CreateDecomposeResourceOpsPass());
   func_pm.addPass(tf_executor::CreateTFExecutorConstantSinkingPass());
   func_pm.addPass(TFDevice::CreateResourceOpLiftingPass());
 
+  pm.addPass(TF::CreateResourceDeviceInferencePass());
   pm.addPass(TFDevice::CreateClusterOutliningPass());
+  pm.addPass(CreateTPUDynamicPaddingMapperPass());
   pm.addPass(CreateTPURewritePass());
   pm.addNestedPass<FuncOp>(TFDevice::CreateReplicateInvariantOpHoistingPass());
   pm.addNestedPass<FuncOp>(CreateFunctionalToExecutorDialectConversionPass());
@@ -50,7 +56,7 @@ tensorflow::Status TPUBridge(ModuleOp module, bool enable_logging) {
 
   // Add logger to bridge passmanager.
   if (enable_logging)
-    bridge.addInstrumentation(std::make_unique<tensorflow::BridgeLogger>());
+    bridge.enableIRPrinting(std::make_unique<tensorflow::BridgeLoggerConfig>());
 
   // Populate a passmanager with the list of passes that implement the bridge.
   CreateTPUBridge(bridge);
@@ -74,7 +80,7 @@ tensorflow::Status RunBridgeWithStandardPipeline(ModuleOp module,
 
   // Add logger to bridge passmanager.
   if (enable_logging)
-    bridge.addInstrumentation(std::make_unique<tensorflow::BridgeLogger>());
+    bridge.enableIRPrinting(std::make_unique<tensorflow::BridgeLoggerConfig>());
 
   StandardPipelineOptions pipeline_options;
   pipeline_options.enable_inliner.setValue(enable_inliner);

@@ -100,21 +100,6 @@ static Type convertLinalgType(Type t, LLVMTypeConverter &lowering) {
   auto int64Ty = lowering.convertType(IntegerType::get(64, context))
                      .cast<LLVM::LLVMType>();
 
-  // A buffer descriptor contains the pointer to a flat region of storage and
-  // the size of the region.
-  //
-  // template <typename Elem, size_t Rank>
-  // struct {
-  //   void *baseAlloc;
-  //   Elem *ptr;
-  //   int64_t size;
-  // };
-  if (auto bufferType = t.dyn_cast<BufferType>()) {
-    auto voidPtrTy = LLVMType::getInt8Ty(lowering.getDialect()).getPointerTo();
-    auto ptrTy = getPtrToElementType(bufferType, lowering);
-    return LLVMType::getStructTy(voidPtrTy, ptrTy, int64Ty);
-  }
-
   // Range descriptor contains the range bounds and the step as 64-bit integers.
   //
   // struct {
@@ -417,10 +402,8 @@ public:
     if (!libraryCallName)
       return this->matchFailure();
 
-    SmallVector<Value *, 4> operands(op.getOperands().begin(),
-                                     op.getOperands().end());
-    rewriter.replaceOpWithNewOp<mlir::CallOp>(op, libraryCallName.getValue(),
-                                              ArrayRef<Type>{}, operands);
+    rewriter.replaceOpWithNewOp<mlir::CallOp>(
+        op, libraryCallName.getValue(), ArrayRef<Type>{}, op.getOperands());
     return this->matchSuccess();
   }
 };
@@ -444,10 +427,8 @@ public:
     if (!libraryCallName)
       return matchFailure();
 
-    SmallVector<Value *, 4> operands(op.getOperands().begin(),
-                                     op.getOperands().end());
-    rewriter.replaceOpWithNewOp<mlir::CallOp>(op, libraryCallName.getValue(),
-                                              ArrayRef<Type>{}, operands);
+    rewriter.replaceOpWithNewOp<mlir::CallOp>(
+        op, libraryCallName.getValue(), ArrayRef<Type>{}, op.getOperands());
     return matchSuccess();
   }
 };
@@ -572,6 +553,6 @@ mlir::linalg::createConvertLinalgToLLVMPass() {
   return std::make_unique<ConvertLinalgToLLVMPass>();
 }
 
-static PassRegistration<ConvertLinalgToLLVMPass>
-    pass("convert-linalg-to-llvm",
-         "Convert the operations from the linalg dialect into the LLVM dialect");
+static PassRegistration<ConvertLinalgToLLVMPass> pass(
+    "convert-linalg-to-llvm",
+    "Convert the operations from the linalg dialect into the LLVM dialect");

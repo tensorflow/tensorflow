@@ -292,6 +292,83 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/core/platform:errors",
+        "//tensorflow/stream_executor:platform",
         "//tensorflow/stream_executor/lib",
     ],
+)
+
+cc_library(
+    name = "run_hlo_module_lib",
+    testonly = True,
+    srcs = ["run_hlo_module.cc"],
+    hdrs = ["run_hlo_module.h"],
+    deps = [
+        ":hlo_module_loader",
+        ":prepare_reference_module",
+        "//tensorflow/compiler/xla:debug_options_flags",
+        "//tensorflow/compiler/xla:error_spec",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/client/lib:testing",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_runner",
+        "//tensorflow/compiler/xla/service:hlo_verifier",
+        "//tensorflow/compiler/xla/service:platform_util",
+        "//tensorflow/compiler/xla/tests:literal_test_util",
+        "//tensorflow/compiler/xla/tests:test_utils",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:test",
+        "//tensorflow/stream_executor:platform",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+tf_cc_binary(
+    name = "run_hlo_module",
+    testonly = True,
+    srcs = ["run_hlo_module_main.cc"],
+    deps = [
+        ":run_hlo_module_lib",
+        "//tensorflow/compiler/xla:debug_options_flags",
+        "//tensorflow/compiler/xla/service:cpu_plugin",
+        "//tensorflow/compiler/xla/service:gpu_plugin",
+        "//tensorflow/compiler/xla/service:interpreter_plugin",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:platform_port",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:test",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+# Same as run_hlo_module, but supports the MLIR GPU backend instead of the XLA
+# GPU backend.
+tf_cc_binary(
+    name = "run_hlo_module_mlir_gpu",
+    testonly = True,
+    srcs = ["run_hlo_module_main.cc"],
+    deps = [
+        ":run_hlo_module_lib",
+        "//tensorflow/compiler/xla:debug_options_flags",
+        "//tensorflow/compiler/xla/service:cpu_plugin",
+        "//tensorflow/compiler/xla/service:interpreter_plugin",
+        "//tensorflow/compiler/xla/service:mlir_gpu_plugin",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:platform_port",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:test",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+# This target is used to reproduce miscompiles in OSS outside of TF, and it can
+# not have any dependencies apart from the standard library.
+cc_library(
+    name = "driver",
+    srcs = ["driver.cc"],
+    tags = ["nofixdeps"],
+    deps = [],
 )

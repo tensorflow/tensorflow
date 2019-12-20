@@ -577,6 +577,19 @@ def TFL_ConstOp : Op<TFL_Dialect, "pseudo_const", [NoSideEffect,
   ];
 }
 
+def TFL_ExternalConstOp : Op<TFL_Dialect, "external_const", [NoSideEffect]> {
+  let summary = "External const op.";
+
+  let description = [{
+    External const op holds a `buffer_index` which points to a constant
+    in the flatbuffer.
+  }];
+
+  let arguments = (ins I32Attr:$buffer_index);
+
+  let results = (outs AnyTensor:$output);
+}
+
 def TFL_Conv2DOp : TFL_ConvOp<"conv_2d", "Convolution", 0>;
 
 def TFL_CosOp: TFL_Op<"cos", [
@@ -1168,7 +1181,8 @@ def TFL_FloorModOp : TFL_Op<"floor_mod", [Broadcastable, NoSideEffect]> {
   let builders = [TFL_BroadcastableBinaryBuilder];
 }
 
-def TFL_GreaterOp : TFL_Op<"greater", [NoSideEffect, NoQuantizableResult]> {
+def TFL_GreaterOp : TFL_Op<"greater", [
+    Broadcastable, NoSideEffect, NoQuantizableResult]> {
   let summary = "Greater operator";
 
   let description = [{
@@ -1180,6 +1194,8 @@ def TFL_GreaterOp : TFL_Op<"greater", [NoSideEffect, NoQuantizableResult]> {
     AnyTensor:$rhs);
 
   let results = (outs AnyTensor:$output);
+
+  let builders = [TFL_ComparisonBinaryBuilder];
 
   let parser = [{ return mlir::impl::parseOneResultSameOperandTypeOp(parser, result); }];
 
@@ -2073,6 +2089,32 @@ def TFL_SelectOp : TFL_Op<"select", [NoSideEffect,
     auto resultType = x->getType();
     result.addOperands({condition, x, y});
     result.types.push_back(resultType);
+  }]>];
+
+  let hasOptions = 1;
+}
+
+def TFL_SelectV2Op : TFL_Op<"select_v2", [NoSideEffect]> {
+  let summary = "SelectV2 operator";
+
+  let description = [{
+    Select values of 'x' if the corresponding value of 'condition' is true or
+    the value of 'y' if false. There are valid condition input sizes:
+
+    1. Either the same shape (in which case the select is elementwise), or
+    2. Broadcastable shapes between 'condition', 'x' and 'y'.
+  }];
+
+  let arguments = (ins
+    TFL_BoolTensor:$condition,
+    TensorOf<[F32, I1, I8, I16, I32, I64, TFL_Uint8]>:$x,
+    TensorOf<[F32, I1, I8, I16, I32, I64, TFL_Uint8]>:$y);
+  let results = (outs AnyTensor:$output);
+
+  let builders = [OpBuilder<"Builder *builder, OperationState &result, "
+                            "Value *cond, Value *x, Value *y",
+  [{
+    BuildSelectV2Op(builder, result, cond, x, y);
   }]>];
 
   let hasOptions = 1;
@@ -3111,6 +3153,27 @@ the output tensor can vary depending on how many true values there are in
   let results = (outs
     I64Tensor:$index
   );
+}
+
+def TFL_NumericVerifyOp : Op<TFL_Dialect, "NumericVerify", [
+    SameOperandsShape]> {
+
+  let summary = "Verifies the numericals of the two operands";
+
+  let description = [{
+    The NumericVerify op is a debugging op to verify the numericals of the two
+    activations. It is a custom op in TFLite.
+  }];
+
+  let arguments = (ins
+    TensorOf<[QI8, QUI8, QI16, QUI16]>:$input,
+    TensorOf<[F32]>:$ref,
+
+    // Attributes
+    DefaultValuedAttr<F32Attr, "0.1">:$tolerance
+  );
+
+  let results = (outs);
 }
 
 def SVDFResultConstraint: PredOpTrait<

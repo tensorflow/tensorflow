@@ -28,11 +28,12 @@ using namespace mlir::quantizer;
 // AttributeTensorStatistics implementation
 //===----------------------------------------------------------------------===//
 
-static void
-collectElementsStatisticsDim(ElementsAttr attr, unsigned numElements,
-                             ArrayRef<int64_t> shape,
-                             llvm::SmallVectorImpl<uint64_t> &indices,
-                             uint64_t dim, TensorAxisStatistics &statistics) {
+static void collectElementsStatisticsDim(ElementsAttr attr,
+                                         unsigned numElements,
+                                         ArrayRef<int64_t> shape,
+                                         SmallVectorImpl<uint64_t> &indices,
+                                         uint64_t dim,
+                                         TensorAxisStatistics &statistics) {
   // Recursive terminating condition.
   if (dim >= shape.size())
     return;
@@ -71,7 +72,7 @@ static bool getElementsStatistics(ElementsAttr attr,
   if (!elementTy.isa<FloatType>())
     return false;
 
-  llvm::SmallVector<uint64_t, 4> indices;
+  SmallVector<uint64_t, 4> indices;
   indices.resize(sType.getRank());
   ArrayRef<int64_t> shape = sType.getShape();
 
@@ -94,16 +95,10 @@ bool AttributeTensorStatistics::get(TensorAxisStatistics &stats) const {
   return false;
 }
 
-namespace mlir {
-namespace quantizer {
-
-llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
-                              const TensorAxisStatistics &stats) {
+raw_ostream &mlir::quantizer::operator<<(raw_ostream &os,
+                                         const TensorAxisStatistics &stats) {
   os << "STATS[sampleSize=" << stats.sampleSize << ", min=" << stats.minValue
      << ", maxValue=" << stats.maxValue << ", mean=" << stats.mean
      << ", variance=" << stats.variance << "]";
   return os;
 }
-
-} // end namespace quantizer
-} // end namespace mlir

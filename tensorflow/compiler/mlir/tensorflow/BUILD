@@ -11,7 +11,6 @@ package_group(
     includes = ["@local_config_mlir//:subpackages"],
     packages = [
         "//tensorflow/compiler/...",
-        "//tensorflow/core/tfrt_delegate/...",
         "//tensorflow/python/...",
     ],
 )
@@ -176,6 +175,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite:validators",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/platform:logging",
         "@llvm//:support",
         "@local_config_mlir//:Analysis",
         "@local_config_mlir//:CallOpInterfacesIncGen",
@@ -192,6 +192,37 @@ cc_library(
     alwayslink = 1,
 )
 
+gentbl(
+    name = "decompose_resource_ops_inc_gen",
+    tbl_outs = [
+        (
+            "-gen-rewriters",
+            "transforms/generated_decompose_resource_ops.inc",
+        ),
+    ],
+    tblgen = "@local_config_mlir//:mlir-tblgen",
+    td_file = "transforms/decompose_resource_ops.td",
+    td_srcs = [
+        ":tensorflow_ops_td_files",
+        "@local_config_mlir//:StdOpsTdFiles",
+    ],
+)
+
+cc_library(
+    name = "decompose_resource_ops",
+    srcs = [
+        "transforms/decompose_resource_ops.cc",
+    ],
+    hdrs = [
+        "transforms/decompose_resource_ops.h",
+    ],
+    deps = [
+        ":decompose_resource_ops_inc_gen",
+        ":tensorflow",
+        "@local_config_mlir//:IR",
+    ],
+)
+
 cc_library(
     name = "tensorflow_passes",
     srcs = [
@@ -199,6 +230,7 @@ cc_library(
         "transforms/bridge_pass.cc",
         "transforms/cluster_formation.cc",
         "transforms/cluster_outlining.cc",
+        "transforms/decompose_resource_ops_pass.cc",
         "transforms/delete_unused_funcs.cc",
         "transforms/executor_island_coarsening.cc",
         "transforms/fold_switch.cc",
@@ -213,12 +245,14 @@ cc_library(
         "transforms/raise_control_flow.cc",
         "transforms/replicate_invariant_op_hoisting.cc",
         "transforms/replicate_to_island.cc",
+        "transforms/resource_device_inference.cc",
         "transforms/resource_op_lifting.cc",
         "transforms/shape_inference.cc",
         "transforms/shape_inference_pass.cc",
         "transforms/sink_constant.cc",
         "transforms/test_side_effect_analysis.cc",
         "transforms/tpu_cluster_formation.cc",
+        "transforms/tpu_dynamic_padding_mapper.cc",
         "transforms/tpu_merge_variables_with_execute.cc",
         "transforms/tpu_rewrite_pass.cc",
         "translate/breakup-islands.cc",
@@ -236,6 +270,8 @@ cc_library(
         ":bridge_logger",
         ":convert_tensor",
         ":convert_type",
+        ":decompose_resource_ops",
+        ":decompose_resource_ops_inc_gen",
         ":device_util",
         ":error_util",
         ":export_tf_dialect_op",
@@ -566,7 +602,6 @@ cc_library(
     hdrs = ["utils/error_util.h"],
     deps = [
         "//tensorflow/core:lib",
-        "//tensorflow/stream_executor/lib",
         "@llvm//:support",
         "@local_config_mlir//:IR",
     ],
@@ -590,6 +625,7 @@ cc_library(
         "//tensorflow/c:tf_status",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/stream_executor",
         "//tensorflow/stream_executor/lib",
         "@llvm//:support",
@@ -662,18 +698,15 @@ cc_library(
 
 cc_library(
     name = "translate_lib",
-    srcs = [
-        "translate/tf_mlir_translate.cc",
-    ],
-    hdrs = [
-        "translate/tf_mlir_translate.h",
-    ],
+    srcs = ["translate/tf_mlir_translate.cc"],
+    hdrs = ["translate/tf_mlir_translate.h"],
     deps = [
         ":convert_graphdef",
         ":error_util",
         ":import_utils",
         ":mangling_util",
         ":mlir_roundtrip_flags",
+        "//tensorflow/cc/saved_model:bundle_v2",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:ops",
@@ -887,6 +920,7 @@ cc_library(
         ":lower_tf_inc_gen",
         ":tensorflow",
         "//tensorflow/core:framework",
+        "@llvm//:support",
         "@local_config_mlir//:IR",
     ],
     alwayslink = 1,

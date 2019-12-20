@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <numeric>
 
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Diagnostics.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
@@ -24,6 +26,7 @@ limitations under the License.
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/core/util/tensor_format.h"
 
 namespace mlir {
@@ -57,22 +60,21 @@ static DenseIntElementsAttr GetI64ElementsAttrForSeq(int start, int end,
 static DenseElementsAttr GetScalarOfType(Type ty, int64_t raw_value) {
   RankedTensorType scalar_ty = RankedTensorType::get({}, ty);
   if (auto float_ty = ty.dyn_cast_or_null<FloatType>()) {
-    const auto &float_semantics = float_ty.getFloatSemantics();
-    Builder builder(ty.getContext());
-    if (&float_semantics == &APFloat::IEEEsingle())
-      return DenseElementsAttr::get(scalar_ty,
-                                    builder.getF32FloatAttr(raw_value));
-    if (&float_semantics == &APFloat::IEEEdouble())
-      return DenseElementsAttr::get(scalar_ty,
-                                    builder.getF64FloatAttr(raw_value));
-
-    assert(false && "unhandled IEEE float kind");
-    return {};
+    FloatAttr attr = FloatAttr::get(float_ty, raw_value);
+    return DenseElementsAttr::get(scalar_ty, attr);
   }
 
   auto int_ty = ty.cast<IntegerType>();
-  APInt value(int_ty.getWidth(), raw_value, /*isSigned=*/true);
-  return DenseElementsAttr::get(scalar_ty, value);
+  IntegerAttr attr = IntegerAttr::get(int_ty, raw_value);
+  return DenseElementsAttr::get(scalar_ty, attr);
+}
+
+// Returns float DenseElementsAttr with scalar shape with the specified value.
+static DenseElementsAttr GetScalarOfFloatType(Type ty, double raw_value) {
+  auto float_ty = ty.cast<FloatType>();
+  FloatAttr attr = FloatAttr::get(float_ty, raw_value);
+  RankedTensorType scalar_ty = RankedTensorType::get({}, ty);
+  return DenseElementsAttr::get(scalar_ty, attr);
 }
 
 // Returns reduction indices to use while lowering tf.BiasAddGrad op to tf.Sum
@@ -83,7 +85,7 @@ DenseIntElementsAttr GetBiasAddGradReductionIndices(int64_t rank,
   tensorflow::TensorFormat format;
   if (!FormatFromString(data_format.getValue().str(), &format)) return {};
 
-  // Reudce along all dimensions except the feature dimension.
+  // Reduce along all dimensions except the feature dimension.
   int64_t feature_dim = GetTensorFeatureDimIndex(rank, format);
   llvm::SmallVector<int64_t, 4> dims_to_reduce(rank - 1);
   std::iota(dims_to_reduce.begin(), dims_to_reduce.begin() + feature_dim, 0);
@@ -108,6 +110,134 @@ Type InferExpandDimsType(Type ty, int64_t axis, Builder *builder) {
   shape.insert(shape.begin() + axis, 1);
   return RankedTensorType::get(shape, ranked_ty.getElementType());
 }
+
+// Lowers AddN op to a sequence of AddV2 ops to accumulate operands.
+//
+//   %result = "tf.AddN"(%0, %1, %2)
+//
+// is lowered to:
+//
+//   %sum_0 = "tf.AddV2"(%0, %1)
+//   %result = "tf.AddV2"(%sum_0, %2)
+//
+class LowerAddNOp : public OpRewritePattern<TF::AddNOp> {
+ public:
+  explicit LowerAddNOp(MLIRContext *context)
+      : OpRewritePattern<TF::AddNOp>(context) {}
+
+  PatternMatchResult matchAndRewrite(TF::AddNOp op,
+                                     PatternRewriter &rewriter) const override {
+    // TODO(hinsu): Support variant with TensorList type. tf.AddV2 doesn't
+    // support variant type so variant types require special handling.
+    if (getElementTypeOrSelf(op.getType()).isa<VariantType>())
+      return matchFailure();
+
+    // TODO(hinsu): Improve parallelism by splitting operands in two halves and
+    // accumulating them first.
+    Value *result = *op.inputs().begin();
+    for (Value *operand : llvm::drop_begin(op.inputs(), 1)) {
+      result = rewriter.create<TF::AddV2Op>(op.getLoc(), result, operand);
+    }
+
+    rewriter.replaceOp(op, result);
+    return matchSuccess();
+  }
+};
+
+// Lowers DynamicStitch op with constant indices and with static input and
+// output shapes using Reshape, UnPack and ConcatV2 op.
+//
+//   %indices0 = "tf.Const"() {value = dense<4> : tensor<i32>}
+//   %indices1 = "tf.Const"() {value = dense<[[3, 2], [1, 0]]> :
+//   tensor<2x2xi32>} %0 = "tf.DynamicStitch"(%indices0, %indices1, %arg0,
+//   %arg1)
+//     : (tensor<i32>, tensor<2x2xi32>, tensor<2xf32>, tensor<2x2x2xf32>)
+//     -> tensor<5x2xf32>
+//
+// is lowered to
+//
+//   %shape = "tf.Const"() {value = dense<[-1, 2]> : tensor<2xi64>}
+//   %inp0 = "tf.Reshape"(%arg0, %shape)
+//     : (tensor<2xf32>, tensor<2xi64>) -> tensor<1x2xf32>
+//   %inp1 = "tf.Reshape"(%arg1, %shape)
+//     : (tensor<2x2x2xf32>, tensor<2xi64>) -> tensor<4x2xf32>
+//   %items0 = "tf.Unpack"(%[[INP0]]) {axis = 0 : i64}
+//     : (tensor<1x2xf32>) -> tensor<2xf32>
+//   %items1:4 = "tf.Unpack"(%[[INP1]]) {axis = 0 : i64}
+//     : (tensor<4x2xf32>) -> (tensor<2xf32>, tensor<2xf32>, tensor<2xf32>,
+//     tensor<2xf32>)
+//   %axis = "tf.Const"() {value = dense<0> : tensor<i64>}
+//   %0 = "tf.ConcatV2"(items1#3, items1#2, items1#1, items1#0, %items0, %axis)
+//     : (tensor<2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>,
+//        tensor<2xf32>, tensor<i64>) -> tensor<5x2xf32>
+//
+class LowerDynamicStitchOp : public OpRewritePattern<TF::DynamicStitchOp> {
+ public:
+  explicit LowerDynamicStitchOp(MLIRContext *context)
+      : OpRewritePattern<TF::DynamicStitchOp>(context) {}
+
+  PatternMatchResult matchAndRewrite(DynamicStitchOp op,
+                                     PatternRewriter &rewriter) const override {
+    // Static output type is used to compute intermediate values. Note that the
+    // output type doesn't have to be static but if input types and indices are
+    // constant, then the output type can be statically determined.
+    RankedTensorType out_ty = op.getType().dyn_cast<RankedTensorType>();
+    if (!out_ty || !out_ty.hasStaticShape()) return matchFailure();
+
+    // Extract out all the constant indices' attributes and verify that data
+    // types are static.
+    SmallVector<DenseIntElementsAttr, 4> indices;
+    indices.reserve(op.N());
+    for (auto it : llvm::zip(op.indices(), op.data())) {
+      Value *index = std::get<0>(it);
+      Value *data = std::get<1>(it);
+
+      DenseIntElementsAttr index_attr;
+      if (!matchPattern(index, m_Constant(&index_attr))) return matchFailure();
+      indices.push_back(index_attr);
+
+      RankedTensorType data_ty = data->getType().dyn_cast<RankedTensorType>();
+      if (!data_ty || !data_ty.hasStaticShape()) return matchFailure();
+    }
+
+    // Compute type of each of the items and shape to use while reshaping inputs
+    // so that they can be unpacked to extract out individual items.
+    ArrayRef<int64_t> item_shape = out_ty.getShape().drop_front(1);
+    auto item_ty = RankedTensorType::get(item_shape, out_ty.getElementType());
+
+    SmallVector<int64_t, 4> packed_shape;
+    packed_shape.push_back(-1);
+    packed_shape.append(item_shape.begin(), item_shape.end());
+    Location loc = op.getLoc();
+    auto packed_shape_val = rewriter.create<ConstOp>(
+        loc, GetI64ElementsAttr(packed_shape, &rewriter));
+
+    // Prepare each of the output item by unpacking data and then putting it to
+    // the specified index.
+    SmallVector<Value *, 8> values(out_ty.getDimSize(0));
+    for (auto it : llvm::zip(indices, op.data())) {
+      DenseIntElementsAttr index_attr = std::get<0>(it);
+      Value *data = std::get<1>(it);
+
+      auto reshaped_data =
+          rewriter.create<ReshapeOp>(loc, data, packed_shape_val);
+      auto num_items =
+          reshaped_data.getType().cast<RankedTensorType>().getShape()[0];
+      auto items = rewriter.create<UnpackOp>(
+          loc, SmallVector<Type, 4>(num_items, item_ty), reshaped_data,
+          /*axis=*/APInt(64, 0));
+      for (auto index_item : llvm::zip(index_attr, items.getResults())) {
+        int64_t output_index = std::get<0>(index_item).getSExtValue();
+        Value *item = std::get<1>(index_item);
+        values[output_index] = item;
+      }
+    }
+
+    auto axis = rewriter.create<ConstOp>(loc, rewriter.getI64IntegerAttr(0));
+    rewriter.replaceOpWithNewOp<ConcatV2Op>(op, op.getType(), values, axis);
+    return matchSuccess();
+  }
+};
 
 // Lowers Pack op to ConcatV2 op after changing shape of the inputs with
 // ExpandDims op.
@@ -159,7 +289,7 @@ class LowerPackOp : public OpRewritePattern<TF::PackOp> {
 
 void PopulateLoweringTFPatterns(MLIRContext *context,
                                 OwningRewritePatternList *patterns) {
-  patterns->insert<LowerPackOp>(context);
+  patterns->insert<LowerAddNOp, LowerDynamicStitchOp, LowerPackOp>(context);
   populateWithGenerated(context, patterns);
 }
 

@@ -86,8 +86,8 @@ StatusOr<std::unique_ptr<HloModule>> LoadModuleFromData(
         return InvalidArgument("Failed to parse input as HLO protobuf binary");
       }
     } else if (format == "pbtxt") {
-      if (!proto2::TextFormat::ParseFromString(data, &proto) &&
-          !proto2::TextFormat::ParseFromString(data, proto.mutable_hlo())) {
+      if (!google::protobuf::TextFormat::ParseFromString(data, &proto) &&
+          !google::protobuf::TextFormat::ParseFromString(data, proto.mutable_hlo())) {
         return InvalidArgument("Failed to parse input as HLO protobuf text");
       }
     } else {

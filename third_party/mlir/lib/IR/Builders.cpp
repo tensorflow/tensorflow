@@ -18,12 +18,13 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
-#include "mlir/IR/Attributes.h"
+#include "mlir/IR/Dialect.h"
 #include "mlir/IR/IntegerSet.h"
-#include "mlir/IR/Location.h"
+#include "mlir/IR/Matchers.h"
 #include "mlir/IR/Module.h"
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/Support/Functional.h"
+#include "llvm/Support/raw_ostream.h"
 using namespace mlir;
 
 Builder::Builder(ModuleOp module) : context(module.getContext()) {}
@@ -306,6 +307,13 @@ AffineMap Builder::getShiftedAffineMap(AffineMap map, int64_t shift) {
 
 OpBuilder::~OpBuilder() {}
 
+/// Insert the given operation at the current insertion point and return it.
+Operation *OpBuilder::insert(Operation *op) {
+  if (block)
+    block->getOperations().insert(insertPoint, op);
+  return op;
+}
+
 /// Add new block and set the insertion point to the end of it. The block is
 /// inserted at the provided insertion point of 'parent'.
 Block *OpBuilder::createBlock(Region *parent, Region::iterator insertPt) {
@@ -328,40 +336,72 @@ Block *OpBuilder::createBlock(Block *insertBefore) {
 
 /// Create an operation given the fields represented as an OperationState.
 Operation *OpBuilder::createOperation(const OperationState &state) {
-  assert(block && "createOperation() called without setting builder's block");
-  auto *op = Operation::create(state);
-  insert(op);
-  return op;
+  return insert(Operation::create(state));
 }
 
 /// Attempts to fold the given operation and places new results within
-/// 'results'.
-void OpBuilder::tryFold(Operation *op, SmallVectorImpl<Value *> &results) {
+/// 'results'. Returns success if the operation was folded, failure otherwise.
+/// Note: This function does not erase the operation on a successful fold.
+LogicalResult OpBuilder::tryFold(Operation *op,
+                                 SmallVectorImpl<Value *> &results) {
   results.reserve(op->getNumResults());
-  SmallVector<OpFoldResult, 4> foldResults;
-
-  // Returns if the given fold result corresponds to a valid existing value.
-  auto isValidValue = [](OpFoldResult result) {
-    return result.dyn_cast<Value *>();
+  auto cleanupFailure = [&] {
+    results.assign(op->result_begin(), op->result_end());
+    return failure();
   };
 
-  // Check if the fold failed, or did not result in only existing values.
+  // If this operation is already a constant, there is nothing to do.
+  Attribute unused;
+  if (matchPattern(op, m_Constant(&unused)))
+    return cleanupFailure();
+
+  // Check to see if any operands to the operation is constant and whether
+  // the operation knows how to constant fold itself.
   SmallVector<Attribute, 4> constOperands(op->getNumOperands());
-  if (failed(op->fold(constOperands, foldResults)) || foldResults.empty() ||
-      !llvm::all_of(foldResults, isValidValue)) {
-    // Simply return the existing operation results.
-    results.assign(op->result_begin(), op->result_end());
-    return;
+  for (unsigned i = 0, e = op->getNumOperands(); i != e; ++i)
+    matchPattern(op->getOperand(i), m_Constant(&constOperands[i]));
+
+  // Try to fold the operation.
+  SmallVector<OpFoldResult, 4> foldResults;
+  if (failed(op->fold(constOperands, foldResults)) || foldResults.empty())
+    return cleanupFailure();
+
+  // A temporary builder used for creating constants during folding.
+  OpBuilder cstBuilder(context);
+  SmallVector<Operation *, 1> generatedConstants;
+
+  // Populate the results with the folded results.
+  Dialect *dialect = op->getDialect();
+  for (auto &it : llvm::enumerate(foldResults)) {
+    // Normal values get pushed back directly.
+    if (auto *value = it.value().dyn_cast<Value *>()) {
+      results.push_back(value);
+      continue;
+    }
+
+    // Otherwise, try to materialize a constant operation.
+    if (!dialect)
+      return cleanupFailure();
+
+    // Ask the dialect to materialize a constant operation for this value.
+    Attribute attr = it.value().get<Attribute>();
+    auto *constOp = dialect->materializeConstant(
+        cstBuilder, attr, op->getResult(it.index())->getType(), op->getLoc());
+    if (!constOp) {
+      // Erase any generated constants.
+      for (Operation *cst : generatedConstants)
+        cst->erase();
+      return cleanupFailure();
+    }
+    assert(matchPattern(constOp, m_Constant(&attr)));
+
+    generatedConstants.push_back(constOp);
+    results.push_back(constOp->getResult(0));
   }
 
-  // Populate the results with the folded results and remove the original op.
-  llvm::transform(foldResults, std::back_inserter(results),
-                  [](OpFoldResult result) { return result.get<Value *>(); });
-  op->erase();
-}
+  // If we were successful, insert any generated constants.
+  for (Operation *cst : generatedConstants)
+    insert(cst);
 
-/// Insert the given operation at the current insertion point.
-void OpBuilder::insert(Operation *op) {
-  if (block)
-    block->getOperations().insert(insertPoint, op);
+  return success();
 }

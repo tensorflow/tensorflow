@@ -349,7 +349,7 @@ public:
   /// Parse an AffineMap where the dim and symbol identifiers are SSA ids.
   ParseResult
   parseAffineMapOfSSAIds(AffineMap &map,
-                         llvm::function_ref<ParseResult(bool)> parseElement);
+                         function_ref<ParseResult(bool)> parseElement);
 
 private:
   /// The Parser is subclassed and reinstantiated.  Do not add additional
@@ -832,7 +832,7 @@ static Symbol parseExtendedSymbol(Parser &p, Token::Kind identifierTok,
 /// parsing failed, nullptr is returned. The number of bytes read from the input
 /// string is returned in 'numRead'.
 template <typename T, typename ParserFn>
-static T parseSymbol(llvm::StringRef inputStr, MLIRContext *context,
+static T parseSymbol(StringRef inputStr, MLIRContext *context,
                      SymbolState &symbolState, ParserFn &&parserFn,
                      size_t *numRead = nullptr) {
   SourceMgr sourceMgr;
@@ -1054,8 +1054,13 @@ ParseResult Parser::parseStridedLayout(int64_t &offset,
 
 /// Parse a memref type.
 ///
-///   memref-type ::= `memref` `<` dimension-list-ranked type
-///                   (`,` semi-affine-map-composition)? (`,` memory-space)? `>`
+///   memref-type ::= ranked-memref-type | unranked-memref-type
+///
+///   ranked-memref-type ::= `memref` `<` dimension-list-ranked type
+///                          (`,` semi-affine-map-composition)? (`,`
+///                          memory-space)? `>`
+///
+///   unranked-memref-type ::= `memref` `<*x` type (`,` memory-space)? `>`
 ///
 ///   semi-affine-map-composition ::= (semi-affine-map `,` )* semi-affine-map
 ///   memory-space ::= integer-literal /* | TODO: address-space-id */
@@ -1066,9 +1071,20 @@ Type Parser::parseMemRefType() {
   if (parseToken(Token::less, "expected '<' in memref type"))
     return nullptr;
 
+  bool isUnranked;
   SmallVector<int64_t, 4> dimensions;
-  if (parseDimensionListRanked(dimensions))
-    return nullptr;
+
+  if (consumeIf(Token::star)) {
+    // This is an unranked memref type.
+    isUnranked = true;
+    if (parseXInDimensionList())
+      return nullptr;
+
+  } else {
+    isUnranked = false;
+    if (parseDimensionListRanked(dimensions))
+      return nullptr;
+  }
 
   // Parse the element type.
   auto typeLoc = getToken().getLoc();
@@ -1093,6 +1109,8 @@ Type Parser::parseMemRefType() {
       consumeToken(Token::integer);
       parsedMemorySpace = true;
     } else {
+      if (isUnranked)
+        return emitError("cannot have affine map for unranked memref type");
       if (parsedMemorySpace)
         return emitError("expected memory space to be last in memref type");
       if (getToken().is(Token::kw_offset)) {
@@ -1130,6 +1148,10 @@ Type Parser::parseMemRefType() {
     if (parseToken(Token::greater, "expected ',' or '>' in memref type"))
       return nullptr;
   }
+
+  if (isUnranked)
+    return UnrankedMemRefType::getChecked(elementType, memorySpace,
+                                          getEncodedSourceLocation(typeLoc));
 
   return MemRefType::getChecked(dimensions, elementType, affineMapComposition,
                                 memorySpace, getEncodedSourceLocation(typeLoc));
@@ -1844,7 +1866,7 @@ private:
   ///   parseList([[1, 2], [3, 4]]) -> Success, [2, 2]
   ///   parseList([[1, 2], 3]) -> Failure
   ///   parseList([[1, [2, 3]], [4, [5]]]) -> Failure
-  ParseResult parseList(llvm::SmallVectorImpl<int64_t> &dims);
+  ParseResult parseList(SmallVectorImpl<int64_t> &dims);
 
   Parser &p;
 
@@ -1855,7 +1877,7 @@ private:
   std::vector<std::pair<bool, Token>> storage;
 
   /// A flag that indicates the type of elements that have been parsed.
-  llvm::Optional<ElementKind> knownEltKind;
+  Optional<ElementKind> knownEltKind;
 };
 } // namespace
 
@@ -2010,13 +2032,11 @@ ParseResult TensorLiteralParser::parseElement() {
 ///   parseList([[1, 2], [3, 4]]) -> Success, [2, 2]
 ///   parseList([[1, 2], 3]) -> Failure
 ///   parseList([[1, [2, 3]], [4, [5]]]) -> Failure
-ParseResult
-TensorLiteralParser::parseList(llvm::SmallVectorImpl<int64_t> &dims) {
+ParseResult TensorLiteralParser::parseList(SmallVectorImpl<int64_t> &dims) {
   p.consumeToken(Token::l_square);
 
-  auto checkDims =
-      [&](const llvm::SmallVectorImpl<int64_t> &prevDims,
-          const llvm::SmallVectorImpl<int64_t> &newDims) -> ParseResult {
+  auto checkDims = [&](const SmallVectorImpl<int64_t> &prevDims,
+                       const SmallVectorImpl<int64_t> &newDims) -> ParseResult {
     if (prevDims == newDims)
       return success();
     return p.emitError("tensor literal is invalid; ranks are not consistent "
@@ -2024,10 +2044,10 @@ TensorLiteralParser::parseList(llvm::SmallVectorImpl<int64_t> &dims) {
   };
 
   bool first = true;
-  llvm::SmallVector<int64_t, 4> newDims;
+  SmallVector<int64_t, 4> newDims;
   unsigned size = 0;
   auto parseCommaSeparatedList = [&]() -> ParseResult {
-    llvm::SmallVector<int64_t, 4> thisDims;
+    SmallVector<int64_t, 4> thisDims;
     if (p.getToken().getKind() == Token::l_square) {
       if (parseList(thisDims))
         return failure();
@@ -2253,7 +2273,7 @@ ParseResult Parser::parseFusedLocation(LocationAttr &loc) {
       return failure();
   }
 
-  llvm::SmallVector<Location, 4> locations;
+  SmallVector<Location, 4> locations;
   auto parseElt = [&] {
     LocationAttr newLoc;
     if (parseLocationInstance(newLoc))
@@ -2389,7 +2409,7 @@ namespace {
 class AffineParser : public Parser {
 public:
   AffineParser(ParserState &state, bool allowParsingSSAIds = false,
-               llvm::function_ref<ParseResult(bool)> parseElement = nullptr)
+               function_ref<ParseResult(bool)> parseElement = nullptr)
       : Parser(state), allowParsingSSAIds(allowParsingSSAIds),
         parseElement(parseElement), numDimOperands(0), numSymbolOperands(0) {}
 
@@ -2432,7 +2452,7 @@ private:
 
 private:
   bool allowParsingSSAIds;
-  llvm::function_ref<ParseResult(bool)> parseElement;
+  function_ref<ParseResult(bool)> parseElement;
   unsigned numDimOperands;
   unsigned numSymbolOperands;
   SmallVector<std::pair<StringRef, AffineExpr>, 4> dimsAndSymbols;
@@ -3026,8 +3046,9 @@ ParseResult Parser::parseAffineMapOrIntegerSetReference(AffineMap &map,
 
 /// Parse an AffineMap of SSA ids. The callback 'parseElement' is used to
 /// parse SSA value uses encountered while parsing affine expressions.
-ParseResult Parser::parseAffineMapOfSSAIds(
-    AffineMap &map, llvm::function_ref<ParseResult(bool)> parseElement) {
+ParseResult
+Parser::parseAffineMapOfSSAIds(AffineMap &map,
+                               function_ref<ParseResult(bool)> parseElement) {
   return AffineParser(state, /*allowParsingSSAIds=*/true, parseElement)
       .parseAffineMapOfSSAIds(map);
 }
@@ -3091,7 +3112,7 @@ public:
 
   /// Return the location of the value identified by its name and number if it
   /// has been already reference.
-  llvm::Optional<SMLoc> getReferenceLoc(StringRef name, unsigned number) {
+  Optional<SMLoc> getReferenceLoc(StringRef name, unsigned number) {
     auto &values = isolatedNameScopes.back().values;
     if (!values.count(name) || number >= values[name].size())
       return {};
@@ -3860,6 +3881,16 @@ public:
   /// Parse a `=` token.
   ParseResult parseEqual() override {
     return parser.parseToken(Token::equal, "expected '='");
+  }
+
+  /// Parse a '<' token.
+  ParseResult parseLess() override {
+    return parser.parseToken(Token::less, "expected '<'");
+  }
+
+  /// Parse a '>' token.
+  ParseResult parseGreater() override {
+    return parser.parseToken(Token::greater, "expected '>'");
   }
 
   /// Parse a `(` token.
@@ -4759,8 +4790,8 @@ OwningModuleRef mlir::parseSourceString(StringRef moduleStr,
 /// parsing failed, nullptr is returned. The number of bytes read from the input
 /// string is returned in 'numRead'.
 template <typename T, typename ParserFn>
-static T parseSymbol(llvm::StringRef inputStr, MLIRContext *context,
-                     size_t &numRead, ParserFn &&parserFn) {
+static T parseSymbol(StringRef inputStr, MLIRContext *context, size_t &numRead,
+                     ParserFn &&parserFn) {
   SymbolState aliasState;
   return parseSymbol<T>(
       inputStr, context, aliasState,
@@ -4773,35 +4804,33 @@ static T parseSymbol(llvm::StringRef inputStr, MLIRContext *context,
       &numRead);
 }
 
-Attribute mlir::parseAttribute(llvm::StringRef attrStr, MLIRContext *context) {
+Attribute mlir::parseAttribute(StringRef attrStr, MLIRContext *context) {
   size_t numRead = 0;
   return parseAttribute(attrStr, context, numRead);
 }
-Attribute mlir::parseAttribute(llvm::StringRef attrStr, Type type) {
+Attribute mlir::parseAttribute(StringRef attrStr, Type type) {
   size_t numRead = 0;
   return parseAttribute(attrStr, type, numRead);
 }
 
-Attribute mlir::parseAttribute(llvm::StringRef attrStr, MLIRContext *context,
+Attribute mlir::parseAttribute(StringRef attrStr, MLIRContext *context,
                                size_t &numRead) {
   return parseSymbol<Attribute>(attrStr, context, numRead, [](Parser &parser) {
     return parser.parseAttribute();
   });
 }
-Attribute mlir::parseAttribute(llvm::StringRef attrStr, Type type,
-                               size_t &numRead) {
+Attribute mlir::parseAttribute(StringRef attrStr, Type type, size_t &numRead) {
   return parseSymbol<Attribute>(
       attrStr, type.getContext(), numRead,
       [type](Parser &parser) { return parser.parseAttribute(type); });
 }
 
-Type mlir::parseType(llvm::StringRef typeStr, MLIRContext *context) {
+Type mlir::parseType(StringRef typeStr, MLIRContext *context) {
   size_t numRead = 0;
   return parseType(typeStr, context, numRead);
 }
 
-Type mlir::parseType(llvm::StringRef typeStr, MLIRContext *context,
-                     size_t &numRead) {
+Type mlir::parseType(StringRef typeStr, MLIRContext *context, size_t &numRead) {
   return parseSymbol<Type>(typeStr, context, numRead,
                            [](Parser &parser) { return parser.parseType(); });
 }

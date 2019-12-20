@@ -36,7 +36,12 @@ from tensorflow.core.framework import node_def_pb2
 from tensorflow.core.framework import op_def_pb2
 from tensorflow.core.framework import versions_pb2
 from tensorflow.core.protobuf import config_pb2
+# pywrap_tensorflow must be imported first to avoid profobuf issues.
+# (b/143110113)
+# pylint: disable=invalid-import-order,g-bad-import-order
 from tensorflow.python import pywrap_tensorflow as c_api
+from tensorflow.python import pywrap_tfe as c_api_new
+# pylint: enable=invalid-import-order,g-bad-import-order
 from tensorflow.python import tf2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import core
@@ -249,7 +254,7 @@ def register_dense_tensor_like_type(tensor_type):
 
 def uid():
   """A unique (within this program execution) integer."""
-  return c_api.TFE_Py_UID()
+  return c_api_new.TFE_Py_UID()
 
 
 def numpy_text(tensor, is_repr=False):
@@ -1135,7 +1140,7 @@ class _EagerTensorBase(Tensor):
 
 # This call creates an EagerTensor class, as a subclass of _EagerTensorBase, and
 # registers it with the current module.
-EagerTensor = c_api.TFE_Py_InitEagerTensor(_EagerTensorBase)
+EagerTensor = c_api_new.TFE_Py_InitEagerTensor(_EagerTensorBase)
 
 
 register_dense_tensor_like_type(Tensor)
@@ -1587,21 +1592,26 @@ _VALID_OP_NAME_REGEX = re.compile("^[A-Za-z0-9.][A-Za-z0-9_.\\-/>]*$")
 _VALID_SCOPE_NAME_REGEX = re.compile("^[A-Za-z0-9_.\\-/>]*$")
 
 
-def _create_c_op(graph, node_def, inputs, control_inputs):
+def _create_c_op(graph, node_def, inputs, control_inputs, op_def=None):
   """Creates a TF_Operation.
 
   Args:
     graph: a `Graph`.
     node_def: `node_def_pb2.NodeDef` for the operation to create.
-    inputs: A list of `Tensor`s (corresponding to scalar inputs) and lists of
-      `Tensor`s (corresponding to sequence inputs, e.g. "int64 * N",
-      "list(int64)"). The length of the list should be equal to the number of
-      inputs specified by this operation's op def.
+    inputs: A flattened list of `Tensor`s. This function handles grouping
+      tensors into lists as per attributes in the `node_def`.
     control_inputs: A list of `Operation`s to set as control dependencies.
+    op_def: Optional. `op_def_pb2.OpDef` for the operation to create. If not
+      specified, is looked up from the `graph` using `node_def.op`.
 
   Returns:
     A wrapped TF_Operation*.
   """
+  if op_def is None:
+    op_def = graph._get_op_def(node_def.op)  # pylint: disable=protected-access
+  # TODO(skyewm): op_def_library.apply_op() flattens the incoming inputs.
+  # Refactor so we don't have to do this here.
+  inputs = _reconstruct_sequence_inputs(op_def, inputs, node_def.attr)
   # pylint: disable=protected-access
   op_desc = c_api.TF_NewOperation(graph._c_graph, compat.as_str(node_def.op),
                                   compat.as_str(node_def.name))
@@ -1789,12 +1799,8 @@ class Operation(object):
     else:
       if op_def is None:
         op_def = self._graph._get_op_def(node_def.op)
-      # TODO(skyewm): op_def_library.apply_op() flattens the incoming inputs.
-      # Refactor so we don't have to do this here.
-      grouped_inputs = self._reconstruct_sequence_inputs(
-          op_def, inputs, node_def.attr)
-      self._c_op = _create_c_op(self._graph, node_def, grouped_inputs,
-                                control_input_ops)
+      self._c_op = _create_c_op(self._graph, node_def, inputs,
+                                control_input_ops, op_def)
       name = compat.as_str(node_def.name)
     # pylint: enable=protected-access
 
@@ -1831,41 +1837,6 @@ class Operation(object):
       control_flow_util.CheckInputFromValidContext(self, input_tensor.op)
     if self._control_flow_context is not None:
       self._control_flow_context.AddOp(self)
-
-  def _reconstruct_sequence_inputs(self, op_def, inputs, attrs):
-    """Regroups a flat list of input tensors into scalar and sequence inputs.
-
-    Args:
-      op_def: The `op_def_pb2.OpDef` (for knowing the input types)
-      inputs: a list of input `Tensor`s to the op.
-      attrs: mapping from attr name to `attr_value_pb2.AttrValue` (these define
-        how long each sequence is)
-
-    Returns:
-      A list of `Tensor`s (corresponding to scalar inputs) and lists of
-      `Tensor`s (corresponding to sequence inputs).
-    """
-    grouped_inputs = []
-    i = 0
-    for input_arg in op_def.input_arg:
-      if input_arg.number_attr:
-        input_len = attrs[input_arg.number_attr].i
-        is_sequence = True
-      elif input_arg.type_list_attr:
-        input_len = len(attrs[input_arg.type_list_attr].list.type)
-        is_sequence = True
-      else:
-        input_len = 1
-        is_sequence = False
-
-      if is_sequence:
-        grouped_inputs.append(inputs[i:i + input_len])
-      else:
-        grouped_inputs.append(inputs[i])
-      i += input_len
-
-    assert i == len(inputs)
-    return grouped_inputs
 
   def colocation_groups(self):
     """Returns the list of colocation groups of the op."""
@@ -3103,8 +3074,16 @@ class Graph(object):
               op = func_graph.get_operation_by_name(node.name)
             except KeyError:
               continue
+            outputs = op.outputs
+
+            if op.type == "StatefulPartitionedCall":
+              # Filter out any extra outputs (possibly added by function
+              # backpropagation rewriting).
+              num_outputs = len(node.attr["Tout"].list.type)
+              outputs = outputs[:num_outputs]
+
             node.attr["_output_shapes"].list.shape.extend(
-                [output.get_shape().as_proto() for output in op.outputs])
+                [output.get_shape().as_proto() for output in outputs])
 
     return graph, self._version
 
@@ -3309,7 +3288,7 @@ class Graph(object):
 
     node_def = _NodeDef(op_type, name, attrs)
 
-    input_ops = set([t.op for t in inputs])
+    input_ops = set(t.op for t in inputs)
     control_inputs = self._control_dependencies_for_inputs(input_ops)
     # _create_op_helper mutates the new Operation. `_mutation_lock` ensures a
     # Session.run call cannot occur between creating and mutating the op.
@@ -4468,7 +4447,7 @@ class Graph(object):
         # Don't add a control input if we already have a data dependency on i.
         # NOTE(mrry): We do not currently track transitive data dependencies,
         #   so we may add redundant control inputs.
-        ret.extend([c for c in controller.control_inputs if c not in input_ops])
+        ret.extend(c for c in controller.control_inputs if c not in input_ops)
     return ret
 
   def _record_op_seen_by_control_dependencies(self, op):
@@ -6188,6 +6167,9 @@ def name_scope(name, default_name=None, values=None, skip_on_eager=True):
   if not in_eager_mode:
     return internal_name_scope_v1(name, default_name, values)
 
+  if skip_on_eager:
+    return NullContextmanager()
+
   name = default_name if name is None else name
   if values:
     # The presence of a graph tensor in `values` overrides the context.
@@ -6198,9 +6180,6 @@ def name_scope(name, default_name=None, values=None, skip_on_eager=True):
     # pylint: enable=unidiomatic-typecheck
     if graph_value is not None:
       return graph_value.graph.name_scope(name)
-
-  if skip_on_eager:
-    return NullContextmanager()
 
   return name_scope_v2(name or "")
 
@@ -6658,3 +6637,39 @@ def add_exit_callback_to_default_func_graph(fn):
         "Cannot add scope exit callbacks when not building a function.  "
         "Default graph: {}".format(default_graph))
   default_graph._add_scope_exit_callback(fn)  # pylint: disable=protected-access
+
+
+def _reconstruct_sequence_inputs(op_def, inputs, attrs):
+  """Regroups a flat list of input tensors into scalar and sequence inputs.
+
+  Args:
+    op_def: The `op_def_pb2.OpDef` (for knowing the input types)
+    inputs: a list of input `Tensor`s to the op.
+    attrs: mapping from attr name to `attr_value_pb2.AttrValue` (these define
+      how long each sequence is)
+
+  Returns:
+    A list of `Tensor`s (corresponding to scalar inputs) and lists of
+    `Tensor`s (corresponding to sequence inputs).
+  """
+  grouped_inputs = []
+  i = 0
+  for input_arg in op_def.input_arg:
+    if input_arg.number_attr:
+      input_len = attrs[input_arg.number_attr].i
+      is_sequence = True
+    elif input_arg.type_list_attr:
+      input_len = len(attrs[input_arg.type_list_attr].list.type)
+      is_sequence = True
+    else:
+      input_len = 1
+      is_sequence = False
+
+    if is_sequence:
+      grouped_inputs.append(inputs[i:i + input_len])
+    else:
+      grouped_inputs.append(inputs[i])
+    i += input_len
+
+  assert i == len(inputs)
+  return grouped_inputs

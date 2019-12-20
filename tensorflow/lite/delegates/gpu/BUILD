@@ -6,7 +6,10 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["metal_delegate.h"])
+exports_files([
+    "gpu_delegate.h",
+    "metal_delegate.h",
+])
 
 # Primary purpose of this config is to replace ::util::Status with our custom
 # light implementation ::tflite::gpu::StatusLite to reduce binary size.  Besides

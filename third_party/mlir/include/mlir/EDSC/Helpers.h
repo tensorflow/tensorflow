@@ -137,12 +137,12 @@ public:
   TemplatedIndexedValue operator()(ValueHandle index, Args... indices) {
     return TemplatedIndexedValue(base, index).append(indices...);
   }
-  TemplatedIndexedValue operator()(llvm::ArrayRef<ValueHandle> indices) {
+  TemplatedIndexedValue operator()(ArrayRef<ValueHandle> indices) {
     return TemplatedIndexedValue(base, indices);
   }
-  TemplatedIndexedValue operator()(llvm::ArrayRef<IndexHandle> indices) {
+  TemplatedIndexedValue operator()(ArrayRef<IndexHandle> indices) {
     return TemplatedIndexedValue(
-        base, llvm::ArrayRef<ValueHandle>(indices.begin(), indices.end()));
+        base, ArrayRef<ValueHandle>(indices.begin(), indices.end()));
   }
 
   /// Emits a `store`.
@@ -215,7 +215,7 @@ private:
     return *this;
   }
   ValueHandle base;
-  llvm::SmallVector<ValueHandle, 8> indices;
+  SmallVector<ValueHandle, 8> indices;
 };
 
 /// Operator overloadings.

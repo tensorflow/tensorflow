@@ -106,7 +106,7 @@ TEST(Quantization, TestQuantizationFree) {
 }
 
 TEST(Sparsity, TestSparsityFree) {
-  TfLiteTensor t;
+  TfLiteTensor t = {};
   // Set these values, otherwise TfLiteTensorFree has uninitialized values.
   t.allocation_type = kTfLiteArenaRw;
   t.dims = nullptr;

@@ -122,7 +122,7 @@ An analysis may provide additional hooks to control various behavior:
 
 Given a preserved analysis set, the analysis returns true if it should truly be
 invalidated. This allows for more fine-tuned invalidation in cases where an
-analysis wasn't explicitly marked preserved, but may be preserved(or
+analysis wasn't explicitly marked preserved, but may be preserved (or
 invalidated) based upon other properties such as analyses sets.
 
 ### Querying Analyses
@@ -319,10 +319,10 @@ program has been run through the passes. This provides several benefits:
 
 ## Pass Registration
 
-Briefly shown in the example definitions of the various
-pass types is the `PassRegistration` class. This is a utility to
-register derived pass classes so that they may be created, and inspected, by
-utilities like mlir-opt. Registering a pass class takes the form:
+Briefly shown in the example definitions of the various pass types is the
+`PassRegistration` class. This is a utility to register derived pass classes so
+that they may be created, and inspected, by utilities like mlir-opt. Registering
+a pass class takes the form:
 
 ```c++
 static PassRegistration<MyPass> pass("command-line-arg", "description");
@@ -469,6 +469,76 @@ struct MyPassOptions : public PassOptions<MyPassOptions> {
 static PassRegistration<MyPass, MyPassOptions> pass("my-pass", "description");
 ```
 
+## Pass Statistics
+
+Statistics are a way to keep track of what the compiler is doing and how
+effective various transformations are. It is often useful to see what effect
+specific transformations have on a particular program, and how often they
+trigger. Pass statistics are instance specific which allow for taking this a
+step further as you are able to see the effect of placing a particular
+transformation at specific places within the pass pipeline. For example, they
+help answer questions like `What happens if I run CSE again here?`.
+
+Statistics can be added to a pass by using the 'Pass::Statistic' class. This
+class takes as a constructor arguments: the parent pass, a name, and a
+description. This class acts like an unsigned integer, and may be incremented
+and updated accordingly. These statistics use the same infrastructure as
+[`llvm::Statistic`](http://llvm.org/docs/ProgrammersManual.html#the-statistic-class-stats-option)
+and thus have similar usage constraints. Collected statistics can be dumped by
+the [pass manager](#pass-manager) programmatically via
+`PassManager::enableStatistics`; or via `-pass-statistics` and
+`-pass-statistics-display` on the command line.
+
+An example is shown below:
+
+```c++
+struct MyPass : public OperationPass<MyPass> {
+  Statistic testStat{this, "testStat", "A test statistic"};
+
+  void runOnOperation() {
+    ...
+
+    // Update our statistic after some invariant was hit.
+    ++testStat;
+
+    ...
+  }
+};
+```
+
+The collected statistics may be aggregated in two types of views:
+
+A pipeline view that models the structure of the pass manager, this is the
+default view:
+
+```shell
+$ mlir-opt -pass-pipeline='func(my-pass,my-pass)' foo.mlir -pass-statistics
+
+===-------------------------------------------------------------------------===
+                         ... Pass statistics report ...
+===-------------------------------------------------------------------------===
+'func' Pipeline
+  MyPass
+    (S) 15 testStat - A test statistic
+  VerifierPass
+  MyPass
+    (S)  6 testStat - A test statistic
+  VerifierPass
+VerifierPass
+```
+
+And a list view that aggregates all instances of a specific pass together:
+
+```shell
+$ mlir-opt -pass-pipeline='func(my-pass, my-pass)' foo.mlir -pass-statistics -pass-statistics-display=list
+
+===-------------------------------------------------------------------------===
+                         ... Pass statistics report ...
+===-------------------------------------------------------------------------===
+MyPass
+  (S) 21 testStat - A test statistic
+```
+
 ## Pass Instrumentation
 
 MLIR provides a customizable framework to instrument pass execution and analysis
@@ -554,7 +624,7 @@ pipeline. This display mode is available in mlir-opt via
 `-pass-timing-display=list`.
 
 ```shell
-$ mlir-opt foo.mlir -disable-pass-threading -cse -canonicalize -convert-std-to-llvm -pass-timing -pass-timing-display=list
+$ mlir-opt foo.mlir -disable-pass-threading -pass-pipeline='func(cse,canonicalize)' -convert-std-to-llvm -pass-timing -pass-timing-display=list
 
 ===-------------------------------------------------------------------------===
                       ... Pass execution timing report ...
@@ -579,7 +649,7 @@ the most time, and can also be used to identify when analyses are being
 invalidated and recomputed. This is the default display mode.
 
 ```shell
-$ mlir-opt foo.mlir -disable-pass-threading -cse -canonicalize -convert-std-to-llvm -pass-timing
+$ mlir-opt foo.mlir -disable-pass-threading -pass-pipeline='func(cse,canonicalize)' -convert-std-to-llvm -pass-timing
 
 ===-------------------------------------------------------------------------===
                       ... Pass execution timing report ...
@@ -610,7 +680,7 @@ perceived time, or clock time, whereas the `User Time` will display the total
 cpu time.
 
 ```shell
-$ mlir-opt foo.mlir -cse -canonicalize -convert-std-to-llvm -pass-timing
+$ mlir-opt foo.mlir -pass-pipeline='func(cse,canonicalize)' -convert-std-to-llvm -pass-timing
 
 ===-------------------------------------------------------------------------===
                       ... Pass execution timing report ...
@@ -646,7 +716,7 @@ this instrumentation:
     *   Print the IR before every pass in the pipeline.
 
 ```shell
-$ mlir-opt foo.mlir -cse -print-ir-before=cse
+$ mlir-opt foo.mlir -pass-pipeline='func(cse)' -print-ir-before=cse
 
 *** IR Dump Before CSE ***
 func @simple_constant() -> (i32, i32) {
@@ -662,7 +732,28 @@ func @simple_constant() -> (i32, i32) {
     *   Print the IR after every pass in the pipeline.
 
 ```shell
-$ mlir-opt foo.mlir -cse -print-ir-after=cse
+$ mlir-opt foo.mlir -pass-pipeline='func(cse)' -print-ir-after=cse
+
+*** IR Dump After CSE ***
+func @simple_constant() -> (i32, i32) {
+  %c1_i32 = constant 1 : i32
+  return %c1_i32, %c1_i32 : i32, i32
+}
+```
+
+*   `print-ir-after-change`
+    *   Only print the IR after a pass if the pass mutated the IR. This helps to
+        reduce the number of IR dumps for "uninteresting" passes.
+    *   Note: Changes are detected by comparing a hash of the operation before
+        and after the pass. This adds additional run-time to compute the hash of
+        the IR, and in some rare cases may result in false-positives depending
+        on the collision rate of the hash algorithm used.
+    *   Note: This option should be used in unison with one of the other
+        'print-ir-after' options above, as this option alone does not enable
+        printing.
+
+```shell
+$ mlir-opt foo.mlir -pass-pipeline='func(cse,cse)' -print-ir-after=cse -print-ir-after-change
 
 *** IR Dump After CSE ***
 func @simple_constant() -> (i32, i32) {
@@ -678,7 +769,7 @@ func @simple_constant() -> (i32, i32) {
         is disabled(`-disable-pass-threading`)
 
 ```shell
-$ mlir-opt foo.mlir -disable-pass-threading -cse -print-ir-after=cse -print-ir-module-scope
+$ mlir-opt foo.mlir -disable-pass-threading -pass-pipeline='func(cse)' -print-ir-after=cse -print-ir-module-scope
 
 *** IR Dump After CSE ***  ('func' operation: @bar)
 func @bar(%arg0: f32, %arg1: f32) -> f32 {

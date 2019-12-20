@@ -221,6 +221,9 @@ def IsTensorTypePred : CPred<"$_self.isa<TensorType>()">;
 // Whether a type is a MemRefType.
 def IsMemRefTypePred : CPred<"$_self.isa<MemRefType>()">;
 
+// Whether a type is an  IsUnrankedMemRefType
+def IsUnrankedMemRefTypePred : CPred<"$_self.isa<UnrankedMemRefType>()">;
+
 // Whether a type is a ShapedType.
 def IsShapedTypePred : CPred<"$_self.isa<ShapedType>()">;
 
@@ -486,6 +489,10 @@ class 2DTensorOf<list<Type> allowedTypes> : TensorRankOf<allowedTypes, [2]>;
 class 3DTensorOf<list<Type> allowedTypes> : TensorRankOf<allowedTypes, [3]>;
 class 4DTensorOf<list<Type> allowedTypes> : TensorRankOf<allowedTypes, [4]>;
 
+// Unranked Memref type
+def AnyUnrankedMemRef : 
+    ShapedContainerType<[AnyType], 
+                        IsUnrankedMemRefTypePred, "unranked.memref">;
 // Memref type.
 
 // Memrefs are blocks of data with fixed type and rank.
@@ -493,6 +500,8 @@ class MemRefOf<list<Type> allowedTypes> :
     ShapedContainerType<allowedTypes, IsMemRefTypePred, "memref">;
 
 def AnyMemRef : MemRefOf<[AnyType]>;
+
+def AnyRankedOrUnrankedMemRef: AnyTypeOf<[AnyUnrankedMemRef, AnyMemRef]>;
 
 // Memref declarations handle any memref, independent of rank, size, (static or
 // dynamic), layout, or memory space.
@@ -1233,7 +1242,11 @@ class AllAttrConstraintsOf<list<AttrConstraint> constraints> : AttrConstraint<
 
 class IntMinValue<int n> : AttrConstraint<
     CPred<"$_self.cast<IntegerAttr>().getInt() >= " # n>,
-    "whose minimal value is " # n>;
+    "whose minimum value is " # n>;
+
+class IntMaxValue<int n> : AttrConstraint<
+    CPred<"$_self.cast<IntegerAttr>().getInt() <= " # n>,
+    "whose maximum value is " # n>;
 
 class ArrayMinCount<int n> : AttrConstraint<
     CPred<"$_self.cast<ArrayAttr>().size() >= " # n>,
@@ -1326,6 +1339,8 @@ class PredOpTrait<string descr, Pred pred> : OpTrait {
 def Broadcastable  : NativeOpTrait<"BroadcastableTwoOperandsOneResult">;
 // X op Y == Y op X
 def Commutative  : NativeOpTrait<"IsCommutative">;
+// Op behaves like a function.
+def FunctionLike : NativeOpTrait<"FunctionLike">;
 // Op is isolated from above.
 def IsolatedFromAbove : NativeOpTrait<"IsIsolatedFromAbove">;
 // Op results are float or vectors/tensors thereof.
@@ -1410,7 +1425,8 @@ class OpInterfaceTrait<string name> : NativeOpTrait<""> {
 // Note: non-static interface methods have an implicit 'op' parameter
 // corresponding to an instance of the derived operation.
 class InterfaceMethod<string desc, string retTy, string methodName,
-                      dag args = (ins), code methodBody = [{}]> {
+                      dag args = (ins), code methodBody = [{}],
+                      code defaultImplementation = [{}]> {
   // A human-readable description of what this method does.
   string description = desc;
 
@@ -1425,12 +1441,17 @@ class InterfaceMethod<string desc, string retTy, string methodName,
 
   // An optional body to the method.
   code body = methodBody;
+
+  // An optional default implementation of the method.
+  code defaultBody = defaultImplementation;
 }
 
 // This class represents a single static interface method.
 class StaticInterfaceMethod<string desc, string retTy, string methodName,
-                            dag args = (ins), code methodBody = [{}]>
-    : InterfaceMethod<desc, retTy, methodName, args, methodBody>;
+                            dag args = (ins), code methodBody = [{}],
+                            code defaultImplementation = [{}]>
+    : InterfaceMethod<desc, retTy, methodName, args, methodBody,
+                      defaultImplementation>;
 
 // OpInterface represents an interface regarding an op.
 class OpInterface<string name> : OpInterfaceTrait<name> {

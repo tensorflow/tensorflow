@@ -616,6 +616,10 @@ class CheckpointManager(object):
           self._maybe_delete[filename] = timestamp
 
   @property
+  def directory(self):
+    return self._directory
+
+  @property
   def latest_checkpoint(self):
     """The prefix of the most recent checkpoint in `directory`.
 

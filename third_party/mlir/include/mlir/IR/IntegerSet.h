@@ -108,7 +108,7 @@ public:
 
   /// Walk all of the AffineExpr's in this set's constraints. Each node in an
   /// expression tree is visited in postorder.
-  void walkExprs(llvm::function_ref<void(AffineExpr)> callback) const;
+  void walkExprs(function_ref<void(AffineExpr)> callback) const;
 
   void print(raw_ostream &os) const;
   void dump() const;

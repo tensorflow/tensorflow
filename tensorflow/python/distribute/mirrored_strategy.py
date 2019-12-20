@@ -24,7 +24,9 @@ import functools
 import threading
 import weakref
 
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import pywrap_tfe
+from tensorflow.python.autograph.core import ag_ctx
+from tensorflow.python.autograph.impl import api as autograph
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
@@ -89,12 +91,12 @@ class _RequestedStop(Exception):  # pylint: disable=g-bad-exception-name
 
 # TODO(yuefengz): maybe create a common class for those who need to call this
 # _call_for_each_replica.
-def _call_for_each_replica(distribution, device_map, fn, args, kwargs):
+def _call_for_each_replica(distribution, devices, fn, args, kwargs):
   """Run `fn` in separate threads, once per replica/worker device.
 
   Args:
     distribution: the DistributionStrategy object.
-    device_map: the DeviceMap with the devices to run `fn` on.
+    devices: the devices to run `fn` on (logical device 0 for each replica).
     fn: function to run (will be run once per replica, each in its own thread).
     args: positional arguments for `fn`
     kwargs: keyword arguments for `fn`.
@@ -119,11 +121,11 @@ def _call_for_each_replica(distribution, device_map, fn, args, kwargs):
 
   # TODO(isaprykin): Create these threads once instead of during every call.
   threads = []
-  for index in range(device_map.num_replicas_in_graph):
+  for index in range(len(devices)):
     variable_creator_fn = shared_variable_creator.make_fn(
         shared_variable_store, index)
     t = _MirroredReplicaThread(
-        distribution, coord, index, device_map, variable_creator_fn, fn,
+        distribution, coord, index, devices, variable_creator_fn, fn,
         values.select_replica(index, args),
         values.select_replica(index, kwargs))
     threads.append(t)
@@ -173,10 +175,8 @@ def _call_for_each_replica(distribution, device_map, fn, args, kwargs):
             raise RuntimeError("Some replicas made a different number of "
                                "replica_context().merge_call() calls.")
           # get_replica_context().merge_call() case
-          merge_args = values.regroup(
-              device_map, tuple(t.merge_args for t in threads))
-          merge_kwargs = values.regroup(
-              device_map, tuple(t.merge_kwargs for t in threads))
+          merge_args = values.regroup(tuple(t.merge_args for t in threads))
+          merge_kwargs = values.regroup(tuple(t.merge_kwargs for t in threads))
           # We capture the name_scope of the MRT when we call merge_fn
           # to ensure that if we have opened a name scope in the MRT,
           # it will be respected when executing the merge function. We only
@@ -200,7 +200,7 @@ def _call_for_each_replica(distribution, device_map, fn, args, kwargs):
       t.should_run.set()
     coord.join(threads)
 
-  return values.regroup(device_map, tuple(t.main_result for t in threads))
+  return values.regroup(tuple(t.main_result for t in threads))
 
 
 def _is_device_list_single_worker(devices):
@@ -362,8 +362,7 @@ class MirroredStrategy(distribute_lib.Strategy):
   ...   x = tf.Variable(1.)
   >>> x
   MirroredVariable:{
-      0 /job:localhost/replica:0/task:0/device:CPU:0: <tf.Variable ...
-      shape=() dtype=float32, numpy=1.0>
+      0: <tf.Variable 'Variable:0' shape=() dtype=float32, numpy=1.0>
     }
 
   While using distribution strategies, all the variable creation should be done
@@ -383,8 +382,7 @@ class MirroredStrategy(distribute_lib.Strategy):
   ...   create_variable()
   ...   print (x[0])
   MirroredVariable:{
-      0 /job:localhost/replica:0/task:0/device:CPU:0: <tf.Variable ...
-      shape=() dtype=float32, numpy=1.0>
+      0: <tf.Variable 'Variable:0' shape=() dtype=float32, numpy=1.0>
     }
 
   `experimental_distribute_dataset` can be used to distribute the dataset across
@@ -492,8 +490,9 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
 
   def _initialize_single_worker(self, devices):
     """Initializes the object for single-worker training."""
-    self._device_map = values.ReplicaDeviceMap(devices)
-    self._input_workers = input_lib.InputWorkers(self._device_map)
+    self._devices = tuple(device_util.canonicalize(d) for d in devices)
+    self._input_workers = input_lib.InputWorkers(
+        ((device_util.canonicalize("/device:CPU:0", devices[0]), devices),))
     self._inferred_cross_device_ops = None if self._cross_device_ops else (
         cross_device_ops_lib.choose_the_best(devices))
     self._host_input_device = numpy_dataset.SingleDevice(
@@ -528,9 +527,8 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     self._default_device = workers[0]
     self._host_input_device = numpy_dataset.SingleDevice(workers[0])
 
-    self._device_map = values.ReplicaDeviceMap(devices)
-    self._input_workers = input_lib.InputWorkers(
-        self._device_map, worker_devices)
+    self._devices = tuple(devices)
+    self._input_workers = input_lib.InputWorkers(worker_devices)
     self._is_multi_worker_training = True
 
     if len(workers) > 1:
@@ -575,16 +573,14 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     """Create a mirrored variable. See `DistributionStrategy.scope`."""
     colocate_with = kwargs.pop("colocate_with", None)
     if colocate_with is None:
-      device_map = self._device_map
-      logical_device = 0  # TODO(josh11b): Get logical device from scope here.
+      devices = self._devices
     elif isinstance(colocate_with, numpy_dataset.SingleDevice):
       with ops.device(colocate_with.device):
         return next_creator(*args, **kwargs)
     else:
-      device_map = colocate_with.device_map
-      logical_device = colocate_with.logical_device
+      devices = colocate_with.devices
 
-    def _real_mirrored_creator(devices, *args, **kwargs):  # pylint: disable=g-missing-docstring
+    def _real_mirrored_creator(*args, **kwargs):  # pylint: disable=g-missing-docstring
       value_list = []
       for i, d in enumerate(devices):
         with ops.device(d):
@@ -610,9 +606,8 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
       return value_list
 
     return values.create_mirrored_variable(
-        self._container_strategy(), device_map, logical_device,
-        _real_mirrored_creator, values.MirroredVariable,
-        values.SyncOnReadVariable, *args, **kwargs)
+        self._container_strategy(), _real_mirrored_creator,
+        values.MirroredVariable, values.SyncOnReadVariable, *args, **kwargs)
 
   def _validate_colocate_with_variable(self, colocate_with_variable):
     values.validate_colocate_distributed_variable(colocate_with_variable, self)
@@ -713,8 +708,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
       # For outputs that have already been reduced, wrap them in a Mirrored
       # container, else in a PerReplica container.
       if reduce_op is None:
-        last_step_tensor_outputs_dict[name] = values.regroup(self._device_map,
-                                                             output)
+        last_step_tensor_outputs_dict[name] = values.regroup(output)
       else:
         assert len(output) == 1
         last_step_tensor_outputs_dict[name] = output[0]
@@ -733,8 +727,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     # TODO(josh11b): In eager mode, use one thread per device, or async mode.
     if not destinations:
       # TODO(josh11b): Use current logical device instead of 0 here.
-      destinations = values.LogicalDeviceSpec(
-          device_map=self._device_map, logical_device=0)
+      destinations = self._devices
     return self._get_cross_device_ops().broadcast(tensor, destinations)
 
   def _call_for_each_replica(self, fn, args, kwargs):
@@ -757,7 +750,15 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
                           "`experimental_run_v2` inside a tf.function to get "
                           "the best performance." %
                           self._container_strategy().__class__.__name__, 5)
-    return _call_for_each_replica(self._container_strategy(), self._device_map,
+    else:
+      # When a tf.function is wrapped to trigger _call_for_each_replica (see
+      # the other branch above), AutoGraph stops conversion at
+      # _call_for_each_replica itself (TF library functions are whitelisted).
+      # This makes suresure that the Python function that originally passed to
+      # the tf.function is still converted.
+      fn = autograph.tf_convert(fn, ag_ctx.control_status_ctx())
+
+    return _call_for_each_replica(self._container_strategy(), self._devices,
                                   fn, args, kwargs)
 
   def _configure(self,
@@ -773,8 +774,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     if cluster_spec:
       # TODO(yuefengz): remove the following code once cluster_resolver is
       # added.
-      num_gpus_per_worker = _infer_num_gpus_per_worker(
-          self._device_map.all_devices)
+      num_gpus_per_worker = _infer_num_gpus_per_worker(self._devices)
       multi_worker_devices = _cluster_spec_to_device_list(
           cluster_spec, num_gpus_per_worker)
       self._initialize_multi_worker(multi_worker_devices)
@@ -798,7 +798,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
       # replicas in which case `value` would be a single value or value could
       # be 0.
       return cross_device_ops_lib.reduce_non_distributed_value(
-          reduce_op, self._device_map, value, destinations)
+          reduce_op, value, destinations, self._num_replicas_in_sync)
     return self._get_cross_device_ops().reduce(
         reduce_op, value, destinations=destinations)
 
@@ -810,14 +810,16 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     # TODO(josh11b): In eager mode, use one thread per device.
     assert isinstance(var, values.DistributedVariable)
     updates = []
-    for i, (d, v) in enumerate(zip(var.devices, var.values)):
+    for i, v in enumerate(var.values):
       name = "update_%d" % i
-      with ops.device(d), distribute_lib.UpdateContext(i), ops.name_scope(name):
+      with ops.device(v.device), \
+           distribute_lib.UpdateContext(i), \
+           ops.name_scope(name):
         # If args and kwargs are not mirrored, the value is returned as is.
         updates.append(fn(v,
-                          *values.select_device_mirrored(d, args),
-                          **values.select_device_mirrored(d, kwargs)))
-    return values.update_regroup(self, self._device_map, updates, group)
+                          *values.select_replica_mirrored(i, args),
+                          **values.select_replica_mirrored(i, kwargs)))
+    return values.update_regroup(self, updates, group)
 
   def _update_non_slot(self, colocate_with, fn, args, kwargs, group):
     assert isinstance(colocate_with, tuple)
@@ -826,9 +828,9 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     for i, d in enumerate(colocate_with):
       name = "update_%d" % i
       with ops.device(d), distribute_lib.UpdateContext(i), ops.name_scope(name):
-        updates.append(fn(*values.select_device_mirrored(d, args),
-                          **values.select_device_mirrored(d, kwargs)))
-    return values.update_regroup(self, self._device_map, updates, group)
+        updates.append(fn(*values.select_replica_mirrored(i, args),
+                          **values.select_replica_mirrored(i, kwargs)))
+    return values.update_regroup(self, updates, group)
 
   def read_var(self, replica_local_var):
     """Read the aggregate value of a replica-local variable."""
@@ -847,19 +849,19 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
 
   @property
   def _num_replicas_in_sync(self):
-    return self._device_map.num_replicas_in_graph
+    return len(self._devices)
 
   @property
   def worker_devices(self):
-    return self._device_map.all_devices
+    return self._devices
 
   @property
   def worker_devices_by_replica(self):
-    return self._device_map.devices_by_replica
+    return [[d] for d in self._devices]
 
   @property
   def parameter_devices(self):
-    return self._device_map.all_devices
+    return self.worker_devices
 
   @property
   def experimental_between_graph(self):
@@ -880,7 +882,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
   def non_slot_devices(self, var_list):
     del var_list
     # TODO(josh11b): Should this be the last logical device instead?
-    return self._device_map.logical_to_actual_devices(0)
+    return self._devices
 
   # TODO(priyag): Delete this once all strategies use global batch size.
   @property
@@ -902,12 +904,12 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
 class _MirroredReplicaThread(threading.Thread):
   """A thread that runs() a function on a device."""
 
-  def __init__(self, dist, coord, replica_id, device_map, variable_creator_fn,
+  def __init__(self, dist, coord, replica_id, devices, variable_creator_fn,
                fn, args, kwargs):
     super(_MirroredReplicaThread, self).__init__()
     self.coord = coord
     self.distribution = dist
-    self.device_map = device_map
+    self.devices = devices
     self.replica_id = replica_id
     self.variable_creator_fn = variable_creator_fn
     # State needed to run and return the results of `fn`.
@@ -942,7 +944,7 @@ class _MirroredReplicaThread(threading.Thread):
     self.record_thread_local_summary_state()
     self.record_thread_local_eager_context_state()
     self.context_device_policy = (
-        pywrap_tensorflow.TFE_ContextGetDevicePlacementPolicy(
+        pywrap_tfe.TFE_ContextGetDevicePlacementPolicy(
             ctx._context_handle))  # pylint: disable=protected-access
     self.graph = ops.get_default_graph()
     with ops.init_scope():
@@ -975,8 +977,7 @@ class _MirroredReplicaThread(threading.Thread):
           context.device_policy(self.context_device_policy), \
           MirroredReplicaContext(self.distribution, constant_op.constant(
               self.replica_id, dtypes.int32)), \
-          ops.device(self.device_map.logical_to_actual_devices(0)[
-              self.replica_id]), \
+          ops.device(self.devices[self.replica_id]), \
           ops.name_scope(self._name_scope), \
           variable_scope.variable_scope(
               self._var_scope, reuse=self.replica_id > 0), \

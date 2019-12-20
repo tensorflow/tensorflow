@@ -18,12 +18,13 @@
 #include "mlir/Dialect/QuantOps/FakeQuantSupport.h"
 #include "mlir/Dialect/QuantOps/QuantTypes.h"
 
-namespace mlir {
-namespace quant {
-namespace {
-bool getDefaultStorageParams(unsigned numBits, bool narrowRange, bool isSigned,
-                             MLIRContext *ctx, Type &storageType, int64_t &qmin,
-                             int64_t &qmax) {
+using namespace mlir;
+using namespace mlir::quant;
+
+static bool getDefaultStorageParams(unsigned numBits, bool narrowRange,
+                                    bool isSigned, MLIRContext *ctx,
+                                    Type &storageType, int64_t &qmin,
+                                    int64_t &qmax) {
   // Hard-coded type mapping from TFLite.
   if (numBits <= 8) {
     storageType = IntegerType::get(8, ctx);
@@ -62,9 +63,9 @@ bool getDefaultStorageParams(unsigned numBits, bool narrowRange, bool isSigned,
 // range will be outside the shifted range and be clamped during quantization.
 // TODO(fengliuai): we should nudge the scale as well, but that requires the
 // fake quant op used in the training to use the nudged scale as well.
-void getNudgedScaleAndZeroPoint(int64_t qmin, int64_t qmax, double rmin,
-                                double rmax, double &scale,
-                                int64_t &nudgedZeroPoint) {
+static void getNudgedScaleAndZeroPoint(int64_t qmin, int64_t qmax, double rmin,
+                                       double rmax, double &scale,
+                                       int64_t &nudgedZeroPoint) {
   // Determine the scale.
   const double qminDouble = qmin;
   const double qmaxDouble = qmax;
@@ -103,12 +104,10 @@ void getNudgedScaleAndZeroPoint(int64_t qmin, int64_t qmax, double rmin,
   assert(nudgedZeroPoint <= qmax);
 }
 
-} // end namespace
-
-UniformQuantizedType fakeQuantAttrsToType(Location loc, unsigned numBits,
-                                          double rmin, double rmax,
-                                          bool narrowRange, Type expressedType,
-                                          bool isSigned) {
+UniformQuantizedType
+mlir::quant::fakeQuantAttrsToType(Location loc, unsigned numBits, double rmin,
+                                  double rmax, bool narrowRange,
+                                  Type expressedType, bool isSigned) {
   MLIRContext *ctx = expressedType.getContext();
   unsigned flags = isSigned ? QuantizationFlags::Signed : 0;
   Type storageType;
@@ -137,10 +136,10 @@ UniformQuantizedType fakeQuantAttrsToType(Location loc, unsigned numBits,
                                           loc);
 }
 
-UniformQuantizedPerAxisType
-fakeQuantAttrsToType(Location loc, unsigned numBits, int32_t quantizedDimension,
-                     ArrayRef<double> rmins, ArrayRef<double> rmaxs,
-                     bool narrowRange, Type expressedType, bool isSigned) {
+UniformQuantizedPerAxisType mlir::quant::fakeQuantAttrsToType(
+    Location loc, unsigned numBits, int32_t quantizedDimension,
+    ArrayRef<double> rmins, ArrayRef<double> rmaxs, bool narrowRange,
+    Type expressedType, bool isSigned) {
   size_t axis_size = rmins.size();
   if (axis_size != rmaxs.size()) {
     return (emitError(loc, "mismatched per-axis min and max size: ")
@@ -183,6 +182,3 @@ fakeQuantAttrsToType(Location loc, unsigned numBits, int32_t quantizedDimension,
       flags, storageType, expressedType, scales, zeroPoints, quantizedDimension,
       qmin, qmax, loc);
 }
-
-} // namespace quant
-} // namespace mlir

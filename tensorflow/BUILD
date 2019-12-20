@@ -459,6 +459,7 @@ package_group(
         "//tensorflow_estimator/python/estimator/...",
         "//tensorflow_models/official/...",
         "//third_party/py/autograph/...",
+        "//third_party/swift/tensorflow/x10/...",
     ],
 )
 
@@ -477,7 +478,7 @@ bzl_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core/platform:build_config_root_bzl",
-        "//tensorflow/core/platform:cuda_build_defs_bzl",
+        "//tensorflow/core/platform/default:cuda_build_defs_bzl",
         "//third_party/mkl:build_defs_bzl",
         "//third_party/mkl_dnn:build_defs_bzl",
         "//third_party/ngraph:build_defs_bzl",

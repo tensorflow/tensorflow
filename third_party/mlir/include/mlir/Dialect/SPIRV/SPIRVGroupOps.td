@@ -46,7 +46,7 @@ def SPV_SubgroupBallotKHROp : SPV_Op<"SubgroupBallotKHR", []> {
 
     ### Custom assembly form
 
-    ``` {.ebnf}
+    ```
     subgroup-ballot-op ::= ssa-id `=` `spv.SubgroupBallotKHR`
                                 ssa-use `:` `vector` `<` 4 `x` `i32` `>`
     ```

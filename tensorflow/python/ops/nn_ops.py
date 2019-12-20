@@ -24,7 +24,6 @@ import os
 
 import numpy as np
 
-from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -36,10 +35,6 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
-# copybara:strip_begin
-# TODO(b/138808492): Remove code inside copybara
-from tensorflow.python.ops import control_flow_ops
-# copybara:strip_end
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
@@ -48,7 +43,7 @@ from tensorflow.python.ops import random_ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_nn_ops import *
 # pylint: enable=wildcard-import
-from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.platform import device_context
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.deprecation import deprecated_args
@@ -927,22 +922,6 @@ convolution_v2.__doc__ = deprecation.rewrite_argument_docstring(
     "filter", "filters")
 
 
-# copybara:strip_begin
-# TODO(b/138808492): Remove code inside copybara
-# to make TPU code and CPU code consistent.
-def _enclosing_tpu_context():
-  # pylint: disable=protected-access
-  run_context = ops.get_default_graph()._get_control_flow_context()
-  # pylint: enable=protected-access
-  while run_context is not None and not isinstance(
-      run_context, control_flow_ops.XLAControlFlowContext):
-    run_context = run_context.outer_context
-  return run_context
-
-
-# copybara:strip_end
-
-
 def convolution_internal(
     input,  # pylint: disable=redefined-builtin
     filters,
@@ -980,28 +959,20 @@ def convolution_internal(
   strides = _get_sequence(strides, n, channel_index, "strides")
   dilations = _get_sequence(dilations, n, channel_index, "dilations")
 
-  # copybara:strip_begin
-  # TODO(b/138808492): Remove code inside copybara
-  # to make TPU code and CPU code consistent.
   scopes = {1: "conv1d", 2: "Conv2D", 3: "Conv3D"}
-  if not call_from_convolution and _enclosing_tpu_context() is not None:
+  if not call_from_convolution and device_context.enclosing_tpu_context(
+  ) is not None:
     scope = scopes[n]
   else:
     scope = "convolution"
-  # copybara:strip_end
-  # copybara:insert scope = "convolution"
 
   with ops.name_scope(name, scope, [input, filters]) as name:
     conv_ops = {1: conv1d, 2: gen_nn_ops.conv2d, 3: gen_nn_ops.conv3d}
 
-    # copybara:strip_begin
-    # TODO(b/138808492): Remove code inside copybara
-    # to make TPU code and CPU code consistent.
-    if _enclosing_tpu_context() is not None or all(i == 1 for i in dilations):
+    if device_context.enclosing_tpu_context() is not None or all(
+        i == 1 for i in dilations):
       # fast path for TPU or if no dilation as gradient only supported on GPU
       # for dilations
-      # copybara:strip_end
-      # copybara:insert if all(i == 1 for i in dilations):
       op = conv_ops[n]
       return op(
           input,
@@ -1120,11 +1091,8 @@ class Convolution(object):
         name=self.name)
 
   def __call__(self, inp, filter):  # pylint: disable=redefined-builtin
-    # copybara:strip_begin
-    # TODO(b/138808492): Remove code inside copybara
-    # to make TPU code and CPU code consistent.
     # TPU convolution supports dilations greater than 1.
-    if _enclosing_tpu_context() is not None:
+    if device_context.enclosing_tpu_context() is not None:
       return convolution_internal(
           inp,
           filter,
@@ -1136,8 +1104,6 @@ class Convolution(object):
           call_from_convolution=False)
     else:
       return self.conv_op(inp, filter)
-    # copybara:strip_end
-    # copybara:insert return self.conv_op(inp, filter)
 
 
 @tf_export(v1=["nn.pool"])
@@ -4435,100 +4401,51 @@ def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
       which is likely not what was intended.
   """
   with ops.name_scope(name, "dropout", [x]) as name:
-    # TODO(b/144930399): Remove this once the compatible window is passed.
-    if compat.forward_compatible(2019, 12, 16):
-      is_rate_number = isinstance(rate, numbers.Real)
-      if is_rate_number and (rate < 0 or rate >= 1):
-        raise ValueError("rate must be a scalar tensor or a float in the "
-                         "range [0, 1), got %g" % rate)
-      x = ops.convert_to_tensor(x, name="x")
-      x_dtype = x.dtype
-      if not x_dtype.is_floating:
-        raise ValueError("x has to be a floating point tensor since it's going "
-                         "to be scaled. Got a %s tensor instead." % x_dtype)
-      is_executing_eagerly = context.executing_eagerly()
-      if not tensor_util.is_tensor(rate):
-        if is_rate_number:
-          keep_prob = 1 - rate
-          scale = 1 / keep_prob
-          scale = ops.convert_to_tensor(scale, dtype=x_dtype)
-          ret = gen_math_ops.mul(x, scale)
-        else:
-          raise ValueError("rate is neither scalar nor scalar tensor %r" % rate)
+    is_rate_number = isinstance(rate, numbers.Real)
+    if is_rate_number and (rate < 0 or rate >= 1):
+      raise ValueError("rate must be a scalar tensor or a float in the "
+                       "range [0, 1), got %g" % rate)
+    x = ops.convert_to_tensor(x, name="x")
+    x_dtype = x.dtype
+    if not x_dtype.is_floating:
+      raise ValueError("x has to be a floating point tensor since it's going "
+                       "to be scaled. Got a %s tensor instead." % x_dtype)
+    is_executing_eagerly = context.executing_eagerly()
+    if not tensor_util.is_tensor(rate):
+      if is_rate_number:
+        keep_prob = 1 - rate
+        scale = 1 / keep_prob
+        scale = ops.convert_to_tensor(scale, dtype=x_dtype)
+        ret = gen_math_ops.mul(x, scale)
       else:
-        rate.get_shape().assert_has_rank(0)
-        rate_dtype = rate.dtype
-        if rate_dtype != x_dtype:
-          if not rate_dtype.is_compatible_with(x_dtype):
-            raise ValueError(
-                "Tensor dtype %s is incomptaible with Tensor dtype %s: %r" %
-                (x_dtype.name, rate_dtype.name, rate))
-          rate = gen_math_ops.cast(rate, x_dtype, name="rate")
-        one_tensor = constant_op.constant(1, dtype=x_dtype)
-        ret = gen_math_ops.real_div(x, gen_math_ops.sub(one_tensor, rate))
-
-      noise_shape = _get_noise_shape(x, noise_shape)
-      # Sample a uniform distribution on [0.0, 1.0) and select values larger
-      # than rate.
-      #
-      # NOTE: Random uniform can only generate 2^23 floats on [1.0, 2.0)
-      # and subtract 1.0.
-      random_tensor = random_ops.random_uniform(
-          noise_shape, seed=seed, dtype=x_dtype)
-      # NOTE: if (1.0 + rate) - 1 is equal to rate, then that float is selected,
-      # hence a >= comparison is used.
-      keep_mask = random_tensor >= rate
-      ret = gen_math_ops.mul(ret, gen_math_ops.cast(keep_mask, x_dtype))
-      if not is_executing_eagerly:
-        ret.set_shape(x.get_shape())
-      return ret
+        raise ValueError("rate is neither scalar nor scalar tensor %r" % rate)
     else:
-      x = ops.convert_to_tensor(x, name="x")
-      if not x.dtype.is_floating:
-        raise ValueError("x has to be a floating point tensor since it will "
-                         "be scaled. Got a %s tensor instead." % x.dtype)
-      if isinstance(rate, numbers.Real):
-        if not (rate >= 0 and rate < 1):
-          raise ValueError("rate must be a scalar tensor or a float in the "
-                           "range [0, 1), got %g" % rate)
-        if rate > 0.5:
-          logging.log_first_n(
-              logging.WARN, "Large dropout rate: %g (>0.5). In TensorFlow "
-              "2.x, dropout() uses dropout rate instead of keep_prob. "
-              "Please ensure that this is intended.", 5, rate)
+      rate.get_shape().assert_has_rank(0)
+      rate_dtype = rate.dtype
+      if rate_dtype != x_dtype:
+        if not rate_dtype.is_compatible_with(x_dtype):
+          raise ValueError(
+              "Tensor dtype %s is incomptaible with Tensor dtype %s: %r" %
+              (x_dtype.name, rate_dtype.name, rate))
+        rate = gen_math_ops.cast(rate, x_dtype, name="rate")
+      one_tensor = constant_op.constant(1, dtype=x_dtype)
+      ret = gen_math_ops.real_div(x, gen_math_ops.sub(one_tensor, rate))
 
-      # Early return if nothing needs to be dropped.
-      if isinstance(rate, numbers.Real) and rate == 0:
-        return x
-      if context.executing_eagerly():
-        if isinstance(rate, ops.EagerTensor):
-          if rate.numpy() == 0:
-            return x
-      else:
-        rate = ops.convert_to_tensor(rate, dtype=x.dtype, name="rate")
-        rate.get_shape().assert_has_rank(0)
-
-        # Do nothing if we know rate == 0
-        if tensor_util.constant_value(rate) == 0:
-          return x
-
-      noise_shape = _get_noise_shape(x, noise_shape)
-      # Sample a uniform distribution on [0.0, 1.0) and select values larger
-      # than rate.
-      #
-      # NOTE: Random uniform can only generate 2^23 floats on [1.0, 2.0)
-      # and subtract 1.0.
-      random_tensor = random_ops.random_uniform(
-          noise_shape, seed=seed, dtype=x.dtype)
-      keep_prob = 1 - rate
-      scale = 1 / keep_prob
-      # NOTE: if (1.0 + rate) - 1 is equal to rate, then that
-      # float is selected, hence we use a >= comparison.
-      keep_mask = random_tensor >= rate
-      ret = x * scale * math_ops.cast(keep_mask, x.dtype)
-      if not context.executing_eagerly():
-        ret.set_shape(x.get_shape())
-      return ret
+    noise_shape = _get_noise_shape(x, noise_shape)
+    # Sample a uniform distribution on [0.0, 1.0) and select values larger
+    # than rate.
+    #
+    # NOTE: Random uniform can only generate 2^23 floats on [1.0, 2.0)
+    # and subtract 1.0.
+    random_tensor = random_ops.random_uniform(
+        noise_shape, seed=seed, dtype=x_dtype)
+    # NOTE: if (1.0 + rate) - 1 is equal to rate, then that float is selected,
+    # hence a >= comparison is used.
+    keep_mask = random_tensor >= rate
+    ret = gen_math_ops.mul(ret, gen_math_ops.cast(keep_mask, x_dtype))
+    if not is_executing_eagerly:
+      ret.set_shape(x.get_shape())
+    return ret
 
 
 @tf_export("math.top_k", "nn.top_k")

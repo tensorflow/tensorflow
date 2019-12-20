@@ -71,9 +71,7 @@ class TensorListPatternRewriter : public PatternRewriter {
   explicit TensorListPatternRewriter(FuncOp fn)
       : PatternRewriter(fn.getContext()) {}
 
-  Operation *createOperation(const OperationState &state) override {
-    return OpBuilder::createOperation(state);
-  }
+  Operation *insert(Operation *op) override { return OpBuilder::insert(op); }
 };
 
 /// Lower TensorList ops in functions for subsequent legalization.
@@ -754,8 +752,7 @@ struct ConvertWhile : public ConversionPattern {
     cloned.removeAttr("T");
     UpdateFunctionTypes(cloned);
 
-    SmallVector<Value *, 8> results(cloned.getResults());
-    rewriter.replaceOp(op, results);
+    rewriter.replaceOp(op, cloned.getResults());
     return matchSuccess();
   }
 };

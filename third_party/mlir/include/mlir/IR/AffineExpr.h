@@ -114,8 +114,9 @@ public:
   /// floordiv, ceildiv, and mod is only allowed w.r.t constants.
   bool isPureAffine() const;
 
-  /// Returns the greatest known integral divisor of this affine expression.
-  uint64_t getLargestKnownDivisor() const;
+  /// Returns the greatest known integral divisor of this affine expression. The
+  /// result is always positive.
+  int64_t getLargestKnownDivisor() const;
 
   /// Return true if the affine expression is a multiple of 'factor'.
   bool isMultipleOf(int64_t factor) const;
@@ -267,12 +268,11 @@ AffineExpr simplifyAffineExpr(AffineExpr expr, unsigned numDims,
 
 /// Flattens 'expr' into 'flattenedExpr'. Returns true on success or false
 /// if 'expr' could not be flattened (i.e., semi-affine is not yet handled).
-/// 'cst' contains constraints that connect newly introduced local identifiers
-/// to existing dimensional and / symbolic identifiers. See documentation for
-/// AffineExprFlattener on how mod's and div's are flattened.
+/// See documentation for AffineExprFlattener on how mod's and div's are
+/// flattened.
 bool getFlattenedAffineExpr(AffineExpr expr, unsigned numDims,
                             unsigned numSymbols,
-                            llvm::SmallVectorImpl<int64_t> *flattenedExpr);
+                            SmallVectorImpl<int64_t> *flattenedExpr);
 
 /// Flattens the result expressions of the map to their corresponding flattened
 /// forms and set in 'flattenedExprs'. Returns true on success or false
@@ -282,9 +282,26 @@ bool getFlattenedAffineExpr(AffineExpr expr, unsigned numDims,
 /// repeatedly calling getFlattenedAffineExpr since local variables added to
 /// deal with div's and mod's will be reused across expressions.
 bool getFlattenedAffineExprs(
-    AffineMap map, std::vector<llvm::SmallVector<int64_t, 8>> *flattenedExprs);
+    AffineMap map, std::vector<SmallVector<int64_t, 8>> *flattenedExprs);
 bool getFlattenedAffineExprs(
-    IntegerSet set, std::vector<llvm::SmallVector<int64_t, 8>> *flattenedExprs);
+    IntegerSet set, std::vector<SmallVector<int64_t, 8>> *flattenedExprs);
+
+namespace detail {
+template <int N> void bindDims(MLIRContext *ctx) {}
+
+template <int N, typename AffineExprTy, typename... AffineExprTy2>
+void bindDims(MLIRContext *ctx, AffineExprTy &e, AffineExprTy2 &... exprs) {
+  e = getAffineDimExpr(N, ctx);
+  bindDims<N + 1, AffineExprTy2 &...>(ctx, exprs...);
+}
+} // namespace detail
+
+/// Bind a list of AffineExpr references to DimExpr at positions:
+///   [0 .. sizeof...(exprs)]
+template <typename... AffineExprTy>
+void bindDims(MLIRContext *ctx, AffineExprTy &... exprs) {
+  detail::bindDims<0>(ctx, exprs...);
+}
 
 } // namespace mlir
 

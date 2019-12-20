@@ -112,7 +112,7 @@ TEST_F(TRTEngineResourceOpsTest, Basic) {
   EXPECT_TRUE(
       errors::IsNotFound(rm->Lookup(container, resource_name, &resource)));
 
-  // Create the resouce using an empty file with InitializeTRTResource.
+  // Create the resource using an empty file with InitializeTRTResource.
   Reset();
   Env* env = Env::Default();
   const string filename = io::JoinPath(testing::TmpDir(), "trt_engine_file");

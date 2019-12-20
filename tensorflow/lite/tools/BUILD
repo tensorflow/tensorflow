@@ -19,7 +19,7 @@ py_binary(
         "//tensorflow/python:platform",
         "@flatbuffers//:flatc",
     ],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
 )
 
@@ -84,6 +84,9 @@ cc_test(
     name = "verifier_test",
     size = "small",
     srcs = ["verifier_test.cc"],
+    data = [
+        "//tensorflow/lite:testdata/sparse_tensor.bin",
+    ],
     tags = [
         "tflite_not_portable",
     ],

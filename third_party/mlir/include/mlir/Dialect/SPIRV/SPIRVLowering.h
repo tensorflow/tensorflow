@@ -30,7 +30,7 @@
 
 namespace mlir {
 
-/// Type conversion from stdandard types to SPIR-V types for shader interface.
+/// Type conversion from standard types to SPIR-V types for shader interface.
 ///
 /// For composite types, this converter additionally performs type wrapping to
 /// satisfy shader interface requirements: shader interface types must be
@@ -39,10 +39,10 @@ class SPIRVTypeConverter final : public TypeConverter {
 public:
   using TypeConverter::TypeConverter;
 
-  /// Converts the given standard `type` to SPIR-V correspondance.
+  /// Converts the given standard `type` to SPIR-V correspondence.
   Type convertType(Type type) override;
 
-  /// Gets the SPIR-V correspondance for the standard index type.
+  /// Gets the SPIR-V correspondence for the standard index type.
   static Type getIndexType(MLIRContext *context);
 };
 
@@ -67,12 +67,6 @@ namespace spirv {
 Value *getBuiltinVariableValue(Operation *op, spirv::BuiltIn builtin,
                                OpBuilder &builder);
 
-/// Legalizes a function as an entry function.
-FuncOp lowerAsEntryFunction(FuncOp funcOp, SPIRVTypeConverter &typeConverter,
-                            ConversionPatternRewriter &rewriter,
-                            ArrayRef<spirv::InterfaceVarABIAttr> argABIInfo,
-                            spirv::EntryPointABIAttr entryPointInfo);
-
 /// Attribute name for specifying argument ABI information.
 StringRef getInterfaceVarABIAttrName();
 
@@ -88,6 +82,12 @@ StringRef getEntryPointABIAttrName();
 /// Get the EntryPointABIAttr given its fields.
 EntryPointABIAttr getEntryPointABIAttr(ArrayRef<int32_t> localSize,
                                        MLIRContext *context);
+
+/// Sets the InterfaceVarABIAttr and EntryPointABIAttr for a function and its
+/// arguments
+LogicalResult setABIAttrs(FuncOp funcOp,
+                          spirv::EntryPointABIAttr entryPointInfo,
+                          ArrayRef<spirv::InterfaceVarABIAttr> argABIInfo);
 
 } // namespace spirv
 } // namespace mlir

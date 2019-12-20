@@ -294,7 +294,7 @@ class HloParserImpl : public HloParser {
 
   // Parses a sub-attribute of the window attribute, e.g.,size=1x2x3.
   bool ParseDxD(const std::string& name, std::vector<int64>* result);
-  // Parses window's pad sub-attriute, e.g., pad=0_0x3x3.
+  // Parses window's pad sub-attribute, e.g., pad=0_0x3x3.
   bool ParseWindowPad(std::vector<std::vector<int64>>* pad);
 
   bool ParseSliceRanges(SliceRanges* result);
@@ -857,11 +857,14 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<HloComputation*> to_apply;
       optional<std::vector<int64>> replica_group_ids;
       optional<int64> channel_id;
+      optional<bool> constrain_layout;
       attrs["to_apply"] = {/*required=*/true, AttrTy::kHloComputation,
                            &to_apply};
       attrs["replica_groups"] = {/*required=*/false,
                                  AttrTy::kBracedInt64ListList, &tmp_groups};
       attrs["channel_id"] = {/*required=*/false, AttrTy::kInt64, &channel_id};
+      attrs["constrain_layout"] = {/*required=*/false, AttrTy::kBool,
+                                   &constrain_layout};
       if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
         return false;
       }
@@ -870,7 +873,8 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
         replica_groups = CreateReplicaGroups(*tmp_groups);
       }
       instruction = builder->AddInstruction(HloInstruction::CreateAllReduce(
-          shape, operands, *to_apply, replica_groups, channel_id));
+          shape, operands, *to_apply, replica_groups,
+          constrain_layout ? *constrain_layout : false, channel_id));
       break;
     }
     case HloOpcode::kAllToAll: {
@@ -2293,7 +2297,7 @@ bool HloParserImpl::ParseTupleLiteral(Literal* literal, const Shape& shape) {
     // literal, (',' literal)*
     for (int i = 0; i < elements.size(); i++) {
       if (i > 0) {
-        ParseToken(TokKind::kComma, "exepcts ',' to separate tuple elements");
+        ParseToken(TokKind::kComma, "expects ',' to separate tuple elements");
       }
       if (!ParseLiteral(&elements[i],
                         ShapeUtil::GetTupleElementShape(shape, i))) {
@@ -2611,18 +2615,37 @@ struct MinMaxFiniteValue<bfloat16> {
   static double min() { return -max(); }
 };
 
+// MSVC's standard C++ library does not define isnan/isfinite for integer types.
+// To work around that we will need to provide our own.
+template <typename T>
+std::enable_if_t<std::is_floating_point<T>::value, bool> IsFinite(T val) {
+  return std::isfinite(val);
+}
+template <typename T>
+std::enable_if_t<std::is_floating_point<T>::value, bool> IsNaN(T val) {
+  return std::isnan(val);
+}
+template <typename T>
+std::enable_if_t<std::is_integral<T>::value, bool> IsFinite(T val) {
+  return std::isfinite(static_cast<double>(val));
+}
+template <typename T>
+std::enable_if_t<std::is_integral<T>::value, bool> IsNaN(T val) {
+  return std::isnan(static_cast<double>(val));
+}
+
 template <typename LiteralNativeT, typename ParsedElemT>
 bool HloParserImpl::CheckParsedValueIsInRange(LocTy loc, ParsedElemT value) {
   if (std::is_floating_point<ParsedElemT>::value) {
     auto value_as_native_t = static_cast<LiteralNativeT>(value);
     auto value_double_converted = static_cast<ParsedElemT>(value_as_native_t);
-    if (!std::isfinite(value) || std::isfinite(value_double_converted)) {
+    if (!IsFinite(value) || IsFinite(value_double_converted)) {
       value = value_double_converted;
     }
   }
   PrimitiveType literal_ty =
       primitive_util::NativeToPrimitiveType<LiteralNativeT>();
-  if (std::isnan(value) ||
+  if (IsNaN(value) ||
       (std::numeric_limits<ParsedElemT>::has_infinity &&
        (std::numeric_limits<ParsedElemT>::infinity() == value ||
         -std::numeric_limits<ParsedElemT>::infinity() == value))) {
@@ -4382,6 +4405,7 @@ bool HloParserImpl::ParseSingleInstruction(HloModule* module) {
   for (auto& comp : computations_) {
     module->AddEmbeddedComputation(std::move(comp));
   }
+  TF_CHECK_OK(module->set_schedule(ScheduleFromInstructionOrder(module)));
   return true;
 }
 

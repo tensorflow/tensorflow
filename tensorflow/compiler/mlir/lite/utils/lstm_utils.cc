@@ -98,7 +98,7 @@ Value* SliceRankedTensor(OpBuilder* builder, Value* input,
                          ArrayRef<int64_t> size_values,
                          mlir::Location location) {
   // If the size of the tensor to be sliced from the input overflows
-  // the input tensor's dimenions, return 0-valued tensor of the requested
+  // the input tensor's dimensions, return 0-valued tensor of the requested
   // shape.
   ArrayRef<int64_t> input_shape = GetRankedTensorShape(input);
   for (int i = 0; i < input_shape.size(); i++) {

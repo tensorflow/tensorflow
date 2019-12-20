@@ -32,7 +32,14 @@ namespace gpu {
 
 namespace {
 
-class ReductionDegenerateDimRemoverTest : public GpuCodegenTest {};
+class ReductionDegenerateDimRemoverTest : public GpuCodegenTest {
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
+    debug_options.add_xla_disable_hlo_passes("reduction-layout-normalizer");
+    debug_options.add_xla_disable_hlo_passes("reduction-dimension-grouper");
+    return debug_options;
+  }
+};
 
 TEST_F(ReductionDegenerateDimRemoverTest, ReductionWithDegenerateDimensions) {
   const char* hlo_text = R"(

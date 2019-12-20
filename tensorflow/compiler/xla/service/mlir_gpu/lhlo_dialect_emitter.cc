@@ -287,6 +287,21 @@ Status LhloDialectEmitter::HandleCompare(HloInstruction* compare) {
   return Status::OK();
 }
 
+Status LhloDialectEmitter::HandleConstant(HloInstruction* constant) {
+  auto shape = constant->shape();
+  if (!shape.IsArray() || shape.rank() != 0) {
+    return Unimplemented("non-scalar constants are not supported yet");
+  }
+  TF_ASSIGN_OR_RETURN(auto function, CreateFunction(*constant));
+  OpBuilder func_builder(function.getBody());
+
+  TF_ASSIGN_OR_RETURN(auto value, CreateDenseElementsAttrFromLiteral(
+                                      constant->literal(), func_builder));
+  func_builder.create<lhlo::ConstOp>(getLocation(constant), value,
+                                     *function.args_begin());
+  return Status::OK();
+}
+
 Status LhloDialectEmitter::HandleIota(HloInstruction* iota) {
   mlir::IntegerAttr iota_dim = builder_.getI64IntegerAttr(
       static_cast<HloIotaInstruction*>(iota)->iota_dimension());
@@ -296,6 +311,18 @@ Status LhloDialectEmitter::HandleIota(HloInstruction* iota) {
   func_builder.create<lhlo::IotaOp>(getLocation(iota), iota_dim,
                                     function.getArgument(0));
   return Status::OK();
+}
+
+Status LhloDialectEmitter::HandleTuple(HloInstruction* tuple) {
+  // For the root node of the entry computation we can elide writing the tuple
+  // buffer. We can always figure out the contents of the tuples from buffer
+  // assignment because we insert copies to ensure non-ambiguous output buffers.
+  // GpuExecutable never reads the tuple buffer.
+  if (tuple ==
+      tuple->parent()->parent()->entry_computation()->root_instruction()) {
+    return Status::OK();
+  }
+  return Unimplemented("handling of typles not yet implemented");
 }
 
 Status LhloDialectEmitter::FinishVisit(HloInstruction* root) {

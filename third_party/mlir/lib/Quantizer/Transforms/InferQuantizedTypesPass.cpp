@@ -162,7 +162,7 @@ void InferQuantizedTypesPass::runWithConfig(SolverContext &solverContext,
   // operands).
   // Apply result types.
   for (auto *node : cag) {
-    auto anchorNode = llvm::dyn_cast<CAGResultAnchor>(node);
+    auto anchorNode = dyn_cast<CAGResultAnchor>(node);
     if (!anchorNode)
       continue;
     if (Type newType = anchorNode->getTransformedType())
@@ -171,7 +171,7 @@ void InferQuantizedTypesPass::runWithConfig(SolverContext &solverContext,
 
   // Apply operand types.
   for (auto *node : cag) {
-    auto anchorNode = llvm::dyn_cast<CAGOperandAnchor>(node);
+    auto anchorNode = dyn_cast<CAGOperandAnchor>(node);
     if (!anchorNode)
       continue;
     if (Type newType = anchorNode->getTransformedType())

@@ -3,6 +3,7 @@ syntax = "proto3";
 package tensorflow.profiler;
 
 import "tensorflow/core/profiler/protobuf/op_metrics.proto";
+import "tensorflow/core/profiler/protobuf/steps_db.proto";
 
 // Performance environment, e.g the peak performance capabilities of the device.
 message PerfEnv {
@@ -25,4 +26,6 @@ message OpStats {
   OpMetricsDb device_op_metrics_db = 2;
   // Performance environment of the op metrics collected.
   PerfEnv perf_env = 3;
+  // The database of step sequences.
+  StepDatabaseResult step_db = 4;
 }

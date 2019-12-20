@@ -22,8 +22,12 @@ load(
     "def_file_filter_configure",
 )
 load("//third_party/FP16:workspace.bzl", FP16 = "repo")
+load("//third_party/FXdiv:workspace.bzl", FXdiv = "repo")
 load("//third_party/aws:workspace.bzl", aws = "repo")
+load("//third_party/clog:workspace.bzl", clog = "repo")
+load("//third_party/cpuinfo:workspace.bzl", cpuinfo = "repo")
 load("//third_party/flatbuffers:workspace.bzl", flatbuffers = "repo")
+load("//third_party/hexagon:workspace.bzl", hexagon_nn = "repo")
 load("//third_party/highwayhash:workspace.bzl", highwayhash = "repo")
 load("//third_party/hwloc:workspace.bzl", hwloc = "repo")
 load("//third_party/icu:workspace.bzl", icu = "repo")
@@ -31,23 +35,31 @@ load("//third_party/jpeg:workspace.bzl", jpeg = "repo")
 load("//third_party/nasm:workspace.bzl", nasm = "repo")
 load("//third_party/opencl_headers:workspace.bzl", opencl_headers = "repo")
 load("//third_party/kissfft:workspace.bzl", kissfft = "repo")
-load("//third_party/keras_applications_archive:workspace.bzl", keras_applications = "repo")
 load("//third_party/pasta:workspace.bzl", pasta = "repo")
+load("//third_party/psimd:workspace.bzl", psimd = "repo")
+load("//third_party/pthreadpool:workspace.bzl", pthreadpool = "repo")
+load("//third_party/sobol_data:workspace.bzl", sobol_data = "repo")
 
 def initialize_third_party():
     """ Load third party repositories.  See above load() statements. """
     FP16()
+    FXdiv()
     aws()
+    clog()
+    cpuinfo()
     flatbuffers()
+    hexagon_nn()
     highwayhash()
     hwloc()
     icu()
-    keras_applications()
     kissfft()
     jpeg()
     nasm()
     opencl_headers()
     pasta()
+    psimd()
+    pthreadpool()
+    sobol_data()
 
 # Sanitize a dependency so that it works correctly from code that includes
 # TensorFlow as a submodule.
@@ -127,6 +139,16 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         print("path_prefix was specified to tf_workspace but is no longer used " +
               "and will be removed in the future.")
 
+    tf_http_archive(
+        name = "XNNPACK",
+        sha256 = "24b6285c679dece8805d2a7d63cc567413b7670279bc0c66a99e555123fe4700",
+        strip_prefix = "XNNPACK-9a88efe2d84fef93eb2b8acb6f0ac8f3cacee8b5",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/9a88efe2d84fef93eb2b8acb6f0ac8f3cacee8b5.zip",
+            "https://github.com/google/XNNPACK/archive/9a88efe2d84fef93eb2b8acb6f0ac8f3cacee8b5.zip",
+        ],
+    )
+
     # Important: If you are upgrading MKL-DNN, then update the version numbers
     # in third_party/mkl_dnn/mkldnn.BUILD. In addition, the new version of
     # MKL-DNN might require upgrading MKL ML libraries also. If they need to be
@@ -172,11 +194,11 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         name = "eigen_archive",
         build_file = clean_dep("//third_party:eigen.BUILD"),
         patch_file = clean_dep("//third_party/eigen3:gpu_packet_math.patch"),
-        sha256 = "8a4d3ef6c18c9d8e047c6444ec0a28b43d587e7a3363eb9819eb49dd6b390aed",
-        strip_prefix = "eigen-ea51a9eace7e4f0ea839e61eb2df85ccfb94aee8",
+        sha256 = "22a69745812cb040b3e8e8d3cd002932999252727897ad3326b4b6e72a1f24e9",
+        strip_prefix = "eigen-7252163335f56f23fcc7381c1efdea47161005fa",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/gitlab.com/libeigen/eigen/-/archive/ea51a9eace7e4f0ea839e61eb2df85ccfb94aee8/eigen-ea51a9eace7e4f0ea839e61eb2df85ccfb94aee8.tar.gz",
-            "https://gitlab.com/libeigen/eigen/-/archive/ea51a9eace7e4f0ea839e61eb2df85ccfb94aee8/eigen-ea51a9eace7e4f0ea839e61eb2df85ccfb94aee8.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/gitlab.com/libeigen/eigen/-/archive/7252163335f56f23fcc7381c1efdea47161005fa/eigen-7252163335f56f23fcc7381c1efdea47161005fa.tar.gz",
+            "https://gitlab.com/libeigen/eigen/-/archive/7252163335f56f23fcc7381c1efdea47161005fa/eigen-7252163335f56f23fcc7381c1efdea47161005fa.tar.gz",
         ],
     )
 
@@ -215,15 +237,15 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
 
     tf_http_archive(
         name = "com_github_googlecloudplatform_google_cloud_cpp",
-        sha256 = "295754023a44eb69d0ff5ee2c0ac11ff1b7adcd617f122d57fc7a5a49fac612d",
-        strip_prefix = "google-cloud-cpp-0.14.0",
+        sha256 = "e86a7190e87371259083595d756399f494b2257706a2b773c2917ec796f41d9a",
+        strip_prefix = "google-cloud-cpp-0.16.0",
         system_build_file = clean_dep("//third_party/systemlibs:google_cloud_cpp.BUILD"),
         system_link_files = {
             "//third_party/systemlibs:google_cloud_cpp.google.cloud.bigtable.BUILD": "google/cloud/bigtable/BUILD",
         },
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/googleapis/google-cloud-cpp/archive/v0.14.0.tar.gz",
-            "https://github.com/googleapis/google-cloud-cpp/archive/v0.14.0.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/googleapis/google-cloud-cpp/archive/v0.16.0.tar.gz",
+            "https://github.com/googleapis/google-cloud-cpp/archive/v0.16.0.tar.gz",
         ],
     )
 
@@ -549,11 +571,11 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "llvm",
         build_file = clean_dep("//third_party/llvm:llvm.autogenerated.BUILD"),
-        sha256 = "6bafd092643a7208a6539d355e5f99fc7bbd6424e14288d9354515a5231fd2e8",
-        strip_prefix = "llvm-project-4e8231b5cf0f5f62c7a51a857e29f5be5cb55734/llvm",
+        sha256 = "98b361acf95a140623888205876391bbbd2cc46b7d17fc148334c53bb56ccafb",
+        strip_prefix = "llvm-project-e4fce659a759ecdd59ceee750f1ff9b44f9de3f3/llvm",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/llvm/llvm-project/archive/4e8231b5cf0f5f62c7a51a857e29f5be5cb55734.tar.gz",
-            "https://github.com/llvm/llvm-project/archive/4e8231b5cf0f5f62c7a51a857e29f5be5cb55734.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/llvm/llvm-project/archive/e4fce659a759ecdd59ceee750f1ff9b44f9de3f3.tar.gz",
+            "https://github.com/llvm/llvm-project/archive/e4fce659a759ecdd59ceee750f1ff9b44f9de3f3.tar.gz",
         ],
     )
 

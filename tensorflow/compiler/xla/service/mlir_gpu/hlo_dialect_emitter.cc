@@ -118,6 +118,10 @@ Status HloDialectEmitter::HandleParameter(HloInstruction* param) {
 }
 
 Status HloDialectEmitter::HandleConstant(HloInstruction* constant) {
+  auto shape = constant->shape();
+  if (!shape.IsArray() || shape.rank() != 0) {
+    return Unimplemented("non-scalar constants are not supported yet");
+  }
   TF_ASSIGN_OR_RETURN(auto type, ConvertTensorShapeToType<RankedTensorType>(
                                      constant->shape(), builder_));
 

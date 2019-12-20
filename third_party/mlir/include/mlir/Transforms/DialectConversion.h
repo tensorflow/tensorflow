@@ -94,7 +94,7 @@ public:
 
   private:
     /// The remapping information for each of the original arguments.
-    SmallVector<llvm::Optional<InputMapping>, 4> remappedInputs;
+    SmallVector<Optional<InputMapping>, 4> remappedInputs;
 
     /// The set of new argument types.
     SmallVector<Type, 4> argTypes;
@@ -133,7 +133,7 @@ public:
   /// This function converts the type signature of the given block, by invoking
   /// 'convertSignatureArg' for each argument. This function should return a
   /// valid conversion for the signature on success, None otherwise.
-  llvm::Optional<SignatureConversion> convertBlockSignature(Block *block);
+  Optional<SignatureConversion> convertBlockSignature(Block *block);
 
   /// This hook allows for materializing a conversion from a set of types into
   /// one result type by generating a cast operation of some kind. The generated
@@ -236,13 +236,13 @@ struct OpConversionPattern : public ConversionPattern {
   /// type.
   void rewrite(Operation *op, ArrayRef<Value *> operands,
                ConversionPatternRewriter &rewriter) const final {
-    rewrite(llvm::cast<SourceOp>(op), operands, rewriter);
+    rewrite(cast<SourceOp>(op), operands, rewriter);
   }
   void rewrite(Operation *op, ArrayRef<Value *> properOperands,
                ArrayRef<Block *> destinations,
                ArrayRef<ArrayRef<Value *>> operands,
                ConversionPatternRewriter &rewriter) const final {
-    rewrite(llvm::cast<SourceOp>(op), properOperands, destinations, operands,
+    rewrite(cast<SourceOp>(op), properOperands, destinations, operands,
             rewriter);
   }
   PatternMatchResult
@@ -250,13 +250,13 @@ struct OpConversionPattern : public ConversionPattern {
                   ArrayRef<Block *> destinations,
                   ArrayRef<ArrayRef<Value *>> operands,
                   ConversionPatternRewriter &rewriter) const final {
-    return matchAndRewrite(llvm::cast<SourceOp>(op), properOperands,
-                           destinations, operands, rewriter);
+    return matchAndRewrite(cast<SourceOp>(op), properOperands, destinations,
+                           operands, rewriter);
   }
   PatternMatchResult
   matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
                   ConversionPatternRewriter &rewriter) const final {
-    return matchAndRewrite(llvm::cast<SourceOp>(op), operands, rewriter);
+    return matchAndRewrite(cast<SourceOp>(op), operands, rewriter);
   }
 
   // TODO(b/142763075): Use OperandAdaptor when it supports access to unnamed
@@ -332,12 +332,6 @@ public:
   /// Replace all the uses of the block argument `from` with value `to`.
   void replaceUsesOfBlockArgument(BlockArgument *from, Value *to);
 
-  /// Clone the given operation without cloning its regions.
-  Operation *cloneWithoutRegions(Operation *op);
-  template <typename OpT> OpT cloneWithoutRegions(OpT op) {
-    return cast<OpT>(cloneWithoutRegions(op.getOperation()));
-  }
-
   /// Return the converted value that replaces 'key'. Return 'key' if there is
   /// no such a converted value.
   Value *getRemappedValue(Value *key);
@@ -347,8 +341,8 @@ public:
   //===--------------------------------------------------------------------===//
 
   /// PatternRewriter hook for replacing the results of an operation.
-  void replaceOp(Operation *op, ArrayRef<Value *> newValues,
-                 ArrayRef<Value *> valuesToRemoveIfDead) override;
+  void replaceOp(Operation *op, ValueRange newValues,
+                 ValueRange valuesToRemoveIfDead) override;
   using PatternRewriter::replaceOp;
 
   /// PatternRewriter hook for erasing a dead operation. The uses of this
@@ -360,8 +354,7 @@ public:
   Block *splitBlock(Block *block, Block::iterator before) override;
 
   /// PatternRewriter hook for merging a block into another.
-  void mergeBlocks(Block *source, Block *dest,
-                   ArrayRef<Value *> argValues) override;
+  void mergeBlocks(Block *source, Block *dest, ValueRange argValues) override;
 
   /// PatternRewriter hook for moving blocks out of a region.
   void inlineRegionBefore(Region &region, Region &parent,
@@ -377,8 +370,8 @@ public:
                          BlockAndValueMapping &mapping) override;
   using PatternRewriter::cloneRegionBefore;
 
-  /// PatternRewriter hook for creating a new operation.
-  Operation *createOperation(const OperationState &state) override;
+  /// PatternRewriter hook for inserting a new operation.
+  Operation *insert(Operation *op) override;
 
   /// PatternRewriter hook for updating the root operation in-place.
   void notifyRootUpdated(Operation *op) override;

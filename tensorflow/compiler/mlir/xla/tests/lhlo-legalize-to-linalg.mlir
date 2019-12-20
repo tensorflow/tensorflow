@@ -18,7 +18,10 @@ func @element_wise(%lhs: memref<2x2xf32>, %rhs: memref<2x2xf32>,
 // CHECK-LABEL: func @element_wise_scalar
 func @element_wise_scalar(%lhs: memref<f32>, %rhs: memref<f32>,
           %result: memref<f32>) {
-// CHECK: "xla_lhlo.add"
+// CHECK: %[[LHS:.*]] = load
+// CHECK: %[[RHS:.*]] = load
+// CHECK: %[[RES:.*]] = addf %[[LHS]], %[[RHS]]
+// CHECK: store %[[RES]]
 // CHECK-NEXT: return
   "xla_lhlo.add"(%lhs, %rhs, %result)
       : (memref<f32>, memref<f32>, memref<f32>) -> ()
@@ -132,7 +135,7 @@ func @iota(%out: memref<7x10xf32>) {
   "xla_lhlo.iota"(%out) {iota_dimension = 1 : i64} : (memref<7x10xf32>) -> ()
   return
 }
-// CHECK: linalg.indexed_generic {indexing_maps = [#[[RESULT_MAP]]]
+// CHECK: linalg.indexed_generic {{{.*}}indexing_maps = [#[[RESULT_MAP]]]
 // CHECK-NEXT: ^bb0(%[[D0:.*]]: index, %[[D1:.*]]: index, %[[RESULT:.*]]: f32):
 // CHECK-NEXT:   %[[INT_CAST:.*]] = index_cast %[[D1]] : index to i32
 // CHECK-NEXT:   %[[FLOAT_CAST:.*]] = sitofp %[[INT_CAST]] : i32 to f32
@@ -158,6 +161,31 @@ func @broadcast(%operand: memref<5x7x1xf32>, %result: memref<7x10x6x4x5xf32>) {
     : (memref<5x7x1xf32>, memref<7x10x6x4x5xf32>) -> ()
   return
 }
-// CHECK: linalg.generic {indexing_maps = [#[[OPERAND_MAP]], #[[RESULT_MAP]]]
+// CHECK: linalg.generic {{{.*}}indexing_maps = [#[[OPERAND_MAP]], #[[RESULT_MAP]]]
 // CHECK-NEXT: ^bb0(%[[OPERAND:.*]]: f32, %[[RESULT:.*]]: f32):
 // CHECK-NEXT:   linalg.yield %[[OPERAND]] : f32
+
+// -----
+
+// CHECK-DAG: #[[RESULT_MAP:.*]] = (d0, d1, d2) -> (d0, d1, d2)
+// CHECK-LABEL: func @broadcast_scalar
+func @broadcast_scalar(%operand: memref<f32>, %result: memref<7x10x6xf32>) {
+  "xla_lhlo.broadcast_in_dim"(%operand, %result)
+    {broadcast_dimensions = dense<[]> : tensor<0xi64>}
+    : (memref<f32>, memref<7x10x6xf32>) -> ()
+  return
+}
+// CHECK: linalg.generic {{{.*}}indexing_maps = [#[[RESULT_MAP]]]
+// CHECK-NEXT: ^bb0(%[[RESULT:.*]]: f32):
+// CHECK-NEXT: %[[CONST:.*]] = load %{{.*}} : memref<f32>
+// CHECK-NEXT:   linalg.yield %[[CONST]] : f32
+
+// -----
+
+// CHECK-LABEL: func @constant
+func @constant(%value: memref<i32>) {
+  "xla_lhlo.constant"(%value) {value = dense<10> : tensor<i32>} : (memref<i32>) -> ()
+  return
+}
+// CHECK: %[[CONSTANT:.*]] = constant 10 : i32
+// CHECK: store %[[CONSTANT]], %{{.*}}[] : memref<i32>
