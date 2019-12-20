@@ -661,6 +661,11 @@ public:
   /// OpAsmInterface.td#getAsmResultNames for usage details and documentation.
   virtual void getAsmResultNames(Operation *op,
                                  OpAsmSetValueNameFn setNameFn) const {}
+
+  /// Get a special name to use when printing the entry block arguments of the
+  /// region contained by an operation in this dialect.
+  virtual void getAsmBlockArgumentNames(Block *block,
+                                        OpAsmSetValueNameFn setNameFn) const {}
 };
 
 //===--------------------------------------------------------------------===//
