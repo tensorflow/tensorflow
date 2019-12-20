@@ -393,7 +393,6 @@ def HLO_AfterAllOp : HLO_Op<"after_all", []> {
 
   let arguments = (ins Variadic<HLO_Token>:$operands);
   let results = (outs HLO_Token);
-  let hasCustomHLOConverter = 1;
 }
 
 def HLO_ConditionalOp: HLO_Op<"conditional", [NoSideEffect]> {
@@ -519,8 +518,6 @@ def HLO_TupleOp : HLO_Op<"tuple", [NoSideEffect]>, BASE_HLO_TupleOp {
                   "Builder *builder, OperationState &results, "
                   "ValueRange values">];
 
-  // TupleOp has special conversion logic to HLO.
-  let hasCustomHLOConverter = 1;
 }
 
 def HLO_CompareOp: HLO_Op<"compare",

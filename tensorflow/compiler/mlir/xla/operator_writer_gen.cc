@@ -90,6 +90,13 @@ static void BuildOperator(const Operator& op, raw_ostream* output) {
   StringRef op_name = op.getCppClassName();
   os << "    auto xla_result = xla::" << op_name.drop_back(2) << "(";
 
+  // If all operands are variadic, then pass the builder explicitly to xla
+  // client API call
+  if (op.getNumOperands() == op.getNumVariadicOperands()) {
+    os << "lowering_context.builder";
+    if (op.getNumArgs() != 0) os << ", ";
+  }
+
   // Emit each of the arguments.
   interleaveComma(llvm::seq<int>(0, op.getNumArgs()), os,
                   [&](int i) { os << "Unwrap(xla_arg_" << i << ')'; });
