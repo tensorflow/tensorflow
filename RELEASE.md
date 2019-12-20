@@ -4,6 +4,9 @@ TensorFlow 2.1 will be the last TF release supporting Python 2. Python 2 support
 
 ## Major Features and Improvements
 * The `tensorflow` pip package now includes GPU support by default (same as `tensorflow-gpu`) for both Linux and Windows. This runs on machines with and without NVIDIA GPUs. `tensorflow-gpu` is still available, and CPU-only packages can be downloaded at `tensorflow-cpu` for users who are concerned about package size.
+* **Windows users:** Officially-released `tensorflow` Pip packages are now built with Visual Studio 2019 version 16.4 in order to take advantage of the new `/d2ReducedOptimizeHugeFunctions` compiler flag. To use these new packages, you must install "Microsoft Visual C++ Redistributable for Visual Studio 2015, 2017 and 2019", available from Microsoft's website [here](https://support.microsoft.com/help/2977003/the-latest-supported-visual-c-downloads).
+  * This does not change the minimum required version for building TensorFlow from source on Windows, but builds enabling `EIGEN_STRONG_INLINE` can take over 48 hours to compile without this flag. Refer to `configure.py` for more information about `EIGEN_STRONG_INLINE` and `/d2ReducedOptimizeHugeFunctions`.
+  * If either of the required DLLs, `msvcp140.dll` (old) or `msvcp140_1.dll` (new), are missing on your machine, `import tensorflow` will print a warning message.
 * The `tensorflow` pip package is built with CUDA 10.1 and cuDNN 7.6.
 * `tf.keras`
   * Experimental support for mixed precision is available on GPUs and Cloud TPUs. See [usage guide](https://www.tensorflow.org/guide/keras/mixed_precision).
@@ -15,9 +18,11 @@ TensorFlow 2.1 will be the last TF release supporting Python 2. Python 2 support
   * Keras reference implementations for many popular models are available in the TensorFlow [Model Garden](https://github.com/tensorflow/models/tree/master/official).
 * `tf.data`
   * Changes rebatching for `tf.data datasets` + DistributionStrategy for better performance. Note that the dataset also behaves slightly differently, in that the rebatched dataset cardinality will always be a multiple of the number of replicas.
+* `tf.debugging`
+  * Add `tf.debugging.enable_check_numerics()` and `tf.debugging.disable_check_numerics()` to help debugging the root causes of issues involving infinities and `NaN`s.
 * `TensorRT`
   * [TensorRT 6.0](https://developer.nvidia.com/tensorrt#tensorrt-whats-new) is now supported and enabled by default. This adds support for more TensorFlow ops including Conv3D, Conv3DBackpropInputV2, AvgPool3D, MaxPool3D, ResizeBilinear, and ResizeNearestNeighbor. In addition, the TensorFlow-TensorRT python conversion API is exported as `tf.experimental.tensorrt.Converter`.
-  * Environment variable `TF_DETERMINISTIC_OPS` added. When set to "true" or "1", this environment variable makes `tf.nn.bias_add` operate deterministically (i.e. reproducibly) when XLA JIT compilation is *not* enabled. It also makes cuDNN convolution and max-pooling operate deterministically. This makes Keras Conv*D and MaxPool*D layers operate deterministically in both the forward and backward directions when running on a CUDA-enabled GPU.
+* Environment variable `TF_DETERMINISTIC_OPS` has been added. When set to "true" or "1", this environment variable makes `tf.nn.bias_add` operate deterministically (i.e. reproducibly), but currently only when XLA JIT compilation is *not* enabled. Setting `TF_DETERMINISTIC_OPS` to "true" or "1" also makes cuDNN convolution and max-pooling operate deterministically. This makes Keras Conv\*D and MaxPool\*D layers operate deterministically in both the forward and backward directions when running on a CUDA-enabled GPU.
 
 ## Known issues
 Because of [issues with building on windows](https://github.com/tensorflow/tensorflow/issues/10521), we turned off eigen strong inlining for the Windows builds. Windows binaries are expected to be slightly slower until the build issues are resolved. 
@@ -65,7 +70,6 @@ Because of [issues with building on windows](https://github.com/tensorflow/tenso
   * Add preliminary support for sparse CSR matrices.
   * Tensor equality with `None` now behaves as expected.
   * Make calls to `tf.function(f)()`, `tf.function(f).get_concrete_function` and `tf.function(f).get_initialization_function` thread-safe.
-  * Add `tf.debugging.enable_check_numerics()` and `tf.debugging.disable_check_numerics()` to facilitate debugging of numeric instability (`Infinity`s and `NaN`s) under eager mode and `tf.function`s.
   * Extend `tf.identity` to work with CompositeTensors (such as SparseTensor)
   * Added more `dtypes` and zero-sized inputs to `Einsum` Op and improved its performance
   * Enable multi-worker `NCCL` `all-reduce` inside functions executing eagerly.
