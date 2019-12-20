@@ -746,10 +746,15 @@ def Vector_TransferReadOp :
 
   let description = [{
     The `vector.transfer_read` op performs a blocking read from a slice within
-    a scalar [MemRef](../LangRef.md#memref-type) supplied as its first operand
-    into a [vector](../LangRef.md#vector-type) of the same elemental type. The
-    slice is further defined by a full-rank index within the MemRef, supplied as
-    the operands `2 .. 1 + rank(memref)`. The permutation_map
+    a [MemRef](../LangRef.md#memref-type) supplied as its first operand
+    into a [vector](../LangRef.md#vector-type) of the same base elemental type.
+
+    A vector memref operand must have its vector element type match a suffix
+    (shape and element type) of the vector (e.g. memref<3x2x6x4x3xf32>,
+    vector<1x1x4x3xf32>).
+
+    The slice is further defined by a full-rank index within the MemRef,
+    supplied as the operands `2 .. 1 + rank(memref)`. The permutation_map
     [attribute](../LangRef.md#attributes) is an
     [affine-map](Affine.md#affine-maps) which specifies the transposition on the
     slice to match the vector shape. The size of the slice is specified by the
@@ -854,6 +859,11 @@ def Vector_TransferReadOp :
              memref<?x?xf32>, vector<128xf32>
       }
     }
+
+    // Read from a memref with vector element type.
+    %4 = vector.transfer_read %arg1[%c3, %c3], %vf0
+      {permutation_map = (d0, d1)->(d0, d1)}
+        : memref<?x?xvector<4x3xf32>>, vector<1x1x4x3xf32>
     ```
   }];
 
@@ -878,10 +888,15 @@ def Vector_TransferWriteOp :
   let description = [{
     The `vector.transfer_write` performs a blocking write from a
     [vector](../LangRef.md#vector-type), supplied as its first operand, into a
-    slice within a scalar [MemRef](../LangRef.md#memref-type) of the same
-    elemental type, supplied as its second operand. The slice is further defined
-    by a full-rank index within the MemRef, supplied as the operands
-    `3 .. 2 + rank(memref)`.
+    slice within a [MemRef](../LangRef.md#memref-type) of the same base
+    elemental type, supplied as its second operand.
+
+    A vector memref operand must have its vector element type match a suffix
+    (shape and element type) of the vector (e.g. memref<3x2x6x4x3xf32>,
+    vector<1x1x4x3xf32>).
+
+    The slice is further defined by a full-rank index within the MemRef,
+    supplied as the operands `3 .. 2 + rank(memref)`.
     The permutation_map [attribute](../LangRef.md#attributes) is an
     [affine-map](Affine.md#affine-maps) which specifies the transposition on the
     slice to match the vector shape. The size of the slice is specified by the
@@ -915,6 +930,11 @@ def Vector_TransferWriteOp :
               {permutation_map: (d0, d1, d2, d3) -> (d3, d1, d2)} :
               vector<16x32x64xf32>, memref<?x?x?x?xf32>
     }}}}
+
+    // write to a memref with vector element type.
+    vector.transfer_write %4, %arg1[%c3, %c3]
+      {permutation_map = (d0, d1)->(d0, d1)}
+        : vector<1x1x4x3xf32>, memref<?x?xvector<4x3xf32>>
     ```
   }];
 
@@ -1048,7 +1068,7 @@ def Vector_TupleOp :
     Note that this operation is used during the vector op unrolling
     transformation and should be removed before lowering to lower-level
     dialects.
-    
+
 
     Examples:
     ```
