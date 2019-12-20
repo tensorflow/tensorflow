@@ -80,7 +80,7 @@ def ResNet152V2(include_top=True,
 @keras_export('keras.applications.resnet_v2.preprocess_input')
 def preprocess_input(x, data_format=None):
   return imagenet_utils.preprocess_input(
-      x, data_format=data_format, mode='caffe')
+      x, data_format=data_format, mode='tf')
 
 
 @keras_export('keras.applications.resnet_v2.decode_predictions')
