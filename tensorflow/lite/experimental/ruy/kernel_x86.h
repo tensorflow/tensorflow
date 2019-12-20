@@ -32,6 +32,7 @@ namespace ruy {
 
 #if RUY_PLATFORM(X86)
 void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params);
+void Kernel8bitAvx512SingleCol(const KernelParams8bit<16, 16>& params);
 
 template <typename DstScalar>
 struct Kernel<Path::kAvx512, std::int8_t, std::int8_t, DstScalar,
@@ -48,7 +49,11 @@ struct Kernel<Path::kAvx512, std::int8_t, std::int8_t, DstScalar,
     KernelParams8bit<LhsLayout::kCols, RhsLayout::kCols> params;
     MakeKernelParams8bit(lhs, rhs, spec, start_row, start_col, end_row, end_col,
                          dst, &params);
-    Kernel8bitAvx512(params);
+    if (dst->layout.cols == 1) {
+      Kernel8bitAvx512SingleCol(params);
+    } else {
+      Kernel8bitAvx512(params);
+    }
   }
 };
 
