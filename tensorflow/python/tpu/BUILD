@@ -437,6 +437,7 @@ tf_py_test(
 tf_proto_library(
     name = "tensor_tracer_proto",
     srcs = ["tensor_tracer.proto"],
+    cc_api_version = 2,
     protodeps = [
         "//tensorflow/core:protos_all",
     ],
