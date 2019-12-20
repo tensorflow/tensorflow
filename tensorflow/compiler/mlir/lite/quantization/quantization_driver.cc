@@ -237,23 +237,36 @@ class QuantizationDriver {
   // new state in the state vector.
   int InitializeState(Operation *op, int index, Value *val, bool as_result);
 
+  // Sets the state of an argument. If this value is cached, uses the cached
+  // result without creating new entry in the state vector. Otherwise, allocate
+  // a new entry in the state vector.
+  void InitializeArgState(BlockArgument *arg, Value *in,
+                          llvm::DenseMap<Value *, int> *cache) {
+    auto cached = cache->insert({in, 0});
+    if (!cached.second) {
+      arg_states_[arg] = cached.first->second;
+      return;
+    }
+    QuantParams params =
+        quant::QuantizedType::getQuantizedElementType(in->getType());
+    bool immutable = !EmptyParams(params);
+    int next_state_index = states_.size();
+    states_.push_back({params, immutable});
+    arg_states_[arg] = next_state_index;
+    cached.first->second = next_state_index;
+  }
+
   // Sets the state of the index-th operand of the op. If this operand is
   // cached, uses the cached result without creating new entry in the state
   // vector. Otherwise, allocate a new entry in the state vector.
   void InitializeOperandState(Operation *op, int index, Value *in,
-                              llvm::DenseMap<Value *, int> *cache,
-                              bool is_argument) {
+                              llvm::DenseMap<Value *, int> *cache) {
     auto cached = cache->insert({in, 0});
     if (!cached.second) {
       operand_states_.insert({{op, index}, cached.first->second});
       return;
     }
     cached.first->second = InitializeState(op, index, in, /*as_result=*/false);
-    if (is_argument) {
-      auto *arg = llvm::cast<BlockArgument>(in);
-      arg_states_[arg] = cached.first->second;
-      args_.push_back(arg);
-    }
   }
 
   // Sets the state of the index-th result of the op. If this result is cached,
@@ -279,7 +292,8 @@ class QuantizationDriver {
   // rest are weights.
   llvm::DenseSet<Operation *> weights_;
 
-  // The weights require narrow_range quantization. If the value of this map is
+  // The weights require narrow_range quantization. This map collects all the
+  // weight operands defined by the op quant spec. If the value of the entry is
   // positive, per-channel quantization is required.
   llvm::DenseMap<Operation *, int> optimized_weights_;
 
@@ -631,6 +645,19 @@ void QuantizationDriver::PreprocessConstantOps() {
 void QuantizationDriver::SetupAllStates() {
   llvm::DenseMap<Value *, int> value_to_state;
 
+  for (auto *arg : fn_.getArguments()) {
+    args_.push_back(arg);
+    Value *value = arg;
+    // If the argument is quantized, it should only has one user.
+    if (arg->hasOneUse()) {
+      auto user = value->use_begin().getUser();
+      if (auto q = llvm::dyn_cast<TFL::QuantizeOp>(user)) {
+        value = q.output();
+      }
+    }
+    InitializeArgState(arg, value, &value_to_state);
+  }
+
   fn_.walk([&](Operation *op) {
     if (op->isKnownTerminator() ||
         op->hasTrait<OpTrait::quant::NoQuantizableResult>())
@@ -639,16 +666,14 @@ void QuantizationDriver::SetupAllStates() {
 
     for (int i = 0, e = op->getNumOperands(); i != e; ++i) {
       auto *operand = op->getOperand(i);
-      bool is_argument = true;
       if (auto *inst = operand->getDefiningOp()) {
         // If the operand comes from a tfl.dequantize op, we use the quantized
         // input of this tfl.dequantize op to set the state.
         if (auto dq = llvm::dyn_cast<TFL::DequantizeOp>(inst)) {
           operand = dq.input();
         }
-        is_argument = false;
       }
-      InitializeOperandState(op, i, operand, &value_to_state, is_argument);
+      InitializeOperandState(op, i, operand, &value_to_state);
     }
 
     for (int res = 0, e = op->getNumResults(); res != e; ++res) {
