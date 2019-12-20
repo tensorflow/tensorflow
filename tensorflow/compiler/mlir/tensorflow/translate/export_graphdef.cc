@@ -405,7 +405,15 @@ Status Exporter::AddArgumentNode(BlockArgument* arg, unsigned index,
   auto* inst = builder.createOperation(state);
   // If it is one of the specified input names, then the new
   // instruction should have the same name.
-  op_to_name_[inst].assign(op_to_name_[input]);
+  auto& mapped_name = op_to_name_[inst];
+  const auto& input_mapped_name = op_to_name_[input];
+  DCHECK(mapped_name.empty())
+      << "AddArgumentNode() attempted to change the op_to_name_ mapping for "
+      << inst << " from " << mapped_name << " to " << input_mapped_name << ".";
+  DCHECK(!input_mapped_name.empty())
+      << "AddArgumentNode() attempted to set the op_to_name_ mapping for "
+      << inst << " to an empty string.";
+  mapped_name.assign(input_mapped_name);
   for (int index : llvm::seq<int>(0, input->getNumResults())) {
     input->getResult(index)->replaceAllUsesWith(inst->getResult(index));
   }
@@ -511,9 +519,15 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
       // Only assign defining op of operands of the return the output names if
       // the main graph did not have its _Retval nodes lifted into the functions
       // returns.
-      if (!graph_as_function)
-        exporter.op_to_name_[it.value()->getDefiningOp()] =
-            output_names[it.index()];
+      if (!graph_as_function) {
+        auto defining_op = it.value()->getDefiningOp();
+        auto& mapped_name = exporter.op_to_name_[defining_op];
+        DCHECK(mapped_name.empty())
+            << "Convert() attempted to change the op_to_name_ mapping for "
+            << defining_op << " from " << mapped_name << " to output "
+            << it.index() << " name " << output_names[it.index()].str() << ".";
+        mapped_name = output_names[it.index()];
+      }
     }
   }
   if (!input_names.empty()) {
@@ -522,9 +536,15 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
       exporter.name_to_count_[input_names[it.index()].str()] = 1;
       // Only assign user of argument the input name if the main graph did not
       // have its _Arg nodes lifted into the functions arguments.
-      if (!graph_as_function)
-        exporter.op_to_name_[*it.value()->user_begin()] =
-            input_names[it.index()];
+      if (!graph_as_function) {
+        auto first_user = *it.value()->user_begin();
+        auto& mapped_name = exporter.op_to_name_[first_user];
+        DCHECK(mapped_name.empty())
+            << "Convert() attempted to change the op_to_name_ mapping for "
+            << first_user << " from " << mapped_name << " to input "
+            << it.index() << " name " << input_names[it.index()].str() << ".";
+        mapped_name = input_names[it.index()];
+      }
     }
   }
 
