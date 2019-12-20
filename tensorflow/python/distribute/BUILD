@@ -1258,7 +1258,7 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
     ],
-    xla_enable_strict_auto_jit = False,
+    xla_enable_strict_auto_jit = True,
     deps = [
         ":collective_all_reduce_strategy",
         ":combinations",
