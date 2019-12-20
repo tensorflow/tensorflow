@@ -416,3 +416,27 @@ sort = gen_xla_ops.xla_sort
 key_value_sort = gen_xla_ops.xla_key_value_sort
 while_loop = gen_xla_ops.xla_while
 dequantize = gen_xla_ops.xla_dequantize
+
+
+def gather(operand, start_indices, dimension_numbers, slice_sizes,
+           indices_are_sorted=False, name=None):
+  return gen_xla_ops.xla_gather(
+      operand,
+      start_indices,
+      slice_sizes=slice_sizes,
+      dimension_numbers=dimension_numbers.SerializeToString(),
+      indices_are_sorted=indices_are_sorted,
+      name=name)
+
+
+def scatter(operand, scatter_indices, updates, update_computation,
+            dimension_numbers, indices_are_sorted=False, name=None):
+  return gen_xla_ops.xla_scatter(
+      operand,
+      scatter_indices,
+      updates,
+      update_computation=update_computation,
+      dimension_numbers=dimension_numbers.SerializeToString(),
+      indices_are_sorted=indices_are_sorted,
+      name=name)
+
