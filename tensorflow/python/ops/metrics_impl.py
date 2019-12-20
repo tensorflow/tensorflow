@@ -2889,7 +2889,8 @@ def sensitivity_at_specificity(labels,
       tf_index = math_ops.cast(tf_index, dtypes.int32)
 
       # Now, we have the implicit threshold, so compute the sensitivity:
-      return math_ops.divide(tp[tf_index], tp[tf_index] + fn[tf_index] + kepsilon,
+      return math_ops.divide(tp[tf_index],
+                             tp[tf_index] + fn[tf_index] + kepsilon,
                              name)
 
     def sensitivity_across_replicas(_, values):
@@ -3731,7 +3732,8 @@ def specificity_at_sensitivity(labels,
       tf_index = math_ops.cast(tf_index, dtypes.int32)
 
       # Now, we have the implicit threshold, so compute the specificity:
-      return math_ops.divide(tn[tf_index], tn[tf_index] + fp[tf_index] + kepsilon,
+      return math_ops.divide(tn[tf_index],
+                             tn[tf_index] + fp[tf_index] + kepsilon,
                              name)
 
     def specificity_across_replicas(_, values):
