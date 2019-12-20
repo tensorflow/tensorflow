@@ -54,7 +54,7 @@ public:
   explicit operator bool() const { return failed(*this); }
 };
 /// This class implements `Optional` functionality for ParseResult. We don't
-/// directly use llvm::Optional here, because it provides an implicit conversion
+/// directly use Optional here, because it provides an implicit conversion
 /// to 'bool' which we want to avoid. This class is used to implement tri-state
 /// 'parseOptional' functions that may have a failure mode when parsing that
 /// shouldn't be attributed to "not present".
@@ -85,9 +85,8 @@ namespace impl {
 /// region's only block if it does not have a terminator already. If the region
 /// is empty, insert a new block first. `buildTerminatorOp` should return the
 /// terminator operation to insert.
-void ensureRegionTerminator(
-    Region &region, Location loc,
-    llvm::function_ref<Operation *()> buildTerminatorOp);
+void ensureRegionTerminator(Region &region, Location loc,
+                            function_ref<Operation *()> buildTerminatorOp);
 /// Templated version that fills the generates the provided operation type.
 template <typename OpTy>
 void ensureRegionTerminator(Region &region, Builder &builder, Location loc) {
@@ -258,8 +257,8 @@ inline bool operator!=(OpState lhs, OpState rhs) {
 }
 
 /// This class represents a single result from folding an operation.
-class OpFoldResult : public llvm::PointerUnion<Attribute, Value *> {
-  using llvm::PointerUnion<Attribute, Value *>::PointerUnion;
+class OpFoldResult : public PointerUnion<Attribute, Value *> {
+  using PointerUnion<Attribute, Value *>::PointerUnion;
 };
 
 /// This template defines the foldHook as used by AbstractOperation.
@@ -386,6 +385,8 @@ LogicalResult verifyResultsAreBoolLike(Operation *op);
 LogicalResult verifyResultsAreFloatLike(Operation *op);
 LogicalResult verifyResultsAreIntegerLike(Operation *op);
 LogicalResult verifyIsTerminator(Operation *op);
+LogicalResult verifyOperandSizeAttr(Operation *op, StringRef sizeAttrName);
+LogicalResult verifyResultSizeAttr(Operation *op, StringRef sizeAttrName);
 } // namespace impl
 
 /// Helper class for implementing traits.  Clients are not expected to interact
@@ -907,6 +908,43 @@ template <typename ParentOpType> struct HasParent {
   };
 };
 
+/// A trait for operations that have an attribute specifying operand segments.
+///
+/// Certain operations can have multiple variadic operands and their size
+/// relationship is not always known statically. For such cases, we need
+/// a per-op-instance specification to divide the operands into logical groups
+/// or segments. This can be modeled by attributes. The attribute will be named
+/// as `operand_segment_sizes`.
+///
+/// This trait verifies the attribute for specifying operand segments has
+/// the correct type (1D vector) and values (non-negative), etc.
+template <typename ConcreteType>
+class AttrSizedOperandSegments
+    : public TraitBase<ConcreteType, AttrSizedOperandSegments> {
+public:
+  static StringRef getOperandSegmentSizeAttr() {
+    return "operand_segment_sizes";
+  }
+
+  static LogicalResult verifyTrait(Operation *op) {
+    return ::mlir::OpTrait::impl::verifyOperandSizeAttr(
+        op, getOperandSegmentSizeAttr());
+  }
+};
+
+/// Similar to AttrSizedOperandSegments but used for results.
+template <typename ConcreteType>
+class AttrSizedResultSegments
+    : public TraitBase<ConcreteType, AttrSizedResultSegments> {
+public:
+  static StringRef getResultSegmentSizeAttr() { return "result_segment_sizes"; }
+
+  static LogicalResult verifyTrait(Operation *op) {
+    return ::mlir::OpTrait::impl::verifyResultSizeAttr(
+        op, getResultSegmentSizeAttr());
+  }
+};
+
 } // end namespace OpTrait
 
 //===----------------------------------------------------------------------===//
@@ -1103,7 +1141,7 @@ private:
 ///    };
 ///    template <typename OpT> class Model {
 ///      unsigned getNumInputs(Operation *op) final {
-///        return llvm::cast<OpT>(op).getNumInputs();
+///        return cast<OpT>(op).getNumInputs();
 ///      }
 ///    };
 ///  };

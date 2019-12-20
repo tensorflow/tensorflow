@@ -32,20 +32,20 @@ tf_py_test(
     name = "compat_test",
     size = "small",
     srcs = ["compat_test.py"],
-    additional_deps = [
+    tags = ["nofwdcompat"],
+    deps = [
         ":compat",
         "//tensorflow/python:client_testlib",
     ],
-    tags = ["nofwdcompat"],
 )
 
 tf_py_test(
     name = "disable_v2_behavior_test",
     size = "small",
     srcs = ["disable_v2_behavior_test.py"],
-    additional_deps = [
+    deps = [
         ":v2_compat",
-        "//tensorflow/python:framework",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
     ],
 )

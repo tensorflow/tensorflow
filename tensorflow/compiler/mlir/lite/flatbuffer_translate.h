@@ -24,8 +24,9 @@ limitations under the License.
 namespace tflite {
 
 // Translates the given MLIR `module` into a FlatBuffer and stores the
-// serialized flatbuffer into the string. This uses OpLocNameMapper to convert
-// location of the op to name in flatbuffer.
+// serialized flatbuffer into the string. This uses OpOrArgLocNameMapper to
+// convert location of the op to name in flatbuffer. Returns true if translation
+// fails, otherwise returns false.
 bool MlirToFlatBufferTranslateFunction(mlir::ModuleOp module,
                                        std::string* serialized_flatbuffer,
                                        bool emit_builtin_tflite_ops,

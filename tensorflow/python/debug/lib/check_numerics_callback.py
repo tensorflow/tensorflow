@@ -246,7 +246,7 @@ class CheckNumericsCallback(object):
       for slot, output in enumerate(outputs):
         if (output.dtype.is_floating and
             (op_type_bytes, slot) not in IGNORE_OP_OUTPUTS):
-          checked_output = array_ops.check_numerics(
+          checked_output = array_ops.check_numerics_v2(
               # TF v2 has automatic control dependencies added to stateful async
               # ops, which allows us to run check_numerics asynchronously.
               # In the above case we use debug_summary to reduce all output
@@ -268,7 +268,7 @@ class CheckNumericsCallback(object):
           instrumented_outputs.append(output)
       return instrumented_outputs
     else:
-      if op_type_bytes == b"CheckNumerics":
+      if op_type_bytes == b"CheckNumericsV2":
         # TODO(b/140334369): Remove this special casing logic once op_callback.
         # automatically prevents infinite recursion in eager mode.
         return None
@@ -276,7 +276,7 @@ class CheckNumericsCallback(object):
       for slot, output in enumerate(outputs):
         if (output.dtype.is_floating and
             (op_type_bytes, slot) not in IGNORE_OP_OUTPUTS):
-          array_ops.check_numerics(
+          array_ops.check_numerics_v2(
               output,
               get_check_numerics_error_message(
                   slot, len(outputs), op_type, output, inputs,

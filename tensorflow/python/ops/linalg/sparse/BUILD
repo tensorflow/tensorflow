@@ -13,7 +13,7 @@ tf_gen_op_wrapper_py(
     visibility = [
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
-        "//tensorflow/python/kernel_tests:__pkg__",
+        "//tensorflow/python/kernel_tests/linalg/sparse:__pkg__",
     ],
     deps = ["//tensorflow/core:sparse_csr_matrix_ops_op_lib"],
 )

@@ -170,7 +170,10 @@ port::StatusOr<std::vector<uint8>> CompileGpuAsm(int device_ordinal,
       break;
     }
   }
-  TF_RETURN_IF_ERROR(env->FileExists(ptxas_path));
+  if (!env->FileExists(ptxas_path).ok()) {
+    // Rely on subprocess invocation to find the correct binary.
+    ptxas_path = "ptxas";
+  }
   VLOG(2) << "Using ptxas at " << ptxas_path;
 
   WarnIfBadPtxasVersion(ptxas_path);

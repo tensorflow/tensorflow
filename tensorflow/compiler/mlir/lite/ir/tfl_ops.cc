@@ -720,7 +720,8 @@ static LogicalResult Verify(PackOp op) {
   for (Value *operand : op.getOperands()) {
     auto other_type = operand->getType().cast<ShapedType>();
     if (input_type != other_type)
-      return op.emitOpError("operands should be of the same type");
+      return op.emitOpError("operands should be of the same type. got ")
+             << input_type << ", " << other_type;
   }
 
   return success();
@@ -857,8 +858,8 @@ void ReshapeOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 //
 //           =>   Value [5, 8, 9]
 // TODO(b/133341698): Move to tablegen when variadic is supported.
-struct RemoveRedunantUnpackPack : public RewritePattern {
-  explicit RemoveRedunantUnpackPack(MLIRContext *context)
+struct RemoveRedundantUnpackPack : public RewritePattern {
+  explicit RemoveRedundantUnpackPack(MLIRContext *context)
       : RewritePattern(PackOp::getOperationName(), 2, context) {}
 
   PatternMatchResult matchAndRewrite(Operation *op,
@@ -896,7 +897,7 @@ struct RemoveRedunantUnpackPack : public RewritePattern {
 
 void PackOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                          MLIRContext *context) {
-  results.insert<RemoveRedunantUnpackPack>(context);
+  results.insert<RemoveRedundantUnpackPack>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1041,7 +1042,7 @@ struct DropFakeQuant : public RewritePattern {
   }
 
   void rewrite(Operation *op, PatternRewriter &rewriter) const override {
-    // Replace the matched FakeQuantOp by its primiary operand.
+    // Replace the matched FakeQuantOp by its primary operand.
     rewriter.replaceOp(op, op->getOperand(0));
   }
 };
@@ -1435,6 +1436,56 @@ OpFoldResult ConstOp::fold(ArrayRef<Attribute> operands) {
 
   // Return the held attribute value.
   return value();
+}
+
+//===----------------------------------------------------------------------===//
+// SelectV2Op
+//===----------------------------------------------------------------------===//
+
+static void BuildSelectV2Op(Builder *builder, OperationState &result,
+                            Value *cond, Value *x, Value *y) {
+  auto operand_type =
+      OpTrait::util::getBroadcastedType(x->getType(), y->getType());
+
+  if (!operand_type)
+    emitError(result.location) << "non-broadcastable operands: " << x->getType()
+                               << " and " << y->getType();
+
+  bool has_static_cond_shape = false;
+  bool has_static_operand_shape = false;
+  ArrayRef<int64_t> cond_shape;
+  ArrayRef<int64_t> operand_shape;
+
+  if (auto shaped_type = cond->getType().dyn_cast<ShapedType>()) {
+    if (shaped_type.hasStaticShape()) {
+      has_static_cond_shape = true;
+      cond_shape = shaped_type.getShape();
+    }
+  }
+  if (auto shaped_type = operand_type.dyn_cast<ShapedType>()) {
+    if (shaped_type.hasStaticShape()) {
+      has_static_operand_shape = true;
+      operand_shape = shaped_type.getShape();
+    }
+  }
+
+  SmallVector<int64_t, 4> broadcastedShape;
+  if (has_static_cond_shape && has_static_operand_shape &&
+      !OpTrait::util::getBroadcastedShape(cond_shape, operand_shape,
+                                          broadcastedShape)) {
+    emitError(result.location) << "non-broadcastable operands: " << operand_type
+                               << " and " << cond->getType();
+  }
+
+  result.addOperands({cond, x, y});
+
+  auto elementType = x->getType().dyn_cast<ShapedType>().getElementType();
+  if (has_static_cond_shape && has_static_operand_shape) {
+    result.types.push_back(
+        RankedTensorType::get(broadcastedShape, elementType));
+  } else {
+    result.types.push_back(UnrankedTensorType::get(elementType));
+  }
 }
 
 //===----------------------------------------------------------------------===//

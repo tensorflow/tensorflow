@@ -19,6 +19,7 @@
 #define TEST_OPS
 
 include "mlir/IR/OpBase.td"
+include "mlir/IR/OpAsmInterface.td"
 include "mlir/Analysis/CallInterfaces.td"
 include "mlir/Analysis/InferTypeOpInterface.td"
 
@@ -88,6 +89,12 @@ def MultiTensorRankOf : TEST_Op<"multi_tensor_rank_of"> {
 def SymbolScopeOp : TEST_Op<"symbol_scope",
     [SymbolTable, SingleBlockImplicitTerminator<"TerminatorOp">]> {
   let summary =  "operation which defines a new symbol table";
+  let regions = (region SizedRegion<1>:$region);
+}
+
+def SymbolTableRegionOp : TEST_Op<"symbol_table_region", [SymbolTable]> {
+  let summary =  "operation which defines a new symbol table without a "
+                 "restriction on a terminator";
   let regions = (region SizedRegion<1>:$region);
 }
 
@@ -396,8 +403,7 @@ def I32ElementsAttrOp : TEST_Op<"i32ElementsAttr"> {
 }
 
 def OpWithInferTypeInterfaceOp : TEST_Op<"op_with_infer_type_if", [
-    DeclareOpInterfaceMethods<InferTypeOpInterface>,
-    InferTypeOpInterfaceDefault]> {
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let arguments = (ins AnyTensor, AnyTensor);
   let results = (outs AnyTensor);
 }
@@ -407,6 +413,34 @@ def IsNotScalar : Constraint<CPred<"$0.getType().getRank() != 0">>;
 def UpdateAttr : Pat<(I32ElementsAttrOp $attr),
                      (I32ElementsAttrOp ConstantAttr<I32ElementsAttr, "0">),
                      [(IsNotScalar $attr)]>;
+
+def TestBranchOp : TEST_Op<"br", [Terminator]> {
+  let arguments = (ins Variadic<AnyType>:$operands);
+}
+
+def AttrSizedOperandOp : TEST_Op<"attr_sized_operands",
+                                 [AttrSizedOperandSegments]> {
+  let arguments = (ins
+    Variadic<I32>:$a,
+    Variadic<I32>:$b,
+    I32:$c,
+    Variadic<I32>:$d,
+    I32ElementsAttr:$operand_segment_sizes
+  );
+}
+
+def AttrSizedResultOp : TEST_Op<"attr_sized_results",
+                                [AttrSizedResultSegments]> {
+  let arguments = (ins
+    I32ElementsAttr:$result_segment_sizes
+  );
+  let results = (outs
+    Variadic<I32>:$a,
+    Variadic<I32>:$b,
+    I32:$c,
+    Variadic<I32>:$d
+  );
+}
 
 //===----------------------------------------------------------------------===//
 // Test Patterns
@@ -450,6 +484,18 @@ def OpJ : TEST_Op<"op_j">, Arguments<(ins)>, Results<(outs I32)>;
 def OpK : TEST_Op<"op_k">, Arguments<(ins)>, Results<(outs I32)>;
 def : Pat<(OpJ), (OpK)>;
 
+// Test `$_` for ignoring op argument match.
+def TestIgnoreArgMatchSrcOp : TEST_Op<"ignore_arg_match_src"> {
+  let arguments = (ins
+    AnyType:$a, AnyType:$b, AnyType:$c,
+    AnyAttr:$d, AnyAttr:$e, AnyAttr:$f);
+}
+def TestIgnoreArgMatchDstOp : TEST_Op<"ignore_arg_match_dst"> {
+  let arguments = (ins AnyType:$b, AnyAttr:$f);
+}
+def : Pat<(TestIgnoreArgMatchSrcOp $_, $b, I32, I64Attr:$_, $_, $f),
+          (TestIgnoreArgMatchDstOp $b, $f)>;
+
 def OpInterleavedOperandAttribute1 : TEST_Op<"interleaved_operand_attr1"> {
   let arguments = (ins
     I32:$input1,
@@ -467,6 +513,30 @@ def OpInterleavedOperandAttribute2 : TEST_Op<"interleaved_operand_attr2"> {
     I64Attr:$attr2
   );
 }
+
+def ManyArgsOp : TEST_Op<"many_arguments"> {
+  let arguments = (ins
+    I32:$input1, I32:$input2, I32:$input3, I32:$input4, I32:$input5,
+    I32:$input6, I32:$input7, I32:$input8, I32:$input9,
+    I64Attr:$attr1, I64Attr:$attr2, I64Attr:$attr3, I64Attr:$attr4,
+    I64Attr:$attr5, I64Attr:$attr6, I64Attr:$attr7, I64Attr:$attr8,
+    I64Attr:$attr9
+  );
+}
+
+// Test that DRR does not blow up when seeing lots of arguments.
+def : Pat<(ManyArgsOp
+            $input1, $input2, $input3, $input4, $input5,
+            $input6, $input7, $input8, $input9,
+            ConstantAttr<I64Attr, "42">,
+            $attr2, $attr3, $attr4, $attr5, $attr6,
+            $attr7, $attr8, $attr9),
+          (ManyArgsOp
+            $input1, $input2, $input3, $input4, $input5,
+            $input6, $input7, $input8, $input9,
+            ConstantAttr<I64Attr, "24">,
+            $attr2, $attr3, $attr4, $attr5, $attr6,
+            $attr7, $attr8, $attr9)>;
 
 // Test that we can capture and reference interleaved operands and attributes.
 def : Pat<(OpInterleavedOperandAttribute1 $input1, $attr1, $input2, $attr2),
@@ -665,7 +735,7 @@ def MultiResultOpKind5: I64EnumAttrCase<"kind5", 5>;
 def MultiResultOpKind6: I64EnumAttrCase<"kind6", 6>;
 
 def MultiResultOpEnum: I64EnumAttr<
-  "Multi-result op kinds", "", [
+  "MultiResultOpEnum", "Multi-result op kinds", [
     MultiResultOpKind1, MultiResultOpKind2, MultiResultOpKind3,
     MultiResultOpKind4, MultiResultOpKind5, MultiResultOpKind6
   ]>;
@@ -845,10 +915,10 @@ def MixedVResultOp3 : TEST_Op<"mixed_variadic_out3",
       "Builder *builder, OperationState &state, IntegerAttr count",
       [{
         auto i32Type = builder->getIntegerType(32);
-        state.addTypes(i32Type); // $ouput1
+        state.addTypes(i32Type); // $output1
         SmallVector<Type, 4> types(count.getInt(), i32Type);
-        state.addTypes(types); // $ouput2
-        state.addTypes(types); // $ouput3
+        state.addTypes(types); // $output2
+        state.addTypes(types); // $output3
         state.addAttribute("count", count);
       }]>
   ];
@@ -969,6 +1039,18 @@ def PolyForOp : TEST_Op<"polyfor">
 
   let regions = (region SizedRegion<1>:$region);
   let parser = [{ return ::parse$cppClass(parser, result); }];
+}
+
+//===----------------------------------------------------------------------===//
+// Test OpAsmInterface.
+
+def AsmInterfaceOp : TEST_Op<"asm_interface_op"> {
+  let results = (outs AnyType:$first, Variadic<AnyType>:$middle_results,
+                      AnyType);
+}
+
+def AsmDialectInterfaceOp : TEST_Op<"asm_dialect_interface_op"> {
+  let results = (outs AnyType);
 }
 
 #endif // TEST_OPS

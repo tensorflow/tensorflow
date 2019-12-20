@@ -85,7 +85,7 @@ public:
         clampMax(clampMax), scaleDouble(scale), zeroPointDouble(zeroPoint),
         clampMinDouble(clampMin), clampMaxDouble(clampMax),
         storageBitWidth(storageBitWidth), isSigned(isSigned),
-        roundMode(llvm::APFloat::rmNearestTiesToAway) {}
+        roundMode(APFloat::rmNearestTiesToAway) {}
 
   UniformQuantizedValueConverter(double scale, double zeroPoint,
                                  APFloat clampMin, APFloat clampMax,
@@ -95,7 +95,7 @@ public:
         clampMinDouble(clampMin.convertToDouble()),
         clampMaxDouble(clampMax.convertToDouble()),
         storageBitWidth(storageBitWidth), isSigned(isSigned),
-        roundMode(llvm::APFloat::rmNearestTiesToAway) {}
+        roundMode(APFloat::rmNearestTiesToAway) {}
 
   virtual APInt quantizeFloatToInt(APFloat expressedValue) const {
     // This function is a performance critical code path in quantization
@@ -154,8 +154,7 @@ private:
     } else {
       signlessResult = static_cast<uint8_t>(clamped);
     }
-    llvm::APInt result(storageBitWidth, signlessResult);
-    return result;
+    return APInt(storageBitWidth, signlessResult);
   }
 
   // Keep both APFloat and double versions of the quantization parameters

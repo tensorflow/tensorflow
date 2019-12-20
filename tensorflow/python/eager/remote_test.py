@@ -22,6 +22,7 @@ import random
 
 from absl.testing import parameterized
 import numpy as np
+import six
 
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.eager import context
@@ -93,12 +94,8 @@ class SingleWorkerTest(test.TestCase, parameterized.TestCase):
         c = variable_b + 1
       return c, i + variable_b
 
-    with self.assertRaises(errors.UnimplementedError) as cm:
-      remote_output(constant_op.constant([1]))
-
-    self.assertIn(
-        'Currently, outputting tensors on remote devices is not supported.',
-        cm.exception.message)
+    self.assertAllEqual(
+        remote_output(constant_op.constant([1]))[0].numpy(), 2)
 
   def testMultiDeviceFunctionAmbiguousDevice(self):
 
@@ -152,7 +149,10 @@ class SingleWorkerTest(test.TestCase, parameterized.TestCase):
       with self.assertRaises(ValueError) as cm:
         matmul_func(x, y)
 
-    self.assertIn('Dimensions must be equal', cm.exception.message)
+    if six.PY2:
+      self.assertIn('Dimensions must be equal', cm.exception.message)
+    else:
+      self.assertIn('Dimensions must be equal', cm.exception.args[0])
 
 
 class MultiWorkersTest(test.TestCase, parameterized.TestCase):
@@ -171,6 +171,19 @@ class MultiWorkersTest(test.TestCase, parameterized.TestCase):
     ops.device(None).__enter__()
     # Reset the context to avoid polluting other test cases.
     context._reset_context()
+
+  @test_util.eager_lazy_remote_copy_on_and_off
+  def testReturnRemoteArgument(self):
+
+    @def_function.function
+    def local_func(i):
+      return i
+
+    with ops.device('/job:worker/replica:0/task:0'):
+      x = constant_op.constant([2, 1])
+
+    with ops.device('/job:worker/replica:0/task:1'):
+      self.assertAllEqual(local_func(x), [2, 1])
 
   @test_util.eager_lazy_remote_copy_on_and_off
   def testMultiDeviceFunctionOnLocalDevice(self):
@@ -355,6 +368,13 @@ class MultiJobsTest(test.TestCase, parameterized.TestCase):
   def testConnectToClusterWithLocalMaster(self):
     local_resolver = SimpleClusterResolver(ClusterSpec({}), master='local')
     remote.connect_to_cluster(local_resolver)
+
+  @test_util.eager_lazy_remote_copy_on_and_off
+  def testConnectToClusterInGraphModeWillFail(self):
+    ops.disable_eager_execution()
+    with self.assertRaises(ValueError):
+      remote.connect_to_cluster(self._cluster_resolver)
+    ops.enable_eager_execution()
 
 
 def _strip_prefix(s, prefix):

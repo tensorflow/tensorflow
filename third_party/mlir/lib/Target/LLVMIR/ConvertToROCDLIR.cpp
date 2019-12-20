@@ -31,14 +31,12 @@
 #include "mlir/Translation.h"
 
 #include "llvm/ADT/StringRef.h"
+#include "llvm/IR/IntrinsicsAMDGPU.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Support/ToolOutputFile.h"
 
-#include <iostream>
-
 using namespace mlir;
 
-namespace {
 // Create a call to llvm intrinsic
 static llvm::Value *createIntrinsicCall(llvm::IRBuilder<> &builder,
                                         llvm::Intrinsic::ID intrinsic,
@@ -59,17 +57,18 @@ static llvm::Value *createDeviceFunctionCall(llvm::IRBuilder<> &builder,
       llvm::Type::getInt64Ty(module->getContext()), // return type.
       llvm::Type::getInt32Ty(module->getContext()), // parameter type.
       false);                                       // no variadic arguments.
-  llvm::Function *fn = llvm::dyn_cast<llvm::Function>(
+  llvm::Function *fn = dyn_cast<llvm::Function>(
       module->getOrInsertFunction(fn_name, function_type).getCallee());
   llvm::Value *fn_op0 = llvm::ConstantInt::get(
       llvm::Type::getInt32Ty(module->getContext()), parameter);
-  return builder.CreateCall(fn, llvm::ArrayRef<llvm::Value *>(fn_op0));
+  return builder.CreateCall(fn, ArrayRef<llvm::Value *>(fn_op0));
 }
 
+namespace {
 class ModuleTranslation : public LLVM::ModuleTranslation {
 
 public:
-  explicit ModuleTranslation(ModuleOp module)
+  explicit ModuleTranslation(Operation *module)
       : LLVM::ModuleTranslation(module) {}
   ~ModuleTranslation() override {}
 
@@ -84,7 +83,7 @@ protected:
 };
 } // namespace
 
-std::unique_ptr<llvm::Module> mlir::translateModuleToROCDLIR(ModuleOp m) {
+std::unique_ptr<llvm::Module> mlir::translateModuleToROCDLIR(Operation *m) {
   ModuleTranslation translation(m);
 
   // lower MLIR (with RODL Dialect) to LLVM IR (with ROCDL intrinsics)
@@ -94,7 +93,8 @@ std::unique_ptr<llvm::Module> mlir::translateModuleToROCDLIR(ModuleOp m) {
   // foreach GPU kernel
   // 1. Insert AMDGPU_KERNEL calling convention.
   // 2. Insert amdgpu-flat-workgroup-size(1, 1024) attribute.
-  for (auto func : m.getOps<LLVM::LLVMFuncOp>()) {
+  for (auto func :
+       ModuleTranslation::getModuleBody(m).getOps<LLVM::LLVMFuncOp>()) {
     if (!func.getAttrOfType<UnitAttr>(gpu::GPUDialect::getKernelFuncAttrName()))
       continue;
 
@@ -109,12 +109,11 @@ std::unique_ptr<llvm::Module> mlir::translateModuleToROCDLIR(ModuleOp m) {
 }
 
 static TranslateFromMLIRRegistration
-    registration("mlir-to-rocdlir",
-                 [](ModuleOp module, llvm::raw_ostream &output) {
-                   auto llvmModule = mlir::translateModuleToROCDLIR(module);
-                   if (!llvmModule)
-                     return failure();
+    registration("mlir-to-rocdlir", [](ModuleOp module, raw_ostream &output) {
+      auto llvmModule = mlir::translateModuleToROCDLIR(module);
+      if (!llvmModule)
+        return failure();
 
-                   llvmModule->print(output, nullptr);
-                   return success();
-                 });
+      llvmModule->print(output, nullptr);
+      return success();
+    });

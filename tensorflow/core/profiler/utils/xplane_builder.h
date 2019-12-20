@@ -15,11 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_XPLANE_BUILDER_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_XPLANE_BUILDER_H_
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/core/profiler/utils/time_utils.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -89,9 +89,6 @@ class XEventBuilder {
   }
 
  private:
-  static constexpr int64 kPicosPerNano = 1000;
-  static int64 NanosToPicos(int64 ns) { return ns * kPicosPerNano; }
-
   XStat* AddStat(const XStatMetadata& metadata);
 
   const XLine* line_;

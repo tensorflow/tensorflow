@@ -61,15 +61,15 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #if GOOGLE_CUDA
 #include "third_party/gpus/cudnn/cudnn.h"
-#include "tensorflow/core/platform/cuda.h"
+#include "tensorflow/stream_executor/cuda/cuda_activation.h"
 #elif TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/rocm.h"
 #endif
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stream_executor.h"
-#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/scoped_annotation.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/env_var.h"
@@ -618,7 +618,7 @@ Status BaseGPUDevice::MaybeCopyTensorToGPU(
       done(s);
     };
 
-    tracing::ScopedAnnotation annotation("MakeTensorFromProto");
+    profiler::ScopedAnnotation annotation("MakeTensorFromProto");
     device_context_->CopyCPUTensorToDevice(
         &from, this, copy, std::move(wrapped_done),
         !timestamped_allocator_ /*sync_dst_compute*/);

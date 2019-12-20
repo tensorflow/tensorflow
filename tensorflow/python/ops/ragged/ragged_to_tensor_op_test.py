@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import random
+
 from absl.testing import parameterized
 import numpy as np
 

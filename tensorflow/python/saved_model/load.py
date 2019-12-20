@@ -50,10 +50,10 @@ from tensorflow.python.util.tf_export import tf_export
 
 
 def _unused_handle():
-  """Returns a placeholder as handle that is not supposed to be accessed."""
+  """Returns a placeholder as a handle that is not supposed to be accessed."""
   error_message = ("Trying to access a placeholder that is not supposed to be "
                    "executed. This means you are executing a graph generated "
-                   "from cross-replica context in an in-replica context.")
+                   "from the cross-replica context in an in-replica context.")
 
   assert_op = control_flow_ops.Assert(
       array_ops.placeholder_with_default(False, shape=()),
@@ -76,7 +76,7 @@ class _WrapperFunction(function.ConcreteFunction):
   not in-replica, calling the function should mean that it is constructing a
   graph that is not actually going to be used. A typical use case is when
   constructing a functional model. In this case, return a placeholder with a
-  control dependency to ensure that is is never accessed.
+  control dependency to ensure that is never accessed.
   """
 
   def __init__(self, concrete_function):
@@ -344,7 +344,7 @@ class Loader(object):
 
   def _recreate_base_user_object(self, proto):
     del proto
-    # Note: each user object has its own class. This allows to make each one
+    # Note: each user object has its own class. This allows making each one
     # individually callable by adding a `__call__` method to the classes of
     # the objects instances that have a `__call__` property.
 

@@ -21,15 +21,15 @@ load("//tensorflow:tensorflow.bzl", "if_nccl")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
 load(
-    "//tensorflow/core/platform:default/cuda_build_defs.bzl",
+    "//tensorflow/core/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
 load(
-    "//tensorflow/core/platform:default/build_config.bzl",
+    "//tensorflow/core/platform:build_config.bzl",
     "tf_kernel_tests_linkstatic",
 )
 load(
-    "//tensorflow/core/platform:default/build_config_root.bzl",
+    "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
 load(
@@ -65,7 +65,7 @@ package_group(
     name = "friends",
     packages = [
         "//learning/brain/contrib/...",
-        "//learning/brain/research/sparse_matrix/...",
+        "//learning/brain/research/...",
         "//learning/faster_training/...",
         "//tensorflow/...",
         "//tensorflow_text/...",
@@ -1097,8 +1097,8 @@ tf_cc_test(
     name = "fingerprint_op_test",
     size = "small",
     srcs = ["fingerprint_op_test.cc"],
-    kernels = [":fingerprint_op"],
     deps = [
+        ":fingerprint_op",
         ":ops_testutil",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -1158,7 +1158,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "matrix_set_diag_op",
     prefix = "matrix_set_diag_op",
-    deps = ARRAY_DEPS,
+    deps = ARRAY_DEPS + [":matrix_diag_op"],
 )
 
 tf_kernel_library(
@@ -1536,7 +1536,6 @@ tf_kernel_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:stream_executor",
         "//third_party/eigen3",
-        "@farmhash_archive//:farmhash",
     ],
 )
 
@@ -2615,6 +2614,7 @@ LOOKUP_DEPS = [
     ":bounds_check",
     ":initializable_lookup_table",
     ":lookup_util",
+    "@com_google_absl//absl/container:flat_hash_map",
     "//tensorflow/core:core_cpu",
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
@@ -5341,7 +5341,6 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//third_party/eigen3",
-        "@farmhash_archive//:farmhash",
     ],
     alwayslink = 1,
 )
@@ -6706,6 +6705,7 @@ filegroup(
             "decode_proto_op.cc",
             "encode_proto_op.cc",
             "rpc_op.cc",
+            "sobol_op.cc",
             # Excluded due to experimental status:
             "debug_ops.*",
             "mutex_ops.*",
@@ -8104,6 +8104,7 @@ tf_kernel_library(
         "//tensorflow/core/util/proto:proto_utils",
         "//third_party/eigen3",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -8206,5 +8207,88 @@ tf_cc_shared_object(
     deps = [
         ":kernel_platform_strings",
         "//tensorflow/core:all_kernels_impl",
+    ],
+)
+
+exports_files([
+    "cwise_op_abs.cc",
+    "cwise_op_add_1.cc",
+    "cwise_op_add_2.cc",
+    "cwise_op_atan2.cc",
+    "cwise_op_cos.cc",
+    "cwise_op_div.cc",
+    "cwise_op_equal_to_1.cc",
+    "cwise_op_equal_to_2.cc",
+    "cwise_op_exp.cc",
+    "cwise_op_floor.cc",
+    "cwise_op_floor_div.cc",
+    "cwise_op_floor_mod.cc",
+    "cwise_op_gpu_add.cu.cc",
+    "cwise_op_gpu_atan2.cu.cc",
+    "cwise_op_gpu_cos.cu.cc",
+    "cwise_op_gpu_div.cu.cc",
+    "cwise_op_gpu_equal_to.cu.cc",
+    "cwise_op_gpu_exp.cu.cc",
+    "cwise_op_gpu_floor.cu.cc",
+    "cwise_op_gpu_floor_div.cu.cc",
+    "cwise_op_gpu_greater.cu.cc",
+    "cwise_op_gpu_greater_equal.cu.cc",
+    "cwise_op_gpu_less.cu.cc",
+    "cwise_op_gpu_less_equal.cu.cc",
+    "cwise_op_gpu_logical_not.cu.cc",
+    "cwise_op_gpu_maximum.cu.cc",
+    "cwise_op_gpu_minimum.cu.cc",
+    "cwise_op_gpu_mul.cu.cc",
+    "cwise_op_gpu_neg.cu.cc",
+    "cwise_op_gpu_round.cu.cc",
+    "cwise_op_gpu_rsqrt.cu.cc",
+    "cwise_op_gpu_select.cu.cc",
+    "cwise_op_gpu_sigmoid.cu.cc",
+    "cwise_op_gpu_sin.cu.cc",
+    "cwise_op_gpu_sqrt.cu.cc",
+    "cwise_op_gpu_squared_difference.cu.cc",
+    "cwise_op_gpu_sub.cu.cc",
+    "cwise_op_gpu_tanh.cu.cc",
+    "cwise_op_greater.cc",
+    "cwise_op_greater_equal.cc",
+    "cwise_op_less.cc",
+    "cwise_op_less_equal.cc",
+    "cwise_op_logical_not.cc",
+    "cwise_op_maximum.cc",
+    "cwise_op_minimum.cc",
+    "cwise_op_mul_1.cc",
+    "cwise_op_mul_2.cc",
+    "cwise_op_neg.cc",
+    "cwise_op_not_equal_to_2.cc",
+    "cwise_op_round.cc",
+    "cwise_op_rsqrt.cc",
+    "cwise_op_select.cc",
+    "cwise_op_sigmoid.cc",
+    "cwise_op_sin.cc",
+    "cwise_op_sqrt.cc",
+    "cwise_op_square.cc",
+    "cwise_op_squared_difference.cc",
+    "cwise_op_sub.cc",
+    "cwise_op_tanh.cc",
+    "dequantize_op.cc",
+    "ops_testutil.h",
+    "quantize_and_dequantize_op.cc",
+    "quantize_op.cc",
+    "sparse_cross_op.cc",
+    "sparse_fill_empty_rows_op.cc",
+    "sparse_reshape_op.cc",
+    "unary_ops_composition.cc",
+])
+
+tf_kernel_library(
+    name = "sobol_op",
+    srcs = [
+        "sobol_op.cc",
+    ],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//third_party/eigen3",
+        "@sobol_data",
     ],
 )

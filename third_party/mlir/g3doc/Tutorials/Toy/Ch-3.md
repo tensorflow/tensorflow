@@ -1,9 +1,11 @@
 # Chapter 3: High-level Language-Specific Analysis and Transformation
 
+[TOC]
+
 Creating a dialect that closely represents the semantics of an input language
-enables analyses, transformations and optimizations in MLIR that require high
-level language information and are generally performed on the language AST. For
-example, `clang` has a fairly
+enables analyses, transformations and optimizations in MLIR that require
+high-level language information and are generally performed on the language AST.
+For example, `clang` has a fairly
 [heavy mechanism](https://clang.llvm.org/doxygen/classclang_1_1TreeTransform.html)
 for performing template instantiation in C++.
 
@@ -15,10 +17,10 @@ in LLVM. For this, we use MLIR's
 
 There are two methods that can be used to implement pattern-match
 transformations: 1. Imperative, C++ pattern-match and rewrite 2. Declarative,
-rule-based pattern-match and rewrite using
-[Table-driven Declarative Rewrite Rule](../../DeclarativeRewrites.md) (DRR).
-Note that the use of DRR requires that the operations be defined using ODS as
-described in [Chapter 2](../Ch-2.md).
+rule-based pattern-match and rewrite using table-driven
+[Declarative Rewrite Rules](../../DeclarativeRewrites.md) (DRR). Note that the
+use of DRR requires that the operations be defined using ODS, as described in
+[Chapter 2](Ch-2.md).
 
 # Optimize Transpose using C++ style pattern-match and rewrite
 
@@ -34,7 +36,7 @@ def transpose_transpose(x) {
 
 Which corresponds to the following IR:
 
-```MLIR(.mlir)
+```mlir
 func @transpose_transpose(%arg0: tensor<*xf64>) -> tensor<*xf64> {
   %0 = "toy.transpose"(%arg0) : (tensor<*xf64>) -> tensor<*xf64>
   %1 = "toy.transpose"(%0) : (tensor<*xf64>) -> tensor<*xf64>
@@ -43,9 +45,9 @@ func @transpose_transpose(%arg0: tensor<*xf64>) -> tensor<*xf64> {
 ```
 
 This is a good example of a transformation that is trivial to match on the Toy
-IR but that would be quite hard for LLVM to figure. For example today clang
-can't optimize away the temporary array and the computation with the naive
-transpose expressed with these loops:
+IR but that would be quite hard for LLVM to figure. For example, today Clang
+can't optimize away the temporary array, and the computation with the naive
+transpose is expressed with these loops:
 
 ```c++
 #define N 100
@@ -126,48 +128,48 @@ similar way to LLVM:
   pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
 ```
 
-Finally, we can try to run `toyc-ch3 test/transpose_transpose.toy -emit=mlir -opt`
-and observe our pattern in action:
+Finally, we can run `toyc-ch3 test/transpose_transpose.toy -emit=mlir -opt` and
+observe our pattern in action:
 
-```MLIR(.mlir)
+```mlir
 func @transpose_transpose(%arg0: tensor<*xf64>) -> tensor<*xf64> {
   %0 = "toy.transpose"(%arg0) : (tensor<*xf64>) -> tensor<*xf64>
   "toy.return"(%arg0) : (tensor<*xf64>) -> ()
 }
 ```
 
-As expected we now directly return the function argument, bypassing any
-transpose operation. However one of the transpose hasn't been eliminated. That
-is not ideal! What happened is that our pattern replaced the last transform with
-the function input and left behind the now dead transpose input. The
-Canonicalizer knows to cleanup dead operations, however MLIR conservatively
-assumes that operations may have side-effects. We can fix it by adding a new
-trait, `NoSideEffect`, to our `TransposeOp`:
+As expected, we now directly return the function argument, bypassing any
+transpose operation. However, one of the transposes still hasn't been
+eliminated. That is not ideal! What happened is that our pattern replaced the
+last transform with the function input and left behind the now dead transpose
+input. The Canonicalizer knows to clean up dead operations; however, MLIR
+conservatively assumes that operations may have side-effects. We can fix this by
+adding a new trait, `NoSideEffect`, to our `TransposeOp`:
 
-```TableGen(.td):
+```tablegen:
 def TransposeOp : Toy_Op<"transpose", [NoSideEffect]> {...}
 ```
 
-Let's retry now `toyc test/transpose_transpose.toy -emit=mlir -opt`:
+Let's retry now `toyc-ch3 test/transpose_transpose.toy -emit=mlir -opt`:
 
-```MLIR(.mlir)
+```mlir
 func @transpose_transpose(%arg0: tensor<*xf64>) -> tensor<*xf64> {
   "toy.return"(%arg0) : (tensor<*xf64>) -> ()
 }
 ```
 
-Perfect! No `transpose` operation is left, the code is optimal.
+Perfect! No `transpose` operation is left - the code is optimal.
 
 In the next section, we use DRR for pattern match optimizations associated with
 the Reshape op.
 
 # Optimize Reshapes using DRR
 
-Declarative, rule-based pattern-match and rewrite or DRR is an operation
+Declarative, rule-based pattern-match and rewrite (DRR) is an operation
 DAG-based declarative rewriter that provides a table-based syntax for
 pattern-match and rewrite rules:
 
-```TableGen(.td):
+```tablegen:
 class Pattern<
     dag sourcePattern, list<dag> resultPatterns,
     list<dag> additionalConstraints = [],
@@ -177,21 +179,21 @@ class Pattern<
 A redundant reshape optimization similar to SimplifyRedundantTranspose can be
 expressed more simply using DRR as follows:
 
-```TableGen(.td):
+```tablegen:
 // Reshape(Reshape(x)) = Reshape(x)
 def ReshapeReshapeOptPattern : Pat<(ReshapeOp(ReshapeOp $arg)),
                                    (ReshapeOp $arg)>;
 ```
 
 The automatically generated C++ code corresponding to each of the DRR patterns
-can be found under $BUILD_DIR/projects/mlir/examples/toy/Ch3/ToyCombine.inc.
+can be found under path/to/BUILD/projects/mlir/examples/toy/Ch3/ToyCombine.inc.
 
 DRR also provides a method for adding argument constraints when the
 transformation is conditional on some properties of the arguments and results.
 An example is a transformation that eliminates reshapes when they are redundant,
 i.e. when the input and output shapes are identical.
 
-```TableGen(.td):
+```tablegen:
 def TypesAreIdentical : Constraint<CPred<"$0->getType() == $1->getType()">>;
 def RedundantReshapeOptPattern : Pat<
   (ReshapeOp:$res $arg), (replaceWithValue $arg),
@@ -205,7 +207,7 @@ C++. An example of such an optimization is FoldConstantReshape, where we
 optimize Reshape of a constant value by reshaping the constant in place and
 eliminating the reshape operation.
 
-```TableGen(.td):
+```tablegen:
 def ReshapeConstant : NativeCodeCall<"$0.reshape(($1->getType()).cast<ShapedType>())">;
 def FoldConstantReshapeOptPattern : Pat<
   (ReshapeOp:$res (ConstantOp $arg)),
@@ -224,7 +226,7 @@ def main() {
 }
 ```
 
-```MLIR(.mlir)
+```mlir
 module {
   func @main() {
     %0 = "toy.constant"() {value = dense<[1.000000e+00, 2.000000e+00]> : tensor<2xf64>}
@@ -238,10 +240,10 @@ module {
 }
 ```
 
-We can try to run `toyc-ch3 test/trivialReshape.toy -emit=mlir -opt` and observe our
-pattern in action:
+We can try to run `toyc-ch3 test/trivialReshape.toy -emit=mlir -opt` and observe
+our pattern in action:
 
-```MLIR(.mlir)
+```mlir
 module {
   func @main() {
     %0 = "toy.constant"() {value = dense<[[1.000000e+00], [2.000000e+00]]> \
@@ -256,3 +258,7 @@ As expected, no reshape operations remain after canonicalization.
 
 Further details on the declarative rewrite method can be found at
 [Table-driven Declarative Rewrite Rule (DRR)](../../DeclarativeRewrites.md).
+
+In this chapter, we saw how to use certain core transformations through always
+available hooks. In the [next chapter](Ch-4.md), we will see how to use generic
+solutions that scale better through Interfaces.

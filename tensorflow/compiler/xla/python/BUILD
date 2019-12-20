@@ -1,5 +1,5 @@
-load("//tensorflow/core/platform:default/build_config.bzl", "pyx_library")
-load("//tensorflow/compiler/xla:xla.bzl", "xla_py_test_deps", "xla_python_default_plugins")
+load("//tensorflow/core/platform:build_config.bzl", "pyx_library")
+load("//tensorflow/compiler/xla:xla.bzl", "xla_py_test_deps")
 load("//tensorflow:tensorflow.bzl", "pybind_extension")
 load("//tensorflow:tensorflow.bzl", "py_test", "tf_cc_test")
 
@@ -63,7 +63,7 @@ cc_library(
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/core:lib",
         "//third_party/py/numpy:headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -140,9 +140,9 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "device_state",
-    srcs = ["device_state.cc"],
-    hdrs = ["device_state.h"],
+    name = "local_device_state",
+    srcs = ["local_device_state.cc"],
+    hdrs = ["local_device_state.h"],
     deps = [
         ":event_pool",
         ":semaphore",
@@ -161,7 +161,7 @@ cc_library(
     srcs = ["local_client.cc"],
     hdrs = ["local_client.h"],
     deps = [
-        ":device_state",
+        ":local_device_state",
         ":shared_device_buffer",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:literal",
@@ -170,7 +170,7 @@ cc_library(
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:executable_build_options",
         "//tensorflow/compiler/xla/client:local_client",
@@ -246,6 +246,11 @@ py_test(
     ] + xla_py_test_deps(),
 )
 
+config_setting(
+    name = "enable_gpu",
+    values = {"define": "xla_python_enable_gpu=true"},
+)
+
 pybind_extension(
     name = "xla_extension",
     srcs = [
@@ -278,7 +283,7 @@ pybind_extension(
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:executable_build_options",
         "//tensorflow/compiler/xla/client:local_client",
@@ -307,5 +312,8 @@ pybind_extension(
         # not require Tensorflow.
         "//tensorflow/core:lib_internal_impl",  # buildcleaner: keep
         "//tensorflow/stream_executor:device_memory_allocator",
-    ] + xla_python_default_plugins(),
+    ] + select({
+        ":enable_gpu": ["//tensorflow/compiler/xla/service:gpu_plugin"],
+        "//conditions:default": [],
+    }),
 )

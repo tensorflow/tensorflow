@@ -55,11 +55,13 @@ class LhloDialectEmitter : public DfsHloVisitorWithDefault,
   Status DefaultAction(HloInstruction* instr) override;
   Status HandleBroadcast(HloInstruction* broadcast) override;
   Status HandleCompare(HloInstruction* compare) override;
+  Status HandleConstant(HloInstruction* constant) override;
   Status HandleCustomCall(HloInstruction* custom_call) override;
   Status HandleFusion(HloInstruction* fusion) override;
   Status HandleIota(HloInstruction* iota) override;
   Status HandleParameter(HloInstruction* parameter) override;
   Status HandleReduce(HloInstruction* reduce) override;
+  Status HandleTuple(HloInstruction* tuple) override;
 
   Status FinishVisit(HloInstruction* root) override;
 

@@ -1220,6 +1220,27 @@ TEST_F(PlacerTest, TestMultipleColocationGroups) {
   EXPECT_COLOCATED(g, "in", "foo");
 }
 
+TEST_F(PlacerTest, TestChainColocation) {
+  Graph g(OpRegistry::Global());
+  {  // Scope for temporary variables used to construct g.
+    GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+    Node* input = ops::SourceOp("TestInput", b.opts().WithName("in"));
+    Node* colocated_with_input = ops::UnaryOp(
+        "TestRelu", input,
+        b.opts().WithName("colocated_1").WithAttr("_class", {"loc:@in"}));
+    Node* colocated_with_input_and_other = ops::UnaryOp(
+        "TestRelu", input,
+        b.opts().WithName("foo").WithAttr("_class", {"loc:@colocated_1"}));
+    CHECK(colocated_with_input);
+    CHECK(colocated_with_input_and_other);
+    TF_EXPECT_OK(BuildGraph(b, &g));
+  }
+
+  TF_EXPECT_OK(Place(&g));
+  EXPECT_COLOCATED(g, "in", "colocated_1");
+  EXPECT_COLOCATED(g, "in", "foo");
+}
+
 TEST_P(SoftPlacementPlacerTest, TestInvalidMultipleColocationGroups) {
   Graph g(OpRegistry::Global());
   {  // Scope for temporary variables used to construct g.

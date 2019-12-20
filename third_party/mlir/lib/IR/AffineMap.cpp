@@ -48,7 +48,7 @@ public:
   }
 
 private:
-  llvm::Optional<int64_t> constantFoldImpl(AffineExpr expr) {
+  Optional<int64_t> constantFoldImpl(AffineExpr expr) {
     switch (expr.getKind()) {
     case AffineExprKind::Add:
       return constantFoldBinExpr(
@@ -83,8 +83,8 @@ private:
   }
 
   // TODO: Change these to operate on APInts too.
-  llvm::Optional<int64_t> constantFoldBinExpr(AffineExpr expr,
-                                              int64_t (*op)(int64_t, int64_t)) {
+  Optional<int64_t> constantFoldBinExpr(AffineExpr expr,
+                                        int64_t (*op)(int64_t, int64_t)) {
     auto binOpExpr = expr.cast<AffineBinaryOpExpr>();
     if (auto lhs = constantFoldImpl(binOpExpr.getLHS()))
       if (auto rhs = constantFoldImpl(binOpExpr.getRHS()))
@@ -104,6 +104,20 @@ private:
 AffineMap AffineMap::getConstantMap(int64_t val, MLIRContext *context) {
   return get(/*dimCount=*/0, /*symbolCount=*/0,
              {getAffineConstantExpr(val, context)});
+}
+
+/// Returns an AffineMap representing a permutation.
+AffineMap AffineMap::getPermutationMap(ArrayRef<unsigned> permutation,
+                                       MLIRContext *context) {
+  assert(!permutation.empty() &&
+         "Cannot create permutation map from empty permutation vector");
+  SmallVector<AffineExpr, 4> affExprs;
+  for (auto index : permutation)
+    affExprs.push_back(getAffineDimExpr(index, context));
+  auto m = std::max_element(permutation.begin(), permutation.end());
+  auto permutationMap = AffineMap::get(*m + 1, 0, affExprs);
+  assert(permutationMap.isPermutation() && "Invalid permutation vector");
+  return permutationMap;
 }
 
 AffineMap AffineMap::getMultiDimIdentityMap(unsigned numDims,
@@ -310,7 +324,7 @@ AffineMap mlir::concatAffineMaps(ArrayRef<AffineMap> maps) {
   for (auto m : maps)
     numResults += m ? m.getNumResults() : 0;
   unsigned numDims = 0;
-  llvm::SmallVector<AffineExpr, 8> results;
+  SmallVector<AffineExpr, 8> results;
   results.reserve(numResults);
   for (auto m : maps) {
     if (!m)

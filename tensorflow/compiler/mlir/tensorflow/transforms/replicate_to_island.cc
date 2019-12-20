@@ -64,8 +64,8 @@ llvm::SmallVector<tf_executor::IslandOp, 8> ExpandReplicateIntoReplicas(
 
   // Replace replicate terminator with YieldOp.
   builder->setInsertionPoint(&terminator);
-  builder->create<tf_executor::YieldOp>(
-      terminator.getLoc(), llvm::to_vector<8>(terminator.getOperands()));
+  builder->create<tf_executor::YieldOp>(terminator.getLoc(),
+                                        terminator.getOperands());
   terminator.erase();
 
   builder->setInsertionPoint(island_op);
@@ -171,7 +171,7 @@ void CreateIslandsFromReplicate(const Dialect* tf_dialect,
   builder.setInsertionPoint(island_op);
   auto island_sink = builder.create<tf_executor::IslandOp>(
       island_op.getLoc(), llvm::to_vector<8>(island_op.getResultTypes()),
-      island_operands);
+      island_operands, llvm::ArrayRef<NamedAttribute>{});
   island_sink.body().push_back(new Block);
 
   // Move replicate island YieldOp over to new single island.

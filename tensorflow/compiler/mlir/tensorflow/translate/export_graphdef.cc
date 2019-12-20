@@ -77,27 +77,59 @@ using stream_executor::port::StatusOr;
 
 namespace {
 
+bool IsLegalChar(char c, bool first_char) {
+  if (isalpha(c)) return true;
+  if (isdigit(c)) return true;
+  if (c == '.') return true;
+  if (c == '_') return true;
+
+  // First character of a node name can only be a letter, digit, dot or
+  // underscore.
+  if (first_char) return false;
+
+  if (c == '/') return true;
+  if (c == '-') return true;
+
+  return false;
+}
+
+// Convert characters in name that are considered illegal in TensorFlow Node
+// name to '.'.
+std::string LegalizeNodeName(llvm::StringRef name) {
+  assert(!name.empty() && "expected non-empty name");
+
+  std::string legalized_name;
+  for (auto it = name.begin(); it != name.end(); ++it) {
+    if (IsLegalChar(*it, it == name.begin())) {
+      legalized_name += *it;
+    } else {
+      legalized_name += '.';
+    }
+  }
+
+  return legalized_name;
+}
+
 // TODO(jpienaar): unify and move from here to be able to reuse with tflite
 std::string GetName(Operation* inst) {
   // TODO(prakalps): b/137006652 prevents us from using location info (derived
   // from experimental_debug_info) to generate node names. Until it is fixed,
   // first check for "name" attribute to get node name.
-  if (auto attr = inst->getAttrOfType<mlir::StringAttr>("name")) {
-    return attr.getValue();
-  }
-  if (auto name_loc = inst->getLoc().dyn_cast<mlir::NameLoc>())
-    return name_loc.getName().str();
 
-  if (auto call_loc = inst->getLoc().dyn_cast<mlir::CallSiteLoc>()) {
+  // Default name is Operation type.
+  auto name = inst->getName().getStringRef();
+  if (auto attr = inst->getAttrOfType<mlir::StringAttr>("name")) {
+    name = attr.getValue();
+  } else if (auto name_loc = inst->getLoc().dyn_cast<mlir::NameLoc>()) {
+    name = name_loc.getName().strref();
+  } else if (auto call_loc = inst->getLoc().dyn_cast<mlir::CallSiteLoc>()) {
     // Return name if CallSiteLoc's callee has a NameLoc (as should be the case
     // if imported with DebugInfo), else use the fallback naming scheme below.
     if (auto name_loc = call_loc.getCallee().dyn_cast<mlir::NameLoc>())
-      return name_loc.getName().str();
+      name = name_loc.getName().strref();
   }
 
-  // If the location is none of the expected types, then simply use name
-  // generated using the op type.
-  return inst->getName().getStringRef().str();
+  return LegalizeNodeName(name);
 }
 
 // Stateful helper class to export a function into a Graph.
@@ -165,7 +197,7 @@ class Exporter {
 
   // Each NextIteration node in the original graph is converted to a pair of
   // source and sink operations in the MLIR, and we use the following two maps
-  // to pair and convet them back to a single NextIteration node. We choose to
+  // to pair and convert them back to a single NextIteration node. We choose to
   // the "name" attribute, which is from the unique node name, to find out the
   // pairs: When scanning the operations in the block, the source operations
   // are inserted to the name_to_inst_ first, and the other "sink" operation
@@ -224,6 +256,14 @@ StatusOr<std::unique_ptr<NodeDef>> Exporter::GetArgumentNode(
   if (auto device_attr =
           func.getArgAttrOfType<mlir::StringAttr>(index, "tf.device")) {
     *node_def->mutable_device() = device_attr.getValue().str();
+  }
+
+  if (auto resource_arg_unique_id_attr =
+          func.getArgAttrOfType<mlir::IntegerAttr>(
+              index, "tf.resource_arg_unique_id")) {
+    AttrValue unique_id_attr;
+    unique_id_attr.set_i(resource_arg_unique_id_attr.getInt());
+    (*node_def->mutable_attr())["_resource_arg_unique_id"] = unique_id_attr;
   }
 
   return node_def;
@@ -503,6 +543,18 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
         arg, index,
         graph_as_function && !input_names.empty() ? input_names[index] : ""));
   }
+
+  auto convert_called_function = [&](llvm::StringRef name) {
+    auto func =
+        function.getParentOfType<mlir::ModuleOp>().lookupSymbol<mlir::FuncOp>(
+            name);
+    if (func != nullptr) {
+      TF_RETURN_IF_ERROR(ConvertLibFunction(configs, tf_dialect, func, flib));
+      TF_RETURN_IF_ERROR(graph->AddFunctionLibrary(*flib));
+    }
+    return Status::OK();
+  };
+
   // Adds nodes for operations.
   for (Operation& inst : block) {
     auto op_name = GetTensorFlowOpName(inst.getName().getStringRef());
@@ -512,13 +564,12 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
       // definition library
       // TODO(prakalps): If two functions have cyclic dependence, this will
       // introduce an infinite loop.
-      auto func =
-          function.getParentOfType<mlir::ModuleOp>().lookupSymbol<mlir::FuncOp>(
-              op_name.ValueOrDie());
-      if (func != nullptr) {
-        TF_RETURN_IF_ERROR(ConvertLibFunction(configs, tf_dialect, func, flib));
-        TF_RETURN_IF_ERROR(graph->AddFunctionLibrary(*flib));
-      }
+      TF_RETURN_IF_ERROR(convert_called_function(op_name.ValueOrDie().str()));
+    }
+
+    if (IsLegacyCallInstruction(&inst)) {
+      TF_RETURN_IF_ERROR(convert_called_function(
+          inst.getAttrOfType<mlir::SymbolRefAttr>("f").getLeafReference()));
     }
 
     for (auto type : inst.getResultTypes()) {
@@ -595,6 +646,14 @@ Status Exporter::ConvertLibFunction(const GraphExportConfig& configs,
   auto stateful_string = mlir::TF::TensorFlowDialect::GetStatefulAttrName();
   if (auto attr = function.getAttrOfType<mlir::UnitAttr>(stateful_string)) {
     func_def.mutable_signature()->set_is_stateful(true);
+  }
+  for (int64 i = 0; i < function.getNumArguments(); ++i) {
+    if (auto resource_arg_unique_id_attr =
+            function.getArgAttrOfType<mlir::IntegerAttr>(
+                i, "tf.resource_arg_unique_id")) {
+      (*func_def.mutable_resource_arg_unique_id())[i] =
+          resource_arg_unique_id_attr.getInt();
+    }
   }
 
   // Ignore the gradient and is_stateful attribute on the function as they have

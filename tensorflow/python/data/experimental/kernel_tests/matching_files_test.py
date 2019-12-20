@@ -20,6 +20,7 @@ from __future__ import print_function
 import os
 import shutil
 import tempfile
+
 from absl.testing import parameterized
 
 from tensorflow.python.data.experimental.ops import matching_files
@@ -34,10 +35,12 @@ class MatchingFilesDatasetTest(test_base.DatasetTestBase,
                                parameterized.TestCase):
 
   def setUp(self):
+    super(MatchingFilesDatasetTest, self).setUp()
     self.tmp_dir = tempfile.mkdtemp()
 
   def tearDown(self):
     shutil.rmtree(self.tmp_dir, ignore_errors=True)
+    super(MatchingFilesDatasetTest, self).tearDown()
 
   def _touchTempFiles(self, filenames):
     for filename in filenames:

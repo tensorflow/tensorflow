@@ -119,6 +119,7 @@ gentbl(
     td_srcs = [
         ":tensorflow_lite_ops_td_files",
         "@local_config_mlir//:StdOpsTdFiles",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
     ],
 )
 
@@ -276,13 +277,19 @@ cc_library(
     ],
     deps = [
         ":common",
+        ":lstm_utils",
         ":stateful_ops_utils",
         ":tensorflow_lite",
         ":validators",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:mangling_util",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:statusor",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:logging",
         "@com_google_absl//absl/memory",
         "@llvm//:support",
         "@local_config_mlir//:Analysis",
@@ -656,5 +663,15 @@ cc_library(
         "@local_config_mlir//:QuantOpsDialectRegistration",
         "@local_config_mlir//:Support",
         "@local_config_mlir//:Transforms",
+    ],
+)
+
+exports_files(
+    ["transforms/passes.h"],
+    visibility = [
+        "//configs/devtools/hawkeye/tflite:__subpackages__",
+        "//learning/brain/models/app_benchmarks:__subpackages__",
+        "//tensorflow/compiler/mlir/lite:friends",
+        "//tensorflow/lite/experimental/mlir:__subpackages__",
     ],
 )

@@ -38,14 +38,14 @@ ModuleOp ModuleOp::create(Location loc, Optional<StringRef> name) {
   OperationState state(loc, "module");
   Builder builder(loc->getContext());
   ModuleOp::build(&builder, state, name);
-  return llvm::cast<ModuleOp>(Operation::create(state));
+  return cast<ModuleOp>(Operation::create(state));
 }
 
 ParseResult ModuleOp::parse(OpAsmParser &parser, OperationState &result) {
   // If the name is present, parse it.
   StringAttr nameAttr;
-  (void)parser.parseSymbolName(nameAttr, mlir::SymbolTable::getSymbolAttrName(),
-                               result.attributes);
+  (void)parser.parseOptionalSymbolName(
+      nameAttr, mlir::SymbolTable::getSymbolAttrName(), result.attributes);
 
   // If module attributes are present, parse them.
   if (parser.parseOptionalAttrDictWithKeyword(result.attributes))

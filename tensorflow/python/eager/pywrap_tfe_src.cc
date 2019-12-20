@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/python/eager/pywrap_tensor.h"
 #include "tensorflow/python/eager/pywrap_tfe.h"
 #include "tensorflow/python/lib/core/safe_ptr.h"
@@ -67,13 +68,14 @@ TFE_Op* ReleaseThreadLocalOp() {
 }
 
 TFE_Op* GetOp(TFE_Context* ctx, const char* op_or_function_name,
-              TF_Status* status) {
+              const char* raw_device_name, TF_Status* status) {
   TFE_Op* maybe_op = ReleaseThreadLocalOp();
   if (maybe_op) {
-    TFE_OpReset(ctx, op_or_function_name, status, maybe_op);
+    TFE_OpReset(ctx, op_or_function_name, raw_device_name, status, maybe_op);
     return maybe_op;
   } else {
-    return TFE_NewOp(ctx, op_or_function_name, status);
+    return NewOrResetOp(ctx, op_or_function_name, raw_device_name, status,
+                        nullptr);
   }
 }
 
@@ -143,6 +145,40 @@ AttrToInputsMap* GetAttrToInputsMap(const tensorflow::OpDef& op_def) {
   return retval;
 }
 
+tensorflow::mutex all_attr_to_defaults_maps_lock(
+    tensorflow::LINKER_INITIALIZED);
+tensorflow::gtl::FlatMap<
+    string, tensorflow::gtl::FlatMap<string, tensorflow::DataType>*>*
+GetAllAttrToDefaultsMaps() {
+  static auto* all_attr_to_defaults_maps = new tensorflow::gtl::FlatMap<
+      string, tensorflow::gtl::FlatMap<string, tensorflow::DataType>*>;
+  return all_attr_to_defaults_maps;
+}
+
+tensorflow::gtl::FlatMap<string, tensorflow::DataType>* GetAttrToDefaultsMap(
+    const tensorflow::OpDef& op_def) {
+  tensorflow::mutex_lock l(all_attr_to_defaults_maps_lock);
+  auto* all_attr_to_defaults_maps = GetAllAttrToDefaultsMaps();
+
+  auto* output =
+      tensorflow::gtl::FindPtrOrNull(*all_attr_to_defaults_maps, op_def.name());
+  if (output != nullptr) {
+    return output;
+  }
+
+  auto* new_map = new tensorflow::gtl::FlatMap<string, tensorflow::DataType>;
+
+  for (const auto& attr : op_def.attr()) {
+    if (attr.type() == "type" && attr.has_default_value()) {
+      new_map->insert({attr.name(), attr.default_value().type()});
+    }
+  }
+
+  (*all_attr_to_defaults_maps)[op_def.name()] = new_map;
+
+  return new_map;
+}
+
 struct FastPathOpExecInfo {
   TFE_Context* ctx;
   const char* device_name;
@@ -163,6 +199,7 @@ struct FastPathOpExecInfo {
   // DTypes can come from another input that has the same attr. So build that
   // map.
   const AttrToInputsMap* attr_to_inputs_map;
+  const tensorflow::gtl::FlatMap<string, tensorflow::DataType>* default_dtypes;
   tensorflow::gtl::FlatMap<string, tensorflow::DataType> cached_dtypes;
 };
 
@@ -798,14 +835,12 @@ void TFE_Py_ExecuteCancelable(TFE_Context* ctx, const char* device_name,
                               TFE_CancellationManager* cancellation_manager,
                               TFE_OutputTensorHandles* outputs,
                               TF_Status* out_status) {
-  TFE_Op* op = GetOp(ctx, op_name, out_status);
+  TFE_Op* op = GetOp(ctx, op_name, device_name, out_status);
   auto cleaner = tensorflow::gtl::MakeCleanup([op] { ReturnOp(op); });
   if (!out_status->status.ok()) return;
-  TFE_OpSetDevice(op, device_name, out_status);
-  if (out_status->status.ok()) {
-    for (int i = 0; i < inputs->size() && out_status->status.ok(); ++i) {
-      TFE_OpAddInput(op, inputs->at(i), out_status);
-    }
+
+  for (int i = 0; i < inputs->size() && out_status->status.ok(); ++i) {
+    TFE_OpAddInput(op, inputs->at(i), out_status);
   }
   if (cancellation_manager && out_status->status.ok()) {
     TFE_OpSetCancellationManager(op, cancellation_manager, out_status);
@@ -968,9 +1003,7 @@ const char* TFE_GetPythonString(PyObject* o) {
 #endif
 }
 
-int64_t get_uid() {
-  return _uid++;
-}
+int64_t get_uid() { return _uid++; }
 
 PyObject* TFE_Py_UID() { return PyLong_FromLongLong(get_uid()); }
 
@@ -2837,6 +2870,11 @@ tensorflow::DataType MaybeGetDTypeForAttr(const string& attr,
     }
   }
 
+  auto default_it = op_exec_info->default_dtypes->find(attr);
+  if (default_it != op_exec_info->default_dtypes->end()) {
+    return default_it->second;
+  }
+
   return tensorflow::DT_INVALID;
 }
 
@@ -3007,22 +3045,6 @@ PyObject* CopySequenceSettingIndicesToNull(
   return result;
 }
 
-PyObject* DeviceFromTensorSeq(PyObject* seq) {
-  for (Py_ssize_t i = 0; i < PySequence_Size(seq); i++) {
-    PyObject* item = PySequence_ITEM(seq, i);
-    PyObject* dev = PyObject_GetAttrString(item, "device");
-    Py_DECREF(item);
-    if (dev) {
-      const char* devStr = TFE_GetPythonString(dev);
-      if (devStr && !string(devStr).empty()) {
-        return dev;
-      }
-      Py_DECREF(dev);
-    }
-  }
-  return Py_None;
-}
-
 PyObject* RecordGradient(PyObject* op_name, PyObject* inputs, PyObject* attrs,
                          PyObject* results) {
   std::vector<tensorflow::int64> input_ids = MakeTensorIDList(inputs);
@@ -3048,11 +3070,6 @@ PyObject* RecordGradient(PyObject* op_name, PyObject* inputs, PyObject* attrs,
   if (!should_record) Py_RETURN_NONE;
 
   string c_op_name = TFE_GetPythonString(op_name);
-
-  PyObject* device = DeviceFromTensorSeq(results);
-  if (device == Py_None) {
-    device = DeviceFromTensorSeq(inputs);
-  }
 
   PyObject* op_outputs;
   bool op_outputs_tuple_created = false;
@@ -3112,15 +3129,14 @@ PyObject* RecordGradient(PyObject* op_name, PyObject* inputs, PyObject* attrs,
 
   TapeSetRecordOperation(
       op_name, inputs, results, input_ids, input_dtypes,
-      [op_name, attrs, device, num_inputs, op_inputs, op_outputs]() {
+      [op_name, attrs, num_inputs, op_inputs, op_outputs]() {
         Py_INCREF(op_name);
         Py_INCREF(attrs);
-        Py_INCREF(device);
         Py_INCREF(num_inputs);
         Py_INCREF(op_inputs);
         Py_INCREF(op_outputs);
         PyBackwardFunction* function = new PyBackwardFunction(
-            [op_name, attrs, device, num_inputs, op_inputs, op_outputs](
+            [op_name, attrs, num_inputs, op_inputs, op_outputs](
                 PyObject* output_grads,
                 const std::vector<tensorflow::int64>& unneeded_gradients) {
               if (PyErr_Occurred()) {
@@ -3140,8 +3156,8 @@ PyObject* RecordGradient(PyObject* op_name, PyObject* inputs, PyObject* attrs,
                 skip_input_indices.reset(Py_None);
               }
               tensorflow::Safe_PyObjectPtr callback_args(Py_BuildValue(
-                  "OOOOOOOO", op_name, attrs, device, num_inputs, op_inputs,
-                  op_outputs, output_grads, skip_input_indices.get()));
+                  "OOOOOOO", op_name, attrs, num_inputs, op_inputs, op_outputs,
+                  output_grads, skip_input_indices.get()));
 
               tensorflow::Safe_PyObjectPtr result(
                   PyObject_CallObject(gradient_function, callback_args.get()));
@@ -3152,11 +3168,10 @@ PyObject* RecordGradient(PyObject* op_name, PyObject* inputs, PyObject* attrs,
             });
         return function;
       },
-      [op_name, attrs, device, num_inputs, op_inputs,
+      [op_name, attrs, num_inputs, op_inputs,
        op_outputs](PyBackwardFunction* backward_function) {
         Py_DECREF(op_name);
         Py_DECREF(attrs);
-        Py_DECREF(device);
         Py_DECREF(num_inputs);
         Py_DECREF(op_inputs);
         Py_DECREF(op_outputs);
@@ -3166,7 +3181,6 @@ PyObject* RecordGradient(PyObject* op_name, PyObject* inputs, PyObject* attrs,
       forward_function);
 
   Py_DECREF(num_inputs);
-  Py_DECREF(device);
   if (op_outputs_tuple_created) Py_DECREF(op_outputs);
   if (op_inputs_tuple_created) Py_DECREF(op_inputs);
 
@@ -3438,6 +3452,8 @@ bool RunCallbacks(
 }  // namespace
 
 PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
+  tensorflow::profiler::TraceMe activity(
+      "TFE_Py_FastPathExecute_C", tensorflow::profiler::TraceMeLevel::kInfo);
   Py_ssize_t args_size = PyTuple_GET_SIZE(args);
   if (args_size < kFastPathExecuteInputStartIndex) {
     PyErr_SetString(
@@ -3489,7 +3505,8 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
     return nullptr;
   }
 
-  TFE_Op* op = GetOp(op_exec_info.ctx, op_name, status);
+  TFE_Op* op =
+      GetOp(op_exec_info.ctx, op_name, op_exec_info.device_name, status);
   auto cleaner = tensorflow::gtl::MakeCleanup([status, op] {
     ReturnStatus(status);
     ReturnOp(op);
@@ -3520,6 +3537,7 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
   }
 
   op_exec_info.attr_to_inputs_map = GetAttrToInputsMap(*op_def);
+  op_exec_info.default_dtypes = GetAttrToDefaultsMap(*op_def);
 
   // Mapping of attr name to size - used to calculate the number of values
   // to be expected by the TFE_Execute run.
@@ -3553,11 +3571,6 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
         break;
       }
     }
-  }
-
-  TFE_OpSetDevice(op, op_exec_info.device_name, status);
-  if (MaybeRaiseExceptionFromTFStatus(status, nullptr)) {
-    return nullptr;
   }
 
   // Flat attrs and inputs as required by the record_gradient call. The attrs

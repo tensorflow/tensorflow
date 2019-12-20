@@ -61,7 +61,8 @@ StatusOr<bool> ReplaceSetSize(HloInstruction* instr) {
     return false;
   }
 
-  TF_RET_CHECK(ShapeUtil::Equal(instr->shape(), instr->operand(0)->shape()))
+  TF_RET_CHECK(Shape::Equal().IgnoreDynamicDimension()(
+      instr->shape(), instr->operand(0)->shape()))
       << "instr->shape() " << instr->shape().ToString() << " , "
       << "instruction operand shape " << instr->operand(0)->shape();
   HloInstruction* operand = instr->mutable_operand(0);

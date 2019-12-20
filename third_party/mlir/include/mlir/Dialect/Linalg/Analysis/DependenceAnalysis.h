@@ -66,10 +66,10 @@ public:
     //   2. dst in the case of dependencesIntoGraphs.
     Value *indexingView;
   };
-  using LinalgDependences = llvm::SmallVector<LinalgDependenceGraphElem, 8>;
+  using LinalgDependences = SmallVector<LinalgDependenceGraphElem, 8>;
   using DependenceGraph = DenseMap<Operation *, LinalgDependences>;
   using dependence_iterator = LinalgDependences::const_iterator;
-  using dependence_range = llvm::iterator_range<dependence_iterator>;
+  using dependence_range = iterator_range<dependence_iterator>;
 
   enum DependenceType { RAR = 0, RAW, WAR, WAW, NumTypes };
 

@@ -38,7 +38,7 @@ class LLVM_Builder<string builder> {
 
 def LLVM_OneResultOpBuilder : OpBuilder<
   "Builder *, OperationState &result, Type resultType, "
-  "ArrayRef<Value *> operands, ArrayRef<NamedAttribute> attributes = {}",
+  "ValueRange operands, ArrayRef<NamedAttribute> attributes = {}",
   [{
     if (resultType) result.addTypes(resultType);
     result.addOperands(operands);
@@ -48,7 +48,7 @@ def LLVM_OneResultOpBuilder : OpBuilder<
   }]>;
 
 def LLVM_ZeroResultOpBuilder : OpBuilder<
-  "Builder *, OperationState &result, ArrayRef<Value *> operands, "
+  "Builder *, OperationState &result, ValueRange operands, "
   "ArrayRef<NamedAttribute> attributes = {}",
   [{
     result.addOperands(operands);
@@ -71,7 +71,7 @@ class LLVM_OneResultOp<string mnemonic, list<OpTrait> traits = []> :
 // to indicate no result.
 def LLVM_VoidResultTypeOpBuilder : OpBuilder<
   "Builder *builder, OperationState &result, Type resultType, "
-  "ArrayRef<Value *> operands, ArrayRef<NamedAttribute> attributes = {}",
+  "ValueRange operands, ArrayRef<NamedAttribute> attributes = {}",
   [{
     auto llvmType = resultType.dyn_cast<LLVM::LLVMType>(); (void)llvmType;
     assert(llvmType && "result must be an LLVM type");
@@ -94,9 +94,9 @@ class LLVM_TerminatorOp<string mnemonic, list<OpTrait> traits = []> :
   let builders = [
     OpBuilder<
       "Builder *, OperationState &result, "
-      "ArrayRef<Value *> properOperands, "
+      "ValueRange properOperands, "
       "ArrayRef<Block *> destinations, "
-      "ArrayRef<ArrayRef<Value *>> operands, "
+      "ArrayRef<ValueRange> operands, "
       "ArrayRef<NamedAttribute> attributes = {}",
       [{
         result.addOperands(properOperands);
@@ -110,11 +110,11 @@ class LLVM_TerminatorOp<string mnemonic, list<OpTrait> traits = []> :
     >,
     OpBuilder<
       "Builder *builder, OperationState &result, "
-      "ArrayRef<Value *> properOperands, "
+      "ValueRange properOperands, "
       "ArrayRef<Block *> destinations, "
       "ArrayRef<NamedAttribute> attributes = {}",
     [{
-        SmallVector<ArrayRef<Value *>, 2> operands(destinations.size(), {});
+        SmallVector<ValueRange, 2> operands(destinations.size(), {});
         build(builder, result, properOperands,
             destinations, operands, attributes);
       }]
@@ -174,11 +174,7 @@ def ICmpPredicate : I64EnumAttr<
     [ICmpPredicateEQ, ICmpPredicateNE, ICmpPredicateSLT, ICmpPredicateSLE,
      ICmpPredicateSGT, ICmpPredicateSGE, ICmpPredicateULT, ICmpPredicateULE,
      ICmpPredicateUGT, ICmpPredicateUGE]> {
-  let cppNamespace = "mlir::LLVM";
-
-  let returnType = "ICmpPredicate";
-  let convertFromStorage =
-      "static_cast<" # returnType # ">($_self.getValue().getZExtValue())";
+  let cppNamespace = "::mlir::LLVM";
 }
 
 // Other integer operations.
@@ -225,11 +221,7 @@ def FCmpPredicate : I64EnumAttr<
      FCmpPredicateUEQ, FCmpPredicateUGT, FCmpPredicateUGE, FCmpPredicateULT,
      FCmpPredicateULE, FCmpPredicateUNE, FCmpPredicateUNO, FCmpPredicateTRUE
     ]> {
-  let cppNamespace = "mlir::LLVM";
-
-  let returnType = "FCmpPredicate";
-  let convertFromStorage =
-      "static_cast<" # returnType # ">($_self.getValue().getZExtValue())";
+  let cppNamespace = "::mlir::LLVM";
 }
 
 // Other integer operations.
@@ -475,8 +467,36 @@ def LLVM_UnreachableOp : LLVM_TerminatorOp<"unreachable", []> {
   let printer = [{ p << getOperationName(); }];
 }
 
+////////////////////////////////////////////////////////////////////////////////
 // Auxiliary operations (do not appear in LLVM IR but necessary for the dialect
 // to work correctly).
+////////////////////////////////////////////////////////////////////////////////
+
+// Linkage attribute is used on functions and globals. The order follows that of
+// https://llvm.org/docs/LangRef.html#linkage-types. The names are equivalent to
+// visible names in the IR rather than to enum values names in llvm::GlobalValue
+// since the latter is easier to change.
+def LinkagePrivate             : I64EnumAttrCase<"Private", 0>;
+def LinkageInternal            : I64EnumAttrCase<"Internal", 1>;
+def LinkageAvailableExternally : I64EnumAttrCase<"AvailableExternally", 2>;
+def LinkageLinkonce            : I64EnumAttrCase<"Linkonce", 3>;
+def LinkageWeak                : I64EnumAttrCase<"Weak", 4>;
+def LinkageCommon              : I64EnumAttrCase<"Common", 5>;
+def LinkageAppending           : I64EnumAttrCase<"Appending", 6>;
+def LinkageExternWeak          : I64EnumAttrCase<"ExternWeak", 7>;
+def LinkageLinkonceODR         : I64EnumAttrCase<"LinkonceODR", 8>;
+def LinkageWeakODR             : I64EnumAttrCase<"WeakODR", 9>;
+def LinkageExternal            : I64EnumAttrCase<"External", 10>;
+def Linkage : I64EnumAttr<
+    "Linkage",
+    "LLVM linkage types",
+    [LinkagePrivate, LinkageInternal, LinkageAvailableExternally,
+     LinkageLinkonce, LinkageWeak, LinkageCommon, LinkageAppending,
+     LinkageExternWeak, LinkageLinkonceODR, LinkageWeakODR, LinkageExternal]> {
+  let cppNamespace = "::mlir::LLVM";
+}
+
+
 def LLVM_AddressOfOp
     : LLVM_OneResultOp<"mlir.addressof">,
       Arguments<(ins FlatSymbolRefAttr:$global_name)> {
@@ -489,8 +509,9 @@ def LLVM_AddressOfOp
 
     OpBuilder<"Builder *builder, OperationState &result, GlobalOp global, "
               "ArrayRef<NamedAttribute> attrs = {}", [{
-      build(builder, result, global.getType().getPointerTo(), global.sym_name(),
-            attrs);}]>
+      build(builder, result,
+            global.getType().getPointerTo(global.addr_space().getZExtValue()),
+            global.sym_name(), attrs);}]>
   ];
 
   let extraClassDeclaration = [{
@@ -509,6 +530,7 @@ def LLVM_GlobalOp
                         [IsolatedFromAbove,
                          SingleBlockImplicitTerminator<"ReturnOp">, Symbol]>,
       Arguments<(ins TypeAttr:$type, UnitAttr:$constant, StrAttr:$sym_name,
+                 Linkage:$linkage,
                  OptionalAttr<AnyAttr>:$value,
                  DefaultValuedAttr<NonNegativeI32Attr, "0">:$addr_space)> {
   let summary = "LLVM dialect global.";
@@ -530,7 +552,8 @@ def LLVM_GlobalOp
 
   let builders = [
     OpBuilder<"Builder *builder, OperationState &result, LLVMType type, "
-              "bool isConstant, StringRef name, Attribute value, "
+              "bool isConstant, Linkage linkage, StringRef name, "
+              "Attribute value, unsigned addrSpace = 0, "
               "ArrayRef<NamedAttribute> attrs = {}">
   ];
 
@@ -562,9 +585,10 @@ def LLVM_GlobalOp
   let verifier = "return ::verify(*this);";
 }
 
-def LLVM_LLVMFuncOp : LLVM_ZeroResultOp<"func",
-      [NativeOpTrait<"IsIsolatedFromAbove">, NativeOpTrait<"FunctionLike">,
-       Symbol]> {
+def LLVM_LLVMFuncOp
+    : LLVM_ZeroResultOp<"func", [IsolatedFromAbove, FunctionLike, Symbol]>,
+      Arguments<(ins DefaultValuedAttr<Linkage,
+                                       "Linkage::External">:$linkage)> {
   let summary = "LLVM dialect function, has wrapped LLVM IR function type";
 
   let regions = (region AnyRegion:$body);
@@ -573,7 +597,8 @@ def LLVM_LLVMFuncOp : LLVM_ZeroResultOp<"func",
 
   let builders = [
     OpBuilder<"Builder *builder, OperationState &result, StringRef name, "
-              "LLVMType type, ArrayRef<NamedAttribute> attrs = {}, "
+              "LLVMType type, LLVM::Linkage linkage = LLVM::Linkage::External, "
+              "ArrayRef<NamedAttribute> attrs = {}, "
               "ArrayRef<NamedAttributeList> argAttrs = {}">
   ];
 
@@ -606,16 +631,13 @@ def LLVM_LLVMFuncOp : LLVM_ZeroResultOp<"func",
 
   let verifier = [{ return ::verify(*this); }];
   let printer = [{ printLLVMFuncOp(p, *this); }];
-  let parser = [{
-    return impl::parseFunctionLikeOp(parser, result, /*allowVariadic=*/true,
-                                     buildLLVMFunctionType);
-  }];
+  let parser = [{ return parseLLVMFuncOp(parser, result); }];
 }
 
 def LLVM_NullOp
     : LLVM_OneResultOp<"mlir.null", [NoSideEffect]>,
       LLVM_Builder<"$res = llvm::ConstantPointerNull::get("
-                   "    llvm::cast<llvm::PointerType>($_resultType));"> {
+                   "    cast<llvm::PointerType>($_resultType));"> {
   let parser = [{ return parseNullOp(parser, result); }];
   let printer = [{ printNullOp(p, *this); }];
   let verifier = [{ return ::verify(*this); }];
@@ -640,26 +662,82 @@ def LLVM_ConstantOp
 // operations and intrinsics. However, we systematically prefix them with
 // "intr." to avoid potential name clashes.
 
-def LLVM_FMulAddOp : LLVM_Op<"intr.fmuladd", [NoSideEffect]>,
-                   Arguments<(ins LLVM_Type:$a, LLVM_Type:$b, LLVM_Type:$c)>,
-                   Results<(outs LLVM_Type:$res)> {
-  let llvmBuilder = [{
-    llvm::Module *module = builder.GetInsertBlock()->getModule();
-    llvm::Function *fn = llvm::Intrinsic::getDeclaration(
-        module, llvm::Intrinsic::fmuladd,
-        {$a->getType(), $b->getType(), $c->getType()});
-    $res = builder.CreateCall(fn, {$a, $b, $c});
-  }];
+class LLVM_UnaryIntrinsicOp<string func, list<OpTrait> traits = []> :
+    LLVM_OneResultOp<"intr." # func,
+           !listconcat([NoSideEffect, SameOperandsAndResultType], traits)>,
+    Arguments<(ins LLVM_Type:$in)>,
+    LLVM_Builder<"$res = builder.CreateCall(llvm::Intrinsic::getDeclaration("
+      "builder.GetInsertBlock()->getModule(), llvm::Intrinsic::" # func # ","
+      "{$in->getType()}), {$in});"> {
 }
 
-def LLVM_ExpOp : LLVM_Op<"intr.exp", [NoSideEffect]>,
+class LLVM_BinaryIntrinsicOp<string func, list<OpTrait> traits = []> :
+    LLVM_OneResultOp<"intr." # func,
+           !listconcat([NoSideEffect, SameOperandsAndResultType], traits)>,
+    Arguments<(ins LLVM_Type:$a, LLVM_Type:$b)>,
+    LLVM_Builder<"$res = builder.CreateCall(llvm::Intrinsic::getDeclaration("
+      "builder.GetInsertBlock()->getModule(), llvm::Intrinsic::" # func # ","
+      "{$a->getType(), $b->getType()}), {$a, $b});"> {
+}
+
+class LLVM_TernaryIntrinsicOp<string func, list<OpTrait> traits = []> :
+    LLVM_OneResultOp<"intr." # func,
+           !listconcat([NoSideEffect, SameOperandsAndResultType], traits)>,
+    Arguments<(ins LLVM_Type:$a, LLVM_Type:$b, LLVM_Type:$c)>,
+    LLVM_Builder<"$res = builder.CreateCall(llvm::Intrinsic::getDeclaration("
+      "builder.GetInsertBlock()->getModule(), llvm::Intrinsic::" # func # ","
+      "{$a->getType(), $b->getType(), $c->getType()}), {$a, $b, $c});"> {
+}
+
+def LLVM_ExpOp : LLVM_UnaryIntrinsicOp<"exp">;
+def LLVM_FAbsOp : LLVM_UnaryIntrinsicOp<"fabs">;
+def LLVM_FCeilOp : LLVM_UnaryIntrinsicOp<"ceil">;
+def LLVM_CosOp : LLVM_UnaryIntrinsicOp<"cos">;
+def LLVM_CopySignOp : LLVM_BinaryIntrinsicOp<"copysign">;
+def LLVM_FMulAddOp : LLVM_TernaryIntrinsicOp<"fmuladd">;
+
+def LLVM_LogOp : LLVM_Op<"intr.log", [NoSideEffect]>,
                    Arguments<(ins LLVM_Type:$in)>,
                    Results<(outs LLVM_Type:$res)> {
   let llvmBuilder = [{
     llvm::Module *module = builder.GetInsertBlock()->getModule();
     llvm::Function *fn = llvm::Intrinsic::getDeclaration(
-        module, llvm::Intrinsic::exp, {$in->getType()});
+        module, llvm::Intrinsic::log, {$in->getType()});
     $res = builder.CreateCall(fn, {$in});
   }];
 }
+
+def LLVM_Log10Op : LLVM_Op<"intr.log10", [NoSideEffect]>,
+                   Arguments<(ins LLVM_Type:$in)>,
+                   Results<(outs LLVM_Type:$res)> {
+  let llvmBuilder = [{
+    llvm::Module *module = builder.GetInsertBlock()->getModule();
+    llvm::Function *fn = llvm::Intrinsic::getDeclaration(
+        module, llvm::Intrinsic::log10, {$in->getType()});
+    $res = builder.CreateCall(fn, {$in});
+  }];
+}
+
+def LLVM_Log2Op : LLVM_Op<"intr.log2", [NoSideEffect]>,
+                   Arguments<(ins LLVM_Type:$in)>,
+                   Results<(outs LLVM_Type:$res)> {
+  let llvmBuilder = [{
+    llvm::Module *module = builder.GetInsertBlock()->getModule();
+    llvm::Function *fn = llvm::Intrinsic::getDeclaration(
+        module, llvm::Intrinsic::log2, {$in->getType()});
+    $res = builder.CreateCall(fn, {$in});
+  }];
+}
+
+def LLVM_Prefetch : LLVM_ZeroResultOp<"intr.prefetch">,
+                    Arguments<(ins LLVM_Type:$addr, LLVM_Type:$rw,
+                    LLVM_Type:$hint, LLVM_Type:$cache)> {
+  let llvmBuilder = [{
+    llvm::Module *module = builder.GetInsertBlock()->getModule();
+    llvm::Function *fn = llvm::Intrinsic::getDeclaration(
+        module, llvm::Intrinsic::prefetch, $addr->getType());
+    builder.CreateCall(fn, {$addr, $rw, $hint, $cache});
+  }];
+}
+
 #endif // LLVMIR_OPS

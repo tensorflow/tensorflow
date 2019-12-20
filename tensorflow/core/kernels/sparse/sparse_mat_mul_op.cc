@@ -369,8 +369,6 @@ class CSRSparseMatMulGPUOp : public OpKernel {
 
     CSRSparseMatrix c;
     Tensor c_row_ptrs;
-    Tensor c_col_inds;
-    Tensor c_values;
 
     // TODO(ebrevdo): Re-enable transposing within the GEMM kernel when cuSparse
     // stops spitting out CUSPARSE_STATUS_INTERNAL_ERROR values for transposes.

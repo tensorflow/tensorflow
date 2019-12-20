@@ -143,7 +143,7 @@ public:
   /// Process a set of blocks that have been inlined. This callback is invoked
   /// *before* inlined terminator operations have been processed.
   virtual void
-  processInlinedBlocks(llvm::iterator_range<Region::iterator> inlinedBlocks) {}
+  processInlinedBlocks(iterator_range<Region::iterator> inlinedBlocks) {}
 
   /// These hooks mirror the hooks for the DialectInlinerInterface, with default
   /// implementations that call the hook on the handler for the dialect 'op' is
@@ -188,7 +188,7 @@ public:
 LogicalResult inlineRegion(InlinerInterface &interface, Region *src,
                            Operation *inlinePoint, BlockAndValueMapping &mapper,
                            ArrayRef<Value *> resultsToReplace,
-                           llvm::Optional<Location> inlineLoc = llvm::None,
+                           Optional<Location> inlineLoc = llvm::None,
                            bool shouldCloneInlinedRegion = true);
 
 /// This function is an overload of the above 'inlineRegion' that allows for
@@ -198,7 +198,7 @@ LogicalResult inlineRegion(InlinerInterface &interface, Region *src,
                            Operation *inlinePoint,
                            ArrayRef<Value *> inlinedOperands,
                            ArrayRef<Value *> resultsToReplace,
-                           llvm::Optional<Location> inlineLoc = llvm::None,
+                           Optional<Location> inlineLoc = llvm::None,
                            bool shouldCloneInlinedRegion = true);
 
 /// This function inlines a given region, 'src', of a callable operation,

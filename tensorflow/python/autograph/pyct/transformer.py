@@ -23,7 +23,7 @@ import collections
 import gast
 
 from tensorflow.python.autograph.pyct import anno
-from tensorflow.python.autograph.pyct import compiler
+from tensorflow.python.autograph.pyct import loader
 from tensorflow.python.autograph.pyct import pretty_printer
 from tensorflow.python.autograph.pyct import templates
 
@@ -301,7 +301,7 @@ class Base(gast.NodeTransformer):
   def debug_print_src(self, node):
     """Helper method useful for debugging. Prints the AST as code."""
     if __debug__:
-      print(compiler.ast_to_source(node))
+      print(loader.load_ast(node))
     return node
 
   def create_assignment(self, target, expression):
@@ -436,7 +436,7 @@ class Base(gast.NodeTransformer):
 
   def _get_source(self, node):
     try:
-      source, _ = compiler.ast_to_source(node)
+      source, _ = loader.load_ast(node)
       return source
     # pylint: disable=broad-except
     # This function is used for error reporting.  If an exception occurs here,

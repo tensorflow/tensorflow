@@ -38,8 +38,8 @@ using namespace mlir::loop;
 
 namespace {
 
-struct LoopToStandardPass : public FunctionPass<LoopToStandardPass> {
-  void runOnFunction() override;
+struct LoopToStandardPass : public OperationPass<LoopToStandardPass> {
+  void runOnOperation() override;
 };
 
 // Create a CFG subgraph for the loop around its body blocks (if the body
@@ -205,7 +205,7 @@ ForLowering::matchAndRewrite(ForOp forOp, PatternRewriter &rewriter) const {
   // With the body block done, we can fill in the condition block.
   rewriter.setInsertionPointToEnd(conditionBlock);
   auto comparison =
-      rewriter.create<CmpIOp>(loc, CmpIPredicate::SLT, iv, upperBound);
+      rewriter.create<CmpIOp>(loc, CmpIPredicate::slt, iv, upperBound);
 
   rewriter.create<CondBranchOp>(loc, comparison, firstBodyBlock,
                                 ArrayRef<Value *>(), endBlock,
@@ -261,16 +261,16 @@ void mlir::populateLoopToStdConversionPatterns(
   patterns.insert<ForLowering, IfLowering, TerminatorLowering>(ctx);
 }
 
-void LoopToStandardPass::runOnFunction() {
+void LoopToStandardPass::runOnOperation() {
   OwningRewritePatternList patterns;
   populateLoopToStdConversionPatterns(patterns, &getContext());
   ConversionTarget target(getContext());
   target.addLegalDialect<StandardOpsDialect>();
-  if (failed(applyPartialConversion(getFunction(), target, patterns)))
+  if (failed(applyPartialConversion(getOperation(), target, patterns)))
     signalPassFailure();
 }
 
-std::unique_ptr<OpPassBase<FuncOp>> mlir::createLowerToCFGPass() {
+std::unique_ptr<Pass> mlir::createLowerToCFGPass() {
   return std::make_unique<LoopToStandardPass>();
 }
 

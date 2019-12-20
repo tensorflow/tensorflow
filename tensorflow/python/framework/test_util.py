@@ -37,14 +37,6 @@ from absl.testing import parameterized
 import numpy as np
 import six
 
-_portpicker_import_error = None
-try:
-  import portpicker  # pylint: disable=g-import-not-at-top
-except ImportError as _error:
-  _portpicker_import_error = _error
-  portpicker = None
-
-# pylint: disable=g-import-not-at-top
 from google.protobuf import descriptor_pool
 from google.protobuf import text_format
 
@@ -69,6 +61,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_util
@@ -2345,8 +2338,8 @@ class TensorFlowTestCase(googletest.TestCase):
     self.assertTrue(self._NDArrayNear(ndarray1, ndarray2, err), msg=msg)
 
   def _GetNdArray(self, a):
-    # If a is a tensor then convert it to ndarray
-    if isinstance(a, ops.Tensor):
+    # If a is tensor-like then convert it to ndarray
+    if tensor_util.is_tensor(a):
       if isinstance(a, ops._EagerTensorBase):
         a = a.numpy()
       else:
@@ -2408,7 +2401,7 @@ class TensorFlowTestCase(googletest.TestCase):
                                path=None,
                                msg=None):
     path = path or []
-    path_str = (("[" + "][".join([str(p) for p in path]) + "]") if path else "")
+    path_str = (("[" + "][".join(str(p) for p in path) + "]") if path else "")
     msg = msg if msg else ""
 
     # Check if a and/or b are namedtuples.
@@ -2608,6 +2601,8 @@ class TensorFlowTestCase(googletest.TestCase):
         x, y = a, b
       msgs.append("not equal lhs = {}".format(x))
       msgs.append("not equal rhs = {}".format(y))
+      # With Python 3, we need to make sure the dtype matches between a and b.
+      b = b.astype(a.dtype)
       np.testing.assert_array_equal(a, b, err_msg="\n".join(msgs))
 
   @py_func_if_in_function
@@ -3090,8 +3085,7 @@ def create_local_cluster(num_workers,
   Raises:
     ImportError: if portpicker module was not found at load time
   """
-  if _portpicker_import_error:
-    raise _portpicker_import_error  # pylint: disable=raising-bad-type
+  import portpicker  # pylint: disable=g-import-not-at-top
   worker_ports = [portpicker.pick_unused_port() for _ in range(num_workers)]
   ps_ports = [portpicker.pick_unused_port() for _ in range(num_ps)]
   cluster_dict = {

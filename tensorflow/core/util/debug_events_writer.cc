@@ -158,7 +158,7 @@ Status DebugEventsWriter::Init() {
   int64 time_in_seconds = env_->NowMicros() / 1e6;
   file_prefix_ = io::JoinPath(
       dump_root_, strings::Printf("%s.%010lld.%s", kFileNamePrefix,
-                                  static_cast<int64>(time_in_seconds),
+                                  static_cast<long long>(time_in_seconds),
                                   port::Hostname().c_str()));
   TF_RETURN_IF_ERROR(InitNonMetadataFile(SOURCE_FILES));
   TF_RETURN_IF_ERROR(InitNonMetadataFile(STACK_FRAMES));
@@ -306,7 +306,7 @@ void DebugEventsWriter::WriteSerializedExecutionDebugEvent(
       mu = &graph_execution_trace_buffer_mu_;
       break;
     default:
-      break;
+      return;
   }
 
   if (circular_buffer_size_ <= 0) {

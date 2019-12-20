@@ -285,7 +285,7 @@ mlir::AffineForOp TileLoop(mlir::AffineForOp loop, int64_t size,
 // operations of their parent loop, and `where` must be an ancestor of that
 // parent loop.
 //
-// It always preseves the semantics of the program, therefore it may modify the
+// It always preserves the semantics of the program, therefore it may modify the
 // hoisted operations or add extra loops at the hoisted place.
 mlir::Operation* HoistAndFix(llvm::iplist<mlir::Operation>::iterator begin_op,
                              llvm::iplist<mlir::Operation>::iterator end_op,
@@ -618,7 +618,7 @@ StatusOr<TransformedMlirConvAnchors> TransformMlirConv(
   output_acc = llvm::cast<mlir::AllocOp>(
       HoistAndFix(output_acc, tiled_cartesian_loops.front()));
 
-  // Hoist everyting before reduction loops (aka zero initializations of
+  // Hoist everything before reduction loops (aka zero initializations of
   // output_acc):
   //   for (cartesian loops...) {
   //     %output_acc = alloc() : memref(..., f32)
@@ -752,7 +752,7 @@ StatusOr<mlir::FuncOp> EmitConvolutionForwardAsMlir(
 
   // TODO(timshen): Implement a transformation that collects loads to a given
   // buffer, create a local alloc() for the accessed part, redirects all loads
-  // and stores to that local alloc(), and create code to ininitialize /
+  // and stores to that local alloc(), and create code to initialize /
   // writeback the local alloc() if needed.
 
   // TODO(timshen): Implement CUDA-specific lowering.

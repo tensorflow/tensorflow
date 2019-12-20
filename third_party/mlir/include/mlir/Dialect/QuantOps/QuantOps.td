@@ -21,10 +21,9 @@
 
 #ifndef DIALECT_QUANTOPS_QUANT_OPS_
 #define DIALECT_QUANTOPS_QUANT_OPS_
-#ifndef OP_BASE
+
 include "mlir/IR/OpBase.td"
 include "mlir/Dialect/QuantOps/QuantPredicates.td"
-#endif // OP_BASE
 
 def quant_Dialect : Dialect {
   let name = "quant";
@@ -94,7 +93,7 @@ def quant_DequantizeCastOp : quant_Op<"dcast", [NoSideEffect]> {
 def quant_StorageCastOp : quant_Op<"scast", [NoSideEffect]> {
   let arguments = (ins quant_RealOrStorageValueType:$arg);
   let results = (outs quant_RealOrStorageValueType);
-  let hasCanonicalizer = 0b1;
+  let hasFolder = 1;
 }
 
 //===----------------------------------------------------------------------===//

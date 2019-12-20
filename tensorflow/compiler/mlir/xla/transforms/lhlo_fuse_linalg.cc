@@ -54,7 +54,8 @@ struct LhloFuseLinalg : public FunctionPass<LhloFuseLinalg> {
       auto op = cast<LinalgOp>(generic_op.getOperation());
       for (const Value* result : op.getOutputs()) {
         if (!func_args.count(result)) continue;
-        if (linalg::tileLinalgOp(b, op, tile_sizes, &folder)) {
+        if (linalg::tileLinalgOp(b, op, tile_sizes, /*permutation=*/{},
+                                 &folder)) {
           generic_op.erase();
           return;
         }
@@ -65,12 +66,17 @@ struct LhloFuseLinalg : public FunctionPass<LhloFuseLinalg> {
     llvm::SmallDenseSet<Operation*> erase_set;
     SmallVector<Operation*, 8> linalg_ops;
     func.walk([&](LinalgOp op) { linalg_ops.push_back(op); });
-    linalg::Aliases aliases;
-    linalg::LinalgDependenceGraph graph(aliases, linalg_ops);
     for (auto* op : llvm::reverse(linalg_ops)) {
       for (unsigned id = 0, e = LinalgOp(op).getNumInputs(); id < e; ++id) {
+        linalg::Aliases aliases;
+        linalg::LinalgDependenceGraph graph(aliases, linalg_ops);
         if (auto info = fuseProducerOf(b, op, id, graph, &folder)) {
-          erase_set.insert(info->originalProducer.getOperation());
+          auto originalOp = info->originalProducer.getOperation();
+          erase_set.insert(originalOp);
+          auto originalOpInLinalgOpsVector = std::find_if(
+              linalg_ops.begin(), linalg_ops.end(),
+              [&](const Operation* op) { return op == originalOp; });
+          *originalOpInLinalgOpsVector = info->fusedProducer.getOperation();
         }
       }
     }

@@ -152,6 +152,15 @@ def gen_operand_kind_enum_attr(operand_kind):
   if 'enumerants' not in operand_kind:
     return '', ''
 
+  # Returns a symbol for the given case in the given kind. This function
+  # handles Dim specially to avoid having numbers as the start of symbols,
+  # which does not play well with C++ and the MLIR parser.
+  def get_case_symbol(kind_name, case_name):
+    if kind_name == 'Dim':
+      if case_name == '1D' or case_name == '2D' or case_name == '3D':
+        return 'Dim{}'.format(case_name)
+    return case_name
+
   kind_name = operand_kind['kind']
   is_bit_enum = operand_kind['category'] == 'BitEnum'
   kind_category = 'Bit' if is_bit_enum else 'I32'
@@ -162,13 +171,14 @@ def gen_operand_kind_enum_attr(operand_kind):
   max_len = max([len(symbol) for (symbol, _) in kind_cases])
 
   # Generate the definition for each enum case
-  fmt_str = 'def SPV_{acronym}_{symbol} {colon:>{offset}} '\
+  fmt_str = 'def SPV_{acronym}_{case} {colon:>{offset}} '\
             '{category}EnumAttrCase<"{symbol}", {value}>;'
   case_defs = [
       fmt_str.format(
           category=kind_category,
           acronym=kind_acronym,
-          symbol=case[0],
+          case=case[0],
+          symbol=get_case_symbol(kind_name, case[0]),
           value=case[1],
           colon=':',
           offset=(max_len + 1 - len(case[0]))) for case in kind_cases
@@ -190,9 +200,6 @@ def gen_operand_kind_enum_attr(operand_kind):
   enum_attr = 'def SPV_{name}Attr :\n    '\
       '{category}EnumAttr<"{name}", "valid SPIR-V {name}", [\n{cases}\n'\
       '    ]> {{\n'\
-      '  let returnType = "::mlir::spirv::{name}";\n'\
-      '  let convertFromStorage = '\
-            '"static_cast<::mlir::spirv::{name}>($_self.getInt())";\n'\
       '  let cppNamespace = "::mlir::spirv";\n}}'.format(
           name=kind_name, category=kind_category, cases=case_names)
   return kind_name, case_defs + '\n\n' + enum_attr
@@ -230,9 +237,6 @@ def gen_opcode(instructions):
               '    I32EnumAttr<"{name}", "valid SPIR-V instructions", [\n'\
               '{lst}\n'\
               '      ]> {{\n'\
-              '    let returnType = "::mlir::spirv::{name}";\n'\
-              '    let convertFromStorage = '\
-              '"static_cast<::mlir::spirv::{name}>($_self.getInt())";\n'\
               '    let cppNamespace = "::mlir::spirv";\n}}'.format(
                   name='Opcode', lst=opcode_list)
   return opcode_str + '\n\n' + enum_attr
@@ -299,7 +303,10 @@ def update_td_enum_attrs(path, operand_kinds, filter_list):
   # Sort alphabetically according to enum name
   defs.sort(key=lambda enum : enum[0])
   # Only keep the definitions from now on
-  defs = [enum[1] for enum in defs]
+  # Put Capability's definition at the very beginning because capability cases
+  # will be referenced later
+  defs = [enum[1] for enum in defs if enum[0] == 'Capability'
+         ] + [enum[1] for enum in defs if enum[0] != 'Capability']
 
   # Substitute the old section
   content = content[0] + AUTOGEN_ENUM_SECTION_MARKER + '\n\n' + \
@@ -346,7 +353,7 @@ def map_spec_operand_to_ods_argument(operand):
     # and 'IdScope' given that they should be generated from OpConstant.
     assert quantifier == '', ('unexpected to have optional/variadic memory '
                               'semantics or scope <id>')
-    arg_type = 'I32'
+    arg_type = 'SPV_' + kind[2:] + 'Attr'
   elif kind == 'LiteralInteger':
     if quantifier == '':
       arg_type = 'I32Attr'
@@ -419,7 +426,11 @@ def get_op_definition(instruction, doc, existing_info):
   # Make sure we have ', ' to separate the category arguments from traits
   category_args = category_args.rstrip(', ') + ', '
 
-  summary, text = doc.split('\n', 1)
+  if '\n' in doc:
+    summary, text = doc.split('\n', 1)
+  else:
+    summary = doc
+    text = ''
   wrapper = textwrap.TextWrapper(
       width=76, initial_indent='    ', subsequent_indent='    ')
 
@@ -461,7 +472,7 @@ def get_op_definition(instruction, doc, existing_info):
 
   description = existing_info.get('description', None)
   if description is None:
-    assembly = '\n    ``` {.ebnf}\n'\
+    assembly = '\n    ```\n'\
                '    [TODO]\n'\
                '    ```\n\n'\
                '    For example:\n\n'\
@@ -640,8 +651,9 @@ def update_td_op_definitions(path, instructions, docs, filter_list,
       instruction = next(
           inst for inst in instructions if inst['opname'] == opname)
       op_defs.append(
-          get_op_definition(instruction, docs[opname],
-                            op_info_dict.get(opname, {})))
+          get_op_definition(
+              instruction, docs[opname],
+              op_info_dict.get(opname, {'inst_category': inst_category})))
     except StopIteration:
       # This is an op added by us; use the existing ODS definition.
       op_defs.append(name_op_map[opname])

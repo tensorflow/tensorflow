@@ -27,7 +27,7 @@ namespace {
 
 // Traverses the callee computation, inlining cloned nodes into the caller
 // computation and connecting them to producers/consumers appropriately.
-// When the traversal has completed, the provided call instruction is entriely
+// When the traversal has completed, the provided call instruction is entirely
 // replaced in the caller's graph.
 class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
  public:
@@ -143,16 +143,11 @@ StatusOr<bool> CallInliner::Run(HloModule* module) {
   bool did_mutate = false;
   TF_RETURN_IF_ERROR(
       call_graph->VisitNodes([&](const CallGraphNode& node) -> Status {
-        for (const CallSite& callsite : node.caller_callsites()) {
-          VLOG(1) << "Visiting callsite: " << callsite.ToString();
-          bool callsite_alive =
-              absl::c_any_of(node.callers(), [&](HloComputation* caller) {
-                return caller->ContainsInstruction(callsite.instruction());
-              });
-          if (callsite.instruction()->opcode() == HloOpcode::kCall &&
-              callsite_alive) {
-            HloInstruction* call = callsite.instruction();
-            TF_RETURN_IF_ERROR(Inline(call).status());
+        VLOG(1) << "Visiting node: " << node.ToString();
+        for (HloInstruction* instruction :
+             node.computation()->MakeInstructionPostOrder()) {
+          if (instruction->opcode() == HloOpcode::kCall) {
+            TF_RETURN_IF_ERROR(Inline(instruction).status());
             did_mutate = true;
           }
         }

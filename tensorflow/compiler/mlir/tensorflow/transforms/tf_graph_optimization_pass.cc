@@ -141,7 +141,7 @@ static llvm::cl::OptionCategory clOptionsCategory(DEBUG_TYPE " options");
 // NOLINTNEXTLINE
 static llvm::cl::list<std::string> cl_pass_list(
     "graph-passes", llvm::cl::value_desc("list"),
-    llvm::cl::desc("comma seprarated list of GraphOptimizationPass to run."),
+    llvm::cl::desc("comma separated list of GraphOptimizationPass to run."),
     llvm::cl::CommaSeparated, llvm::cl::cat(clOptionsCategory));
 
 class GraphOptByNamePass : public GraphOptPass {

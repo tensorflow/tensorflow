@@ -34,7 +34,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         pkg-config \
         rsync \
         software-properties-common \
-	sudo \
+        sudo \
         unzip \
         zip \
         zlib1g-dev \
@@ -86,7 +86,6 @@ RUN apt-get update && apt-get install -y \
 RUN ${PIP} --no-cache-dir install \
     Pillow \
     h5py \
-    keras_applications \
     keras_preprocessing \
     matplotlib \
     mock \
@@ -100,7 +99,7 @@ RUN ${PIP} --no-cache-dir install \
     enum34
 
 # Install bazel
-ARG BAZEL_VERSION=0.29.1
+ARG BAZEL_VERSION=1.1.0
 RUN mkdir /bazel && \
     wget -O /bazel/installer.sh "https://github.com/bazelbuild/bazel/releases/download/${BAZEL_VERSION}/bazel-${BAZEL_VERSION}-installer-linux-x86_64.sh" && \
     wget -O /bazel/LICENSE.txt "https://raw.githubusercontent.com/bazelbuild/bazel/master/LICENSE" && \
@@ -109,3 +108,4 @@ RUN mkdir /bazel && \
     rm -f /bazel/installer.sh
 
 COPY bashrc /etc/bash.bashrc
+RUN chmod a+rwx /etc/bash.bashrc

@@ -22,9 +22,10 @@ import glob
 import os
 import threading
 
+from six.moves import map
+
 from tensorflow.core.protobuf import debug_event_pb2
-from tensorflow.python import pywrap_tensorflow
-from tensorflow.python.framework import errors
+from tensorflow.python.lib.io import tf_record
 from tensorflow.python.util import compat
 
 
@@ -55,6 +56,13 @@ class DebugEventsReader(object):
     self._readers = dict()  # A map from file path to reader.
     self._readers_lock = threading.Lock()
 
+  def __enter__(self):
+    return self
+
+  def __exit__(self, exception_type, exception_value, traceback):
+    del exception_type, exception_value, traceback  # Unused
+    self.close()
+
   def _generic_iterator(self, file_path):
     """A helper method that makes an iterator given a debug-events file path."""
     # The following code uses the double-checked locking pattern to optimize
@@ -62,19 +70,9 @@ class DebugEventsReader(object):
     if file_path not in self._readers:  # 1st check, without lock.
       with self._readers_lock:
         if file_path not in self._readers:  # 2nd check, with lock.
-          with errors.raise_exception_on_not_ok_status() as status:
-            self._readers[file_path] = pywrap_tensorflow.PyRecordReader_New(
-                compat.as_bytes(file_path), 0, b"", status)
-    reader = self._readers[file_path]
-    while True:
-      try:
-        reader.GetNext()
-      except (errors.DataLossError, errors.OutOfRangeError):
-        # We ignore partial read exceptions, because a record may be truncated.
-        # PyRecordReader holds the offset prior to the failed read, so retrying
-        # will succeed.
-        break
-      yield debug_event_pb2.DebugEvent.FromString(reader.record())
+          self._readers[file_path] = tf_record.tf_record_iterator(file_path)
+
+    return map(debug_event_pb2.DebugEvent.FromString, self._readers[file_path])
 
   def metadata_iterator(self):
     return self._generic_iterator(self._metadata_path)
@@ -93,3 +91,7 @@ class DebugEventsReader(object):
 
   def graph_execution_traces_iterator(self):
     return self._generic_iterator(self._graph_execution_traces_path)
+
+  def close(self):
+    with self._readers_lock:
+      self._readers.clear()

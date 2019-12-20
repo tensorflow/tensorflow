@@ -41,7 +41,6 @@ import tempfile
 # External tools we use that come with visual studio sdk
 UNDNAME = "%{undname_bin_path}"
 DUMPBIN_CMD = "\"{}\" /SYMBOLS".format("%{dumpbin_bin_path}")
-GREP_CMD = "| grep External"
 
 # Exclude if matched
 EXCLUDE_RE = re.compile(r"RTTI|deleting destructor|::internal::")
@@ -113,19 +112,32 @@ def get_symbols(path_to_lib, re_filter):
     path_to_lib: String that is path (execpath) to target .lib file.
     re_filter: String that is regex filter for filtering symbols from .lib.
   """
-  sym_found = subprocess.check_output("{} {} {}".format(DUMPBIN_CMD, path_to_lib, GREP_CMD), shell=True)
-  sym_found = sym_found.decode()
+  try:
+    full_output = subprocess.check_output(
+        "{} {}".format(DUMPBIN_CMD, path_to_lib),
+        stderr=subprocess.STDOUT, shell=True)
+  except subprocess.CalledProcessError as e:
+    print("Getting symbol list using dumpbin failed with code %d:" % (
+              e.returncode))
+    print("\t\tFailing command: %s" % (e.cmd))
+    print("\t\tOutput: %s" % (e.output))
+    print("\t\tError details: %s" % (e))
+    raise e
+
+  # Convert to normal string from bytes type.
+  full_output = full_output.decode()
+
+  # Split and filter the list
+  sym_split = [x for x in full_output.split("\r\n")
+               if "External" in x]
+
   # Example symbol line:
   # 954 00000000 SECT2BD notype ()    External    | ?IsSequence@swig@tensorflow@@YA_NPEAU_object@@@Z (bool __cdecl tensorflow::swig::IsSequence(struct _object *))
-  # Split lines with `External` since each line must have the string.
-  sym_split = sym_found.split("External")
   sym_filtered = []
   re_filter_comp = re.compile(r"{}".format(re_filter))
 
   # Filter out symbol from the split line (`sym_split` in the for loop below).
-  # Sample line:
-  # "    | ?NewProfiler@tfprof@tensorflow@@YA_NPEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@0@Z (bool __cdecl tensorflow::tfprof::NewProfiler(class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> > const *,class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> > const *))"
-  sym_line_filter = r"\s+\| (.*) \(.*"
+  sym_line_filter = r".*\s+\| (.*) \(.*"
 
   for sym_line in sym_split:
     if re_filter_comp.search(sym_line):

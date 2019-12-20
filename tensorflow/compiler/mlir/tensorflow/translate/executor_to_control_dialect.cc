@@ -45,7 +45,7 @@ struct ExecutorToControlDialectConversion
 
 // Replace all uses of value `v` with a list of new values. Because number of
 // new values might be greater than 1, users of `v` might be replaced with their
-// clones in case of non-resizble operands list.
+// clones in case of non-resizable operands list.
 void ReplaceAllUsesOfValueWithValues(Value *v,
                                      Operation::operand_range new_values) {
   int new_values_size = std::distance(new_values.begin(), new_values.end());

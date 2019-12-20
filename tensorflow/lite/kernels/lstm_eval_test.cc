@@ -20,7 +20,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/test_util.h"
@@ -570,7 +570,7 @@ void TestOneFullyQuantizedLSTM() {
   auto output = one_parameter.GetOutput();
   auto cell = one_parameter.GetCell();
   auto param = one_parameter.GetQuantParam();
-  ops::builtin::lstm_eval::EvalQuantized(
+  ops::builtin::lstm_eval::EvalInteger(
       one_parameter.GetInput(), one_parameter.Geti2i(), one_parameter.Geti2f(),
       one_parameter.Geti2c(), one_parameter.Geti2o(), one_parameter.Getr2i(),
       one_parameter.Getr2f(), one_parameter.Getr2c(), one_parameter.Getr2o(),

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_EAGER_EAGER_CLIENT_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_EAGER_EAGER_CLIENT_H_
 
+#include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/protobuf/eager_service.pb.h"
@@ -25,9 +26,9 @@ namespace eager {
 
 // This is a base class that can be implemented by a variety of
 // transports (e.g. gRPC which for each of the client methods makes an RPC).
-class EagerClient {
+class EagerClient : public core::RefCounted {
  public:
-  virtual ~EagerClient() {}
+  ~EagerClient() override {}
 #define CLIENT_METHOD(method)                                \
   virtual void method##Async(const method##Request* request, \
                              method##Response* response,     \
@@ -62,7 +63,13 @@ class EagerClient {
 class EagerClientCache {
  public:
   virtual ~EagerClientCache() {}
-  virtual Status GetClient(const string& target, EagerClient** client) = 0;
+
+  // If the `target` exists, assign the EagerClient pointer to `client` and
+  // increment the refcount of the client. The reference ownership is
+  // transferred to the caller, and the unref should automatically happen when
+  // destructing the RefCountPtr object from the caller's side.
+  virtual Status GetClient(const string& target,
+                           core::RefCountPtr<EagerClient>* client) = 0;
 };
 
 }  // namespace eager

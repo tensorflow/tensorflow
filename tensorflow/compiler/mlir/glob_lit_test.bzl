@@ -6,6 +6,8 @@
 """Lit runner globbing test
 """
 
+load("@bazel_skylib//lib:paths.bzl", "paths")
+
 # Default values used by the test runner.
 _default_test_file_exts = ["mlir", ".pbtxt", ".td"]
 _default_driver = "@local_config_mlir//:run_lit.sh"
@@ -51,7 +53,7 @@ def _run_lit_test(name, data, size, tags, driver, features):
         srcs = ["@llvm//:lit"],
         tags = tags,
         args = [
-            "tensorflow/compiler/mlir --config-prefix=runlit -v",
+            "tensorflow/compiler/mlir/" + paths.basename(data[-1]) + " --config-prefix=runlit -v",
         ] + features,
         data = data + [
             "//tensorflow/compiler/mlir:litfiles",

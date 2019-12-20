@@ -24,7 +24,7 @@ import sys
 
 import six
 
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import pywrap_tfe
 from tensorflow.python import _pywrap_utils
 from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import context
@@ -71,19 +71,25 @@ def op_attr_type(op_type, attr_name):
   except KeyError:
     context.ensure_initialized()
     h = context.context()._handle  # pylint: disable=protected-access
-    attr_type = pywrap_tensorflow.TFE_OpNameGetAttrType(h, op_type, attr_name)
+    attr_type = pywrap_tfe.TFE_OpNameGetAttrType(h, op_type, attr_name)
   _op_attr_type_cache[(op_type, attr_name)] = attr_type
   return attr_type
 
 
 def make_attr(attr_type, value):
-  if attr_type == pywrap_tensorflow.TF_ATTR_TYPE:
+  # pybind11 enums do not return the raw value like SWIG enums do. They are
+  # useful when comparing amongst each other but not direct integers as we are
+  # doing in most tests.
+  # https://pybind11.readthedocs.io/en/stable/classes.html#enumerations-and-internal-types
+  # TODO(amitpatankar): After all SWIG transitions, convert the enum comparisons
+  # from integer value to class.
+  if attr_type == int(pywrap_tfe.TF_ATTR_TYPE):
     return dtypes.as_dtype(value)
-  elif attr_type == [pywrap_tensorflow.TF_ATTR_TYPE]:
+  elif attr_type == [int(pywrap_tfe.TF_ATTR_TYPE)]:
     return [dtypes.as_dtype(v) for v in value]
-  elif attr_type == pywrap_tensorflow.TF_ATTR_SHAPE:
+  elif attr_type == int(pywrap_tfe.TF_ATTR_SHAPE):
     return tensor_shape.as_shape(value).as_proto()
-  elif attr_type == [pywrap_tensorflow.TF_ATTR_SHAPE]:
+  elif attr_type == [int(pywrap_tfe.TF_ATTR_SHAPE)]:
     return [tensor_shape.as_shape(v).as_proto() for v in value]
   elif isinstance(value, str):
     return value.encode()
@@ -116,14 +122,13 @@ class _MockOp(object):
     )
 
 
-def _gradient_function(op_name, attr_tuple, device, num_inputs, inputs, outputs,
+def _gradient_function(op_name, attr_tuple, num_inputs, inputs, outputs,
                        out_grads, skip_input_indices):
   """Calls the gradient function of the op.
 
   Args:
     op_name: the name of the op to be differentiated.
     attr_tuple: the attrs, as a tuple.
-    device: the device of the op.
     num_inputs: the number of inputs to the op.
     inputs: inputs to the original operation.
     outputs: outputs to the original operation.
@@ -139,20 +144,18 @@ def _gradient_function(op_name, attr_tuple, device, num_inputs, inputs, outputs,
   if grad_fn is None:
     return [None] * num_inputs
 
-  with ops.device(device):
-    return grad_fn(mock_op, *out_grads)
+  return grad_fn(mock_op, *out_grads)
 
 
-pywrap_tensorflow.TFE_Py_RegisterGradientFunction(_gradient_function)
+pywrap_tfe.TFE_Py_RegisterGradientFunction(_gradient_function)
 
 
 def _must_record_gradient():
-  return not pywrap_tensorflow.TFE_Py_TapeSetIsEmpty()
+  return not pywrap_tfe.TFE_Py_TapeSetIsEmpty()
 
 
 def _record_gradient(op_name, inputs, attrs, results):
-  return pywrap_tensorflow.TFE_Py_RecordGradient(op_name, inputs, attrs,
-                                                 results)
+  return pywrap_tfe.TFE_Py_RecordGradient(op_name, inputs, attrs, results)
 
 
 execute.must_record_gradient = _must_record_gradient
@@ -690,7 +693,7 @@ _default_vspace = imperative_grad.VSpace(
     zeros_like_fn=default_gradient.zeros_like,
     ones_like_fn=default_gradient.ones_like,
     graph_shape_fn=gen_array_ops.shape)
-pywrap_tensorflow.TFE_Py_RegisterVSpace(_default_vspace)
+pywrap_tfe.TFE_Py_RegisterVSpace(_default_vspace)
 
 
 def _handle_or_self(x):

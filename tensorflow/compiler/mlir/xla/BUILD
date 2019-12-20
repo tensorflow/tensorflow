@@ -16,17 +16,21 @@ package_group(
         "//learning/brain/google/xla/kernels/...",
         "//learning/brain/swift/swift_mlir/...",
         "//tensorflow/compiler/mlir/...",
+        "//tensorflow/compiler/tf2xla/...",
         "//tensorflow/compiler/xla/...",
         "//third_party/iree/...",
         "//third_party/mlir_edge/...",
     ],
 )
 
+exports_files(["ir/hlo_ops.td"])
+
 filegroup(
     name = "hlo_ops_td_files",
     srcs = [
         "ir/hlo_ops.td",
         "ir/hlo_ops_base.td",
+        "ir/hlo_utils.td",
         "ir/lhlo_ops.td",
         "@local_config_mlir//:OpBaseTdFiles",
     ],
@@ -42,6 +46,7 @@ gentbl(
     ],
     tblgen = "@local_config_mlir//:mlir-tblgen",
     td_file = "ir/hlo_ops.td",
+    td_includes = ["ir/hlo_utils.td"],
     td_srcs = [":hlo_ops_td_files"],
 )
 
@@ -102,12 +107,14 @@ cc_library(
     srcs = [
         "transforms/generated_legalize_tf.inc",
         "transforms/legalize_tf.cc",
+        "transforms/legalize_tf_control_flow.cc",
     ],
     deps = [
         ":convert_op_folder",
         ":hlo",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:lower_tf_lib",
+        "//tensorflow/compiler/xla/client:padding",
         "//tensorflow/core:framework",
         "//tensorflow/core/kernels:conv_grad_shape_utils",
         "@llvm//:support",
@@ -149,6 +156,25 @@ cc_library(
         "@local_config_mlir//:IR",
         "@local_config_mlir//:Linalg",
         "@local_config_mlir//:LinalgDialectRegistration",
+        "@local_config_mlir//:Pass",
+        "@local_config_mlir//:StandardOps",
+        "@local_config_mlir//:Transforms",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "lhlo_legalize_to_gpu",
+    srcs = ["transforms/lhlo_legalize_to_gpu.cc"],
+    hdrs = ["transforms/map_lhlo_to_scalar_op.h"],
+    deps = [
+        ":lhlo",
+        "@com_google_absl//absl/memory",
+        "@llvm//:support",
+        "@local_config_mlir//:GPUDialect",
+        "@local_config_mlir//:IR",
+        "@local_config_mlir//:Linalg",
+        "@local_config_mlir//:LoopOps",
         "@local_config_mlir//:Pass",
         "@local_config_mlir//:StandardOps",
         "@local_config_mlir//:Transforms",
@@ -210,6 +236,7 @@ cc_library(
         "@local_config_mlir//:IR",
         "@local_config_mlir//:Pass",
         "@local_config_mlir//:StandardOps",
+        "@local_config_mlir//:Support",
     ],
     alwayslink = 1,
 )
@@ -229,9 +256,27 @@ cc_library(
     alwayslink = 1,
 )
 
+gentbl(
+    name = "xla_lower_complex_inc_gen",
+    tbl_outs = [
+        ("-gen-rewriters", "transforms/generated_lower_complex.inc"),
+    ],
+    tblgen = "@local_config_mlir//:mlir-tblgen",
+    td_file = "transforms/lower_complex_patterns.td",
+    td_srcs = [
+        ":hlo_ops_td_files",
+        "@llvm//:support",
+        "@local_config_mlir//:StdOpsTdFiles",
+    ],
+)
+
 cc_library(
-    name = "xla_lower_general_dot",
-    srcs = ["transforms/lower_general_dot.cc"],
+    name = "xla_lower",
+    srcs = [
+        "transforms/generated_lower_complex.inc",
+        "transforms/lower_complex.cc",
+        "transforms/lower_general_dot.cc",
+    ],
     deps = [
         ":hlo",
         ":xla_dialect_registration",
@@ -240,6 +285,8 @@ cc_library(
         "@local_config_mlir//:IR",
         "@local_config_mlir//:Pass",
         "@local_config_mlir//:StandardOps",
+        "@local_config_mlir//:Support",
+        "@local_config_mlir//:Transforms",
     ],
     alwayslink = 1,
 )
@@ -250,9 +297,11 @@ cc_library(
         "ir/hlo_ops.cc",
         "ir/hlo_ops.cc.inc",
         "ir/hlo_ops.h.inc",
+        "ir/hlo_utils.cc",
     ],
     hdrs = [
         "ir/hlo_ops.h",
+        "ir/hlo_utils.h",
         "transforms/passes.h",
         "transforms/rewriters.h",
     ],
@@ -331,11 +380,12 @@ cc_library(
     srcs = ["type_to_shape.cc"],
     hdrs = ["type_to_shape.h"],
     deps = [
+        ":hlo",
         "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
         "//tensorflow/compiler/mlir/tensorflow:convert_type",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:types",
@@ -352,7 +402,7 @@ tf_cc_test(
         ":type_to_shape",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
-        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test_main",
@@ -375,9 +425,12 @@ cc_library(
         "//tensorflow/compiler/xla:comparison_util",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/client/lib:matrix",
+        "//tensorflow/compiler/xla/client/lib:slicing",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/stream_executor/lib",
         "@llvm//:support",
         "@local_config_mlir//:Analysis",
         "@local_config_mlir//:IR",
@@ -418,8 +471,8 @@ cc_library(
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/compiler/xla:xla_proto",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla:xla_proto_cc",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/core:lib",
         "@llvm//:support",
@@ -438,7 +491,7 @@ cc_library(
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/service:hlo_parser",
-        "//tensorflow/compiler/xla/service:hlo_proto",
+        "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/core:lib",
         "@com_google_protobuf//:protobuf_headers",
         "@llvm//:support",
@@ -465,6 +518,7 @@ genrule(
         "@local_config_mlir//:include/mlir/IR/OpBase.td",
         ":ir/hlo_ops.td",
         ":ir/hlo_ops_base.td",
+        ":ir/hlo_utils.td",
     ],
     outs = ["operator_writers.inc"],
     cmd = ("$(location :operator_writer_gen) " +

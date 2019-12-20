@@ -94,10 +94,10 @@ private:
 
     Operation *funcOp = SymbolTable::lookupNearestSymbolFrom(op, funcName);
     if (funcOp)
-      return llvm::cast<LLVMFuncOp>(*funcOp);
+      return cast<LLVMFuncOp>(*funcOp);
 
     mlir::OpBuilder b(op->getParentOfType<LLVMFuncOp>());
-    return b.create<LLVMFuncOp>(op->getLoc(), funcName, funcType, llvm::None);
+    return b.create<LLVMFuncOp>(op->getLoc(), funcName, funcType);
   }
 
   const std::string f32Func;

@@ -317,7 +317,8 @@ class WrappedFunction(function.ConcreteFunction):
     lift_map = lift_to_graph.lift_to_graph(
         operation_fetches + tensor_fetches,
         pruned_graph,
-        sources=flat_feeds + self.graph.internal_captures)
+        sources=flat_feeds + self.graph.internal_captures,
+        base_graph=self._func_graph)
 
     # Note that we add the component tensors of any composite tensors to the
     # returned function's outputs list; the list must contain these component

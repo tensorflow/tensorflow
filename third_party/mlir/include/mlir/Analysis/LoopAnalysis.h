@@ -31,8 +31,9 @@ namespace mlir {
 class AffineExpr;
 class AffineForOp;
 class AffineMap;
-class Operation;
 class MemRefType;
+class NestedPattern;
+class Operation;
 class Value;
 
 /// Returns the trip count of the loop as an affine map with its corresponding
@@ -49,29 +50,12 @@ void buildTripCountMapAndOperands(AffineForOp forOp, AffineMap *map,
 /// Returns the trip count of the loop if it's a constant, None otherwise. This
 /// uses affine expression analysis and is able to determine constant trip count
 /// in non-trivial cases.
-llvm::Optional<uint64_t> getConstantTripCount(AffineForOp forOp);
+Optional<uint64_t> getConstantTripCount(AffineForOp forOp);
 
 /// Returns the greatest known integral divisor of the trip count. Affine
 /// expression analysis is used (indirectly through getTripCount), and
 /// this method is thus able to determine non-trivial divisors.
 uint64_t getLargestDivisorOfTripCount(AffineForOp forOp);
-
-/// Given an induction variable `iv` of type AffineForOp and an `index` of type
-/// IndexType, returns `true` if `index` is independent of `iv` and false
-/// otherwise.
-/// The determination supports composition with at most one AffineApplyOp.
-/// The at most one AffineApplyOp comes from the fact that composition of
-/// AffineApplyOp need to be canonicalized by construction to avoid writing code
-/// that composes arbitrary numbers of AffineApplyOps everywhere. To achieve
-/// this, at the very least, the compose-affine-apply pass must have been run.
-///
-/// Prerequisites:
-///   1. `iv` and `index` of the proper type;
-///   2. at most one reachable AffineApplyOp from index;
-///
-/// Returns false in cases with more than one AffineApplyOp, this is
-/// conservative.
-bool isAccessInvariant(Value *iv, Value *index);
 
 /// Given an induction variable `iv` of type AffineForOp and `indices` of type
 /// IndexType, returns the set of `indices` that are independent of `iv`.
@@ -82,8 +66,8 @@ bool isAccessInvariant(Value *iv, Value *index);
 ///
 /// Emits a note if it encounters a chain of affine.apply and conservatively
 ///  those cases.
-llvm::DenseSet<Value *, llvm::DenseMapInfo<Value *>>
-getInvariantAccesses(Value *iv, llvm::ArrayRef<Value *> indices);
+DenseSet<Value *, DenseMapInfo<Value *>>
+getInvariantAccesses(Value *iv, ArrayRef<Value *> indices);
 
 using VectorizableLoopFun = std::function<bool(AffineForOp)>;
 
@@ -91,21 +75,23 @@ using VectorizableLoopFun = std::function<bool(AffineForOp)>;
 ///   1. no conditionals are nested under the loop;
 ///   2. all nested load/stores are to scalar MemRefs.
 /// TODO(ntv): relax the no-conditionals restriction
-bool isVectorizableLoopBody(AffineForOp loop);
+bool isVectorizableLoopBody(AffineForOp loop,
+                            NestedPattern &vectorTransferMatcher);
 
 /// Checks whether the loop is structurally vectorizable and that all the LoadOp
 /// and StoreOp matched have access indexing functions that are are either:
 ///   1. invariant along the loop induction variable created by 'loop';
 ///   2. varying along at most one memory dimension. If such a unique dimension
 ///      is found, it is written into `memRefDim`.
-bool isVectorizableLoopBody(AffineForOp loop, int *memRefDim);
+bool isVectorizableLoopBody(AffineForOp loop, int *memRefDim,
+                            NestedPattern &vectorTransferMatcher);
 
 /// Checks where SSA dominance would be violated if a for op's body
 /// operations are shifted by the specified shifts. This method checks if a
 /// 'def' and all its uses have the same shift factor.
 // TODO(mlir-team): extend this to check for memory-based dependence
 // violation when we have the support.
-bool isInstwiseShiftValid(AffineForOp forOp, llvm::ArrayRef<uint64_t> shifts);
+bool isInstwiseShiftValid(AffineForOp forOp, ArrayRef<uint64_t> shifts);
 } // end namespace mlir
 
 #endif // MLIR_ANALYSIS_LOOP_ANALYSIS_H

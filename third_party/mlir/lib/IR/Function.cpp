@@ -20,9 +20,11 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Dialect.h"
+#include "mlir/IR/FunctionImplementation.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Module.h"
 #include "mlir/IR/OpImplementation.h"
+#include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/Twine.h"
@@ -38,10 +40,10 @@ FuncOp FuncOp::create(Location location, StringRef name, FunctionType type,
   OperationState state(location, "func");
   Builder builder(location->getContext());
   FuncOp::build(&builder, state, name, type, attrs);
-  return llvm::cast<FuncOp>(Operation::create(state));
+  return cast<FuncOp>(Operation::create(state));
 }
 FuncOp FuncOp::create(Location location, StringRef name, FunctionType type,
-                      llvm::iterator_range<dialect_attr_iterator> attrs) {
+                      iterator_range<dialect_attr_iterator> attrs) {
   SmallVector<NamedAttribute, 8> attrRef(attrs);
   return create(location, name, type, llvm::makeArrayRef(attrRef));
 }
@@ -112,6 +114,40 @@ LogicalResult FuncOp::verify() {
   return success();
 }
 
+void FuncOp::eraseArguments(ArrayRef<unsigned> argIndices) {
+  auto oldType = getType();
+  int originalNumArgs = oldType.getNumInputs();
+  llvm::BitVector eraseIndices(originalNumArgs);
+  for (auto index : argIndices)
+    eraseIndices.set(index);
+  auto shouldEraseArg = [&](int i) { return eraseIndices.test(i); };
+
+  // There are 3 things that need to be updated:
+  // - Function type.
+  // - Arg attrs.
+  // - Block arguments of entry block.
+
+  // Update the function type and arg attrs.
+  SmallVector<Type, 4> newInputTypes;
+  SmallVector<NamedAttributeList, 4> newArgAttrs;
+  for (int i = 0; i < originalNumArgs; i++) {
+    if (shouldEraseArg(i))
+      continue;
+    newInputTypes.emplace_back(oldType.getInput(i));
+    newArgAttrs.emplace_back(getArgAttrDict(i));
+  }
+  setType(FunctionType::get(newInputTypes, oldType.getResults(), getContext()));
+  setAllArgAttrs(newArgAttrs);
+
+  // Update the entry block's arguments.
+  // We do this in reverse so that we erase later indices before earlier
+  // indices, to avoid shifting the later indices.
+  Block &entry = front();
+  for (int i = 0; i < originalNumArgs; i++)
+    if (shouldEraseArg(originalNumArgs - i - 1))
+      entry.eraseArgument(originalNumArgs - i - 1);
+}
+
 /// Add an entry block to an empty function, and set up the block arguments
 /// to match the signature of the function.
 Block *FuncOp::addEntryBlock() {
@@ -168,7 +204,7 @@ FuncOp FuncOp::clone(BlockAndValueMapping &mapper) {
   }
 
   // Create the new function.
-  FuncOp newFunc = llvm::cast<FuncOp>(getOperation()->cloneWithoutRegions());
+  FuncOp newFunc = cast<FuncOp>(getOperation()->cloneWithoutRegions());
   newFunc.setType(newType);
 
   /// Set the argument attributes for arguments that aren't being replaced.

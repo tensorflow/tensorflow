@@ -80,21 +80,22 @@ static TranslateToMLIRRegistration fromBinary(
 // Serialization registration
 //===----------------------------------------------------------------------===//
 
-LogicalResult serializeModule(ModuleOp module, llvm::raw_ostream &output) {
+LogicalResult serializeModule(ModuleOp module, raw_ostream &output) {
   if (!module)
     return failure();
 
   SmallVector<uint32_t, 0> binary;
 
-  auto spirvModules = module.getOps<spirv::ModuleOp>();
+  SmallVector<spirv::ModuleOp, 1> spirvModules;
+  module.walk([&](spirv::ModuleOp op) { spirvModules.push_back(op); });
 
-  if (spirvModules.begin() == spirvModules.end())
+  if (spirvModules.empty())
     return module.emitError("found no 'spv.module' op");
 
-  if (std::next(spirvModules.begin()) != spirvModules.end())
+  if (spirvModules.size() != 1)
     return module.emitError("found more than one 'spv.module' op");
 
-  if (failed(spirv::serialize(*spirvModules.begin(), binary)))
+  if (failed(spirv::serialize(spirvModules[0], binary)))
     return failure();
 
   output.write(reinterpret_cast<char *>(binary.data()),
@@ -104,7 +105,7 @@ LogicalResult serializeModule(ModuleOp module, llvm::raw_ostream &output) {
 }
 
 static TranslateFromMLIRRegistration
-    toBinary("serialize-spirv", [](ModuleOp module, llvm::raw_ostream &output) {
+    toBinary("serialize-spirv", [](ModuleOp module, raw_ostream &output) {
       return serializeModule(module, output);
     });
 
@@ -112,8 +113,8 @@ static TranslateFromMLIRRegistration
 // Round-trip registration
 //===----------------------------------------------------------------------===//
 
-LogicalResult roundTripModule(llvm::SourceMgr &sourceMgr,
-                              llvm::raw_ostream &output, MLIRContext *context) {
+LogicalResult roundTripModule(llvm::SourceMgr &sourceMgr, raw_ostream &output,
+                              MLIRContext *context) {
   // Parse an MLIR module from the source manager.
   auto srcModule = OwningModuleRef(parseSourceFile(sourceMgr, context));
   if (!srcModule)
@@ -146,9 +147,8 @@ LogicalResult roundTripModule(llvm::SourceMgr &sourceMgr,
   return mlir::success();
 }
 
-static TranslateRegistration
-    roundtrip("test-spirv-roundtrip",
-              [](llvm::SourceMgr &sourceMgr, llvm::raw_ostream &output,
-                 MLIRContext *context) {
-                return roundTripModule(sourceMgr, output, context);
-              });
+static TranslateRegistration roundtrip(
+    "test-spirv-roundtrip",
+    [](llvm::SourceMgr &sourceMgr, raw_ostream &output, MLIRContext *context) {
+      return roundTripModule(sourceMgr, output, context);
+    });

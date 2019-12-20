@@ -463,7 +463,8 @@ class ValidatorTest : public ::testing::Test {
     TF_EXPECT_OK(graph_properties.InferStatically(true));
 
     TrtNodeValidator validator(graph_properties, TrtPrecisionMode::FP32,
-                               /*use_calibration=*/false);
+                               /*use_calibration=*/false,
+                               /*use_implicit_batch=*/true);
     return validator.ConvertToTensorOrWeights(node->def(), output_port,
                                               tensor_or_weights);
   }
@@ -477,7 +478,8 @@ TEST_F(ValidatorTest, QuantizeOpsAreRegistered) {
   grappler::GrapplerItem item;
   grappler::GraphProperties graph_properties(item);
   TrtNodeValidator validator(graph_properties, TrtPrecisionMode::FP32,
-                             /*use_calibration=*/false);
+                             /*use_calibration=*/false,
+                             /*use_implicit_batch=*/true);
   for (const string& quantize_op : *GetQuantizeOps(&validator)) {
     QCHECK(op_validators(&validator).count(quantize_op));
   }
@@ -521,7 +523,7 @@ TEST_F(ValidatorTest, ConvertToTensorOrWeights) {
         "Scalar input tensor is not supported since the first dimension "
         "is treated as batch dimension by TRT");
   }
-  // Convert non-Const. We test the case where the non-batch dimemsion is
+  // Convert non-Const. We test the case where the non-batch dimension is
   // unknown as well, to make sure the validator allows that.
   for (const int32 non_batch_dim : {-1, 2}) {
     const int32 batch_size = 12;
@@ -547,7 +549,8 @@ TEST_F(ValidatorTest, IsTensorRTCandidate_Basics) {
   grappler::GraphProperties graph_properties(item);
   TF_EXPECT_OK(graph_properties.InferStatically(true));
   TrtNodeValidator validator(graph_properties, TrtPrecisionMode::FP32,
-                             /*use_calibration=*/false);
+                             /*use_calibration=*/false,
+                             /*use_implicit_batch=*/true);
 
   bool start_conversion = false;
   bool should_fail = false;
@@ -626,7 +629,8 @@ TEST(TrtNodeValidator, IsTensorRTCandidate) {
   for (const TrtPrecisionMode precision_mode :
        {TrtPrecisionMode::FP32, TrtPrecisionMode::INT8}) {
     TrtNodeValidator validator(graph_properties, precision_mode,
-                               /*use_calibration=*/false);
+                               /*use_calibration=*/false,
+                               /*use_implicit_batch=*/true);
     TF_EXPECT_OK(validator.IsTensorRTCandidate(matmul.operation.node()));
     ExpectStatus(
         validator.IsTensorRTCandidate(incompatible_matmul.operation.node()),
@@ -654,10 +658,10 @@ class ConverterTest : public ::testing::Test {
   ConverterTest() { Reset(); }
 
   void Reset() {
-    builder_.reset(nvinfer1::createInferBuilder(logger_));
     converter_ =
-        std::move(Converter::Create(builder_.get(), TrtPrecisionMode::FP32,
-                                    /*use_calibration=*/false, &logger_)
+        std::move(Converter::Create(TrtPrecisionMode::FP32,
+                                    /*use_calibration=*/false, &logger_,
+                                    /*use_implicit_batch=*/true)
                       .ValueOrDie());
     weight_store_ = &converter_->weight_store_;
   }
@@ -702,9 +706,6 @@ class ConverterTest : public ::testing::Test {
 
  private:
   Logger logger_;
-  // These members are ordered in a way such that the destruction order is:
-  // converter_ -> builder_
-  TrtUniquePtrType<nvinfer1::IBuilder> builder_;
 
  protected:
   std::unique_ptr<Converter> converter_;
@@ -977,7 +978,7 @@ TEST_F(ConverterTest, GetWeightRange) {
 
 TEST_F(ConverterTest, ProvideQuantizationRange) {
   FakeITensor fake_tensor;
-  // Assymetric range
+  // Asymmetric range
   converter_->ProvideQuantizationRange(&fake_tensor, 0.0f, 6.0f);
   EXPECT_EQ(6.0f, quantization_ranges()[&fake_tensor]);
   converter_->ProvideQuantizationRange(&fake_tensor, 1.0f, 6.0f);
@@ -996,10 +997,9 @@ TEST_F(ConverterTest, MaybeApplyQuantizationRanges) {
   FakeITensor input, infer_1, infer_2, infer_3;
   FakeITensor not_infer;
   Logger logger;
-  TrtUniquePtrType<nvinfer1::IBuilder> builder(
-      nvinfer1::createInferBuilder(logger));
-  auto int8_converter = Converter::Create(builder.get(), TrtPrecisionMode::INT8,
-                                          /*use_calibration=*/true, &logger)
+  auto int8_converter = Converter::Create(TrtPrecisionMode::INT8,
+                                          /*use_calibration=*/true, &logger,
+                                          /*use_implicit_batch=*/true)
                             .ValueOrDie();
   int8_converter->ProvideQuantizationRange(&input, -5.0f, 5.0f);
   int8_converter->ProvideQuantizationRange(&not_infer, -100.0f, 100.0f);
@@ -1073,7 +1073,8 @@ TEST_F(ConverterTest, GetTrtBroadcastShape) {
     // operand_1 broadcast operand_2
     ExpectStatus(
         GetTrtBroadcastShape(operand_1, operand_2, /*check_feasibility=*/true,
-                             &operand_1_new_dims, &operand_2_new_dims),
+                             /*use_implicit_batch=*/true, &operand_1_new_dims,
+                             &operand_2_new_dims),
         expected_code, expected_error_msg_substr);
     if (expected_code == error::OK) {
       ExpectTrtDimsEqualsArray(expected_operand_1_shape, operand_1_new_dims);
@@ -1082,7 +1083,8 @@ TEST_F(ConverterTest, GetTrtBroadcastShape) {
     // operand_2 broadcast operand_1
     ExpectStatus(
         GetTrtBroadcastShape(operand_2, operand_1, /*check_feasibility=*/true,
-                             &operand_2_new_dims, &operand_1_new_dims),
+                             /*use_implicit_batch=*/true, &operand_2_new_dims,
+                             &operand_1_new_dims),
         expected_code, expected_error_msg_substr);
     if (expected_code == error::OK) {
       ExpectTrtDimsEqualsArray(expected_operand_1_shape, operand_1_new_dims);
@@ -1182,7 +1184,8 @@ class ConvertGraphDefToEngineTest : public ::testing::Test {
         gdef, TrtPrecisionMode::FP32, /*max_batch_size=*/1,
         /*max_workspace_size_bytes=*/64 << 20, input_shapes, &logger_,
         /*allocator=*/nullptr, /*calibrator=*/nullptr, &engine_,
-        /*use_calibration=*/false, /*convert_successfully=*/nullptr);
+        /*use_calibration=*/false, /*use_implicit_batch=*/true,
+        /*convert_successfully=*/nullptr);
   }
 
  protected:
@@ -1255,13 +1258,10 @@ class OpConverterTest : public ::testing::Test {
     engine_.reset(nullptr);
 
     // Re-create them in proper order.
-    builder_.reset(nvinfer1::createInferBuilder(logger_));
-    builder_->setMaxWorkspaceSize(1 << 26);
-
-    // Reset the converter.
     converter_ =
-        std::move(Converter::Create(builder_.get(), precision_mode_to_test_,
-                                    /*use_calibration=*/false, &logger_)
+        std::move(Converter::Create(precision_mode_to_test_,
+                                    /*use_calibration=*/false, &logger_,
+                                    /*use_implicit_batch=*/true)
                       .ValueOrDie());
 
     // Reset other related artifacts.
@@ -1294,18 +1294,13 @@ class OpConverterTest : public ::testing::Test {
     TF_EXPECT_OK(converter_->RenameAndMarkOutputTensors(output_info));
 
     // Build the TRT engine.
-    if (precision_mode == TrtPrecisionMode::FP16) {
-      builder_->setFp16Mode(true);
-    } else if (precision_mode == TrtPrecisionMode::INT8) {
-      // Setting FP16 mode as well allows TRT to also consider FP16 kernels and
-      // use them in situations where they are faster than INT8 or where INT8 is
-      // not supported for a given layer.
-      builder_->setFp16Mode(true);
-      builder_->setInt8Mode(true);
-    }
     ASSERT_EQ(nullptr, engine_.get());
-    builder_->setMaxBatchSize(batch_size);
-    TF_ASSERT_OK(converter_->BuildCudaEngine(&engine_));
+    TF_ASSERT_OK(
+        converter_->BuildCudaEngine(&engine_,
+                                    /*max_batch_size=*/batch_size,
+                                    /*max_workspace_size_bytes=*/1 << 26,
+                                    /*allocator=*/nullptr,
+                                    /*calibrator=*/nullptr));
     CHECK_NOTNULL(engine_.get());
     CheckDataTypeMatches(input_data);
     CheckDataTypeMatches(*output_data);
@@ -1418,7 +1413,8 @@ class OpConverterTest : public ::testing::Test {
     TF_EXPECT_OK(graph_properties.InferStatically(true));
 
     TrtNodeValidator validator(graph_properties, precision_mode_to_test_,
-                               /*use_calibration=*/false);
+                               /*use_calibration=*/false,
+                               /*use_implicit_batch=*/true);
     ExpectStatus(validator.IsTensorRTCandidate(node), expected_code,
                  expected_msg_substr);
   }
@@ -1473,7 +1469,6 @@ class OpConverterTest : public ::testing::Test {
 
  private:
   Logger logger_;
-  TrtUniquePtrType<nvinfer1::IBuilder> builder_;
   TrtUniquePtrType<nvinfer1::ICudaEngine> engine_;
   cudaStream_t stream_;
   // Used to create placeholders with shape and data type information. The
@@ -2615,8 +2610,7 @@ TEST_F(OpConverterTest, ConvertCombinedNMS) {
     EXPECT_THAT(GetSpanForData<int32>(output_data[3]), ElementsAre(2));
   }
 }
-
-#endif  // CombinedNonMaxSuppression
+#endif  // IS_TRT_VERSION_GE(5, 1, 0, 0)
 
 TEST_F(OpConverterTest, ConvertActivation) {
   {
@@ -3862,7 +3856,7 @@ TEST_F(OpConverterTest, ConvertConv2D) {
   };
 
   // Ok.
-  const int kConv2DOKCases = 7;
+  const int kConv2DOKCases = 9;
   TestParams ok_params[kConv2DOKCases] = {
       // Basic
       TestParams{/*input_dims=*/{1, 2, 3},
@@ -3948,6 +3942,31 @@ TEST_F(OpConverterTest, ConvertConv2D) {
                  /*is_conv2d_backprop_input=*/true,
                  /*expected_output_dims=*/{1, 2, 4},
                  /*expected_output=*/{0, 0, -1, 1, -2, 2, -3, 3}},
+      // Transpose Strided NHWC
+      TestParams{/*input_dims=*/{2, 2, 1},
+                 /*input=*/{0, 1, 2, 3},
+                 /*filter_dims=*/{1, 2, 1, 1},
+                 /*filter=*/{-1, 1},
+                 /*strides=*/{1, 1, 2, 1},
+                 /*padding=*/"SAME",
+                 /*data_format=*/"NHWC",
+                 /*dilations=*/{1, 1, 1, 1},
+                 /*is_conv2d_backprop_input=*/true,
+                 /*expected_output_dims=*/{2, 4, 1},
+                 /*expected_output=*/{0, 0, -1, 1, -2, 2, -3, 3}},
+      // Transpose Strided NHWC with VALID padding
+      TestParams{/*input_dims=*/{3, 1, 1},
+                 /*input=*/{0, 1, 2},
+                 /*filter_dims=*/{2, 1, 1, 1},
+                 /*filter=*/{-1, 1},
+                 /*strides=*/{1, 2, 1, 1},
+                 /*padding=*/"VALID",
+                 /*data_format=*/"NHWC",
+                 /*dilations=*/{1, 1, 1, 1},
+                 /*is_conv2d_backprop_input=*/true,
+                 /*expected_output_dims=*/{7, 1, 1},
+                 /*expected_output=*/{0, 0, -1, 1, -2, 2, 0}},
+
   };
 
   for (int i = 0; i < kConv2DOKCases; i++) {
@@ -3959,10 +3978,10 @@ TEST_F(OpConverterTest, ConvertConv2D) {
     AddTestWeights<float>("weights", ok_params[i].filter_dims,
                           ok_params[i].filter);
     if (ok_params[i].is_conv2d_backprop_input) {
-      AddTestWeights<float>(
-          "input_sizes",
-          {static_cast<int>(ok_params[i].expected_output.size())},
-          ok_params[i].expected_output);
+      std::vector<int> tf_input_sizes = ok_params[i].expected_output_dims;
+      tf_input_sizes.insert(tf_input_sizes.begin(), 1);  // Add batch dimension.
+      QCHECK_EQ(4, tf_input_sizes.size());
+      AddTestWeights<int>("input_sizes", {4}, tf_input_sizes);
     }
     RunValidationAndConversion(node_def);
     TRT_TensorOrWeights output;

@@ -132,24 +132,24 @@ class FoldIfOp : public OpRewritePattern<TF::IfOp> {
 
 // Erases functions from the given candidates that are not referenced by any of
 // the ops in the module.
-static void EraseDeadFuncs(const FuncSet& candiate_funcs, ModuleOp module) {
-  if (candiate_funcs.empty()) return;
+static void EraseDeadFuncs(const FuncSet& candidate_funcs, ModuleOp module) {
+  if (candidate_funcs.empty()) return;
 
-  ModuleManager manager(module);
+  SymbolTable manager(module);
 
   // Identify the functions that are used as symbols in the module and shouldn't
   // be erased.
   FuncSet in_use_funcs;
-  manager.getModule().walk([&](Operation* op) {
+  manager.getOp()->walk([&](Operation* op) {
     for (auto attr : op->getAttrs()) {
       if (auto symbol = attr.second.dyn_cast<FlatSymbolRefAttr>()) {
-        auto func = manager.lookupSymbol<FuncOp>(symbol.getValue());
+        auto func = manager.lookup<FuncOp>(symbol.getValue());
         in_use_funcs.insert(func);
       }
     }
   });
 
-  for (FuncOp func : candiate_funcs) {
+  for (FuncOp func : candidate_funcs) {
     if (!in_use_funcs.count(func)) manager.erase(func);
   }
 }

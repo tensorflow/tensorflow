@@ -79,7 +79,7 @@ EagerContext::EagerContext(
     : default_device_placement_policy_(default_device_placement_policy),
       default_mirroring_policy_(default_mirroring_policy),
       local_device_manager_(device_mgr, device_mgr_owned),
-      devices_(device_mgr->ListDevices()),
+      host_cpu_device_(device_mgr->ListDevices()[0]),
       rendezvous_(rendezvous),
       thread_pool_(NewThreadPoolFromSessionOptions(opts)),
       custom_kernel_creator_(custom_kernel_creator),
@@ -102,7 +102,7 @@ EagerContext::EagerContext(
   // currently a no-op.
   eager_context_created->GetCell()->Set(true);
   monitoring::StartExporter();
-  InitDeviceMapAndAsync();
+  InitPrioritizedDeviceTypeList();
   runner_ = [this](std::function<void()> closure) {
     this->thread_pool_->Schedule(std::move(closure));
   };
@@ -140,23 +140,16 @@ void EagerContext::ResetPFLR(const DeviceMgr* device_mgr, Env* env,
   }
 }
 
-void EagerContext::InitDeviceMapAndAsync() {
-  for (auto* device : devices_) {
-    devices_map_[device->name()] = device;
-  }
-
-  if (remote_device_mgr() != nullptr) {
-    for (auto* device : remote_device_mgr()->ListDevices()) {
-      if (devices_map_.find(device->name()) == devices_map_.end()) {
-        devices_map_[device->name()] = device;
-        devices_.push_back(device);
-      }
-    }
-  }
-
+void EagerContext::InitPrioritizedDeviceTypeList() {
   DeviceSet ds;
-  for (Device* d : devices_) {
+  for (Device* d : local_device_mgr()->ListDevices()) {
     ds.AddDevice(d);
+  }
+  auto remote_device_manager = remote_device_mgr();
+  if (remote_device_manager != nullptr) {
+    for (Device* d : remote_device_manager->ListDevices()) {
+      ds.AddDevice(d);
+    }
   }
   prioritized_device_type_list_ = ds.PrioritizedDeviceTypeList();
 }
@@ -273,7 +266,7 @@ void EagerContext::CloseRemoteContexts(
 
   int i = 0;
   for (const auto& worker : remote_contexts) {
-    eager::EagerClient* client;
+    core::RefCountPtr<eager::EagerClient> client;
     Status s = remote_eager_workers_->GetClient(worker, &client);
 
     client->CloseContextAsync(
@@ -391,17 +384,6 @@ std::vector<const FunctionDef*> EagerContext::ListRegisteredFunctions() {
   return result;
 }
 
-// TODO(gjn): Delete in favour of FindDeviceFromName
-Status EagerContext::FindDeviceByName(const string& name,
-                                      Device** result) const {
-  auto it = devices_map_.find(name);
-  if (it == devices_map_.end()) {
-    return errors::InvalidArgument(name, " unknown device.");
-  }
-  *result = it->second;
-  return Status::OK();
-}
-
 void EagerContext::ClearRunMetadata() { run_metadata_.Clear(); }
 
 void EagerContext::StartStep() {
@@ -449,7 +431,7 @@ Status EagerContext::MaybeRegisterFunctionRemotely(const FunctionDef& fdef) {
       register_function->mutable_function_def()->mutable_node_def());
 
   for (const auto& target : remote_contexts_) {
-    eager::EagerClient* eager_client;
+    core::RefCountPtr<eager::EagerClient> eager_client;
     TF_RETURN_IF_ERROR(remote_eager_workers_->GetClient(target, &eager_client));
 
     eager::EnqueueResponse* response = new eager::EnqueueResponse();
@@ -475,7 +457,7 @@ Status EagerContext::RegisterExistingFunctionsOnRemoteWorkers(
   // Register multiple functions on selected remote workers.
   uint64 context_id = GetContextId();
   for (int i = 0; i < remote_workers.size(); i++) {
-    eager::EagerClient* eager_client;
+    core::RefCountPtr<eager::EagerClient> eager_client;
     Status s =
         remote_eager_workers_->GetClient(remote_workers[i], &eager_client);
     if (!s.ok()) {
@@ -634,7 +616,7 @@ Status EagerContext::CPUDeviceOnTask(const Device* device,
   TF_RETURN_IF_ERROR(DeviceNameUtils::DeviceNameToCpuDeviceName(
       device->name(), &cpu_device_name));
 
-  return FindDeviceByName(cpu_device_name, cpu_device);
+  return FindDeviceFromName(cpu_device_name.c_str(), cpu_device);
 }
 
 namespace {
@@ -648,25 +630,14 @@ Status GetTaskName(Device* d, string* task_name) {
 }
 }  // namespace
 
-bool EagerContext::IsLocalDeviceName(
-    const DeviceNameUtils::ParsedName& device_name) const {
-  if ((!device_name.has_job && !device_name.has_replica &&
-       !device_name.has_task) ||
-      remote_device_mgr() == nullptr)
-    return true;
-  auto& host_cpu_name = HostCPU()->parsed_name();
-  return device_name.job == host_cpu_name.job &&
-         device_name.replica == host_cpu_name.replica &&
-         device_name.task == host_cpu_name.task;
-}
-
 #if !defined(IS_MOBILE_PLATFORM)
-Status EagerContext::GetClient(Device* device, eager::EagerClient** client) {
+Status EagerContext::GetClient(Device* device,
+                               core::RefCountPtr<eager::EagerClient>* client) {
   return GetClient(device->parsed_name(), client);
 }
 
 Status EagerContext::GetClient(const DeviceNameUtils::ParsedName& device_name,
-                               eager::EagerClient** client) {
+                               core::RefCountPtr<eager::EagerClient>* client) {
   if (remote_eager_workers_ == nullptr) {
     return errors::Internal(
         "Haven't set up remote eager worker in this eager context yet.");
@@ -697,7 +668,7 @@ Status EagerContext::GetClient(const DeviceNameUtils::ParsedName& device_name,
 }
 
 Status EagerContext::GetClient(const string& remote_task,
-                               eager::EagerClient** client) {
+                               core::RefCountPtr<eager::EagerClient>* client) {
   if (remote_eager_workers_ == nullptr) {
     return errors::Internal(
         "Haven't set up remote eager worker in this eager context yet.");
@@ -729,11 +700,9 @@ Status EagerContext::StoreCollectiveOpsServer(
   collective_executor_mgr_.Reset(rpc_collective_executor_mgr);
 
   local_device_manager_.Reset(device_mgr);
+  host_cpu_device_ = local_device_manager_.Get()->ListDevices()[0];
 
-  devices_ = local_device_manager_.Get()->ListDevices();
-  devices_map_.clear();
-
-  InitDeviceMapAndAsync();
+  InitPrioritizedDeviceTypeList();
   ClearCaches();
   default_executor_.ClearError();
   {
@@ -871,9 +840,7 @@ Status EagerContext::SetMasterContextState(
       ReadBoolFromEnvVar("TF_EAGER_REMOTE_USE_SEND_TENSOR_RPC", true);
 
   local_device_manager_.Reset(local_device_mgr);
-
-  devices_ = local_device_manager_.Get()->ListDevices();
-  devices_map_.clear();
+  host_cpu_device_ = local_device_manager_.Get()->ListDevices()[0];
 
   if (rendezvous_ != nullptr) rendezvous_->Unref();
   rendezvous_ = r;
@@ -904,7 +871,7 @@ Status EagerContext::SetMasterContextState(
   DCHECK(remote_device_manager_.Owned());
   ResetClusterFLR(cluster_flr);
 
-  InitDeviceMapAndAsync();
+  InitPrioritizedDeviceTypeList();
 
   ClearCaches();
   default_executor_.ClearError();
@@ -946,7 +913,7 @@ Status EagerContext::SetMasterContextState(
                 if (keep_alive_secs_ > 0) {
                   {
                     for (const auto& worker : remote_contexts_) {
-                      eager::EagerClient* client;
+                      core::RefCountPtr<eager::EagerClient> client;
                       Status s =
                           remote_eager_workers_->GetClient(worker, &client);
 
@@ -1020,7 +987,7 @@ Status EagerContext::InitializeRemoteWorker(
   ResetPFLR(local_device_manager_.Get(), env_, config, TF_GRAPH_DEF_VERSION,
             &func_lib_def_, config->graph_options().optimizer_options(),
             thread_pool_.get(), cluster_flr_.Get(), custom_kernel_creator_);
-  InitDeviceMapAndAsync();
+  InitPrioritizedDeviceTypeList();
 
   ClearCaches();
   default_executor_.ClearError();
@@ -1059,9 +1026,7 @@ Status EagerContext::UpdateRemoteWorker(
   ResetClusterFLR(cluster_flr);
 
   remote_device_manager_.Reset(remote_device_mgr);
-  devices_ = worker_session_device_mgr->ListDevices();
-  devices_map_.clear();
-  InitDeviceMapAndAsync();
+  InitPrioritizedDeviceTypeList();
 
   ClearCaches();
   default_executor_.ClearError();

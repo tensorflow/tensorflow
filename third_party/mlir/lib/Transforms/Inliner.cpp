@@ -29,7 +29,10 @@
 #include "mlir/Transforms/InliningUtils.h"
 #include "mlir/Transforms/Passes.h"
 #include "llvm/ADT/SCCIterator.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Support/Parallel.h"
+
+#define DEBUG_TYPE "inlining"
 
 using namespace mlir;
 
@@ -79,11 +82,11 @@ struct ResolvedCall {
 /// Collect all of the callable operations within the given range of blocks. If
 /// `traverseNestedCGNodes` is true, this will also collect call operations
 /// inside of nested callgraph nodes.
-static void collectCallOps(llvm::iterator_range<Region::iterator> blocks,
+static void collectCallOps(iterator_range<Region::iterator> blocks,
                            CallGraph &cg, SmallVectorImpl<ResolvedCall> &calls,
                            bool traverseNestedCGNodes) {
   SmallVector<Block *, 8> worklist;
-  auto addToWorklist = [&](llvm::iterator_range<Region::iterator> blocks) {
+  auto addToWorklist = [&](iterator_range<Region::iterator> blocks) {
     for (Block &block : blocks)
       worklist.push_back(&block);
   };
@@ -120,8 +123,8 @@ struct Inliner : public InlinerInterface {
 
   /// Process a set of blocks that have been inlined. This callback is invoked
   /// *before* inlined terminator operations have been processed.
-  void processInlinedBlocks(
-      llvm::iterator_range<Region::iterator> inlinedBlocks) final {
+  void
+  processInlinedBlocks(iterator_range<Region::iterator> inlinedBlocks) final {
     collectCallOps(inlinedBlocks, cg, calls, /*traverseNestedCGNodes=*/true);
   }
 
@@ -173,6 +176,10 @@ static LogicalResult inlineCallsInSCC(Inliner &inliner,
   bool inlinedAnyCalls = false;
   for (unsigned i = 0; i != calls.size(); ++i) {
     ResolvedCall &it = calls[i];
+    LLVM_DEBUG({
+      llvm::dbgs() << "* Considering inlining call: ";
+      it.call.dump();
+    });
     if (!shouldInline(it))
       continue;
 

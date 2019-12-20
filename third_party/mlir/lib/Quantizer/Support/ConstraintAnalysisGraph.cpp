@@ -157,15 +157,15 @@ Type CAGAnchorNode::getTransformedType() {
       getOriginalType());
 }
 
-void CAGNode::printLabel(llvm::raw_ostream &os) const {
+void CAGNode::printLabel(raw_ostream &os) const {
   os << "Node<" << static_cast<const void *>(this) << ">";
 }
 
-void CAGAnchorNode::printLabel(llvm::raw_ostream &os) const {
+void CAGAnchorNode::printLabel(raw_ostream &os) const {
   getUniformMetadata().printSummary(os);
 }
 
-void CAGOperandAnchor::printLabel(llvm::raw_ostream &os) const {
+void CAGOperandAnchor::printLabel(raw_ostream &os) const {
   os << "Operand<";
   op->getName().print(os);
   os << "," << operandIdx;
@@ -173,7 +173,7 @@ void CAGOperandAnchor::printLabel(llvm::raw_ostream &os) const {
   CAGAnchorNode::printLabel(os);
 }
 
-void CAGResultAnchor::printLabel(llvm::raw_ostream &os) const {
+void CAGResultAnchor::printLabel(raw_ostream &os) const {
   os << "Result<";
   getOp()->getName().print(os);
   os << ">";

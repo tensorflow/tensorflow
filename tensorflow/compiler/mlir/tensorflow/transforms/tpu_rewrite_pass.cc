@@ -109,13 +109,13 @@ LogicalResult EncapsulateFuncAndSerialize(FuncOp entry_func,
     return parent_module.emitError(CreateMissingAttributeMsg(kVersionsAttr));
 
   module_for_func.get().getOperation()->setAttr(kVersionsAttr, versions_attr);
-  ModuleManager module_manager(module_for_func.get());
+  SymbolTable symbol_table(module_for_func.get());
 
   while (!referenced.empty()) {
     auto func = referenced.pop_back_val();
 
     // Skip functions that have already been cloned into new module.
-    if (module_manager.lookupSymbol<FuncOp>(func.getName())) continue;
+    if (symbol_table.lookup<FuncOp>(func.getName())) continue;
 
     // Find any SymbolRefAttr in func that maps to a FuncOp. We need to clone
     // all found FuncOps to new_module to make sure new_module is
@@ -138,7 +138,7 @@ LogicalResult EncapsulateFuncAndSerialize(FuncOp entry_func,
       // should be no other reference to it.
       clone.setName("main");
     }
-    module_manager.insert(clone);
+    symbol_table.insert(clone);
   }
 
   // Serialize module and return.
@@ -330,42 +330,19 @@ Operation* BuildCompileOp(tf_device::LaunchFuncOp launch_func, int num_replicas,
 Operation* BuildExecuteOp(Operation* compile_op,
                           tf_device::LaunchFuncOp launch_func,
                           OpBuilder* builder) {
-  // TODO(b/139377366): Use tf.TPUExecute build method when it is defined.
-  OperationState execute_op_state(launch_func.getLoc(), "tf.TPUExecute");
-
-  // TPUExecute inherits all launch_func inputs.
+  // TPUExecute inherits all launch_func inputs, and takes an additional input
+  // for compilation cache key.
   llvm::SmallVector<Value*, 4> tensor_inputs(launch_func.getOperands());
-  execute_op_state.addOperands(tensor_inputs);
+  tensor_inputs.push_back(compile_op->getResult(1));
 
   // TODO(b/139377366): Need to snapshot all resource variable inputs in
   // follow-up CLs.
 
-  // Set Targs of TPUExecute according to launch_func input types.
-  llvm::SmallVector<Attribute, 4> tensor_input_types_attrs;
-  tensor_input_types_attrs.reserve(tensor_inputs.size());
-  for (Value* v : tensor_inputs) {
-    tensor_input_types_attrs.emplace_back(TypeAttr::get(v->getType()));
-  }
-  execute_op_state.addAttribute(
-      "Targs", builder->getArrayAttr(tensor_input_types_attrs));
-
-  // TPUExecute takes an additional input for compilation cache key.
-  execute_op_state.addOperands(compile_op->getResult(1));
-
-  // Set Tresults of TPUExecute according to launch_func results types.
-  llvm::SmallVector<Attribute, 4> output_types_attrs;
-  output_types_attrs.reserve(launch_func.getNumResults());
-  for (Value* v : launch_func.getResults()) {
-    output_types_attrs.emplace_back(TypeAttr::get(v->getType()));
-  }
-  execute_op_state.addAttribute("Tresults",
-                                builder->getArrayAttr(output_types_attrs));
-
   // TPUExecute has same output types as launch_func.
   llvm::SmallVector<Type, 4> output_types(launch_func.getResultTypes());
-  execute_op_state.addTypes(output_types);
-
-  return builder->createOperation(execute_op_state);
+  return builder->create<TF::TPUExecuteOp>(launch_func.getLoc(), output_types,
+                                           tensor_inputs,
+                                           llvm::ArrayRef<NamedAttribute>{});
 }
 
 // Creates a `tf.TPUCompileSucceededAssert` operation that parses compilation

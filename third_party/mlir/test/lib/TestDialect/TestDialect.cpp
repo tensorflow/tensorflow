@@ -22,6 +22,7 @@
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/Transforms/FoldUtils.h"
 #include "mlir/Transforms/InliningUtils.h"
+#include "llvm/ADT/StringSwitch.h"
 
 using namespace mlir;
 
@@ -30,6 +31,32 @@ using namespace mlir;
 //===----------------------------------------------------------------------===//
 
 namespace {
+
+// Test support for interacting with the AsmPrinter.
+struct TestOpAsmInterface : public OpAsmDialectInterface {
+  using OpAsmDialectInterface::OpAsmDialectInterface;
+
+  void getAsmResultNames(Operation *op,
+                         OpAsmSetValueNameFn setNameFn) const final {
+    if (auto asmOp = dyn_cast<AsmDialectInterfaceOp>(op))
+      setNameFn(asmOp, "result");
+  }
+
+  void getAsmBlockArgumentNames(Block *block,
+                                OpAsmSetValueNameFn setNameFn) const final {
+    auto op = block->getParentOp();
+    auto arrayAttr = op->getAttrOfType<ArrayAttr>("arg_names");
+    if (!arrayAttr)
+      return;
+    auto args = block->getArguments();
+    auto e = std::min(arrayAttr.size(), args.size());
+    for (unsigned i = 0; i < e; ++i) {
+      if (auto strAttr = arrayAttr.getValue()[i].dyn_cast<StringAttr>())
+        setNameFn(args[i], strAttr.getValue());
+    }
+  }
+};
+
 struct TestOpFolderDialectInterface : public OpFolderDialectInterface {
   using OpFolderDialectInterface::OpFolderDialectInterface;
 
@@ -112,8 +139,16 @@ TestDialect::TestDialect(MLIRContext *context)
 #define GET_OP_LIST
 #include "TestOps.cpp.inc"
       >();
-  addInterfaces<TestOpFolderDialectInterface, TestInlinerInterface>();
+  addInterfaces<TestOpAsmInterface, TestOpFolderDialectInterface,
+                TestInlinerInterface>();
   allowUnknownOperations();
+}
+
+LogicalResult TestDialect::verifyOperationAttribute(Operation *op,
+                                                    NamedAttribute namedAttr) {
+  if (namedAttr.first == "test.invalid_attr")
+    return op->emitError() << "invalid to use 'test.invalid_attr'";
+  return success();
 }
 
 LogicalResult TestDialect::verifyRegionArgAttribute(Operation *op,
@@ -220,6 +255,7 @@ static void print(OpAsmPrinter &p, WrappingRegionOp op) {
 //===----------------------------------------------------------------------===//
 // Test PolyForOp - parse list of region arguments.
 //===----------------------------------------------------------------------===//
+
 static ParseResult parsePolyForOp(OpAsmParser &parser, OperationState &result) {
   SmallVector<OpAsmParser::OperandType, 4> ivsInfo;
   // Parse list of region arguments without a delimiter.
@@ -267,21 +303,23 @@ LogicalResult TestOpWithVariadicResultsAndFolder::fold(
   return success();
 }
 
-SmallVector<Type, 2> mlir::OpWithInferTypeInterfaceOp::inferReturnTypes(
-    llvm::Optional<Location> location, ArrayRef<Value *> operands,
-    ArrayRef<NamedAttribute> attributes, ArrayRef<Region> regions) {
+LogicalResult mlir::OpWithInferTypeInterfaceOp::inferReturnTypes(
+    llvm::Optional<Location> location, ValueRange operands,
+    ArrayRef<NamedAttribute> attributes, RegionRange regions,
+    SmallVectorImpl<Type> &inferedReturnTypes) {
   if (operands[0]->getType() != operands[1]->getType()) {
-    if (location)
-      mlir::emitError(*location)
-          << "operand type mismatch " << operands[0]->getType() << " vs "
-          << operands[1]->getType();
-    return {nullptr};
+    return emitOptionalError(location, "operand type mismatch ",
+                             operands[0]->getType(), " vs ",
+                             operands[1]->getType());
   }
-  return {operands[0]->getType()};
+  inferedReturnTypes.assign({operands[0]->getType()});
+  return success();
 }
 
 // Static initialization for Test dialect registration.
 static mlir::DialectRegistration<mlir::TestDialect> testDialect;
+
+#include "TestOpEnums.cpp.inc"
 
 #define GET_OP_CLASSES
 #include "TestOps.cpp.inc"

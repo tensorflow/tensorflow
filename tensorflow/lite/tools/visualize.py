@@ -26,6 +26,8 @@ from __future__ import print_function
 
 import json
 import os
+import shlex
+import subprocess
 import sys
 
 from tensorflow.python.platform import resource_loader
@@ -375,7 +377,7 @@ def CreateHtmlFile(tflite_input, html_output):
         "--strict-json --defaults-json -o /tmp {schema} -- {input}".format(
             input=tflite_input, schema=_SCHEMA))
     print(cmd)
-    os.system(cmd)
+    subprocess.check_call(shlex.split(cmd))
     real_output = ("/tmp/" + os.path.splitext(
         os.path.split(tflite_input)[-1])[0] + ".json")
 

@@ -21,7 +21,7 @@ import time
 
 from absl.testing import parameterized
 
-from tensorflow.python.data.experimental.ops import sleep
+from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
@@ -36,7 +36,7 @@ class SleepTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.skipTest("b/123597912")
     sleep_microseconds = 100
     dataset = dataset_ops.Dataset.range(10).apply(
-        sleep.sleep(sleep_microseconds))
+        testing.sleep(sleep_microseconds))
     next_element = self.getNext(dataset)
     start_time = time.time()
     for i in range(10):
@@ -50,7 +50,7 @@ class SleepTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testSleepCancellation(self):
     sleep_microseconds = int(1e6) * 1000
     ds = dataset_ops.Dataset.range(1)
-    ds = ds.apply(sleep.sleep(sleep_microseconds))
+    ds = ds.apply(testing.sleep(sleep_microseconds))
     ds = ds.prefetch(1)
     get_next = self.getNext(ds, requires_initialization=True)
 
@@ -67,7 +67,7 @@ class SleepTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     sleep_microseconds = int(1e6) * 1000
     ds_sleep = dataset_ops.Dataset.range(1)
-    ds_sleep = ds.apply(sleep.sleep(sleep_microseconds))
+    ds_sleep = ds.apply(testing.sleep(sleep_microseconds))
 
     ds = ds.concatenate(ds_sleep)
     ds = ds.prefetch(1)

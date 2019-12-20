@@ -68,5 +68,21 @@ Status SetTypeAttribute(absl::string_view name, mlir::Type type,
 // with a different value, returns an error.
 Status SetShapeAttribute(absl::string_view name, mlir::ShapedType shape,
                          AttrValueMap* values);
+
+// Sets the given size_t value as an integer attribute with the given name.
+// If the attribute already exists with a different value, returns an error.
+Status SetSizeAttribute(absl::string_view name, size_t size,
+                        AttrValueMap* values);
+
+// Returns true if the given instruction is an mlir::TF::LegacyCallOp or the
+// result of such an operation transformed by the
+// ExecutorToControlDialectConversion pass.
+//
+// TODO(b/145706023): When the ExecutorToControlDialectConversion pass runs
+// before the exporter, it mutates an mlir::TF::LegacyCallOp instruction to
+// an instruction with a different operation name. As such, this routine checks
+// both forms of a LegacyCall instruction. We only need to check for
+// mlir::TF::LegacyCallOp when the ticket is resolved.
+bool IsLegacyCallInstruction(mlir::Operation* inst);
 }  // namespace tensorflow
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_EXPORTER_UTILS_H_

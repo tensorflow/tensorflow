@@ -132,7 +132,7 @@ struct InsertTFLQuantOpsAfterTFFakeQuantOp
 
     int quant_dim = -1;
     if (PerAxis) {
-      // This is a special case that the quant_dim is the last dimentions.
+      // This is a special case that the quant_dim is the last dimensions.
       quant_dim = res->getType().template cast<ShapedType>().getRank() - 1;
     }
     // Use the min/max from the operands and the num_bits and narrow_range
@@ -400,7 +400,7 @@ class ConvertTFDepthwiseConv2dNative
   }
 };
 
-// StridedSlice can have complicated atributes like begin_axis_mask,
+// StridedSlice can have complicated attributes like begin_axis_mask,
 // end_axis_mask, ellipsis_axis_mask, new_axis_mask, shrink_axis_mask. These
 // masks will complicate the strided_slice computation logic, we can simplify
 // the logic by inserting a reshape op to pad the inputs so strided_slice can

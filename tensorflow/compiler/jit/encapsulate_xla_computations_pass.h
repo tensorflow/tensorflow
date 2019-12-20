@@ -28,7 +28,7 @@
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/platform/env.h"
 
-    namespace tensorflow {
+namespace tensorflow {
 
 // Encapsulates nodes marked with the _xla_compile_id attribute into
 // XlaLaunch operators.

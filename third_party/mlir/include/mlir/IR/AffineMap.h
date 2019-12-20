@@ -65,6 +65,15 @@ public:
   static AffineMap getMultiDimIdentityMap(unsigned numDims,
                                           MLIRContext *context);
 
+  /// Returns an AffineMap representing a permutation.
+  /// The permutation is expressed as a non-empty vector of integers.
+  /// E.g. the permutation `(i,j,k) -> (j,k,i)` will be expressed with
+  /// `permutation = [1,2,0]`. All values in `permutation` must be
+  /// integers, in the range 0..`permutation.size()-1` without duplications
+  /// (i.e. `[1,1,2]` is an invalid permutation).
+  static AffineMap getPermutationMap(ArrayRef<unsigned> permutation,
+                                     MLIRContext *context);
+
   MLIRContext *getContext() const;
 
   explicit operator bool() { return map != nullptr; }
@@ -171,27 +180,27 @@ AffineMap simplifyAffineMap(AffineMap map);
 ///
 /// Example 1:
 ///
-/// ```{.mlir}
+/// ```mlir
 ///    (d0, d1, d2) -> (d1, d1, d0, d2, d1, d2, d1, d0)
 ///                      0       2   3
 /// ```
 ///
 /// returns:
 ///
-/// ```{.mlir}
+/// ```mlir
 ///    (d0, d1, d2, d3, d4, d5, d6, d7) -> (d2, d0, d3)
 /// ```
 ///
 /// Example 2:
 ///
-/// ```{.mlir}
+/// ```mlir
 ///    (d0, d1, d2) -> (d1, d0 + d1, d0, d2, d1, d2, d1, d0)
 ///                      0            2   3
 /// ```
 ///
 /// returns:
 ///
-/// ```{.mlir}
+/// ```mlir
 ///    (d0, d1, d2, d3, d4, d5, d6, d7) -> (d2, d0, d3)
 /// ```
 AffineMap inversePermutation(AffineMap map);
@@ -205,7 +214,7 @@ AffineMap inversePermutation(AffineMap map);
 /// Example:
 /// When applied to the following list of 3 affine maps,
 ///
-/// ```{.mlir}
+/// ```mlir
 ///    {
 ///      (i, j, k) -> (i, k),
 ///      (i, j, k) -> (k, j),
@@ -215,10 +224,10 @@ AffineMap inversePermutation(AffineMap map);
 ///
 /// Returns the map:
 ///
-/// ```{.mlir}
+/// ```mlir
 ///     (i, j, k) -> (i, k, k, j, i, j)
 /// ```
-AffineMap concatAffineMaps(llvm::ArrayRef<AffineMap> maps);
+AffineMap concatAffineMaps(ArrayRef<AffineMap> maps);
 
 inline raw_ostream &operator<<(raw_ostream &os, AffineMap map) {
   map.print(os);

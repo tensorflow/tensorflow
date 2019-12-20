@@ -33,6 +33,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/cl:tensor_type",
         "//tensorflow/lite/delegates/gpu/cl/kernels:convolution_transposed",
         "//tensorflow/lite/delegates/gpu/cl/kernels:convolution_transposed_3x3_thin",
+        "//tensorflow/lite/delegates/gpu/cl/kernels:convolution_transposed_4x4",
         "//tensorflow/lite/delegates/gpu/cl/kernels:convolution_transposed_thin",
         "//tensorflow/lite/delegates/gpu/cl/kernels:gpu_operation",
         "//tensorflow/lite/delegates/gpu/common:operations",

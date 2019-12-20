@@ -66,10 +66,10 @@ public:
   /// before it is replaced. 'processGeneratedConstants' is invoked for any new
   /// operations generated when folding. If the op was completely folded it is
   /// erased.
-  LogicalResult tryToFold(
-      Operation *op,
-      llvm::function_ref<void(Operation *)> processGeneratedConstants = nullptr,
-      llvm::function_ref<void(Operation *)> preReplaceAction = nullptr);
+  LogicalResult
+  tryToFold(Operation *op,
+            function_ref<void(Operation *)> processGeneratedConstants = nullptr,
+            function_ref<void(Operation *)> preReplaceAction = nullptr);
 
   /// Notifies that the given constant `op` should be remove from this
   /// OperationFolder's internal bookkeeping.
@@ -125,9 +125,9 @@ private:
 
   /// Tries to perform folding on the given `op`. If successful, populates
   /// `results` with the results of the folding.
-  LogicalResult tryToFold(Operation *op, SmallVectorImpl<Value *> &results,
-                          llvm::function_ref<void(Operation *)>
-                              processGeneratedConstants = nullptr);
+  LogicalResult tryToFold(
+      Operation *op, SmallVectorImpl<Value *> &results,
+      function_ref<void(Operation *)> processGeneratedConstants = nullptr);
 
   /// Try to get or create a new constant entry. On success this returns the
   /// constant operation, nullptr otherwise.

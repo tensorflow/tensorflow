@@ -42,6 +42,10 @@ public:
   explicit AttrConstraint(const llvm::Record *record);
 
   static bool classof(const Constraint *c) { return c->getKind() == CK_Attr; }
+
+  // Returns true if this constraint is a subclass of the given `className`
+  // class defined in TableGen.
+  bool isSubClassOf(StringRef className) const;
 };
 
 // Wrapper class providing helper methods for accessing MLIR Attribute defined
@@ -77,10 +81,10 @@ public:
   // built upon.
   Attribute getBaseAttr() const;
 
-  // Returns whether this attribute has a default value's initializer.
-  bool hasDefaultValueInitializer() const;
-  // Returns the default value's initializer for this attribute.
-  StringRef getDefaultValueInitializer() const;
+  // Returns whether this attribute has a default value.
+  bool hasDefaultValue() const;
+  // Returns the default value for this attribute.
+  StringRef getDefaultValue() const;
 
   // Returns whether this attribute is optional.
   bool isOptional() const;

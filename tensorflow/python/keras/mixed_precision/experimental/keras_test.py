@@ -841,8 +841,11 @@ class KerasModelTest(keras_parameterized.TestCase):
       x = layers.Input(shape=(1,))
       y = mp_test_util.AddLayer()(x)
       model = models.Model(x, y)
-      with self.assertRaisesRegexp(ValueError,
-                                   'optimizer" must be an instance of '):
+      if context.executing_eagerly():
+        error_msg = 'Use a `tf.keras` Optimizer instead'
+      else:
+        error_msg = 'optimizer" must be an instance of '
+      with self.assertRaisesRegexp(ValueError, error_msg):
         model.compile(optimizers.SGD(1.), 'mse')
 
   @test_util.run_in_graph_and_eager_modes

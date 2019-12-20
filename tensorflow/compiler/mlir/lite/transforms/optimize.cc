@@ -50,6 +50,24 @@ namespace TFL {
 // The actual Optimize Pass.
 namespace {
 
+bool L2NormalizeReduceAxis(Value *sq_op, DenseElementsAttr axis) {
+  if (sq_op->getType().cast<ShapedType>().getRank() - 1 ==
+          *axis.getValues<int>().begin() ||
+      *axis.getValues<int>().begin() == -1) {
+    return true;
+  }
+  if (sq_op->getType().cast<ShapedType>().getRank() != axis.getNumElements()) {
+    return false;
+  }
+  auto shape = sq_op->getType().cast<ShapedType>();
+  SmallVector<int, 4> elems{axis.getValues<int>().begin(),
+                            axis.getValues<int>().end()};
+  for (int i = 0; i < shape.getRank(); ++i) {
+    if (i != elems[i]) return false;
+  }
+  return true;
+}
+
 using ::llvm::cast;
 
 // Optimize TFLite operations in functions.
@@ -60,6 +78,21 @@ struct Optimize : public FunctionPass<Optimize> {
 // Returns whether the given type `a` is broadcast-compatible with `b`.
 bool IsBroadcastableElementsAttrAndType(Type a, Type b) {
   return OpTrait::util::getBroadcastedType(a, b) != Type();
+}
+
+// Returns whether if `type1` dimensions are the same as the ending dimensions
+// of `type2`. This is more restricted than broadcastable.
+bool IsTailOfShape(Type type1, Type type2) {
+  auto tail_type = type1.dyn_cast<ShapedType>();
+  auto full_type = type2.dyn_cast<ShapedType>();
+  if (!tail_type || !full_type || tail_type.getRank() > full_type.getRank())
+    return false;
+  auto i1 = tail_type.getShape().rbegin(), e1 = tail_type.getShape().rend();
+  auto i2 = full_type.getShape().rbegin();
+  for (; i1 != e1; ++i1, ++i2) {
+    if (*i1 != *i2) return false;
+  }
+  return true;
 }
 
 bool CanFuseConvOrDepthwiseConv(Attribute filter, Attribute val,
@@ -120,6 +153,22 @@ ElementsAttr ExpandTo4DForConv(Attribute a) {
 
 ElementsAttr ExpandTo4DForDepthwiseConv(Attribute a) {
   return ExpandTo4DForConvImpl(a, true);
+}
+
+// Returns shape of a ranked tensor.
+// Precondition: output_val's is ranked tensor.
+DenseElementsAttr GetShape(Value *output_val) {
+  auto output_type = output_val->getType().cast<RankedTensorType>();
+  auto shape_vector = output_type.getShape();
+  std::vector<int32_t> shape(shape_vector.size());
+  for (int i = 0; i < shape_vector.size(); ++i) {
+    shape[i] = shape_vector[i];
+  }
+  return mlir::DenseElementsAttr::get(
+      RankedTensorType::get(
+          {static_cast<int>(shape.size())},
+          mlir::IntegerType::get(32, output_val->getContext())),
+      llvm::makeArrayRef(shape));
 }
 
 #include "tensorflow/compiler/mlir/lite/transforms/generated_optimize.inc"
@@ -360,14 +409,14 @@ struct FuseBinaryOpToFollowingAffineOp : public OpRewritePattern<AffineOpType> {
       // w * (x ' c) + b => (w ' c) x + b
       // so we have to update the weight.
       bool is_mul = llvm::isa<MulOp>(binary_op);
-      auto new_fitler =
+      auto new_filter =
           filter_cst.mapValues(filter_type.getElementType(), [&](APFloat it) {
             return (is_mul ? it * cst_value : it / cst_value).bitcastToAPInt();
           });
       // We recreate the constant op in case it is shared by the other ops. This
       // might increase the model size.
       auto new_filter_op = rewriter.create<ConstOp>(
-          fc_op.getLoc(), filter->getType(), new_fitler);
+          fc_op.getLoc(), filter->getType(), new_filter);
       fc_op.setOperand(0, binary_op->getOperand(0));
       if (fc_op.filter() != filter) {
         // This filter goes through quantize and dequantize ops. Then we just
@@ -440,10 +489,16 @@ void Optimize::runOnFunction() {
   auto *ctx = &getContext();
   auto func = getFunction();
 
-  // Add the generated patterns to the list.
+  // Potentially the binary ops might be fused together, like hard_swish, thus
+  // we explore these potentially first and then fuse the binary ops with the
+  // following ops in a second pattern match.
   TFL::populateWithGenerated(ctx, &patterns);
   patterns.insert<FuseFullyConnectedAndAdd, FuseFullyConnectedAndRelu,
-                  FuseFullyConnectedAndMul, FuseBinaryOpToFollowingConv2D,
+                  FuseFullyConnectedAndMul>(ctx);
+  applyPatternsGreedily(func, patterns);
+
+  // Fuse the binary ops with the following ops.
+  patterns.insert<FuseBinaryOpToFollowingConv2D,
                   FuseBinaryOpToFollowingDepthwiseConv2D,
                   FuseBinaryOpToFollowingFullyConnected>(ctx);
   applyPatternsGreedily(func, patterns);

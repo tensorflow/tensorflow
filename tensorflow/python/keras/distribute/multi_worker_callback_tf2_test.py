@@ -24,7 +24,6 @@ from absl.testing import parameterized
 from tensorflow.python.distribute import collective_all_reduce_strategy as collective_strategy
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import multi_process_runner
-from tensorflow.python.distribute import multi_process_runner_util
 from tensorflow.python.distribute import multi_worker_test_base as test_base
 from tensorflow.python.keras import callbacks
 from tensorflow.python.keras.distribute import multi_worker_testing_utils
@@ -74,6 +73,7 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
 
     def proc_model_checkpoint_saves_on_chief_but_not_otherwise(
         test_obj, file_format):
+
       model, saving_filepath, train_ds, steps = _model_setup(
           test_obj, file_format)
       num_epoch = 2
@@ -104,12 +104,10 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
           training_state.checkpoint_exists(saving_filepath),
           test_base.is_chief())
 
-    # TODO(b/141948186): Remove this `with` block once b/141948186 is resolved.
-    with multi_process_runner_util.try_run_and_except_connection_error(self):
-      multi_process_runner.run(
-          proc_model_checkpoint_saves_on_chief_but_not_otherwise,
-          cluster_spec=test_base.create_cluster_spec(num_workers=2),
-          args=(self, file_format))
+    multi_process_runner.run(
+        proc_model_checkpoint_saves_on_chief_but_not_otherwise,
+        cluster_spec=test_base.create_cluster_spec(num_workers=2),
+        args=(self, file_format))
 
   @combinations.generate(combinations.combine(mode=['eager']))
   def test_tensorboard_saves_on_chief_but_not_otherwise(self, mode):
@@ -142,12 +140,10 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
       test_obj.assertEqual(
           bool(file_io.list_directory(saving_filepath)), test_base.is_chief())
 
-    # TODO(b/141948186): Remove this `with` block once b/141948186 is resolved.
-    with multi_process_runner_util.try_run_and_except_connection_error(self):
-      multi_process_runner.run(
-          proc_tensorboard_saves_on_chief_but_not_otherwise,
-          cluster_spec=test_base.create_cluster_spec(num_workers=2),
-          args=(self,))
+    multi_process_runner.run(
+        proc_tensorboard_saves_on_chief_but_not_otherwise,
+        cluster_spec=test_base.create_cluster_spec(num_workers=2),
+        args=(self,))
 
   @combinations.generate(combinations.combine(mode=['eager']))
   def test_tensorboard_can_still_save_to_temp_even_if_it_exists(self, mode):
@@ -173,12 +169,10 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
           steps_per_epoch=steps,
           callbacks=[callbacks.TensorBoard(log_dir=saving_filepath)])
 
-    # TODO(b/141948186): Remove this `with` block once b/141948186 is resolved.
-    with multi_process_runner_util.try_run_and_except_connection_error(self):
-      multi_process_runner.run(
-          proc_tensorboard_can_still_save_to_temp_even_if_it_exists,
-          cluster_spec=test_base.create_cluster_spec(num_workers=2),
-          args=(self,))
+    multi_process_runner.run(
+        proc_tensorboard_can_still_save_to_temp_even_if_it_exists,
+        cluster_spec=test_base.create_cluster_spec(num_workers=2),
+        args=(self,))
 
 
 if __name__ == '__main__':

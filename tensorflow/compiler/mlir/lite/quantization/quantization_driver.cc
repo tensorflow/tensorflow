@@ -96,10 +96,12 @@ struct RequantizeState {
 class QuantizationDriver {
  public:
   explicit QuantizationDriver(FuncOp fn, bool is_signed,
+                              bool disable_per_channel,
                               OpQuantSpecGetter op_quant_spec_getter)
       : fn_(fn),
         builder_(fn.getBody()),
         is_signed_(is_signed),
+        disable_per_channel_(disable_per_channel),
         op_quant_spec_getter_(op_quant_spec_getter) {}
 
   // The entry point of the quantization parameters propagation.
@@ -270,6 +272,7 @@ class QuantizationDriver {
   FuncOp fn_;
   OpBuilder builder_;
   bool is_signed_;
+  bool disable_per_channel_;
 
   // We should distinguish weights and bias constants. Biases are specified by
   // the quantization spec or are the operands of ops with same scale spec. The
@@ -342,21 +345,26 @@ bool QuantizationDriver::SetConstantResultParams(Operation *op) {
   // TODO(fengliuai): make storage_type_width and narrow_range configurable.
   Type final_type;
   auto it = optimized_weights_.find(op);
-  if (it != optimized_weights_.end()) {
-    if (it->second != -1 && is_signed_) {
-      // per-axis quantization weight
-      final_type = GetUniformQuantizedPerAxisTypeForWeight(
-          attr, it->second, /*symmetric=*/true, /*num_bits=*/8, is_signed_,
-          /*narrow_range=*/true);
-    } else {
-      // per-tensor quantization weight
-      final_type = GetUniformQuantizedTypeForWeight(
-          attr, /*num_bits=*/8, is_signed_, /*narrow_range_=*/true);
-    }
+  bool is_weight = it != optimized_weights_.end();
+  bool is_weight_with_per_channel_support =
+      is_weight && it->second != -1 && is_signed_;
+
+  if (is_weight_with_per_channel_support && !disable_per_channel_) {
+    // When `disable_per_channel_` is false, per-channel symmetric quantization
+    // parameters are created from the weights when the ops support per-channel
+    // quantization. Otherwise, uses per-tensor asymmetric quantization with
+    // narrow range.
+
+    // per-axis quantization weight, with symmetric min/max enforced.
+    final_type = GetUniformQuantizedPerAxisTypeForWeight(
+        attr, it->second, /*symmetric=*/true, /*num_bits=*/8, is_signed_,
+        /*narrow_range=*/true);
   } else {
-    // Normal constant operand
+    // per-tensor quantization weight
     final_type = GetUniformQuantizedTypeForWeight(
-        attr, /*num_bits=*/8, is_signed_, /*narrow_range_=*/false);
+        attr, /*symmetric=*/is_weight && is_signed_,
+        /*num_bits=*/8, is_signed_,
+        /*narrow_range_=*/is_weight);
   }
   if (auto quant_type = final_type.dyn_cast_or_null<quant::QuantizedType>()) {
     return SetResultParams(op, 0, quant_type);
@@ -450,13 +458,15 @@ void QuantizationDriver::QuantizeValue(Value *value, QuantParams params,
 void QuantizationDriver::RequantizeOpResult(Operation *op, int index,
                                             RequantizeState *state) {
   if (state->pos == RequantizeState::NO_REQUANTIZE) return;
-  builder_.setInsertionPoint(op->getBlock(), ++Block::iterator(op));
+  builder_.setInsertionPointAfter(op);
   Value *value = op->getResult(index);
   if (state->pos == RequantizeState::ON_OUTPUT) {
-    Operation *op = value->getUses().begin().getUser();  // `quantize` op
-    // The requantize op is inserted between `quantize` and `dequantize` ops.
-    value = op->getResult(0);
-    builder_.setInsertionPoint(op->getBlock(), ++Block::iterator(op));
+    Operation *user = value->getUses().begin().getUser();
+    if (llvm::isa<TFL::QuantizeOp>(user)) {
+      // The requantize op is inserted between `quantize` and `dequantize` ops.
+      value = user->getResult(0);
+      builder_.setInsertionPointAfter(user);
+    }
   }
   RequantizeValue(value, state, op->getLoc());
 }
@@ -781,8 +791,10 @@ void QuantizationDriver::Run() {
 }
 
 void ApplyQuantizationParamsPropagation(
-    mlir::FuncOp func, bool is_signed, OpQuantSpecGetter op_quant_spec_getter) {
-  QuantizationDriver(func, is_signed, op_quant_spec_getter).Run();
+    mlir::FuncOp func, bool is_signed, bool disable_per_channel,
+    OpQuantSpecGetter op_quant_spec_getter) {
+  QuantizationDriver(func, is_signed, disable_per_channel, op_quant_spec_getter)
+      .Run();
 }
 
 }  // namespace TFL

@@ -24,28 +24,40 @@ Status ExecuteNodeArgs::Init(
   // overwritten during kernel execution. The reference count is incremented
   // below when we insert a copy of the Tensor into protected_tensors, and will
   // be decremented once execution is complete.
-  int first_index_that_needs_protecting = -1;
-  for (int i = 0; i < op_inputs.size(); ++i) {
-    TensorHandle* in = op_inputs[i];
-    if (!in->IsRemote()) {
-      TF_RETURN_IF_ERROR(in->TensorValue(&tensor_args_[i]));
-      if (first_index_that_needs_protecting < 0 && !in->RefCountIsOne()) {
-        first_index_that_needs_protecting = i;
-      }
-    } else {
-      if (!has_remote_inputs_) {
-        has_remote_inputs_ = true;
+  const int n_inputs = op_inputs.size();
+  int num_protected_tensors = 0;
+  int first_index_that_needs_protecting = -1;  // Used to avoid second loop
+  if (n_inputs > 0) {
+    TensorHandle* const* op_inputs_array = &op_inputs[0];
+    TensorValue* tensor_args_array = &tensor_args_[0];
+    for (int i = 0; i < n_inputs; ++i) {
+      TensorHandle* in = op_inputs_array[i];
+      if (!in->IsRemote()) {
+        TF_RETURN_IF_ERROR(in->TensorValue(&tensor_args_array[i]));
+        if (!in->RefCountIsOne()) {
+          if (first_index_that_needs_protecting < 0) {
+            first_index_that_needs_protecting = i;
+          }
+          ++num_protected_tensors;
+        }
+      } else {
+        if (!has_remote_inputs_) {
+          has_remote_inputs_ = true;
+        }
       }
     }
-  }
 
-  if (first_index_that_needs_protecting >= 0) {
-    for (int i = first_index_that_needs_protecting; i < op_inputs.size(); ++i) {
-      TensorHandle* in = op_inputs[i];
-      if (!in->IsRemote() && !in->RefCountIsOne()) {
-        const Tensor* input_tensor = nullptr;
-        TF_RETURN_IF_ERROR(op_inputs[i]->Tensor(&input_tensor));
-        protected_tensors_.emplace_back(TensorReference(*input_tensor));
+    protected_tensors_.reserve(num_protected_tensors);
+    if (first_index_that_needs_protecting >= 0) {
+      for (int i = first_index_that_needs_protecting;
+           num_protected_tensors && (i < n_inputs); ++i) {
+        TensorHandle* in = op_inputs_array[i];
+        if (!in->IsRemote() && !in->RefCountIsOne()) {
+          const Tensor* input_tensor = nullptr;
+          TF_RETURN_IF_ERROR(op_inputs_array[i]->Tensor(&input_tensor));
+          protected_tensors_.emplace_back(TensorReference(*input_tensor));
+          --num_protected_tensors;
+        }
       }
     }
   }

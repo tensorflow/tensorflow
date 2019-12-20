@@ -121,7 +121,7 @@ Interpreter::TfLiteDelegatePtr CreateGPUDelegate(
     tflite::FlatBufferModel* model) {
 #if defined(__ANDROID__)
   TfLiteGpuDelegateOptionsV2 options = TfLiteGpuDelegateOptionsV2Default();
-  options.is_precision_loss_allowed = 1;
+  options.inference_priority1 = TFLITE_GPU_INFERENCE_PRIORITY_MIN_LATENCY;
   options.inference_preference =
       TFLITE_GPU_INFERENCE_PREFERENCE_SUSTAINED_SPEED;
 

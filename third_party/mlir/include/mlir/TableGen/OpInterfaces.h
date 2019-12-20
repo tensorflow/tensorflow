@@ -23,6 +23,7 @@
 #define MLIR_TABLEGEN_OPINTERFACES_H_
 
 #include "mlir/Support/LLVM.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 
 namespace llvm {
@@ -56,6 +57,9 @@ public:
 
   // Return the body for this method if it has one.
   llvm::Optional<StringRef> getBody() const;
+
+  // Return the default implementation for this method if it has one.
+  llvm::Optional<StringRef> getDefaultImplementation() const;
 
   // Return the description of this method if it has one.
   llvm::Optional<StringRef> getDescription() const;

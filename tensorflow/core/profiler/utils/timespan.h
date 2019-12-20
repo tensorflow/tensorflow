@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/utils/time_utils.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -91,6 +92,16 @@ class Timespan {
   uint64 begin_ps_;
   uint64 duration_ps_;  // 0 for an instant event.
 };
+
+// Creates a Timespan from endpoints in picoseconds.
+inline Timespan PicoSpan(uint64 start_ps, uint64 end_ps) {
+  return Timespan::FromEndPoints(start_ps, end_ps);
+}
+
+// Creates a Timespan from endpoints in milliseconds.
+inline Timespan MilliSpan(double start_ms, double end_ms) {
+  return PicoSpan(MillisToPicos(start_ms), MillisToPicos(end_ms));
+}
 
 }  // namespace profiler
 }  // namespace tensorflow

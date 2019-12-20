@@ -46,7 +46,7 @@ namespace tblgen {
 // is shared among multiple patterns to avoid creating the wrapper object for
 // the same op again and again. But this map will continuously grow.
 using RecordOperatorMap =
-    llvm::DenseMap<const llvm::Record *, std::unique_ptr<Operator>>;
+    DenseMap<const llvm::Record *, std::unique_ptr<Operator>>;
 
 class Pattern;
 
@@ -338,8 +338,8 @@ public:
                              const char *separator = ", ") const;
 
   // Splits the given `symbol` into a value pack name and an index. Returns the
-  // value pack name and writes the index to `index` on sucess. Returns `symbol`
-  // itself if it does not contain an index.
+  // value pack name and writes the index to `index` on success. Returns
+  // `symbol` itself if it does not contain an index.
   //
   // We can use `name__N` to access the `N`-th value in the value pack bound to
   // `name`. `name` is typically the results of an multi-result op.

@@ -81,7 +81,8 @@ RemoteCopyNode::RemoteCopyNode(EagerContext* ctx, EagerExecutor* executor,
       recv_device_(recv_device),
       wire_id_(GetUniqueWireID()),
       recv_op_id_(recv_op_id),
-      captured_state_(std::make_shared<CapturedSharedState>(dst)) {
+      captured_state_(std::make_shared<CapturedSharedState>(dst)),
+      started_(false) {
   DCHECK(!send_device_->IsLocal() || !recv_device_->IsLocal());
   src_->Ref();
   ctx_->Ref();
@@ -155,7 +156,7 @@ void RemoteCopyNode::StartSend() {
     remote_op->set_id(ctx_->RemoteMgr()->NextOpId());
 
     // Issue the RPC
-    eager::EagerClient* eager_client;
+    core::RefCountPtr<eager::EagerClient> eager_client;
     status = ctx_->GetClient(send_device_, &eager_client);
     if (!status.ok()) {
       captured_state_->SetSendStatus(status);
@@ -198,7 +199,7 @@ void RemoteCopyNode::RunRemoteRecv(EagerOperation* op, StatusCallback done) {
   PrepareRemoteOp(remote_op, op);
   remote_op->set_id(recv_op_id_);
 
-  eager::EagerClient* eager_client;
+  core::RefCountPtr<eager::EagerClient> eager_client;
   Status status = ctx_->GetClient(recv_device_, &eager_client);
   if (!status.ok()) {
     captured_state_->dst()->Poison(status);
@@ -276,7 +277,7 @@ void RemoteCopyNode::StartRecv(StatusCallback done) {
       done(status);
       return;
     }
-    status = captured_state_->dst()->SetTensor(outputs[0]);
+    status = captured_state_->dst()->SetTensor(std::move(outputs[0]));
     done(status);
   } else {
     // Handles captured_state_->dst_ internally.
@@ -306,7 +307,7 @@ void RemoteCopyNode::StartRemoteSendTensor(StatusCallback done) {
   }
   tensor.AsProtoTensorContent(send_tensor->add_tensors());
 
-  eager::EagerClient* eager_client;
+  core::RefCountPtr<eager::EagerClient> eager_client;
   s = ctx_->GetClient(recv_device_, &eager_client);
   if (!s.ok()) {
     captured_state_->dst()->Poison(s);
@@ -342,6 +343,7 @@ Status RemoteCopyNode::Prepare() {
 }
 
 void RemoteCopyNode::RunAsync(StatusCallback done) {
+  started_ = true;
   if (ctx_->UseSendTensorRPC() && send_device_->IsLocal() &&
       !recv_device_->IsLocal()) {
     return StartRemoteSendTensor(std::move(done));
@@ -369,7 +371,9 @@ void RemoteCopyNode::RunAsync(StatusCallback done) {
 }
 
 void RemoteCopyNode::Abort(Status status) {
-  captured_state_->dst()->Poison(status);
+  if (!started_) {
+    captured_state_->dst()->Poison(status);
+  }
 }
 
 }  // namespace eager

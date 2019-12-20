@@ -25,17 +25,17 @@
 
 using namespace mlir;
 
-Type VulkanLayoutUtils::decorateType(spirv::StructType structType,
-                                     VulkanLayoutUtils::Size &size,
-                                     VulkanLayoutUtils::Size &alignment) {
+spirv::StructType
+VulkanLayoutUtils::decorateType(spirv::StructType structType,
+                                VulkanLayoutUtils::Size &size,
+                                VulkanLayoutUtils::Size &alignment) {
   if (structType.getNumElements() == 0) {
     return structType;
   }
 
-  llvm::SmallVector<Type, 4> memberTypes;
-  llvm::SmallVector<VulkanLayoutUtils::Size, 4> layoutInfo;
-  llvm::SmallVector<spirv::StructType::MemberDecorationInfo, 4>
-      memberDecorations;
+  SmallVector<Type, 4> memberTypes;
+  SmallVector<VulkanLayoutUtils::Size, 4> layoutInfo;
+  SmallVector<spirv::StructType::MemberDecorationInfo, 4> memberDecorations;
 
   VulkanLayoutUtils::Size structMemberOffset = 0;
   VulkanLayoutUtils::Size maxMemberAlignment = 1;

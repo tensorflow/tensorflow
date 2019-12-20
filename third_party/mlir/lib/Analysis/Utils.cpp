@@ -151,7 +151,7 @@ LogicalResult MemRefRegion::unionBoundingBox(const MemRefRegion &other) {
 }
 
 /// Computes the memory region accessed by this memref with the region
-/// represented as constraints symbolic/parameteric in 'loopDepth' loops
+/// represented as constraints symbolic/parametric in 'loopDepth' loops
 /// surrounding opInst and any additional Function symbols.
 //  For example, the memref region for this load operation at loopDepth = 1 will
 //  be as below:
@@ -616,7 +616,9 @@ LogicalResult mlir::computeSliceUnion(ArrayRef<Operation *> opsA,
           return failure();
       }
       // Compute union bounding box of 'sliceUnionCst' and 'tmpSliceCst'.
-      if (failed(sliceUnionCst.unionBoundingBox(tmpSliceCst))) {
+      if (sliceUnionCst.getNumLocalIds() > 0 ||
+          tmpSliceCst.getNumLocalIds() > 0 ||
+          failed(sliceUnionCst.unionBoundingBox(tmpSliceCst))) {
         LLVM_DEBUG(llvm::dbgs()
                    << "Unable to compute union bounding box of slice bounds."
                       "\n.");

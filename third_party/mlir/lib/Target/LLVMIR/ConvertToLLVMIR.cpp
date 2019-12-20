@@ -34,8 +34,8 @@ std::unique_ptr<llvm::Module> mlir::translateModuleToLLVMIR(ModuleOp m) {
   return LLVM::ModuleTranslation::translateModule<>(m);
 }
 
-static TranslateFromMLIRRegistration registration(
-    "mlir-to-llvmir", [](ModuleOp module, llvm::raw_ostream &output) {
+static TranslateFromMLIRRegistration
+    registration("mlir-to-llvmir", [](ModuleOp module, raw_ostream &output) {
       auto llvmModule = LLVM::ModuleTranslation::translateModule<>(module);
       if (!llvmModule)
         return failure();

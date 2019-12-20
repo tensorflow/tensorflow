@@ -118,7 +118,7 @@ public:
   }
 
 private:
-  void printLabel(llvm::raw_ostream &os) const override {
+  void printLabel(raw_ostream &os) const override {
     os << "PropagateExplicitScale";
   }
   void propagate(SolverContext &solverContext,
@@ -127,7 +127,7 @@ private:
 
     // Get scale/zp from all parents.
     for (auto it = incoming_begin(), e = incoming_end(); it != e; ++it) {
-      auto parentAnchor = llvm::cast<CAGAnchorNode>(*it);
+      auto parentAnchor = cast<CAGAnchorNode>(*it);
       auto selectedType = parentAnchor->getUniformMetadata().selectedType;
       if (auto uqType = selectedType.dyn_cast_or_null<UniformQuantizedType>()) {
         scaleZp.assertValue(
@@ -139,7 +139,7 @@ private:
     // Propagate to children.
     if (scaleZp.hasValue()) {
       for (auto it = begin(), e = end(); it != e; ++it) {
-        auto childAnchor = llvm::cast<CAGAnchorNode>(*it);
+        auto childAnchor = cast<CAGAnchorNode>(*it);
         if (modified(childAnchor->getUniformMetadata()
                          .explicitScaleZeroPoint.mergeFrom(scaleZp))) {
           childAnchor->markDirty();
@@ -163,9 +163,7 @@ public:
   }
 
 private:
-  void printLabel(llvm::raw_ostream &os) const override {
-    os << "SolveUniform";
-  }
+  void printLabel(raw_ostream &os) const override { os << "SolveUniform"; }
 
   void propagate(SolverContext &solverContext,
                  const TargetConfiguration &config) override {
@@ -176,7 +174,7 @@ private:
     ClusteredFacts clusteredFacts;
     Type originalElementType;
     for (auto it = incoming_begin(), e = incoming_end(); it != e; ++it) {
-      auto parentAnchor = llvm::cast<CAGAnchorNode>(*it);
+      auto parentAnchor = cast<CAGAnchorNode>(*it);
       auto metadata = parentAnchor->getUniformMetadata();
       // TODO: Possibly use a location that fuses all involved parents.
       fusedLoc = parentAnchor->getOp()->getLoc();
@@ -226,7 +224,7 @@ private:
 
     // Apply it to all parents.
     for (auto it = incoming_begin(), e = incoming_end(); it != e; ++it) {
-      auto parentAnchor = llvm::cast<CAGAnchorNode>(*it);
+      auto parentAnchor = cast<CAGAnchorNode>(*it);
       auto &metadata = parentAnchor->getUniformMetadata();
       if (metadata.selectedType != selectedType) {
         metadata.selectedType = selectedType;

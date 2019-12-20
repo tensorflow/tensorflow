@@ -41,15 +41,11 @@ struct InlineGlobalTensorsPass : public ModulePass<InlineGlobalTensorsPass> {
 void InlineGlobalTensorsPass::runOnModule() {
   auto module = getModule();
   SymbolTable symbol_table(module);
-  auto bound_input_ident =
-      Identifier::get("tf_saved_model.bound_input", module.getContext());
   for (auto func : module.getOps<FuncOp>()) {
-    // Iterate over arg indices in reverse so that erasing later args doesn't
-    // shift over earlier args.
-    // Note: the to_vector is needed to avoid an msan failure.
-    auto seq = llvm::to_vector<4>(llvm::seq<int>(0, func.getNumArguments()));
-    for (int arg_index : llvm::reverse(seq)) {
-      auto global_tensor = LookupBoundInput(func, arg_index, symbol_table);
+    SmallVector<unsigned, 4> args_to_erase;
+    OpBuilder builder(func.getBody());
+    for (int i = 0, e = func.getNumArguments(); i < e; i++) {
+      auto global_tensor = LookupBoundInput(func, i, symbol_table);
       if (!global_tensor) continue;
 
       // Don't inline mutable global tensors. They could be holding state across
@@ -57,19 +53,12 @@ void InlineGlobalTensorsPass::runOnModule() {
       if (global_tensor.is_mutable()) continue;
 
       // Replace the arg with a tf.Const op in the function body.
-      auto const_op = OpBuilder(func.getBody())
-                          .create<TF::ConstOp>(global_tensor.getLoc(),
-                                               global_tensor.value());
-      func.getArgument(arg_index)->replaceAllUsesWith(const_op.getResult());
-
-      // Erase the argument.
-      func.front().eraseArgument(arg_index);
-      func.removeArgAttr(arg_index, bound_input_ident);
-      auto input_types = llvm::to_vector<4>(func.getType().getInputs());
-      input_types.erase(input_types.begin() + arg_index);
-      func.setType(FunctionType::get(input_types, func.getType().getResults(),
-                                     func.getContext()));
+      auto const_op = builder.create<TF::ConstOp>(global_tensor.getLoc(),
+                                                  global_tensor.value());
+      func.getArgument(i)->replaceAllUsesWith(const_op.getResult());
+      args_to_erase.push_back(i);
     }
+    func.eraseArguments(args_to_erase);
   }
   // We have already inlined all constant tensors, so erase them.
   for (auto global_tensor :

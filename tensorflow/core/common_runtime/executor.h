@@ -88,7 +88,7 @@ class Executor {
 
   struct Args {
     int64 step_id = 0;
-    Rendezvous* rendezvous = nullptr;
+    RendezvousInterface* rendezvous = nullptr;
     StepStatsCollectorInterface* stats_collector = nullptr;
     CallFrameInterface* call_frame = nullptr;
     CancellationManager* cancellation_manager = nullptr;
@@ -111,7 +111,7 @@ class Executor {
   virtual void RunAsync(const Args& args, DoneCallback done) = 0;
 
   // Synchronous wrapper for RunAsync().
-  Status Run(const Args& args) {
+  virtual Status Run(const Args& args) {
     Status ret;
     Notification n;
     RunAsync(args, [&ret, &n](const Status& s) {

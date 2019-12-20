@@ -29,6 +29,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.training.saving import functional_saver
+from tensorflow.python.training.saving import saveable_hook
 from tensorflow.python.training.saving import saveable_object_util
 
 
@@ -111,6 +112,35 @@ class SaverTest(test.TestCase):
     self.assertEqual(0., self.evaluate(v0))
     self.assertEqual(1., self.evaluate(v1))
     self.assertEqual(2., self.evaluate(v2))
+
+
+class SaveableHookTest(test.TestCase):
+
+  def test_callbacks_run(self):
+    #  Use dict because an int would be shadowed inside callback.
+    called = {
+        "save": 0,
+        "restore": 0,
+    }
+
+    class DummyHook(saveable_hook.SaveableHook):
+
+      def before_save(self):
+        called["save"] += 1
+
+      def after_restore(self):
+        called["restore"] += 1
+
+    saveable = DummyHook(name="dummy")
+
+    saver = functional_saver.MultiDeviceSaver([saveable])
+    prefix = os.path.join(self.get_temp_dir(), "ckpt")
+
+    self.evaluate(saver.save(constant_op.constant(prefix)))
+    self.assertEqual({"save": 1, "restore": 0}, called)
+
+    self.evaluate(saver.restore(prefix))
+    self.assertEqual({"save": 1, "restore": 1}, called)
 
 
 if __name__ == "__main__":

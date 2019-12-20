@@ -32,17 +32,20 @@ using llvm::raw_ostream;
 using llvm::RecordKeeper;
 using llvm::StringRef;
 using mlir::interleaveComma;
+using mlir::tblgen::Attribute;
 using mlir::tblgen::NamedAttribute;
 using mlir::tblgen::NamedTypeConstraint;
 using mlir::tblgen::Operator;
 
 static std::string GetDefaultAttrExport(
     const mlir::tblgen::NamedAttribute& named_attr) {
-  auto storage_type = named_attr.attr.getStorageType();
+  Attribute attr = named_attr.attr;
+  StringRef storage_type = attr.getStorageType();
   // For some attribute types we have a general conversion, so use that.
-  if (storage_type.endswith("IntegerAttr") ||
-      storage_type.endswith("FloatAttr")) {
-    return "Convert" + named_attr.attr.getReturnType().str();
+  if (!attr.isEnumAttr() && (storage_type.endswith("IntegerAttr") ||
+                             storage_type.endswith("FloatAttr") ||
+                             storage_type.endswith("StringAttr"))) {
+    return "Convert" + attr.getReturnType().str();
   }
   return "Convert_" + named_attr.name.str();
 }

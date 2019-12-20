@@ -101,7 +101,7 @@ struct CAGUniformMetadata {
   DiscreteScaleZeroPointFact explicitScaleZeroPoint;
 
   /// Prints a summary of the metadata suitable for display in a graph label.
-  void printSummary(llvm::raw_ostream &os) const;
+  void printSummary(raw_ostream &os) const;
 };
 
 } // end namespace quantizer

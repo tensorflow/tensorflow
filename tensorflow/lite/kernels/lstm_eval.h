@@ -20,7 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 
 namespace tflite {
@@ -153,7 +153,7 @@ TfLiteStatus EvalHybrid(
     TfLiteTensor* cell_state_quantized, TfLiteTensor* output_state,
     TfLiteTensor* cell_state, TfLiteTensor* output);
 
-TfLiteStatus EvalQuantized(
+TfLiteStatus EvalInteger(
     const TfLiteTensor* input, const TfLiteTensor* input_to_input_weights,
     const TfLiteTensor* input_to_forget_weights,
     const TfLiteTensor* input_to_cell_weights,

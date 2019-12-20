@@ -85,7 +85,13 @@ static void emitAttributeSerialization(const Attribute &attr,
                                        StringRef attrName, raw_ostream &os) {
   os << tabs << formatv("auto attr = {0}.getAttr(\"{1}\");\n", opVar, attrName);
   os << tabs << "if (attr) {\n";
-  if (attr.getAttrDefName() == "I32ArrayAttr") {
+  if (attr.getAttrDefName() == "SPV_ScopeAttr" ||
+      attr.getAttrDefName() == "SPV_MemorySemanticsAttr") {
+    os << tabs
+       << formatv("  {0}.push_back(prepareConstantInt({1}.getLoc(), "
+                  "attr.cast<IntegerAttr>()));\n",
+                  operandList, opVar);
+  } else if (attr.getAttrDefName() == "I32ArrayAttr") {
     // Serialize all the elements of the array
     os << tabs << "  for (auto attrElem : attr.cast<ArrayAttr>()) {\n";
     os << tabs
@@ -127,10 +133,9 @@ static void emitOperandSerialization(const Operator &op, ArrayRef<SMLoc> loc,
       os << tabs << "    auto argID = getValueID(arg);\n";
       os << tabs << "    if (!argID) {\n";
       os << tabs
-         << formatv(
-                "      emitError({0}.getLoc(), \"operand {1} has a use before "
-                "def\");\n",
-                opVar, operandNum);
+         << formatv("      return emitError({0}.getLoc(), "
+                    "\"operand #{1} has a use before def\");\n",
+                    opVar, operandNum);
       os << tabs << "    }\n";
       os << tabs << formatv("    {0}.push_back(argID);\n", operands);
       os << "    }\n";
@@ -232,7 +237,7 @@ static void emitSerializationFunction(const Record *attrClass,
                   record->getValueAsInt("extendedInstOpcode"), operands);
   } else {
     os << formatv("  encodeInstructionInto("
-                  "functions, spirv::getOpcode<{0}>(), {1});\n",
+                  "functionBody, spirv::getOpcode<{0}>(), {1});\n",
                   op.getQualCppClassName(), operands);
   }
 
@@ -285,7 +290,13 @@ static void emitAttributeDeserialization(const Attribute &attr,
                                          StringRef attrList, StringRef attrName,
                                          StringRef words, StringRef wordIndex,
                                          raw_ostream &os) {
-  if (attr.getAttrDefName() == "I32ArrayAttr") {
+  if (attr.getAttrDefName() == "SPV_ScopeAttr" ||
+      attr.getAttrDefName() == "SPV_MemorySemanticsAttr") {
+    os << tabs
+       << formatv("{0}.push_back(opBuilder.getNamedAttr(\"{1}\", "
+                  "getConstantInt({2}[{3}++])));\n",
+                  attrList, attrName, words, wordIndex);
+  } else if (attr.getAttrDefName() == "I32ArrayAttr") {
     os << tabs << "SmallVector<Attribute, 4> attrListElems;\n";
     os << tabs << formatv("while ({0} < {1}.size()) {{\n", wordIndex, words);
     os << tabs
@@ -688,7 +699,7 @@ static void emitEnumGetSymbolizeFnDefn(const EnumAttr &enumAttr,
 }
 
 static bool emitOpUtils(const RecordKeeper &recordKeeper, raw_ostream &os) {
-  llvm::emitSourceFileHeader("SPIR-V Op Utilites", os);
+  llvm::emitSourceFileHeader("SPIR-V Op Utilities", os);
 
   auto defs = recordKeeper.getAllDerivedDefinitions("EnumAttrInfo");
   os << "#ifndef SPIRV_OP_UTILS_H_\n";

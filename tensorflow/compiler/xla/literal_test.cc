@@ -1134,7 +1134,7 @@ TEST_F(LiteralUtilTest, CopyFromDifferentShapes) {
 TEST_F(LiteralUtilTest, F16) {
   // Verify that the internal data views are consistent and that they
   // are in little endian format
-  // TODO - modify if we make the data format machine endianess dependent
+  // TODO - modify if we make the data format machine endianness dependent
   Literal m1 = Literal::CreateFromShape(ShapeUtil::MakeShape(F16, {2, 2}));
   const char* d1 = reinterpret_cast<const char*>(m1.data<half>().data());
   EXPECT_EQ(d1[0], 0);
@@ -1845,6 +1845,30 @@ TEST_F(LiteralUtilTest, InvalidProtoNoValues) {
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.error_message(),
               HasSubstr("Expected 3 elements in LiteralProto"));
+}
+
+TEST_F(LiteralUtilTest, ValidProtoNoValues) {
+  // Proto contains a shape, but no values.
+  LiteralProto proto;
+  *proto.mutable_shape() = ShapeUtil::MakeShape(F32, {3}).ToProto();
+  Status status =
+      Literal::CreateFromProto(proto, /*prohibit_empty_literal=*/false)
+          .status();
+  EXPECT_TRUE(status.ok());
+}
+
+TEST_F(LiteralUtilTest, ValidProtoWithClearedValues) {
+  auto literal = LiteralUtil::CreateR1<bool>({true, false, true});
+  LiteralProto proto = literal.ToProto();
+  EXPECT_EQ(proto.preds_size(), 3);
+
+  // Clear values.
+  proto.clear_preds();
+  EXPECT_EQ(proto.preds_size(), 0);
+  Status status =
+      Literal::CreateFromProto(proto, /*prohibit_empty_literal=*/false)
+          .status();
+  EXPECT_TRUE(status.ok());
 }
 
 TEST_F(LiteralUtilTest, InvalidProtoNoShape) {

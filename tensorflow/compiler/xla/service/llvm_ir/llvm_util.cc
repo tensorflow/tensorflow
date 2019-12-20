@@ -27,6 +27,7 @@ limitations under the License.
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/MDBuilder.h"
 #include "llvm/IR/Operator.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Target/TargetOptions.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "tensorflow/compiler/xla/layout_util.h"
@@ -606,21 +607,12 @@ llvm::Function* CreateCpuFunction(llvm::FunctionType* function_type,
   // created by the JIT compiled code.
   function->setHasUWTable();
 
-  if (module_config.debug_options().xla_cpu_enable_fast_math()) {
-    function->addFnAttr("unsafe-fp-math", "true");
-    function->addFnAttr("no-signed-zeros-fp-math", "true");
-    if (!module_config.debug_options().xla_cpu_fast_math_honor_nans()) {
-      function->addFnAttr("no-nans-fp-math", "true");
-    }
-    if (!module_config.debug_options().xla_cpu_fast_math_honor_infs()) {
-      function->addFnAttr("no-infs-fp-math", "true");
-    }
-    if (module_config.debug_options().xla_cpu_fast_math_honor_division()) {
-      function->addFnAttr("reciprocal-estimates", "none");
-    }
-  }
+  // Tensorflow always flushes denormals to zero, let LLVM know that flushing
+  // denormals is safe. This allows vectorization using ARM's neon instruction
+  // set.
+  function->addFnAttr("denormal-fp-math", "preserve-sign");
 
-  // Add the optize attribute to the function if optimizing for size. This
+  // Add the optimize attribute to the function if optimizing for size. This
   // controls internal behavior of some optimization passes (e.g. loop
   // unrolling).
   if (cpu::options::OptimizeForSizeRequested(module_config)) {

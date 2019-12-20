@@ -1029,6 +1029,16 @@ TEST_F(ShapeInferenceTest, InferSliceShapeRank2) {
   ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {32, 64}), inferred));
 }
 
+TEST_F(ShapeInferenceTest, InferSliceWithDynamicDimensions) {
+  Shape matrix_shape = ShapeUtil::MakeShape(F32, {128, 64}, {true, true});
+  auto inferred_status =
+      ShapeInference::InferSliceShape(matrix_shape, {32, 0}, {33, 64}, {1, 1});
+  ASSERT_IS_OK(inferred_status.status());
+  Shape inferred = inferred_status.ValueOrDie();
+  ASSERT_TRUE(ShapeUtil::Equal(
+      ShapeUtil::MakeShape(F32, {1, 64}, {false, true}), inferred));
+}
+
 TEST_F(ShapeInferenceTest, InferSliceShapeRank2WithStrides) {
   Shape matrix_shape = ShapeUtil::MakeShape(F32, {128, 64});
   auto inferred_status =
@@ -1344,7 +1354,7 @@ TEST_F(ShapeInferenceTest, DotWithTwoContractingDimsPasses) {
 }
 
 // BatchMatMul with different batch dimension sizes fails.
-TEST_F(ShapeInferenceTest, DotWithMisatchedBatchDimSizesFails) {
+TEST_F(ShapeInferenceTest, DotWithMismatchedBatchDimSizesFails) {
   Shape lhs_shape = ShapeUtil::MakeShape(F32, {2, 11, 3});
   Shape rhs_shape = ShapeUtil::MakeShape(F32, {3, 3, 14});
 
@@ -1363,7 +1373,7 @@ TEST_F(ShapeInferenceTest, DotWithMisatchedBatchDimSizesFails) {
 }
 
 // BatchMatMul with different batch dimension numbers passes
-TEST_F(ShapeInferenceTest, DotWithMisatchedBatchDimNumbersPasses) {
+TEST_F(ShapeInferenceTest, DotWithMismatchedBatchDimNumbersPasses) {
   Shape lhs_shape = ShapeUtil::MakeShape(F32, {2, 11, 3});
   Shape rhs_shape = ShapeUtil::MakeShape(F32, {3, 2, 14});
 

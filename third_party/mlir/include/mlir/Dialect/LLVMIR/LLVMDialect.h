@@ -156,7 +156,7 @@ private:
   /// Get an LLVMType with an llvm type that may cause changes to the underlying
   /// llvm context when constructed.
   static LLVMType getLocked(LLVMDialect *dialect,
-                            llvm::function_ref<llvm::Type *()> typeBuilder);
+                            function_ref<llvm::Type *()> typeBuilder);
 };
 
 ///// Ops /////
@@ -195,7 +195,12 @@ private:
 /// global and use it to compute the address of the first character in the
 /// string (operations inserted at the builder insertion point).
 Value *createGlobalString(Location loc, OpBuilder &builder, StringRef name,
-                          StringRef value, LLVM::LLVMDialect *llvmDialect);
+                          StringRef value, LLVM::Linkage linkage,
+                          LLVM::LLVMDialect *llvmDialect);
+
+/// LLVM requires some operations to be inside of a Module operation. This
+/// function confirms that the Operation has the desired properties.
+bool satisfiesLLVMModule(Operation *op);
 
 } // end namespace LLVM
 } // end namespace mlir

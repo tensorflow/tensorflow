@@ -21,6 +21,7 @@ from __future__ import print_function
 import abc
 
 import collections
+
 import six
 
 from tensorflow.python.client import session

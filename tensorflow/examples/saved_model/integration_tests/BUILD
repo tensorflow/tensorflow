@@ -53,19 +53,19 @@ cuda_py_test(
     srcs = [
         "saved_model_test.py",
     ],
-    additional_deps = [
-        ":distribution_strategy_utils",
-        ":integration_scripts",
-        "@absl_py//absl/testing:parameterized",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python/distribute:combinations",
-    ],
     shard_count = 4,
     tags = [
         "no_pip",  # b/131697937 and b/132196869
         "noasan",  # forge input size exceeded
         "nomsan",  # forge input size exceeded
         "notsan",  # forge input size exceeded
+    ],
+    deps = [
+        ":distribution_strategy_utils",
+        ":integration_scripts",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python/distribute:combinations",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

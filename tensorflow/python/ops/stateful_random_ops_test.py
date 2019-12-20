@@ -25,6 +25,7 @@ import numpy as np
 
 from tensorflow.python.distribute import values as dist_values
 from tensorflow.python.distribute.mirrored_strategy import MirroredStrategy
+from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
@@ -56,6 +57,15 @@ INTS = [dtypes.int32, dtypes.int64]
 
 
 class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
+
+  def setUp(self):
+    super(StatefulRandomOpsTest, self).setUp()
+    physical_devices = config.list_physical_devices("CPU")
+    config.set_logical_device_configuration(
+        physical_devices[0], [
+            context.LogicalDeviceConfiguration(),
+            context.LogicalDeviceConfiguration()
+        ])
 
   def testCreateRNGStateIntSeed(self):
     """Tests `create_rng_state` when `seed` is int."""
@@ -186,6 +196,17 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
         self.assertAllEqual(expected_normal, v)
       check_results(expected_normal1, f(constructor))
       check_results(expected_normal2, f(constructor))
+
+  @parameterized.parameters([
+      ("philox", random.RNG_ALG_PHILOX, random.Algorithm.PHILOX),
+      ("threefry", random.RNG_ALG_THREEFRY, random.Algorithm.THREEFRY)])
+  @test_util.run_v2_only
+  def testAlg(self, name, int_id, enum_id):
+    g_by_name = random.Generator.from_seed(1234, name)
+    g_by_int = random.Generator.from_seed(1234, int_id)
+    g_by_enum = random.Generator.from_seed(1234, enum_id)
+    self.assertEqual(g_by_name.algorithm, g_by_int.algorithm)
+    self.assertEqual(g_by_name.algorithm, g_by_enum.algorithm)
 
   @test_util.run_v2_only
   def testGeneratorCreationWithVar(self):
@@ -649,89 +670,31 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
       self.assertAllDifferent(values)
 
   @test_util.run_v2_only
-  @test_util.run_cuda_only
-  def testMirroredStratParaSync(self):
-    """Tests RNG/MirrorStrategy interaction #2.
-
-    If an RNG is created inside strategy.scope(), each replica gets an
-    mirror of this RNG. If they access their RNGs in the same
-    manner, their random-number streams are the same.
+  def testMirroredStratParaSyncDisallowed(self):
+    """Tests that generator creation in MirroredStrategy is disallowed.
     """
+    creators = [
+        lambda: random.Generator.from_seed(1234),
+        random.Generator.from_non_deterministic_state,
+    ]
     shape = [3, 4]
     dtype = dtypes.int32
-    strat = MirroredStrategy(devices=["/cpu:0", test_util.gpu_device_name()])
-    with strat.scope():
-      gen = random.Generator.from_seed(1234)
+    strat = MirroredStrategy(devices=["cpu:0", "cpu:1"])
+    for creator in creators:
+      with strat.scope():
+        with self.assertRaisesWithPredicateMatch(
+            ValueError, "disallowed"):
+          creator()  # pylint: disable=cell-var-from-loop
       def f():
-        t1 = gen.uniform_full_int(shape=shape, dtype=dtype)
-        t2 = gen.uniform_full_int(shape=shape, dtype=dtype)
-        t = array_ops.stack([t1, t2])
-        return t
-      results = strat.extended.call_for_each_replica(fn=f)
-      values = results.values
-      self.assertAllEqual(2, len(values))
-      self.assertAllEqual(values[0], values[1])
+        gen = creator()  # pylint: disable=cell-var-from-loop
+        return gen.uniform_full_int(shape=shape, dtype=dtype)
+      with self.assertRaisesWithPredicateMatch(
+          ValueError, "disallowed"):
+        strat.extended.call_for_each_replica(fn=f)
 
   @test_util.run_v2_only
-  @test_util.run_cuda_only
-  def testMirroredStratParaSyncWithinFun(self):
-    """Tests RNG/MirrorStrategy interaction #2b.
-
-    If the RNG creation is within `f` in situation #2, the replicas'
-    random-number streams are still the same. Note that whether the RNG creation
-    is within strategy.scope() or not doesn't affect the result in this case
-    (putting in inside strategy.scope() will cause unnecessary mirror creation
-    and waste memory though).
-    """
-    shape = [3, 4]
-    dtype = dtypes.int32
-    strat = MirroredStrategy(devices=["/cpu:0", test_util.gpu_device_name()])
-    def f():
-      gen = random.Generator.from_seed(1234)
-      t1 = gen.uniform_full_int(shape=shape, dtype=dtype)
-      t2 = gen.uniform_full_int(shape=shape, dtype=dtype)
-      t = array_ops.stack([t1, t2])
-      return t
-    results = strat.extended.call_for_each_replica(fn=f)
-    values = results.values
-    self.assertAllEqual(2, len(values))
-    self.assertAllEqual(values[0], values[1])
-
-  @test_util.run_v2_only
-  @test_util.run_cuda_only
-  def testMirroredStratUnseedSync(self):
-    """Tests RNG/MirrorStrategy interaction #2c.
-
-    If the RNG created in situation #2 is unseeded, the replicas' random-number
-    streams are still the same.
-
-    If the RNG created in situation #2b is unseeded, the replicas' random-number
-    streams will be different. We can't test this for now because the op
-    'NonDeterministicInts' is not implemented on GPU yet.
-    """
-    shape = [3, 4]
-    dtype = dtypes.int32
-    strat = MirroredStrategy(devices=["/cpu:0", test_util.gpu_device_name()])
-    # TODO(wangpeng): support calling `random.Generator()` inside `f` (i.e.
-    #   inside `call_for_each_replica` so that each replica can get a
-    #   different random-number stream. The only obstacle is that op
-    #   'NonDeterministicInts' is not implemented on GPU.)
-    with strat.scope():
-      gen = random.Generator.from_non_deterministic_state()
-      def f():
-        t1 = gen.uniform_full_int(shape=shape, dtype=dtype)
-        t2 = gen.uniform_full_int(shape=shape, dtype=dtype)
-        t = array_ops.stack([t1, t2])
-        return t
-      results = strat.extended.call_for_each_replica(fn=f)
-      values = results.values
-      self.assertAllEqual(2, len(values))
-      self.assertAllEqual(values[0], values[1])
-
-  @test_util.run_v2_only
-  @test_util.run_cuda_only
   def testMirroredStratParaAsync(self):
-    """Tests RNG/MirrorStrategy interaction #3.
+    """Tests RNG/MirrorStrategy interaction #2.
 
     The user can create n independent RNGs outside strategy.scope(), where n
     is the number of replicas, and give one to each replica. The replicas can
@@ -740,12 +703,10 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
     shape = [3, 4]
     dtype = dtypes.int32
     gens = random.get_global_generator().split(count=2)
-    devices = ["/cpu:0", test_util.gpu_device_name()]
+    devices = ["cpu:0", "cpu:1"]
     strat = MirroredStrategy(devices=devices)
     # Use `PerReplica` to specify which `gen` is sent to which replica
-    gens = dist_values.PerReplica(
-        device_map=dist_values.ReplicaDeviceMap(devices),
-        values=[[g] for g in gens])
+    gens = dist_values.PerReplica([[g] for g in gens])
     with strat.scope():
       def f(gen):
         t1 = gen.uniform_full_int(shape=shape, dtype=dtype)
@@ -757,30 +718,6 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
       values = results.values
       self.assertAllEqual(2, len(values))
       self.assertAllDifferent(values)
-
-  @test_util.run_v2_only
-  @test_util.run_cuda_only
-  def testMirroredVarAsFunctionArg(self):
-    """Tests that RNG with MirroredVariable can be used as tf.function's arg.
-    """
-    shape = [3, 4]
-    dtype = dtypes.int32
-    strat = MirroredStrategy(devices=["/cpu:0", test_util.gpu_device_name()])
-    with strat.scope():
-      gen = random.Generator.from_seed(1234)
-      @def_function.function
-      def f(gen):
-        t1 = gen.uniform_full_int(shape=shape, dtype=dtype)
-        t2 = gen.uniform_full_int(shape=shape, dtype=dtype)
-        t = array_ops.stack([t1, t2])
-        return t
-      def g():
-        return f(gen)
-      for _ in range(2):
-        results = strat.extended.call_for_each_replica(fn=g)
-        values = results.values
-        self.assertAllEqual(2, len(values))
-        self.assertAllEqual(values[0], values[1])
 
 
 if __name__ == "__main__":

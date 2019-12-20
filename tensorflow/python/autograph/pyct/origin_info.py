@@ -29,7 +29,6 @@ from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import ast_util
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.pyct import pretty_printer
-from tensorflow.python.autograph.utils import ag_logging as logging
 from tensorflow.python.util import tf_inspect
 
 
@@ -102,7 +101,7 @@ def create_source_map(nodes, code, filepath):
     Dict[LineLocation, OriginInfo], mapping locations in code to locations
     indicated by origin annotations in node.
   """
-  reparsed_nodes = parser.parse_str(code, preamble_len=0, single_node=False)
+  reparsed_nodes = parser.parse(code, preamble_len=0, single_node=False)
   for node in reparsed_nodes:
     resolve(node, code, filepath, node.lineno, node.col_offset)
 
@@ -137,20 +136,23 @@ def create_source_map(nodes, code, filepath):
 
       source_map[line_loc] = origin_info
 
-  except ValueError:
-    if logging.has_verbosity(3):
-      for n, rn in zip(nodes, reparsed_nodes):
-        nodes_str = pretty_printer.fmt(n, color=False, noanno=True)
-        reparsed_nodes_str = pretty_printer.fmt(rn, color=False, noanno=True)
-        diff = difflib.context_diff(
-            nodes_str.split('\n'),
-            reparsed_nodes_str.split('\n'),
-            fromfile='Original nodes',
-            tofile='Reparsed nodes',
-            n=7)
-        diff = '\n'.join(diff)
-        logging.log(3, 'AST seems to lack integrity. Diff:\n%s', diff)
-    raise
+  except ValueError as err:
+    new_msg = 'Inconsistent ASTs detected. This is a bug. Cause: \n'
+    new_msg += str(err)
+    new_msg += 'Diff:\n'
+
+    for n, rn in zip(nodes, reparsed_nodes):
+      nodes_str = pretty_printer.fmt(n, color=False, noanno=True)
+      reparsed_nodes_str = pretty_printer.fmt(rn, color=False, noanno=True)
+      diff = difflib.context_diff(
+          nodes_str.split('\n'),
+          reparsed_nodes_str.split('\n'),
+          fromfile='Original nodes',
+          tofile='Reparsed nodes',
+          n=7)
+      diff = '\n'.join(diff)
+      new_msg += diff + '\n'
+    raise ValueError(new_msg)
 
   return source_map
 
