@@ -220,7 +220,7 @@ def Vector_ShuffleOp :
                  TCresVTEtIsSameAsOpBase<0, 0>>,
      PredOpTrait<"second operand v2 and result have same element type",
                  TCresVTEtIsSameAsOpBase<0, 1>>]>,
-     Arguments<(ins AnyVector:$v1, AnyVector:$v2, I32ArrayAttr:$mask)>,
+     Arguments<(ins AnyVector:$v1, AnyVector:$v2, I64ArrayAttr:$mask)>,
      Results<(outs AnyVector:$vector)> {
   let summary = "shuffle operation";
   let description = [{
@@ -243,16 +243,16 @@ def Vector_ShuffleOp :
 
     Examples:
     ```
-    %0 = vector.shuffle %a, %b[0:i32, 3:i32]
+    %0 = vector.shuffle %a, %b[0, 3]
                : vector<2xf32>, vector<2xf32>       ; yields vector<2xf32>
-    %1 = vector.shuffle %c, %b[0:i32, 1:i32, 2:i32]
+    %1 = vector.shuffle %c, %b[0, 1, 2]
                : vector<2x16xf32>, vector<1x16xf32> ; yields vector<3x16xf32>
-    %2 = vector.shuffle %a, %b[3:i32, 2:i32, 1:i32 : 0:i32]
+    %2 = vector.shuffle %a, %b[3, 2, 1, 0]
                : vector<2xf32>, vector<2xf32>       ; yields vector<4xf32>
 
     ```
   }];
-  let builders = [OpBuilder<"Builder *builder, OperationState &result, Value *v1, Value *v2, ArrayRef<int32_t>">];
+  let builders = [OpBuilder<"Builder *builder, OperationState &result, Value *v1, Value *v2, ArrayRef<int64_t>">];
   let extraClassDeclaration = [{
     static StringRef getMaskAttrName() { return "mask"; }
     VectorType getV1VectorType() {
@@ -271,7 +271,7 @@ def Vector_ExtractElementOp :
   Vector_Op<"extractelement", [NoSideEffect,
      PredOpTrait<"operand and result have same element type",
                  TCresVTEtIsSameAsOpBase<0, 0>>]>,
-    Arguments<(ins AnyVector:$vector, I32:$position)>,
+    Arguments<(ins AnyVector:$vector, AnyInteger:$position)>,
     Results<(outs AnyType)> {
   let summary = "extractelement operation";
   let description = [{
@@ -298,7 +298,7 @@ def Vector_ExtractOp :
   Vector_Op<"extract", [NoSideEffect,
      PredOpTrait<"operand and result have same element type",
                  TCresVTEtIsSameAsOpBase<0, 0>>]>,
-    Arguments<(ins AnyVector:$vector, I32ArrayAttr:$position)>,
+    Arguments<(ins AnyVector:$vector, I64ArrayAttr:$position)>,
     Results<(outs AnyType)> {
   let summary = "extract operation";
   let description = [{
@@ -312,7 +312,7 @@ def Vector_ExtractOp :
     ```
   }];
   let builders = [OpBuilder<
-    "Builder *builder, OperationState &result, Value *source, ArrayRef<int32_t>">];
+    "Builder *builder, OperationState &result, Value *source, ArrayRef<int64_t>">];
   let extraClassDeclaration = [{
     static StringRef getPositionAttrName() { return "position"; }
     VectorType getVectorType() {
@@ -379,7 +379,7 @@ def Vector_InsertElementOp :
                  TCresVTEtIsSameAsOpBase<0, 0>>,
      PredOpTrait<"dest operand and result have same type",
                  TCresIsSameAsOpBase<0, 1>>]>,
-     Arguments<(ins AnyType:$source, AnyVector:$dest, I32:$position)>,
+     Arguments<(ins AnyType:$source, AnyVector:$dest, AnyInteger:$position)>,
      Results<(outs AnyVector)> {
   let summary = "insertelement operation";
   let description = [{
@@ -411,7 +411,7 @@ def Vector_InsertOp :
                  TCresVTEtIsSameAsOpBase<0, 0>>,
      PredOpTrait<"dest operand and result have same type",
                  TCresIsSameAsOpBase<0, 1>>]>,
-     Arguments<(ins AnyType:$source, AnyVector:$dest, I32ArrayAttr:$position)>,
+     Arguments<(ins AnyType:$source, AnyVector:$dest, I64ArrayAttr:$position)>,
      Results<(outs AnyVector)> {
   let summary = "insert operation";
   let description = [{
@@ -421,15 +421,15 @@ def Vector_InsertOp :
 
     Examples:
     ```
-      %2 = vector.insert %0, %1[3 : i32]:
+      %2 = vector.insert %0, %1[3]:
         vector<8x16xf32> into vector<4x8x16xf32>
-      %5 = vector.insert %3, %4[3 : i32, 3 : i32, 3 : i32]:
+      %5 = vector.insert %3, %4[3, 3, 3]:
         f32 into vector<4x8x16xf32>
     ```
   }];
   let builders = [OpBuilder<
     "Builder *builder, OperationState &result, Value *source, " #
-    "Value *dest, ArrayRef<int32_t>">];
+    "Value *dest, ArrayRef<int64_t>">];
   let extraClassDeclaration = [{
     static StringRef getPositionAttrName() { return "position"; }
     Type getSourceType() { return source()->getType(); }

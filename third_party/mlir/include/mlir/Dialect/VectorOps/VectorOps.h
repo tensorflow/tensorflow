@@ -57,7 +57,7 @@ IntegerType getVectorSubscriptType(Builder &builder);
 
 /// Returns an integer array attribute containing the given values using
 /// the integer type required for subscripts in the vector dialect.
-ArrayAttr getVectorSubscriptAttr(Builder &b, ArrayRef<int32_t> values);
+ArrayAttr getVectorSubscriptAttr(Builder &b, ArrayRef<int64_t> values);
 
 #define GET_OP_CLASSES
 #include "mlir/Dialect/VectorOps/VectorOps.h.inc"

@@ -370,8 +370,8 @@ public:
 
     // Remaining extraction of element from 1-D LLVM vector
     auto position = positionAttrs.back().cast<IntegerAttr>();
-    auto i32Type = LLVM::LLVMType::getInt32Ty(lowering.getDialect());
-    auto constant = rewriter.create<LLVM::ConstantOp>(loc, i32Type, position);
+    auto i64Type = LLVM::LLVMType::getInt64Ty(lowering.getDialect());
+    auto constant = rewriter.create<LLVM::ConstantOp>(loc, i64Type, position);
     extracted =
         rewriter.create<LLVM::ExtractElementOp>(loc, extracted, constant);
     rewriter.replaceOp(op, extracted);
@@ -452,8 +452,8 @@ public:
     }
 
     // Insertion of an element into a 1-D LLVM vector.
-    auto i32Type = LLVM::LLVMType::getInt32Ty(lowering.getDialect());
-    auto constant = rewriter.create<LLVM::ConstantOp>(loc, i32Type, position);
+    auto i64Type = LLVM::LLVMType::getInt64Ty(lowering.getDialect());
+    auto constant = rewriter.create<LLVM::ConstantOp>(loc, i64Type, position);
     Value *inserted = rewriter.create<LLVM::InsertElementOp>(
         loc, lowering.convertType(oneDVectorType), extracted, adaptor.source(),
         constant);
