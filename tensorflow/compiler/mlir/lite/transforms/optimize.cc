@@ -80,21 +80,6 @@ bool IsBroadcastableElementsAttrAndType(Type a, Type b) {
   return OpTrait::util::getBroadcastedType(a, b) != Type();
 }
 
-// Returns whether if `type1` dimensions are the same as the ending dimensions
-// of `type2`. This is more restricted than broadcastable.
-bool IsTailOfShape(Type type1, Type type2) {
-  auto tail_type = type1.dyn_cast<ShapedType>();
-  auto full_type = type2.dyn_cast<ShapedType>();
-  if (!tail_type || !full_type || tail_type.getRank() > full_type.getRank())
-    return false;
-  auto i1 = tail_type.getShape().rbegin(), e1 = tail_type.getShape().rend();
-  auto i2 = full_type.getShape().rbegin();
-  for (; i1 != e1; ++i1, ++i2) {
-    if (*i1 != *i2) return false;
-  }
-  return true;
-}
-
 bool CanFuseConvOrDepthwiseConv(Attribute filter, Attribute val,
                                 bool is_depthwise) {
   // Make sure the val tensor has shape where all dimensions are 1 except
