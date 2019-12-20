@@ -71,7 +71,7 @@ static void BuildOperator(const Operator& op, raw_ostream* output) {
       }
 
       // Otherwise, this is a varidiac operand list.
-      os << "    std::vector<xla::XlaOp> xla_arg_" << index << ";"
+      os << "    std::vector<xla::XlaOp> xla_arg_" << index << ";\n"
          << "    for (auto operand : xla_op.getODSOperands(" << operand_number++
          << "))\n      xla_arg_" << index
          << ".push_back(value_map[operand]);\n";
