@@ -44,6 +44,27 @@ void TFE_OpConsumeInput(TFE_Op* op, TFE_TensorHandle* h, TF_Status* status) {
   op->operation.ConsumeInput(h->handle);
 }
 
+TFE_Profiler* TFE_NewProfiler() { return new TFE_Profiler(); }
+
+bool TFE_ProfilerIsOk(TFE_Profiler* profiler) {
+  return profiler->profiler->Status().ok();
+}
+
+void TFE_DeleteProfiler(TFE_Profiler* profiler) { delete profiler; }
+
+void TFE_ProfilerSerializeToString(TFE_Profiler* profiler, TF_Buffer* buf,
+                                   TF_Status* status) {
+  string content;
+  status->status = profiler->profiler->SerializeToString(&content);
+  void* data = tensorflow::port::Malloc(content.length());
+  content.copy(static_cast<char*>(data), content.length(), 0);
+  buf->data = data;
+  buf->length = content.length();
+  buf->data_deallocator = [](void* data, size_t length) {
+    tensorflow::port::Free(data);
+  };
+}
+
 void TFE_StartProfilerServer(int port) {
   // Release child thread intentionally. The child thread can be terminated by
   // terminating the main thread.

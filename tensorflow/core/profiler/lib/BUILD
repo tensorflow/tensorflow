@@ -1,4 +1,3 @@
-load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
 
 package(
@@ -11,31 +10,9 @@ package(
 
 cc_library(
     name = "profiler_session",
+    srcs = ["profiler_session.cc"],
     hdrs = ["profiler_session.h"],
     visibility = ["//tensorflow:internal"],
-    deps = [
-        "//tensorflow/core/profiler/internal:profiler_interface",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
-    ] + select({
-        "//tensorflow:android": [],
-        "//conditions:default": [
-            "//tensorflow/core:lib",
-            "//tensorflow/core:protos_all_cc",
-        ],
-    }) + if_static([
-        ":profiler_session_impl",
-        ":profiler_lib",
-    ]),
-)
-
-# Linked into "libtensorflow_framework.so" via ":profiler_impl".
-cc_library(
-    name = "profiler_session_impl",
-    srcs = [
-        "profiler_session.cc",
-        "profiler_session.h",
-    ],
-    visibility = ["//tensorflow/core/profiler:__pkg__"],
     deps = [
         ":profiler_utils",
         "//tensorflow/core/profiler/internal:profiler_interface",
@@ -52,19 +29,29 @@ cc_library(
             "//tensorflow/core:protos_all_cc",
         ],
     }),
-    alwayslink = True,
 )
 
-# Linked into "libtensorflow_framework.so" via ":profiler_impl".
 tf_cuda_library(
     name = "profiler_lib",
     cuda_deps = [
         "//tensorflow/core/profiler/internal/gpu:device_tracer",
     ],
+    visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/core/profiler/internal/cpu:host_tracer",
     ],
     alwayslink = True,
+)
+
+filegroup(
+    name = "pywrap_eager_hdrs",
+    srcs = [
+        "profiler_session.h",
+    ],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/python:__pkg__",
+    ],
 )
 
 cc_library(

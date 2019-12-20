@@ -582,7 +582,6 @@ tf_cc_shared_object(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/cc/saved_model:loader_lite_impl",
-        "//tensorflow/core/profiler:profiler_impl",
         "//tensorflow/core:core_cpu_impl",
         "//tensorflow/core:framework_internal_impl",
         "//tensorflow/core:gpu_runtime_impl",

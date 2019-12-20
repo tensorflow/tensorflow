@@ -1,6 +1,5 @@
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "pybind_extension")
-load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
 load("//tensorflow:tensorflow.bzl", "py_test", "tf_binary_additional_data_deps", "tf_binary_additional_srcs")
 
 package(
@@ -102,19 +101,6 @@ pybind_extension(
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/lib:scoped_annotation",
         "@com_google_absl//absl/types:optional",
-        "@pybind11",
-    ],
-)
-
-tf_python_pybind_extension(
-    name = "_pywrap_profiler_session",
-    srcs = ["profiler_session_wrapper.cc"],
-    module_name = "_pywrap_profiler_session",
-    visibility = ["//tensorflow/python/eager:__pkg__"],
-    deps = [
-        "//tensorflow/core:lib",
-        "//tensorflow/core/profiler/lib:profiler_session",
-        "//tensorflow/python:pybind11_status",
         "@pybind11",
     ],
 )

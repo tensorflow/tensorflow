@@ -116,15 +116,3 @@ filegroup(
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
-
-# Linked directly into "libtensorflow_framework.so".
-cc_library(
-    name = "profiler_impl",
-    visibility = ["//tensorflow:internal"],
-    deps = [
-        "//tensorflow/core/profiler/internal:profiler_factory_impl",
-        "//tensorflow/core/profiler/lib:profiler_lib",
-        "//tensorflow/core/profiler/lib:profiler_session_impl",
-    ],
-    alwayslink = True,
-)

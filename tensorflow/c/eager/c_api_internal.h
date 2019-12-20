@@ -47,6 +47,7 @@ limitations under the License.
 #include "tensorflow/core/lib/monitoring/sampler.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/profiler/lib/profiler_session.h"
 #include "tensorflow/core/public/version.h"
 
 struct TFE_ContextOptions {
@@ -149,6 +150,12 @@ struct TFE_Op {
 TFE_Op* NewOrResetOp(TFE_Context* ctx, const char* op_or_function_name,
                      const char* raw_device_name, TF_Status* status,
                      TFE_Op* op_to_reset = nullptr);
+
+struct TFE_Profiler {
+  explicit TFE_Profiler() { profiler = tensorflow::ProfilerSession::Create(); }
+
+  std::unique_ptr<tensorflow::ProfilerSession> profiler;
+};
 
 struct TFE_MonitoringCounterCell {
   tensorflow::monitoring::CounterCell cell;
