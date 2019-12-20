@@ -374,6 +374,18 @@ def HLO_OutfeedOp : HLO_Op<"outfeed", []> {
   let hasCustomHLOConverter = 1;
 }
 
+
+//===----------------------------------------------------------------------===//
+// XLA parallelism related op definitions.
+//===----------------------------------------------------------------------===//
+
+def HLO_ReplicaIdOp : HLO_Op<"replica_id", [NoSideEffect]>,
+      BASE_HLO_ReplicaIdOp {
+  // TODO(prakalps): The output should unsigned 32-bit integer but mlir does
+  // not differentiate between signed and unsigned int.
+  let results = (outs I32Tensor);
+}
+
 //===----------------------------------------------------------------------===//
 // XLA control flow op definitions.
 //===----------------------------------------------------------------------===//

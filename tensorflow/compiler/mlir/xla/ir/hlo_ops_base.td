@@ -465,6 +465,26 @@ class BASE_HLO_XorOp {
   }];
 }
 
+//===----------------------------------------------------------------------===//
+// XLA parallelism related op definitions.
+//===----------------------------------------------------------------------===//
+
+class BASE_HLO_ReplicaIdOp {
+  string summary = "ReplicaId operator";
+
+  string description = [{
+    Returns the unique ID (int32 scalar) of the replica.
+
+    The unique ID of each replica is an unsigned integer in the interval [0, N),
+    where N is the number of replicas. Since all the replicas are running the
+    same program, a ReplicaId() call in the program will return a different
+    value on each replica.
+
+    See https://www.tensorflow.org/xla/operation_semantics#replicaid.
+  }];
+}
+
+
 class BASE_HLO_AllReduceOp {
   string summary = "AllReduce operator";
 
