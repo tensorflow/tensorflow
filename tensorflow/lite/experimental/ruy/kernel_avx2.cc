@@ -40,6 +40,11 @@ void KernelFloatAvx2(const KernelParamsFloat<8, 8>& params) {
   RUY_DCHECK(false);
 }
 
+void KernelFloatAvx2SingleCol(const KernelParamsFloat<8, 8>& params) {
+  // CPU-ID-based checks should disable the path that would reach this point.
+  RUY_DCHECK(false);
+}
+
 #else  // RUY_PLATFORM(AVX2) && RUY_OPT_ENABLED(RUY_OPT_ASM)
 
 static constexpr int kAvx8bitBlockSize = 8;
@@ -1272,6 +1277,111 @@ void KernelFloatAvx2(const KernelParamsFloat<8, 8>& params) {
       }
     }  // End row-block loop.
   }    // End col-block terminal conditional.
+}
+
+void KernelFloatAvx2SingleCol(const KernelParamsFloat<8, 8>& params) {
+  gemmlowp::ScopedProfilingLabel label("Kernel kAvx2 float GEMV");
+
+  RUY_DCHECK_EQ(params.dst_cols, 1);
+  RUY_DCHECK_EQ(params.last_col, 0);
+  RUY_DCHECK_EQ(params.start_col, 0);
+
+  // As parameters are defined, we need to scale by sizeof(float).
+  const std::int64_t lhs_stride = params.lhs_stride >> 2;
+  //
+  int bias_ptr_block_increment = params.flags & RUY_ASM_FLAG_HAS_BIAS ? 1 : 0;
+  // AVX2 float block size = 8.
+  const int end_row = std::min(params.dst_rows, params.last_row + 8);
+
+  float* adj_dst_col_ptr = params.dst_base_ptr - params.start_row;
+  const float* adj_lhs_col_ptr =
+      params.lhs_base_ptr - params.start_row * lhs_stride;
+  const float* bias_col_ptr = params.bias;
+
+  const __m256 clamp_max_v = _mm256_set1_ps(params.clamp_max);
+  const __m256 clamp_min_v = _mm256_set1_ps(params.clamp_min);
+
+  __m256 accum_data_v;
+
+  const float* rhs_col_ptr = params.rhs_base_ptr;
+  float* dst_col_ptr = adj_dst_col_ptr;
+
+  int row = params.start_row;
+  for (; row <= end_row - 8; row += 8) {
+    const float* lhs_col_ptr = adj_lhs_col_ptr + row * lhs_stride;
+    float* dst_ptr = dst_col_ptr + row;
+    const float* bias_ptr = bias_col_ptr + row * bias_ptr_block_increment;
+
+    // Initialize with bias.
+    accum_data_v = _mm256_loadu_ps(bias_ptr);
+
+    const float* lhs_ptr = lhs_col_ptr;
+    const float* rhs_ptr = rhs_col_ptr;
+    int d = 0;
+    for (; d <= params.depth - 4; d += 4) {
+      const __m256 lhs_data_0 = _mm256_loadu_ps(lhs_ptr);
+      const __m256 dup_rhs_element_0 = _mm256_set1_ps(rhs_ptr[0]);
+      accum_data_v =
+          _mm256_fmadd_ps(lhs_data_0, dup_rhs_element_0, accum_data_v);
+      const __m256 dup_rhs_element_1 = _mm256_set1_ps(rhs_ptr[8]);
+      const __m256 lhs_data_1 = _mm256_loadu_ps(lhs_ptr + 8);
+      accum_data_v =
+          _mm256_fmadd_ps(lhs_data_1, dup_rhs_element_1, accum_data_v);
+
+      const __m256 lhs_data_2 = _mm256_loadu_ps(lhs_ptr + 16);
+      const __m256 dup_rhs_element_2 = _mm256_set1_ps(rhs_ptr[16]);
+      accum_data_v =
+          _mm256_fmadd_ps(lhs_data_2, dup_rhs_element_2, accum_data_v);
+      const __m256 dup_rhs_element_3 = _mm256_set1_ps(rhs_ptr[24]);
+      const __m256 lhs_data_3 = _mm256_loadu_ps(lhs_ptr + 24);
+      accum_data_v =
+          _mm256_fmadd_ps(lhs_data_3, dup_rhs_element_3, accum_data_v);
+      lhs_ptr += 32;  // Loaded 8 * 4 floats.
+      rhs_ptr += 32;
+    }
+    for (; d < params.depth; ++d) {
+      const __m256 lhs_data = _mm256_loadu_ps(lhs_ptr);
+      const float* rhs_data = rhs_ptr;
+
+      const __m256 dup_rhs_element_j = _mm256_set1_ps(rhs_data[0]);
+      accum_data_v = _mm256_fmadd_ps(lhs_data, dup_rhs_element_j, accum_data_v);
+      lhs_ptr += 8;
+      rhs_ptr += 8;
+    }
+
+    accum_data_v = _mm256_min_ps(accum_data_v, clamp_max_v);
+    accum_data_v = _mm256_max_ps(accum_data_v, clamp_min_v);
+    _mm256_storeu_ps(dst_ptr, accum_data_v);
+  }  // End row-block loop.
+
+  if (row < end_row) {
+    const int residual_rows = end_row - row;
+    RUY_CHECK_GE(residual_rows, 1);
+    RUY_CHECK_LT(residual_rows, 8);
+
+    const float* lhs_col_ptr = adj_lhs_col_ptr + row * lhs_stride;
+    float* dst_ptr = dst_col_ptr + row;
+    const float* bias_ptr = bias_col_ptr + row * bias_ptr_block_increment;
+
+    // Initialize with bias.
+    accum_data_v = intrin_utils::mm256_n_loadu_ps(residual_rows, bias_ptr);
+
+    const float* lhs_ptr = lhs_col_ptr;
+    const float* rhs_ptr = rhs_col_ptr;
+    for (int d = 0; d < params.depth; ++d) {
+      const __m256 lhs_data = _mm256_loadu_ps(lhs_ptr);
+      const float* rhs_data = rhs_ptr;
+
+      const __m256 dup_rhs_element_j = _mm256_set1_ps(rhs_data[0]);
+      accum_data_v = _mm256_fmadd_ps(lhs_data, dup_rhs_element_j, accum_data_v);
+      lhs_ptr += 8;
+      rhs_ptr += 8;
+    }
+
+    accum_data_v = _mm256_min_ps(accum_data_v, clamp_max_v);
+    accum_data_v = _mm256_max_ps(accum_data_v, clamp_min_v);
+    intrin_utils::mm256_n_storeu_ps(dst_ptr, residual_rows, accum_data_v);
+  }  // End handling of residual rows.
 }
 
 #endif  //  RUY_PLATFORM(AVX2) && RUY_OPT_ENABLED(RUY_OPT_ASM)

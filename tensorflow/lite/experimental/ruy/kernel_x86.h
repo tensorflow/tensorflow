@@ -92,6 +92,7 @@ struct Kernel<Path::kAvx2, std::int8_t, std::int8_t, DstScalar,
 };
 
 void KernelFloatAvx2(const KernelParamsFloat<8, 8>& params);
+void KernelFloatAvx2SingleCol(const KernelParamsFloat<8, 8>& params);
 
 template <>
 struct Kernel<Path::kAvx2, float, float, float, BasicSpec<float, float>> {
@@ -105,7 +106,11 @@ struct Kernel<Path::kAvx2, float, float, float, BasicSpec<float, float>> {
     KernelParamsFloat<LhsLayout::kCols, RhsLayout::kCols> params;
     MakeKernelParamsFloat(lhs, rhs, spec, start_row, start_col, end_row,
                           end_col, dst, &params);
-    KernelFloatAvx2(params);
+    if (dst->layout.cols == 1) {
+      KernelFloatAvx2SingleCol(params);
+    } else {
+      KernelFloatAvx2(params);
+    }
   }
 };
 #endif  // RUY_PLATFORM(X86)
