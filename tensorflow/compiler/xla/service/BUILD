@@ -1843,6 +1843,7 @@ tf_cc_test(
         ":hlo_creation_utils",
         ":hlo_parser",
         ":hlo_pass",
+        ":hlo_pass_pipeline",
         ":pattern_matcher",
         ":pattern_matcher_gmock",
         ":shape_inference",
