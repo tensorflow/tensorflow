@@ -174,7 +174,7 @@ class MetricsSerialization(keras_parameterized.TestCase):
     def get_instance(x):
       if isinstance(x, str):
         return x
-      if issubclass(x, metrics.Metric):
+      if isinstance(x, type) and issubclass(x, metrics.Metric):
         return x()
       return x
 
