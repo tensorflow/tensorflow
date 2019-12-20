@@ -1946,6 +1946,14 @@ def random_hue(image, max_delta, seed=None):
 
   `max_delta` must be in the interval `[0, 0.5]`.
 
+  Usage Example:
+  ```python
+  >>> x = tf.constant([[[2.0, 4.0, 3.0]]])
+  >>> y = tf.image.random_hue(x, max_delta=0.5)
+  >>> print(y.numpy())
+  [[[2.2600288 2.        4.       ]]]
+  ```
+  
   Args:
     image: RGB image or images. The size of the last dimension must be 3.
     max_delta: float. The maximum value for the random delta.
