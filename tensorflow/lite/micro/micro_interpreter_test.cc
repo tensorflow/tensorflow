@@ -46,6 +46,7 @@ TfLiteStatus MockInvoke(TfLiteContext* context, TfLiteNode* node) {
   const uint8_t* weight_data = weight->data.uint8;
   TfLiteTensor* output = &context->tensors[node->outputs->data[0]];
   int32_t* output_data = output->data.i32;
+  output_data[0] = 0; // Catch output tensor sharing memory with an input tensor
   output_data[0] = input_data[0] + weight_data[0];
   return kTfLiteOk;
 }
@@ -83,7 +84,7 @@ TF_LITE_MICRO_TEST(TestInterpreter) {
                                        micro_test::reporter);
   TF_LITE_MICRO_EXPECT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
   TF_LITE_MICRO_EXPECT_EQ(1, interpreter.inputs_size());
-  TF_LITE_MICRO_EXPECT_EQ(1, interpreter.outputs_size());
+  TF_LITE_MICRO_EXPECT_EQ(2, interpreter.outputs_size());
 
   TfLiteTensor* input = interpreter.input(0);
   TF_LITE_MICRO_EXPECT_NE(nullptr, input);
@@ -97,6 +98,15 @@ TF_LITE_MICRO_TEST(TestInterpreter) {
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, interpreter.Invoke());
 
   TfLiteTensor* output = interpreter.output(0);
+  TF_LITE_MICRO_EXPECT_NE(nullptr, output);
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteInt32, output->type);
+  TF_LITE_MICRO_EXPECT_EQ(1, output->dims->size);
+  TF_LITE_MICRO_EXPECT_EQ(1, output->dims->data[0]);
+  TF_LITE_MICRO_EXPECT_EQ(4, output->bytes);
+  TF_LITE_MICRO_EXPECT_NE(nullptr, output->data.i32);
+  TF_LITE_MICRO_EXPECT_EQ(42, output->data.i32[0]);
+
+  output = interpreter.output(1);
   TF_LITE_MICRO_EXPECT_NE(nullptr, output);
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteInt32, output->type);
   TF_LITE_MICRO_EXPECT_EQ(1, output->dims->size);
