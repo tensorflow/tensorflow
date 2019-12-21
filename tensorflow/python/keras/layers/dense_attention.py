@@ -406,7 +406,7 @@ class AdditiveAttention(BaseDenseAttention):
   # Query embeddings of shape [batch_size, Tq, dimension].
   query_embeddings = token_embedding(query_input)
   # Value embeddings of shape [batch_size, Tv, dimension].
-  value_embeddings = token_embedding(query_input)
+  value_embeddings = token_embedding(value_input)
 
   # CNN layer.
   cnn_layer = tf.keras.layers.Conv1D(
