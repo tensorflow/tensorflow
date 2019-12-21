@@ -1741,6 +1741,12 @@ py_library(
 )
 
 py_library(
+    name = "gpu_util",
+    srcs = ["framework/gpu_util.py"],
+    deps = [],
+)
+
+py_library(
     name = "framework_test_lib",
     srcs = ["framework/test_util.py"],
     srcs_version = "PY2AND3",
@@ -1753,6 +1759,7 @@ py_library(
         ":client",
         ":errors",
         ":framework_for_generated_wrappers",
+        ":gpu_util",
         ":platform",
         ":platform_test",
         ":pywrap_tensorflow",
