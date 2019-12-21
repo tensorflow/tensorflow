@@ -20,11 +20,11 @@ TensorFlow 2.1 will be the last TF release supporting Python 2. Python 2 support
 * `tf.data`
   * Changes rebatching for `tf.data datasets` + DistributionStrategy for better performance. Note that the dataset also behaves slightly differently, in that the rebatched dataset cardinality will always be a multiple of the number of replicas.
   * `tf.data.Dataset` now supports automatic data distribution and sharding in distributed environments, including on TPU pods.
-  * Distribution policies for `tf.data.Dataset` can now be tuned with 1. `data.experimental.AutoShardPolicy(OFF, AUTO, FILE, DATA)` 2. `data.experimental.ExternalStatePolicy(WARN, IGNORE, FAIL)`
+  * Distribution policies for `tf.data.Dataset` can now be tuned with 1. `tf.data.experimental.AutoShardPolicy(OFF, AUTO, FILE, DATA)` 2. `tf.data.experimental.ExternalStatePolicy(WARN, IGNORE, FAIL)`
 * `tf.debugging`
   * Add `tf.debugging.enable_check_numerics()` and `tf.debugging.disable_check_numerics()` to help debugging the root causes of issues involving infinities and `NaN`s.
 * `tf.distribute`
-  * Custom training loop support on TPUs and TPU pods is avaiable through `strategy.experimental_distribute_dataset`, `strategy.experimental_run_v2`, `strategy.reduce`.
+  * Custom training loop support on TPUs and TPU pods is avaiable through `strategy.experimental_distribute_dataset`, `strategy.experimental_distribute_datasets_from_function`, `strategy.experimental_run_v2`, `strategy.reduce`.
   * Support for a global distribution strategy through `tf.distribute.experimental_set_strategy(),` in addition to `strategy.scope()`.
 * `TensorRT`
   * [TensorRT 6.0](https://developer.nvidia.com/tensorrt#tensorrt-whats-new) is now supported and enabled by default. This adds support for more TensorFlow ops including Conv3D, Conv3DBackpropInputV2, AvgPool3D, MaxPool3D, ResizeBilinear, and ResizeNearestNeighbor. In addition, the TensorFlow-TensorRT python conversion API is exported as `tf.experimental.tensorrt.Converter`.
