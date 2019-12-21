@@ -18,12 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
 import sys
 
 import six
 
-from tensorflow.python import tf2
 from tensorflow.python.keras.engine import network
 from tensorflow.python.keras.saving import hdf5_format
 from tensorflow.python.keras.saving.saved_model import load as saved_model_load
@@ -99,9 +97,9 @@ def save_model(model,
 
   if type(filepath) != str and not isinstance(filepath, h5py.File):
     raise ValueError(
-      'Expected `filepath` to be a String or `h5py.File` object. Got'
-      'unsupported value %s of type %s'
-      % (filepath, type(filepath)))
+          'Expected `filepath` to be a String or `h5py.File` object. Got'
+          'unsupported value %s of type %s'
+          % (filepath, type(filepath)))
   save_format = network.validate_save_format(filepath, save_format)
 
   if save_format == 'h5':
