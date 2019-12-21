@@ -9,18 +9,15 @@ TensorFlow 2.1 will be the last TF release supporting Python 2. Python 2 support
   * If either of the required DLLs, `msvcp140.dll` (old) or `msvcp140_1.dll` (new), are missing on your machine, `import tensorflow` will print a warning message.
 * The `tensorflow` pip package is built with CUDA 10.1 and cuDNN 7.6.
 * `tf.keras`
-  * `Model.fit_generator`, `Model.evaluate_generator`, `Model.predict_generator`, `Model.train_on_batch`, `Model.test_on_batch`, and `Model.predict_on_batch` methods now respect the `run_eagerly` property, and will correctly run using tf.function by default.
-  * `Model.fit_generator`, `Model.evaluate_generator`, and `Model.predict_generator` are deprecated endpoints. They are subsumed by `Model.fit`, `Model.evaluate`, and `Model.predict` which now support generators and Sequences.
-  * Keras `.compile` `.fit` `.evaluate` and `.predict` are allowed to be outside of the DistributionStrategy scope, as long as the model was constructed inside of a scope.
-  * Keras `model.load_weights` now accepts `skip_mismatch` as an argument. This was available in external Keras, and has now been copied over to `tf.keras`.
+  * Experimental support for mixed precision is available on GPUs and Cloud TPUs. See [usage guide](https://www.tensorflow.org/guide/keras/mixed_precision).
   * Introduced the `TextVectorization` layer, which takes as input raw strings and takes care of text standardization, tokenization, n-gram generation, and vocabulary indexing. See this [end-to-end text classification example](https://colab.research.google.com/drive/1RvCnR7h0_l4Ekn5vINWToI9TNJdpUZB3). 
+  * Keras `.compile` `.fit` `.evaluate` and `.predict` are allowed to be outside of the DistributionStrategy scope, as long as the model was constructed inside of a scope.
   * Experimental support for Keras `.compile`, `.fit`, `.evaluate`, and `.predict` is available for Cloud TPU Pods.
   * Automatic outside compilation is now enabled for Cloud TPUs. This allows `tf.summary` to be used more conveniently with Cloud TPUs.
   * Dynamic batch sizes with DistributionStrategy and Keras are supported on Cloud TPUs.
-  * Experimental support for mixed precision is available on GPUs and Cloud TPUs.
   * Keras reference implementations for many popular models are available in the TensorFlow [Model Garden](https://github.com/tensorflow/models/tree/master/official).
 * `tf.data`
-  * Changes rebatching for `tf.data datasets` + distribution strategies for better performance.   Note that the dataset also behaves slightly differently, in that the rebatched dataset cardinality will always be a multiple of the number of replicas.
+  * Changes rebatching for `tf.data datasets` + DistributionStrategy for better performance. Note that the dataset also behaves slightly differently, in that the rebatched dataset cardinality will always be a multiple of the number of replicas.
 * `tf.debugging`
   * Add `tf.debugging.enable_check_numerics()` and `tf.debugging.disable_check_numerics()` to help debugging the root causes of issues involving infinities and `NaN`s.
 * `TensorRT`
@@ -41,7 +38,7 @@ Because of [issues with building on windows](https://github.com/tensorflow/tenso
 
 ## Bug Fixes and Other Changes
 * `tf.data`
-  * Fixes concurrency issue with `tf.data.experimental.parallel_interleave` with sloppy=True.
+  * Fixes concurrency issue with `tf.data.experimental.parallel_interleave` with `sloppy=True`.
   * Add `tf.data.experimental.dense_to_ragged_batch()`.
   * Extend `tf.data` parsing ops to support `RaggedTensors`.
 * `tf.distribute`
@@ -50,9 +47,11 @@ Because of [issues with building on windows](https://github.com/tensorflow/tenso
   * Added option in `tf.estimator.CheckpointSaverHook` to not save the `GraphDef`.
   * Moving the checkpoint reader from swig to pybind11.
 * `tf.keras`
-  * Export depthwise_conv2d in `tf.keras.backend`.
+  * Export `depthwise_conv2d` in `tf.keras.backend`.
   * In Keras Layers and Models, Variables in `trainable_weights`, `non_trainable_weights`, and `weights` are explicitly deduplicated.
-  * Fix the incorrect stateful behavior of Keras convolutional layers.
+  * Keras `model.load_weights` now accepts `skip_mismatch` as an argument. This was available in external Keras, and has now been copied over to `tf.keras`.
+  * Fix the input shape caching behavior of Keras convolutional layers.
+  * `Model.fit_generator`, `Model.evaluate_generator`, `Model.predict_generator`, `Model.train_on_batch`, `Model.test_on_batch`, and `Model.predict_on_batch` methods now respect the `run_eagerly` property, and will correctly run using `tf.function` by default. Note that `Model.fit_generator`, `Model.evaluate_generator`, and `Model.predict_generator` are deprecated endpoints. They are subsumed by `Model.fit`, `Model.evaluate`, and `Model.predict` which now support generators and Sequences.
 * `tf.lite`
   * Legalization for `NMS` ops in TFLite.
   * add `narrow_range` and `axis` to `quantize_v2` and `dequantize` ops. 
