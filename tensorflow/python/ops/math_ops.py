@@ -356,6 +356,25 @@ _mul.__doc__ = (
 @tf_export("math.subtract", "subtract")
 @dispatch.add_dispatch_support
 def subtract(x, y, name=None):
+  """Returns 'x' - 'y' element wise
+  
+  For example:
+  >>> x = tf.constant([32])
+  >>> y = tf.constant([34])
+  >>> tf.math.subtract(x, y)
+  <tf.Tensor: shape=(1,), dtype=float32, numpy=array([-2.], dtype=float32)>
+  
+  Args:
+  'x': A 'Tensor'. Must be one of the following types: 
+  'bfloat16', 'half', 'float32', 'float64', 'uint8', 'int8', 'uint16', 'int16', 'int32', 'int64', 'complex64', 'complex128'.
+  'y': A 'Tensor'. Must have the same type as 'x'
+  'name': A name for the operation (optional)
+  
+  Returns:
+  A 'Tensor'. Has same type as 'x'. 
+  
+  """
+  
   return gen_math_ops.sub(x, y, name)
 
 
@@ -406,6 +425,10 @@ def scalar_mul(scalar, x, name=None):
   Intended for use in gradient code which might deal with `IndexedSlices`
   objects, which are easy to multiply by a scalar but more expensive to
   multiply with arbitrary tensors.
+  
+  For example:
+  >>> tf.math.scalar_mul(32, tf.constant([34,35]))
+  <tf.Tensor: shape=(2,), dtype=int32, numpy=array([1088, 1120], dtype=int32)>
 
   Args:
     scalar: A 0-D scalar `Tensor`. Must have known shape.
@@ -1058,6 +1081,12 @@ def truediv(x, y, name=None):
   point, the output will have the same type.  If the inputs are integral, the
   inputs are cast to `float32` for `int8` and `int16` and `float64` for `int32`
   and `int64` (matching the behavior of Numpy).
+  
+  For example:
+  >>> num = tf.constant([32, 34])
+  >>> den = tf.constant([35, 36])
+  >>> tf.math.truediv(num, den)
+  <tf.Tensor: shape=(2,), dtype=float64, numpy=array([0.91428571, 0.94444444])>
 
   Args:
     x: `Tensor` numerator of numeric type.
@@ -1104,6 +1133,12 @@ def div(x, y, name=None):
 @dispatch.add_dispatch_support
 def div_no_nan(x, y, name=None):
   """Computes a safe divide which returns 0 if the y is zero.
+  
+  For example:
+  >>> x = 32.0
+  >>> y = 0.0
+  >>> tf.math.divide_no_nan(x, y)
+  <tf.Tensor: shape=(), dtype=float32, numpy=0.0>
 
   Args:
     x: A `Tensor`. Must be one of the following types: `float32`, `float64`.
@@ -1124,6 +1159,12 @@ def div_no_nan(x, y, name=None):
 @dispatch.add_dispatch_support
 def multiply_no_nan(x, y, name=None):
   """Computes the product of x and y and returns 0 if the y is zero, even if x is NaN or infinite.
+  
+  For example:
+  >>> x = 0.0
+  >>> y = 34.0
+  >>> tf.math.multiply(x, y)
+  <tf.Tensor: shape=(), dtype=float32, numpy=0.0>
 
   Args:
     x: A `Tensor`. Must be one of the following types: `float32`, `float64`.
@@ -1166,6 +1207,12 @@ def floordiv(x, y, name=None):
 
   `x` and `y` must have the same type, and the result will have the same type
   as well.
+  
+  For example:
+  >>> x = 32.0
+  >>> y = 31.0
+  >>> tf.floordiv(x, y)
+  <tf.Tensor: shape=(), dtype=float32, numpy=1.0>
 
   Args:
     x: `Tensor` numerator of real numeric type.
@@ -1342,7 +1389,6 @@ def equal(x, y, name=None):
   boolean values.
 
   For example:
-
   >>> x = tf.constant([2, 4])
   >>> y = tf.constant(2)
   >>> tf.math.equal(x, y)
@@ -1378,7 +1424,6 @@ def not_equal(x, y, name=None):
   of boolean values.
 
   For example:
-
   >>> x = tf.constant([2, 4])
   >>> y = tf.constant(2)
   >>> tf.math.not_equal(x, y)
@@ -1446,6 +1491,7 @@ def range(start, limit=None, delta=1, dtype=None, name="range"):  # pylint: disa
 
   For example:
 
+  ```python
   >>> start = 3
   >>> limit = 18
   >>> delta = 3
@@ -1464,6 +1510,8 @@ def range(start, limit=None, delta=1, dtype=None, name="range"):  # pylint: disa
   >>> tf.range(limit)
   <tf.Tensor: shape=(5,), dtype=int32,
   numpy=array([0, 1, 2, 3, 4], dtype=int32)>
+
+  ```
 
   Args:
     start: A 0-D `Tensor` (scalar). Acts as first entry in the range if `limit`
@@ -2083,6 +2131,11 @@ def reduce_prod(input_tensor, axis=None, keepdims=False, name=None):
 
   If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
+  
+  For example:
+  >>> ten = tf.constant([32, 36])
+  >>> tf.math.reduce_prod(ten, axis=None, keepdims=True)
+  <tf.Tensor: shape=(1,), dtype=int32, numpy=array([1152], dtype=int32)>
 
   Args:
     input_tensor: The tensor to reduce. Should have numeric type.
@@ -2171,7 +2224,7 @@ def reduce_min_v1(input_tensor,
 
   If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
-
+  
   Args:
     input_tensor: The tensor to reduce. Should have real numeric type.
     axis: The dimensions to reduce. If `None` (the default), reduces all
@@ -2209,6 +2262,12 @@ def reduce_min(input_tensor, axis=None, keepdims=False, name=None):
 
   If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
+  
+  
+  For example:
+  >>> tf.math.reduce_min(tf.constant([32, 36]), axis=None, keepdims=True)
+  <tf.Tensor: shape=(1,), dtype=int32, numpy=array([32], dtype=int32)>
+
 
   Args:
     input_tensor: The tensor to reduce. Should have real numeric type.
@@ -2290,6 +2349,10 @@ def reduce_max(input_tensor, axis=None, keepdims=False, name=None):
 
   If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
+  
+  For example:
+  >>> tf.math.reduce_max(tf.constant([32.0, 36.0]), axis=None, keepdims=True)
+  <tf.Tensor: shape=(1,), dtype=float32, numpy=array([36.], dtype=float32)>
 
   Args:
     input_tensor: The tensor to reduce. Should have real numeric type.
@@ -2710,7 +2773,6 @@ def matmul(a,
   datatypes `bfloat16` or `float32`.
 
   A simple 2-D tensor matrix multiplication:
-
   >>> a = tf.constant([1, 2, 3, 4, 5, 6], shape=[2, 3])
   >>> a  # 2-D tensor
   <tf.Tensor: shape=(2, 3), dtype=int32, numpy=
@@ -2728,8 +2790,7 @@ def matmul(a,
   array([[ 58,  64],
          [139, 154]], dtype=int32)>
 
-  A batch matrix multiplication with batch shape [2]:
-
+  A batch matrix multiplication with batch shape [2]
   >>> a = tf.constant(np.arange(1, 13, dtype=np.int32), shape=[2, 2, 3])
   >>> a  # 3-D tensor
   <tf.Tensor: shape=(2, 2, 3), dtype=int32, numpy=
@@ -2758,7 +2819,6 @@ def matmul(a,
   (see [PEP 465](https://www.python.org/dev/peps/pep-0465/)). In TensorFlow,
   it simply calls the `tf.matmul()` function, so the following lines are
   equivalent:
-
   >>> d = a @ b @ [[10], [11]]
   >>> d = tf.matmul(tf.matmul(a, b), [[10], [11]])
 
@@ -3204,6 +3264,11 @@ def sigmoid(x, name=None):
   """Computes sigmoid of `x` element-wise.
 
   Specifically, `y = 1 / (1 + exp(-x))`.
+  
+  For example:
+  >>>  x = 32
+  >>> tf.math.sigmoid(x)
+  <tf.Tensor: shape=(), dtype=float32, numpy=1.0>
 
   Args:
     x: A Tensor with type `float16`, `float32`, `float64`, `complex64`, or
@@ -3230,6 +3295,11 @@ def log_sigmoid(x, name=None):
 
   Specifically, `y = log(1 / (1 + exp(-x)))`.  For numerical stability,
   we use `y = -tf.nn.softplus(-x)`.
+  
+  For example:
+  >>> x = 32.0
+  >>> tf.math.log_sigmoid(x)
+  <tf.Tensor: shape=(), dtype=float32, numpy=-1.2664166e-14>
 
   Args:
     x: A Tensor with type `float32` or `float64`.
@@ -3359,27 +3429,28 @@ def cumsum(x, axis=0, exclusive=False, reverse=False, name=None):
   element of the input is identical to the first element of the output:
   For example:
 
-  >>> # tf.cumsum([a, b, c])   # [a, a + b, a + b + c]
+  # tf.cumsum([a, b, c])   # [a, a + b, a + b + c]
   >>> x = tf.constant([2, 4, 6, 8])
   >>> tf.cumsum(x)
   <tf.Tensor: shape=(4,), dtype=int32,
   numpy=array([ 2,  6, 12, 20], dtype=int32)>
-
-  >>> # using varying `axis` values
+  
+  # using varying `axis` values
   >>> y = tf.constant([[2, 4, 6, 8], [1,3,5,7]])
   >>> tf.cumsum(y, axis=0)
   <tf.Tensor: shape=(2, 4), dtype=int32, numpy=
   array([[ 2,  4,  6,  8],
          [ 3,  7, 11, 15]], dtype=int32)>
+         
   >>> tf.cumsum(y, axis=1)
   <tf.Tensor: shape=(2, 4), dtype=int32, numpy=
   array([[ 2,  6, 12, 20],
          [ 1,  4,  9, 16]], dtype=int32)>
-
+ 
   By setting the `exclusive` kwarg to `True`, an exclusive cumsum is performed
   instead:
-
-  >>> # tf.cumsum([a, b, c], exclusive=True)  => [0, a, a + b]
+  
+  # tf.cumsum([a, b, c], exclusive=True)  => [0, a, a + b]
   >>> x = tf.constant([2, 4, 6, 8])
   >>> tf.cumsum(x, exclusive=True)
   <tf.Tensor: shape=(4,), dtype=int32,
@@ -3387,17 +3458,17 @@ def cumsum(x, axis=0, exclusive=False, reverse=False, name=None):
 
   By setting the `reverse` kwarg to `True`, the cumsum is performed in the
   opposite direction:
-
-  >>> # tf.cumsum([a, b, c], reverse=True)  # [a + b + c, b + c, c]
+  
+  # tf.cumsum([a, b, c], reverse=True)  # [a + b + c, b + c, c]
   >>> x = tf.constant([2, 4, 6, 8])
-  >>> tf.cumsum(x, reverse=True)
+  >>> tf.cumsum(x, reverse=True) 
   <tf.Tensor: shape=(4,), dtype=int32,
   numpy=array([20, 18, 14,  8], dtype=int32)>
 
   This is more efficient than using separate `tf.reverse` ops.
   The `reverse` and `exclusive` kwargs can also be combined:
-
-  >>> # tf.cumsum([a, b, c], exclusive=True, reverse=True)  # [b + c, c, 0]
+  
+  # tf.cumsum([a, b, c], exclusive=True, reverse=True)  # [b + c, c, 0]
   >>> x = tf.constant([2, 4, 6, 8])
   >>> tf.cumsum(x, exclusive=True, reverse=True)
   <tf.Tensor: shape=(4,), dtype=int32,
@@ -3657,6 +3728,15 @@ def unsorted_segment_mean(data, segment_ids, num_segments, name=None):
 
   If the given segment ID `i` is negative, the value is dropped and will not
   be added to the sum of the segment.
+  
+  For example:
+  >>> x = tf.constant([1, 2, 3, 4])
+  >>> y = tf.constant(2, dtype=tf.int32)
+  >>> tf.math.unsorted_segment_mean(x, y, num_segments=3)
+  <tf.Tensor: shape=(3, 4), dtype=float64, numpy=
+  array([[0., 0., 0., 0.],
+        [0., 0., 0., 0.],
+        [1., 2., 3., 4.]])>
 
   Args:
     data: A `Tensor` with floating point or complex dtype.
@@ -3706,6 +3786,14 @@ def unsorted_segment_sqrt_n(data, segment_ids, num_segments, name=None):
 
   If the given segment ID `i` is negative, the value is dropped and will not
   be added to the sum of the segment.
+  
+  For example:
+  >>> x = tf.constant([1.0, 2.0, 3.0, 4.0])
+  >>> y = tf.constant(1, dtype=tf.int32)
+  >>> tf.math.unsorted_segment_sqrt_n(x, y, num_segments=2)
+  <tf.Tensor: shape=(2, 4), dtype=float32, numpy=
+  array([[0., 0., 0., 0.],
+        [1., 2., 3., 4.]], dtype=float32)>
 
   Args:
     data: A `Tensor` with floating point or complex dtype.
@@ -4228,6 +4316,12 @@ def polyval(coeffs, x, name=None):
 
      p(x) = coeffs[n-1] + x * (coeffs[n-2] + ... + x * (coeffs[1] +
             x * coeffs[0]))
+  
+  For example:
+  >>> coefficients = [tf.constant(32, dtype=tf.int32), tf.constant(33, dtype=tf.int32), tf.constant(34, dtype=tf.int32)]
+  >>> w = tf.Variable(tf.constant(1, dtype=tf.int32))
+  >>> tf.math.polyval(coefficients, w)
+  <tf.Tensor: shape=(), dtype=int32, numpy=99>
 
   Args:
     coeffs: A list of `Tensor` representing the coefficients of the polynomial.
