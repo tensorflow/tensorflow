@@ -652,6 +652,13 @@ LogicalResult ExportXlaOp(ReverseOp op, OpLoweringContext ctx) {
   return success();
 }
 
+LogicalResult ExportXlaOp(RngNormalOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  value_map[op] = xla::RngNormal(value_map[op.mu()], value_map[op.sigma()],
+                                 xla::TypeToShape(op.getType()));
+  return success();
+}
+
 LogicalResult ExportXlaOp(RngUniformOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   value_map[op] = xla::RngUniform(value_map[op.a()], value_map[op.b()],

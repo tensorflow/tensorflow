@@ -922,4 +922,17 @@ class BASE_HLO_RngUniformOp {
   }];
 }
 
+class BASE_HLO_RngNormalOp {
+  string summary = "RNG with normal distribution.";
+
+  string description = [{
+    Constructs an output of a given shape with random numbers generated
+    following the normal distribution with parameters `mu` and `sigma`. The
+    parameters and output shape have to have a floating point elemental type.
+    The parameters furthermore have to be scalar valued.
+
+    See https://www.tensorflow.org/xla/operation_semantics#rngnormal.
+  }];
+}
+
 #endif // HLO_OPS_BASE

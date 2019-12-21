@@ -542,6 +542,20 @@ func @main(%arg0 : tensor<10x11x12x13xf32>) -> tensor<10x11x12x13xf32> {
 // -----
 
 // CHECK:  HloModule
+func @main(%mu: tensor<f32>, %sigma: tensor<f32>) -> tensor<2x3x5xf32> {
+  %shape = xla_hlo.constant dense<[2, 3, 5]> : tensor<3xi64>
+  %0 = "xla_hlo.rng_normal"(%mu, %sigma, %shape) : (tensor<f32>, tensor<f32>, tensor<3xi64>) -> tensor<2x3x5xf32>
+  return %0 : tensor<2x3x5xf32>
+}
+
+// CHECK:  ENTRY
+// CHECK:  %[[MU:.*]] = f32[] parameter(0)
+// CHECK:  %[[SIGMA:.*]] = f32[] parameter(1)
+// CHECK:  ROOT %[[RESULT:.*]] = f32[2,3,5] rng(f32[] %[[MU]], f32[] %[[SIGMA]]), distribution=rng_normal
+
+// -----
+
+// CHECK:  HloModule
 func @main() -> tensor<2x3x5xf32> {
   %0 = xla_hlo.constant dense<0.000000e+00> : tensor<f32>
   %1 = xla_hlo.constant dense<1.000000e+00> : tensor<f32>

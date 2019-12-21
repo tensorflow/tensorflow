@@ -1097,4 +1097,16 @@ def HLO_RngUniformOp : HLO_Op<"rng_uniform", []>, BASE_HLO_RngUniformOp {
   let hasCustomHLOConverter = 1;
 }
 
+def HLO_RngNormalOp : HLO_Op<"rng_normal", []>, BASE_HLO_RngNormalOp {
+  let arguments = (ins
+    HLO_FpTensor:$mu,
+    HLO_FpTensor:$sigma,
+    I64Tensor:$shape
+  );
+
+  let results = (outs HLO_FpTensor);
+
+  let hasCustomHLOConverter = 1;
+}
+
 #endif // HLO_OPS
