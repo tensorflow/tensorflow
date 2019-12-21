@@ -28,7 +28,6 @@ cc_library(
     srcs = ["run_metadata_to_trace_events.cc"],
     hdrs = ["run_metadata_to_trace_events.h"],
     deps = [
-        "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/strings",
