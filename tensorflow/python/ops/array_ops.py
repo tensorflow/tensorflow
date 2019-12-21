@@ -503,7 +503,7 @@ def broadcast_dynamic_shape(shape_x, shape_y):
   >>> shape_x = (1, 2, 3)
   >>> shape_y = (5, 1, 3)
   >>> tf.broadcast_dynamic_shape(shape_x, shape_y)
-  <tf.Tensor: id=..., shape=(3,), dtype=int32, numpy=array([5, 2, 3], \
+  <tf.Tensor: shape=(3,), dtype=int32, numpy=array([5, 2, 3], \
 dtype=int32)>
 
   Args:
