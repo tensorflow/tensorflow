@@ -29,6 +29,7 @@ from tensorflow.python.keras import layers
 from tensorflow.python.keras import losses
 from tensorflow.python.keras import Model
 from tensorflow.python.keras import optimizer_v2
+from tensorflow.python.keras import Sequential
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -56,8 +57,8 @@ def get_ctl_train_step(model):
   return train_step
 
 
-# TODO(psv): 1. Add shared layer/model test cases. 2. Add tests cases where a
-# model is used in loss function but is not part of the training model.
+# TODO(psv): Add tests cases where a model is used in loss function but is
+# not part of the training model.
 
 
 class TestAddLossCorrectness(keras_parameterized.TestCase):
@@ -341,6 +342,49 @@ class TestAddLossCorrectness(keras_parameterized.TestCase):
     loss_small_batch = model.test_on_batch(np.ones((10, 10), 'float32'))
     loss_big_batch = model.test_on_batch(np.ones((20, 10), 'float32'))
     self.assertAlmostEqual(loss_small_batch, loss_big_batch, places=4)
+
+  @keras_parameterized.run_all_keras_modes
+  def test_with_shared_layer(self):
+
+    class LayerWithLoss(layers.Layer):
+
+      def call(self, inputs):
+        self.add_loss(math_ops.reduce_sum(inputs), inputs)
+        return inputs * 2
+
+    shared_layer = LayerWithLoss()
+
+    m = Sequential([shared_layer])
+    m2 = Sequential([shared_layer, m])
+    m2(array_ops.constant([1, 2, 3]))
+    self.assertEqual(len(m2.losses), 2)
+    self.assertAllClose(m2.losses, [6, 12])
+
+  @keras_parameterized.run_all_keras_modes
+  def test_with_shared_nested_layer(self):
+
+    class LayerWithLoss(layers.Layer):
+
+      def call(self, inputs):
+        self.add_loss(math_ops.reduce_sum(inputs), inputs)
+        return inputs * 2
+
+    class LayerWithNestedLayerWithLoss(layers.Layer):
+
+      def __init__(self):
+        super(LayerWithNestedLayerWithLoss, self).__init__()
+        self.loss_layer = LayerWithLoss()
+
+      def call(self, inputs):
+        return self.loss_layer(inputs)
+
+    shared_layer = LayerWithNestedLayerWithLoss()
+
+    m = Sequential([shared_layer])
+    m2 = Sequential([shared_layer, m])
+    m2(array_ops.constant([1, 2, 3]))
+    self.assertEqual(len(m2.losses), 2)
+    self.assertAllClose(m2.losses, [6, 12])
 
   @keras_parameterized.run_all_keras_modes
   def test_clear_losses(self):

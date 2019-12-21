@@ -47,6 +47,7 @@ from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import np_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables as variables_lib
@@ -1048,6 +1049,42 @@ class TrainingTest(keras_parameterized.TestCase):
     # If the gradient apply is duplicated then the loss after 2 epochs will
     # be ~0.15, compared to the correct answer of O(1e-7).
     self.assertLess(history.history['loss'][-1], 1e-6)
+
+  @keras_parameterized.run_all_keras_modes
+  def test_weight_shared_across_layers(self):
+
+    class AddWeightLayer(keras.layers.Layer):
+
+      def __init__(self, trainable_var, non_trainable_var):
+        self.trainable_var = trainable_var
+        self.non_trainable_var = non_trainable_var
+        super(AddWeightLayer, self).__init__()
+
+      def call(self, inputs):
+        return inputs + self.trainable_var
+
+    class LayerWithWeightSharedLayers(keras.layers.Layer):
+
+      def __init__(self):
+        super(LayerWithWeightSharedLayers, self).__init__()
+        shared_trainable_var = resource_variable_ops.ResourceVariable(1.)
+        shared_non_trainable_var = resource_variable_ops.ResourceVariable(
+            1., trainable=False)
+        self.layer1 = AddWeightLayer(shared_trainable_var,
+                                     shared_non_trainable_var)
+        self.layer2 = AddWeightLayer(shared_trainable_var,
+                                     shared_non_trainable_var)
+
+      def call(self, inputs):
+        return self.layer2(self.layer1(inputs))
+
+    l = LayerWithWeightSharedLayers()
+    self.assertEqual(l._layers, [l.layer1, l.layer2])
+    self.assertEqual(l.variables,
+                     [l.layer1.trainable_var, l.layer1.non_trainable_var])
+    self.assertEqual(l.trainable_variables, [l.layer1.trainable_var])
+    self.assertEqual(l.non_trainable_variables, [l.layer1.non_trainable_var])
+    self.assertLen(l.get_weights(), 2)
 
   def test_logs_passed_to_callbacks(self):
     with self.cached_session():

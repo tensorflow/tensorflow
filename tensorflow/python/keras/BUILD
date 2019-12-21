@@ -743,7 +743,7 @@ tf_py_test(
     size = "medium",
     srcs = ["saving/metrics_serialization_test.py"],
     python_version = "PY3",
-    shard_count = 4,
+    shard_count = 8,
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
