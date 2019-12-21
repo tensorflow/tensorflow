@@ -79,21 +79,21 @@ bool CanCreateXlaKernel(const FunctionLibraryRuntime& flr,
     return false;
   }
 
-  // If kXlaCompileAttr is set on the node_def, use its value.
-  const auto& it = node_def.attr().find(kXlaCompileAttr);
+  // If kXlaMustCompileAttr is set on the node_def, use its value.
+  const auto& it = node_def.attr().find(kXlaMustCompileAttr);
   if (it != node_def.attr().end()) {
     return it->second.b();
   }
 
-  // kXlaCompileAttr is not set on node_def, check if it is set on
+  // kXlaMustCompileAttr is not set on node_def, check if it is set on
   // FunctionDef.
   bool xla_compile = false;
   Status status = flr.GetFunctionLibraryDefinition()->GetAttr(
-      node_def, kXlaCompileAttr, &xla_compile);
+      node_def, kXlaMustCompileAttr, &xla_compile);
   if (!status.ok() || !xla_compile) {
     if (VLOG_IS_ON(3)) {
       if (!status.ok()) {
-        VLOG(3) << "No " << kXlaCompileAttr << " attr defined for "
+        VLOG(3) << "No " << kXlaMustCompileAttr << " attr defined for "
                 << node_def.op() << ". status=" << status.ToString();
       } else {
         VLOG(3) << node_def.op() << " is explicitly marked not to be compiled";

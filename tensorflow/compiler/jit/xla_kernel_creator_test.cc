@@ -95,7 +95,7 @@ AttrValue BoolAttr(bool b) {
 
 TEST_F(XlaKernelCreatorTest, OneFloatOneResourceArgument) {
   FunctionDef fdef = XTimesY();
-  (*fdef.mutable_attr())["_XlaCompile"] = BoolAttr(true);
+  (*fdef.mutable_attr())["_XlaMustCompile"] = BoolAttr(true);
   Init({fdef});
   XlaKernelCreator xla_kernel_creator;
 
@@ -137,7 +137,7 @@ TEST_F(XlaKernelCreatorTest, FailsIfXlaCompileAttrNotSet) {
 
 TEST_F(XlaKernelCreatorTest, FailsIfXlaCompileAttrIsSetToFalse) {
   FunctionDef fdef = XTimesY();
-  (*fdef.mutable_attr())["_XlaCompile"] = BoolAttr(false);
+  (*fdef.mutable_attr())["_XlaMustCompile"] = BoolAttr(false);
   Init({fdef});
   XlaKernelCreator xla_kernel_creator;
 
