@@ -40,6 +40,7 @@ typedef struct TpuLoadedProgramHandleInternal TpuLoadedProgramHandleInternal;
 typedef struct TpuBufferHandle {
   TpuBufferHandleInternal* internal_handle;
   TpuEvent* event;
+  int64_t size_in_bytes;
 } TpuBufferHandle;
 
 typedef struct TpuCompiledProgramHandle {
@@ -60,10 +61,16 @@ typedef struct DeviceAssignmentProto {
   // TODO(b/146662059): this is a temp plug for xla::DeviceAssignmentProto
 } DeviceAssignmentProto;
 
+typedef struct TpuStatus {
+  int32_t code;
+  char* msg;
+} TpuStatus;
+
 typedef void(PrototypeTpuDriver_Initialize)(struct TpuDriverFn* driver_fn);
 typedef struct TpuDriver*(PrototypeTpuDriver_Open)(const char* worker);
 typedef void(PrototypeTpuDriver_Close)(struct TpuDriver* driver);
 
+// TODO(frankchn): Make this not a hard-coded constant.
 const int32_t MemoryRegion_HBM = 1;
 
 typedef struct TpuCompiledProgramHandle*(PrototypeTpuDriver_CompileProgram)(
@@ -112,7 +119,17 @@ typedef struct TpuEvent*(PrototypeTpuDriver_TransferFromDeviceToDevice)(
     struct TpuDriver* driver, struct TpuBufferHandle* src,
     struct TpuBufferHandle* dst, int32_t eventc, struct TpuEvent** eventv);
 
+typedef void(PrototypeTpuDriver_EventAddCallback)(
+    struct TpuEvent* event,
+    void (*callback_fn)(struct TpuStatus*, void* additional_info),
+    void* additional_info);
+
+typedef struct TpuStatus*(PrototypeTpuDriver_EventAwait)(struct TpuEvent* event,
+                                                         int64_t timeout_in_us);
+
 typedef void(PrototypeTpuDriver_FreeEvent)(struct TpuEvent* event);
+
+typedef void(PrototypeTpuDriver_FreeStatus)(struct TpuStatus* status);
 
 typedef const char*(PrototypeTpuDriver_Version)();
 
@@ -137,7 +154,11 @@ TPUDRIVER_CAPI_EXPORT extern PrototypeTpuDriver_TransferFromDevice
     TpuDriver_TransferFromDevice;
 TPUDRIVER_CAPI_EXPORT extern PrototypeTpuDriver_TransferFromDeviceToDevice
     TpuDriver_TransferFromDeviceToDevice;
+TPUDRIVER_CAPI_EXPORT extern PrototypeTpuDriver_EventAddCallback
+    TpuDriver_EventAddCallback;
+TPUDRIVER_CAPI_EXPORT extern PrototypeTpuDriver_EventAwait TpuDriver_EventAwait;
 TPUDRIVER_CAPI_EXPORT extern PrototypeTpuDriver_FreeEvent TpuDriver_FreeEvent;
+TPUDRIVER_CAPI_EXPORT extern PrototypeTpuDriver_FreeStatus TpuDriver_FreeStatus;
 TPUDRIVER_CAPI_EXPORT extern PrototypeTpuDriver_Version TpuDriver_Version;
 
 #ifdef __cplusplus
@@ -158,9 +179,12 @@ struct TpuDriverFn {
   PrototypeTpuDriver_TransferFromDevice*
       TpuDriver_TransferFromDevice;  // NOLINT
   PrototypeTpuDriver_TransferFromDeviceToDevice*
-      TpuDriver_TransferFromDeviceToDevice;           // NOLINT
-  PrototypeTpuDriver_FreeEvent* TpuDriver_FreeEvent;  // NOLINT
-  PrototypeTpuDriver_Version* TpuDriver_Version;      // NOLINT
+      TpuDriver_TransferFromDeviceToDevice;                         // NOLINT
+  PrototypeTpuDriver_EventAddCallback* TpuDriver_EventAddCallback;  // NOLINT
+  PrototypeTpuDriver_EventAwait* TpuDriver_EventAwait;              // NOLINT
+  PrototypeTpuDriver_FreeEvent* TpuDriver_FreeEvent;                // NOLINT
+  PrototypeTpuDriver_FreeStatus* TpuDriver_FreeStatus;              // NOLINT
+  PrototypeTpuDriver_Version* TpuDriver_Version;                    // NOLINT
 };
 
 #endif  // TENSORFLOW_COMPILER_XLA_PYTHON_TPU_DRIVER_CLIENT_C_API_H_

@@ -74,6 +74,25 @@ cc_library(
 )
 
 cc_library(
+    name = "external_tpu_driver",
+    srcs = ["external_tpu_driver.cc"],
+    deps = [
+        ":tpu_driver",
+        "@com_google_absl//absl/strings:str_format",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/service:hlo_proto_cc",
+        ":tpu_service_proto_cc",
+        ":tpu_driver_proto_cc",
+        "//tensorflow/compiler/xla/python/tpu_driver/client:c_api",
+    ] + external_deps(),
+    alwayslink = 1,
+)
+
+cc_library(
     name = "recording_tpu_driver",
     srcs = [
         "recording_tpu_driver.cc",
