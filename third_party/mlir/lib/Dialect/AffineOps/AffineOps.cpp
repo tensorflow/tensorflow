@@ -142,8 +142,9 @@ bool mlir::isValidDim(Value *value) {
       return isTopLevelValue(dimOp.getOperand());
     return false;
   }
-  // This value is a block argument (which also includes 'affine.for' loop IVs).
-  return true;
+  // This value has to be a block argument for a FuncOp or an affine.for.
+  auto *parentOp = cast<BlockArgument>(value)->getOwner()->getParentOp();
+  return isa<FuncOp>(parentOp) || isa<AffineForOp>(parentOp);
 }
 
 /// Returns true if the 'index' dimension of the `memref` defined by
@@ -301,16 +302,15 @@ LogicalResult AffineApplyOp::verify() {
   return success();
 }
 
-// The result of the affine apply operation can be used as a dimension id if it
-// is a CFG value or if it is an Value, and all the operands are valid
-// dimension ids.
+// The result of the affine apply operation can be used as a dimension id if all
+// its operands are valid dimension ids.
 bool AffineApplyOp::isValidDim() {
   return llvm::all_of(getOperands(),
                       [](Value *op) { return mlir::isValidDim(op); });
 }
 
-// The result of the affine apply operation can be used as a symbol if it is
-// a CFG value or if it is an Value, and all the operands are symbols.
+// The result of the affine apply operation can be used as a symbol if all its
+// operands are symbols.
 bool AffineApplyOp::isValidSymbol() {
   return llvm::all_of(getOperands(),
                       [](Value *op) { return mlir::isValidSymbol(op); });

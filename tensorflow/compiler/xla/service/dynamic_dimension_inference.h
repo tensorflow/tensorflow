@@ -149,6 +149,9 @@ class DynamicDimensionInference {
   //
   //
   struct DimensionConstraint {
+    explicit DimensionConstraint(int64 s, int64 m)
+        : stride(s), multiple_of(m) {}
+    DimensionConstraint() : stride(1), multiple_of(1) {}
     // Stride represents the distance of a newly placed element and the previous
     // placed element on this dynamic dimension.
     int64 stride;

@@ -42,9 +42,9 @@ __global__ void CurtHealthKernel(const Tin* __restrict__ data, int size,
   const int32 total_thread_count = gridDim.x * blockDim.x;
 
   int32 offset = thread_id;
-
   while (offset < size) {
-    if (isinf(data[offset]) || isnan(data[offset])) {
+    if (Eigen::numext::isinf(data[offset]) ||
+        Eigen::numext::isnan(data[offset])) {
       output[0] = 1.0;
     }
     offset += total_thread_count;
@@ -63,14 +63,14 @@ __global__ void ConciseHealthKernel(const Tin* __restrict__ data, int size,
   Tout accum[3] = {0.0, 0.0, 0.0};
 
   while (offset < size) {
-    if (isinf(data[offset])) {
+    if (Eigen::numext::isinf(data[offset])) {
       if (data[offset] < static_cast<Tin>(0.f)) {
         ++accum[0];
       } else {
         ++accum[1];
       }
     }
-    if (isnan(data[offset])) {
+    if (Eigen::numext::isnan(data[offset])) {
       ++accum[2];
     }
     offset += total_thread_count;
@@ -94,13 +94,13 @@ __global__ void FullHealthKernel(const Tin* __restrict__ data, int size,
   Tout accum[6] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
 
   while (offset < size) {
-    if (isinf(data[offset])) {
+    if (Eigen::numext::isinf(data[offset])) {
       if (data[offset] < static_cast<Tin>(0.f)) {
         ++accum[0];
       } else {
         ++accum[1];
       }
-    } else if (isnan(data[offset])) {
+    } else if (Eigen::numext::isnan(data[offset])) {
       ++accum[2];
     } else {
       if (data[offset] < static_cast<Tin>(0.f)) {
@@ -136,14 +136,14 @@ __global__ void ReduceInfNanThreeSlotsKernel(const Tin* __restrict__ data,
   int32 offset = thread_id;
 
   while (offset < size) {
-    if (isinf(data[offset])) {
+    if (Eigen::numext::isinf(data[offset])) {
       if (data[offset] < static_cast<Tin>(0.f)) {
         output[0] = -std::numeric_limits<Tout>::infinity();
       } else {
         output[1] = std::numeric_limits<Tout>::infinity();
       }
     }
-    if (isnan(data[offset])) {
+    if (Eigen::numext::isnan(data[offset])) {
       output[2] = std::numeric_limits<Tout>::quiet_NaN();
     }
     offset += total_thread_count;

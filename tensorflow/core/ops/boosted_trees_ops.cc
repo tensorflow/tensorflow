@@ -395,7 +395,6 @@ REGISTER_OP("BoostedTreesPredict")
       int num_bucketized_features;
       TF_RETURN_IF_ERROR(
           c->GetAttr("num_bucketized_features", &num_bucketized_features));
-      shape_inference::ShapeHandle unused_input;
       shape_inference::DimensionHandle batch_size = c->Dim(c->input(1), 0);
       for (int i = 0; i < num_bucketized_features; ++i) {
         TF_RETURN_IF_ERROR(
@@ -425,7 +424,6 @@ REGISTER_OP("BoostedTreesExampleDebugOutputs")
       int num_bucketized_features;
       TF_RETURN_IF_ERROR(
           c->GetAttr("num_bucketized_features", &num_bucketized_features));
-      shape_inference::ShapeHandle unused_input;
       shape_inference::DimensionHandle batch_dim = c->Dim(c->input(1), 0);
       for (int i = 0; i < num_bucketized_features; ++i) {
         TF_RETURN_IF_ERROR(

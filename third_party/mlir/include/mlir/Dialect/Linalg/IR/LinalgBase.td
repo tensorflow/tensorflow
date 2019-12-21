@@ -117,6 +117,4 @@ def Linalg_Dialect : Dialect {
 def LinalgIsRangeTypePred : CPred<"$_self.isa<RangeType>()">;
 def Range : Type<LinalgIsRangeTypePred, "range">;
 
-// TODO(ntv): inject the doc for LinalgLibraryOps.td here.
-
 #endif // LINALG_BASE

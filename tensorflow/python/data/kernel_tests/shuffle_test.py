@@ -243,16 +243,14 @@ class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
           combinations.combine(tf_api_version=2, mode="eager"),
           combinations.combine(reshuffle=[True, False], seed=[None, 42])))
   def testReshuffleIterationEpochs(self, reshuffle, seed):
+    # TensorFlow unit tests set the global graph seed. We unset it here so that
+    # we can control determinism via the `seed` parameter.
+    random_seed.set_random_seed(None)
     dataset = dataset_ops.Dataset.range(10).shuffle(
         10, seed=seed, reshuffle_each_iteration=reshuffle)
 
-    first_epoch = []
-    for elem in dataset:
-      first_epoch.append(elem.numpy())
-
-    second_epoch = []
-    for elem in dataset:
-      second_epoch.append(elem.numpy())
+    first_epoch = self.getDatasetOutput(dataset)
+    second_epoch = self.getDatasetOutput(dataset)
 
     self.assertEqual(first_epoch == second_epoch, not reshuffle)
 

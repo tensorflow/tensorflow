@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import collections
 import os
+
 import numpy as np
 
 from tensorflow.python.eager import context

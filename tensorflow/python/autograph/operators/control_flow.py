@@ -60,6 +60,7 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
+
 import numpy as np
 
 from tensorflow.python.autograph.operators import py_builtins
@@ -356,12 +357,19 @@ def for_stmt(iter_,
 def _py_for_stmt(iter_, extra_test, body, get_state, set_state, init_vars):
   """Overload of for_stmt that executes a Python for loop."""
   del get_state, set_state
-
   state = init_vars
-  for target in iter_:
-    if extra_test is not None and not extra_test(*state):
-      break
-    state = body(target, *state)
+
+  if extra_test is not None:
+    if extra_test(*state):
+      for target in iter_:
+        state = body(target, *state)
+        if not extra_test(*state):
+          break
+
+  else:
+    for target in iter_:
+      state = body(target, *state)
+
   return state
 
 

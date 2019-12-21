@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/op_metrics_db_combiner.h"
 
+#include "tensorflow/core/platform/logging.h"
+
 namespace tensorflow {
 namespace profiler {
 namespace {

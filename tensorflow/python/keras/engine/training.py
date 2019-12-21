@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+
 import numpy as np
 
 from tensorflow.python.data.ops import dataset_ops
@@ -255,7 +256,7 @@ class Model(network.Network, version_utils.VersionSelector):
             will then be the *weighted sum* of all individual losses,
             weighted by the `loss_weights` coefficients.
             If a list, it is expected to have a 1:1 mapping
-            to the model's outputs. If a tensor, it is expected to map
+            to the model's outputs. If a dict, it is expected to map
             output names (strings) to scalar coefficients.
         sample_weight_mode: If you need to do timestep-wise
             sample weighting (2D weights), set this to `"temporal"`.
@@ -370,8 +371,9 @@ class Model(network.Network, version_utils.VersionSelector):
     metrics = []
     if self._is_compiled:
       metrics += self._compile_metric_functions
-    metrics.extend(self._metrics)
-    metrics.extend(_get_metrics_from_layers(self._layers))
+    all_layers = self._gather_unique_layers()
+    for l in all_layers:
+      metrics.extend(l._metrics)  # pylint: disable=protected-access
     return metrics
 
   @property
@@ -2940,27 +2942,3 @@ def _convert_scipy_sparse_tensor(value, expected_input):
       return sparse_tensor.SparseTensor(indices, data, shape)
   else:
     return value
-
-
-def _get_metrics_from_layers(layers):
-  """Returns list of metrics from the given layers.
-
-  This will not include the `compile` metrics of a model layer.
-
-  Arguments:
-    layers: List of layers.
-
-  Returns:
-    List of metrics.
-  """
-  metrics = []
-  layers = trackable_layer_utils.filter_empty_layer_containers(layers)
-  for layer in layers:
-    if isinstance(layer, Model):
-      # We cannot call 'metrics' on the model because we do not want to
-      # include the metrics that were added in compile API of a nested model.
-      metrics.extend(layer._metrics)  # pylint: disable=protected-access
-      metrics.extend(_get_metrics_from_layers(layer.layers))
-    else:
-      metrics.extend(layer.metrics)
-  return metrics

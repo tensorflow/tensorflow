@@ -1586,6 +1586,7 @@ class Op<Dialect dialect, string mnemonic, list<OpTrait> props = []> {
   bit hasFolder = 0;
 
   // Op traits.
+  // Note: The list of traits will be uniqued by ODS.
   list<OpTrait> traits = props;
 
   // Additional code that will be added to the public part of the generated

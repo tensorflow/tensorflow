@@ -1115,8 +1115,22 @@ static ParseResult parseShuffleVectorOp(OpAsmParser &parser,
 }
 
 //===----------------------------------------------------------------------===//
-// Builder, printer and verifier for LLVM::LLVMFuncOp.
+// Implementations for LLVM::LLVMFuncOp.
 //===----------------------------------------------------------------------===//
+
+// Add the entry block to the function.
+Block *LLVMFuncOp::addEntryBlock() {
+  assert(empty() && "function already has an entry block");
+  assert(!isVarArg() && "unimplemented: non-external variadic functions");
+
+  auto *entry = new Block;
+  push_back(entry);
+
+  LLVMType type = getType();
+  for (unsigned i = 0, e = type.getFunctionNumParams(); i < e; ++i)
+    entry->addArgument(type.getFunctionParamType(i));
+  return entry;
+}
 
 void LLVMFuncOp::build(Builder *builder, OperationState &result, StringRef name,
                        LLVMType type, LLVM::Linkage linkage,

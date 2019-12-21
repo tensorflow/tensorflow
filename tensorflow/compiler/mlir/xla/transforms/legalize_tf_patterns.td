@@ -428,6 +428,7 @@ foreach Mapping = [
                    [TF_ImagOp, HLO_ImagOp],
                    [TF_IsFiniteOp, HLO_IsFiniteOp],
                    [TF_LogOp, HLO_LogOp],
+                   [TF_Log1pOp, HLO_Log1pOp],
                    [TF_LogicalNotOp, HLO_NotOp],
                    [TF_NegOp, HLO_NegOp],
                    [TF_RealOp, HLO_RealOp],
@@ -456,6 +457,19 @@ foreach TfOp = [TF_ExpandDimsOp, TF_ReshapeOp, TF_SqueezeOp, ] in {
   def : Pat<(TfOp:$res $arg, $ignored),
             (HLO_ReshapeOp $arg), [(AnyStaticShapeTensor $res)]>;
 }
+
+// Returns 0 if x is NaN, 0 if x is 0, -1 if x < 0 and 1 if x > 0.
+def : Pat<(TF_SignOp $x),
+          (HLO_SelectOp
+            (HLO_CompareOp
+              $x,
+              $x,
+              (NullDenseIntElementsAttr),
+              HLO_COMPARISON_DIRECTION_NE
+            ),
+            (HLO_ConstOp (ConstantSplat<"0"> $x)),
+            (HLO_SignOp $x)
+          )>;
 
 //===----------------------------------------------------------------------===//
 // RngUniform.

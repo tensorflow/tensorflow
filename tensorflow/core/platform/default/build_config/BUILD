@@ -137,13 +137,6 @@ cc_library(
     ],
 )
 
-# Minimal lib so that tools used for mobile compilation
-# don't have to depend on platformlib.
-cc_library(
-    name = "logging",
-    copts = tf_copts(),
-)
-
 # Minimal lib to be used by tensorflow/core:framework_lite.
 # This provides minimal support for writing operator implementations (kernels),
 # and excludes anything that can bloat binary size if used.

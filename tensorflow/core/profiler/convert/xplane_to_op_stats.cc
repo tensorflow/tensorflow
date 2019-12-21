@@ -13,18 +13,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_PYTHON_TPU_DRIVER_C_API_H_
-#define TENSORFLOW_COMPILER_XLA_PYTHON_TPU_DRIVER_C_API_H_
+#include "tensorflow/core/profiler/convert/xplane_to_op_stats.h"
 
-#define TPUDRIVER_CAPI_EXPORT __attribute__((visibility("default")))
+#include "tensorflow/core/profiler/convert/host_threads_xplane_to_tf_metrics_db.h"
+#include "tensorflow/core/profiler/utils/xplane_schema.h"
+#include "tensorflow/core/profiler/utils/xplane_utils.h"
 
-extern "C" {
+namespace tensorflow {
+namespace profiler {
 
-TPUDRIVER_CAPI_EXPORT extern void TpuDriver_Initialize();
-
-TPUDRIVER_CAPI_EXPORT extern void TpuDriver_Open(const char* worker);
-
-TPUDRIVER_CAPI_EXPORT extern const char* TpuDriver_Version(void);
+OpStats ConvertXSpaceToOpStats(const XSpace& space) {
+  OpStats op_stats;
+  if (const XPlane* host_trace = FindPlaneWithName(space, kHostThreads)) {
+    *op_stats.mutable_host_op_metrics_db() =
+        ConvertHostThreadsXPlaneToTfMetricsDb(*host_trace);
+  }
+  return op_stats;
 }
 
-#endif  // TENSORFLOW_COMPILER_XLA_PYTHON_TPU_DRIVER_C_API_H_
+}  // namespace profiler
+}  // namespace tensorflow

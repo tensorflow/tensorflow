@@ -492,6 +492,16 @@ LogicalResult ModuleTranslation::convertFunctions() {
   return success();
 }
 
+/// A helper to look up remapped operands in the value remapping table.`
+SmallVector<llvm::Value *, 8>
+ModuleTranslation::lookupValues(ValueRange values) {
+  SmallVector<llvm::Value *, 8> remapped;
+  remapped.reserve(values.size());
+  for (Value *v : values)
+    remapped.push_back(valueMapping.lookup(v));
+  return remapped;
+}
+
 std::unique_ptr<llvm::Module>
 ModuleTranslation::prepareLLVMModule(Operation *m) {
   auto *dialect = m->getContext()->getRegisteredDialect<LLVM::LLVMDialect>();

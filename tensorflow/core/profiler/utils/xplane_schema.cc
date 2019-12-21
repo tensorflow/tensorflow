@@ -34,6 +34,7 @@ static const absl::string_view kHostEventTypeMetadataMap[] = {
     "SessionRun",
     "FunctionRun",
     "RunGraph",
+    "EagerKernelExecute",
     "ExecutorState::Process",
     "ExecutorDoneCallback",
     // tf data captured function events.

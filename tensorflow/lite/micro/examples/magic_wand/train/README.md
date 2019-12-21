@@ -14,7 +14,7 @@ project by Jennifer Wang.
 
 ## Training
 
-### Data and pre-trained model
+### Dataset
 
 Three magic gestures were chosen, and data were collected from 7
 different people. Some random long movement sequences were collected and divided
@@ -24,10 +24,6 @@ automatically generated random data.
 The dataset can be downloaded from the following URL:
 
 [download.tensorflow.org/models/tflite/magic_wand/data.tar.gz](http://download.tensorflow.org/models/tflite/magic_wand/data.tar.gz)
-
-A pre-trained, quantized model can be downloaded from the following URL:
-
-[download.tensorflow.org/models/tflite/magic_wand/model_quantized.tflite](http://download.tensorflow.org/models/tflite/magic_wand/model_quantized.tflite)
 
 ### Training in Colab
 

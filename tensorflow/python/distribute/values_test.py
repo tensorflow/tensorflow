@@ -21,6 +21,7 @@ from __future__ import print_function
 import collections
 import itertools
 import os
+
 from absl.testing import parameterized
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.distribute import combinations
@@ -679,6 +680,35 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
 
     foo()
 
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_one_cpu,
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations.tpu_strategy,
+              strategy_combinations.central_storage_strategy_with_two_gpus,
+          ],
+          mode=["graph", "eager"]))
+  def testAggregationOnlyFirstReplica(self, distribution):
+    with distribution.scope():
+      v = variable_scope.variable(
+          15.,
+          synchronization=variables_lib.VariableSynchronization.ON_WRITE,
+          aggregation=variables_lib.VariableAggregation.ONLY_FIRST_REPLICA)
+    self.evaluate(variables_lib.global_variables_initializer())
+
+    @def_function.function
+    def assign():
+      ctx = distribution_strategy_context.get_replica_context()
+      replica_id = ctx.replica_id_in_sync_group
+      return v.assign(math_ops.cast(replica_id, dtypes.float32))
+    per_replica_results = self.evaluate(distribution.experimental_local_results(
+        distribution.experimental_run_v2(assign)))
+    # The per-replica values should always match the first replicas value.
+    self.assertAllEqual(
+        array_ops.zeros(distribution.num_replicas_in_sync, dtypes.float32),
+        per_replica_results)
+
 
 _TPU_STRATEGIES = (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1)
 
@@ -756,6 +786,8 @@ def mirrored_and_tpu_strategy_combinations():
       mode=["graph", "eager"])
 
 
+# TODO(b/144432582): Add variable aggregation type to combinations to simplify
+# tests.
 def strategy_and_run_tf_function_combinations():
   # Test the combination of different strategies and whether a tf.function
   # is passed into strategy.experimental_run_v2."""
@@ -1121,6 +1153,68 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
       else:
         expected = 0
       self.assertEqual(expected, result, aggregation)
+
+  # TODO(b/145574622): Re-enable this test once ReduceOp argument is
+  # respected on GPUs.
+  @combinations.generate(strategy_and_run_tf_function_combinations())
+  def disable_testAllReduce(self, distribution,
+                            experimental_run_tf_function):
+    with distribution.scope():
+      v = variable_scope.variable(
+          2.,
+          synchronization=variables_lib.VariableSynchronization.ON_WRITE,
+          aggregation=variables_lib.VariableAggregation.MEAN)
+    self.evaluate(variables_lib.global_variables_initializer())
+
+    def all_reduce():
+      ctx = distribution_strategy_context.get_replica_context()
+      replica_id = ctx.replica_id_in_sync_group
+      return ctx.all_reduce("SUM", v) + math_ops.cast(replica_id,
+                                                      dtypes.float32)
+
+    if experimental_run_tf_function:
+      all_reduce = def_function.function(all_reduce)
+
+    per_replica_results = self.evaluate(
+        distribution.experimental_local_results(
+            distribution.experimental_run_v2(all_reduce)))
+    expected_result = []
+    for i in range(distribution.num_replicas_in_sync):
+      expected_result.append(2.0 * distribution.num_replicas_in_sync +
+                             1.0 * i)
+    self.assertEqual(per_replica_results, tuple(expected_result))
+
+  @combinations.generate(strategy_and_run_tf_function_combinations())
+  def testAssignPerReplicaBeforeRead(self, distribution,
+                                     experimental_run_tf_function):
+    aggregations = [
+        variables_lib.VariableAggregation.SUM,
+        variables_lib.VariableAggregation.MEAN,
+        variables_lib.VariableAggregation.ONLY_FIRST_REPLICA,
+    ]
+    for aggregation in aggregations:
+      with distribution.scope():
+        v = variable_scope.variable(
+            0.,
+            synchronization=variables_lib.VariableSynchronization.ON_READ,
+            aggregation=aggregation)
+      self.evaluate(variables_lib.global_variables_initializer())
+
+      def assign(var=v):
+        ctx = distribution_strategy_context.get_replica_context()
+        replica_id = ctx.replica_id_in_sync_group
+        return var.assign(math_ops.cast(replica_id, dtypes.float32))
+
+      if experimental_run_tf_function:
+        assign = def_function.function(assign)
+
+      per_replica_results = self.evaluate(
+          distribution.experimental_local_results(
+              distribution.experimental_run_v2(assign)))
+      expected_result = []
+      for i in range(distribution.num_replicas_in_sync):
+        expected_result.append(1.0 * i)
+      self.assertEqual(per_replica_results, tuple(expected_result))
 
   @combinations.generate(mirrored_and_tpu_strategy_combinations())
   def testReadValueWithAggregationNoneInCrossReplicaContext(self, distribution):

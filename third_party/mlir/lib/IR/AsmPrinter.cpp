@@ -1619,13 +1619,28 @@ void OperationPrinter::numberValuesInRegion(Region &region) {
 }
 
 void OperationPrinter::numberValuesInBlock(Block &block) {
+  auto setArgNameFn = [&](Value *arg, StringRef name) {
+    assert(!valueIDs.count(arg) && "arg numbered multiple times");
+    assert(cast<BlockArgument>(arg)->getOwner() == &block &&
+           "arg not defined in 'block'");
+    setValueName(arg, name);
+  };
+
   bool isEntryBlock = block.isEntryBlock();
+  if (isEntryBlock && state) {
+    if (auto *op = block.getParentOp()) {
+      if (auto dialectAsmInterface = state->getOpAsmInterface(op->getDialect()))
+        dialectAsmInterface->getAsmBlockArgumentNames(&block, setArgNameFn);
+    }
+  }
 
   // Number the block arguments. We give entry block arguments a special name
   // 'arg'.
   SmallString<32> specialNameBuffer(isEntryBlock ? "arg" : "");
   llvm::raw_svector_ostream specialName(specialNameBuffer);
   for (auto *arg : block.getArguments()) {
+    if (valueIDs.count(arg))
+      continue;
     if (isEntryBlock) {
       specialNameBuffer.resize(strlen("arg"));
       specialName << nextArgumentID++;

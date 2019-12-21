@@ -130,6 +130,17 @@ cc_library(
 )
 
 cc_library(
+    name = "xplane_utils",
+    srcs = ["xplane_utils.cc"],
+    hdrs = ["xplane_utils.h"],
+    visibility = [":friends"],
+    deps = [
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "xplane_visitor",
     hdrs = ["xplane_visitor.h"],
     visibility = [":friends"],

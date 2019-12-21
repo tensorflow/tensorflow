@@ -851,6 +851,8 @@ This is typically used by gradient computations for a concat operation.
   let verifier = [{
     return Verify(*this);
   }];
+
+  let hasFolder = 1;
 }
 
 def TF_ConcatV2Op : TF_Op<"ConcatV2", [NoSideEffect]> {
@@ -2636,6 +2638,31 @@ tf.math.log(x) ==> [-inf, -0.6931472,  0. ,  1.609438]
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let hasCanonicalizer = 1;
+}
+
+def TF_Log1pOp : TF_Op<"Log1p", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = "Computes natural logarithm of (1 + x) element-wise.";
+
+  let description = [{
+I.e., \\(y = \log_e (1 + x)\\).
+
+Example:
+
+```python
+x = tf.constant([0, 0.5, 1, 5])
+tf.math.log1p(x) ==> [0., 0.4054651, 0.6931472, 1.7917595]
+```
+  }];
+
+  let arguments = (ins
+    TF_FpOrComplexTensor:$x
+  );
+
+  let results = (outs
+    TF_FpOrComplexTensor:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_LogSoftmaxOp : TF_Op<"LogSoftmax", [NoSideEffect, SameOperandsAndResultType]> {

@@ -76,7 +76,7 @@ rm -rf /usr/lib/python3/dist-packages/six*
 # This workaround isn't needed for Ubuntu 16.04 or later.
 pip3 install --no-binary=:all: --upgrade numpy==1.14.5
 
-pip3 install scipy==0.18.1
+pip3 install scipy==1.4.1
 
 pip3 install scikit-learn==0.19.1
 

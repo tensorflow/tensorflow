@@ -526,6 +526,48 @@ struct RequiredMemoryAssignment {
   int64 time;
 };
 
+// A struct representing an asynchronous copy with its logical start and end
+// time and its destination memory space.
+struct AsynchronousCopy {
+  int64 start_time;
+  int64 end_time;
+  MemorySpaceAssignment::MemorySpace destination;
+};
+
+// Compare asynchronous copies such that an earlier start time has the same or
+// earlier end time and an earlier end time has the same or earlier start time.
+bool operator<(const AsynchronousCopy& a, const AsynchronousCopy& b);
+
+// Helper class to enforce asynchronous copy ordering. We only allow
+// asynchronous copies that are pipelined: if an asynchronous copy ends earlier
+// than another asynchronous copy, it must start the same time or earlier than
+// the other asynchronous copy; and if an asynchronous copy starts earlier than
+// another asynchronous copy, it must end the same time or earlier than the
+// other asynchronous copy.
+class AsynchronousCopyOrdering {
+ public:
+  AsynchronousCopyOrdering() = default;
+
+  // Adds an asynchronous copy.
+  void AddCopy(const AsynchronousCopy& copy);
+
+  // Returns true if the addition of an asynchronous copy in the the given time
+  // interval would violate the asynchronous copy ordering. E.g., consider the
+  // following scenario:
+  //                                  CS          CD
+  //  already committed async copy:   +-----------+
+  //                new async copy:     +--------+
+  //
+  // The new asynchronous copy would violate the ordering guarantee because the
+  // copy start is after an already committed asynchronous copy while its copy
+  // done is before the committed copy.
+  bool ViolatesOrdering(int64 start_time, int64 end_time) const;
+
+ private:
+  // Stores asynchronous copies in a tree set respecting the pipelining order.
+  std::set<AsynchronousCopy> ranges_;
+};
+
 // This class inherits from GlobalDecreasingSizeBestFitHeap with a notion of
 // maximum size.
 class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
@@ -551,14 +593,6 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   HeapSimulator::Result Finish() override;
 
  private:
-  // A struct representing an asynchronous copy with its logical start and end
-  // time and its destination memory space.
-  struct AsynchronousCopy {
-    int64 start_time;
-    int64 end_time;
-    MemorySpace destination;
-  };
-
   // Finds an allocation for the given interval. Internally, it will attempt to
   // find a suitable chunk candidate within the heap size and prefetch interval
   // limits, and append the new allocation(s) to allocations. The new
@@ -603,18 +637,6 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   bool ViolatesMaximumOutstandingAsyncCopies(int64 start_time,
                                              int64 end_time) const;
 
-  // Returns true if the addition of an asynchronous copy in the the given time
-  // interval would violate the asynchronous copy ordering. E.g., consider the
-  // following scenario:
-  //                                  CS          CD
-  //  already committed async copy:   +-----------+
-  //                new async copy:     +--------+
-  //
-  // The new asynchronous copy would violate the ordering guarantee because the
-  // copy start is after an already committed asynchronous copy while its copy
-  // done is before the committed copy.
-  bool ViolatesAsynchronousCopyOrdering(int64 start_time, int64 end_time) const;
-
   // Adds an asynchronous copy to the allocations.
   void AddAsyncCopy(const MemorySpaceAssignment::Allocation& prev_allocation,
                     MemorySpace memory_space, Chunk chunk, int64 start_time,
@@ -639,9 +661,7 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   // We use a interval tree to keep track of the number of outstanding
   // asynchronous copies.
   BufferIntervalTree async_copy_interval_tree_;
-  // Given the logical time for CopyDone in key, stores the earliest time for
-  // the corresponding CopyStart.
-  std::map<int64, int64> async_copy_range_map_;
+  AsynchronousCopyOrdering async_copy_ordering_;
   std::vector<std::pair<BufferInterval, ChunkCandidate>> pending_chunks_;
   std::vector<AsynchronousCopy> pending_async_copies_;
   // This map contains required memory assignments for HloValues (e.g., input

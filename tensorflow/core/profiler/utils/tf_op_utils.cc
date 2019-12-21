@@ -28,8 +28,8 @@ namespace tensorflow {
 namespace profiler {
 namespace {
 
-constexpr absl::string_view kIterator = "Iterator";
-constexpr absl::string_view kSeparator = "::";
+const absl::string_view kIterator = "Iterator";
+const absl::string_view kSeparator = "::";
 
 }  // namespace
 

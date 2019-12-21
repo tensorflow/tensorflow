@@ -171,6 +171,8 @@ def TF_FpOrI32OrI64Tensor : TensorOf<[AnyFloat, TF_I32Or64]>;
 // Any integer or floating-point tensor types
 def TF_IntOrFpTensor : TensorOf<[TF_Int, AnyFloat]>;
 
+def TF_SintOrFpTensor : TensorOf<[TF_SInt, AnyFloat]>;
+
 def TF_FpOrComplexTensor : TensorOf<[AnyFloat, TF_AnyComplex]>;
 
 def TF_AnyNumber : AnyTypeOf<[TF_Int, AnyFloat, TF_AnyQuantized, TF_AnyComplex],

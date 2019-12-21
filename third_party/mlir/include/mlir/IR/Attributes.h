@@ -82,11 +82,8 @@ public:
   /* implicit */ Attribute(const ImplType *impl)
       : impl(const_cast<ImplType *>(impl)) {}
 
-  Attribute(const Attribute &other) : impl(other.impl) {}
-  Attribute &operator=(Attribute other) {
-    impl = other.impl;
-    return *this;
-  }
+  Attribute(const Attribute &other) = default;
+  Attribute &operator=(const Attribute &other) = default;
 
   bool operator==(Attribute other) const { return impl == other.impl; }
   bool operator!=(Attribute other) const { return !(*this == other); }

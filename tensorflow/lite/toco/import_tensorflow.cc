@@ -2235,7 +2235,6 @@ bool InlineAllFunctions(GraphDef* graphdef) {
   tensorflow::FunctionLibraryDefinition fld(tensorflow::OpRegistry::Global(),
                                             graphdef_copy.library());
   tensorflow::StaticDeviceMgr device_mgr(std::move(devices));
-  tensorflow::OptimizerOptions o_opts;
   tensorflow::ProcessFunctionLibraryRuntime pflr(
       &device_mgr, tensorflow::Env::Default(), &options.config,
       TF_GRAPH_DEF_VERSION, &fld,

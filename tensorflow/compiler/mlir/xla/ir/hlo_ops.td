@@ -76,6 +76,9 @@ def HLO_FpOrComplexTensor : TensorOf<[AnyFloat, AnyComplex]>;
 // Any int, floating-point or complex tensor types
 def HLO_IntFpOrComplexTensor : TensorOf<[HLO_Int, AnyFloat, AnyComplex]>;
 
+// Any pred, int or floating-point tensor types
+def HLO_PredIntOrFpTensor : TensorOf<[HLO_Pred, HLO_Int, AnyFloat]>;
+
 //===----------------------------------------------------------------------===//
 // XLA nullary op definitions.
 //===----------------------------------------------------------------------===//
@@ -190,6 +193,9 @@ def HLO_NegOp: HLO_UnaryElementwiseOp<"neg",
 def HLO_PopulationCountOp: HLO_UnaryElementwiseOp<"popcnt",
     [NoSideEffect, SameOperandsAndResultType], HLO_IntTensor>,
     BASE_HLO_PopulationCountOp;
+
+def HLO_RoundOp: HLO_UnaryElementwiseOp<"round",
+    [NoSideEffect, SameOperandsAndResultType], HLO_FpTensor>, BASE_HLO_RoundOp;
 
 def HLO_RsqrtOp: HLO_UnaryElementwiseOp<"rsqrt",
     [NoSideEffect, SameOperandsAndResultType], HLO_FpOrComplexTensor>,
@@ -351,6 +357,41 @@ def HLO_InfeedOp : HLO_Op<"infeed", []> {
   let hasCustomHLOConverter = 1;
 }
 
+// OutfeedOp corresponds to 'OutfeedWithToken' xla client API and not 'Outfeed'.
+// OutfeedWithToken allows ordering of outfeed HLO instructions using tokens.
+def HLO_OutfeedOp : HLO_Op<"outfeed", []> {
+
+  string summary = "Outfeed operator";
+
+  string description = [{
+    Generates outgoing data transfers for the given data. It takes data and a
+    token type operand and produces a token type value. Tokens are used for
+    ordering side-effecting operations.
+
+    See https://www.tensorflow.org/xla/operation_semantics#outfeed.
+  }];
+
+  let arguments = (ins
+    HLO_TensorOrTuple:$operand,
+    HLO_Token:$token,
+    DefaultValuedAttr<StrAttr, "">:$outfeed_config
+  );
+  let results = (outs HLO_Token);
+  let hasCustomHLOConverter = 1;
+}
+
+
+//===----------------------------------------------------------------------===//
+// XLA parallelism related op definitions.
+//===----------------------------------------------------------------------===//
+
+def HLO_ReplicaIdOp : HLO_Op<"replica_id", [NoSideEffect]>,
+      BASE_HLO_ReplicaIdOp {
+  // TODO(prakalps): The output should unsigned 32-bit integer but mlir does
+  // not differentiate between signed and unsigned int.
+  let results = (outs I32Tensor);
+}
+
 //===----------------------------------------------------------------------===//
 // XLA control flow op definitions.
 //===----------------------------------------------------------------------===//
@@ -370,7 +411,6 @@ def HLO_AfterAllOp : HLO_Op<"after_all", []> {
 
   let arguments = (ins Variadic<HLO_Token>:$operands);
   let results = (outs HLO_Token);
-  let hasCustomHLOConverter = 1;
 }
 
 def HLO_ConditionalOp: HLO_Op<"conditional", [NoSideEffect]> {
@@ -496,8 +536,6 @@ def HLO_TupleOp : HLO_Op<"tuple", [NoSideEffect]>, BASE_HLO_TupleOp {
                   "Builder *builder, OperationState &results, "
                   "ValueRange values">];
 
-  // TupleOp has special conversion logic to HLO.
-  let hasCustomHLOConverter = 1;
 }
 
 def HLO_CompareOp: HLO_Op<"compare",
@@ -599,8 +637,8 @@ def HLO_BatchNormGradOp : HLO_Op<"batch_norm_grad", [NoSideEffect]>,
   let results = (outs HLO_Tuple);
 }
 
-def HLO_BatchNormInferenceOp : HLO_Op<"batch_norm_inference", [NoSideEffect]>,
-    BASE_HLO_BatchNormInferenceOp {
+def HLO_BatchNormInferenceOp : HLO_Op<"batch_norm_inference",
+    [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_BatchNormInferenceOp {
 
   let arguments = (ins
     HLO_Tensor:$operand,
@@ -778,7 +816,9 @@ def HLO_DotGeneralOp: HLO_Op<"dot_general", [NoSideEffect]>, BASE_HLO_DotGeneral
   let results = (outs HLO_Tensor);
 }
 
-def BASE_EinsumOp {
+// Define Base Einsum op within the HLO dialect as these are client ops and
+// therefore this class is not common between HLO and LHLO ops.
+class BASE_EinsumOp {
   string summary = "Einsum operator";
 
   string description = [{
@@ -787,7 +827,7 @@ def BASE_EinsumOp {
   }];
 }
 
-def HLO_EinsumOp: HLO_Op<"einsum", [NoSideEffect]> {
+def HLO_EinsumOp: HLO_Op<"einsum", [NoSideEffect]>, BASE_EinsumOp {
   let arguments = (ins
     HLO_Tensor:$lhs,
     HLO_Tensor:$rhs,
@@ -800,7 +840,7 @@ def HLO_EinsumOp: HLO_Op<"einsum", [NoSideEffect]> {
   // side HLO ops.
 }
 
-def HLO_UnaryEinsumOp: HLO_Op<"unary_einsum", [NoSideEffect]> {
+def HLO_UnaryEinsumOp: HLO_Op<"unary_einsum", [NoSideEffect]>, BASE_EinsumOp {
   let arguments = (ins
     HLO_Tensor:$operand,
     StrAttr:$einsum_config
@@ -823,9 +863,6 @@ def HLO_FftOp: HLO_Op<"fft", [NoSideEffect]>, BASE_HLO_FftOp {
   );
 
   let results = (outs HLO_Tensor);
-
-  // TODO(b/129422361) Attributes are not supported by the codegen.
-  let hasCustomHLOConverter = 1;
 }
 
 def GatherDimensionNumbers : StructAttr<"GatherDimensionNumbers", HLO_Dialect,
@@ -1056,12 +1093,24 @@ def HLO_TorchIndexSelectOp : HLO_Op<"torch_index_select", [NoSideEffect]> {
 //===----------------------------------------------------------------------===//
 def HLO_RngUniformOp : HLO_Op<"rng_uniform", []>, BASE_HLO_RngUniformOp {
   let arguments = (ins
-    HLO_Tensor:$a,
-    HLO_Tensor:$b,
+    HLO_PredIntOrFpTensor:$a,
+    HLO_PredIntOrFpTensor:$b,
     I64Tensor:$shape
   );
 
-  let results = (outs HLO_Tensor);
+  let results = (outs HLO_PredIntOrFpTensor);
+
+  let hasCustomHLOConverter = 1;
+}
+
+def HLO_RngNormalOp : HLO_Op<"rng_normal", []>, BASE_HLO_RngNormalOp {
+  let arguments = (ins
+    HLO_FpTensor:$mu,
+    HLO_FpTensor:$sigma,
+    I64Tensor:$shape
+  );
+
+  let results = (outs HLO_FpTensor);
 
   let hasCustomHLOConverter = 1;
 }

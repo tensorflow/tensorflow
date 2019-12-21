@@ -426,8 +426,6 @@ static void MergeOverrideHelper(const string& target, const string& name,
 }
 
 TEST(DeviceNameUtilsTest, MergeDevNames) {
-  DeviceNameUtils::ParsedName target;
-
   // Idempotence tests.
   MergeDevNamesHelper("", "", "");
   MergeDevNamesHelper("/job:foo/replica:1/task:2/cpu:1",

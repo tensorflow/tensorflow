@@ -104,6 +104,8 @@ from tensorflow.python.platform import flags  # pylint: disable=g-import-not-at-
 _current_module.app.flags = flags  # pylint: disable=undefined-variable
 setattr(_current_module, "flags", flags)
 
+_major_api_version = 1
+
 # Load all plugin libraries from site-packages/tensorflow-plugins if we are
 # running under pip.
 # TODO(gunan): Enable setting an environment variable to define arbitrary plugin

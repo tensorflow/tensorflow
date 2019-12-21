@@ -88,15 +88,29 @@ load(
     "tf_opts_nortti_if_emscripten",
     "transitive_hdrs",
 )
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "if_nccl")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tensorflow_opensource_extra_deps")
 
+# buildifier: disable=same-origin-load
 # load("//tensorflow:tensorflow.bzl", "tf_android_full_lite_protos")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_cc_tests_gpu")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 
+# buildifier: disable=same-origin-load
 # Placeholder: load("//tensorflow:tensorflow.bzl", "tf_portable_proto_lib")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_portable_proto_library")
 
 # For platform specific build config
@@ -1254,7 +1268,9 @@ cc_library(
 cc_library(
     name = "dynamic_kernels_impl",
     visibility = [":__subpackages__"],
-    deps = [],
+    deps = [
+        "//tensorflow/core/kernels:sobol_op",
+    ],
 )
 
 cc_library(
@@ -2234,7 +2250,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":platform_base",
-        "//tensorflow/core/platform/default/build_config:logging",
+        "//tensorflow/core/platform:logging",
     ],
 )
 
@@ -2267,8 +2283,8 @@ cc_library(
         ":core_stringpiece",
         "//tensorflow/core/platform:dynamic_annotations",
         "//tensorflow/core/platform:jpeg",
+        "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:stringpiece",
-        "//tensorflow/core/platform/default/build_config:logging",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
     ],
@@ -2302,10 +2318,10 @@ cc_library(
         "//tensorflow/core/lib/strings:strcat",
         "//tensorflow/core/platform:dynamic_annotations",
         "//tensorflow/core/platform:gif",
+        "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:numbers",
         "//tensorflow/core/platform:strcat",
         "//tensorflow/core/platform:stringpiece",
-        "//tensorflow/core/platform/default/build_config:logging",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
     ],
@@ -2517,6 +2533,7 @@ tf_cuda_library(
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/util:port",
         "//tensorflow/core/util:stats_calculator_portable",
+        "//tensorflow/compiler/jit:common",
     ] + if_static(
         extra_deps = ["@com_google_protobuf//:protobuf"],
         otherwise = ["@com_google_protobuf//:protobuf_headers"],

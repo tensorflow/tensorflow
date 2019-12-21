@@ -127,7 +127,6 @@ Status MklEagerOpRewrite::SetupNewOp(
   }
 
   // Copy all attributes to the new op.
-  string name;
   const NodeDef& orig_ndef = orig_op->MutableAttrs()->BuildNodeDef();
 
   AttrSlice attr_list(orig_ndef);
