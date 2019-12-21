@@ -88,15 +88,29 @@ load(
     "tf_opts_nortti_if_emscripten",
     "transitive_hdrs",
 )
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "if_nccl")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tensorflow_opensource_extra_deps")
 
+# buildifier: disable=same-origin-load
 # load("//tensorflow:tensorflow.bzl", "tf_android_full_lite_protos")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_cc_tests_gpu")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 
+# buildifier: disable=same-origin-load
 # Placeholder: load("//tensorflow:tensorflow.bzl", "tf_portable_proto_lib")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_portable_proto_library")
 
 # For platform specific build config
