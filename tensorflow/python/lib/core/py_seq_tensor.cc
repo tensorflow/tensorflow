@@ -600,7 +600,7 @@ Status PySeqToTensor(PyObject* obj, DataType dtype, Tensor* ret) {
       break;
 
     case DT_HALF:
-      if (NumpyHalfConverter::Convert(obj, &shape, ret) == nullptr)
+      if (NumpyHalfConverter::Convert(obj, shape, ret) == nullptr)
         return Status::OK();
       break;
 
