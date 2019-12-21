@@ -228,6 +228,18 @@ class BASE_HLO_RealOp {
   }];
 }
 
+class BASE_HLO_RoundOp {
+  string summary = "Round operator";
+
+  string description = [{
+    Returns `Round(operand)` element-wise, rounding to nearest integer with
+    half-way cases rounding away from zero.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+  }];
+}
+
 class BASE_HLO_RsqrtOp {
   string summary = "Reciprocal Square-root operator";
 
