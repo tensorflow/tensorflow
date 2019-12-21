@@ -1728,12 +1728,12 @@ def boolean_mask_v2(tensor, mask, axis=None, name="boolean_mask"):
   >>> tensor = [0, 1, 2, 3]  # 1-D example
   >>> mask = np.array([True, False, True, False])
   >>> tf.boolean_mask(tensor, mask)
-  <tf.Tensor: id=..., shape=(2,), dtype=int32, numpy=array([0, 2], dtype=int32)>
+  <tf.Tensor: shape=(2,), dtype=int32, numpy=array([0, 2], dtype=int32)>
 
   >>> tensor = [[1, 2], [3, 4], [5, 6]] # 2-D example
   >>> mask = np.array([True, False, True])
   >>> tf.boolean_mask(tensor, mask)
-  <tf.Tensor: id=..., shape=(2, 2), dtype=int32, numpy=array([[1, 2], [5, 6]], \
+  <tf.Tensor: shape=(2, 2), dtype=int32, numpy=array([[1, 2], [5, 6]], \
 dtype=int32)>
 
   Args:
@@ -3459,7 +3459,7 @@ def edit_distance(hypothesis, truth, normalize=True, name="edit_distance"):
   ...    ["a", "b", "c", "a"],
   ...    (2, 2, 2))
   >>> tf.edit_distance(hypothesis, truth, normalize=True)
-  <tf.Tensor: id=..., shape=(2, 2), dtype=float32, numpy=
+  <tf.Tensor: shape=(2, 2), dtype=float32, numpy=
   array([[inf, 1. ],
          [0.5, 1. ]], dtype=float32)>
 
