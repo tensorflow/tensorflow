@@ -915,8 +915,10 @@ class BASE_HLO_RngUniformOp {
   string summary = "RNG with uniform distribution.";
 
   string description = [{
-    Constructs an output of a given shape with random numbers generated following
-    the uniform distribution over the interval `[a,b)`.
+    Constructs an output of a given shape with random numbers generated
+    following the uniform distribution over the interval `[a,b)`. The parameters
+    and output element type have to be a boolean type, an integral type or a
+    floating point types, and the types have to be consistent.
 
     See https://www.tensorflow.org/xla/operation_semantics#rnguniform.
   }];

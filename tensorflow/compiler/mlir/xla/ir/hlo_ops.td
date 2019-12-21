@@ -76,6 +76,9 @@ def HLO_FpOrComplexTensor : TensorOf<[AnyFloat, AnyComplex]>;
 // Any int, floating-point or complex tensor types
 def HLO_IntFpOrComplexTensor : TensorOf<[HLO_Int, AnyFloat, AnyComplex]>;
 
+// Any pred, int or floating-point tensor types
+def HLO_PredIntOrFpTensor : TensorOf<[HLO_Pred, HLO_Int, AnyFloat]>;
+
 //===----------------------------------------------------------------------===//
 // XLA nullary op definitions.
 //===----------------------------------------------------------------------===//
@@ -1087,12 +1090,12 @@ def HLO_TorchIndexSelectOp : HLO_Op<"torch_index_select", [NoSideEffect]> {
 //===----------------------------------------------------------------------===//
 def HLO_RngUniformOp : HLO_Op<"rng_uniform", []>, BASE_HLO_RngUniformOp {
   let arguments = (ins
-    HLO_Tensor:$a,
-    HLO_Tensor:$b,
+    HLO_PredIntOrFpTensor:$a,
+    HLO_PredIntOrFpTensor:$b,
     I64Tensor:$shape
   );
 
-  let results = (outs HLO_Tensor);
+  let results = (outs HLO_PredIntOrFpTensor);
 
   let hasCustomHLOConverter = 1;
 }
