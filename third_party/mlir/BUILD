@@ -167,6 +167,7 @@ cc_library(
         "include/mlir/Pass/Pass.h",
         "include/mlir/Pass/PassInstrumentation.h",
         "include/mlir/Pass/PassManager.h",
+        "include/mlir/Pass/PassOptions.h",
         "include/mlir/Pass/PassRegistry.h",
     ],
     includes = ["include"],
