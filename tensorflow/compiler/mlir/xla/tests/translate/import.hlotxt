@@ -508,6 +508,26 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   ROOT %power.3 = f32[4] power(f32[4] %Arg_0.1, f32[4] %Arg_1.2)
 }
 
+// CHECK-LABEL:  func @test_rng_normal
+// CHECK-SAME:  ([[ARG0:%.*]]: tensor<f32>, [[ARG1:%.*]]: tensor<f32>) -> tensor<2x3x5xf32>
+%test_rng_normal (Arg_0.1: f32[], Arg_1.2: f32[]) -> f32[2,3,5] {
+  %Arg_0.1 = f32[] parameter(0)
+  %Arg_1.2 = f32[] parameter(1)
+  // CHECK:  [[CST:%.*]] = constant dense<[2, 3, 5]> : tensor<3xi64>
+  // CHECK:  "xla_hlo.rng_normal"([[ARG0]], [[ARG1]], [[CST]])
+  ROOT %rng.4 = f32[2,3,5] rng(f32[] %Arg_0.1, f32[] %Arg_1.2), distribution=rng_normal
+}
+
+// CHECK-LABEL:  func @test_rng_uniform
+// CHECK-SAME:  ([[ARG0:%.*]]: tensor<f32>, [[ARG1:%.*]]: tensor<f32>) -> tensor<2x3x5xf32>
+%test_rng_uniform (Arg_0.1: f32[], Arg_1.2: f32[]) -> f32[2,3,5] {
+  %Arg_0.1 = f32[] parameter(0)
+  %Arg_1.2 = f32[] parameter(1)
+  // CHECK:  [[CST:%.*]] = constant dense<[2, 3, 5]> : tensor<3xi64>
+  // CHECK:  "xla_hlo.rng_uniform"([[ARG0]], [[ARG1]], [[CST]])
+  ROOT %rng.4 = f32[2,3,5] rng(f32[] %Arg_0.1, f32[] %Arg_1.2), distribution=rng_uniform
+}
+
 // CHECK-LABEL:  func @test_real
 %test_real (Arg_0.1: c64[4]) -> f32[4] {
   %Arg_0.1 = c64[4] parameter(0)
