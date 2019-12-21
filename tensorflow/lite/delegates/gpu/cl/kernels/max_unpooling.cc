@@ -25,7 +25,7 @@ namespace gpu {
 namespace cl {
 namespace {
 
-std::string GetMaxUnroolingKernelCode(
+std::string GetMaxUnpoolingKernelCode(
     const OperationDef& op_def, const CLDevice& device,
     const std::vector<ElementwiseOperation*>& linked_operations) {
   TensorCodeGenerator src("src_data",

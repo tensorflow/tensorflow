@@ -475,7 +475,7 @@ Status AllocateTensorMemory(const CLContext& context, const CLDevice& device,
     case TensorStorageType::SINGLE_TEXTURE_2D: {
       if (slices != 1) {
         return InvalidArgumentError(absl::StrCat(
-            "SINGLE_TEXTURE_2D support only chnannels in range [1-4], but ",
+            "SINGLE_TEXTURE_2D support only channels in range [1-4], but ",
             shape.c, "was provided"));
       }
       cl_image_desc desc;
