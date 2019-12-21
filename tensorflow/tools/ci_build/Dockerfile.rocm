@@ -3,7 +3,7 @@
 FROM ubuntu:xenial
 MAINTAINER Jeff Poznanovic <jeffrey.poznanovic@amd.com>
 
-ARG DEB_ROCM_REPO=http://repo.radeon.com/rocm/apt/2.8.0/
+ARG DEB_ROCM_REPO=http://repo.radeon.com/rocm/apt/3.0/
 ARG ROCM_PATH=/opt/rocm
 
 ENV DEBIAN_FRONTEND noninteractive
@@ -62,14 +62,6 @@ RUN apt-get update --allow-insecure-repositories && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Temporary workaround for HIP runtime: https://github.com/ROCm-Developer-Tools/HIP/pull/1464
-# The debian packages are based on rocm2.8. Need to manually update when we bump ROCm
-RUN wget https://www.dropbox.com/s/i9vro42u59h1768/hip_base-2.8.19386.4040-35e68f-amd64.deb && dpkg -i hip_base*.deb
-RUN wget https://www.dropbox.com/s/b2uh80ng6ahsej5/hip_hcc-2.8.19386.4040-35e68f-amd64.deb && dpkg -i hip_hcc*.deb
-RUN wget https://www.dropbox.com/s/ti2clu8lc8vyxcj/hip_doc-2.8.19386.4040-35e68f-amd64.deb && dpkg -i hip_doc*.deb
-RUN wget https://www.dropbox.com/s/z64fscz4kwc5jjh/hip_samples-2.8.19386.4040-35e68f-amd64.deb && dpkg -i hip_samples*.deb
-RUN rm hip_*.deb
-
 # Set up paths
 ENV HCC_HOME=$ROCM_PATH/hcc
 ENV HIP_PATH=$ROCM_PATH/hip
@@ -80,9 +72,6 @@ ENV PATH="$OPENCL_ROOT/bin:${PATH}"
 
 # Add target file to help determine which device(s) to build for
 RUN bash -c 'echo -e "gfx803\ngfx900\ngfx906" >> /opt/rocm/bin/target.lst'
-
-RUN wget https://www.dropbox.com/s/8iopc9wxm9ej8tb/MIOpen-HIP-2.2.0.7579-21d8ae2-Linux.deb && dpkg -i MIOpen*.deb
-RUN rm MIOpen*.deb
 
 # Copy and run the install scripts.
 COPY install/*.sh /install/
