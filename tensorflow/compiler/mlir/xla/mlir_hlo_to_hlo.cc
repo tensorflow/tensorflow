@@ -537,12 +537,6 @@ LogicalResult ExportXlaOp(ConvertOp op, OpLoweringContext ctx) {
   return success();
 }
 
-LogicalResult ExportXlaOp(CopyOp op, OpLoweringContext ctx) {
-  return failure();
-}
-
-LogicalResult ExportXlaOp(FftOp op, OpLoweringContext ctx) { return failure(); }
-
 LogicalResult ExportXlaOp(GatherOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   xla::GatherDimensionNumbers dimension_numbers =
