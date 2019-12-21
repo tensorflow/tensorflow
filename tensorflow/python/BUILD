@@ -1770,11 +1770,10 @@ tf_py_test(
     name = "framework_constant_op_test",
     size = "small",
     srcs = ["framework/constant_op_test.py"],
-    main = "framework/constant_op_test.py",
-    python_version = "PY3",
     additional_deps = [
         ":constant_op",
     ],
+    main = "framework/constant_op_test.py",
 )
 
 tf_py_test(
