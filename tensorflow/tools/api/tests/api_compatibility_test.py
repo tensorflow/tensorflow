@@ -367,7 +367,9 @@ class ApiCompatibilityTest(test.TestCase):
         api_version=api_version)
 
   def testAPIBackwardsCompatibility(self):
-    api_version = 2 if '_api.v2' in tf.bitwise.__name__ else 1
+    api_version = 1
+    if hasattr(tf, '_major_api_version') and tf._major_api_version == 2:
+      api_version = 2
     golden_file_pattern = os.path.join(
         resource_loader.get_root_dir_with_all_resources(),
         _KeyToFilePath('*', api_version))
