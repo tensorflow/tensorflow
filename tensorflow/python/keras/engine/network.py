@@ -2042,10 +2042,10 @@ def validate_save_format(filepath, save_format):
       - `save_format` is "tf" but `filepath` is an h5py.File object.
   """
   if type(filepath) != str and not isinstance(filepath, h5py.File):
-      raise ValueError(
-          'Expected `filepath` to be a String or h5py.File object. Got'
-          'unsupported value %s of type %s'
-          % (filepath, type(filepath)))
+    raise ValueError(
+        'Expected `filepath` to be a String or h5py.File object. Got'
+        'unsupported value %s of type %s'
+        % (filepath, type(filepath)))
 
   filepath_is_h5py_file = h5py is not None and isinstance(filepath, h5py.File)
   filepath_is_h5 = type(filepath) == str and _is_hdf5_filepath(filepath)
