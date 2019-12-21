@@ -458,6 +458,19 @@ foreach TfOp = [TF_ExpandDimsOp, TF_ReshapeOp, TF_SqueezeOp, ] in {
             (HLO_ReshapeOp $arg), [(AnyStaticShapeTensor $res)]>;
 }
 
+// Returns 0 if x is NaN, 0 if x is 0, -1 if x < 0 and 1 if x > 0.
+def : Pat<(TF_SignOp $x),
+          (HLO_SelectOp
+            (HLO_CompareOp
+              $x,
+              $x,
+              (NullDenseIntElementsAttr),
+              HLO_COMPARISON_DIRECTION_NE
+            ),
+            (HLO_ConstOp (ConstantSplat<"0"> $x)),
+            (HLO_SignOp $x)
+          )>;
+
 //===----------------------------------------------------------------------===//
 // RngUniform.
 //===----------------------------------------------------------------------===//
