@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/python/lib/core/numpy.h"
 #include "tensorflow/python/lib/core/py_util.h"
@@ -373,6 +374,21 @@ typedef Converter<int32> Int32Converter;
 
 // Floating-point support
 
+// Returns `true` if `out` overflows when converted from `as_double`.
+template <class T>
+static inline bool CheckForOverflow(double as_double, T* out) {
+  return (sizeof(T) < sizeof(double) && std::isinf(*out) &&
+          std::isfinite(as_double));
+}
+
+// There is no `std::isinf` that takes `Eigen::half` as argument but Eigen
+// provides `Eigen::half_impl::isinf` instead.
+template <>
+inline bool CheckForOverflow<Eigen::half>(double as_double, Eigen::half* out) {
+  return (sizeof(Eigen::half) < sizeof(double) &&
+          Eigen::half_impl::isinf(*out) && std::isfinite(as_double));
+}
+
 template <class T>
 static const char* ConvertOneFloat(PyObject* v, T* out) {
   if (PyErr_Occurred()) {
@@ -382,20 +398,19 @@ static const char* ConvertOneFloat(PyObject* v, T* out) {
     const double as_double = PyFloat_AS_DOUBLE(v);
     *out = static_cast<T>(as_double);
     // Check for overflow
-    if (TF_PREDICT_FALSE(sizeof(T) < sizeof(double) && std::isinf(*out) &&
-                         std::isfinite(as_double))) {
+    if (TF_PREDICT_FALSE(CheckForOverflow<T>(as_double, out))) {
       return ErrorOutOfRangeDouble;
     }
     return nullptr;
   }
 #if PY_MAJOR_VERSION < 3
   if (PyInt_Check(v)) {
-    *out = PyInt_AS_LONG(v);
+    *out = static_cast<T>(PyInt_AS_LONG(v));
     return nullptr;
   }
 #endif
   if (PyLong_Check(v)) {
-    *out = PyLong_AsDouble(v);
+    *out = static_cast<T>(PyLong_AsDouble(v));
     if (PyErr_Occurred()) return ErrorOutOfRangeDouble;
     return nullptr;
   }
@@ -444,13 +459,7 @@ struct ConverterTraits<Eigen::half> {
   static const tensorflow::DataType kTypeEnum = DT_HALF;
 
   static const char* ConvertScalar(PyObject* v, Eigen::half* out) {
-    // NOTE(nareshmodi): Is there a way to convert to C double without the
-    // intermediate Python double? This will help with ConvertOneFloat as well.
-    Safe_PyObjectPtr as_float = make_safe(PyNumber_Float(v));
-    double v_double = PyFloat_AS_DOUBLE(as_float.get());
-    *out = Eigen::half(v_double);
-
-    return nullptr;
+    return ConvertOneFloat<Eigen::half>(v, out);
   }
 };
 
@@ -591,7 +600,9 @@ Status PySeqToTensor(PyObject* obj, DataType dtype, Tensor* ret) {
       break;
 
     case DT_HALF:
-      RETURN_STRING_AS_STATUS(NumpyHalfConverter::Convert(obj, shape, ret));
+      if (NumpyHalfConverter::Convert(obj, shape, ret) == nullptr)
+        return Status::OK();
+      break;
 
     case DT_INT64:
       if (Int64Converter::Convert(obj, shape, ret) == nullptr)
