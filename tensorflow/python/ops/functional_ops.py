@@ -1163,17 +1163,19 @@ def partitioned_call(args,
   graph = ops.get_default_graph()
   f.add_to_graph(graph)
   op_name = "StatefulPartitionedCall" if f.stateful_ops else "PartitionedCall"
-  op = graph.create_op(
-      op_name,
-      args,
-      tout,
-      name=op_name,
-      attrs={
-          "Tin": tin_attr,
-          "Tout": tout_attr,
-          "f": func_attr,
-          "config_proto": config_proto,
-          "executor_type": executor_type_attr,
-      })
+
+  # Propagate the attribute indicating the need to compile from function to the
+  # call itself.
+  xla_compile_attr = "_XlaMustCompile"
+  op_attrs = {
+      "Tin": tin_attr,
+      "Tout": tout_attr,
+      "f": func_attr,
+      "config_proto": config_proto,
+      "executor_type": executor_type_attr,
+  }
+  if xla_compile_attr in f.definition.attr:
+    op_attrs[xla_compile_attr] = f.definition.attr[xla_compile_attr]
+  op = graph.create_op(op_name, args, tout, name=op_name, attrs=op_attrs)
   outputs = op.outputs
   return outputs if outputs else op

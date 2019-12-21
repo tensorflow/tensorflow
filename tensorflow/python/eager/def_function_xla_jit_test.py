@@ -20,6 +20,7 @@ from __future__ import print_function
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -41,6 +42,18 @@ class DefFunctionTest(test.TestCase):
 
     inputs = constant_op.constant([1, 2, 2, 3, 3])
     self.assertAllClose([2, 3, 3, 4, 4], func(inputs, 1))
+    if not test.is_built_with_rocm():
+      # XLA support is not yet enabled for TF ROCm
+      self.assertAllClose([2, 3, 3, 4, 4], xla_func(inputs, 1))
+
+  def testBasicInt32(self):
+
+    def fn(x, a):
+      return x + a
+
+    xla_func = def_function.function(fn, experimental_compile=True)
+
+    inputs = constant_op.constant([1, 2, 2, 3, 3], dtype=dtypes.int32)
     if not test.is_built_with_rocm():
       # XLA support is not yet enabled for TF ROCm
       self.assertAllClose([2, 3, 3, 4, 4], xla_func(inputs, 1))
