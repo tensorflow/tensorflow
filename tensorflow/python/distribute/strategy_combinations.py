@@ -40,7 +40,6 @@ from tensorflow.python.tpu import device_assignment as device_assignment_lib
 from tensorflow.python.tpu import tpu_strategy_util
 from tensorflow.python.training import adagrad
 from tensorflow.python.training import adam
-from tensorflow.python.training import ftrl
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.training import rmsprop
 
@@ -131,16 +130,11 @@ adagrad_optimizer_v1_fn = combinations.NamedObject(
     "AdagradV1", lambda: adagrad.AdagradOptimizer(0.001))
 adam_optimizer_v1_fn = combinations.NamedObject(
     "AdamV1", lambda: adam.AdamOptimizer(0.001, epsilon=1))
-ftrl_optimizer_v1_fn = combinations.NamedObject(
-    "FtrlV1", lambda: ftrl.FtrlOptimizer(0.001))
 rmsprop_optimizer_v1_fn = combinations.NamedObject(
     "RmsPropV1", lambda: rmsprop.RMSPropOptimizer(0.001))
 
 # TODO(shiningsun): consider adding the other v1 optimizers
-optimizers_v1 = [
-    gradient_descent_optimizer_v1_fn, adagrad_optimizer_v1_fn,
-    ftrl_optimizer_v1_fn, rmsprop_optimizer_v1_fn
-]
+optimizers_v1 = [gradient_descent_optimizer_v1_fn, adagrad_optimizer_v1_fn]
 
 adadelta_optimizer_keras_v2_fn = combinations.NamedObject(
     "AdadeltaKerasV2", lambda: adadelta_keras_v2.Adadelta(0.001))

@@ -132,10 +132,11 @@ class FtrlOptimizer(optimizer.Optimizer):
   def _create_slots(self, var_list):
     # Create the "accum" and "linear" slots.
     for v in var_list:
-      val = constant_op.constant(
-          self._initial_accumulator_value, dtype=v.dtype, shape=v.get_shape())
-      self._get_or_make_slot(v, val, "accum", self._accum_name or self._name)
-      self._zeros_slot(v, "linear", self._linear_name or self._name)
+      with ops.colocate_with(v):
+        val = constant_op.constant(
+            self._initial_accumulator_value, dtype=v.dtype, shape=v.get_shape())
+        self._get_or_make_slot(v, val, "accum", self._accum_name or self._name)
+        self._zeros_slot(v, "linear", self._linear_name or self._name)
 
   def _prepare(self):
     self._learning_rate_tensor = ops.convert_to_tensor(
