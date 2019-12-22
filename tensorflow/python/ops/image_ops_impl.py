@@ -356,6 +356,13 @@ def random_flip_up_down(image, seed=None):
     A tensor of the same type and shape as `image`.
   Raises:
     ValueError: if the shape of `image` not supported.
+    
+  Usage Example:
+    ```python
+    >> import tensorflow as tf
+    >> x = tf.random.normal(shape=(256, 256, 3))
+    >> tf.image.random_flip_up_down(x)
+    ```
   """
   return _random_flip(image, 0, seed, 'random_flip_up_down')
 
@@ -397,6 +404,13 @@ def random_flip_left_right(image, seed=None):
 
   Raises:
     ValueError: if the shape of `image` not supported.
+    
+  Usage Example:
+    ```python
+    >> import tensorflow as tf
+    >> x = tf.random.normal(shape=(256, 256, 3))
+    >> tf.image.random_flip_left_right(x)
+    ```
   """
   return _random_flip(image, 1, seed, 'random_flip_left_right')
 
@@ -464,6 +478,13 @@ def flip_left_right(image):
 
   Raises:
     ValueError: if the shape of `image` not supported.
+    
+  Usage Example:
+    ```python
+    >> import tensorflow as tf
+    >> x = tf.random.normal(shape=(256, 256, 3))
+    >> tf.image.flip_left_right(x)
+    ```
   """
   return _flip(image, 1, 'flip_left_right')
 
@@ -485,6 +506,13 @@ def flip_up_down(image):
 
   Raises:
     ValueError: if the shape of `image` not supported.
+    
+  Usage Example:
+    ```python
+    >> import tensorflow as tf
+    >> x = tf.random.normal(shape=(256, 256, 3))
+    >> tf.image.flip_up_down(x)
+    ```
   """
   return _flip(image, 0, 'flip_up_down')
 
