@@ -390,14 +390,14 @@ ValueHandle mlir::edsc::op::operator*(ValueHandle lhs, ValueHandle rhs) {
 }
 
 ValueHandle mlir::edsc::op::operator/(ValueHandle lhs, ValueHandle rhs) {
-  return createBinaryHandle<DivISOp, DivFOp>(
+  return createBinaryHandle<SignedDivIOp, DivFOp>(
       lhs, rhs, [](AffineExpr d0, AffineExpr d1) -> AffineExpr {
         llvm_unreachable("only exprs of non-index type support operator/");
       });
 }
 
 ValueHandle mlir::edsc::op::operator%(ValueHandle lhs, ValueHandle rhs) {
-  return createBinaryHandle<RemISOp, RemFOp>(
+  return createBinaryHandle<SignedRemIOp, RemFOp>(
       lhs, rhs, [](AffineExpr d0, AffineExpr d1) { return d0 % d1; });
 }
 

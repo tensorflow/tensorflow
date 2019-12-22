@@ -850,7 +850,7 @@ static Value *ceilDivPositive(OpBuilder &builder, Location loc, Value *dividend,
   Value *divisorMinusOneCst = builder.create<ConstantIndexOp>(loc, divisor - 1);
   Value *divisorCst = builder.create<ConstantIndexOp>(loc, divisor);
   Value *sum = builder.create<AddIOp>(loc, dividend, divisorMinusOneCst);
-  return builder.create<DivISOp>(loc, sum, divisorCst);
+  return builder.create<SignedDivIOp>(loc, sum, divisorCst);
 }
 
 // Build the IR that performs ceil division of a positive value by another
@@ -864,7 +864,7 @@ static Value *ceilDivPositive(OpBuilder &builder, Location loc, Value *dividend,
   Value *cstOne = builder.create<ConstantIndexOp>(loc, 1);
   Value *divisorMinusOne = builder.create<SubIOp>(loc, divisor, cstOne);
   Value *sum = builder.create<AddIOp>(loc, dividend, divisorMinusOne);
-  return builder.create<DivISOp>(loc, sum, divisor);
+  return builder.create<SignedDivIOp>(loc, sum, divisor);
 }
 
 // Hoist the ops within `outer` that appear before `inner`.
@@ -1084,12 +1084,12 @@ void mlir::coalesceLoops(MutableArrayRef<loop::ForOp> loops) {
   for (unsigned i = 0, e = loops.size(); i < e; ++i) {
     unsigned idx = loops.size() - i - 1;
     if (i != 0)
-      previous =
-          builder.create<DivISOp>(loc, previous, loops[idx + 1].upperBound());
+      previous = builder.create<SignedDivIOp>(loc, previous,
+                                              loops[idx + 1].upperBound());
 
     Value *iv = (i == e - 1) ? previous
-                             : builder.create<RemISOp>(loc, previous,
-                                                       loops[idx].upperBound());
+                             : builder.create<SignedRemIOp>(
+                                   loc, previous, loops[idx].upperBound());
     replaceAllUsesInRegionWith(loops[idx].getInductionVar(), iv,
                                loops.back().region());
   }

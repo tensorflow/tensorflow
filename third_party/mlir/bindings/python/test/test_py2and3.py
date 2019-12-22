@@ -274,7 +274,7 @@ class EdscTest:
       printWithCurrentFunctionName(str(self.module))
     # CHECK-LABEL: testDivisions
     #       CHECK:  floordiv 42
-    #       CHECK:  divis %{{.*}}, %{{.*}} : i32
+    #       CHECK:  divi_signed %{{.*}}, %{{.*}} : i32
 
   def testFunctionArgs(self):
     self.setUp()

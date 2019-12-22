@@ -40,7 +40,7 @@ struct ScalarOp<xla_lhlo::CompareOp> {
 template <>
 struct ScalarOp<xla_lhlo::DivOp> {
   using FOp = ::mlir::DivFOp;
-  using IOp = ::mlir::DivISOp;
+  using IOp = ::mlir::SignedDivIOp;
 };
 template <>
 struct ScalarOp<xla_lhlo::MulOp> {

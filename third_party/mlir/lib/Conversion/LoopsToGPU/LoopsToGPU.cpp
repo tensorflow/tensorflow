@@ -254,7 +254,7 @@ Optional<OpTy> LoopToGpuConverter::collectBounds(OpTy forOp,
         builder.create<SubIOp>(currentLoop.getLoc(), upperBound, lowerBound);
     Value *step = getOrCreateStep(currentLoop, builder);
     if (!isConstantOne(step))
-      range = builder.create<DivISOp>(currentLoop.getLoc(), range, step);
+      range = builder.create<SignedDivIOp>(currentLoop.getLoc(), range, step);
     dims.push_back(range);
 
     lbs.push_back(lowerBound);

@@ -814,16 +814,20 @@ struct SubIOpLowering : public BinaryOpLLVMOpLowering<SubIOp, LLVM::SubOp> {
 struct MulIOpLowering : public BinaryOpLLVMOpLowering<MulIOp, LLVM::MulOp> {
   using Super::Super;
 };
-struct DivISOpLowering : public BinaryOpLLVMOpLowering<DivISOp, LLVM::SDivOp> {
+struct SignedDivIOpLowering
+    : public BinaryOpLLVMOpLowering<SignedDivIOp, LLVM::SDivOp> {
   using Super::Super;
 };
-struct DivIUOpLowering : public BinaryOpLLVMOpLowering<DivIUOp, LLVM::UDivOp> {
+struct UnsignedDivIOpLowering
+    : public BinaryOpLLVMOpLowering<UnsignedDivIOp, LLVM::UDivOp> {
   using Super::Super;
 };
-struct RemISOpLowering : public BinaryOpLLVMOpLowering<RemISOp, LLVM::SRemOp> {
+struct SignedRemIOpLowering
+    : public BinaryOpLLVMOpLowering<SignedRemIOp, LLVM::SRemOp> {
   using Super::Super;
 };
-struct RemIUOpLowering : public BinaryOpLLVMOpLowering<RemIUOp, LLVM::URemOp> {
+struct UnsignedRemIOpLowering
+    : public BinaryOpLLVMOpLowering<UnsignedRemIOp, LLVM::URemOp> {
   using Super::Super;
 };
 struct AndOpLowering : public BinaryOpLLVMOpLowering<AndOp, LLVM::AndOp> {
@@ -860,6 +864,18 @@ struct SelectOpLowering
 };
 struct ConstLLVMOpLowering
     : public OneToOneLLVMOpLowering<ConstantOp, LLVM::ConstantOp> {
+  using Super::Super;
+};
+struct ShiftLeftOpLowering
+    : public OneToOneLLVMOpLowering<ShiftLeftOp, LLVM::ShlOp> {
+  using Super::Super;
+};
+struct SignedShiftRightOpLowering
+    : public OneToOneLLVMOpLowering<SignedShiftRightOp, LLVM::AShrOp> {
+  using Super::Super;
+};
+struct UnsignedShiftRightOpLowering
+    : public OneToOneLLVMOpLowering<UnsignedShiftRightOp, LLVM::LShrOp> {
   using Super::Super;
 };
 
@@ -2082,8 +2098,6 @@ void mlir::populateStdToLLVMNonMemoryConversionPatterns(
       CosOpLowering,
       ConstLLVMOpLowering,
       DivFOpLowering,
-      DivISOpLowering,
-      DivIUOpLowering,
       ExpOpLowering,
       LogOpLowering,
       Log10OpLowering,
@@ -2097,18 +2111,23 @@ void mlir::populateStdToLLVMNonMemoryConversionPatterns(
       OrOpLowering,
       PrefetchOpLowering,
       RemFOpLowering,
-      RemISOpLowering,
-      RemIUOpLowering,
       ReturnOpLowering,
       SIToFPLowering,
       SelectOpLowering,
+      ShiftLeftOpLowering,
       SignExtendIOpLowering,
+      SignedDivIOpLowering,
+      SignedRemIOpLowering,
+      SignedShiftRightOpLowering,
       SplatOpLowering,
       SplatNdOpLowering,
       SubFOpLowering,
       SubIOpLowering,
       TanhOpLowering,
       TruncateIOpLowering,
+      UnsignedDivIOpLowering,
+      UnsignedRemIOpLowering,
+      UnsignedShiftRightOpLowering,
       XOrOpLowering,
       ZeroExtendIOpLowering>(*converter.getDialect(), converter);
   // clang-format on

@@ -698,12 +698,12 @@ def DivFOp : FloatArithmeticOp<"divf"> {
   let summary = "floating point division operation";
 }
 
-def DivISOp : IntArithmeticOp<"divis"> {
+def SignedDivIOp : IntArithmeticOp<"divi_signed"> {
   let summary = "signed integer division operation";
   let hasFolder = 1;
 }
 
-def DivIUOp : IntArithmeticOp<"diviu"> {
+def UnsignedDivIOp : IntArithmeticOp<"divi_unsigned"> {
   let summary = "unsigned integer division operation";
   let hasFolder = 1;
 }
@@ -1002,12 +1002,12 @@ def RemFOp : FloatArithmeticOp<"remf"> {
   let summary = "floating point division remainder operation";
 }
 
-def RemISOp : IntArithmeticOp<"remis"> {
+def SignedRemIOp : IntArithmeticOp<"remi_signed"> {
   let summary = "signed integer division remainder operation";
   let hasFolder = 1;
 }
 
-def RemIUOp : IntArithmeticOp<"remiu"> {
+def UnsignedRemIOp : IntArithmeticOp<"remi_unsigned"> {
   let summary = "unsigned integer division remainder operation";
   let hasFolder = 1;
 }
@@ -1102,8 +1102,45 @@ def SignExtendIOp : Std_Op<"sexti",
   }];
 }
 
-def ShlISOp : IntArithmeticOp<"shlis"> {
-  let summary = "signed integer shift left";
+def ShiftLeftOp : IntArithmeticOp<"shift_left"> {
+  let summary = "integer left-shift";
+  let description = [{
+    The shift_left operation shifts an integer value to the left by a variable
+    amount. The low order bits are filled with zeros.
+
+      %1 = constant 5 : i8                       // %1 is 0b00000101
+      %2 = constant 3 : i8
+      %3 = shift_left %1, %2 : (i8, i8) -> i8    // %3 is 0b00101000
+  }];
+}
+
+def SignedShiftRightOp : IntArithmeticOp<"shift_right_signed"> {
+  let summary = "signed integer right-shift";
+  let description = [{
+    The shift_right_signed operation shifts an integer value to the right by
+    a variable amount. The integer is interpreted as signed. The high order
+    bits in the output are filled with copies of the most-significant bit
+    of the shifted value (which means that the sign of the value is preserved).
+
+      %1 = constant 160 : i8                             // %1 is 0b10100000
+      %2 = constant 3 : i8
+      %3 = shift_right_signed %1, %2 : (i8, i8) -> i8    // %3 is 0b11110100
+      %4 = constant 96 : i8                              // %4 is 0b01100000
+      %5 = shift_right_signed %4, %2 : (i8, i8) -> i8    // %5 is 0b00001100
+  }];
+}
+
+def UnsignedShiftRightOp : IntArithmeticOp<"shift_right_unsigned"> {
+  let summary = "unsigned integer right-shift";
+  let description = [{
+    The shift_right_unsigned operation shifts an integer value to the right by
+    a variable amount. The integer is interpreted as unsigned. The high order
+    bits are always filled with zeros.
+
+      %1 = constant 160 : i8                               // %1 is 0b10100000
+      %2 = constant 3 : i8
+      %3 = shift_right_unsigned %1, %2 : (i8, i8) -> i8    // %3 is 0b00010100
+  }];
 }
 
 def SIToFPOp : CastOp<"sitofp">, Arguments<(ins AnyType:$in)> {

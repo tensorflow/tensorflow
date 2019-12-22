@@ -1320,10 +1320,10 @@ OpFoldResult DimOp::fold(ArrayRef<Attribute> operands) {
 }
 
 //===----------------------------------------------------------------------===//
-// DivISOp
+// SignedDivIOp
 //===----------------------------------------------------------------------===//
 
-OpFoldResult DivISOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult SignedDivIOp::fold(ArrayRef<Attribute> operands) {
   assert(operands.size() == 2 && "binary operation takes two operands");
 
   // Don't fold if it would overflow or if it requires a division by zero.
@@ -1339,10 +1339,10 @@ OpFoldResult DivISOp::fold(ArrayRef<Attribute> operands) {
 }
 
 //===----------------------------------------------------------------------===//
-// DivIUOp
+// UnsignedDivIOp
 //===----------------------------------------------------------------------===//
 
-OpFoldResult DivIUOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult UnsignedDivIOp::fold(ArrayRef<Attribute> operands) {
   assert(operands.size() == 2 && "binary operation takes two operands");
 
   // Don't fold if it would require a division by zero.
@@ -1885,11 +1885,11 @@ OpFoldResult RankOp::fold(ArrayRef<Attribute> operands) {
 }
 
 //===----------------------------------------------------------------------===//
-// RemISOp
+// SignedRemIOp
 //===----------------------------------------------------------------------===//
 
-OpFoldResult RemISOp::fold(ArrayRef<Attribute> operands) {
-  assert(operands.size() == 2 && "remis takes two operands");
+OpFoldResult SignedRemIOp::fold(ArrayRef<Attribute> operands) {
+  assert(operands.size() == 2 && "remi_signed takes two operands");
 
   auto rhs = operands.back().dyn_cast_or_null<IntegerAttr>();
   if (!rhs)
@@ -1911,11 +1911,11 @@ OpFoldResult RemISOp::fold(ArrayRef<Attribute> operands) {
 }
 
 //===----------------------------------------------------------------------===//
-// RemIUOp
+// UnsignedRemIOp
 //===----------------------------------------------------------------------===//
 
-OpFoldResult RemIUOp::fold(ArrayRef<Attribute> operands) {
-  assert(operands.size() == 2 && "remiu takes two operands");
+OpFoldResult UnsignedRemIOp::fold(ArrayRef<Attribute> operands) {
+  assert(operands.size() == 2 && "remi_unsigned takes two operands");
 
   auto rhs = operands.back().dyn_cast_or_null<IntegerAttr>();
   if (!rhs)

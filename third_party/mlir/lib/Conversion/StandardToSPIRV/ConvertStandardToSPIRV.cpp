@@ -316,8 +316,8 @@ void populateStandardToSPIRVPatterns(MLIRContext *context,
   patterns.insert<ConstantIndexOpConversion, CmpIOpConversion,
                   IntegerOpConversion<AddIOp, spirv::IAddOp>,
                   IntegerOpConversion<MulIOp, spirv::IMulOp>,
-                  IntegerOpConversion<DivISOp, spirv::SDivOp>,
-                  IntegerOpConversion<RemISOp, spirv::SModOp>,
+                  IntegerOpConversion<SignedDivIOp, spirv::SDivOp>,
+                  IntegerOpConversion<SignedRemIOp, spirv::SModOp>,
                   IntegerOpConversion<SubIOp, spirv::ISubOp>, LoadOpConversion,
                   ReturnOpConversion, SelectOpConversion, StoreOpConversion>(
       context, typeConverter);
