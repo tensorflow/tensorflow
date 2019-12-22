@@ -219,7 +219,7 @@ MaxUnpooling& MaxUnpooling::operator=(MaxUnpooling&& kernel) {
 }
 
 Status MaxUnpooling::Compile(const CreationContext& creation_context) {
-  const auto code = GetMaxUnroolingKernelCode(
+  const auto code = GetMaxUnpoolingKernelCode(
       definition_, *creation_context.device, linked_operations_);
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", *creation_context.context,
