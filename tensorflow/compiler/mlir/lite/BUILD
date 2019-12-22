@@ -590,7 +590,6 @@ tf_cc_binary(
         ":flatbuffer_translate_lib",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform/default/build_config:base",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/delegates/flex:delegate",
         "//tensorflow/lite/kernels:builtin_ops",

@@ -147,12 +147,6 @@ cc_library(
 )
 
 cc_library(
-    name = "base",
-    srcs = [],
-    copts = tf_copts(),
-)
-
-cc_library(
     name = "port",
     srcs = [],
     copts = tf_copts(),

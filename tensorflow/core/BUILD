@@ -324,7 +324,6 @@ cc_library(
         "//tensorflow/core/platform:threadpool_interface",
         "//tensorflow/core/platform:threadpool_options",
         "//tensorflow/core/platform:types",
-        "//tensorflow/core/platform/default/build_config:base",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings",
     ],
