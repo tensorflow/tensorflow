@@ -668,6 +668,13 @@ def transpose(image, name=None):
 
   Raises:
     ValueError: if the shape of `image` not supported.
+    
+  Usage Example:
+    ```python
+    >> import tensorflow as tf
+    >> x = tf.random.normal(shape=(256, 256, 3))
+    >> tf.image.transpose(x)
+    ```
   """
   with ops.name_scope(name, 'transpose', [image]):
     image = ops.convert_to_tensor(image, name='image')
@@ -1604,6 +1611,13 @@ def random_brightness(image, max_delta, seed=None):
 
   Raises:
     ValueError: if `max_delta` is negative.
+    
+  Usage Example:
+    ```python
+    >> import tensorflow as tf
+    >> x = tf.random.normal(shape=(256, 256, 3))
+    >> tf.image.random_brightness(x, 0.2)
+    ```
   """
   if max_delta < 0:
     raise ValueError('max_delta must be non-negative.')
@@ -1631,6 +1645,13 @@ def random_contrast(image, lower, upper, seed=None):
 
   Raises:
     ValueError: if `upper <= lower` or if `lower < 0`.
+    
+  Usage Example:
+    ```python
+    >> import tensorflow as tf
+    >> x = tf.random.normal(shape=(256, 256, 3))
+    >> tf.image.random_contrast(x, 0.2, 0.5)
+    ```
   """
   if upper <= lower:
     raise ValueError('upper must be > lower.')
@@ -1986,6 +2007,13 @@ def random_hue(image, max_delta, seed=None):
 
   Raises:
     ValueError: if `max_delta` is invalid.
+    
+  Usage Example:
+    ```python
+    >> import tensorflow as tf
+    >> x = tf.random.normal(shape=(256, 256, 3))
+    >> tf.image.random_hue(x, 0.2)
+    ```
   """
   if max_delta > 0.5:
     raise ValueError('max_delta must be <= 0.5.')
@@ -2065,6 +2093,13 @@ def random_jpeg_quality(image, min_jpeg_quality, max_jpeg_quality, seed=None):
 
   Raises:
     ValueError: if `min_jpeg_quality` or `max_jpeg_quality` is invalid.
+    
+  Usage Example:
+    ```python
+    >> import tensorflow as tf
+    >> x = tf.random.normal(shape=(256, 256, 3))
+    >> tf.image.random_jpeg_quality(x, 75, 95)
+    ```
   """
   if (min_jpeg_quality < 0 or max_jpeg_quality < 0 or min_jpeg_quality > 100 or
       max_jpeg_quality > 100):
@@ -2145,6 +2180,13 @@ def random_saturation(image, lower, upper, seed=None):
 
   Raises:
     ValueError: if `upper <= lower` or if `lower < 0`.
+    
+  Usage Example:
+    ```python
+    >> import tensorflow as tf
+    >> x = tf.random.normal(shape=(256, 256, 3))
+    >> tf.image.random_saturation(x, 5, 10)
+    ```
   """
   if upper <= lower:
     raise ValueError('upper must be > lower.')
