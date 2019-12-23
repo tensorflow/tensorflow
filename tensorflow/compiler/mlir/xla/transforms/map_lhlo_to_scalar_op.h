@@ -60,7 +60,7 @@ using ScalarIOp = typename ScalarOp<LHLO_BinaryOp>::IOp;
 
 template <typename LhloOp>
 Operation* MapLhloOpToStdScalarOp(LhloOp lhlo_op, ArrayRef<Type> result_types,
-                                  ArrayRef<Value*> block_args, OpBuilder b) {
+                                  ArrayRef<ValuePtr> block_args, OpBuilder b) {
   Type element_type = block_args.front()->getType();
   if (element_type.isa<IntegerType>()) {
     return b.template create<ScalarIOp<LhloOp>>(lhlo_op.getLoc(), result_types,
@@ -76,7 +76,7 @@ Operation* MapLhloOpToStdScalarOp(LhloOp lhlo_op, ArrayRef<Type> result_types,
 template <>
 inline Operation* MapLhloOpToStdScalarOp<xla_lhlo::MaxOp>(
     xla_lhlo::MaxOp lhlo_op, ArrayRef<Type> result_types,
-    ArrayRef<Value*> block_args, OpBuilder b) {
+    ArrayRef<ValuePtr> block_args, OpBuilder b) {
   const auto& lhs = block_args[0];
   const auto& rhs = block_args[1];
   Type element_type = lhs->getType();
@@ -96,7 +96,7 @@ inline Operation* MapLhloOpToStdScalarOp<xla_lhlo::MaxOp>(
 template <>
 inline Operation* MapLhloOpToStdScalarOp<xla_lhlo::MinOp>(
     xla_lhlo::MinOp lhlo_op, ArrayRef<Type> result_types,
-    ArrayRef<Value*> block_args, OpBuilder b) {
+    ArrayRef<ValuePtr> block_args, OpBuilder b) {
   const auto& lhs = block_args[0];
   const auto& rhs = block_args[1];
   Type element_type = lhs->getType();
@@ -116,7 +116,7 @@ inline Operation* MapLhloOpToStdScalarOp<xla_lhlo::MinOp>(
 template <>
 inline Operation* MapLhloOpToStdScalarOp<xla_lhlo::AndOp>(
     xla_lhlo::AndOp lhlo_op, ArrayRef<Type> result_types,
-    ArrayRef<Value*> block_args, OpBuilder b) {
+    ArrayRef<ValuePtr> block_args, OpBuilder b) {
   Type element_type = block_args.front()->getType();
   return element_type.isa<IntegerType>()
              ? b.create<::mlir::AndOp>(lhlo_op.getLoc(), result_types,
@@ -150,7 +150,7 @@ inline Optional<CmpIPredicate> getIntCmpPredicate(
 template <>
 inline Operation* MapLhloOpToStdScalarOp<xla_lhlo::CompareOp>(
     xla_lhlo::CompareOp lhlo_op, ArrayRef<Type> result_types,
-    ArrayRef<Value*> block_args, OpBuilder b) {
+    ArrayRef<ValuePtr> block_args, OpBuilder b) {
   const auto& lhs = block_args[0];
   const auto& rhs = block_args[1];
   Type element_type = lhs->getType();
@@ -172,7 +172,7 @@ inline Operation* MapLhloOpToStdScalarOp<xla_lhlo::CompareOp>(
 template <>
 inline Operation* MapLhloOpToStdScalarOp<xla_lhlo::SelectOp>(
     xla_lhlo::SelectOp lhlo_op, ArrayRef<Type> result_types,
-    ArrayRef<Value*> block_args, OpBuilder b) {
+    ArrayRef<ValuePtr> block_args, OpBuilder b) {
   return b.create<::mlir::SelectOp>(lhlo_op.getLoc(), result_types, block_args,
                                     mlir::None);
 }
@@ -180,7 +180,7 @@ inline Operation* MapLhloOpToStdScalarOp<xla_lhlo::SelectOp>(
 template <>
 inline Operation* MapLhloOpToStdScalarOp<xla_lhlo::ExpOp>(
     xla_lhlo::ExpOp lhlo_op, ArrayRef<Type> result_types,
-    ArrayRef<Value*> block_args, OpBuilder b) {
+    ArrayRef<ValuePtr> block_args, OpBuilder b) {
   Type element_type = block_args.front()->getType();
   return element_type.isa<FloatType>()
              ? b.create<::mlir::ExpOp>(lhlo_op.getLoc(), result_types,

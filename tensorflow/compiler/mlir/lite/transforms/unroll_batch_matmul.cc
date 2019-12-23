@@ -67,7 +67,7 @@ void UnrollBatchMatMulPass::runOnFunction() {
 
 template <typename BatchMatMulOpType>
 TF::ReshapeOp ConvertTFBatchMatMulOp<BatchMatMulOpType>::createReshapeOp(
-    Value* value, ArrayRef<int64_t> shape, Type element_type, Location loc,
+    ValuePtr value, ArrayRef<int64_t> shape, Type element_type, Location loc,
     PatternRewriter& rewriter) {
   int64_t shape_rank = shape.size();
   auto shape_spec_type =
@@ -81,8 +81,8 @@ TF::ReshapeOp ConvertTFBatchMatMulOp<BatchMatMulOpType>::createReshapeOp(
 }
 
 template <typename BatchMatMulOpType>
-std::vector<Value*> ConvertTFBatchMatMulOp<BatchMatMulOpType>::sliceInput(
-    Value* value, int batch_size, Location loc, PatternRewriter& rewriter) {
+std::vector<ValuePtr> ConvertTFBatchMatMulOp<BatchMatMulOpType>::sliceInput(
+    ValuePtr value, int batch_size, Location loc, PatternRewriter& rewriter) {
   RankedTensorType tensorType = value->getType().cast<RankedTensorType>();
   Type element_type = tensorType.getElementType();
 
@@ -96,7 +96,7 @@ std::vector<Value*> ConvertTFBatchMatMulOp<BatchMatMulOpType>::sliceInput(
 
   SmallVector<int64_t, 3> slice_size = {1, num_rows, num_cols};
 
-  std::vector<Value*> sliced;
+  std::vector<ValuePtr> sliced;
   Type int64_type = rewriter.getIntegerType(64);
   Type slice_result_type = RankedTensorType::get(slice_size, element_type);
 
@@ -126,7 +126,7 @@ std::vector<Value*> ConvertTFBatchMatMulOp<BatchMatMulOpType>::sliceInput(
 
 template <typename BatchMatMulOpType>
 TF::TransposeOp ConvertTFBatchMatMulOp<BatchMatMulOpType>::createTransposeOp(
-    Value* value, Location loc, PatternRewriter& rewriter) {
+    ValuePtr value, Location loc, PatternRewriter& rewriter) {
   auto value_type = value->getType().cast<RankedTensorType>();
   auto shape = value_type.getShape();
   int dims = shape.size();
@@ -158,13 +158,13 @@ TF::TransposeOp ConvertTFBatchMatMulOp<BatchMatMulOpType>::createTransposeOp(
 
 template <typename BatchMatMulOpType>
 TF::PackOp ConvertTFBatchMatMulOp<BatchMatMulOpType>::createMatMulOps(
-    const std::vector<Value*>& sliced_lhs,
-    const std::vector<Value*>& sliced_rhs, const tensorflow::MatMulBCast& bcast,
-    int rows, int cols, Type element_type, Location loc,
-    PatternRewriter& rewriter) {
+    const std::vector<ValuePtr>& sliced_lhs,
+    const std::vector<ValuePtr>& sliced_rhs,
+    const tensorflow::MatMulBCast& bcast, int rows, int cols, Type element_type,
+    Location loc, PatternRewriter& rewriter) {
   auto matmul_type = RankedTensorType::get({rows, cols}, element_type);
 
-  std::vector<Value*> matmuls;
+  std::vector<ValuePtr> matmuls;
   for (int batch_idx = 0; batch_idx < bcast.output_batch_size(); ++batch_idx) {
     int lhs_batch_idx, rhs_batch_idx;
     if (bcast.IsBroadcastingRequired()) {
@@ -195,8 +195,8 @@ TF::PackOp ConvertTFBatchMatMulOp<BatchMatMulOpType>::createMatMulOps(
 template <typename BatchMatMulOpType>
 PatternMatchResult ConvertTFBatchMatMulOp<BatchMatMulOpType>::matchAndRewrite(
     BatchMatMulOpType op, PatternRewriter& rewriter) const {
-  Value* input_lhs = op.x();
-  Value* input_rhs = op.y();
+  ValuePtr input_lhs = op.x();
+  ValuePtr input_rhs = op.y();
 
   if (!input_lhs->getType().isa<RankedTensorType>()) {
     // LHS must be a ranked tensor type
@@ -276,9 +276,9 @@ PatternMatchResult ConvertTFBatchMatMulOp<BatchMatMulOpType>::matchAndRewrite(
   }
 
   // Compute slices for each batch in the LHS and RHS.
-  std::vector<Value*> sliced_lhs =
+  std::vector<ValuePtr> sliced_lhs =
       sliceInput(input_lhs, bcast.x_batch_size(), loc, rewriter);
-  std::vector<Value*> sliced_rhs =
+  std::vector<ValuePtr> sliced_rhs =
       sliceInput(input_rhs, bcast.y_batch_size(), loc, rewriter);
 
   // Compute (single batch) MatMul for each output batch. The MatMul outputs

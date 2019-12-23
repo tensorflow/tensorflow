@@ -74,12 +74,12 @@ Optional<llvm::SmallVector<mlir::Type, 4>> InferShapeForFunctionReturnType(
       if (cast_op.SrcT() != cast_op.DstT()) continue;
       // We only refine the result shape if the result a dynamic shape, the
       // input has static shape, and the two shapes are compatible.
-      auto has_static_shape = [](const Value* value) {
+      auto has_static_shape = [](const ValuePtr value) {
         auto shaped_type = value->getType().dyn_cast<ShapedType>();
         return shaped_type && shaped_type.hasStaticShape();
       };
-      Value* input = cast_op.x();
-      Value* result = cast_op.y();
+      ValuePtr input = cast_op.x();
+      ValuePtr result = cast_op.y();
       if (!has_static_shape(input) || has_static_shape(result) ||
           failed(verifyCompatibleShape(input->getType(), result->getType())))
         continue;
@@ -161,7 +161,7 @@ bool InferShapeForSingleOperation(Operation* op, Dialect* tf_dialect,
       op->getNumOperands());
   std::vector<tensorflow::Tensor> tensors(op->getNumOperands());
   for (auto it : llvm::enumerate(op->getOperands())) {
-    Value* operand = it.value();
+    ValuePtr operand = it.value();
     size_t index = it.index();
 
     // If the operand is constant, then convert it to Tensor.
@@ -214,7 +214,7 @@ bool InferShapeForSingleOperation(Operation* op, Dialect* tf_dialect,
   builder.setInsertionPointAfter(op);
   for (int output : llvm::seq<int>(0, c.num_outputs())) {
     // Skip already statically shaped results.
-    Value* result = op->getResult(output);
+    ValuePtr result = op->getResult(output);
     auto shaped_type = result->getType().dyn_cast<ShapedType>();
     if (!shaped_type || shaped_type.hasStaticShape()) continue;
 
@@ -306,7 +306,7 @@ LogicalResult PropagateShapeToIfWhileOpFunctions(
     int64_t max_iteration) {
   llvm::SmallVector<Type, 4> input_types;
   input_types.reserve(std::distance(op.input().begin(), op.input().end()));
-  for (Value* v : op.input()) {
+  for (ValuePtr v : op.input()) {
     input_types.push_back(v->getType());
   }
 

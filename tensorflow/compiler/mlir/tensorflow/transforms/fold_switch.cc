@@ -65,12 +65,12 @@ class SwitchFoldPass : public mlir::FunctionPass<SwitchFoldPass> {
 }  // namespace
 
 // Returns the defining op for a value looking through islands.
-static Operation* GetDefiningOp(Value* val) {
+static Operation* GetDefiningOp(ValuePtr val) {
   Operation* op = val->getDefiningOp();
   auto island_op = dyn_cast<tf_executor::IslandOp>(op);
   if (!island_op) return op;
   auto yield_op = island_op.GetYield();
-  auto index = cast<mlir::OpResult>(val)->getResultNumber();
+  auto index = val->cast<mlir::OpResult>()->getResultNumber();
   return yield_op.getOperand(index)->getDefiningOp();
 }
 
@@ -81,7 +81,7 @@ static Operation* GetDefiningOp(Value* val) {
 // identity nodes are common so handle them specially when considering
 // predicate in a minimally invasive way until identity's are handled more
 // generally.
-static Value* LookThroughIdentityOp(Value* pred_val) {
+static ValuePtr LookThroughIdentityOp(ValuePtr pred_val) {
   if (!pred_val) return pred_val;
   auto op = GetDefiningOp(pred_val);
   if (auto id_op = dyn_cast<TF::IdentityOp>(op)) pred_val = id_op.input();
@@ -124,7 +124,7 @@ class DeadQueue {
   }
 
   // Enqueue users of a value.
-  void EnqueueUsers(Value* val) {
+  void EnqueueUsers(ValuePtr val) {
     for (auto user : val->getUsers()) {
       Enqueue(user, val->getType().isa<tf_executor::ControlType>());
     }
@@ -175,7 +175,7 @@ class DeadQueue {
 // Enqueues values of foldable switch ops.
 static void MatchSwitchFoldOps(tf_executor::SwitchOp switch_op,
                                DeadQueue* queue) {
-  Value* pred_val = LookThroughIdentityOp(switch_op.predicate());
+  ValuePtr pred_val = LookThroughIdentityOp(switch_op.predicate());
 
   // If predicate or input is null then enqueue entire op for deletion.
   if (pred_val == nullptr || switch_op.data() == nullptr) {
@@ -187,8 +187,8 @@ static void MatchSwitchFoldOps(tf_executor::SwitchOp switch_op,
   if (!matchPattern(pred_val, m_Constant(&pred))) return;
 
   bool taken = pred.getSplatValue<bool>();
-  Value* dead = taken ? switch_op.falseOutput() : switch_op.trueOutput();
-  Value* live = !taken ? switch_op.falseOutput() : switch_op.trueOutput();
+  ValuePtr dead = taken ? switch_op.falseOutput() : switch_op.trueOutput();
+  ValuePtr live = !taken ? switch_op.falseOutput() : switch_op.trueOutput();
   live->replaceAllUsesWith(switch_op.data());
   queue->EnqueueUsers(dead);
 
@@ -210,12 +210,12 @@ static LogicalResult FoldMergeNodes(FuncOp function, const DeadQueue& queue) {
 
   for (auto it : queue.merge_nodes()) {
     // Find the valid input to merge node.
-    Value* val = nullptr;
+    ValuePtr val = nullptr;
     int index = -1;
     auto* merge = it.first;
     auto merge_op = cast<tf_executor::MergeOp>(merge);
     for (auto e : llvm::enumerate(merge->getOperands())) {
-      Value* operand = e.value();
+      ValuePtr operand = e.value();
       if (!operand) continue;
       // Skip control operands.
       if (operand->getType().isa<tf_executor::ControlType>()) break;

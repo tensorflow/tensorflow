@@ -22,8 +22,8 @@ limitations under the License.
 namespace mlir {
 namespace xla {
 
-DenseIntElementsAttr getBroadcastDimensionsAttr(Builder *b, Value *x,
-                                                Value *y) {
+DenseIntElementsAttr getBroadcastDimensionsAttr(Builder *b, ValuePtr x,
+                                                ValuePtr y) {
   TensorType xType = x->getType().dyn_cast<RankedTensorType>();
   TensorType yType = y->getType().dyn_cast<RankedTensorType>();
   if (xType == yType || !xType || !yType) return {};

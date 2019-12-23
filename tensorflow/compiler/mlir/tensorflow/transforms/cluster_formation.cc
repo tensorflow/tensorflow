@@ -68,9 +68,9 @@ StringRef GetDevice(Operation* op) {
 // re-ordered but forming clusters of non-continuous ops is effectively
 // re-ordering them..
 bool CanMergeIntoCluster(const Cluster& c, Operation* to_merge) {
-  return llvm::all_of(to_merge->getOperands(), [&](Value* operand) {
+  return llvm::all_of(to_merge->getOperands(), [&](ValuePtr operand) {
     // Block arguments.
-    if (isa<BlockArgument>(operand)) return true;
+    if (operand->isa<BlockArgument>()) return true;
 
     Operation* defining_op = operand->getDefiningOp();
 
@@ -95,11 +95,11 @@ bool CanMergeIntoCluster(const Cluster& c, Operation* to_merge) {
   });
 }
 
-void ReplaceLiveOutExternalUses(llvm::ArrayRef<Value*> live_outs,
+void ReplaceLiveOutExternalUses(llvm::ArrayRef<ValuePtr> live_outs,
                                 tf_device::LaunchOp launch_op) {
   Region* launch_op_region = &launch_op.body();
   for (const auto& p : llvm::zip(live_outs, launch_op.getResults())) {
-    Value* from = std::get<0>(p);
+    ValuePtr from = std::get<0>(p);
     for (auto& use : from->getUses()) {
       if (launch_op_region->isAncestor(use.getOwner()->getParentRegion()))
         continue;
@@ -109,11 +109,11 @@ void ReplaceLiveOutExternalUses(llvm::ArrayRef<Value*> live_outs,
 }
 
 // Get all escaped live-out values of a region.
-void GetLiveOuts(Region* region, llvm::SmallVectorImpl<Value*>* live_outs) {
+void GetLiveOuts(Region* region, llvm::SmallVectorImpl<ValuePtr>* live_outs) {
   live_outs->clear();
 
   for (Operation& op : region->front()) {
-    for (Value* v : op.getResults()) {
+    for (ValuePtr v : op.getResults()) {
       // A value is live-out if any of its users are not inside value producer's
       // region.
       bool is_live_out = llvm::any_of(v->getUsers(), [&](Operation* user) {
@@ -145,7 +145,7 @@ void BuildLaunchForCluster(const Cluster& c, OpBuilder* builder) {
 
   // Get all escaped live-out values of region, they are used later to determine
   // return values and types of launch op.
-  llvm::SmallVector<Value*, 4> live_outs;
+  llvm::SmallVector<ValuePtr, 4> live_outs;
   GetLiveOuts(&region, &live_outs);
 
   // Build a `tf_device.return` op at end of region, with all live-out values
@@ -157,7 +157,7 @@ void BuildLaunchForCluster(const Cluster& c, OpBuilder* builder) {
 
   llvm::SmallVector<Type, 4> live_out_types;
   live_out_types.reserve(live_outs.size());
-  for (Value* v : live_outs) {
+  for (ValuePtr v : live_outs) {
     live_out_types.emplace_back(v->getType());
   }
 

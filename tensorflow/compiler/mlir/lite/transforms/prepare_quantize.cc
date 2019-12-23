@@ -139,7 +139,7 @@ bool PrepareQuantizePass::SetInputNodesQuantizationParams(FuncOp func) {
   BoolAttr narrow_range = builder.getBoolAttr(false);
 
   auto add_quantize_op = [&](Location loc, Type input_type, Block* block,
-                             Block::iterator insertion_point, Value* arg,
+                             Block::iterator insertion_point, ValuePtr arg,
                              int i) {
     if (auto shaped = input_type.dyn_cast<ShapedType>()) {
       if (shaped.getElementType().isa<FloatType>()) {
@@ -160,7 +160,7 @@ bool PrepareQuantizePass::SetInputNodesQuantizationParams(FuncOp func) {
   };
 
   for (int i = 0, e = func.getNumArguments(); i != e; ++i) {
-    BlockArgument* arg = func.getArgument(i);
+    BlockArgumentPtr arg = func.getArgument(i);
     auto* arg_block = arg->getOwner();
     add_quantize_op(arg->getLoc(), arg->getType(), arg_block,
                     std::next(arg_block->begin(), i), arg, i);

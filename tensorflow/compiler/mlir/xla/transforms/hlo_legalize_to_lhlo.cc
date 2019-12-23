@@ -39,7 +39,7 @@ namespace {
 
 constexpr StringRef kTempBufferAttr = "temp";
 
-Value* GetTensorStoreOrReturnMemRef(Value* value) {
+ValuePtr GetTensorStoreOrReturnMemRef(ValuePtr value) {
   for (const auto& user : value->getUsers()) {
     if (auto tensor_store = dyn_cast<TensorStoreOp>(user)) {
       if (tensor_store.getOperand(0) == value) {
@@ -56,7 +56,7 @@ Value* GetTensorStoreOrReturnMemRef(Value* value) {
   return nullptr;
 }
 
-Operation* GetLastUse(Value* value) {
+Operation* GetLastUse(ValuePtr value) {
   Operation* last = value->getDefiningOp();
   for (auto& user : value->getUses()) {
     Operation* user_op = user.getOwner();
@@ -67,8 +67,8 @@ Operation* GetLastUse(Value* value) {
   return last;
 }
 
-Value* InsertAllocAndDealloc(Location loc, Value* result,
-                             ConversionPatternRewriter* rewriter) {
+ValuePtr InsertAllocAndDealloc(Location loc, ValuePtr result,
+                               ConversionPatternRewriter* rewriter) {
   auto result_type = result->getType().dyn_cast<ShapedType>();
   if (!result_type || !result_type.hasStaticShape()) {
     emitError(loc,
@@ -93,8 +93,8 @@ Value* InsertAllocAndDealloc(Location loc, Value* result,
 /// For every tensor-type value that is produced in the original function,
 /// this function returns the buffer that can be used in the converted
 /// function to store that values held in the tensor.
-Value* GetBufferForResultValue(Location loc, Value* result,
-                               ConversionPatternRewriter* rewriter) {
+ValuePtr GetBufferForResultValue(Location loc, ValuePtr result,
+                                 ConversionPatternRewriter* rewriter) {
   if (auto existing_memref = GetTensorStoreOrReturnMemRef(result)) {
     return existing_memref;
   }
@@ -108,7 +108,7 @@ class HloToLhloOpConverter : public ConversionPattern {
       : ConversionPattern(HloOpTy::getOperationName(), 1, context) {}
 
   PatternMatchResult matchAndRewrite(
-      Operation* op, ArrayRef<Value*> operands,
+      Operation* op, ArrayRef<ValuePtr> operands,
       ConversionPatternRewriter& rewriter) const final {
     if (op->getParentRegion()->getBlocks().size() != 1) {
       emitError(op->getLoc(),
@@ -116,14 +116,15 @@ class HloToLhloOpConverter : public ConversionPattern {
                 "region containing the operation");
     }
     const auto& original_results = op->getResults();
-    SmallVector<Value*, 4> buffer_args(operands.begin(), operands.end());
+    SmallVector<ValuePtr, 4> buffer_args(operands.begin(), operands.end());
     for (auto result : original_results) {
       buffer_args.push_back(
           GetBufferForResultValue(op->getLoc(), result, &rewriter));
     }
     rewriter.create<LhloOpTy>(op->getLoc(), llvm::None, buffer_args,
                               op->getAttrs());
-    rewriter.replaceOp(op, ArrayRef<Value*>(buffer_args).slice(operands.size()),
+    rewriter.replaceOp(op,
+                       ArrayRef<ValuePtr>(buffer_args).slice(operands.size()),
                        original_results);
     return matchSuccess();
   }
@@ -135,7 +136,7 @@ struct HloToLHloReduceConverter
   using OpConversionPattern::OpConversionPattern;
 
   PatternMatchResult matchAndRewrite(
-      xla_hlo::ReduceOp op, ArrayRef<Value*> operands,
+      xla_hlo::ReduceOp op, ArrayRef<ValuePtr> operands,
       ConversionPatternRewriter& rewriter) const final {
     auto loc = op.getLoc();
     // TODO(b/137624192) Implement variadic reduce.
@@ -146,7 +147,7 @@ struct HloToLHloReduceConverter
                 "region containing the operation");
     }
     const auto& original_results = op.getResults();
-    SmallVector<Value*, 4> buffer_args(operands.begin(), operands.end());
+    SmallVector<ValuePtr, 4> buffer_args(operands.begin(), operands.end());
     for (auto result : original_results) {
       buffer_args.push_back(GetBufferForResultValue(loc, result, &rewriter));
     }
@@ -178,7 +179,8 @@ struct HloToLHloReduceConverter
     rewriter.setInsertionPointToEnd(&entry_block);
     rewriter.create<xla_lhlo::TerminatorOp>(loc);
 
-    rewriter.replaceOp(op, ArrayRef<Value*>(buffer_args).slice(operands.size()),
+    rewriter.replaceOp(op,
+                       ArrayRef<ValuePtr>(buffer_args).slice(operands.size()),
                        original_results);
 
     return matchSuccess();
@@ -191,7 +193,7 @@ class HloToLhloTensorLoadConverter : public ConversionPattern {
       : ConversionPattern(TensorLoadOp::getOperationName(), 1, context) {}
 
   PatternMatchResult matchAndRewrite(
-      Operation* op, ArrayRef<Value*> operands,
+      Operation* op, ArrayRef<ValuePtr> operands,
       ConversionPatternRewriter& rewriter) const final {
     rewriter.replaceOp(op, operands, op->getResults());
     return matchSuccess();
@@ -205,7 +207,7 @@ class HloToLhloTensorStoreConverter : public ConversionPattern {
       : ConversionPattern(TensorStoreOp::getOperationName(), 1, context) {}
 
   PatternMatchResult matchAndRewrite(
-      Operation* op, ArrayRef<Value*> operands,
+      Operation* op, ArrayRef<ValuePtr> operands,
       ConversionPatternRewriter& rewriter) const final {
     rewriter.eraseOp(op);
     return matchSuccess();
@@ -218,7 +220,7 @@ class HloToLhloReturnConverter : public OpConversionPattern<xla_hlo::ReturnOp> {
   using OpConversionPattern::OpConversionPattern;
 
   PatternMatchResult matchAndRewrite(
-      xla_hlo::ReturnOp op, ArrayRef<Value*> operands,
+      xla_hlo::ReturnOp op, ArrayRef<ValuePtr> operands,
       ConversionPatternRewriter& rewriter) const final {
     rewriter.eraseOp(op);
     return matchSuccess();

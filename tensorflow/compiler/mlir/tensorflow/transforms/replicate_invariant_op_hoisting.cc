@@ -71,10 +71,10 @@ struct ReplicateInvariantOpHoistingPass
 // }
 void MakeShapeOpInvariant(tf_device::ReplicateOp replicate_op, int num_replicas,
                           Block* replicate_block, TF::ShapeOp shape_op) {
-  Value* input = shape_op.input();
+  ValuePtr input = shape_op.input();
   // If ShapeOp operand is replicate tensor block argument, replace with the
   // associated first replica operand.
-  if (auto block_arg = llvm::dyn_cast<BlockArgument>(input)) {
+  if (auto block_arg = input->dyn_cast<BlockArgument>()) {
     if (block_arg->getOwner() != replicate_block) return;
 
     shape_op.setOperand(
@@ -96,7 +96,7 @@ void MakeShapeOpInvariant(tf_device::ReplicateOp replicate_op, int num_replicas,
   // shape has not changed in replicate prior to read. Currently after both
   // ResourceOpLiftingPass and TPURewritePass, there should not be any updates
   // to resources prior to their respective ReadVariableOp.
-  if (auto block_arg = llvm::dyn_cast<BlockArgument>(read_var_op.resource())) {
+  if (auto block_arg = read_var_op.resource()->dyn_cast<BlockArgument>()) {
     if (block_arg->getOwner() != replicate_block) return;
 
     OpBuilder builder(shape_op);
@@ -111,7 +111,7 @@ void MakeShapeOpInvariant(tf_device::ReplicateOp replicate_op, int num_replicas,
 // Checks if op and inner op operands are all replicate invariant.
 bool IsOpReplicateInvariant(Region* replicate_region, Operation* op) {
   auto result = op->walk([&](Operation* inner_op) {
-    for (Value* operand : inner_op->getOperands()) {
+    for (ValuePtr operand : inner_op->getOperands()) {
       Region* parent_region = operand->getParentRegion();
       if (!parent_region || !parent_region->isProperAncestor(replicate_region))
         return WalkResult::interrupt();

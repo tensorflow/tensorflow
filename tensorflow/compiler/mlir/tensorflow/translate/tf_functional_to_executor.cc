@@ -75,7 +75,7 @@ void FunctionalToExecutorDialectConversion::runOnFunction() {
   builder.setInsertionPointToEnd(&graph_op.GetBody());
   auto island = builder.create<tf_executor::IslandOp>(
       loc, getFunction().getType().getResults(),
-      tf_executor::ControlType::get(&getContext()), ArrayRef<Value*>());
+      tf_executor::ControlType::get(&getContext()), ArrayRef<ValuePtr>());
   // Create Fetch.
   ValueRange to_fetch = island.getResults();
   if (to_fetch.size() != 1) {

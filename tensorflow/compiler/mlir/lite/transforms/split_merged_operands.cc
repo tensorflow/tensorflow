@@ -71,13 +71,13 @@ struct SplitMergedOperandsPass : public FunctionPass<SplitMergedOperandsPass> {
 };
 
 LogicalResult DuplicateValueIfNeeded(Operation* op,
-                                     llvm::DenseSet<Value*>* values,
+                                     llvm::DenseSet<ValuePtr>* values,
                                      OpBuilder* builder) {
   std::vector<int> stateful_operands_index;
   if (!IsStatefulOp(op, &stateful_operands_index)) return success();
 
   for (int index : stateful_operands_index) {
-    Value* operand = op->getOperand(index);
+    ValuePtr operand = op->getOperand(index);
     auto inserted_value = values->insert(operand).second;
     if (inserted_value) continue;
     // We can only clone the constant op at this point.
@@ -102,7 +102,7 @@ LogicalResult DuplicateValueIfNeeded(Operation* op,
 }
 
 void SplitMergedOperandsPass::runOnFunction() {
-  llvm::DenseSet<Value*> stateful_values;
+  llvm::DenseSet<ValuePtr> stateful_values;
   auto func = getFunction();
   OpBuilder builder(func);
   for (auto& bb : func.getBody()) {

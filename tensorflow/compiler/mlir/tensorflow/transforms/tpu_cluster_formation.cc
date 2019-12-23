@@ -140,7 +140,7 @@ bool ShouldMoveOpAfterCluster(
     const llvm::SmallSetVector<Operation*, 8>& cluster_ops,
     const llvm::SmallSetVector<Operation*, 8>& preceding_users) {
   auto result = op->walk([&](Operation* op) {
-    for (Value* operand : op->getOperands()) {
+    for (ValuePtr operand : op->getOperands()) {
       Operation* def = operand->getDefiningOp();
       // Operands may not have a defining op (BlockArgument) or is from a
       // different block.
@@ -179,12 +179,12 @@ llvm::SmallSetVector<Operation*, 8> CollectClusterPrecedingUsers(
 // `tf_device::LaunchOp` and associated terminator. Results that have no uses
 // outside of the cluster (i.e. results of ops in the cluster are only consumed
 // by other ops in the cluster) are pruned.
-llvm::SmallVector<Value*, 8> CollectClusterResults(
+llvm::SmallVector<ValuePtr, 8> CollectClusterResults(
     Block* block, const llvm::SmallSetVector<Operation*, 8>& cluster_ops) {
-  llvm::SmallVector<Value*, 8> results;
+  llvm::SmallVector<ValuePtr, 8> results;
 
   for (Operation* op : cluster_ops) {
-    for (Value* result : op->getResults()) {
+    for (ValuePtr result : op->getResults()) {
       for (Operation* user : result->getUsers()) {
         // Check if user is not an op in the cluster.
         if (cluster_ops.count(block->findAncestorOpInBlock(*user)) == 0) {
@@ -200,13 +200,13 @@ llvm::SmallVector<Value*, 8> CollectClusterResults(
 
 // Creates a `tf_device::LaunchOp` to wrap cluster ops.
 tf_device::LaunchOp CreateLaunchOpForCluster(Operation* last_cluster_op,
-                                             llvm::ArrayRef<Value*> results) {
+                                             llvm::ArrayRef<ValuePtr> results) {
   // `tf_device::LaunchOp` will be placed at where the last op of the cluster
   // is.
   OpBuilder builder(last_cluster_op);
 
   llvm::SmallVector<Type, 8> result_types;
-  for (Value* result : results) result_types.push_back(result->getType());
+  for (ValuePtr result : results) result_types.push_back(result->getType());
 
   // An empty string placeholder is used for the device as that will be later
   // populated with the device of the associated TPUReplicateMetadata op.
@@ -241,11 +241,11 @@ void MoveClusterOpsToLaunchOp(
 // Replaces uses of cluster ops results outside of cluster with the associated
 // `tf_device::LaunchOp` results.
 void UpdateLaunchOpResultExternalUses(tf_device::LaunchOp launch_op,
-                                      llvm::ArrayRef<Value*> results) {
+                                      llvm::ArrayRef<ValuePtr> results) {
   Block& launch_op_block = launch_op.GetBody();
   for (auto ret_vals : llvm::zip(results, launch_op.getResults())) {
-    Value* old_ret = std::get<0>(ret_vals);
-    Value* new_ret = std::get<1>(ret_vals);
+    ValuePtr old_ret = std::get<0>(ret_vals);
+    ValuePtr new_ret = std::get<1>(ret_vals);
     for (auto& use : old_ret->getUses())
       if (!launch_op_block.findAncestorOpInBlock(*use.getOwner()))
         use.set(new_ret);
@@ -337,7 +337,7 @@ LogicalResult ReplicateCluster(tf_device::LaunchOp launch_op,
 
   // Replace replicated cluster results with replicate op results.
   for (auto result_and_idx : llvm::enumerate(launch_op.getResults())) {
-    Value* result = result_and_idx.value();
+    ValuePtr result = result_and_idx.value();
     int idx = result_and_idx.index();
     for (auto& use : result->getUses()) {
       Operation* def = use.getOwner();
@@ -360,7 +360,7 @@ LogicalResult ReplicateCluster(tf_device::LaunchOp launch_op,
   for (auto input_and_block_arg :
        llvm::zip(replicated_input_ops, replicate_op.GetBody().getArguments())) {
     Operation* input = std::get<0>(input_and_block_arg);
-    Value* block_arg = std::get<1>(input_and_block_arg);
+    ValuePtr block_arg = std::get<1>(input_and_block_arg);
     mlir::replaceAllUsesInRegionWith(input->getResult(0), block_arg,
                                      launch_op.body());
   }
@@ -412,7 +412,7 @@ LogicalResult FormClustersInBlock(Block* block,
     llvm::SmallSetVector<Operation*, 8> preceding_users =
         CollectClusterPrecedingUsers(block, cluster_ops);
 
-    llvm::SmallVector<Value*, 8> results =
+    llvm::SmallVector<ValuePtr, 8> results =
         CollectClusterResults(block, cluster_ops);
 
     tf_device::LaunchOp launch_op =

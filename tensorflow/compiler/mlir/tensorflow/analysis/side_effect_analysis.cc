@@ -86,15 +86,15 @@ int64_t FindPassthroughArgumentForReturnValue(int64_t return_index,
       func_op.getBody().front().getTerminator()->getOperand(return_index);
   assert(mlir::getElementTypeOrSelf(value->getType()).isa<TF::ResourceType>());
   int64_t arg_index = -1;
-  auto try_parse_arg_index = [&arg_index](Value* v) {
-    auto resource_arg = llvm::dyn_cast<BlockArgument>(v);
+  auto try_parse_arg_index = [&arg_index](ValuePtr v) {
+    auto resource_arg = v->dyn_cast<BlockArgument>();
     if (resource_arg) arg_index = resource_arg->getArgNumber();
     return arg_index;
   };
   while (try_parse_arg_index(value) == -1) {
     auto op = value->getDefiningOp();
     assert(op);
-    int64_t res_num = llvm::dyn_cast<OpResult>(value)->getResultNumber();
+    int64_t res_num = value->cast<OpResult>()->getResultNumber();
     if (auto graph = llvm::dyn_cast<tf_executor::GraphOp>(op)) {
       value = graph.GetFetch().getOperand(res_num);
     } else if (auto island = llvm::dyn_cast<tf_executor::IslandOp>(op)) {
@@ -131,7 +131,7 @@ void ResourceAliasAnalysis::AnalyzeFunction(FuncOp func_op) {
     resource_value_to_ids_[arg].insert(next_unique_id++);
   }
   llvm::StringMap<int64_t> var_handle_name_id_map;
-  auto forward_input_to_output = [&](Value* operand, Value* result) {
+  auto forward_input_to_output = [&](ValuePtr operand, ValuePtr result) {
     if (!mlir::getElementTypeOrSelf(result->getType()).isa<TF::ResourceType>())
       return;
     auto& result_ids = resource_value_to_ids_[result];
@@ -220,7 +220,7 @@ void ResourceAliasAnalysis::AnalyzeFunction(FuncOp func_op) {
   });
 }
 
-bool ResourceAliasAnalysis::IsUnknownResource(const Value* resource) const {
+bool ResourceAliasAnalysis::IsUnknownResource(const ValuePtr resource) const {
   auto it = resource_value_to_ids_.find(resource);
   assert(it != resource_value_to_ids_.end() && !it->getSecond().empty());
   // The set is sorted so we only need to check the first element since
@@ -231,7 +231,7 @@ bool ResourceAliasAnalysis::IsUnknownResource(const Value* resource) const {
 }
 
 const llvm::SmallSet<int64_t, 8>& ResourceAliasAnalysis::GetResourceUniqueIds(
-    const Value* resource) const {
+    const ValuePtr resource) const {
   auto it = resource_value_to_ids_.find(resource);
   assert(it != resource_value_to_ids_.end() && "Unseen resource was queried");
   return it->getSecond();

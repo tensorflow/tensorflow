@@ -42,35 +42,36 @@ namespace TFL {
 
 namespace {
 
-Value* CreateI32SplatConst(OpBuilder* builder, ArrayRef<int64_t> shape,
-                           int32_t val, mlir::Location location) {
+ValuePtr CreateI32SplatConst(OpBuilder* builder, ArrayRef<int64_t> shape,
+                             int32_t val, mlir::Location location) {
   auto type = RankedTensorType::get(shape, builder->getIntegerType(32));
   auto attr = DenseElementsAttr::get(type, val);
   return builder->create<ConstantOp>(location, type, attr);
 }
 
-Value* CreateF32SplatConst(OpBuilder* builder, ArrayRef<int64_t> shape,
-                           float val, mlir::Location location) {
+ValuePtr CreateF32SplatConst(OpBuilder* builder, ArrayRef<int64_t> shape,
+                             float val, mlir::Location location) {
   auto type = RankedTensorType::get(shape, builder->getF32Type());
   auto attr = DenseElementsAttr::get(type, val);
   return builder->create<ConstantOp>(location, type, attr);
 }
 
-Value* CreateI64DenseConst(OpBuilder* builder, ArrayRef<int64_t> shape,
-                           ArrayRef<int64_t> values, mlir::Location location) {
+ValuePtr CreateI64DenseConst(OpBuilder* builder, ArrayRef<int64_t> shape,
+                             ArrayRef<int64_t> values,
+                             mlir::Location location) {
   auto type = RankedTensorType::get(static_cast<int>(shape.size()),
                                     builder->getIntegerType(64));
   auto attr = DenseElementsAttr::get(type, values);
   return builder->create<ConstantOp>(location, type, attr);
 }
 
-Value* CreateNoneValue(OpBuilder* builder, mlir::Location location) {
+ValuePtr CreateNoneValue(OpBuilder* builder, mlir::Location location) {
   return builder->create<mlir::ConstantOp>(location, builder->getNoneType(),
                                            builder->getUnitAttr());
 }
 
-Value* Transpose2D(OpBuilder* builder, Value* value_to_transpose,
-                   RankedTensorType type, mlir::Location location) {
+ValuePtr Transpose2D(OpBuilder* builder, ValuePtr value_to_transpose,
+                     RankedTensorType type, mlir::Location location) {
   // Create a constant op for transpose permutation.
   SmallVector<int64_t, 2> perm = {1, 0};
   auto perm_op = CreateI64DenseConst(builder, perm, perm, location);
@@ -87,16 +88,16 @@ Value* Transpose2D(OpBuilder* builder, Value* value_to_transpose,
                                           value_to_transpose, perm_op);
 }
 
-ArrayRef<int64_t> GetRankedTensorShape(Value* value) {
+ArrayRef<int64_t> GetRankedTensorShape(ValuePtr value) {
   return value->getType().cast<RankedTensorType>().getShape();
 }
 
-Value* SliceRankedTensor(OpBuilder* builder, Value* input,
-                         ArrayRef<int64_t> begin_shape,
-                         ArrayRef<int64_t> begin_values,
-                         ArrayRef<int64_t> size_shape,
-                         ArrayRef<int64_t> size_values,
-                         mlir::Location location) {
+ValuePtr SliceRankedTensor(OpBuilder* builder, ValuePtr input,
+                           ArrayRef<int64_t> begin_shape,
+                           ArrayRef<int64_t> begin_values,
+                           ArrayRef<int64_t> size_shape,
+                           ArrayRef<int64_t> size_values,
+                           mlir::Location location) {
   // If the size of the tensor to be sliced from the input overflows
   // the input tensor's dimensions, return 0-valued tensor of the requested
   // shape.

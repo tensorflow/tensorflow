@@ -277,7 +277,7 @@ Operation* BuildCompileOp(tf_device::LaunchFuncOp launch_func, int num_replicas,
   // TODO(b/139377366): When shape inference is ready, we can use compile time
   // shape inference to get inputs that have static shapes and only use shape
   // ops for the rest.
-  llvm::SmallVector<Value*, 4> compile_op_operands;
+  llvm::SmallVector<ValuePtr, 4> compile_op_operands;
   compile_op_operands.reserve(launch_func.getNumOperands());
 
   for (auto operand_and_idx : llvm::enumerate(launch_func.getOperands())) {
@@ -332,7 +332,7 @@ Operation* BuildExecuteOp(Operation* compile_op,
                           OpBuilder* builder) {
   // TPUExecute inherits all launch_func inputs, and takes an additional input
   // for compilation cache key.
-  llvm::SmallVector<Value*, 4> tensor_inputs(launch_func.getOperands());
+  llvm::SmallVector<ValuePtr, 4> tensor_inputs(launch_func.getOperands());
   tensor_inputs.push_back(compile_op->getResult(1));
 
   // TODO(b/139377366): Need to snapshot all resource variable inputs in

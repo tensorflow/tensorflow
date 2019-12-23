@@ -102,15 +102,15 @@ class ConvertLSTMCellSimpleToFusedLSTM {
 
   // specified state
   FuncOp fused_func_op_;
-  Value* input_;
-  Value* weight_;
-  Value* bias_;
-  Value* projection_;
+  ValuePtr input_;
+  ValuePtr weight_;
+  ValuePtr bias_;
+  ValuePtr projection_;
   bool couple_input_forget_gates_;
 
   // internal state
-  Value* weight_transposed_;
-  Value* projection_transposed_;
+  ValuePtr weight_transposed_;
+  ValuePtr projection_transposed_;
   RankedTensorType weight_type_;
   RankedTensorType projection_type_;
   int num_gates_;
@@ -121,40 +121,40 @@ class ConvertLSTMCellSimpleToFusedLSTM {
   int num_cols_projection_transposed_;
 
   // input -> cifg
-  Value* input2input_;
-  Value* input2forget_;
-  Value* input2cell_;
-  Value* input2output_;
+  ValuePtr input2input_;
+  ValuePtr input2forget_;
+  ValuePtr input2cell_;
+  ValuePtr input2output_;
 
   // recurrent -> cifg
-  Value* rec2input_;
-  Value* rec2forget_;
-  Value* rec2cell_;
-  Value* rec2output_;
+  ValuePtr rec2input_;
+  ValuePtr rec2forget_;
+  ValuePtr rec2cell_;
+  ValuePtr rec2output_;
 
   // bias -> cifg
-  Value* bias2input_;
-  Value* bias2forget_;
-  Value* bias2cell_;
-  Value* bias2output_;
+  ValuePtr bias2input_;
+  ValuePtr bias2forget_;
+  ValuePtr bias2cell_;
+  ValuePtr bias2output_;
 
   // projection
-  Value* proj_weight_;
-  Value* proj_bias_;
+  ValuePtr proj_weight_;
+  ValuePtr proj_bias_;
 
   // state
-  Value* input_activation_state_;
-  Value* input_cell_state_;
+  ValuePtr input_activation_state_;
+  ValuePtr input_cell_state_;
 
   // layer norm coefficients
-  Value* input_layer_norm_coefficients_;
-  Value* forget_layer_norm_coefficients_;
-  Value* cell_layer_norm_coefficients_;
-  Value* output_layer_norm_coefficients_;
+  ValuePtr input_layer_norm_coefficients_;
+  ValuePtr forget_layer_norm_coefficients_;
+  ValuePtr cell_layer_norm_coefficients_;
+  ValuePtr output_layer_norm_coefficients_;
 
   mlir::TFL::LSTMOp lstm_;
 
-  Value* none_;
+  ValuePtr none_;
   SmallVector<int64_t, 1> bias_slice_shape_;
   SmallVector<int64_t, 1> bias_size_values_;
   SmallVector<int64_t, 2> weight_slice_shape_;
@@ -199,7 +199,7 @@ class ConvertLayerNormalizedLSTMCellSimpleToFusedLSTM
 
  private:
   // specified state
-  Value* layer_norm_scale_;
+  ValuePtr layer_norm_scale_;
 
   // internal state
   RankedTensorType layer_norm_scale_type_;

@@ -171,8 +171,8 @@ LogicalResult LowerWhileOp(mlir::xla_hlo::WhileOp while_op) {
     auto cond_value = builder.create<mlir::ExtractElementOp>(loc, return_value);
 
     // Get the body block arguments.
-    llvm::SmallVector<Value*, 4> successor_args(cond_block->args_begin(),
-                                                cond_block->args_end());
+    llvm::SmallVector<ValuePtr, 4> successor_args(cond_block->args_begin(),
+                                                  cond_block->args_end());
     builder.create<mlir::CondBranchOp>(loc, cond_value, body_block,
                                        successor_args, tail_block,
                                        successor_args);

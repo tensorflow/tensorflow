@@ -412,7 +412,7 @@ bool RemoveRedundantStatsOps(mlir::FuncOp func,
 
       if (user->hasTrait<OpTrait::quant::SameOperandsAndResultsScale>() &&
           !PreferResultScale(user)) {
-        for (Value* res : user->getResults()) {
+        for (ValuePtr res : user->getResults()) {
           if (res->hasOneUse()) {
             if (auto next_stats = llvm::dyn_cast<quant::StatisticsOp>(
                     *res->getUsers().begin())) {

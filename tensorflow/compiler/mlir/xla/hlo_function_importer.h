@@ -71,7 +71,7 @@ class HloFunctionImporter {
                                                mlir::OpBuilder* func_builder);
 
   // Gets the MLIR operand values from an HLO Instruction.
-  StatusOr<llvm::SmallVector<mlir::Value*, 4>> GetOperands(
+  StatusOr<llvm::SmallVector<mlir::ValuePtr, 4>> GetOperands(
       xla::HloInstruction* instruction);
 
   // Converts xla Tensor type to the corresponding MLIR type.
@@ -89,7 +89,7 @@ class HloFunctionImporter {
                       llvm::SmallVectorImpl<mlir::Type>* types);
 
   // Returns the Mlir Value for the corresponding HloInstruction.
-  StatusOr<mlir::Value*> GetMlirValue(xla::HloInstruction* instruction);
+  StatusOr<mlir::ValuePtr> GetMlirValue(xla::HloInstruction* instruction);
 
   // Converts an XLA PrecisionConfig to the corresponding MLIR attribute.
   mlir::NamedAttribute ConvertPrecisionConfig(xla::HloInstruction* instruction);
@@ -129,7 +129,8 @@ class HloFunctionImporter {
   std::unordered_map<xla::HloComputation*, mlir::FuncOp>* function_map_;
 
   // Mapping from HloInstructions to the associative MLIR values.
-  std::unordered_map<xla::HloInstruction*, mlir::Value*> instruction_value_map_;
+  std::unordered_map<xla::HloInstruction*, mlir::ValuePtr>
+      instruction_value_map_;
 };
 
 }  // namespace xla

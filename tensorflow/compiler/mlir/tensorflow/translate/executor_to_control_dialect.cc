@@ -46,7 +46,7 @@ struct ExecutorToControlDialectConversion
 // Replace all uses of value `v` with a list of new values. Because number of
 // new values might be greater than 1, users of `v` might be replaced with their
 // clones in case of non-resizable operands list.
-void ReplaceAllUsesOfValueWithValues(Value *v,
+void ReplaceAllUsesOfValueWithValues(ValuePtr v,
                                      Operation::operand_range new_values) {
   int new_values_size = std::distance(new_values.begin(), new_values.end());
   if (new_values_size == 1) {
@@ -58,9 +58,9 @@ void ReplaceAllUsesOfValueWithValues(Value *v,
   for (Operation *user : llvm::make_early_inc_range(v->getUsers())) {
     builder.setInsertionPoint(user);
 
-    llvm::SmallVector<Value *, 4> new_operands;
+    llvm::SmallVector<ValuePtr, 4> new_operands;
     new_operands.reserve(user->getNumOperands() - 1 + new_values_size);
-    for (Value *operand : user->getOperands()) {
+    for (ValuePtr operand : user->getOperands()) {
       if (operand == v) {
         new_operands.append(new_values.begin(), new_values.end());
       } else {
@@ -135,7 +135,7 @@ void ExecutorToControlDialectConversion::runOnFunction() {
     builder.setInsertionPoint(&op);
 
     if (auto island = dyn_cast<tf_executor::IslandOp>(op)) {
-      Value *ctl_sequence = nullptr;
+      ValuePtr ctl_sequence = nullptr;
       for (Operation &wrapped_op : island.GetBody()) {
         LLVM_DEBUG(llvm::dbgs()
                    << " In island: " << wrapped_op.getName() << "\n");
@@ -162,7 +162,7 @@ void ExecutorToControlDialectConversion::runOnFunction() {
         if (ctl_sequence) {
           state.operands.push_back(ctl_sequence);
         } else {
-          for (Value *ctl_operand : island.getOperands())
+          for (ValuePtr ctl_operand : island.getOperands())
             state.operands.push_back(ctl_operand);
         }
 
@@ -228,7 +228,7 @@ void ExecutorToControlDialectConversion::runOnFunction() {
     // dialect.
     auto non_null_operands = llvm::make_filter_range(
         op.getOperands(),
-        [](Value *v) { return !v->getType().isa<tf_executor::TokenType>(); });
+        [](ValuePtr v) { return !v->getType().isa<tf_executor::TokenType>(); });
     state.operands.append(non_null_operands.begin(), non_null_operands.end());
     for (Type result_type : op.getResultTypes()) {
       // Filter out TokenType, they don't exist in the control dialect.

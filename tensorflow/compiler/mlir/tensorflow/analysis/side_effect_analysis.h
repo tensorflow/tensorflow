@@ -42,12 +42,12 @@ class ResourceAliasAnalysis {
   ResourceAliasAnalysis(ResourceAliasAnalysis&&) = default;
 
   // Returns if the analysis fails to resolve a resource-type value.
-  bool IsUnknownResource(const Value* resource) const;
+  bool IsUnknownResource(const ValuePtr resource) const;
 
   // Returns the set unique IDs which `resource` could alias. Requires that
   // IsUnknownResource(resource) == true.
   const llvm::SmallSet<int64_t, 8>& GetResourceUniqueIds(
-      const Value* resource) const;
+      const ValuePtr resource) const;
 
  private:
   ResourceAliasAnalysis() = default;
@@ -56,7 +56,7 @@ class ResourceAliasAnalysis {
   void AnalyzeFunction(FuncOp func_op);
 
   // Maps each resource-type value to a set of unique IDs that it could alias.
-  llvm::SmallDenseMap<const Value*, llvm::SmallSet<int64_t, 8>, 8>
+  llvm::SmallDenseMap<ValuePtr, llvm::SmallSet<int64_t, 8>, 8>
       resource_value_to_ids_;
 };
 

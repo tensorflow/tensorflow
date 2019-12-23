@@ -48,10 +48,10 @@ class ExecutorConstantSinking
       // The sunk_constant map keeps a mapping from a ConstOp defined above to
       // a sunk clone of it. This allows for reusing a sunk constant with
       // multiple uses in the region.
-      llvm::DenseMap<Value *, TF::ConstOp> sunk_constant;
+      llvm::DenseMap<ValuePtr, TF::ConstOp> sunk_constant;
       Region &body = launch.body();
       visitUsedValuesDefinedAbove(body, [&](OpOperand *use) {
-        Value *constant = use->get();
+        ValuePtr constant = use->get();
         auto const_op =
             dyn_cast_or_null<TF::ConstOp>(constant->getDefiningOp());
         if (!const_op) return;
