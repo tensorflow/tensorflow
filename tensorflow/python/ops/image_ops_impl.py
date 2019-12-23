@@ -3035,11 +3035,9 @@ def yuv_to_rgb(images):
     images: tensor with the same shape as `images`.
 
   Usage Example:
-  ```python
   
-  >>> x = tf.random.normal(shape=(256, 256, 3))
-  >>> tf.image.yuv_to_rgb(x)
-  ```
+  x = tf.random.normal(shape=(256, 256, 3))
+  tf.image.yuv_to_rgb(x)
   """
   images = ops.convert_to_tensor(images, name='images')
   kernel = ops.convert_to_tensor(
