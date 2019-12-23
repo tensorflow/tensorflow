@@ -27,12 +27,18 @@ namespace tflite {
 namespace {
 
 static const uint8_t kAsymmetricUInt8Min = 0;
-static const uint8_t kAsymmetricUInt8Max = 255;
+static const uint8_t kAsymmetricUInt8Max = UINT8_MAX;
 static const uint8_t kSymmetricUInt8Min = 1;
-static const uint8_t kSymmetricUInt8Max = 255;
-static const int8_t kAsymmetricInt8Min = -128;
-static const int8_t kAsymmetricInt8Max = 127;
+static const uint8_t kSymmetricUInt8Max = UINT8_MAX;
+static const int8_t kAsymmetricInt8Min = INT8_MIN;
+static const int8_t kAsymmetricInt8Max = INT8_MAX;
 static const int kSymmetricInt8Scale = kAsymmetricInt8Max;
+
+static const int16_t kAsymmetricInt16Max = INT16_MAX;
+static const int kSymmetricInt16Scale = kAsymmetricInt16Max;
+
+static const int32_t kAsymmetricInt32Max = INT32_MAX;
+static const int kSymmetricInt32Scale = kAsymmetricInt32Max;
 
 }  // namespace
 
@@ -184,6 +190,47 @@ void SignedSymmetricQuantize(const float* values, TfLiteIntArray* dims,
     // Clamp: just in case some odd numeric offset.
     quantized_values[i] = fminf(kSymmetricInt8Scale,
                                 fmaxf(-kSymmetricInt8Scale, quantized_value));
+  }
+}
+
+void SignedSymmetricQuantize(const float* values, TfLiteIntArray* dims,
+                             int16_t* quantized_values, float* scaling_factor) {
+  int input_size = ElementCount(*dims);
+
+  float min = 0;
+  float max = 0;
+  for (int i = 0; i < input_size; i++) {
+    min = fminf(min, values[i]);
+    max = fmaxf(max, values[i]);
+  }
+  *scaling_factor = fmaxf(fabs(min), fabs(max)) / kSymmetricInt16Scale;
+  for (int i = 0; i < input_size; i++) {
+    const int32_t quantized_value =
+        static_cast<int32_t>(roundf(values[i] / *scaling_factor));
+    // Clamp: just in case some odd numeric offset.
+    quantized_values[i] = fminf(kSymmetricInt16Scale,
+                                fmaxf(-kSymmetricInt16Scale, quantized_value));
+  }
+}
+
+void SignedSymmetricQuantize(const float* values, TfLiteIntArray* dims,
+                             int32_t* quantized_values, float* scaling_factor) {
+  int input_size = ElementCount(*dims);
+
+  float min = 0;
+  float max = 0;
+  for (int i = 0; i < input_size; i++) {
+    min = fminf(min, values[i]);
+    max = fmaxf(max, values[i]);
+  }
+
+  *scaling_factor = fmaxf(fabs(min), fabs(max)) / kSymmetricInt32Scale;
+  for (int i = 0; i < input_size; i++) {
+    const int32_t quantized_value =
+        static_cast<int32_t>(roundf(values[i] / *scaling_factor));
+    // Clamp: just in case some odd numeric offset.
+    quantized_values[i] = fminf(kSymmetricInt32Scale,
+                                fmaxf(-kSymmetricInt32Scale, quantized_value));
   }
 }
 

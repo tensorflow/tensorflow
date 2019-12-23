@@ -28,7 +28,6 @@ from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import reduce_util
-from tensorflow.python.distribute import values
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
@@ -69,10 +68,8 @@ class _TestExtended(distribute_lib.StrategyExtendedV1):
 
   def __init__(self, distribute):
     super(_TestExtended, self).__init__(distribute)
-    device_map = values.ReplicaDeviceMap(["/device:CPU:0"])
     worker_device_pairs = [("", ["/device:CPU:0"])]
-    self._input_workers = input_lib.InputWorkers(device_map,
-                                                 worker_device_pairs)
+    self._input_workers = input_lib.InputWorkers(worker_device_pairs)
 
   def _call_for_each_replica(self, fn, args, kwargs):
     with _TestReplicaContext(

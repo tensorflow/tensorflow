@@ -79,7 +79,7 @@ class MultiOutputFusion : public HloModulePass {
   // Test if it's legal to fuse instr1 and instr2 into one fusion instruction.
   virtual bool LegalToFuse(HloInstruction* instr1, HloInstruction* instr2);
 
-  // Fuse HloInstrctuion instr1 and instr2 and return the fused instruction.
+  // Fuse HloInstruction instr1 and instr2 and return the fused instruction.
   // The other instruction is removed from its parent computation.
   virtual HloInstruction* Fuse(HloInstruction* instr1, HloInstruction* instr2);
 

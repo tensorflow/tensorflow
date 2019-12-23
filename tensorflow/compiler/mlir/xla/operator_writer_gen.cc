@@ -71,7 +71,7 @@ static void BuildOperator(const Operator& op, raw_ostream* output) {
       }
 
       // Otherwise, this is a varidiac operand list.
-      os << "    std::vector<xla::XlaOp> xla_arg_" << index << ";"
+      os << "    std::vector<xla::XlaOp> xla_arg_" << index << ";\n"
          << "    for (auto operand : xla_op.getODSOperands(" << operand_number++
          << "))\n      xla_arg_" << index
          << ".push_back(value_map[operand]);\n";
@@ -89,6 +89,13 @@ static void BuildOperator(const Operator& op, raw_ostream* output) {
   // in the dialect. For e.g., AddOp -> xla::Add method.
   StringRef op_name = op.getCppClassName();
   os << "    auto xla_result = xla::" << op_name.drop_back(2) << "(";
+
+  // If all operands are variadic, then pass the builder explicitly to xla
+  // client API call
+  if (op.getNumOperands() == op.getNumVariadicOperands()) {
+    os << "lowering_context.builder";
+    if (op.getNumArgs() != 0) os << ", ";
+  }
 
   // Emit each of the arguments.
   interleaveComma(llvm::seq<int>(0, op.getNumArgs()), os,

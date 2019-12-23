@@ -117,7 +117,7 @@ public:
   /// Emit errors if `noteLoc` is provided; this location is used to point
   /// to the operation containing the region, the actual error is reported at
   /// the operation with an offending use.
-  bool isIsolatedFromAbove(llvm::Optional<Location> noteLoc = llvm::None);
+  bool isIsolatedFromAbove(Optional<Location> noteLoc = llvm::None);
 
   /// Drop all operand uses from operations within this region, which is
   /// an essential step in breaking cyclic dependences between references when
@@ -150,7 +150,7 @@ public:
   /// depends on Graphviz to generate the graph.
   /// This function is defined in ViewRegionGraph and only works with that
   /// target linked.
-  void viewGraph(const llvm::Twine &regionName);
+  void viewGraph(const Twine &regionName);
   void viewGraph();
 
 private:
@@ -167,12 +167,11 @@ private:
 /// parameter.
 class RegionRange
     : public detail::indexed_accessor_range_base<
-          RegionRange,
-          llvm::PointerUnion<Region *, const std::unique_ptr<Region> *>,
+          RegionRange, PointerUnion<Region *, const std::unique_ptr<Region> *>,
           Region *, Region *, Region *> {
   /// The type representing the owner of this range. This is either a list of
   /// values, operands, or results.
-  using OwnerT = llvm::PointerUnion<Region *, const std::unique_ptr<Region> *>;
+  using OwnerT = PointerUnion<Region *, const std::unique_ptr<Region> *>;
 
 public:
   using RangeBaseT::RangeBaseT;

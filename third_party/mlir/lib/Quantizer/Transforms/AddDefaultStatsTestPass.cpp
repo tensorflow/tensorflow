@@ -74,7 +74,7 @@ void AddDefaultStatsPass::runWithConfig(SolverContext &solverContext,
   auto func = getFunction();
 
   // Insert stats for each argument.
-  for (auto *arg : func.getArguments()) {
+  for (auto arg : func.getArguments()) {
     if (!config.isHandledType(arg->getType()))
       continue;
     OpBuilder b(func.getBody());

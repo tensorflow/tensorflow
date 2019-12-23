@@ -318,7 +318,7 @@ static ParseResult parseRangeOp(OpAsmParser &parser, OperationState &result) {
 // SliceOp
 //===----------------------------------------------------------------------===//
 void mlir::linalg::SliceOp::build(Builder *b, OperationState &result,
-                                  Value *base, ValueRange indexings) {
+                                  ValuePtr base, ValueRange indexings) {
   result.addOperands(base);
   result.addOperands(indexings);
 
@@ -394,7 +394,7 @@ static LogicalResult verify(SliceOp op) {
 // TransposeOp
 //===----------------------------------------------------------------------===//
 void mlir::linalg::TransposeOp::build(Builder *b, OperationState &result,
-                                      Value *view, AffineMapAttr permutation,
+                                      ValuePtr view, AffineMapAttr permutation,
                                       ArrayRef<NamedAttribute> attrs) {
   auto permutationMap = permutation.getValue();
   assert(permutationMap);
@@ -507,12 +507,12 @@ static LogicalResult verify(YieldOp op) {
 
 /////// Operations corresponding to library calls defined with Tablegen ////////
 // For such operations correspond to library calls (i.e. defined in
-// LinalgLibraryOps.td), we define an overloaded `print` function and a
+// LinalgStructuredOps.td), we define an overloaded `print` function and a
 // parse`className` function.
 
-// A LinalgLibraryOp prints as:
+// A LinalgStructuredOp prints as:
 //
-// ```{.mlir}
+// ```mlir
 //   concrete_op_name (ssa-inputs, ssa-outputs) : view-types
 // ```
 //
@@ -526,15 +526,15 @@ static LogicalResult verify(YieldOp op) {
 // ```
 //
 // Where %0, %1 and %2 are ssa-values of type MemRefType with strides.
-static void printLinalgLibraryOp(OpAsmPrinter &p, Operation *op) {
+static void printLinalgStructuredOp(OpAsmPrinter &p, Operation *op) {
   assert(op->getAbstractOperation() && "unregistered operation");
   p << op->getName().getStringRef() << "(" << op->getOperands() << ")";
   p.printOptionalAttrDict(op->getAttrs());
   p << " : " << op->getOperandTypes();
 }
 
-static ParseResult parseLinalgLibraryOp(OpAsmParser &parser,
-                                        OperationState &result) {
+static ParseResult parseLinalgStructuredOp(OpAsmParser &parser,
+                                           OperationState &result) {
   SmallVector<OpAsmParser::OperandType, 3> ops;
   SmallVector<Type, 3> types;
   return failure(
@@ -621,18 +621,18 @@ static LogicalResult verify(ConvOp op) {
 namespace mlir {
 namespace linalg {
 
-#include "mlir/Dialect/Linalg/IR/LinalgLibraryOpInterfaces.cpp.inc"
+#include "mlir/Dialect/Linalg/IR/LinalgStructuredOpsInterfaces.cpp.inc"
 
 #define GET_OP_CLASSES
 #include "mlir/Dialect/Linalg/IR/LinalgOps.cpp.inc"
 
 #define GET_OP_CLASSES
-#include "mlir/Dialect/Linalg/IR/LinalgLibraryOps.cpp.inc"
+#include "mlir/Dialect/Linalg/IR/LinalgStructuredOps.cpp.inc"
 
 } // namespace linalg
 } // namespace mlir
 
-static AffineMap extractOrIdentityMap(llvm::Optional<AffineMap> maybeMap,
+static AffineMap extractOrIdentityMap(Optional<AffineMap> maybeMap,
                                       unsigned rank, MLIRContext *context) {
   if (maybeMap)
     return maybeMap.getValue();

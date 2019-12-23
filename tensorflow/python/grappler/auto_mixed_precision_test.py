@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import os
 import unittest
+
 import numpy as np
 
 from tensorflow.core.framework import types_pb2

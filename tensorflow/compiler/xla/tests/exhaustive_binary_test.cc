@@ -131,7 +131,7 @@ template <typename T, typename std::enable_if<
                           std::is_same<T, float>::value ||
                           std::is_same<T, double>::value>::type* = nullptr>
 T ReferenceMax(T x, T y) {
-  // We need to propagate NAN here becasue std::max may not propagate NAN.
+  // We need to propagate NAN here because std::max may not propagate NAN.
   if (std::fpclassify(x) == FP_NAN) {
     return x;
   }
@@ -146,7 +146,7 @@ template <typename T, typename std::enable_if<
                           std::is_same<T, float>::value ||
                           std::is_same<T, double>::value>::type* = nullptr>
 T ReferenceMin(T x, T y) {
-  // We need to propagate NAN here becasue std::max may not propagate NAN.
+  // We need to propagate NAN here because std::max may not propagate NAN.
   if (std::fpclassify(x) == FP_NAN) {
     return x;
   }
@@ -319,7 +319,7 @@ INSTANTIATE_TEST_SUITE_P(
 // for each sub-test to avoid timeout because the implementation of ExpectNear
 // more than 2x slower for binary test.
 INSTANTIATE_TEST_SUITE_P(
-    LargeAndSmallMagnituedNormalValues, ExhaustiveF32BinaryTest,
+    LargeAndSmallMagnitudeNormalValues, ExhaustiveF32BinaryTest,
     ::testing::Combine(
         ::testing::ValuesIn(GetFpValuesForMagnitudeExtremeNormals<float>(40000,
                                                                          2000)),
@@ -402,7 +402,7 @@ INSTANTIATE_TEST_SUITE_P(
 // Similar to ExhaustiveF64BinaryTest, we use a smaller set of inputs for each
 // for each sub-test comparing with the unary test to avoid timeout.
 INSTANTIATE_TEST_SUITE_P(
-    LargeAndSmallMagnituedNormalValues, ExhaustiveF64BinaryTest,
+    LargeAndSmallMagnitudeNormalValues, ExhaustiveF64BinaryTest,
     ::testing::Combine(
         ::testing::ValuesIn(
             GetFpValuesForMagnitudeExtremeNormals<double>(40000, 2000)),

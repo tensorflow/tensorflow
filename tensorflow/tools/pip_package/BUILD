@@ -45,6 +45,11 @@ py_binary(
     deps = ["//tensorflow:tensorflow_py"],
 )
 
+# Add dynamic kernel dso files here.
+DYNAMIC_LOADED_KERNELS = [
+    "//tensorflow/core/kernels:libtfkernel_sobol_op.so",
+]
+
 COMMON_PIP_DEPS = [
     ":licenses",
     "MANIFEST.in",
@@ -156,6 +161,7 @@ filegroup(
         "@com_google_protobuf//:LICENSE",
         "@six_archive//:LICENSE",
         "@snappy//:COPYING",
+        "@sobol_data//:LICENSE",
         "@swig//:LICENSE",
         "@termcolor_archive//:COPYING.txt",
         "@zlib_archive//:zlib.h",
@@ -223,6 +229,10 @@ sh_binary(
                "//conditions:default": [
                    ":simple_console",
                ],
+           }) +
+           select({
+               "//tensorflow:dynamic_loaded_kernels": DYNAMIC_LOADED_KERNELS,
+               "//conditions:default": [],
            }) + if_mkl_ml(["//third_party/mkl:intel_binary_blob"]),
 )
 

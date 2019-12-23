@@ -98,7 +98,7 @@ struct ImperfectlyNestedForLoopMapper
     // pass is only used for testing.
     FuncOp funcOp = getFunction();
     OpBuilder builder(funcOp.getOperation()->getRegion(0));
-    SmallVector<Value *, 3> numWorkGroupsVal, workGroupSizeVal;
+    SmallVector<ValuePtr, 3> numWorkGroupsVal, workGroupSizeVal;
     for (auto val : numWorkGroups) {
       auto constOp = builder.create<ConstantOp>(
           funcOp.getLoc(), builder.getIntegerAttr(builder.getIndexType(), val));

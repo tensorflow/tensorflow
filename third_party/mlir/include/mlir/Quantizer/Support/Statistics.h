@@ -85,8 +85,7 @@ private:
   Attribute attr;
 };
 
-llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
-                              const TensorAxisStatistics &stats);
+raw_ostream &operator<<(raw_ostream &os, const TensorAxisStatistics &stats);
 
 } // end namespace quantizer
 } // end namespace mlir

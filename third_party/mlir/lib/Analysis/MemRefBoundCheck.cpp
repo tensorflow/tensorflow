@@ -20,6 +20,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/ADT/TypeSwitch.h"
 #include "mlir/Analysis/AffineAnalysis.h"
 #include "mlir/Analysis/AffineStructures.h"
 #include "mlir/Analysis/Passes.h"
@@ -49,11 +50,9 @@ std::unique_ptr<OpPassBase<FuncOp>> mlir::createMemRefBoundCheckPass() {
 
 void MemRefBoundCheck::runOnFunction() {
   getFunction().walk([](Operation *opInst) {
-    if (auto loadOp = dyn_cast<AffineLoadOp>(opInst)) {
-      boundCheckLoadOrStoreOp(loadOp);
-    } else if (auto storeOp = dyn_cast<AffineStoreOp>(opInst)) {
-      boundCheckLoadOrStoreOp(storeOp);
-    }
+    TypeSwitch<Operation *>(opInst).Case<AffineLoadOp, AffineStoreOp>(
+        [](auto op) { boundCheckLoadOrStoreOp(op); });
+
     // TODO(bondhugula): do this for DMA ops as well.
   });
 }

@@ -23,7 +23,7 @@ using namespace mlir;
 /// If this value is the result of an Operation, return the operation that
 /// defines it.
 Operation *Value::getDefiningOp() {
-  if (auto *result = dyn_cast<OpResult>(this))
+  if (auto *result = dyn_cast<OpResult>())
     return result->getOwner();
   return nullptr;
 }
@@ -38,7 +38,7 @@ Location Value::getLoc() {
 Region *Value::getParentRegion() {
   if (auto *op = getDefiningOp())
     return op->getParentRegion();
-  return cast<BlockArgument>(this)->getOwner()->getParent();
+  return cast<BlockArgument>()->getOwner()->getParent();
 }
 
 //===----------------------------------------------------------------------===//

@@ -457,7 +457,7 @@ TEST_P(IndirectUseTest, IndirectUseNotRematerialized) {
   //   F32[1024] %call = call(Subcomputation, {%add_1})
   //   F32[1024] %add_2 = add(%bcast, call)
   //   {F32[1024], F32[1024]} %tuple = tuple(%bcast, %add_2)
-  //   F32[1024] %gte = GetTupleElememt(%tuple, 0)
+  //   F32[1024] %gte = GetTupleElement(%tuple, 0)
   //   F32[1024] %negate = negate(%gte)
   //
   // Subcomputation:

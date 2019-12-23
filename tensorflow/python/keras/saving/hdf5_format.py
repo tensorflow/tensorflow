@@ -804,8 +804,7 @@ def save_attributes_to_hdf5_group(group, name, data):
   if bad_attributes:
     raise RuntimeError('The following attributes cannot be saved to HDF5 '
                        'file because they are larger than %d bytes: %s' %
-                       (HDF5_OBJECT_HEADER_LIMIT,
-                        ', '.join([x for x in bad_attributes])))
+                       (HDF5_OBJECT_HEADER_LIMIT, ', '.join(bad_attributes)))
 
   data_npy = np.asarray(data)
 

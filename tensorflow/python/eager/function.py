@@ -32,8 +32,9 @@ from six.moves import map
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import pywrap_tfe
 from tensorflow.python import _pywrap_utils
+from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import context
@@ -1098,7 +1099,7 @@ class _TapeGradientFunctions(object):
           forward_function.signature.name,
           forward_outputs, forward_inputs, py_backward, None)
       output_indices, output_tangents = (
-          pywrap_tensorflow.TFE_Py_PackJVPs(forward_outputs))
+          pywrap_tfe.TFE_Py_PackJVPs(forward_outputs))
       output_tangents = [forward_wrapper_graph.capture(t)
                          for t in output_tangents]
     return _ForwardWrapper(
@@ -1732,7 +1733,7 @@ class ConcreteFunction(object):
                          "Tensor." % (self._func_graph.name, i, str(arg)))
     args = tensor_inputs + captured_inputs
     possible_gradient_type = (
-        pywrap_tensorflow.TFE_Py_TapeSetPossibleGradientTypes(args))
+        pywrap_tfe.TFE_Py_TapeSetPossibleGradientTypes(args))
     if (possible_gradient_type == _POSSIBLE_GRADIENT_TYPES_NONE
         and executing_eagerly):
       # No tape is watching; skip to running the function.
@@ -2251,10 +2252,9 @@ def _convert_inputs_to_signature(inputs, input_signature, flat_input_signature):
   """Convert inputs to pass into a function with an explicit signature."""
 
   def format_error_message(inputs, input_signature):
-    return ("  inputs: (\n" + "    " +
-            ",\n    ".join([str(i) for i in inputs]) + ")\n" +
-            "  input_signature: (\n" + "    " +
-            ",\n    ".join([str(i) for i in input_signature]) + ")")
+    return ("  inputs: (\n" + "    " + ",\n    ".join(str(i) for i in inputs) +
+            ")\n" + "  input_signature: (\n" + "    " +
+            ",\n    ".join(str(i) for i in input_signature) + ")")
 
   try:
     # TODO(b/124370185): Use all elements as inputs to throw an error if there
@@ -2553,8 +2553,8 @@ class Function(object):
     """Computes the cache key given inputs and execution context."""
     if self.input_signature is None:
       inputs = (args, kwargs) if kwargs else args
-      input_signature = pywrap_tensorflow.TFE_Py_EncodeArg(
-          inputs, include_tensor_ranks_only)
+      input_signature = pywrap_tfe.TFE_Py_EncodeArg(inputs,
+                                                    include_tensor_ranks_only)
     else:
       del args, kwargs
       assert not include_tensor_ranks_only
@@ -3275,7 +3275,8 @@ def class_method_to_instance_method(original_function, instance):
       tf_decorator.make_decorator(bound_method, bound_method_wrapper),
       name=original_function._name,
       autograph=original_function._autograph,
-      input_signature=original_function.input_signature)
+      input_signature=original_function.input_signature,
+      experimental_relax_shapes=original_function._experimental_relax_shapes)
   # pylint: enable=protected-access
 
   # And we wrap the function with tf_decorator so inspection works correctly

@@ -66,10 +66,10 @@ public:
   /// before it is replaced. 'processGeneratedConstants' is invoked for any new
   /// operations generated when folding. If the op was completely folded it is
   /// erased.
-  LogicalResult tryToFold(
-      Operation *op,
-      llvm::function_ref<void(Operation *)> processGeneratedConstants = nullptr,
-      llvm::function_ref<void(Operation *)> preReplaceAction = nullptr);
+  LogicalResult
+  tryToFold(Operation *op,
+            function_ref<void(Operation *)> processGeneratedConstants = nullptr,
+            function_ref<void(Operation *)> preReplaceAction = nullptr);
 
   /// Notifies that the given constant `op` should be remove from this
   /// OperationFolder's internal bookkeeping.
@@ -82,7 +82,7 @@ public:
   /// and immediately try to fold it. This function populates 'results' with
   /// the results after folding the operation.
   template <typename OpTy, typename... Args>
-  void create(OpBuilder &builder, SmallVectorImpl<Value *> &results,
+  void create(OpBuilder &builder, SmallVectorImpl<ValuePtr> &results,
               Location location, Args &&... args) {
     Operation *op = builder.create<OpTy>(location, std::forward<Args>(args)...);
     if (failed(tryToFold(op, results)))
@@ -94,9 +94,9 @@ public:
   /// Overload to create or fold a single result operation.
   template <typename OpTy, typename... Args>
   typename std::enable_if<OpTy::template hasTrait<OpTrait::OneResult>(),
-                          Value *>::type
+                          ValuePtr>::type
   create(OpBuilder &builder, Location location, Args &&... args) {
-    SmallVector<Value *, 1> results;
+    SmallVector<ValuePtr, 1> results;
     create<OpTy>(builder, results, location, std::forward<Args>(args)...);
     return results.front();
   }
@@ -107,7 +107,7 @@ public:
                           OpTy>::type
   create(OpBuilder &builder, Location location, Args &&... args) {
     auto op = builder.create<OpTy>(location, std::forward<Args>(args)...);
-    SmallVector<Value *, 0> unused;
+    SmallVector<ValuePtr, 0> unused;
     (void)tryToFold(op.getOperation(), unused);
 
     // Folding cannot remove a zero-result operation, so for convenience we
@@ -125,9 +125,9 @@ private:
 
   /// Tries to perform folding on the given `op`. If successful, populates
   /// `results` with the results of the folding.
-  LogicalResult tryToFold(Operation *op, SmallVectorImpl<Value *> &results,
-                          llvm::function_ref<void(Operation *)>
-                              processGeneratedConstants = nullptr);
+  LogicalResult tryToFold(
+      Operation *op, SmallVectorImpl<ValuePtr> &results,
+      function_ref<void(Operation *)> processGeneratedConstants = nullptr);
 
   /// Try to get or create a new constant entry. On success this returns the
   /// constant operation, nullptr otherwise.

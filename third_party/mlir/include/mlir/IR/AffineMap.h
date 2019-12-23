@@ -180,27 +180,27 @@ AffineMap simplifyAffineMap(AffineMap map);
 ///
 /// Example 1:
 ///
-/// ```{.mlir}
+/// ```mlir
 ///    (d0, d1, d2) -> (d1, d1, d0, d2, d1, d2, d1, d0)
 ///                      0       2   3
 /// ```
 ///
 /// returns:
 ///
-/// ```{.mlir}
+/// ```mlir
 ///    (d0, d1, d2, d3, d4, d5, d6, d7) -> (d2, d0, d3)
 /// ```
 ///
 /// Example 2:
 ///
-/// ```{.mlir}
+/// ```mlir
 ///    (d0, d1, d2) -> (d1, d0 + d1, d0, d2, d1, d2, d1, d0)
 ///                      0            2   3
 /// ```
 ///
 /// returns:
 ///
-/// ```{.mlir}
+/// ```mlir
 ///    (d0, d1, d2, d3, d4, d5, d6, d7) -> (d2, d0, d3)
 /// ```
 AffineMap inversePermutation(AffineMap map);
@@ -214,7 +214,7 @@ AffineMap inversePermutation(AffineMap map);
 /// Example:
 /// When applied to the following list of 3 affine maps,
 ///
-/// ```{.mlir}
+/// ```mlir
 ///    {
 ///      (i, j, k) -> (i, k),
 ///      (i, j, k) -> (k, j),
@@ -224,10 +224,10 @@ AffineMap inversePermutation(AffineMap map);
 ///
 /// Returns the map:
 ///
-/// ```{.mlir}
+/// ```mlir
 ///     (i, j, k) -> (i, k, k, j, i, j)
 /// ```
-AffineMap concatAffineMaps(llvm::ArrayRef<AffineMap> maps);
+AffineMap concatAffineMaps(ArrayRef<AffineMap> maps);
 
 inline raw_ostream &operator<<(raw_ostream &os, AffineMap map) {
   map.print(os);

@@ -349,7 +349,7 @@ public:
   /// Parse an AffineMap where the dim and symbol identifiers are SSA ids.
   ParseResult
   parseAffineMapOfSSAIds(AffineMap &map,
-                         llvm::function_ref<ParseResult(bool)> parseElement);
+                         function_ref<ParseResult(bool)> parseElement);
 
 private:
   /// The Parser is subclassed and reinstantiated.  Do not add additional
@@ -832,7 +832,7 @@ static Symbol parseExtendedSymbol(Parser &p, Token::Kind identifierTok,
 /// parsing failed, nullptr is returned. The number of bytes read from the input
 /// string is returned in 'numRead'.
 template <typename T, typename ParserFn>
-static T parseSymbol(llvm::StringRef inputStr, MLIRContext *context,
+static T parseSymbol(StringRef inputStr, MLIRContext *context,
                      SymbolState &symbolState, ParserFn &&parserFn,
                      size_t *numRead = nullptr) {
   SourceMgr sourceMgr;
@@ -1866,7 +1866,7 @@ private:
   ///   parseList([[1, 2], [3, 4]]) -> Success, [2, 2]
   ///   parseList([[1, 2], 3]) -> Failure
   ///   parseList([[1, [2, 3]], [4, [5]]]) -> Failure
-  ParseResult parseList(llvm::SmallVectorImpl<int64_t> &dims);
+  ParseResult parseList(SmallVectorImpl<int64_t> &dims);
 
   Parser &p;
 
@@ -1877,7 +1877,7 @@ private:
   std::vector<std::pair<bool, Token>> storage;
 
   /// A flag that indicates the type of elements that have been parsed.
-  llvm::Optional<ElementKind> knownEltKind;
+  Optional<ElementKind> knownEltKind;
 };
 } // namespace
 
@@ -2032,13 +2032,11 @@ ParseResult TensorLiteralParser::parseElement() {
 ///   parseList([[1, 2], [3, 4]]) -> Success, [2, 2]
 ///   parseList([[1, 2], 3]) -> Failure
 ///   parseList([[1, [2, 3]], [4, [5]]]) -> Failure
-ParseResult
-TensorLiteralParser::parseList(llvm::SmallVectorImpl<int64_t> &dims) {
+ParseResult TensorLiteralParser::parseList(SmallVectorImpl<int64_t> &dims) {
   p.consumeToken(Token::l_square);
 
-  auto checkDims =
-      [&](const llvm::SmallVectorImpl<int64_t> &prevDims,
-          const llvm::SmallVectorImpl<int64_t> &newDims) -> ParseResult {
+  auto checkDims = [&](const SmallVectorImpl<int64_t> &prevDims,
+                       const SmallVectorImpl<int64_t> &newDims) -> ParseResult {
     if (prevDims == newDims)
       return success();
     return p.emitError("tensor literal is invalid; ranks are not consistent "
@@ -2046,10 +2044,10 @@ TensorLiteralParser::parseList(llvm::SmallVectorImpl<int64_t> &dims) {
   };
 
   bool first = true;
-  llvm::SmallVector<int64_t, 4> newDims;
+  SmallVector<int64_t, 4> newDims;
   unsigned size = 0;
   auto parseCommaSeparatedList = [&]() -> ParseResult {
-    llvm::SmallVector<int64_t, 4> thisDims;
+    SmallVector<int64_t, 4> thisDims;
     if (p.getToken().getKind() == Token::l_square) {
       if (parseList(thisDims))
         return failure();
@@ -2275,7 +2273,7 @@ ParseResult Parser::parseFusedLocation(LocationAttr &loc) {
       return failure();
   }
 
-  llvm::SmallVector<Location, 4> locations;
+  SmallVector<Location, 4> locations;
   auto parseElt = [&] {
     LocationAttr newLoc;
     if (parseLocationInstance(newLoc))
@@ -2411,7 +2409,7 @@ namespace {
 class AffineParser : public Parser {
 public:
   AffineParser(ParserState &state, bool allowParsingSSAIds = false,
-               llvm::function_ref<ParseResult(bool)> parseElement = nullptr)
+               function_ref<ParseResult(bool)> parseElement = nullptr)
       : Parser(state), allowParsingSSAIds(allowParsingSSAIds),
         parseElement(parseElement), numDimOperands(0), numSymbolOperands(0) {}
 
@@ -2454,7 +2452,7 @@ private:
 
 private:
   bool allowParsingSSAIds;
-  llvm::function_ref<ParseResult(bool)> parseElement;
+  function_ref<ParseResult(bool)> parseElement;
   unsigned numDimOperands;
   unsigned numSymbolOperands;
   SmallVector<std::pair<StringRef, AffineExpr>, 4> dimsAndSymbols;
@@ -3048,8 +3046,9 @@ ParseResult Parser::parseAffineMapOrIntegerSetReference(AffineMap &map,
 
 /// Parse an AffineMap of SSA ids. The callback 'parseElement' is used to
 /// parse SSA value uses encountered while parsing affine expressions.
-ParseResult Parser::parseAffineMapOfSSAIds(
-    AffineMap &map, llvm::function_ref<ParseResult(bool)> parseElement) {
+ParseResult
+Parser::parseAffineMapOfSSAIds(AffineMap &map,
+                               function_ref<ParseResult(bool)> parseElement) {
   return AffineParser(state, /*allowParsingSSAIds=*/true, parseElement)
       .parseAffineMapOfSSAIds(map);
 }
@@ -3094,7 +3093,7 @@ public:
   ParseResult popSSANameScope();
 
   /// Register a definition of a value with the symbol table.
-  ParseResult addDefinition(SSAUseInfo useInfo, Value *value);
+  ParseResult addDefinition(SSAUseInfo useInfo, ValuePtr value);
 
   /// Parse an optional list of SSA uses into 'results'.
   ParseResult parseOptionalSSAUseList(SmallVectorImpl<SSAUseInfo> &results);
@@ -3104,16 +3103,17 @@ public:
 
   /// Given a reference to an SSA value and its type, return a reference. This
   /// returns null on failure.
-  Value *resolveSSAUse(SSAUseInfo useInfo, Type type);
+  ValuePtr resolveSSAUse(SSAUseInfo useInfo, Type type);
 
   ParseResult parseSSADefOrUseAndType(
       const std::function<ParseResult(SSAUseInfo, Type)> &action);
 
-  ParseResult parseOptionalSSAUseAndTypeList(SmallVectorImpl<Value *> &results);
+  ParseResult
+  parseOptionalSSAUseAndTypeList(SmallVectorImpl<ValuePtr> &results);
 
   /// Return the location of the value identified by its name and number if it
   /// has been already reference.
-  llvm::Optional<SMLoc> getReferenceLoc(StringRef name, unsigned number) {
+  Optional<SMLoc> getReferenceLoc(StringRef name, unsigned number) {
     auto &values = isolatedNameScopes.back().values;
     if (!values.count(name) || number >= values[name].size())
       return {};
@@ -3131,12 +3131,12 @@ public:
 
   /// Parse a single operation successor and its operand list.
   ParseResult parseSuccessorAndUseList(Block *&dest,
-                                       SmallVectorImpl<Value *> &operands);
+                                       SmallVectorImpl<ValuePtr> &operands);
 
   /// Parse a comma-separated list of operation successors in brackets.
   ParseResult
   parseSuccessors(SmallVectorImpl<Block *> &destinations,
-                  SmallVectorImpl<SmallVector<Value *, 4>> &operands);
+                  SmallVectorImpl<SmallVector<ValuePtr, 4>> &operands);
 
   /// Parse an operation instance that is in the generic form.
   Operation *parseGenericOperation();
@@ -3175,7 +3175,7 @@ public:
 
   /// Parse a (possibly empty) list of block arguments.
   ParseResult
-  parseOptionalBlockArgList(SmallVectorImpl<BlockArgument *> &results,
+  parseOptionalBlockArgList(SmallVectorImpl<BlockArgumentPtr> &results,
                             Block *owner);
 
   /// Get the block with the specified name, creating it if it doesn't
@@ -3205,14 +3205,14 @@ private:
   void recordDefinition(StringRef def);
 
   /// Get the value entry for the given SSA name.
-  SmallVectorImpl<std::pair<Value *, SMLoc>> &getSSAValueEntry(StringRef name);
+  SmallVectorImpl<std::pair<ValuePtr, SMLoc>> &getSSAValueEntry(StringRef name);
 
   /// Create a forward reference placeholder value with the given location and
   /// result type.
-  Value *createForwardRefPlaceholder(SMLoc loc, Type type);
+  ValuePtr createForwardRefPlaceholder(SMLoc loc, Type type);
 
   /// Return true if this is a forward reference.
-  bool isForwardRefPlaceholder(Value *value) {
+  bool isForwardRefPlaceholder(ValuePtr value) {
     return forwardRefPlaceholders.count(value);
   }
 
@@ -3237,7 +3237,7 @@ private:
 
     /// This keeps track of all of the SSA values we are tracking for each name
     /// scope, indexed by their name. This has one entry per result number.
-    llvm::StringMap<SmallVector<std::pair<Value *, SMLoc>, 1>> values;
+    llvm::StringMap<SmallVector<std::pair<ValuePtr, SMLoc>, 1>> values;
 
     /// This keeps track of all of the values defined by a specific name scope.
     SmallVector<llvm::StringSet<>, 2> definitionsPerScope;
@@ -3254,7 +3254,7 @@ private:
 
   /// These are all of the placeholders we've made along with the location of
   /// their first reference, to allow checking for use of undefined values.
-  DenseMap<Value *, SMLoc> forwardRefPlaceholders;
+  DenseMap<ValuePtr, SMLoc> forwardRefPlaceholders;
 
   /// The builder used when creating parsed operation instances.
   OpBuilder opBuilder;
@@ -3279,7 +3279,7 @@ ParseResult OperationParser::finalize() {
   // Check for any forward references that are left.  If we find any, error
   // out.
   if (!forwardRefPlaceholders.empty()) {
-    SmallVector<std::pair<const char *, Value *>, 4> errors;
+    SmallVector<std::pair<const char *, ValuePtr>, 4> errors;
     // Iteration over the map isn't deterministic, so sort by source location.
     for (auto entry : forwardRefPlaceholders)
       errors.push_back({entry.second.getPointer(), entry.first});
@@ -3343,7 +3343,7 @@ ParseResult OperationParser::popSSANameScope() {
 }
 
 /// Register a definition of a value with the symbol table.
-ParseResult OperationParser::addDefinition(SSAUseInfo useInfo, Value *value) {
+ParseResult OperationParser::addDefinition(SSAUseInfo useInfo, ValuePtr value) {
   auto &entries = getSSAValueEntry(useInfo.name);
 
   // Make sure there is a slot for this value.
@@ -3352,7 +3352,7 @@ ParseResult OperationParser::addDefinition(SSAUseInfo useInfo, Value *value) {
 
   // If we already have an entry for this, check to see if it was a definition
   // or a forward reference.
-  if (auto *existing = entries[useInfo.number].first) {
+  if (auto existing = entries[useInfo.number].first) {
     if (!isForwardRefPlaceholder(existing)) {
       return emitError(useInfo.loc)
           .append("redefinition of SSA value '", useInfo.name, "'")
@@ -3417,12 +3417,12 @@ ParseResult OperationParser::parseSSAUse(SSAUseInfo &result) {
 
 /// Given an unbound reference to an SSA value and its type, return the value
 /// it specifies.  This returns null on failure.
-Value *OperationParser::resolveSSAUse(SSAUseInfo useInfo, Type type) {
+ValuePtr OperationParser::resolveSSAUse(SSAUseInfo useInfo, Type type) {
   auto &entries = getSSAValueEntry(useInfo.name);
 
   // If we have already seen a value of this name, return it.
   if (useInfo.number < entries.size() && entries[useInfo.number].first) {
-    auto *result = entries[useInfo.number].first;
+    auto result = entries[useInfo.number].first;
     // Check that the type matches the other uses.
     if (result->getType() == type)
       return result;
@@ -3448,7 +3448,7 @@ Value *OperationParser::resolveSSAUse(SSAUseInfo useInfo, Type type) {
 
   // Otherwise, this is a forward reference.  Create a placeholder and remember
   // that we did so.
-  auto *result = createForwardRefPlaceholder(useInfo.loc, type);
+  auto result = createForwardRefPlaceholder(useInfo.loc, type);
   entries[useInfo.number].first = result;
   entries[useInfo.number].second = useInfo.loc;
   return result;
@@ -3478,7 +3478,7 @@ ParseResult OperationParser::parseSSADefOrUseAndType(
 ///     ::= ssa-use-list ':' type-list-no-parens
 ///
 ParseResult OperationParser::parseOptionalSSAUseAndTypeList(
-    SmallVectorImpl<Value *> &results) {
+    SmallVectorImpl<ValuePtr> &results) {
   SmallVector<SSAUseInfo, 4> valueIDs;
   if (parseOptionalSSAUseList(valueIDs))
     return failure();
@@ -3498,7 +3498,7 @@ ParseResult OperationParser::parseOptionalSSAUseAndTypeList(
 
   results.reserve(valueIDs.size());
   for (unsigned i = 0, e = valueIDs.size(); i != e; ++i) {
-    if (auto *value = resolveSSAUse(valueIDs[i], types[i]))
+    if (auto value = resolveSSAUse(valueIDs[i], types[i]))
       results.push_back(value);
     else
       return failure();
@@ -3513,13 +3513,13 @@ void OperationParser::recordDefinition(StringRef def) {
 }
 
 /// Get the value entry for the given SSA name.
-SmallVectorImpl<std::pair<Value *, SMLoc>> &
+SmallVectorImpl<std::pair<ValuePtr, SMLoc>> &
 OperationParser::getSSAValueEntry(StringRef name) {
   return isolatedNameScopes.back().values[name];
 }
 
 /// Create and remember a new placeholder for a forward reference.
-Value *OperationParser::createForwardRefPlaceholder(SMLoc loc, Type type) {
+ValuePtr OperationParser::createForwardRefPlaceholder(SMLoc loc, Type type) {
   // Forward references are always created as operations, because we just need
   // something with a def/use chain.
   //
@@ -3633,7 +3633,7 @@ ParseResult OperationParser::parseOperation() {
 ///
 ParseResult
 OperationParser::parseSuccessorAndUseList(Block *&dest,
-                                          SmallVectorImpl<Value *> &operands) {
+                                          SmallVectorImpl<ValuePtr> &operands) {
   // Verify branch is identifier and get the matching block.
   if (!getToken().is(Token::caret_identifier))
     return emitError("expected block name");
@@ -3656,13 +3656,13 @@ OperationParser::parseSuccessorAndUseList(Block *&dest,
 ///
 ParseResult OperationParser::parseSuccessors(
     SmallVectorImpl<Block *> &destinations,
-    SmallVectorImpl<SmallVector<Value *, 4>> &operands) {
+    SmallVectorImpl<SmallVector<ValuePtr, 4>> &operands) {
   if (parseToken(Token::l_square, "expected '['"))
     return failure();
 
   auto parseElt = [this, &destinations, &operands]() {
     Block *dest;
-    SmallVector<Value *, 4> destOperands;
+    SmallVector<ValuePtr, 4> destOperands;
     auto res = parseSuccessorAndUseList(dest, destOperands);
     destinations.push_back(dest);
     operands.push_back(destOperands);
@@ -3719,7 +3719,7 @@ Operation *OperationParser::parseGenericOperation() {
   // Parse the successor list but don't add successors to the result yet to
   // avoid messing up with the argument order.
   SmallVector<Block *, 2> successors;
-  SmallVector<SmallVector<Value *, 4>, 2> successorOperands;
+  SmallVector<SmallVector<ValuePtr, 4>, 2> successorOperands;
   if (getToken().is(Token::l_square)) {
     // Check if the operation is a known terminator.
     const AbstractOperation *abstractOp = result.name.getAbstractOperation();
@@ -3780,7 +3780,7 @@ Operation *OperationParser::parseGenericOperation() {
   // Add the successors, and their operands after the proper operands.
   for (const auto &succ : llvm::zip(successors, successorOperands)) {
     Block *successor = std::get<0>(succ);
-    const SmallVector<Value *, 4> &operands = std::get<1>(succ);
+    const SmallVector<ValuePtr, 4> &operands = std::get<1>(succ);
     result.addSuccessor(successor, operands);
   }
 
@@ -3882,6 +3882,16 @@ public:
   /// Parse a `=` token.
   ParseResult parseEqual() override {
     return parser.parseToken(Token::equal, "expected '='");
+  }
+
+  /// Parse a '<' token.
+  ParseResult parseLess() override {
+    return parser.parseToken(Token::less, "expected '<'");
+  }
+
+  /// Parse a '>' token.
+  ParseResult parseGreater() override {
+    return parser.parseToken(Token::greater, "expected '>'");
   }
 
   /// Parse a `(` token.
@@ -4120,10 +4130,10 @@ public:
 
   /// Resolve an operand to an SSA value, emitting an error on failure.
   ParseResult resolveOperand(const OperandType &operand, Type type,
-                             SmallVectorImpl<Value *> &result) override {
+                             SmallVectorImpl<ValuePtr> &result) override {
     OperationParser::SSAUseInfo operandInfo = {operand.name, operand.number,
                                                operand.location};
-    if (auto *value = parser.resolveSSAUse(operandInfo, type)) {
+    if (auto value = parser.resolveSSAUse(operandInfo, type)) {
       result.push_back(value);
       return success();
     }
@@ -4233,7 +4243,7 @@ public:
   /// Parse a single operation successor and its operand list.
   ParseResult
   parseSuccessorAndUseList(Block *&dest,
-                           SmallVectorImpl<Value *> &operands) override {
+                           SmallVectorImpl<ValuePtr> &operands) override {
     return parser.parseSuccessorAndUseList(dest, operands);
   }
 
@@ -4461,7 +4471,7 @@ ParseResult OperationParser::parseBlock(Block *&block) {
 
   // If an argument list is present, parse it.
   if (consumeIf(Token::l_paren)) {
-    SmallVector<BlockArgument *, 8> bbArgs;
+    SmallVector<BlockArgumentPtr, 8> bbArgs;
     if (parseOptionalBlockArgList(bbArgs, block) ||
         parseToken(Token::r_paren, "expected ')' to end argument list"))
       return failure();
@@ -4525,7 +4535,7 @@ Block *OperationParser::defineBlockNamed(StringRef name, SMLoc loc,
 ///   ssa-id-and-type-list ::= ssa-id-and-type (`,` ssa-id-and-type)*
 ///
 ParseResult OperationParser::parseOptionalBlockArgList(
-    SmallVectorImpl<BlockArgument *> &results, Block *owner) {
+    SmallVectorImpl<BlockArgumentPtr> &results, Block *owner) {
   if (getToken().is(Token::r_brace))
     return success();
 
@@ -4546,7 +4556,7 @@ ParseResult OperationParser::parseOptionalBlockArgList(
             return emitError("too many arguments specified in argument list");
 
           // Finally, make sure the existing argument has the correct type.
-          auto *arg = owner->getArgument(nextArgument++);
+          auto arg = owner->getArgument(nextArgument++);
           if (arg->getType() != type)
             return emitError("argument and block argument type mismatch");
           return addDefinition(useInfo, arg);
@@ -4781,8 +4791,8 @@ OwningModuleRef mlir::parseSourceString(StringRef moduleStr,
 /// parsing failed, nullptr is returned. The number of bytes read from the input
 /// string is returned in 'numRead'.
 template <typename T, typename ParserFn>
-static T parseSymbol(llvm::StringRef inputStr, MLIRContext *context,
-                     size_t &numRead, ParserFn &&parserFn) {
+static T parseSymbol(StringRef inputStr, MLIRContext *context, size_t &numRead,
+                     ParserFn &&parserFn) {
   SymbolState aliasState;
   return parseSymbol<T>(
       inputStr, context, aliasState,
@@ -4795,35 +4805,33 @@ static T parseSymbol(llvm::StringRef inputStr, MLIRContext *context,
       &numRead);
 }
 
-Attribute mlir::parseAttribute(llvm::StringRef attrStr, MLIRContext *context) {
+Attribute mlir::parseAttribute(StringRef attrStr, MLIRContext *context) {
   size_t numRead = 0;
   return parseAttribute(attrStr, context, numRead);
 }
-Attribute mlir::parseAttribute(llvm::StringRef attrStr, Type type) {
+Attribute mlir::parseAttribute(StringRef attrStr, Type type) {
   size_t numRead = 0;
   return parseAttribute(attrStr, type, numRead);
 }
 
-Attribute mlir::parseAttribute(llvm::StringRef attrStr, MLIRContext *context,
+Attribute mlir::parseAttribute(StringRef attrStr, MLIRContext *context,
                                size_t &numRead) {
   return parseSymbol<Attribute>(attrStr, context, numRead, [](Parser &parser) {
     return parser.parseAttribute();
   });
 }
-Attribute mlir::parseAttribute(llvm::StringRef attrStr, Type type,
-                               size_t &numRead) {
+Attribute mlir::parseAttribute(StringRef attrStr, Type type, size_t &numRead) {
   return parseSymbol<Attribute>(
       attrStr, type.getContext(), numRead,
       [type](Parser &parser) { return parser.parseAttribute(type); });
 }
 
-Type mlir::parseType(llvm::StringRef typeStr, MLIRContext *context) {
+Type mlir::parseType(StringRef typeStr, MLIRContext *context) {
   size_t numRead = 0;
   return parseType(typeStr, context, numRead);
 }
 
-Type mlir::parseType(llvm::StringRef typeStr, MLIRContext *context,
-                     size_t &numRead) {
+Type mlir::parseType(StringRef typeStr, MLIRContext *context, size_t &numRead) {
   return parseSymbol<Type>(typeStr, context, numRead,
                            [](Parser &parser) { return parser.parseType(); });
 }

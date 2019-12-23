@@ -38,15 +38,15 @@ struct LinalgTransforms {
 namespace detail {
 // Implementation detail of isProducedByOpOfType avoids the need for explicit
 // template instantiations.
-bool isProducedByOpOfTypeImpl(Operation *consumerOp, Value *consumedView,
-                              llvm::function_ref<bool(Operation *)> isaOpType);
+bool isProducedByOpOfTypeImpl(Operation *consumerOp, ValuePtr consumedView,
+                              function_ref<bool(Operation *)> isaOpType);
 } // namespace detail
 
 // Returns true if the `consumedView` value use in `consumerOp` is produced by
 // an op of type `OpTy`. This is used to implement use-def type information on
 // buffers.
 template <typename OpTy>
-bool isProducedByOpOfType(Operation *consumerOp, Value *consumedView) {
+bool isProducedByOpOfType(Operation *consumerOp, ValuePtr consumedView) {
   return detail::isProducedByOpOfTypeImpl(
       consumerOp, consumedView, [](Operation *op) { return isa<OpTy>(op); });
 }
@@ -95,6 +95,10 @@ LogicalResult vectorizeGenericOp(PatternRewriter &rewriter, Operation *op);
 LogicalResult permuteGenericLinalgOp(PatternRewriter &rewriter, Operation *op,
                                      ArrayRef<unsigned> permutation,
                                      StringRef linalgMarker);
+
+/// Promote std.subviews feeding linalg operations
+LogicalResult linalgOpPromoteSubviews(PatternRewriter &rewriter, Operation *op);
+
 } // namespace linalg
 } // namespace mlir
 

@@ -79,6 +79,10 @@ TfLiteTensor CreateQuantizedTensor(const int8_t* data, TfLiteIntArray* dims,
                                    float scale, int zero_point,
                                    const char* name, bool is_variable = false);
 
+TfLiteTensor CreateQuantizedTensor(const int16_t* data, TfLiteIntArray* dims,
+                                   float scale, int zero_point,
+                                   const char* name, bool is_variable = false);
+
 TfLiteTensor CreateQuantizedTensor(const float* input, int8_t* quantized,
                                    TfLiteIntArray* dims, float scale,
                                    int zero_point, const char* name,

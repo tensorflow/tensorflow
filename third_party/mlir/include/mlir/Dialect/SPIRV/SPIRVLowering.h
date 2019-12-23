@@ -64,8 +64,8 @@ protected:
 namespace spirv {
 /// Returns a value that represents a builtin variable value within the SPIR-V
 /// module.
-Value *getBuiltinVariableValue(Operation *op, spirv::BuiltIn builtin,
-                               OpBuilder &builder);
+ValuePtr getBuiltinVariableValue(Operation *op, spirv::BuiltIn builtin,
+                                 OpBuilder &builder);
 
 /// Attribute name for specifying argument ABI information.
 StringRef getInterfaceVarABIAttrName();
@@ -82,12 +82,6 @@ StringRef getEntryPointABIAttrName();
 /// Get the EntryPointABIAttr given its fields.
 EntryPointABIAttr getEntryPointABIAttr(ArrayRef<int32_t> localSize,
                                        MLIRContext *context);
-
-/// Legalizes a function as an entry function.
-FuncOp lowerAsEntryFunction(FuncOp funcOp, SPIRVTypeConverter &typeConverter,
-                            ConversionPatternRewriter &rewriter,
-                            spirv::EntryPointABIAttr entryPointInfo,
-                            ArrayRef<spirv::InterfaceVarABIAttr> argABIInfo);
 
 /// Sets the InterfaceVarABIAttr and EntryPointABIAttr for a function and its
 /// arguments

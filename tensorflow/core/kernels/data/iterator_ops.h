@@ -74,9 +74,9 @@ class IteratorResource : public ResourceBase {
           std::shared_ptr<ProcessFunctionLibraryRuntime> pflr,
           FunctionLibraryRuntime* flr,
           std::unique_ptr<DatasetBaseIterator> iterator)
-        : flib_def(flib_def),
+        : flib_def(std::move(flib_def)),
           flr(flr),
-          pflr(pflr),
+          pflr(std::move(pflr)),
           function_handle_cache(absl::make_unique<FunctionHandleCache>(flr)),
           iterator(std::move(iterator)) {}
 
@@ -247,6 +247,27 @@ class IteratorFromStringHandleOp : public OpKernel {
  private:
   DataTypeVector output_dtypes_;
   std::vector<PartialTensorShape> output_shapes_;
+};
+
+class SerializeIteratorOp : public OpKernel {
+ public:
+  static constexpr const char* const kExternalStatePolicy =
+      "external_state_policy";
+
+  explicit SerializeIteratorOp(OpKernelConstruction* ctx);
+
+  void Compute(OpKernelContext* ctx) override;
+
+ private:
+  SerializationContext::ExternalStatePolicy external_state_policy_ =
+      SerializationContext::ExternalStatePolicy::kWarn;
+};
+
+class DeserializeIteratorOp : public OpKernel {
+ public:
+  explicit DeserializeIteratorOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override;
 };
 
 }  // namespace data

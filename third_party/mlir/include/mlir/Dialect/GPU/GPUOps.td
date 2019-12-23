@@ -120,9 +120,9 @@ def GPU_GPUFuncOp : GPU_Op<"func", [FunctionLike, IsolatedFromAbove, Symbol]> {
 
   let builders = [
     OpBuilder<"Builder *builder, OperationState &result, StringRef name, "
-              "FunctionType type, ArrayRef<Type> workgroupAttributions, "
-              "ArrayRef<Type> privateAttributions, "
-              "ArrayRef<NamedAttribute> attrs">
+              "FunctionType type, ArrayRef<Type> workgroupAttributions = {}, "
+              "ArrayRef<Type> privateAttributions = {}, "
+              "ArrayRef<NamedAttribute> attrs = {}">
   ];
 
   let extraClassDeclaration = [{
@@ -138,6 +138,17 @@ def GPU_GPUFuncOp : GPU_Op<"func", [FunctionLike, IsolatedFromAbove, Symbol]> {
       return getTypeAttr().getValue().cast<FunctionType>();
     }
 
+    /// Change the type of this function in place. This is an extremely
+    /// dangerous operation and it is up to the caller to ensure that this is
+    /// legal for this function, and to restore invariants:
+    ///  - the entry block args must be updated to match the function params.
+    ///  - the argument/result attributes may need an update: if the new type
+    ///  has less parameters we drop the extra attributes, if there are more
+    ///  parameters they won't have any attributes.
+    // TODO(b/146349912): consider removing this function thanks to rewrite
+    // patterns.
+    void setType(FunctionType newType);
+
     /// Returns the number of buffers located in the workgroup memory.
     unsigned getNumWorkgroupAttributions() {
       return getAttrOfType<IntegerAttr>(getNumWorkgroupAttributionsAttrName())
@@ -146,7 +157,7 @@ def GPU_GPUFuncOp : GPU_Op<"func", [FunctionLike, IsolatedFromAbove, Symbol]> {
 
     /// Returns a list of block arguments that correspond to buffers located in
     /// the workgroup memory
-    ArrayRef<BlockArgument *> getWorkgroupAttributions() {
+    ArrayRef<BlockArgumentPtr> getWorkgroupAttributions() {
       auto begin =
           std::next(getBody().front().args_begin(), getType().getNumInputs());
       auto end = std::next(begin, getNumWorkgroupAttributions());
@@ -155,7 +166,7 @@ def GPU_GPUFuncOp : GPU_Op<"func", [FunctionLike, IsolatedFromAbove, Symbol]> {
 
     /// Returns a list of block arguments that correspond to buffers located in
     /// the private memory.
-    ArrayRef<BlockArgument *> getPrivateAttributions() {
+    ArrayRef<BlockArgumentPtr> getPrivateAttributions() {
       auto begin =
           std::next(getBody().front().args_begin(),
                     getType().getNumInputs() + getNumWorkgroupAttributions());
@@ -270,11 +281,11 @@ def GPU_LaunchFuncOp : GPU_Op<"launch_func">,
   let skipDefaultBuilders = 1;
 
   let builders = [
-    OpBuilder<"Builder *builder, OperationState &result, FuncOp kernelFunc, "
-              "Value *gridSizeX, Value *gridSizeY, Value *gridSizeZ, "
-              "Value *blockSizeX, Value *blockSizeY, Value *blockSizeZ, "
+    OpBuilder<"Builder *builder, OperationState &result, GPUFuncOp kernelFunc, "
+              "ValuePtr gridSizeX, ValuePtr gridSizeY, ValuePtr gridSizeZ, "
+              "ValuePtr blockSizeX, ValuePtr blockSizeY, ValuePtr blockSizeZ, "
               "ValueRange kernelOperands">,
-    OpBuilder<"Builder *builder, OperationState &result, FuncOp kernelFunc, "
+    OpBuilder<"Builder *builder, OperationState &result, GPUFuncOp kernelFunc, "
               "KernelDim3 gridSize, KernelDim3 blockSize, "
               "ValueRange kernelOperands">
   ];
@@ -291,7 +302,7 @@ def GPU_LaunchFuncOp : GPU_Op<"launch_func">,
     StringRef getKernelModuleName();
 
     /// The i-th operand passed to the kernel function.
-    Value *getKernelOperand(unsigned i);
+    ValuePtr getKernelOperand(unsigned i);
 
     /// Get the SSA values passed as operands to specify the grid size.
     KernelDim3 getGridSizeOperandValues();
@@ -404,9 +415,9 @@ def GPU_LaunchOp : GPU_Op<"launch", [IsolatedFromAbove]>,
   let skipDefaultBuilders = 1;
 
   let builders = [
-    OpBuilder<"Builder *builder, OperationState &result, Value *gridSizeX,"
-              "Value *gridSizeY, Value *gridSizeZ, Value *blockSizeX,"
-              "Value *blockSizeY, Value *blockSizeZ,"
+    OpBuilder<"Builder *builder, OperationState &result, ValuePtr gridSizeX,"
+              "ValuePtr gridSizeY, ValuePtr gridSizeZ, ValuePtr blockSizeX,"
+              "ValuePtr blockSizeY, ValuePtr blockSizeZ,"
               "ValueRange operands">
   ];
 
@@ -432,7 +443,7 @@ def GPU_LaunchOp : GPU_Op<"launch", [IsolatedFromAbove]>,
     KernelDim3 getBlockSizeOperandValues();
 
     /// Get the SSA values of the kernel arguments.
-    llvm::iterator_range<Block::args_iterator> getKernelArguments();
+    iterator_range<Block::args_iterator> getKernelArguments();
 
     /// Erase the `index`-th kernel argument.  Both the entry block argument and
     /// the operand will be dropped.  The block argument must not have any uses.
@@ -523,6 +534,41 @@ def GPU_AllReduceOp : GPU_Op<"all_reduce",
   }];
   let regions = (region AnyRegion:$body);
   let verifier = [{ return ::verifyAllReduce(*this); }];
+}
+
+def GPU_ShuffleOpXor : StrEnumAttrCase<"xor">;
+
+def GPU_ShuffleModeAttr : StrEnumAttr<"ShuffleModeAttr",
+    "Indexing modes supported by gpu.shuffle.",
+    [
+      GPU_ShuffleOpXor,
+    ]>;
+
+def GPU_ShuffleOp : GPU_Op<"shuffle", [NoSideEffect]>,
+    Arguments<(ins AnyType:$value, I32:$offset, I32:$width,
+               GPU_ShuffleModeAttr:$mode)>,
+    Results<(outs AnyType:$result, I1:$valid)> {
+  let summary = "Shuffles values within a subgroup.";
+  let description = [{
+    The "shuffle" op moves values to a different invocation within the same
+    subgroup.
+
+    For example
+    ```
+      %1, %2 = gpu.shuffle %0, %offset, %width xor : f32
+    ```
+    for lane k returns the value from lane `k ^ offset` and `true` if that lane
+    is smaller than %width. Otherwise it returns an unspecified value and
+    `false`. A lane is the index of an invocation relative to its subgroup.
+
+    The width specifies the number of invocations that participate in the
+    shuffle. The width needs to be the same for all invocations that participate
+    in the shuffle. Exactly the first `width` invocations of a subgroup need to
+    execute this op in convergence.
+  }];
+  let verifier = [{ return ::verifyShuffleOp(*this); }];
+  let printer = [{ printShuffleOp(p, *this); }];
+  let parser = [{ return parseShuffleOp(parser, result); }];
 }
 
 def GPU_BarrierOp : GPU_Op<"barrier"> {

@@ -107,7 +107,7 @@ protected:
   // simplifications to its users - make sure to add them to the worklist
   // before the root is changed.
   void notifyRootReplaced(Operation *op) override {
-    for (auto *result : op->getResults())
+    for (auto result : op->getResults())
       for (auto *user : result->getUsers())
         addToWorklist(user);
   }
@@ -118,7 +118,7 @@ private:
   // operation is modified or removed, as it may trigger further
   // simplifications.
   template <typename Operands> void addToWorklist(Operands &&operands) {
-    for (Value *operand : operands) {
+    for (ValuePtr operand : operands) {
       // If the use count of this operand is now < 2, we re-add the defining
       // operation to the worklist.
       // TODO(riverriddle) This is based on the fact that zero use operations
@@ -160,7 +160,7 @@ bool GreedyPatternRewriteDriver::simplify(MutableArrayRef<Region> regions,
       region.walk(collectOps);
 
     // These are scratch vectors used in the folding loop below.
-    SmallVector<Value *, 8> originalOperands, resultValues;
+    SmallVector<ValuePtr, 8> originalOperands, resultValues;
 
     changed = false;
     while (!worklist.empty()) {
@@ -189,7 +189,7 @@ bool GreedyPatternRewriteDriver::simplify(MutableArrayRef<Region> regions,
 
         // Add all the users of the result to the worklist so we make sure
         // to revisit them.
-        for (auto *result : op->getResults())
+        for (auto result : op->getResults())
           for (auto *operand : result->getUsers())
             addToWorklist(operand);
 

@@ -21,6 +21,7 @@
 
 #include "mlir/Dialect/SPIRV/Serialization.h"
 
+#include "mlir/ADT/TypeSwitch.h"
 #include "mlir/Dialect/SPIRV/SPIRVBinaryUtils.h"
 #include "mlir/Dialect/SPIRV/SPIRVDialect.h"
 #include "mlir/Dialect/SPIRV/SPIRVOps.h"
@@ -68,7 +69,7 @@ static LogicalResult encodeInstructionInto(SmallVectorImpl<uint32_t> &binary,
 /// serialization of the merge block and the continue block, if exists, until
 /// after all other blocks have been processed.
 static LogicalResult visitInPrettyBlockOrder(
-    Block *headerBlock, llvm::function_ref<LogicalResult(Block *)> blockHandler,
+    Block *headerBlock, function_ref<LogicalResult(Block *)> blockHandler,
     bool skipHeader = false, ArrayRef<Block *> skipBlocks = {}) {
   llvm::df_iterator_default_set<Block *, 4> doneBlocks;
   doneBlocks.insert(skipBlocks.begin(), skipBlocks.end());
@@ -300,7 +301,7 @@ private:
   /// instruction if this is a SPIR-V selection/loop header block.
   LogicalResult
   processBlock(Block *block, bool omitLabel = false,
-               llvm::function_ref<void()> actionBeforeTerminator = nullptr);
+               function_ref<void()> actionBeforeTerminator = nullptr);
 
   /// Emits OpPhi instructions for the given block if it has block arguments.
   LogicalResult emitPhiForBlockArguments(Block *block);
@@ -322,7 +323,7 @@ private:
                                            uint32_t opcode,
                                            ArrayRef<uint32_t> operands);
 
-  uint32_t getValueID(Value *val) const { return valueIDMap.lookup(val); }
+  uint32_t getValueID(ValuePtr val) const { return valueIDMap.lookup(val); }
 
   LogicalResult processAddressOfOp(spirv::AddressOfOp addressOfOp);
 
@@ -413,7 +414,7 @@ private:
   DenseMap<Type, uint32_t> undefValIDMap;
 
   /// Map from results of normal operations to their <id>s.
-  DenseMap<Value *, uint32_t> valueIDMap;
+  DenseMap<ValuePtr, uint32_t> valueIDMap;
 
   /// Map from extended instruction set name to <id>s.
   llvm::StringMap<uint32_t> extendedInstSetIDMap;
@@ -456,7 +457,7 @@ private:
   /// placed inside `functions`) here. And then after emitting all blocks, we
   /// replace the dummy <id> 0 with the real result <id> by overwriting
   /// `functions[offset]`.
-  DenseMap<Value *, llvm::SmallVector<size_t, 1>> deferredPhiValues;
+  DenseMap<ValuePtr, SmallVector<size_t, 1>> deferredPhiValues;
 };
 } // namespace
 
@@ -512,12 +513,12 @@ void Serializer::collect(SmallVectorImpl<uint32_t> &binary) {
 void Serializer::printValueIDMap(raw_ostream &os) {
   os << "\n= Value <id> Map =\n\n";
   for (auto valueIDPair : valueIDMap) {
-    Value *val = valueIDPair.first;
+    ValuePtr val = valueIDPair.first;
     os << "  " << val << " "
        << "id = " << valueIDPair.second << ' ';
     if (auto *op = val->getDefiningOp()) {
       os << "from op '" << op->getName() << "'";
-    } else if (auto *arg = dyn_cast<BlockArgument>(val)) {
+    } else if (auto arg = dyn_cast<BlockArgument>(val)) {
       Block *block = arg->getOwner();
       os << "from argument of block " << block << ' ';
       os << " in op '" << block->getParentOp()->getName() << "'";
@@ -751,7 +752,7 @@ LogicalResult Serializer::processFuncOp(FuncOp op) {
 
   // There might be OpPhi instructions who have value references needing to fix.
   for (auto deferredValue : deferredPhiValues) {
-    Value *value = deferredValue.first;
+    ValuePtr value = deferredValue.first;
     uint32_t id = getValueID(value);
     LLVM_DEBUG(llvm::dbgs() << "[phi] fix reference of value " << value
                             << " to id = " << id << '\n');
@@ -1340,7 +1341,7 @@ uint32_t Serializer::getOrCreateBlockID(Block *block) {
 
 LogicalResult
 Serializer::processBlock(Block *block, bool omitLabel,
-                         llvm::function_ref<void()> actionBeforeTerminator) {
+                         function_ref<void()> actionBeforeTerminator) {
   LLVM_DEBUG(llvm::dbgs() << "processing block " << block << ":\n");
   LLVM_DEBUG(block->print(llvm::dbgs()));
   LLVM_DEBUG(llvm::dbgs() << '\n');
@@ -1401,7 +1402,7 @@ LogicalResult Serializer::emitPhiForBlockArguments(Block *block) {
 
   // Then create OpPhi instruction for each of the block argument.
   for (auto argIndex : llvm::seq<unsigned>(0, block->getNumArguments())) {
-    BlockArgument *arg = block->getArgument(argIndex);
+    BlockArgumentPtr arg = block->getArgument(argIndex);
 
     // Get the type <id> and result <id> for this OpPhi instruction.
     uint32_t phiTypeID = 0;
@@ -1417,7 +1418,7 @@ LogicalResult Serializer::emitPhiForBlockArguments(Block *block) {
     phiArgs.push_back(phiID);
 
     for (auto predIndex : llvm::seq<unsigned>(0, predecessors.size())) {
-      Value *value = *(predecessors[predIndex].second + argIndex);
+      ValuePtr value = *(predecessors[predIndex].second + argIndex);
       uint32_t predBlockId = getOrCreateBlockID(predecessors[predIndex].first);
       LLVM_DEBUG(llvm::dbgs() << "[phi] use predecessor (id = " << predBlockId
                               << ") value " << value << ' ');
@@ -1634,54 +1635,34 @@ Serializer::processReferenceOfOp(spirv::ReferenceOfOp referenceOfOp) {
   return success();
 }
 
-LogicalResult Serializer::processOperation(Operation *op) {
-  LLVM_DEBUG(llvm::dbgs() << "[op] '" << op->getName() << "'\n");
+LogicalResult Serializer::processOperation(Operation *opInst) {
+  LLVM_DEBUG(llvm::dbgs() << "[op] '" << opInst->getName() << "'\n");
 
   // First dispatch the ops that do not directly mirror an instruction from
   // the SPIR-V spec.
-  if (auto addressOfOp = dyn_cast<spirv::AddressOfOp>(op)) {
-    return processAddressOfOp(addressOfOp);
-  }
-  if (auto branchOp = dyn_cast<spirv::BranchOp>(op)) {
-    return processBranchOp(branchOp);
-  }
-  if (auto condBranchOp = dyn_cast<spirv::BranchConditionalOp>(op)) {
-    return processBranchConditionalOp(condBranchOp);
-  }
-  if (auto constOp = dyn_cast<spirv::ConstantOp>(op)) {
-    return processConstantOp(constOp);
-  }
-  if (auto fnOp = dyn_cast<FuncOp>(op)) {
-    return processFuncOp(fnOp);
-  }
-  if (auto varOp = dyn_cast<spirv::VariableOp>(op)) {
-    return processVariableOp(varOp);
-  }
-  if (auto varOp = dyn_cast<spirv::GlobalVariableOp>(op)) {
-    return processGlobalVariableOp(varOp);
-  }
-  if (auto selectionOp = dyn_cast<spirv::SelectionOp>(op)) {
-    return processSelectionOp(selectionOp);
-  }
-  if (auto loopOp = dyn_cast<spirv::LoopOp>(op)) {
-    return processLoopOp(loopOp);
-  }
-  if (isa<spirv::ModuleEndOp>(op)) {
-    return success();
-  }
-  if (auto refOpOp = dyn_cast<spirv::ReferenceOfOp>(op)) {
-    return processReferenceOfOp(refOpOp);
-  }
-  if (auto specConstOp = dyn_cast<spirv::SpecConstantOp>(op)) {
-    return processSpecConstantOp(specConstOp);
-  }
-  if (auto undefOp = dyn_cast<spirv::UndefOp>(op)) {
-    return processUndefOp(undefOp);
-  }
+  return TypeSwitch<Operation *, LogicalResult>(opInst)
+      .Case([&](spirv::AddressOfOp op) { return processAddressOfOp(op); })
+      .Case([&](spirv::BranchOp op) { return processBranchOp(op); })
+      .Case([&](spirv::BranchConditionalOp op) {
+        return processBranchConditionalOp(op);
+      })
+      .Case([&](spirv::ConstantOp op) { return processConstantOp(op); })
+      .Case([&](FuncOp op) { return processFuncOp(op); })
+      .Case([&](spirv::GlobalVariableOp op) {
+        return processGlobalVariableOp(op);
+      })
+      .Case([&](spirv::LoopOp op) { return processLoopOp(op); })
+      .Case([&](spirv::ModuleEndOp) { return success(); })
+      .Case([&](spirv::ReferenceOfOp op) { return processReferenceOfOp(op); })
+      .Case([&](spirv::SelectionOp op) { return processSelectionOp(op); })
+      .Case([&](spirv::SpecConstantOp op) { return processSpecConstantOp(op); })
+      .Case([&](spirv::UndefOp op) { return processUndefOp(op); })
+      .Case([&](spirv::VariableOp op) { return processVariableOp(op); })
 
-  // Then handle all the ops that directly mirror SPIR-V instructions with
-  // auto-generated methods.
-  return dispatchToAutogenSerialization(op);
+      // Then handle all the ops that directly mirror SPIR-V instructions with
+      // auto-generated methods.
+      .Default(
+          [&](Operation *op) { return dispatchToAutogenSerialization(op); });
 }
 
 namespace {
@@ -1792,7 +1773,7 @@ Serializer::processOp<spirv::FunctionCallOp>(spirv::FunctionCallOp op) {
   auto funcName = op.callee();
   uint32_t resTypeID = 0;
 
-  llvm::SmallVector<Type, 1> resultTypes(op.getResultTypes());
+  SmallVector<Type, 1> resultTypes(op.getResultTypes());
   if (failed(processType(op.getLoc(),
                          (resultTypes.empty() ? getVoidType() : resultTypes[0]),
                          resTypeID))) {
@@ -1803,7 +1784,7 @@ Serializer::processOp<spirv::FunctionCallOp>(spirv::FunctionCallOp op) {
   auto funcCallID = getNextID();
   SmallVector<uint32_t, 8> operands{resTypeID, funcCallID, funcID};
 
-  for (auto *value : op.arguments()) {
+  for (auto value : op.arguments()) {
     auto valueID = getValueID(value);
     assert(valueID && "cannot find a value for spv.FunctionCall");
     operands.push_back(valueID);

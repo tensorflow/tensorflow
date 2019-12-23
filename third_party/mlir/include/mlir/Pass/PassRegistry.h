@@ -23,14 +23,8 @@
 #ifndef MLIR_PASS_PASSREGISTRY_H_
 #define MLIR_PASS_PASSREGISTRY_H_
 
-#include "mlir/Support/LLVM.h"
-#include "mlir/Support/LogicalResult.h"
-#include "mlir/Support/STLExtras.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/Support/CommandLine.h"
-#include "llvm/Support/Compiler.h"
+#include "mlir/Pass/PassOptions.h"
 #include <functional>
-#include <memory>
 
 namespace mlir {
 class OpPassManager;
@@ -116,66 +110,6 @@ void registerPassPipeline(StringRef arg, StringRef description,
 /// typically used through the PassRegistration template.
 void registerPass(StringRef arg, StringRef description, const PassID *passID,
                   const PassRegistryFunction &function);
-
-namespace detail {
-/// Base class for PassOptions<T> that holds all of the non-CRTP features.
-class PassOptionsBase : protected llvm::cl::SubCommand {
-public:
-  /// This class represents a specific pass option, with a provided data type.
-  template <typename DataType> struct Option : public llvm::cl::opt<DataType> {
-    template <typename... Args>
-    Option(PassOptionsBase &parent, StringRef arg, Args &&... args)
-        : llvm::cl::opt<DataType>(arg, llvm::cl::sub(parent),
-                                  std::forward<Args>(args)...) {
-      assert(!this->isPositional() && !this->isSink() &&
-             "sink and positional options are not supported");
-    }
-  };
-
-  /// This class represents a specific pass option that contains a list of
-  /// values of the provided data type.
-  template <typename DataType> struct List : public llvm::cl::list<DataType> {
-    template <typename... Args>
-    List(PassOptionsBase &parent, StringRef arg, Args &&... args)
-        : llvm::cl::list<DataType>(arg, llvm::cl::sub(parent),
-                                   std::forward<Args>(args)...) {
-      assert(!this->isPositional() && !this->isSink() &&
-             "sink and positional options are not supported");
-    }
-  };
-
-  /// Parse options out as key=value pairs that can then be handed off to the
-  /// `llvm::cl` command line passing infrastructure. Everything is space
-  /// separated.
-  LogicalResult parseFromString(StringRef options);
-};
-} // end namespace detail
-
-/// Subclasses of PassOptions provide a set of options that can be used to
-/// initialize a pass instance. See PassRegistration for usage details.
-///
-/// Usage:
-///
-/// struct MyPassOptions : PassOptions<MyPassOptions> {
-///   List<int> someListFlag{
-///        *this, "flag-name", llvm::cl::MiscFlags::CommaSeparated,
-///        llvm::cl::desc("...")};
-/// };
-template <typename T> class PassOptions : public detail::PassOptionsBase {
-public:
-  /// Factory that parses the provided options and returns a unique_ptr to the
-  /// struct.
-  static std::unique_ptr<T> createFromString(StringRef options) {
-    auto result = std::make_unique<T>();
-    if (failed(result->parseFromString(options)))
-      return nullptr;
-    return result;
-  }
-};
-
-/// A default empty option struct to be used for passes that do not need to take
-/// any options.
-struct EmptyPassOptions : public PassOptions<EmptyPassOptions> {};
 
 namespace detail {
 

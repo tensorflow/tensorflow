@@ -43,7 +43,7 @@ operations are generated from. To define an operation one needs to specify:
     are ignored by the main op and doc generators, but could be used in, say,
     the translation from a dialect to another representation.
 
-```td {.td}
+```tablegen
 def TFL_LeakyReluOp: TFL_Op<TFL_Dialect, "leaky_relu",
                             [NoSideEffect, SameValueType]>,
                      Results<(outs Tensor)> {
@@ -99,7 +99,7 @@ generated.
 Let us continue with LeakyRelu. To map from TensorFlow's `LeakyRelu` to
 TensorFlow Lite's `LeakyRelu`:
 
-```td {.td}
+```tablegen
 def : Pat<(TF_LeakyReluOp $arg, F32Attr:$a), (TFL_LeakyReluOp $arg, $a)>
 ```
 
@@ -119,7 +119,7 @@ as destination then one could use a general native code fallback method. This
 consists of defining a pattern as well as adding a C++ function to perform the
 replacement:
 
-```td {.td}
+```tablegen
 def createTFLLeakyRelu : NativeCodeCall<
     "createTFLLeakyRelu($_builder, $0->getDefiningOp(), $1, $2)">;
 
@@ -128,8 +128,8 @@ def : Pat<(TF_LeakyReluOp:$old_value, $arg, F32Attr:$a),
 ```
 
 ```c++
-static Value* createTFLLeakyRelu(PatternRewriter &rewriter, Operation *op,
-                                 Value* operand, Attribute attr) {
+static Value createTFLLeakyRelu(PatternRewriter &rewriter, Operation *op,
+                                Value operand, Attribute attr) {
   return rewriter.create<mlir::TFL::LeakyReluOp>(
       op->getLoc(), operands[0]->getType(), /*arg=*/operands[0],
       /*alpha=*/attrs[0].cast<FloatAttr>());

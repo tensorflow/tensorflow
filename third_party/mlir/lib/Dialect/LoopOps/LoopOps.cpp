@@ -69,8 +69,8 @@ LoopOpsDialect::LoopOpsDialect(MLIRContext *context)
 // ForOp
 //===----------------------------------------------------------------------===//
 
-void ForOp::build(Builder *builder, OperationState &result, Value *lb,
-                  Value *ub, Value *step) {
+void ForOp::build(Builder *builder, OperationState &result, ValuePtr lb,
+                  ValuePtr ub, ValuePtr step) {
   result.addOperands({lb, ub, step});
   Region *bodyRegion = result.addRegion();
   ForOp::ensureTerminator(*bodyRegion, *builder, result.location);
@@ -134,7 +134,7 @@ static ParseResult parseForOp(OpAsmParser &parser, OperationState &result) {
 
 Region &ForOp::getLoopBody() { return region(); }
 
-bool ForOp::isDefinedOutsideOfLoop(Value *value) {
+bool ForOp::isDefinedOutsideOfLoop(ValuePtr value) {
   return !region().isAncestor(value->getParentRegion());
 }
 
@@ -144,8 +144,8 @@ LogicalResult ForOp::moveOutOfLoop(ArrayRef<Operation *> ops) {
   return success();
 }
 
-ForOp mlir::loop::getForInductionVarOwner(Value *val) {
-  auto *ivArg = dyn_cast<BlockArgument>(val);
+ForOp mlir::loop::getForInductionVarOwner(ValuePtr val) {
+  auto ivArg = dyn_cast<BlockArgument>(val);
   if (!ivArg)
     return ForOp();
   assert(ivArg->getOwner() && "unlinked block argument");
@@ -157,7 +157,7 @@ ForOp mlir::loop::getForInductionVarOwner(Value *val) {
 // IfOp
 //===----------------------------------------------------------------------===//
 
-void IfOp::build(Builder *builder, OperationState &result, Value *cond,
+void IfOp::build(Builder *builder, OperationState &result, ValuePtr cond,
                  bool withElseRegion) {
   result.addOperands(cond);
   Region *thenRegion = result.addRegion();

@@ -37,7 +37,7 @@ public:
   /// Inserts a new mapping for 'from' to 'to'. If there is an existing mapping,
   /// it is overwritten.
   void map(Block *from, Block *to) { valueMap[from] = to; }
-  void map(Value *from, Value *to) { valueMap[from] = to; }
+  void map(ValuePtr from, ValuePtr to) { valueMap[from] = to; }
 
   /// Erases a mapping for 'from'.
   void erase(IRObjectWithUseList *from) { valueMap.erase(from); }
@@ -52,8 +52,8 @@ public:
   Block *lookupOrNull(Block *from) const {
     return lookupOrValue(from, (Block *)nullptr);
   }
-  Value *lookupOrNull(Value *from) const {
-    return lookupOrValue(from, (Value *)nullptr);
+  ValuePtr lookupOrNull(ValuePtr from) const {
+    return lookupOrValue(from, (ValuePtr) nullptr);
   }
 
   /// Lookup a mapped value within the map. If a mapping for the provided value
@@ -61,7 +61,7 @@ public:
   Block *lookupOrDefault(Block *from) const {
     return lookupOrValue(from, from);
   }
-  Value *lookupOrDefault(Value *from) const {
+  ValuePtr lookupOrDefault(ValuePtr from) const {
     return lookupOrValue(from, from);
   }
 
@@ -85,7 +85,7 @@ private:
     return it != valueMap.end() ? static_cast<T *>(it->second) : value;
   }
 
-  llvm::DenseMap<IRObjectWithUseList *, IRObjectWithUseList *> valueMap;
+  DenseMap<IRObjectWithUseList *, IRObjectWithUseList *> valueMap;
 };
 
 } // end namespace mlir

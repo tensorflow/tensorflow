@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import struct
 import matplotlib.pyplot as plt
+
 import numpy as np
 
 # import soundfile as sf

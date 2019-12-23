@@ -1099,7 +1099,7 @@ those chunks independently.
 
 The problem is that LLVM has several objects in its IR that are globally uniqued
 and also mutable: notably constants like `i32 0`. In LLVM, these constants are
-`Value*r`'s, which allow them to be used as operands to instructions, and that
+`Value`'s, which allow them to be used as operands to instructions, and that
 they also have SSA use lists. Because these things are uniqued, every `i32 0` in
 any function shares a use list. This means that optimizing multiple functions in
 parallel won't work (at least without some sort of synchronization on the use

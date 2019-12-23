@@ -76,7 +76,7 @@ struct MemRefDataFlowOpt : public FunctionPass<MemRefDataFlowOpt> {
   void forwardStoreToLoad(AffineLoadOp loadOp);
 
   // A list of memref's that are potentially dead / could be eliminated.
-  SmallPtrSet<Value *, 4> memrefsToErase;
+  SmallPtrSet<ValuePtr, 4> memrefsToErase;
   // Load op's whose results were replaced by those forwarded from stores.
   SmallVector<Operation *, 8> loadOpsToErase;
 
@@ -180,7 +180,7 @@ void MemRefDataFlowOpt::forwardStoreToLoad(AffineLoadOp loadOp) {
     return;
 
   // Perform the actual store to load forwarding.
-  Value *storeVal = cast<AffineStoreOp>(lastWriteStoreOp).getValueToStore();
+  ValuePtr storeVal = cast<AffineStoreOp>(lastWriteStoreOp).getValueToStore();
   loadOp.replaceAllUsesWith(storeVal);
   // Record the memref for a later sweep to optimize away.
   memrefsToErase.insert(loadOp.getMemRef());
@@ -213,7 +213,7 @@ void MemRefDataFlowOpt::runOnFunction() {
   // Check if the store fwd'ed memrefs are now left with only stores and can
   // thus be completely deleted. Note: the canonicalize pass should be able
   // to do this as well, but we'll do it here since we collected these anyway.
-  for (auto *memref : memrefsToErase) {
+  for (auto memref : memrefsToErase) {
     // If the memref hasn't been alloc'ed in this function, skip.
     Operation *defInst = memref->getDefiningOp();
     if (!defInst || !isa<AllocOp>(defInst))

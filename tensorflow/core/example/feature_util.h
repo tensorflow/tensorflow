@@ -149,6 +149,13 @@ struct RepeatedFieldTrait<float> {
   using Type = protobuf::RepeatedField<float>;
 };
 
+#ifdef USE_TSTRING
+template <>
+struct RepeatedFieldTrait<tstring> {
+  using Type = protobuf::RepeatedPtrField<string>;
+};
+#endif
+
 template <>
 struct RepeatedFieldTrait<string> {
   using Type = protobuf::RepeatedPtrField<string>;
@@ -185,6 +192,11 @@ struct is_string<string> : std::true_type {};
 
 template <>
 struct is_string<::tensorflow::StringPiece> : std::true_type {};
+
+#ifdef USE_TSTRING
+template <>
+struct is_string<tstring> : std::true_type {};
+#endif
 
 template <typename ValueType>
 struct FeatureTrait<

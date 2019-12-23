@@ -34,7 +34,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         pkg-config \
         rsync \
         software-properties-common \
-	sudo \
+        sudo \
         unzip \
         zip \
         zlib1g-dev \
@@ -108,3 +108,4 @@ RUN mkdir /bazel && \
     rm -f /bazel/installer.sh
 
 COPY bashrc /etc/bash.bashrc
+RUN chmod a+rwx /etc/bash.bashrc

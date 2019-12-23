@@ -292,7 +292,7 @@ Status RewriteDynamicReshapeSplitInput(
 
   // Step 4. Sort iota.
   // Use binary mark to sort iota mask, then use iota mask to reshape input.
-  HloComputation::Builder comp_builder("compare_bianry_iota");
+  HloComputation::Builder comp_builder("compare_binary_iota");
   {
     HloInstruction* lhs_key =
         comp_builder.AddInstruction(HloInstruction::CreateParameter(
@@ -324,7 +324,7 @@ Status RewriteDynamicReshapeSplitInput(
           mask_input_shape, sorted_binary_iota, 1));
 
   // Step 5. Sort original input using iota mask as key.
-  HloComputation::Builder comp_builder_iota("compare_bianry_iota");
+  HloComputation::Builder comp_builder_iota("compare_binary_iota");
   {
     HloInstruction* lhs_key =
         comp_builder_iota.AddInstruction(HloInstruction::CreateParameter(

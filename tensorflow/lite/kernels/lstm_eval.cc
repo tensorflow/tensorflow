@@ -886,7 +886,7 @@ inline void LstmStepWithAuxInput(
 //   output_state_ptr - size 'n_batch * n_output'
 //   cell_state_ptr   - size 'n_batch * n_cell'
 //   output_ptr       - size 'n_batch * n_output'
-inline void LstmStepQuantized(
+inline void LstmStepInteger(
     const int8_t* input_ptr, const int8_t* input_to_input_weight_ptr,
     int32_t effective_input_to_input_scale_a,
     int32_t effective_input_to_input_scale_b,
@@ -1531,7 +1531,7 @@ TfLiteStatus EvalHybrid(
   return kTfLiteOk;
 }
 
-TfLiteStatus EvalQuantized(
+TfLiteStatus EvalInteger(
     const TfLiteTensor* input, const TfLiteTensor* input_to_input_weights,
     const TfLiteTensor* input_to_forget_weights,
     const TfLiteTensor* input_to_cell_weights,
@@ -1584,7 +1584,7 @@ TfLiteStatus EvalQuantized(
     const int t_rel = t;
     int8_t* output_ptr = GetTensorData<int8_t>(output) + t_rel * output_step;
     const int8_t* input_ptr = GetTensorData<int8_t>(input) + t_rel * input_step;
-    LstmStepQuantized(
+    LstmStepInteger(
         input_ptr, GetTensorData<int8_t>(input_to_input_weights),
         quantized_lstm_param->effective_input_to_input_scale_a,
         quantized_lstm_param->effective_input_to_input_scale_b,

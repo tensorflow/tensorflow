@@ -426,7 +426,6 @@ Status DatasetOpsTestBase::CreateOpKernelContext(
   params->op_kernel = kernel;
   params->resource_manager = resource_mgr_.get();
   params->runner = &runner_;
-  checkpoint::TensorSliceReaderCacheWrapper slice_reader_cache_wrapper;
   slice_reader_cache_ =
       absl::make_unique<checkpoint::TensorSliceReaderCacheWrapper>();
   params->slice_reader_cache = slice_reader_cache_.get();
@@ -819,6 +818,14 @@ RangeDatasetParams::RangeDatasetParams(
 
 RangeDatasetParams::RangeDatasetParams(int64 start, int64 stop, int64 step)
     : DatasetParams({DT_INT64}, {PartialTensorShape({})}, "range_dataset"),
+      start_(start),
+      stop_(stop),
+      step_(step) {}
+
+RangeDatasetParams::RangeDatasetParams(int64 start, int64 stop, int64 step,
+                                       DataTypeVector output_dtypes)
+    : DatasetParams(std::move(output_dtypes), {PartialTensorShape({})},
+                    "range_dataset"),
       start_(start),
       stop_(stop),
       step_(step) {}

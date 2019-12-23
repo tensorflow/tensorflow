@@ -120,8 +120,8 @@ constructTiledIndexSetHyperRect(MutableArrayRef<AffineForOp> origLoops,
   for (unsigned i = 0; i < width; i++) {
     auto lbOperands = origLoops[i].getLowerBoundOperands();
     auto ubOperands = origLoops[i].getUpperBoundOperands();
-    SmallVector<Value *, 4> newLbOperands(lbOperands);
-    SmallVector<Value *, 4> newUbOperands(ubOperands);
+    SmallVector<ValuePtr, 4> newLbOperands(lbOperands);
+    SmallVector<ValuePtr, 4> newUbOperands(ubOperands);
     newLoops[i].setLowerBound(newLbOperands, origLoops[i].getLowerBoundMap());
     newLoops[i].setUpperBound(newUbOperands, origLoops[i].getUpperBoundMap());
     newLoops[i].setStep(tileSizes[i]);
@@ -147,7 +147,7 @@ constructTiledIndexSetHyperRect(MutableArrayRef<AffineForOp> origLoops,
       // with 'i' (tile-space loop) appended to it. The new upper bound map is
       // the original one with an additional expression i + tileSize appended.
       auto ub = origLoops[i].getUpperBound();
-      SmallVector<Value *, 4> ubOperands;
+      SmallVector<ValuePtr, 4> ubOperands;
       ubOperands.reserve(ub.getNumOperands() + 1);
       auto origUbMap = ub.getMap();
       // Add dim operands from original upper bound.
@@ -235,9 +235,10 @@ LogicalResult mlir::tileCodeGen(MutableArrayRef<AffineForOp> band,
   // Move the loop body of the original nest to the new one.
   moveLoopBody(origLoops[origLoops.size() - 1], innermostPointLoop);
 
-  SmallVector<Value *, 8> origLoopIVs;
+  SmallVector<ValuePtr, 8> origLoopIVs;
   extractForInductionVars(band, &origLoopIVs);
-  SmallVector<Optional<Value *>, 6> ids(origLoopIVs.begin(), origLoopIVs.end());
+  SmallVector<Optional<ValuePtr>, 6> ids(origLoopIVs.begin(),
+                                         origLoopIVs.end());
   FlatAffineConstraints cst;
   getIndexSet(band, &cst);
 

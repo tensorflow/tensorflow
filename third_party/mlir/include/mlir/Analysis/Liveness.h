@@ -41,6 +41,9 @@ class Operation;
 class Region;
 class Value;
 
+// TODO(riverriddle) Remove this after Value is value-typed.
+using ValuePtr = Value *;
+
 /// Represents an analysis for computing liveness information from a
 /// given top-level operation. The analysis iterates over all associated
 /// regions that are attached to the given top-level operation. It
@@ -57,7 +60,7 @@ class Liveness {
 public:
   using OperationListT = std::vector<Operation *>;
   using BlockMapT = DenseMap<Block *, LivenessBlockInfo>;
-  using ValueSetT = SmallPtrSet<Value *, 16>;
+  using ValueSetT = SmallPtrSet<ValuePtr, 16>;
 
 public:
   /// Creates a new Liveness analysis that computes liveness
@@ -72,7 +75,7 @@ public:
   /// Note that the operations in this list are not ordered and the current
   /// implementation is computationally expensive (as it iterates over all
   /// blocks in which the given value is live).
-  OperationListT resolveLiveness(Value *value) const;
+  OperationListT resolveLiveness(ValuePtr value) const;
 
   /// Gets liveness info (if any) for the block.
   const LivenessBlockInfo *getLiveness(Block *block) const;
@@ -85,7 +88,7 @@ public:
 
   /// Returns true if the given operation represent the last use of the
   /// given value.
-  bool isLastUse(Value *value, Operation *operation) const;
+  bool isLastUse(ValuePtr value, Operation *operation) const;
 
   /// Dumps the liveness information in a human readable format.
   void dump() const;
@@ -124,20 +127,20 @@ public:
   const ValueSetT &out() const { return outValues; }
 
   /// Returns true if the given value is in the live-in set.
-  bool isLiveIn(Value *value) const;
+  bool isLiveIn(ValuePtr value) const;
 
   /// Returns true if the given value is in the live-out set.
-  bool isLiveOut(Value *value) const;
+  bool isLiveOut(ValuePtr value) const;
 
   /// Gets the start operation for the given value. This is the first operation
   /// the given value is considered to be live. This could either be the start
   /// operation of the current block (in case the value is live-in) or the
   /// operation that defines the given value (must be referenced in this block).
-  Operation *getStartOperation(Value *value) const;
+  Operation *getStartOperation(ValuePtr value) const;
 
   /// Gets the end operation for the given value using the start operation
   /// provided (must be referenced in this block).
-  Operation *getEndOperation(Value *value, Operation *startOperation) const;
+  Operation *getEndOperation(ValuePtr value, Operation *startOperation) const;
 
 private:
   /// The underlying block.

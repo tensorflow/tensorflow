@@ -37,6 +37,12 @@ config_setting(
     },
 )
 
+config_setting(
+    name = "tflite_experimental_runtime",
+    values = {"define": "tflite_experimental_runtime=true"},
+    visibility = ["//visibility:public"],
+)
+
 TFLITE_DEFAULT_COPTS = if_not_windows([
     "-Wall",
     "-Wno-comment",

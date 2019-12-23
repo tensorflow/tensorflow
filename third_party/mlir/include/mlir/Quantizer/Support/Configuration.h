@@ -74,7 +74,7 @@ public:
     return candidateTypes[index];
   }
 
-  llvm::ArrayRef<CandidateQuantizedType> getCandidateTypes() const {
+  ArrayRef<CandidateQuantizedType> getCandidateTypes() const {
     return candidateTypes;
   }
 
@@ -84,8 +84,8 @@ public:
   }
 
   /// Gets a mask with every candidate type except those in the given mask.
-  llvm::SmallBitVector getCandidateTypeDisabledExceptMask(
-      llvm::ArrayRef<unsigned> exceptOrdinals) const {
+  llvm::SmallBitVector
+  getCandidateTypeDisabledExceptMask(ArrayRef<unsigned> exceptOrdinals) const {
     llvm::SmallBitVector disabled(allCandidateTypesMask);
     for (unsigned ordinal : exceptOrdinals) {
       disabled.reset(ordinal);

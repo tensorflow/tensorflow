@@ -23,6 +23,8 @@
 #include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/EDSC/Helpers.h"
 
+#include "llvm/ADT/SetVector.h"
+
 namespace mlir {
 class AffineExpr;
 class AffineMap;
@@ -32,7 +34,7 @@ namespace edsc {
 
 /// A LoopRangeBuilder is a generic NestedBuilder for loop.for operations.
 /// More specifically it is meant to be used as a temporary object for
-/// representing any nested MLIR construct that is "related to" an mlir::Value*
+/// representing any nested MLIR construct that is "related to" an mlir::Value
 /// (for now an induction variable).
 class LoopRangeBuilder : public NestedBuilder {
 public:
@@ -40,7 +42,7 @@ public:
   /// variable. A ValueHandle pointer is passed as the first argument and is the
   /// *only* way to capture the loop induction variable.
   LoopRangeBuilder(ValueHandle *iv, ValueHandle range);
-  LoopRangeBuilder(ValueHandle *iv, Value *range);
+  LoopRangeBuilder(ValueHandle *iv, ValuePtr range);
   LoopRangeBuilder(ValueHandle *iv, SubViewOp::Range range);
 
   LoopRangeBuilder(const LoopRangeBuilder &) = delete;
@@ -60,16 +62,16 @@ public:
 /// directly. In the current implementation it produces loop.for operations.
 class LoopNestRangeBuilder {
 public:
-  LoopNestRangeBuilder(llvm::ArrayRef<edsc::ValueHandle *> ivs,
-                       llvm::ArrayRef<edsc::ValueHandle> ranges);
-  LoopNestRangeBuilder(llvm::ArrayRef<edsc::ValueHandle *> ivs,
-                       llvm::ArrayRef<Value *> ranges);
-  LoopNestRangeBuilder(llvm::ArrayRef<edsc::ValueHandle *> ivs,
-                       llvm::ArrayRef<SubViewOp::Range> ranges);
+  LoopNestRangeBuilder(ArrayRef<edsc::ValueHandle *> ivs,
+                       ArrayRef<edsc::ValueHandle> ranges);
+  LoopNestRangeBuilder(ArrayRef<edsc::ValueHandle *> ivs,
+                       ArrayRef<ValuePtr> ranges);
+  LoopNestRangeBuilder(ArrayRef<edsc::ValueHandle *> ivs,
+                       ArrayRef<SubViewOp::Range> ranges);
   edsc::ValueHandle operator()(std::function<void(void)> fun = nullptr);
 
 private:
-  llvm::SmallVector<LoopRangeBuilder, 4> loops;
+  SmallVector<LoopRangeBuilder, 4> loops;
 };
 
 } // namespace edsc
@@ -86,14 +88,14 @@ struct FusionInfo {
 /// whole `consumedView`. This checks structural dominance, that the dependence
 /// is a RAW without any interleaved write to any piece of `consumedView`.
 bool isProducerLastWriteOfView(const LinalgDependenceGraph &graph,
-                               LinalgOp consumer, Value *consumedView,
+                               LinalgOp consumer, ValuePtr consumedView,
                                LinalgOp producer);
 
 /// Checks whether fusing the specific `producer` of the `consumedView` is
 /// feasible. This checks `producer` is the last write of `consumedView` and
 /// that no interleaved dependence would be violated (RAW, WAR or WAW).
 bool isFusableInto(const LinalgDependenceGraph &graph, LinalgOp consumer,
-                   Value *consumedView, LinalgOp producer);
+                   ValuePtr consumedView, LinalgOp producer);
 
 /// Fuses producer into consumer if the producer is structurally feasible and
 /// the fusion would not violate dependencies.
@@ -109,8 +111,8 @@ Optional<FusionInfo> fuseProducerOf(OpBuilder &b, LinalgOp consumer,
 /// the inverse, concatenated loopToOperandRangeMaps to this list allows the
 /// derivation of loop ranges for any linalgOp.
 template <typename ConcreteOp>
-SmallVector<Value *, 8> getViewSizes(ConcreteOp linalgOp) {
-  SmallVector<Value *, 8> res;
+SmallVector<ValuePtr, 8> getViewSizes(ConcreteOp linalgOp) {
+  SmallVector<ValuePtr, 8> res;
   for (auto v : linalgOp.getInputsAndOutputs()) {
     MemRefType t = v->getType().template cast<MemRefType>();
     for (unsigned i = 0; i < t.getRank(); ++i)
@@ -123,10 +125,10 @@ SmallVector<Value *, 8> getViewSizes(ConcreteOp linalgOp) {
 /// When non-null, the optional pointer `folder` is used to call into the
 /// `createAndFold` builder method. If `folder` is null, the regular `create`
 /// method is called.
-SmallVector<Value *, 4> applyMapToValues(OpBuilder &b, Location loc,
-                                         AffineMap map,
-                                         ArrayRef<Value *> values,
-                                         OperationFolder *folder = nullptr);
+SmallVector<ValuePtr, 4> applyMapToValues(OpBuilder &b, Location loc,
+                                          AffineMap map,
+                                          ArrayRef<ValuePtr> values,
+                                          OperationFolder *folder = nullptr);
 
 struct TiledLinalgOp {
   LinalgOp op;
@@ -148,10 +150,10 @@ struct TiledLinalgOp {
 /// When non-null, the optional pointer `folder` is used to call into the
 /// `createAndFold` builder method. If `folder` is null, the regular `create`
 /// method is called.
-llvm::Optional<TiledLinalgOp> tileLinalgOp(OpBuilder &b, LinalgOp op,
-                                           ArrayRef<Value *> tileSizes,
-                                           ArrayRef<unsigned> permutation = {},
-                                           OperationFolder *folder = nullptr);
+Optional<TiledLinalgOp> tileLinalgOp(OpBuilder &b, LinalgOp op,
+                                     ArrayRef<ValuePtr> tileSizes,
+                                     ArrayRef<unsigned> permutation = {},
+                                     OperationFolder *folder = nullptr);
 
 /// Performs standalone tiling of a single LinalgOp by constant `tileSizes`.
 /// and permute the loop nest according to `permutation`
@@ -168,21 +170,21 @@ llvm::Optional<TiledLinalgOp> tileLinalgOp(OpBuilder &b, LinalgOp op,
 /// When non-null, the optional pointer `folder` is used to call into the
 /// `createAndFold` builder method. If `folder` is null, the regular `create`
 /// method is called.
-llvm::Optional<TiledLinalgOp> tileLinalgOp(OpBuilder &b, LinalgOp op,
-                                           ArrayRef<int64_t> tileSizes,
-                                           ArrayRef<unsigned> permutation = {},
-                                           OperationFolder *folder = nullptr);
+Optional<TiledLinalgOp> tileLinalgOp(OpBuilder &b, LinalgOp op,
+                                     ArrayRef<int64_t> tileSizes,
+                                     ArrayRef<unsigned> permutation = {},
+                                     OperationFolder *folder = nullptr);
 
 template <typename... Args>
-llvm::Optional<TiledLinalgOp> tileLinalgOperation(OpBuilder &b, Operation *op,
-                                                  Args... args) {
+Optional<TiledLinalgOp> tileLinalgOperation(OpBuilder &b, Operation *op,
+                                            Args... args) {
   return tileLinalgOp(b, cast<LinalgOp>(op), args...);
 }
 
 struct PromotionInfo {
-  Value *buffer;
-  Value *fullLocalView;
-  Value *partialLocalView;
+  ValuePtr buffer;
+  ValuePtr fullLocalView;
+  ValuePtr partialLocalView;
 };
 
 /// Promotes the `subViews` into a new buffer allocated at the insertion point
@@ -196,14 +198,14 @@ struct PromotionInfo {
 ///
 /// Returns a list of PromotionInfo which hold the promoted buffer and the
 /// full and partial views indexing into the buffer.
-llvm::SmallVector<PromotionInfo, 8>
-promoteSubViews(OpBuilder &b, Location loc, ArrayRef<Value *> subViews,
+SmallVector<PromotionInfo, 8>
+promoteSubViews(OpBuilder &b, Location loc, ArrayRef<ValuePtr> subViews,
                 bool dynamicBuffers = false, OperationFolder *folder = nullptr);
 
 /// Returns all the operands of `linalgOp` that are not views.
 /// Asserts that these operands are value types to allow transformations like
 /// tiling to just use the values when cloning `linalgOp`.
-llvm::SmallVector<Value *, 4> getAssumedNonViewOperands(LinalgOp linalgOp);
+SmallVector<ValuePtr, 4> getAssumedNonViewOperands(LinalgOp linalgOp);
 
 /// Apply the permutation defined by `permutation` to `inVec`.
 /// Element `i` in `inVec` is mapped to location `j = permutation[i]`.
@@ -217,6 +219,17 @@ void applyPermutationToVector(SmallVector<T, N> &inVec,
     auxVec[i] = inVec[permutation[i]];
   inVec = auxVec;
 }
+
+/// Prepares the SubView promotion later performed by `promoteSubViews`
+/// (where most of the transformation happens). It arranges the new
+/// operands for `LinalgOp op` and deallocates the new buffer(s)
+/// It is the entry point for declarative transformation
+/// Returns the cloned `LinalgOp` with the new operands
+LinalgOp promoteSubViewOperands(OpBuilder &b, LinalgOp op,
+                                llvm::SetVector<ValuePtr> subViews,
+                                bool dynamicBuffers = false,
+                                OperationFolder *folder = nullptr);
+
 } // namespace linalg
 } // namespace mlir
 

@@ -85,7 +85,7 @@ void promoteSingleIterationLoops(FuncOp f);
 /// expression.
 void getCleanupLoopLowerBound(AffineForOp forOp, unsigned unrollFactor,
                               AffineMap *map,
-                              SmallVectorImpl<Value *> *operands,
+                              SmallVectorImpl<ValuePtr> *operands,
                               OpBuilder &builder);
 
 /// Skew the operations in the body of a 'affine.for' operation with the
@@ -140,7 +140,7 @@ SmallVector<SmallVector<AffineForOp, 8>, 8> tile(ArrayRef<AffineForOp> forOps,
                                                  ArrayRef<uint64_t> sizes,
                                                  ArrayRef<AffineForOp> targets);
 SmallVector<Loops, 8> tile(ArrayRef<loop::ForOp> forOps,
-                           ArrayRef<Value *> sizes,
+                           ArrayRef<ValuePtr> sizes,
                            ArrayRef<loop::ForOp> targets);
 
 /// Performs tiling (with interchange) by strip-mining the `forOps` by `sizes`
@@ -149,7 +149,7 @@ SmallVector<Loops, 8> tile(ArrayRef<loop::ForOp> forOps,
 /// `target`.
 SmallVector<AffineForOp, 8> tile(ArrayRef<AffineForOp> forOps,
                                  ArrayRef<uint64_t> sizes, AffineForOp target);
-Loops tile(ArrayRef<loop::ForOp> forOps, ArrayRef<Value *> sizes,
+Loops tile(ArrayRef<loop::ForOp> forOps, ArrayRef<ValuePtr> sizes,
            loop::ForOp target);
 
 /// Tile a nest of loop::ForOp loops rooted at `rootForOp` with the given
@@ -157,7 +157,7 @@ Loops tile(ArrayRef<loop::ForOp> forOps, ArrayRef<Value *> sizes,
 /// runtime.  If more sizes than loops are provided, discard the trailing values
 /// in sizes.  Assumes the loop nest is permutable.
 /// Returns the newly created intra-tile loops.
-Loops tilePerfectlyNested(loop::ForOp rootForOp, ArrayRef<Value *> sizes);
+Loops tilePerfectlyNested(loop::ForOp rootForOp, ArrayRef<ValuePtr> sizes);
 
 /// Explicit copy / DMA generation options for mlir::affineDataCopyGenerate.
 struct AffineCopyOptions {
@@ -229,8 +229,8 @@ void coalesceLoops(MutableArrayRef<loop::ForOp> loops);
 ///      ...
 ///    }
 /// ```
-void mapLoopToProcessorIds(loop::ForOp forOp, ArrayRef<Value *> processorId,
-                           ArrayRef<Value *> numProcessors);
+void mapLoopToProcessorIds(loop::ForOp forOp, ArrayRef<ValuePtr> processorId,
+                           ArrayRef<ValuePtr> numProcessors);
 } // end namespace mlir
 
 #endif // MLIR_TRANSFORMS_LOOP_UTILS_H

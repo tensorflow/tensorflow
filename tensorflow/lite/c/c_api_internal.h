@@ -59,4 +59,4 @@ struct TfLiteInterpreter {
   std::unique_ptr<tflite::Interpreter> impl;
 };
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_C_C_API_INTERNAL_H_
+#endif  // TENSORFLOW_LITE_C_C_API_INTERNAL_H_

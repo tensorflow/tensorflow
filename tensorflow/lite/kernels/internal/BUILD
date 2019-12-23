@@ -192,6 +192,13 @@ config_setting(
 )
 
 config_setting(
+    name = "windows",
+    values = {
+        "cpu": "x64_windows",
+    },
+)
+
+config_setting(
     name = "raspberry_pi_with_neon",
     define_values = {
         "raspberry_pi_with_neon": "true",
@@ -264,6 +271,7 @@ cc_library(
         ":darwin": tflite_deps_intel,
         ":darwin_x86_64": tflite_deps_intel,
         ":freebsd": tflite_deps_intel,
+        ":windows": tflite_deps_intel,
         "//conditions:default": [],
     }),
 )
@@ -310,6 +318,7 @@ cc_library(
         ":darwin": tflite_deps_intel,
         ":darwin_x86_64": tflite_deps_intel,
         ":freebsd": tflite_deps_intel,
+        ":windows": tflite_deps_intel,
         "//conditions:default": [],
     }),
 )
@@ -421,6 +430,7 @@ cc_library(
         "reference/comparisons.h",
         "reference/concatenation.h",
         "reference/conv.h",
+        "reference/densify.h",
         "reference/depthwiseconv_float.h",
         "reference/depthwiseconv_uint8.h",
         "reference/dequantize.h",
@@ -481,6 +491,7 @@ cc_library(
         ":darwin": tflite_deps_intel,
         ":darwin_x86_64": tflite_deps_intel,
         ":freebsd": tflite_deps_intel,
+        ":windows": tflite_deps_intel,
         "//conditions:default": [],
     }),
 )
@@ -496,6 +507,7 @@ cc_library(
         "reference/comparisons.h",
         "reference/concatenation.h",
         "reference/conv.h",
+        "reference/densify.h",
         "reference/depthwiseconv_float.h",
         "reference/depthwiseconv_uint8.h",
         "reference/dequantize.h",
@@ -541,6 +553,7 @@ cc_library(
         ":darwin": tflite_deps_intel,
         ":darwin_x86_64": tflite_deps_intel,
         ":freebsd": tflite_deps_intel,
+        ":windows": tflite_deps_intel,
         "//conditions:default": [],
     }),
 )
@@ -738,6 +751,7 @@ cc_library(
         ":freebsd": [
             ":sse_tensor_utils",
         ],
+        ":windows": [":sse_tensor_utils"],
         "//conditions:default": [
             ":portable_tensor_utils",
         ],
@@ -974,6 +988,7 @@ cc_library(
         ":darwin": tflite_deps_intel,
         ":darwin_x86_64": tflite_deps_intel,
         ":freebsd": tflite_deps_intel,
+        ":windows": tflite_deps_intel,
         "//conditions:default": [],
     }),
 )

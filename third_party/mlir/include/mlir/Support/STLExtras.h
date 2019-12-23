@@ -344,6 +344,44 @@ template <typename ContainerTy> bool has_single_element(ContainerTy &&c) {
   auto it = std::begin(c), e = std::end(c);
   return it != e && std::next(it) == e;
 }
+
+//===----------------------------------------------------------------------===//
+//     Extra additions to <type_traits>
+//===----------------------------------------------------------------------===//
+
+/// This class provides various trait information about a callable object.
+///   * To access the number of arguments: Traits::num_args
+///   * To access the type of an argument: Traits::arg_t<i>
+///   * To access the type of the result: Traits::result_t<i>
+template <typename T, bool isClass = std::is_class<T>::value>
+struct FunctionTraits : public FunctionTraits<decltype(&T::operator())> {};
+
+/// Overload for class function types.
+template <typename ClassType, typename ReturnType, typename... Args>
+struct FunctionTraits<ReturnType (ClassType::*)(Args...) const, false> {
+  /// The number of arguments to this function.
+  enum { num_args = sizeof...(Args) };
+
+  /// The result type of this function.
+  using result_t = ReturnType;
+
+  /// The type of an argument to this function.
+  template <size_t i>
+  using arg_t = typename std::tuple_element<i, std::tuple<Args...>>::type;
+};
+/// Overload for non-class function types.
+template <typename ReturnType, typename... Args>
+struct FunctionTraits<ReturnType (*)(Args...), false> {
+  /// The number of arguments to this function.
+  enum { num_args = sizeof...(Args) };
+
+  /// The result type of this function.
+  using result_t = ReturnType;
+
+  /// The type of an argument to this function.
+  template <size_t i>
+  using arg_t = typename std::tuple_element<i, std::tuple<Args...>>::type;
+};
 } // end namespace mlir
 
 // Allow tuples to be usable as DenseMap keys.

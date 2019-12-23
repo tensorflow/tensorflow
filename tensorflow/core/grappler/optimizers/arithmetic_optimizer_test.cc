@@ -3707,6 +3707,41 @@ TEST_F(ArithmeticOptimizerTest,
   test::ExpectTensorNear<float>(tensors[0], tensors_expected[0], 1e-6);
 }
 
+TEST_F(ArithmeticOptimizerTest, OptimizeMaxOrMinOfMonotonicBiasAddReluMaxPool) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output weights = ops::Const(s.WithOpName("weights"),
+                              Input::Initializer(1.0f, {5, 5, 3, 4}));
+  Output biases =
+      ops::Const(s.WithOpName("biases"), Input::Initializer(2.0f, {4}));
+  Output input = ops::Const(s.WithOpName("input"),
+                            Input::Initializer(1.0f, {1, 28, 28, 3}));
+  Output output =
+      ops::Conv2D(s.WithOpName("conv"), input, weights, {1, 1, 1, 1}, "SAME");
+  output = ops::BiasAdd(s.WithOpName("biasadd"), output, biases);
+  output = ops::Relu(s.WithOpName("relu"), output);
+  output = ops::MaxPool(s.WithOpName("max_pool"), output, {1, 2, 2, 1},
+                        {1, 2, 2, 1}, "VALID");
+  output = ops::Identity(s.WithOpName("output"), output);
+
+  GrapplerItem item;
+  item.fetch = {"output"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+  ASSERT_EQ(tensors_expected.size(), 1);
+
+  GraphDef new_graph;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyOptimizeMaxOrMinOfMonotonic(&optimizer);
+  OptimizeTwice(&optimizer, &item, &new_graph);
+
+  // Should be a NoOp
+  VerifyGraphsMatch(item.graph, new_graph, __LINE__);
+
+  auto tensors = EvaluateNodes(new_graph, item.fetch);
+  ASSERT_EQ(tensors.size(), 1);
+  test::ExpectTensorNear<float>(tensors[0], tensors_expected[0], 1e-6);
+}
+
 TEST_F(ArithmeticOptimizerTest, OptimizeMaxOrMinOfMonotonicElementWiseMaxPool) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   auto x = ops::Const(s.WithOpName("x"), 1.5f, {3, 3, 3, 1});

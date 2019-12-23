@@ -321,7 +321,7 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithm(
 
   StatusOr<AutotuneResult> result_or(InternalError("Unknown platform."));
   // Check StreamExecutor on which platform it is. ROCm and Cuda implementation
-  // have diverged. Secifically, we need to make sure redzone allocator related
+  // have diverged. Specifically, we need to make sure redzone allocator related
   // utilities are not used in ROCm routine
   if (stream_exec_->platform_kind() == se::PlatformKind::kROCm) {
     result_or = PickBestAlgorithmNoCacheRocm(instr, allocator, &stream);
@@ -378,7 +378,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
 
   optional<BufferComparator> comparator;
   // Use the first algorithm that's supported as reference. There isn't a
-  // particular reason to use it, as any algorithm sufficies. It doesn't make
+  // particular reason to use it, as any algorithm suffices. It doesn't make
   // this algorithm considered correct, though.
   se::DeviceMemoryBase reference_result_buffer;
   AlgorithmDesc first_algorithm;
@@ -491,7 +491,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
                    << instr->ToString() << ": " << compare_result.status();
         if (compare_result.status().code() ==
             tensorflow::error::RESOURCE_EXHAUSTED) {
-          // Possibly OOM. Propatate the error.
+          // Possibly OOM. Propagate the error.
           return compare_result.status();
         }
         CHECK(!crash_on_checking_failure);

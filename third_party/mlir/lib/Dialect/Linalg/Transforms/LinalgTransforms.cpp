@@ -43,6 +43,7 @@ using namespace mlir::linalg;
 using namespace mlir::linalg::intrinsics;
 
 using llvm::dbgs;
+using llvm::SetVector;
 
 // Marker used as attribute name in generated Linalg rewriting transformations.
 const StringLiteral mlir::linalg::LinalgTransforms::kLinalgTransformMarker =
@@ -98,8 +99,8 @@ LogicalResult mlir::linalg::tileAndFuseLinalgOpAndSetMarker(
 }
 
 bool mlir::linalg::detail::isProducedByOpOfTypeImpl(
-    Operation *consumerOp, Value *consumedView,
-    llvm::function_ref<bool(Operation *)> isaOpType) {
+    Operation *consumerOp, ValuePtr consumedView,
+    function_ref<bool(Operation *)> isaOpType) {
   LinalgOp consumer = dyn_cast<LinalgOp>(consumerOp);
   if (!consumer)
     return false;
@@ -174,7 +175,7 @@ LogicalResult mlir::linalg::vectorizeGenericOp(PatternRewriter &rewriter,
     return failure();
 
   // TODO(ntv): non-identity layout.
-  auto isStaticMemRefWithIdentityLayout = [](Value *v) {
+  auto isStaticMemRefWithIdentityLayout = [](ValuePtr v) {
     auto m = v->getType().dyn_cast<MemRefType>();
     if (!m || !m.hasStaticShape() || !m.getAffineMaps().empty())
       return false;
@@ -229,4 +230,18 @@ mlir::linalg::permuteGenericLinalgOp(PatternRewriter &rewriter, Operation *op,
               rewriter.getStringAttr(linalgMarker));
   linOp.clone(rewriter, linOp.getLoc(), op->getOperands());
   return success();
+}
+
+LogicalResult mlir::linalg::linalgOpPromoteSubviews(PatternRewriter &rewriter,
+                                                    Operation *op) {
+  LinalgOp linOp = dyn_cast<LinalgOp>(op);
+  SetVector<ValuePtr> subViews;
+  for (auto it : linOp.getInputsAndOutputs())
+    if (auto sv = dyn_cast_or_null<SubViewOp>(it->getDefiningOp()))
+      subViews.insert(sv);
+  if (!subViews.empty()) {
+    auto resOp = promoteSubViewOperands(rewriter, linOp, subViews);
+    return success(resOp);
+  }
+  return failure();
 }

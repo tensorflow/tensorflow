@@ -112,8 +112,7 @@ Type OpTrait::util::getBroadcastedType(Type type1, Type type2) {
 
   // Returns the type kind if the given type is a vector or ranked tensor type.
   // Returns llvm::None otherwise.
-  auto getCompositeTypeKind =
-      [](Type type) -> llvm::Optional<StandardTypes::Kind> {
+  auto getCompositeTypeKind = [](Type type) -> Optional<StandardTypes::Kind> {
     if (type.isa<VectorType>() || type.isa<RankedTensorType>())
       return static_cast<StandardTypes::Kind>(type.getKind());
     return llvm::None;
@@ -122,7 +121,7 @@ Type OpTrait::util::getBroadcastedType(Type type1, Type type2) {
   // Make sure the composite type, if has, is consistent.
   auto compositeKind1 = getCompositeTypeKind(type1);
   auto compositeKind2 = getCompositeTypeKind(type2);
-  llvm::Optional<StandardTypes::Kind> resultCompositeKind;
+  Optional<StandardTypes::Kind> resultCompositeKind;
 
   if (compositeKind1 && compositeKind2) {
     // Disallow mixing vector and tensor.

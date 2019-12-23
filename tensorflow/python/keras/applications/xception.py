@@ -38,13 +38,12 @@ from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.util.tf_export import keras_export
 
 
-TF_WEIGHTS_PATH = ('https://github.com/fchollet/deep-learning-models/'
-                   'releases/download/v0.4/'
-                   'xception_weights_tf_dim_ordering_tf_kernels.h5')
+TF_WEIGHTS_PATH = (
+    'https://storage.googleapis.com/tensorflow/keras-applications/'
+    'xception/xception_weights_tf_dim_ordering_tf_kernels.h5')
 TF_WEIGHTS_PATH_NO_TOP = (
-    'https://github.com/fchollet/deep-learning-models/'
-    'releases/download/v0.4/'
-    'xception_weights_tf_dim_ordering_tf_kernels_notop.h5')
+    'https://storage.googleapis.com/tensorflow/keras-applications/'
+    'xception/xception_weights_tf_dim_ordering_tf_kernels_notop.h5')
 
 
 @keras_export('keras.applications.xception.Xception',

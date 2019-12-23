@@ -55,7 +55,7 @@ unsigned getNestingDepth(Operation &op);
 /// Returns in 'sequentialLoops' all sequential loops in loop nest rooted
 /// at 'forOp'.
 void getSequentialLoops(AffineForOp forOp,
-                        llvm::SmallDenseSet<Value *, 8> *sequentialLoops);
+                        llvm::SmallDenseSet<ValuePtr, 8> *sequentialLoops);
 
 /// ComputationSliceState aggregates loop IVs, loop bound AffineMaps and their
 /// associated operands for a set of loops within a loop nest (typically the
@@ -64,15 +64,15 @@ void getSequentialLoops(AffineForOp forOp,
 struct ComputationSliceState {
   // List of sliced loop IVs (ordered from outermost to innermost).
   // EX: 'ivs[i]' has lower bound 'lbs[i]' and upper bound 'ubs[i]'.
-  SmallVector<Value *, 4> ivs;
+  SmallVector<ValuePtr, 4> ivs;
   // List of lower bound AffineMaps.
   SmallVector<AffineMap, 4> lbs;
   // List of upper bound AffineMaps.
   SmallVector<AffineMap, 4> ubs;
   // List of lower bound operands (lbOperands[i] are used by 'lbs[i]').
-  std::vector<SmallVector<Value *, 4>> lbOperands;
+  std::vector<SmallVector<ValuePtr, 4>> lbOperands;
   // List of upper bound operands (ubOperands[i] are used by 'ubs[i]').
-  std::vector<SmallVector<Value *, 4>> ubOperands;
+  std::vector<SmallVector<ValuePtr, 4>> ubOperands;
   // Slice loop nest insertion point in target loop nest.
   Block::iterator insertPoint;
   // Adds to 'cst' with constraints which represent the slice bounds on 'ivs'
@@ -257,7 +257,7 @@ struct MemRefRegion {
   unsigned getRank() const;
 
   /// Memref that this region corresponds to.
-  Value *memref;
+  ValuePtr memref;
 
   /// Read or write.
   bool write;

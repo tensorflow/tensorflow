@@ -125,7 +125,7 @@ class TRTEngineOp : public AsyncOpKernel {
   // Verify that the input shapes are consistent and can be handled by this op.
   Status VerifyInputShapes(const std::vector<TensorShape>& shapes);
 
-  // Return engine batch in cached_engne_batch_sizes_ which is closest to input
+  // Return engine batch in cached_engine_batch_sizes_ which is closest to input
   // batch.
   Status GetEngineInputShapes(
       const CacheType& cache,
@@ -153,6 +153,9 @@ class TRTEngineOp : public AsyncOpKernel {
 
   // Whether to calibrate INT8 engine.
   bool calibration_mode_;
+
+  // Whether to use implicit batch dimension for TensorRT
+  bool use_implicit_batch_;
 
   // Maximum number of cached engines
   int max_cached_engines_;
@@ -289,6 +292,13 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
   }
   OP_REQUIRES_OK(context, context->GetAttr("max_cached_engines_count",
                                            &max_cached_engines_));
+
+  auto status = context->GetAttr("_use_implicit_batch", &use_implicit_batch_);
+  if (status.code() == tensorflow::error::NOT_FOUND) {
+    VLOG(2) << "Not found _use_implicit_batch in " << context->device()->name()
+            << ", thus setting _use_implicit_batch=true";
+    use_implicit_batch_ = true;
+  }
 }
 
 void TRTEngineOp::ExecuteNativeSegment(OpKernelContext* ctx,
@@ -684,7 +694,10 @@ StatusOr<EngineContext*> TRTEngineOp::GetEngine(
   // single element containing the only engine.
   if (static_engine_) {
     if (cache.size()) {
-      if (AreShapesCompatible(input_shapes, cache.begin()->first)) {
+      // TODO(laigd): need a better shape compatibility check for the case where
+      // implicit batch is disabled.
+      if (!use_implicit_batch_ ||
+          AreShapesCompatible(input_shapes, cache.begin()->first)) {
         return cache.begin()->second.get();
       }
       return &empty_context;
@@ -703,9 +716,10 @@ StatusOr<EngineContext*> TRTEngineOp::GetEngine(
     // Static engine will have max_batch_size for batch size so that all inputs
     // will map to this single engine.
     std::vector<TensorShape> engine_input_shapes(input_shapes);
-    for (int i = 0; i < engine_input_shapes.size(); i++) {
-      // TODO(tmorris): will all inputs have batch size as first dimension??
-      engine_input_shapes[i].set_dim(0, max_batch_size);
+    if (use_implicit_batch_) {
+      for (int i = 0; i < engine_input_shapes.size(); i++) {
+        engine_input_shapes[i].set_dim(0, max_batch_size);
+      }
     }
     // TODO(laigd): here we assume engine_input_shapes matches the actual input
     // shapes of the engine, we should verify that.
@@ -720,7 +734,7 @@ StatusOr<EngineContext*> TRTEngineOp::GetEngine(
     string tmp;
     // Swap with temporary empty string to deallocate the CPU memory.
     serialized_segment_.swap(tmp);
-    if (max_batch_size < batch_size) {
+    if (use_implicit_batch_ && (max_batch_size < batch_size)) {
       return &empty_context;
     }
     return cache.at(engine_input_shapes).get();
@@ -749,7 +763,7 @@ StatusOr<EngineContext*> TRTEngineOp::GetEngine(
     auto status = convert::ConvertGraphDefToEngine(
         segment_graph_, precision_mode_, batch_size, workspace_size_,
         partial_shapes, &logger, allocator, calibrator_.get(), &engine,
-        use_calibration_, &convert_successfully);
+        use_calibration_, use_implicit_batch_, &convert_successfully);
     if (!status.ok()) {
       LOG(WARNING) << "Engine creation for " << name() << " failed. "
                    << "The native segment will be used instead. "
@@ -838,7 +852,7 @@ Status TRTEngineOp::AllocateCalibrationResources(
         cres->calibrator_->getBatchSize(), this->workspace_size_,
         partial_shapes, &cache_res->GetLogger(), cache_res->allocator_.get(),
         cres->calibrator_.get(), &cres->engine_,
-        /*use_calibration=*/true,
+        /*use_calibration=*/true, this->use_implicit_batch_,
         /*convert_successfully=*/nullptr);
     if (!s.ok()) {
       LOG(ERROR) << "Calibration failed: " << s;

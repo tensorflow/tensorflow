@@ -28,9 +28,17 @@
 
 namespace mlir {
 class Block;
+class BlockArgument;
 class Operation;
+class OpResult;
 class Region;
 class Value;
+
+/// Using directives that simplify the transition of Value to being value typed.
+using BlockArgumentPtr = BlockArgument *;
+using OpResultPtr = OpResult *;
+using ValueRef = Value &;
+using ValuePtr = Value *;
 
 /// Operands contain a Value.
 using OpOperand = IROperandImpl<Value>;
@@ -47,6 +55,15 @@ public:
   };
 
   ~Value() {}
+
+  template <typename U> bool isa() const { return U::classof(this); }
+  template <typename U> U *dyn_cast() const {
+    return isa<U>() ? (U *)this : nullptr;
+  }
+  template <typename U> U *cast() const {
+    assert(isa<U>());
+    return (U *)this;
+  }
 
   Kind getKind() const { return typeAndKind.getInt(); }
 
@@ -66,7 +83,7 @@ public:
   /// Replace all uses of 'this' value with the new value, updating anything in
   /// the IR that uses 'this' to use the other value instead.  When this returns
   /// there are zero uses of 'this'.
-  void replaceAllUsesWith(Value *newValue) {
+  void replaceAllUsesWith(ValuePtr newValue) {
     IRObjectWithUseList::replaceAllUsesWith(newValue);
   }
 
@@ -82,7 +99,7 @@ public:
   Region *getParentRegion();
 
   using use_iterator = ValueUseIterator<OpOperand>;
-  using use_range = llvm::iterator_range<use_iterator>;
+  using use_range = iterator_range<use_iterator>;
 
   inline use_iterator use_begin();
   inline use_iterator use_end();
@@ -100,7 +117,7 @@ private:
   llvm::PointerIntPair<Type, 1, Kind> typeAndKind;
 };
 
-inline raw_ostream &operator<<(raw_ostream &os, Value &value) {
+inline raw_ostream &operator<<(raw_ostream &os, ValueRef value) {
   value.print(os);
   return os;
 }
@@ -112,7 +129,7 @@ inline auto Value::use_begin() -> use_iterator {
 
 inline auto Value::use_end() -> use_iterator { return use_iterator(nullptr); }
 
-inline auto Value::getUses() -> llvm::iterator_range<use_iterator> {
+inline auto Value::getUses() -> iterator_range<use_iterator> {
   return {use_begin(), use_end()};
 }
 
@@ -160,7 +177,6 @@ private:
   /// through bitpacking shenanigans.
   Operation *const owner;
 };
-
 } // namespace mlir
 
 #endif

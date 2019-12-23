@@ -403,8 +403,7 @@ def I32ElementsAttrOp : TEST_Op<"i32ElementsAttr"> {
 }
 
 def OpWithInferTypeInterfaceOp : TEST_Op<"op_with_infer_type_if", [
-    DeclareOpInterfaceMethods<InferTypeOpInterface>,
-    InferTypeOpInterfaceDefault]> {
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let arguments = (ins AnyTensor, AnyTensor);
   let results = (outs AnyTensor);
 }
@@ -645,7 +644,7 @@ def OpSymbolBindingB : TEST_Op<"symbol_binding_b", []> {
 
   let builders = [
     OpBuilder<
-      "Builder *builder, OperationState &state, Value *operand",
+      "Builder *builder, OperationState &state, ValuePtr operand",
       [{
         state.types.assign({builder->getIntegerType(32)});
         state.addOperands({operand});

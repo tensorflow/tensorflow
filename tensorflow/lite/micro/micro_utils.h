@@ -74,6 +74,12 @@ void SignedSymmetricPerChannelQuantize(const float* values,
 void SignedSymmetricQuantize(const float* values, TfLiteIntArray* dims,
                              int8_t* quantized_values, float* scaling_factor);
 
+void SignedSymmetricQuantize(const float* values, TfLiteIntArray* dims,
+                             int16_t* quantized_values, float* scaling_factor);
+
+void SignedSymmetricQuantize(const float* values, TfLiteIntArray* dims,
+                             int32_t* quantized_values, float* scaling_factor);
+
 void SymmetricQuantize(const float* values, TfLiteIntArray* dims,
                        uint8_t* quantized_values, float* scaling_factor);
 

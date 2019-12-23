@@ -349,7 +349,7 @@ StatusOr<std::vector<HloSnapshot>> ParseRecordIoFile(absl::string_view filename,
   tensorflow::tstring record;
   while (reader.ReadRecord(&offset, &record).ok()) {
     HloSnapshot snapshot;
-    if (snapshot.mutable_hlo()->ParseFromStringPiece(record)) {
+    if (snapshot.mutable_hlo()->ParseFromString(record)) {
       snapshots.push_back(std::move(snapshot));
     } else {
       LOG(ERROR) << "Encountered bad proto";

@@ -497,23 +497,25 @@ def load(export_dir, tags=None):
   _Importing SavedModels from TensorFlow 1.x_
 
   SavedModels from `tf.estimator.Estimator` or 1.x SavedModel APIs have a flat
-  graph instead of `tf.function` objects. These SavedModels will have functions
-  corresponding to their signatures in the `.signatures` attribute, but also
-  have a `.prune` method which allows you to extract functions for new
-  subgraphs. This is equivalent to importing the SavedModel and naming feeds and
-  fetches in a Session from TensorFlow 1.x.
+  graph instead of `tf.function` objects. These SavedModels will be loaded with
+  the following attributes:
 
-  ```python
-  imported = tf.saved_model.load(path_to_v1_saved_model)
-  pruned = imported.prune("x:0", "out:0")
-  pruned(tf.ones([]))
-  ```
+  * `.signatures`: A dictionary mapping signature names to functions.
+  * `.prune(feeds, fetches) `: A method which allows you to extract
+    functions for new subgraphs. This is equivalent to importing the SavedModel
+    and naming feeds and fetches in a Session from TensorFlow 1.x.
 
-  See `tf.compat.v1.wrap_function` for details. These SavedModels also have a
-  `.variables` attribute containing imported variables, and a `.graph` attribute
-  representing the whole imported graph. For SavedModels exported from
-  `tf.saved_model.save`, variables are instead assigned to whichever attributes
-  they were assigned before export.
+    ```python
+    imported = tf.saved_model.load(path_to_v1_saved_model)
+    pruned = imported.prune("x:0", "out:0")
+    pruned(tf.ones([]))
+    ```
+
+    See `tf.compat.v1.wrap_function` for details.
+  * `.variables`: A list of imported variables.
+  * `.graph`: The whole imported graph.
+  * `.restore(save_path)`: A function that restores variables from a checkpoint
+    saved from `tf.compat.v1.Saver`.
 
   _Consuming SavedModels asynchronously_
 

@@ -57,7 +57,15 @@ bool Block::isEntryBlock() { return this == &getParent()->front(); }
 void Block::insertBefore(Block *block) {
   assert(!getParent() && "already inserted into a block!");
   assert(block->getParent() && "cannot insert before a block without a parent");
-  block->getParent()->getBlocks().insert(Region::iterator(block), this);
+  block->getParent()->getBlocks().insert(block->getIterator(), this);
+}
+
+/// Unlink this block from its current region and insert it right before the
+/// specific block.
+void Block::moveBefore(Block *block) {
+  assert(block->getParent() && "cannot insert before a block without a parent");
+  block->getParent()->getBlocks().splice(
+      block->getIterator(), getParent()->getBlocks(), getIterator());
 }
 
 /// Unlink this Block from its parent Region and delete it.
@@ -90,7 +98,7 @@ void Block::dropAllReferences() {
 }
 
 void Block::dropAllDefinedValueUses() {
-  for (auto *arg : getArguments())
+  for (auto arg : getArguments())
     arg->dropAllUses();
   for (auto &op : *this)
     op.dropAllDefinedValueUses();
@@ -143,7 +151,7 @@ void Block::recomputeOpOrder() {
 // Argument list management.
 //===----------------------------------------------------------------------===//
 
-BlockArgument *Block::addArgument(Type type) {
+BlockArgumentPtr Block::addArgument(Type type) {
   auto *arg = new BlockArgument(type, this);
   arguments.push_back(arg);
   return arg;
@@ -151,7 +159,7 @@ BlockArgument *Block::addArgument(Type type) {
 
 /// Add one argument to the argument list for each type specified in the list.
 auto Block::addArguments(ArrayRef<Type> types)
-    -> llvm::iterator_range<args_iterator> {
+    -> iterator_range<args_iterator> {
   arguments.reserve(arguments.size() + types.size());
   auto initialSize = arguments.size();
   for (auto type : types) {

@@ -191,7 +191,7 @@ LogicalResult mlir::loopUnrollJamByFactor(AffineForOp forOp,
     // Adjust the lower bound of the cleanup loop; its upper bound is the same
     // as the original loop's upper bound.
     AffineMap cleanupMap;
-    SmallVector<Value *, 4> cleanupOperands;
+    SmallVector<ValuePtr, 4> cleanupOperands;
     getCleanupLoopLowerBound(forOp, unrollJamFactor, &cleanupMap,
                              &cleanupOperands, builder);
     cleanupAffineForOp.setLowerBound(cleanupOperands, cleanupMap);
@@ -208,7 +208,7 @@ LogicalResult mlir::loopUnrollJamByFactor(AffineForOp forOp,
   int64_t step = forOp.getStep();
   forOp.setStep(step * unrollJamFactor);
 
-  auto *forOpIV = forOp.getInductionVar();
+  auto forOpIV = forOp.getInductionVar();
   // Unroll and jam (appends unrollJamFactor - 1 additional copies).
   for (unsigned i = unrollJamFactor - 1; i >= 1; --i) {
     // Operand map persists across all sub-blocks.

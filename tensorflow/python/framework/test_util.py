@@ -37,14 +37,6 @@ from absl.testing import parameterized
 import numpy as np
 import six
 
-_portpicker_import_error = None
-try:
-  import portpicker  # pylint: disable=g-import-not-at-top
-except ImportError as _error:
-  _portpicker_import_error = _error
-  portpicker = None
-
-# pylint: disable=g-import-not-at-top
 from google.protobuf import descriptor_pool
 from google.protobuf import text_format
 
@@ -64,6 +56,7 @@ from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import gpu_util
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
@@ -1495,28 +1488,12 @@ def is_gpu_available(cuda_only=False, min_cuda_compute_capability=None):
   Returns:
     True if a GPU device of the requested kind is available.
   """
-
-  def compute_capability_from_device_desc(device_desc):
-    # TODO(jingyue): The device description generator has to be in sync with
-    # this file. Another option is to put compute capability in
-    # DeviceAttributes, but I avoided that to keep DeviceAttributes
-    # target-independent. Reconsider this option when we have more things like
-    # this to keep in sync.
-    # LINT.IfChange
-    match = re.search(r"compute capability: (\d+)\.(\d+)", device_desc)
-    # LINT.ThenChange(//tensorflow/core/\
-    #                 common_runtime/gpu/gpu_device.cc)
-    if not match:
-      return 0, 0
-    return int(match.group(1)), int(match.group(2))
-
   try:
     for local_device in device_lib.list_local_devices():
       if local_device.device_type == "GPU":
-        if (min_cuda_compute_capability is None or
-            compute_capability_from_device_desc(
-                local_device.physical_device_desc) >=
-            min_cuda_compute_capability):
+        gpu_info = gpu_util.compute_capability_from_device_desc(local_device)
+        cc = gpu_info.compute_capability or (0, 0)
+        if not min_cuda_compute_capability or cc >= min_cuda_compute_capability:
           return True
       if local_device.device_type == "SYCL" and not cuda_only:
         return True
@@ -2409,7 +2386,7 @@ class TensorFlowTestCase(googletest.TestCase):
                                path=None,
                                msg=None):
     path = path or []
-    path_str = (("[" + "][".join([str(p) for p in path]) + "]") if path else "")
+    path_str = (("[" + "][".join(str(p) for p in path) + "]") if path else "")
     msg = msg if msg else ""
 
     # Check if a and/or b are namedtuples.
@@ -3093,8 +3070,7 @@ def create_local_cluster(num_workers,
   Raises:
     ImportError: if portpicker module was not found at load time
   """
-  if _portpicker_import_error:
-    raise _portpicker_import_error  # pylint: disable=raising-bad-type
+  import portpicker  # pylint: disable=g-import-not-at-top
   worker_ports = [portpicker.pick_unused_port() for _ in range(num_workers)]
   ps_ports = [portpicker.pick_unused_port() for _ in range(num_ps)]
   cluster_dict = {

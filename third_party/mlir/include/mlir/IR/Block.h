@@ -56,9 +56,13 @@ public:
   /// Return if this block is the entry block in the parent region.
   bool isEntryBlock();
 
-  /// Insert this block (which must not already be in a function) right before
+  /// Insert this block (which must not already be in a region) right before
   /// the specified block.
   void insertBefore(Block *block);
+
+  /// Unlink this block from its current region and insert it right before the
+  /// specific block.
+  void moveBefore(Block *block);
 
   /// Unlink this Block from its parent region and delete it.
   void erase();
@@ -68,7 +72,7 @@ public:
   //===--------------------------------------------------------------------===//
 
   // This is the list of arguments to the block.
-  using BlockArgListType = ArrayRef<BlockArgument *>;
+  using BlockArgListType = ArrayRef<BlockArgumentPtr>;
 
   BlockArgListType getArguments() { return arguments; }
 
@@ -82,10 +86,10 @@ public:
   bool args_empty() { return arguments.empty(); }
 
   /// Add one value to the argument list.
-  BlockArgument *addArgument(Type type);
+  BlockArgumentPtr addArgument(Type type);
 
   /// Add one argument to the argument list for each type specified in the list.
-  llvm::iterator_range<args_iterator> addArguments(ArrayRef<Type> types);
+  iterator_range<args_iterator> addArguments(ArrayRef<Type> types);
 
   /// Erase the argument at 'index' and remove it from the argument list. If
   /// 'updatePredTerms' is set to true, this argument is also removed from the
@@ -93,7 +97,7 @@ public:
   void eraseArgument(unsigned index, bool updatePredTerms = true);
 
   unsigned getNumArguments() { return arguments.size(); }
-  BlockArgument *getArgument(unsigned i) { return arguments[i]; }
+  BlockArgumentPtr getArgument(unsigned i) { return arguments[i]; }
 
   //===--------------------------------------------------------------------===//
   // Operation list management
@@ -171,7 +175,7 @@ public:
   template <typename OpT>
   class op_iterator : public llvm::mapped_iterator<op_filter_iterator<OpT>,
                                                    OpT (*)(Operation &)> {
-    static OpT unwrap(Operation &op) { return llvm::cast<OpT>(op); }
+    static OpT unwrap(Operation &op) { return cast<OpT>(op); }
 
   public:
     using reference = OpT;
@@ -187,7 +191,7 @@ public:
 
   /// Return an iterator range over the operations within this block that are of
   /// 'OpT'.
-  template <typename OpT> llvm::iterator_range<op_iterator<OpT>> getOps() {
+  template <typename OpT> iterator_range<op_iterator<OpT>> getOps() {
     auto endIt = end();
     return {op_filter_iterator<OpT>(begin(), endIt),
             op_filter_iterator<OpT>(endIt, endIt)};
@@ -201,7 +205,7 @@ public:
 
   /// Return an iterator range over the operation within this block excluding
   /// the terminator operation at the end.
-  llvm::iterator_range<iterator> without_terminator() {
+  iterator_range<iterator> without_terminator() {
     if (begin() == end())
       return {begin(), end()};
     auto endIt = --end();
@@ -226,7 +230,7 @@ public:
     return pred_iterator((BlockOperand *)getFirstUse());
   }
   pred_iterator pred_end() { return pred_iterator(nullptr); }
-  llvm::iterator_range<pred_iterator> getPredecessors() {
+  iterator_range<pred_iterator> getPredecessors() {
     return {pred_begin(), pred_end()};
   }
 
@@ -328,7 +332,7 @@ private:
   OpListType operations;
 
   /// This is the list of arguments to the block.
-  std::vector<BlockArgument *> arguments;
+  std::vector<BlockArgumentPtr> arguments;
 
   Block(Block &) = delete;
   void operator=(Block &) = delete;

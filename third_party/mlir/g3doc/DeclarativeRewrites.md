@@ -233,7 +233,7 @@ In the above, we are using `BOp`'s result for building `COp`.
 Given that `COp` was specified with table-driven op definition, there will be
 several `build()` methods generated for it. One of them has aggregated
 parameters for result types, operands, and attributes in the signature: `void
-COp::build(..., ArrayRef<Type> resultTypes, Array<Value *> operands,
+COp::build(..., ArrayRef<Type> resultTypes, Array<ValuePtr> operands,
 ArrayRef<NamedAttribute> attr)`. The pattern in the above calls this `build()`
 method for constructing the `COp`.
 
@@ -266,7 +266,7 @@ For example, for the above `AOp`, a possible builder is:
 ```c++
 
 void AOp::build(Builder *builder, OperationState &state,
-                Value *input, Attribute attr) {
+                ValuePtr input, Attribute attr) {
   state.addOperands({input});
   state.addAttribute("a_attr", attr);
   Type type = ...; // Deduce result type here
@@ -422,7 +422,7 @@ op; it can be also used to specify how to build an op entirely. An example:
 If we have a C++ function for building an op:
 
 ```c++
-Operation *createMyOp(OpBuilder builder, Value *input, Attribute attr);
+Operation *createMyOp(OpBuilder builder, ValuePtr input, Attribute attr);
 ```
 
 We can wrap it up and invoke it like:

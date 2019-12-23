@@ -228,6 +228,18 @@ class BASE_HLO_RealOp {
   }];
 }
 
+class BASE_HLO_RoundOp {
+  string summary = "Round operator";
+
+  string description = [{
+    Returns `Round(operand)` element-wise, rounding to nearest integer with
+    half-way cases rounding away from zero.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+  }];
+}
+
 class BASE_HLO_RsqrtOp {
   string summary = "Reciprocal Square-root operator";
 
@@ -464,6 +476,26 @@ class BASE_HLO_XorOp {
     https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
   }];
 }
+
+//===----------------------------------------------------------------------===//
+// XLA parallelism related op definitions.
+//===----------------------------------------------------------------------===//
+
+class BASE_HLO_ReplicaIdOp {
+  string summary = "ReplicaId operator";
+
+  string description = [{
+    Returns the unique ID (int32 scalar) of the replica.
+
+    The unique ID of each replica is an unsigned integer in the interval [0, N),
+    where N is the number of replicas. Since all the replicas are running the
+    same program, a ReplicaId() call in the program will return a different
+    value on each replica.
+
+    See https://www.tensorflow.org/xla/operation_semantics#replicaid.
+  }];
+}
+
 
 class BASE_HLO_AllReduceOp {
   string summary = "AllReduce operator";
@@ -895,10 +927,25 @@ class BASE_HLO_RngUniformOp {
   string summary = "RNG with uniform distribution.";
 
   string description = [{
-    Constructs an output of a given shape with random numbers generated following
-    the uniform distribution over the interval `[a,b)`.
+    Constructs an output of a given shape with random numbers generated
+    following the uniform distribution over the interval `[a,b)`. The parameters
+    and output element type have to be a boolean type, an integral type or a
+    floating point types, and the types have to be consistent.
 
     See https://www.tensorflow.org/xla/operation_semantics#rnguniform.
+  }];
+}
+
+class BASE_HLO_RngNormalOp {
+  string summary = "RNG with normal distribution.";
+
+  string description = [{
+    Constructs an output of a given shape with random numbers generated
+    following the normal distribution with parameters `mu` and `sigma`. The
+    parameters and output shape have to have a floating point elemental type.
+    The parameters furthermore have to be scalar valued.
+
+    See https://www.tensorflow.org/xla/operation_semantics#rngnormal.
   }];
 }
 

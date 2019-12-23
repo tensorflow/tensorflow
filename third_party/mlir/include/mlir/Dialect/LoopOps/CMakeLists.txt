@@ -1,1 +1,1 @@
-add_mlir_dialect(LoopOps)
+add_mlir_dialect(LoopOps LoopOps)

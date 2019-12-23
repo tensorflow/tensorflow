@@ -30,12 +30,12 @@
 #include "mlir/Translation.h"
 
 #include "llvm/ADT/StringRef.h"
+#include "llvm/IR/IntrinsicsNVPTX.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Support/ToolOutputFile.h"
 
 using namespace mlir;
 
-namespace {
 static llvm::Value *createIntrinsicCall(llvm::IRBuilder<> &builder,
                                         llvm::Intrinsic::ID intrinsic,
                                         ArrayRef<llvm::Value *> args = {}) {
@@ -55,6 +55,7 @@ static llvm::Intrinsic::ID getShflBflyIntrinsicId(llvm::Type *resultType,
                                  : llvm::Intrinsic::nvvm_shfl_sync_bfly_i32;
 }
 
+namespace {
 class ModuleTranslation : public LLVM::ModuleTranslation {
 
 public:
@@ -104,12 +105,11 @@ std::unique_ptr<llvm::Module> mlir::translateModuleToNVVMIR(Operation *m) {
 }
 
 static TranslateFromMLIRRegistration
-    registration("mlir-to-nvvmir",
-                 [](ModuleOp module, llvm::raw_ostream &output) {
-                   auto llvmModule = mlir::translateModuleToNVVMIR(module);
-                   if (!llvmModule)
-                     return failure();
+    registration("mlir-to-nvvmir", [](ModuleOp module, raw_ostream &output) {
+      auto llvmModule = mlir::translateModuleToNVVMIR(module);
+      if (!llvmModule)
+        return failure();
 
-                   llvmModule->print(output, nullptr);
-                   return success();
-                 });
+      llvmModule->print(output, nullptr);
+      return success();
+    });

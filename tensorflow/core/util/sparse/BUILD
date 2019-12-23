@@ -14,6 +14,7 @@ filegroup(
         "dim_comparator.h",
         "group_iterator.cc",
         "group_iterator.h",
+        "sparse_tensor.cc",
         "sparse_tensor.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
@@ -42,6 +43,7 @@ filegroup(
     name = "framework_internal_impl_group",
     srcs = [
         "group_iterator.cc",
+        "sparse_tensor.cc",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
