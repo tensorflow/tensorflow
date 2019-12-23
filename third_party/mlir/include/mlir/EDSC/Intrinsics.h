@@ -44,7 +44,7 @@ struct IndexHandle : public ValueHandle {
   explicit IndexHandle()
       : ValueHandle(ScopedContext::getBuilder().getIndexType()) {}
   explicit IndexHandle(index_t v) : ValueHandle(v) {}
-  explicit IndexHandle(ValuePtr v) : ValueHandle(v) {
+  explicit IndexHandle(Value v) : ValueHandle(v) {
     assert(v->getType() == ScopedContext::getBuilder().getIndexType() &&
            "Expected index type");
   }
@@ -80,8 +80,8 @@ makeHandlePointers(MutableArrayRef<T> ivs) {
 }
 
 /// Returns a vector of the underlying Value from `ivs`.
-inline SmallVector<ValuePtr, 8> extractValues(ArrayRef<IndexHandle> ivs) {
-  SmallVector<ValuePtr, 8> vals;
+inline SmallVector<Value, 8> extractValues(ArrayRef<IndexHandle> ivs) {
+  SmallVector<Value, 8> vals;
   vals.reserve(ivs.size());
   for (auto &iv : ivs) {
     vals.push_back(iv.getValue());
@@ -109,11 +109,11 @@ public:
     SmallVector<IndexHandle, 8> tmp(vals.begin(), vals.end());
     values.append(tmp.begin(), tmp.end());
   }
-  operator ArrayRef<ValuePtr>() { return values; }
+  operator ArrayRef<Value>() { return values; }
 
 private:
   ValueHandleArray() = default;
-  SmallVector<ValuePtr, 8> values;
+  SmallVector<Value, 8> values;
 };
 
 template <typename T> inline T unpack(T value) { return value; }

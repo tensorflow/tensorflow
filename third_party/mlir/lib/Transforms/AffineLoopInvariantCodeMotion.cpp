@@ -58,15 +58,15 @@ struct LoopInvariantCodeMotion : public FunctionPass<LoopInvariantCodeMotion> {
 } // end anonymous namespace
 
 static bool
-checkInvarianceOfNestedIfOps(Operation *op, ValuePtr indVar,
+checkInvarianceOfNestedIfOps(Operation *op, Value indVar,
                              SmallPtrSetImpl<Operation *> &definedOps,
                              SmallPtrSetImpl<Operation *> &opsToHoist);
-static bool isOpLoopInvariant(Operation &op, ValuePtr indVar,
+static bool isOpLoopInvariant(Operation &op, Value indVar,
                               SmallPtrSetImpl<Operation *> &definedOps,
                               SmallPtrSetImpl<Operation *> &opsToHoist);
 
 static bool
-areAllOpsInTheBlockListInvariant(Region &blockList, ValuePtr indVar,
+areAllOpsInTheBlockListInvariant(Region &blockList, Value indVar,
                                  SmallPtrSetImpl<Operation *> &definedOps,
                                  SmallPtrSetImpl<Operation *> &opsToHoist);
 
@@ -79,7 +79,7 @@ static bool isMemRefDereferencingOp(Operation &op) {
 }
 
 // Returns true if the individual op is loop invariant.
-bool isOpLoopInvariant(Operation &op, ValuePtr indVar,
+bool isOpLoopInvariant(Operation &op, Value indVar,
                        SmallPtrSetImpl<Operation *> &definedOps,
                        SmallPtrSetImpl<Operation *> &opsToHoist) {
   LLVM_DEBUG(llvm::dbgs() << "iterating on op: " << op;);
@@ -97,9 +97,9 @@ bool isOpLoopInvariant(Operation &op, ValuePtr indVar,
     return false;
   } else if (!isa<ConstantOp>(op)) {
     if (isMemRefDereferencingOp(op)) {
-      ValuePtr memref = isa<AffineLoadOp>(op)
-                            ? cast<AffineLoadOp>(op).getMemRef()
-                            : cast<AffineStoreOp>(op).getMemRef();
+      Value memref = isa<AffineLoadOp>(op)
+                         ? cast<AffineLoadOp>(op).getMemRef()
+                         : cast<AffineStoreOp>(op).getMemRef();
       for (auto *user : memref->getUsers()) {
         // If this memref has a user that is a DMA, give up because these
         // operations write to this memref.
@@ -163,8 +163,7 @@ bool isOpLoopInvariant(Operation &op, ValuePtr indVar,
 
 // Checks if all ops in a region (i.e. list of blocks) are loop invariant.
 bool areAllOpsInTheBlockListInvariant(
-    Region &blockList, ValuePtr indVar,
-    SmallPtrSetImpl<Operation *> &definedOps,
+    Region &blockList, Value indVar, SmallPtrSetImpl<Operation *> &definedOps,
     SmallPtrSetImpl<Operation *> &opsToHoist) {
 
   for (auto &b : blockList) {
@@ -179,7 +178,7 @@ bool areAllOpsInTheBlockListInvariant(
 }
 
 // Returns true if the affine.if op can be hoisted.
-bool checkInvarianceOfNestedIfOps(Operation *op, ValuePtr indVar,
+bool checkInvarianceOfNestedIfOps(Operation *op, Value indVar,
                                   SmallPtrSetImpl<Operation *> &definedOps,
                                   SmallPtrSetImpl<Operation *> &opsToHoist) {
   assert(isa<AffineIfOp>(op));

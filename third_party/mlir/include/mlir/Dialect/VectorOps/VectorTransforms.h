@@ -73,9 +73,8 @@ namespace vector {
 //
 // This will be extended in the future to support more advanced use cases than
 // simple pointwise ops.
-ValuePtr unrollSingleResultOpMatchingType(PatternRewriter &builder,
-                                          Operation *op,
-                                          ArrayRef<int64_t> targetShape);
+Value unrollSingleResultOpMatchingType(PatternRewriter &builder, Operation *op,
+                                       ArrayRef<int64_t> targetShape);
 
 } // namespace vector
 } // namespace mlir

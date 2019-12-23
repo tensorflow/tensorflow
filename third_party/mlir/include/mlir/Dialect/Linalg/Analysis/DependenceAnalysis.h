@@ -37,15 +37,15 @@ class LinalgOp;
 class Aliases {
 public:
   /// Returns true if v1 and v2 alias.
-  bool alias(ValuePtr v1, ValuePtr v2) { return find(v1) == find(v2); }
+  bool alias(Value v1, Value v2) { return find(v1) == find(v2); }
 
 private:
   /// Returns the base buffer or block argument into which the view `v` aliases.
   /// This lazily records the new aliases discovered while walking back the
   /// use-def chain.
-  ValuePtr find(ValuePtr v);
+  Value find(Value v);
 
-  DenseMap<ValuePtr, ValuePtr> aliases;
+  DenseMap<Value, Value> aliases;
 };
 
 /// Data structure for holding a dependence graph that operates on LinalgOp and
@@ -54,7 +54,7 @@ class LinalgDependenceGraph {
 public:
   struct LinalgOpView {
     Operation *op;
-    ValuePtr view;
+    Value view;
   };
   struct LinalgDependenceGraphElem {
     // dependentOpView may be either:
@@ -64,7 +64,7 @@ public:
     // View in the op that is used to index in the graph:
     //   1. src in the case of dependencesFromDstGraphs.
     //   2. dst in the case of dependencesIntoGraphs.
-    ValuePtr indexingView;
+    Value indexingView;
   };
   using LinalgDependences = SmallVector<LinalgDependenceGraphElem, 8>;
   using DependenceGraph = DenseMap<Operation *, LinalgDependences>;
@@ -97,14 +97,14 @@ public:
   /// Dependences are restricted to views aliasing `view`.
   SmallVector<Operation *, 8> findCoveringReads(LinalgOp srcLinalgOp,
                                                 LinalgOp dstLinalgOp,
-                                                ValuePtr view) const;
+                                                Value view) const;
 
   /// Returns the operations that are interleaved between `srcLinalgOp` and
   /// `dstLinalgOp` and that are involved in a WAR or WAW with `srcLinalgOp`.
   /// Dependences are restricted to views aliasing `view`.
   SmallVector<Operation *, 8> findCoveringWrites(LinalgOp srcLinalgOp,
                                                  LinalgOp dstLinalgOp,
-                                                 ValuePtr view) const;
+                                                 Value view) const;
 
 private:
   // Keep dependences in both directions, this is not just a performance gain
@@ -130,7 +130,7 @@ private:
   /// Implementation detail for findCoveringxxx.
   SmallVector<Operation *, 8>
   findOperationsWithCoveringDependences(LinalgOp srcLinalgOp,
-                                        LinalgOp dstLinalgOp, ValuePtr view,
+                                        LinalgOp dstLinalgOp, Value view,
                                         ArrayRef<DependenceType> types) const;
 
   Aliases &aliases;

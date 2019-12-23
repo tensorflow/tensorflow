@@ -72,7 +72,7 @@ ArrayAttr vector::getVectorSubscriptAttr(Builder &builder,
 //===----------------------------------------------------------------------===//
 
 void vector::ContractionOp::build(Builder *builder, OperationState &result,
-                                  ValuePtr lhs, ValuePtr rhs, ValuePtr acc,
+                                  Value lhs, Value rhs, Value acc,
                                   ArrayAttr indexingMaps,
                                   ArrayAttr iteratorTypes) {
   result.addOperands({lhs, rhs, acc});
@@ -404,7 +404,7 @@ static Type inferExtractOpResultType(VectorType vectorType,
 }
 
 void vector::ExtractOp::build(Builder *builder, OperationState &result,
-                              ValuePtr source, ArrayRef<int64_t> position) {
+                              Value source, ArrayRef<int64_t> position) {
   result.addOperands(source);
   auto positionAttr = getVectorSubscriptAttr(*builder, position);
   result.addTypes(inferExtractOpResultType(source->getType().cast<VectorType>(),
@@ -471,7 +471,7 @@ static LogicalResult verify(vector::ExtractOp op) {
 //===----------------------------------------------------------------------===//
 
 void ExtractSlicesOp::build(Builder *builder, OperationState &result,
-                            TupleType tupleType, ValuePtr vector,
+                            TupleType tupleType, Value vector,
                             ArrayRef<int64_t> sizes,
                             ArrayRef<int64_t> strides) {
   result.addOperands(vector);
@@ -647,8 +647,8 @@ static ParseResult parseBroadcastOp(OpAsmParser &parser,
 // ShuffleOp
 //===----------------------------------------------------------------------===//
 
-void ShuffleOp::build(Builder *builder, OperationState &result, ValuePtr v1,
-                      ValuePtr v2, ArrayRef<int64_t> mask) {
+void ShuffleOp::build(Builder *builder, OperationState &result, Value v1,
+                      Value v2, ArrayRef<int64_t> mask) {
   result.addOperands({v1, v2});
   auto maskAttr = getVectorSubscriptAttr(*builder, mask);
   result.addTypes(v1->getType());
@@ -771,8 +771,8 @@ static LogicalResult verify(InsertElementOp op) {
 // InsertOp
 //===----------------------------------------------------------------------===//
 
-void InsertOp::build(Builder *builder, OperationState &result, ValuePtr source,
-                     ValuePtr dest, ArrayRef<int64_t> position) {
+void InsertOp::build(Builder *builder, OperationState &result, Value source,
+                     Value dest, ArrayRef<int64_t> position) {
   result.addOperands({source, dest});
   auto positionAttr = getVectorSubscriptAttr(*builder, position);
   result.addTypes(dest->getType());
@@ -893,7 +893,7 @@ void InsertSlicesOp::getStrides(SmallVectorImpl<int64_t> &results) {
 //===----------------------------------------------------------------------===//
 
 void InsertStridedSliceOp::build(Builder *builder, OperationState &result,
-                                 ValuePtr source, ValuePtr dest,
+                                 Value source, Value dest,
                                  ArrayRef<int64_t> offsets,
                                  ArrayRef<int64_t> strides) {
   result.addOperands({source, dest});
@@ -1201,7 +1201,7 @@ static LogicalResult verify(ReshapeOp op) {
 
   // If all shape operands are produced by constant ops, verify that product
   // of dimensions for input/output shape match.
-  auto isDefByConstant = [](ValuePtr operand) {
+  auto isDefByConstant = [](Value operand) {
     return isa_and_nonnull<ConstantIndexOp>(operand->getDefiningOp());
   };
   if (llvm::all_of(op.input_shape(), isDefByConstant) &&
@@ -1247,7 +1247,7 @@ static Type inferStridedSliceOpResultType(VectorType vectorType,
 }
 
 void StridedSliceOp::build(Builder *builder, OperationState &result,
-                           ValuePtr source, ArrayRef<int64_t> offsets,
+                           Value source, ArrayRef<int64_t> offsets,
                            ArrayRef<int64_t> sizes, ArrayRef<int64_t> strides) {
   result.addOperands(source);
   auto offsetsAttr = getVectorSubscriptAttr(*builder, offsets);
@@ -1602,8 +1602,7 @@ static MemRefType inferVectorTypeCastResultType(MemRefType t) {
   return MemRefType::get({}, VectorType::get(t.getShape(), t.getElementType()));
 }
 
-void TypeCastOp::build(Builder *builder, OperationState &result,
-                       ValuePtr source) {
+void TypeCastOp::build(Builder *builder, OperationState &result, Value source) {
   result.addOperands(source);
   result.addTypes(
       inferVectorTypeCastResultType(source->getType().cast<MemRefType>()));
@@ -1793,7 +1792,7 @@ public:
   PatternMatchResult matchAndRewrite(CreateMaskOp createMaskOp,
                                      PatternRewriter &rewriter) const override {
     // Return if any of 'createMaskOp' operands are not defined by a constant.
-    auto is_not_def_by_constant = [](ValuePtr operand) {
+    auto is_not_def_by_constant = [](Value operand) {
       return !isa_and_nonnull<ConstantIndexOp>(operand->getDefiningOp());
     };
     if (llvm::any_of(createMaskOp.operands(), is_not_def_by_constant))

@@ -92,22 +92,22 @@ def LinalgStructuredInterface : OpInterface<"LinalgOp"> {
       "Query the number of loops within the current operation.",
       "unsigned", "getNumLoops">,
     InterfaceMethod<"Query the input view at the given index.",
-      "ValuePtr ", "getInput", (ins "unsigned":$i)
+      "Value ", "getInput", (ins "unsigned":$i)
     >,
     InterfaceMethod<"Query the output view at the given index.",
-      "ValuePtr ", "getOutput", (ins "unsigned":$i)
+      "Value ", "getOutput", (ins "unsigned":$i)
     >,
     InterfaceMethod<[{
         Query the index of the given input value, or `None` if the value is not
         an input.
       }],
-      "llvm::Optional<unsigned>", "getIndexOfInput", (ins "ValuePtr ":$view)
+      "llvm::Optional<unsigned>", "getIndexOfInput", (ins "Value ":$view)
     >,
     InterfaceMethod<[{
         Query the index of the given view value, or `None` if the value is not
         an view.
       }],
-      "llvm::Optional<unsigned>", "getIndexOfOutput", (ins "ValuePtr ":$view)
+      "llvm::Optional<unsigned>", "getIndexOfOutput", (ins "Value ":$view)
     >,
     InterfaceMethod<[{
         Query the type of the input view at the given index.
@@ -228,7 +228,7 @@ def CopyOp : LinalgStructured_Op<"copy", [NInputs<1>, NOutputs<1>]> {
   // TODO(ntv) this should go away once the usage of OptionalAttr triggers
   // emission of builders with default arguments left unspecified.
   let builders = [OpBuilder<
-    "Builder *builder, OperationState &result, ValuePtr input, ValuePtr output", [{
+    "Builder *builder, OperationState &result, Value input, Value output", [{
     return build(
       builder, result, input, output, AffineMapAttr(), AffineMapAttr());
   }]>];

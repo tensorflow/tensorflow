@@ -38,7 +38,7 @@ struct LinalgTransforms {
 namespace detail {
 // Implementation detail of isProducedByOpOfType avoids the need for explicit
 // template instantiations.
-bool isProducedByOpOfTypeImpl(Operation *consumerOp, ValuePtr consumedView,
+bool isProducedByOpOfTypeImpl(Operation *consumerOp, Value consumedView,
                               function_ref<bool(Operation *)> isaOpType);
 } // namespace detail
 
@@ -46,7 +46,7 @@ bool isProducedByOpOfTypeImpl(Operation *consumerOp, ValuePtr consumedView,
 // an op of type `OpTy`. This is used to implement use-def type information on
 // buffers.
 template <typename OpTy>
-bool isProducedByOpOfType(Operation *consumerOp, ValuePtr consumedView) {
+bool isProducedByOpOfType(Operation *consumerOp, Value consumedView) {
   return detail::isProducedByOpOfTypeImpl(
       consumerOp, consumedView, [](Operation *op) { return isa<OpTy>(op); });
 }

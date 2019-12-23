@@ -163,7 +163,7 @@ public:
   }
 
   virtual Operation *getOp() const = 0;
-  virtual ValuePtr getValue() const = 0;
+  virtual Value getValue() const = 0;
 
   static bool classof(const CAGNode *n) {
     return n->getKind() >= Kind::Anchor && n->getKind() <= Kind::LastAnchor;
@@ -210,7 +210,7 @@ public:
     return n->getKind() == Kind::Anchor || n->getKind() == Kind::OperandAnchor;
   }
 
-  ValuePtr getValue() const final { return op->getOperand(operandIdx); }
+  Value getValue() const final { return op->getOperand(operandIdx); }
 
   void printLabel(raw_ostream &os) const override;
 
@@ -231,12 +231,12 @@ public:
   }
 
   Operation *getOp() const final { return resultValue->getDefiningOp(); }
-  ValuePtr getValue() const final { return resultValue; }
+  Value getValue() const final { return resultValue; }
 
   void printLabel(raw_ostream &os) const override;
 
 private:
-  ValuePtr resultValue;
+  Value resultValue;
 };
 
 /// Base class for constraint nodes.

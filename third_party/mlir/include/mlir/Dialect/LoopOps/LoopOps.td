@@ -74,18 +74,18 @@ def ForOp : Loop_Op<"for",
   let skipDefaultBuilders = 1;
   let builders = [
     OpBuilder<"Builder *builder, OperationState &result, "
-              "ValuePtr lowerBound, ValuePtr upperBound, ValuePtr step">
+              "Value lowerBound, Value upperBound, Value step">
   ];
 
   let extraClassDeclaration = [{
     Block *getBody() { return &region().front(); }
-    ValuePtr getInductionVar() { return getBody()->getArgument(0); }
+    Value getInductionVar() { return getBody()->getArgument(0); }
     OpBuilder getBodyBuilder() {
       return OpBuilder(getBody(), std::prev(getBody()->end()));
     }
-    void setLowerBound(ValuePtr bound) { getOperation()->setOperand(0, bound); }
-    void setUpperBound(ValuePtr bound) { getOperation()->setOperand(1, bound); }
-    void setStep(ValuePtr step) { getOperation()->setOperand(2, step); }
+    void setLowerBound(Value bound) { getOperation()->setOperand(0, bound); }
+    void setUpperBound(Value bound) { getOperation()->setOperand(1, bound); }
+    void setStep(Value step) { getOperation()->setOperand(2, step); }
   }];
 }
 
@@ -116,7 +116,7 @@ def IfOp : Loop_Op<"if",
   let skipDefaultBuilders = 1;
   let builders = [
     OpBuilder<"Builder *builder, OperationState &result, "
-              "ValuePtr cond, bool withElseRegion">
+              "Value cond, bool withElseRegion">
   ];
 
   let extraClassDeclaration = [{

@@ -43,7 +43,7 @@ using namespace mlir::loop;
 using llvm::seq;
 
 // Extract an indexed value from KernelDim3.
-static ValuePtr getDim3Value(const gpu::KernelDim3 &dim3, unsigned pos) {
+static Value getDim3Value(const gpu::KernelDim3 &dim3, unsigned pos) {
   switch (pos) {
   case 0:
     return dim3.x;
@@ -61,8 +61,8 @@ static ValuePtr getDim3Value(const gpu::KernelDim3 &dim3, unsigned pos) {
 static Operation::operand_range getLowerBoundOperands(AffineForOp forOp) {
   return forOp.getLowerBoundOperands();
 }
-static SmallVector<ValuePtr, 1> getLowerBoundOperands(ForOp forOp) {
-  SmallVector<ValuePtr, 1> bounds(1, forOp.lowerBound());
+static SmallVector<Value, 1> getLowerBoundOperands(ForOp forOp) {
+  SmallVector<Value, 1> bounds(1, forOp.lowerBound());
   return bounds;
 }
 
@@ -70,35 +70,33 @@ static SmallVector<ValuePtr, 1> getLowerBoundOperands(ForOp forOp) {
 static Operation::operand_range getUpperBoundOperands(AffineForOp forOp) {
   return forOp.getUpperBoundOperands();
 }
-static SmallVector<ValuePtr, 1> getUpperBoundOperands(ForOp forOp) {
-  SmallVector<ValuePtr, 1> bounds(1, forOp.upperBound());
+static SmallVector<Value, 1> getUpperBoundOperands(ForOp forOp) {
+  SmallVector<Value, 1> bounds(1, forOp.upperBound());
   return bounds;
 }
 
 // Get a Value that corresponds to the loop step.  If the step is an attribute,
 // materialize a corresponding constant using builder.
-static ValuePtr getOrCreateStep(AffineForOp forOp, OpBuilder &builder) {
+static Value getOrCreateStep(AffineForOp forOp, OpBuilder &builder) {
   return builder.create<ConstantIndexOp>(forOp.getLoc(), forOp.getStep());
 }
-static ValuePtr getOrCreateStep(ForOp forOp, OpBuilder &) {
-  return forOp.step();
-}
+static Value getOrCreateStep(ForOp forOp, OpBuilder &) { return forOp.step(); }
 
 // Get a Value for the loop lower bound.  If the value requires computation,
 // materialize the instructions using builder.
-static ValuePtr getOrEmitLowerBound(AffineForOp forOp, OpBuilder &builder) {
+static Value getOrEmitLowerBound(AffineForOp forOp, OpBuilder &builder) {
   return lowerAffineLowerBound(forOp, builder);
 }
-static ValuePtr getOrEmitLowerBound(ForOp forOp, OpBuilder &) {
+static Value getOrEmitLowerBound(ForOp forOp, OpBuilder &) {
   return forOp.lowerBound();
 }
 
 // Get a Value for the loop upper bound.  If the value requires computation,
 // materialize the instructions using builder.
-static ValuePtr getOrEmitUpperBound(AffineForOp forOp, OpBuilder &builder) {
+static Value getOrEmitUpperBound(AffineForOp forOp, OpBuilder &builder) {
   return lowerAffineUpperBound(forOp, builder);
 }
-static ValuePtr getOrEmitUpperBound(ForOp forOp, OpBuilder &) {
+static Value getOrEmitUpperBound(ForOp forOp, OpBuilder &) {
   return forOp.upperBound();
 }
 
@@ -214,18 +212,18 @@ struct LoopToGpuConverter {
                     unsigned numThreadDims);
 
   // Ranges of the loops mapped to blocks or threads.
-  SmallVector<ValuePtr, 6> dims;
+  SmallVector<Value, 6> dims;
   // Lower bounds of the loops mapped to blocks or threads.
-  SmallVector<ValuePtr, 6> lbs;
+  SmallVector<Value, 6> lbs;
   // Induction variables of the loops mapped to blocks or threads.
-  SmallVector<ValuePtr, 6> ivs;
+  SmallVector<Value, 6> ivs;
   // Steps of the loops mapped to blocks or threads.
-  SmallVector<ValuePtr, 6> steps;
+  SmallVector<Value, 6> steps;
 };
 } // namespace
 
 // Return true if the value is obviously a constant "one".
-static bool isConstantOne(ValuePtr value) {
+static bool isConstantOne(Value value) {
   if (auto def = dyn_cast_or_null<ConstantIndexOp>(value->getDefiningOp()))
     return def.getValue() == 1;
   return false;
@@ -246,15 +244,15 @@ Optional<OpTy> LoopToGpuConverter::collectBounds(OpTy forOp,
   steps.reserve(numLoops);
   OpTy currentLoop = forOp;
   for (unsigned i = 0; i < numLoops; ++i) {
-    ValuePtr lowerBound = getOrEmitLowerBound(currentLoop, builder);
-    ValuePtr upperBound = getOrEmitUpperBound(currentLoop, builder);
+    Value lowerBound = getOrEmitLowerBound(currentLoop, builder);
+    Value upperBound = getOrEmitUpperBound(currentLoop, builder);
     if (!lowerBound || !upperBound) {
       return llvm::None;
     }
 
-    ValuePtr range =
+    Value range =
         builder.create<SubIOp>(currentLoop.getLoc(), upperBound, lowerBound);
-    ValuePtr step = getOrCreateStep(currentLoop, builder);
+    Value step = getOrCreateStep(currentLoop, builder);
     if (!isConstantOne(step))
       range = builder.create<SignedDivIOp>(currentLoop.getLoc(), range, step);
     dims.push_back(range);
@@ -276,8 +274,8 @@ Optional<OpTy> LoopToGpuConverter::collectBounds(OpTy forOp,
 /// `nids`. The innermost loop is mapped to the x-dimension, followed by the
 /// next innermost loop to y-dimension, followed by z-dimension.
 template <typename OpTy>
-OpTy createGPULaunchLoops(OpTy rootForOp, ArrayRef<ValuePtr> ids,
-                          ArrayRef<ValuePtr> nids) {
+OpTy createGPULaunchLoops(OpTy rootForOp, ArrayRef<Value> ids,
+                          ArrayRef<Value> nids) {
   auto nDims = ids.size();
   assert(nDims == nids.size());
   for (auto dim : llvm::seq<unsigned>(0, nDims)) {
@@ -297,11 +295,11 @@ OpTy createGPULaunchLoops(OpTy rootForOp, ArrayRef<ValuePtr> ids,
 /// each workgroup/workitem and number of workgroup/workitems along a dimension
 /// of the launch into a container.
 void packIdAndNumId(gpu::KernelDim3 kernelIds, gpu::KernelDim3 kernelNids,
-                    unsigned nDims, SmallVectorImpl<ValuePtr> &ids,
-                    SmallVectorImpl<ValuePtr> &nids) {
+                    unsigned nDims, SmallVectorImpl<Value> &ids,
+                    SmallVectorImpl<Value> &nids) {
   assert(nDims <= 3 && "invalid number of launch dimensions");
-  SmallVector<ValuePtr, 3> allIds = {kernelIds.z, kernelIds.y, kernelIds.x};
-  SmallVector<ValuePtr, 3> allNids = {kernelNids.z, kernelNids.y, kernelNids.x};
+  SmallVector<Value, 3> allIds = {kernelIds.z, kernelIds.y, kernelIds.x};
+  SmallVector<Value, 3> allNids = {kernelNids.z, kernelNids.y, kernelNids.x};
   ids.clear();
   ids.append(std::next(allIds.begin(), allIds.size() - nDims), allIds.end());
   nids.clear();
@@ -319,7 +317,7 @@ LogicalResult createLaunchBody(OpBuilder &builder, OpTy rootForOp,
   auto returnOp = builder.create<gpu::ReturnOp>(launchOp.getLoc());
 
   rootForOp.getOperation()->moveBefore(returnOp);
-  SmallVector<ValuePtr, 3> workgroupID, numWorkGroups;
+  SmallVector<Value, 3> workgroupID, numWorkGroups;
   packIdAndNumId(launchOp.getBlockIds(), launchOp.getGridSize(), numBlockDims,
                  workgroupID, numWorkGroups);
 
@@ -335,7 +333,7 @@ LogicalResult createLaunchBody(OpBuilder &builder, OpTy rootForOp,
     }
   }
 
-  SmallVector<ValuePtr, 3> workItemID, workGroupSize;
+  SmallVector<Value, 3> workItemID, workGroupSize;
   packIdAndNumId(launchOp.getThreadIds(), launchOp.getBlockSize(),
                  numThreadDims, workItemID, workGroupSize);
   for (auto &loopOp : threadRootForOps) {
@@ -348,18 +346,17 @@ LogicalResult createLaunchBody(OpBuilder &builder, OpTy rootForOp,
 // Convert the computation rooted at the `rootForOp`, into a GPU kernel with the
 // given workgroup size and number of workgroups.
 template <typename OpTy>
-LogicalResult createLaunchFromOp(OpTy rootForOp,
-                                 ArrayRef<ValuePtr> numWorkGroups,
-                                 ArrayRef<ValuePtr> workGroupSizes) {
+LogicalResult createLaunchFromOp(OpTy rootForOp, ArrayRef<Value> numWorkGroups,
+                                 ArrayRef<Value> workGroupSizes) {
   OpBuilder builder(rootForOp.getOperation());
   if (numWorkGroups.size() > 3) {
     return rootForOp.emitError("invalid ")
            << numWorkGroups.size() << "-D workgroup specification";
   }
   auto loc = rootForOp.getLoc();
-  ValuePtr one = builder.create<ConstantOp>(
+  Value one = builder.create<ConstantOp>(
       loc, builder.getIntegerAttr(builder.getIndexType(), 1));
-  SmallVector<ValuePtr, 3> numWorkGroups3D(3, one), workGroupSize3D(3, one);
+  SmallVector<Value, 3> numWorkGroups3D(3, one), workGroupSize3D(3, one);
   for (auto numWorkGroup : enumerate(numWorkGroups)) {
     numWorkGroups3D[numWorkGroup.index()] = numWorkGroup.value();
   }
@@ -369,7 +366,7 @@ LogicalResult createLaunchFromOp(OpTy rootForOp,
 
   // Get the values used within the region of the rootForOp but defined above
   // it.
-  llvm::SetVector<ValuePtr> valuesToForwardSet;
+  llvm::SetVector<Value> valuesToForwardSet;
   getUsedValuesDefinedAbove(rootForOp.region(), rootForOp.region(),
                             valuesToForwardSet);
   // Also add the values used for the lb, ub, and step of the rootForOp.
@@ -389,8 +386,8 @@ LogicalResult createLaunchFromOp(OpTy rootForOp,
   // defined outside. They all are replaced with kernel arguments.
   for (const auto &pair :
        llvm::zip_first(valuesToForward, launchOp.getKernelArguments())) {
-    ValuePtr from = std::get<0>(pair);
-    ValuePtr to = std::get<1>(pair);
+    Value from = std::get<0>(pair);
+    Value to = std::get<1>(pair);
     replaceAllUsesInRegionWith(from, to, launchOp.body());
   }
   return success();
@@ -410,23 +407,22 @@ void LoopToGpuConverter::createLaunch(OpTy rootForOp, OpTy innermostForOp,
   OpBuilder builder(rootForOp.getOperation());
   // Prepare the grid and block sizes for the launch operation.  If there is
   // no loop mapped to a specific dimension, use constant "1" as its size.
-  ValuePtr constOne =
-      (numBlockDims < 3 || numThreadDims < 3)
-          ? builder.create<ConstantIndexOp>(rootForOp.getLoc(), 1)
-          : nullptr;
-  ValuePtr gridSizeX = dims[0];
-  ValuePtr gridSizeY = numBlockDims > 1 ? dims[1] : constOne;
-  ValuePtr gridSizeZ = numBlockDims > 2 ? dims[2] : constOne;
-  ValuePtr blockSizeX = dims[numBlockDims];
-  ValuePtr blockSizeY = numThreadDims > 1 ? dims[numBlockDims + 1] : constOne;
-  ValuePtr blockSizeZ = numThreadDims > 2 ? dims[numBlockDims + 2] : constOne;
+  Value constOne = (numBlockDims < 3 || numThreadDims < 3)
+                       ? builder.create<ConstantIndexOp>(rootForOp.getLoc(), 1)
+                       : nullptr;
+  Value gridSizeX = dims[0];
+  Value gridSizeY = numBlockDims > 1 ? dims[1] : constOne;
+  Value gridSizeZ = numBlockDims > 2 ? dims[2] : constOne;
+  Value blockSizeX = dims[numBlockDims];
+  Value blockSizeY = numThreadDims > 1 ? dims[numBlockDims + 1] : constOne;
+  Value blockSizeZ = numThreadDims > 2 ? dims[numBlockDims + 2] : constOne;
 
   // Create a launch op and move the body region of the innermost loop to the
   // launch op.  Pass the values defined outside the outermost loop and used
   // inside the innermost loop and loop lower bounds as kernel data arguments.
   // Still assuming perfect nesting so there are no values other than induction
   // variables that are defined in one loop and used in deeper loops.
-  llvm::SetVector<ValuePtr> valuesToForwardSet;
+  llvm::SetVector<Value> valuesToForwardSet;
   getUsedValuesDefinedAbove(innermostForOp.region(), rootForOp.region(),
                             valuesToForwardSet);
   auto valuesToForward = valuesToForwardSet.takeVector();
@@ -460,15 +456,15 @@ void LoopToGpuConverter::createLaunch(OpTy rootForOp, OpTy innermostForOp,
                                 originallyForwardedValues);
   auto stepArgumentIt = std::next(lbArgumentIt, lbs.size());
   for (auto en : llvm::enumerate(ivs)) {
-    ValuePtr id =
+    Value id =
         en.index() < numBlockDims
             ? getDim3Value(launchOp.getBlockIds(), en.index())
             : getDim3Value(launchOp.getThreadIds(), en.index() - numBlockDims);
-    ValuePtr step = steps[en.index()];
+    Value step = steps[en.index()];
     if (!isConstantOne(step))
       id = builder.create<MulIOp>(rootForOp.getLoc(), step, id);
 
-    ValuePtr ivReplacement =
+    Value ivReplacement =
         builder.create<AddIOp>(rootForOp.getLoc(), *lbArgumentIt, id);
     en.value()->replaceAllUsesWith(ivReplacement);
     replaceAllUsesInRegionWith(steps[en.index()], *stepArgumentIt,
@@ -482,8 +478,8 @@ void LoopToGpuConverter::createLaunch(OpTy rootForOp, OpTy innermostForOp,
   // trailing positions, make sure we don't touch those.
   for (const auto &pair :
        llvm::zip_first(valuesToForward, launchOp.getKernelArguments())) {
-    ValuePtr from = std::get<0>(pair);
-    ValuePtr to = std::get<1>(pair);
+    Value from = std::get<0>(pair);
+    Value to = std::get<1>(pair);
     replaceAllUsesInRegionWith(from, to, launchOp.body());
   }
 
@@ -513,8 +509,8 @@ static LogicalResult convertLoopNestToGPULaunch(OpTy forOp,
 // nested. The workgroup size and num workgroups is provided as input
 template <typename OpTy>
 static LogicalResult convertLoopToGPULaunch(OpTy forOp,
-                                            ArrayRef<ValuePtr> numWorkGroups,
-                                            ArrayRef<ValuePtr> workGroupSize) {
+                                            ArrayRef<Value> numWorkGroups,
+                                            ArrayRef<Value> workGroupSize) {
   if (failed(checkLoopOpMappable(forOp, numWorkGroups.size(),
                                  workGroupSize.size()))) {
     return failure();
@@ -535,7 +531,7 @@ LogicalResult mlir::convertLoopNestToGPULaunch(ForOp forOp,
 }
 
 LogicalResult mlir::convertLoopToGPULaunch(loop::ForOp forOp,
-                                           ArrayRef<ValuePtr> numWorkGroups,
-                                           ArrayRef<ValuePtr> workGroupSizes) {
+                                           ArrayRef<Value> numWorkGroups,
+                                           ArrayRef<Value> workGroupSizes) {
   return ::convertLoopToGPULaunch(forOp, numWorkGroups, workGroupSizes);
 }

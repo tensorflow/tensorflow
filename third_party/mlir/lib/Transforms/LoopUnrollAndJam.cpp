@@ -191,7 +191,7 @@ LogicalResult mlir::loopUnrollJamByFactor(AffineForOp forOp,
     // Adjust the lower bound of the cleanup loop; its upper bound is the same
     // as the original loop's upper bound.
     AffineMap cleanupMap;
-    SmallVector<ValuePtr, 4> cleanupOperands;
+    SmallVector<Value, 4> cleanupOperands;
     getCleanupLoopLowerBound(forOp, unrollJamFactor, &cleanupMap,
                              &cleanupOperands, builder);
     cleanupAffineForOp.setLowerBound(cleanupOperands, cleanupMap);

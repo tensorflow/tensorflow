@@ -31,10 +31,10 @@ using namespace mlir;
 
 template <typename OpTy>
 static void createForAllDimensions(OpBuilder &builder, Location loc,
-                                   SmallVectorImpl<ValuePtr> &values) {
+                                   SmallVectorImpl<Value> &values) {
   for (StringRef dim : {"x", "y", "z"}) {
-    ValuePtr v = builder.create<OpTy>(loc, builder.getIndexType(),
-                                      builder.getStringAttr(dim));
+    Value v = builder.create<OpTy>(loc, builder.getIndexType(),
+                                   builder.getStringAttr(dim));
     values.push_back(v);
   }
 }
@@ -46,7 +46,7 @@ static void injectGpuIndexOperations(Location loc, Region &body) {
   OpBuilder builder(loc->getContext());
   Block &firstBlock = body.front();
   builder.setInsertionPointToStart(&firstBlock);
-  SmallVector<ValuePtr, 12> indexOps;
+  SmallVector<Value, 12> indexOps;
   createForAllDimensions<gpu::BlockIdOp>(builder, loc, indexOps);
   createForAllDimensions<gpu::ThreadIdOp>(builder, loc, indexOps);
   createForAllDimensions<gpu::GridDimOp>(builder, loc, indexOps);
@@ -69,7 +69,7 @@ static gpu::LaunchFuncOp inlineBeneficiaryOps(gpu::GPUFuncOp kernelFunc,
                                               gpu::LaunchFuncOp launch) {
   OpBuilder kernelBuilder(kernelFunc.getBody());
   auto &firstBlock = kernelFunc.getBody().front();
-  SmallVector<ValuePtr, 8> newLaunchArgs;
+  SmallVector<Value, 8> newLaunchArgs;
   BlockAndValueMapping map;
   for (int i = 0, e = launch.getNumKernelOperands(); i < e; ++i) {
     map.map(launch.getKernelOperand(i), kernelFunc.getArgument(i));
@@ -82,7 +82,7 @@ static gpu::LaunchFuncOp inlineBeneficiaryOps(gpu::GPUFuncOp kernelFunc,
     }
     // Only inline operations that do not create new arguments.
     if (!llvm::all_of(operandOp->getOperands(),
-                      [map](ValuePtr value) { return map.contains(value); })) {
+                      [map](Value value) { return map.contains(value); })) {
       continue;
     }
     auto clone = kernelBuilder.clone(*operandOp, map);

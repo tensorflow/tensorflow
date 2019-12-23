@@ -213,15 +213,14 @@ static ParseResult parseShuffleOp(OpAsmParser &parser, OperationState &state) {
 static SmallVector<Type, 4> getValueTypes(ValueRange values) {
   SmallVector<Type, 4> types;
   types.reserve(values.size());
-  for (ValuePtr v : values)
+  for (Value v : values)
     types.push_back(v->getType());
   return types;
 }
 
-void LaunchOp::build(Builder *builder, OperationState &result,
-                     ValuePtr gridSizeX, ValuePtr gridSizeY, ValuePtr gridSizeZ,
-                     ValuePtr blockSizeX, ValuePtr blockSizeY,
-                     ValuePtr blockSizeZ, ValueRange operands) {
+void LaunchOp::build(Builder *builder, OperationState &result, Value gridSizeX,
+                     Value gridSizeY, Value gridSizeZ, Value blockSizeX,
+                     Value blockSizeY, Value blockSizeZ, ValueRange operands) {
   // Add grid and block sizes as op operands, followed by the data operands.
   result.addOperands(
       {gridSizeX, gridSizeY, gridSizeZ, blockSizeX, blockSizeY, blockSizeZ});
@@ -528,10 +527,9 @@ void LaunchOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 //===----------------------------------------------------------------------===//
 
 void LaunchFuncOp::build(Builder *builder, OperationState &result,
-                         GPUFuncOp kernelFunc, ValuePtr gridSizeX,
-                         ValuePtr gridSizeY, ValuePtr gridSizeZ,
-                         ValuePtr blockSizeX, ValuePtr blockSizeY,
-                         ValuePtr blockSizeZ, ValueRange kernelOperands) {
+                         GPUFuncOp kernelFunc, Value gridSizeX, Value gridSizeY,
+                         Value gridSizeZ, Value blockSizeX, Value blockSizeY,
+                         Value blockSizeZ, ValueRange kernelOperands) {
   // Add grid and block sizes as op operands, followed by the data operands.
   result.addOperands(
       {gridSizeX, gridSizeY, gridSizeZ, blockSizeX, blockSizeY, blockSizeZ});
@@ -564,7 +562,7 @@ StringRef LaunchFuncOp::getKernelModuleName() {
       .getRootReference();
 }
 
-ValuePtr LaunchFuncOp::getKernelOperand(unsigned i) {
+Value LaunchFuncOp::getKernelOperand(unsigned i) {
   return getOperation()->getOperand(i + kNumConfigOperands);
 }
 
@@ -727,14 +725,13 @@ static ParseResult parseGPUFuncOp(OpAsmParser &parser, OperationState &result) {
 }
 
 static void printAttributions(OpAsmPrinter &p, StringRef keyword,
-                              ArrayRef<BlockArgumentPtr> values) {
+                              ArrayRef<BlockArgument> values) {
   if (values.empty())
     return;
 
   p << ' ' << keyword << '(';
-  interleaveComma(values, p, [&p](BlockArgumentPtr v) {
-    p << *v << " : " << v->getType();
-  });
+  interleaveComma(values, p,
+                  [&p](BlockArgument v) { p << *v << " : " << v->getType(); });
   p << ')';
 }
 
@@ -781,9 +778,9 @@ LogicalResult GPUFuncOp::verifyType() {
 }
 
 static LogicalResult verifyAttributions(Operation *op,
-                                        ArrayRef<BlockArgumentPtr> attributions,
+                                        ArrayRef<BlockArgument> attributions,
                                         unsigned memorySpace) {
-  for (ValuePtr v : attributions) {
+  for (Value v : attributions) {
     auto type = v->getType().dyn_cast<MemRefType>();
     if (!type)
       return op->emitOpError() << "expected memref type in attribution";

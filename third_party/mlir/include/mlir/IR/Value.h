@@ -301,12 +301,6 @@ inline ::llvm::hash_code hash_value(Value arg) {
   return ::llvm::hash_value(arg.impl);
 }
 
-/// Using directives that simplify the transition of Value to being value typed.
-using BlockArgumentPtr = BlockArgument;
-using OpResultPtr = OpResult;
-using ValueRef = Value;
-using ValuePtr = Value;
-
 } // namespace mlir
 
 namespace llvm {

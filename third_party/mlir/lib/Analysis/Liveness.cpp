@@ -40,13 +40,13 @@ struct BlockInfoBuilder {
   /// Fills the block builder with initial liveness information.
   BlockInfoBuilder(Block *block) : block(block) {
     // Mark all block arguments (phis) as defined.
-    for (BlockArgumentPtr argument : block->getArguments())
+    for (BlockArgument argument : block->getArguments())
       defValues.insert(argument);
 
     // Check all result values and whether their uses
     // are inside this block or not (see outValues).
     for (Operation &operation : *block)
-      for (ValuePtr result : operation.getResults()) {
+      for (Value result : operation.getResults()) {
         defValues.insert(result);
 
         // Check whether this value will be in the outValues
@@ -63,7 +63,7 @@ struct BlockInfoBuilder {
 
     // Check all operations for used operands.
     for (Operation &operation : block->getOperations())
-      for (ValuePtr operand : operation.getOperands()) {
+      for (Value operand : operation.getOperands()) {
         // If the operand is already defined in the scope of this
         // block, we can skip the value in the use set.
         if (!defValues.count(operand))
@@ -173,7 +173,7 @@ void Liveness::build(MutableArrayRef<Region> regions) {
 }
 
 /// Gets liveness info (if any) for the given value.
-Liveness::OperationListT Liveness::resolveLiveness(ValuePtr value) const {
+Liveness::OperationListT Liveness::resolveLiveness(Value value) const {
   OperationListT result;
   SmallPtrSet<Block *, 32> visited;
   SmallVector<Block *, 8> toProcess;
@@ -238,7 +238,7 @@ const Liveness::ValueSetT &Liveness::getLiveOut(Block *block) const {
 
 /// Returns true if the given operation represent the last use of the
 /// given value.
-bool Liveness::isLastUse(ValuePtr value, Operation *operation) const {
+bool Liveness::isLastUse(Value value, Operation *operation) const {
   Block *block = operation->getBlock();
   const LivenessBlockInfo *blockInfo = getLiveness(block);
 
@@ -263,21 +263,21 @@ void Liveness::print(raw_ostream &os) const {
   // Builds unique block/value mappings for testing purposes.
   DenseMap<Block *, size_t> blockIds;
   DenseMap<Operation *, size_t> operationIds;
-  DenseMap<ValuePtr, size_t> valueIds;
+  DenseMap<Value, size_t> valueIds;
   for (Region &region : operation->getRegions())
     for (Block &block : region) {
       blockIds.insert({&block, blockIds.size()});
-      for (BlockArgumentPtr argument : block.getArguments())
+      for (BlockArgument argument : block.getArguments())
         valueIds.insert({argument, valueIds.size()});
       for (Operation &operation : block) {
         operationIds.insert({&operation, operationIds.size()});
-        for (ValuePtr result : operation.getResults())
+        for (Value result : operation.getResults())
           valueIds.insert({result, valueIds.size()});
       }
     }
 
   // Local printing helpers
-  auto printValueRef = [&](ValuePtr value) {
+  auto printValueRef = [&](Value value) {
     if (Operation *defOp = value->getDefiningOp())
       os << "val_" << defOp->getName();
     else {
@@ -289,12 +289,12 @@ void Liveness::print(raw_ostream &os) const {
   };
 
   auto printValueRefs = [&](const ValueSetT &values) {
-    std::vector<ValuePtr> orderedValues(values.begin(), values.end());
+    std::vector<Value> orderedValues(values.begin(), values.end());
     std::sort(orderedValues.begin(), orderedValues.end(),
-              [&](ValuePtr left, ValuePtr right) {
+              [&](Value left, Value right) {
                 return valueIds[left] < valueIds[right];
               });
-    for (ValuePtr value : orderedValues)
+    for (Value value : orderedValues)
       printValueRef(value);
   };
 
@@ -315,7 +315,7 @@ void Liveness::print(raw_ostream &os) const {
         if (op.getNumResults() < 1)
           continue;
         os << "\n";
-        for (ValuePtr result : op.getResults()) {
+        for (Value result : op.getResults()) {
           os << "// ";
           printValueRef(result);
           os << ":";
@@ -340,18 +340,18 @@ void Liveness::print(raw_ostream &os) const {
 //===----------------------------------------------------------------------===//
 
 /// Returns true if the given value is in the live-in set.
-bool LivenessBlockInfo::isLiveIn(ValuePtr value) const {
+bool LivenessBlockInfo::isLiveIn(Value value) const {
   return inValues.count(value);
 }
 
 /// Returns true if the given value is in the live-out set.
-bool LivenessBlockInfo::isLiveOut(ValuePtr value) const {
+bool LivenessBlockInfo::isLiveOut(Value value) const {
   return outValues.count(value);
 }
 
 /// Gets the start operation for the given value
 /// (must be referenced in this block).
-Operation *LivenessBlockInfo::getStartOperation(ValuePtr value) const {
+Operation *LivenessBlockInfo::getStartOperation(Value value) const {
   Operation *definingOp = value->getDefiningOp();
   // The given value is either live-in or is defined
   // in the scope of this block.
@@ -362,7 +362,7 @@ Operation *LivenessBlockInfo::getStartOperation(ValuePtr value) const {
 
 /// Gets the end operation for the given value using the start operation
 /// provided (must be referenced in this block).
-Operation *LivenessBlockInfo::getEndOperation(ValuePtr value,
+Operation *LivenessBlockInfo::getEndOperation(Value value,
                                               Operation *startOperation) const {
   // The given value is either dying in this block or live-out.
   if (isLiveOut(value))

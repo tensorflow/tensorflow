@@ -92,7 +92,7 @@ mlir::edsc::LoopNestRangeBuilder::LoopNestRangeBuilder(
 }
 
 mlir::edsc::LoopNestRangeBuilder::LoopNestRangeBuilder(
-    ArrayRef<ValueHandle *> ivs, ArrayRef<ValuePtr> ranges)
+    ArrayRef<ValueHandle *> ivs, ArrayRef<Value> ranges)
     : LoopNestRangeBuilder(
           ivs, SmallVector<ValueHandle, 4>(ranges.begin(), ranges.end())) {}
 
@@ -106,22 +106,22 @@ ValueHandle LoopNestRangeBuilder::LoopNestRangeBuilder::operator()(
   return ValueHandle::null();
 }
 
-static ValuePtr emitOrFoldComposedAffineApply(OpBuilder &b, Location loc,
-                                              AffineMap map,
-                                              ArrayRef<ValuePtr> operandsRef,
-                                              OperationFolder *folder) {
-  SmallVector<ValuePtr, 4> operands(operandsRef.begin(), operandsRef.end());
+static Value emitOrFoldComposedAffineApply(OpBuilder &b, Location loc,
+                                           AffineMap map,
+                                           ArrayRef<Value> operandsRef,
+                                           OperationFolder *folder) {
+  SmallVector<Value, 4> operands(operandsRef.begin(), operandsRef.end());
   fullyComposeAffineMapAndOperands(&map, &operands);
   canonicalizeMapAndOperands(&map, &operands);
   return folder ? folder->create<AffineApplyOp>(b, loc, map, operands)
                 : b.create<AffineApplyOp>(loc, map, operands);
 }
 
-SmallVector<ValuePtr, 4>
-mlir::linalg::applyMapToValues(OpBuilder &b, Location loc, AffineMap map,
-                               ArrayRef<ValuePtr> values,
-                               OperationFolder *folder) {
-  SmallVector<ValuePtr, 4> res;
+SmallVector<Value, 4> mlir::linalg::applyMapToValues(OpBuilder &b, Location loc,
+                                                     AffineMap map,
+                                                     ArrayRef<Value> values,
+                                                     OperationFolder *folder) {
+  SmallVector<Value, 4> res;
   res.reserve(map.getNumResults());
   unsigned numDims = map.getNumDims();
   // For each `expr` in `map`, applies the `expr` to the values extracted from
@@ -137,12 +137,12 @@ mlir::linalg::applyMapToValues(OpBuilder &b, Location loc, AffineMap map,
 /// Returns all the operands of `linalgOp` that are not views.
 /// Asserts that these operands are value types to allow transformations like
 /// tiling to just use the values when cloning `linalgOp`.
-SmallVector<ValuePtr, 4>
+SmallVector<Value, 4>
 mlir::linalg::getAssumedNonViewOperands(LinalgOp linalgOp) {
   auto *op = linalgOp.getOperation();
   unsigned numViews = linalgOp.getNumInputsAndOutputs();
   unsigned nOperands = op->getNumOperands() - numViews;
-  SmallVector<ValuePtr, 4> res;
+  SmallVector<Value, 4> res;
   res.reserve(nOperands);
   for (unsigned i = 0; i < nOperands; ++i) {
     res.push_back(op->getOperand(numViews + i));

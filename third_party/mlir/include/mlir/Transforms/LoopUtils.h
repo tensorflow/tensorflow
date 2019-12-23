@@ -84,8 +84,7 @@ void promoteSingleIterationLoops(FuncOp f);
 /// operands or a null map when the trip count can't be expressed as an affine
 /// expression.
 void getCleanupLoopLowerBound(AffineForOp forOp, unsigned unrollFactor,
-                              AffineMap *map,
-                              SmallVectorImpl<ValuePtr> *operands,
+                              AffineMap *map, SmallVectorImpl<Value> *operands,
                               OpBuilder &builder);
 
 /// Skew the operations in the body of a 'affine.for' operation with the
@@ -139,8 +138,7 @@ using TileLoops = std::pair<Loops, Loops>;
 SmallVector<SmallVector<AffineForOp, 8>, 8> tile(ArrayRef<AffineForOp> forOps,
                                                  ArrayRef<uint64_t> sizes,
                                                  ArrayRef<AffineForOp> targets);
-SmallVector<Loops, 8> tile(ArrayRef<loop::ForOp> forOps,
-                           ArrayRef<ValuePtr> sizes,
+SmallVector<Loops, 8> tile(ArrayRef<loop::ForOp> forOps, ArrayRef<Value> sizes,
                            ArrayRef<loop::ForOp> targets);
 
 /// Performs tiling (with interchange) by strip-mining the `forOps` by `sizes`
@@ -149,7 +147,7 @@ SmallVector<Loops, 8> tile(ArrayRef<loop::ForOp> forOps,
 /// `target`.
 SmallVector<AffineForOp, 8> tile(ArrayRef<AffineForOp> forOps,
                                  ArrayRef<uint64_t> sizes, AffineForOp target);
-Loops tile(ArrayRef<loop::ForOp> forOps, ArrayRef<ValuePtr> sizes,
+Loops tile(ArrayRef<loop::ForOp> forOps, ArrayRef<Value> sizes,
            loop::ForOp target);
 
 /// Tile a nest of loop::ForOp loops rooted at `rootForOp` with the given
@@ -157,7 +155,7 @@ Loops tile(ArrayRef<loop::ForOp> forOps, ArrayRef<ValuePtr> sizes,
 /// runtime.  If more sizes than loops are provided, discard the trailing values
 /// in sizes.  Assumes the loop nest is permutable.
 /// Returns the newly created intra-tile loops.
-Loops tilePerfectlyNested(loop::ForOp rootForOp, ArrayRef<ValuePtr> sizes);
+Loops tilePerfectlyNested(loop::ForOp rootForOp, ArrayRef<Value> sizes);
 
 /// Explicit copy / DMA generation options for mlir::affineDataCopyGenerate.
 struct AffineCopyOptions {
@@ -229,8 +227,8 @@ void coalesceLoops(MutableArrayRef<loop::ForOp> loops);
 ///      ...
 ///    }
 /// ```
-void mapLoopToProcessorIds(loop::ForOp forOp, ArrayRef<ValuePtr> processorId,
-                           ArrayRef<ValuePtr> numProcessors);
+void mapLoopToProcessorIds(loop::ForOp forOp, ArrayRef<Value> processorId,
+                           ArrayRef<Value> numProcessors);
 } // end namespace mlir
 
 #endif // MLIR_TRANSFORMS_LOOP_UTILS_H

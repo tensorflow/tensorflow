@@ -182,15 +182,14 @@ class DmaStartOp
 public:
   using Op::Op;
 
-  static void build(Builder *builder, OperationState &result,
-                    ValuePtr srcMemRef, ValueRange srcIndices,
-                    ValuePtr destMemRef, ValueRange destIndices,
-                    ValuePtr numElements, ValuePtr tagMemRef,
-                    ValueRange tagIndices, ValuePtr stride = nullptr,
-                    ValuePtr elementsPerStride = nullptr);
+  static void build(Builder *builder, OperationState &result, Value srcMemRef,
+                    ValueRange srcIndices, Value destMemRef,
+                    ValueRange destIndices, Value numElements, Value tagMemRef,
+                    ValueRange tagIndices, Value stride = nullptr,
+                    Value elementsPerStride = nullptr);
 
   // Returns the source MemRefType for this DMA operation.
-  ValuePtr getSrcMemRef() { return getOperand(0); }
+  Value getSrcMemRef() { return getOperand(0); }
   // Returns the rank (number of indices) of the source MemRefType.
   unsigned getSrcMemRefRank() {
     return getSrcMemRef()->getType().cast<MemRefType>().getRank();
@@ -202,7 +201,7 @@ public:
   }
 
   // Returns the destination MemRefType for this DMA operations.
-  ValuePtr getDstMemRef() { return getOperand(1 + getSrcMemRefRank()); }
+  Value getDstMemRef() { return getOperand(1 + getSrcMemRefRank()); }
   // Returns the rank (number of indices) of the destination MemRefType.
   unsigned getDstMemRefRank() {
     return getDstMemRef()->getType().cast<MemRefType>().getRank();
@@ -222,12 +221,12 @@ public:
   }
 
   // Returns the number of elements being transferred by this DMA operation.
-  ValuePtr getNumElements() {
+  Value getNumElements() {
     return getOperand(1 + getSrcMemRefRank() + 1 + getDstMemRefRank());
   }
 
   // Returns the Tag MemRef for this DMA operation.
-  ValuePtr getTagMemRef() {
+  Value getTagMemRef() {
     return getOperand(1 + getSrcMemRefRank() + 1 + getDstMemRefRank() + 1);
   }
   // Returns the rank (number of indices) of the tag MemRefType.
@@ -276,13 +275,13 @@ public:
                                    1 + 1 + getTagMemRefRank();
   }
 
-  ValuePtr getStride() {
+  Value getStride() {
     if (!isStrided())
       return nullptr;
     return getOperand(getNumOperands() - 1 - 1);
   }
 
-  ValuePtr getNumElementsPerStride() {
+  Value getNumElementsPerStride() {
     if (!isStrided())
       return nullptr;
     return getOperand(getNumOperands() - 1);
@@ -307,14 +306,13 @@ class DmaWaitOp
 public:
   using Op::Op;
 
-  static void build(Builder *builder, OperationState &result,
-                    ValuePtr tagMemRef, ValueRange tagIndices,
-                    ValuePtr numElements);
+  static void build(Builder *builder, OperationState &result, Value tagMemRef,
+                    ValueRange tagIndices, Value numElements);
 
   static StringRef getOperationName() { return "std.dma_wait"; }
 
   // Returns the Tag MemRef associated with the DMA operation being waited on.
-  ValuePtr getTagMemRef() { return getOperand(0); }
+  Value getTagMemRef() { return getOperand(0); }
 
   // Returns the tag memref index for this DMA operation.
   operand_range getTagIndices() {
@@ -328,7 +326,7 @@ public:
   }
 
   // Returns the number of elements transferred in the associated DMA operation.
-  ValuePtr getNumElements() { return getOperand(1 + getTagMemRefRank()); }
+  Value getNumElements() { return getOperand(1 + getTagMemRefRank()); }
 
   static ParseResult parse(OpAsmParser &parser, OperationState &result);
   void print(OpAsmPrinter &p);
@@ -343,7 +341,7 @@ void printDimAndSymbolList(Operation::operand_iterator begin,
 
 /// Parses dimension and symbol list and returns true if parsing failed.
 ParseResult parseDimAndSymbolList(OpAsmParser &parser,
-                                  SmallVectorImpl<ValuePtr> &operands,
+                                  SmallVectorImpl<Value> &operands,
                                   unsigned &numDims);
 
 raw_ostream &operator<<(raw_ostream &os, SubViewOp::Range &range);

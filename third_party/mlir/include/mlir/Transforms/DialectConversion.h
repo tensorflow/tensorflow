@@ -60,7 +60,7 @@ public:
     /// remaps an existing signature input.
     struct InputMapping {
       size_t inputNo, size;
-      ValuePtr replacementValue;
+      Value replacementValue;
     };
 
     /// Return the argument types for the new signature.
@@ -90,7 +90,7 @@ public:
 
     /// Remap an input of the original signature to another `replacement`
     /// value. This drops the original argument.
-    void remapInput(unsigned origInputNo, ValuePtr replacement);
+    void remapInput(unsigned origInputNo, Value replacement);
 
   private:
     /// The remapping information for each of the original arguments.
@@ -143,7 +143,7 @@ public:
   /// the conversion has finished.
   virtual Operation *materializeConversion(PatternRewriter &rewriter,
                                            Type resultType,
-                                           ArrayRef<ValuePtr> inputs,
+                                           ArrayRef<Value> inputs,
                                            Location loc) {
     llvm_unreachable("expected 'materializeConversion' to be overridden");
   }
@@ -172,7 +172,7 @@ public:
   /// ConversionPattern ever needs to replace an operation that does not
   /// have successors. This function should not fail. If some specific cases of
   /// the operation are not supported, these cases should not be matched.
-  virtual void rewrite(Operation *op, ArrayRef<ValuePtr> operands,
+  virtual void rewrite(Operation *op, ArrayRef<Value> operands,
                        ConversionPatternRewriter &rewriter) const {
     llvm_unreachable("unimplemented rewrite");
   }
@@ -187,18 +187,18 @@ public:
   /// terminator operation that has successors. This function should not fail
   /// the pass. If some specific cases of the operation are not supported,
   /// these cases should not be matched.
-  virtual void rewrite(Operation *op, ArrayRef<ValuePtr> properOperands,
+  virtual void rewrite(Operation *op, ArrayRef<Value> properOperands,
                        ArrayRef<Block *> destinations,
-                       ArrayRef<ArrayRef<ValuePtr>> operands,
+                       ArrayRef<ArrayRef<Value>> operands,
                        ConversionPatternRewriter &rewriter) const {
     llvm_unreachable("unimplemented rewrite for terminators");
   }
 
   /// Hook for derived classes to implement combined matching and rewriting.
   virtual PatternMatchResult
-  matchAndRewrite(Operation *op, ArrayRef<ValuePtr> properOperands,
+  matchAndRewrite(Operation *op, ArrayRef<Value> properOperands,
                   ArrayRef<Block *> destinations,
-                  ArrayRef<ArrayRef<ValuePtr>> operands,
+                  ArrayRef<ArrayRef<Value>> operands,
                   ConversionPatternRewriter &rewriter) const {
     if (!match(op))
       return matchFailure();
@@ -208,7 +208,7 @@ public:
 
   /// Hook for derived classes to implement combined matching and rewriting.
   virtual PatternMatchResult
-  matchAndRewrite(Operation *op, ArrayRef<ValuePtr> operands,
+  matchAndRewrite(Operation *op, ArrayRef<Value> operands,
                   ConversionPatternRewriter &rewriter) const {
     if (!match(op))
       return matchFailure();
@@ -234,27 +234,27 @@ struct OpConversionPattern : public ConversionPattern {
 
   /// Wrappers around the ConversionPattern methods that pass the derived op
   /// type.
-  void rewrite(Operation *op, ArrayRef<ValuePtr> operands,
+  void rewrite(Operation *op, ArrayRef<Value> operands,
                ConversionPatternRewriter &rewriter) const final {
     rewrite(cast<SourceOp>(op), operands, rewriter);
   }
-  void rewrite(Operation *op, ArrayRef<ValuePtr> properOperands,
+  void rewrite(Operation *op, ArrayRef<Value> properOperands,
                ArrayRef<Block *> destinations,
-               ArrayRef<ArrayRef<ValuePtr>> operands,
+               ArrayRef<ArrayRef<Value>> operands,
                ConversionPatternRewriter &rewriter) const final {
     rewrite(cast<SourceOp>(op), properOperands, destinations, operands,
             rewriter);
   }
   PatternMatchResult
-  matchAndRewrite(Operation *op, ArrayRef<ValuePtr> properOperands,
+  matchAndRewrite(Operation *op, ArrayRef<Value> properOperands,
                   ArrayRef<Block *> destinations,
-                  ArrayRef<ArrayRef<ValuePtr>> operands,
+                  ArrayRef<ArrayRef<Value>> operands,
                   ConversionPatternRewriter &rewriter) const final {
     return matchAndRewrite(cast<SourceOp>(op), properOperands, destinations,
                            operands, rewriter);
   }
   PatternMatchResult
-  matchAndRewrite(Operation *op, ArrayRef<ValuePtr> operands,
+  matchAndRewrite(Operation *op, ArrayRef<Value> operands,
                   ConversionPatternRewriter &rewriter) const final {
     return matchAndRewrite(cast<SourceOp>(op), operands, rewriter);
   }
@@ -264,22 +264,22 @@ struct OpConversionPattern : public ConversionPattern {
 
   /// Rewrite and Match methods that operate on the SourceOp type. These must be
   /// overridden by the derived pattern class.
-  virtual void rewrite(SourceOp op, ArrayRef<ValuePtr> operands,
+  virtual void rewrite(SourceOp op, ArrayRef<Value> operands,
                        ConversionPatternRewriter &rewriter) const {
     llvm_unreachable("must override matchAndRewrite or a rewrite method");
   }
 
-  virtual void rewrite(SourceOp op, ArrayRef<ValuePtr> properOperands,
+  virtual void rewrite(SourceOp op, ArrayRef<Value> properOperands,
                        ArrayRef<Block *> destinations,
-                       ArrayRef<ArrayRef<ValuePtr>> operands,
+                       ArrayRef<ArrayRef<Value>> operands,
                        ConversionPatternRewriter &rewriter) const {
     llvm_unreachable("unimplemented rewrite for terminators");
   }
 
   virtual PatternMatchResult
-  matchAndRewrite(SourceOp op, ArrayRef<ValuePtr> properOperands,
+  matchAndRewrite(SourceOp op, ArrayRef<Value> properOperands,
                   ArrayRef<Block *> destinations,
-                  ArrayRef<ArrayRef<ValuePtr>> operands,
+                  ArrayRef<ArrayRef<Value>> operands,
                   ConversionPatternRewriter &rewriter) const {
     if (!match(op))
       return matchFailure();
@@ -288,7 +288,7 @@ struct OpConversionPattern : public ConversionPattern {
   }
 
   virtual PatternMatchResult
-  matchAndRewrite(SourceOp op, ArrayRef<ValuePtr> operands,
+  matchAndRewrite(SourceOp op, ArrayRef<Value> operands,
                   ConversionPatternRewriter &rewriter) const {
     if (!match(op))
       return matchFailure();
@@ -330,11 +330,11 @@ public:
                            TypeConverter::SignatureConversion &conversion);
 
   /// Replace all the uses of the block argument `from` with value `to`.
-  void replaceUsesOfBlockArgument(BlockArgumentPtr from, ValuePtr to);
+  void replaceUsesOfBlockArgument(BlockArgument from, Value to);
 
   /// Return the converted value that replaces 'key'. Return 'key' if there is
   /// no such a converted value.
-  ValuePtr getRemappedValue(ValuePtr key);
+  Value getRemappedValue(Value key);
 
   //===--------------------------------------------------------------------===//
   // PatternRewriter Hooks

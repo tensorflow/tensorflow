@@ -76,7 +76,7 @@ struct MemRefDataFlowOpt : public FunctionPass<MemRefDataFlowOpt> {
   void forwardStoreToLoad(AffineLoadOp loadOp);
 
   // A list of memref's that are potentially dead / could be eliminated.
-  SmallPtrSet<ValuePtr, 4> memrefsToErase;
+  SmallPtrSet<Value, 4> memrefsToErase;
   // Load op's whose results were replaced by those forwarded from stores.
   SmallVector<Operation *, 8> loadOpsToErase;
 
@@ -180,7 +180,7 @@ void MemRefDataFlowOpt::forwardStoreToLoad(AffineLoadOp loadOp) {
     return;
 
   // Perform the actual store to load forwarding.
-  ValuePtr storeVal = cast<AffineStoreOp>(lastWriteStoreOp).getValueToStore();
+  Value storeVal = cast<AffineStoreOp>(lastWriteStoreOp).getValueToStore();
   loadOp.replaceAllUsesWith(storeVal);
   // Record the memref for a later sweep to optimize away.
   memrefsToErase.insert(loadOp.getMemRef());

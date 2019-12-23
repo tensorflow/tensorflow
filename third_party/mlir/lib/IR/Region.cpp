@@ -143,7 +143,7 @@ static bool isIsolatedAbove(Region &region, Region &limit,
   while (!pendingRegions.empty()) {
     for (Block &block : *pendingRegions.pop_back_val()) {
       for (Operation &op : block) {
-        for (ValuePtr operand : op.getOperands()) {
+        for (Value operand : op.getOperands()) {
           // operand should be non-null here if the IR is well-formed. But
           // we don't assert here as this function is called from the verifier
           // and so could be called on invalid IR.

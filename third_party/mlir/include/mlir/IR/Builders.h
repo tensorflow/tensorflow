@@ -313,7 +313,7 @@ public:
   /// and immediately try to fold it. This functions populates 'results' with
   /// the results after folding the operation.
   template <typename OpTy, typename... Args>
-  void createOrFold(SmallVectorImpl<ValuePtr> &results, Location location,
+  void createOrFold(SmallVectorImpl<Value> &results, Location location,
                     Args &&... args) {
     // Create the operation without using 'createOperation' as we don't want to
     // insert it yet.
@@ -331,9 +331,9 @@ public:
   /// Overload to create or fold a single result operation.
   template <typename OpTy, typename... Args>
   typename std::enable_if<OpTy::template hasTrait<OpTrait::OneResult>(),
-                          ValuePtr>::type
+                          Value>::type
   createOrFold(Location location, Args &&... args) {
-    SmallVector<ValuePtr, 1> results;
+    SmallVector<Value, 1> results;
     createOrFold<OpTy>(results, location, std::forward<Args>(args)...);
     return results.front();
   }
@@ -344,7 +344,7 @@ public:
                           OpTy>::type
   createOrFold(Location location, Args &&... args) {
     auto op = create<OpTy>(location, std::forward<Args>(args)...);
-    SmallVector<ValuePtr, 0> unused;
+    SmallVector<Value, 0> unused;
     tryFold(op.getOperation(), unused);
 
     // Folding cannot remove a zero-result operation, so for convenience we
@@ -355,7 +355,7 @@ public:
   /// Attempts to fold the given operation and places new results within
   /// 'results'. Returns success if the operation was folded, failure otherwise.
   /// Note: This function does not erase the operation on a successful fold.
-  LogicalResult tryFold(Operation *op, SmallVectorImpl<ValuePtr> &results);
+  LogicalResult tryFold(Operation *op, SmallVectorImpl<Value> &results);
 
   /// Creates a deep copy of the specified operation, remapping any operands
   /// that use values outside of the operation using the map that is provided

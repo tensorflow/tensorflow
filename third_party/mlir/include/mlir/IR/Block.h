@@ -72,7 +72,7 @@ public:
   //===--------------------------------------------------------------------===//
 
   // This is the list of arguments to the block.
-  using BlockArgListType = MutableArrayRef<BlockArgumentPtr>;
+  using BlockArgListType = MutableArrayRef<BlockArgument>;
 
   BlockArgListType getArguments() { return arguments; }
 
@@ -86,7 +86,7 @@ public:
   bool args_empty() { return arguments.empty(); }
 
   /// Add one value to the argument list.
-  BlockArgumentPtr addArgument(Type type);
+  BlockArgument addArgument(Type type);
 
   /// Add one argument to the argument list for each type specified in the list.
   iterator_range<args_iterator> addArguments(ArrayRef<Type> types);
@@ -97,7 +97,7 @@ public:
   void eraseArgument(unsigned index, bool updatePredTerms = true);
 
   unsigned getNumArguments() { return arguments.size(); }
-  BlockArgumentPtr getArgument(unsigned i) { return arguments[i]; }
+  BlockArgument getArgument(unsigned i) { return arguments[i]; }
 
   //===--------------------------------------------------------------------===//
   // Operation list management
@@ -332,7 +332,7 @@ private:
   OpListType operations;
 
   /// This is the list of arguments to the block.
-  std::vector<BlockArgumentPtr> arguments;
+  std::vector<BlockArgument> arguments;
 
   Block(Block &) = delete;
   void operator=(Block &) = delete;

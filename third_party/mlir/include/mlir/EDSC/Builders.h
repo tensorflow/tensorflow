@@ -312,7 +312,7 @@ public:
   /// Value. An eager Value represents both the declaration and the definition
   /// (in the PL sense) of a placeholder for an mlir::Value that has already
   /// been constructed in the past and that is captured "now" in the program.
-  explicit ValueHandle(ValuePtr v) : t(v->getType()), v(v) {}
+  explicit ValueHandle(Value v) : t(v->getType()), v(v) {}
 
   /// Builds a ConstantIndexOp of value `cst`. The constant is created at the
   /// current insertion point.
@@ -337,7 +337,7 @@ public:
   }
 
   /// Implicit conversion useful for automatic conversion to Container<Value>.
-  operator ValuePtr() const { return getValue(); }
+  operator Value() const { return getValue(); }
   operator bool() const { return hasValue(); }
 
   /// Generic mlir::Op create. This is the key to being extensible to the whole
@@ -356,7 +356,7 @@ public:
   /// Special case to build composed AffineApply operations.
   // TODO: createOrFold when available and move inside of the `create` method.
   static ValueHandle createComposedAffineApply(AffineMap map,
-                                               ArrayRef<ValuePtr> operands);
+                                               ArrayRef<Value> operands);
 
   /// Generic create for a named operation producing a single value.
   static ValueHandle create(StringRef name, ArrayRef<ValueHandle> operands,
@@ -364,7 +364,7 @@ public:
                             ArrayRef<NamedAttribute> attributes = {});
 
   bool hasValue() const { return v != nullptr; }
-  ValuePtr getValue() const {
+  Value getValue() const {
     assert(hasValue() && "Unexpected null value;");
     return v;
   }
@@ -381,7 +381,7 @@ protected:
   ValueHandle() : t(), v(nullptr) {}
 
   Type t;
-  ValuePtr v;
+  Value v;
 };
 
 /// An OperationHandle can be used in lieu of ValueHandle to capture the

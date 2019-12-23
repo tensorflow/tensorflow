@@ -45,7 +45,7 @@ class AffineMapDomainHasDim<int n> : CPred<[{
 
 class HasOperandsOfType<string type>: CPred<[{
     llvm::any_of($0.getOperands(),
-        [](ValuePtr v) {
+        [](Value v) {
           return dyn_cast_or_null<}] # type # [{>(v->getDefiningOp());
         })
 }]>;

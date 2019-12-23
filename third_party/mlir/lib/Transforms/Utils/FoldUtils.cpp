@@ -90,7 +90,7 @@ LogicalResult OperationFolder::tryToFold(
     return failure();
 
   // Try to fold the operation.
-  SmallVector<ValuePtr, 8> results;
+  SmallVector<Value, 8> results;
   if (failed(tryToFold(op, results, processGeneratedConstants)))
     return failure();
 
@@ -138,7 +138,7 @@ void OperationFolder::notifyRemoval(Operation *op) {
 /// Tries to perform folding on the given `op`. If successful, populates
 /// `results` with the results of the folding.
 LogicalResult OperationFolder::tryToFold(
-    Operation *op, SmallVectorImpl<ValuePtr> &results,
+    Operation *op, SmallVectorImpl<Value> &results,
     function_ref<void(Operation *)> processGeneratedConstants) {
   SmallVector<Attribute, 8> operandConstants;
   SmallVector<OpFoldResult, 8> foldResults;
@@ -181,7 +181,7 @@ LogicalResult OperationFolder::tryToFold(
     assert(!foldResults[i].isNull() && "expected valid OpFoldResult");
 
     // Check if the result was an SSA value.
-    if (auto repl = foldResults[i].dyn_cast<ValuePtr>()) {
+    if (auto repl = foldResults[i].dyn_cast<Value>()) {
       results.emplace_back(repl);
       continue;
     }

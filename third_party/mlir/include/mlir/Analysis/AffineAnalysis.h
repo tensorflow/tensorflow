@@ -36,13 +36,10 @@ class AffineValueMap;
 class FlatAffineConstraints;
 class Operation;
 
-// TODO(riverriddle) Remove this after Value is value-typed.
-using ValuePtr = Value;
-
 /// Returns in `affineApplyOps`, the sequence of those AffineApplyOp
 /// Operations that are reachable via a search starting from `operands` and
 /// ending at those operands that are not the result of an AffineApplyOp.
-void getReachableAffineApplyOps(ArrayRef<ValuePtr> operands,
+void getReachableAffineApplyOps(ArrayRef<Value> operands,
                                 SmallVectorImpl<Operation *> &affineApplyOps);
 
 /// Builds a system of constraints with dimensional identifiers corresponding to
@@ -56,9 +53,9 @@ LogicalResult getIndexSet(MutableArrayRef<AffineForOp> forOps,
 
 /// Encapsulates a memref load or store access information.
 struct MemRefAccess {
-  ValuePtr memref;
+  Value memref;
   Operation *opInst;
-  SmallVector<ValuePtr, 4> indices;
+  SmallVector<Value, 4> indices;
 
   /// Constructs a MemRefAccess from a load or store operation.
   // TODO(b/119949820): add accessors to standard op's load, store, DMA op's to

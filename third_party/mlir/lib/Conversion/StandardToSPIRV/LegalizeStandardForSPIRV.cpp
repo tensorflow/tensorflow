@@ -69,7 +69,7 @@ public:
 static LogicalResult
 resolveSourceIndices(Location loc, PatternRewriter &rewriter,
                      SubViewOp subViewOp, ValueRange indices,
-                     SmallVectorImpl<ValuePtr> &sourceIndices) {
+                     SmallVectorImpl<Value> &sourceIndices) {
   // TODO: Aborting when the offsets are static. There might be a way to fold
   // the subview op with load even if the offsets have been canonicalized
   // away.
@@ -77,7 +77,7 @@ resolveSourceIndices(Location loc, PatternRewriter &rewriter,
     return failure();
 
   ValueRange opOffsets = subViewOp.offsets();
-  SmallVector<ValuePtr, 2> opStrides;
+  SmallVector<Value, 2> opStrides;
   if (subViewOp.getNumStrides()) {
     // If the strides are dynamic, get the stride operands.
     opStrides = llvm::to_vector<2>(subViewOp.strides());
@@ -124,7 +124,7 @@ LoadOpOfSubViewFolder::matchAndRewrite(LoadOp loadOp,
   if (!subViewOp) {
     return matchFailure();
   }
-  SmallVector<ValuePtr, 4> sourceIndices;
+  SmallVector<Value, 4> sourceIndices;
   if (failed(resolveSourceIndices(loadOp.getLoc(), rewriter, subViewOp,
                                   loadOp.indices(), sourceIndices)))
     return matchFailure();
@@ -146,7 +146,7 @@ StoreOpOfSubViewFolder::matchAndRewrite(StoreOp storeOp,
   if (!subViewOp) {
     return matchFailure();
   }
-  SmallVector<ValuePtr, 4> sourceIndices;
+  SmallVector<Value, 4> sourceIndices;
   if (failed(resolveSourceIndices(storeOp.getLoc(), rewriter, subViewOp,
                                   storeOp.indices(), sourceIndices)))
     return matchFailure();

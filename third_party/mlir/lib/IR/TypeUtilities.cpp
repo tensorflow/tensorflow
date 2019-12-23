@@ -33,7 +33,7 @@ Type mlir::getElementTypeOrSelf(Type type) {
   return type;
 }
 
-Type mlir::getElementTypeOrSelf(ValuePtr val) {
+Type mlir::getElementTypeOrSelf(Value val) {
   return getElementTypeOrSelf(val->getType());
 }
 
@@ -97,18 +97,18 @@ LogicalResult mlir::verifyCompatibleShape(Type type1, Type type2) {
 
 OperandElementTypeIterator::OperandElementTypeIterator(
     Operation::operand_iterator it)
-    : llvm::mapped_iterator<Operation::operand_iterator, Type (*)(ValuePtr)>(
+    : llvm::mapped_iterator<Operation::operand_iterator, Type (*)(Value)>(
           it, &unwrap) {}
 
-Type OperandElementTypeIterator::unwrap(ValuePtr value) {
+Type OperandElementTypeIterator::unwrap(Value value) {
   return value->getType().cast<ShapedType>().getElementType();
 }
 
 ResultElementTypeIterator::ResultElementTypeIterator(
     Operation::result_iterator it)
-    : llvm::mapped_iterator<Operation::result_iterator, Type (*)(ValuePtr)>(
+    : llvm::mapped_iterator<Operation::result_iterator, Type (*)(Value)>(
           it, &unwrap) {}
 
-Type ResultElementTypeIterator::unwrap(ValuePtr value) {
+Type ResultElementTypeIterator::unwrap(Value value) {
   return value->getType().cast<ShapedType>().getElementType();
 }

@@ -60,7 +60,7 @@ ComputationSliceState::getAsConstraints(FlatAffineConstraints *cst) {
   // Adds operands (dst ivs and symbols) as symbols in 'cst'.
   unsigned numSymbols = lbOperands[0].size();
 
-  SmallVector<ValuePtr, 4> values(ivs);
+  SmallVector<Value, 4> values(ivs);
   // Append 'ivs' then 'operands' to 'values'.
   values.append(lbOperands[0].begin(), lbOperands[0].end());
   cst->reset(numDims, numSymbols, 0, values);
@@ -185,7 +185,7 @@ LogicalResult MemRefRegion::compute(Operation *op, unsigned loopDepth,
   if (rank == 0) {
     SmallVector<AffineForOp, 4> ivs;
     getLoopIVs(*op, &ivs);
-    SmallVector<ValuePtr, 8> regionSymbols;
+    SmallVector<Value, 8> regionSymbols;
     extractForInductionVars(ivs, &regionSymbols);
     // A rank 0 memref has a 0-d region.
     cst.reset(rank, loopDepth, 0, regionSymbols);
@@ -201,7 +201,7 @@ LogicalResult MemRefRegion::compute(Operation *op, unsigned loopDepth,
   unsigned numSymbols = accessMap.getNumSymbols();
   unsigned numOperands = accessValueMap.getNumOperands();
   // Merge operands with slice operands.
-  SmallVector<ValuePtr, 4> operands;
+  SmallVector<Value, 4> operands;
   operands.resize(numOperands);
   for (unsigned i = 0; i < numOperands; ++i)
     operands[i] = accessValueMap.getOperand(i);
@@ -278,7 +278,7 @@ LogicalResult MemRefRegion::compute(Operation *op, unsigned loopDepth,
   getLoopIVs(*op, &enclosingIVs);
   assert(loopDepth <= enclosingIVs.size() && "invalid loop depth");
   enclosingIVs.resize(loopDepth);
-  SmallVector<ValuePtr, 4> ids;
+  SmallVector<Value, 4> ids;
   cst.getIdValues(cst.getNumDimIds(), cst.getNumDimAndSymbolIds(), &ids);
   for (auto id : ids) {
     AffineForOp iv;
@@ -345,9 +345,9 @@ Optional<int64_t> MemRefRegion::getRegionSize() {
 
   // Indices to use for the DmaStart op.
   // Indices for the original memref being DMAed from/to.
-  SmallVector<ValuePtr, 4> memIndices;
+  SmallVector<Value, 4> memIndices;
   // Indices for the faster buffer being DMAed into/from.
-  SmallVector<ValuePtr, 4> bufIndices;
+  SmallVector<Value, 4> bufIndices;
 
   // Compute the extents of the buffer.
   Optional<int64_t> numElements = getConstantBoundingSizeAndShape();
@@ -480,7 +480,7 @@ static Operation *getInstAtPosition(ArrayRef<unsigned> positions,
 }
 
 // Adds loop IV bounds to 'cst' for loop IVs not found in 'ivs'.
-LogicalResult addMissingLoopIVBounds(SmallPtrSet<ValuePtr, 8> &ivs,
+LogicalResult addMissingLoopIVBounds(SmallPtrSet<Value, 8> &ivs,
                                      FlatAffineConstraints *cst) {
   for (unsigned i = 0, e = cst->getNumDimIds(); i < e; ++i) {
     auto value = cst->getIdValue(i);
@@ -596,10 +596,10 @@ LogicalResult mlir::computeSliceUnion(ArrayRef<Operation *> opsA,
 
         // Pre-constraint id alignment: record loop IVs used in each constraint
         // system.
-        SmallPtrSet<ValuePtr, 8> sliceUnionIVs;
+        SmallPtrSet<Value, 8> sliceUnionIVs;
         for (unsigned k = 0, l = sliceUnionCst.getNumDimIds(); k < l; ++k)
           sliceUnionIVs.insert(sliceUnionCst.getIdValue(k));
-        SmallPtrSet<ValuePtr, 8> tmpSliceIVs;
+        SmallPtrSet<Value, 8> tmpSliceIVs;
         for (unsigned k = 0, l = tmpSliceCst.getNumDimIds(); k < l; ++k)
           tmpSliceIVs.insert(tmpSliceCst.getIdValue(k));
 
@@ -659,7 +659,7 @@ LogicalResult mlir::computeSliceUnion(ArrayRef<Operation *> opsA,
                                &sliceUnion->ubs);
 
   // Add slice bound operands of union.
-  SmallVector<ValuePtr, 4> sliceBoundOperands;
+  SmallVector<Value, 4> sliceBoundOperands;
   sliceUnionCst.getIdValues(numSliceLoopIVs,
                             sliceUnionCst.getNumDimAndSymbolIds(),
                             &sliceBoundOperands);
@@ -725,7 +725,7 @@ void mlir::getComputationSliceState(
                                         &sliceState->lbs, &sliceState->ubs);
 
   // Set up bound operands for the slice's lower and upper bounds.
-  SmallVector<ValuePtr, 4> sliceBoundOperands;
+  SmallVector<Value, 4> sliceBoundOperands;
   unsigned numDimsAndSymbols = dependenceConstraints->getNumDimAndSymbolIds();
   for (unsigned i = 0; i < numDimsAndSymbols; ++i) {
     if (i < offset || i >= offset + numSliceLoopIVs) {
@@ -743,7 +743,7 @@ void mlir::getComputationSliceState(
       isBackwardSlice ? dstLoopIVs[loopDepth - 1].getBody()->begin()
                       : std::prev(srcLoopIVs[loopDepth - 1].getBody()->end());
 
-  llvm::SmallDenseSet<ValuePtr, 8> sequentialLoops;
+  llvm::SmallDenseSet<Value, 8> sequentialLoops;
   if (isa<AffineLoadOp>(depSourceOp) && isa<AffineLoadOp>(depSinkOp)) {
     // For read-read access pairs, clear any slice bounds on sequential loops.
     // Get sequential loops in loop nest rooted at 'srcLoopIVs[0]'.
@@ -758,7 +758,7 @@ void mlir::getComputationSliceState(
     return isBackwardSlice ? srcLoopIVs[i] : dstLoopIVs[i];
   };
   for (unsigned i = 0; i < numSliceLoopIVs; ++i) {
-    ValuePtr iv = getSliceLoop(i).getInductionVar();
+    Value iv = getSliceLoop(i).getInductionVar();
     if (sequentialLoops.count(iv) == 0 &&
         getSliceLoop(i).getAttr(kSliceFusionBarrierAttrName) == nullptr)
       continue;
@@ -919,7 +919,7 @@ static Optional<int64_t> getMemoryFootprintBytes(Block &block,
                                                  Block::iterator start,
                                                  Block::iterator end,
                                                  int memorySpace) {
-  SmallDenseMap<ValuePtr, std::unique_ptr<MemRefRegion>, 4> regions;
+  SmallDenseMap<Value, std::unique_ptr<MemRefRegion>, 4> regions;
 
   // Walk this 'affine.for' operation to gather all memory regions.
   auto result = block.walk(start, end, [&](Operation *opInst) -> WalkResult {
@@ -969,8 +969,8 @@ Optional<int64_t> mlir::getMemoryFootprintBytes(AffineForOp forOp,
 
 /// Returns in 'sequentialLoops' all sequential loops in loop nest rooted
 /// at 'forOp'.
-void mlir::getSequentialLoops(
-    AffineForOp forOp, llvm::SmallDenseSet<ValuePtr, 8> *sequentialLoops) {
+void mlir::getSequentialLoops(AffineForOp forOp,
+                              llvm::SmallDenseSet<Value, 8> *sequentialLoops) {
   forOp.getOperation()->walk([&](Operation *op) {
     if (auto innerFor = dyn_cast<AffineForOp>(op))
       if (!isLoopParallel(innerFor))

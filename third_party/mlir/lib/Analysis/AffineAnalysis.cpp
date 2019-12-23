@@ -48,10 +48,10 @@ using llvm::dbgs;
 // TODO(andydavis) Add a method to AffineApplyOp which forward substitutes
 // the AffineApplyOp into any user AffineApplyOps.
 void mlir::getReachableAffineApplyOps(
-    ArrayRef<ValuePtr> operands, SmallVectorImpl<Operation *> &affineApplyOps) {
+    ArrayRef<Value> operands, SmallVectorImpl<Operation *> &affineApplyOps) {
   struct State {
     // The ssa value for this node in the DFS traversal.
-    ValuePtr value;
+    Value value;
     // The operand index of 'value' to explore next during DFS traversal.
     unsigned operandIndex;
   };
@@ -99,7 +99,7 @@ void mlir::getReachableAffineApplyOps(
 // setExprStride(ArrayRef<int64_t> expr, int64_t stride)
 LogicalResult mlir::getIndexSet(MutableArrayRef<AffineForOp> forOps,
                                 FlatAffineConstraints *domain) {
-  SmallVector<ValuePtr, 4> indices;
+  SmallVector<Value, 4> indices;
   extractForInductionVars(forOps, &indices);
   // Reset while associated Values in 'indices' to the domain.
   domain->reset(forOps.size(), /*numSymbols=*/0, /*numLocals=*/0, indices);
@@ -146,25 +146,25 @@ static LogicalResult getInstIndexSet(Operation *op,
 // of maps to check. So getSrcDimOrSymPos would be "getPos(value, {0, 2})".
 class ValuePositionMap {
 public:
-  void addSrcValue(ValuePtr value) {
+  void addSrcValue(Value value) {
     if (addValueAt(value, &srcDimPosMap, numSrcDims))
       ++numSrcDims;
   }
-  void addDstValue(ValuePtr value) {
+  void addDstValue(Value value) {
     if (addValueAt(value, &dstDimPosMap, numDstDims))
       ++numDstDims;
   }
-  void addSymbolValue(ValuePtr value) {
+  void addSymbolValue(Value value) {
     if (addValueAt(value, &symbolPosMap, numSymbols))
       ++numSymbols;
   }
-  unsigned getSrcDimOrSymPos(ValuePtr value) const {
+  unsigned getSrcDimOrSymPos(Value value) const {
     return getDimOrSymPos(value, srcDimPosMap, 0);
   }
-  unsigned getDstDimOrSymPos(ValuePtr value) const {
+  unsigned getDstDimOrSymPos(Value value) const {
     return getDimOrSymPos(value, dstDimPosMap, numSrcDims);
   }
-  unsigned getSymPos(ValuePtr value) const {
+  unsigned getSymPos(Value value) const {
     auto it = symbolPosMap.find(value);
     assert(it != symbolPosMap.end());
     return numSrcDims + numDstDims + it->second;
@@ -176,7 +176,7 @@ public:
   unsigned getNumSymbols() const { return numSymbols; }
 
 private:
-  bool addValueAt(ValuePtr value, DenseMap<ValuePtr, unsigned> *posMap,
+  bool addValueAt(Value value, DenseMap<Value, unsigned> *posMap,
                   unsigned position) {
     auto it = posMap->find(value);
     if (it == posMap->end()) {
@@ -185,8 +185,8 @@ private:
     }
     return false;
   }
-  unsigned getDimOrSymPos(ValuePtr value,
-                          const DenseMap<ValuePtr, unsigned> &dimPosMap,
+  unsigned getDimOrSymPos(Value value,
+                          const DenseMap<Value, unsigned> &dimPosMap,
                           unsigned dimPosOffset) const {
     auto it = dimPosMap.find(value);
     if (it != dimPosMap.end()) {
@@ -200,9 +200,9 @@ private:
   unsigned numSrcDims = 0;
   unsigned numDstDims = 0;
   unsigned numSymbols = 0;
-  DenseMap<ValuePtr, unsigned> srcDimPosMap;
-  DenseMap<ValuePtr, unsigned> dstDimPosMap;
-  DenseMap<ValuePtr, unsigned> symbolPosMap;
+  DenseMap<Value, unsigned> srcDimPosMap;
+  DenseMap<Value, unsigned> dstDimPosMap;
+  DenseMap<Value, unsigned> symbolPosMap;
 };
 
 // Builds a map from Value to identifier position in a new merged identifier
@@ -219,7 +219,7 @@ static void buildDimAndSymbolPositionMaps(
     const FlatAffineConstraints &dstDomain, const AffineValueMap &srcAccessMap,
     const AffineValueMap &dstAccessMap, ValuePositionMap *valuePosMap,
     FlatAffineConstraints *dependenceConstraints) {
-  auto updateValuePosMap = [&](ArrayRef<ValuePtr> values, bool isSrc) {
+  auto updateValuePosMap = [&](ArrayRef<Value> values, bool isSrc) {
     for (unsigned i = 0, e = values.size(); i < e; ++i) {
       auto value = values[i];
       if (!isForInductionVar(values[i])) {
@@ -234,7 +234,7 @@ static void buildDimAndSymbolPositionMaps(
     }
   };
 
-  SmallVector<ValuePtr, 4> srcValues, destValues;
+  SmallVector<Value, 4> srcValues, destValues;
   srcDomain.getIdValues(0, srcDomain.getNumDimAndSymbolIds(), &srcValues);
   dstDomain.getIdValues(0, dstDomain.getNumDimAndSymbolIds(), &destValues);
   // Update value position map with identifiers from src iteration domain.
@@ -273,7 +273,7 @@ void initDependenceConstraints(const FlatAffineConstraints &srcDomain,
                                numLocals);
 
   // Set values corresponding to dependence constraint identifiers.
-  SmallVector<ValuePtr, 4> srcLoopIVs, dstLoopIVs;
+  SmallVector<Value, 4> srcLoopIVs, dstLoopIVs;
   srcDomain.getIdValues(0, srcDomain.getNumDimIds(), &srcLoopIVs);
   dstDomain.getIdValues(0, dstDomain.getNumDimIds(), &dstLoopIVs);
 
@@ -282,7 +282,7 @@ void initDependenceConstraints(const FlatAffineConstraints &srcDomain,
       srcLoopIVs.size(), srcLoopIVs.size() + dstLoopIVs.size(), dstLoopIVs);
 
   // Set values for the symbolic identifier dimensions.
-  auto setSymbolIds = [&](ArrayRef<ValuePtr> values) {
+  auto setSymbolIds = [&](ArrayRef<Value> values) {
     for (auto value : values) {
       if (!isForInductionVar(value)) {
         assert(isValidSymbol(value) && "expected symbol");
@@ -294,7 +294,7 @@ void initDependenceConstraints(const FlatAffineConstraints &srcDomain,
   setSymbolIds(srcAccessMap.getOperands());
   setSymbolIds(dstAccessMap.getOperands());
 
-  SmallVector<ValuePtr, 8> srcSymbolValues, dstSymbolValues;
+  SmallVector<Value, 8> srcSymbolValues, dstSymbolValues;
   srcDomain.getIdValues(srcDomain.getNumDimIds(),
                         srcDomain.getNumDimAndSymbolIds(), &srcSymbolValues);
   dstDomain.getIdValues(dstDomain.getNumDimIds(),
@@ -398,10 +398,10 @@ addMemRefAccessConstraints(const AffineValueMap &srcAccessMap,
   unsigned numResults = srcMap.getNumResults();
 
   unsigned srcNumIds = srcMap.getNumDims() + srcMap.getNumSymbols();
-  ArrayRef<ValuePtr> srcOperands = srcAccessMap.getOperands();
+  ArrayRef<Value> srcOperands = srcAccessMap.getOperands();
 
   unsigned dstNumIds = dstMap.getNumDims() + dstMap.getNumSymbols();
-  ArrayRef<ValuePtr> dstOperands = dstAccessMap.getOperands();
+  ArrayRef<Value> dstOperands = dstAccessMap.getOperands();
 
   std::vector<SmallVector<int64_t, 8>> srcFlatExprs;
   std::vector<SmallVector<int64_t, 8>> destFlatExprs;
@@ -457,7 +457,7 @@ addMemRefAccessConstraints(const AffineValueMap &srcAccessMap,
   }
 
   // Add equality constraints for any operands that are defined by constant ops.
-  auto addEqForConstOperands = [&](ArrayRef<ValuePtr> operands) {
+  auto addEqForConstOperands = [&](ArrayRef<Value> operands) {
     for (unsigned i = 0, e = operands.size(); i < e; ++i) {
       if (isForInductionVar(operands[i]))
         continue;
@@ -675,7 +675,7 @@ void MemRefAccess::getAccessMap(AffineValueMap *accessMap) const {
     map = loadOp.getAffineMap();
   else if (auto storeOp = dyn_cast<AffineStoreOp>(opInst))
     map = storeOp.getAffineMap();
-  SmallVector<ValuePtr, 8> operands(indices.begin(), indices.end());
+  SmallVector<Value, 8> operands(indices.begin(), indices.end());
   fullyComposeAffineMapAndOperands(&map, &operands);
   map = simplifyAffineMap(map);
   canonicalizeMapAndOperands(&map, &operands);

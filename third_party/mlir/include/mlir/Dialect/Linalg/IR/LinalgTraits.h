@@ -77,13 +77,13 @@ private:
 
 public:
   /// Return the `i`-th input view.
-  ValuePtr getInput(unsigned i) {
+  Value getInput(unsigned i) {
     assert(i < nInputs());
     return this->getOperation()->getOperand(i);
   }
   /// Return the index of `view` in the list of input views if found, llvm::None
   /// otherwise.
-  Optional<unsigned> getIndexOfInput(ValuePtr view) {
+  Optional<unsigned> getIndexOfInput(Value view) {
     auto it = llvm::find(getInputs(), view);
     if (it != getInputs().end())
       return it - getInputs().begin();
@@ -99,12 +99,12 @@ public:
     return {range.begin(), range.begin() + nInputs()};
   }
   /// Return the `i`-th output view.
-  ValuePtr getOutput(unsigned i) {
+  Value getOutput(unsigned i) {
     return this->getOperation()->getOperand(nInputs() + i);
   }
   /// Return the index of `view` in the list of output views if found,
   /// llvm::None otherwise.
-  Optional<unsigned> getIndexOfOutput(ValuePtr view) {
+  Optional<unsigned> getIndexOfOutput(Value view) {
     auto it = llvm::find(getOutputs(), view);
     if (it != getOutputs().end())
       return it - getOutputs().begin();

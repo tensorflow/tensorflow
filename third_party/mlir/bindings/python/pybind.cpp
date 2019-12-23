@@ -104,7 +104,7 @@ struct PythonValueHandle {
     assert(value.hasType() && value.getType().isa<FunctionType>() &&
            "can only call function-typed values");
 
-    std::vector<ValuePtr> argValues;
+    std::vector<Value> argValues;
     argValues.reserve(args.size());
     for (auto arg : args)
       argValues.push_back(arg.value.getValue());

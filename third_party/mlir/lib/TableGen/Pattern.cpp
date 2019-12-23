@@ -224,7 +224,7 @@ tblgen::SymbolInfoMap::SymbolInfo::getVarDecl(StringRef name) const {
     return formatv("Operation::operand_range {0}(op0->getOperands());\n", name);
   }
   case Kind::Value: {
-    return formatv("ArrayRef<ValuePtr> {0};\n", name);
+    return formatv("ArrayRef<Value> {0};\n", name);
   }
   case Kind::Result: {
     // Use the op itself for captured results.

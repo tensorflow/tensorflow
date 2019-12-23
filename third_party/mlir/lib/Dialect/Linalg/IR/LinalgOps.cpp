@@ -318,7 +318,7 @@ static ParseResult parseRangeOp(OpAsmParser &parser, OperationState &result) {
 // SliceOp
 //===----------------------------------------------------------------------===//
 void mlir::linalg::SliceOp::build(Builder *b, OperationState &result,
-                                  ValuePtr base, ValueRange indexings) {
+                                  Value base, ValueRange indexings) {
   result.addOperands(base);
   result.addOperands(indexings);
 
@@ -394,7 +394,7 @@ static LogicalResult verify(SliceOp op) {
 // TransposeOp
 //===----------------------------------------------------------------------===//
 void mlir::linalg::TransposeOp::build(Builder *b, OperationState &result,
-                                      ValuePtr view, AffineMapAttr permutation,
+                                      Value view, AffineMapAttr permutation,
                                       ArrayRef<NamedAttribute> attrs) {
   auto permutationMap = permutation.getValue();
   assert(permutationMap);

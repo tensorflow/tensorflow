@@ -50,7 +50,7 @@ void ensureLoopTerminator(Region &region, Builder &builder, Location loc);
 
 /// Returns the loop parent of an induction variable. If the provided value is
 /// not an induction variable, then return nullptr.
-ForOp getForInductionVarOwner(ValuePtr val);
+ForOp getForInductionVarOwner(Value val);
 
 } // end namespace loop
 } // end namespace mlir

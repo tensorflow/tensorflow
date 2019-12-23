@@ -273,8 +273,8 @@ static LogicalResult verifyMemorySemantics(BarrierOp op) {
 }
 
 template <typename LoadStoreOpTy>
-static LogicalResult verifyLoadStorePtrAndValTypes(LoadStoreOpTy op,
-                                                   ValuePtr ptr, ValuePtr val) {
+static LogicalResult verifyLoadStorePtrAndValTypes(LoadStoreOpTy op, Value ptr,
+                                                   Value val) {
   // ODS already checks ptr is spirv::PointerType. Just check that the pointee
   // type of the pointer and the type of the value are the same
   //
@@ -664,8 +664,8 @@ static ParseResult parseShiftOp(OpAsmParser &parser, OperationState &state) {
 }
 
 static void printShiftOp(Operation *op, OpAsmPrinter &printer) {
-  ValuePtr base = op->getOperand(0);
-  ValuePtr shift = op->getOperand(1);
+  Value base = op->getOperand(0);
+  Value shift = op->getOperand(1);
   printer << op->getName() << ' ' << *base << ", " << *shift << " : "
           << base->getType() << ", " << shift->getType();
 }
@@ -742,7 +742,7 @@ static Type getElementPtrType(Type type, ValueRange indices, Location baseLoc) {
 }
 
 void spirv::AccessChainOp::build(Builder *builder, OperationState &state,
-                                 ValuePtr basePtr, ValueRange indices) {
+                                 Value basePtr, ValueRange indices) {
   auto type = getElementPtrType(basePtr->getType(), indices, state.location);
   assert(type && "Unable to deduce return type based on basePtr and indices");
   build(builder, state, type, basePtr, indices);
@@ -782,8 +782,8 @@ static void print(spirv::AccessChainOp op, OpAsmPrinter &printer) {
 }
 
 static LogicalResult verify(spirv::AccessChainOp accessChainOp) {
-  SmallVector<ValuePtr, 4> indices(accessChainOp.indices().begin(),
-                                   accessChainOp.indices().end());
+  SmallVector<Value, 4> indices(accessChainOp.indices().begin(),
+                                accessChainOp.indices().end());
   auto resultType = getElementPtrType(accessChainOp.base_ptr()->getType(),
                                       indices, accessChainOp.getLoc());
   if (!resultType) {
@@ -824,7 +824,7 @@ struct CombineChainedAccessChain
     }
 
     // Combine indices.
-    SmallVector<ValuePtr, 4> indices(parentAccessChainOp.indices());
+    SmallVector<Value, 4> indices(parentAccessChainOp.indices());
     indices.append(accessChainOp.indices().begin(),
                    accessChainOp.indices().end());
 
@@ -1060,7 +1060,7 @@ static LogicalResult verify(spirv::BitFieldInsertOp bitFieldOp) {
 
 static ParseResult parseBranchOp(OpAsmParser &parser, OperationState &state) {
   Block *dest;
-  SmallVector<ValuePtr, 4> destOperands;
+  SmallVector<Value, 4> destOperands;
   if (parser.parseSuccessorAndUseList(dest, destOperands))
     return failure();
   state.addSuccessor(dest, destOperands);
@@ -1089,7 +1089,7 @@ static ParseResult parseBranchConditionalOp(OpAsmParser &parser,
   auto &builder = parser.getBuilder();
   OpAsmParser::OperandType condInfo;
   Block *dest;
-  SmallVector<ValuePtr, 4> destOperands;
+  SmallVector<Value, 4> destOperands;
 
   // Parse the condition.
   Type boolTy = builder.getI1Type();
@@ -1214,7 +1214,7 @@ static void print(spirv::CompositeConstructOp compositeConstructOp,
 static LogicalResult verify(spirv::CompositeConstructOp compositeConstructOp) {
   auto cType = compositeConstructOp.getType().cast<spirv::CompositeType>();
 
-  SmallVector<ValuePtr, 4> constituents(compositeConstructOp.constituents());
+  SmallVector<Value, 4> constituents(compositeConstructOp.constituents());
   if (constituents.size() != cType.getNumElements()) {
     return compositeConstructOp.emitError(
                "has incorrect number of operands: expected ")
@@ -1239,7 +1239,7 @@ static LogicalResult verify(spirv::CompositeConstructOp compositeConstructOp) {
 //===----------------------------------------------------------------------===//
 
 void spirv::CompositeExtractOp::build(Builder *builder, OperationState &state,
-                                      ValuePtr composite,
+                                      Value composite,
                                       ArrayRef<int32_t> indices) {
   auto indexAttr = builder->getI32ArrayAttr(indices);
   auto elementType =
@@ -1963,7 +1963,7 @@ OpFoldResult spirv::ISubOp::fold(ArrayRef<Attribute> operands) {
 //===----------------------------------------------------------------------===//
 
 void spirv::LoadOp::build(Builder *builder, OperationState &state,
-                          ValuePtr basePtr, IntegerAttr memory_access,
+                          Value basePtr, IntegerAttr memory_access,
                           IntegerAttr alignment) {
   auto ptrType = basePtr->getType().cast<spirv::PointerType>();
   build(builder, state, ptrType.getPointeeType(), basePtr, memory_access,
@@ -2496,9 +2496,8 @@ static LogicalResult verify(spirv::ReturnValueOp retValOp) {
 // spv.Select
 //===----------------------------------------------------------------------===//
 
-void spirv::SelectOp::build(Builder *builder, OperationState &state,
-                            ValuePtr cond, ValuePtr trueValue,
-                            ValuePtr falseValue) {
+void spirv::SelectOp::build(Builder *builder, OperationState &state, Value cond,
+                            Value trueValue, Value falseValue) {
   build(builder, state, trueValue->getType(), cond, trueValue, falseValue);
 }
 
@@ -2748,13 +2747,13 @@ private:
   }
 
   // Returns a soruce value for the given block.
-  ValuePtr getSrcValue(Block *block) const {
+  Value getSrcValue(Block *block) const {
     auto storeOp = cast<spirv::StoreOp>(block->front());
     return storeOp.value();
   }
 
   // Returns a destination value for the given block.
-  ValuePtr getDstPtr(Block *block) const {
+  Value getDstPtr(Block *block) const {
     auto storeOp = cast<spirv::StoreOp>(block->front());
     return storeOp.ptr();
   }

@@ -62,10 +62,9 @@ static VectorType reducedVectorTypeBack(VectorType tp) {
 }
 
 // Helper that picks the proper sequence for inserting.
-static ValuePtr insertOne(ConversionPatternRewriter &rewriter,
-                          LLVMTypeConverter &lowering, Location loc,
-                          ValuePtr val1, ValuePtr val2, Type llvmType,
-                          int64_t rank, int64_t pos) {
+static Value insertOne(ConversionPatternRewriter &rewriter,
+                       LLVMTypeConverter &lowering, Location loc, Value val1,
+                       Value val2, Type llvmType, int64_t rank, int64_t pos) {
   if (rank == 1) {
     auto idxType = rewriter.getIndexType();
     auto constant = rewriter.create<LLVM::ConstantOp>(
@@ -79,10 +78,9 @@ static ValuePtr insertOne(ConversionPatternRewriter &rewriter,
 }
 
 // Helper that picks the proper sequence for extracting.
-static ValuePtr extractOne(ConversionPatternRewriter &rewriter,
-                           LLVMTypeConverter &lowering, Location loc,
-                           ValuePtr val, Type llvmType, int64_t rank,
-                           int64_t pos) {
+static Value extractOne(ConversionPatternRewriter &rewriter,
+                        LLVMTypeConverter &lowering, Location loc, Value val,
+                        Type llvmType, int64_t rank, int64_t pos) {
   if (rank == 1) {
     auto idxType = rewriter.getIndexType();
     auto constant = rewriter.create<LLVM::ConstantOp>(
@@ -103,7 +101,7 @@ public:
                        typeConverter) {}
 
   PatternMatchResult
-  matchAndRewrite(Operation *op, ArrayRef<ValuePtr> operands,
+  matchAndRewrite(Operation *op, ArrayRef<Value> operands,
                   ConversionPatternRewriter &rewriter) const override {
     auto broadcastOp = cast<vector::BroadcastOp>(op);
     VectorType dstVectorType = broadcastOp.getVectorType();
@@ -131,9 +129,9 @@ private:
   //               ops once all insert/extract/shuffle operations
   //               are available with lowering implemention.
   //
-  ValuePtr expandRanks(ValuePtr value, Location loc, VectorType srcVectorType,
-                       VectorType dstVectorType,
-                       ConversionPatternRewriter &rewriter) const {
+  Value expandRanks(Value value, Location loc, VectorType srcVectorType,
+                    VectorType dstVectorType,
+                    ConversionPatternRewriter &rewriter) const {
     assert((dstVectorType != nullptr) && "invalid result type in broadcast");
     // Determine rank of source and destination.
     int64_t srcRank = srcVectorType ? srcVectorType.getRank() : 0;
@@ -170,24 +168,22 @@ private:
   // becomes:
   //   x = [s,s]
   //   v = [x,x,x,x]
-  ValuePtr duplicateOneRank(ValuePtr value, Location loc,
-                            VectorType srcVectorType, VectorType dstVectorType,
-                            int64_t rank, int64_t dim,
-                            ConversionPatternRewriter &rewriter) const {
+  Value duplicateOneRank(Value value, Location loc, VectorType srcVectorType,
+                         VectorType dstVectorType, int64_t rank, int64_t dim,
+                         ConversionPatternRewriter &rewriter) const {
     Type llvmType = lowering.convertType(dstVectorType);
     assert((llvmType != nullptr) && "unlowerable vector type");
     if (rank == 1) {
-      ValuePtr undef = rewriter.create<LLVM::UndefOp>(loc, llvmType);
-      ValuePtr expand =
+      Value undef = rewriter.create<LLVM::UndefOp>(loc, llvmType);
+      Value expand =
           insertOne(rewriter, lowering, loc, undef, value, llvmType, rank, 0);
       SmallVector<int32_t, 4> zeroValues(dim, 0);
       return rewriter.create<LLVM::ShuffleVectorOp>(
           loc, expand, undef, rewriter.getI32ArrayAttr(zeroValues));
     }
-    ValuePtr expand =
-        expandRanks(value, loc, srcVectorType,
-                    reducedVectorTypeFront(dstVectorType), rewriter);
-    ValuePtr result = rewriter.create<LLVM::UndefOp>(loc, llvmType);
+    Value expand = expandRanks(value, loc, srcVectorType,
+                               reducedVectorTypeFront(dstVectorType), rewriter);
+    Value result = rewriter.create<LLVM::UndefOp>(loc, llvmType);
     for (int64_t d = 0; d < dim; ++d) {
       result =
           insertOne(rewriter, lowering, loc, result, expand, llvmType, rank, d);
@@ -212,20 +208,19 @@ private:
   //   y = broadcast w[1][0] : vector<2xf32> to vector <2x2xf32>
   //   a = [x, y]
   //   etc.
-  ValuePtr stretchOneRank(ValuePtr value, Location loc,
-                          VectorType srcVectorType, VectorType dstVectorType,
-                          int64_t rank, int64_t dim,
-                          ConversionPatternRewriter &rewriter) const {
+  Value stretchOneRank(Value value, Location loc, VectorType srcVectorType,
+                       VectorType dstVectorType, int64_t rank, int64_t dim,
+                       ConversionPatternRewriter &rewriter) const {
     Type llvmType = lowering.convertType(dstVectorType);
     assert((llvmType != nullptr) && "unlowerable vector type");
-    ValuePtr result = rewriter.create<LLVM::UndefOp>(loc, llvmType);
+    Value result = rewriter.create<LLVM::UndefOp>(loc, llvmType);
     bool atStretch = dim != srcVectorType.getDimSize(0);
     if (rank == 1) {
       assert(atStretch);
       Type redLlvmType = lowering.convertType(dstVectorType.getElementType());
-      ValuePtr one =
+      Value one =
           extractOne(rewriter, lowering, loc, value, redLlvmType, rank, 0);
-      ValuePtr expand =
+      Value expand =
           insertOne(rewriter, lowering, loc, result, one, llvmType, rank, 0);
       SmallVector<int32_t, 4> zeroValues(dim, 0);
       return rewriter.create<LLVM::ShuffleVectorOp>(
@@ -236,9 +231,9 @@ private:
     Type redLlvmType = lowering.convertType(redSrcType);
     for (int64_t d = 0; d < dim; ++d) {
       int64_t pos = atStretch ? 0 : d;
-      ValuePtr one =
+      Value one =
           extractOne(rewriter, lowering, loc, value, redLlvmType, rank, pos);
-      ValuePtr expand = expandRanks(one, loc, redSrcType, redDstType, rewriter);
+      Value expand = expandRanks(one, loc, redSrcType, redDstType, rewriter);
       result =
           insertOne(rewriter, lowering, loc, result, expand, llvmType, rank, d);
     }
@@ -254,7 +249,7 @@ public:
                        typeConverter) {}
 
   PatternMatchResult
-  matchAndRewrite(Operation *op, ArrayRef<ValuePtr> operands,
+  matchAndRewrite(Operation *op, ArrayRef<Value> operands,
                   ConversionPatternRewriter &rewriter) const override {
     auto loc = op->getLoc();
     auto adaptor = vector::ShuffleOpOperandAdaptor(operands);
@@ -278,23 +273,23 @@ public:
     // For rank 1, where both operands have *exactly* the same vector type,
     // there is direct shuffle support in LLVM. Use it!
     if (rank == 1 && v1Type == v2Type) {
-      ValuePtr shuffle = rewriter.create<LLVM::ShuffleVectorOp>(
+      Value shuffle = rewriter.create<LLVM::ShuffleVectorOp>(
           loc, adaptor.v1(), adaptor.v2(), maskArrayAttr);
       rewriter.replaceOp(op, shuffle);
       return matchSuccess();
     }
 
     // For all other cases, insert the individual values individually.
-    ValuePtr insert = rewriter.create<LLVM::UndefOp>(loc, llvmType);
+    Value insert = rewriter.create<LLVM::UndefOp>(loc, llvmType);
     int64_t insPos = 0;
     for (auto en : llvm::enumerate(maskArrayAttr)) {
       int64_t extPos = en.value().cast<IntegerAttr>().getInt();
-      ValuePtr value = adaptor.v1();
+      Value value = adaptor.v1();
       if (extPos >= v1Dim) {
         extPos -= v1Dim;
         value = adaptor.v2();
       }
-      ValuePtr extract =
+      Value extract =
           extractOne(rewriter, lowering, loc, value, llvmType, rank, extPos);
       insert = insertOne(rewriter, lowering, loc, insert, extract, llvmType,
                          rank, insPos++);
@@ -312,7 +307,7 @@ public:
                        typeConverter) {}
 
   PatternMatchResult
-  matchAndRewrite(Operation *op, ArrayRef<ValuePtr> operands,
+  matchAndRewrite(Operation *op, ArrayRef<Value> operands,
                   ConversionPatternRewriter &rewriter) const override {
     auto adaptor = vector::ExtractElementOpOperandAdaptor(operands);
     auto extractEltOp = cast<vector::ExtractElementOp>(op);
@@ -337,7 +332,7 @@ public:
                        typeConverter) {}
 
   PatternMatchResult
-  matchAndRewrite(Operation *op, ArrayRef<ValuePtr> operands,
+  matchAndRewrite(Operation *op, ArrayRef<Value> operands,
                   ConversionPatternRewriter &rewriter) const override {
     auto loc = op->getLoc();
     auto adaptor = vector::ExtractOpOperandAdaptor(operands);
@@ -353,7 +348,7 @@ public:
 
     // One-shot extraction of vector from array (only requires extractvalue).
     if (resultType.isa<VectorType>()) {
-      ValuePtr extracted = rewriter.create<LLVM::ExtractValueOp>(
+      Value extracted = rewriter.create<LLVM::ExtractValueOp>(
           loc, llvmResultType, adaptor.vector(), positionArrayAttr);
       rewriter.replaceOp(op, extracted);
       return matchSuccess();
@@ -361,7 +356,7 @@ public:
 
     // Potential extraction of 1-D vector from array.
     auto *context = op->getContext();
-    ValuePtr extracted = adaptor.vector();
+    Value extracted = adaptor.vector();
     auto positionAttrs = positionArrayAttr.getValue();
     if (positionAttrs.size() > 1) {
       auto oneDVectorType = reducedVectorTypeBack(vectorType);
@@ -392,7 +387,7 @@ public:
                        typeConverter) {}
 
   PatternMatchResult
-  matchAndRewrite(Operation *op, ArrayRef<ValuePtr> operands,
+  matchAndRewrite(Operation *op, ArrayRef<Value> operands,
                   ConversionPatternRewriter &rewriter) const override {
     auto adaptor = vector::InsertElementOpOperandAdaptor(operands);
     auto insertEltOp = cast<vector::InsertElementOp>(op);
@@ -417,7 +412,7 @@ public:
                        typeConverter) {}
 
   PatternMatchResult
-  matchAndRewrite(Operation *op, ArrayRef<ValuePtr> operands,
+  matchAndRewrite(Operation *op, ArrayRef<Value> operands,
                   ConversionPatternRewriter &rewriter) const override {
     auto loc = op->getLoc();
     auto adaptor = vector::InsertOpOperandAdaptor(operands);
@@ -433,7 +428,7 @@ public:
 
     // One-shot insertion of a vector into an array (only requires insertvalue).
     if (sourceType.isa<VectorType>()) {
-      ValuePtr inserted = rewriter.create<LLVM::InsertValueOp>(
+      Value inserted = rewriter.create<LLVM::InsertValueOp>(
           loc, llvmResultType, adaptor.dest(), adaptor.source(),
           positionArrayAttr);
       rewriter.replaceOp(op, inserted);
@@ -442,7 +437,7 @@ public:
 
     // Potential extraction of 1-D vector from array.
     auto *context = op->getContext();
-    ValuePtr extracted = adaptor.dest();
+    Value extracted = adaptor.dest();
     auto positionAttrs = positionArrayAttr.getValue();
     auto position = positionAttrs.back().cast<IntegerAttr>();
     auto oneDVectorType = destVectorType;
@@ -458,7 +453,7 @@ public:
     // Insertion of an element into a 1-D LLVM vector.
     auto i64Type = LLVM::LLVMType::getInt64Ty(lowering.getDialect());
     auto constant = rewriter.create<LLVM::ConstantOp>(loc, i64Type, position);
-    ValuePtr inserted = rewriter.create<LLVM::InsertElementOp>(
+    Value inserted = rewriter.create<LLVM::InsertElementOp>(
         loc, lowering.convertType(oneDVectorType), extracted, adaptor.source(),
         constant);
 
@@ -484,7 +479,7 @@ public:
                        typeConverter) {}
 
   PatternMatchResult
-  matchAndRewrite(Operation *op, ArrayRef<ValuePtr> operands,
+  matchAndRewrite(Operation *op, ArrayRef<Value> operands,
                   ConversionPatternRewriter &rewriter) const override {
     auto loc = op->getLoc();
     auto adaptor = vector::OuterProductOpOperandAdaptor(operands);
@@ -495,10 +490,10 @@ public:
     auto rankRHS = vRHS.getUnderlyingType()->getVectorNumElements();
     auto llvmArrayOfVectType = lowering.convertType(
         cast<vector::OuterProductOp>(op).getResult()->getType());
-    ValuePtr desc = rewriter.create<LLVM::UndefOp>(loc, llvmArrayOfVectType);
-    ValuePtr a = adaptor.lhs(), b = adaptor.rhs();
-    ValuePtr acc = adaptor.acc().empty() ? nullptr : adaptor.acc().front();
-    SmallVector<ValuePtr, 8> lhs, accs;
+    Value desc = rewriter.create<LLVM::UndefOp>(loc, llvmArrayOfVectType);
+    Value a = adaptor.lhs(), b = adaptor.rhs();
+    Value acc = adaptor.acc().empty() ? nullptr : adaptor.acc().front();
+    SmallVector<Value, 8> lhs, accs;
     lhs.reserve(rankLHS);
     accs.reserve(rankLHS);
     for (unsigned d = 0, e = rankLHS; d < e; ++d) {
@@ -506,7 +501,7 @@ public:
       auto attr = rewriter.getI32IntegerAttr(d);
       SmallVector<Attribute, 4> bcastAttr(rankRHS, attr);
       auto bcastArrayAttr = ArrayAttr::get(bcastAttr, ctx);
-      ValuePtr aD = nullptr, accD = nullptr;
+      Value aD = nullptr, accD = nullptr;
       // 1. Broadcast the element a[d] into vector aD.
       aD = rewriter.create<LLVM::ShuffleVectorOp>(loc, a, a, bcastArrayAttr);
       // 2. If acc is present, extract 1-d vector acc[d] into accD.
@@ -514,7 +509,7 @@ public:
         accD = rewriter.create<LLVM::ExtractValueOp>(
             loc, vRHS, acc, rewriter.getI64ArrayAttr(d));
       // 3. Compute aD outer b (plus accD, if relevant).
-      ValuePtr aOuterbD =
+      Value aOuterbD =
           accD ? rewriter.create<LLVM::FMulAddOp>(loc, vRHS, aD, b, accD)
                      .getResult()
                : rewriter.create<LLVM::FMulOp>(loc, aD, b).getResult();
@@ -536,7 +531,7 @@ public:
                        typeConverter) {}
 
   PatternMatchResult
-  matchAndRewrite(Operation *op, ArrayRef<ValuePtr> operands,
+  matchAndRewrite(Operation *op, ArrayRef<Value> operands,
                   ConversionPatternRewriter &rewriter) const override {
     auto loc = op->getLoc();
     vector::TypeCastOp castOp = cast<vector::TypeCastOp>(op);
@@ -585,12 +580,12 @@ public:
     auto desc = MemRefDescriptor::undef(rewriter, loc, llvmTargetDescriptorTy);
     Type llvmTargetElementTy = desc.getElementType();
     // Set allocated ptr.
-    ValuePtr allocated = sourceMemRef.allocatedPtr(rewriter, loc);
+    Value allocated = sourceMemRef.allocatedPtr(rewriter, loc);
     allocated =
         rewriter.create<LLVM::BitcastOp>(loc, llvmTargetElementTy, allocated);
     desc.setAllocatedPtr(rewriter, loc, allocated);
     // Set aligned ptr.
-    ValuePtr ptr = sourceMemRef.alignedPtr(rewriter, loc);
+    Value ptr = sourceMemRef.alignedPtr(rewriter, loc);
     ptr = rewriter.create<LLVM::BitcastOp>(loc, llvmTargetElementTy, ptr);
     desc.setAlignedPtr(rewriter, loc, ptr);
     // Fill offset 0.
@@ -636,7 +631,7 @@ public:
   // TODO(ajcbik): rely solely on libc in future? something else?
   //
   PatternMatchResult
-  matchAndRewrite(Operation *op, ArrayRef<ValuePtr> operands,
+  matchAndRewrite(Operation *op, ArrayRef<Value> operands,
                   ConversionPatternRewriter &rewriter) const override {
     auto printOp = cast<vector::PrintOp>(op);
     auto adaptor = vector::PrintOpOperandAdaptor(operands);
@@ -666,7 +661,7 @@ public:
 
 private:
   void emitRanks(ConversionPatternRewriter &rewriter, Operation *op,
-                 ValuePtr value, VectorType vectorType, Operation *printer,
+                 Value value, VectorType vectorType, Operation *printer,
                  int64_t rank) const {
     Location loc = op->getLoc();
     if (rank == 0) {
@@ -682,7 +677,7 @@ private:
           rank > 1 ? reducedVectorTypeFront(vectorType) : nullptr;
       auto llvmType = lowering.convertType(
           rank > 1 ? reducedType : vectorType.getElementType());
-      ValuePtr nestedVal =
+      Value nestedVal =
           extractOne(rewriter, lowering, loc, value, llvmType, rank, d);
       emitRanks(rewriter, op, nestedVal, reducedType, printer, rank - 1);
       if (d != dim - 1)

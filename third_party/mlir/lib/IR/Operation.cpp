@@ -120,7 +120,7 @@ template <> unsigned BlockOperand::getOperandNumber() {
 /// Create a new Operation with the specific fields.
 Operation *Operation::create(Location location, OperationName name,
                              ArrayRef<Type> resultTypes,
-                             ArrayRef<ValuePtr> operands,
+                             ArrayRef<Value> operands,
                              ArrayRef<NamedAttribute> attributes,
                              ArrayRef<Block *> successors, unsigned numRegions,
                              bool resizableOperandList) {
@@ -140,7 +140,7 @@ Operation *Operation::create(const OperationState &state) {
 /// Create a new Operation with the specific fields.
 Operation *Operation::create(Location location, OperationName name,
                              ArrayRef<Type> resultTypes,
-                             ArrayRef<ValuePtr> operands,
+                             ArrayRef<Value> operands,
                              NamedAttributeList attributes,
                              ArrayRef<Block *> successors, RegionRange regions,
                              bool resizableOperandList) {
@@ -157,7 +157,7 @@ Operation *Operation::create(Location location, OperationName name,
 /// unnecessarily uniquing a list of attributes.
 Operation *Operation::create(Location location, OperationName name,
                              ArrayRef<Type> resultTypes,
-                             ArrayRef<ValuePtr> operands,
+                             ArrayRef<Value> operands,
                              NamedAttributeList attributes,
                              ArrayRef<Block *> successors, unsigned numRegions,
                              bool resizableOperandList) {
@@ -320,7 +320,7 @@ bool Operation::isProperAncestor(Operation *other) {
 }
 
 /// Replace any uses of 'from' with 'to' within this operation.
-void Operation::replaceUsesOfWith(ValuePtr from, ValuePtr to) {
+void Operation::replaceUsesOfWith(Value from, Value to) {
   if (from == to)
     return;
   for (auto &operand : getOpOperands())
@@ -678,7 +678,7 @@ InFlightDiagnostic Operation::emitOpError(const Twine &message) {
 /// Operands are remapped using `mapper` (if present), and `mapper` is updated
 /// to contain the results.
 Operation *Operation::cloneWithoutRegions(BlockAndValueMapping &mapper) {
-  SmallVector<ValuePtr, 8> operands;
+  SmallVector<Value, 8> operands;
   SmallVector<Block *, 2> successors;
 
   operands.reserve(getNumOperands() + getNumSuccessors());
@@ -1098,8 +1098,8 @@ LogicalResult OpTrait::impl::verifyResultSizeAttr(Operation *op,
 // These functions are out-of-line implementations of the methods in BinaryOp,
 // which avoids them being template instantiated/duplicated.
 
-void impl::buildBinaryOp(Builder *builder, OperationState &result, ValuePtr lhs,
-                         ValuePtr rhs) {
+void impl::buildBinaryOp(Builder *builder, OperationState &result, Value lhs,
+                         Value rhs) {
   assert(lhs->getType() == rhs->getType());
   result.addOperands({lhs, rhs});
   result.types.push_back(lhs->getType());
@@ -1139,8 +1139,8 @@ void impl::printOneResultOp(Operation *op, OpAsmPrinter &p) {
 // CastOp implementation
 //===----------------------------------------------------------------------===//
 
-void impl::buildCastOp(Builder *builder, OperationState &result,
-                       ValuePtr source, Type destType) {
+void impl::buildCastOp(Builder *builder, OperationState &result, Value source,
+                       Type destType) {
   result.addOperands(source);
   result.addTypes(destType);
 }
@@ -1163,7 +1163,7 @@ void impl::printCastOp(Operation *op, OpAsmPrinter &p) {
     << op->getResult(0)->getType();
 }
 
-ValuePtr impl::foldCastOp(Operation *op) {
+Value impl::foldCastOp(Operation *op) {
   // Identity cast
   if (op->getOperand(0)->getType() == op->getResult(0)->getType())
     return op->getOperand(0);

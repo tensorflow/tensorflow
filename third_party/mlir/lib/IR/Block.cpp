@@ -152,7 +152,7 @@ void Block::recomputeOpOrder() {
 // Argument list management.
 //===----------------------------------------------------------------------===//
 
-BlockArgumentPtr Block::addArgument(Type type) {
+BlockArgument Block::addArgument(Type type) {
   BlockArgument arg = BlockArgument::create(type, this);
   arguments.push_back(arg);
   return arg;

@@ -705,7 +705,7 @@ struct VectorizationState {
   // Map of old scalar Operation to new vectorized Operation.
   DenseMap<Operation *, Operation *> vectorizationMap;
   // Map of old scalar Value to new vectorized Value.
-  DenseMap<ValuePtr, ValuePtr> replacementMap;
+  DenseMap<Value, Value> replacementMap;
   // The strategy drives which loop to vectorize by which amount.
   const VectorizationStrategy *strategy;
   // Use-def roots. These represent the starting points for the worklist in the
@@ -728,7 +728,7 @@ struct VectorizationState {
   OperationFolder *folder;
 
 private:
-  void registerReplacement(ValuePtr key, ValuePtr value);
+  void registerReplacement(Value key, Value value);
 };
 
 } // end namespace
@@ -768,7 +768,7 @@ void VectorizationState::finishVectorizationPattern() {
   }
 }
 
-void VectorizationState::registerReplacement(ValuePtr key, ValuePtr value) {
+void VectorizationState::registerReplacement(Value key, Value value) {
   assert(replacementMap.count(key) == 0 && "replacement already registered");
   replacementMap.insert(std::make_pair(key, value));
 }
@@ -776,7 +776,7 @@ void VectorizationState::registerReplacement(ValuePtr key, ValuePtr value) {
 // Apply 'map' with 'mapOperands' returning resulting values in 'results'.
 static void computeMemoryOpIndices(Operation *op, AffineMap map,
                                    ValueRange mapOperands,
-                                   SmallVectorImpl<ValuePtr> &results) {
+                                   SmallVectorImpl<Value> &results) {
   OpBuilder builder(op);
   for (auto resultExpr : map.getResults()) {
     auto singleResMap =
@@ -803,7 +803,7 @@ static void computeMemoryOpIndices(Operation *op, AffineMap map,
 /// Such special cases force us to delay the vectorization of the stores until
 /// the last step. Here we merely register the store operation.
 template <typename LoadOrStoreOpPointer>
-static LogicalResult vectorizeRootOrTerminal(ValuePtr iv,
+static LogicalResult vectorizeRootOrTerminal(Value iv,
                                              LoadOrStoreOpPointer memoryOp,
                                              VectorizationState *state) {
   auto memRefType = memoryOp.getMemRef()->getType().template cast<MemRefType>();
@@ -823,7 +823,7 @@ static LogicalResult vectorizeRootOrTerminal(ValuePtr iv,
   if (auto load = dyn_cast<AffineLoadOp>(opInst)) {
     OpBuilder b(opInst);
     ValueRange mapOperands = load.getMapOperands();
-    SmallVector<ValuePtr, 8> indices;
+    SmallVector<Value, 8> indices;
     indices.reserve(load.getMemRefType().getRank());
     if (load.getAffineMap() !=
         b.getMultiDimIdentityMap(load.getMemRefType().getRank())) {
@@ -950,8 +950,7 @@ vectorizeLoopsAndLoadsRecursively(NestedMatch oneMatch,
 /// element type.
 /// If `type` is not a valid vector type or if the scalar constant is not a
 /// valid vector element type, returns nullptr.
-static ValuePtr vectorizeConstant(Operation *op, ConstantOp constant,
-                                  Type type) {
+static Value vectorizeConstant(Operation *op, ConstantOp constant, Type type) {
   if (!type || !type.isa<VectorType>() ||
       !VectorType::isValidElementType(constant.getType())) {
     return nullptr;
@@ -989,8 +988,8 @@ static ValuePtr vectorizeConstant(Operation *op, ConstantOp constant,
 /// vectorization is possible with the above logic. Returns nullptr otherwise.
 ///
 /// TODO(ntv): handle more complex cases.
-static ValuePtr vectorizeOperand(ValuePtr operand, Operation *op,
-                                 VectorizationState *state) {
+static Value vectorizeOperand(Value operand, Operation *op,
+                              VectorizationState *state) {
   LLVM_DEBUG(dbgs() << "\n[early-vect]vectorize operand: ");
   LLVM_DEBUG(operand->print(dbgs()));
   // 1. If this value has already been vectorized this round, we are done.
@@ -1052,7 +1051,7 @@ static Operation *vectorizeOneOperation(Operation *opInst,
     auto vectorValue = vectorizeOperand(value, opInst, state);
 
     ValueRange mapOperands = store.getMapOperands();
-    SmallVector<ValuePtr, 8> indices;
+    SmallVector<Value, 8> indices;
     indices.reserve(store.getMemRefType().getRank());
     if (store.getAffineMap() !=
         b.getMultiDimIdentityMap(store.getMemRefType().getRank())) {
@@ -1085,12 +1084,12 @@ static Operation *vectorizeOneOperation(Operation *opInst,
     vectorTypes.push_back(
         VectorType::get(state->strategy->vectorSizes, v->getType()));
   }
-  SmallVector<ValuePtr, 8> vectorOperands;
+  SmallVector<Value, 8> vectorOperands;
   for (auto v : opInst->getOperands()) {
     vectorOperands.push_back(vectorizeOperand(v, opInst, state));
   }
   // Check whether a single operand is null. If so, vectorization failed.
-  bool success = llvm::all_of(vectorOperands, [](ValuePtr op) { return op; });
+  bool success = llvm::all_of(vectorOperands, [](Value op) { return op; });
   if (!success) {
     LLVM_DEBUG(dbgs() << "\n[early-vect]+++++ an operand failed vectorize");
     return nullptr;

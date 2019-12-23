@@ -188,7 +188,7 @@ CallGraphNode *CallGraph::resolveCallable(CallInterfaceCallable callable,
     callee = SymbolTable::lookupNearestSymbolFrom(from,
                                                   symbolRef.getRootReference());
   else
-    callee = callable.get<ValuePtr>()->getDefiningOp();
+    callee = callable.get<Value>()->getDefiningOp();
 
   // If the callee is non-null and is a valid callable object, try to get the
   // called region from it.

@@ -270,7 +270,7 @@ inline llvm::hash_code hash_value(OperationName arg) {
 struct OperationState {
   Location location;
   OperationName name;
-  SmallVector<ValuePtr, 4> operands;
+  SmallVector<Value, 4> operands;
   /// Types of the results of this operation.
   SmallVector<Type, 4> types;
   SmallVector<NamedAttribute, 4> attributes;

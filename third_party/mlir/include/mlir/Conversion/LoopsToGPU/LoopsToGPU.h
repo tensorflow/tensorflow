@@ -24,9 +24,6 @@ class AffineForOp;
 struct LogicalResult;
 class Value;
 
-// TODO(riverriddle) Remove this after Value is value-typed.
-using ValuePtr = Value;
-
 namespace loop {
 class ForOp;
 } // end namespace loop
@@ -81,8 +78,8 @@ LogicalResult convertLoopNestToGPULaunch(loop::ForOp forOp,
 /// The above conditions are assumed to be satisfied by the computation rooted
 /// at `forOp`.
 LogicalResult convertLoopToGPULaunch(loop::ForOp forOp,
-                                     ArrayRef<ValuePtr> numWorkGroups,
-                                     ArrayRef<ValuePtr> workGroupSizes);
+                                     ArrayRef<Value> numWorkGroups,
+                                     ArrayRef<Value> workGroupSizes);
 
 } // namespace mlir
 

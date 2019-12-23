@@ -118,7 +118,7 @@ private:
   // operation is modified or removed, as it may trigger further
   // simplifications.
   template <typename Operands> void addToWorklist(Operands &&operands) {
-    for (ValuePtr operand : operands) {
+    for (Value operand : operands) {
       // If the use count of this operand is now < 2, we re-add the defining
       // operation to the worklist.
       // TODO(riverriddle) This is based on the fact that zero use operations
@@ -160,7 +160,7 @@ bool GreedyPatternRewriteDriver::simplify(MutableArrayRef<Region> regions,
       region.walk(collectOps);
 
     // These are scratch vectors used in the folding loop below.
-    SmallVector<ValuePtr, 8> originalOperands, resultValues;
+    SmallVector<Value, 8> originalOperands, resultValues;
 
     changed = false;
     while (!worklist.empty()) {

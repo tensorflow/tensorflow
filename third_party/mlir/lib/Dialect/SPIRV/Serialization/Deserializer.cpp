@@ -327,7 +327,7 @@ private:
   /// This method materializes normal constants and inserts "casting" ops
   /// (`spv._address_of` and `spv._reference_of`) to turn an symbol into a SSA
   /// value for handling uses of module scope constants/variables in functions.
-  ValuePtr getValue(uint32_t id);
+  Value getValue(uint32_t id);
 
   /// Slices the first instruction out of `binary` and returns its opcode and
   /// operands via `opcode` and `operands` respectively. Returns failure if
@@ -446,7 +446,7 @@ private:
   DenseMap<Block *, BlockPhiInfo> blockPhiInfo;
 
   // Result <id> to value mapping.
-  DenseMap<uint32_t, ValuePtr> valueMap;
+  DenseMap<uint32_t, Value> valueMap;
 
   // Mapping from result <id> to undef value of a type.
   DenseMap<uint32_t, Type> undefMap;
@@ -1531,8 +1531,8 @@ Deserializer::processBranchConditional(ArrayRef<uint32_t> operands) {
 
   opBuilder.create<spirv::BranchConditionalOp>(
       unknownLoc, condition, trueBlock,
-      /*trueArguments=*/ArrayRef<ValuePtr>(), falseBlock,
-      /*falseArguments=*/ArrayRef<ValuePtr>(), weights);
+      /*trueArguments=*/ArrayRef<Value>(), falseBlock,
+      /*falseArguments=*/ArrayRef<Value>(), weights);
 
   return success();
 }
@@ -1626,7 +1626,7 @@ LogicalResult Deserializer::processPhi(ArrayRef<uint32_t> operands) {
 
   // Create a block argument for this OpPhi instruction.
   Type blockArgType = getType(operands[0]);
-  BlockArgumentPtr blockArg = curBlock->addArgument(blockArgType);
+  BlockArgument blockArg = curBlock->addArgument(blockArgType);
   valueMap[operands[1]] = blockArg;
   LLVM_DEBUG(llvm::dbgs() << "[phi] created block argument " << blockArg
                           << " id = " << operands[1] << " of type "
@@ -1783,7 +1783,7 @@ LogicalResult ControlFlowStructurizer::structurizeImpl() {
     LLVM_DEBUG(llvm::dbgs() << "[cf] cloned block " << newBlock
                             << " from block " << block << "\n");
     if (!isFnEntryBlock(block)) {
-      for (BlockArgumentPtr blockArg : block->getArguments()) {
+      for (BlockArgument blockArg : block->getArguments()) {
         auto newArg = newBlock->addArgument(blockArg->getType());
         mapper.map(blockArg, newArg);
         LLVM_DEBUG(llvm::dbgs() << "[cf] remapped block argument " << blockArg
@@ -1824,13 +1824,13 @@ LogicalResult ControlFlowStructurizer::structurizeImpl() {
     // we place the selection/loop op inside the old merge block, we need to
     // make sure the old merge block has the same block argument list.
     assert(mergeBlock->args_empty() && "OpPhi in loop merge block unsupported");
-    for (BlockArgumentPtr blockArg : headerBlock->getArguments()) {
+    for (BlockArgument blockArg : headerBlock->getArguments()) {
       mergeBlock->addArgument(blockArg->getType());
     }
 
     // If the loop header block has block arguments, make sure the spv.branch op
     // matches.
-    SmallVector<ValuePtr, 4> blockArgs;
+    SmallVector<Value, 4> blockArgs;
     if (!headerBlock->args_empty())
       blockArgs = {mergeBlock->args_begin(), mergeBlock->args_end()};
 
@@ -1838,7 +1838,7 @@ LogicalResult ControlFlowStructurizer::structurizeImpl() {
     // loop header block.
     builder.setInsertionPointToEnd(&body.front());
     builder.create<spirv::BranchOp>(location, mapper.lookupOrNull(headerBlock),
-                                    ArrayRef<ValuePtr>(blockArgs));
+                                    ArrayRef<Value>(blockArgs));
   }
 
   // All the blocks cloned into the SelectionOp/LoopOp's region can now be
@@ -1924,10 +1924,10 @@ LogicalResult Deserializer::wireUpBlockArgument() {
     auto *op = block->getTerminator();
     opBuilder.setInsertionPoint(op);
 
-    SmallVector<ValuePtr, 4> blockArgs;
+    SmallVector<Value, 4> blockArgs;
     blockArgs.reserve(phiInfo.size());
     for (uint32_t valueId : phiInfo) {
-      if (ValuePtr value = getValue(valueId)) {
+      if (Value value = getValue(valueId)) {
         blockArgs.push_back(value);
         LLVM_DEBUG(llvm::dbgs() << "[phi] block argument " << value
                                 << " id = " << valueId << '\n');
@@ -1996,7 +1996,7 @@ LogicalResult Deserializer::structurizeControlFlow() {
 // Instruction
 //===----------------------------------------------------------------------===//
 
-ValuePtr Deserializer::getValue(uint32_t id) {
+Value Deserializer::getValue(uint32_t id) {
   if (auto constInfo = getConstant(id)) {
     // Materialize a `spv.constant` op at every use site.
     return opBuilder.create<spirv::ConstantOp>(unknownLoc, constInfo->second,
@@ -2192,7 +2192,7 @@ LogicalResult Deserializer::processBitcast(ArrayRef<uint32_t> words) {
     }
   }
   valueID = words[wordIndex++];
-  SmallVector<ValuePtr, 4> operands;
+  SmallVector<Value, 4> operands;
   SmallVector<NamedAttribute, 4> attributes;
   if (wordIndex < words.size()) {
     auto arg = getValue(words[wordIndex]);
@@ -2366,7 +2366,7 @@ Deserializer::processOp<spirv::FunctionCallOp>(ArrayRef<uint32_t> operands) {
 
   auto functionName = getFunctionSymbol(functionID);
 
-  SmallVector<ValuePtr, 4> arguments;
+  SmallVector<Value, 4> arguments;
   for (auto operand : llvm::drop_begin(operands, 3)) {
     auto value = getValue(operand);
     if (!value) {

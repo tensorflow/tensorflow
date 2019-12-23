@@ -181,17 +181,17 @@ void InferQuantizedTypesPass::runWithConfig(SolverContext &solverContext,
 
 void InferQuantizedTypesPass::transformOperandType(CAGOperandAnchor *anchor,
                                                    Type newType) {
-  ValuePtr inputValue = anchor->getValue();
+  Value inputValue = anchor->getValue();
   Operation *op = anchor->getOp();
   OpBuilder b(op->getBlock(), Block::iterator(op));
 
-  SmallVector<ValuePtr, 1> removeValuesIfDead;
+  SmallVector<Value, 1> removeValuesIfDead;
 
   // Because we've already run the result transforms at this phase, it is
   // very likely that inputValue points to a dcast op whose input matches
   // our type. We detect that situation and route around just to save some
   // bulk in the IR.
-  ValuePtr newTypedInputValue = inputValue;
+  Value newTypedInputValue = inputValue;
   auto inputDcastOp =
       dyn_cast_or_null<DequantizeCastOp>(inputValue->getDefiningOp());
   if (inputDcastOp && inputDcastOp.arg()->getType() == newType) {
@@ -228,7 +228,7 @@ void InferQuantizedTypesPass::transformOperandType(CAGOperandAnchor *anchor,
     break;
   }
 
-  for (ValuePtr removeValueIfDead : removeValuesIfDead) {
+  for (Value removeValueIfDead : removeValuesIfDead) {
     if (removeValueIfDead->use_empty()) {
       removeValueIfDead->getDefiningOp()->erase();
     }
@@ -237,12 +237,12 @@ void InferQuantizedTypesPass::transformOperandType(CAGOperandAnchor *anchor,
 
 void InferQuantizedTypesPass::transformResultType(CAGResultAnchor *anchor,
                                                   Type newType) {
-  ValuePtr origResultValue = anchor->getValue();
+  Value origResultValue = anchor->getValue();
   Operation *op = origResultValue->getDefiningOp();
   OpBuilder b(op->getBlock(), ++Block::iterator(op));
 
-  ValuePtr replacedResultValue = nullptr;
-  ValuePtr newResultValue = nullptr;
+  Value replacedResultValue = nullptr;
+  Value newResultValue = nullptr;
   switch (anchor->getTypeTransformRule()) {
   case CAGAnchorNode::TypeTransformRule::Direct:
     origResultValue->setType(newType);

@@ -415,7 +415,7 @@ static ParseResult parseCallOp(OpAsmParser &parser, OperationState &result) {
 // Expects vector to be of wrapped LLVM vector type and position to be of
 // wrapped LLVM i32 type.
 void LLVM::ExtractElementOp::build(Builder *b, OperationState &result,
-                                   ValuePtr vector, ValuePtr position,
+                                   Value vector, Value position,
                                    ArrayRef<NamedAttribute> attrs) {
   auto wrappedVectorType = vector->getType().cast<LLVM::LLVMType>();
   auto llvmType = wrappedVectorType.getVectorElementType();
@@ -681,7 +681,7 @@ static void printBrOp(OpAsmPrinter &p, BrOp &op) {
 // attribute-dict?
 static ParseResult parseBrOp(OpAsmParser &parser, OperationState &result) {
   Block *dest;
-  SmallVector<ValuePtr, 4> operands;
+  SmallVector<Value, 4> operands;
   if (parser.parseSuccessorAndUseList(dest, operands) ||
       parser.parseOptionalAttrDict(result.attributes))
     return failure();
@@ -708,8 +708,8 @@ static void printCondBrOp(OpAsmPrinter &p, CondBrOp &op) {
 static ParseResult parseCondBrOp(OpAsmParser &parser, OperationState &result) {
   Block *trueDest;
   Block *falseDest;
-  SmallVector<ValuePtr, 4> trueOperands;
-  SmallVector<ValuePtr, 4> falseOperands;
+  SmallVector<Value, 4> trueOperands;
+  SmallVector<Value, 4> falseOperands;
   OpAsmParser::OperandType condition;
 
   Builder &builder = parser.getBuilder();
@@ -1066,8 +1066,8 @@ static LogicalResult verify(GlobalOp op) {
 //===----------------------------------------------------------------------===//
 // Expects vector to be of wrapped LLVM vector type and position to be of
 // wrapped LLVM i32 type.
-void LLVM::ShuffleVectorOp::build(Builder *b, OperationState &result,
-                                  ValuePtr v1, ValuePtr v2, ArrayAttr mask,
+void LLVM::ShuffleVectorOp::build(Builder *b, OperationState &result, Value v1,
+                                  Value v2, ArrayAttr mask,
                                   ArrayRef<NamedAttribute> attrs) {
   auto wrappedContainerType1 = v1->getType().cast<LLVM::LLVMType>();
   auto vType = LLVMType::getVectorTy(
@@ -1664,10 +1664,10 @@ LLVMType LLVMType::getVoidTy(LLVMDialect *dialect) {
 // Utility functions.
 //===----------------------------------------------------------------------===//
 
-ValuePtr mlir::LLVM::createGlobalString(Location loc, OpBuilder &builder,
-                                        StringRef name, StringRef value,
-                                        LLVM::Linkage linkage,
-                                        LLVM::LLVMDialect *llvmDialect) {
+Value mlir::LLVM::createGlobalString(Location loc, OpBuilder &builder,
+                                     StringRef name, StringRef value,
+                                     LLVM::Linkage linkage,
+                                     LLVM::LLVMDialect *llvmDialect) {
   assert(builder.getInsertionBlock() &&
          builder.getInsertionBlock()->getParentOp() &&
          "expected builder to point to a block constrained in an op");
@@ -1684,13 +1684,13 @@ ValuePtr mlir::LLVM::createGlobalString(Location loc, OpBuilder &builder,
       builder.getStringAttr(value));
 
   // Get the pointer to the first character in the global string.
-  ValuePtr globalPtr = builder.create<LLVM::AddressOfOp>(loc, global);
-  ValuePtr cst0 = builder.create<LLVM::ConstantOp>(
+  Value globalPtr = builder.create<LLVM::AddressOfOp>(loc, global);
+  Value cst0 = builder.create<LLVM::ConstantOp>(
       loc, LLVM::LLVMType::getInt64Ty(llvmDialect),
       builder.getIntegerAttr(builder.getIndexType(), 0));
-  return builder.create<LLVM::GEPOp>(
-      loc, LLVM::LLVMType::getInt8PtrTy(llvmDialect), globalPtr,
-      ArrayRef<ValuePtr>({cst0, cst0}));
+  return builder.create<LLVM::GEPOp>(loc,
+                                     LLVM::LLVMType::getInt8PtrTy(llvmDialect),
+                                     globalPtr, ArrayRef<Value>({cst0, cst0}));
 }
 
 bool mlir::LLVM::satisfiesLLVMModule(Operation *op) {

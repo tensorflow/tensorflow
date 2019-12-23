@@ -45,7 +45,7 @@ using namespace mlir;
 // Gathers all load and store memref accesses in 'opA' into 'values', where
 // 'values[memref] == true' for each store operation.
 static void getLoadAndStoreMemRefAccesses(Operation *opA,
-                                          DenseMap<ValuePtr, bool> &values) {
+                                          DenseMap<Value, bool> &values) {
   opA->walk([&](Operation *op) {
     if (auto loadOp = dyn_cast<AffineLoadOp>(op)) {
       if (values.count(loadOp.getMemRef()) == 0)
@@ -60,7 +60,7 @@ static void getLoadAndStoreMemRefAccesses(Operation *opA,
 // accessed 'values' and at least one of the access is a store operation.
 // Returns false otherwise.
 static bool isDependentLoadOrStoreOp(Operation *op,
-                                     DenseMap<ValuePtr, bool> &values) {
+                                     DenseMap<Value, bool> &values) {
   if (auto loadOp = dyn_cast<AffineLoadOp>(op)) {
     return values.count(loadOp.getMemRef()) > 0 &&
            values[loadOp.getMemRef()] == true;
@@ -75,7 +75,7 @@ static bool isDependentLoadOrStoreOp(Operation *op,
 static Operation *getFirstDependentOpInRange(Operation *opA, Operation *opB) {
   // Record memref values from all loads/store in loop nest rooted at 'opA'.
   // Map from memref value to bool which is true if store, false otherwise.
-  DenseMap<ValuePtr, bool> values;
+  DenseMap<Value, bool> values;
   getLoadAndStoreMemRefAccesses(opA, values);
 
   // For each 'opX' in block in range ('opA', 'opB'), check if there is a data
@@ -101,7 +101,7 @@ static Operation *getFirstDependentOpInRange(Operation *opA, Operation *opB) {
 static Operation *getLastDependentOpInRange(Operation *opA, Operation *opB) {
   // Record memref values from all loads/store in loop nest rooted at 'opB'.
   // Map from memref value to bool which is true if store, false otherwise.
-  DenseMap<ValuePtr, bool> values;
+  DenseMap<Value, bool> values;
   getLoadAndStoreMemRefAccesses(opB, values);
 
   // For each 'opX' in block in range ('opA', 'opB') in reverse order,
@@ -443,7 +443,7 @@ bool mlir::getFusionComputeCost(AffineForOp srcForOp, LoopNestStats &srcStats,
     // Subtract from operation count the loads/store we expect load/store
     // forwarding to remove.
     unsigned storeCount = 0;
-    llvm::SmallDenseSet<ValuePtr, 4> storeMemrefs;
+    llvm::SmallDenseSet<Value, 4> storeMemrefs;
     srcForOp.walk([&](Operation *op) {
       if (auto storeOp = dyn_cast<AffineStoreOp>(op)) {
         storeMemrefs.insert(storeOp.getMemRef());

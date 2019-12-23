@@ -47,8 +47,7 @@ static bool isMemRefDereferencingOp(Operation &op) {
 }
 
 /// Return the AffineMapAttr associated with memory 'op' on 'memref'.
-static NamedAttribute getAffineMapAttrForMemRef(Operation *op,
-                                                ValuePtr memref) {
+static NamedAttribute getAffineMapAttrForMemRef(Operation *op, Value memref) {
   return TypeSwitch<Operation *, NamedAttribute>(op)
       .Case<AffineDmaStartOp, AffineLoadOp, AffinePrefetchOp, AffineStoreOp,
             AffineDmaWaitOp>(
@@ -56,10 +55,12 @@ static NamedAttribute getAffineMapAttrForMemRef(Operation *op,
 }
 
 // Perform the replacement in `op`.
-LogicalResult mlir::replaceAllMemRefUsesWith(
-    ValuePtr oldMemRef, ValuePtr newMemRef, Operation *op,
-    ArrayRef<ValuePtr> extraIndices, AffineMap indexRemap,
-    ArrayRef<ValuePtr> extraOperands, ArrayRef<ValuePtr> symbolOperands) {
+LogicalResult mlir::replaceAllMemRefUsesWith(Value oldMemRef, Value newMemRef,
+                                             Operation *op,
+                                             ArrayRef<Value> extraIndices,
+                                             AffineMap indexRemap,
+                                             ArrayRef<Value> extraOperands,
+                                             ArrayRef<Value> symbolOperands) {
   unsigned newMemRefRank = newMemRef->getType().cast<MemRefType>().getRank();
   (void)newMemRefRank; // unused in opt mode
   unsigned oldMemRefRank = oldMemRef->getType().cast<MemRefType>().getRank();
@@ -105,13 +106,13 @@ LogicalResult mlir::replaceAllMemRefUsesWith(
   NamedAttribute oldMapAttrPair = getAffineMapAttrForMemRef(op, oldMemRef);
   AffineMap oldMap = oldMapAttrPair.second.cast<AffineMapAttr>().getValue();
   unsigned oldMapNumInputs = oldMap.getNumInputs();
-  SmallVector<ValuePtr, 4> oldMapOperands(
+  SmallVector<Value, 4> oldMapOperands(
       op->operand_begin() + memRefOperandPos + 1,
       op->operand_begin() + memRefOperandPos + 1 + oldMapNumInputs);
 
   // Apply 'oldMemRefOperands = oldMap(oldMapOperands)'.
-  SmallVector<ValuePtr, 4> oldMemRefOperands;
-  SmallVector<ValuePtr, 4> affineApplyOps;
+  SmallVector<Value, 4> oldMemRefOperands;
+  SmallVector<Value, 4> affineApplyOps;
   oldMemRefOperands.reserve(oldMemRefRank);
   if (oldMap != builder.getMultiDimIdentityMap(oldMap.getNumDims())) {
     for (auto resultExpr : oldMap.getResults()) {
@@ -129,14 +130,14 @@ LogicalResult mlir::replaceAllMemRefUsesWith(
   // Construct new indices as a remap of the old ones if a remapping has been
   // provided. The indices of a memref come right after it, i.e.,
   // at position memRefOperandPos + 1.
-  SmallVector<ValuePtr, 4> remapOperands;
+  SmallVector<Value, 4> remapOperands;
   remapOperands.reserve(extraOperands.size() + oldMemRefRank +
                         symbolOperands.size());
   remapOperands.append(extraOperands.begin(), extraOperands.end());
   remapOperands.append(oldMemRefOperands.begin(), oldMemRefOperands.end());
   remapOperands.append(symbolOperands.begin(), symbolOperands.end());
 
-  SmallVector<ValuePtr, 4> remapOutputs;
+  SmallVector<Value, 4> remapOutputs;
   remapOutputs.reserve(oldMemRefRank);
 
   if (indexRemap &&
@@ -155,7 +156,7 @@ LogicalResult mlir::replaceAllMemRefUsesWith(
     remapOutputs.append(remapOperands.begin(), remapOperands.end());
   }
 
-  SmallVector<ValuePtr, 4> newMapOperands;
+  SmallVector<Value, 4> newMapOperands;
   newMapOperands.reserve(newMemRefRank);
 
   // Prepend 'extraIndices' in 'newMapOperands'.
@@ -223,11 +224,13 @@ LogicalResult mlir::replaceAllMemRefUsesWith(
   return success();
 }
 
-LogicalResult mlir::replaceAllMemRefUsesWith(
-    ValuePtr oldMemRef, ValuePtr newMemRef, ArrayRef<ValuePtr> extraIndices,
-    AffineMap indexRemap, ArrayRef<ValuePtr> extraOperands,
-    ArrayRef<ValuePtr> symbolOperands, Operation *domInstFilter,
-    Operation *postDomInstFilter) {
+LogicalResult mlir::replaceAllMemRefUsesWith(Value oldMemRef, Value newMemRef,
+                                             ArrayRef<Value> extraIndices,
+                                             AffineMap indexRemap,
+                                             ArrayRef<Value> extraOperands,
+                                             ArrayRef<Value> symbolOperands,
+                                             Operation *domInstFilter,
+                                             Operation *postDomInstFilter) {
   unsigned newMemRefRank = newMemRef->getType().cast<MemRefType>().getRank();
   (void)newMemRefRank; // unused in opt mode
   unsigned oldMemRefRank = oldMemRef->getType().cast<MemRefType>().getRank();
@@ -328,7 +331,7 @@ LogicalResult mlir::replaceAllMemRefUsesWith(
 void mlir::createAffineComputationSlice(
     Operation *opInst, SmallVectorImpl<AffineApplyOp> *sliceOps) {
   // Collect all operands that are results of affine apply ops.
-  SmallVector<ValuePtr, 4> subOperands;
+  SmallVector<Value, 4> subOperands;
   subOperands.reserve(opInst->getNumOperands());
   for (auto operand : opInst->getOperands())
     if (isa_and_nonnull<AffineApplyOp>(operand->getDefiningOp()))
@@ -358,7 +361,7 @@ void mlir::createAffineComputationSlice(
     return;
 
   OpBuilder builder(opInst);
-  SmallVector<ValuePtr, 4> composedOpOperands(subOperands);
+  SmallVector<Value, 4> composedOpOperands(subOperands);
   auto composedMap = builder.getMultiDimIdentityMap(composedOpOperands.size());
   fullyComposeAffineMapAndOperands(&composedMap, &composedOpOperands);
 
@@ -375,7 +378,7 @@ void mlir::createAffineComputationSlice(
   // affine apply op above instead of existing ones (subOperands). So, they
   // differ from opInst's operands only for those operands in 'subOperands', for
   // which they will be replaced by the corresponding one from 'sliceOps'.
-  SmallVector<ValuePtr, 4> newOperands(opInst->getOperands());
+  SmallVector<Value, 4> newOperands(opInst->getOperands());
   for (unsigned i = 0, e = newOperands.size(); i < e; i++) {
     // Replace the subOperands from among the new operands.
     unsigned j, f;
@@ -449,7 +452,7 @@ LogicalResult mlir::normalizeMemRef(AllocOp allocOp) {
   }
 
   auto oldMemRef = allocOp.getResult();
-  SmallVector<ValuePtr, 4> symbolOperands(allocOp.getSymbolicOperands());
+  SmallVector<Value, 4> symbolOperands(allocOp.getSymbolicOperands());
 
   auto newMemRefType = MemRefType::get(newShape, memrefType.getElementType(),
                                        b.getMultiDimIdentityMap(newRank));

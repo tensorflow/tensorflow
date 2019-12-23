@@ -37,7 +37,7 @@ public:
   using SPIRVOpLowering<FuncOp>::SPIRVOpLowering;
 
   PatternMatchResult
-  matchAndRewrite(FuncOp funcOp, ArrayRef<ValuePtr> operands,
+  matchAndRewrite(FuncOp funcOp, ArrayRef<Value> operands,
                   ConversionPatternRewriter &rewriter) const override;
 };
 
@@ -49,7 +49,7 @@ class ConvertStandardToSPIRVPass
 } // namespace
 
 PatternMatchResult
-FuncOpConversion::matchAndRewrite(FuncOp funcOp, ArrayRef<ValuePtr> operands,
+FuncOpConversion::matchAndRewrite(FuncOp funcOp, ArrayRef<Value> operands,
                                   ConversionPatternRewriter &rewriter) const {
   auto fnType = funcOp.getType();
   if (fnType.getNumResults()) {

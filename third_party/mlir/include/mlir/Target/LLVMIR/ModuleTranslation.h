@@ -113,7 +113,7 @@ private:
 protected:
   // Mappings between original and translated values, used for lookups.
   llvm::StringMap<llvm::Function *> functionMapping;
-  DenseMap<ValuePtr, llvm::Value *> valueMapping;
+  DenseMap<Value, llvm::Value *> valueMapping;
   DenseMap<Block *, llvm::BasicBlock *> blockMapping;
 };
 

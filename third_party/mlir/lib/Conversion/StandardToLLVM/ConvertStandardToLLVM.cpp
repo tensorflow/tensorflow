@@ -256,20 +256,20 @@ LLVMOpLowering::LLVMOpLowering(StringRef rootOpName, MLIRContext *context,
 /*============================================================================*/
 /* StructBuilder implementation                                               */
 /*============================================================================*/
-StructBuilder::StructBuilder(ValuePtr v) : value(v) {
+StructBuilder::StructBuilder(Value v) : value(v) {
   assert(value != nullptr && "value cannot be null");
   structType = value->getType().cast<LLVM::LLVMType>();
 }
 
-ValuePtr StructBuilder::extractPtr(OpBuilder &builder, Location loc,
-                                   unsigned pos) {
+Value StructBuilder::extractPtr(OpBuilder &builder, Location loc,
+                                unsigned pos) {
   Type type = structType.cast<LLVM::LLVMType>().getStructElementType(pos);
   return builder.create<LLVM::ExtractValueOp>(loc, type, value,
                                               builder.getI64ArrayAttr(pos));
 }
 
 void StructBuilder::setPtr(OpBuilder &builder, Location loc, unsigned pos,
-                           ValuePtr ptr) {
+                           Value ptr) {
   value = builder.create<LLVM::InsertValueOp>(loc, structType, value, ptr,
                                               builder.getI64ArrayAttr(pos));
 }
@@ -278,7 +278,7 @@ void StructBuilder::setPtr(OpBuilder &builder, Location loc, unsigned pos,
 /*============================================================================*/
 
 /// Construct a helper for the given descriptor value.
-MemRefDescriptor::MemRefDescriptor(ValuePtr descriptor)
+MemRefDescriptor::MemRefDescriptor(Value descriptor)
     : StructBuilder(descriptor) {
   assert(value != nullptr && "value cannot be null");
   indexType = value->getType().cast<LLVM::LLVMType>().getStructElementType(
@@ -289,7 +289,7 @@ MemRefDescriptor::MemRefDescriptor(ValuePtr descriptor)
 MemRefDescriptor MemRefDescriptor::undef(OpBuilder &builder, Location loc,
                                          Type descriptorType) {
 
-  ValuePtr descriptor =
+  Value descriptor =
       builder.create<LLVM::UndefOp>(loc, descriptorType.cast<LLVM::LLVMType>());
   return MemRefDescriptor(descriptor);
 }
@@ -300,7 +300,7 @@ MemRefDescriptor MemRefDescriptor::undef(OpBuilder &builder, Location loc,
 MemRefDescriptor
 MemRefDescriptor::fromStaticShape(OpBuilder &builder, Location loc,
                                   LLVMTypeConverter &typeConverter,
-                                  MemRefType type, ValuePtr memory) {
+                                  MemRefType type, Value memory) {
   assert(type.hasStaticShape() && "unexpected dynamic shape");
   assert(type.getAffineMaps().empty() && "unexpected layout map");
 
@@ -325,37 +325,37 @@ MemRefDescriptor::fromStaticShape(OpBuilder &builder, Location loc,
 }
 
 /// Builds IR extracting the allocated pointer from the descriptor.
-ValuePtr MemRefDescriptor::allocatedPtr(OpBuilder &builder, Location loc) {
+Value MemRefDescriptor::allocatedPtr(OpBuilder &builder, Location loc) {
   return extractPtr(builder, loc, kAllocatedPtrPosInMemRefDescriptor);
 }
 
 /// Builds IR inserting the allocated pointer into the descriptor.
 void MemRefDescriptor::setAllocatedPtr(OpBuilder &builder, Location loc,
-                                       ValuePtr ptr) {
+                                       Value ptr) {
   setPtr(builder, loc, kAllocatedPtrPosInMemRefDescriptor, ptr);
 }
 
 /// Builds IR extracting the aligned pointer from the descriptor.
-ValuePtr MemRefDescriptor::alignedPtr(OpBuilder &builder, Location loc) {
+Value MemRefDescriptor::alignedPtr(OpBuilder &builder, Location loc) {
   return extractPtr(builder, loc, kAlignedPtrPosInMemRefDescriptor);
 }
 
 /// Builds IR inserting the aligned pointer into the descriptor.
 void MemRefDescriptor::setAlignedPtr(OpBuilder &builder, Location loc,
-                                     ValuePtr ptr) {
+                                     Value ptr) {
   setPtr(builder, loc, kAlignedPtrPosInMemRefDescriptor, ptr);
 }
 
 // Creates a constant Op producing a value of `resultType` from an index-typed
 // integer attribute.
-static ValuePtr createIndexAttrConstant(OpBuilder &builder, Location loc,
-                                        Type resultType, int64_t value) {
+static Value createIndexAttrConstant(OpBuilder &builder, Location loc,
+                                     Type resultType, int64_t value) {
   return builder.create<LLVM::ConstantOp>(
       loc, resultType, builder.getIntegerAttr(builder.getIndexType(), value));
 }
 
 /// Builds IR extracting the offset from the descriptor.
-ValuePtr MemRefDescriptor::offset(OpBuilder &builder, Location loc) {
+Value MemRefDescriptor::offset(OpBuilder &builder, Location loc) {
   return builder.create<LLVM::ExtractValueOp>(
       loc, indexType, value,
       builder.getI64ArrayAttr(kOffsetPosInMemRefDescriptor));
@@ -363,7 +363,7 @@ ValuePtr MemRefDescriptor::offset(OpBuilder &builder, Location loc) {
 
 /// Builds IR inserting the offset into the descriptor.
 void MemRefDescriptor::setOffset(OpBuilder &builder, Location loc,
-                                 ValuePtr offset) {
+                                 Value offset) {
   value = builder.create<LLVM::InsertValueOp>(
       loc, structType, value, offset,
       builder.getI64ArrayAttr(kOffsetPosInMemRefDescriptor));
@@ -377,8 +377,7 @@ void MemRefDescriptor::setConstantOffset(OpBuilder &builder, Location loc,
 }
 
 /// Builds IR extracting the pos-th size from the descriptor.
-ValuePtr MemRefDescriptor::size(OpBuilder &builder, Location loc,
-                                unsigned pos) {
+Value MemRefDescriptor::size(OpBuilder &builder, Location loc, unsigned pos) {
   return builder.create<LLVM::ExtractValueOp>(
       loc, indexType, value,
       builder.getI64ArrayAttr({kSizePosInMemRefDescriptor, pos}));
@@ -386,7 +385,7 @@ ValuePtr MemRefDescriptor::size(OpBuilder &builder, Location loc,
 
 /// Builds IR inserting the pos-th size into the descriptor
 void MemRefDescriptor::setSize(OpBuilder &builder, Location loc, unsigned pos,
-                               ValuePtr size) {
+                               Value size) {
   value = builder.create<LLVM::InsertValueOp>(
       loc, structType, value, size,
       builder.getI64ArrayAttr({kSizePosInMemRefDescriptor, pos}));
@@ -400,8 +399,7 @@ void MemRefDescriptor::setConstantSize(OpBuilder &builder, Location loc,
 }
 
 /// Builds IR extracting the pos-th size from the descriptor.
-ValuePtr MemRefDescriptor::stride(OpBuilder &builder, Location loc,
-                                  unsigned pos) {
+Value MemRefDescriptor::stride(OpBuilder &builder, Location loc, unsigned pos) {
   return builder.create<LLVM::ExtractValueOp>(
       loc, indexType, value,
       builder.getI64ArrayAttr({kStridePosInMemRefDescriptor, pos}));
@@ -409,7 +407,7 @@ ValuePtr MemRefDescriptor::stride(OpBuilder &builder, Location loc,
 
 /// Builds IR inserting the pos-th stride into the descriptor
 void MemRefDescriptor::setStride(OpBuilder &builder, Location loc, unsigned pos,
-                                 ValuePtr stride) {
+                                 Value stride) {
   value = builder.create<LLVM::InsertValueOp>(
       loc, structType, value, stride,
       builder.getI64ArrayAttr({kStridePosInMemRefDescriptor, pos}));
@@ -432,30 +430,30 @@ LLVM::LLVMType MemRefDescriptor::getElementType() {
 /*============================================================================*/
 
 /// Construct a helper for the given descriptor value.
-UnrankedMemRefDescriptor::UnrankedMemRefDescriptor(ValuePtr descriptor)
+UnrankedMemRefDescriptor::UnrankedMemRefDescriptor(Value descriptor)
     : StructBuilder(descriptor) {}
 
 /// Builds IR creating an `undef` value of the descriptor type.
 UnrankedMemRefDescriptor UnrankedMemRefDescriptor::undef(OpBuilder &builder,
                                                          Location loc,
                                                          Type descriptorType) {
-  ValuePtr descriptor =
+  Value descriptor =
       builder.create<LLVM::UndefOp>(loc, descriptorType.cast<LLVM::LLVMType>());
   return UnrankedMemRefDescriptor(descriptor);
 }
-ValuePtr UnrankedMemRefDescriptor::rank(OpBuilder &builder, Location loc) {
+Value UnrankedMemRefDescriptor::rank(OpBuilder &builder, Location loc) {
   return extractPtr(builder, loc, kRankInUnrankedMemRefDescriptor);
 }
 void UnrankedMemRefDescriptor::setRank(OpBuilder &builder, Location loc,
-                                       ValuePtr v) {
+                                       Value v) {
   setPtr(builder, loc, kRankInUnrankedMemRefDescriptor, v);
 }
-ValuePtr UnrankedMemRefDescriptor::memRefDescPtr(OpBuilder &builder,
-                                                 Location loc) {
+Value UnrankedMemRefDescriptor::memRefDescPtr(OpBuilder &builder,
+                                              Location loc) {
   return extractPtr(builder, loc, kPtrInUnrankedMemRefDescriptor);
 }
 void UnrankedMemRefDescriptor::setMemRefDescPtr(OpBuilder &builder,
-                                                Location loc, ValuePtr v) {
+                                                Location loc, Value v) {
   setPtr(builder, loc, kPtrInUnrankedMemRefDescriptor, v);
 }
 namespace {
@@ -496,8 +494,8 @@ public:
   }
 
   // Create an LLVM IR pseudo-operation defining the given index constant.
-  ValuePtr createIndexConstant(ConversionPatternRewriter &builder, Location loc,
-                               uint64_t value) const {
+  Value createIndexConstant(ConversionPatternRewriter &builder, Location loc,
+                            uint64_t value) const {
     return createIndexAttrConstant(builder, loc, getIndexType(), value);
   }
 
@@ -509,7 +507,7 @@ struct FuncOpConversion : public LLVMLegalizationPattern<FuncOp> {
   using LLVMLegalizationPattern<FuncOp>::LLVMLegalizationPattern;
 
   PatternMatchResult
-  matchAndRewrite(Operation *op, ArrayRef<ValuePtr> operands,
+  matchAndRewrite(Operation *op, ArrayRef<Value> operands,
                   ConversionPatternRewriter &rewriter) const override {
     auto funcOp = cast<FuncOp>(op);
     FunctionType type = funcOp.getType();
@@ -557,8 +555,8 @@ struct FuncOpConversion : public LLVMLegalizationPattern<FuncOp> {
       Block *firstBlock = &newFuncOp.getBody().front();
       rewriter.setInsertionPoint(firstBlock, firstBlock->begin());
       for (unsigned idx : promotedArgIndices) {
-        BlockArgumentPtr arg = firstBlock->getArgument(idx);
-        ValuePtr loaded = rewriter.create<LLVM::LoadOp>(funcOp.getLoc(), arg);
+        BlockArgument arg = firstBlock->getArgument(idx);
+        Value loaded = rewriter.create<LLVM::LoadOp>(funcOp.getLoc(), arg);
         rewriter.replaceUsesOfBlockArgument(arg, loaded);
       }
     }
@@ -657,7 +655,7 @@ struct OneToOneLLVMOpLowering : public LLVMLegalizationPattern<SourceOp> {
   // Convert the type of the result to an LLVM type, pass operands as is,
   // preserve attributes.
   PatternMatchResult
-  matchAndRewrite(Operation *op, ArrayRef<ValuePtr> operands,
+  matchAndRewrite(Operation *op, ArrayRef<Value> operands,
                   ConversionPatternRewriter &rewriter) const override {
     unsigned numResults = op->getNumResults();
 
@@ -681,7 +679,7 @@ struct OneToOneLLVMOpLowering : public LLVMLegalizationPattern<SourceOp> {
 
     // Otherwise, it had been converted to an operation producing a structure.
     // Extract individual results from the structure and return them as list.
-    SmallVector<ValuePtr, 4> results;
+    SmallVector<Value, 4> results;
     results.reserve(numResults);
     for (unsigned i = 0; i < numResults; ++i) {
       auto type = this->lowering.convertType(op->getResult(i)->getType());
@@ -722,7 +720,7 @@ struct NaryOpLLVMOpLowering : public LLVMLegalizationPattern<SourceOp> {
   // Convert the type of the result to an LLVM type, pass operands as is,
   // preserve attributes.
   PatternMatchResult
-  matchAndRewrite(Operation *op, ArrayRef<ValuePtr> operands,
+  matchAndRewrite(Operation *op, ArrayRef<Value> operands,
                   ConversionPatternRewriter &rewriter) const override {
     ValidateOpCount<SourceOp, OpCount>();
     static_assert(
@@ -733,7 +731,7 @@ struct NaryOpLLVMOpLowering : public LLVMLegalizationPattern<SourceOp> {
                   "expected same operands and result type");
 
     // Cannot convert ops if their operands are not of LLVM type.
-    for (ValuePtr operand : operands) {
+    for (Value operand : operands) {
       if (!operand || !operand->getType().isa<LLVM::LLVMType>())
         return this->matchFailure();
     }
@@ -756,16 +754,16 @@ struct NaryOpLLVMOpLowering : public LLVMLegalizationPattern<SourceOp> {
     if (!llvmVectorTy || llvmArrayTy != vectorTypeInfo.llvmArrayTy)
       return this->matchFailure();
 
-    ValuePtr desc = rewriter.create<LLVM::UndefOp>(loc, llvmArrayTy);
+    Value desc = rewriter.create<LLVM::UndefOp>(loc, llvmArrayTy);
     nDVectorIterate(vectorTypeInfo, rewriter, [&](ArrayAttr position) {
       // For this unrolled `position` corresponding to the `linearIndex`^th
       // element, extract operand vectors
-      SmallVector<ValuePtr, OpCount> extractedOperands;
+      SmallVector<Value, OpCount> extractedOperands;
       for (unsigned i = 0; i < OpCount; ++i) {
         extractedOperands.push_back(rewriter.create<LLVM::ExtractValueOp>(
             loc, llvmVectorTy, operands[i], position));
       }
-      ValuePtr newVal = rewriter.create<TargetOp>(
+      Value newVal = rewriter.create<TargetOp>(
           loc, llvmVectorTy, extractedOperands, op->getAttrs());
       desc = rewriter.create<LLVM::InsertValueOp>(loc, llvmArrayTy, desc,
                                                   newVal, position);
@@ -928,7 +926,7 @@ struct AllocOpLowering : public LLVMLegalizationPattern<AllocOp> {
     return matchSuccess();
   }
 
-  void rewrite(Operation *op, ArrayRef<ValuePtr> operands,
+  void rewrite(Operation *op, ArrayRef<Value> operands,
                ConversionPatternRewriter &rewriter) const override {
     auto loc = op->getLoc();
     auto allocOp = cast<AllocOp>(op);
@@ -937,7 +935,7 @@ struct AllocOpLowering : public LLVMLegalizationPattern<AllocOp> {
     // Get actual sizes of the memref as values: static sizes are constant
     // values and dynamic sizes are passed to 'alloc' as operands.  In case of
     // zero-dimensional memref, assume a scalar (size 1).
-    SmallVector<ValuePtr, 4> sizes;
+    SmallVector<Value, 4> sizes;
     sizes.reserve(type.getRank());
     unsigned i = 0;
     for (int64_t s : type.getShape())
@@ -947,10 +945,10 @@ struct AllocOpLowering : public LLVMLegalizationPattern<AllocOp> {
       sizes.push_back(createIndexConstant(rewriter, loc, 1));
 
     // Compute the total number of memref elements.
-    ValuePtr cumulativeSize = sizes.front();
+    Value cumulativeSize = sizes.front();
     for (unsigned i = 1, e = sizes.size(); i < e; ++i)
       cumulativeSize = rewriter.create<LLVM::MulOp>(
-          loc, getIndexType(), ArrayRef<ValuePtr>{cumulativeSize, sizes[i]});
+          loc, getIndexType(), ArrayRef<Value>{cumulativeSize, sizes[i]});
 
     // Compute the size of an individual element. This emits the MLIR equivalent
     // of the following sizeof(...) implementation in LLVM IR:
@@ -963,17 +961,17 @@ struct AllocOpLowering : public LLVMLegalizationPattern<AllocOp> {
     auto nullPtr = rewriter.create<LLVM::NullOp>(loc, convertedPtrType);
     auto one = createIndexConstant(rewriter, loc, 1);
     auto gep = rewriter.create<LLVM::GEPOp>(loc, convertedPtrType,
-                                            ArrayRef<ValuePtr>{nullPtr, one});
+                                            ArrayRef<Value>{nullPtr, one});
     auto elementSize =
         rewriter.create<LLVM::PtrToIntOp>(loc, getIndexType(), gep);
     cumulativeSize = rewriter.create<LLVM::MulOp>(
-        loc, getIndexType(), ArrayRef<ValuePtr>{cumulativeSize, elementSize});
+        loc, getIndexType(), ArrayRef<Value>{cumulativeSize, elementSize});
 
     // Allocate the underlying buffer and store a pointer to it in the MemRef
     // descriptor.
-    ValuePtr allocated = nullptr;
+    Value allocated = nullptr;
     int alignment = 0;
-    ValuePtr alignmentValue = nullptr;
+    Value alignmentValue = nullptr;
     if (auto alignAttr = allocOp.alignment())
       alignment = alignAttr.getValue().getSExtValue();
 
@@ -1009,8 +1007,8 @@ struct AllocOpLowering : public LLVMLegalizationPattern<AllocOp> {
     auto structElementType = lowering.convertType(elementType);
     auto elementPtrType = structElementType.cast<LLVM::LLVMType>().getPointerTo(
         type.getMemorySpace());
-    ValuePtr bitcastAllocated = rewriter.create<LLVM::BitcastOp>(
-        loc, elementPtrType, ArrayRef<ValuePtr>(allocated));
+    Value bitcastAllocated = rewriter.create<LLVM::BitcastOp>(
+        loc, elementPtrType, ArrayRef<Value>(allocated));
 
     int64_t offset;
     SmallVector<int64_t, 4> strides;
@@ -1032,22 +1030,21 @@ struct AllocOpLowering : public LLVMLegalizationPattern<AllocOp> {
     memRefDescriptor.setAllocatedPtr(rewriter, loc, bitcastAllocated);
 
     // Field 2: Actual aligned pointer to payload.
-    ValuePtr bitcastAligned = bitcastAllocated;
+    Value bitcastAligned = bitcastAllocated;
     if (!useAlloca && alignment != 0) {
       assert(alignmentValue);
       // offset = (align - (ptr % align))% align
-      ValuePtr intVal = rewriter.create<LLVM::PtrToIntOp>(
+      Value intVal = rewriter.create<LLVM::PtrToIntOp>(
           loc, this->getIndexType(), allocated);
-      ValuePtr ptrModAlign =
+      Value ptrModAlign =
           rewriter.create<LLVM::URemOp>(loc, intVal, alignmentValue);
-      ValuePtr subbed =
+      Value subbed =
           rewriter.create<LLVM::SubOp>(loc, alignmentValue, ptrModAlign);
-      ValuePtr offset =
-          rewriter.create<LLVM::URemOp>(loc, subbed, alignmentValue);
-      ValuePtr aligned = rewriter.create<LLVM::GEPOp>(loc, allocated->getType(),
-                                                      allocated, offset);
+      Value offset = rewriter.create<LLVM::URemOp>(loc, subbed, alignmentValue);
+      Value aligned = rewriter.create<LLVM::GEPOp>(loc, allocated->getType(),
+                                                   allocated, offset);
       bitcastAligned = rewriter.create<LLVM::BitcastOp>(
-          loc, elementPtrType, ArrayRef<ValuePtr>(aligned));
+          loc, elementPtrType, ArrayRef<Value>(aligned));
     }
     memRefDescriptor.setAlignedPtr(rewriter, loc, bitcastAligned);
 
@@ -1062,10 +1059,10 @@ struct AllocOpLowering : public LLVMLegalizationPattern<AllocOp> {
     // Fields 4 and 5: Sizes and strides of the strided MemRef.
     // Store all sizes in the descriptor. Only dynamic sizes are passed in as
     // operands to AllocOp.
-    ValuePtr runningStride = nullptr;
+    Value runningStride = nullptr;
     // Iterate strides in reverse order, compute runningStride and strideValues.
     auto nStrides = strides.size();
-    SmallVector<ValuePtr, 4> strideValues(nStrides, nullptr);
+    SmallVector<Value, 4> strideValues(nStrides, nullptr);
     for (auto indexedStride : llvm::enumerate(llvm::reverse(strides))) {
       int64_t index = nStrides - 1 - indexedStride.index();
       if (strides[index] == MemRefType::getDynamicStrideOrOffset())
@@ -1102,7 +1099,7 @@ struct CallOpInterfaceLowering : public LLVMLegalizationPattern<CallOpType> {
   using Base = LLVMLegalizationPattern<CallOpType>;
 
   PatternMatchResult
-  matchAndRewrite(Operation *op, ArrayRef<ValuePtr> operands,
+  matchAndRewrite(Operation *op, ArrayRef<Value> operands,
                   ConversionPatternRewriter &rewriter) const override {
     OperandAdaptor<CallOpType> transformed(operands);
     auto callOp = cast<CallOpType>(op);
@@ -1140,7 +1137,7 @@ struct CallOpInterfaceLowering : public LLVMLegalizationPattern<CallOpType> {
     // TODO(aminim, ntv, riverriddle, zinenko): this seems like patching around
     // a particular interaction between MemRefType and CallOp lowering. Find a
     // way to avoid special casing.
-    SmallVector<ValuePtr, 4> results;
+    SmallVector<Value, 4> results;
     results.reserve(numResults);
     for (unsigned i = 0; i < numResults; ++i) {
       auto type = this->lowering.convertType(op->getResult(i)->getType());
@@ -1174,7 +1171,7 @@ struct DeallocOpLowering : public LLVMLegalizationPattern<DeallocOp> {
         useAlloca(useAlloca) {}
 
   PatternMatchResult
-  matchAndRewrite(Operation *op, ArrayRef<ValuePtr> operands,
+  matchAndRewrite(Operation *op, ArrayRef<Value> operands,
                   ConversionPatternRewriter &rewriter) const override {
     if (useAlloca)
       return rewriter.eraseOp(op), matchSuccess();
@@ -1194,7 +1191,7 @@ struct DeallocOpLowering : public LLVMLegalizationPattern<DeallocOp> {
     }
 
     MemRefDescriptor memref(transformed.memref());
-    ValuePtr casted = rewriter.create<LLVM::BitcastOp>(
+    Value casted = rewriter.create<LLVM::BitcastOp>(
         op->getLoc(), getVoidPtrType(),
         memref.allocatedPtr(rewriter, op->getLoc()));
     rewriter.replaceOpWithNewOp<LLVM::CallOp>(
@@ -1210,7 +1207,7 @@ struct TanhOpLowering : public LLVMLegalizationPattern<TanhOp> {
   using LLVMLegalizationPattern<TanhOp>::LLVMLegalizationPattern;
 
   PatternMatchResult
-  matchAndRewrite(Operation *op, ArrayRef<ValuePtr> operands,
+  matchAndRewrite(Operation *op, ArrayRef<Value> operands,
                   ConversionPatternRewriter &rewriter) const override {
 
     using LLVMFuncOpT = LLVM::LLVMFuncOp;
@@ -1284,7 +1281,7 @@ struct MemRefCastOpLowering : public LLVMLegalizationPattern<MemRefCastOp> {
                : matchFailure();
   }
 
-  void rewrite(Operation *op, ArrayRef<ValuePtr> operands,
+  void rewrite(Operation *op, ArrayRef<Value> operands,
                ConversionPatternRewriter &rewriter) const override {
     auto memRefCastOp = cast<MemRefCastOp>(op);
     OperandAdaptor<MemRefCastOp> transformed(operands);
@@ -1325,7 +1322,7 @@ struct MemRefCastOpLowering : public LLVMLegalizationPattern<MemRefCastOp> {
       memRefDesc.setRank(rewriter, loc, rankVal);
       // d2 = InsertValueOp d1, voidptr, 1
       memRefDesc.setMemRefDescPtr(rewriter, loc, voidPtr);
-      rewriter.replaceOp(op, (ValuePtr)memRefDesc);
+      rewriter.replaceOp(op, (Value)memRefDesc);
 
     } else if (srcType.isa<UnrankedMemRefType>() && dstType.isa<MemRefType>()) {
       // Casting from unranked type to ranked.
@@ -1356,7 +1353,7 @@ struct DimOpLowering : public LLVMLegalizationPattern<DimOp> {
   using LLVMLegalizationPattern<DimOp>::LLVMLegalizationPattern;
 
   PatternMatchResult
-  matchAndRewrite(Operation *op, ArrayRef<ValuePtr> operands,
+  matchAndRewrite(Operation *op, ArrayRef<Value> operands,
                   ConversionPatternRewriter &rewriter) const override {
     auto dimOp = cast<DimOp>(op);
     OperandAdaptor<DimOp> transformed(operands);
@@ -1398,45 +1395,42 @@ struct LoadStoreOpLowering : public LLVMLegalizationPattern<Derived> {
   // by accumulating the running linearized value.
   // Note that `indices` and `allocSizes` are passed in the same order as they
   // appear in load/store operations and memref type declarations.
-  ValuePtr linearizeSubscripts(ConversionPatternRewriter &builder, Location loc,
-                               ArrayRef<ValuePtr> indices,
-                               ArrayRef<ValuePtr> allocSizes) const {
+  Value linearizeSubscripts(ConversionPatternRewriter &builder, Location loc,
+                            ArrayRef<Value> indices,
+                            ArrayRef<Value> allocSizes) const {
     assert(indices.size() == allocSizes.size() &&
            "mismatching number of indices and allocation sizes");
     assert(!indices.empty() && "cannot linearize a 0-dimensional access");
 
-    ValuePtr linearized = indices.front();
+    Value linearized = indices.front();
     for (int i = 1, nSizes = allocSizes.size(); i < nSizes; ++i) {
       linearized = builder.create<LLVM::MulOp>(
           loc, this->getIndexType(),
-          ArrayRef<ValuePtr>{linearized, allocSizes[i]});
+          ArrayRef<Value>{linearized, allocSizes[i]});
       linearized = builder.create<LLVM::AddOp>(
-          loc, this->getIndexType(),
-          ArrayRef<ValuePtr>{linearized, indices[i]});
+          loc, this->getIndexType(), ArrayRef<Value>{linearized, indices[i]});
     }
     return linearized;
   }
 
   // This is a strided getElementPtr variant that linearizes subscripts as:
   //   `base_offset + index_0 * stride_0 + ... + index_n * stride_n`.
-  ValuePtr getStridedElementPtr(Location loc, Type elementTypePtr,
-                                ValuePtr descriptor, ArrayRef<ValuePtr> indices,
-                                ArrayRef<int64_t> strides, int64_t offset,
-                                ConversionPatternRewriter &rewriter) const {
+  Value getStridedElementPtr(Location loc, Type elementTypePtr,
+                             Value descriptor, ArrayRef<Value> indices,
+                             ArrayRef<int64_t> strides, int64_t offset,
+                             ConversionPatternRewriter &rewriter) const {
     MemRefDescriptor memRefDescriptor(descriptor);
 
-    ValuePtr base = memRefDescriptor.alignedPtr(rewriter, loc);
-    ValuePtr offsetValue =
-        offset == MemRefType::getDynamicStrideOrOffset()
-            ? memRefDescriptor.offset(rewriter, loc)
-            : this->createIndexConstant(rewriter, loc, offset);
+    Value base = memRefDescriptor.alignedPtr(rewriter, loc);
+    Value offsetValue = offset == MemRefType::getDynamicStrideOrOffset()
+                            ? memRefDescriptor.offset(rewriter, loc)
+                            : this->createIndexConstant(rewriter, loc, offset);
 
     for (int i = 0, e = indices.size(); i < e; ++i) {
-      ValuePtr stride =
-          strides[i] == MemRefType::getDynamicStrideOrOffset()
-              ? memRefDescriptor.stride(rewriter, loc, i)
-              : this->createIndexConstant(rewriter, loc, strides[i]);
-      ValuePtr additionalOffset =
+      Value stride = strides[i] == MemRefType::getDynamicStrideOrOffset()
+                         ? memRefDescriptor.stride(rewriter, loc, i)
+                         : this->createIndexConstant(rewriter, loc, strides[i]);
+      Value additionalOffset =
           rewriter.create<LLVM::MulOp>(loc, indices[i], stride);
       offsetValue =
           rewriter.create<LLVM::AddOp>(loc, offsetValue, additionalOffset);
@@ -1444,10 +1438,9 @@ struct LoadStoreOpLowering : public LLVMLegalizationPattern<Derived> {
     return rewriter.create<LLVM::GEPOp>(loc, elementTypePtr, base, offsetValue);
   }
 
-  ValuePtr getDataPtr(Location loc, MemRefType type, ValuePtr memRefDesc,
-                      ArrayRef<ValuePtr> indices,
-                      ConversionPatternRewriter &rewriter,
-                      llvm::Module &module) const {
+  Value getDataPtr(Location loc, MemRefType type, Value memRefDesc,
+                   ArrayRef<Value> indices, ConversionPatternRewriter &rewriter,
+                   llvm::Module &module) const {
     LLVM::LLVMType ptrType = MemRefDescriptor(memRefDesc).getElementType();
     int64_t offset;
     SmallVector<int64_t, 4> strides;
@@ -1465,14 +1458,14 @@ struct LoadOpLowering : public LoadStoreOpLowering<LoadOp> {
   using Base::Base;
 
   PatternMatchResult
-  matchAndRewrite(Operation *op, ArrayRef<ValuePtr> operands,
+  matchAndRewrite(Operation *op, ArrayRef<Value> operands,
                   ConversionPatternRewriter &rewriter) const override {
     auto loadOp = cast<LoadOp>(op);
     OperandAdaptor<LoadOp> transformed(operands);
     auto type = loadOp.getMemRefType();
 
-    ValuePtr dataPtr = getDataPtr(op->getLoc(), type, transformed.memref(),
-                                  transformed.indices(), rewriter, getModule());
+    Value dataPtr = getDataPtr(op->getLoc(), type, transformed.memref(),
+                               transformed.indices(), rewriter, getModule());
     rewriter.replaceOpWithNewOp<LLVM::LoadOp>(op, dataPtr);
     return matchSuccess();
   }
@@ -1484,13 +1477,13 @@ struct StoreOpLowering : public LoadStoreOpLowering<StoreOp> {
   using Base::Base;
 
   PatternMatchResult
-  matchAndRewrite(Operation *op, ArrayRef<ValuePtr> operands,
+  matchAndRewrite(Operation *op, ArrayRef<Value> operands,
                   ConversionPatternRewriter &rewriter) const override {
     auto type = cast<StoreOp>(op).getMemRefType();
     OperandAdaptor<StoreOp> transformed(operands);
 
-    ValuePtr dataPtr = getDataPtr(op->getLoc(), type, transformed.memref(),
-                                  transformed.indices(), rewriter, getModule());
+    Value dataPtr = getDataPtr(op->getLoc(), type, transformed.memref(),
+                               transformed.indices(), rewriter, getModule());
     rewriter.replaceOpWithNewOp<LLVM::StoreOp>(op, transformed.value(),
                                                dataPtr);
     return matchSuccess();
@@ -1503,14 +1496,14 @@ struct PrefetchOpLowering : public LoadStoreOpLowering<PrefetchOp> {
   using Base::Base;
 
   PatternMatchResult
-  matchAndRewrite(Operation *op, ArrayRef<ValuePtr> operands,
+  matchAndRewrite(Operation *op, ArrayRef<Value> operands,
                   ConversionPatternRewriter &rewriter) const override {
     auto prefetchOp = cast<PrefetchOp>(op);
     OperandAdaptor<PrefetchOp> transformed(operands);
     auto type = prefetchOp.getMemRefType();
 
-    ValuePtr dataPtr = getDataPtr(op->getLoc(), type, transformed.memref(),
-                                  transformed.indices(), rewriter, getModule());
+    Value dataPtr = getDataPtr(op->getLoc(), type, transformed.memref(),
+                               transformed.indices(), rewriter, getModule());
 
     // Replace with llvm.prefetch.
     auto llvmI32Type = lowering.convertType(rewriter.getIntegerType(32));
@@ -1538,7 +1531,7 @@ struct IndexCastOpLowering : public LLVMLegalizationPattern<IndexCastOp> {
   using LLVMLegalizationPattern<IndexCastOp>::LLVMLegalizationPattern;
 
   PatternMatchResult
-  matchAndRewrite(Operation *op, ArrayRef<ValuePtr> operands,
+  matchAndRewrite(Operation *op, ArrayRef<Value> operands,
                   ConversionPatternRewriter &rewriter) const override {
     IndexCastOpOperandAdaptor transformed(operands);
     auto indexCastOp = cast<IndexCastOp>(op);
@@ -1573,7 +1566,7 @@ struct CmpIOpLowering : public LLVMLegalizationPattern<CmpIOp> {
   using LLVMLegalizationPattern<CmpIOp>::LLVMLegalizationPattern;
 
   PatternMatchResult
-  matchAndRewrite(Operation *op, ArrayRef<ValuePtr> operands,
+  matchAndRewrite(Operation *op, ArrayRef<Value> operands,
                   ConversionPatternRewriter &rewriter) const override {
     auto cmpiOp = cast<CmpIOp>(op);
     CmpIOpOperandAdaptor transformed(operands);
@@ -1592,7 +1585,7 @@ struct CmpFOpLowering : public LLVMLegalizationPattern<CmpFOp> {
   using LLVMLegalizationPattern<CmpFOp>::LLVMLegalizationPattern;
 
   PatternMatchResult
-  matchAndRewrite(Operation *op, ArrayRef<ValuePtr> operands,
+  matchAndRewrite(Operation *op, ArrayRef<Value> operands,
                   ConversionPatternRewriter &rewriter) const override {
     auto cmpfOp = cast<CmpFOp>(op);
     CmpFOpOperandAdaptor transformed(operands);
@@ -1644,9 +1637,9 @@ struct OneToOneLLVMTerminatorLowering
   using Super = OneToOneLLVMTerminatorLowering<SourceOp, TargetOp>;
 
   PatternMatchResult
-  matchAndRewrite(Operation *op, ArrayRef<ValuePtr> properOperands,
+  matchAndRewrite(Operation *op, ArrayRef<Value> properOperands,
                   ArrayRef<Block *> destinations,
-                  ArrayRef<ArrayRef<ValuePtr>> operands,
+                  ArrayRef<ArrayRef<Value>> operands,
                   ConversionPatternRewriter &rewriter) const override {
     SmallVector<ValueRange, 2> operandRanges(operands.begin(), operands.end());
     rewriter.replaceOpWithNewOp<TargetOp>(op, properOperands, destinations,
@@ -1665,19 +1658,19 @@ struct ReturnOpLowering : public LLVMLegalizationPattern<ReturnOp> {
   using LLVMLegalizationPattern<ReturnOp>::LLVMLegalizationPattern;
 
   PatternMatchResult
-  matchAndRewrite(Operation *op, ArrayRef<ValuePtr> operands,
+  matchAndRewrite(Operation *op, ArrayRef<Value> operands,
                   ConversionPatternRewriter &rewriter) const override {
     unsigned numArguments = op->getNumOperands();
 
     // If ReturnOp has 0 or 1 operand, create it and return immediately.
     if (numArguments == 0) {
       rewriter.replaceOpWithNewOp<LLVM::ReturnOp>(
-          op, ArrayRef<ValuePtr>(), ArrayRef<Block *>(), op->getAttrs());
+          op, ArrayRef<Value>(), ArrayRef<Block *>(), op->getAttrs());
       return matchSuccess();
     }
     if (numArguments == 1) {
       rewriter.replaceOpWithNewOp<LLVM::ReturnOp>(
-          op, ArrayRef<ValuePtr>(operands.front()), ArrayRef<Block *>(),
+          op, ArrayRef<Value>(operands.front()), ArrayRef<Block *>(),
           op->getAttrs());
       return matchSuccess();
     }
@@ -1687,7 +1680,7 @@ struct ReturnOpLowering : public LLVMLegalizationPattern<ReturnOp> {
     auto packedType =
         lowering.packFunctionResults(llvm::to_vector<4>(op->getOperandTypes()));
 
-    ValuePtr packed = rewriter.create<LLVM::UndefOp>(op->getLoc(), packedType);
+    Value packed = rewriter.create<LLVM::UndefOp>(op->getLoc(), packedType);
     for (unsigned i = 0; i < numArguments; ++i) {
       packed = rewriter.create<LLVM::InsertValueOp>(
           op->getLoc(), packedType, packed, operands[i],
@@ -1715,7 +1708,7 @@ struct SplatOpLowering : public LLVMLegalizationPattern<SplatOp> {
   using LLVMLegalizationPattern<SplatOp>::LLVMLegalizationPattern;
 
   PatternMatchResult
-  matchAndRewrite(Operation *op, ArrayRef<ValuePtr> operands,
+  matchAndRewrite(Operation *op, ArrayRef<Value> operands,
                   ConversionPatternRewriter &rewriter) const override {
     auto splatOp = cast<SplatOp>(op);
     VectorType resultType = splatOp.getType().dyn_cast<VectorType>();
@@ -1724,7 +1717,7 @@ struct SplatOpLowering : public LLVMLegalizationPattern<SplatOp> {
 
     // First insert it into an undef vector so we can shuffle it.
     auto vectorType = lowering.convertType(splatOp.getType());
-    ValuePtr undef = rewriter.create<LLVM::UndefOp>(op->getLoc(), vectorType);
+    Value undef = rewriter.create<LLVM::UndefOp>(op->getLoc(), vectorType);
     auto zero = rewriter.create<LLVM::ConstantOp>(
         op->getLoc(), lowering.convertType(rewriter.getIntegerType(32)),
         rewriter.getZeroAttr(rewriter.getIntegerType(32)));
@@ -1749,7 +1742,7 @@ struct SplatNdOpLowering : public LLVMLegalizationPattern<SplatOp> {
   using LLVMLegalizationPattern<SplatOp>::LLVMLegalizationPattern;
 
   PatternMatchResult
-  matchAndRewrite(Operation *op, ArrayRef<ValuePtr> operands,
+  matchAndRewrite(Operation *op, ArrayRef<Value> operands,
                   ConversionPatternRewriter &rewriter) const override {
     auto splatOp = cast<SplatOp>(op);
     OperandAdaptor<SplatOp> adaptor(operands);
@@ -1766,16 +1759,16 @@ struct SplatNdOpLowering : public LLVMLegalizationPattern<SplatOp> {
       return matchFailure();
 
     // Construct returned value.
-    ValuePtr desc = rewriter.create<LLVM::UndefOp>(loc, llvmArrayTy);
+    Value desc = rewriter.create<LLVM::UndefOp>(loc, llvmArrayTy);
 
     // Construct a 1-D vector with the splatted value that we insert in all the
     // places within the returned descriptor.
-    ValuePtr vdesc = rewriter.create<LLVM::UndefOp>(loc, llvmVectorTy);
+    Value vdesc = rewriter.create<LLVM::UndefOp>(loc, llvmVectorTy);
     auto zero = rewriter.create<LLVM::ConstantOp>(
         loc, lowering.convertType(rewriter.getIntegerType(32)),
         rewriter.getZeroAttr(rewriter.getIntegerType(32)));
-    ValuePtr v = rewriter.create<LLVM::InsertElementOp>(
-        loc, llvmVectorTy, vdesc, adaptor.input(), zero);
+    Value v = rewriter.create<LLVM::InsertElementOp>(loc, llvmVectorTy, vdesc,
+                                                     adaptor.input(), zero);
 
     // Shuffle the value across the desired number of elements.
     int64_t width = resultType.getDimSize(resultType.getRank() - 1);
@@ -1803,21 +1796,21 @@ struct SubViewOpLowering : public LLVMLegalizationPattern<SubViewOp> {
   using LLVMLegalizationPattern<SubViewOp>::LLVMLegalizationPattern;
 
   PatternMatchResult
-  matchAndRewrite(Operation *op, ArrayRef<ValuePtr> operands,
+  matchAndRewrite(Operation *op, ArrayRef<Value> operands,
                   ConversionPatternRewriter &rewriter) const override {
     auto loc = op->getLoc();
     auto viewOp = cast<SubViewOp>(op);
     // TODO(b/144779634, ravishankarm) : After Tblgen is adapted to support
     // having multiple variadic operands where each operand can have different
     // number of entries, clean all of this up.
-    SmallVector<ValuePtr, 2> dynamicOffsets(
+    SmallVector<Value, 2> dynamicOffsets(
         std::next(operands.begin()),
         std::next(operands.begin(), 1 + viewOp.getNumOffsets()));
-    SmallVector<ValuePtr, 2> dynamicSizes(
+    SmallVector<Value, 2> dynamicSizes(
         std::next(operands.begin(), 1 + viewOp.getNumOffsets()),
         std::next(operands.begin(),
                   1 + viewOp.getNumOffsets() + viewOp.getNumSizes()));
-    SmallVector<ValuePtr, 2> dynamicStrides(
+    SmallVector<Value, 2> dynamicStrides(
         std::next(operands.begin(),
                   1 + viewOp.getNumOffsets() + viewOp.getNumSizes()),
         operands.end());
@@ -1854,8 +1847,8 @@ struct SubViewOpLowering : public LLVMLegalizationPattern<SubViewOp> {
     auto targetMemRef = MemRefDescriptor::undef(rewriter, loc, targetDescTy);
 
     // Copy the buffer pointer from the old descriptor to the new one.
-    ValuePtr extracted = sourceMemRef.allocatedPtr(rewriter, loc);
-    ValuePtr bitcastPtr = rewriter.create<LLVM::BitcastOp>(
+    Value extracted = sourceMemRef.allocatedPtr(rewriter, loc);
+    Value bitcastPtr = rewriter.create<LLVM::BitcastOp>(
         loc, targetElementTy.getPointerTo(), extracted);
     targetMemRef.setAllocatedPtr(rewriter, loc, bitcastPtr);
 
@@ -1865,7 +1858,7 @@ struct SubViewOpLowering : public LLVMLegalizationPattern<SubViewOp> {
     targetMemRef.setAlignedPtr(rewriter, loc, bitcastPtr);
 
     // Extract strides needed to compute offset.
-    SmallVector<ValuePtr, 4> strideValues;
+    SmallVector<Value, 4> strideValues;
     strideValues.reserve(viewMemRefType.getRank());
     for (int i = 0, e = viewMemRefType.getRank(); i < e; ++i)
       strideValues.push_back(sourceMemRef.stride(rewriter, loc, i));
@@ -1882,9 +1875,9 @@ struct SubViewOpLowering : public LLVMLegalizationPattern<SubViewOp> {
     }
 
     // Offset.
-    ValuePtr baseOffset = sourceMemRef.offset(rewriter, loc);
+    Value baseOffset = sourceMemRef.offset(rewriter, loc);
     for (int i = 0, e = viewMemRefType.getRank(); i < e; ++i) {
-      ValuePtr min = dynamicOffsets[i];
+      Value min = dynamicOffsets[i];
       baseOffset = rewriter.create<LLVM::AddOp>(
           loc, baseOffset,
           rewriter.create<LLVM::MulOp>(loc, min, strideValues[i]));
@@ -1894,7 +1887,7 @@ struct SubViewOpLowering : public LLVMLegalizationPattern<SubViewOp> {
     // Update sizes and strides.
     for (int i = viewMemRefType.getRank() - 1; i >= 0; --i) {
       targetMemRef.setSize(rewriter, loc, i, dynamicSizes[i]);
-      ValuePtr newStride;
+      Value newStride;
       if (dynamicStrides.empty())
         newStride = rewriter.create<LLVM::ConstantOp>(
             loc, llvmIndexType, rewriter.getI64IntegerAttr(strides[i]));
@@ -1919,9 +1912,9 @@ struct ViewOpLowering : public LLVMLegalizationPattern<ViewOp> {
 
   // Build and return the value for the idx^th shape dimension, either by
   // returning the constant shape dimension or counting the proper dynamic size.
-  ValuePtr getSize(ConversionPatternRewriter &rewriter, Location loc,
-                   ArrayRef<int64_t> shape, ArrayRef<ValuePtr> dynamicSizes,
-                   unsigned idx) const {
+  Value getSize(ConversionPatternRewriter &rewriter, Location loc,
+                ArrayRef<int64_t> shape, ArrayRef<Value> dynamicSizes,
+                unsigned idx) const {
     assert(idx < shape.size());
     if (!ShapedType::isDynamic(shape[idx]))
       return createIndexConstant(rewriter, loc, shape[idx]);
@@ -1936,9 +1929,9 @@ struct ViewOpLowering : public LLVMLegalizationPattern<ViewOp> {
   // or by computing the dynamic stride from the current `runningStride` and
   // `nextSize`. The caller should keep a running stride and update it with the
   // result returned by this function.
-  ValuePtr getStride(ConversionPatternRewriter &rewriter, Location loc,
-                     ArrayRef<int64_t> strides, ValuePtr nextSize,
-                     ValuePtr runningStride, unsigned idx) const {
+  Value getStride(ConversionPatternRewriter &rewriter, Location loc,
+                  ArrayRef<int64_t> strides, Value nextSize,
+                  Value runningStride, unsigned idx) const {
     assert(idx < strides.size());
     if (strides[idx] != MemRefType::getDynamicStrideOrOffset())
       return createIndexConstant(rewriter, loc, strides[idx]);
@@ -1951,7 +1944,7 @@ struct ViewOpLowering : public LLVMLegalizationPattern<ViewOp> {
   }
 
   PatternMatchResult
-  matchAndRewrite(Operation *op, ArrayRef<ValuePtr> operands,
+  matchAndRewrite(Operation *op, ArrayRef<Value> operands,
                   ConversionPatternRewriter &rewriter) const override {
     auto loc = op->getLoc();
     auto viewOp = cast<ViewOp>(op);
@@ -1978,8 +1971,8 @@ struct ViewOpLowering : public LLVMLegalizationPattern<ViewOp> {
     auto targetMemRef = MemRefDescriptor::undef(rewriter, loc, targetDescTy);
 
     // Field 1: Copy the allocated pointer, used for malloc/free.
-    ValuePtr extracted = sourceMemRef.allocatedPtr(rewriter, loc);
-    ValuePtr bitcastPtr = rewriter.create<LLVM::BitcastOp>(
+    Value extracted = sourceMemRef.allocatedPtr(rewriter, loc);
+    Value bitcastPtr = rewriter.create<LLVM::BitcastOp>(
         loc, targetElementTy.getPointerTo(), extracted);
     targetMemRef.setAllocatedPtr(rewriter, loc, bitcastPtr);
 
@@ -1996,10 +1989,10 @@ struct ViewOpLowering : public LLVMLegalizationPattern<ViewOp> {
     auto sizeAndOffsetOperands = adaptor.operands();
     assert(llvm::size(sizeAndOffsetOperands) ==
            numDynamicSizes + (hasDynamicOffset ? 1 : 0));
-    ValuePtr baseOffset = !hasDynamicOffset
-                              ? createIndexConstant(rewriter, loc, offset)
-                              // TODO(ntv): better adaptor.
-                              : sizeAndOffsetOperands.front();
+    Value baseOffset = !hasDynamicOffset
+                           ? createIndexConstant(rewriter, loc, offset)
+                           // TODO(ntv): better adaptor.
+                           : sizeAndOffsetOperands.front();
     targetMemRef.setOffset(rewriter, loc, baseOffset);
 
     // Early exit for 0-D corner case.
@@ -2010,14 +2003,14 @@ struct ViewOpLowering : public LLVMLegalizationPattern<ViewOp> {
     if (strides.back() != 1)
       return op->emitWarning("cannot cast to non-contiguous shape"),
              matchFailure();
-    ValuePtr stride = nullptr, nextSize = nullptr;
+    Value stride = nullptr, nextSize = nullptr;
     // Drop the dynamic stride from the operand list, if present.
-    ArrayRef<ValuePtr> sizeOperands(sizeAndOffsetOperands);
+    ArrayRef<Value> sizeOperands(sizeAndOffsetOperands);
     if (hasDynamicOffset)
       sizeOperands = sizeOperands.drop_front();
     for (int i = viewMemRefType.getRank() - 1; i >= 0; --i) {
       // Update size.
-      ValuePtr size =
+      Value size =
           getSize(rewriter, loc, viewMemRefType.getShape(), sizeOperands, i);
       targetMemRef.setSize(rewriter, loc, i, size);
       // Update stride.
@@ -2061,7 +2054,7 @@ static void ensureDistinctSuccessors(Block &bb) {
       auto *dummyBlock = new Block();
       bb.getParent()->push_back(dummyBlock);
       auto builder = OpBuilder(dummyBlock);
-      SmallVector<ValuePtr, 8> operands(
+      SmallVector<Value, 8> operands(
           terminator->getSuccessorOperands(*position));
       builder.create<BranchOp>(terminator->getLoc(), successor.first, operands);
       terminator->setSuccessor(dummyBlock, *position);
@@ -2182,29 +2175,28 @@ Type LLVMTypeConverter::packFunctionResults(ArrayRef<Type> types) {
   return LLVM::LLVMType::getStructTy(llvmDialect, resultTypes);
 }
 
-ValuePtr LLVMTypeConverter::promoteOneMemRefDescriptor(Location loc,
-                                                       ValuePtr operand,
-                                                       OpBuilder &builder) {
+Value LLVMTypeConverter::promoteOneMemRefDescriptor(Location loc, Value operand,
+                                                    OpBuilder &builder) {
   auto *context = builder.getContext();
   auto int64Ty = LLVM::LLVMType::getInt64Ty(getDialect());
   auto indexType = IndexType::get(context);
   // Alloca with proper alignment. We do not expect optimizations of this
   // alloca op and so we omit allocating at the entry block.
   auto ptrType = operand->getType().cast<LLVM::LLVMType>().getPointerTo();
-  ValuePtr one = builder.create<LLVM::ConstantOp>(
-      loc, int64Ty, IntegerAttr::get(indexType, 1));
-  ValuePtr allocated =
+  Value one = builder.create<LLVM::ConstantOp>(loc, int64Ty,
+                                               IntegerAttr::get(indexType, 1));
+  Value allocated =
       builder.create<LLVM::AllocaOp>(loc, ptrType, one, /*alignment=*/0);
   // Store into the alloca'ed descriptor.
   builder.create<LLVM::StoreOp>(loc, operand, allocated);
   return allocated;
 }
 
-SmallVector<ValuePtr, 4>
+SmallVector<Value, 4>
 LLVMTypeConverter::promoteMemRefDescriptors(Location loc, ValueRange opOperands,
                                             ValueRange operands,
                                             OpBuilder &builder) {
-  SmallVector<ValuePtr, 4> promotedOperands;
+  SmallVector<Value, 4> promotedOperands;
   promotedOperands.reserve(operands.size());
   for (auto it : llvm::zip(opOperands, operands)) {
     auto operand = std::get<0>(it);

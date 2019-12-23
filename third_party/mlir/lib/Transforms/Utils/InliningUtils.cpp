@@ -98,7 +98,7 @@ void InlinerInterface::handleTerminator(Operation *op, Block *newDest) const {
 /// Handle the given inlined terminator by replacing it with a new operation
 /// as necessary.
 void InlinerInterface::handleTerminator(Operation *op,
-                                        ArrayRef<ValuePtr> valuesToRepl) const {
+                                        ArrayRef<Value> valuesToRepl) const {
   auto *handler = getInterfaceFor(op);
   assert(handler && "expected valid dialect handler");
   handler->handleTerminator(op, valuesToRepl);
@@ -137,7 +137,7 @@ static bool isLegalToInline(InlinerInterface &interface, Region *src,
 LogicalResult mlir::inlineRegion(InlinerInterface &interface, Region *src,
                                  Operation *inlinePoint,
                                  BlockAndValueMapping &mapper,
-                                 ArrayRef<ValuePtr> resultsToReplace,
+                                 ArrayRef<Value> resultsToReplace,
                                  Optional<Location> inlineLoc,
                                  bool shouldCloneInlinedRegion) {
   // We expect the region to have at least one block.
@@ -147,7 +147,7 @@ LogicalResult mlir::inlineRegion(InlinerInterface &interface, Region *src,
   // Check that all of the region arguments have been mapped.
   auto *srcEntryBlock = &src->front();
   if (llvm::any_of(srcEntryBlock->getArguments(),
-                   [&](BlockArgumentPtr arg) { return !mapper.contains(arg); }))
+                   [&](BlockArgument arg) { return !mapper.contains(arg); }))
     return failure();
 
   // The insertion point must be within a block.
@@ -207,7 +207,7 @@ LogicalResult mlir::inlineRegion(InlinerInterface &interface, Region *src,
   } else {
     // Otherwise, there were multiple blocks inlined. Add arguments to the post
     // insertion block to represent the results to replace.
-    for (ValuePtr resultToRepl : resultsToReplace) {
+    for (Value resultToRepl : resultsToReplace) {
       resultToRepl->replaceAllUsesWith(
           postInsertBlock->addArgument(resultToRepl->getType()));
     }
@@ -229,8 +229,8 @@ LogicalResult mlir::inlineRegion(InlinerInterface &interface, Region *src,
 /// in-favor of the region arguments when inlining.
 LogicalResult mlir::inlineRegion(InlinerInterface &interface, Region *src,
                                  Operation *inlinePoint,
-                                 ArrayRef<ValuePtr> inlinedOperands,
-                                 ArrayRef<ValuePtr> resultsToReplace,
+                                 ArrayRef<Value> inlinedOperands,
+                                 ArrayRef<Value> resultsToReplace,
                                  Optional<Location> inlineLoc,
                                  bool shouldCloneInlinedRegion) {
   // We expect the region to have at least one block.
@@ -246,7 +246,7 @@ LogicalResult mlir::inlineRegion(InlinerInterface &interface, Region *src,
   for (unsigned i = 0, e = inlinedOperands.size(); i != e; ++i) {
     // Verify that the types of the provided values match the function argument
     // types.
-    BlockArgumentPtr regionArg = entryBlock->getArgument(i);
+    BlockArgument regionArg = entryBlock->getArgument(i);
     if (inlinedOperands[i]->getType() != regionArg->getType())
       return failure();
     mapper.map(regionArg, inlinedOperands[i]);
@@ -259,10 +259,10 @@ LogicalResult mlir::inlineRegion(InlinerInterface &interface, Region *src,
 
 /// Utility function used to generate a cast operation from the given interface,
 /// or return nullptr if a cast could not be generated.
-static ValuePtr materializeConversion(const DialectInlinerInterface *interface,
-                                      SmallVectorImpl<Operation *> &castOps,
-                                      OpBuilder &castBuilder, ValuePtr arg,
-                                      Type type, Location conversionLoc) {
+static Value materializeConversion(const DialectInlinerInterface *interface,
+                                   SmallVectorImpl<Operation *> &castOps,
+                                   OpBuilder &castBuilder, Value arg, Type type,
+                                   Location conversionLoc) {
   if (!interface)
     return nullptr;
 
@@ -297,8 +297,8 @@ LogicalResult mlir::inlineCall(InlinerInterface &interface,
 
   // Make sure that the number of arguments and results matchup between the call
   // and the region.
-  SmallVector<ValuePtr, 8> callOperands(call.getArgOperands());
-  SmallVector<ValuePtr, 8> callResults(call.getOperation()->getResults());
+  SmallVector<Value, 8> callOperands(call.getArgOperands());
+  SmallVector<Value, 8> callResults(call.getOperation()->getResults());
   if (callOperands.size() != entryBlock->getNumArguments() ||
       callResults.size() != callableResultTypes.size())
     return failure();
@@ -325,8 +325,8 @@ LogicalResult mlir::inlineCall(InlinerInterface &interface,
   // Map the provided call operands to the arguments of the region.
   BlockAndValueMapping mapper;
   for (unsigned i = 0, e = callOperands.size(); i != e; ++i) {
-    BlockArgumentPtr regionArg = entryBlock->getArgument(i);
-    ValuePtr operand = callOperands[i];
+    BlockArgument regionArg = entryBlock->getArgument(i);
+    Value operand = callOperands[i];
 
     // If the call operand doesn't match the expected region argument, try to
     // generate a cast.
@@ -342,13 +342,13 @@ LogicalResult mlir::inlineCall(InlinerInterface &interface,
   // Ensure that the resultant values of the call, match the callable.
   castBuilder.setInsertionPointAfter(call);
   for (unsigned i = 0, e = callResults.size(); i != e; ++i) {
-    ValuePtr callResult = callResults[i];
+    Value callResult = callResults[i];
     if (callResult->getType() == callableResultTypes[i])
       continue;
 
     // Generate a conversion that will produce the original type, so that the IR
     // is still valid after the original call gets replaced.
-    ValuePtr castResult =
+    Value castResult =
         materializeConversion(callInterface, castOps, castBuilder, callResult,
                               callResult->getType(), castLoc);
     if (!castResult)

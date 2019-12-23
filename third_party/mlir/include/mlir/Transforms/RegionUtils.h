@@ -30,15 +30,14 @@ namespace mlir {
 /// of `limit`.
 template <typename Range>
 bool areValuesDefinedAbove(Range values, Region &limit) {
-  for (ValuePtr v : values)
+  for (Value v : values)
     if (!v->getParentRegion()->isProperAncestor(&limit))
       return false;
   return true;
 }
 
 /// Replace all uses of `orig` within the given region with `replacement`.
-void replaceAllUsesInRegionWith(ValuePtr orig, ValuePtr replacement,
-                                Region &region);
+void replaceAllUsesInRegionWith(Value orig, Value replacement, Region &region);
 
 /// Calls `callback` for each use of a value within `region` or its descendants
 /// that was defined at the ancestors of the `limit`.
@@ -53,12 +52,12 @@ void visitUsedValuesDefinedAbove(MutableArrayRef<Region> regions,
 /// Fill `values` with a list of values defined at the ancestors of the `limit`
 /// region and used within `region` or its descendants.
 void getUsedValuesDefinedAbove(Region &region, Region &limit,
-                               llvm::SetVector<ValuePtr> &values);
+                               llvm::SetVector<Value> &values);
 
 /// Fill `values` with a list of values used within any of the regions provided
 /// but defined in one of the ancestors.
 void getUsedValuesDefinedAbove(MutableArrayRef<Region> regions,
-                               llvm::SetVector<ValuePtr> &values);
+                               llvm::SetVector<Value> &values);
 
 /// Run a set of structural simplifications over the given regions. This
 /// includes transformations like unreachable block elimination, dead argument

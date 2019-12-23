@@ -99,7 +99,7 @@ LogicalResult mlir::linalg::tileAndFuseLinalgOpAndSetMarker(
 }
 
 bool mlir::linalg::detail::isProducedByOpOfTypeImpl(
-    Operation *consumerOp, ValuePtr consumedView,
+    Operation *consumerOp, Value consumedView,
     function_ref<bool(Operation *)> isaOpType) {
   LinalgOp consumer = dyn_cast<LinalgOp>(consumerOp);
   if (!consumer)
@@ -175,7 +175,7 @@ LogicalResult mlir::linalg::vectorizeGenericOp(PatternRewriter &rewriter,
     return failure();
 
   // TODO(ntv): non-identity layout.
-  auto isStaticMemRefWithIdentityLayout = [](ValuePtr v) {
+  auto isStaticMemRefWithIdentityLayout = [](Value v) {
     auto m = v->getType().dyn_cast<MemRefType>();
     if (!m || !m.hasStaticShape() || !m.getAffineMaps().empty())
       return false;
@@ -235,7 +235,7 @@ mlir::linalg::permuteGenericLinalgOp(PatternRewriter &rewriter, Operation *op,
 LogicalResult mlir::linalg::linalgOpPromoteSubviews(PatternRewriter &rewriter,
                                                     Operation *op) {
   LinalgOp linOp = dyn_cast<LinalgOp>(op);
-  SetVector<ValuePtr> subViews;
+  SetVector<Value> subViews;
   for (auto it : linOp.getInputsAndOutputs())
     if (auto sv = dyn_cast_or_null<SubViewOp>(it->getDefiningOp()))
       subViews.insert(sv);

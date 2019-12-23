@@ -194,9 +194,9 @@ private:
 /// surrounding the insertion point of builder. Obtain the address of that
 /// global and use it to compute the address of the first character in the
 /// string (operations inserted at the builder insertion point).
-ValuePtr createGlobalString(Location loc, OpBuilder &builder, StringRef name,
-                            StringRef value, LLVM::Linkage linkage,
-                            LLVM::LLVMDialect *llvmDialect);
+Value createGlobalString(Location loc, OpBuilder &builder, StringRef name,
+                         StringRef value, LLVM::Linkage linkage,
+                         LLVM::LLVMDialect *llvmDialect);
 
 /// LLVM requires some operations to be inside of a Module operation. This
 /// function confirms that the Operation has the desired properties.

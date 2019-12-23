@@ -59,7 +59,7 @@ template <typename F> bool integralLog2(F x, int &log2Result) {
 /// Helper class for operating on binary operations where all operands
 /// and the result are a UniformQuantizedType.
 struct UniformBinaryOpInfo {
-  UniformBinaryOpInfo(Operation *op, ValuePtr lhs, ValuePtr rhs,
+  UniformBinaryOpInfo(Operation *op, Value lhs, Value rhs,
                       Optional<APFloat> clampMin, Optional<APFloat> clampMax)
       : op(op), lhs(lhs), rhs(rhs), clampMin(clampMin), clampMax(clampMax),
         lhsType(getUniformElementType(lhs->getType())),
@@ -128,8 +128,8 @@ struct UniformBinaryOpInfo {
   }
 
   Operation *op;
-  ValuePtr lhs;
-  ValuePtr rhs;
+  Value lhs;
+  Value rhs;
   Optional<APFloat> clampMin;
   Optional<APFloat> clampMax;
 
