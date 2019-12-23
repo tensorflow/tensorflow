@@ -37,7 +37,7 @@ class Operation;
 class Value;
 
 // TODO(riverriddle) Remove this after Value is value-typed.
-using ValuePtr = Value *;
+using ValuePtr = Value;
 
 /// Returns the trip count of the loop as an affine map with its corresponding
 /// operands if the latter is expressible as an affine expression, and nullptr

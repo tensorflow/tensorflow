@@ -37,10 +37,6 @@ Type mlir::getElementTypeOrSelf(ValuePtr val) {
   return getElementTypeOrSelf(val->getType());
 }
 
-Type mlir::getElementTypeOrSelf(ValueRef val) {
-  return getElementTypeOrSelf(val.getType());
-}
-
 Type mlir::getElementTypeOrSelf(Attribute attr) {
   return getElementTypeOrSelf(attr.getType());
 }

@@ -24,9 +24,7 @@
 #ifndef MLIR_ANALYSIS_AFFINE_ANALYSIS_H
 #define MLIR_ANALYSIS_AFFINE_ANALYSIS_H
 
-#include "mlir/Support/LLVM.h"
-#include "mlir/Support/LogicalResult.h"
-#include "llvm/ADT/ArrayRef.h"
+#include "mlir/IR/Value.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SmallVector.h"
 
@@ -37,10 +35,9 @@ class AffineForOp;
 class AffineValueMap;
 class FlatAffineConstraints;
 class Operation;
-class Value;
 
 // TODO(riverriddle) Remove this after Value is value-typed.
-using ValuePtr = Value *;
+using ValuePtr = Value;
 
 /// Returns in `affineApplyOps`, the sequence of those AffineApplyOp
 /// Operations that are reachable via a search starting from `operands` and

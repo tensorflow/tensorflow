@@ -183,7 +183,7 @@ Liveness::OperationListT Liveness::resolveLiveness(ValuePtr value) const {
   if (Operation *defOp = value->getDefiningOp())
     currentBlock = defOp->getBlock();
   else
-    currentBlock = cast<BlockArgument>(value)->getOwner();
+    currentBlock = value.cast<BlockArgument>()->getOwner();
   toProcess.push_back(currentBlock);
   visited.insert(currentBlock);
 
@@ -281,7 +281,7 @@ void Liveness::print(raw_ostream &os) const {
     if (Operation *defOp = value->getDefiningOp())
       os << "val_" << defOp->getName();
     else {
-      auto blockArg = cast<BlockArgument>(value);
+      auto blockArg = value.cast<BlockArgument>();
       os << "arg" << blockArg->getArgNumber() << "@"
          << blockIds[blockArg->getOwner()];
     }
