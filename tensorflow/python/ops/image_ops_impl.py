@@ -644,7 +644,8 @@ def transpose(image, name=None):
   Usage Example:
   
   >>> image = tf.random.normal(shape=(100, 200, 3))  
-  >>> tf.image.transpose(image) #ouput shape(200, 100, 3)
+  >>> tf.image.transpose(image)
+  <tf.Tensor 'transpose_5/transpose:0' shape=(200, 100, 3) dtype=float32>
   """
   with ops.name_scope(name, 'transpose', [image]):
     image = ops.convert_to_tensor(image, name='image')
@@ -1981,11 +1982,11 @@ def adjust_hue(image, delta, name=None):
     Adjusted image(s), same shape and DType as `image`.
 
   Usage Example:
-    ```python
-    >>> import tensorflow as tf
-    >>> x = tf.random.normal(shape=(256, 256, 3))
-    >>> tf.image.adjust_hue(x, 0.2)
-    ```
+    
+  >>> x = tf.random.normal(shape=(256, 256, 3))
+  >>> tf.image.adjust_hue(x, 0.2)
+  <tf.Tensor 'adjust_hue/Identity:0' shape=(256, 256, 3) dtype=float32>
+    
   """
   with ops.name_scope(name, 'adjust_hue', [image]) as name:
     image = ops.convert_to_tensor(image, name='image')
@@ -2929,7 +2930,8 @@ def rgb_to_yiq(images):
     Usage Example:
     
     >>> x = tf.random.normal(shape=(200, 210, 3))
-    >>> tf.image.rgb_to_yiq(x)#(200, 210, 3)
+    >>> tf.image.rgb_to_yiq(x)#output(200, 210, 3)
+    <tf.Tensor 'Tensordot_2:0' shape=(200, 210, 3) dtype=float32>
     
   """
   images = ops.convert_to_tensor(images, name='images')
@@ -2963,6 +2965,7 @@ def yiq_to_rgb(images):
     
     >>> x = tf.random.normal(shape=(256, 256, 3))
     >>> tf.image.yiq_to_rgb(x)
+    <tf.Tensor 'Tensordot_4:0' shape=(256, 256, 3) dtype=float32>
   """
   images = ops.convert_to_tensor(images, name='images')
   kernel = ops.convert_to_tensor(
