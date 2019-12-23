@@ -96,7 +96,7 @@ Because of [issues with building on windows](https://github.com/tensorflow/tenso
   * Use `_protogen` suffix for proto library targets instead of `_cc_protogen` suffix.
   * Moving the checkpoint reader from `swig` to `pybind11`.
   * `tf.device` & `MirroredStrategy` now supports passing in a `tf.config.LogicalDevice`
-  * If you're building Tensorflow from source, consider using [bazelisk](https://github.com/bazelisk/bazel) to automatically download and use the correct Bazel version. Bazelisk reads the `.bazelversion` file at the root of the project directory.
+  * If you're building Tensorflow from source, consider using [bazelisk](https://github.com/bazelbuild/bazelisk) to automatically download and use the correct Bazel version. Bazelisk reads the `.bazelversion` file at the root of the project directory.
 
 ## Thanks to our Contributors
 
