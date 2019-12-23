@@ -642,17 +642,8 @@ def transpose(image, name=None):
     ValueError: if the shape of `image` not supported.
 
   Usage Example:
-    from skimage import io
-    
-    #url to sample image
-    image = 'https://i.etsystatic.com/8880742/d/il/76af02/668762798/il_340x270.668762798_i3b1.jpg?version=0'
-    
-    #getting the image from the url
-    read_img = io.imread(image)
-    
-    print(read_img.shape) #(270, 340, 3)
-    
-    tf.image.transpose(read_img) #ouput shape(340, 270, 3)
+  >>> image = tf.random.normal(shape=(100, 200, 3))  
+  >>> tf.image.transpose(image) #ouput shape(200, 100, 3)
   """
   with ops.name_scope(name, 'transpose', [image]):
     image = ops.convert_to_tensor(image, name='image')
