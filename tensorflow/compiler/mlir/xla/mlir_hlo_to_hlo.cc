@@ -91,6 +91,8 @@ static double ConvertAPFloat(llvm::APFloat value) {
   return value.convertToDouble();
 }
 
+static inline bool Convertbool(bool value) { return value; }
+
 static absl::string_view ConvertStringRef(mlir::StringRef value) {
   return {value.data(), value.size()};
 }
@@ -291,7 +293,7 @@ static xla::ComparisonDirection Convert_comparison_direction(
       .ValueOrDie();
 }
 
-static xla::GatherDimensionNumbers Convert_gather_dimension_numbers(
+static xla::GatherDimensionNumbers Convert_dimension_numbers(
     mlir::xla_hlo::GatherDimensionNumbers input) {
   xla::GatherDimensionNumbers output;
 
@@ -534,16 +536,6 @@ LogicalResult ExportXlaOp(ConvertOp op, OpLoweringContext ctx) {
   value_map[op] = xla::ConvertElementType(
       value_map[op.operand()],
       xla::TypeToPrimitiveType(getElementTypeOrSelf(op.getType())));
-  return success();
-}
-
-LogicalResult ExportXlaOp(GatherOp op, OpLoweringContext ctx) {
-  auto& value_map = *ctx.values;
-  xla::GatherDimensionNumbers dimension_numbers =
-      Convert_gather_dimension_numbers(op.dimension_numbers());
-  value_map[op] = xla::Gather(
-      value_map[op.operand()], value_map[op.start_indices()], dimension_numbers,
-      Convert_slice_sizes(op.slice_sizes()), op.indices_are_sorted());
   return success();
 }
 
