@@ -1871,8 +1871,6 @@ def rgb_to_grayscale(images, name=None):
   Outputs a tensor of the same `DType` and rank as `images`.  The size of the
   last dimension of the output is 1, containing the Grayscale value of the
   pixels.
-
-  Sample usage with_image can be found [here on Github](https://github.com/Mbah-Javis/How-to-convert-RGB-image-to-grayscale/blob/master/RBG_to_GrayScale_using_tf_image_rgb_to_grayscale.ipynb) or [here](https://colab.research.google.com/drive/1VFbIMRKGWSknlQ_Z_d1ihqSDW08Vu117)
   
   Args:
     images: The RGB tensor to convert. The last dimension must have size 3 and
