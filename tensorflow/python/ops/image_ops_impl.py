@@ -340,7 +340,7 @@ def random_flip_up_down(image, seed=None):
     
   Usage Example:
     ```python
-    >> import tensorflow as tf
+   
     >> x = tf.random.normal(shape=(256, 256, 3))
     >> tf.image.random_flip_up_down(x)
     ```
@@ -369,7 +369,7 @@ def random_flip_left_right(image, seed=None):
     
   Usage Example:
     ```python
-    >> import tensorflow as tf
+    
     >> x = tf.random.normal(shape=(256, 256, 3))
     >> tf.image.random_flip_left_right(x)
     ```
@@ -442,7 +442,7 @@ def flip_left_right(image):
     
   Usage Example:
     ```python
-    >> import tensorflow as tf
+    
     >> x = tf.random.normal(shape=(256, 256, 3))
     >> tf.image.flip_left_right(x)
     ```
@@ -470,7 +470,7 @@ def flip_up_down(image):
     
   Usage Example:
     ```python
-    >> import tensorflow as tf
+    
     >> x = tf.random.normal(shape=(256, 256, 3))
     >> tf.image.flip_up_down(x)
     ```
@@ -632,7 +632,7 @@ def transpose(image, name=None):
     
   Usage Example:
     ```python
-    >> import tensorflow as tf
+    
     >> x = tf.random.normal(shape=(256, 256, 3))
     >> tf.image.transpose(x)
     ```
@@ -1575,7 +1575,7 @@ def random_brightness(image, max_delta, seed=None):
     
   Usage Example:
     ```python
-    >> import tensorflow as tf
+    
     >> x = tf.random.normal(shape=(256, 256, 3))
     >> tf.image.random_brightness(x, 0.2)
     ```
@@ -1609,7 +1609,7 @@ def random_contrast(image, lower, upper, seed=None):
     
   Usage Example:
     ```python
-    >> import tensorflow as tf
+    
     >> x = tf.random.normal(shape=(256, 256, 3))
     >> tf.image.random_contrast(x, 0.2, 0.5)
     ```
@@ -1951,7 +1951,7 @@ def random_hue(image, max_delta, seed=None):
     
   Usage Example:
     ```python
-    >> import tensorflow as tf
+    
     >> x = tf.random.normal(shape=(256, 256, 3))
     >> tf.image.random_hue(x, 0.2)
     ```
@@ -2036,7 +2036,7 @@ def random_jpeg_quality(image, min_jpeg_quality, max_jpeg_quality, seed=None):
     
   Usage Example:
     ```python
-    >> import tensorflow as tf
+    
     >> x = tf.random.normal(shape=(256, 256, 3))
     >> tf.image.random_jpeg_quality(x, 75, 95)
     ```
@@ -2134,7 +2134,7 @@ def random_saturation(image, lower, upper, seed=None):
     
   Usage Example:
     ```python
-    >> import tensorflow as tf
+    
     >> x = tf.random.normal(shape=(256, 256, 3))
     >> tf.image.random_saturation(x, 5, 10)
     ```
