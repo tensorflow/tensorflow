@@ -175,6 +175,7 @@ I64_ELEMENTS_ATTR_TO_VECTOR(limit_indices);
 I64_ELEMENTS_ATTR_TO_VECTOR(strides);
 I64_ELEMENTS_ATTR_TO_VECTOR(slice_sizes);
 I64_ELEMENTS_ATTR_TO_VECTOR(fft_length);
+I64_ELEMENTS_ATTR_TO_VECTOR(dimensions);
 
 #undef I64_ELEMENTS_ATTR_TO_VECTOR
 
@@ -487,13 +488,6 @@ LogicalResult ExportXlaOp(BroadcastInDimOp op, OpLoweringContext ctx) {
   return success();
 }
 
-LogicalResult ExportXlaOp(ConcatenateOp op, OpLoweringContext ctx) {
-  auto& value_map = *ctx.values;
-  value_map[op] = xla::ConcatInDim(ctx.builder, GetTuple(op.val(), ctx),
-                                   op.dimension().getSExtValue());
-  return success();
-}
-
 LogicalResult ExportXlaOp(ConditionalOp op, OpLoweringContext ctx) {
   xla::XlaComputation true_branch;
   xla::XlaComputation false_branch;
@@ -629,13 +623,6 @@ LogicalResult ExportXlaOp(ReturnOp op, OpLoweringContext ctx) {
   // Failure on purpose because `xla_hlo::ReturnOp` will be handled by
   // special purpose logic in `ConvertToHloModule::Lower`.
   return failure();
-}
-
-LogicalResult ExportXlaOp(ReverseOp op, OpLoweringContext ctx) {
-  auto& value_map = *ctx.values;
-  value_map[op] = xla::Rev(value_map[op.operand()],
-                           Convert_broadcast_dimensions(op.dimensions()));
-  return success();
 }
 
 LogicalResult ExportXlaOp(RngNormalOp op, OpLoweringContext ctx) {

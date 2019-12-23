@@ -722,8 +722,6 @@ def HLO_ConcatenateOp : HLO_Op<"concatenate",
 
   let hasFolder = 1;
 
-  // TODO(b/129422361) ConcatOp has special conversion logic to HLO.
-  let hasCustomHLOConverter = 1;
 }
 
 def HLO_CrossReplicaSumOp : HLO_Op<"cross-replica-sum",
@@ -988,9 +986,6 @@ def HLO_ReverseOp: HLO_Op<"reverse",
   let results = (outs HLO_Tensor);
 
   let hasFolder = 1;
-
-  // TODO(b/129422361): ReverseOp has a custom constructor for HLO.
-  let hasCustomHLOConverter = 1;
 }
 
 def HLO_PadOp: HLO_Op<"pad",
