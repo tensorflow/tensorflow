@@ -37,19 +37,19 @@ class HloDialectEmitter : public DfsHloVisitorWithDefault {
  public:
   HloDialectEmitter(xla::mlir_gpu::EmissionContext* emission_context,
                     ::mlir::Region* region,
-                    llvm::ArrayRef<::mlir::Value*> arguments)
+                    llvm::ArrayRef<::mlir::ValuePtr> arguments)
       : emission_context_(emission_context),
         builder_(region),
         arguments_(arguments) {}
 
   HloDialectEmitter(xla::mlir_gpu::EmissionContext* emission_context,
                     ::mlir::OpBuilder builder,
-                    llvm::ArrayRef<::mlir::Value*> arguments)
+                    llvm::ArrayRef<::mlir::ValuePtr> arguments)
       : emission_context_(emission_context),
         builder_(builder),
         arguments_(arguments) {}
 
-  StatusOr<mlir::Value*> EmitComputation(const HloComputation& computation);
+  StatusOr<mlir::ValuePtr> EmitComputation(const HloComputation& computation);
 
   Status DefaultAction(HloInstruction* instr) override;
   Status HandleBroadcast(HloInstruction* broadcast) override;
@@ -64,8 +64,8 @@ class HloDialectEmitter : public DfsHloVisitorWithDefault {
 
   xla::mlir_gpu::EmissionContext* emission_context_;
   ::mlir::OpBuilder builder_;
-  llvm::ArrayRef<::mlir::Value*> arguments_;
-  absl::flat_hash_map<const xla::HloInstruction*, ::mlir::Value*>
+  llvm::ArrayRef<::mlir::ValuePtr> arguments_;
+  absl::flat_hash_map<const xla::HloInstruction*, ::mlir::ValuePtr>
       instruction_to_values_;
 };
 
