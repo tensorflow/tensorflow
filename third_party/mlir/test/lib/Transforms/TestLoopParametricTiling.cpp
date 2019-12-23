@@ -25,18 +25,10 @@ namespace {
 class SimpleParametricLoopTilingPass
     : public FunctionPass<SimpleParametricLoopTilingPass> {
 public:
-  struct Options : public PassOptions<Options> {
-    List<int> clOuterLoopSizes{
-        *this, "test-outer-loop-sizes", llvm::cl::MiscFlags::CommaSeparated,
-        llvm::cl::desc(
-            "fixed number of iterations that the outer loops should have")};
-  };
-
-  explicit SimpleParametricLoopTilingPass(ArrayRef<int64_t> outerLoopSizes)
-      : sizes(outerLoopSizes.begin(), outerLoopSizes.end()) {}
-  explicit SimpleParametricLoopTilingPass(const Options &options) {
-    sizes.assign(options.clOuterLoopSizes.begin(),
-                 options.clOuterLoopSizes.end());
+  SimpleParametricLoopTilingPass() = default;
+  SimpleParametricLoopTilingPass(const SimpleParametricLoopTilingPass &) {}
+  explicit SimpleParametricLoopTilingPass(ArrayRef<int64_t> outerLoopSizes) {
+    sizes = outerLoopSizes;
   }
 
   void runOnFunction() override {
@@ -49,7 +41,10 @@ public:
     });
   }
 
-  SmallVector<int64_t, 4> sizes;
+  ListOption<int64_t> sizes{
+      *this, "test-outer-loop-sizes", llvm::cl::MiscFlags::CommaSeparated,
+      llvm::cl::desc(
+          "fixed number of iterations that the outer loops should have")};
 };
 } // end namespace
 
@@ -58,8 +53,7 @@ mlir::createSimpleParametricTilingPass(ArrayRef<int64_t> outerLoopSizes) {
   return std::make_unique<SimpleParametricLoopTilingPass>(outerLoopSizes);
 }
 
-static PassRegistration<SimpleParametricLoopTilingPass,
-                        SimpleParametricLoopTilingPass::Options>
+static PassRegistration<SimpleParametricLoopTilingPass>
     reg("test-extract-fixed-outer-loops",
         "test application of parametric tiling to the outer loops so that the "
         "ranges of outer loops become static");

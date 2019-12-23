@@ -35,17 +35,17 @@ namespace {
 /// 2) Lower the body of the spirv::ModuleOp.
 class GPUToSPIRVPass : public ModulePass<GPUToSPIRVPass> {
 public:
-  GPUToSPIRVPass(ArrayRef<int64_t> workGroupSize)
-      : workGroupSize(workGroupSize.begin(), workGroupSize.end()) {}
+  GPUToSPIRVPass() = default;
+  GPUToSPIRVPass(const GPUToSPIRVPass &) {}
+  GPUToSPIRVPass(ArrayRef<int64_t> workGroupSize) {
+    this->workGroupSize = workGroupSize;
+  }
+
   void runOnModule() override;
 
 private:
-  SmallVector<int64_t, 3> workGroupSize;
-};
-
-/// Command line option to specify the workgroup size.
-struct GPUToSPIRVPassOptions : public PassOptions<GPUToSPIRVPassOptions> {
-  List<unsigned> workGroupSize{
+  /// Command line option to specify the workgroup size.
+  ListOption<int64_t> workGroupSize{
       *this, "workgroup-size",
       llvm::cl::desc(
           "Workgroup Sizes in the SPIR-V module for x, followed by y, followed "
@@ -92,11 +92,5 @@ mlir::createConvertGPUToSPIRVPass(ArrayRef<int64_t> workGroupSize) {
   return std::make_unique<GPUToSPIRVPass>(workGroupSize);
 }
 
-static PassRegistration<GPUToSPIRVPass, GPUToSPIRVPassOptions>
-    pass("convert-gpu-to-spirv", "Convert GPU dialect to SPIR-V dialect",
-         [](const GPUToSPIRVPassOptions &passOptions) {
-           SmallVector<int64_t, 3> workGroupSize;
-           workGroupSize.assign(passOptions.workGroupSize.begin(),
-                                passOptions.workGroupSize.end());
-           return std::make_unique<GPUToSPIRVPass>(workGroupSize);
-         });
+static PassRegistration<GPUToSPIRVPass>
+    pass("convert-gpu-to-spirv", "Convert GPU dialect to SPIR-V dialect");

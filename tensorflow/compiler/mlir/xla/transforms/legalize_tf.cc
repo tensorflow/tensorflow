@@ -55,31 +55,20 @@ namespace {
 
 class LegalizeTF : public FunctionPass<LegalizeTF> {
  public:
-  struct Options : public PassOptions<Options> {
-    Option<bool> allow_partial_conversion{
-        *this, "allow-partial-conversion",
-        llvm::cl::desc("Allow operations that can't be legalized."),
-        llvm::cl::init(false)};
-  };
-
-  explicit LegalizeTF(bool allow_partial_conversion)
-      : FunctionPass<LegalizeTF>(),
-        allow_partial_conversion_(allow_partial_conversion) {}
-
-  explicit LegalizeTF(const Options &option)
-      : LegalizeTF(option.allow_partial_conversion) {}
+  LegalizeTF() = default;
+  LegalizeTF(const LegalizeTF &) {}
+  explicit LegalizeTF(bool allow_partial_conversion) {
+    allow_partial_conversion_ = allow_partial_conversion;
+  }
 
   /// Performs the lowering to XLA dialect.
   void runOnFunction() override;
 
-  /// Print this pass for a textual pipeline. It must round-trip.
-  void printAsTextualPipeline(raw_ostream &os) override {
-    os << "xla-legalize-tf{allow-partial-conversion="
-       << (allow_partial_conversion_ ? "true" : "false") << "}";
-  }
-
  private:
-  bool allow_partial_conversion_;
+  Option<bool> allow_partial_conversion_{
+      *this, "allow-partial-conversion",
+      llvm::cl::desc("Allow operations that can't be legalized."),
+      llvm::cl::init(false)};
 };
 
 /// Returns if the given TF data format string is the default format.
@@ -2647,7 +2636,7 @@ void LegalizeTF::runOnFunction() {
     signalPassFailure();
 }
 
-static PassRegistration<LegalizeTF, LegalizeTF::Options> pass(
+static PassRegistration<LegalizeTF> pass(
     "xla-legalize-tf", "Legalize from TensorFlow to the XLA dialect");
 
 }  // end namespace

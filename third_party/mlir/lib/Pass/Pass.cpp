@@ -36,6 +36,17 @@ using namespace mlir::detail;
 /// single .o file.
 void Pass::anchor() {}
 
+/// Attempt to initialize the options of this pass from the given string.
+LogicalResult Pass::initializeOptions(StringRef options) {
+  return passOptions.parseFromString(options);
+}
+
+/// Copy the option values from 'other', which is another instance of this
+/// pass.
+void Pass::copyOptionValuesFrom(const Pass *other) {
+  passOptions.copyOptionValuesFrom(other->passOptions);
+}
+
 /// Prints out the pass in the textual representation of pipelines. If this is
 /// an adaptor pass, print with the op_name(sub_pass,...) format.
 void Pass::printAsTextualPipeline(raw_ostream &os) {
@@ -46,11 +57,14 @@ void Pass::printAsTextualPipeline(raw_ostream &os) {
       pm.printAsTextualPipeline(os);
       os << ")";
     });
-  } else if (const PassInfo *info = lookupPassInfo()) {
-    os << info->getPassArgument();
-  } else {
-    os << getName();
+    return;
   }
+  // Otherwise, print the pass argument followed by its options.
+  if (const PassInfo *info = lookupPassInfo())
+    os << info->getPassArgument();
+  else
+    os << getName();
+  passOptions.print(os);
 }
 
 /// Forwarding function to execute this pass.

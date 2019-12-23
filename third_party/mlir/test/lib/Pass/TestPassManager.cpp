@@ -21,43 +21,34 @@ struct TestFunctionPass : public FunctionPass<TestFunctionPass> {
 };
 class TestOptionsPass : public FunctionPass<TestOptionsPass> {
 public:
-  struct Options : public PassOptions<Options> {
-    List<int> listOption{*this, "list", llvm::cl::MiscFlags::CommaSeparated,
-                         llvm::cl::desc("Example list option")};
-    List<std::string> stringListOption{
+  struct Options : public PassPipelineOptions<Options> {
+    ListOption<int> listOption{*this, "list",
+                               llvm::cl::MiscFlags::CommaSeparated,
+                               llvm::cl::desc("Example list option")};
+    ListOption<std::string> stringListOption{
         *this, "string-list", llvm::cl::MiscFlags::CommaSeparated,
         llvm::cl::desc("Example string list option")};
     Option<std::string> stringOption{*this, "string",
                                      llvm::cl::desc("Example string option")};
   };
+  TestOptionsPass() = default;
+  TestOptionsPass(const TestOptionsPass &) {}
   TestOptionsPass(const Options &options) {
-    listOption.assign(options.listOption.begin(), options.listOption.end());
-    stringOption = options.stringOption;
-    stringListOption.assign(options.stringListOption.begin(),
-                            options.stringListOption.end());
-  }
-
-  void printAsTextualPipeline(raw_ostream &os) final {
-    os << "test-options-pass{";
-    if (!listOption.empty()) {
-      os << "list=";
-      // Not interleaveComma to avoid spaces between the elements.
-      interleave(listOption, os, ",");
-    }
-    if (!stringListOption.empty()) {
-      os << " string-list=";
-      interleave(stringListOption, os, ",");
-    }
-    if (!stringOption.empty())
-      os << " string=" << stringOption;
-    os << "}";
+    listOption->assign(options.listOption.begin(), options.listOption.end());
+    stringOption.setValue(options.stringOption);
+    stringListOption->assign(options.stringListOption.begin(),
+                             options.stringListOption.end());
   }
 
   void runOnFunction() final {}
 
-  SmallVector<int64_t, 4> listOption;
-  SmallVector<std::string, 4> stringListOption;
-  std::string stringOption;
+  ListOption<int> listOption{*this, "list", llvm::cl::MiscFlags::CommaSeparated,
+                             llvm::cl::desc("Example list option")};
+  ListOption<std::string> stringListOption{
+      *this, "string-list", llvm::cl::MiscFlags::CommaSeparated,
+      llvm::cl::desc("Example string list option")};
+  Option<std::string> stringOption{*this, "string",
+                                   llvm::cl::desc("Example string option")};
 };
 
 /// A test pass that always aborts to enable testing the crash recovery
@@ -97,7 +88,7 @@ static void testNestedPipelineTextual(OpPassManager &pm) {
   (void)parsePassPipeline("test-pm-nested-pipeline", pm);
 }
 
-static PassRegistration<TestOptionsPass, TestOptionsPass::Options>
+static PassRegistration<TestOptionsPass>
     reg("test-options-pass", "Test options parsing capabilities");
 
 static PassRegistration<TestModulePass>
