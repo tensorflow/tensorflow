@@ -642,7 +642,6 @@ def transpose(image, name=None):
     ValueError: if the shape of `image` not supported.
 
   Usage Example:
-    ```python
     from skimage import io
     
     #url to sample image
@@ -2936,11 +2935,10 @@ def rgb_to_yiq(images):
     images: tensor with the same shape as `images`.
 
     Usage Example:
-    ```python
-   
+    
     >>> x = tf.random.normal(shape=(200, 210, 3))
     >>> tf.image.rgb_to_yiq(x)#(200, 210, 3)
-    ```
+    
   """
   images = ops.convert_to_tensor(images, name='images')
   kernel = ops.convert_to_tensor(
@@ -2970,11 +2968,9 @@ def yiq_to_rgb(images):
     images: tensor with the same shape as `images`.
 
     Usage Example:
-    ```python
-    
+   
     >>> x = tf.random.normal(shape=(256, 256, 3))
     >>> tf.image.yiq_to_rgb(x)
-    ```
   """
   images = ops.convert_to_tensor(images, name='images')
   kernel = ops.convert_to_tensor(
