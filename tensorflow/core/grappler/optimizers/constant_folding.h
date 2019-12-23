@@ -49,7 +49,7 @@ class ConstantFolding : public GraphOptimizer {
 
   ~ConstantFolding() override {}
 
-  string name() const override { return "constant folding"; };
+  string name() const override { return "constant_folding"; };
 
   bool UsesFunctionLibrary() const override { return false; }
 
@@ -143,9 +143,48 @@ class ConstantFolding : public GraphOptimizer {
   // Returns true if the transformation applied successfully.
   bool PartialConstPropThroughIdentityN(NodeDef* node);
 
-  // Pushes down constants on '+' and '*' operators if applicable. Returns true
-  // the transformation applied successfully.
-  bool ConstantPushDown(GraphDef* optimized_graph, NodeDef* node);
+  struct ConstantPushDownContext {
+    NodeDef* op_child;
+    NodeDef* const_child;
+    bool left_child_is_const;
+    bool right_child_is_const;
+    NodeDef* left_leaf;
+    NodeDef* right_leaf;
+    bool left_leaf_is_const;
+    bool right_leaf_is_const;
+
+    // Shape & type information.
+    const std::vector<OpInfo::TensorProperties>* parent_input_props;
+    const std::vector<OpInfo::TensorProperties>* op_child_input_props;
+  };
+
+  // Populates ctx with pointers to the nodes in expression tree for which
+  // constant pushdown optimization is being considered, corresponding to one of
+  // the following configurations:
+  //
+  //               parent                            parent
+  //               /    \                            /    \
+  //        op_child   const_child            const_child op_child
+  //         /     \                                       /     \
+  //    left_leaf  right_leaf                        left_leaf  right_leaf
+  //
+  // Returns true if the expression is possible amenable for optimization.
+  // Returns false if must_have_properties is true and input properties for
+  // parent and op_child are not known.
+  bool PrepareConstantPushDown(const NodeDef& parent,
+                               const GraphProperties& properties,
+                               bool must_have_properties,
+                               ConstantPushDownContext* ctx) const;
+
+  // Pushes down constants on '+', '-', '*', and '/' operators if applicable.
+  // Returns true if the transformation applied successfully.
+  bool ConstantPushDown(GraphProperties* properties, GraphDef* optimized_graph,
+                        NodeDef* node);
+
+  // Pushes down constants on '+' and 'BiasAdd' operators if applicable.
+  // Returns true if the graph was modified.
+  bool ConstantPushDownBiasAdd(GraphProperties* properties,
+                               GraphDef* optimized_graph, NodeDef* node);
 
   // Aggregate constants present around a conv operator. Returns true if the
   // transformation was applied successfully.

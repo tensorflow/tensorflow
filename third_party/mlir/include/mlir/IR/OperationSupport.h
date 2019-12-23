@@ -48,6 +48,7 @@ class Region;
 class RewritePattern;
 class Type;
 class Value;
+class ValueRange;
 
 /// This is an adaptor from a list of values to named operands of OpTy.  In a
 /// generic operation context, e.g., in dialect conversions, an ordered array of
@@ -58,6 +59,10 @@ class Value;
 template <typename OpTy> using OperandAdaptor = typename OpTy::OperandAdaptor;
 
 class OwningRewritePatternList;
+
+//===----------------------------------------------------------------------===//
+// AbstractOperation
+//===----------------------------------------------------------------------===//
 
 enum class OperationProperty {
   /// This bit is set for an operation if it is a commutative operation: that
@@ -98,10 +103,10 @@ public:
   bool (&classof)(Operation *op);
 
   /// Use the specified object to parse this ops custom assembly format.
-  ParseResult (&parseAssembly)(OpAsmParser *parser, OperationState *result);
+  ParseResult (&parseAssembly)(OpAsmParser &parser, OperationState &result);
 
   /// This hook implements the AsmPrinter for this operation.
-  void (&printAssembly)(Operation *op, OpAsmPrinter *p);
+  void (&printAssembly)(Operation *op, OpAsmPrinter &p);
 
   /// This hook implements the verifier for this operation.  It should emits an
   /// error message and returns failure if a problem is detected, or returns
@@ -140,6 +145,14 @@ public:
     return opProperties & static_cast<OperationProperties>(property);
   }
 
+  /// Returns an instance of the concept object for the given interface if it
+  /// was registered to this operation, null otherwise. This should not be used
+  /// directly.
+  template <typename T> typename T::Concept *getInterface() const {
+    return reinterpret_cast<typename T::Concept *>(
+        getRawInterface(T::getInterfaceID()));
+  }
+
   /// Returns if the operation has a particular trait.
   template <template <typename T> class Trait> bool hasTrait() const {
     return hasRawTrait(ClassID::getID<Trait>());
@@ -156,39 +169,50 @@ public:
     return AbstractOperation(
         T::getOperationName(), dialect, T::getOperationProperties(), T::classof,
         T::parseAssembly, T::printAssembly, T::verifyInvariants, T::foldHook,
-        T::getCanonicalizationPatterns, T::hasTrait);
+        T::getCanonicalizationPatterns, T::getRawInterface, T::hasTrait);
   }
 
 private:
   AbstractOperation(
       StringRef name, Dialect &dialect, OperationProperties opProperties,
       bool (&classof)(Operation *op),
-      ParseResult (&parseAssembly)(OpAsmParser *parser, OperationState *result),
-      void (&printAssembly)(Operation *op, OpAsmPrinter *p),
+      ParseResult (&parseAssembly)(OpAsmParser &parser, OperationState &result),
+      void (&printAssembly)(Operation *op, OpAsmPrinter &p),
       LogicalResult (&verifyInvariants)(Operation *op),
       LogicalResult (&foldHook)(Operation *op, ArrayRef<Attribute> operands,
                                 SmallVectorImpl<OpFoldResult> &results),
       void (&getCanonicalizationPatterns)(OwningRewritePatternList &results,
                                           MLIRContext *context),
+      void *(&getRawInterface)(ClassID *interfaceID),
       bool (&hasTrait)(ClassID *traitID))
       : name(name), dialect(dialect), classof(classof),
         parseAssembly(parseAssembly), printAssembly(printAssembly),
         verifyInvariants(verifyInvariants), foldHook(foldHook),
         getCanonicalizationPatterns(getCanonicalizationPatterns),
-        opProperties(opProperties), hasRawTrait(hasTrait) {}
+        opProperties(opProperties), getRawInterface(getRawInterface),
+        hasRawTrait(hasTrait) {}
 
   /// The properties of the operation.
   const OperationProperties opProperties;
+
+  /// Returns a raw instance of the concept for the given interface id if it is
+  /// registered to this operation, nullptr otherwise. This should not be used
+  /// directly.
+  void *(&getRawInterface)(ClassID *interfaceID);
 
   /// This hook returns if the operation contains the trait corresponding
   /// to the given ClassID.
   bool (&hasRawTrait)(ClassID *traitID);
 };
 
+//===----------------------------------------------------------------------===//
+// OperationName
+//===----------------------------------------------------------------------===//
+
 class OperationName {
 public:
   using RepresentationUnion =
-      llvm::PointerUnion<Identifier, const AbstractOperation *>;
+      PointerUnion<Identifier, const AbstractOperation *>;
 
   OperationName(AbstractOperation *op) : representation(op) {}
   OperationName(StringRef name, MLIRContext *context);
@@ -235,15 +259,18 @@ inline llvm::hash_code hash_value(OperationName arg) {
   return llvm::hash_value(arg.getAsOpaquePointer());
 }
 
+//===----------------------------------------------------------------------===//
+// OperationState
+//===----------------------------------------------------------------------===//
+
 /// This represents an operation in an abstracted form, suitable for use with
 /// the builder APIs.  This object is a large and heavy weight object meant to
 /// be used as a temporary object on the stack.  It is generally unwise to put
 /// this in a collection.
 struct OperationState {
-  MLIRContext *const context;
   Location location;
   OperationName name;
-  SmallVector<Value *, 4> operands;
+  SmallVector<ValuePtr, 4> operands;
   /// Types of the results of this operation.
   SmallVector<Type, 4> types;
   SmallVector<NamedAttribute, 4> attributes;
@@ -259,17 +286,13 @@ public:
 
   OperationState(Location location, OperationName name);
 
-  OperationState(Location location, StringRef name, ArrayRef<Value *> operands,
+  OperationState(Location location, StringRef name, ValueRange operands,
                  ArrayRef<Type> types, ArrayRef<NamedAttribute> attributes,
                  ArrayRef<Block *> successors = {},
                  MutableArrayRef<std::unique_ptr<Region>> regions = {},
                  bool resizableOperandList = false);
 
-  void addOperands(ArrayRef<Value *> newOperands) {
-    assert(successors.empty() &&
-           "Non successor operands should be added first.");
-    operands.append(newOperands.begin(), newOperands.end());
-  }
+  void addOperands(ValueRange newOperands);
 
   void addTypes(ArrayRef<Type> newTypes) {
     types.append(newTypes.begin(), newTypes.end());
@@ -290,12 +313,7 @@ public:
     attributes.append(newAttributes.begin(), newAttributes.end());
   }
 
-  void addSuccessor(Block *successor, ArrayRef<Value *> succOperands) {
-    successors.push_back(successor);
-    // Insert a sentinal operand to mark a barrier between successor operands.
-    operands.push_back(nullptr);
-    operands.append(succOperands.begin(), succOperands.end());
-  }
+  void addSuccessor(Block *successor, ValueRange succOperands);
 
   /// Create a region that should be attached to the operation.  These regions
   /// can be filled in immediately without waiting for Operation to be
@@ -315,6 +333,10 @@ public:
   /// Get the context held by this operation state.
   MLIRContext *getContext() { return location->getContext(); }
 };
+
+//===----------------------------------------------------------------------===//
+// OperandStorage
+//===----------------------------------------------------------------------===//
 
 namespace detail {
 /// A utility class holding the information necessary to dynamically resize
@@ -384,7 +406,7 @@ public:
 
   /// Replace the operands contained in the storage with the ones provided in
   /// 'operands'.
-  void setOperands(Operation *owner, ArrayRef<Value *> operands);
+  void setOperands(Operation *owner, ValueRange operands);
 
   /// Erase an operand held by the storage.
   void eraseOperand(unsigned index);
@@ -438,6 +460,202 @@ private:
   }
 };
 } // end namespace detail
+
+//===----------------------------------------------------------------------===//
+// OpPrintingFlags
+//===----------------------------------------------------------------------===//
+
+/// Set of flags used to control the behavior of the various IR print methods
+/// (e.g. Operation::Print).
+class OpPrintingFlags {
+public:
+  OpPrintingFlags();
+  OpPrintingFlags(llvm::NoneType) : OpPrintingFlags() {}
+
+  /// Enable the elision of large elements attributes, by printing a '...'
+  /// instead of the element data. Note: The IR generated with this option is
+  /// not parsable. `largeElementLimit` is used to configure what is considered
+  /// to be a "large" ElementsAttr by providing an upper limit to the number of
+  /// elements.
+  OpPrintingFlags &elideLargeElementsAttrs(int64_t largeElementLimit = 16);
+
+  /// Enable printing of debug information. If 'prettyForm' is set to true,
+  /// debug information is printed in a more readable 'pretty' form. Note: The
+  /// IR generated with 'prettyForm' is not parsable.
+  OpPrintingFlags &enableDebugInfo(bool prettyForm = false);
+
+  /// Always print operations in the generic form.
+  OpPrintingFlags &printGenericOpForm();
+
+  /// Use local scope when printing the operation. This allows for using the
+  /// printer in a more localized and thread-safe setting, but may not
+  /// necessarily be identical to what the IR will look like when dumping
+  /// the full module.
+  OpPrintingFlags &useLocalScope();
+
+  /// Return if the given ElementsAttr should be elided.
+  bool shouldElideElementsAttr(ElementsAttr attr) const;
+
+  /// Return if debug information should be printed.
+  bool shouldPrintDebugInfo() const;
+
+  /// Return if debug information should be printed in the pretty form.
+  bool shouldPrintDebugInfoPrettyForm() const;
+
+  /// Return if operations should be printed in the generic form.
+  bool shouldPrintGenericOpForm() const;
+
+  /// Return if the printer should use local scope when dumping the IR.
+  bool shouldUseLocalScope() const;
+
+private:
+  /// Elide large elements attributes if the number of elements is larger than
+  /// the upper limit.
+  Optional<int64_t> elementsAttrElementLimit;
+
+  /// Print debug information.
+  bool printDebugInfoFlag : 1;
+  bool printDebugInfoPrettyFormFlag : 1;
+
+  /// Print operations in the generic form.
+  bool printGenericOpFormFlag : 1;
+
+  /// Print operations with numberings local to the current operation.
+  bool printLocalScope : 1;
+};
+
+//===----------------------------------------------------------------------===//
+// Operation Value-Iterators
+//===----------------------------------------------------------------------===//
+
+//===----------------------------------------------------------------------===//
+// ValueTypeRange
+
+/// This class implements iteration on the types of a given range of values.
+template <typename ValueIteratorT>
+class ValueTypeIterator final
+    : public llvm::mapped_iterator<ValueIteratorT, Type (*)(ValuePtr)> {
+  static Type unwrap(ValuePtr value) { return value->getType(); }
+
+public:
+  using reference = Type;
+
+  /// Provide a const dereference method.
+  Type operator*() const { return unwrap(*this->I); }
+
+  /// Initializes the type iterator to the specified value iterator.
+  ValueTypeIterator(ValueIteratorT it)
+      : llvm::mapped_iterator<ValueIteratorT, Type (*)(ValuePtr)>(it, &unwrap) {
+  }
+};
+
+//===----------------------------------------------------------------------===//
+// OperandRange
+
+/// This class implements the operand iterators for the Operation class.
+class OperandRange final
+    : public detail::indexed_accessor_range_base<OperandRange, OpOperand *,
+                                                 ValuePtr, ValuePtr, ValuePtr> {
+public:
+  using RangeBaseT::RangeBaseT;
+  OperandRange(Operation *op);
+
+  /// Returns the types of the values within this range.
+  using type_iterator = ValueTypeIterator<iterator>;
+  iterator_range<type_iterator> getTypes() const { return {begin(), end()}; }
+
+private:
+  /// See `detail::indexed_accessor_range_base` for details.
+  static OpOperand *offset_base(OpOperand *object, ptrdiff_t index) {
+    return object + index;
+  }
+  /// See `detail::indexed_accessor_range_base` for details.
+  static ValuePtr dereference_iterator(OpOperand *object, ptrdiff_t index) {
+    return object[index].get();
+  }
+
+  /// Allow access to `offset_base` and `dereference_iterator`.
+  friend RangeBaseT;
+};
+
+//===----------------------------------------------------------------------===//
+// ResultRange
+
+/// This class implements the result iterators for the Operation class.
+class ResultRange final
+    : public detail::indexed_accessor_range_base<ResultRange, OpResultPtr,
+                                                 ValuePtr, ValuePtr, ValuePtr> {
+public:
+  using RangeBaseT::RangeBaseT;
+  ResultRange(Operation *op);
+
+  /// Returns the types of the values within this range.
+  using type_iterator = ValueTypeIterator<iterator>;
+  iterator_range<type_iterator> getTypes() const { return {begin(), end()}; }
+
+private:
+  /// See `detail::indexed_accessor_range_base` for details.
+  static OpResultPtr offset_base(OpResultPtr object, ptrdiff_t index) {
+    return object + index;
+  }
+  /// See `detail::indexed_accessor_range_base` for details.
+  static ValuePtr dereference_iterator(OpResultPtr object, ptrdiff_t index) {
+    return &object[index];
+  }
+
+  /// Allow access to `offset_base` and `dereference_iterator`.
+  friend RangeBaseT;
+};
+
+//===----------------------------------------------------------------------===//
+// ValueRange
+
+/// This class provides an abstraction over the different types of ranges over
+/// Values. In many cases, this prevents the need to explicitly materialize a
+/// SmallVector/std::vector. This class should be used in places that are not
+/// suitable for a more derived type (e.g. ArrayRef) or a template range
+/// parameter.
+class ValueRange final
+    : public detail::indexed_accessor_range_base<
+          ValueRange, PointerUnion<ValuePtr const *, OpOperand *, OpResultPtr>,
+          ValuePtr, ValuePtr, ValuePtr> {
+public:
+  using RangeBaseT::RangeBaseT;
+
+  template <typename Arg,
+            typename = typename std::enable_if_t<
+                std::is_constructible<ArrayRef<ValuePtr>, Arg>::value &&
+                !std::is_convertible<Arg, ValuePtr>::value>>
+  ValueRange(Arg &&arg)
+      : ValueRange(ArrayRef<ValuePtr>(std::forward<Arg>(arg))) {}
+  ValueRange(ValuePtr const &value) : ValueRange(&value, /*count=*/1) {}
+  ValueRange(const std::initializer_list<ValuePtr> &values)
+      : ValueRange(ArrayRef<ValuePtr>(values)) {}
+  ValueRange(iterator_range<OperandRange::iterator> values)
+      : ValueRange(OperandRange(values)) {}
+  ValueRange(iterator_range<ResultRange::iterator> values)
+      : ValueRange(ResultRange(values)) {}
+  ValueRange(ArrayRef<ValuePtr> values = llvm::None);
+  ValueRange(OperandRange values);
+  ValueRange(ResultRange values);
+
+  /// Returns the types of the values within this range.
+  using type_iterator = ValueTypeIterator<iterator>;
+  iterator_range<type_iterator> getTypes() const { return {begin(), end()}; }
+
+private:
+  /// The type representing the owner of this range. This is either a list of
+  /// values, operands, or results.
+  using OwnerT = PointerUnion<ValuePtr const *, OpOperand *, OpResultPtr>;
+
+  /// See `detail::indexed_accessor_range_base` for details.
+  static OwnerT offset_base(const OwnerT &owner, ptrdiff_t index);
+  /// See `detail::indexed_accessor_range_base` for details.
+  static ValuePtr dereference_iterator(const OwnerT &owner, ptrdiff_t index);
+
+  /// Allow access to `offset_base` and `dereference_iterator`.
+  friend RangeBaseT;
+};
 } // end namespace mlir
 
 namespace llvm {

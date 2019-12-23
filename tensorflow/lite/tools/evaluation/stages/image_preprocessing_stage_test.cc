@@ -114,9 +114,9 @@ TEST(ImagePreprocessingStage, TestImagePreprocessingFloat) {
   // These values were verified by running entire image classification pipeline
   // & ensuring output is accurate. We test 3 values, one for each of R/G/B
   // channels.
-  EXPECT_FLOAT_EQ(preprocessed_image_ptr[0], -0.882353);
-  EXPECT_FLOAT_EQ(preprocessed_image_ptr[1], -0.89019614);
-  EXPECT_FLOAT_EQ(preprocessed_image_ptr[2], -0.78039223);
+  EXPECT_FLOAT_EQ(preprocessed_image_ptr[0], -0.74901962);
+  EXPECT_FLOAT_EQ(preprocessed_image_ptr[1], -0.74901962);
+  EXPECT_FLOAT_EQ(preprocessed_image_ptr[2], -0.68627453);
   EXPECT_EQ(metrics.num_runs(), 1);
   const auto& last_latency =
       metrics.process_metrics().total_latency().last_us();
@@ -192,9 +192,9 @@ TEST(ImagePreprocessingStage, TestImagePreprocessingUInt8Quantized) {
   // These values were verified by running entire image classification pipeline
   // & ensuring output is accurate. We test 3 values, one for each of R/G/B
   // channels.
-  EXPECT_EQ(preprocessed_image_ptr[0], 15);
-  EXPECT_EQ(preprocessed_image_ptr[1], 14);
-  EXPECT_EQ(preprocessed_image_ptr[2], 28);
+  EXPECT_EQ(preprocessed_image_ptr[0], 32);
+  EXPECT_EQ(preprocessed_image_ptr[1], 32);
+  EXPECT_EQ(preprocessed_image_ptr[2], 40);
   EXPECT_EQ(metrics.num_runs(), 1);
   const auto& last_latency =
       metrics.process_metrics().total_latency().last_us();
@@ -229,9 +229,9 @@ TEST(ImagePreprocessingStage, TestImagePreprocessingInt8Quantized) {
   // These values were verified by running entire image classification pipeline
   // & ensuring output is accurate. We test 3 values, one for each of R/G/B
   // channels.
-  EXPECT_EQ(preprocessed_image_ptr[0], -113);
-  EXPECT_EQ(preprocessed_image_ptr[1], -114);
-  EXPECT_EQ(preprocessed_image_ptr[2], -100);
+  EXPECT_EQ(preprocessed_image_ptr[0], -96);
+  EXPECT_EQ(preprocessed_image_ptr[1], -96);
+  EXPECT_EQ(preprocessed_image_ptr[2], -88);
   EXPECT_EQ(metrics.num_runs(), 1);
   const auto& last_latency =
       metrics.process_metrics().total_latency().last_us();

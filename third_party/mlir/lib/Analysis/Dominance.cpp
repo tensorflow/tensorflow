@@ -45,7 +45,7 @@ void DominanceInfoBase<IsPostDom>::recalculate(Operation *op) {
       // Don't compute dominance if the region is empty.
       if (region.empty())
         continue;
-      auto opDominance = llvm::make_unique<base>();
+      auto opDominance = std::make_unique<base>();
       opDominance->recalculate(region);
       dominanceInfos.try_emplace(&region, std::move(opDominance));
     }
@@ -115,7 +115,7 @@ bool DominanceInfo::properlyDominates(Operation *a, Operation *b) {
     return a->isBeforeInBlock(b);
 
   // Traverse up b's hierarchy to check if b's block is contained in a's.
-  if (auto *bAncestor = aBlock->findAncestorInstInBlock(*b)) {
+  if (auto *bAncestor = aBlock->findAncestorOpInBlock(*b)) {
     // Since we already know that aBlock != bBlock, here bAncestor != b.
     // a and bAncestor are in the same block; check if 'a' dominates
     // bAncestor.
@@ -127,13 +127,29 @@ bool DominanceInfo::properlyDominates(Operation *a, Operation *b) {
 }
 
 /// Return true if value A properly dominates operation B.
-bool DominanceInfo::properlyDominates(Value *a, Operation *b) {
-  if (auto *aInst = a->getDefiningOp())
-    return properlyDominates(aInst, b);
+bool DominanceInfo::properlyDominates(ValuePtr a, Operation *b) {
+  if (auto *aOp = a->getDefiningOp()) {
+    // The values defined by an operation do *not* dominate any nested
+    // operations.
+    if (aOp->getParentRegion() != b->getParentRegion() && aOp->isAncestor(b))
+      return false;
+    return properlyDominates(aOp, b);
+  }
 
   // block arguments properly dominate all operations in their own block, so
   // we use a dominates check here, not a properlyDominates check.
   return dominates(cast<BlockArgument>(a)->getOwner(), b->getBlock());
+}
+
+DominanceInfoNode *DominanceInfo::getNode(Block *a) {
+  auto *region = a->getParent();
+  assert(dominanceInfos.count(region) != 0);
+  return dominanceInfos[region]->getNode(a);
+}
+
+void DominanceInfo::updateDFSNumbers() {
+  for (auto &iter : dominanceInfos)
+    iter.second->updateDFSNumbers();
 }
 
 //===----------------------------------------------------------------------===//
@@ -153,7 +169,7 @@ bool PostDominanceInfo::properlyPostDominates(Operation *a, Operation *b) {
     return b->isBeforeInBlock(a);
 
   // Traverse up b's hierarchy to check if b's block is contained in a's.
-  if (auto *bAncestor = a->getBlock()->findAncestorInstInBlock(*b))
+  if (auto *bAncestor = a->getBlock()->findAncestorOpInBlock(*b))
     // Since we already know that aBlock != bBlock, here bAncestor != b.
     // a and bAncestor are in the same block; check if 'a' postdominates
     // bAncestor.

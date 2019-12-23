@@ -25,15 +25,16 @@ using shape_inference::ShapeHandle;
 // CTC is Connectionist Temporal Classification.  See util/ctc/ for details.
 
 REGISTER_OP("CTCLoss")
-    .Input("inputs: float")
+    .Input("inputs: T")
     .Input("labels_indices: int64")
     .Input("labels_values: int32")
     .Input("sequence_length: int32")
     .Attr("preprocess_collapse_repeated: bool = false")
     .Attr("ctc_merge_repeated: bool = true")
     .Attr("ignore_longer_outputs_than_inputs: bool = false")
-    .Output("loss: float")
-    .Output("gradient: float")
+    .Output("loss: T")
+    .Output("gradient: T")
+    .Attr("T: {float, double} = DT_FLOAT")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle inputs;
       ShapeHandle labels_indices;
@@ -62,13 +63,14 @@ REGISTER_OP("CTCLoss")
     });
 
 REGISTER_OP("CTCGreedyDecoder")
-    .Input("inputs: float")
+    .Input("inputs: T")
     .Input("sequence_length: int32")
     .Attr("merge_repeated: bool = false")
     .Output("decoded_indices: int64")
     .Output("decoded_values: int64")
     .Output("decoded_shape: int64")
-    .Output("log_probability: float")
+    .Output("log_probability: T")
+    .Attr("T: {float, double} = DT_FLOAT")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle inputs;
       ShapeHandle sequence_length;
@@ -90,7 +92,7 @@ REGISTER_OP("CTCGreedyDecoder")
     });
 
 REGISTER_OP("CTCBeamSearchDecoder")
-    .Input("inputs: float")
+    .Input("inputs: T")
     .Input("sequence_length: int32")
     .Attr("beam_width: int >= 1")
     .Attr("top_paths: int >= 1")
@@ -98,7 +100,8 @@ REGISTER_OP("CTCBeamSearchDecoder")
     .Output("decoded_indices: top_paths * int64")
     .Output("decoded_values: top_paths * int64")
     .Output("decoded_shape: top_paths * int64")
-    .Output("log_probability: float")
+    .Output("log_probability: T")
+    .Attr("T: {float, double} = DT_FLOAT")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle inputs;
       ShapeHandle sequence_length;

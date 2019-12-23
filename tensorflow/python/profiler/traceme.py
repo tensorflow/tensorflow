@@ -23,17 +23,27 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python import pywrap_tensorflow
+import six
+
+from tensorflow.python.profiler.internal import _pywrap_traceme
 
 
 class TraceMe(object):
   """Context manager that generates a trace event in the profiler."""
 
-  def __init__(self, name):
-    self._traceme = pywrap_tensorflow.PythonTraceMe(name)
+  def __init__(self, name, **kwargs):
+    if _pywrap_traceme.TraceMe.IsEnabled():
+      if kwargs:
+        name += '#' + ','.join(key + '=' + str(value)
+                               for key, value in six.iteritems(kwargs)) + '#'
+      self._traceme = _pywrap_traceme.TraceMe(name)
+    else:
+      self._traceme = None
 
   def __enter__(self):
-    self._traceme.Enter()
+    if self._traceme:
+      self._traceme.Enter()
 
   def __exit__(self, exc_type, exc_val, exc_tb):
-    self._traceme.Exit()
+    if self._traceme:
+      self._traceme.Exit()

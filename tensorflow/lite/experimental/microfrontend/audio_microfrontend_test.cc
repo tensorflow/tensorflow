@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 // Unit test for TFLite Micro Frontend op.
 
+#include "tensorflow/lite/experimental/microfrontend/audio_microfrontend.h"
+
 #include <memory>
 #include <vector>
 
@@ -27,9 +29,6 @@ limitations under the License.
 namespace tflite {
 namespace ops {
 namespace custom {
-
-TfLiteRegistration* Register_AUDIO_MICROFRONTEND();
-
 namespace {
 
 using ::testing::ElementsAreArray;

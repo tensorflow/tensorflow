@@ -27,6 +27,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine.base_layer import Layer
+from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
@@ -46,6 +47,8 @@ class BaseDenseAttention(Layer):
     causal: Boolean. Set to `True` for decoder self-attention. Adds a mask such
       that position `i` cannot attend to positions `j > i`. This prevents the
       flow of information from the future towards the past.
+    dropout: Float between 0 and 1. Fraction of the units to drop for the
+      attention scores.
 
   Call Arguments:
 
@@ -62,15 +65,18 @@ class BaseDenseAttention(Layer):
       * value_mask: A boolean mask `Tensor` of shape `[batch_size, Tv]`.
         If given, will apply the mask such that values at positions where
         `mask==False` do not contribute to the result.
+    training: Python boolean indicating whether the layer should behave in
+      training mode (adding dropout) or in inference mode (no dropout).
 
   Output shape:
 
     Attention outputs of shape `[batch_size, Tq, dim]`.
   """
 
-  def __init__(self, causal=False, **kwargs):
+  def __init__(self, causal=False, dropout=0.0, **kwargs):
     super(BaseDenseAttention, self).__init__(**kwargs)
     self.causal = causal
+    self.dropout = dropout
     self.supports_masking = True
 
   def _calculate_scores(self, query, key):
@@ -79,12 +85,13 @@ class BaseDenseAttention(Layer):
     Args:
       query: Query tensor of shape `[batch_size, Tq, dim]`.
       key: Key tensor of shape `[batch_size, Tv, dim]`.
+
     Returns:
       Tensor of shape `[batch_size, Tq, Tv]`.
     """
     return NotImplementedError
 
-  def _apply_scores(self, scores, value, scores_mask=None):
+  def _apply_scores(self, scores, value, scores_mask=None, training=None):
     """Applies attention scores to the given value tensor.
 
     To use this method in your attention layer, follow the steps:
@@ -103,6 +110,8 @@ class BaseDenseAttention(Layer):
         `[batch_size, Tq, Tv]`. If given, scores at positions where
         `scores_mask==False` do not contribute to the result. It must contain
         at least one `True` value in each line along the last dimension.
+      training: Python boolean indicating whether the layer should behave in
+        training mode (adding dropout) or in inference mode (no dropout).
 
     Returns:
       Tensor of shape `[batch_size, Tq, dim]`.
@@ -111,11 +120,21 @@ class BaseDenseAttention(Layer):
       padding_mask = math_ops.logical_not(scores_mask)
       # Bias so padding positions do not contribute to attention distribution.
       scores -= 1.e9 * math_ops.cast(padding_mask, dtype=K.floatx())
-    attention_distribution = nn.softmax(scores)
-    return math_ops.matmul(attention_distribution, value)
+    if training is None:
+      training = K.learning_phase()
+    weights = nn.softmax(scores)
+
+    def dropped_weights():
+      return nn.dropout(weights, rate=self.dropout)
+
+    weights = tf_utils.smart_cond(
+        training,
+        dropped_weights,
+        lambda: array_ops.identity(weights))
+    return math_ops.matmul(weights, value)
 
   # TODO(b/125916026): Consider exposing a __call__ method with named args.
-  def call(self, inputs, mask=None):
+  def call(self, inputs, mask=None, training=None):
     self._validate_call_args(inputs=inputs, mask=mask)
     q = inputs[0]
     v = inputs[1]
@@ -139,7 +158,8 @@ class BaseDenseAttention(Layer):
     else:
       causal_mask = None
     scores_mask = _merge_masks(v_mask, causal_mask)
-    result = self._apply_scores(scores=scores, value=v, scores_mask=scores_mask)
+    result = self._apply_scores(
+        scores=scores, value=v, scores_mask=scores_mask, training=training)
     if q_mask is not None:
       # Mask of shape [batch_size, Tq, 1].
       q_mask = array_ops.expand_dims(q_mask, axis=-1)
@@ -177,6 +197,14 @@ class BaseDenseAttention(Layer):
             '{} layer mask must be a list of length 2, namely [query_mask, '
             'value_mask]. Given length: {}'.format(class_name, len(mask)))
 
+  def get_config(self):
+    config = {
+        'causal': self.causal,
+        'dropout': self.dropout,
+    }
+    base_config = super(BaseDenseAttention, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
+
 
 @keras_export('keras.layers.Attention')
 class Attention(BaseDenseAttention):
@@ -191,7 +219,7 @@ class Attention(BaseDenseAttention):
   2. Use scores to calculate a distribution with shape
      `[batch_size, Tq, Tv]`: `distribution = tf.nn.softmax(scores)`.
   3. Use `distribution` to create a linear combination of `value` with
-     shape `batch_size, Tq, dim]`:
+     shape `[batch_size, Tq, dim]`:
      `return tf.matmul(distribution, value)`.
 
   Args:
@@ -200,6 +228,8 @@ class Attention(BaseDenseAttention):
     causal: Boolean. Set to `True` for decoder self-attention. Adds a mask such
       that position `i` cannot attend to positions `j > i`. This prevents the
       flow of information from the future towards the past.
+    dropout: Float between 0 and 1. Fraction of the units to drop for the
+      attention scores.
 
   Call Arguments:
 
@@ -216,6 +246,8 @@ class Attention(BaseDenseAttention):
       * value_mask: A boolean mask `Tensor` of shape `[batch_size, Tv]`.
         If given, will apply the mask such that values at positions where
         `mask==False` do not contribute to the result.
+    training: Python boolean indicating whether the layer should behave in
+      training mode (adding dropout) or in inference mode (no dropout).
 
   Output shape:
 
@@ -238,7 +270,7 @@ class Attention(BaseDenseAttention):
   # Query embeddings of shape [batch_size, Tq, dimension].
   query_embeddings = token_embedding(query_input)
   # Value embeddings of shape [batch_size, Tv, dimension].
-  value_embeddings = token_embedding(query_input)
+  value_embeddings = token_embedding(value_input)
 
   # CNN layer.
   cnn_layer = tf.keras.layers.Conv1D(
@@ -302,6 +334,11 @@ class Attention(BaseDenseAttention):
       scores *= self.scale
     return scores
 
+  def get_config(self):
+    config = {'use_scale': self.use_scale}
+    base_config = super(Attention, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
+
 
 @keras_export('keras.layers.AdditiveAttention')
 class AdditiveAttention(BaseDenseAttention):
@@ -326,6 +363,8 @@ class AdditiveAttention(BaseDenseAttention):
     causal: Boolean. Set to `True` for decoder self-attention. Adds a mask such
       that position `i` cannot attend to positions `j > i`. This prevents the
       flow of information from the future towards the past.
+    dropout: Float between 0 and 1. Fraction of the units to drop for the
+      attention scores.
 
   Call Arguments:
 
@@ -342,6 +381,8 @@ class AdditiveAttention(BaseDenseAttention):
       * value_mask: A boolean mask `Tensor` of shape `[batch_size, Tv]`.
         If given, will apply the mask such that values at positions where
         `mask==False` do not contribute to the result.
+    training: Python boolean indicating whether the layer should behave in
+      training mode (adding dropout) or in inference mode (no dropout).
 
   Output shape:
 
@@ -438,6 +479,11 @@ class AdditiveAttention(BaseDenseAttention):
       scale = 1.
     return math_ops.reduce_sum(
         scale * math_ops.tanh(q_reshaped + k_reshaped), axis=-1)
+
+  def get_config(self):
+    config = {'use_scale': self.use_scale}
+    base_config = super(AdditiveAttention, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
 
 
 def _lower_triangular_mask(shape):

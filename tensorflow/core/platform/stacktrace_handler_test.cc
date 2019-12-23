@@ -24,8 +24,7 @@ namespace {
 
 TEST(StacktraceHandlerTest, GeneratesStacktrace) {
   // Just make sure we can detect one of the calls in testing stack.
-  EXPECT_DEATH(raise(SIGABRT),
-               "testing::internal::UnitTestImpl::RunAllTests()");
+  EXPECT_DEATH(raise(SIGABRT), "testing::internal::UnitTestImpl::RunAllTests");
 }
 
 }  // namespace

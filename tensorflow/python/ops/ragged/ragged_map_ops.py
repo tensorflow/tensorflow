@@ -163,7 +163,7 @@ def map_fn(fn,
     elems=ragged.constant([[1, 2, 3], [4, 5], [6, 7]], dtype=tf.int64)
     out = map_fn(fn=lambda x: x+1, elems,
       dtype=ragged.RaggedTensorType(type=tf.int64, ragged_rank=0))
-    # out = ragged.constant([[2, 3, 4], [5, 6], [7, 8]])
+    # out = tf.ragged.constant([[2, 3, 4], [5, 6], [7, 8]])
     ```
   """
   if not callable(fn):

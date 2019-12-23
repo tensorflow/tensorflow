@@ -36,7 +36,7 @@ template_rule(
 # be set to NA.
 # TODO(agramesh1) Automatically get the version numbers from CMakeLists.txt.
 # TODO(bhavanis): MKL-DNN minor version needs to be updated for MKL-DNN v1.x.
-# The current version numbers will work only if MKL-DNN v0.20 is used.
+# The current version numbers will work only if MKL-DNN v0.21 is used.
 
 template_rule(
     name = "mkldnn_version_h",
@@ -44,8 +44,8 @@ template_rule(
     out = "include/mkldnn_version.h",
     substitutions = {
         "@MKLDNN_VERSION_MAJOR@": "0",
-        "@MKLDNN_VERSION_MINOR@": "20",
-        "@MKLDNN_VERSION_PATCH@": "0",
+        "@MKLDNN_VERSION_MINOR@": "21",
+        "@MKLDNN_VERSION_PATCH@": "2",
         "@MKLDNN_VERSION_HASH@": "N/A",
     },
 )

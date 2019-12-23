@@ -22,12 +22,12 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/Support/Debug.h"
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
 #include "mlir/IR/Operation.h"  // TF:local_config_mlir
 #include "mlir/IR/Value.h"  // TF:local_config_mlir
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
 #include "mlir/Pass/PassRegistry.h"  // TF:local_config_mlir
-#include "mlir/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/Support/LLVM.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/control_flow_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
@@ -68,8 +68,8 @@ static bool HasOnlyTFControlOperations(FuncOp function) {
 tf_executor::IslandOp ControlToExecutorDialectConversion::CreateIslandForOp(
     Operation *op, OpBuilder *builder) {
   // Create a new region for the tf_executor.island body
-  SmallVector<Value *, 8> operands;
-  for (Value *operand : op->getOperands())
+  SmallVector<ValuePtr, 8> operands;
+  for (ValuePtr operand : op->getOperands())
     if (operand->getType().isa<tf_executor::ControlType>())
       operands.push_back(operand);
   SmallVector<Type, 8> types;
@@ -118,8 +118,8 @@ void ControlToExecutorDialectConversion::runOnFunction() {
       // This is the return of the function, we will create a fetch in the graph
       // matching the operands of the returns. The return is then updated to
       // take as operands the results of the tf_executor.graph operation.
-      SmallVector<Value *, 8> ret_vals;
-      for (Value *operand : op.getOperands()) ret_vals.push_back(operand);
+      SmallVector<ValuePtr, 8> ret_vals;
+      for (ValuePtr operand : op.getOperands()) ret_vals.push_back(operand);
       for (auto &graph_result : llvm::enumerate(graph_op.getResults()))
         op.setOperand(graph_result.index(), graph_result.value());
       builder.create<tf_executor::FetchOp>(getFunction().getLoc(), ret_vals);
@@ -128,7 +128,7 @@ void ControlToExecutorDialectConversion::runOnFunction() {
     assert(IsUnderscoredTFOp(&op) && "Expected only _tf operations");
 
     // The operands and types arrays are used to create the tf_executor ops.
-    SmallVector<Value *, 8> operands;
+    SmallVector<ValuePtr, 8> operands;
     operands.append(op.getOperands().begin(), op.getOperands().end());
     SmallVector<Type, 8> types;
     for (Type result_type : op.getResultTypes()) {
@@ -201,7 +201,7 @@ void ControlToExecutorDialectConversion::runOnFunction() {
 
       // Only the non-control operands are carried over, the island is handling
       // the control input.
-      for (Value *operand : op.getOperands())
+      for (ValuePtr operand : op.getOperands())
         if (!operand->getType().isa<tf_executor::ControlType>())
           result.operands.push_back(operand);
 
@@ -223,7 +223,7 @@ void ControlToExecutorDialectConversion::runOnFunction() {
       inner_op->setAttrs(op.getAttrList());
 
       // Add the terminator for the island
-      SmallVector<Value *, 8> ret_vals(inner_op->getResults());
+      SmallVector<ValuePtr, 8> ret_vals(inner_op->getResults());
       island_builder.create<tf_executor::YieldOp>(loc, ret_vals);
     }
 
@@ -237,7 +237,7 @@ void ControlToExecutorDialectConversion::runOnFunction() {
   }
 }
 
-FunctionPassBase *CreateTFControlToExecutorDialectConversion() {
+OpPassBase<FuncOp> *CreateTFControlToExecutorDialectConversion() {
   return new ControlToExecutorDialectConversion();
 }
 

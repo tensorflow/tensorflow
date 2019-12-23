@@ -12,16 +12,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <cassert>
-#include <cmath>
-#include <cstdio>
-#include <cstdlib>
-#include <iostream>
-#include <limits>
+#include <cstddef>
+#include <cstdint>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
-#include "tensorflow/lite/kernels/activation_functor.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/kernel_utils.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -290,21 +285,25 @@ TfLiteStatus EvalFloat(const TfLiteTensor* input, const TfLiteTensor* bw_input,
   const int aux_input_size = (aux_input) ? aux_input->dims->data[2] : 0;
 
   const int fw_num_units = fw_input_weights->dims->data[0];
-  const float* fw_bias_ptr = fw_bias->data.f;
-  const float* fw_input_weights_ptr = fw_input_weights->data.f;
-  const float* fw_recurrent_weights_ptr = fw_recurrent_weights->data.f;
+  const float* fw_bias_ptr = GetTensorData<float>(fw_bias);
+  const float* fw_input_weights_ptr = GetTensorData<float>(fw_input_weights);
+  const float* fw_recurrent_weights_ptr =
+      GetTensorData<float>(fw_recurrent_weights);
 
   const int bw_num_units = bw_input_weights->dims->data[0];
-  const float* bw_bias_ptr = bw_bias->data.f;
-  const float* bw_input_weights_ptr = bw_input_weights->data.f;
-  const float* bw_recurrent_weights_ptr = bw_recurrent_weights->data.f;
+  const float* bw_bias_ptr = GetTensorData<float>(bw_bias);
+  const float* bw_input_weights_ptr = GetTensorData<float>(bw_input_weights);
+  const float* bw_recurrent_weights_ptr =
+      GetTensorData<float>(bw_recurrent_weights);
 
-  const float* fw_aux_input_weights_ptr = (fw_aux_input_weights != nullptr)
-                                              ? fw_aux_input_weights->data.f
-                                              : nullptr;
-  const float* bw_aux_input_weights_ptr = (bw_aux_input_weights != nullptr)
-                                              ? bw_aux_input_weights->data.f
-                                              : nullptr;
+  const float* fw_aux_input_weights_ptr =
+      (fw_aux_input_weights != nullptr)
+          ? GetTensorData<float>(fw_aux_input_weights)
+          : nullptr;
+  const float* bw_aux_input_weights_ptr =
+      (bw_aux_input_weights != nullptr)
+          ? GetTensorData<float>(bw_aux_input_weights)
+          : nullptr;
 
   const int fw_output_step =
       params->merge_outputs ? fw_num_units + bw_num_units : fw_num_units;
@@ -312,16 +311,16 @@ TfLiteStatus EvalFloat(const TfLiteTensor* input, const TfLiteTensor* bw_input,
       params->merge_outputs ? fw_num_units + bw_num_units : bw_num_units;
   if (time_major) {
     // Forward cell.
-    float* fw_hidden_state_ptr_batch = fw_hidden_state->data.f;
+    float* fw_hidden_state_ptr_batch = GetTensorData<float>(fw_hidden_state);
     for (int s = 0; s < max_time; s++) {
       const float* input_ptr_batch =
-          input->data.f + s * input_size * batch_size;
+          GetTensorData<float>(input) + s * input_size * batch_size;
       const float* aux_input_ptr_batch =
           (aux_input != nullptr)
-              ? aux_input->data.f + s * input_size * batch_size
+              ? GetTensorData<float>(aux_input) + s * input_size * batch_size
               : nullptr;
       float* output_ptr_batch =
-          fw_output->data.f + s * fw_output_step * batch_size;
+          GetTensorData<float>(fw_output) + s * fw_output_step * batch_size;
 
       kernel_utils::RnnBatchStep(
           input_ptr_batch, fw_input_weights_ptr, aux_input_ptr_batch,
@@ -330,17 +329,18 @@ TfLiteStatus EvalFloat(const TfLiteTensor* input, const TfLiteTensor* bw_input,
           params->activation, fw_hidden_state_ptr_batch, output_ptr_batch);
     }
     // Backward cell.
-    float* bw_hidden_state_ptr_batch = bw_hidden_state->data.f;
+    float* bw_hidden_state_ptr_batch = GetTensorData<float>(bw_hidden_state);
     for (int s = max_time - 1; s >= 0; s--) {
       const float* input_ptr_batch =
-          bw_input->data.f + s * input_size * batch_size;
+          GetTensorData<float>(bw_input) + s * input_size * batch_size;
       const float* aux_input_ptr_batch =
           (aux_input != nullptr)
-              ? aux_input->data.f + s * input_size * batch_size
+              ? GetTensorData<float>(aux_input) + s * input_size * batch_size
               : nullptr;
       float* output_ptr_batch =
-          (params->merge_outputs ? fw_output->data.f + fw_num_units
-                                 : bw_output->data.f) +
+          (params->merge_outputs
+               ? GetTensorData<float>(fw_output) + fw_num_units
+               : GetTensorData<float>(bw_output)) +
           s * bw_output_step * batch_size;
 
       kernel_utils::RnnBatchStep(
@@ -353,16 +353,17 @@ TfLiteStatus EvalFloat(const TfLiteTensor* input, const TfLiteTensor* bw_input,
     for (int b = 0; b < batch_size; b++) {
       // Forward cell.
       float* fw_hidden_state_ptr_batch =
-          fw_hidden_state->data.f + b * fw_num_units;
+          GetTensorData<float>(fw_hidden_state) + b * fw_num_units;
       float* fw_output_offset =
-          fw_output->data.f + b * fw_output_step * max_time;
+          GetTensorData<float>(fw_output) + b * fw_output_step * max_time;
       for (int s = 0; s < max_time; s++) {
-        const float* input_ptr_batch =
-            input->data.f + b * input_size * max_time + s * input_size;
+        const float* input_ptr_batch = GetTensorData<float>(input) +
+                                       b * input_size * max_time +
+                                       s * input_size;
         const float* aux_input_ptr_batch =
             (aux_input != nullptr)
-                ? aux_input->data.f + b * aux_input_size * max_time +
-                      s * aux_input_size
+                ? GetTensorData<float>(aux_input) +
+                      b * aux_input_size * max_time + s * aux_input_size
                 : nullptr;
         float* output_ptr_batch = fw_output_offset + s * fw_output_step;
 
@@ -375,18 +376,20 @@ TfLiteStatus EvalFloat(const TfLiteTensor* input, const TfLiteTensor* bw_input,
       }
       // Backward cell.
       float* bw_hidden_state_ptr_batch =
-          bw_hidden_state->data.f + b * bw_num_units;
+          GetTensorData<float>(bw_hidden_state) + b * bw_num_units;
       float* bw_output_offset =
           params->merge_outputs
-              ? fw_output->data.f + b * bw_output_step * max_time + fw_num_units
-              : bw_output->data.f + b * bw_output_step * max_time;
+              ? GetTensorData<float>(fw_output) +
+                    b * bw_output_step * max_time + fw_num_units
+              : GetTensorData<float>(bw_output) + b * bw_output_step * max_time;
       for (int s = max_time - 1; s >= 0; s--) {
-        const float* input_ptr_batch =
-            input->data.f + b * input_size * max_time + s * input_size;
+        const float* input_ptr_batch = GetTensorData<float>(input) +
+                                       b * input_size * max_time +
+                                       s * input_size;
         const float* aux_input_ptr_batch =
             (aux_input != nullptr)
-                ? aux_input->data.f + b * aux_input_size * max_time +
-                      s * aux_input_size
+                ? GetTensorData<float>(aux_input) +
+                      b * aux_input_size * max_time + s * aux_input_size
                 : nullptr;
         float* output_ptr_batch = bw_output_offset + s * bw_output_step;
 
@@ -425,7 +428,7 @@ TfLiteStatus EvalHybrid(
   const int aux_input_size = (aux_input) ? aux_input->dims->data[2] : 0;
 
   const int fw_num_units = fw_input_weights->dims->data[0];
-  const float* fw_bias_ptr = fw_bias->data.f;
+  const float* fw_bias_ptr = GetTensorData<float>(fw_bias);
   const int8_t* fw_input_weights_ptr = GetTensorData<int8_t>(fw_input_weights);
   float fw_input_weights_scale = fw_input_weights->params.scale;
   const int8_t* fw_recurrent_weights_ptr =
@@ -433,7 +436,7 @@ TfLiteStatus EvalHybrid(
   float fw_recurrent_weights_scale = fw_recurrent_weights->params.scale;
 
   const int bw_num_units = bw_input_weights->dims->data[0];
-  const float* bw_bias_ptr = bw_bias->data.f;
+  const float* bw_bias_ptr = GetTensorData<float>(bw_bias);
   const int8_t* bw_input_weights_ptr = GetTensorData<int8_t>(bw_input_weights);
   float bw_input_weights_scale = bw_input_weights->params.scale;
   const int8_t* bw_recurrent_weights_ptr =
@@ -460,7 +463,7 @@ TfLiteStatus EvalHybrid(
       GetTensorData<int8_t>(fw_hidden_state_quantized);
   int8_t* bw_quantized_hidden_state_ptr =
       GetTensorData<int8_t>(bw_hidden_state_quantized);
-  float* scaling_factors_ptr = scaling_factors->data.f;
+  float* scaling_factors_ptr = GetTensorData<float>(scaling_factors);
 
   const int fw_output_step =
       params->merge_outputs ? fw_num_units + bw_num_units : fw_num_units;
@@ -469,16 +472,16 @@ TfLiteStatus EvalHybrid(
   if (time_major) {
     for (int t = 0; t < max_time; t++) {
       // Forward cell.
-      float* fw_hidden_state_ptr_batch = fw_hidden_state->data.f;
+      float* fw_hidden_state_ptr_batch = GetTensorData<float>(fw_hidden_state);
       for (int s = 0; s < max_time; s++) {
         const float* input_ptr_batch =
-            input->data.f + s * input_size * batch_size;
+            GetTensorData<float>(input) + s * input_size * batch_size;
         const float* aux_input_ptr_batch =
             (aux_input != nullptr)
-                ? aux_input->data.f + s * input_size * batch_size
+                ? GetTensorData<float>(aux_input) + s * input_size * batch_size
                 : nullptr;
         float* output_ptr_batch =
-            fw_output->data.f + s * fw_output_step * batch_size;
+            GetTensorData<float>(fw_output) + s * fw_output_step * batch_size;
 
         kernel_utils::RnnBatchStep(
             input_ptr_batch, fw_input_weights_ptr, fw_input_weights_scale,
@@ -491,17 +494,18 @@ TfLiteStatus EvalHybrid(
             fw_hidden_state_ptr_batch, output_ptr_batch);
       }
       // Backward cell.
-      float* bw_hidden_state_ptr_batch = bw_hidden_state->data.f;
+      float* bw_hidden_state_ptr_batch = GetTensorData<float>(bw_hidden_state);
       for (int s = max_time - 1; s >= 0; s--) {
         const float* input_ptr_batch =
-            bw_input->data.f + s * input_size * batch_size;
+            GetTensorData<float>(bw_input) + s * input_size * batch_size;
         const float* aux_input_ptr_batch =
             (aux_input != nullptr)
-                ? aux_input->data.f + s * input_size * batch_size
+                ? GetTensorData<float>(aux_input) + s * input_size * batch_size
                 : nullptr;
         float* output_ptr_batch =
-            (params->merge_outputs ? fw_output->data.f + fw_num_units
-                                   : bw_output->data.f) +
+            (params->merge_outputs
+                 ? GetTensorData<float>(fw_output) + fw_num_units
+                 : GetTensorData<float>(bw_output)) +
             s * bw_output_step * batch_size;
 
         kernel_utils::RnnBatchStep(
@@ -519,15 +523,17 @@ TfLiteStatus EvalHybrid(
     for (int b = 0; b < batch_size; b++) {
       // Forward cell.
       float* fw_hidden_state_ptr_batch =
-          fw_hidden_state->data.f + b * fw_num_units;
+          GetTensorData<float>(fw_hidden_state) + b * fw_num_units;
       float* fw_output_offset =
-          fw_output->data.f + b * fw_output_step * max_time;
+          GetTensorData<float>(fw_output) + b * fw_output_step * max_time;
       for (int s = 0; s < max_time; s++) {
-        const float* input_ptr_batch =
-            input->data.f + b * input_size * max_time + s * input_size;
+        const float* input_ptr_batch = GetTensorData<float>(input) +
+                                       b * input_size * max_time +
+                                       s * input_size;
         const float* aux_input_ptr_batch =
             (aux_input != nullptr)
-                ? aux_input->data.f + b * input_size * max_time + s * input_size
+                ? GetTensorData<float>(aux_input) + b * input_size * max_time +
+                      s * input_size
                 : nullptr;
         float* output_ptr_batch = fw_output_offset + s * fw_output_step;
 
@@ -543,17 +549,20 @@ TfLiteStatus EvalHybrid(
       }
       // Backward cell.
       float* bw_hidden_state_ptr_batch =
-          bw_hidden_state->data.f + b * bw_num_units;
+          GetTensorData<float>(bw_hidden_state) + b * bw_num_units;
       float* bw_output_offset =
           params->merge_outputs
-              ? fw_output->data.f + b * bw_output_step * max_time + fw_num_units
-              : bw_output->data.f + b * bw_output_step * max_time;
+              ? GetTensorData<float>(fw_output) +
+                    b * bw_output_step * max_time + fw_num_units
+              : GetTensorData<float>(bw_output) + b * bw_output_step * max_time;
       for (int s = max_time - 1; s >= 0; s--) {
-        const float* input_ptr_batch =
-            input->data.f + b * input_size * max_time + s * input_size;
+        const float* input_ptr_batch = GetTensorData<float>(input) +
+                                       b * input_size * max_time +
+                                       s * input_size;
         const float* aux_input_ptr_batch =
             (aux_input != nullptr)
-                ? aux_input->data.f + b * input_size * max_time + s * input_size
+                ? GetTensorData<float>(aux_input) + b * input_size * max_time +
+                      s * input_size
                 : nullptr;
         float* output_ptr_batch = bw_output_offset + s * bw_output_step;
 
@@ -598,8 +607,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   TfLiteTensor* fw_hidden_state =
       GetVariableInput(context, node, kFwHiddenStateTensor);
+  TF_LITE_ENSURE(context, fw_hidden_state != nullptr);
   TfLiteTensor* bw_hidden_state =
       GetVariableInput(context, node, kBwHiddenStateTensor);
+  TF_LITE_ENSURE(context, bw_hidden_state != nullptr);
 
   TfLiteTensor* fw_output = GetOutput(context, node, kFwOutputTensor);
   TfLiteTensor* bw_output = params->merge_outputs

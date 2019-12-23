@@ -61,7 +61,7 @@ xla::StatusOr<xla::XlaOp> BroadcastTo(xla::XlaOp input,
       }
 
       broadcast_dims.push_back(broadcast_shape.size());
-      if (*output_it == *input_it) {
+      if (*output_it == *input_it || *input_it == 1) {
         broadcast_shape.push_back(*output_it);
       } else if (*output_it != *input_it) {
         // Add dimensions [I, O/I], which we will later flatten to just

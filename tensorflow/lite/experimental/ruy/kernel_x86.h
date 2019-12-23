@@ -30,8 +30,9 @@ limitations under the License.
 
 namespace ruy {
 
-#if RUY_PLATFORM(AVX512) && RUY_OPT_ENABLED(RUY_OPT_ASM)
+#if RUY_PLATFORM(X86)
 void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params);
+void Kernel8bitAvx512SingleCol(const KernelParams8bit<16, 16>& params);
 
 template <typename DstScalar>
 struct Kernel<Path::kAvx512, std::int8_t, std::int8_t, DstScalar,
@@ -48,11 +49,16 @@ struct Kernel<Path::kAvx512, std::int8_t, std::int8_t, DstScalar,
     KernelParams8bit<LhsLayout::kCols, RhsLayout::kCols> params;
     MakeKernelParams8bit(lhs, rhs, spec, start_row, start_col, end_row, end_col,
                          dst, &params);
-    Kernel8bitAvx512(params);
+    if (dst->layout.cols == 1) {
+      Kernel8bitAvx512SingleCol(params);
+    } else {
+      Kernel8bitAvx512(params);
+    }
   }
 };
 
 void KernelFloatAvx512(const KernelParamsFloat<16, 16>& params);
+void KernelFloatAvx512SingleCol(const KernelParamsFloat<16, 16>& param);
 
 template <>
 struct Kernel<Path::kAvx512, float, float, float, BasicSpec<float, float>> {
@@ -66,10 +72,63 @@ struct Kernel<Path::kAvx512, float, float, float, BasicSpec<float, float>> {
     KernelParamsFloat<LhsLayout::kCols, RhsLayout::kCols> params;
     MakeKernelParamsFloat(lhs, rhs, spec, start_row, start_col, end_row,
                           end_col, dst, &params);
-    KernelFloatAvx512(params);
+    if (dst->layout.cols == 1) {
+      KernelFloatAvx512SingleCol(params);
+    } else {
+      KernelFloatAvx512(params);
+    }
   }
 };
-#endif  // RUY_PLATFORM(AVX512) && RUY_OPT_ENABLED(RUY_OPT_ASM)
+
+void Kernel8bitAvx2(const KernelParams8bit<8, 8>& params);
+void Kernel8bitAvx2SingleCol(const KernelParams8bit<8, 8>& params);
+
+template <typename DstScalar>
+struct Kernel<Path::kAvx2, std::int8_t, std::int8_t, DstScalar,
+              BasicSpec<std::int32_t, DstScalar>> {
+  Tuning tuning = Tuning::kAuto;
+  using LhsLayout = FixedKernelLayout<Order::kColMajor, 4, 8>;
+  using RhsLayout = FixedKernelLayout<Order::kColMajor, 4, 8>;
+  explicit Kernel(Tuning tuning_) : tuning(tuning_) {}
+  void Run(const PackedMatrix<std::int8_t>& lhs,
+           const PackedMatrix<std::int8_t>& rhs,
+           const BasicSpec<std::int32_t, DstScalar>& spec, int start_row,
+           int start_col, int end_row, int end_col,
+           Matrix<DstScalar>* dst) const {
+    KernelParams8bit<LhsLayout::kCols, RhsLayout::kCols> params;
+    MakeKernelParams8bit(lhs, rhs, spec, start_row, start_col, end_row, end_col,
+                         dst, &params);
+    if (dst->layout.cols == 1) {
+      Kernel8bitAvx2SingleCol(params);
+    } else {
+      Kernel8bitAvx2(params);
+    }
+  }
+};
+
+void KernelFloatAvx2(const KernelParamsFloat<8, 8>& params);
+void KernelFloatAvx2SingleCol(const KernelParamsFloat<8, 8>& params);
+
+template <>
+struct Kernel<Path::kAvx2, float, float, float, BasicSpec<float, float>> {
+  Tuning tuning = Tuning::kAuto;
+  using LhsLayout = FixedKernelLayout<Order::kRowMajor, 1, 8>;
+  using RhsLayout = FixedKernelLayout<Order::kRowMajor, 1, 8>;
+  explicit Kernel(Tuning tuning_) : tuning(tuning_) {}
+  void Run(const PackedMatrix<float>& lhs, const PackedMatrix<float>& rhs,
+           const BasicSpec<float, float>& spec, int start_row, int start_col,
+           int end_row, int end_col, Matrix<float>* dst) const {
+    KernelParamsFloat<LhsLayout::kCols, RhsLayout::kCols> params;
+    MakeKernelParamsFloat(lhs, rhs, spec, start_row, start_col, end_row,
+                          end_col, dst, &params);
+    if (dst->layout.cols == 1) {
+      KernelFloatAvx2SingleCol(params);
+    } else {
+      KernelFloatAvx2(params);
+    }
+  }
+};
+#endif  // RUY_PLATFORM(X86)
 
 }  // namespace ruy
 

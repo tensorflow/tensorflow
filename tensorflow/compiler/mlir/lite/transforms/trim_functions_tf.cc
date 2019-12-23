@@ -20,13 +20,13 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/Support/CommandLine.h"
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
 #include "mlir/IR/Identifier.h"  // TF:local_config_mlir
 #include "mlir/IR/Location.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/SymbolTable.h"  // TF:local_config_mlir
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
-#include "mlir/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 
 // The cmd line flag to specify the whitelist of functions. Rest are trimmed
@@ -34,7 +34,7 @@ limitations under the License.
 // NOLINTNEXTLINE
 static llvm::cl::list<std::string> trim_funcs_whitelist(
     "tfl-trim-funcs-whitelist", llvm::cl::value_desc("list"),
-    llvm::cl::desc("comma seprarated list of whitelisted functions. The first "
+    llvm::cl::desc("comma separated list of whitelisted functions. The first "
                    "function specified will be used as main."),
     llvm::cl::CommaSeparated);
 
@@ -105,13 +105,13 @@ void TrimFunctionsPass::Verify() {
   SymbolTable symbol_table = SymbolTable(getModule());
   llvm::SetVector<FuncOp> reachable_funcs;
   for (auto func : getModule().getOps<FuncOp>()) {
-    func.walk<CallOp>([&](CallOp op) {
-      if (!symbol_table.lookup<FuncOp>(op.getCallee())) {
-        getModule().emitError()
-            << func.getName() << " is not in the funcs whitelist";
-        return signalPassFailure();
-      }
+    auto walk_result = func.walk([&](CallOp op) -> WalkResult {
+      if (!symbol_table.lookup<FuncOp>(op.getCallee()))
+        return getModule().emitError()
+               << func.getName() << " is not in the funcs whitelist";
+      return WalkResult::advance();
     });
+    if (walk_result.wasInterrupted()) return signalPassFailure();
   }
 }
 
@@ -119,9 +119,9 @@ void TrimFunctionsPass::Verify() {
 
 // Creates an instance of the TensorFlow Lite dialect TrimFunctions
 /// pass.
-std::unique_ptr<ModulePassBase> CreateTrimFunctionsPass(
+std::unique_ptr<OpPassBase<ModuleOp>> CreateTrimFunctionsPass(
     llvm::ArrayRef<std::string> trim_funcs_whitelist) {
-  return llvm::make_unique<TrimFunctionsPass>(trim_funcs_whitelist);
+  return std::make_unique<TrimFunctionsPass>(trim_funcs_whitelist);
 }
 
 static PassRegistration<TrimFunctionsPass> pass(

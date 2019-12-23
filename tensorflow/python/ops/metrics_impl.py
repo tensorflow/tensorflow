@@ -627,6 +627,9 @@ def _aggregate_variable(v, collections):
 
 
 @tf_export(v1=['metrics.auc'])
+@deprecated(None,
+            'The value of AUC returned by this may race with the update so '
+            'this is deprected. Please use tf.keras.metrics.AUC instead.')
 def auc(labels,
         predictions,
         weights=None,
@@ -745,7 +748,7 @@ def auc(labels,
     epsilon = 1.0e-6
 
     def interpolate_pr_auc(tp, fp, fn):
-      """Interpolation formula inspired by section 4 of Davis & Goadrich 2006.
+      """Interpolation formula inspired by section 4 of (Davis et al., 2006).
 
       Note here we derive & use a closed formula not present in the paper
       - as follows:
@@ -772,8 +775,14 @@ def auc(labels,
         tp: true positive counts
         fp: false positive counts
         fn: false negative counts
+
       Returns:
         pr_auc: an approximation of the area under the P-R curve.
+
+      References:
+        The Relationship Between Precision-Recall and ROC Curves:
+          [Davis et al., 2006](https://dl.acm.org/citation.cfm?id=1143874)
+          ([pdf](https://www.biostat.wisc.edu/~page/rocpr.pdf))
       """
       dtp = tp[:num_thresholds - 1] - tp[1:]
       p = tp + fp
@@ -805,13 +814,13 @@ def auc(labels,
         elif summation_method == 'careful_interpolation':
           # This one is a bit tricky and is handled separately.
           return interpolate_pr_auc(tp, fp, fn)
-      rec = math_ops.div(tp + epsilon, tp + fn + epsilon)
+      rec = math_ops.divide(tp + epsilon, tp + fn + epsilon)
       if curve == 'ROC':
-        fp_rate = math_ops.div(fp, fp + tn + epsilon)
+        fp_rate = math_ops.divide(fp, fp + tn + epsilon)
         x = fp_rate
         y = rec
       else:  # curve == 'PR'.
-        prec = math_ops.div(tp + epsilon, tp + fp + epsilon)
+        prec = math_ops.divide(tp + epsilon, tp + fp + epsilon)
         x = rec
         y = prec
       if summation_method in ('trapezoidal', 'careful_interpolation'):
@@ -1175,7 +1184,7 @@ def mean_iou(labels,
       denominator = array_ops.where(
           math_ops.greater(denominator, 0), denominator,
           array_ops.ones_like(denominator))
-      iou = math_ops.div(cm_diag, denominator)
+      iou = math_ops.divide(cm_diag, denominator)
 
       # If the number of valid entries is 0 (no classes) we return 0.
       result = array_ops.where(
@@ -1257,7 +1266,7 @@ def mean_relative_error(labels,
   predictions.get_shape().assert_is_compatible_with(normalizer.get_shape())
   relative_errors = array_ops.where(
       math_ops.equal(normalizer, 0.0), array_ops.zeros_like(labels),
-      math_ops.div(math_ops.abs(labels - predictions), normalizer))
+      math_ops.divide(math_ops.abs(labels - predictions), normalizer))
   return mean(relative_errors, weights, metrics_collections,
               updates_collections, name or 'mean_relative_error')
 
@@ -2023,7 +2032,7 @@ def precision(labels,
 
     def compute_precision(tp, fp, name):
       return array_ops.where(
-          math_ops.greater(tp + fp, 0), math_ops.div(tp, tp + fp), 0, name)
+          math_ops.greater(tp + fp, 0), math_ops.divide(tp, tp + fp), 0, name)
 
     def once_across_replicas(_, true_p, false_p):
       return compute_precision(true_p, false_p, 'value')
@@ -2104,7 +2113,7 @@ def precision_at_thresholds(labels,
     epsilon = 1e-7
 
     def compute_precision(tp, fp, name):
-      return math_ops.div(tp, epsilon + tp + fp, name='precision_' + name)
+      return math_ops.divide(tp, epsilon + tp + fp, name='precision_' + name)
 
     def precision_across_replicas(_, values):
       return compute_precision(values['tp'], values['fp'], 'value')
@@ -2197,7 +2206,7 @@ def recall(labels,
     def compute_recall(true_p, false_n, name):
       return array_ops.where(
           math_ops.greater(true_p + false_n, 0),
-          math_ops.div(true_p, true_p + false_n), 0, name)
+          math_ops.divide(true_p, true_p + false_n), 0, name)
 
     def once_across_replicas(_, true_p, false_n):
       return compute_recall(true_p, false_n, 'value')
@@ -2636,12 +2645,12 @@ def recall_at_top_k(labels,
         weights=weights)
 
     def compute_recall(_, tp, fn):
-      return math_ops.div(tp, math_ops.add(tp, fn), name=scope)
+      return math_ops.divide(tp, math_ops.add(tp, fn), name=scope)
 
     metric = _aggregate_across_replicas(
         metrics_collections, compute_recall, tp, fn)
 
-    update = math_ops.div(
+    update = math_ops.divide(
         tp_update, math_ops.add(tp_update, fn_update), name='update')
     if updates_collections:
       ops.add_to_collections(updates_collections, update)
@@ -2711,7 +2720,7 @@ def recall_at_thresholds(labels,
     epsilon = 1e-7
 
     def compute_recall(tp, fn, name):
-      return math_ops.div(tp, epsilon + tp + fn, name='recall_' + name)
+      return math_ops.divide(tp, epsilon + tp + fn, name='recall_' + name)
 
     def recall_across_replicas(_, values):
       return compute_recall(values['tp'], values['fn'], 'value')
@@ -2875,13 +2884,13 @@ def sensitivity_at_specificity(labels,
         labels, predictions, thresholds, weights)
 
     def compute_sensitivity_at_specificity(tp, tn, fp, fn, name):
-      specificities = math_ops.div(tn, tn + fp + kepsilon)
+      specificities = math_ops.divide(tn, tn + fp + kepsilon)
       tf_index = math_ops.argmin(math_ops.abs(specificities - specificity), 0)
       tf_index = math_ops.cast(tf_index, dtypes.int32)
 
       # Now, we have the implicit threshold, so compute the sensitivity:
-      return math_ops.div(tp[tf_index], tp[tf_index] + fn[tf_index] + kepsilon,
-                          name)
+      return math_ops.divide(tp[tf_index],
+                             tp[tf_index] + fn[tf_index] + kepsilon, name)
 
     def sensitivity_across_replicas(_, values):
       return compute_sensitivity_at_specificity(
@@ -3061,7 +3070,7 @@ def _sparse_average_precision_at_top_k(labels, predictions_idx):
     tp_per_k = math_ops.cumsum(relevant_per_k, axis=-1, name='tp_per_k')
     retrieved_per_k = math_ops.cumsum(
         array_ops.ones_like(relevant_per_k), axis=-1, name='retrieved_per_k')
-    precision_per_k = math_ops.div(
+    precision_per_k = math_ops.divide(
         math_ops.cast(tp_per_k, dtypes.float64),
         math_ops.cast(retrieved_per_k, dtypes.float64),
         name='precision_per_k')
@@ -3077,7 +3086,7 @@ def _sparse_average_precision_at_top_k(labels, predictions_idx):
     # Divide by number of relevant items to get average precision. These are
     # the "num_relevant_items" and "AveP" terms from the formula above.
     num_relevant_items = math_ops.cast(_num_relevant(labels, k), dtypes.float64)
-    return math_ops.div(precision_sum, num_relevant_items, name=scope)
+    return math_ops.divide(precision_sum, num_relevant_items, name=scope)
 
 
 def _streaming_sparse_average_precision_at_top_k(labels,
@@ -3491,12 +3500,12 @@ def precision_at_top_k(labels,
         weights=weights)
 
     def precision_across_replicas(_, tp, fp):
-      return math_ops.div(tp, math_ops.add(tp, fp), name=scope)
+      return math_ops.divide(tp, math_ops.add(tp, fp), name=scope)
 
     metric = _aggregate_across_replicas(
         metrics_collections, precision_across_replicas, tp, fp)
 
-    update = math_ops.div(
+    update = math_ops.divide(
         tp_update, math_ops.add(tp_update, fp_update), name='update')
     if updates_collections:
       ops.add_to_collections(updates_collections, update)
@@ -3709,7 +3718,7 @@ def specificity_at_sensitivity(labels,
       Returns:
         The specificity using the aggregated values.
       """
-      sensitivities = math_ops.div(tp, tp + fn + kepsilon)
+      sensitivities = math_ops.divide(tp, tp + fn + kepsilon)
 
       # We'll need to use this trick until tf.argmax allows us to specify
       # whether we should use the first or last index in case of ties.
@@ -3722,8 +3731,8 @@ def specificity_at_sensitivity(labels,
       tf_index = math_ops.cast(tf_index, dtypes.int32)
 
       # Now, we have the implicit threshold, so compute the specificity:
-      return math_ops.div(tn[tf_index], tn[tf_index] + fp[tf_index] + kepsilon,
-                          name)
+      return math_ops.divide(tn[tf_index],
+                             tn[tf_index] + fp[tf_index] + kepsilon, name)
 
     def specificity_across_replicas(_, values):
       return compute_specificity_at_sensitivity(

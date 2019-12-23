@@ -115,8 +115,8 @@ class BroadcastMatrixBatchDimsTest(test.TestCase):
 
     x_bc, y_bc = linear_operator_util.broadcast_matrix_batch_dims([x, y])
 
-    self.assertAllEqual(x_bc_expected.shape, x_bc.get_shape())
-    self.assertAllEqual(y_bc_expected.shape, y_bc.get_shape())
+    self.assertAllEqual(x_bc_expected.shape, x_bc.shape)
+    self.assertAllEqual(y_bc_expected.shape, y_bc.shape)
     x_bc_, y_bc_ = self.evaluate([x_bc, y_bc])
     self.assertAllClose(x_bc_expected, x_bc_)
     self.assertAllClose(y_bc_expected, y_bc_)
@@ -133,8 +133,8 @@ class BroadcastMatrixBatchDimsTest(test.TestCase):
 
     x_bc, y_bc = linear_operator_util.broadcast_matrix_batch_dims([x, y])
 
-    self.assertAllEqual(x_bc_expected.shape, x_bc.get_shape())
-    self.assertAllEqual(y_bc_expected.shape, y_bc.get_shape())
+    self.assertAllEqual(x_bc_expected.shape, x_bc.shape)
+    self.assertAllEqual(y_bc_expected.shape, y_bc.shape)
     x_bc_, y_bc_ = self.evaluate([x_bc, y_bc])
     self.assertAllClose(x_bc_expected, x_bc_)
     self.assertAllClose(y_bc_expected, y_bc_)
@@ -197,7 +197,7 @@ class CholeskySolveWithBroadcastTest(test.TestCase):
     chol_broadcast = chol + np.zeros((2, 1, 1))
 
     result = linear_operator_util.cholesky_solve_with_broadcast(chol, rhs)
-    self.assertAllEqual((2, 3, 7), result.get_shape())
+    self.assertAllEqual((2, 3, 7), result.shape)
     expected = linalg_ops.cholesky_solve(chol_broadcast, rhs)
     self.assertAllClose(*self.evaluate([expected, result]))
 
@@ -227,7 +227,7 @@ class MatrixSolveWithBroadcastTest(test.TestCase):
     rhs_broadcast = rhs + np.zeros((2, 1, 1))
 
     result = linear_operator_util.matrix_solve_with_broadcast(matrix, rhs)
-    self.assertAllEqual((2, 3, 7), result.get_shape())
+    self.assertAllEqual((2, 3, 7), result.shape)
     expected = linalg_ops.matrix_solve(matrix, rhs_broadcast)
     self.assertAllClose(*self.evaluate([expected, result]))
 
@@ -244,7 +244,7 @@ class MatrixSolveWithBroadcastTest(test.TestCase):
     matrix_broadcast = matrix + np.zeros((2, 1, 1))
 
     result = linear_operator_util.matrix_solve_with_broadcast(matrix, rhs)
-    self.assertAllEqual((2, 3, 2), result.get_shape())
+    self.assertAllEqual((2, 3, 2), result.shape)
     expected = linalg_ops.matrix_solve(matrix_broadcast, rhs)
     self.assertAllClose(*self.evaluate([expected, result]))
 
@@ -282,7 +282,7 @@ class MatrixSolveWithBroadcastTest(test.TestCase):
 
     result = linear_operator_util.matrix_solve_with_broadcast(
         matrix, rhs, adjoint=True)
-    self.assertAllEqual((2, 3, 2), result.get_shape())
+    self.assertAllEqual((2, 3, 2), result.shape)
     expected = linalg_ops.matrix_solve(matrix_broadcast, rhs, adjoint=True)
     self.assertAllClose(*self.evaluate([expected, result]))
 
@@ -313,7 +313,7 @@ class MatrixTriangularSolveWithBroadcastTest(test.TestCase):
 
     result = linear_operator_util.matrix_triangular_solve_with_broadcast(
         matrix, rhs)
-    self.assertAllEqual((2, 3, 7), result.get_shape())
+    self.assertAllEqual((2, 3, 7), result.shape)
     expected = linalg_ops.matrix_triangular_solve(matrix, rhs_broadcast)
     self.assertAllClose(*self.evaluate([expected, result]))
 
@@ -331,7 +331,7 @@ class MatrixTriangularSolveWithBroadcastTest(test.TestCase):
 
     result = linear_operator_util.matrix_triangular_solve_with_broadcast(
         matrix, rhs)
-    self.assertAllEqual((2, 3, 2), result.get_shape())
+    self.assertAllEqual((2, 3, 2), result.shape)
     expected = linalg_ops.matrix_triangular_solve(matrix_broadcast, rhs)
     self.assertAllClose(*self.evaluate([expected, result]))
 
@@ -349,7 +349,7 @@ class MatrixTriangularSolveWithBroadcastTest(test.TestCase):
 
     result = linear_operator_util.matrix_triangular_solve_with_broadcast(
         matrix, rhs, adjoint=True)
-    self.assertAllEqual((2, 3, 2), result.get_shape())
+    self.assertAllEqual((2, 3, 2), result.shape)
     expected = linalg_ops.matrix_triangular_solve(
         matrix_broadcast, rhs, adjoint=True)
     self.assertAllClose(*self.evaluate([expected, result]))

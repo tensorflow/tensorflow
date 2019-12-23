@@ -36,7 +36,7 @@ typedef Eigen::GpuDevice GPUDevice;
 // A Cuda kernel to check if each element is Inf or Nan. If any exists, the
 // relevant elements in abnormal_detected will be set
 template <typename T>
-__global__ void CheckNumericsKernel(const T* data, int size,
+__global__ void CheckNumericsKernel(const T* __restrict__ data, int size,
                                     int abnormal_detected[2]) {
   const int32 thread_id = blockIdx.x * blockDim.x + threadIdx.x;
   const int32 total_thread_count = gridDim.x * blockDim.x;
@@ -49,6 +49,29 @@ __global__ void CheckNumericsKernel(const T* data, int size,
     }
     if (isinf(data[offset])) {
       abnormal_detected[1] = 1;
+    }
+    offset += total_thread_count;
+  }
+}
+
+// V2 of CheckNumericsKernel for GPU.
+// Unlike CheckNumericsKernel (V1), this kernel disinguishes -Inf and +Inf.
+// The 3 elements of `abnormal_detected` are used to signify NaN, -Inf and +Inf,
+// respectively.
+template <typename T>
+__global__ void CheckNumericsKernelV2(const T* __restrict__ data, int size,
+                                      int abnormal_detected[3]) {
+  const int32 thread_id = blockIdx.x * blockDim.x + threadIdx.x;
+  const int32 total_thread_count = gridDim.x * blockDim.x;
+
+  int32 offset = thread_id;
+
+  while (offset < size) {
+    if (isnan(data[offset])) {
+      abnormal_detected[0] = 1;
+    }
+    if (isinf(data[offset])) {
+      abnormal_detected[data[offset] < static_cast<T>(0.f) ? 1 : 2] = 1;
     }
     offset += total_thread_count;
   }
@@ -75,6 +98,25 @@ struct CheckNumericsLaunch {
 template struct CheckNumericsLaunch<Eigen::half>;
 template struct CheckNumericsLaunch<float>;
 template struct CheckNumericsLaunch<double>;
+
+template <typename T>
+struct CheckNumericsLaunchV2 {
+  void Run(const GPUDevice& d, const T* data, int size,
+           int abnormal_detected[3]) {
+    const int32 block_size = d.maxGpuThreadsPerBlock();
+    const int32 num_blocks =
+        (d.getNumGpuMultiProcessors() * d.maxGpuThreadsPerMultiProcessor()) /
+        block_size;
+
+    TF_CHECK_OK(GpuLaunchKernel(CheckNumericsKernelV2<T>, num_blocks,
+                                block_size, 0, d.stream(), data, size,
+                                abnormal_detected));
+  }
+};
+
+template struct CheckNumericsLaunchV2<Eigen::half>;
+template struct CheckNumericsLaunchV2<float>;
+template struct CheckNumericsLaunchV2<double>;
 
 }  // namespace tensorflow
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

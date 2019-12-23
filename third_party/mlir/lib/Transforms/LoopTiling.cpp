@@ -19,11 +19,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/AffineOps/AffineOps.h"
 #include "mlir/Analysis/AffineAnalysis.h"
 #include "mlir/Analysis/AffineStructures.h"
 #include "mlir/Analysis/LoopAnalysis.h"
 #include "mlir/Analysis/Utils.h"
+#include "mlir/Dialect/AffineOps/AffineOps.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/LoopUtils.h"
@@ -81,9 +81,9 @@ struct LoopTiling : public FunctionPass<LoopTiling> {
 
 /// Creates a pass to perform loop tiling on all suitable loop nests of a
 /// Function.
-std::unique_ptr<FunctionPassBase>
+std::unique_ptr<OpPassBase<FuncOp>>
 mlir::createLoopTilingPass(uint64_t cacheSizeBytes) {
-  return llvm::make_unique<LoopTiling>(cacheSizeBytes);
+  return std::make_unique<LoopTiling>(cacheSizeBytes);
 }
 
 // Move the loop body of AffineForOp 'src' from 'src' into the specified
@@ -120,8 +120,8 @@ constructTiledIndexSetHyperRect(MutableArrayRef<AffineForOp> origLoops,
   for (unsigned i = 0; i < width; i++) {
     auto lbOperands = origLoops[i].getLowerBoundOperands();
     auto ubOperands = origLoops[i].getUpperBoundOperands();
-    SmallVector<Value *, 4> newLbOperands(lbOperands);
-    SmallVector<Value *, 4> newUbOperands(ubOperands);
+    SmallVector<ValuePtr, 4> newLbOperands(lbOperands);
+    SmallVector<ValuePtr, 4> newUbOperands(ubOperands);
     newLoops[i].setLowerBound(newLbOperands, origLoops[i].getLowerBoundMap());
     newLoops[i].setUpperBound(newUbOperands, origLoops[i].getUpperBoundMap());
     newLoops[i].setStep(tileSizes[i]);
@@ -147,7 +147,7 @@ constructTiledIndexSetHyperRect(MutableArrayRef<AffineForOp> origLoops,
       // with 'i' (tile-space loop) appended to it. The new upper bound map is
       // the original one with an additional expression i + tileSize appended.
       auto ub = origLoops[i].getUpperBound();
-      SmallVector<Value *, 4> ubOperands;
+      SmallVector<ValuePtr, 4> ubOperands;
       ubOperands.reserve(ub.getNumOperands() + 1);
       auto origUbMap = ub.getMap();
       // Add dim operands from original upper bound.
@@ -168,13 +168,13 @@ constructTiledIndexSetHyperRect(MutableArrayRef<AffineForOp> origLoops,
       boundExprs.push_back(dim + tileSizes[i]);
       boundExprs.append(origUbMap.getResults().begin(),
                         origUbMap.getResults().end());
-      auto ubMap = b.getAffineMap(origUbMap.getNumDims() + 1,
+      auto ubMap = AffineMap::get(origUbMap.getNumDims() + 1,
                                   origUbMap.getNumSymbols(), boundExprs);
       newLoops[width + i].setUpperBound(/*operands=*/ubOperands, ubMap);
     } else {
       // No need of the min expression.
       auto dim = b.getAffineDimExpr(0);
-      auto ubMap = b.getAffineMap(1, 0, dim + tileSizes[i]);
+      auto ubMap = AffineMap::get(1, 0, dim + tileSizes[i]);
       newLoops[width + i].setUpperBound(newLoops[i].getInductionVar(), ubMap);
     }
   }
@@ -190,7 +190,7 @@ LogicalResult mlir::tileCodeGen(MutableArrayRef<AffineForOp> band,
 
   // Check if the supplied for op's are all successively nested.
   for (unsigned i = 1, e = band.size(); i < e; i++) {
-    assert(band[i].getOperation()->getParentOp() == band[i - 1].getOperation());
+    assert(band[i].getParentOp() == band[i - 1].getOperation());
   }
 
   auto origLoops = band;
@@ -235,9 +235,10 @@ LogicalResult mlir::tileCodeGen(MutableArrayRef<AffineForOp> band,
   // Move the loop body of the original nest to the new one.
   moveLoopBody(origLoops[origLoops.size() - 1], innermostPointLoop);
 
-  SmallVector<Value *, 8> origLoopIVs;
+  SmallVector<ValuePtr, 8> origLoopIVs;
   extractForInductionVars(band, &origLoopIVs);
-  SmallVector<Optional<Value *>, 6> ids(origLoopIVs.begin(), origLoopIVs.end());
+  SmallVector<Optional<ValuePtr>, 6> ids(origLoopIVs.begin(),
+                                         origLoopIVs.end());
   FlatAffineConstraints cst;
   getIndexSet(band, &cst);
 
@@ -362,7 +363,7 @@ void LoopTiling::getTileSizes(ArrayRef<AffineForOp> band,
   // one possible approach. Or compute a polynomial in tile sizes and solve for
   // it.
 
-  // For an n-d tilable band, compute n^th root of the excess.
+  // For an n-d tileable band, compute n^th root of the excess.
   unsigned tSize =
       static_cast<unsigned>(floorl(std::pow(excessFactor, 1.0 / band.size())));
   // We'll keep a running product to determine the last tile size better.

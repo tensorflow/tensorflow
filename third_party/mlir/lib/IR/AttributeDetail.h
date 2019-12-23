@@ -321,6 +321,43 @@ struct StringAttributeStorage : public AttributeStorage {
   StringRef value;
 };
 
+/// An attribute representing a symbol reference.
+struct SymbolRefAttributeStorage final
+    : public AttributeStorage,
+      public llvm::TrailingObjects<SymbolRefAttributeStorage,
+                                   FlatSymbolRefAttr> {
+  using KeyTy = std::pair<StringRef, ArrayRef<FlatSymbolRefAttr>>;
+
+  SymbolRefAttributeStorage(StringRef value, size_t numNestedRefs)
+      : value(value), numNestedRefs(numNestedRefs) {}
+
+  /// Key equality function.
+  bool operator==(const KeyTy &key) const {
+    return key == KeyTy(value, getNestedRefs());
+  }
+
+  /// Construct a new storage instance.
+  static SymbolRefAttributeStorage *
+  construct(AttributeStorageAllocator &allocator, const KeyTy &key) {
+    auto size = SymbolRefAttributeStorage::totalSizeToAlloc<FlatSymbolRefAttr>(
+        key.second.size());
+    auto rawMem = allocator.allocate(size, alignof(SymbolRefAttributeStorage));
+    auto result = ::new (rawMem) SymbolRefAttributeStorage(
+        allocator.copyInto(key.first), key.second.size());
+    std::uninitialized_copy(key.second.begin(), key.second.end(),
+                            result->getTrailingObjects<FlatSymbolRefAttr>());
+    return result;
+  }
+
+  /// Returns the set of nested references.
+  ArrayRef<FlatSymbolRefAttr> getNestedRefs() const {
+    return {getTrailingObjects<FlatSymbolRefAttr>(), numNestedRefs};
+  }
+
+  StringRef value;
+  size_t numNestedRefs;
+};
+
 /// An attribute representing a reference to a type.
 struct TypeAttributeStorage : public AttributeStorage {
   using KeyTy = Type;

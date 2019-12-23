@@ -28,6 +28,7 @@ bool IsAll(const NodeDef& node);
 bool IsAngle(const NodeDef& node);
 bool IsAny(const NodeDef& node);
 bool IsAnyDiv(const NodeDef& node);
+bool IsAnyBatchMatMul(const NodeDef& node);
 bool IsAnyMatMul(const NodeDef& node);
 bool IsAnyMax(const NodeDef& node);
 bool IsAnyMaxPool(const NodeDef& node);
@@ -190,6 +191,7 @@ bool IsUnpack(const NodeDef& node);
 bool IsVariable(const NodeDef& node);
 bool IsWhile(const NodeDef& node);
 bool IsXdivy(const NodeDef& node);
+bool IsXlaLaunch(const NodeDef& node);
 bool IsZerosLike(const NodeDef& node);
 bool IsZeta(const NodeDef& node);
 

@@ -125,6 +125,8 @@ class GrpcSession : public Session {
   // The current version of the graph.
   int64 current_graph_version_ GUARDED_BY(mu_);
 
+  bool is_local_ = false;
+
   Status Handle(string* out_handle) LOCKS_EXCLUDED(mu_);
 
   Status RunHelper(const RunOptions& run_options,

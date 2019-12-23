@@ -17,10 +17,10 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/core/lib/core/coding.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/coding.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/core/platform/stringpiece.h"
 
 #if defined(TENSORFLOW_PROTOBUF_USES_CORD)
 #include "strings/cord_varint.h"
@@ -154,6 +154,30 @@ void EncodeStringList(const tstring* strings, int64 n, Cord* out) {
   }
 }
 
+bool DecodeStringList(const Cord& src, string* strings, int64 n) {
+  std::vector<uint32> sizes(n);
+  CordReader reader(src);
+  int64 tot = 0;
+  for (auto& v : sizes) {
+    if (!::strings::CordReaderReadVarint(&reader, &v)) return false;
+    tot += v;
+  }
+  if (tot != reader.Available()) {
+    return false;
+  }
+  string* data = strings;
+  for (int i = 0; i < n; ++i, ++data) {
+    auto size = sizes[i];
+    if (size > reader.Available()) {
+      return false;
+    }
+    gtl::STLStringResizeUninitialized(data, size);
+    reader.ReadN(size, gtl::string_as_array(data));
+  }
+  return true;
+}
+
+#ifdef USE_TSTRING
 bool DecodeStringList(const Cord& src, tstring* strings, int64 n) {
   std::vector<uint32> sizes(n);
   CordReader reader(src);
@@ -171,16 +195,12 @@ bool DecodeStringList(const Cord& src, tstring* strings, int64 n) {
     if (size > reader.Available()) {
       return false;
     }
-#ifdef USE_TSTRING
     data->resize_uninitialized(size);
     reader.ReadN(size, data->data());
-#else   // USE_TSTRING
-    gtl::STLStringResizeUninitialized(data, size);
-    reader.ReadN(size, gtl::string_as_array(data));
-#endif  // USE_TSTRING
   }
   return true;
 }
+#endif  // USE_TSTRING
 
 void CopyFromArray(Cord* c, const char* base, size_t bytes) {
   c->CopyFrom(base, bytes);

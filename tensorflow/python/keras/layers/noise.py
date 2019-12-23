@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Layers that operate regularization via the addition of noise.
-"""
+"""Layers that operate regularization via the addition of noise."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -65,7 +65,10 @@ class GaussianNoise(Layer):
 
     def noised():
       return inputs + K.random_normal(
-          shape=array_ops.shape(inputs), mean=0., stddev=self.stddev)
+          shape=array_ops.shape(inputs),
+          mean=0.,
+          stddev=self.stddev,
+          dtype=inputs.dtype)
 
     return K.in_train_phase(noised, inputs, training=training)
 
@@ -115,7 +118,10 @@ class GaussianDropout(Layer):
       def noised():
         stddev = np.sqrt(self.rate / (1.0 - self.rate))
         return inputs * K.random_normal(
-            shape=array_ops.shape(inputs), mean=1.0, stddev=stddev)
+            shape=array_ops.shape(inputs),
+            mean=1.0,
+            stddev=stddev,
+            dtype=inputs.dtype)
 
       return K.in_train_phase(noised, inputs, training=training)
     return inputs

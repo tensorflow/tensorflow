@@ -21,13 +21,13 @@
 
 #include "mlir/Transforms/Passes.h"
 
-#include "mlir/AffineOps/AffineOps.h"
 #include "mlir/Analysis/AffineAnalysis.h"
 #include "mlir/Analysis/LoopAnalysis.h"
 #include "mlir/Analysis/Utils.h"
+#include "mlir/Dialect/AffineOps/AffineOps.h"
+#include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/StandardOps/Ops.h"
 #include "mlir/Transforms/LoopUtils.h"
 #include "mlir/Transforms/Utils.h"
 #include "llvm/ADT/DenseMap.h"
@@ -49,8 +49,8 @@ struct PipelineDataTransfer : public FunctionPass<PipelineDataTransfer> {
 
 /// Creates a pass to pipeline explicit movement of data across levels of the
 /// memory hierarchy.
-std::unique_ptr<FunctionPassBase> mlir::createPipelineDataTransferPass() {
-  return llvm::make_unique<PipelineDataTransfer>();
+std::unique_ptr<OpPassBase<FuncOp>> mlir::createPipelineDataTransferPass() {
+  return std::make_unique<PipelineDataTransfer>();
 }
 
 // Returns the position of the tag memref operand given a DMA operation.
@@ -70,10 +70,9 @@ static unsigned getTagMemRefPos(Operation &dmaInst) {
 /// Replaces all uses of the old memref by the new one while indexing the newly
 /// added dimension by the loop IV of the specified 'affine.for' operation
 /// modulo 2. Returns false if such a replacement cannot be performed.
-static bool doubleBuffer(Value *oldMemRef, AffineForOp forOp) {
+static bool doubleBuffer(ValuePtr oldMemRef, AffineForOp forOp) {
   auto *forBody = forOp.getBody();
   OpBuilder bInner(forBody, forBody->begin());
-  bInner.setInsertionPoint(forBody, forBody->begin());
 
   // Doubles the shape with a leading dimension extent of 2.
   auto doubleShape = [&](MemRefType oldMemRefType) -> MemRefType {
@@ -83,8 +82,8 @@ static bool doubleBuffer(Value *oldMemRef, AffineForOp forOp) {
     newShape[0] = 2;
     std::copy(oldShape.begin(), oldShape.end(), newShape.begin() + 1);
     auto newMemRefType =
-        bInner.getMemRefType(newShape, oldMemRefType.getElementType(), {},
-                             oldMemRefType.getMemorySpace());
+        MemRefType::get(newShape, oldMemRefType.getElementType(), {},
+                        oldMemRefType.getMemorySpace());
     return newMemRefType;
   };
 
@@ -95,7 +94,7 @@ static bool doubleBuffer(Value *oldMemRef, AffineForOp forOp) {
   auto *forInst = forOp.getOperation();
   OpBuilder bOuter(forInst);
   // Put together alloc operands for any dynamic dimensions of the memref.
-  SmallVector<Value *, 4> allocOperands;
+  SmallVector<ValuePtr, 4> allocOperands;
   unsigned dynamicDimCount = 0;
   for (auto dimSize : oldMemRefType.getShape()) {
     if (dimSize == -1)
@@ -104,32 +103,33 @@ static bool doubleBuffer(Value *oldMemRef, AffineForOp forOp) {
   }
 
   // Create and place the alloc right before the 'affine.for' operation.
-  Value *newMemRef =
+  ValuePtr newMemRef =
       bOuter.create<AllocOp>(forInst->getLoc(), newMemRefType, allocOperands);
 
   // Create 'iv mod 2' value to index the leading dimension.
   auto d0 = bInner.getAffineDimExpr(0);
   int64_t step = forOp.getStep();
-  auto modTwoMap = bInner.getAffineMap(/*dimCount=*/1, /*symbolCount=*/0,
-                                       {d0.floorDiv(step) % 2});
+  auto modTwoMap = AffineMap::get(/*dimCount=*/1, /*symbolCount=*/0,
+                                  {d0.floorDiv(step) % 2});
   auto ivModTwoOp = bInner.create<AffineApplyOp>(forOp.getLoc(), modTwoMap,
                                                  forOp.getInductionVar());
 
-  // replaceAllMemRefUsesWith will always succeed unless the forOp body has
-  // non-deferencing uses of the memref (dealloc's are fine though).
-  if (!replaceAllMemRefUsesWith(oldMemRef, newMemRef,
-                                /*extraIndices=*/{ivModTwoOp},
-                                /*indexRemap=*/AffineMap(),
-                                /*extraOperands=*/{},
-                                /*domInstFilter=*/&*forOp.getBody()->begin())) {
+  // replaceAllMemRefUsesWith will succeed unless the forOp body has
+  // non-dereferencing uses of the memref (dealloc's are fine though).
+  if (failed(replaceAllMemRefUsesWith(
+          oldMemRef, newMemRef,
+          /*extraIndices=*/{ivModTwoOp},
+          /*indexRemap=*/AffineMap(),
+          /*extraOperands=*/{},
+          /*symbolOperands=*/{},
+          /*domInstFilter=*/&*forOp.getBody()->begin()))) {
     LLVM_DEBUG(
         forOp.emitError("memref replacement for double buffering failed"));
     ivModTwoOp.erase();
     return false;
   }
   // Insert the dealloc op right after the for loop.
-  bOuter.setInsertionPoint(forInst->getBlock(),
-                           std::next(Block::iterator(forInst)));
+  bOuter.setInsertionPointAfter(forInst);
   bOuter.create<DeallocOp>(forInst->getLoc(), newMemRef);
 
   return true;
@@ -143,8 +143,7 @@ void PipelineDataTransfer::runOnFunction() {
   // gets deleted and replaced by a prologue, a new steady-state loop and an
   // epilogue).
   forOps.clear();
-  getFunction().walk<AffineForOp>(
-      [&](AffineForOp forOp) { forOps.push_back(forOp); });
+  getFunction().walk([&](AffineForOp forOp) { forOps.push_back(forOp); });
   for (auto forOp : forOps)
     runOnAffineForOp(forOp);
 }
@@ -213,13 +212,13 @@ static void findMatchingStartFinishInsts(
       continue;
 
     // We only double buffer if the buffer is not live out of loop.
-    auto *memref = dmaStartOp.getOperand(dmaStartOp.getFasterMemPos());
+    auto memref = dmaStartOp.getOperand(dmaStartOp.getFasterMemPos());
     bool escapingUses = false;
     for (auto *user : memref->getUsers()) {
       // We can double buffer regardless of dealloc's outside the loop.
       if (isa<DeallocOp>(user))
         continue;
-      if (!forOp.getBody()->findAncestorInstInBlock(*user)) {
+      if (!forOp.getBody()->findAncestorOpInBlock(*user)) {
         LLVM_DEBUG(llvm::dbgs()
                        << "can't pipeline: buffer is live out of loop\n";);
         escapingUses = true;
@@ -271,14 +270,14 @@ void PipelineDataTransfer::runOnAffineForOp(AffineForOp forOp) {
   // dimension.
   for (auto &pair : startWaitPairs) {
     auto *dmaStartInst = pair.first;
-    Value *oldMemRef = dmaStartInst->getOperand(
+    ValuePtr oldMemRef = dmaStartInst->getOperand(
         cast<AffineDmaStartOp>(dmaStartInst).getFasterMemPos());
     if (!doubleBuffer(oldMemRef, forOp)) {
       // Normally, double buffering should not fail because we already checked
       // that there are no uses outside.
-      LLVM_DEBUG(llvm::dbgs() << "double buffering failed for: \n";);
-      LLVM_DEBUG(dmaStartInst->dump());
-      // IR still in a valid state.
+      LLVM_DEBUG(llvm::dbgs()
+                     << "double buffering failed for" << dmaStartInst << "\n";);
+      // IR still valid and semantically correct.
       return;
     }
     // If the old memref has no more uses, remove its 'dead' alloc if it was
@@ -293,7 +292,7 @@ void PipelineDataTransfer::runOnAffineForOp(AffineForOp forOp) {
       } else if (oldMemRef->hasOneUse()) {
         if (auto dealloc = dyn_cast<DeallocOp>(*oldMemRef->user_begin())) {
           dealloc.erase();
-          oldMemRef->getDefiningOp()->erase();
+          allocInst->erase();
         }
       }
     }
@@ -302,17 +301,24 @@ void PipelineDataTransfer::runOnAffineForOp(AffineForOp forOp) {
   // Double the buffers for tag memrefs.
   for (auto &pair : startWaitPairs) {
     auto *dmaFinishInst = pair.second;
-    Value *oldTagMemRef =
+    ValuePtr oldTagMemRef =
         dmaFinishInst->getOperand(getTagMemRefPos(*dmaFinishInst));
     if (!doubleBuffer(oldTagMemRef, forOp)) {
       LLVM_DEBUG(llvm::dbgs() << "tag double buffering failed\n";);
       return;
     }
-    // If the old tag has no more uses, remove its 'dead' alloc if it was
-    // alloc'ed.
-    if (oldTagMemRef->use_empty())
-      if (auto *allocInst = oldTagMemRef->getDefiningOp())
-        allocInst->erase();
+    // If the old tag has no uses or a single dealloc use, remove it.
+    // (canonicalization handles more complex cases).
+    if (auto *tagAllocInst = oldTagMemRef->getDefiningOp()) {
+      if (oldTagMemRef->use_empty()) {
+        tagAllocInst->erase();
+      } else if (oldTagMemRef->hasOneUse()) {
+        if (auto dealloc = dyn_cast<DeallocOp>(*oldTagMemRef->user_begin())) {
+          dealloc.erase();
+          tagAllocInst->erase();
+        }
+      }
+    }
   }
 
   // Double buffering would have invalidated all the old DMA start/wait insts.
@@ -336,7 +342,7 @@ void PipelineDataTransfer::runOnAffineForOp(AffineForOp forOp) {
       // If a slice wasn't created, the reachable affine.apply op's from its
       // operands are the ones that go with it.
       SmallVector<Operation *, 4> affineApplyInsts;
-      SmallVector<Value *, 4> operands(dmaStartInst->getOperands());
+      SmallVector<ValuePtr, 4> operands(dmaStartInst->getOperands());
       getReachableAffineApplyOps(operands, affineApplyInsts);
       for (auto *op : affineApplyInsts) {
         instShiftMap[op] = 0;

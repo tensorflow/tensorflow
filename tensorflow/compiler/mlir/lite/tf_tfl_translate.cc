@@ -13,10 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/strings/str_split.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/InitLLVM.h"
-#include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "mlir/IR/Diagnostics.h"  // TF:local_config_mlir
@@ -24,11 +25,15 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "mlir/Support/FileUtilities.h"  // TF:local_config_mlir
+#include "tensorflow/compiler/mlir/init_mlir.h"
+#include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_translate.h"
+#include "tensorflow/compiler/mlir/lite/flatbuffer_translate_flags.h"
+#include "tensorflow/compiler/mlir/lite/tf_tfl_passes.h"
 #include "tensorflow/compiler/mlir/lite/tf_tfl_translate_cl.h"
 #include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate_cl.h"
-#include "tensorflow/core/platform/init_main.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
@@ -37,14 +42,21 @@ using mlir::FuncOp;
 using mlir::MLIRContext;
 using mlir::ModuleOp;
 using stream_executor::port::StatusOr;
-using tensorflow::Status;
 
+// Debugging flag to print function mapping in the flatbuffer.
 // NOLINTNEXTLINE
 static llvm::cl::opt<bool> print_function_result_mapping(
     "print-function-result-mapping",
     llvm::cl::desc(
         "Print the mapping of function result to flatbuffer output buffer"),
     llvm::cl::init(false));
+
+// NOLINTNEXTLINE
+static llvm::cl::opt<std::string> weight_quantization(
+    "weight_quantization",
+    llvm::cl::desc("The type of the quantized weight buffer. Must be NONE, "
+                   "INT8, FLOAT16."),
+    llvm::cl::init("NONE"));
 
 enum TranslationStatus { kTrSuccess, kTrFailure };
 
@@ -99,9 +111,8 @@ static int PrintFunctionResultMapping(const std::string &result,
 }
 
 int main(int argc, char **argv) {
-  llvm::PrettyStackTraceProgram x(argc, argv);
   // TODO(jpienaar): Revise the command line option parsing here.
-  llvm::InitLLVM y(argc, argv);
+  tensorflow::InitMlir y(&argc, &argv);
 
   // TODO(antiagainst): We are pulling in multiple transformations as follows.
   // Each transformation has its own set of command-line options; options of one
@@ -112,13 +123,8 @@ int main(int argc, char **argv) {
   // We need to disable duplicated ones to provide a cleaner command-line option
   // interface. That also means we need to relay the value set in one option to
   // all its aliases.
-
   llvm::cl::ParseCommandLineOptions(
       argc, argv, "TF GraphDef to TFLite FlatBuffer converter\n");
-
-  // TODO(ashwinm): Enable command line parsing for both sides.
-  int fake_argc = 1;
-  tensorflow::port::InitMain(argv[0], &fake_argc, &argv);
 
   MLIRContext context;
   llvm::SourceMgr source_mgr;
@@ -126,23 +132,69 @@ int main(int argc, char **argv) {
 
   StatusOr<mlir::OwningModuleRef> module =
       tensorflow::LoadFromGraphdefOrMlirSource(
-          input_file_name, input_mlir, use_splatted_constant, extra_opdefs,
+          input_file_name, input_mlir, use_splatted_constant, custom_opdefs,
           debug_info_file, input_arrays, input_dtypes, input_shapes,
-          output_arrays, inference_type, min_values, max_values,
+          output_arrays,
           /*prune_unused_nodes=*/true, &source_mgr, &context);
 
   // If errors occur, the library call in the above already logged the error
   // message. So we can just return here.
   if (!module.ok()) return kTrFailure;
 
+  mlir::PassManager pm(&context);
+
+  // Set the quantization specifications from the command line flags.
+  mlir::TFL::QuantizationSpecs quant_specs;
+  if (mlir::TFL::ParseInputNodeQuantSpecs(input_arrays, min_values, max_values,
+                                          inference_type, &quant_specs)) {
+    llvm::errs() << "Failed to get input quant spec.";
+    return kTrFailure;
+  }
+  if (weight_quantization != "NONE") {
+    quant_specs.weight_quantization = true;
+    if (weight_quantization == "INT8") {
+      quant_specs.inference_type = tensorflow::DT_QINT8;
+    } else if (weight_quantization == "FLOAT16") {
+      quant_specs.inference_type = tensorflow::DT_HALF;
+    } else {
+      llvm::errs() << "Unknown weight quantization " << weight_quantization;
+      return kTrFailure;
+    }
+  }
+  if (!emit_quant_adaptor_ops) {
+    quant_specs.inference_input_type = quant_specs.inference_type;
+  }
+
+  if (!quant_stats_file_name.empty()) {
+    std::string error_message;
+    auto file = mlir::openInputFile(quant_stats_file_name, &error_message);
+    if (!file) {
+      llvm::errs() << "fail to open quant stats file: "
+                   << quant_stats_file_name;
+      return kTrFailure;
+    }
+    quant_specs.serialized_quant_stats = file->getBuffer().str();
+  }
+
+  mlir::TFL::PassConfig pass_config(quant_specs);
+  pass_config.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
+  pass_config.lower_tensor_list_ops = lower_tensor_list_ops;
+  pass_config.inline_functions = inline_functions;
+
+  tensorflow::AddTFToTFLConversionPasses(pass_config, &pm);
+
   std::string result;
   auto status = tensorflow::ConvertTFExecutorToTFLOrFlatbuffer(
       module.ValueOrDie().get(), output_mlir, emit_builtin_tflite_ops,
-      emit_select_tf_ops, emit_custom_ops, emit_quant_adaptor_ops,
-      lower_tensor_list_ops, &result);
+      emit_select_tf_ops, emit_custom_ops, quant_specs, &result, &pm);
   if (!status.ok()) return kTrFailure;
 
-  auto output = mlir::openOutputFile(output_file_name);
+  std::string error_msg;
+  auto output = mlir::openOutputFile(output_file_name, &error_msg);
+  if (output == nullptr) {
+    llvm::errs() << error_msg << '\n';
+    return kTrFailure;
+  }
   output->os() << result;
   output->keep();
 

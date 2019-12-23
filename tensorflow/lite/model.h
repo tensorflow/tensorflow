@@ -20,7 +20,8 @@ limitations under the License.
 #define TENSORFLOW_LITE_MODEL_H_
 
 #include <memory>
-#include "tensorflow/lite/c/c_api_internal.h"
+
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/interpreter.h"
@@ -139,6 +140,10 @@ class FlatBufferModel {
   // version encodes the minimum required interpreter version to run the
   // flatbuffer model. If the minimum version can't be determined, an empty
   // string will be returned.
+  // Note that the returned minimum version is a lower-bound but not a strict
+  // lower-bound; ops in the graph may not have an associated runtime version,
+  // in which case the actual required runtime might be greater than the
+  // reported minimum.
   string GetMinimumRuntime() const;
 
   /// Returns true if the model identifier is correct (otherwise false and
@@ -218,6 +223,8 @@ class InterpreterBuilder {
   TfLiteStatus ParseQuantization(const QuantizationParameters* src_quantization,
                                  TfLiteQuantization* quantization,
                                  const std::vector<int>& dims);
+  TfLiteStatus ParseSparsity(const SparsityParameters* src_sparsity,
+                             TfLiteSparsity** sparsity);
 
   const ::tflite::Model* model_;
   const OpResolver& op_resolver_;

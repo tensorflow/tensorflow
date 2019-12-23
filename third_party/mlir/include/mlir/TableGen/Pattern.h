@@ -46,7 +46,7 @@ namespace tblgen {
 // is shared among multiple patterns to avoid creating the wrapper object for
 // the same op again and again. But this map will continuously grow.
 using RecordOperatorMap =
-    llvm::DenseMap<const llvm::Record *, std::unique_ptr<Operator>>;
+    DenseMap<const llvm::Record *, std::unique_ptr<Operator>>;
 
 class Pattern;
 
@@ -103,6 +103,8 @@ public:
   // Returns the native code call template inside this DAG leaf.
   // Precondition: isNativeCodeCall()
   StringRef getNativeCodeTemplate() const;
+
+  void print(raw_ostream &os) const;
 
 private:
   // Returns true if the TableGen Init `def` in this DagLeaf is a DefInit and
@@ -175,6 +177,8 @@ public:
   // Returns the native code call template inside this DAG node.
   // Precondition: isNativeCodeCall()
   StringRef getNativeCodeTemplate() const;
+
+  void print(raw_ostream &os) const;
 
 private:
   const llvm::DagInit *node; // nullptr means null DagNode
@@ -262,8 +266,19 @@ public:
     // symbol as a value (if this symbol represents one static value) or a value
     // range (if this symbol represents multiple static values). `name` is the
     // name of the C++ variable that this symbol bounds to. `index` should only
-    // be used for indexing results.
-    std::string getValueAndRangeUse(StringRef name, int index) const;
+    // be used for indexing results.  `fmt` is used to format each value.
+    // `separator` is used to separate values if this is a value range.
+    std::string getValueAndRangeUse(StringRef name, int index, const char *fmt,
+                                    const char *separator) const;
+
+    // Returns a string containing the C++ expression for referencing this
+    // symbol as a value range regardless of how many static values this symbol
+    // represents. `name` is the name of the C++ variable that this symbol
+    // bounds to. `index` should only be used for indexing results. `fmt` is
+    // used to format each value. `separator` is used to separate values in the
+    // range.
+    std::string getAllRangeUse(StringRef name, int index, const char *fmt,
+                               const char *separator) const;
 
     const Operator *op; // The op where the bound entity belongs
     Kind kind;          // The kind of the bound entity
@@ -298,7 +313,7 @@ public:
   // Returns true if the given `symbol` is bound.
   bool contains(StringRef symbol) const;
 
-  // Returns an interator to the information of the given symbol named as `key`.
+  // Returns an iterator to the information of the given symbol named as `key`.
   const_iterator find(StringRef key) const;
 
   // Returns the number of static values of the given `symbol` corresponds to.
@@ -309,12 +324,22 @@ public:
 
   // Returns a string containing the C++ expression for referencing this
   // symbol as a value (if this symbol represents one static value) or a value
-  // range (if this symbol represents multiple static values).
-  std::string getValueAndRangeUse(StringRef symbol) const;
+  // range (if this symbol represents multiple static values). `fmt` is used to
+  // format each value. `separator` is used to separate values if `symbol`
+  // represents a value range.
+  std::string getValueAndRangeUse(StringRef symbol, const char *fmt = "{0}",
+                                  const char *separator = ", ") const;
+
+  // Returns a string containing the C++ expression for referencing this
+  // symbol as a value range regardless of how many static values this symbol
+  // represents. `fmt` is used to format each value. `separator` is used to
+  // separate values in the range.
+  std::string getAllRangeUse(StringRef symbol, const char *fmt = "{0}",
+                             const char *separator = ", ") const;
 
   // Splits the given `symbol` into a value pack name and an index. Returns the
-  // value pack name and writes the index to `index` on sucess. Returns `symbol`
-  // itself if it does not contain an index.
+  // value pack name and writes the index to `index` on success. Returns
+  // `symbol` itself if it does not contain an index.
   //
   // We can use `name__N` to access the `N`-th value in the value pack bound to
   // `name`. `name` is typically the results of an multi-result op.

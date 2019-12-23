@@ -20,14 +20,11 @@ from __future__ import print_function
 
 import os
 import tempfile
+
 from absl import app
 from absl import flags
 
 import tensorflow.compat.v2 as tf
-
-# TODO(vbardiovsky): remove these when symbols are public.
-from tensorflow.python.ops import lookup_ops
-from tensorflow.python.training.tracking import tracking
 
 FLAGS = flags.FLAGS
 
@@ -54,13 +51,15 @@ class TextEmbeddingModel(tf.train.Checkpoint):
   def __init__(self, vocabulary, emb_dim, oov_buckets):
     super(TextEmbeddingModel, self).__init__()
     self._oov_buckets = oov_buckets
-    self._vocabulary_file = tracking.TrackableAsset(
-        write_vocabulary_file(vocabulary))
     self._total_size = len(vocabulary) + oov_buckets
-    self._table = lookup_ops.index_table_from_file(
-        vocabulary_file=self._vocabulary_file,
-        num_oov_buckets=self._oov_buckets,
-        hasher_spec=lookup_ops.FastHashSpec)
+    # Assign the table initializer to this instance to ensure the asset
+    # it depends on is saved with the SavedModel.
+    self._table_initializer = tf.lookup.TextFileInitializer(
+        write_vocabulary_file(vocabulary), tf.string,
+        tf.lookup.TextFileIndex.WHOLE_LINE, tf.int64,
+        tf.lookup.TextFileIndex.LINE_NUMBER)
+    self._table = tf.lookup.StaticVocabularyTable(
+        self._table_initializer, num_oov_buckets=self._oov_buckets)
     self.embeddings = tf.Variable(
         tf.random.uniform(shape=[self._total_size, emb_dim]))
     self.variables = [self.embeddings]

@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import abc
 import collections
+
 import numpy as np
 
 from tensorflow.python.data.experimental.ops import cardinality
@@ -28,8 +29,10 @@ from tensorflow.python.framework import ops
 from tensorflow.python.keras.engine import training_generator
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.ops import math_ops
+from tensorflow.python.util.tf_export import keras_export
 
 
+@keras_export('keras.layers.experimental.preprocessing.PreprocessingLayer')
 class PreprocessingLayer(Layer):
   """Base class for PreprocessingLayers."""
   __metaclass__ = abc.ABCMeta

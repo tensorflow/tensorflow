@@ -1,34 +1,46 @@
 # Post-training quantization
 
-Post-training quantization includes general techniques to reduce model size
-while also improving CPU and hardware accelerator latency with little
-degradation in model accuracy. These techniques can be performed on an
-already-trained float TensorFlow model and applied during TensorFlow Lite
-conversion.
+Post-training quantization is a conversion technique that can reduce model size
+while also improving CPU and hardware accelerator latency, with little
+degradation in model accuracy. You can perform these techniques using an
+already-trained float TensorFlow model when you convert it to TensorFlow Lite
+format.
+
+Note: The procedures on this page require TensorFlow 1.15 or higher.
+
 
 ### Optimization options
 
-There are several post training quantization options to choose from. Here is a
+There are several post-training quantization options to choose from. Here is a
 summary table of the choices and the benefits they provide:
 
-| Technique              | Benefits                  | Hardware            |
-| ---------------------- | ------------------------- | ------------------- |
-| Post training "hybrid" | 4x smaller, 2-3x speedup, | CPU                 |
-:                        : accuracy                  :                     :
-| Post training integer  | 4x smaller, More speedup  | CPU, Edge TPU, etc. |
-| Post training fp16     | 2x smaller, Potential GPU | CPU/GPU             |
-:                        : acceleration              :                     :
+| Technique                  | Benefits                  | Hardware            |
+| -------------------------- | ------------------------- | ------------------- |
+| Weight quantization        | 4x smaller, 2-3x speedup, | CPU                 |
+:                            : accuracy                  :                     :
+| Full integer quantization  | 4x smaller, 3x+ speedup   | CPU, Edge TPU, etc. |
+| Float16 quantization       | 2x smaller, potential GPU | CPU/GPU             |
+:                            : acceleration              :                     :
 
 This decision tree can help determine which post-training quantization method is
 best for your use case:
 
 ![post-training optimization options](images/optimization.jpg)
 
-### Quantizing weights
+Alternatively, you might achieve higher accuracy if you perform
+[quantization-aware training](
+https://github.com/tensorflow/tensorflow/tree/r1.14/tensorflow/contrib/quantize).
+However, doing so requires some model modifications to add fake quantization
+nodes, whereas the post-training quantization techniques on this page use an
+existing pre-trained model.
 
-The simplest form of post-training quantization quantizes weights from floating
-point to 8-bits of precision. This technique is enabled as an option in the
-[TensorFlow Lite converter](../convert/):
+
+### Weight quantization
+
+The simplest form of post-training quantization quantizes only the weights from
+floating point to 8-bits of precision (also called "hybrid" quantization). This
+technique is enabled as an option in the [TensorFlow Lite
+converter](../convert/):
 
 ```
 import tensorflow as tf
@@ -53,13 +65,16 @@ Hybrid ops are available for the most compute-intensive operators in a network:
 *  [tf.nn.bidirectional_dynamic_rnn for BasicRNNCell type](https://www.tensorflow.org/api_docs/python/tf/nn/bidirectional_dynamic_rnn)
 *  [tf.nn.dynamic_rnn for LSTM and BasicRNN Cell types](https://www.tensorflow.org/api_docs/python/tf/nn/dynamic_rnn)
 
+
 ### Full integer quantization of weights and activations
 
-We can get further latency improvements, reductions in peak memory usage, and
+You can get further latency improvements, reductions in peak memory usage, and
 access to integer only hardware accelerators by making sure all model math is
-quantized. To do this, we need to measure the dynamic range of activations and
-inputs with a representative data set. You can simply create an input data
-generator and provide it to our converter.
+quantized.
+
+To do this, you need to measure the dynamic range of activations and inputs by
+supplying a representative data set. You can simply create an input data
+generator and provide it to our converter. For example:
 
 ```
 import tensorflow as tf
@@ -75,27 +90,33 @@ converter.representative_dataset = representative_dataset_gen
 tflite_quant_model = converter.convert()
 ```
 
-The resulting model will be fully quantized but still take float input and
-output for convenience.
+The resulting model should be fully quantized, but any
+ops that do not have quantized implementations are left in
+floating point. This allows conversion to occur smoothly, but the model won't be
+compatible with accelerators that require full integer quantization.
 
-Ops that do not have quantized implementations will automatically be left in
-floating point. This allows conversion to occur smoothly but may restrict
-deployment to accelerators that support float. To require the converter to only
-output integer operations, one can specify:
+Additionally, the model still uses float input and output for convenience.
+
+To ensure compatibility with some accelerators (such as the Coral Edge TPU), you
+can enforce full integer quantization for all ops and use integer input and
+output by adding the following lines before you convert:
 
 ```
 converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS_INT8]
+converter.inference_input_type = tf.uint8
+converter.inference_output_type = tf.uint8
 ```
+
+The first line makes the converter throw an error if it encounters an operation
+it cannot currently quantize.
 
 Note: `target_spec.supported_ops` was previously `target_ops` in the Python API.
 
-This makes the converter throw an error if it encounters an operation it cannot
-currently quantize.
 
 ### Float16 quantization of weights
 
-We can reduce the size of a floating point model by quantizing the weights to
-float16, the IEEE standard for 16 bit floating point numbers. The advantages of
+You can reduce the size of a floating point model by quantizing the weights to
+float16, the IEEE standard for 16-bit floating point numbers. The advantages of
 this quantization are as follows:
 
 -   reduce model size by up to half (since all weights are now half the original
@@ -129,7 +150,7 @@ provided for specific networks in the
 [TensorFlow Lite model repository](../models/). It is important to check the
 accuracy of the quantized model to verify that any degradation in accuracy is
 within acceptable limits. There is a tool to evaluate
-[TensorFlow Lite model accuracy](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tools/accuracy/README.md){:.external}.
+[TensorFlow Lite model accuracy](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tools/accuracy/ilsvrc/README.md){:.external}.
 
 If the accuracy drop is too high, consider using
 [quantization aware training](https://github.com/tensorflow/tensorflow/tree/r1.13/tensorflow/contrib/quantize){:.external}.

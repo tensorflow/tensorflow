@@ -48,8 +48,10 @@ void RunKernelTyped(Tuning tuning, const PackedMatrix<LhsScalar>& lhs,
                     Matrix<DstScalar>* dst) {
   using Kernel = Kernel<ThePath, LhsScalar, RhsScalar, DstScalar, Spec>;
   Kernel kernel(tuning);
+#if !defined(NDEBUG) || !RUY_OPT_ENABLED(RUY_OPT_FAT_KERNEL)
   using LhsLayout = typename Kernel::LhsLayout;
   using RhsLayout = typename Kernel::RhsLayout;
+#endif
   // end_row and end_col may be larger than dst dimensions.
   // that is because kernels write directly to the destination matrix, whose
   // dimensions may not be a multiple of the kernel dimensions, and we try to
@@ -218,14 +220,17 @@ struct Kernel<Path::kStandardCpp, LhsScalar, RhsScalar, DstScalar, Spec> {
 RUY_INHERIT_KERNEL(Path::kStandardCpp, Path::kNeon)
 RUY_INHERIT_KERNEL(Path::kNeon, Path::kNeonDotprod)
 #elif RUY_PLATFORM(X86)
-RUY_INHERIT_KERNEL(Path::kStandardCpp, Path::kAvx512)
+RUY_INHERIT_KERNEL(Path::kStandardCpp, Path::kAvx2)
+RUY_INHERIT_KERNEL(Path::kAvx2, Path::kAvx512)
 #endif
 
-// KernelParams are shared across 32-bit and 64-bit NEON code, and x86 AVX-512
-// code.
-#if (RUY_PLATFORM(NEON_64) || RUY_PLATFORM(NEON_32) || \
-     RUY_PLATFORM(AVX512)) &&                          \
-    RUY_OPT_ENABLED(RUY_OPT_ASM)
+// KernelParams are shared across 32-bit and 64-bit NEON code, and x86 code.
+//
+// In other cases, we still define (empty) versions, so that dummy kernels
+// can use the classes in function signatures.
+#if ((RUY_PLATFORM(NEON_64) || RUY_PLATFORM(NEON_32)) && \
+     RUY_OPT_ENABLED(RUY_OPT_ASM)) ||                    \
+    RUY_PLATFORM(X86)
 
 #define RUY_ASM_FLAG_HAS_BIAS 0x1
 #define RUY_ASM_FLAG_HAS_LHS_SUMS 0x2
@@ -401,8 +406,6 @@ inline void MakeKernelParamsFloat(const PackedMatrix<float>& lhs,
                                   int start_row, int start_col, int end_row,
                                   int end_col, Matrix<float>* dst,
                                   KernelParamsFloat<LhsCols, RhsCols>* params) {
-  using Params = KernelParamsFloat<LhsCols, RhsCols>;
-
   const int depth = lhs.layout.rows;
   RUY_DCHECK_EQ(start_row % LhsCols, 0);
   RUY_DCHECK_EQ(start_col % RhsCols, 0);
@@ -438,9 +441,17 @@ inline void MakeKernelParamsFloat(const PackedMatrix<float>& lhs,
   RUY_DCHECK_LT(params->last_col, params->dst_cols);
 }
 
-#endif  // (RUY_PLATFORM(NEON_64) || RUY_PLATFORM(NEON_32) ||
-        //  RUY_PLATFORM(AVX512)) &&
-        // RUY_OPT_ENABLED(RUY_OPT_ASM)
+#else  // ((RUY_PLATFORM(NEON_64) || RUY_PLATFORM(NEON_32)) &&
+       // RUY_OPT_ENABLED(RUY_OPT_ASM)) || RUY_PLATFORM(X86)
+
+template <int LhsCols, int RhsCols>
+struct KernelParams8bit {};
+
+template <int LhsCols, int RhsCols>
+struct KernelParamsFloat {};
+
+#endif  // ((RUY_PLATFORM(NEON_64) || RUY_PLATFORM(NEON_32)) &&
+        //  RUY_OPT_ENABLED(RUY_OPT_ASM)) || RUY_PLATFORM(X86)
 
 }  // namespace ruy
 

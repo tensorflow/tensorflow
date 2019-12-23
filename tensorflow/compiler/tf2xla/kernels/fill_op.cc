@@ -46,9 +46,23 @@ class FillOp : public XlaOpKernel {
 
     std::vector<int64> dims;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector("dims", &dims));
+    // Set dynamic dimension value to -1 so that we know which dimension is
+    // dynamic.
+    ctx->set_dynamic_dimension_is_minus_one(true);
+    std::vector<int64> dynamic_dims;
+    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector("dims", &dynamic_dims));
 
-    auto result = xla::Broadcast(ctx->Input("value"), dims);
-    ctx->SetOutput(0, result);
+    auto output = xla::Broadcast(ctx->Input("value"), dims);
+    for (int64 i = 0; i < dims.size(); ++i) {
+      // If a dimension is dynamic, call set-dimension-size on the output.
+      if (dynamic_dims[i] == -1) {
+        auto dynamic_dim_size = xla::Slice(ctx->Input(0), {i}, {i + 1}, {1});
+        dynamic_dim_size = xla::Reshape(dynamic_dim_size, {});
+        dynamic_dim_size = xla::ConvertElementType(dynamic_dim_size, xla::S32);
+        output = xla::SetDimensionSize(output, dynamic_dim_size, i);
+      }
+    }
+    ctx->SetOutput(0, output);
   }
 };
 

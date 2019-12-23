@@ -68,7 +68,7 @@ CAGOperandAnchor *CAGSlice::getOperandAnchor(Operation *op,
   }
 
   // Create.
-  auto anchor = llvm::make_unique<CAGOperandAnchor>(op, operandIdx);
+  auto anchor = std::make_unique<CAGOperandAnchor>(op, operandIdx);
   auto *unowned = anchor.release();
   unowned->nodeId = allNodes.size();
   allNodes.push_back(unowned);
@@ -87,7 +87,7 @@ CAGResultAnchor *CAGSlice::getResultAnchor(Operation *op, unsigned resultIdx) {
   }
 
   // Create.
-  auto anchor = llvm::make_unique<CAGResultAnchor>(op, resultIdx);
+  auto anchor = std::make_unique<CAGResultAnchor>(op, resultIdx);
   auto *unowned = anchor.release();
   unowned->nodeId = allNodes.size();
   allNodes.push_back(unowned);
@@ -102,7 +102,7 @@ void CAGSlice::enumerateImpliedConnections(
   std::vector<std::pair<CAGAnchorNode *, CAGAnchorNode *>> impliedPairs;
   for (auto &resultAnchorPair : resultAnchors) {
     CAGResultAnchor *resultAnchor = resultAnchorPair.second;
-    Value *resultValue = resultAnchor->getValue();
+    ValuePtr resultValue = resultAnchor->getValue();
     for (auto &use : resultValue->getUses()) {
       Operation *operandOp = use.getOwner();
       unsigned operandIdx = use.getOperandNumber();
@@ -157,15 +157,15 @@ Type CAGAnchorNode::getTransformedType() {
       getOriginalType());
 }
 
-void CAGNode::printLabel(llvm::raw_ostream &os) const {
+void CAGNode::printLabel(raw_ostream &os) const {
   os << "Node<" << static_cast<const void *>(this) << ">";
 }
 
-void CAGAnchorNode::printLabel(llvm::raw_ostream &os) const {
+void CAGAnchorNode::printLabel(raw_ostream &os) const {
   getUniformMetadata().printSummary(os);
 }
 
-void CAGOperandAnchor::printLabel(llvm::raw_ostream &os) const {
+void CAGOperandAnchor::printLabel(raw_ostream &os) const {
   os << "Operand<";
   op->getName().print(os);
   os << "," << operandIdx;
@@ -173,7 +173,7 @@ void CAGOperandAnchor::printLabel(llvm::raw_ostream &os) const {
   CAGAnchorNode::printLabel(os);
 }
 
-void CAGResultAnchor::printLabel(llvm::raw_ostream &os) const {
+void CAGResultAnchor::printLabel(raw_ostream &os) const {
   os << "Result<";
   getOp()->getName().print(os);
   os << ">";

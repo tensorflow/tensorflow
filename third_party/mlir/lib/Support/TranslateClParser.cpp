@@ -25,7 +25,6 @@
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Module.h"
 #include "mlir/Parser.h"
-#include "mlir/Support/FileUtilities.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Translation.h"
 #include "llvm/Support/CommandLine.h"
@@ -36,17 +35,12 @@
 using namespace mlir;
 
 // Storage for the translation function wrappers that survive the parser.
-static llvm::SmallVector<TranslateFunction, 16> wrapperStorage;
+static SmallVector<TranslateFunction, 16> wrapperStorage;
 
-static LogicalResult printMLIROutput(ModuleOp module,
-                                     llvm::StringRef outputFilename) {
+static LogicalResult printMLIROutput(ModuleOp module, raw_ostream &os) {
   if (failed(verify(module)))
     return failure();
-  auto file = openOutputFile(outputFilename);
-  if (!file)
-    return failure();
-  module.print(file->os());
-  file->keep();
+  module.print(os);
   return success();
 }
 
@@ -54,19 +48,21 @@ TranslationParser::TranslationParser(llvm::cl::Option &opt)
     : llvm::cl::parser<const TranslateFunction *>(opt) {
   const auto &toMLIRRegistry = getTranslationToMLIRRegistry();
   const auto &fromMLIRRegistry = getTranslationFromMLIRRegistry();
+  const auto &fileToFileRegistry = getTranslationRegistry();
 
   // Reserve the required capacity upfront so that pointers are not
   // invalidated on reallocation.
-  wrapperStorage.reserve(toMLIRRegistry.size() + fromMLIRRegistry.size());
+  wrapperStorage.reserve(toMLIRRegistry.size() + fromMLIRRegistry.size() +
+                         fileToFileRegistry.size());
   for (const auto &kv : toMLIRRegistry) {
-    TranslateToMLIRFunction function = kv.second;
-    TranslateFunction wrapper = [function](StringRef inputFilename,
-                                           StringRef outputFilename,
+    TranslateSourceMgrToMLIRFunction function = kv.second;
+    TranslateFunction wrapper = [function](llvm::SourceMgr &sourceMgr,
+                                           raw_ostream &output,
                                            MLIRContext *context) {
-      OwningModuleRef module = function(inputFilename, context);
+      OwningModuleRef module = function(sourceMgr, context);
       if (!module)
         return failure();
-      return printMLIROutput(*module, outputFilename);
+      return printMLIROutput(*module, output);
     };
     wrapperStorage.emplace_back(std::move(wrapper));
 
@@ -75,19 +71,20 @@ TranslationParser::TranslationParser(llvm::cl::Option &opt)
 
   for (const auto &kv : fromMLIRRegistry) {
     TranslateFromMLIRFunction function = kv.second;
-    TranslateFunction wrapper = [function](StringRef inputFilename,
-                                           StringRef outputFilename,
+    TranslateFunction wrapper = [function](llvm::SourceMgr &sourceMgr,
+                                           raw_ostream &output,
                                            MLIRContext *context) {
-      llvm::SourceMgr sourceMgr;
-      SourceMgrDiagnosticHandler sourceMgrHandler(sourceMgr, context);
-      auto module =
-          OwningModuleRef(parseSourceFile(inputFilename, sourceMgr, context));
+      auto module = OwningModuleRef(parseSourceFile(sourceMgr, context));
       if (!module)
         return failure();
-      return function(module.get(), outputFilename);
+      return function(module.get(), output);
     };
     wrapperStorage.emplace_back(std::move(wrapper));
 
+    addLiteralOption(kv.first(), &wrapperStorage.back(), kv.first());
+  }
+  for (const auto &kv : fileToFileRegistry) {
+    wrapperStorage.emplace_back(kv.second);
     addLiteralOption(kv.first(), &wrapperStorage.back(), kv.first());
   }
 }

@@ -28,9 +28,13 @@ from tensorflow.python.distribute import tpu_strategy as tpu_lib
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
 from tensorflow.python.eager import context
 from tensorflow.python.framework import config
+from tensorflow.python.keras.optimizer_v2 import adadelta as adadelta_keras_v2
 from tensorflow.python.keras.optimizer_v2 import adagrad as adagrad_keras_v2
 from tensorflow.python.keras.optimizer_v2 import adam as adam_keras_v2
+from tensorflow.python.keras.optimizer_v2 import adamax as adamax_keras_v2
+from tensorflow.python.keras.optimizer_v2 import ftrl as ftrl_keras_v2
 from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_keras_v2
+from tensorflow.python.keras.optimizer_v2 import nadam as nadam_keras_v2
 from tensorflow.python.keras.optimizer_v2 import rmsprop as rmsprop_keras_v2
 from tensorflow.python.tpu import device_assignment as device_assignment_lib
 from tensorflow.python.tpu import tpu_strategy_util
@@ -132,12 +136,20 @@ rmsprop_optimizer_v1_fn = combinations.NamedObject(
 # TODO(shiningsun): consider adding the other v1 optimizers
 optimizers_v1 = [gradient_descent_optimizer_v1_fn, adagrad_optimizer_v1_fn]
 
-gradient_descent_optimizer_keras_v2_fn = combinations.NamedObject(
-    "GradientDescentKerasV2", lambda: gradient_descent_keras_v2.SGD(0.2))
+adadelta_optimizer_keras_v2_fn = combinations.NamedObject(
+    "AdadeltaKerasV2", lambda: adadelta_keras_v2.Adadelta(0.001))
 adagrad_optimizer_keras_v2_fn = combinations.NamedObject(
     "AdagradKerasV2", lambda: adagrad_keras_v2.Adagrad(0.001))
 adam_optimizer_keras_v2_fn = combinations.NamedObject(
     "AdamKerasV2", lambda: adam_keras_v2.Adam(0.001, epsilon=1.0))
+adamax_optimizer_keras_v2_fn = combinations.NamedObject(
+    "AdamaxKerasV2", lambda: adamax_keras_v2.Adamax(0.001, epsilon=1.0))
+nadam_optimizer_keras_v2_fn = combinations.NamedObject(
+    "NadamKerasV2", lambda: nadam_keras_v2.Nadam(0.001, epsilon=1.0))
+ftrl_optimizer_keras_v2_fn = combinations.NamedObject(
+    "FtrlKerasV2", lambda: ftrl_keras_v2.Ftrl(0.001))
+gradient_descent_optimizer_keras_v2_fn = combinations.NamedObject(
+    "GradientDescentKerasV2", lambda: gradient_descent_keras_v2.SGD(0.2))
 rmsprop_optimizer_keras_v2_fn = combinations.NamedObject(
     "RmsPropKerasV2", lambda: rmsprop_keras_v2.RMSprop(0.001))
 
@@ -161,12 +173,13 @@ def set_virtual_cpus_to_at_least(num_virtual_cpus):
   physical_devices = config.list_physical_devices("CPU")
   if not physical_devices:
     raise RuntimeError("No CPUs found")
-  configs = config.get_virtual_device_configuration(physical_devices[0])
+  configs = config.get_logical_device_configuration(physical_devices[0])
   if configs is None:
-    virtual_devices = [context.VirtualDeviceConfiguration()
-                       for _ in range(num_virtual_cpus)]
-    config.set_virtual_device_configuration(
-        physical_devices[0], virtual_devices)
+    logical_devices = [
+        context.LogicalDeviceConfiguration() for _ in range(num_virtual_cpus)
+    ]
+    config.set_logical_device_configuration(physical_devices[0],
+                                            logical_devices)
   else:
     if len(configs) < num_virtual_cpus:
       raise RuntimeError("Already configured with %d < %d virtual CPUs" %
@@ -215,6 +228,8 @@ tpu_strategies = [
     tpu_strategy,  # steps_per_run=2
     tpu_strategy_one_step
 ]
+
+all_strategies = strategies_minus_tpu + tpu_strategies
 
 
 def strategy_minus_tpu_combinations():

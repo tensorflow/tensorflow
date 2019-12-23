@@ -53,16 +53,18 @@ class ValidateOpDefTest : public ::testing::Test {
       return ValidateOpDef(op_reg_data.op_def);
     }
   }
-
-  void ExpectFailure(const Status& status, const string& message) {
-    EXPECT_FALSE(status.ok()) << "Did not see error with: " << message;
-    if (!status.ok()) {
-      LOG(INFO) << "message: " << status;
-      EXPECT_TRUE(absl::StrContains(status.ToString(), message))
-          << "Actual: " << status << "\nExpected to contain: " << message;
-    }
-  }
 };
+
+namespace {
+void ExpectFailure(const Status& status, const string& message) {
+  EXPECT_FALSE(status.ok()) << "Did not see error with: " << message;
+  if (!status.ok()) {
+    LOG(INFO) << "message: " << status;
+    EXPECT_TRUE(absl::StrContains(status.ToString(), message))
+        << "Actual: " << status << "\nExpected to contain: " << message;
+  }
+}
+}  // namespace
 
 TEST_F(ValidateOpDefTest, OpDefValid) {
   TF_EXPECT_OK(TestBuilder(OpDefBuilder("X").Attr("a: int")));
@@ -75,12 +77,26 @@ TEST_F(ValidateOpDefTest, OpDefValid) {
   TF_EXPECT_OK(TestBuilder(OpDefBuilder("X").Attr("a: int >= -5 = 3")));
   TF_EXPECT_OK(TestBuilder(OpDefBuilder("X").Attr("a: numbertype")));
   TF_EXPECT_OK(TestBuilder(OpDefBuilder("Uppercase")));
+
+  TF_EXPECT_OK(TestBuilder(OpDefBuilder("Namespace>X").Attr("a: int")));
+  TF_EXPECT_OK(TestBuilder(OpDefBuilder("Namespace>X>Y").Attr("a: int")));
 }
 
 TEST_F(ValidateOpDefTest, InvalidName) {
   ExpectFailure(TestBuilder(OpDefBuilder("lower").Attr("a: int")),
                 "Invalid name");
   ExpectFailure(TestBuilder(OpDefBuilder("BadSuffix 7%")), "Invalid name");
+  ExpectFailure(TestBuilder(OpDefBuilder(">OpName").Attr("a: int")),
+                "Invalid name");
+  // Can't have a dangling empty namespace
+  ExpectFailure(TestBuilder(OpDefBuilder("OpName>").Attr("a: int")),
+                "Invalid name");
+  // Each namespace section must be Camelcased
+  ExpectFailure(TestBuilder(OpDefBuilder("OpName>b").Attr("a: int")),
+                "Invalid name");
+  // Can't have empty namespaces
+  ExpectFailure(TestBuilder(OpDefBuilder("OpName>A>>B").Attr("a: int")),
+                "Invalid name");
 }
 
 TEST_F(ValidateOpDefTest, DuplicateName) {
@@ -511,6 +527,27 @@ TEST(OpDefEqualityTest, EqualAndHash) {
 
   ExpectDifferent(o1, o2);
   ExpectDifferent(o1, o3);
+}
+
+TEST(OpDefAttrDefaultsUnchangedTest, Foo) {
+  const auto& op1 = FromText("name: 'op1' attr { name: 'n' type: 'string'}");
+  const auto& op2 = FromText(
+      "name: 'op2' attr { name: 'n' type: 'string' default_value: {s: 'x'}}");
+  const auto& op3 = FromText(
+      "name: 'op3' attr { name: 'n' type: 'string' default_value: {s: 'y'}}");
+
+  // Adding a default value: fine.
+  TF_EXPECT_OK(OpDefAttrDefaultsUnchanged(op1, op2));
+
+  // Changing a default value: not ok.
+  Status changed_attr = OpDefAttrDefaultsUnchanged(op2, op3);
+  ExpectFailure(changed_attr,
+                "Attr 'n' has changed it's default value; from \"x\" to \"y\"");
+
+  // Removing a default value: not ok.
+  Status removed_attr = OpDefAttrDefaultsUnchanged(op2, op1);
+  ExpectFailure(removed_attr,
+                "Attr 'n' has removed it's default; from \"x\" to no default");
 }
 
 }  // namespace

@@ -16,8 +16,8 @@
 // =============================================================================
 
 #include "mlir/Dialect/LoopOps/LoopOps.h"
+#include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/StandardOps/Ops.h"
 #include "mlir/Transforms/LoopUtils.h"
 #include "mlir/Transforms/Passes.h"
 #include "mlir/Transforms/RegionUtils.h"
@@ -34,7 +34,7 @@ public:
   void runOnFunction() override {
     FuncOp func = getFunction();
 
-    func.walk<loop::ForOp>([](loop::ForOp op) {
+    func.walk([](loop::ForOp op) {
       // Ignore nested loops.
       if (op.getParentOfType<loop::ForOp>())
         return;
@@ -96,8 +96,8 @@ public:
 
 } // namespace
 
-std::unique_ptr<FunctionPassBase> mlir::createLoopCoalescingPass() {
-  return llvm::make_unique<LoopCoalescingPass>();
+std::unique_ptr<OpPassBase<FuncOp>> mlir::createLoopCoalescingPass() {
+  return std::make_unique<LoopCoalescingPass>();
 }
 
 static PassRegistration<LoopCoalescingPass>

@@ -15,17 +15,17 @@
 // limitations under the License.
 // =============================================================================
 
-#include "mlir/Analysis/VectorAnalysis.h"
-#include "mlir/AffineOps/AffineOps.h"
 #include "mlir/Analysis/AffineAnalysis.h"
 #include "mlir/Analysis/LoopAnalysis.h"
+#include "mlir/Dialect/AffineOps/AffineOps.h"
+#include "mlir/Dialect/StandardOps/Ops.h"
+#include "mlir/Dialect/VectorOps/Utils.h"
+#include "mlir/Dialect/VectorOps/VectorOps.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/Operation.h"
-#include "mlir/StandardOps/Ops.h"
 #include "mlir/Support/Functional.h"
 #include "mlir/Support/STLExtras.h"
-#include "mlir/VectorOps/VectorOps.h"
 
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SetVector.h"
@@ -39,15 +39,15 @@ using namespace mlir;
 
 using llvm::SetVector;
 
-Optional<SmallVector<unsigned, 4>>
-mlir::shapeRatio(ArrayRef<int64_t> superShape, ArrayRef<int64_t> subShape) {
+Optional<SmallVector<int64_t, 4>> mlir::shapeRatio(ArrayRef<int64_t> superShape,
+                                                   ArrayRef<int64_t> subShape) {
   if (superShape.size() < subShape.size()) {
-    return Optional<SmallVector<unsigned, 4>>();
+    return Optional<SmallVector<int64_t, 4>>();
   }
 
   // Starting from the end, compute the integer divisors.
   // Set the boolean `divides` if integral division is not possible.
-  std::vector<unsigned> result;
+  std::vector<int64_t> result;
   result.reserve(superShape.size());
   bool divides = true;
   auto divide = [&divides, &result](int superSize, int subSize) {
@@ -76,11 +76,11 @@ mlir::shapeRatio(ArrayRef<int64_t> superShape, ArrayRef<int64_t> subShape) {
          "super to sub shape ratio is not of the same size as the super rank");
 
   // Reverse again to get it back in the proper order and return.
-  return SmallVector<unsigned, 4>{result.rbegin(), result.rend()};
+  return SmallVector<int64_t, 4>{result.rbegin(), result.rend()};
 }
 
-Optional<SmallVector<unsigned, 4>> mlir::shapeRatio(VectorType superVectorType,
-                                                    VectorType subVectorType) {
+Optional<SmallVector<int64_t, 4>> mlir::shapeRatio(VectorType superVectorType,
+                                                   VectorType subVectorType) {
   assert(superVectorType.getElementType() == subVectorType.getElementType() &&
          "vector types must be of the same elemental type");
   return shapeRatio(superVectorType.getShape(), subVectorType.getShape());
@@ -109,7 +109,7 @@ Optional<SmallVector<unsigned, 4>> mlir::shapeRatio(VectorType superVectorType,
 /// Examples can be found in the documentation of `makePermutationMap`, in the
 /// header file.
 static AffineMap makePermutationMap(
-    ArrayRef<Value *> indices,
+    ArrayRef<ValuePtr> indices,
     const DenseMap<Operation *, unsigned> &enclosingLoopToVectorDim) {
   if (enclosingLoopToVectorDim.empty())
     return AffineMap();
@@ -167,7 +167,7 @@ static SetVector<Operation *> getEnclosingforOps(Operation *op) {
 }
 
 AffineMap mlir::makePermutationMap(
-    Operation *op, ArrayRef<Value *> indices,
+    Operation *op, ArrayRef<ValuePtr> indices,
     const DenseMap<Operation *, unsigned> &loopToVectorDim) {
   DenseMap<Operation *, unsigned> enclosingLoopToVectorDim;
   auto enclosingLoops = getEnclosingforOps(op);
@@ -182,7 +182,7 @@ AffineMap mlir::makePermutationMap(
 
 bool mlir::matcher::operatesOnSuperVectorsOf(Operation &op,
                                              VectorType subVectorType) {
-  // First, extract the vector type and ditinguish between:
+  // First, extract the vector type and distinguish between:
   //   a. ops that *must* lower a super-vector (i.e. vector.transfer_read,
   //      vector.transfer_write); and
   //   b. ops that *may* lower a super-vector (all other ops).
@@ -194,10 +194,10 @@ bool mlir::matcher::operatesOnSuperVectorsOf(Operation &op,
   bool mustDivide = false;
   (void)mustDivide;
   VectorType superVectorType;
-  if (auto read = dyn_cast<vector::VectorTransferReadOp>(op)) {
-    superVectorType = read.getResultType();
+  if (auto read = dyn_cast<vector::TransferReadOp>(op)) {
+    superVectorType = read.getVectorType();
     mustDivide = true;
-  } else if (auto write = dyn_cast<vector::VectorTransferWriteOp>(op)) {
+  } else if (auto write = dyn_cast<vector::TransferWriteOp>(op)) {
     superVectorType = write.getVectorType();
     mustDivide = true;
   } else if (op.getNumResults() == 0) {

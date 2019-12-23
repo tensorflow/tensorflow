@@ -65,11 +65,12 @@ EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE bool IsGreaterThan(dtype a, dtype b) {
 //                      kThreadsPerBlock, 0, cuda_stream>>>(...);
 template <bool propagate_nans, typename dtype>
 __global__ void MaxPoolForwardNCHW(
-    const int nthreads, const dtype* bottom_data, const int channels,
-    const int height, const int width, const int pooled_height,
-    const int pooled_width, const int kernel_h, const int kernel_w,
-    const int stride_h, const int stride_w, const int pad_t, const int pad_l,
-    dtype* top_data, int64* mask, const bool include_batch_in_index) {
+    const int nthreads, const dtype* __restrict__ bottom_data,
+    const int channels, const int height, const int width,
+    const int pooled_height, const int pooled_width, const int kernel_h,
+    const int kernel_w, const int stride_h, const int stride_w, const int pad_t,
+    const int pad_l, dtype* __restrict__ top_data, int64* __restrict__ mask,
+    const bool include_batch_in_index) {
   GPU_1D_KERNEL_LOOP(index, nthreads) {
     int pw = index % pooled_width;
     int ph = (index / pooled_width) % pooled_height;
@@ -108,11 +109,11 @@ __global__ void MaxPoolForwardNCHW(
 // the same X, y coordinate.
 // (so channels = outer_channels, output_size = real output size / 4).
 __global__ void MaxPoolForwardNoMaskKernel_NCHW_VECT_C(
-    const int nthreads, const int32* bottom_data, const int height,
+    const int nthreads, const int32* __restrict__ bottom_data, const int height,
     const int width, const int channels, const int pooled_height,
     const int pooled_width, const int kernel_h, const int kernel_w,
     const int stride_h, const int stride_w, const int pad_t, const int pad_l,
-    int32* top_data) {
+    int32* __restrict__ top_data) {
   // TODO(pauldonnelly): Implement a better optimized version of this kernel.
   const int32 kMinINT8X4 = 0x80808080;
   GPU_1D_KERNEL_LOOP(index, nthreads) {
@@ -141,11 +142,12 @@ __global__ void MaxPoolForwardNoMaskKernel_NCHW_VECT_C(
 
 template <bool propagate_nans, typename dtype>
 __global__ void MaxPoolForwardNHWC(
-    const int nthreads, const dtype* bottom_data, const int height,
+    const int nthreads, const dtype* __restrict__ bottom_data, const int height,
     const int width, const int channels, const int pooled_height,
     const int pooled_width, const int kernel_h, const int kernel_w,
     const int stride_h, const int stride_w, const int pad_t, const int pad_l,
-    dtype* top_data, int64* mask, const bool include_batch_in_index) {
+    dtype* __restrict__ top_data, int64* __restrict__ mask,
+    const bool include_batch_in_index) {
   GPU_1D_KERNEL_LOOP(index, nthreads) {
     int n = index;
     int c = n % channels;
@@ -180,11 +182,11 @@ __global__ void MaxPoolForwardNHWC(
 
 template <typename dtype>
 __global__ void MaxPoolBackwardNoMaskNHWC(
-    const int nthreads, const dtype* bottom_data, const int height,
+    const int nthreads, const dtype* __restrict__ bottom_data, const int height,
     const int width, const int channels, const int pooled_height,
     const int pooled_width, const int kernel_h, const int kernel_w,
     const int stride_h, const int stride_w, const int pad_t, const int pad_l,
-    const dtype* top_diff, dtype* bottom_diff) {
+    const dtype* __restrict__ top_diff, dtype* __restrict__ bottom_diff) {
   GPU_1D_KERNEL_LOOP(index, nthreads) {
     // First find out the index to the maximum, since we have no mask.
     int n = index;
@@ -240,9 +242,11 @@ __global__ void MaxPoolBackwardNoMaskNHWC(
 // the kernel is run, you will need to make sure that bottom_diff is filled with
 // zero first.
 template <typename dtype>
-__global__ void MaxPoolBackward(const int nthreads, const dtype* top_diff,
-                                const int64* mask, const int top_offset,
-                                const int bottom_offset, dtype* bottom_diff,
+__global__ void MaxPoolBackward(const int nthreads,
+                                const dtype* __restrict__ top_diff,
+                                const int64* __restrict__ mask,
+                                const int top_offset, const int bottom_offset,
+                                dtype* __restrict__ bottom_diff,
                                 const bool include_batch_in_index) {
   GPU_1D_KERNEL_LOOP(index, nthreads) {
     const int offset =
@@ -267,11 +271,12 @@ __global__ void MaxPoolBackward(const int nthreads, const dtype* top_diff,
 //     bottom_diff: the gradient of the gradient w.r.t. output.
 template <typename dtype>
 __global__ void MaxPoolGradBackwardNoMaskNCHW(
-    const int nthreads, const dtype* bottom_data, const dtype* output_data,
-    const int pooled_height, const int pooled_width, const int channels,
-    const int height, const int width, const int kernel_h, const int kernel_w,
-    const int stride_h, const int stride_w, const int pad_t, const int pad_l,
-    const dtype* top_diff, dtype* bottom_diff) {
+    const int nthreads, const dtype* __restrict__ bottom_data,
+    const dtype* __restrict__ output_data, const int pooled_height,
+    const int pooled_width, const int channels, const int height,
+    const int width, const int kernel_h, const int kernel_w, const int stride_h,
+    const int stride_w, const int pad_t, const int pad_l,
+    const dtype* __restrict__ top_diff, dtype* __restrict__ bottom_diff) {
   GPU_1D_KERNEL_LOOP(index, nthreads) {
     // First find out the index to the maximum, since we have no mask.
     int pw = index % pooled_width;
@@ -307,11 +312,12 @@ __global__ void MaxPoolGradBackwardNoMaskNCHW(
 
 template <typename dtype>
 __global__ void MaxPoolGradBackwardNoMaskNHWC(
-    const int nthreads, const dtype* bottom_data, const dtype* output_data,
-    const int pooled_height, const int pooled_width, const int channels,
-    const int height, const int width, const int kernel_h, const int kernel_w,
-    const int stride_h, const int stride_w, const int pad_t, const int pad_l,
-    const dtype* top_diff, dtype* bottom_diff) {
+    const int nthreads, const dtype* __restrict__ bottom_data,
+    const dtype* __restrict__ output_data, const int pooled_height,
+    const int pooled_width, const int channels, const int height,
+    const int width, const int kernel_h, const int kernel_w, const int stride_h,
+    const int stride_w, const int pad_t, const int pad_l,
+    const dtype* __restrict__ top_diff, dtype* __restrict__ bottom_diff) {
   GPU_1D_KERNEL_LOOP(index, nthreads) {
     // First find out the index to the maximum, since we have no mask.
     int n = index;
@@ -367,9 +373,12 @@ __global__ void MaxPoolGradBackwardNoMaskNHWC(
 //     include_batch_in_index: whether to include batch dimension in flattened
 //         index of `argmax`.
 template <typename dtype>
-__global__ void MaxPoolGradBackward(const int nthreads, const dtype* top_diff,
-                                    const int64* mask, const int top_offset,
-                                    const int bottom_offset, dtype* bottom_diff,
+__global__ void MaxPoolGradBackward(const int nthreads,
+                                    const dtype* __restrict__ top_diff,
+                                    const int64* __restrict__ mask,
+                                    const int top_offset,
+                                    const int bottom_offset,
+                                    dtype* __restrict__ bottom_diff,
                                     const bool include_batch_in_index) {
   GPU_1D_KERNEL_LOOP(index, nthreads) {
     const int offset =

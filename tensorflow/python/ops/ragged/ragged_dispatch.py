@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+
 import numpy as np
 
 from tensorflow.python.framework import dtypes
@@ -303,6 +304,7 @@ _UNARY_ELEMENTWISE_OPS = [
     math_ops.digamma,
     math_ops.erf,
     math_ops.erfc,
+    math_ops.erfinv,
     math_ops.exp,
     math_ops.expm1,
     math_ops.floor,
@@ -315,6 +317,7 @@ _UNARY_ELEMENTWISE_OPS = [
     math_ops.log1p,
     math_ops.log_sigmoid,
     math_ops.logical_not,
+    math_ops.ndtri,
     math_ops.negative,
     math_ops.real,
     math_ops.reciprocal,
@@ -461,6 +464,7 @@ _RAGGED_DISPATCH_OPS = [
                                                            'indices']),
     (array_ops.one_hot, ragged_array_ops.ragged_one_hot, ['indices']),
     (array_ops.rank, ragged_array_ops.rank, ['input']),
+    (array_ops.reverse, ragged_array_ops.reverse, ['tensor']),
     (array_ops.size, _ragged_size_v1, ['input']),
     (array_ops.size_v2, ragged_array_ops.size, ['input']),
     (array_ops.squeeze, _ragged_squeeze_v1, ['input']),

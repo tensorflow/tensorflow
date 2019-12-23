@@ -46,6 +46,11 @@ class DynamicDimensionInference {
   HloInstruction* GetDynamicSize(HloInstruction* inst, const ShapeIndex& index,
                                  int64 dim) const;
 
+  // Forward dynamic dimension size at `dim` and its constraint from `inst` to
+  // `new_inst`.
+  Status ForwardDynamicSize(HloInstruction* inst, HloInstruction* new_inst,
+                            const ShapeIndex& index);
+
   friend class DynamicDimensionInferenceVisitor;
 
  private:
@@ -144,6 +149,9 @@ class DynamicDimensionInference {
   //
   //
   struct DimensionConstraint {
+    explicit DimensionConstraint(int64 s, int64 m)
+        : stride(s), multiple_of(m) {}
+    DimensionConstraint() : stride(1), multiple_of(1) {}
     // Stride represents the distance of a newly placed element and the previous
     // placed element on this dynamic dimension.
     int64 stride;
@@ -164,6 +172,9 @@ class DynamicDimensionInference {
   // by a scalar instruction `size`.
   void SetDynamicSize(HloInstruction* inst, const ShapeIndex& index, int64 dim,
                       HloInstruction* size, DimensionConstraint constraint) {
+    VLOG(1) << "Set dimension inst " << inst->ToString() << " index "
+            << index.ToString() << "@" << dim << " to " << size->ToShortString()
+            << " constraint: " << constraint.multiple_of;
     Shape subshape = ShapeUtil::GetSubshape(inst->shape(), index);
     CHECK(!subshape.IsTuple())
         << "Can't set a tuple shape to dynamic dimension";
@@ -171,12 +182,13 @@ class DynamicDimensionInference {
         << "Asked to set invalid dynamic dimension. Shape: "
         << subshape.ToString() << ", Dimension: " << dim;
     DynamicDimension dynamic_dimension{inst, index, dim};
-    dynamic_mapping_.try_emplace(dynamic_dimension, size);
+    // Updating a dynamic dimension twice overwrites the previous one.
+    dynamic_mapping_[dynamic_dimension] = size;
     if (constraint_mapping_.count(dynamic_dimension) != 0) {
       CHECK_EQ(constraint_mapping_[dynamic_dimension].stride,
                constraint.stride);
     }
-    constraint_mapping_.try_emplace(dynamic_dimension, constraint);
+    constraint_mapping_[dynamic_dimension] = constraint;
     auto iter = per_hlo_dynamic_dimensions_.try_emplace(inst);
     iter.first->second.emplace(dynamic_dimension);
   }

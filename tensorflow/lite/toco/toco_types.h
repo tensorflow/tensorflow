@@ -16,13 +16,9 @@ limitations under the License.
 #define TENSORFLOW_LITE_TOCO_TOCO_TYPES_H_
 
 #include <string>
-#include "tensorflow/core/platform/platform.h"
 
-#if defined(PLATFORM_GOOGLE) || defined(GOOGLE_INTEGRAL_TYPES)
-#include "tensorflow/core/platform/google/integral_types.h"
-#else
-#include "tensorflow/core/platform/default/integral_types.h"
-#endif
+#include "tensorflow/core/platform/platform.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace toco {
 #ifdef PLATFORM_GOOGLE

@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
@@ -302,10 +301,10 @@ class GPUDeviceTestHelper {
   BaseGPUDevice* gpu() { return gpu_.get(); }
   Allocator* gpu_allocator() { return gpu_allocator_; }
   Allocator* host_allocator() { return host_allocator_; }
-  se::Stream* compute_stream() { return gpu_->streams_[0]->compute; }
-  se::Stream* h2d_stream() { return gpu_->streams_[0]->host_to_device; }
-  se::Stream* d2h_stream() { return gpu_->streams_[0]->device_to_host; }
-  se::Stream* d2d_stream() { return gpu_->streams_[0]->device_to_device[0]; }
+  se::Stream* compute_stream() { return gpu_->stream_->compute; }
+  se::Stream* h2d_stream() { return gpu_->stream_->host_to_device; }
+  se::Stream* d2h_stream() { return gpu_->stream_->device_to_host; }
+  se::Stream* d2d_stream() { return gpu_->stream_->device_to_device[0]; }
   EventMgr* event_mgr() { return gpu_->em_; }
   int pending_cap() { return gpu_->pending_cap_; }
 
@@ -417,7 +416,7 @@ class EMBenchmarkHelper {
       attr.set_on_host(on_host);
       attrs->push_back(attr);
     }
-    params->output_attr_array = gtl::vector_as_array(attrs);
+    params->output_attr_array = attrs->data();
     params->forward_from_array = {};
   }
 
@@ -442,7 +441,6 @@ class EMBenchmarkHelper {
 
     params->step_container = nullptr;
     params->slice_reader_cache = nullptr;
-    params->input_device_contexts = nullptr;
     params->resource_manager = gpu_helper_->gpu()->resource_manager();
 
     params->stats_collector = nullptr;

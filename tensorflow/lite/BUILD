@@ -1,5 +1,6 @@
 load("//tensorflow:tensorflow.bzl", "if_not_windows", "tf_cc_test")
 load("//tensorflow/lite:build_def.bzl", "tflite_cc_shared_object", "tflite_copts")
+load("//tensorflow/lite/micro:build_def.bzl", "cc_library")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
 package(
@@ -16,6 +17,13 @@ exports_files(glob([
 ]))
 
 config_setting(
+    name = "gemmlowp_profiling",
+    values = {
+        "copt": "-DGEMMLOWP_PROFILING",
+    },
+)
+
+config_setting(
     name = "mips",
     values = {
         "cpu": "mips",
@@ -29,11 +37,9 @@ config_setting(
     },
 )
 
-# Enables inclusion of select TensorFlow kernels via the TF Lite Flex delegate.
-# WARNING: This build flag is experimental and subject to change.
 config_setting(
-    name = "with_select_tf_ops",
-    define_values = {"with_select_tf_ops": "true"},
+    name = "tflite_experimental_runtime",
+    values = {"define": "tflite_experimental_runtime=true"},
     visibility = ["//visibility:public"],
 )
 
@@ -66,7 +72,7 @@ cc_library(
         ":graph_info",
         ":memory_planner",
         ":simple_memory_arena",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
     ],
 )
 
@@ -91,7 +97,7 @@ cc_library(
     name = "context",
     hdrs = ["context.h"],
     copts = TFLITE_DEFAULT_COPTS,
-    deps = ["//tensorflow/lite/c:c_api_internal"],
+    deps = ["//tensorflow/lite/c:common"],
 )
 
 cc_library(
@@ -100,7 +106,7 @@ cc_library(
     hdrs = ["external_cpu_backend_context.h"],
     copts = TFLITE_DEFAULT_COPTS,
     deps = [
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
     ],
 )
 
@@ -108,14 +114,14 @@ cc_library(
     name = "graph_info",
     hdrs = ["graph_info.h"],
     copts = TFLITE_DEFAULT_COPTS,
-    deps = ["//tensorflow/lite/c:c_api_internal"],
+    deps = ["//tensorflow/lite/c:common"],
 )
 
 cc_library(
     name = "memory_planner",
     hdrs = ["memory_planner.h"],
     copts = TFLITE_DEFAULT_COPTS,
-    deps = ["//tensorflow/lite/c:c_api_internal"],
+    deps = ["//tensorflow/lite/c:common"],
 )
 
 cc_library(
@@ -123,7 +129,7 @@ cc_library(
     srcs = ["simple_memory_arena.cc"],
     hdrs = ["simple_memory_arena.h"],
     copts = TFLITE_DEFAULT_COPTS,
-    deps = ["//tensorflow/lite/c:c_api_internal"],
+    deps = ["//tensorflow/lite/c:common"],
 )
 
 cc_library(
@@ -131,7 +137,7 @@ cc_library(
     hdrs = [
         "builtin_op_data.h",
     ],
-    deps = ["//tensorflow/lite/c:c_api_internal"],
+    deps = ["//tensorflow/lite/c:common"],
 )
 
 cc_library(
@@ -141,7 +147,7 @@ cc_library(
         "builtin_ops.h",
         "context_util.h",
     ],
-    deps = ["//tensorflow/lite/c:c_api_internal"],
+    deps = ["//tensorflow/lite/c:common"],
 )
 
 exports_files(["builtin_ops.h"])
@@ -149,8 +155,9 @@ exports_files(["builtin_ops.h"])
 cc_library(
     name = "string",
     hdrs = [
-        "string.h",
+        "string_type.h",
     ],
+    build_for_embedded = True,
     copts = TFLITE_DEFAULT_COPTS,
 )
 
@@ -176,7 +183,7 @@ cc_library(
     deps = [
         ":simple_memory_arena",
         ":string",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
     ],
 )
@@ -217,30 +224,28 @@ cc_library(
         ":minimal_logging",
         ":simple_memory_arena",
         ":string",
+        ":type_to_tflitetype",
         ":util",
         ":version",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
+        "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/nnapi:nnapi_implementation",
         "//tensorflow/lite/schema:schema_fbs",
-        "//tensorflow/lite/experimental/resource_variable:resource_variable",
-    ] + select({
-        ":with_select_tf_ops": [
-            "//tensorflow/lite/delegates/flex:delegate",
-        ],
-        "//conditions:default": [],
-    }),
+    ],
+    alwayslink = 1,
 )
 
 cc_library(
     name = "string_util",
     srcs = ["string_util.cc"],
     hdrs = ["string_util.h"],
+    build_for_embedded = True,
     copts = TFLITE_DEFAULT_COPTS,
     deps = [
         ":string",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
     ],
 )
 
@@ -255,7 +260,7 @@ cc_test(
     deps = [
         ":framework",
         ":string_util",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",
     ],
@@ -313,6 +318,7 @@ cc_test(
     ],
     deps = [
         ":simple_memory_arena",
+        "//tensorflow/core:tflite_portable_logging",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",
     ],
@@ -328,6 +334,7 @@ cc_test(
         "testdata/2_subgraphs.bin",
         "testdata/empty_model.bin",
         "testdata/multi_add_flex.bin",
+        "testdata/sparse_tensor.bin",
         "testdata/test_min_runtime.bin",
         "testdata/test_model.bin",
         "testdata/test_model_broken.bin",
@@ -390,7 +397,8 @@ cc_library(
     hdrs = ["util.h"],
     copts = TFLITE_DEFAULT_COPTS + tflite_copts(),
     deps = [
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/schema:schema_fbs",
     ],
 )
 
@@ -404,7 +412,7 @@ cc_test(
     ],
     deps = [
         ":util",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -435,6 +443,13 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "type_to_tflitetype",
+    hdrs = ["type_to_tflitetype.h"],
+    build_for_embedded = True,
+    deps = ["//tensorflow/lite/c:common"],
+)
+
 cc_test(
     name = "minimal_logging_test",
     size = "small",
@@ -460,7 +475,7 @@ tflite_cc_shared_object(
         ],
         "//tensorflow:windows": [],
         "//conditions:default": [
-            "-z defs",
+            "-Wl,-z,defs",
             "-Wl,--version-script,$(location //tensorflow/lite:tflite_version_script.lds)",
         ],
     }),

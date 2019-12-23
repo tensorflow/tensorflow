@@ -28,8 +28,7 @@ limitations under the License.
 
 #include "third_party/eigen3/Eigen/Core"
 #include "fixedpoint/fixedpoint.h"
-#include "profiling/instrumentation.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/add.h"
@@ -37,18 +36,26 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/binary_function.h"
 #include "tensorflow/lite/kernels/internal/reference/ceil.h"
 #include "tensorflow/lite/kernels/internal/reference/comparisons.h"
+#include "tensorflow/lite/kernels/internal/reference/concatenation.h"
 #include "tensorflow/lite/kernels/internal/reference/conv.h"
+#include "tensorflow/lite/kernels/internal/reference/dequantize.h"
 #include "tensorflow/lite/kernels/internal/reference/floor.h"
 #include "tensorflow/lite/kernels/internal/reference/fully_connected.h"
+#include "tensorflow/lite/kernels/internal/reference/logistic.h"
 #include "tensorflow/lite/kernels/internal/reference/maximum_minimum.h"
+#include "tensorflow/lite/kernels/internal/reference/mul.h"
 #include "tensorflow/lite/kernels/internal/reference/neg.h"
+#include "tensorflow/lite/kernels/internal/reference/pad.h"
 #include "tensorflow/lite/kernels/internal/reference/pooling.h"
 #include "tensorflow/lite/kernels/internal/reference/prelu.h"
 #include "tensorflow/lite/kernels/internal/reference/process_broadcast_shapes.h"
+#include "tensorflow/lite/kernels/internal/reference/quantize.h"
+#include "tensorflow/lite/kernels/internal/reference/reduce.h"
 #include "tensorflow/lite/kernels/internal/reference/round.h"
 #include "tensorflow/lite/kernels/internal/reference/softmax.h"
 #include "tensorflow/lite/kernels/internal/reference/strided_slice.h"
 #include "tensorflow/lite/kernels/internal/round.h"
+#include "tensorflow/lite/kernels/internal/scoped_profiling_label_wrapper.h"
 #include "tensorflow/lite/kernels/internal/strided_slice_logic.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/types.h"
@@ -186,7 +193,7 @@ inline void Relu(const RuntimeShape& input_shape, const T* input_data,
 template <typename T>
 inline void Relu1(const RuntimeShape& input_shape, const T* input_data,
                   const RuntimeShape& output_shape, T* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Relu1 (not fused)");
+  ScopedProfilingLabelWrapper label("Relu1 (not fused)");
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
     const T val = input_data[i];
@@ -199,7 +206,7 @@ inline void Relu1(const RuntimeShape& input_shape, const T* input_data,
 
 inline void Relu6(const RuntimeShape& input_shape, const float* input_data,
                   const RuntimeShape& output_shape, float* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Relu6 (not fused)");
+  ScopedProfilingLabelWrapper label("Relu6 (not fused)");
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
     const float val = input_data[i];
@@ -211,10 +218,28 @@ inline void Relu6(const RuntimeShape& input_shape, const float* input_data,
 }
 
 template <typename T>
+inline void ReluX(const tflite::ReluParams& params,
+                  const RuntimeShape& input_shape, const T* input_data,
+                  const RuntimeShape& output_shape, T* output_data) {
+  ScopedProfilingLabelWrapper label("Quantized ReluX (not fused)");
+  const int flat_size = MatchingFlatSize(input_shape, output_shape);
+  for (int i = 0; i < flat_size; ++i) {
+    const int32 val = static_cast<int32_t>(input_data[i]);
+    int32 clamped = params.output_offset +
+                    MultiplyByQuantizedMultiplier(val - params.input_offset,
+                                                  params.output_multiplier,
+                                                  params.output_shift);
+    clamped = std::max(params.quantized_activation_min, clamped);
+    clamped = std::min(params.quantized_activation_max, clamped);
+    output_data[i] = static_cast<T>(clamped);
+  }
+}
+
+template <typename T>
 inline void ReluX(const tflite::ActivationParams& params,
                   const RuntimeShape& input_shape, const T* input_data,
                   const RuntimeShape& output_shape, T* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Quantized ReluX (not fused)");
+  ScopedProfilingLabelWrapper label("Quantized ReluX (not fused)");
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
   const T max_value = params.quantized_activation_max;
   const T min_value = params.quantized_activation_min;
@@ -229,7 +254,7 @@ inline void ReluX(const tflite::ActivationParams& params,
 inline void LeakyRelu(const tflite::LeakyReluParams& params,
                       const RuntimeShape& input_shape, const float* input_data,
                       const RuntimeShape& output_shape, float* output_data) {
-  gemmlowp::ScopedProfilingLabel label("LeakyRelu (not fused)");
+  ScopedProfilingLabelWrapper label("LeakyRelu (not fused)");
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
     const float val = input_data[i];
@@ -244,7 +269,7 @@ inline void QuantizeLeakyRelu(const LeakyReluParams& params, T q_alpha,
                               const T* input_data,
                               const RuntimeShape& output_shape,
                               T* output_data) {
-  gemmlowp::ScopedProfilingLabel label("LeakyRelu (not fused)");
+  ScopedProfilingLabelWrapper label("LeakyRelu (not fused)");
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
   static const int32 quantized_min = std::numeric_limits<T>::min();
   static const int32 quantized_max = std::numeric_limits<T>::max();
@@ -337,24 +362,6 @@ inline void AddN(const RuntimeShape& input_shape, const size_t num_inputs,
   }
 }
 
-template <typename T>
-inline void Mul(const ArithmeticParams& params,
-                const RuntimeShape& input1_shape, const T* input1_data,
-                const RuntimeShape& input2_shape, const T* input2_data,
-                const RuntimeShape& output_shape, T* output_data) {
-  T output_activation_min;
-  T output_activation_max;
-  GetActivationParams(params, &output_activation_min, &output_activation_max);
-
-  const int flat_size =
-      MatchingFlatSize(input1_shape, input2_shape, output_shape);
-  for (int i = 0; i < flat_size; ++i) {
-    output_data[i] = ActivationFunctionWithMinMax(
-        input1_data[i] * input2_data[i], output_activation_min,
-        output_activation_max);
-  }
-}
-
 // TODO(jiawen): We can implement BroadcastMul on buffers of arbitrary
 // dimensionality if the runtime code does a single loop over one dimension
 // that handles broadcasting as the base case. The code generator would then
@@ -363,89 +370,6 @@ inline void Mul(const ArithmeticParams& params,
 // reference_ops.h. Once an optimized version is implemented and NdArrayDesc<T>
 // is no longer referenced in this file, move NdArrayDesc<T> from types.h to
 // reference_ops.h.
-template <typename T>
-void BroadcastMul4DSlow(const ArithmeticParams& params,
-                        const RuntimeShape& unextended_input1_shape,
-                        const T* input1_data,
-                        const RuntimeShape& unextended_input2_shape,
-                        const T* input2_data,
-                        const RuntimeShape& unextended_output_shape,
-                        T* output_data) {
-  gemmlowp::ScopedProfilingLabel label("BroadcastMul4DSlow");
-  T output_activation_min;
-  T output_activation_max;
-  GetActivationParams(params, &output_activation_min, &output_activation_max);
-
-  TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(unextended_input2_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
-  const RuntimeShape output_shape =
-      RuntimeShape::ExtendedShape(4, unextended_output_shape);
-
-  NdArrayDesc<4> desc1;
-  NdArrayDesc<4> desc2;
-  NdArrayDescsForElementwiseBroadcast(unextended_input1_shape,
-                                      unextended_input2_shape, &desc1, &desc2);
-
-  // In Tensorflow, the dimensions are canonically named (batch_number, row,
-  // col, channel), with extents (batches, height, width, depth), with the
-  // trailing dimension changing most rapidly (channels has the smallest stride,
-  // typically 1 element).
-  //
-  // In generated C code, we store arrays with the dimensions reversed. The
-  // first dimension has smallest stride.
-  //
-  // We name our variables by their Tensorflow convention, but generate C code
-  // nesting loops such that the innermost loop has the smallest stride for the
-  // best cache behavior.
-  for (int b = 0; b < output_shape.Dims(0); ++b) {
-    for (int y = 0; y < output_shape.Dims(1); ++y) {
-      for (int x = 0; x < output_shape.Dims(2); ++x) {
-        for (int c = 0; c < output_shape.Dims(3); ++c) {
-          output_data[Offset(output_shape, b, y, x, c)] =
-              ActivationFunctionWithMinMax(
-                  input1_data[SubscriptToIndex(desc1, b, y, x, c)] *
-                      input2_data[SubscriptToIndex(desc2, b, y, x, c)],
-                  output_activation_min, output_activation_max);
-        }
-      }
-    }
-  }
-}
-
-// Element-wise mul that can often be used for inner loop of broadcast Mul as
-// well as the non-broadcast Mul.
-inline void MulElementwise(int size, const ArithmeticParams& params,
-                           const uint8* input1_data, const uint8* input2_data,
-                           uint8* output_data) {
-  for (int i = 0; i < size; ++i) {
-    const int32 input1_val = params.input1_offset + input1_data[i];
-    const int32 input2_val = params.input2_offset + input2_data[i];
-    const int32 unclamped_result =
-        params.output_offset +
-        MultiplyByQuantizedMultiplier(input1_val * input2_val,
-                                      params.output_multiplier,
-                                      params.output_shift);
-    const int32 clamped_output =
-        std::min(params.quantized_activation_max,
-                 std::max(params.quantized_activation_min, unclamped_result));
-    output_data[i] = static_cast<uint8>(clamped_output);
-  }
-}
-
-inline void Mul(const ArithmeticParams& params,
-                const RuntimeShape& input1_shape, const uint8* input1_data,
-                const RuntimeShape& input2_shape, const uint8* input2_data,
-                const RuntimeShape& output_shape, uint8* output_data) {
-  TFLITE_DCHECK_LE(params.quantized_activation_min,
-                   params.quantized_activation_max);
-  gemmlowp::ScopedProfilingLabel label("Mul/8bit");
-  const int flat_size =
-      MatchingFlatSize(input1_shape, input2_shape, output_shape);
-
-  MulElementwise(flat_size, params, input1_data, input2_data, output_data);
-}
-
 inline void BroadcastMulFivefold(const ArithmeticParams& unswitched_params,
                                  const RuntimeShape& unswitched_input1_shape,
                                  const uint8* unswitched_input1_data,
@@ -498,57 +422,14 @@ inline void BroadcastMulFivefold(const ArithmeticParams& unswitched_params,
   }
 }
 
-inline void BroadcastMul4DSlow(const ArithmeticParams& params,
-                               const RuntimeShape& input1_shape,
-                               const uint8* input1_data,
-                               const RuntimeShape& input2_shape,
-                               const uint8* input2_data,
-                               const RuntimeShape& output_shape,
-                               uint8* output_data) {
-  gemmlowp::ScopedProfilingLabel label("BroadcastMul4DSlow/8bit");
-
-  NdArrayDesc<4> desc1;
-  NdArrayDesc<4> desc2;
-  // The input shapes are extended as part of NdArrayDesc initialization.
-  NdArrayDescsForElementwiseBroadcast(input1_shape, input2_shape, &desc1,
-                                      &desc2);
-  const RuntimeShape extended_output_shape =
-      RuntimeShape::ExtendedShape(4, output_shape);
-
-  for (int b = 0; b < extended_output_shape.Dims(0); ++b) {
-    for (int y = 0; y < extended_output_shape.Dims(1); ++y) {
-      for (int x = 0; x < extended_output_shape.Dims(2); ++x) {
-        for (int c = 0; c < extended_output_shape.Dims(3); ++c) {
-          const int32 input1_val =
-              params.input1_offset +
-              input1_data[SubscriptToIndex(desc1, b, y, x, c)];
-          const int32 input2_val =
-              params.input2_offset +
-              input2_data[SubscriptToIndex(desc2, b, y, x, c)];
-          const int32 unclamped_result =
-              params.output_offset +
-              MultiplyByQuantizedMultiplier(input1_val * input2_val,
-                                            params.output_multiplier,
-                                            params.output_shift);
-          const int32 clamped_output = std::min(
-              params.quantized_activation_max,
-              std::max(params.quantized_activation_min, unclamped_result));
-          output_data[Offset(extended_output_shape, b, y, x, c)] =
-              static_cast<uint8>(clamped_output);
-        }
-      }
-    }
-  }
-}
-
 inline void Mul(const ArithmeticParams& params,
                 const RuntimeShape& input1_shape, const int16* input1_data,
                 const RuntimeShape& input2_shape, const int16* input2_data,
                 const RuntimeShape& output_shape, int16* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Mul/Int16");
+  ScopedProfilingLabelWrapper label("Mul/Int16");
 
   const int flat_size =
-      MatchingFlatSize(input1_shape, input2_shape, output_shape);
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
 
   for (int i = 0; i < flat_size; i++) {
     // F0 uses 0 integer bits, range [-1, 1].
@@ -564,14 +445,14 @@ inline void Mul(const ArithmeticParams& params,
                 const RuntimeShape& input1_shape, const int16* input1_data,
                 const RuntimeShape& input2_shape, const int16* input2_data,
                 const RuntimeShape& output_shape, uint8* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Mul/Int16Uint8");
+  ScopedProfilingLabelWrapper label("Mul/Int16Uint8");
   int32 output_offset = params.output_offset;
   int32 output_activation_min = params.quantized_activation_min;
   int32 output_activation_max = params.quantized_activation_max;
   TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
 
   const int flat_size =
-      MatchingFlatSize(input1_shape, input2_shape, output_shape);
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
 
   for (int i = 0; i < flat_size; i++) {
     // F0 uses 0 integer bits, range [-1, 1].
@@ -652,7 +533,7 @@ inline void Div(const ArithmeticParams& params,
   GetActivationParams(params, &output_activation_min, &output_activation_max);
 
   const int flat_size =
-      MatchingFlatSize(input1_shape, input2_shape, output_shape);
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
     output_data[i] = ActivationFunctionWithMinMax(
         input1_data[i] / input2_data[i], output_activation_min,
@@ -701,9 +582,9 @@ inline void Div(const ArithmeticParams& params,
                 const RuntimeShape& output_shape, uint8* output_data) {
   TFLITE_DCHECK_LE(params.quantized_activation_min,
                    params.quantized_activation_max);
-  gemmlowp::ScopedProfilingLabel label("Div/8bit");
+  ScopedProfilingLabelWrapper label("Div/8bit");
   const int flat_size =
-      MatchingFlatSize(input1_shape, input2_shape, output_shape);
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
 
   DivElementwise(flat_size, params, input1_data, input2_data, output_data);
 }
@@ -776,7 +657,7 @@ inline void SubNonBroadcast(const ArithmeticParams& params,
                             const RuntimeShape& output_shape,
                             float* output_data) {
   const int flat_size =
-      MatchingFlatSize(input1_shape, input2_shape, output_shape);
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
     output_data[i] = ActivationFunctionWithMinMax(
         input1_data[i] - input2_data[i], params.float_activation_min,
@@ -792,7 +673,7 @@ inline void SubNonBroadcast(const ArithmeticParams& params,
                             const RuntimeShape& output_shape,
                             int32* output_data) {
   const int flat_size =
-      MatchingFlatSize(input1_shape, input2_shape, output_shape);
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
     output_data[i] = ActivationFunctionWithMinMax(
         input1_data[i] - input2_data[i], params.quantized_activation_min,
@@ -815,7 +696,7 @@ inline void BroadcastSub4DSlow(const ArithmeticParams& params,
                                const float* input2_data,
                                const RuntimeShape& output_shape,
                                float* output_data) {
-  gemmlowp::ScopedProfilingLabel label("BroadcastSub4DSlow/float");
+  ScopedProfilingLabelWrapper label("BroadcastSub4DSlow/float");
   NdArrayDesc<4> desc1;
   NdArrayDesc<4> desc2;
   NdArrayDescsForElementwiseBroadcast(input1_shape, input2_shape, &desc1,
@@ -856,7 +737,7 @@ inline void BroadcastSub4DSlow(const ArithmeticParams& params,
                                const uint8* input2_data,
                                const RuntimeShape& output_shape,
                                uint8* output_data) {
-  gemmlowp::ScopedProfilingLabel label("BroadcastSub4DSlow/uint8");
+  ScopedProfilingLabelWrapper label("BroadcastSub4DSlow/uint8");
   NdArrayDesc<4> desc1;
   NdArrayDesc<4> desc2;
   NdArrayDescsForElementwiseBroadcast(input1_shape, input2_shape, &desc1,
@@ -920,7 +801,7 @@ inline void BroadcastSub4DSlow(const ArithmeticParams& params,
                                const int32* input2_data,
                                const RuntimeShape& output_shape,
                                int32* output_data) {
-  gemmlowp::ScopedProfilingLabel label("BroadcastSub4DSlow/int32");
+  ScopedProfilingLabelWrapper label("BroadcastSub4DSlow/int32");
   NdArrayDesc<4> desc1;
   NdArrayDesc<4> desc2;
   NdArrayDescsForElementwiseBroadcast(input1_shape, input2_shape, &desc1,
@@ -960,7 +841,7 @@ void BroadcastSub4DSlow(const ArithmeticParams& params,
                         const RuntimeShape& input1_shape, const T* input1_data,
                         const RuntimeShape& input2_shape, const T* input2_data,
                         const RuntimeShape& output_shape, T* output_data) {
-  gemmlowp::ScopedProfilingLabel label("BroadcastSub4DSlow/templated");
+  ScopedProfilingLabelWrapper label("BroadcastSub4DSlow/templated");
   NdArrayDesc<4> desc1;
   NdArrayDesc<4> desc2;
   NdArrayDescsForElementwiseBroadcast(input1_shape, input2_shape, &desc1,
@@ -1038,9 +919,9 @@ inline void SubWithActivation(const ArithmeticParams& params,
                               const int32* input2_data,
                               const RuntimeShape& output_shape,
                               int32* output_data) {
-  gemmlowp::ScopedProfilingLabel label("SubWithActivation");
+  ScopedProfilingLabelWrapper label("SubWithActivation");
   const int flat_size =
-      MatchingFlatSize(input1_shape, input2_shape, input2_shape);
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
     output_data[i] = ActivationFunctionWithMinMax(
         input1_data[i] - input2_data[i], params.quantized_activation_min,
@@ -1056,7 +937,7 @@ inline void SubWithActivation(const ArithmeticParams& params,
                               const RuntimeShape& output_shape,
                               float* output_data) {
   const int flat_size =
-      MatchingFlatSize(input1_shape, input2_shape, input2_shape);
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
     output_data[i] = ActivationFunctionWithMinMax(
         input1_data[i] - input2_data[i], params.float_activation_min,
@@ -1068,10 +949,10 @@ inline void Sub16(const ArithmeticParams& params,
                   const RuntimeShape& input1_shape, const int16_t* input1_data,
                   const RuntimeShape& input2_shape, const int16_t* input2_data,
                   const RuntimeShape& output_shape, int16_t* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Sub/Int16");
+  ScopedProfilingLabelWrapper label("Sub/Int16");
   const int input1_shift = params.input1_shift;
   const int flat_size =
-      MatchingFlatSize(output_shape, input1_shape, input2_shape);
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
   const int16 output_activation_min = params.quantized_activation_min;
   const int16 output_activation_max = params.quantized_activation_max;
 
@@ -1113,122 +994,10 @@ inline void Sub16(const ArithmeticParams& params,
 }
 
 template <typename Scalar>
-inline void Concatenation(const ConcatenationParams& params,
-                          const RuntimeShape* const* input_shapes,
-                          const Scalar* const* input_data,
-                          const RuntimeShape& output_shape,
-                          Scalar* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Concatenation");
-  int axis = params.axis;
-  int inputs_count = params.inputs_count;
-  const int concat_dimensions = output_shape.DimensionsCount();
-  TFLITE_DCHECK_LT(axis, concat_dimensions);
-
-  int64_t concat_size = 0;
-  for (int i = 0; i < inputs_count; i++) {
-    TFLITE_DCHECK_EQ(input_shapes[i]->DimensionsCount(), concat_dimensions);
-    for (int j = 0; j < concat_dimensions; j++) {
-      if (j != axis) {
-        MatchingDim(*input_shapes[i], j, output_shape, j);
-      }
-    }
-    concat_size += input_shapes[i]->Dims(axis);
-  }
-  TFLITE_DCHECK_EQ(concat_size, output_shape.Dims(axis));
-  int64_t outer_size = 1;
-  for (int i = 0; i < axis; ++i) {
-    outer_size *= output_shape.Dims(i);
-  }
-  // For all input arrays,
-  // FlatSize() = outer_size * Dims(axis) * base_inner_size;
-  int64_t base_inner_size = 1;
-  for (int i = axis + 1; i < concat_dimensions; ++i) {
-    base_inner_size *= output_shape.Dims(i);
-  }
-
-  Scalar* output_ptr = output_data;
-  for (int k = 0; k < outer_size; k++) {
-    for (int i = 0; i < inputs_count; ++i) {
-      const int copy_size = input_shapes[i]->Dims(axis) * base_inner_size;
-      memcpy(output_ptr, input_data[i] + k * copy_size,
-             copy_size * sizeof(Scalar));
-      output_ptr += copy_size;
-    }
-  }
-}
-
-// TODO(prabhumk): This is the same as the optimized implementation.
-// TODO(prabhumk): The quantized implementation of concatentation isn't fully
-// quantized as it takes scale as a floating point value. This should be fixed
-// when optimizng this routine further.
-inline void ConcatenationWithScaling(const ConcatenationParams& params,
-                                     const RuntimeShape* const* input_shapes,
-                                     const uint8* const* input_data,
-                                     const RuntimeShape& output_shape,
-                                     uint8* output_data) {
-  gemmlowp::ScopedProfilingLabel label("ConcatenationWithScaling/Uint8");
-  int axis = params.axis;
-  const int32* input_zeropoint = params.input_zeropoint;
-  const float* input_scale = params.input_scale;
-  int inputs_count = params.inputs_count;
-  const int32 output_zeropoint = params.output_zeropoint;
-  const float output_scale = params.output_scale;
-
-  const int concat_dimensions = output_shape.DimensionsCount();
-  TFLITE_DCHECK_LT(axis, concat_dimensions);
-
-  int64_t concat_size = 0;
-  for (int i = 0; i < inputs_count; i++) {
-    TFLITE_DCHECK_EQ(input_shapes[i]->DimensionsCount(), concat_dimensions);
-    for (int j = 0; j < concat_dimensions; j++) {
-      if (j != axis) {
-        MatchingDim(*input_shapes[i], j, output_shape, j);
-      }
-    }
-    concat_size += input_shapes[i]->Dims(axis);
-  }
-  TFLITE_DCHECK_EQ(concat_size, output_shape.Dims(axis));
-  int64_t outer_size = 1;
-  for (int i = 0; i < axis; ++i) {
-    outer_size *= output_shape.Dims(i);
-  }
-  // For all input arrays,
-  // FlatSize() = outer_size * Dims(axis) * base_inner_size;
-  int64_t base_inner_size = 1;
-  for (int i = axis + 1; i < concat_dimensions; ++i) {
-    base_inner_size *= output_shape.Dims(i);
-  }
-
-  const float inverse_output_scale = 1.f / output_scale;
-  uint8* output_ptr = output_data;
-  for (int k = 0; k < outer_size; k++) {
-    for (int i = 0; i < inputs_count; ++i) {
-      const int copy_size = input_shapes[i]->Dims(axis) * base_inner_size;
-      const uint8* input_ptr = input_data[i] + k * copy_size;
-      if (input_zeropoint[i] == output_zeropoint &&
-          input_scale[i] == output_scale) {
-        memcpy(output_ptr, input_ptr, copy_size);
-      } else {
-        const float scale = input_scale[i] * inverse_output_scale;
-        const float bias = -input_zeropoint[i] * scale;
-        for (int j = 0; j < copy_size; ++j) {
-          const int32_t value =
-              static_cast<int32_t>(std::round(input_ptr[j] * scale + bias)) +
-              output_zeropoint;
-          output_ptr[j] =
-              static_cast<uint8_t>(std::max(std::min(255, value), 0));
-        }
-      }
-      output_ptr += copy_size;
-    }
-  }
-}
-
-template <typename Scalar>
 void Pack(const PackParams& params, const RuntimeShape* const* input_shapes,
           const Scalar* const* input_data, const RuntimeShape& output_shape,
           Scalar* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Pack");
+  ScopedProfilingLabelWrapper label("Pack");
   const int dimensions = output_shape.DimensionsCount();
   int axis = params.axis;
   int inputs_count = params.inputs_count;
@@ -1256,7 +1025,7 @@ template <typename Scalar>
 void Unpack(const UnpackParams& params, const RuntimeShape& input_shape,
             const Scalar* input_data, const RuntimeShape& output_shape,
             Scalar* const* output_datas) {
-  gemmlowp::ScopedProfilingLabel label("Unpack");
+  ScopedProfilingLabelWrapper label("Unpack");
   const int dimensions = input_shape.DimensionsCount();
   const int outputs_count = params.num_split;
 
@@ -1290,7 +1059,7 @@ void PackWithScaling(const PackParams& params,
                      const RuntimeShape* const* input_shapes,
                      const uint8* const* input_data,
                      const RuntimeShape& output_shape, uint8* output_data) {
-  gemmlowp::ScopedProfilingLabel label("PackWithScaling");
+  ScopedProfilingLabelWrapper label("PackWithScaling");
   const int dimensions = output_shape.DimensionsCount();
   int axis = params.axis;
   const int32* input_zeropoint = params.input_zeropoint;
@@ -1340,7 +1109,7 @@ void DepthConcatenation(const ConcatenationParams& params,
                         const RuntimeShape* const* input_shapes,
                         const Scalar* const* input_data,
                         const RuntimeShape& output_shape, Scalar* output_data) {
-  gemmlowp::ScopedProfilingLabel label("DepthConcatenation");
+  ScopedProfilingLabelWrapper label("DepthConcatenation");
   auto params_copy = params;
   params_copy.axis = 3;
   Concatenation(params_copy, input_shapes, input_data, output_shape,
@@ -1744,7 +1513,7 @@ template <typename Scalar>
 void Split(const SplitParams& params, const RuntimeShape& input_shape,
            const Scalar* input_data, const RuntimeShape* const* output_shapes,
            Scalar* const* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Split");
+  ScopedProfilingLabelWrapper label("Split");
   const int split_dimensions = input_shape.DimensionsCount();
   int axis = params.axis < 0 ? params.axis + split_dimensions : params.axis;
   int outputs_count = params.num_split;
@@ -1848,7 +1617,7 @@ inline void LogSoftmax(const SoftmaxParams& params,
 inline void LogSoftmax(const SoftmaxParams& params,
                        const RuntimeShape& input_shape, const uint8* input_data,
                        const RuntimeShape& output_shape, uint8* output_data) {
-  gemmlowp::ScopedProfilingLabel label("LogSoftmax/8bit");
+  ScopedProfilingLabelWrapper label("LogSoftmax/8bit");
   const int32 input_multiplier = params.input_multiplier;
   const int32 input_left_shift = params.input_left_shift;
   const int32 reverse_scaling_divisor = params.reverse_scaling_divisor;
@@ -1934,45 +1703,6 @@ inline void LogSoftmax(const SoftmaxParams& params,
   }
 }
 
-inline void Logistic(const RuntimeShape& input_shape, const float* input_data,
-                     const RuntimeShape& output_shape, float* output_data) {
-  const int flat_size = MatchingFlatSize(input_shape, output_shape);
-
-  for (int i = 0; i < flat_size; i++) {
-    float val = input_data[i];
-    float result = 1.f / (1.f + std::exp(-val));
-    output_data[i] = result;
-  }
-}
-
-// Convenience version that allows, for example, generated-code calls to be
-// uniform between data types.
-inline void Logistic(const LogisticParams&, const RuntimeShape& input_shape,
-                     const float* input_data, const RuntimeShape& output_shape,
-                     float* output_data) {
-  // Drop params: not needed.
-  Logistic(input_shape, input_data, output_shape, output_data);
-}
-
-inline void Logistic(const LogisticParams& params,
-                     const RuntimeShape& input_shape, const int16* input_data,
-                     const RuntimeShape& output_shape, int16* output_data) {
-  const int flat_size = MatchingFlatSize(input_shape, output_shape);
-
-  for (int i = 0; i < flat_size; i++) {
-    // F0 uses 0 integer bits, range [-1, 1].
-    // This is the return type of math functions such as tanh, logistic,
-    // whose range is in [-1, 1].
-    using F0 = gemmlowp::FixedPoint<std::int16_t, 0>;
-    // F3 uses 3 integer bits, range [-8, 8], the input range expected here.
-    using F3 = gemmlowp::FixedPoint<std::int16_t, 3>;
-
-    const F3 input = F3::FromRaw(input_data[i]);
-    F0 output = gemmlowp::logistic(input);
-    output_data[i] = output.raw();
-  }
-}
-
 inline void Tanh(const RuntimeShape& input_shape, const float* input_data,
                  const RuntimeShape& output_shape, float* output_data) {
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
@@ -2027,21 +1757,6 @@ inline void Tanh(const TanhParams& params, const RuntimeShape& input_shape,
   }
 }
 
-inline void Dequantize(const tflite::DequantizationParams& op_params,
-                       const RuntimeShape& input_shape, const uint8* input_data,
-                       const RuntimeShape& output_shape, float* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Dequantize");
-  int32 zero_point = op_params.zero_point;
-  double scale = op_params.scale;
-  const int flat_size = MatchingFlatSize(input_shape, output_shape);
-
-  for (int i = 0; i < flat_size; i++) {
-    int32 val = input_data[i];
-    float result = static_cast<float>(scale * (val - zero_point));
-    output_data[i] = result;
-  }
-}
-
 inline void Dequantize(const RuntimeShape& input_shape,
                        const Eigen::half* input_data,
                        const RuntimeShape& output_shape, float* output_data) {
@@ -2051,32 +1766,12 @@ inline void Dequantize(const RuntimeShape& input_shape,
   }
 }
 
-template <typename T>
-inline void AffineQuantize(const tflite::QuantizationParams& op_params,
-                           const RuntimeShape& input_shape,
-                           const float* input_data,
-                           const RuntimeShape& output_shape, T* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Quantize");
-  const int32 zero_point = op_params.zero_point;
-  const double scale = static_cast<double>(op_params.scale);
-  const int flat_size = MatchingFlatSize(input_shape, output_shape);
-  static constexpr int32 min_val = std::numeric_limits<T>::min();
-  static constexpr int32 max_val = std::numeric_limits<T>::max();
-
-  for (int i = 0; i < flat_size; i++) {
-    const float val = input_data[i];
-    int32 unclamped = static_cast<int32>(TfLiteRound(val / scale)) + zero_point;
-    int32 clamped = std::min(std::max(unclamped, min_val), max_val);
-    output_data[i] = clamped;
-  }
-}
-
 template <typename input_type, typename output_type>
 inline void Requantize(const input_type* input_data, int32_t size,
                        int32_t effective_scale_multiplier,
                        int32_t effective_scale_shift, int32_t input_zeropoint,
                        int32_t output_zeropoint, output_type* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Requantize");
+  ScopedProfilingLabelWrapper label("Requantize");
   const bool same_scale =
       (effective_scale_multiplier == 1 << 30 && effective_scale_shift == 1);
   if (same_scale) {
@@ -2113,7 +1808,7 @@ inline void Requantize(const input_type* input_data, int32_t size,
 inline void FakeQuant(const tflite::FakeQuantParams& op_params,
                       const RuntimeShape& input_shape, const float* input_data,
                       const RuntimeShape& output_shape, float* output_data) {
-  gemmlowp::ScopedProfilingLabel label("FakeQuant");
+  ScopedProfilingLabelWrapper label("FakeQuant");
   float rmin = op_params.minmax.min;
   float rmax = op_params.minmax.max;
   int num_bits = op_params.num_bits;
@@ -2166,7 +1861,7 @@ inline void Gather(const tflite::GatherParams& op_params,
                    const RuntimeShape& input_shape, const T* input_data,
                    const RuntimeShape& coords_shape, const CoordsT* coords_data,
                    const RuntimeShape& output_shape, T* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Gather");
+  ScopedProfilingLabelWrapper label("Gather");
   int axis = op_params.axis;
   if (axis < 0) {
     axis += input_shape.DimensionsCount();
@@ -2204,7 +1899,7 @@ inline void GatherNd(const RuntimeShape& params_shape,
                      const RuntimeShape& indices_shape,
                      const IndicesT* indices_data,
                      const RuntimeShape& output_shape, ParamsT* output_data) {
-  gemmlowp::ScopedProfilingLabel label("GatherNd");
+  ScopedProfilingLabelWrapper label("GatherNd");
 
   int n_slices = 1;
   int slice_size = 1;
@@ -2232,6 +1927,48 @@ inline void GatherNd(const RuntimeShape& params_shape,
     }
     std::memcpy(output_data + i * slice_size, params_data + from_pos,
                 sizeof(ParamsT) * slice_size);
+  }
+}
+
+template <typename IndicesT, typename UpdatesT>
+inline void ScatterNd(const RuntimeShape& indices_shape,
+                      const IndicesT* indices_data,
+                      const RuntimeShape& updates_shape,
+                      const UpdatesT* updates_data,
+                      const RuntimeShape& output_shape, UpdatesT* output_data) {
+  ScopedProfilingLabelWrapper label("ScatterNd");
+
+  int n_slices = 1;
+  int slice_size = 1;
+  const int outer_dims = indices_shape.DimensionsCount() - 1;
+  const int indices_nd = indices_shape.Dims(outer_dims);
+  const int updates_dims = updates_shape.DimensionsCount();
+  for (int i = 0; i < outer_dims; ++i) {
+    n_slices *= indices_shape.Dims(i);
+  }
+  for (int i = outer_dims; i < updates_dims; ++i) {
+    slice_size *= updates_shape.Dims(i);
+  }
+
+  int output_flat_size = output_shape.FlatSize();
+  int remain_flat_size = output_flat_size;
+  std::vector<int> dims_to_count(indices_nd, 0);
+  for (int i = 0; i < indices_nd; ++i) {
+    dims_to_count[i] = remain_flat_size / output_shape.Dims(i);
+    remain_flat_size = dims_to_count[i];
+  }
+
+  memset(output_data, 0, sizeof(UpdatesT) * output_flat_size);
+  for (int i = 0; i < n_slices; ++i) {
+    int to_pos = 0;
+    for (int j = 0; j < indices_nd; ++j) {
+      IndicesT idx = indices_data[i * indices_nd + j];
+      TFLITE_DCHECK(0 <= idx && idx < output_shape.Dims(j));
+      to_pos += idx * dims_to_count[j];
+    }
+    for (int j = 0; j < slice_size; j++) {
+      output_data[to_pos + j] += updates_data[i * slice_size + j];
+    }
   }
 }
 
@@ -2307,7 +2044,7 @@ inline void SpaceToBatchND(
     const RuntimeShape& unextended_input2_shape, const int32* block_shape_data,
     const RuntimeShape& unextended_input3_shape, const int32* paddings_data,
     const RuntimeShape& unextended_output_shape, T* output_data) {
-  gemmlowp::ScopedProfilingLabel label("SpaceToBatchND");
+  ScopedProfilingLabelWrapper label("SpaceToBatchND");
   TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
   const RuntimeShape input1_shape =
@@ -2365,7 +2102,7 @@ inline void BatchToSpaceND(
     const RuntimeShape& unextended_input2_shape, const int32* block_shape_data,
     const RuntimeShape& unextended_input3_shape, const int32* crops_data,
     const RuntimeShape& unextended_output_shape, T* output_data) {
-  gemmlowp::ScopedProfilingLabel label("BatchToSpaceND");
+  ScopedProfilingLabelWrapper label("BatchToSpaceND");
   TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
   const RuntimeShape input1_shape =
@@ -2410,148 +2147,6 @@ inline void BatchToSpaceND(
       }
     }
   }
-}
-
-// There are two versions of pad: Pad and PadV2.  In PadV2 there is a second
-// scalar input that provides the padding value.  Therefore pad_value_ptr can be
-// equivalent to a simple input1_data.  For Pad, it should point to a zero
-// value.
-//
-// Note that two typenames are required, so that T=P=int32 is considered a
-// specialization distinct from P=int32.
-template <typename T, typename P>
-inline void PadImpl(const tflite::PadParams& op_params,
-                    const RuntimeShape& input_shape, const T* input_data,
-                    const P* pad_value_ptr, const RuntimeShape& output_shape,
-                    T* output_data) {
-  const RuntimeShape ext_input_shape =
-      RuntimeShape::ExtendedShape(4, input_shape);
-  const RuntimeShape ext_output_shape =
-      RuntimeShape::ExtendedShape(4, output_shape);
-  TFLITE_DCHECK_LE(op_params.left_padding_count, 4);
-  TFLITE_DCHECK_LE(op_params.right_padding_count, 4);
-
-  // Runtime calls are currently fixed at 4 dimensions. Copy inputs so
-  // we can pad them to 4 dims (yes, we are "padding the padding").
-  std::vector<int> left_padding_copy(4, 0);
-  for (int i = 0; i < op_params.left_padding_count; ++i) {
-    left_padding_copy[i] = op_params.left_padding[i];
-  }
-  std::vector<int> right_padding_copy(4, 0);
-  for (int i = 0; i < op_params.right_padding_count; ++i) {
-    right_padding_copy[i] = op_params.right_padding[i];
-  }
-
-  const int output_batch = ext_output_shape.Dims(0);
-  const int output_height = ext_output_shape.Dims(1);
-  const int output_width = ext_output_shape.Dims(2);
-  const int output_depth = ext_output_shape.Dims(3);
-
-  const int left_b_padding = left_padding_copy[0];
-  const int left_h_padding = left_padding_copy[1];
-  const int left_w_padding = left_padding_copy[2];
-  const int left_d_padding = left_padding_copy[3];
-
-  const int right_b_padding = right_padding_copy[0];
-  const int right_h_padding = right_padding_copy[1];
-  const int right_w_padding = right_padding_copy[2];
-  const int right_d_padding = right_padding_copy[3];
-
-  const T pad_value = *pad_value_ptr;
-
-  const T* in_ptr = input_data;
-  T* out_ptr = output_data;
-  for (int out_b = 0; out_b < output_batch; ++out_b) {
-    for (int out_h = 0; out_h < output_height; ++out_h) {
-      for (int out_w = 0; out_w < output_width; ++out_w) {
-        for (int out_d = 0; out_d < output_depth; ++out_d) {
-          if (out_b < left_b_padding ||
-              out_b >= output_batch - right_b_padding ||
-              out_h < left_h_padding ||
-              out_h >= output_height - right_h_padding ||
-              out_w < left_w_padding ||
-              out_w >= output_width - right_w_padding ||
-              out_d < left_d_padding ||
-              out_d >= output_depth - right_d_padding) {
-            *out_ptr++ = pad_value;
-          } else {
-            *out_ptr++ = *in_ptr++;
-          }
-        }
-      }
-    }
-  }
-}
-
-template <typename T, typename P>
-inline void Pad(const tflite::PadParams& op_params,
-                const RuntimeShape& input_shape, const T* input_data,
-                const P* pad_value_ptr, const RuntimeShape& output_shape,
-                T* output_data) {
-  PadImpl(op_params, input_shape, input_data, pad_value_ptr, output_shape,
-          output_data);
-}
-
-// The second (pad-value) input can be int32 when, say, the first is uint8.
-template <typename T>
-inline void Pad(const tflite::PadParams& op_params,
-                const RuntimeShape& input_shape, const T* input_data,
-                const int32* pad_value_ptr, const RuntimeShape& output_shape,
-                T* output_data) {
-  const T converted_pad_value = static_cast<T>(*pad_value_ptr);
-  PadImpl(op_params, input_shape, input_data, &converted_pad_value,
-          output_shape, output_data);
-}
-
-// This version avoids conflicting template matching.
-template <>
-inline void Pad(const tflite::PadParams& op_params,
-                const RuntimeShape& input_shape, const int32* input_data,
-                const int32* pad_value_ptr, const RuntimeShape& output_shape,
-                int32* output_data) {
-  PadImpl(op_params, input_shape, input_data, pad_value_ptr, output_shape,
-          output_data);
-}
-
-// One could make all PadImageStyle calls simply delegate the work to the
-// ordinary Pad.  However, it is better that the reference code asserts false in
-// similar cases.
-template <typename T, typename P>
-inline void PadImageStyle(const tflite::PadParams& op_params,
-                          const RuntimeShape& input_shape, const T* input_data,
-                          const P* pad_value_ptr,
-                          const RuntimeShape& output_shape, T* output_data) {
-  TFLITE_ASSERT_FALSE;
-}
-
-template <typename P>
-inline void PadImageStyle(const tflite::PadParams& op_params,
-                          const RuntimeShape& input_shape,
-                          const uint8* input_data, const P* pad_value_ptr,
-                          const RuntimeShape& output_shape,
-                          uint8* output_data) {
-  Pad(op_params, input_shape, input_data, pad_value_ptr, output_shape,
-      output_data);
-}
-
-template <typename P>
-inline void PadImageStyle(const tflite::PadParams& op_params,
-                          const RuntimeShape& input_shape,
-                          const int8_t* input_data, const P* pad_value_ptr,
-                          const RuntimeShape& output_shape,
-                          int8_t* output_data) {
-  Pad(op_params, input_shape, input_data, pad_value_ptr, output_shape,
-      output_data);
-}
-
-template <typename P>
-inline void PadImageStyle(const tflite::PadParams& op_params,
-                          const RuntimeShape& input_shape,
-                          const float* input_data, const P* pad_value_ptr,
-                          const RuntimeShape& output_shape,
-                          float* output_data) {
-  Pad(op_params, input_shape, input_data, pad_value_ptr, output_shape,
-      output_data);
 }
 
 template <typename T>
@@ -2613,374 +2208,10 @@ inline void Slice(const tflite::SliceParams& op_params,
 template <typename T>
 inline void Exp(const T* input_data, const size_t num_elements,
                 T* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Exp");
+  ScopedProfilingLabelWrapper label("Exp");
   for (size_t idx = 0; idx < num_elements; ++idx) {
     output_data[idx] = std::exp(input_data[idx]);
   }
-}
-
-// A generic reduce method that can be used for reduce_sum, reduce_mean, etc.
-// This method iterates through input data and reduce elements along the
-// dimensions given in axis.
-template <typename In, typename Out>
-inline bool Reduce(const In* input_data, const int* input_dims,
-                   const int* output_dims, const int input_num_dims,
-                   const int output_num_dims, const int* axis,
-                   const int num_axis, int* input_iter,
-                   Out reducer(const Out current, const In in),
-                   Out* output_data) {
-  // Reset input iterator.
-  for (int idx = 0; idx < input_num_dims; ++idx) {
-    input_iter[idx] = 0;
-  }
-  // Iterate through input_data.
-  do {
-    size_t input_offset =
-        ReducedOutputOffset(input_num_dims, input_dims, input_iter, 0, nullptr);
-    size_t output_offset = ReducedOutputOffset(input_num_dims, input_dims,
-                                               input_iter, num_axis, axis);
-    output_data[output_offset] =
-        reducer(output_data[output_offset], input_data[input_offset]);
-  } while (NextIndex(input_num_dims, input_dims, input_iter));
-  return true;
-}
-
-inline bool ResolveAxis(const int num_dims, const int* axis,
-                        const int64_t num_axis, int* out_axis,
-                        int* out_num_axis) {
-  *out_num_axis = 0;  // Just in case.
-  // Short-circuit axis resolution for scalars; the axis will go unused.
-  if (num_dims == 0) {
-    return true;
-  }
-  // o(n^2) is fine since out_num_axis should be really small, mostly <= 4
-  for (int64_t idx = 0; idx < num_axis; ++idx) {
-    // Handle negative index.
-    int current = axis[idx] < 0 ? (axis[idx] + num_dims) : axis[idx];
-    TFLITE_DCHECK(current >= 0 && current < num_dims);
-    bool is_dup = false;
-    for (int j = 0; j < *out_num_axis; ++j) {
-      if (out_axis[j] == current) {
-        is_dup = true;
-        break;
-      }
-    }
-    if (!is_dup) {
-      out_axis[*out_num_axis] = current;
-      *out_num_axis += 1;
-    }
-  }
-  return true;
-}
-
-// This method expects that output_data has been initialized.
-template <typename In, typename Out>
-inline bool ReduceSumImpl(const In* input_data, const int* input_dims,
-                          const int* output_dims, const int input_num_dims,
-                          const int output_num_dims, const int* axis,
-                          const int num_axis, int* input_iter,
-                          Out* output_data) {
-  auto reducer = [](const Out current, const In in) -> Out {
-    const Out actual_in = static_cast<Out>(in);
-    return current + actual_in;
-  };
-  return Reduce<In, Out>(input_data, input_dims, output_dims, input_num_dims,
-                         output_num_dims, axis, num_axis, input_iter, reducer,
-                         output_data);
-}
-
-template <typename T>
-inline bool InitTensorDataForReduce(const int* dims, const int num_dims,
-                                    const T init_value, T* data) {
-  size_t num_elements = 1;
-  for (int idx = 0; idx < num_dims; ++idx) {
-    size_t current = static_cast<size_t>(dims[idx]);
-    // Overflow prevention.
-    if (num_elements > std::numeric_limits<size_t>::max() / current) {
-      return false;
-    }
-    num_elements *= current;
-  }
-  for (size_t idx = 0; idx < num_elements; ++idx) {
-    data[idx] = init_value;
-  }
-  return true;
-}
-
-// Computes the generic value (i.e., sum/max/min/prod) of elements across
-// dimensions given in axis. It needs to pass in init_value and reducer.
-template <typename T>
-inline bool ReduceGeneric(const T* input_data, const int* input_dims,
-                          const int input_num_dims, T* output_data,
-                          const int* output_dims, const int output_num_dims,
-                          const int* axis, const int64_t num_axis_dimensions,
-                          bool keep_dims, int* temp_index, int* resolved_axis,
-                          T init_value,
-                          T reducer(const T current, const T in)) {
-  // Reset output data.
-  if (!InitTensorDataForReduce(output_dims, output_num_dims, init_value,
-                               output_data)) {
-    return false;
-  }
-
-  // Resolve axis.
-  int num_resolved_axis = 0;
-  if (!ResolveAxis(input_num_dims, axis, num_axis_dimensions, resolved_axis,
-                   &num_resolved_axis)) {
-    return false;
-  }
-
-  return Reduce<T, T>(input_data, input_dims, output_dims, input_num_dims,
-                      output_num_dims, resolved_axis, num_resolved_axis,
-                      temp_index, reducer, output_data);
-}
-
-// Computes the mean of elements across dimensions given in axis.
-// It does so in two stages, first calculates the sum of elements along the axis
-// then divides it by the number of element in axis.
-template <typename T, typename U>
-inline bool Mean(const T* input_data, const int* input_dims,
-                 const int input_num_dims, T* output_data,
-                 const int* output_dims, const int output_num_dims,
-                 const int* axis, const int num_axis_dimensions, bool keep_dims,
-                 int* temp_index, int* resolved_axis, U* temp_sum) {
-  gemmlowp::ScopedProfilingLabel label("Mean");
-  // Reset output data.
-  size_t num_outputs = 1;
-  for (int idx = 0; idx < output_num_dims; ++idx) {
-    size_t current = static_cast<size_t>(output_dims[idx]);
-    // Overflow prevention.
-    if (num_outputs > std::numeric_limits<size_t>::max() / current) {
-      return false;
-    }
-    num_outputs *= current;
-  }
-  for (size_t idx = 0; idx < num_outputs; ++idx) {
-    output_data[idx] = T();
-    temp_sum[idx] = U();
-  }
-
-  // Resolve axis.
-  int num_resolved_axis = 0;
-  if (!ResolveAxis(input_num_dims, axis, num_axis_dimensions, resolved_axis,
-                   &num_resolved_axis)) {
-    return false;
-  }
-
-  if (!ReduceSumImpl<T, U>(input_data, input_dims, output_dims, input_num_dims,
-                           output_num_dims, resolved_axis, num_resolved_axis,
-                           temp_index, temp_sum)) {
-    return false;
-  }
-
-  // Calculate mean by dividing output_data by num of aggregated element.
-  U num_elements_in_axis = 1;
-  for (int idx = 0; idx < num_resolved_axis; ++idx) {
-    size_t current = static_cast<size_t>(input_dims[resolved_axis[idx]]);
-    // Overflow prevention.
-    if (current > (std::numeric_limits<U>::max() / num_elements_in_axis)) {
-      return false;
-    }
-    num_elements_in_axis *= current;
-  }
-
-  if (num_elements_in_axis > 0) {
-    for (size_t idx = 0; idx < num_outputs; ++idx) {
-      output_data[idx] =
-          static_cast<T>(temp_sum[idx] / static_cast<U>(num_elements_in_axis));
-    }
-  }
-  return true;
-}
-
-template <typename T>
-inline void Mean(const tflite::MeanParams& op_params,
-                 const RuntimeShape& unextended_input_shape,
-                 const T* input_data,
-                 const RuntimeShape& unextended_output_shape, T* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Mean4D");
-
-  // Current implementation only supports dimension equals 4 and simultaneous
-  // reduction over width and height.
-  TFLITE_CHECK_EQ(unextended_input_shape.DimensionsCount(), 4);
-  TFLITE_CHECK_LE(unextended_output_shape.DimensionsCount(), 4);
-  const RuntimeShape input_shape =
-      RuntimeShape::ExtendedShape(4, unextended_input_shape);
-  const RuntimeShape output_shape =
-      RuntimeShape::ExtendedShape(4, unextended_output_shape);
-
-  const int output_batch = output_shape.Dims(0);
-  const int output_height = output_shape.Dims(1);
-  const int output_width = output_shape.Dims(2);
-  const int output_depth = output_shape.Dims(3);
-
-  const int input_height = input_shape.Dims(1);
-  const int input_width = input_shape.Dims(2);
-
-  TFLITE_DCHECK_EQ(op_params.axis_count, 2);
-  TFLITE_DCHECK((op_params.axis[0] == 1 && op_params.axis[1] == 2) ||
-                (op_params.axis[0] == 2 && op_params.axis[1] == 1));
-  TFLITE_DCHECK_EQ(output_height, 1);
-  TFLITE_DCHECK_EQ(output_width, 1);
-
-  for (int out_b = 0; out_b < output_batch; ++out_b) {
-    for (int out_d = 0; out_d < output_depth; ++out_d) {
-      float value = 0;
-      for (int in_h = 0; in_h < input_height; ++in_h) {
-        for (int in_w = 0; in_w < input_width; ++in_w) {
-          value += input_data[Offset(input_shape, out_b, in_h, in_w, out_d)];
-        }
-      }
-      output_data[Offset(output_shape, out_b, 0, 0, out_d)] =
-          value / (input_width * input_height);
-    }
-  }
-}
-
-inline void Mean(const tflite::MeanParams& op_params,
-                 const RuntimeShape& unextended_input_shape,
-                 const uint8_t* input_data, int32 input_zero_point,
-                 float input_scale, const RuntimeShape& unextended_output_shape,
-                 uint8_t* output_data, int32 output_zero_point,
-                 float output_scale) {
-  gemmlowp::ScopedProfilingLabel label("Mean4D/Uint8");
-
-  // Current implementation only supports dimension equals 4 and simultaneous
-  // reduction over width and height.
-  TFLITE_CHECK_EQ(unextended_input_shape.DimensionsCount(), 4);
-  TFLITE_CHECK_LE(unextended_output_shape.DimensionsCount(), 4);
-  const RuntimeShape input_shape =
-      RuntimeShape::ExtendedShape(4, unextended_input_shape);
-  const RuntimeShape output_shape =
-      RuntimeShape::ExtendedShape(4, unextended_output_shape);
-  const int output_batch = output_shape.Dims(0);
-  const int output_height = output_shape.Dims(1);
-  const int output_width = output_shape.Dims(2);
-  const int output_depth = output_shape.Dims(3);
-  const int input_height = input_shape.Dims(1);
-  const int input_width = input_shape.Dims(2);
-  const float num_elements_in_axis = input_width * input_height;
-
-  TFLITE_DCHECK_EQ(op_params.axis_count, 2);
-  TFLITE_DCHECK((op_params.axis[0] == 1 && op_params.axis[1] == 2) ||
-                (op_params.axis[0] == 2 && op_params.axis[1] == 1));
-  TFLITE_DCHECK_EQ(output_height, 1);
-  TFLITE_DCHECK_EQ(output_width, 1);
-
-  const bool ordinary_mean =
-      (input_zero_point == output_zero_point && input_scale == output_scale);
-  float scale, bias;
-  if (!ordinary_mean) {
-    scale = input_scale / output_scale;
-    bias = -input_zero_point * scale + 0.5;
-  }
-  for (int out_b = 0; out_b < output_batch; ++out_b) {
-    for (int out_d = 0; out_d < output_depth; ++out_d) {
-      float temp_value = 0;
-      for (int in_h = 0; in_h < input_height; ++in_h) {
-        for (int in_w = 0; in_w < input_width; ++in_w) {
-          temp_value +=
-              input_data[Offset(input_shape, out_b, in_h, in_w, out_d)];
-        }
-      }
-      temp_value = temp_value / num_elements_in_axis;
-      if (ordinary_mean) {
-        output_data[Offset(output_shape, out_b, 0, 0, out_d)] =
-            static_cast<uint8_t>(std::round(temp_value));
-      } else {
-        output_data[Offset(output_shape, out_b, 0, 0, out_d)] =
-            static_cast<uint8_t>(std::round(temp_value * scale + bias)) +
-            output_zero_point;
-      }
-    }
-  }
-}
-
-// Computes the mean of elements across dimensions given in axis.
-// It does so in two stages, first calculates the sum of elements along the axis
-// then divides it by the number of element in axis for quantized values.
-template <typename T, typename U>
-inline bool QuantizedMeanOrSum(const T* input_data, int32 input_zero_point,
-                               float input_scale, const int* input_dims,
-                               const int input_num_dims, T* output_data,
-                               int32 output_zero_point, float output_scale,
-                               const int* output_dims,
-                               const int output_num_dims, const int* axis,
-                               const int num_axis_dimensions, bool keep_dims,
-                               int* temp_index, int* resolved_axis, U* temp_sum,
-                               bool compute_sum) {
-  const bool uint8_case = std::is_same<T, int8_t>::value;
-  if (uint8_case) {
-    gemmlowp::ScopedProfilingLabel label(compute_sum ? "Sum/Uint8"
-                                                     : "Mean/Uint8");
-  } else {
-    gemmlowp::ScopedProfilingLabel label(compute_sum ? "Sum/Int8"
-                                                     : "Mean/Int8");
-  }
-  // Reset output data.
-  size_t num_outputs = 1;
-  for (int idx = 0; idx < output_num_dims; ++idx) {
-    size_t current = static_cast<size_t>(output_dims[idx]);
-    // Overflow prevention.
-    if (num_outputs > std::numeric_limits<size_t>::max() / current) {
-      return false;
-    }
-    num_outputs *= current;
-  }
-  for (size_t idx = 0; idx < num_outputs; ++idx) {
-    output_data[idx] = T();
-    temp_sum[idx] = U();
-  }
-
-  // Resolve axis.
-  int num_resolved_axis = 0;
-  if (!ResolveAxis(input_num_dims, axis, num_axis_dimensions, resolved_axis,
-                   &num_resolved_axis)) {
-    return false;
-  }
-
-  if (!ReduceSumImpl<T, U>(input_data, input_dims, output_dims, input_num_dims,
-                           output_num_dims, resolved_axis, num_resolved_axis,
-                           temp_index, temp_sum)) {
-    return false;
-  }
-
-  // Calculate mean by dividing output_data by num of aggregated element.
-  U num_elements_in_axis = 1;
-  for (int idx = 0; idx < num_resolved_axis; ++idx) {
-    size_t current = static_cast<size_t>(input_dims[resolved_axis[idx]]);
-    // Overflow prevention.
-    if (current > (std::numeric_limits<U>::max() / num_elements_in_axis)) {
-      return false;
-    }
-    num_elements_in_axis *= current;
-  }
-
-  if (num_elements_in_axis > 0) {
-    const float scale = input_scale / output_scale;
-    if (compute_sum) {
-      // TODO(b/116341117): Eliminate float and do this completely in 8bit.
-      const float bias = -input_zero_point * scale * num_elements_in_axis + 0.5;
-      for (size_t idx = 0; idx < num_outputs; ++idx) {
-        const U value =
-            static_cast<U>(std::round(temp_sum[idx] * scale + bias)) +
-            output_zero_point;
-        output_data[idx] = static_cast<T>(value);
-      }
-    } else {
-      const float bias = -input_zero_point * scale + 0.5;
-      for (size_t idx = 0; idx < num_outputs; ++idx) {
-        float float_mean = static_cast<float>(temp_sum[idx]) /
-                           static_cast<float>(num_elements_in_axis);
-
-        // Convert to float value.
-        output_data[idx] =
-            static_cast<T>(std::round(float_mean * scale + bias)) +
-            output_zero_point;
-      }
-    }
-  }
-  return true;
 }
 
 template <typename T>
@@ -3046,9 +2277,11 @@ inline void ArgMax(const RuntimeShape& input1_shape, const T1* input1_data,
 }
 
 template <typename T>
-void Transpose(const TransposeParams& params,
-               const RuntimeShape& unextended_input_shape, const T* input_data,
-               const RuntimeShape& unextended_output_shape, T* output_data) {
+void TransposeImpl(const TransposeParams& params,
+                   const RuntimeShape& unextended_input_shape,
+                   const T* input_data,
+                   const RuntimeShape& unextended_output_shape,
+                   T* output_data) {
   const int unextended_output_size = unextended_output_shape.DimensionsCount();
   TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_output_size, 4);
@@ -3093,6 +2326,42 @@ void Transpose(const TransposeParams& params,
         }
       }
     }
+  }
+}
+
+template <typename T>
+void Transpose(const TransposeParams& params,
+               const RuntimeShape& unextended_input_shape, const T* input_data,
+               const RuntimeShape& unextended_output_shape, T* output_data) {
+  // Transpose kernel only does rearranging values not numeric evaluations on
+  // each cell. It's safe to implement per size of scalar type and this trick
+  // keeps the total code size in a reasonable range.
+  switch (sizeof(T)) {
+    case 1:
+      TransposeImpl<int8_t>(params, unextended_input_shape,
+                            reinterpret_cast<const int8_t*>(input_data),
+                            unextended_output_shape,
+                            reinterpret_cast<int8_t*>(output_data));
+      break;
+    case 2:
+      TransposeImpl<int16_t>(params, unextended_input_shape,
+                             reinterpret_cast<const int16_t*>(input_data),
+                             unextended_output_shape,
+                             reinterpret_cast<int16_t*>(output_data));
+      break;
+
+    case 4:
+      TransposeImpl<int32_t>(params, unextended_input_shape,
+                             reinterpret_cast<const int32_t*>(input_data),
+                             unextended_output_shape,
+                             reinterpret_cast<int32_t*>(output_data));
+      break;
+    case 8:
+      TransposeImpl<int64_t>(params, unextended_input_shape,
+                             reinterpret_cast<const int64_t*>(input_data),
+                             unextended_output_shape,
+                             reinterpret_cast<int64_t*>(output_data));
+      break;
   }
 }
 
@@ -3292,6 +2561,57 @@ void RankOneSelect(const RuntimeShape& input_condition_shape,
 }
 
 template <typename D, typename T>
+void BroadcastSelect4DSlow(const RuntimeShape& input_condition_shape,
+                           const D* input_condition_data,
+                           const RuntimeShape& input_x_shape,
+                           const T* input_x_data,
+                           const RuntimeShape& input_y_shape,
+                           const T* input_y_data,
+                           const RuntimeShape& output_shape, T* output_data) {
+  TFLITE_DCHECK_LE(input_condition_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(input_x_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(input_y_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(output_shape.DimensionsCount(), 4);
+
+  const RuntimeShape extended_output_shape =
+      RuntimeShape::ExtendedShape(4, output_shape);
+
+  NdArrayDesc<4> desc_condition;
+  NdArrayDesc<4> desc_x;
+  NdArrayDesc<4> desc_y;
+  NdArrayDescsForElementwiseBroadcast(input_condition_shape, input_x_shape,
+                                      input_y_shape, &desc_condition, &desc_x,
+                                      &desc_y);
+
+  // In Tensorflow, the dimensions are canonically named (batch_number, row,
+  // col, channel), with extents (batches, height, width, depth), with the
+  // trailing dimension changing most rapidly (channels has the smallest
+  // stride, typically 1 element).
+  //
+  // In generated C code, we store arrays with the dimensions reversed. The
+  // first dimension has smallest stride.
+  //
+  // We name our variables by their Tensorflow convention, but generate C code
+  // nesting loops such that the innermost loop has the smallest stride for
+  // the best cache behavior.
+  for (int b = 0; b < extended_output_shape.Dims(0); ++b) {
+    for (int y = 0; y < extended_output_shape.Dims(1); ++y) {
+      for (int x = 0; x < extended_output_shape.Dims(2); ++x) {
+        for (int c = 0; c < extended_output_shape.Dims(3); ++c) {
+          const int condition_index =
+              SubscriptToIndex(desc_condition, b, y, x, c);
+          const int x_index = SubscriptToIndex(desc_x, b, y, x, c);
+          const int y_index = SubscriptToIndex(desc_y, b, y, x, c);
+          output_data[Offset(extended_output_shape, b, y, x, c)] =
+              input_condition_data[condition_index] ? input_x_data[x_index]
+                                                    : input_y_data[y_index];
+        }
+      }
+    }
+  }
+}
+
+template <typename D, typename T>
 void SelectTrueCoords(const RuntimeShape& input_condition_shape,
                       const D* input_condition_data, T* output_data) {
   const size_t size = input_condition_shape.FlatSize();
@@ -3473,7 +2793,7 @@ template <typename Scalar>
 void Reverse(int axis, const RuntimeShape& input_shape,
              const Scalar* input_data, const RuntimeShape& output_shape,
              Scalar* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Reverse");
+  ScopedProfilingLabelWrapper label("Reverse");
 
   int outer_size = 1;
   for (int i = 0; i < axis; ++i) {
@@ -3501,7 +2821,7 @@ void ReverseSequence(const TS* seq_lengths, const int seq_dim,
                      const int batch_dim, const RuntimeShape& input_shape,
                      const Scalar* input_data, const RuntimeShape& output_shape,
                      Scalar* output_data) {
-  gemmlowp::ScopedProfilingLabel label("ReverseSequence");
+  ScopedProfilingLabelWrapper label("ReverseSequence");
 
   int outer_size = 1;
   int outer_dim = std::min(batch_dim, seq_dim);
@@ -3578,7 +2898,7 @@ void ReverseSequence(const TS* seq_lengths, const int seq_dim,
 template <typename T>
 inline void HardSwish(const RuntimeShape& input_shape, const T* input_data,
                       const RuntimeShape& output_shape, T* output_data) {
-  gemmlowp::ScopedProfilingLabel label("ReferenceHardSwish/Float");
+  ScopedProfilingLabelWrapper label("ReferenceHardSwish/Float");
   auto matching_size = MatchingFlatSize(input_shape, output_shape);
   const T* in_end = input_data + matching_size;
   for (; input_data < in_end; input_data++, output_data++) {
@@ -3612,7 +2932,7 @@ template <typename T>
 inline void HardSwish(const HardSwishParams& params,
                       const RuntimeShape& input_shape, const T* input_data,
                       const RuntimeShape& output_shape, T* output_data) {
-  gemmlowp::ScopedProfilingLabel label("ReferenceHardSwish/Quantized");
+  ScopedProfilingLabelWrapper label("ReferenceHardSwish/Quantized");
 
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
 

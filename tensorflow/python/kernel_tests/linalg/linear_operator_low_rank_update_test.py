@@ -23,6 +23,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variables as variables_module
 from tensorflow.python.ops.linalg import linalg as linalg_lib
 from tensorflow.python.ops.linalg import linear_operator_test_util
 from tensorflow.python.platform import test
@@ -155,6 +156,22 @@ class BaseLinearOperatorLowRankUpdatetest(object):
 
     return operator, matrix
 
+  def test_tape_safe(self):
+    base_operator = linalg.LinearOperatorDiag(
+        variables_module.Variable([1.], name="diag"),
+        is_positive_definite=True,
+        is_self_adjoint=True)
+
+    operator = linalg.LinearOperatorLowRankUpdate(
+        base_operator,
+        u=variables_module.Variable([[2.]], name="u"),
+        v=variables_module.Variable([[1.25]], name="v")
+        if self._use_v else None,
+        diag_update=variables_module.Variable([1.25], name="diag_update")
+        if self._use_diag_update else None,
+        is_diag_update_positive=self._is_diag_update_positive)
+    self.check_tape_safe(operator)
+
 
 class LinearOperatorLowRankUpdatetestWithDiagUseCholesky(
     BaseLinearOperatorLowRankUpdatetest,
@@ -182,7 +199,7 @@ class LinearOperatorLowRankUpdatetestWithDiagCannotUseCholesky(
 
   @staticmethod
   def skip_these_tests():
-    return ["cholesky"]
+    return ["cholesky", "eigvalsh"]
 
   _use_diag_update = True
   _is_diag_update_positive = False
@@ -225,7 +242,7 @@ class LinearOperatorLowRankUpdatetestNoDiagCannotUseCholesky(
 
   @staticmethod
   def skip_these_tests():
-    return ["cholesky"]
+    return ["cholesky", "eigvalsh"]
 
   _use_diag_update = False
   _is_diag_update_positive = None

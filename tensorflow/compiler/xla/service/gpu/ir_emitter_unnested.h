@@ -18,10 +18,12 @@ limitations under the License.
 
 #include "absl/container/inlined_vector.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter.h"
+#include "tensorflow/compiler/xla/service/gpu/kernel_mapping_scheme.h"
 #include "tensorflow/compiler/xla/service/gpu/sequential_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/thunk_emitter.h"
+#include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/kernel_support_library.h"
-#include "tensorflow/compiler/xla/service/llvm_ir/kernel_tiling.h"
 
 namespace xla {
 namespace gpu {
@@ -43,56 +45,13 @@ namespace gpu {
 // Examples of things that are not unnested computations:
 //
 //  - The reducer of a kReduce HLO.  This is emitted using IrEmitterNested.
-//  - The body of a fusion node.  IrEmitterUnenested emits the relevant code
+//  - The body of a fusion node.  IrEmitterUnnested emits the relevant code
 //    within a kernel function using FusedIrEmitter.  (FusedIrEmitter is not
 //    really an IrEmitter, but is more an "IR generator generator".)
 //
-class IrEmitterUnnested : public IrEmitter {
+class IrEmitterUnnested : public IrEmitter,
+                          private ThunkEmitter::EmissionContext {
  public:
-  // Parameter block_contains_multi_tiles indicates whether a tile block
-  // consists of multiple tiles or not. If the tile block contains only one
-  // tile, there is no need to use atomic operation to accumulate a local result
-  // to a global result to implement reduction.
-  using TileGenerator =
-      std::function<void(const llvm_ir::IrArray::Index& output_tile_origin,
-                         absl::Span<llvm::Value* const> output_tile_bounds)>;
-  // KernelCodegenInfo records the common information to support the code
-  // generation for a kernel to process tensor elements by blocks. A block of
-  // tensor elements may contain one or multiple tiles. The code generators that
-  // generate code for tile elements or block prologue/epilogue refer to this
-  // class in their prototypes. If the implementations of such code generators
-  // require other information that are specific to the HLO instructions, the
-  // implementations need to define and use derived classes of this class.
-  class KernelCodegenInfo {
-   public:
-    explicit KernelCodegenInfo(llvm_ir::KernelMappingScheme* mapping_scheme)
-        : mapping_scheme_(mapping_scheme),
-          lane_id_(nullptr),
-          index_ty_(nullptr) {}
-    virtual ~KernelCodegenInfo() {}
-
-    void SetLaneId(llvm::Value* v) { lane_id_ = v; }
-    void SetIndexType(llvm::Type* t) { index_ty_ = t; }
-
-    llvm::Value* GetLaneId() const { return lane_id_; }
-    llvm_ir::KernelMappingScheme* GetKernelMappingScheme() const {
-      return mapping_scheme_;
-    }
-    llvm::Type* GetIndexType() const { return index_ty_; }
-
-   protected:
-    llvm_ir::KernelMappingScheme* mapping_scheme_;
-    llvm::Value* lane_id_;
-    llvm::Type* index_ty_;
-  };
-
-  // A function object to prepare for the code generation for a tile block.
-  using BlockPrologueGenerator =
-      std::function<void(HloInstruction* hlo, KernelCodegenInfo* kernel_info)>;
-  // A function object to finalize the code generation for a tile block.
-  using BlockEpilogueGenerator =
-      std::function<void(HloInstruction* hlo, KernelCodegenInfo* kernel_info)>;
-
   // A function object to generate code to process one element in a tile.
   //
   // hlo: the instruction for which the code is generated for.
@@ -106,40 +65,13 @@ class IrEmitterUnnested : public IrEmitter {
       const llvm_ir::IrArray::Index& index, llvm::Value* y_loc,
       llvm::Value* x_loc, int64 x_iter_num)>;
 
+  using ConstantGenerator = std::function<llvm::Value*(int64)>;
+
+  // A function to generate the code to emit the entire tile.
   using TileElementGenerator = std::function<void(
       llvm::Value* y, llvm::Value* x, const llvm_ir::IrArray::Index& index,
       const string& loop_name, llvm::Value* tile_height,
       llvm::Value* tile_width, KernelSupportLibrary* ksl)>;
-
-  // KernelCodeGenerator records the code generator objects that generate code
-  // for tile elements or tile block prologue/epilogue.
-  class KernelCodeGenerator {
-   public:
-    explicit KernelCodeGenerator(
-        TileElementGenerator tile_element_generator,
-        BlockPrologueGenerator block_prologue_generator =
-            [](HloInstruction*, KernelCodegenInfo*) {},
-        BlockEpilogueGenerator block_epilogue_generator =
-            [](HloInstruction*, KernelCodegenInfo*) {})
-        : tile_element_generator_(std::move(tile_element_generator)),
-          block_prologue_generator_(std::move(block_prologue_generator)),
-          block_epilogue_generator_(std::move(block_epilogue_generator)) {}
-
-    const TileElementGenerator& GetTileElementGenerator() const {
-      return tile_element_generator_;
-    }
-    const BlockPrologueGenerator& GetBlockPrologueGenerator() const {
-      return block_prologue_generator_;
-    }
-    const BlockEpilogueGenerator& GetBlockEpilogueGenerator() const {
-      return block_epilogue_generator_;
-    }
-
-   private:
-    TileElementGenerator tile_element_generator_;
-    BlockPrologueGenerator block_prologue_generator_;
-    BlockEpilogueGenerator block_epilogue_generator_;
-  };
 
   IrEmitterUnnested(const HloModuleConfig& hlo_module_config,
                     const HloComputation* hlo_computation,
@@ -155,7 +87,8 @@ class IrEmitterUnnested : public IrEmitter {
   Status DefaultAction(HloInstruction* hlo) override;
 
   // IrEmitterUnnested handles the following instructions differently from
-  // IrEmitter.
+  // IrEmitter. It also mixes in some special handling for custom kernels
+  // via the ThunkEmitter.
   Status HandleCopy(HloInstruction* copy) override;
   Status HandleConditional(HloInstruction* conditional) override;
   Status HandleConvolution(HloInstruction* convolution) override;
@@ -197,8 +130,28 @@ class IrEmitterUnnested : public IrEmitter {
 
  private:
   // Add a owning Thunk object to the thunk sequence.
-  void AddThunkToThunkSequence(std::unique_ptr<Thunk> thunk) {
+  void AddThunkToThunkSequence(std::unique_ptr<Thunk> thunk) override {
     thunk_sequence_->emplace_back(std::move(thunk));
+  }
+
+  // A convenient helper for calling BufferAssignment::GetUniqueSlice.
+  StatusOr<BufferAllocation::Slice> MaybeGetAllocationSlice(
+      const HloInstruction& hlo, const ShapeIndex& index) const override {
+    return ir_emitter_context_->buffer_assignment().GetUniqueSlice(&hlo, index);
+  }
+
+  BufferAllocation::Slice GetAllocationSlice(
+      const HloInstruction& hlo, const ShapeIndex& index = {}) const {
+    return MaybeGetAllocationSlice(hlo, index).ConsumeValueOrDie();
+  }
+
+  int64 ByteSizeOf(const Shape& shape) const override {
+    return llvm_ir::ByteSizeOf(
+        shape, ir_emitter_context_->llvm_module()->getDataLayout());
+  }
+
+  const se::Platform* platform() const override {
+    return ir_emitter_context_->platform();
   }
 
   // Builds the prototype of the IR kernel for `inst` and adds it to the module.
@@ -216,23 +169,43 @@ class IrEmitterUnnested : public IrEmitter {
 
   // Generates code for reduction to contiguous dimensions.
   //
-  // Prerequisite: `IsReductionFromOrToContiguousDimensions(*unnested_hlo)`
+  // output_instructions: Output instructions in the computation: instruction
+  // itself if it's not a fusion, fusion root if fusion is not multi-output, and
+  // elements of the fusion multi-output tuple otherwise.
   Status EmitReductionFromOrToContiguousDimensions(
-      HloInstruction* unnested_hlo);
+      HloInstruction* unnested_hlo,
+      absl::Span<HloInstruction* const> output_instructions);
 
   // Computes the KernelMappingScheme for the reduce HLO and indicates whether
   // the reduction is a row reduction. For an un-fused reduce op, unnested_hlo
   // and first_reduce are the same instruction. For a kInput fusion,
   // unnested_hlo is the fusion instruction while first_reduce is the first
   // reduce op.
-  std::tuple<llvm_ir::KernelMappingScheme, bool>
-  ComputeMappingSchemeAndReductionKind(const HloInstruction* unnested_hlo,
-                                       const HloInstruction* first_reduce);
+  ReductionCodegenInfo ComputeReductionCodegenInfo(
+      const HloInstruction* unnested_hlo, const HloInstruction* first_reduce);
+
+  // Generates code for input-fusible slices.
+  //
+  // Prerequisite: ROOT is either a slice or a tuple of slices. The input shapes
+  // of all ROOT slices need to be the same while their output shapes can be
+  // different. On the other hand, the input ranges of slices can be
+  // overlapping. Further generalization/specialization when the needs are seen
+  // in the future.
+  Status EmitInputFusibleNonStridedSlices(HloInstruction* unnested_hlo);
+
+  void EmitElementForInputFusibleSlices(
+      HloInstruction* unnested_hlo,
+      const llvm_ir::IrArray::Index& slice_input_index);
 
   // Emits code for an in-place scatter, modifying `thunk`s launch dimensions in
   // the process. `scatter` may be fused, scatter indices are taken from
   // `scatter_indices_gen`, updates from`updates_gen`. The output buffer is
-  // expected to have the operand values in it already.
+  // expected to have the operand values in it already. If unique_indices
+  // is false, we will use an atomic update. Using false for unique_indices
+  // is safe only when it is guaranteed that there are no duplicate
+  // indices.
+  // When using unique_indices=true, it is the caller's responsibility to
+  // ensure there is no overlap.
   Status EmitScatter(Thunk* thunk, HloInstruction* scatter,
                      const llvm_ir::ElementGenerator& scatter_indices_gen,
                      const llvm_ir::ElementGenerator& updates_gen);
@@ -240,26 +213,27 @@ class IrEmitterUnnested : public IrEmitter {
   // Returns true if a 0-2-1 tiling algorithm is already used to emit the kernel
   // for the hlo instruction.
   bool CheckAndEmitHloWithTile021(HloInstruction* hlo);
-  // Emits a kernel for the hlo instruction using a 0-2-1 tiling algorithm and
-  // returns the launch dimensions for the kernel. This is a helper to support
-  // the implementation of CheckAndEmitHloWithTile021.
-  LaunchDimensions EmitHlo021Tile(HloInstruction* hlo,
-                                  absl::Span<const int64> reduced_output_dims,
-                                  absl::Span<const int64> tiled_param_ids);
-  // Emits a kernel for an unnested HLO instruction.
-  LaunchDimensions EmitKernel(HloInstruction* unnested_hlo,
-                              absl::Span<const int64> param_ids,
-                              const KernelCodeGenerator& kernel_generator,
-                              KernelCodegenInfo* kernel_info);
 
-  void EmitBlock(KernelCodegenInfo* kernel_info, KernelSupportLibrary* ksl,
-                 llvm::Type* index_ty, TileGenerator emit_one_tile);
+  // Emits a kernel for the hlo instruction using a 0-2-1 tiling algorithm and
+  // sets the corresponding launch dimensions. This is a helper to support
+  // the implementation of CheckAndEmitHloWithTile021.
+  void EmitHlo021Tile(HloInstruction* hlo, Thunk* kernel_thunk,
+                      absl::Span<const int64> reduced_output_dims,
+                      absl::Span<const int64> tiled_param_ids);
+
+  // Emits a kernel for the hlo instruction using the given kernel mapping
+  // scheme.
+  //
+  // Returns lane_id as an LLVM value.
+  llvm::Value* EmitTilingKernel(
+      const KernelMappingScheme& mapping_scheme, llvm::Type* index_ty,
+      const TileElementGenerator& tile_element_generator);
 
   // Emits code to process a tensor element in a tile for the given kCopy HLO
   // that performs a 0-2-1 transpose.
   void EmitTileElementForCopy(
       HloInstruction* hlo, const llvm_ir::IrArray::Index& index,
-      const KernelCodegenInfo* kernel_info, llvm::Value* y_loc,
+      const KernelMappingScheme& mapping_scheme, llvm::Value* y_loc,
       llvm::Value* x_loc, int64 x_iter_num,
       absl::Span<llvm::Value* const> param_shmem_buffers);
 
@@ -267,30 +241,44 @@ class IrEmitterUnnested : public IrEmitter {
   // HLO containing parameters that are 0-2-1 transpose of its outputs.
   void EmitTileElementForFusion(
       HloInstruction* hlo, const llvm_ir::IrArray::Index& index,
-      const KernelCodegenInfo* kernel_info, llvm::Value* y_loc,
+      const KernelMappingScheme& mapping_scheme, llvm::Value* y_loc,
       llvm::Value* x_loc, int64 x_iter_num,
       absl::Span<llvm::Value* const> param_shmem_buffers);
 
   // Emits code to process a tensor element in a tile for the given input hlo
   // that is either a unnested kReduce or a kInput fusion.
+  //
+  // Calculates and stores the temporary reduction value in the corresponding
+  // alloca.
   void EmitTileElementForReduction(
       HloInstruction* unnested_hlo, const Shape& reduction_operand_shape,
       absl::Span<HloInstruction* const> output_instructions,
       const llvm_ir::IrArray::Index& index,
-      const KernelCodegenInfo* kernel_info, int64 x_iter_num);
+      const ReductionCodegenInfo& kernel_info,
+      absl::Span<HloComputation* const> reducers, int64 x_iter_num);
+
   // Prepares for the code generation for a tile block of a reduction kernel.
+  //
+  // Create accumulator alloca's, populate them with initial values, and store
+  // inside reduction_info.
   void EmitPrologueForReduction(
-      HloInstruction* unnested_hlo, KernelCodegenInfo* kernel_info,
-      absl::Span<HloInstruction* const> output_instructions);
+      HloInstruction* unnested_hlo, ReductionCodegenInfo* reduction_info,
+      absl::Span<HloInstruction* const> reduce_instructions,
+      llvm::Type* index_type);
+
   void EmitPrologueForOneReduction(HloInstruction* unnested_hlo,
                                    HloInstruction* reduce_inst, int reduce_idx,
-                                   KernelCodegenInfo* kernel_info,
-                                   GpuElementalIrEmitter* elemental_emitter,
-                                   ShapeIndex output_shape_index);
-  // Wraps up the code generation for a tile block of a reduction kernel.
+                                   ReductionCodegenInfo* kernel_info,
+                                   GpuElementalIrEmitter* elemental_emitter);
+
+  // Wraps up the code generation for a tile block of a reduction kernel: write
+  // the calculated output into the output tensor.
   void EmitEpilogueForReduction(
-      HloInstruction* unnested_hlo, KernelCodegenInfo* kernel_info,
-      absl::Span<const HloInstruction* const> reduce_instructions);
+      HloInstruction* unnested_hlo, const ReductionCodegenInfo& reduction_info,
+      absl::Span<const HloInstruction* const> reduce_instructions,
+      absl::Span<const ShapeIndex> reduction_output_shape_indices,
+      absl::Span<HloComputation* const> reducers, llvm::Value* lane_id);
+
   // For each reducer, emits the shuffle-down loop to accumulate the partial
   // result to the global result.
   void EmitFullWarpShuffleDownLoopForAllReduces(
@@ -307,38 +295,10 @@ class IrEmitterUnnested : public IrEmitter {
       const HloInstruction* inst, bool implements_whole_instruction,
       int unroll_factor = 1);
 
-  // Returns a FftThunk that calls cuFFT to implement `inst`.
-  std::unique_ptr<Thunk> BuildFftThunk(const HloInstruction* inst);
-
-  // Returns a CholeskyThunk that calls cuSolver to implement `inst`.
-  std::unique_ptr<Thunk> BuildCholeskyThunk(const HloInstruction* inst);
-
-  // Returns a TriangularSolveThunk that calls cuBlas to implement `inst`.
-  std::unique_ptr<Thunk> BuildTriangularSolveThunk(const HloInstruction* inst);
-
-  // Returns a GemmThunk that calls gemm to implement `inst`. The caller needs
-  // to make sure `inst` outlives the lifetime of the returned Thunk object.
-  std::unique_ptr<Thunk> BuildGemmThunk(const HloInstruction* inst);
-
   // Returns a thunk that, given a reduce or select-and-scatter op, initializes
   // its memory to the appropriate initial value.
   StatusOr<std::unique_ptr<Thunk>> BuildInitializerThunk(
       HloInstruction* hlo, const ShapeIndex& index = {});
-
-  // Returns a thunk that calls host-to-device cuMemcpy to implement `inst`.
-  std::unique_ptr<Thunk> BuildHostToDeviceCopyThunk(const HloInstruction* inst);
-
-  // Returns a thunk that calls device-to-device cuMemcpy to implement `inst`.
-  std::unique_ptr<Thunk> BuildDeviceToDeviceCopyThunk(
-      const HloInstruction* inst);
-
-  // Returns an InfeedThunk that performs a host-to-device memcpy to implement
-  // `inst`.
-  std::unique_ptr<Thunk> BuildInfeedThunk(const HloInstruction* inst);
-
-  // Returns an OutfeedThunk that performs a device-to-host memcpy to implement
-  // `inst`.
-  std::unique_ptr<Thunk> BuildOutfeedThunk(const HloInstruction* inst);
 
   // Returns a WhileThunk that invokes thunk sequences for 'condition' and
   // 'body' sub-computations of while instruction 'hlo'.

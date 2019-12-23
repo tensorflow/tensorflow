@@ -32,8 +32,10 @@ typedef Eigen::GpuDevice GPUDevice;
 namespace functor {
 
 template <typename T>
-__global__ void CompareAndBitpackKernel(const int size, const T* threshold,
-                                        const T* input, uint8* output) {
+__global__ void CompareAndBitpackKernel(const int size,
+                                        const T* __restrict__ threshold,
+                                        const T* __restrict__ input,
+                                        uint8* __restrict__ output) {
   // TODO(ebrevdo): Erich said: to get a better memory access pattern
   // you could have 8 threads load this data and do a comparison, then
   // use the ballot instruction to combine the values from each thread
@@ -54,10 +56,9 @@ __global__ void CompareAndBitpackKernel(const int size, const T* threshold,
 }
 
 template <>
-__global__ void CompareAndBitpackKernel<bool>(const int size,
-                                              const bool* threshold,
-                                              const bool* input,
-                                              uint8* output) {
+__global__ void CompareAndBitpackKernel<bool>(
+    const int size, const bool* __restrict__ threshold,
+    const bool* __restrict__ input, uint8* __restrict__ output) {
   // TODO(ebrevdo): Erich said: I think you could again have multiple
   // threads work on one block and use the ballot instruction to the
   // bit packing in one instruction.
@@ -76,10 +77,9 @@ __global__ void CompareAndBitpackKernel<bool>(const int size,
 }
 
 template <>
-__global__ void CompareAndBitpackKernel<float>(const int size,
-                                               const float* threshold,
-                                               const float* input,
-                                               uint8* output) {
+__global__ void CompareAndBitpackKernel<float>(
+    const int size, const float* __restrict__ threshold,
+    const float* __restrict__ input, uint8* __restrict__ output) {
   const float thresh = ldg(threshold);
   GPU_1D_KERNEL_LOOP(i, size) {
     const float4 block0 = ldg(reinterpret_cast<const float4*>(input + 8 * i));
@@ -93,10 +93,9 @@ __global__ void CompareAndBitpackKernel<float>(const int size,
 }
 
 template <>
-__global__ void CompareAndBitpackKernel<double>(const int size,
-                                                const double* threshold,
-                                                const double* input,
-                                                uint8* output) {
+__global__ void CompareAndBitpackKernel<double>(
+    const int size, const double* __restrict__ threshold,
+    const double* __restrict__ input, uint8* __restrict__ output) {
   const double thresh = ldg(threshold);
   GPU_1D_KERNEL_LOOP(i, size) {
     const double2 block0 = ldg(reinterpret_cast<const double2*>(input + 8 * i));

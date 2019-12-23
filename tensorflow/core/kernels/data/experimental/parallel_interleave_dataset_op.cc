@@ -224,16 +224,18 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
           workers_(dataset()->num_threads()),
           worker_thread_states_(dataset()->num_threads()) {}
 
-    ~Iterator() override {
-      mutex_lock l(mu_);
-      cancelled_ = true;
-      // Notify all workers in case they are blocked.
-      for (auto& worker : workers_) {
-        worker.cond_var.notify_all();
-      }
+    ~Iterator() override { CancelThreads(); }
+
+    string BuildTraceMeName() override {
+      return strings::StrCat(prefix(),
+                             "#cycle_length=", dataset()->cycle_length_,
+                             ",block_length=", dataset()->block_length_,
+                             ",deterministic=", !dataset()->sloppy_, "#");
     }
 
     Status Initialize(IteratorContext* ctx) override {
+      // TODO(jsimsa): Register cancellation callback once the implementation is
+      // refactored not to hold mu_ while calling `GetNext` on the input.
       TF_RETURN_IF_ERROR(
           dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
       return dataset()->captured_func_->Instantiate(
@@ -558,6 +560,14 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       WorkerThreadState() : output_elem(Status::OK()) {}
     };
 
+    void CancelThreads() LOCKS_EXCLUDED(mu_) {
+      mutex_lock l(mu_);
+      cancelled_ = true;
+      for (auto& worker : workers_) {
+        worker.cond_var.notify_all();
+      }
+    }
+
     Status EnsureWorkerThreadsStarted(IteratorContext* ctx)
         EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       if (worker_threads_.empty()) {
@@ -716,7 +726,11 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
           // CHECKPOINT_MARKER_C
           // Non-OK iterator creation status has been notified to the
           // client.
-          workers_[thread_index].cond_var.notify_one();
+          if (dataset()->sloppy_) {
+            sloppy_cond_var_.notify_one();
+          } else {
+            workers_[thread_index].cond_var.notify_one();
+          }
         } else {
           bool end_of_sequence = false;
           while (!end_of_sequence) {
@@ -807,7 +821,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       for (int i = 0; i < workers_[index].outputs.size(); ++i) {
         TF_RETURN_IF_ERROR(WriteOutputElemLocked(
             writer, workers_[index].outputs[i],
-            full_name(strings::StrCat(prefix, "_", kOutputs, "_", i))));
+            strings::StrCat(prefix, "_", kOutputs, "_", i)));
       }
       if (workers_[index].is_producing) {
         TF_RETURN_IF_ERROR(writer->WriteScalar(
@@ -840,7 +854,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         workers_[index].outputs.emplace_back(Status::OK());
         TF_RETURN_IF_ERROR(ReadOutputElemLocked(
             reader, &workers_[index].outputs.back(),
-            full_name(strings::StrCat(worker_prefix, "_", kOutputs, "_", i))));
+            strings::StrCat(worker_prefix, "_", kOutputs, "_", i)));
       }
       if (reader->Contains(
               full_name(strings::StrCat(worker_prefix, "_", kIsProducing)))) {
@@ -874,7 +888,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
           worker_thread_states_[index].iterator_creation_status));
       TF_RETURN_IF_ERROR(WriteOutputElemLocked(
           writer, worker_thread_states_[index].output_elem,
-          full_name(strings::StrCat(prefix, "_", kOutput))));
+          strings::StrCat(prefix, "_", kOutput)));
       if (worker_thread_states_[index].end_of_sequence) {
         TF_RETURN_IF_ERROR(writer->WriteScalar(
             full_name(strings::StrCat(prefix, "_", kEndOfSequence)), ""));
@@ -915,7 +929,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
           &worker_thread_states_[index].iterator_creation_status));
       TF_RETURN_IF_ERROR(ReadOutputElemLocked(
           reader, &worker_thread_states_[index].output_elem,
-          full_name(strings::StrCat(worker_prefix, "_", kOutput))));
+          strings::StrCat(worker_prefix, "_", kOutput)));
       if (reader->Contains(
               full_name(strings::StrCat(worker_prefix, "_", kEndOfSequence)))) {
         worker_thread_states_[index].end_of_sequence = true;
@@ -931,13 +945,13 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         EXCLUSIVE_LOCKS_REQUIRED(mu_, ckpt_mu_) {
       TF_RETURN_IF_ERROR(WriteStatusLocked(
           writer, strings::StrCat(prefix, "_", kStatus), output_elem.status));
-      TF_RETURN_IF_ERROR(
-          writer->WriteScalar(strings::StrCat(prefix, "_", kOutputSize),
-                              output_elem.output.size()));
+      TF_RETURN_IF_ERROR(writer->WriteScalar(
+          full_name(strings::StrCat(prefix, "_", kOutputSize)),
+          output_elem.output.size()));
       for (int i = 0; i < output_elem.output.size(); ++i) {
-        TF_RETURN_IF_ERROR(
-            writer->WriteTensor(strings::StrCat(prefix, "_", kOutput, "_", i),
-                                output_elem.output[i]));
+        TF_RETURN_IF_ERROR(writer->WriteTensor(
+            full_name(strings::StrCat(prefix, "_", kOutput, "_", i)),
+            output_elem.output[i]));
       }
       return Status::OK();
     }
@@ -949,13 +963,13 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
           reader, strings::StrCat(prefix, "_", kStatus), &output_elem->status));
       int64 output_size;
       TF_RETURN_IF_ERROR(reader->ReadScalar(
-          strings::StrCat(prefix, "_", kOutputSize), &output_size));
+          full_name(strings::StrCat(prefix, "_", kOutputSize)), &output_size));
       output_elem->output.reserve(output_size);
       for (int i = 0; i < output_size; ++i) {
         output_elem->output.emplace_back();
-        TF_RETURN_IF_ERROR(
-            reader->ReadTensor(strings::StrCat(prefix, "_", kOutput, "_", i),
-                               &output_elem->output.back()));
+        TF_RETURN_IF_ERROR(reader->ReadTensor(
+            full_name(strings::StrCat(prefix, "_", kOutput, "_", i)),
+            &output_elem->output.back()));
       }
       return Status::OK();
     }
@@ -983,7 +997,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       error::Code code = static_cast<error::Code>(code_int);
 
       if (code != error::Code::OK) {
-        string error_message;
+        tstring error_message;
         TF_RETURN_IF_ERROR(reader->ReadScalar(
             full_name(strings::StrCat(prefix, "_", KMessage)), &error_message));
         *status = Status(code, error_message);

@@ -21,6 +21,7 @@ from __future__ import print_function
 import json
 import math
 import os
+
 import numpy as np
 
 from tensorflow.python.eager import context
@@ -572,6 +573,10 @@ class KerasAccuracyTest(test.TestCase):
               w: [[0.5], [0.2]]
           }))
       self.assertAlmostEqual(result, 0.71, 2)  # 2.5/2.7
+
+  def test_get_acc(self):
+    acc_fn = metrics.get('acc')
+    self.assertEqual(acc_fn, metrics.accuracy)
 
 
 @test_util.run_all_in_graph_and_eager_modes

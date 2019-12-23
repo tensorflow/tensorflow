@@ -45,9 +45,9 @@ class FileCacheTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.cache_prefix = path.join(self.tmp_dir, "cache")
 
   def tearDown(self):
-    super(FileCacheTest, self).tearDown()
     if self.tmp_dir:
       shutil.rmtree(self.tmp_dir, ignore_errors=True)
+    super(FileCacheTest, self).tearDown()
 
   @combinations.generate(test_base.default_test_combinations())
   def testCacheDatasetPassthrough(self):
@@ -351,6 +351,18 @@ class MemoryCacheTest(test_base.DatasetTestBase, parameterized.TestCase):
       results.append(elem.numpy())
 
     self.assertAllEqual(results, range(10))
+
+  @combinations.generate(combinations.combine(tf_api_version=2, mode="eager"))
+  def testCacheV2ConcurrentIterators(self):
+
+    dataset = dataset_ops.Dataset.range(10).cache()
+
+    it1 = iter(dataset)
+    it2 = iter(dataset)
+
+    for i in range(10):
+      self.assertEqual(next(it1), i)
+      self.assertEqual(next(it2), i)
 
 
 if __name__ == "__main__":

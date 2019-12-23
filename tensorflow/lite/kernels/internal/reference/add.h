@@ -28,7 +28,7 @@ inline void Add(const ArithmeticParams& params,
                 const RuntimeShape& input2_shape, const T* input2_data,
                 const RuntimeShape& output_shape, T* output_data) {
   const int flat_size =
-      MatchingFlatSize(input1_shape, input2_shape, output_shape);
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
     output_data[i] = ActivationFunctionWithMinMax(
         input1_data[i] + input2_data[i], params.quantized_activation_min,
@@ -40,8 +40,9 @@ inline void Add(const ArithmeticParams& params,
                 const RuntimeShape& input1_shape, const float* input1_data,
                 const RuntimeShape& input2_shape, const float* input2_data,
                 const RuntimeShape& output_shape, float* output_data) {
-  const int size = MatchingFlatSize(input1_shape, input2_shape, output_shape);
-  for (int i = 0; i < size; i++) {
+  const int flat_size =
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
+  for (int i = 0; i < flat_size; i++) {
     auto x = input1_data[i] + input2_data[i];
     output_data[i] = ActivationFunctionWithMinMax(
         x, params.float_activation_min, params.float_activation_max);
@@ -122,7 +123,7 @@ inline void Add(const ArithmeticParams& params,
   TFLITE_DCHECK_LE(params.quantized_activation_min,
                    params.quantized_activation_max);
   const int flat_size =
-      MatchingFlatSize(input1_shape, input2_shape, output_shape);
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
 
   TFLITE_DCHECK_GT(params.input1_offset, -256);
   TFLITE_DCHECK_GT(params.input2_offset, -256);
@@ -140,7 +141,7 @@ inline void Add(const ArithmeticParams& params,
 
   const int input1_shift = params.input1_shift;
   const int flat_size =
-      MatchingFlatSize(output_shape, input1_shape, input2_shape);
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
   const int16 output_activation_min = params.quantized_activation_min;
   const int16 output_activation_max = params.quantized_activation_max;
 

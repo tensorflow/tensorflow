@@ -123,10 +123,7 @@ std::unique_ptr<llvm::MemoryBuffer> CompilerFunctor::operator()(
 
   CHECK(!llvm::verifyModule(module, &llvm::dbgs()));
 
-  const auto& opts = target_machine_->Options;
-  bool fast_math_enabled = opts.UnsafeFPMath && opts.NoInfsFPMath &&
-                           opts.NoNaNsFPMath && opts.NoSignedZerosFPMath;
-  runtime::RewriteIRRuntimeFunctions(&module, fast_math_enabled);
+  runtime::RewriteIRRuntimeFunctions(&module, fast_math_flags_);
 
   // Buffer for holding machine code prior to constructing the ObjectFile.
   llvm::SmallVector<char, 0> stream_buffer;

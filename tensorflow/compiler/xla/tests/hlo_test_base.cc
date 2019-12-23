@@ -85,25 +85,6 @@ ProgramShape GetProgramShapeWithLayout(const HloModule& module) {
 
 }  // namespace
 
-Status VerifiedHloModule::Verify() {
-  if (computation_count() == 0) {
-    // The computation was never built. Nothing to verify.
-    return Status::OK();
-  }
-  return verifier_.Run(this).status();
-}
-
-void VerifiedHloModule::VerifyOrAddFailure(const string& message) {
-  Status status = Verify();
-  if (!status.ok()) {
-    ADD_FAILURE() << "HloVerifier failed on module " << name()
-                  << (message.empty() ? "" : absl::StrCat(" (", message, ")"))
-                  << ": " << status;
-    LOG(ERROR) << "Contents of bad module:";
-    XLA_LOG_LINES(tensorflow::ERROR, ToString());
-  }
-}
-
 HloTestBase::HloTestBase(bool verifier_layout_sensitive,
                          bool allow_mixed_precision_in_hlo_verifier,
                          std::function<bool(const HloInstruction*)>
@@ -155,8 +136,7 @@ HloTestBase::ParseAndReturnVerifiedModule(absl::string_view hlo_text,
       TestName(), config, verifier_layout_sensitive_,
       allow_mixed_precision_in_hlo_verifier_,
       backend().compiler()->ShapeSizeBytesFunction());
-  TF_RETURN_IF_ERROR(ParseHloString(hlo_text, module.get()));
-  TF_RETURN_IF_ERROR(module->Verify());
+  TF_RETURN_IF_ERROR(module->ParseHloStringAndVerifyModule(hlo_text));
   return std::move(module);
 }
 
@@ -335,8 +315,7 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
 ::testing::AssertionResult HloTestBase::RunAndCompare(
     string_view hlo_string, const absl::optional<ErrorSpec>& error,
     const std::function<void(HloModule*)>& reference_preprocessor) {
-  auto module_or_status =
-      HloRunner::CreateModuleFromString(hlo_string, GetDebugOptionsForTest());
+  auto module_or_status = ParseAndReturnVerifiedModule(hlo_string);
   if (!module_or_status.ok()) {
     return ::testing::AssertionFailure()
            << "Error while parsing HLO text format: "
@@ -350,8 +329,7 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
                                             bool run_hlo_passes,
                                             ExecutionProfile* profile,
                                             string backend_config) {
-  auto module_or_status =
-      HloRunner::CreateModuleFromString(hlo_string, GetDebugOptionsForTest());
+  auto module_or_status = ParseAndReturnVerifiedModule(hlo_string);
   if (!module_or_status.ok()) {
     return ::testing::AssertionFailure()
            << "Error while parsing HLO text format: "
@@ -386,7 +364,6 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
     instruction->set_raw_backend_config_string(backend_config);
   }
 
-  // return ::testing::AssertionSuccess();
   auto output = test_runner_.Execute(std::move(module), fake_argument_ptrs,
                                      /*run_hlo_passes=*/run_hlo_passes,
                                      /*profile=*/profile);
@@ -405,8 +382,7 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
   std::vector<std::unique_ptr<Executable>> executables(n);
 
   for (int i = 0; i < n; ++i) {
-    auto module_or_status =
-        HloRunner::CreateModuleFromString(hlo_string, GetDebugOptionsForTest());
+    auto module_or_status = ParseAndReturnVerifiedModule(hlo_string);
     if (!module_or_status.ok()) {
       return ::testing::AssertionFailure()
              << "Error while parsing HLO text format: "
@@ -477,8 +453,7 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
 ::testing::AssertionResult HloTestBase::RunAndCompareNoHloPasses(
     string_view hlo_string, const absl::optional<ErrorSpec>& error,
     const std::function<void(HloModule*)>& reference_preprocessor) {
-  auto module_or_status =
-      HloRunner::CreateModuleFromString(hlo_string, GetDebugOptionsForTest());
+  auto module_or_status = ParseAndReturnVerifiedModule(hlo_string);
   if (!module_or_status.ok()) {
     return ::testing::AssertionFailure()
            << "Error while parsing HLO text format: "
@@ -518,6 +493,19 @@ HloInstruction* HloTestBase::FindInstruction(HloModule* module,
     auto instructions = c->instructions();
     auto it = absl::c_find_if(
         instructions, [&](HloInstruction* i) { return i->name() == name; });
+    if (it != instructions.end()) {
+      return *it;
+    }
+  }
+  return nullptr;
+}
+
+HloInstruction* HloTestBase::FindInstruction(HloModule* module,
+                                             HloOpcode opcode) {
+  for (const HloComputation* c : module->computations()) {
+    auto instructions = c->instructions();
+    auto it = absl::c_find_if(
+        instructions, [&](HloInstruction* i) { return i->opcode() == opcode; });
     if (it != instructions.end()) {
       return *it;
     }

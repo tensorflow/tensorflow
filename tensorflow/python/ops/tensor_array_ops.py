@@ -20,6 +20,8 @@ from __future__ import division
 from __future__ import print_function
 
 import contextlib
+
+import numpy as np
 import traceback
 import weakref
 
@@ -136,6 +138,7 @@ class _GraphTensorArray(object):
     # shape equality.
     self._element_shape = [tensor_shape.as_shape(element_shape)]
     self._infer_shape = infer_shape
+    self._size = size
     with ops.name_scope(name, "TensorArray", [handle, size, flow]) as scope:
       if handle is not None:
         self._handle = handle
@@ -258,7 +261,6 @@ class _GraphTensorArray(object):
       value.set_shape(self._element_shape[0].dims)
     return value
 
-  @tf_should_use.should_use_result
   def write(self, index, value, name=None):
     """See TensorArray."""
     with ops.name_scope(name, "TensorArrayWrite", [self._handle, index, value]):
@@ -280,7 +282,12 @@ class _GraphTensorArray(object):
     """See TensorArray."""
     with ops.colocate_with(self._handle):
       with ops.name_scope(name, "TensorArrayStack", [self._handle]):
-        return self.gather(math_ops.range(0, self.size()), name=name)
+        value = self.gather(math_ops.range(0, self.size()), name=name)
+        if (self.element_shape and not self._dynamic_size and
+            self._size is not None):
+          value.set_shape([tensor_util.constant_value(self._size)] +
+                          self.element_shape.dims)
+        return value
 
   def gather(self, indices, name=None):
     """See TensorArray."""
@@ -364,8 +371,11 @@ class _GraphTensorArray(object):
 
   def size(self, name=None):
     """See TensorArray."""
-    return gen_data_flow_ops.tensor_array_size_v3(
-        handle=self._handle, flow_in=self.flow, name=name)
+    if not self._dynamic_size and self._size is not None:
+      return ops.convert_to_tensor(self._size, dtype=dtypes.int32)
+    else:
+      return gen_data_flow_ops.tensor_array_size_v3(
+          handle=self._handle, flow_in=self.flow, name=name)
 
   @tf_should_use.should_use_result
   def close(self, name=None):
@@ -426,6 +436,7 @@ class _GraphTensorArrayV2(object):
     del colocate_with_first_write_call
 
     self._dynamic_size = dynamic_size
+    self._size = size
 
     if (flow is not None and
         (not isinstance(flow, ops.Tensor) or flow.dtype != dtypes.variant)):
@@ -515,7 +526,6 @@ class _GraphTensorArrayV2(object):
           name=name)
       return value
 
-  @tf_should_use.should_use_result
   def write(self, index, value, name=None):
     """See TensorArray."""
     with ops.name_scope(name, "TensorArrayV2Write", [self._flow, index, value]):
@@ -535,9 +545,15 @@ class _GraphTensorArrayV2(object):
   def stack(self, name=None):
     """See TensorArray."""
     with ops.name_scope(name, "TensorArrayV2Stack", [self._flow]):
+      # TODO(b/139941163): remove constant_value after changing num_elements to regular input
+      if not self._dynamic_size and self._size is not None:
+        ta_size = tensor_util.constant_value(self._size)
+      else:
+        ta_size = -1
       value = list_ops.tensor_list_stack(
           input_handle=self._flow,
           element_dtype=self._dtype,
+          num_elements=ta_size,
           element_shape=self.element_shape)
       return value
 
@@ -618,9 +634,11 @@ class _GraphTensorArrayV2(object):
 
   def size(self, name=None):
     """See TensorArray."""
-    return list_ops.tensor_list_length(input_handle=self._flow, name=name)
+    if not self._dynamic_size and self._size is not None:
+      return ops.convert_to_tensor(self._size, dtype=dtypes.int32)
+    else:
+      return list_ops.tensor_list_length(input_handle=self._flow, name=name)
 
-  @tf_should_use.should_use_result
   def close(self, name=None):
     """See TensorArray."""
     return gen_control_flow_ops.no_op(name=name)
@@ -787,7 +805,7 @@ class _EagerTensorArray(object):
             None, None,
             "Tried to write to index %d but array is not resizeable and size "
             "is: %d" % (index, size))
-      self._tensor_array.extend([None for _ in range(index - size + 1)])
+      self._tensor_array.extend(None for _ in range(index - size + 1))
 
     if not isinstance(value, ops.EagerTensor):
       # TODO(b/129870929): Fix after all callers provide proper init dtype.
@@ -827,8 +845,12 @@ class _EagerTensorArray(object):
     if self._tensor_array:
       for ix in range(len(self._tensor_array)):
         self._maybe_zero(ix)
-    return ops.convert_to_tensor(
-        self._tensor_array, name=name, dtype=self._dtype)
+    if not self._tensor_array and self._element_shape.is_fully_defined():
+      return ops.convert_to_tensor(
+          np.ndarray([0] + self._element_shape), name=name, dtype=self._dtype)
+    else:
+      return ops.convert_to_tensor(
+          self._tensor_array, name=name, dtype=self._dtype)
 
   def gather(self, indices, name=None):
     """See TensorArray."""
@@ -919,6 +941,7 @@ class _EagerTensorArray(object):
 # TensorArray is designed to hide an underlying implementation object
 # and as such accesses many of that object's hidden fields.
 # pylint: disable=protected-access
+# pylint:disable=line-too-long
 @tf_export("TensorArray")
 class TensorArray(object):
   """Class wrapping dynamic-sized, per-time-step, write-once Tensor arrays.
@@ -926,6 +949,54 @@ class TensorArray(object):
   This class is meant to be used with dynamic iteration primitives such as
   `while_loop` and `map_fn`.  It supports gradient back-propagation via special
   "flow" control flow dependencies.
+
+  Example 1: plain reading and writing.
+  >>> ta = tf.TensorArray(tf.float32, size=0, dynamic_size=True, clear_after_read=False)
+  >>> ta = ta.write(0, 10)
+  >>> ta = ta.write(1, 20)
+  >>> ta = ta.write(2, 30)
+  >>>
+  >>> ta.read(0)
+  <tf.Tensor: shape=(), dtype=float32, numpy=10.0>
+  >>> ta.read(1)
+  <tf.Tensor: shape=(), dtype=float32, numpy=20.0>
+  >>> ta.read(2)
+  <tf.Tensor: shape=(), dtype=float32, numpy=30.0>
+  >>> ta.stack()
+  <tf.Tensor: shape=(3,), dtype=float32, numpy=array([10., 20., 30.],
+  dtype=float32)>
+
+  Example 2: Fibonacci sequence algorithm that writes in a loop then returns.
+  >>> @tf.function
+  ... def fibonacci(n):
+  ...   ta = tf.TensorArray(tf.float32, size=0, dynamic_size=True)
+  ...   ta = ta.unstack([0., 1.])
+  ...
+  ...   for i in range(2, n):
+  ...     ta = ta.write(i, ta.read(i - 1) + ta.read(i - 2))
+  ...
+  ...   return ta.stack()
+  >>>
+  >>> fibonacci(7)
+  <tf.Tensor: shape=(7,), dtype=float32,
+  numpy=array([0., 1., 1., 2., 3., 5., 8.], dtype=float32)>
+
+  Example 3: A simple loop interacting with a tf.Variable.
+  >>> v = tf.Variable(1)
+  >>>
+  >>> @tf.function
+  ... def f(x):
+  ...   ta = tf.TensorArray(tf.int32, size=0, dynamic_size=True)
+  ...
+  ...   for i in tf.range(x):
+  ...     v.assign_add(i)
+  ...     ta = ta.write(i, v)
+  ...
+  ...   return ta.stack()
+  >>>
+  >>> f(5)
+  <tf.Tensor: shape=(5,), dtype=int32, numpy=array([ 1,  2,  4,  7, 11],
+  dtype=int32)>
   """
 
   def __init__(self,
@@ -1066,6 +1137,7 @@ class TensorArray(object):
     """
     return self._implementation.read(index, name=name)
 
+  @tf_should_use.should_use_result(warn_in_eager=True)
   def write(self, index, value, name=None):
     """Write `value` into index `index` of the TensorArray.
 
@@ -1222,6 +1294,7 @@ def build_ta_with_new_flow(old_ta, flow):
       colocate_with_first_write_call=impl._colocate_with_first_write_call)
   new_impl = new_ta._implementation
   new_impl._dynamic_size = impl._dynamic_size
+  new_impl._size = impl._size
   new_impl._colocate_with = impl._colocate_with
   new_impl._element_shape = impl._element_shape  # Share _element_shape.
   return new_ta

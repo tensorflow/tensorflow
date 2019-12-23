@@ -16,19 +16,16 @@
 // =============================================================================
 
 #include "mlir/EDSC/Helpers.h"
+#include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/IR/AffineExpr.h"
-#include "mlir/StandardOps/Ops.h"
 
 using namespace mlir;
 using namespace mlir::edsc;
 
-static SmallVector<ValueHandle, 8> getMemRefSizes(Value *memRef) {
+static SmallVector<ValueHandle, 8> getMemRefSizes(ValuePtr memRef) {
   MemRefType memRefType = memRef->getType().cast<MemRefType>();
+  assert(isStrided(memRefType) && "Expected strided MemRef type");
 
-  auto maps = memRefType.getAffineMaps();
-  (void)maps;
-  assert((maps.empty() || (maps.size() == 1 && maps[0].isIdentity())) &&
-         "Layout maps not supported");
   SmallVector<ValueHandle, 8> res;
   res.reserve(memRefType.getShape().size());
   const auto &shape = memRefType.getShape();
@@ -42,7 +39,7 @@ static SmallVector<ValueHandle, 8> getMemRefSizes(Value *memRef) {
   return res;
 }
 
-mlir::edsc::MemRefView::MemRefView(Value *v) : base(v) {
+mlir::edsc::MemRefView::MemRefView(ValuePtr v) : base(v) {
   assert(v->getType().isa<MemRefType>() && "MemRefType expected");
 
   auto memrefSizeValues = getMemRefSizes(v);
@@ -53,7 +50,7 @@ mlir::edsc::MemRefView::MemRefView(Value *v) : base(v) {
   }
 }
 
-mlir::edsc::VectorView::VectorView(Value *v) : base(v) {
+mlir::edsc::VectorView::VectorView(ValuePtr v) : base(v) {
   auto vectorType = v->getType().cast<VectorType>();
 
   for (auto s : vectorType.getShape()) {

@@ -107,9 +107,10 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
       handle = resource_variable_ops.var_handle_op(
           dtype=dtypes.int32, shape=[1], name="foo")
       resource_variable_ops.assign_variable_op(handle, 1)
-      with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                   "Trying to read variable with wrong dtype. "
-                                   "Expected float got int32."):
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          "Trying to read variable with wrong dtype. "
+          "Expected float got int32"):
         _ = resource_variable_ops.read_variable_op(handle, dtype=dtypes.float32)
 
   def testEagerInitializedValue(self):
@@ -136,11 +137,16 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
                                                         name="init")
 
       copied_variable = copy.deepcopy(variable)
-      copied_variable.assign(4 * np.ones((4, 4, 4)))
+      self.assertEqual(variable.name, copied_variable.name)
+      self.assertEqual(variable.shape, copied_variable.shape)
+      self.assertEqual(variable.device, copied_variable.device)
 
-      # Copying the variable should create a new underlying tensor with distinct
-      # values.
-      self.assertFalse(np.allclose(variable.numpy(), copied_variable.numpy()))
+      # The copied variable should have the same value as the original.
+      self.assertAllEqual(variable.numpy(), copied_variable.numpy())
+
+      # Updates to the copy should not be reflected in the original.
+      copied_variable.assign(4 * np.ones((4, 4, 4)))
+      self.assertNotAllEqual(variable.numpy(), copied_variable.numpy())
 
   @test_util.run_deprecated_v1
   def testGraphDeepCopy(self):
@@ -195,9 +201,9 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
           dtype=dtypes.int32, shape=[1], name="foo")
       resource_variable_ops.assign_variable_op(
           handle, constant_op.constant([1]))
-      with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                   "Trying to assign variable with wrong "
-                                   "dtype. Expected int32 got float."):
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError, "Trying to assign variable with wrong "
+          "dtype. Expected int32 got float"):
         resource_variable_ops.assign_variable_op(
             handle, constant_op.constant([1.], dtype=dtypes.float32))
 
@@ -297,6 +303,33 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     self.assertEqual(g[1].dtype, dtypes.float64)
     self.evaluate(variables.global_variables_initializer())
     self.assertAllEqual(g[1], [[0., 0.], [0., 0.]])
+
+  @test_util.run_deprecated_v1
+  def testUnconnectedGradientZeros(self):
+    b = resource_variable_ops.ResourceVariable(initial_value=[[3., 4.]])
+    c = constant_op.constant(0.)
+    g = gradients_impl.gradients(c, [b], unconnected_gradients="zero")[0]
+    self.assertAllEqual(g.shape.as_list(), [1, 2])
+
+  @test_util.run_deprecated_v1
+  def testGradientCondInWhileLoop(self):
+    v = resource_variable_ops.ResourceVariable(initial_value=1.0)
+    def cond(i, unused_x):
+      return i < 1
+
+    def body(i, x):
+      def true():
+        return x + v
+      def false():
+        return 2.0 * v
+      return i + 1, control_flow_ops.cond(i > 0, true, false)
+
+    _, x = control_flow_ops.while_loop(cond, body, [0, 0.0])
+    # Computing gradients does not produce an exception:
+    g = gradients_impl.gradients(x, v)
+    self.evaluate(variables.global_variables_initializer())
+    # Only the false branch is taken so the gradient is 2.
+    self.assertAllEqual(g[0], 2.0)
 
   @test_util.run_in_graph_and_eager_modes
   def testGradientGatherNdIndexedSlices(self):
@@ -649,12 +682,6 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
       self.assertEqual(v.handle.op.colocation_groups(),
                        v.initializer.inputs[1].op.colocation_groups())
 
-  def testHandleNumpy(self):
-    with context.eager_mode():
-      with self.assertRaises(ValueError):
-        resource_variable_ops.ResourceVariable(
-            1.0, name="handle-numpy").handle.numpy()
-
   def testCountUpTo(self):
     with context.eager_mode():
       v = resource_variable_ops.ResourceVariable(0, name="upto")
@@ -979,7 +1006,9 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
       x = resource_variable_ops.var_handle_op(
           dtype=v.dtype.base_dtype, shape=v.get_shape(), shared_name="var5",
           container=ops.get_default_graph()._container)
-      with self.assertRaisesOpError("Resource .*/var5/.* does not exist"):
+      with self.assertRaisesOpError(
+          "(Resource .*/var5/.* does not exist|Read of uninitialized variable)"
+      ):
         resource_variable_ops.read_variable_op(x, v.dtype.base_dtype).eval()
 
   @test_util.run_deprecated_v1
@@ -1039,7 +1068,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     with context.eager_mode():
       init = array_ops.ones(shape=[10, 20, 35], dtype=dtypes.int32)
       constraint = lambda x: x
-      with ops.name_scope("foo"):
+      with ops.name_scope("foo", skip_on_eager=False):
         v = resource_variable_ops.ResourceVariable(
             name="var7",
             initial_value=init,
@@ -1393,6 +1422,29 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
           var.handle, indices, dtype=var.dtype, batch_dims=batch_dims)
 
     self.assertAllEqual(output_shape, result.shape.as_list())
+    self.assertAllEqual(expected, result)
+
+  @parameterized.parameters([
+      dict(dtype=dtypes.bool),
+      dict(dtype=dtypes.int64),
+      dict(dtype=dtypes.half),
+      dict(dtype=dtypes.float32),
+      dict(dtype=dtypes.double),
+  ])
+  @test_util.run_gpu_only
+  @test_util.run_in_graph_and_eager_modes
+  def testGatherWithDTypes(self, dtype):
+    if dtype == dtypes.bool:
+      params = constant_op.constant([False, True, False, True])
+      expected = constant_op.constant([[False, True], [False, True]])
+    else:
+      params = constant_op.constant([6, 7, 8, 9], dtype=dtype)
+      expected = constant_op.constant([[8, 7], [6, 9]], dtype=dtype)
+    indices = constant_op.constant([[2, 1], [0, 3]])
+    var = resource_variable_ops.ResourceVariable(params, name="var0")
+    with ops.control_dependencies([var.initializer]):
+      result = resource_variable_ops.resource_gather(
+          var.handle, indices, dtype=dtype)
     self.assertAllEqual(expected, result)
 
 

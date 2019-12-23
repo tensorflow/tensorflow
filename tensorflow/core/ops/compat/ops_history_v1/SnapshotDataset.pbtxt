@@ -274,3 +274,239 @@ op {
     }
   }
 }
+op {
+  name: "SnapshotDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "path"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "compression"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "reader_path_prefix"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "writer_path_prefix"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shard_size_bytes"
+    type: "int"
+    default_value {
+      i: 10737418240
+    }
+  }
+  attr {
+    name: "pending_snapshot_expiry_seconds"
+    type: "int"
+    default_value {
+      i: 86400
+    }
+  }
+  attr {
+    name: "num_reader_threads"
+    type: "int"
+    default_value {
+      i: 1
+    }
+  }
+  attr {
+    name: "reader_buffer_size"
+    type: "int"
+    default_value {
+      i: 1
+    }
+  }
+  attr {
+    name: "num_writer_threads"
+    type: "int"
+    default_value {
+      i: 1
+    }
+  }
+  attr {
+    name: "writer_buffer_size"
+    type: "int"
+    default_value {
+      i: 1
+    }
+  }
+  attr {
+    name: "shuffle_on_read"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "seed"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "seed2"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+}
+op {
+  name: "SnapshotDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "path"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "compression"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "reader_path_prefix"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "writer_path_prefix"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shard_size_bytes"
+    type: "int"
+    default_value {
+      i: 10737418240
+    }
+  }
+  attr {
+    name: "pending_snapshot_expiry_seconds"
+    type: "int"
+    default_value {
+      i: 86400
+    }
+  }
+  attr {
+    name: "num_reader_threads"
+    type: "int"
+    default_value {
+      i: 1
+    }
+  }
+  attr {
+    name: "reader_buffer_size"
+    type: "int"
+    default_value {
+      i: 1
+    }
+  }
+  attr {
+    name: "num_writer_threads"
+    type: "int"
+    default_value {
+      i: 1
+    }
+  }
+  attr {
+    name: "writer_buffer_size"
+    type: "int"
+    default_value {
+      i: 1
+    }
+  }
+  attr {
+    name: "shuffle_on_read"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "seed"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "seed2"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "mode"
+    type: "string"
+    default_value {
+      s: "auto"
+    }
+  }
+  attr {
+    name: "snapshot_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+}

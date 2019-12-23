@@ -34,7 +34,10 @@ from tensorflow.python.eager import test
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.distribute import distributed_training_utils
+from tensorflow.python.keras.engine import base_layer_utils
+from tensorflow.python.keras.mixed_precision.experimental import policy
 from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_keras
+from tensorflow.python.keras.utils import np_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
@@ -110,10 +113,10 @@ def get_multi_inputs_multi_outputs_data():
       num_classes=2,
       random_seed=_RANDOM_SEED)
 
-  c_train = keras.utils.to_categorical(c_train)
-  c_test = keras.utils.to_categorical(c_test)
-  d_train = keras.utils.to_categorical(d_train)
-  d_test = keras.utils.to_categorical(d_test)
+  c_train = np_utils.to_categorical(c_train)
+  c_test = np_utils.to_categorical(c_test)
+  d_train = np_utils.to_categorical(d_train)
+  d_test = np_utils.to_categorical(d_test)
 
   train_data = {
       'input_a': a_train,
@@ -280,10 +283,14 @@ def strategy_and_optimizer_combinations():
               strategy_combinations.adam_optimizer_v1_fn,
               strategy_combinations.gradient_descent_optimizer_v1_fn,
               strategy_combinations.rmsprop_optimizer_v1_fn,
+              strategy_combinations.adadelta_optimizer_keras_v2_fn,
               strategy_combinations.adagrad_optimizer_keras_v2_fn,
               strategy_combinations.adam_optimizer_keras_v2_fn,
+              strategy_combinations.adamax_optimizer_keras_v2_fn,
               strategy_combinations.gradient_descent_optimizer_keras_v2_fn,
-              strategy_combinations.rmsprop_optimizer_keras_v2_fn
+              strategy_combinations.nadam_optimizer_keras_v2_fn,
+              strategy_combinations.rmsprop_optimizer_keras_v2_fn,
+              strategy_combinations.ftrl_optimizer_keras_v2_fn
           ],
           experimental_run_tf_function=[True, False]))
   tpu_strategies_graph = combinations.combine(
@@ -325,19 +332,15 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
       replica_scale_factor = distribution.num_replicas_in_sync
 
     with self.cached_session():
-      # Input samples of different sizes
-      input_20_samples = np.zeros((20, 3), dtype=np.float32)
-      input_64_samples = np.zeros((64, 3), dtype=np.float32)
-
       # Default global batch size 32 for input with 64 samples run in 2 steps
       steps, batch_size = distributed_training_utils.get_input_params(
-          distribution, input_64_samples, steps=None, batch_size=None)
+          distribution, 64, steps=None, batch_size=None)
       self.assertEqual(batch_size, 32 // replica_scale_factor)
       self.assertEqual(steps, 2)
 
       # Computed global batch size 20 is lower than 32 if we pass less samples.
       steps, batch_size = distributed_training_utils.get_input_params(
-          distribution, input_20_samples, steps=None, batch_size=None)
+          distribution, 20, steps=None, batch_size=None)
       self.assertEqual(batch_size, 20 // replica_scale_factor)
       self.assertEqual(steps, 1)
 
@@ -351,33 +354,29 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
       replica_scale_factor = distribution.num_replicas_in_sync
 
     with self.cached_session():
-      # Input samples of different sizes
-      input_63_samples = np.zeros((63, 3), dtype=np.float32)
-      input_64_samples = np.zeros((64, 3), dtype=np.float32)
-
       # Computed global batch size is correct for number of specified 1 step
       steps, batch_size = distributed_training_utils.get_input_params(
-          distribution, input_64_samples, steps=1, batch_size=None)
+          distribution, 64, steps=1, batch_size=None)
       self.assertEqual(batch_size, 64 // replica_scale_factor)
       self.assertEqual(steps, 1)
 
       # Computed global batch size is correct for number of specified 2 steps
       steps, batch_size = distributed_training_utils.get_input_params(
-          distribution, input_64_samples, steps=2, batch_size=None)
+          distribution, 64, steps=2, batch_size=None)
       self.assertEqual(batch_size, 32 // replica_scale_factor)
       self.assertEqual(steps, 2)
 
       # All samples can not be consumed in specified number of steps
       with self.assertRaisesRegexp(ValueError, 'not divisible by steps'):
         distributed_training_utils.get_input_params(
-            distribution, input_63_samples, steps=2, batch_size=None)
+            distribution, 63, steps=2, batch_size=None)
 
       # This cases is different for different strategies due to the
       # difference in supported batch size being global or per-replica.
       if replica_scale_factor == 1:
         # Computed global batch size is correct even if not sharadable
         steps, batch_size = distributed_training_utils.get_input_params(
-            distribution, input_63_samples, steps=3, batch_size=None)
+            distribution, 63, steps=3, batch_size=None)
         self.assertEqual(batch_size, 21)
         self.assertEqual(steps, 3)
       else:
@@ -386,7 +385,7 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
             ValueError, 'could not be sharded evenly '
             'across the sync replicas'):
           distributed_training_utils.get_input_params(
-              distribution, input_63_samples, steps=1, batch_size=None)
+              distribution, 63, steps=1, batch_size=None)
 
   @combinations.generate(all_strategy_combinations())
   def test_calculating_input_params_no_steps_with_batch_size(
@@ -398,17 +397,15 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
       replica_scale_factor = distribution.num_replicas_in_sync
 
     with self.cached_session():
-      input_64_samples = np.zeros((64, 3), dtype=np.float32)
-
       # Computed steps is correct for specified batch size
       steps, batch_size = distributed_training_utils.get_input_params(
-          distribution, input_64_samples, steps=None, batch_size=16)
+          distribution, 64, steps=None, batch_size=16)
       self.assertEqual(batch_size, 16)
       self.assertEqual(steps, 4 // replica_scale_factor)
 
       # Computed steps is correct for specified batch size
       steps, batch_size = distributed_training_utils.get_input_params(
-          distribution, input_64_samples, steps=None, batch_size=32)
+          distribution, 64, steps=None, batch_size=32)
       self.assertEqual(batch_size, 32)
       self.assertEqual(steps, 2 // replica_scale_factor)
 
@@ -416,18 +413,16 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
   def test_calculating_input_params_with_steps_with_batch_size(
       self, distribution):
     with self.cached_session():
-      input_64_samples = np.zeros((64, 3), dtype=np.float32)
-
       # No change to steps and batch size if both specified and feasible
       steps, batch_size = distributed_training_utils.get_input_params(
-          distribution, input_64_samples, steps=5, batch_size=3)
+          distribution, 64, steps=5, batch_size=3)
       self.assertEqual(batch_size, 3)
       self.assertEqual(steps, 5)
 
       # Number of samples is less than global batch size * steps
       with self.assertRaisesRegexp(ValueError, 'less than samples required'):
         distributed_training_utils.get_input_params(
-            distribution, input_64_samples, steps=10, batch_size=13)
+            distribution, 64, steps=10, batch_size=13)
 
   @combinations.generate(all_strategy_combinations_plus_run_distributed())
   def test_calling_model_with_numpy_arrays(self, distribution,
@@ -464,6 +459,86 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
 
         model.predict(inputs)
         model.predict(inputs, batch_size=8)
+
+  @combinations.generate(all_strategy_combinations_plus_run_distributed())
+  def test_calling_model_with_mixed_precision(self, distribution,
+                                              experimental_run_tf_function):
+    if isinstance(distribution,
+                  (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1)):
+      policy_name = 'mixed_bfloat16'
+    else:
+      policy_name = 'mixed_float16'
+    with self.cached_session(), \
+         distribution.scope(), \
+         policy.policy_scope(policy_name):
+      optimizer_fn = gradient_descent_keras.SGD
+      optimizer = optimizer_fn(0.001)
+      x = keras.layers.Input(shape=(3,), name='input')
+      y = keras.layers.Dense(4, name='dense')(x)
+      y = keras.layers.Activation('softmax', dtype='float32')(y)
+      model = keras.Model(x, y)
+      loss = 'mse'
+      metrics = ['mae']
+      model.compile(
+          optimizer,
+          loss,
+          metrics=metrics,
+          experimental_run_tf_function=experimental_run_tf_function)
+
+      # We need to pass float32 since TPUs do not support float64, even though
+      # these arrays will immediately be casted to bfloat16 on TPUs. We also
+      # cannot pass bfloat16, as Numpy does not support it.
+      inputs = np.zeros((64, 3), dtype='float32')
+      targets = np.zeros((64, 4), dtype='float32')
+
+      model.fit(
+          inputs,
+          targets,
+          epochs=1,
+          batch_size=2,
+          verbose=0,
+          validation_data=(inputs, targets))
+
+      model.evaluate(inputs, targets)
+      model.evaluate(inputs, targets, batch_size=8)
+
+      model.predict(inputs)
+      model.predict(inputs, batch_size=8)
+
+  @combinations.generate(all_strategy_combinations_plus_run_distributed())
+  def test_operator_overload_mixed_precision(self, distribution,
+                                             experimental_run_tf_function):
+    # Regression test that tests a fixed bug does not reoccur. Adding an
+    # AutoCastVariable to a tensor on a TPU, where the variable was the LHS of
+    # the '+' operator, used to cause the gradient w.r.t. the variable to be
+    # None.
+    if isinstance(distribution,
+                  (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1)):
+      policy_name = 'mixed_bfloat16'
+    else:
+      policy_name = 'mixed_float16'
+
+    class MyLayer(keras.layers.Layer):
+
+      def build(self, _):
+        self.v1 = self.add_weight('v', ())
+        self.v2 = self.add_weight('v', ())
+
+      def call(self, inp):
+        inp += self.v1
+        return self.v2 + inp
+
+    with self.cached_session(), distribution.scope():
+      layer = MyLayer(dtype=policy.Policy(policy_name))
+      def run_fn():
+        x = np.array([1.])
+        with backprop.GradientTape() as tape:
+          y = layer(x)
+        grad_v1, grad_v2 = tape.gradient(y, [layer.v1, layer.v2])
+        return grad_v1, grad_v2
+      grad_v1, grad_v2 = distribution.experimental_run_v2(run_fn)
+      self.assertIsNotNone(grad_v1)
+      self.assertIsNotNone(grad_v2)
 
   @combinations.generate(all_strategy_combinations_plus_run_distributed())
   def test_calling_model_with_nested_numpy_arrays(self, distribution,
@@ -2064,4 +2139,5 @@ class TestDistributionStrategyWithMultipleAddLossAndMetricCalls(
 
 
 if __name__ == '__main__':
+  base_layer_utils.enable_v2_dtype_behavior()
   test.main()

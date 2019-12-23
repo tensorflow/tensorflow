@@ -15,19 +15,20 @@
 // limitations under the License.
 // =============================================================================
 //
-// This file implements a pass to check memref accessses for out of bound
+// This file implements a pass to check memref accesses for out of bound
 // accesses.
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/AffineOps/AffineOps.h"
+#include "mlir/ADT/TypeSwitch.h"
 #include "mlir/Analysis/AffineAnalysis.h"
 #include "mlir/Analysis/AffineStructures.h"
 #include "mlir/Analysis/Passes.h"
 #include "mlir/Analysis/Utils.h"
+#include "mlir/Dialect/AffineOps/AffineOps.h"
+#include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/StandardOps/Ops.h"
 #include "llvm/Support/Debug.h"
 
 #define DEBUG_TYPE "memref-bound-check"
@@ -43,17 +44,15 @@ struct MemRefBoundCheck : public FunctionPass<MemRefBoundCheck> {
 
 } // end anonymous namespace
 
-FunctionPassBase *mlir::createMemRefBoundCheckPass() {
-  return new MemRefBoundCheck();
+std::unique_ptr<OpPassBase<FuncOp>> mlir::createMemRefBoundCheckPass() {
+  return std::make_unique<MemRefBoundCheck>();
 }
 
 void MemRefBoundCheck::runOnFunction() {
   getFunction().walk([](Operation *opInst) {
-    if (auto loadOp = dyn_cast<AffineLoadOp>(opInst)) {
-      boundCheckLoadOrStoreOp(loadOp);
-    } else if (auto storeOp = dyn_cast<AffineStoreOp>(opInst)) {
-      boundCheckLoadOrStoreOp(storeOp);
-    }
+    TypeSwitch<Operation *>(opInst).Case<AffineLoadOp, AffineStoreOp>(
+        [](auto op) { boundCheckLoadOrStoreOp(op); });
+
     // TODO(bondhugula): do this for DMA ops as well.
   });
 }

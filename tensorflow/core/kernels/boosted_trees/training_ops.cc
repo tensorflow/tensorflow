@@ -16,6 +16,7 @@ limitations under the License.
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/kernels/boosted_trees/boosted_trees.pb.h"
 #include "tensorflow/core/kernels/boosted_trees/resources.h"
 #include "tensorflow/core/kernels/boosted_trees/tree_helper.h"
 #include "tensorflow/core/lib/core/refcount.h"
@@ -25,19 +26,6 @@ namespace tensorflow {
 namespace {
 constexpr float kLayerByLayerTreeWeight = 1.0;
 constexpr float kMinDeltaForCenterBias = 0.01;
-
-// TODO(nponomareva, youngheek): consider using vector.
-struct SplitCandidate {
-  SplitCandidate() {}
-
-  // Index in the list of the feature ids.
-  int64 feature_idx;
-
-  // Index in the tensor of node_ids for the feature with idx feature_idx.
-  int64 candidate_idx;
-
-  float gain;
-};
 
 enum PruningMode { kNoPruning = 0, kPrePruning = 1, kPostPruning = 2 };
 
@@ -89,11 +77,13 @@ class BoostedTreesUpdateEnsembleOp : public OpKernel {
     const Tensor* learning_rate_t;
     OP_REQUIRES_OK(context, context->input("learning_rate", &learning_rate_t));
     const auto learning_rate = learning_rate_t->scalar<float>()();
-
+    // Op does not support multi-class, the V2 op below does however.
+    int32 logits_dimension = 1;
     // Find best splits for each active node.
-    std::map<int32, SplitCandidate> best_splits;
-    FindBestSplitsPerNode(context, node_ids_list, gains_list, feature_ids,
-                          &best_splits);
+    std::map<int32, boosted_trees::SplitCandidate> best_splits;
+    FindBestSplitsPerNode(context, learning_rate, node_ids_list, gains_list,
+                          thresholds_list, left_node_contribs,
+                          right_node_contribs, feature_ids, &best_splits);
 
     int32 current_tree =
         UpdateGlobalAttemptsAndRetrieveGrowableTree(ensemble_resource);
@@ -113,17 +103,7 @@ class BoostedTreesUpdateEnsembleOp : public OpKernel {
     int32 node_id_start = ensemble_resource->GetNumNodes(current_tree);
     // Add the splits to the tree.
     for (auto& split_entry : best_splits) {
-      const int32 node_id = split_entry.first;
-      const SplitCandidate& candidate = split_entry.second;
-
-      const int64 feature_idx = candidate.feature_idx;
-      const int64 candidate_idx = candidate.candidate_idx;
-
-      const int32 feature_id = feature_ids(feature_idx);
-      const int32 threshold =
-          thresholds_list[feature_idx].vec<int32>()(candidate_idx);
-      const float gain = gains_list[feature_idx].vec<float>()(candidate_idx);
-
+      const float gain = split_entry.second.gain;
       if (pruning_mode_ == kPrePruning) {
         // Don't consider negative splits if we're pre-pruning the tree.
         // Note that zero-gain splits are acceptable.
@@ -131,22 +111,14 @@ class BoostedTreesUpdateEnsembleOp : public OpKernel {
           continue;
         }
       }
-      // For now assume that the weights vectors are one dimensional.
-      // TODO(nponomareva): change here for multiclass.
-      const float left_contrib =
-          learning_rate *
-          left_node_contribs[feature_idx].matrix<float>()(candidate_idx, 0);
-      const float right_contrib =
-          learning_rate *
-          right_node_contribs[feature_idx].matrix<float>()(candidate_idx, 0);
 
       // unused.
       int32 left_node_id;
       int32 right_node_id;
 
-      ensemble_resource->AddBucketizedSplitNode(
-          current_tree, node_id, feature_id, 0, threshold, gain, left_contrib,
-          right_contrib, &left_node_id, &right_node_id);
+      ensemble_resource->AddBucketizedSplitNode(current_tree, split_entry,
+                                                logits_dimension, &left_node_id,
+                                                &right_node_id);
       split_happened = true;
     }
     int32 node_id_end = ensemble_resource->GetNumNodes(current_tree);
@@ -160,12 +132,11 @@ class BoostedTreesUpdateEnsembleOp : public OpKernel {
         node_id_end = 1;
         ensemble_resource->SetIsFinalized(current_tree, true);
         if (pruning_mode_ == kPostPruning) {
-          // TODO(crawles): change for multi-class.
-          ensemble_resource->PostPruneTree(current_tree, 1); /*logit dimension*/
+          ensemble_resource->PostPruneTree(current_tree, logits_dimension);
         }
         if (ensemble_resource->num_trees() > 0) {
           // Create a dummy new tree with an empty node.
-          ensemble_resource->AddNewTree(kLayerByLayerTreeWeight);
+          ensemble_resource->AddNewTree(kLayerByLayerTreeWeight, 1);
         }
       }
       // If we managed to split, update the node range. If we didn't, don't
@@ -188,7 +159,7 @@ class BoostedTreesUpdateEnsembleOp : public OpKernel {
     // boosting.
     if (num_trees <= 0) {
       // Create a new tree with a no-op leaf.
-      current_tree = resource->AddNewTree(kLayerByLayerTreeWeight);
+      current_tree = resource->AddNewTree(kLayerByLayerTreeWeight, 1);
     }
     return current_tree;
   }
@@ -196,14 +167,22 @@ class BoostedTreesUpdateEnsembleOp : public OpKernel {
   // Helper method which effectively does a reduce over all split candidates
   // and finds the best split for each node.
   void FindBestSplitsPerNode(
-      OpKernelContext* const context, const OpInputList& node_ids_list,
-      const OpInputList& gains_list,
+      OpKernelContext* const context, const float learning_rate,
+      const OpInputList& node_ids_list, const OpInputList& gains_list,
+      const OpInputList& thresholds_list,
+      const OpInputList& left_node_contribs_list,
+      const OpInputList& right_node_contribs_list,
       const TTypes<const int32>::Vec& feature_ids,
-      std::map<int32, SplitCandidate>* best_split_per_node) {
+      std::map<int32, boosted_trees::SplitCandidate>* best_split_per_node) {
     // Find best split per node going through every feature candidate.
     for (int64 feature_idx = 0; feature_idx < num_features_; ++feature_idx) {
       const auto& node_ids = node_ids_list[feature_idx].vec<int32>();
       const auto& gains = gains_list[feature_idx].vec<float>();
+      const auto& thresholds = thresholds_list[feature_idx].vec<int32>();
+      const auto& left_node_contribs =
+          left_node_contribs_list[feature_idx].matrix<float>();
+      const auto& right_node_contribs =
+          right_node_contribs_list[feature_idx].matrix<float>();
 
       for (size_t candidate_idx = 0; candidate_idx < node_ids.size();
            ++candidate_idx) {
@@ -212,16 +191,24 @@ class BoostedTreesUpdateEnsembleOp : public OpKernel {
         const auto& gain = gains(candidate_idx);
 
         auto best_split_it = best_split_per_node->find(node_id);
-        SplitCandidate candidate;
-        candidate.feature_idx = feature_idx;
+        boosted_trees::SplitCandidate candidate;
+        candidate.feature_idx = feature_ids(feature_idx);
         candidate.candidate_idx = candidate_idx;
         candidate.gain = gain;
+        candidate.dimension_id = 0;
+        candidate.threshold = thresholds(candidate_idx);
+        candidate.left_node_contribs.push_back(
+            learning_rate * left_node_contribs(candidate_idx, 0));
+        candidate.right_node_contribs.push_back(
+            learning_rate * right_node_contribs(candidate_idx, 0));
+        candidate.split_type = boosted_trees::SplitTypeWithDefault_Name(
+            boosted_trees::INEQUALITY_DEFAULT_LEFT);
 
         if (TF_PREDICT_FALSE(best_split_it != best_split_per_node->end() &&
                              GainsAreEqual(gain, best_split_it->second.gain))) {
           const auto best_candidate = (*best_split_per_node)[node_id];
-          const int32 best_feature_id = feature_ids(best_candidate.feature_idx);
-          const int32 feature_id = feature_ids(candidate.feature_idx);
+          const int32 best_feature_id = best_candidate.feature_idx;
+          const int32 feature_id = candidate.feature_idx;
           VLOG(2) << "Breaking ties on feature ids and buckets";
           // Breaking ties deterministically.
           if (feature_id < best_feature_id) {
@@ -249,6 +236,7 @@ class BoostedTreesUpdateEnsembleV2Op : public OpKernel {
   explicit BoostedTreesUpdateEnsembleV2Op(OpKernelConstruction* const context)
       : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("num_features", &num_features_));
+    OP_REQUIRES_OK(context, context->GetAttr("logits_dimension", &logits_dim_));
   }
 
   void Compute(OpKernelContext* const context) override {
@@ -265,8 +253,8 @@ class BoostedTreesUpdateEnsembleV2Op : public OpKernel {
     OpInputList gains_list;
     OpInputList thresholds_list;
     OpInputList dimension_ids_list;
-    OpInputList left_node_contribs;
-    OpInputList right_node_contribs;
+    OpInputList left_node_contribs_list;
+    OpInputList right_node_contribs_list;
     OpInputList split_types_list;
     OP_REQUIRES_OK(context, context->input_list("node_ids", &node_ids_list));
     OP_REQUIRES_OK(context, context->input_list("gains", &gains_list));
@@ -275,9 +263,9 @@ class BoostedTreesUpdateEnsembleV2Op : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->input_list("dimension_ids", &dimension_ids_list));
     OP_REQUIRES_OK(context, context->input_list("left_node_contribs",
-                                                &left_node_contribs));
+                                                &left_node_contribs_list));
     OP_REQUIRES_OK(context, context->input_list("right_node_contribs",
-                                                &right_node_contribs));
+                                                &right_node_contribs_list));
     OP_REQUIRES_OK(context,
                    context->input_list("split_types", &split_types_list));
 
@@ -297,11 +285,12 @@ class BoostedTreesUpdateEnsembleV2Op : public OpKernel {
     OP_REQUIRES_OK(context, context->input("pruning_mode", &pruning_mode_t));
     const auto pruning_mode =
         static_cast<PruningMode>(pruning_mode_t->scalar<int32>()());
-
     // Find best splits for each active node.
-    std::map<int32, SplitCandidate> best_splits;
-    FindBestSplitsPerNode(context, node_ids_list, gains_list, feature_ids,
-                          &best_splits);
+    std::map<int32, boosted_trees::SplitCandidate> best_splits;
+    FindBestSplitsPerNode(context, learning_rate, node_ids_list, gains_list,
+                          thresholds_list, dimension_ids_list,
+                          left_node_contribs_list, right_node_contribs_list,
+                          split_types_list, feature_ids, &best_splits);
 
     int32 current_tree =
         UpdateGlobalAttemptsAndRetrieveGrowableTree(ensemble_resource);
@@ -321,19 +310,8 @@ class BoostedTreesUpdateEnsembleV2Op : public OpKernel {
     int32 node_id_start = ensemble_resource->GetNumNodes(current_tree);
     // Add the splits to the tree.
     for (auto& split_entry : best_splits) {
-      const int32 node_id = split_entry.first;
-      const SplitCandidate& candidate = split_entry.second;
-
-      const int64 feature_idx = candidate.feature_idx;
-      const int32 feature_id = feature_ids(feature_idx);
-
-      const int64 candidate_idx = candidate.candidate_idx;
-
-      const int32 dimension_id =
-          dimension_ids_list[feature_idx].vec<int32>()(candidate_idx);
-      const int32 threshold =
-          thresholds_list[feature_idx].vec<int32>()(candidate_idx);
-      const float gain = gains_list[feature_idx].vec<float>()(candidate_idx);
+      const float gain = split_entry.second.gain;
+      const string split_type = split_entry.second.split_type;
 
       if (pruning_mode == kPrePruning) {
         // Don't consider negative splits if we're pre-pruning the tree.
@@ -343,22 +321,25 @@ class BoostedTreesUpdateEnsembleV2Op : public OpKernel {
         }
       }
 
-      // TODO(crawles): change here for multiclass.
-      const float left_contrib =
-          learning_rate *
-          left_node_contribs[feature_idx].matrix<float>()(candidate_idx, 0);
-      const float right_contrib =
-          learning_rate *
-          right_node_contribs[feature_idx].matrix<float>()(candidate_idx, 0);
-
       // unused.
       int32 left_node_id;
       int32 right_node_id;
 
-      // TODO(tanzheny): add categorical split.
-      ensemble_resource->AddBucketizedSplitNode(
-          current_tree, node_id, feature_id, dimension_id, threshold, gain,
-          left_contrib, right_contrib, &left_node_id, &right_node_id);
+      boosted_trees::SplitTypeWithDefault split_type_with_default;
+      bool parsed = boosted_trees::SplitTypeWithDefault_Parse(
+          split_type, &split_type_with_default);
+      DCHECK(parsed);
+      if (split_type_with_default == boosted_trees::EQUALITY_DEFAULT_RIGHT) {
+        // Add equality split to the node.
+        ensemble_resource->AddCategoricalSplitNode(current_tree, split_entry,
+                                                   logits_dim_, &left_node_id,
+                                                   &right_node_id);
+      } else {
+        // Add inequality split to the node.
+        ensemble_resource->AddBucketizedSplitNode(current_tree, split_entry,
+                                                  logits_dim_, &left_node_id,
+                                                  &right_node_id);
+      }
       split_happened = true;
     }
     int32 node_id_end = ensemble_resource->GetNumNodes(current_tree);
@@ -372,12 +353,11 @@ class BoostedTreesUpdateEnsembleV2Op : public OpKernel {
         node_id_end = 1;
         ensemble_resource->SetIsFinalized(current_tree, true);
         if (pruning_mode == kPostPruning) {
-          // TODO(crawles): change for multi-class.
-          ensemble_resource->PostPruneTree(current_tree, 1); /*logit dimension*/
+          ensemble_resource->PostPruneTree(current_tree, logits_dim_);
         }
         if (ensemble_resource->num_trees() > 0) {
           // Create a dummy new tree with an empty node.
-          ensemble_resource->AddNewTree(kLayerByLayerTreeWeight);
+          ensemble_resource->AddNewTree(kLayerByLayerTreeWeight, logits_dim_);
         }
       }
       // If we managed to split, update the node range. If we didn't, don't
@@ -400,7 +380,7 @@ class BoostedTreesUpdateEnsembleV2Op : public OpKernel {
     // boosting.
     if (num_trees <= 0) {
       // Create a new tree with a no-op leaf.
-      current_tree = resource->AddNewTree(kLayerByLayerTreeWeight);
+      current_tree = resource->AddNewTree(kLayerByLayerTreeWeight, logits_dim_);
     }
     return current_tree;
   }
@@ -408,32 +388,54 @@ class BoostedTreesUpdateEnsembleV2Op : public OpKernel {
   // Helper method which effectively does a reduce over all split candidates
   // and finds the best split for each node.
   void FindBestSplitsPerNode(
-      OpKernelContext* const context, const OpInputList& node_ids_list,
-      const OpInputList& gains_list,
+      OpKernelContext* const context, const float learning_rate,
+      const OpInputList& node_ids_list, const OpInputList& gains_list,
+      const OpInputList& thresholds_list, const OpInputList& dimension_ids_list,
+      const OpInputList& left_node_contribs_list,
+      const OpInputList& right_node_contribs_list,
+      const OpInputList& split_types_list,
       const TTypes<const int32>::Vec& feature_ids,
-      std::map<int32, SplitCandidate>* best_split_per_node) {
+      std::map<int32, boosted_trees::SplitCandidate>* best_split_per_node) {
     // Find best split per node going through every feature candidate.
     for (int64 feature_idx = 0; feature_idx < num_features_; ++feature_idx) {
       const auto& node_ids = node_ids_list[feature_idx].vec<int32>();
       const auto& gains = gains_list[feature_idx].vec<float>();
+      const auto& thresholds = thresholds_list[feature_idx].vec<int32>();
+      const auto& dimension_ids = dimension_ids_list[feature_idx].vec<int32>();
+      const auto& left_node_contribs =
+          left_node_contribs_list[feature_idx].matrix<float>();
+      const auto& right_node_contribs =
+          right_node_contribs_list[feature_idx].matrix<float>();
+      const auto& split_types = split_types_list[feature_idx].vec<tstring>();
 
       for (size_t candidate_idx = 0; candidate_idx < node_ids.size();
            ++candidate_idx) {
         // Get current split candidate.
         const auto& node_id = node_ids(candidate_idx);
         const auto& gain = gains(candidate_idx);
+        const auto& threshold = thresholds(candidate_idx);
+        const auto& dimension_id = dimension_ids(candidate_idx);
+        const auto& split_type = split_types(candidate_idx);
 
         auto best_split_it = best_split_per_node->find(node_id);
-        SplitCandidate candidate;
-        candidate.feature_idx = feature_idx;
+        boosted_trees::SplitCandidate candidate;
+        candidate.feature_idx = feature_ids(feature_idx);
         candidate.candidate_idx = candidate_idx;
         candidate.gain = gain;
-
+        candidate.threshold = threshold;
+        candidate.dimension_id = dimension_id;
+        candidate.split_type = split_type;
+        for (int i = 0; i < logits_dim_; ++i) {
+          candidate.left_node_contribs.push_back(
+              learning_rate * left_node_contribs(candidate_idx, i));
+          candidate.right_node_contribs.push_back(
+              learning_rate * right_node_contribs(candidate_idx, i));
+        }
         if (TF_PREDICT_FALSE(best_split_it != best_split_per_node->end() &&
                              GainsAreEqual(gain, best_split_it->second.gain))) {
           const auto best_candidate = (*best_split_per_node)[node_id];
-          const int32 best_feature_id = feature_ids(best_candidate.feature_idx);
-          const int32 feature_id = feature_ids(candidate.feature_idx);
+          const int32 best_feature_id = best_candidate.feature_idx;
+          const int32 feature_id = candidate.feature_idx;
           VLOG(2) << "Breaking ties on feature ids and buckets";
           // Breaking ties deterministically.
           if (feature_id < best_feature_id) {
@@ -449,6 +451,7 @@ class BoostedTreesUpdateEnsembleV2Op : public OpKernel {
 
  private:
   int32 num_features_;
+  int32 logits_dim_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("BoostedTreesUpdateEnsembleV2").Device(DEVICE_CPU),
@@ -501,7 +504,8 @@ class BoostedTreesCenterBiasOp : public OpKernel {
     float current_bias = 0.0;
     bool continue_centering = true;
     if (ensemble_resource->num_trees() == 0) {
-      ensemble_resource->AddNewTreeWithLogits(kLayerByLayerTreeWeight, logits);
+      ensemble_resource->AddNewTreeWithLogits(kLayerByLayerTreeWeight, {logits},
+                                              1);
       current_bias = logits;
     } else {
       const auto& current_biases = ensemble_resource->node_value(0, 0);

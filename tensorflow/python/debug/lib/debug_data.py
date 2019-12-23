@@ -670,7 +670,7 @@ class DebugDumpDir(object):
     self._node_traceback = {}
     if self._python_graph:
       for op in self._python_graph.get_operations():
-        self._node_traceback[op.name] = op.traceback
+        self._node_traceback[op.name] = tuple(map(tuple, op.traceback))
 
   @property
   def python_graph(self):

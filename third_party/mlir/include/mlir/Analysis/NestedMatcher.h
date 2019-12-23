@@ -1,4 +1,4 @@
-//===- NestedMacher.h - Nested matcher for MLFunction -----------*- C++ -*-===//
+//===- NestedMacher.h - Nested matcher for Function -------------*- C++ -*-===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -24,7 +24,7 @@
 
 namespace mlir {
 
-struct NestedPattern;
+class NestedPattern;
 class Operation;
 
 /// An NestedPattern captures nested patterns in the IR.
@@ -52,7 +52,8 @@ class Operation;
 /// A NestedMatch contains an Operation* and the children NestedMatch and is
 /// thus cheap to copy. NestedMatch is stored in a scoped bumper allocator whose
 /// lifetime is managed by an RAII NestedPatternContext.
-struct NestedMatch {
+class NestedMatch {
+public:
   static NestedMatch build(Operation *operation,
                            ArrayRef<NestedMatch> nestedMatches);
   NestedMatch(const NestedMatch &) = default;
@@ -64,8 +65,8 @@ struct NestedMatch {
   ArrayRef<NestedMatch> getMatchedChildren() { return matchedChildren; }
 
 private:
-  friend struct NestedPattern;
-  friend struct NestedPatternContext;
+  friend class NestedPattern;
+  friend class NestedPatternContext;
 
   /// Underlying global bump allocator managed by a NestedPatternContext.
   static llvm::BumpPtrAllocator *&allocator();
@@ -97,7 +98,8 @@ private:
 /// implementation is competitive nonetheless.
 using FilterFunctionType = std::function<bool(Operation &)>;
 inline bool defaultFilterFunction(Operation &) { return true; }
-struct NestedPattern {
+class NestedPattern {
+public:
   NestedPattern(ArrayRef<NestedPattern> nested,
                 FilterFunctionType filter = defaultFilterFunction);
   NestedPattern(const NestedPattern &) = default;
@@ -117,8 +119,8 @@ struct NestedPattern {
   unsigned getDepth() const;
 
 private:
-  friend struct NestedPatternContext;
-  friend struct NestedMatch;
+  friend class NestedPatternContext;
+  friend class NestedMatch;
   friend struct State;
 
   /// Underlying global bump allocator managed by a NestedPatternContext.
@@ -153,7 +155,8 @@ private:
 /// RAII structure to transparently manage the bump allocator for
 /// NestedPattern and NestedMatch classes. This avoids passing a context to
 /// all the API functions.
-struct NestedPatternContext {
+class NestedPatternContext {
+public:
   NestedPatternContext() {
     assert(NestedMatch::allocator() == nullptr &&
            "Only a single NestedPatternContext is supported");

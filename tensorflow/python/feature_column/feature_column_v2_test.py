@@ -27,7 +27,6 @@ from tensorflow.core.example import example_pb2
 from tensorflow.core.example import feature_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
-from tensorflow.python import keras
 from tensorflow.python.client import session
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -41,6 +40,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras.utils import np_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import lookup_ops
@@ -81,10 +81,10 @@ class BaseFeatureColumnForTests(fc.FeatureColumn):
     raise ValueError('Should not use this method.')
 
   @classmethod
-  def _from_config(cls, config, custom_objects=None, columns_by_name=None):
+  def from_config(cls, config, custom_objects=None, columns_by_name=None):
     raise ValueError('Should not use this method.')
 
-  def _get_config(self):
+  def get_config(self):
     raise ValueError('Should not use this method.')
 
 
@@ -478,7 +478,7 @@ class NumericColumnTest(test.TestCase):
     price = fc.numeric_column('price', normalizer_fn=_increment_two)
     self.assertEqual(['price'], price.parents)
 
-    config = price._get_config()
+    config = price.get_config()
     self.assertEqual({
         'key': 'price',
         'shape': (1,),
@@ -487,10 +487,16 @@ class NumericColumnTest(test.TestCase):
         'normalizer_fn': '_increment_two'
     }, config)
 
-    new_col = fc.NumericColumn._from_config(
+    new_col = fc.NumericColumn.from_config(
         config, custom_objects={'_increment_two': _increment_two})
     self.assertEqual(price, new_col)
     self.assertEqual(new_col.shape, (1,))
+
+    # Also test round trip through feature column serialization utils.
+    new_col = serialization.deserialize_feature_column(
+        serialization.serialize_feature_column(price),
+        custom_objects={'_increment_two': _increment_two})
+    self.assertEqual(price, new_col)
 
 
 class BucketizedColumnTest(test.TestCase):
@@ -833,7 +839,7 @@ class BucketizedColumnTest(test.TestCase):
     bucketized_price = fc.bucketized_column(price, boundaries=[0, 2, 4, 6])
     self.assertEqual([price], bucketized_price.parents)
 
-    config = bucketized_price._get_config()
+    config = bucketized_price.get_config()
     self.assertEqual({
         'source_column': {
             'class_name': 'NumericColumn',
@@ -848,11 +854,11 @@ class BucketizedColumnTest(test.TestCase):
         'boundaries': (0, 2, 4, 6)
     }, config)
 
-    new_bucketized_price = fc.BucketizedColumn._from_config(config)
+    new_bucketized_price = fc.BucketizedColumn.from_config(config)
     self.assertEqual(bucketized_price, new_bucketized_price)
     self.assertIsNot(price, new_bucketized_price.source_column)
 
-    new_bucketized_price = fc.BucketizedColumn._from_config(
+    new_bucketized_price = fc.BucketizedColumn.from_config(
         config,
         columns_by_name={
             serialization._column_name_with_class_name(price): price
@@ -1106,7 +1112,7 @@ class HashedCategoricalColumnTest(test.TestCase):
     wire_column = fc.categorical_column_with_hash_bucket('wire', 4)
     self.assertEqual(['wire'], wire_column.parents)
 
-    config = wire_column._get_config()
+    config = wire_column.get_config()
     self.assertEqual({
         'key': 'wire',
         'hash_bucket_size': 4,
@@ -1114,7 +1120,7 @@ class HashedCategoricalColumnTest(test.TestCase):
     }, config)
 
     self.assertEqual(wire_column,
-                     fc.HashedCategoricalColumn._from_config(config))
+                     fc.HashedCategoricalColumn.from_config(config))
 
 
 class CrossedColumnTest(test.TestCase):
@@ -1588,7 +1594,7 @@ class CrossedColumnTest(test.TestCase):
 
     self.assertEqual([b, 'c'], crossed.parents)
 
-    config = crossed._get_config()
+    config = crossed.get_config()
     self.assertEqual({
         'hash_bucket_size':
             5,
@@ -1612,11 +1618,11 @@ class CrossedColumnTest(test.TestCase):
         }, 'c')
     }, config)
 
-    new_crossed = fc.CrossedColumn._from_config(config)
+    new_crossed = fc.CrossedColumn.from_config(config)
     self.assertEqual(crossed, new_crossed)
     self.assertIsNot(b, new_crossed.keys[0])
 
-    new_crossed = fc.CrossedColumn._from_config(
+    new_crossed = fc.CrossedColumn.from_config(
         config,
         columns_by_name={serialization._column_name_with_class_name(b): b})
     self.assertEqual(crossed, new_crossed)
@@ -2085,7 +2091,7 @@ class LinearModelTest(test.TestCase):
 
     x = {'a': np.random.random((10, 1))}
     y = np.random.randint(20, size=(10, 1))
-    y = keras.utils.to_categorical(y, num_classes=20)
+    y = np_utils.to_categorical(y, num_classes=20)
     model.fit(x, y, epochs=1, batch_size=5)
     model.fit(x, y, epochs=1, batch_size=5)
     model.evaluate(x, y, batch_size=5)
@@ -3880,6 +3886,10 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
         'python/feature_column/testdata/wire_vocabulary.txt')
     self._wire_vocabulary_size = 3
 
+    # Contains unicode characters.
+    self._unicode_vocabulary_file_name = test.test_src_dir_path(
+        'python/feature_column/testdata/unicode_vocabulary')
+
   @test_util.run_deprecated_v1
   def test_defaults(self):
     column = fc.categorical_column_with_vocabulary_file(
@@ -3890,6 +3900,17 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
     self.assertEqual({
         'aaa': parsing_ops.VarLenFeature(dtypes.string)
     }, column.parse_example_spec)
+    self.assertTrue(column._is_v2_column)
+
+  @test_util.run_deprecated_v1
+  def test_defaults_unicode(self):
+    column = fc.categorical_column_with_vocabulary_file(
+        key='aaa', vocabulary_file=self._unicode_vocabulary_file_name)
+    self.assertEqual('aaa', column.name)
+    self.assertEqual('aaa', column.key)
+    self.assertEqual(165, column.num_buckets)
+    self.assertEqual({'aaa': parsing_ops.VarLenFeature(dtypes.string)},
+                     column.parse_example_spec)
     self.assertTrue(column._is_v2_column)
 
   def test_key_should_be_string(self):
@@ -4396,7 +4417,7 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
 
     self.assertEqual(['wire'], wire_column.parents)
 
-    config = wire_column._get_config()
+    config = wire_column.get_config()
     self.assertEqual({
         'default_value': -1,
         'dtype': 'string',
@@ -4407,7 +4428,7 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
     }, config)
 
     self.assertEqual(wire_column,
-                     fc.VocabularyFileCategoricalColumn._from_config(config))
+                     fc.VocabularyFileCategoricalColumn.from_config(config))
 
 
 class VocabularyListCategoricalColumnTest(test.TestCase):
@@ -4859,7 +4880,7 @@ class VocabularyListCategoricalColumnTest(test.TestCase):
 
     self.assertEqual(['aaa'], wire_column.parents)
 
-    config = wire_column._get_config()
+    config = wire_column.get_config()
     self.assertEqual({
         'default_value': -1,
         'dtype': 'string',
@@ -4869,7 +4890,7 @@ class VocabularyListCategoricalColumnTest(test.TestCase):
     }, config)
 
     self.assertEqual(wire_column,
-                     fc.VocabularyListCategoricalColumn._from_config(config))
+                     fc.VocabularyListCategoricalColumn.from_config(config))
 
 
 class IdentityCategoricalColumnTest(test.TestCase):
@@ -5011,16 +5032,43 @@ class IdentityCategoricalColumnTest(test.TestCase):
             dense_shape=(2, 2)), self.evaluate(id_weight_pair.id_tensor))
 
   def _test_get_sparse_tensors_with_inputs_too_small(self):
-    column = fc.categorical_column_with_identity(key='aaa', num_buckets=3)
-    inputs = sparse_tensor.SparseTensorValue(
-        indices=((0, 0), (1, 0), (1, 1)), values=(1, -1, 0), dense_shape=(2, 2))
-    with self.assertRaisesRegexp(
-        errors.InvalidArgumentError,
-        'Negative bucket index for categorical column "aaa"'):
-      column.get_sparse_tensors(
-          fc.FeatureTransformationCache({
-              'aaa': inputs
-          }), None)
+    # Inputs.
+    vocabulary_size = 2
+    sparse_input = sparse_tensor.SparseTensorValue(
+        indices=((0, 0), (0, 0), (1, 1), (1, 2)),
+        values=(-9, 0, -6, 1),
+        dense_shape=(2, 4))
+
+    # Embedding variable.
+    embedding_dimension = 2
+    embedding_values = (
+        (1., 2.),  # id 0
+        (3., 5.),  # id 1
+    )
+
+    def _initializer(shape, dtype, partition_info=None):
+      del shape, dtype, partition_info
+      return embedding_values
+
+    # Build columns.
+    categorical_column = fc.categorical_column_with_identity(
+        key='aaa', num_buckets=vocabulary_size)
+    embedding_column = fc.embedding_column(
+        categorical_column,
+        dimension=embedding_dimension,
+        initializer=_initializer)
+    state_manager = _TestStateManager()
+    embedding_column.create_state(state_manager)
+
+    # Provide sparse input and get dense result.
+    embedding_lookup = embedding_column.get_dense_tensor(
+        fc.FeatureTransformationCache({'aaa': sparse_input}), state_manager)
+
+    self.evaluate(variables_lib.global_variables_initializer())
+    self.evaluate(lookup_ops.tables_initializer())
+    expected_lookups = ((1., 2.), (3., 5))
+    with _initialized_session():
+      self.assertAllEqual(expected_lookups, self.evaluate(embedding_lookup))
 
   @test_util.run_deprecated_v1
   def test_get_sparse_tensors_with_inputs_too_small(self):
@@ -5032,16 +5080,42 @@ class IdentityCategoricalColumnTest(test.TestCase):
     self._test_get_sparse_tensors_with_inputs_too_small()
 
   def _test_get_sparse_tensors_with_inputs_too_big(self):
-    column = fc.categorical_column_with_identity(key='aaa', num_buckets=3)
-    inputs = sparse_tensor.SparseTensorValue(
-        indices=((0, 0), (1, 0), (1, 1)), values=(1, 99, 0), dense_shape=(2, 2))
-    with self.assertRaisesRegexp(
-        errors.InvalidArgumentError,
-        'Bucket index for categorical column "aaa" exceeds number of buckets'):
-      column.get_sparse_tensors(
-          fc.FeatureTransformationCache({
-              'aaa': inputs
-          }), None)
+    # Inputs.
+    vocabulary_size = 2
+    sparse_input = sparse_tensor.SparseTensorValue(
+        indices=((0, 0), (1, 0)), values=(2, 0), dense_shape=(4, 5))
+
+    # Embedding variable.
+    embedding_dimension = 2
+    embedding_values = (
+        (1., 2.),  # id 0
+        (3., 5.),  # id 1
+    )
+
+    def _initializer(shape, dtype, partition_info=None):
+      del shape, dtype, partition_info
+      return embedding_values
+
+    # Build columns.
+    categorical_column = fc.categorical_column_with_identity(
+        key='aaa', num_buckets=vocabulary_size)
+    embedding_column = fc.embedding_column(
+        categorical_column,
+        dimension=embedding_dimension,
+        initializer=_initializer)
+    state_manager = _TestStateManager()
+    embedding_column.create_state(state_manager)
+
+    # Provide sparse input and get dense result.
+    embedding_lookup = embedding_column.get_dense_tensor(
+        fc.FeatureTransformationCache({'aaa': sparse_input}), state_manager)
+
+    self.evaluate(variables_lib.global_variables_initializer())
+    self.evaluate(lookup_ops.tables_initializer())
+
+    with self.assertRaisesRegexp(errors.OpError,
+                                 r'indices\[0\] = 2 is not in \[0, 2\)'):
+      self.evaluate(embedding_lookup)
 
   @test_util.run_deprecated_v1
   def test_get_sparse_tensors_with_inputs_too_big(self):
@@ -5165,14 +5239,14 @@ class IdentityCategoricalColumnTest(test.TestCase):
 
     self.assertEqual(['aaa'], column.parents)
 
-    config = column._get_config()
+    config = column.get_config()
     self.assertEqual({
         'default_value': None,
         'key': 'aaa',
         'number_buckets': 3
     }, config)
 
-    self.assertEqual(column, fc.IdentityCategoricalColumn._from_config(config))
+    self.assertEqual(column, fc.IdentityCategoricalColumn.from_config(config))
 
 
 class TransformFeaturesTest(test.TestCase):
@@ -5260,6 +5334,10 @@ class IndicatorColumnTest(test.TestCase):
     self.assertEqual(indicator_b.name, 'b_indicator')
     self.assertEqual(indicator_b.variable_shape, [1, 100])
     self.assertFalse(indicator_b._is_v2_column)
+
+  def test_not_categorical_input(self):
+    with self.assertRaisesRegexp(ValueError, 'Unsupported input type.'):
+      fc.indicator_column('aaa')
 
   def test_1D_shape_succeeds(self):
     animal = fc.indicator_column(
@@ -5547,7 +5625,7 @@ class IndicatorColumnTest(test.TestCase):
 
     self.assertEqual([parent], animal.parents)
 
-    config = animal._get_config()
+    config = animal.get_config()
     self.assertEqual({
         'categorical_column': {
             'class_name': 'IdentityCategoricalColumn',
@@ -5559,11 +5637,11 @@ class IndicatorColumnTest(test.TestCase):
         }
     }, config)
 
-    new_animal = fc.IndicatorColumn._from_config(config)
+    new_animal = fc.IndicatorColumn.from_config(config)
     self.assertEqual(animal, new_animal)
     self.assertIsNot(parent, new_animal.categorical_column)
 
-    new_animal = fc.IndicatorColumn._from_config(
+    new_animal = fc.IndicatorColumn.from_config(
         config,
         columns_by_name={
             serialization._column_name_with_class_name(parent): parent
@@ -6552,7 +6630,7 @@ class EmbeddingColumnTest(test.TestCase):
 
     self.assertEqual([categorical_column], embedding_column.parents)
 
-    config = embedding_column._get_config()
+    config = embedding_column.get_config()
     self.assertEqual({
         'categorical_column': {
             'class_name': 'IdentityCategoricalColumn',
@@ -6580,22 +6658,22 @@ class EmbeddingColumnTest(test.TestCase):
     }, config)
 
     custom_objects = {'TruncatedNormal': init_ops.TruncatedNormal}
-    new_embedding_column = fc.EmbeddingColumn._from_config(
+    new_embedding_column = fc.EmbeddingColumn.from_config(
         config, custom_objects=custom_objects)
-    self.assertEqual(embedding_column._get_config(),
-                     new_embedding_column._get_config())
+    self.assertEqual(embedding_column.get_config(),
+                     new_embedding_column.get_config())
     self.assertIsNot(categorical_column,
                      new_embedding_column.categorical_column)
 
-    new_embedding_column = fc.EmbeddingColumn._from_config(
+    new_embedding_column = fc.EmbeddingColumn.from_config(
         config,
         custom_objects=custom_objects,
         columns_by_name={
             serialization._column_name_with_class_name(categorical_column):
                 categorical_column
         })
-    self.assertEqual(embedding_column._get_config(),
-                     new_embedding_column._get_config())
+    self.assertEqual(embedding_column.get_config(),
+                     new_embedding_column.get_config())
     self.assertIs(categorical_column, new_embedding_column.categorical_column)
 
   @test_util.run_deprecated_v1
@@ -6613,7 +6691,7 @@ class EmbeddingColumnTest(test.TestCase):
 
     self.assertEqual([categorical_column], embedding_column.parents)
 
-    config = embedding_column._get_config()
+    config = embedding_column.get_config()
     self.assertEqual({
         'categorical_column': {
             'class_name': 'IdentityCategoricalColumn',
@@ -6636,13 +6714,13 @@ class EmbeddingColumnTest(test.TestCase):
         '_initializer': _initializer,
     }
 
-    new_embedding_column = fc.EmbeddingColumn._from_config(
+    new_embedding_column = fc.EmbeddingColumn.from_config(
         config, custom_objects=custom_objects)
     self.assertEqual(embedding_column, new_embedding_column)
     self.assertIsNot(categorical_column,
                      new_embedding_column.categorical_column)
 
-    new_embedding_column = fc.EmbeddingColumn._from_config(
+    new_embedding_column = fc.EmbeddingColumn.from_config(
         config,
         custom_objects=custom_objects,
         columns_by_name={
@@ -7710,7 +7788,7 @@ class WeightedCategoricalColumnTest(test.TestCase):
 
     self.assertEqual([categorical_column, 'weight'], column.parents)
 
-    config = column._get_config()
+    config = column.get_config()
     self.assertEqual({
         'categorical_column': {
             'config': {
@@ -7724,9 +7802,9 @@ class WeightedCategoricalColumnTest(test.TestCase):
         'weight_feature_key': 'weight'
     }, config)
 
-    self.assertEqual(column, fc.WeightedCategoricalColumn._from_config(config))
+    self.assertEqual(column, fc.WeightedCategoricalColumn.from_config(config))
 
-    new_column = fc.WeightedCategoricalColumn._from_config(
+    new_column = fc.WeightedCategoricalColumn.from_config(
         config,
         columns_by_name={
             serialization._column_name_with_class_name(categorical_column):

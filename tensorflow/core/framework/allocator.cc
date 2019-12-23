@@ -27,6 +27,11 @@ limitations under the License.
 
 namespace tensorflow {
 
+#ifdef TENSORFLOW_MEM_DEBUG
+thread_local const char* pending_op_name = nullptr;
+thread_local uint64 pending_step_id = 0;
+#endif
+
 string AllocatorStats::DebugString() const {
   return strings::Printf(
       "Limit:        %20lld\n"
@@ -34,8 +39,11 @@ string AllocatorStats::DebugString() const {
       "MaxInUse:     %20lld\n"
       "NumAllocs:    %20lld\n"
       "MaxAllocSize: %20lld\n",
-      this->bytes_limit ? *this->bytes_limit : 0, this->bytes_in_use,
-      this->peak_bytes_in_use, this->num_allocs, this->largest_alloc_size);
+      static_cast<long long>(this->bytes_limit ? *this->bytes_limit : 0),
+      static_cast<long long>(this->bytes_in_use),
+      static_cast<long long>(this->peak_bytes_in_use),
+      static_cast<long long>(this->num_allocs),
+      static_cast<long long>(this->largest_alloc_size));
 }
 
 constexpr size_t Allocator::kAllocatorAlignment;

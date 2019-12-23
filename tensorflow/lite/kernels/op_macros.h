@@ -19,7 +19,7 @@ limitations under the License.
 // non-portable function.
 #ifdef TF_LITE_MCU_DEBUG_LOG
 
-#include "tensorflow/lite/experimental/micro/micro_error_reporter.h"
+#include "tensorflow/lite/micro/micro_error_reporter.h"
 
 #define DEBUG_LOG(x) \
   do {               \

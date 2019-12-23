@@ -88,30 +88,41 @@ inline std::function<XlaOp(XlaOp, XlaOp)> AddEmptyBroadcastDimension(
   };
 }
 
-#define XLA_TEST_16BIT(test_name, ...)            \
-  XLA_TEST_P(ExhaustiveF16BinaryTest, test_name)  \
-  __VA_ARGS__                                     \
+#if defined(BINARY_TEST_TARGET_F16) && defined(BINARY_TEST_TARGET_BF16)
+#error "Can't define both BINARY_TEST_TARGET_F16 and BINARY_TEST_TARGET_BF16"
+#endif
+
+#if defined(BINARY_TEST_TARGET_F16) && \
+    !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16)
+#define BINARY_TEST_16BIT(test_name, ...)        \
+  XLA_TEST_P(ExhaustiveF16BinaryTest, test_name) \
+  __VA_ARGS__
+#elif defined(BINARY_TEST_TARGET_BF16) && defined(XLA_BACKEND_SUPPORTS_BFLOAT16)
+#define BINARY_TEST_16BIT(test_name, ...)         \
   XLA_TEST_P(ExhaustiveBF16BinaryTest, test_name) \
   __VA_ARGS__
+#else
+#define BINARY_TEST_16BIT(test_name, ...)
+#endif
 
-XLA_TEST_16BIT(Add, {
+BINARY_TEST_16BIT(Add, {
   auto host_add = [](float x, float y) { return x + y; };
   Run(AddEmptyBroadcastDimension(Add), host_add);
 })
 
-XLA_TEST_16BIT(Sub, {
+BINARY_TEST_16BIT(Sub, {
   auto host_sub = [](float x, float y) { return x - y; };
   Run(AddEmptyBroadcastDimension(Sub), host_sub);
 })
 
 // TODO(bixia): Mul fails with bfloat16 on CPU.
-XLA_TEST_16BIT(DISABLED_ON_CPU(Mul), {
+BINARY_TEST_16BIT(DISABLED_ON_CPU(Mul), {
   auto host_mul = [](float x, float y) { return x * y; };
   Run(AddEmptyBroadcastDimension(Mul), host_mul);
 })
 
 // TODO(bixia): Div fails with bfloat16 on CPU.
-XLA_TEST_16BIT(DISABLED_ON_CPU(Div), {
+BINARY_TEST_16BIT(DISABLED_ON_CPU(Div), {
   auto host_div = [](float x, float y) { return x / y; };
   Run(AddEmptyBroadcastDimension(Div), host_div);
 })
@@ -120,7 +131,7 @@ template <typename T, typename std::enable_if<
                           std::is_same<T, float>::value ||
                           std::is_same<T, double>::value>::type* = nullptr>
 T ReferenceMax(T x, T y) {
-  // We need to propagate NAN here becasue std::max may not propagate NAN.
+  // We need to propagate NAN here because std::max may not propagate NAN.
   if (std::fpclassify(x) == FP_NAN) {
     return x;
   }
@@ -135,7 +146,7 @@ template <typename T, typename std::enable_if<
                           std::is_same<T, float>::value ||
                           std::is_same<T, double>::value>::type* = nullptr>
 T ReferenceMin(T x, T y) {
-  // We need to propagate NAN here becasue std::max may not propagate NAN.
+  // We need to propagate NAN here because std::max may not propagate NAN.
   if (std::fpclassify(x) == FP_NAN) {
     return x;
   }
@@ -146,19 +157,21 @@ T ReferenceMin(T x, T y) {
   return std::min<T>(x, y);
 }
 
-XLA_TEST_16BIT(Max,
-               { Run(AddEmptyBroadcastDimension(Max), ReferenceMax<float>); })
+BINARY_TEST_16BIT(Max, {
+  Run(AddEmptyBroadcastDimension(Max), ReferenceMax<float>);
+})
 
-XLA_TEST_16BIT(Min,
-               { Run(AddEmptyBroadcastDimension(Min), ReferenceMin<float>); })
+BINARY_TEST_16BIT(Min, {
+  Run(AddEmptyBroadcastDimension(Min), ReferenceMin<float>);
+})
 
 // TODO(bixia): Pow fails with bfloat16 on CPU.
-XLA_TEST_16BIT(DISABLED_ON_CPU(Pow),
-               { Run(AddEmptyBroadcastDimension(Pow), std::powf); })
+BINARY_TEST_16BIT(DISABLED_ON_CPU(Pow),
+                  { Run(AddEmptyBroadcastDimension(Pow), std::powf); })
 
 // TODO(bixia): Atan2 fails with bfloat16 on CPU.
-XLA_TEST_16BIT(DISABLED_ON_CPU(Atan2),
-               { Run(AddEmptyBroadcastDimension(Atan2), std::atan2f); })
+BINARY_TEST_16BIT(DISABLED_ON_CPU(Atan2),
+                  { Run(AddEmptyBroadcastDimension(Atan2), std::atan2f); })
 
 #if defined(BINARY_TEST_TARGET_F16)
 #if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16)
@@ -224,35 +237,43 @@ class Exhaustive32BitOrMoreBinaryTest
 using ExhaustiveF32BinaryTest = Exhaustive32BitOrMoreBinaryTest<F32>;
 using ExhaustiveF64BinaryTest = Exhaustive32BitOrMoreBinaryTest<F64>;
 
-XLA_TEST_P(ExhaustiveF32BinaryTest, Add) {
+#if defined(BINARY_TEST_TARGET_F32)
+#define BINARY_TEST_FLOAT_32(test_name, ...)     \
+  XLA_TEST_P(ExhaustiveF32BinaryTest, test_name) \
+  __VA_ARGS__
+#else
+#define BINARY_TEST_FLOAT_32(test_name, ...)
+#endif
+
+BINARY_TEST_FLOAT_32(Add, {
   auto host_add = [](float x, float y) { return x + y; };
   Run(AddEmptyBroadcastDimension(Add), host_add);
-}
+})
 
-XLA_TEST_P(ExhaustiveF32BinaryTest, Sub) {
+BINARY_TEST_FLOAT_32(Sub, {
   auto host_sub = [](float x, float y) { return x - y; };
   Run(AddEmptyBroadcastDimension(Sub), host_sub);
-}
+})
 
 // TODO(bixia): Need to investigate the failure on CPU and file bugs.
-XLA_TEST_P(ExhaustiveF32BinaryTest, DISABLED_ON_CPU(Mul)) {
+BINARY_TEST_FLOAT_32(DISABLED_ON_CPU(Mul), {
   auto host_mul = [](float x, float y) { return x * y; };
   Run(AddEmptyBroadcastDimension(Mul), host_mul);
-}
+})
 
 // TODO(bixia): Need to investigate the failure on CPU and file bugs.
-XLA_TEST_P(ExhaustiveF32BinaryTest, DISABLED_ON_CPU(Div)) {
+BINARY_TEST_FLOAT_32(DISABLED_ON_CPU(Div), {
   auto host_div = [](float x, float y) { return x / y; };
   Run(AddEmptyBroadcastDimension(Div), host_div);
-}
+})
 
-XLA_TEST_P(ExhaustiveF32BinaryTest, Max) {
+BINARY_TEST_FLOAT_32(Max, {
   Run(AddEmptyBroadcastDimension(Max), ReferenceMax<float>);
-}
+})
 
-XLA_TEST_P(ExhaustiveF32BinaryTest, Min) {
+BINARY_TEST_FLOAT_32(Min, {
   Run(AddEmptyBroadcastDimension(Min), ReferenceMin<float>);
-}
+})
 
 // It is more convenient to implement Abs(complex) as a binary op than a unary
 // op, as the operations we currently support all have the same data type for
@@ -261,16 +282,14 @@ XLA_TEST_P(ExhaustiveF32BinaryTest, Min) {
 // implement Abs(complex) as unary conveniently.
 //
 // TODO(bixia): Need to investigate the failure on CPU and file bugs.
-XLA_TEST_P(ExhaustiveF32BinaryTest, DISABLED_ON_CPU(AbsComplex)) {
+BINARY_TEST_FLOAT_32(DISABLED_ON_CPU(AbsComplex), {
   auto host_abs_complex = [](float x, float y) {
     return std::abs(std::complex<float>(x, y));
   };
   auto device_abs_complex = [](XlaOp x, XlaOp y) { return Abs(Complex(x, y)); };
 
   Run(device_abs_complex, host_abs_complex);
-}
-
-#if defined(BINARY_TEST_TARGET_F32)
+})
 
 INSTANTIATE_TEST_SUITE_P(
     SpecialValues, ExhaustiveF32BinaryTest,
@@ -300,58 +319,62 @@ INSTANTIATE_TEST_SUITE_P(
 // for each sub-test to avoid timeout because the implementation of ExpectNear
 // more than 2x slower for binary test.
 INSTANTIATE_TEST_SUITE_P(
-    LargeAndSmallMagnituedNormalValues, ExhaustiveF32BinaryTest,
+    LargeAndSmallMagnitudeNormalValues, ExhaustiveF32BinaryTest,
     ::testing::Combine(
         ::testing::ValuesIn(GetFpValuesForMagnitudeExtremeNormals<float>(40000,
                                                                          2000)),
         ::testing::ValuesIn(
             GetFpValuesForMagnitudeExtremeNormals<float>(40000, 2000))));
 
+#if defined(BINARY_TEST_TARGET_F64) && \
+    !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT64)
+#define BINARY_TEST_FLOAT_64(test_name, ...)     \
+  XLA_TEST_P(ExhaustiveF64BinaryTest, test_name) \
+  __VA_ARGS__
+#else
+#define BINARY_TEST_FLOAT_64(test_name, ...)
 #endif
 
-XLA_TEST_P(ExhaustiveF64BinaryTest, Add) {
+BINARY_TEST_FLOAT_64(Add, {
   auto host_add = [](double x, double y) { return x + y; };
   Run(AddEmptyBroadcastDimension(Add), host_add);
-}
+})
 
-XLA_TEST_P(ExhaustiveF64BinaryTest, Sub) {
+BINARY_TEST_FLOAT_64(Sub, {
   auto host_sub = [](double x, double y) { return x - y; };
   Run(AddEmptyBroadcastDimension(Sub), host_sub);
-}
+})
 
 // TODO(bixia): Need to investigate the failure on CPU and file bugs.
-XLA_TEST_P(ExhaustiveF64BinaryTest, DISABLED_ON_CPU(Mul)) {
+BINARY_TEST_FLOAT_64(DISABLED_ON_CPU(Mul), {
   auto host_mul = [](double x, double y) { return x * y; };
   Run(AddEmptyBroadcastDimension(Mul), host_mul);
-}
+})
 
 // TODO(bixia): Need to investigate the failure on CPU and file bugs.
-XLA_TEST_P(ExhaustiveF64BinaryTest, DISABLED_ON_CPU(Div)) {
+BINARY_TEST_FLOAT_64(DISABLED_ON_CPU(Div), {
   auto host_div = [](double x, double y) { return x / y; };
   Run(AddEmptyBroadcastDimension(Div), host_div);
-}
+})
 
-XLA_TEST_P(ExhaustiveF64BinaryTest, Max) {
+BINARY_TEST_FLOAT_64(Max, {
   Run(AddEmptyBroadcastDimension(Max), ReferenceMax<double>);
-}
+})
 
-XLA_TEST_P(ExhaustiveF64BinaryTest, Min) {
+BINARY_TEST_FLOAT_64(Min, {
   Run(AddEmptyBroadcastDimension(Min), ReferenceMin<double>);
-}
+})
 
 // TODO(bixia): Need to investigate the failure on CPU and file bugs.
-XLA_TEST_P(ExhaustiveF64BinaryTest, DISABLED_ON_CPU(AbsComplex)) {
+BINARY_TEST_FLOAT_64(DISABLED_ON_CPU(AbsComplex), {
   auto host_abs_complex = [](double x, double y) {
     return std::abs(std::complex<double>(x, y));
   };
   auto device_abs_complex = [](XlaOp x, XlaOp y) { return Abs(Complex(x, y)); };
 
   Run(device_abs_complex, host_abs_complex);
-}
+})
 
-#if defined(BINARY_TEST_TARGET_F64)
-
-#if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT64)
 INSTANTIATE_TEST_SUITE_P(
     SpecialValues, ExhaustiveF64BinaryTest,
     ::testing::Combine(
@@ -379,14 +402,12 @@ INSTANTIATE_TEST_SUITE_P(
 // Similar to ExhaustiveF64BinaryTest, we use a smaller set of inputs for each
 // for each sub-test comparing with the unary test to avoid timeout.
 INSTANTIATE_TEST_SUITE_P(
-    LargeAndSmallMagnituedNormalValues, ExhaustiveF64BinaryTest,
+    LargeAndSmallMagnitudeNormalValues, ExhaustiveF64BinaryTest,
     ::testing::Combine(
         ::testing::ValuesIn(
             GetFpValuesForMagnitudeExtremeNormals<double>(40000, 2000)),
         ::testing::ValuesIn(
             GetFpValuesForMagnitudeExtremeNormals<double>(40000, 2000))));
-#endif
 
-#endif
 }  // namespace
 }  // namespace xla

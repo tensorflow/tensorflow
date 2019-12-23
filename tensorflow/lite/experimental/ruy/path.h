@@ -80,14 +80,16 @@ enum class Path : std::uint8_t {
   // Optimized path making use of ARM NEON dot product instructions that are
   // available on newer ARM cores.
   kNeonDotprod = 0x8,
-#endif
+#endif  // RUY_PLATFORM(ARM)
 
 #if RUY_PLATFORM(X86)
   // x86 architectures.
   //
+  // Optimized for AVX2.
+  kAvx2 = 0x4,
   // Optimized for AVX-512.
-  kAvx512 = 0x4,
-#endif
+  kAvx512 = 0x8,
+#endif  // RUY_PLATFORM(X86)
 };
 
 inline constexpr Path operator|(Path p, Path q) {
@@ -125,7 +127,7 @@ constexpr Path kAllPaths = Path::kReference | Path::kStandardCpp | Path::kNeon;
 // TODO(b/138433137): kAllPaths should always contain kAvx512 regardless of
 // whether AVX-512 is enabled in the translation unit #including this header.
 constexpr Path kAllPaths =
-    Path::kReference | Path::kStandardCpp | Path::kAvx512;
+    Path::kReference | Path::kStandardCpp | Path::kAvx2 | Path::kAvx512;
 #else
 constexpr Path kAllPaths = Path::kReference | Path::kStandardCpp;
 #endif
@@ -135,7 +137,7 @@ constexpr Path kAllPaths = Path::kReference | Path::kStandardCpp;
 constexpr Path kAllPaths = Path::kReference | Path::kStandardCpp | Path::kNeon;
 #elif RUY_PLATFORM(X86)
 constexpr Path kAllPaths =
-    Path::kReference | Path::kStandardCpp | Path::kAvx512;
+    Path::kReference | Path::kStandardCpp | Path::kAvx2 | Path::kAvx512;
 #else
 constexpr Path kAllPaths = Path::kReference | Path::kStandardCpp;
 #endif

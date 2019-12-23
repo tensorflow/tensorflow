@@ -23,11 +23,11 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
-#include "tensorflow/core/framework/graph.pb_text.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/framework/op_def.pb_text.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_def_util.h"
-#include "tensorflow/core/framework/tensor.pb_text.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -285,7 +285,10 @@ bool AttrSlice::EqualAttrs(AttrSlice other, Scratch* scratch) const {
     }                                                                     \
     return true;                                                          \
   }
-
+#ifdef USE_TSTRING
+DEFINE_GET_ATTR(tstring, s, "string", emplace_back, v, ;)
+DEFINE_TRY_GET_ATTR(tstring, s, "string", emplace_back, v, ;)
+#endif
 DEFINE_GET_ATTR(string, s, "string", emplace_back, v, ;)
 DEFINE_TRY_GET_ATTR(string, s, "string", emplace_back, v, ;)
 DEFINE_GET_ATTR(int64, i, "int", emplace_back, v, ;)
@@ -339,7 +342,7 @@ DEFINE_GET_ATTR(PartialTensorShape, shape, "shape", emplace_back,
 DEFINE_GET_ATTR(
     Tensor, tensor, "tensor", emplace_back, t, Tensor t; if (!t.FromProto(v)) {
       return errors::InvalidArgument("Attr ", attr_name, " has value ",
-                                     ProtoShortDebugString(v),
+                                     v.ShortDebugString(),
                                      " that can't be converted to a Tensor");
     })
 DEFINE_GET_ATTR(NameAttrList, func, "func", emplace_back, v, ;);
@@ -483,7 +486,7 @@ Status AddArgToSig(const NodeDefOrAttrSlice& node_or_attrs,
       }
     } else {
       return errors::InvalidArgument("Missing type or type_attr field in ",
-                                     ProtoShortDebugString(arg_def));
+                                     arg_def.ShortDebugString());
     }
   } else if (!arg_def.type_attr().empty()) {
     const AttrValue* attr_value;
@@ -501,7 +504,7 @@ Status AddArgToSig(const NodeDefOrAttrSlice& node_or_attrs,
     sig->push_back(arg_def.type());
   } else {
     return errors::InvalidArgument("No type fields in ",
-                                   ProtoShortDebugString(arg_def));
+                                   arg_def.ShortDebugString());
   }
   if (arg_def.is_ref()) {
     // For all types that were added by this function call, make them refs.
@@ -740,14 +743,25 @@ void AddDefaultsToNodeDef(const OpDef& op_def, NodeDef* node_def) {
 
 namespace {
 
+using ::tensorflow::tstring;
 using ::tensorflow::strings::Scanner;
 
-bool IsValidOpName(StringPiece sp) {
-  return Scanner(sp)
-      .One(Scanner::LETTER_DIGIT_DOT)
-      .Any(Scanner::LETTER_DIGIT_DASH_DOT_SLASH_UNDERSCORE)
-      .Eos()
-      .GetResult();
+bool IsValidNodeName(StringPiece sp) {
+  Scanner scanner(sp);
+  scanner.One(Scanner::LETTER_DIGIT_DOT)
+      .Any(Scanner::LETTER_DIGIT_DASH_DOT_SLASH_UNDERSCORE);
+
+  while (true) {
+    if (!scanner.GetResult())  // Some error in previous iteration.
+      return false;
+    if (scanner.empty())  // No error, but nothing left, good.
+      return true;
+
+    // Absorb another piece, starting with a '>'
+    scanner.One(Scanner::RANGLE)
+        .One(Scanner::LETTER_DIGIT_DOT)
+        .Any(Scanner::LETTER_DIGIT_DASH_DOT_SLASH_UNDERSCORE);
+  }
 }
 
 bool IsValidDataInputName(StringPiece sp) {
@@ -791,16 +805,16 @@ Status ValidateOpInput(const string& input_name, bool* is_control_input) {
   }
 }
 
-Status ValidateOpName(const string& op_name) {
-  if (IsValidOpName(op_name)) {
+Status ValidateNodeName(const string& node_name) {
+  if (IsValidNodeName(node_name)) {
     return Status::OK();
   } else {
-    return errors::InvalidArgument("Illegal op name '", op_name, "'");
+    return errors::InvalidArgument("Illegal op name '", node_name, "'");
   }
 }
 
 Status ValidateExternalNodeDefSyntax(const NodeDef& node_def) {
-  Status s = ValidateOpName(node_def.name());
+  Status s = ValidateNodeName(node_def.name());
   if (!s.ok()) {
     return AttachDef(s, node_def);
   }

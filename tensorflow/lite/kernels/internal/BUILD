@@ -1,6 +1,7 @@
 load("//tensorflow:tensorflow.bzl", "transitive_hdrs")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
-load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+load("//tensorflow/lite/micro:build_def.bzl", "cc_library")
+load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite_combined")
 
 package(
     default_visibility = [
@@ -41,14 +42,28 @@ NEON_FLAGS_IF_APPLICABLE = select({
 cc_library(
     name = "compatibility",
     hdrs = ["compatibility.h"],
+    build_for_embedded = True,
+    copts = tflite_copts(),
     deps = [
         "//tensorflow/lite/kernels:op_macros",
     ],
 )
 
 cc_library(
+    name = "scoped_profiling_label_wrapper",
+    hdrs = ["scoped_profiling_label_wrapper.h"],
+    copts = tflite_copts(),
+    deps = select({
+        "//tensorflow/lite:gemmlowp_profiling": ["@gemmlowp//:profiler"],
+        "//conditions:default": [],
+    }),
+)
+
+cc_library(
     name = "types",
     hdrs = ["types.h"],
+    build_for_embedded = True,
+    copts = tflite_copts(),
     deps = [
         ":compatibility",
     ],
@@ -57,6 +72,7 @@ cc_library(
 cc_library(
     name = "legacy_types",
     hdrs = ["legacy_types.h"],
+    copts = tflite_copts(),
     deps = [
         ":types",
     ],
@@ -126,6 +142,13 @@ config_setting(
 )
 
 config_setting(
+    name = "ios_arm64e",
+    values = {
+        "cpu": "ios_arm64e",
+    },
+)
+
+config_setting(
     name = "k8",
     values = {
         "cpu": "k8",
@@ -164,6 +187,13 @@ config_setting(
     name = "freebsd",
     values = {
         "cpu": "freebsd",
+    },
+)
+
+config_setting(
+    name = "windows",
+    values = {
+        "cpu": "x64_windows",
     },
 )
 
@@ -208,6 +238,7 @@ cc_library(
         "optimized/integer_ops/mul.h",
         "optimized/integer_ops/pooling.h",
         "optimized/integer_ops/softmax.h",
+        "optimized/integer_ops/transpose_conv.h",
         "optimized/optimized_ops.h",
     ],
     copts = tflite_copts(),
@@ -222,10 +253,11 @@ cc_library(
         ":round",
         ":tensor",
         ":tensor_utils",
+        ":transpose_utils",
         "//third_party/eigen3",
         "@gemmlowp//:fixedpoint",
         "@gemmlowp//:profiler",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:cpu_backend_threadpool",
         "//tensorflow/lite/kernels:cpu_backend_gemm",
@@ -238,6 +270,7 @@ cc_library(
         ":darwin": tflite_deps_intel,
         ":darwin_x86_64": tflite_deps_intel,
         ":freebsd": tflite_deps_intel,
+        ":windows": tflite_deps_intel,
         "//conditions:default": [],
     }),
 )
@@ -264,13 +297,14 @@ cc_library(
         ":strided_slice_logic",
         ":tensor",
         ":tensor_utils",
+        ":transpose_utils",
         ":types",
         ":legacy_types",
         ":legacy_reference_base",
         ":round",
         "//third_party/eigen3",
         "@gemmlowp",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:cpu_backend_threadpool",
         "//tensorflow/lite/kernels:cpu_backend_gemm",
@@ -283,6 +317,7 @@ cc_library(
         ":darwin": tflite_deps_intel,
         ":darwin_x86_64": tflite_deps_intel,
         ":freebsd": tflite_deps_intel,
+        ":windows": tflite_deps_intel,
         "//conditions:default": [],
     }),
 )
@@ -294,6 +329,7 @@ cc_library(
         "optimized/eigen_tensor_reduced_instantiations_oss.h",
         "optimized/multithreaded_conv.h",
     ],
+    copts = tflite_copts(),
     deps = [
         ":common",
         ":optimized_base",
@@ -301,7 +337,7 @@ cc_library(
         ":types",
         "//tensorflow/core/kernels:eigen_spatial_convolutions-inl",
         "//tensorflow/lite:string_util",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//third_party/eigen3",
     ],
 )
@@ -311,7 +347,7 @@ cc_test(
     srcs = ["tensor_test.cc"],
     deps = [
         ":tensor",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -319,12 +355,14 @@ cc_library(
     name = "round",
     srcs = [],
     hdrs = ["round.h"],
+    copts = tflite_copts(),
 )
 
 cc_library(
     name = "quantization_util",
     srcs = ["quantization_util.cc"],
     hdrs = ["quantization_util.h"],
+    copts = tflite_copts(),
     deps = [
         ":compatibility",
         ":round",
@@ -337,7 +375,31 @@ cc_test(
     name = "quantization_util_test",
     srcs = ["quantization_util_test.cc"],
     deps = [
+        ":common",
         ":quantization_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "transpose_utils",
+    srcs = [
+        "transpose_utils.cc",
+    ],
+    hdrs = [
+        "transpose_utils.h",
+    ],
+    copts = tflite_copts(),
+    deps = [
+        ":types",
+    ],
+)
+
+cc_test(
+    name = "transpose_utils_test",
+    srcs = ["transpose_utils_test.cc"],
+    deps = [
+        ":transpose_utils",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -348,6 +410,7 @@ cc_library(
     hdrs = [
         "strided_slice_logic.h",
     ],
+    copts = tflite_copts(),
     deps = [
         ":compatibility",
         ":types",
@@ -363,9 +426,12 @@ cc_library(
         "reference/binary_function.h",
         "reference/ceil.h",
         "reference/comparisons.h",
+        "reference/concatenation.h",
         "reference/conv.h",
+        "reference/densify.h",
         "reference/depthwiseconv_float.h",
         "reference/depthwiseconv_uint8.h",
+        "reference/dequantize.h",
         "reference/floor.h",
         "reference/fully_connected.h",
         "reference/integer_ops/add.h",
@@ -381,17 +447,25 @@ cc_library(
         "reference/integer_ops/pooling.h",
         "reference/integer_ops/softmax.h",
         "reference/integer_ops/tanh.h",
+        "reference/integer_ops/transpose_conv.h",
+        "reference/logistic.h",
         "reference/maximum_minimum.h",
+        "reference/mul.h",
         "reference/neg.h",
+        "reference/non_max_suppression.h",
+        "reference/pad.h",
         "reference/pooling.h",
         "reference/prelu.h",
         "reference/process_broadcast_shapes.h",
+        "reference/quantize.h",
+        "reference/reduce.h",
         "reference/reference_ops.h",
         "reference/round.h",
         "reference/softmax.h",
         "reference/strided_slice.h",
         "reference/svdf.h",
     ],
+    copts = tflite_copts(),
     deps = [
         ":common",
         ":compatibility",
@@ -401,10 +475,10 @@ cc_library(
         ":tensor",
         ":tensor_utils",
         ":types",
+        ":scoped_profiling_label_wrapper",
         "@gemmlowp//:fixedpoint",
-        "@gemmlowp//:profiler",
         "//third_party/eigen3",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:op_macros",
     ] + select({
         ":haswell": tflite_deps_intel,
@@ -415,6 +489,7 @@ cc_library(
         ":darwin": tflite_deps_intel,
         ":darwin_x86_64": tflite_deps_intel,
         ":freebsd": tflite_deps_intel,
+        ":windows": tflite_deps_intel,
         "//conditions:default": [],
     }),
 )
@@ -428,34 +503,44 @@ cc_library(
         "reference/binary_function.h",
         "reference/ceil.h",
         "reference/comparisons.h",
+        "reference/concatenation.h",
         "reference/conv.h",
+        "reference/densify.h",
         "reference/depthwiseconv_float.h",
         "reference/depthwiseconv_uint8.h",
+        "reference/dequantize.h",
         "reference/floor.h",
         "reference/fully_connected.h",
         "reference/legacy_reference_ops.h",
+        "reference/logistic.h",
         "reference/maximum_minimum.h",
+        "reference/mul.h",
         "reference/neg.h",
+        "reference/pad.h",
         "reference/pooling.h",
         "reference/prelu.h",
         "reference/process_broadcast_shapes.h",
+        "reference/quantize.h",
+        "reference/reduce.h",
         "reference/reference_ops.h",
         "reference/round.h",
         "reference/softmax.h",
         "reference/strided_slice.h",
     ],
+    copts = tflite_copts(),
     deps = [
         ":common",
         ":compatibility",
         ":quantization_util",
         ":round",
+        ":scoped_profiling_label_wrapper",
         ":strided_slice_logic",
         ":legacy_types",
         ":tensor",
         ":types",
         "//third_party/eigen3",
         "@gemmlowp",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:op_macros",
     ] + select({
         ":haswell": tflite_deps_intel,
@@ -466,6 +551,7 @@ cc_library(
         ":darwin": tflite_deps_intel,
         ":darwin_x86_64": tflite_deps_intel,
         ":freebsd": tflite_deps_intel,
+        ":windows": tflite_deps_intel,
         "//conditions:default": [],
     }),
 )
@@ -476,10 +562,12 @@ cc_library(
         "tensor.h",
         "tensor_ctypes.h",
     ],
+    build_for_embedded = True,
+    copts = tflite_copts(),
     deps = [
         ":types",
         "//tensorflow/lite:string_util",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
     ],
 )
 
@@ -490,10 +578,11 @@ cc_library(
         "tensor.h",
         "tensor_ctypes.h",
     ],
+    copts = tflite_copts(),
     deps = [
         ":types",
         "//tensorflow/lite:string_util",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
     ],
 )
 
@@ -506,13 +595,14 @@ cc_library(
         "reference/portable_tensor_utils.h",
         "reference/portable_tensor_utils_impl.h",
     ],
+    copts = tflite_copts(),
     deps = [
+        ":common",
         ":compatibility",
         ":round",
-        ":types",
-        "//tensorflow/lite/c:c_api_internal",
-        "//tensorflow/lite/kernels:activation_functor",
-        "//tensorflow/lite/kernels:op_macros",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:cpu_backend_context",
+        "@gemmlowp",
     ],
 )
 
@@ -525,21 +615,18 @@ cc_library(
         "optimized/neon_tensor_utils.h",
         "optimized/neon_tensor_utils_impl.h",
     ],
-    copts = NEON_FLAGS_IF_APPLICABLE + HARD_FP_FLAGS_IF_APPLICABLE,
+    copts = tflite_copts() + NEON_FLAGS_IF_APPLICABLE + HARD_FP_FLAGS_IF_APPLICABLE,
     deps = [
         ":common",
         ":compatibility",
         ":cpu_check",
         ":portable_tensor_utils",
         ":round",
-        ":types",
-        "//tensorflow/lite/c:c_api_internal",
-        "//tensorflow/lite/experimental/ruy:detect_dotprod",
-        "//tensorflow/lite/kernels:activation_functor",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/experimental/ruy",
+        "//tensorflow/lite/experimental/ruy:detect_arm",
         "//tensorflow/lite/kernels:cpu_backend_context",
-        "//tensorflow/lite/kernels:op_macros",
-        "@arm_neon_2_x86_sse",
-        "@gemmlowp//:fixedpoint",
+        "//tensorflow/lite/kernels:cpu_backend_gemm",
     ],
 )
 
@@ -553,11 +640,12 @@ cc_library(
         "optimized/sse_tensor_utils.h",
         "optimized/sse_tensor_utils_impl.h",
     ],
+    copts = tflite_copts(),
     deps = [
         ":cpu_check",
         ":neon_tensor_utils",
         ":portable_tensor_utils",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:op_macros",
     ],
 )
@@ -566,9 +654,10 @@ cc_library(
     name = "kernel_utils",
     srcs = ["kernel_utils.cc"],
     hdrs = ["kernel_utils.h"],
+    copts = tflite_copts(),
     deps = [
         ":tensor_utils",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
     ],
 )
 
@@ -587,6 +676,7 @@ cc_library(
         "mfcc_mel_filterbank.h",
         "spectrogram.h",
     ],
+    copts = tflite_copts(),
     deps = [
         "//third_party/fft2d:fft2d_headers",
         "@fft2d",
@@ -601,16 +691,12 @@ cc_library(
     hdrs = [
         "tensor_utils.h",
     ],
-    copts = NEON_FLAGS_IF_APPLICABLE,
+    copts = tflite_copts() + NEON_FLAGS_IF_APPLICABLE,
     deps = [
-        ":common",
-        ":compatibility",
         ":cpu_check",
-        ":types",
-        "//tensorflow/lite/c:c_api_internal",
+        "//third_party/eigen3",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:cpu_backend_context",
-        "//tensorflow/lite/kernels:op_macros",
-        "@gemmlowp//:fixedpoint",
     ] + select({
         ":aarch64": [
             ":neon_tensor_utils",
@@ -634,6 +720,9 @@ cc_library(
             ":neon_tensor_utils",
         ],
         ":ios_arm64": [
+            ":neon_tensor_utils",
+        ],
+        ":ios_arm64e": [
             ":neon_tensor_utils",
         ],
         ":raspberry_pi_with_neon": [
@@ -660,6 +749,7 @@ cc_library(
         ":freebsd": [
             ":sse_tensor_utils",
         ],
+        ":windows": [":sse_tensor_utils"],
         "//conditions:default": [
             ":portable_tensor_utils",
         ],
@@ -670,6 +760,7 @@ cc_library(
     name = "test_util",
     srcs = ["test_util.cc"],
     hdrs = ["test_util.h"],
+    copts = tflite_copts(),
     linkopts = select({
         "//tensorflow:windows": [],
         "//conditions:default": ["-lm"],
@@ -690,8 +781,9 @@ cc_test(
     }),
     linkstatic = 1,
     deps = [
+        ":quantization_util",
         ":tensor_utils",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:test_util",
         "@com_google_googletest//:gtest_main",
     ],
@@ -882,6 +974,7 @@ cc_library(
         "optimized/neon_check.h",
         "optimized/sse_check.h",
     ],
+    copts = tflite_copts(),
     deps = [
         "//tensorflow/lite/kernels:cpu_backend_context",
     ] + select({
@@ -893,6 +986,7 @@ cc_library(
         ":darwin": tflite_deps_intel,
         ":darwin_x86_64": tflite_deps_intel,
         ":freebsd": tflite_deps_intel,
+        ":windows": tflite_deps_intel,
         "//conditions:default": [],
     }),
 )
@@ -902,6 +996,16 @@ cc_test(
     srcs = ["batch_to_space_nd_test.cc"],
     deps = [
         ":optimized_base",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "non_max_suppression_test",
+    srcs = ["non_max_suppression_test.cc"],
+    deps = [
+        ":reference_base",
+        "//tensorflow/lite/kernels:test_util",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -982,4 +1086,4 @@ genrule(
     visibility = ["//visibility:private"],
 )
 
-tflite_portable_test_suite()
+tflite_portable_test_suite_combined(combine_conditions = {"deps": ["//testing/base/public:gunit_main"]})

@@ -165,15 +165,6 @@ static void AllocateFlags() {
         return true;
       };
 
-  // Custom "sub-parser" lambda for xla_reduce_precision.
-  auto setter_for_xla_reduce_precision =
-      [](string reduce_precision_option_value) {
-        HloReducePrecisionOptions* option_proto =
-            flag_values->add_hlo_reduce_precision_options();
-        return parse_xla_reduce_precision_option(option_proto,
-                                                 reduce_precision_option_value);
-      };
-
   // Custom "sub-parser" for xla_fuel.  Note that ConsumeFuel does not do any
   // locking on the fuel global variables.  This means that it's
   // illegal/undefined behavior to modify this flag value while the compiler is
@@ -337,7 +328,7 @@ static void AllocateFlags() {
           "use multi-threaded Eigen mode."),
       tensorflow::Flag("xla_gpu_cuda_data_dir",
                        flag_values->mutable_xla_gpu_cuda_data_dir(),
-                       "If non-empty, speficies a local directory containing "
+                       "If non-empty, specifies a local directory containing "
                        "ptxas and nvvm libdevice files; otherwise we use "
                        "those from runfile directories."),
       tensorflow::Flag("xla_gpu_ftz",
@@ -356,7 +347,7 @@ static void AllocateFlags() {
           flag_values->xla_gpu_max_kernel_unroll_factor(),
           "Specify the maximum kernel unroll factor for the GPU backend."),
       tensorflow::Flag("xla_gpu_ptx_file", setter_for_xla_gpu_ptx_file, "",
-                       "If non-empty, speficies a file containing ptx to use. "
+                       "If non-empty, specifies a file containing ptx to use. "
                        "The filename prefix must have the same pattern as PTX "
                        "dumped by XLA. This allows to match one specific "
                        "module. General workflow. Get the generated module "
@@ -389,19 +380,6 @@ static void AllocateFlags() {
                        "Extra options to pass to a backend; "
                        "comma-separated list of 'key=val' strings (=val "
                        "may be omitted); no whitespace around commas."),
-      tensorflow::Flag("xla_reduce_precision", setter_for_xla_reduce_precision,
-                       "",
-                       "Directions for adding reduce-precision operations. "
-                       "Format is 'LOCATION=E,M:OPS;NAMES' where LOCATION is "
-                       "the class of locations in which to insert the "
-                       "operations (e.g., 'OP_OUTPUTS'), E and M are the "
-                       "exponent and matissa bit counts respectively, and "
-                       "OPS and NAMES are comma-separated (no spaces) lists "
-                       "of the operation types and names to which to attach "
-                       "the reduce-precision operations.  The NAMES string "
-                       "and its preceding ';' may be omitted.  This option "
-                       "may be repeated to define multiple sets of added "
-                       "reduce-precision operations."),
       tensorflow::Flag(
           "xla_gpu_use_cudnn_batchnorm",
           bool_setter_for(&DebugOptions::set_xla_gpu_use_cudnn_batchnorm),
@@ -436,10 +414,10 @@ static void AllocateFlags() {
           "behavior to help run tests on the host that run models in parallel "
           "across multiple devices."),
       tensorflow::Flag(
-          "xla_gpu_disable_ptxas_optimizations",
+          "xla_gpu_disable_gpuasm_optimizations",
           bool_setter_for(
-              &DebugOptions::set_xla_gpu_disable_ptxas_optimizations),
-          flag_values->xla_gpu_disable_ptxas_optimizations(),
+              &DebugOptions::set_xla_gpu_disable_gpuasm_optimizations),
+          flag_values->xla_gpu_disable_gpuasm_optimizations(),
           "In XLA:GPU run ptxas in -O0 (default is -O3)."),
       tensorflow::Flag(
           "xla_fuel", setter_for_xla_fuel, /*default_value_for_display=*/"",

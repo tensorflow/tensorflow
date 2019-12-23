@@ -54,6 +54,9 @@ class _LazyLoader(_types.ModuleType):
     module = self._load()
     return dir(module)
 
+  def __reduce__(self):
+    return __import__, (self.__name__,)
+
 
 # Forwarding a module is as simple as lazy loading the module from the new path
 # and then registering it to sys.modules using the old path
@@ -96,5 +99,31 @@ for _m in _top_level_modules:
 
 # We still need all the names that are toplevel on tensorflow_core
 from tensorflow_core import *
+
+# These should not be visible in the main tf module.
+try:
+  del core
+except NameError:
+  pass
+
+try:
+  del python
+except NameError:
+  pass
+
+try:
+  del compiler
+except NameError:
+  pass
+
+try:
+  del tools
+except NameError:
+  pass
+
+try:
+  del examples
+except NameError:
+  pass
 
 # LINT.ThenChange(//tensorflow/virtual_root_template_v1.__init__.py.oss)

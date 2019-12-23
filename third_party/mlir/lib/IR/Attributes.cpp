@@ -62,8 +62,7 @@ Dialect &Attribute::getDialect() const { return impl->getDialect(); }
 //===----------------------------------------------------------------------===//
 
 AffineMapAttr AffineMapAttr::get(AffineMap value) {
-  return Base::get(value.getResult(0).getContext(),
-                   StandardAttributes::AffineMap, value);
+  return Base::get(value.getContext(), StandardAttributes::AffineMap, value);
 }
 
 AffineMap AffineMapAttr::getValue() const { return getImpl()->value; }
@@ -92,7 +91,7 @@ bool BoolAttr::getValue() const { return getImpl()->value; }
 /// NamedAttributes.
 static int compareNamedAttributes(const NamedAttribute *lhs,
                                   const NamedAttribute *rhs) {
-  return lhs->first.str().compare(rhs->first.str());
+  return lhs->first.strref().compare(rhs->first.strref());
 }
 
 DictionaryAttr DictionaryAttr::get(ArrayRef<NamedAttribute> value,
@@ -156,10 +155,12 @@ ArrayRef<NamedAttribute> DictionaryAttr::getValue() const {
 
 /// Return the specified attribute if present, null otherwise.
 Attribute DictionaryAttr::get(StringRef name) const {
-  for (auto elt : getValue())
-    if (elt.first.is(name))
-      return elt.second;
-  return nullptr;
+  ArrayRef<NamedAttribute> values = getValue();
+  auto compare = [](NamedAttribute attr, StringRef name) {
+    return attr.first.strref() < name;
+  };
+  auto it = llvm::lower_bound(values, name, compare);
+  return it != values.end() && it->first.is(name) ? it->second : Attribute();
 }
 Attribute DictionaryAttr::get(Identifier name) const {
   for (auto elt : getValue())
@@ -213,35 +214,31 @@ double FloatAttr::getValueAsDouble(APFloat value) {
 }
 
 /// Verify construction invariants.
-static LogicalResult verifyFloatTypeInvariants(llvm::Optional<Location> loc,
+static LogicalResult verifyFloatTypeInvariants(Optional<Location> loc,
                                                Type type) {
-  if (!type.isa<FloatType>()) {
-    if (loc)
-      emitError(*loc, "expected floating point type");
-    return failure();
-  }
+  if (!type.isa<FloatType>())
+    return emitOptionalError(loc, "expected floating point type");
   return success();
 }
 
-LogicalResult FloatAttr::verifyConstructionInvariants(
-    llvm::Optional<Location> loc, MLIRContext *ctx, Type type, double value) {
+LogicalResult FloatAttr::verifyConstructionInvariants(Optional<Location> loc,
+                                                      MLIRContext *ctx,
+                                                      Type type, double value) {
   return verifyFloatTypeInvariants(loc, type);
 }
 
-LogicalResult
-FloatAttr::verifyConstructionInvariants(llvm::Optional<Location> loc,
-                                        MLIRContext *ctx, Type type,
-                                        const APFloat &value) {
+LogicalResult FloatAttr::verifyConstructionInvariants(Optional<Location> loc,
+                                                      MLIRContext *ctx,
+                                                      Type type,
+                                                      const APFloat &value) {
   // Verify that the type is correct.
   if (failed(verifyFloatTypeInvariants(loc, type)))
     return failure();
 
   // Verify that the type semantics match that of the value.
   if (&type.cast<FloatType>().getFloatSemantics() != &value.getSemantics()) {
-    if (loc)
-      emitError(*loc,
-                "FloatAttr type doesn't match the type implied by its value");
-    return failure();
+    return emitOptionalError(
+        loc, "FloatAttr type doesn't match the type implied by its value");
   }
   return success();
 }
@@ -250,12 +247,27 @@ FloatAttr::verifyConstructionInvariants(llvm::Optional<Location> loc,
 // SymbolRefAttr
 //===----------------------------------------------------------------------===//
 
-SymbolRefAttr SymbolRefAttr::get(StringRef value, MLIRContext *ctx) {
-  return Base::get(ctx, StandardAttributes::SymbolRef, value,
-                   NoneType::get(ctx));
+FlatSymbolRefAttr SymbolRefAttr::get(StringRef value, MLIRContext *ctx) {
+  return Base::get(ctx, StandardAttributes::SymbolRef, value, llvm::None)
+      .cast<FlatSymbolRefAttr>();
 }
 
-StringRef SymbolRefAttr::getValue() const { return getImpl()->value; }
+SymbolRefAttr SymbolRefAttr::get(StringRef value,
+                                 ArrayRef<FlatSymbolRefAttr> nestedReferences,
+                                 MLIRContext *ctx) {
+  return Base::get(ctx, StandardAttributes::SymbolRef, value, nestedReferences);
+}
+
+StringRef SymbolRefAttr::getRootReference() const { return getImpl()->value; }
+
+StringRef SymbolRefAttr::getLeafReference() const {
+  ArrayRef<FlatSymbolRefAttr> nestedRefs = getNestedReferences();
+  return nestedRefs.empty() ? getRootReference() : nestedRefs.back().getValue();
+}
+
+ArrayRef<FlatSymbolRefAttr> SymbolRefAttr::getNestedReferences() const {
+  return getImpl()->getNestedRefs();
+}
 
 //===----------------------------------------------------------------------===//
 // IntegerAttr
@@ -314,14 +326,13 @@ Identifier OpaqueAttr::getDialectNamespace() const {
 StringRef OpaqueAttr::getAttrData() const { return getImpl()->attrData; }
 
 /// Verify the construction of an opaque attribute.
-LogicalResult OpaqueAttr::verifyConstructionInvariants(
-    llvm::Optional<Location> loc, MLIRContext *context, Identifier dialect,
-    StringRef attrData, Type type) {
-  if (!Dialect::isValidNamespace(dialect.strref())) {
-    if (loc)
-      emitError(*loc) << "invalid dialect namespace '" << dialect << "'";
-    return failure();
-  }
+LogicalResult OpaqueAttr::verifyConstructionInvariants(Optional<Location> loc,
+                                                       MLIRContext *context,
+                                                       Identifier dialect,
+                                                       StringRef attrData,
+                                                       Type type) {
+  if (!Dialect::isValidNamespace(dialect.strref()))
+    return emitOptionalError(loc, "invalid dialect namespace '", dialect, "'");
   return success();
 }
 
@@ -394,9 +405,9 @@ bool ElementsAttr::isValidIndex(ArrayRef<uint64_t> index) const {
   });
 }
 
-ElementsAttr ElementsAttr::mapValues(
-    Type newElementType,
-    llvm::function_ref<APInt(const APInt &)> mapping) const {
+ElementsAttr
+ElementsAttr::mapValues(Type newElementType,
+                        function_ref<APInt(const APInt &)> mapping) const {
   switch (getKind()) {
   case StandardAttributes::DenseElements:
     return cast<DenseElementsAttr>().mapValues(newElementType, mapping);
@@ -405,15 +416,34 @@ ElementsAttr ElementsAttr::mapValues(
   }
 }
 
-ElementsAttr ElementsAttr::mapValues(
-    Type newElementType,
-    llvm::function_ref<APInt(const APFloat &)> mapping) const {
+ElementsAttr
+ElementsAttr::mapValues(Type newElementType,
+                        function_ref<APInt(const APFloat &)> mapping) const {
   switch (getKind()) {
   case StandardAttributes::DenseElements:
     return cast<DenseElementsAttr>().mapValues(newElementType, mapping);
   default:
     llvm_unreachable("unsupported ElementsAttr subtype");
   }
+}
+
+/// Returns the 1 dimensional flattened row-major index from the given
+/// multi-dimensional index.
+uint64_t ElementsAttr::getFlattenedIndex(ArrayRef<uint64_t> index) const {
+  assert(isValidIndex(index) && "expected valid multi-dimensional index");
+  auto type = getType();
+
+  // Reduce the provided multidimensional index into a flattended 1D row-major
+  // index.
+  auto rank = type.getRank();
+  auto shape = type.getShape();
+  uint64_t valueIndex = 0;
+  uint64_t dimMultiplier = 1;
+  for (int i = rank - 1; i >= 0; --i) {
+    valueIndex += index[i] * dimMultiplier;
+    dimMultiplier *= shape[i];
+  }
+  return valueIndex;
 }
 
 //===----------------------------------------------------------------------===//
@@ -497,7 +527,7 @@ DenseElementsAttr::AttributeElementIterator::AttributeElementIterator(
 
 /// Accesses the Attribute value at this iterator position.
 Attribute DenseElementsAttr::AttributeElementIterator::operator*() const {
-  auto owner = getFromOpaquePointer(object).cast<DenseElementsAttr>();
+  auto owner = getFromOpaquePointer(base).cast<DenseElementsAttr>();
   Type eltTy = owner.getType().getElementType();
   if (auto intEltTy = eltTy.dyn_cast<IntegerType>()) {
     if (intEltTy.getWidth() == 1)
@@ -768,35 +798,15 @@ DenseElementsAttr DenseElementsAttr::reshape(ShapedType newType) {
   return getRaw(newType, getRawData(), isSplat());
 }
 
-DenseElementsAttr DenseElementsAttr::mapValues(
-    Type newElementType,
-    llvm::function_ref<APInt(const APInt &)> mapping) const {
+DenseElementsAttr
+DenseElementsAttr::mapValues(Type newElementType,
+                             function_ref<APInt(const APInt &)> mapping) const {
   return cast<DenseIntElementsAttr>().mapValues(newElementType, mapping);
 }
 
 DenseElementsAttr DenseElementsAttr::mapValues(
-    Type newElementType,
-    llvm::function_ref<APInt(const APFloat &)> mapping) const {
+    Type newElementType, function_ref<APInt(const APFloat &)> mapping) const {
   return cast<DenseFPElementsAttr>().mapValues(newElementType, mapping);
-}
-
-/// Returns the 1 dimenional flattened index from the given multi-dimensional
-/// index.
-uint64_t DenseElementsAttr::getFlattenedIndex(ArrayRef<uint64_t> index) const {
-  assert(isValidIndex(index) && "expected valid multi-dimensional index");
-  auto type = getType();
-
-  // Reduce the provided multidimensional index into a flattended 1D row-major
-  // index.
-  auto rank = type.getRank();
-  auto shape = type.getShape();
-  uint64_t valueIndex = 0;
-  uint64_t dimMultiplier = 1;
-  for (int i = rank - 1; i >= 0; --i) {
-    valueIndex += index[i] * dimMultiplier;
-    dimMultiplier *= shape[i];
-  }
-  return valueIndex;
 }
 
 //===----------------------------------------------------------------------===//
@@ -844,8 +854,7 @@ static ShapedType mappingHelper(Fn mapping, Attr &attr, ShapedType inType,
 }
 
 DenseElementsAttr DenseFPElementsAttr::mapValues(
-    Type newElementType,
-    llvm::function_ref<APInt(const APFloat &)> mapping) const {
+    Type newElementType, function_ref<APInt(const APFloat &)> mapping) const {
   llvm::SmallVector<char, 8> elementData;
   auto newArrayType =
       mappingHelper(mapping, *this, getType(), newElementType, elementData);
@@ -864,8 +873,7 @@ bool DenseFPElementsAttr::classof(Attribute attr) {
 //===----------------------------------------------------------------------===//
 
 DenseElementsAttr DenseIntElementsAttr::mapValues(
-    Type newElementType,
-    llvm::function_ref<APInt(const APInt &)> mapping) const {
+    Type newElementType, function_ref<APInt(const APInt &)> mapping) const {
   llvm::SmallVector<char, 8> elementData;
   auto newArrayType =
       mappingHelper(mapping, *this, getType(), newElementType, elementData);
@@ -939,15 +947,6 @@ Attribute SparseElementsAttr::getValue(ArrayRef<uint64_t> index) const {
   assert(isValidIndex(index) && "expected valid multi-dimensional index");
   auto type = getType();
 
-  /// Return an attribute corresponding to '0' for the element type.
-  auto getZeroAttr = [=]() -> Attribute {
-    auto eltType = type.getElementType();
-    if (eltType.isa<FloatType>())
-      return FloatAttr::get(eltType, 0);
-    assert(eltType.isa<IntegerType>() && "unexpected element type");
-    return IntegerAttr::get(eltType, 0);
-  };
-
   // The sparse indices are 64-bit integers, so we can reinterpret the raw data
   // as a 1-D index array.
   auto sparseIndices = getIndices();
@@ -982,6 +981,58 @@ Attribute SparseElementsAttr::getValue(ArrayRef<uint64_t> index) const {
 
   // Otherwise, return the held sparse value element.
   return getValues().getValue(it->second);
+}
+
+/// Get a zero APFloat for the given sparse attribute.
+APFloat SparseElementsAttr::getZeroAPFloat() const {
+  auto eltType = getType().getElementType().cast<FloatType>();
+  return APFloat(eltType.getFloatSemantics());
+}
+
+/// Get a zero APInt for the given sparse attribute.
+APInt SparseElementsAttr::getZeroAPInt() const {
+  auto eltType = getType().getElementType().cast<IntegerType>();
+  return APInt::getNullValue(eltType.getWidth());
+}
+
+/// Get a zero attribute for the given attribute type.
+Attribute SparseElementsAttr::getZeroAttr() const {
+  auto eltType = getType().getElementType();
+
+  // Handle floating point elements.
+  if (eltType.isa<FloatType>())
+    return FloatAttr::get(eltType, 0);
+
+  // Otherwise, this is an integer.
+  auto intEltTy = eltType.cast<IntegerType>();
+  if (intEltTy.getWidth() == 1)
+    return BoolAttr::get(false, eltType.getContext());
+  return IntegerAttr::get(eltType, 0);
+}
+
+/// Flatten, and return, all of the sparse indices in this attribute in
+/// row-major order.
+std::vector<ptrdiff_t> SparseElementsAttr::getFlattenedSparseIndices() const {
+  std::vector<ptrdiff_t> flatSparseIndices;
+
+  // The sparse indices are 64-bit integers, so we can reinterpret the raw data
+  // as a 1-D index array.
+  auto sparseIndices = getIndices();
+  auto sparseIndexValues = sparseIndices.getValues<uint64_t>();
+  if (sparseIndices.isSplat()) {
+    SmallVector<uint64_t, 8> indices(getType().getRank(),
+                                     *sparseIndexValues.begin());
+    flatSparseIndices.push_back(getFlattenedIndex(indices));
+    return flatSparseIndices;
+  }
+
+  // Otherwise, reinterpret each index as an ArrayRef when flattening.
+  auto numSparseIndices = sparseIndices.getType().getDimSize(0);
+  size_t rank = getType().getRank();
+  for (size_t i = 0, e = numSparseIndices; i != e; ++i)
+    flatSparseIndices.push_back(getFlattenedIndex(
+        {&*std::next(sparseIndexValues.begin(), i * rank), rank}));
+  return flatSparseIndices;
 }
 
 //===----------------------------------------------------------------------===//

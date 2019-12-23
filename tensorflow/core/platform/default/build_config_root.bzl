@@ -40,31 +40,6 @@ def tf_additional_license_deps():
         "//conditions:default": [],
     })
 
-def tf_additional_verbs_deps():
-    return select({
-        str(Label("//tensorflow:with_verbs_support")): [
-            str(Label("//tensorflow/contrib/verbs:verbs_server_lib")),
-            str(Label("//tensorflow/contrib/verbs:grpc_verbs_client")),
-        ],
-        "//conditions:default": [],
-    })
-
-def tf_additional_mpi_deps():
-    return select({
-        str(Label("//tensorflow:with_mpi_support")): [
-            str(Label("//tensorflow/contrib/mpi:mpi_server_lib")),
-        ],
-        "//conditions:default": [],
-    })
-
-def tf_additional_gdr_deps():
-    return select({
-        str(Label("//tensorflow:with_gdr_support")): [
-            str(Label("//tensorflow/contrib/gdr:gdr_server_lib")),
-        ],
-        "//conditions:default": [],
-    })
-
 # Include specific extra dependencies when building statically, or
 # another set of dependencies otherwise. If "macos" is provided, that
 # dependency list is used when using the framework_shared_object config
@@ -92,3 +67,6 @@ def if_dynamic_kernels(extra_deps, otherwise = []):
         str(Label("//tensorflow:dynamic_loaded_kernels")): extra_deps,
         "//conditions:default": otherwise,
     })
+
+def register_extension_info(**kwargs):
+    pass

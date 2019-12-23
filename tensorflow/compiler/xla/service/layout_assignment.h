@@ -356,6 +356,10 @@ class LayoutAssignment : public HloModulePass {
                                       const HloInstruction* instruction,
                                       LayoutConstraints* constraints);
 
+  // Propagates the memory space defined in the entry computation to the called
+  // computations.
+  Status PropagateMemorySpace(HloModule* module);
+
   // Chooses a layout of operand `operand_no` of `instruction` that minimizes
   // the cost of `instruction`. `output_layout` is the layout of `instruction`.
   // Returns null if it can't decide the best layout.
@@ -452,7 +456,7 @@ class LayoutAssignment : public HloModulePass {
   // when the instruction is a tuple, and in such case the index represents
   // the location from where the copy instruction was created from.
   // If the index is empty, the whole sharding will be propagated, even in case
-  // the intruction has a tuple sharding.
+  // the instruction has a tuple sharding.
   static void SetupCopiedInstruction(const HloInstruction& instruction,
                                      HloInstruction* copy,
                                      const ShapeIndex& index);
@@ -504,7 +508,7 @@ class LayoutAssignment : public HloModulePass {
   // instructions can be set to match the computation.
   std::map<HloComputation*, ComputationLayout> computation_layouts_;
 
-  // Map from branch computations to the result layout they shuould apply.
+  // Map from branch computations to the result layout they should apply.
   std::map<HloComputation*, ComputationLayout> conditional_mismatch_;
 
   // Every copy added to the module by the layout assignment pass is registered

@@ -16,14 +16,33 @@ limitations under the License.
 
 #include <utility>
 
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/threadpool.h"
-#include "tensorflow/core/platform/cuda.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
+#if GOOGLE_CUDA
+#include "tensorflow/stream_executor/cuda/cuda_activation.h"
+#elif TENSORFLOW_USE_ROCM
+#include "tensorflow/core/platform/rocm.h"
+#endif
 
 namespace tensorflow {
+
+#if GOOGLE_CUDA
+using se::cuda::ScopedActivateExecutorContext;
+#elif TENSORFLOW_USE_ROCM
+using se::rocm::ScopedActivateExecutorContext;
+// Local hipify of cuda symbols
+#define cudaError_t hipError_t
+#define cudaStream_t hipStream_t
+#define cudaGetErrorString hipGetErrorString
+#define cudaGetDevice hipGetDevice
+#define cudaSetDevice hipSetDevice
+#define cudaSuccess hipSuccess
+int NcclManager::instance_count = 0;
+#endif
 
 #define NCCL_RETURN_IF_ERROR(...)                               \
   do {                                                          \
@@ -41,8 +60,6 @@ namespace tensorflow {
     }                                                           \
   } while (0)
 
-using se::cuda::ScopedActivateExecutorContext;
-
 // Contains data for a single stream used for nccl communication; this includes
 // a background thread that calls NcclManager::LoopKernelLaunches.
 struct NcclManager::NcclStream : public core::RefCounted {
@@ -54,7 +71,12 @@ struct NcclManager::NcclStream : public core::RefCounted {
 
   // The stream on which to run the nccl collective.
   // This is a different stream than the tensorflow compute stream.
+#if TENSORFLOW_USE_ROCM
+  // On ROCm, we borrow the nccl stream from the device context.
+  se::Stream* stream = nullptr;
+#else
   std::unique_ptr<se::Stream> stream;
+#endif
 
   // `mu` protects access to `pending_launches_`, which is the list of
   // collectives ready but whose kernels are yet to be launched.  When the
@@ -140,6 +162,16 @@ struct NcclManager::Collective : public core::RefCounted {
         single_node(num_local_devices_in == num_global_devices_in),
         communicator_key(communicator_key_in) {
     participants.reserve(num_local_devices_in);
+#if TENSORFLOW_USE_ROCM
+    // On ROCm platform, this allows caller to either use the singleton instance
+    // or to manage one non-singleton NcclManager instance.
+    // For example, the nccl_manager_test will use both paradigms in the same
+    // executable, but not running concurrently (which would hang otherwise).
+    if (NcclManager::instance_count > 1) {
+      status = errors::Internal(
+          "ROCm cannot use multi-node NCCL collectives on a single node");
+    }
+#endif
   }
 
   const string collective_key;  // A unique key for debugging.
@@ -178,9 +210,17 @@ struct NcclManager::Collective : public core::RefCounted {
   Status status;
 };
 
-NcclManager::NcclManager() { VLOG(2) << "New NcclManager " << this; }
+NcclManager::NcclManager() {
+  VLOG(2) << "New NcclManager " << this;
+#if TENSORFLOW_USE_ROCM
+  ++instance_count;
+#endif
+}
 NcclManager::~NcclManager() {
   VLOG(2) << "~NcclManager " << this;
+#if TENSORFLOW_USE_ROCM
+  --instance_count;
+#endif
   for (auto& it : device_to_comm_streams_) {
     for (NcclStream* nccl_stream : it.second) {
       {
@@ -194,6 +234,12 @@ NcclManager::~NcclManager() {
 }
 NcclManager* NcclManager::instance() {
   static NcclManager* instance = new NcclManager();
+#if TENSORFLOW_USE_ROCM
+  // singleton does not count against total instances
+  // see comment above in Collective constructor concerning ROCm platform
+  static std::once_flag once;
+  std::call_once(once, [] { --NcclManager::instance_count; });
+#endif
   return instance;
 }
 
@@ -205,14 +251,18 @@ string NcclManager::GenerateCommunicatorKey() {
 
 Status NcclManager::GetCommunicator(NcclManager::Collective* collective,
                                     NcclManager::Communicator** communicator) {
-  // Sort by executor to make ordering of executors deterministic.
+  // Sort by device ID, executor, and global rank to make ordering of
+  // participants deterministic.
   std::sort(collective->participants.begin(), collective->participants.end(),
             [](const std::unique_ptr<Participant>& a,
                const std::unique_ptr<Participant>& b) {
-              if (a->executor == b->executor) {
-                return a->global_rank < b->global_rank;
+              if (a->gpu_device_id != b->gpu_device_id) {
+                return a->gpu_device_id < b->gpu_device_id;
               }
-              return a->executor < b->executor;
+              if (a->executor != b->executor) {
+                return a->executor < b->executor;
+              }
+              return a->global_rank < b->global_rank;
             });
 
   mutex_lock l(mu_);
@@ -298,8 +348,12 @@ Status NcclManager::GetCommunicator(NcclManager::Collective* collective,
     if (nccl_stream == nullptr) {
       nccl_stream = new NcclStream();
       nccl_stream->executor = executor;
+#if TENSORFLOW_USE_ROCM
+      nccl_stream->stream = collective->participants[i]->context->nccl_stream();
+#else
       nccl_stream->stream.reset(new se::Stream(executor));
       nccl_stream->stream->Init();
+#endif
 
       streams.emplace_back(nccl_stream);
       used_streams.insert(nccl_stream);
@@ -589,7 +643,11 @@ void NcclManager::RunCollective(Collective* collective) {
 }
 
 void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
+#if TENSORFLOW_USE_ROCM
+  se::Stream* comm_stream = nccl_stream->stream;
+#else
   se::Stream* comm_stream = nccl_stream->stream.get();
+#endif
   ScopedActivateExecutorContext scoped_context(nccl_stream->executor);
   const cudaStream_t* cu_stream = reinterpret_cast<const cudaStream_t*>(
       comm_stream->implementation()->GpuStreamMemberHack());
@@ -644,6 +702,9 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
         if (p->output) {
           recvbuff = const_cast<char*>(p->output->tensor_data().data());
           num_elements = p->output->NumElements();
+        } else {
+          // Operate in-place if no output (for the src node).
+          recvbuff = const_cast<void*>(sendbuff);
         }
         if (num_elements < 0) {
           p->done_callback(errors::Internal(
@@ -709,4 +770,4 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
 
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

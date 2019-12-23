@@ -12,6 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
+#define EIGEN_USE_THREADS
+
 #include "tensorflow/core/kernels/data/optional_ops.h"
 
 #include "tensorflow/core/common_runtime/dma_helper.h"

@@ -34,10 +34,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/python/bfloat16.h"
 #include "tensorflow/compiler/xla/python/local_client.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/types.h"
-#include "tensorflow/compiler/xla/python/xrt.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -48,6 +48,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 
@@ -109,6 +110,17 @@ StatusOr<std::string> GetComputationHloDotGraph(
                      RenderedGraphFormat::kDot);
 }
 
+// Hashes the HLO module.
+StatusOr<uint64> HashComputation(const XlaComputation& computation) {
+  TF_ASSIGN_OR_RETURN(const HloModuleConfig module_config,
+                      HloModule::CreateModuleConfigFromProto(
+                          computation.proto(), GetDebugOptionsFromFlags()));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<HloModule> hlo_module,
+      HloModule::CreateFromProto(computation.proto(), module_config));
+  return hlo_module->Hash();
+}
+
 // Registers a 'fn_capsule' as a CPU custom call target.
 // 'fn_capsule' must be a void* pointer encapsulated in a PyCapsule object,
 // with name "xla._CUSTOM_CALL_TARGET".
@@ -130,9 +142,23 @@ Status PyRegisterCustomCallTarget(const std::string& fn_name,
   return Status::OK();
 }
 
+StatusOr<std::shared_ptr<Device>> LookupDeviceOrdinal(
+    PyLocalClient* client, int device_ordinal, absl::string_view caller_name) {
+  if (device_ordinal < 0 || device_ordinal >= client->local_device_count()) {
+    return InvalidArgument(
+        "%s got bad device_ordinal: %d (num_local_devices=%d)", caller_name,
+        device_ordinal, client->local_device_count());
+  }
+  return client->local_devices()[device_ordinal];
+}
+
 }  // namespace
 
 PYBIND11_MODULE(xla_extension, m) {
+  if (!InitializeNumpyAPIForTypes()) {
+    throw std::runtime_error("Unable to initialize Numpy API");
+  }
+
   // Types
   py::enum_<PrimitiveType>(m, "PrimitiveType")
       .value("PRIMITIVE_TYPE_INVALID", PRIMITIVE_TYPE_INVALID)
@@ -154,6 +180,8 @@ PYBIND11_MODULE(xla_extension, m) {
       .value("TUPLE", TUPLE)
       .value("OPAQUE_TYPE", OPAQUE_TYPE)
       .value("TOKEN", TOKEN);
+
+  m.def("bfloat16_dtype", Bfloat16Dtype);
 
   // Shapes
   py::class_<Shape> shape_class(m, "Shape");
@@ -200,6 +228,7 @@ PYBIND11_MODULE(xla_extension, m) {
           },
           "Constructs an array shape.", py::arg("type"), py::arg("dims"),
           py::arg("layout") = absl::nullopt)
+      .def_static("token_shape", []() { return ShapeUtil::MakeTokenShape(); })
       .def("dimensions",
            [](const Shape& shape) -> py::tuple {
              return IntSpanToTuple(shape.dimensions());
@@ -310,6 +339,7 @@ PYBIND11_MODULE(xla_extension, m) {
       .def_property_readonly("host_id", &Device::host_id,
                              "Integer ID of this device's host.\n\n"
                              "This is always 0 except on multi-host platforms.")
+      .def_property_readonly("platform", &Device::platform_name)
       .def("__str__", &Device::DebugString);
 
   py::class_<CpuDevice, Device, std::shared_ptr<CpuDevice>>(m, "CpuDevice")
@@ -344,14 +374,44 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("device_count", &PyLocalClient::device_count)
       .def("local_device_count", &PyLocalClient::local_device_count)
       .def("devices", &PyLocalClient::devices)
+      .def("local_devices", &PyLocalClient::local_devices)
       .def("host_id", &PyLocalClient::host_id)
+      .def("GetDefaultDeviceAssignment",
+           [](PyLocalClient* client, int num_replicas)
+               -> StatusOr<std::vector<std::shared_ptr<Device>>> {
+             TF_ASSIGN_OR_RETURN(
+                 DeviceAssignment device_assignment,
+                 client->GetDefaultDeviceAssignment(num_replicas));
+             std::vector<std::shared_ptr<Device>> result;
+             for (int i = 0; i < num_replicas; ++i) {
+               int device_id = device_assignment(i, 0);
+               auto iter = client->id_to_device().find(device_id);
+               CHECK(iter != client->id_to_device().end()) << device_id;
+               result.push_back(iter->second);
+             }
+             return result;
+           })
+      // TODO(phawkins): delete overload that accepts a device_ordinal after
+      // all callers have been updated to pass a Device.
       .def("TransferToInfeed",
            [](PyLocalClient* client, const LiteralSlice& literal,
               int device_ordinal) {
              GlobalPyRefManager()->CollectGarbage();
              py::gil_scoped_release gil_release;
-             return client->TransferToInfeed(literal, device_ordinal);
+             TF_ASSIGN_OR_RETURN(std::shared_ptr<Device> device,
+                                 LookupDeviceOrdinal(client, device_ordinal,
+                                                     "TransferToInfeed"));
+             return client->TransferToInfeed(literal, device);
            })
+      .def("TransferToInfeed",
+           [](PyLocalClient* client, const LiteralSlice& literal,
+              std::shared_ptr<Device> device) {
+             GlobalPyRefManager()->CollectGarbage();
+             py::gil_scoped_release gil_release;
+             return client->TransferToInfeed(literal, device);
+           })
+      // TODO(phawkins): delete overload that accepts a device_ordinal after
+      // all callers have been updated to pass a Device.
       .def("TransferFromOutfeed",
            [](PyLocalClient* client, const Shape& shape,
               int device_ordinal) -> StatusOr<py::object> {
@@ -359,19 +419,51 @@ PYBIND11_MODULE(xla_extension, m) {
              std::shared_ptr<Literal> literal_shared;
              {
                py::gil_scoped_release gil_release;
-               TF_ASSIGN_OR_RETURN(Literal literal, client->TransferFromOutfeed(
-                                                        shape, device_ordinal));
+               TF_ASSIGN_OR_RETURN(std::shared_ptr<Device> device,
+                                   LookupDeviceOrdinal(client, device_ordinal,
+                                                       "TransferFromOutfeed"));
+               TF_ASSIGN_OR_RETURN(Literal literal,
+                                   client->TransferFromOutfeed(shape, device));
                literal_shared = std::make_shared<Literal>(std::move(literal));
              }
              return LiteralToPython(std::move(literal_shared));
-           });
+           })
+      .def("TransferFromOutfeed",
+           [](PyLocalClient* client, const Shape& shape,
+              std::shared_ptr<Device> device) -> StatusOr<py::object> {
+             GlobalPyRefManager()->CollectGarbage();
+             std::shared_ptr<Literal> literal_shared;
+             {
+               py::gil_scoped_release gil_release;
+               TF_ASSIGN_OR_RETURN(Literal literal,
+                                   client->TransferFromOutfeed(shape, device));
+               literal_shared = std::make_shared<Literal>(std::move(literal));
+             }
+             return LiteralToPython(std::move(literal_shared));
+           })
+      .def("SerializeExecutable",
+           [](PyLocalClient* client,
+              PyLocalExecutable* executable) -> StatusOr<py::bytes> {
+             TF_ASSIGN_OR_RETURN(std::string serialized,
+                                 client->SerializeExecutable(*executable));
+             return py::bytes(serialized);
+           })
+      .def("DeserializeExecutable", &PyLocalClient::DeserializeExecutable);
 
   py::class_<PyLocalBuffer>(m, "PyLocalBuffer")
       .def_static(
           "from_python",
           [](const pybind11::object& argument,
              std::shared_ptr<PyLocalClient> client,
-             int device_ordinal) -> StatusOr<std::unique_ptr<PyLocalBuffer>> {
+             std::shared_ptr<Device> device)
+              -> StatusOr<std::unique_ptr<PyLocalBuffer>> {
+            CHECK(device != nullptr);
+            auto iter = client->id_to_device().find(device->id());
+            if (iter->second != device) {
+              return InvalidArgument(
+                  "Cannot copy value to device '%s' with '%s' backend",
+                  device->DebugString(), client->platform_name());
+            }
             GlobalPyRefManager()->CollectGarbage();
             TF_ASSIGN_OR_RETURN(PythonBufferTree tree,
                                 GetPythonBufferTree(argument));
@@ -388,14 +480,29 @@ PYBIND11_MODULE(xla_extension, m) {
             py::gil_scoped_release gil_release;
             return PyLocalBuffer::FromLiterals(
                 std::move(leaves), tree.shape, std::move(py_buffer_ref),
-                std::move(client), device_ordinal);
+                std::move(client), std::move(device));
           })
-      .def_static("make_tuple", &PyLocalBuffer::MakeTuple)
+      .def_static("make_tuple",
+                  [](const std::vector<PyLocalBuffer*> buffers,
+                     std::shared_ptr<PyLocalClient> client,
+                     std::shared_ptr<Device> device)
+                      -> StatusOr<std::unique_ptr<PyLocalBuffer>> {
+                    CHECK(device != nullptr);
+                    auto iter = client->id_to_device().find(device->id());
+                    if (iter->second != device) {
+                      return InvalidArgument(
+                          "Cannot make tuple on device '%s' with '%s' backend",
+                          device->DebugString(), client->platform_name());
+                    }
+                    return PyLocalBuffer::MakeTuple(buffers, std::move(client),
+                                                    std::move(device));
+                  })
       .def("copy_to_device",
-           [](PyLocalBuffer* buffer, int dst_device_ordinal) {
+           [](PyLocalBuffer* buffer, std::shared_ptr<Device> dst_device) {
+             CHECK(dst_device != nullptr);
              GlobalPyRefManager()->CollectGarbage();
              py::gil_scoped_release gil_release;
-             return buffer->CopyToDevice(dst_device_ordinal);
+             return buffer->CopyToDevice(std::move(dst_device));
            })
       .def("delete", &PyLocalBuffer::Delete)
       .def("destructure", &PyLocalBuffer::DestructureTuple)
@@ -405,7 +512,8 @@ PYBIND11_MODULE(xla_extension, m) {
              py::gil_scoped_release gil_release;
              return buffer->BlockHostUntilReady();
            })
-      .def("copy_to_host_async", &PyLocalBuffer::CopyToHostAsync)
+      .def("copy_to_host_async", &PyLocalBuffer::CopyToHostAsync,
+           py::call_guard<py::gil_scoped_release>())
       .def("to_py",
            [](PyLocalBuffer* buffer) -> StatusOr<py::object> {
              GlobalPyRefManager()->CollectGarbage();
@@ -417,7 +525,8 @@ PYBIND11_MODULE(xla_extension, m) {
              return LiteralToPython(std::move(literal));
            })
       .def("shape", &PyLocalBuffer::on_host_shape)
-      .def("device", &PyLocalBuffer::device_ordinal)
+      .def("device", &PyLocalBuffer::device)
+      .def("platform", &PyLocalBuffer::platform_name)
       .def("is_deleted",
            [](const PyLocalBuffer& buffer) {
              return buffer.DeviceBuffer() == nullptr;
@@ -438,7 +547,7 @@ PYBIND11_MODULE(xla_extension, m) {
   py::class_<PyLocalExecutable>(m, "LocalExecutable")
       .def_static("Compile", &PyLocalExecutable::Compile,
                   py::call_guard<py::gil_scoped_release>())
-      .def("DeviceOrdinals", &PyLocalExecutable::DeviceOrdinals)
+      .def("local_devices", &PyLocalExecutable::local_devices)
       .def("SizeOfGeneratedCodeInBytes",
            &PyLocalExecutable::SizeOfGeneratedCodeInBytes)
       .def("Delete", &PyLocalExecutable::Delete)
@@ -487,7 +596,8 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("GetProgramShape", &XlaComputation::GetProgramShape)
       .def("GetSerializedProto", &GetComputationSerializedProto)
       .def("GetHloText", &GetComputationHloText)
-      .def("GetHloDotGraph", &GetComputationHloDotGraph);
+      .def("GetHloDotGraph", &GetComputationHloDotGraph)
+      .def("Hash", &HashComputation);
 
   py::class_<XlaOp>(m, "XlaOp");
 
@@ -513,18 +623,24 @@ PYBIND11_MODULE(xla_extension, m) {
           },
           py::arg("root") = absl::nullopt)
       .def("IsConstant", &XlaBuilder::IsConstant)
-      .def("SetOpMetadata", &XlaBuilder::SetOpMetadata);
+      .def("SetOpMetadata", &XlaBuilder::SetOpMetadata)
+      .def("SetSharding", &XlaBuilder::SetSharding)
+      .def("ClearSharding", &XlaBuilder::ClearSharding);
 
   // ops submodule, containing free functions that add operators to an
   // XlaBuilder.
   py::module ops = m.def_submodule("ops", "XLA operations");
 
-  ops.def("AllReduce",
-          static_cast<XlaOp (*)(
-              XlaOp, const XlaComputation&, absl::Span<const ReplicaGroup>,
-              const absl::optional<ChannelHandle>&)>(&CrossReplicaSum));
+  ops.def("AfterAll", &AfterAll);
+  ops.def(
+      "AllReduce",
+      static_cast<XlaOp (*)(
+          XlaOp, const XlaComputation&, absl::Span<const ReplicaGroup>,
+          const absl::optional<ChannelHandle>&, const absl::optional<Shape>&)>(
+          &AllReduce));
   ops.def("AllToAll", &AllToAll);
   ops.def("CollectivePermute", &CollectivePermute);
+  ops.def("CreateToken", &CreateToken);
   ops.def("CrossReplicaSum",
           static_cast<XlaOp (*)(XlaOp, absl::Span<const ReplicaGroup>)>(
               &CrossReplicaSum));
@@ -573,16 +689,19 @@ PYBIND11_MODULE(xla_extension, m) {
       .value("IRFFT", FftType::IRFFT);
 
   ops.def("Gather", &Gather, py::arg("a"), py::arg("start_indices"),
-          py::arg("dimension_numbers"), py::arg("slice_sizes"));
+          py::arg("dimension_numbers"), py::arg("slice_sizes"),
+          py::arg("indices_are_sorted"));
   ops.def("GetTupleElement", &GetTupleElement);
-  ops.def("Infeed", &Infeed, py::arg("builder"), py::arg("shape"),
-          py::arg("config") = "");
+  ops.def("InfeedWithToken", &InfeedWithToken, py::arg("token"),
+          py::arg("shape"), py::arg("config") = "");
   ops.def("Iota",
           static_cast<XlaOp (*)(XlaBuilder*, const Shape&, int64)>(&Iota));
   ops.def("Iota",
           static_cast<XlaOp (*)(XlaBuilder*, PrimitiveType, int64)>(&Iota));
   ops.def("Map", &Map);
-  ops.def("Outfeed", &Outfeed, py::arg("operand"), py::arg("shape_with_layout"),
+  ops.def("NextAfter", &NextAfter);
+  ops.def("OutfeedWithToken", &OutfeedWithToken, py::arg("operand"),
+          py::arg("token"), py::arg("shape_with_layout"),
           py::arg("outfeed_config") = "");
   ops.def("Pad", &Pad);
   ops.def("Parameter", static_cast<XlaOp (*)(XlaBuilder*, int64, const Shape&,
@@ -616,6 +735,7 @@ PYBIND11_MODULE(xla_extension, m) {
   ops.def("ReducePrecision", &ReducePrecision, py::arg("operand"),
           py::arg("exponent_bits"), py::arg("mantissa_bits"));
   ops.def("ReduceWindowWithGeneralPadding", &ReduceWindowWithGeneralPadding);
+  ops.def("RegularizedIncompleteBeta", &RegularizedIncompleteBeta);
   ops.def("ReplicaId", &ReplicaId);
   ops.def("Reshape", static_cast<XlaOp (*)(XlaOp, absl::Span<const int64>,
                                            absl::Span<const int64>)>(&Reshape));
@@ -716,6 +836,8 @@ PYBIND11_MODULE(xla_extension, m) {
   UNARY_OP(ErfInv);
   UNARY_OP(Lgamma);
   UNARY_OP(Digamma);
+  UNARY_OP(BesselI0e);
+  UNARY_OP(BesselI1e);
   UNARY_OP(Acos);
   UNARY_OP(Asin);
   UNARY_OP(Atan);
@@ -742,10 +864,14 @@ PYBIND11_MODULE(xla_extension, m) {
       .value("HIGH", PrecisionConfig::HIGH)
       .value("HIGHEST", PrecisionConfig::HIGHEST);
 
+  py::enum_<OpSharding::Type>(m, "OpSharding_Type")
+      .value("REPLICATED", OpSharding::REPLICATED)
+      .value("MAXIMAL", OpSharding::MAXIMAL)
+      .value("TUPLE", OpSharding::TUPLE)
+      .value("OTHER", OpSharding::OTHER);
+
   // TODO(phawkins): improve bindings for these types.
   py::class_<ChannelHandle>(m, "ChannelHandle");
-
-  tensorflow::AddXrtSubmodule(&m);
 }  // NOLINT(readability/fn_size)
 
 }  // namespace xla

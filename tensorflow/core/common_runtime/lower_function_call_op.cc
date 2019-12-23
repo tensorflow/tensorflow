@@ -96,7 +96,7 @@ Status RewriteFunctionCallNode(Node* n, Graph* g,
       ValidateInlining(n, fbody.get(), inline_options);
   if (can_inline_function_call.ok()) {
     TF_RETURN_IF_ERROR(
-        InlineFunctionBody(g->flib_def(), g, n, fbody.get(), inline_options));
+        InlineFunctionBody(flib_def, g, n, fbody.get(), inline_options));
   } else {
     VLOG(2) << "Failed to inline function call node: "
             << can_inline_function_call.error_message();

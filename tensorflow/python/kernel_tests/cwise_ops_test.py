@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
@@ -32,7 +33,6 @@ from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
-from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 _ADD = lambda x, y: x + y
@@ -202,7 +202,6 @@ class ComparisonOpTest(test.TestCase):
     self._testBCastByFunc(
         np.not_equal, math_ops.not_equal, include_complex=True)
 
-  @test_util.run_deprecated_v1
   def testShapeMismatch(self):
     dtypes = [np.float16, np.float32, np.float64, np.int32, np.int64]
     funcs = [
@@ -213,8 +212,9 @@ class ComparisonOpTest(test.TestCase):
     y = np.arange(0, 10).reshape([5, 2])
     for t in dtypes:
       for f in funcs:
-        with self.assertRaisesWithPredicateMatch(
-            ValueError, lambda e: "Dimensions must" in str(e)):
+        with self.assertRaisesRegexp(
+            (ValueError, errors.InvalidArgumentError),
+            "Incompatible shapes|Dimensions must be equal"):
           f(x.astype(t), y.astype(t))
 
 
@@ -1187,51 +1187,6 @@ class ComplexMakeRealImagTest(test.TestCase):
     self._compareMulGradient(data)
 
 
-class AccumulateTest(test.TestCase):
-
-  def testSimple(self):
-    with self.cached_session():
-      random_arrays = [
-          np.random.rand(16, 16, 16, 16).astype(np.float32) for _ in range(20)
-      ]
-      random_tensors = [
-          ops.convert_to_tensor(x, dtype=dtypes_lib.float32)
-          for x in random_arrays
-      ]
-      tf_val = math_ops.accumulate_n(random_tensors)
-      np_val = random_arrays[0]
-      for random_array in random_arrays[1:]:
-        np_val += random_array
-      self.assertAllClose(np_val, self.evaluate(tf_val))
-
-  def testZeroArgs(self):
-    with self.cached_session():
-      with self.assertRaises(ValueError):
-        tf_val = math_ops.accumulate_n([])
-        self.evaluate(tf_val)
-
-  def testWrongShape(self):
-    with self.cached_session():
-      with self.assertRaises(ValueError):
-        a = variables.Variable(0.2)
-        b = variables.Variable(0.1)
-        math_ops.accumulate_n([a, b], shape=[2, 2])  # Should be shape=[]
-
-  def testWrongType(self):
-    with self.cached_session():
-      with self.assertRaises(TypeError):
-        a = variables.Variable(0.2, dtype=np.float32)
-        b = variables.Variable(0.1, dtype=np.float32)
-        math_ops.accumulate_n([a, b], tensor_dtype=np.int32)
-
-  def testWrongTypeOneInput(self):
-    # Scenario that used to trigger a bug, even when testWrongType() worked
-    with self.cached_session():
-      with self.assertRaises(TypeError):
-        a = variables.Variable(0.2, dtype=np.float32)
-        math_ops.accumulate_n([a], tensor_dtype=np.int32)
-
-
 class PolyvalTest(test.TestCase):
 
   def _runtest(self, dtype, degree):
@@ -1278,7 +1233,7 @@ class SingularGradientOpTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testGradientAtSingularity(self):
-    if not compat.forward_compatible(2019, 9, 14):
+    if not compat.forward_compatible(2020, 3, 14):
       self.skipTest("Skipping test for future functionality.")
 
     ops_and_singularity = [

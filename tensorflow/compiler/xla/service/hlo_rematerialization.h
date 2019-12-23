@@ -24,6 +24,8 @@
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
+#include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/statusor.h"
 
 namespace xla {
 
@@ -38,12 +40,23 @@ class HloRematerialization : public HloModulePass {
  public:
   using ShapeSizeFunction = std::function<int64(const Shape&)>;
 
+  using CompactShapeFunction = std::function<StatusOr<Shape>(const Shape&)>;
+
   // Helper struct that communicates the before / after sizes for the
   // rematerialization process.
   struct RematerializationSizes {
     int64 before_bytes;
     int64 after_bytes;
   };
+
+  // Mode in which the rematerialization algorithm should be run.
+  enum class RematerializationMode {
+    kRecomputeOnly,        // Only consider the kCompress RematStrategy.
+    kCompressOnly,         // Only consider the kRecompute RematStrategy.
+    kRecomputeAndCompress  // Consider both kRecompute and kRemat.
+  };
+
+  static Shape DefaultCompactShapeFunction(const Shape& shape) { return shape; }
 
   // Constructor parameters:
   //
@@ -57,12 +70,22 @@ class HloRematerialization : public HloModulePass {
   //   sizes: Pointer to data structure which records the peak memory usage of
   //     the HLO module before/after rematerialization. Value are set during
   //     Run(). Can be nullptr.
-  HloRematerialization(const ShapeSizeFunction& size_function,
-                       int64 memory_limit_bytes, RematerializationSizes* sizes)
+  //
+  //   compact_shape_function: Function which returns the compact form of a
+  //   shape. If nullptr is provided, an default identity function is used.
+  explicit HloRematerialization(
+      const ShapeSizeFunction& size_function, int64 memory_limit_bytes,
+      RematerializationSizes* sizes,
+      CompactShapeFunction compact_shape_function = nullptr,
+      RematerializationMode mode = RematerializationMode::kRecomputeAndCompress)
       : size_function_(size_function),
         memory_limit_bytes_(memory_limit_bytes),
-        sizes_(sizes) {}
-  ~HloRematerialization() {}
+        sizes_(sizes),
+        compact_shape_function_(compact_shape_function == nullptr
+                                    ? DefaultCompactShapeFunction
+                                    : std::move(compact_shape_function)),
+        mode_(mode) {}
+  ~HloRematerialization() override = default;
 
   absl::string_view name() const override { return "rematerialization"; }
 
@@ -109,6 +132,10 @@ class HloRematerialization : public HloModulePass {
   // module before/after rematerialization
   RematerializationSizes* sizes_;
 
+  // Converts a shape into compact form, returns the same shape if a shape is
+  // already considered compact.
+  const CompactShapeFunction compact_shape_function_;
+
   // Call graph of the hlo_module.
   std::unique_ptr<CallGraph> call_graph_;
 
@@ -134,6 +161,8 @@ class HloRematerialization : public HloModulePass {
   // uses of the original instruction and the original instruction is
   // dead. Hence, no net instructions were added.
   int64 net_instructions_added_ = 0;
+
+  RematerializationMode mode_;
 };
 
 }  // namespace xla

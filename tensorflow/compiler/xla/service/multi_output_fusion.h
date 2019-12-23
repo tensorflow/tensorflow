@@ -69,7 +69,8 @@ class MultiOutputFusion : public HloModulePass {
   virtual bool IsFusible(HloInstruction* instr) = 0;
 
   // This function estimates the savings by merging instr1 and instr2 into one
-  // multi-output fusion instruction.
+  // multi-output fusion instruction. It returns a result in kib. (The result
+  // is intentionally not granules, because this method is not TPU-specific.)
   virtual int64 GetProfit(HloInstruction* instr1, HloInstruction* instr2) = 0;
 
   // Whether fusing the instruction can reduce memory reads.
@@ -78,7 +79,7 @@ class MultiOutputFusion : public HloModulePass {
   // Test if it's legal to fuse instr1 and instr2 into one fusion instruction.
   virtual bool LegalToFuse(HloInstruction* instr1, HloInstruction* instr2);
 
-  // Fuse HloInstrctuion instr1 and instr2 and return the fused instruction.
+  // Fuse HloInstruction instr1 and instr2 and return the fused instruction.
   // The other instruction is removed from its parent computation.
   virtual HloInstruction* Fuse(HloInstruction* instr1, HloInstruction* instr2);
 

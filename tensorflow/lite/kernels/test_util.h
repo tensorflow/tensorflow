@@ -22,6 +22,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/lite/delegates/nnapi/nnapi_delegate_kernel.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
 #include "tensorflow/lite/kernels/register.h"
@@ -59,6 +60,7 @@ template <typename T>
 inline std::vector<float> Dequantize(const std::vector<T>& data, float scale,
                                      int32_t zero_point) {
   std::vector<float> f;
+  f.reserve(data.size());
   for (const T& q : data) {
     f.push_back(scale * (q - zero_point));
   }
@@ -142,7 +144,7 @@ class SingleOpResolver : public OpResolver {
 class SingleOpModel {
  public:
   SingleOpModel() {}
-  ~SingleOpModel() {}
+  ~SingleOpModel();
 
   // Set a function callback that is run right after graph is prepared
   // that allows applying external delegates. This is useful for testing
@@ -163,10 +165,18 @@ class SingleOpModel {
   }
   int AddInput(const TensorData& t, bool is_variable = false);
 
+  int AddIntermediate(TensorType type, const std::vector<float>& scale,
+                      const std::vector<int64_t>& zero_point);
+
   // Templated version of AddConstInput().
   template <typename T>
   int AddConstInput(const TensorData& t, std::initializer_list<T> data) {
-    int id = AddTensor(t, data);
+    int id = 0;
+    if (t.per_channel_quantization) {
+      id = AddTensorPerChannelQuant(t);
+    } else {
+      id = AddTensor(t, data);
+    }
     inputs_.push_back(id);
     return id;
   }
@@ -176,7 +186,7 @@ class SingleOpModel {
     return AddConstInput(TensorData{type, shape}, data);
   }
 
-  // Add a null input tensor (optional input) and return kOptionalTensor.
+  // Add a null input tensor (optional input) and return kTfLiteOptionalTensor.
   int AddNullInput();
 
   // Add a TensorType output tensor and return its index.
@@ -236,7 +246,7 @@ class SingleOpModel {
     auto* params =
         reinterpret_cast<TfLiteAffineQuantization*>(t->quantization.params);
     for (int i = 0; i < num_inputs; ++i) {
-      quantized_output[i] = input_data[i] * params->scale->data[i];
+      quantized_output[i] = input_data[i] / params->scale->data[i];
     }
     PopulateTensor(index, /*offset=*/0, quantized_output.data(),
                    quantized_output.data() + quantized_output.size());
@@ -252,7 +262,7 @@ class SingleOpModel {
                     flatbuffers::Offset<void> builtin_options);
   void SetCustomOp(const string& name,
                    const std::vector<uint8_t>& custom_option,
-                   const std::function<TfLiteRegistration*()>& registeration);
+                   const std::function<TfLiteRegistration*()>& registration);
 
   // Build the interpreter for this model. Also, resize and allocate all
   // tensors given the shapes of the inputs.
@@ -344,6 +354,7 @@ class SingleOpModel {
   std::vector<int> GetTensorShape(int index) {
     std::vector<int> result;
     TfLiteTensor* t = interpreter_->tensor(index);
+    result.reserve(t->dims->size);
     for (int i = 0; i < t->dims->size; ++i) {
       result.push_back(t->dims->data[i]);
     }
@@ -549,8 +560,37 @@ class SingleOpModel {
     return q;
   }
 
+  // Checks if acceleration has been done as expected.
+  // Currently supports only NNAPI.
+  // It verifies if the test was configured to run with NNAPI acceleration
+  // or not (SetForceUseNnapi(true)).
+  // In affirmative case it checks if:
+  // - the test case has been listed in the list of nnapi-accelerated cases
+  // - the test is running on a device (NNAPI has been loaded)
+  //
+  // The list of nnapi-accelerated test cases is a file containing regex to
+  // include or exclude specific test cases plus the minimum android SDK version
+  // the acceleration should be enabled for. For example:
+  // To enable the test BorderFloat in TopKV2OpTest only from
+  // android_sdk_version 29:
+  //
+  // TopKV2OpTest/BorderFloat,29
+  //
+  // And to have it always excluded while enabling all other Float tests
+  // (the order of the rules is important, the first one matching is used):
+  //
+  // -TopKV2OpTest/BorderFloat
+  // TopKV2OpTest/.+Float
+
+  void ValidateAcceleration();
+
+  // If the test was configured to use NNAPI and NNAPI was actually loaded,
+  // checks if the single operation in the model has been accelerated.
+  void ExpectOpAcceleratedWithNnapi(const std::string& test_id);
+
   std::map<int, TensorData> tensor_data_;
   std::vector<int32_t> inputs_;
+  std::vector<int32_t> intermediates_;
   std::vector<int32_t> outputs_;
   std::vector<flatbuffers::Offset<Tensor>> tensors_;
   std::vector<flatbuffers::Offset<OperatorCode>> opcodes_;
@@ -579,6 +619,7 @@ class SingleOpTest : public ::testing::TestWithParam<string> {
   static std::vector<string> GetKernelTags(
       const std::map<string, TfLiteRegistration*>& kernel_map) {
     std::vector<string> tags;
+    tags.reserve(kernel_map.size());
     for (const auto& it : kernel_map) {
       tags.push_back(it.first);
     }

@@ -25,13 +25,11 @@ import tempfile
 
 import six as _six
 
-from tensorflow.compiler.tf2tensorrt import wrap_py_utils
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
-from tensorflow.python.eager import def_function
 from tensorflow.python.eager import wrap_function
 from tensorflow.python.framework import convert_to_constants
 from tensorflow.python.framework import dtypes
@@ -53,6 +51,10 @@ from tensorflow.python.training import saver
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import nest
 from tensorflow.python.util.lazy_loader import LazyLoader
+from tensorflow.python.util.tf_export import tf_export
+
+if platform.system() == "Windows":
+  raise RuntimeError("Windows platform is not supported")
 
 # Lazily load the op, since it's not available in cpu-only builds. Importing
 # this at top will cause tests that imports TF-TRT fail when they're built
@@ -61,17 +63,21 @@ gen_trt_ops = LazyLoader(
     "gen_trt_ops", globals(),
     "tensorflow.compiler.tf2tensorrt.ops.gen_trt_ops")
 
+wrap_py_utils = LazyLoader(
+    "wrap_py_utils", globals(),
+    "tensorflow.compiler.tf2tensorrt.wrap_py_utils")
+
 # Register TRT ops in python, so that when users import this module they can
 # execute a TRT-converted graph without calling any of the methods in this
 # module.
-if wrap_py_utils.is_tensorrt_enabled():
-  if platform.system() == "Windows":
-    raise RuntimeError("Windows platform is not supported")
-
-  # This will call register_op_list() in
-  # tensorflow/python/framework/op_def_registry.py, but it doesn't register
-  # the op or the op kernel in C++ runtime.
+#
+# This will call register_op_list() in
+# tensorflow/python/framework/op_def_registry.py, but it doesn't register
+# the op or the op kernel in C++ runtime.
+try:
   gen_trt_ops.trt_engine_op  # pylint: disable=pointless-statement
+except AttributeError:
+  pass
 
 
 def _to_bytes(s):
@@ -99,6 +105,7 @@ class TrtPrecisionMode(object):
         TrtPrecisionMode.FP32, TrtPrecisionMode.FP16, TrtPrecisionMode.INT8
     ]
     return precisions + [p.lower() for p in precisions]
+
 
 # Use a large enough number as the default max_workspace_size for TRT engines,
 # so it can produce reasonable performance results with the default.
@@ -128,12 +135,18 @@ TrtConversionParams = collections.namedtuple(
 
         # Whether to generate dynamic TRT ops which will build the TRT network
         # and engine at run time.
+        # i.e. Since TensorRT version < 6.0 does not support dynamic dimensions
+        # other than the batch dimension, when the TensorFlow graph has a
+        # non-batch dimension of dynamic size, we would need to enable this
+        # option. This option should be set to True in TF 2.0.
         "is_dynamic_op",
 
-        # Max number of cached TRT engines in dynamic TRT ops. If the number of
-        # cached engines is already at max but none of them can serve the input,
-        # the TRTEngineOp will fall back to run the TF function based on which
-        # the TRTEngineOp is created.
+        # Max number of cached TRT engines for dynamic TRT ops.
+        # Created TRT engines for a dynamic dimension are cached.
+        # This is the maximum number of engines that can be cached.
+        # If the number of cached engines is already at max but none of them
+        # supports the input shapes, the TRTEngineOp will fall back to run the
+        # original TF subgraph that corresponds to the TRTEngineOp.
         "maximum_cached_engines",
 
         # This argument is ignored if precision_mode is not INT8. If set to
@@ -148,6 +161,8 @@ TrtConversionParams = collections.namedtuple(
         "use_calibration",
 
         # Max size for the input batch.
+        # This parameter is only effective when is_dynamic_op=False which
+        # is not supported in TF 2.0.
         "max_batch_size",
     ])
 
@@ -156,7 +171,7 @@ DEFAULT_TRT_CONVERSION_PARAMS = TrtConversionParams(
     max_workspace_size_bytes=DEFAULT_TRT_MAX_WORKSPACE_SIZE_BYTES,
     precision_mode=TrtPrecisionMode.FP32,
     minimum_segment_size=3,
-    is_dynamic_op=False,
+    is_dynamic_op=True,
     maximum_cached_engines=1,
     use_calibration=True,
     max_batch_size=1)
@@ -164,11 +179,12 @@ DEFAULT_TRT_CONVERSION_PARAMS = TrtConversionParams(
 _TRT_ENGINE_OP_NAME = "TRTEngineOp"
 
 
-def _check_conversion_params(conversion_params):
+def _check_conversion_params(conversion_params, is_v2=False):
   """Validate the provided TrtConversionParams.
 
   Args:
     conversion_params: a TrtConversionParams instance.
+    is_v2: whether we're getting a RewriterConfig for TF 2.0.
 
   Raises:
     TypeError: if any of the parameters are of unexpected type.
@@ -180,6 +196,44 @@ def _check_conversion_params(conversion_params):
         ("precision mode '{}' is not supported."
          "It should be one of {}").format(conversion_params.precision_mode,
                                           supported_precision_modes))
+  if is_v2:
+    # Static mode (building TRT engine without executing the op) is deprecated
+    # in TF 2.0. See TrtGraphConverterV2 for more details.
+    if not conversion_params.is_dynamic_op:
+      raise ValueError("Option is_dynamic_op=False is not supported in TF 2.0, "
+                       "please set it to True instead.")
+
+  if conversion_params.rewriter_config_template:
+    rewriter_cfg = conversion_params.rewriter_config_template
+    trt_optimizer = None
+    for optimizer in rewriter_cfg.custom_optimizers:
+      if optimizer.name == "TensorRTOptimizer":
+        if trt_optimizer:
+          raise ValueError(
+              "Found more than one TensorRTOptimizer in "
+              "rewriter_config_template while only one is allowed.")
+        trt_optimizer = optimizer
+    # If rewriter_config_template is set, it should inculde TensorRTOptimizer.
+    # It is possible to remove this requirement if needed.
+    if not trt_optimizer:
+      raise ValueError(
+          "Found no TensorRTOptimizer in rewriter_config_template.")
+    if not trt_optimizer.parameter_map:
+      raise ValueError("Found no parameter_map in TensorRTOptimizer.")
+    if ("precision_mode" in trt_optimizer.parameter_map.keys() and
+        trt_optimizer.parameter_map["precision_mode"].s not in map(
+            _to_bytes, supported_precision_modes)):
+      raise ValueError(("precision_mode '{}' is not supported. "
+                        "It should be one of {}").format(
+                            trt_optimizer.parameter_map["precision_mode"],
+                            supported_precision_modes))
+    if is_v2:
+      # Static mode (building TRT engine without executing the op) is not
+      # supported in TF 2.0. See TrtGraphConverterV2 for more details.
+      if ("is_dynamic_op" in trt_optimizer.parameter_map.keys() and
+          not trt_optimizer.parameter_map["is_dynamic_op"]):
+        raise ValueError("Option is_dynamic_op=False is not supported "
+                         "in TF 2.0, please set it to True instead.")
 
 
 def _check_trt_version_compatibility():
@@ -188,39 +242,49 @@ def _check_trt_version_compatibility():
   Raises:
     RuntimeError: if the TensorRT library version is incompatible.
   """
-  compiled_version = wrap_py_utils.get_linked_tensorrt_version()
+  linked_version = wrap_py_utils.get_linked_tensorrt_version()
   loaded_version = wrap_py_utils.get_loaded_tensorrt_version()
-  tf_logging.info("Linked TensorRT version: %s" % str(compiled_version))
+  assert isinstance(linked_version, tuple)
+  assert isinstance(loaded_version, tuple)
+  assert len(linked_version) == 3
+  assert len(loaded_version) == 3
+  tf_logging.info("Linked TensorRT version: %s" % str(linked_version))
   tf_logging.info("Loaded TensorRT version: %s" % str(loaded_version))
-  version_mismatch = False
-  if loaded_version[0] < compiled_version[0]:
+  if loaded_version < linked_version:
     tf_logging.error(
-        "TensorRT version mismatch. Tensorflow was compiled against " +
-        "TensorRT %s but library loaded from environment is TensorRT %s" %
-        (".".join([str(x) for x in compiled_version]),
-         ".".join([str(x) for x in loaded_version])) +
-        ". Please make sure that correct version of TensorRT " +
-        "is available in the system and added to ldconfig or LD_LIBRARY_PATH")
-    raise RuntimeError("Incompatible TensorRT library version")
-  for i in zip(loaded_version, compiled_version):
-    if i[0] != i[1]:
-      tf_logging.warn("TensorRT mismatch. Compiled against version " +
-                      "%s, but loaded %s. Things may not work" %
-                      (".".join([str(x) for x in compiled_version]),
-                       ".".join([str(x) for x in loaded_version])))
-      version_mismatch = True
-      break
-  if not version_mismatch:
-    tf_logging.info("Running against TensorRT version %s" %
-                    ".".join([str(x) for x in loaded_version]))
+        "Loaded TensorRT %s but linked TensorFlow against TensorRT %s. " %
+        (".".join(str(x) for x in loaded_version), ".".join(
+            str(x) for x in linked_version)) +
+        "TensorRT does not support forward compatibility. " +
+        "It is also required to use the same major version of TensorRT " +
+        "during compilation and runtime.")
+    raise RuntimeError("Incompatible TensorRT versions")
+  if loaded_version[0] > linked_version[0]:
+    tf_logging.error(
+        "Loaded TensorRT %s but linked TensorFlow against TensorRT %s. " %
+        (".".join(str(x) for x in loaded_version), ".".join(
+            str(x) for x in linked_version)) +
+        "It is required to use the same major version " +
+        "of TensorRT during compilation and runtime.")
+    raise RuntimeError("Incompatible TensorRT major version")
+  if loaded_version != linked_version:
+    tf_logging.info(
+        "Loaded TensorRT %s and linked TensorFlow against TensorRT %s. " %
+        (".".join(str(x) for x in loaded_version), ".".join(
+            str(x) for x in linked_version)) +
+        "This is supported because TensorRT " +
+        " minor/patch upgrades are backward compatible")
 
 
-def get_tensorrt_rewriter_config(
-    conversion_params=DEFAULT_TRT_CONVERSION_PARAMS):
+def get_tensorrt_rewriter_config(conversion_params,
+                                 is_v2=False,
+                                 disable_non_trt_optimizers=False):
   """Returns a RewriterConfig proto for TRT transformation.
 
   Args:
     conversion_params: a TrtConversionParams instance.
+    is_v2: whether we're getting a RewriterConfig for TF 2.0.
+    disable_non_trt_optimizers: Turn off all default Grappler optimizers.
 
   Returns:
     A RewriterConfig proto which sets a TensorRTOptimizer to run Grappler.
@@ -234,38 +298,61 @@ def get_tensorrt_rewriter_config(
       rewriter_config_pb2.RewriterConfig):
     raise TypeError(
         "rewriter_config_template should be a RewriterConfig proto.")
-  _check_conversion_params(conversion_params)
+  _check_conversion_params(conversion_params, is_v2=is_v2)
 
   rewriter_config_with_trt = rewriter_config_pb2.RewriterConfig()
+
   if conversion_params.rewriter_config_template is None:
-    # Layout optimizer may add Const nodes followed by Reshape nodes, thus we
-    # need to run constant folding again.
-    rewriter_config_with_trt.optimizers.extend(
-        ["constfold", "layout", "constfold"])
+    if not disable_non_trt_optimizers:
+      # Layout optimizer may add Const nodes followed by Reshape nodes, thus we
+      # need to run constant folding again.
+      rewriter_config_with_trt.optimizers.extend(
+          ["constfold", "layout", "constfold"])
     rewriter_config_with_trt.meta_optimizer_iterations = (
         rewriter_config_pb2.RewriterConfig.ONE)
+    optimizer = rewriter_config_with_trt.custom_optimizers.add()
+    # Add a constfold optimizer to cleanup the unused Const nodes.
+    rewriter_config_with_trt.custom_optimizers.add().name = "constfold"
+
+    optimizer.name = "TensorRTOptimizer"
+    optimizer.parameter_map[
+        "minimum_segment_size"].i = conversion_params.minimum_segment_size
+    optimizer.parameter_map["max_workspace_size_bytes"].i = (
+        conversion_params.max_workspace_size_bytes)
+    optimizer.parameter_map["precision_mode"].s = _to_bytes(
+        conversion_params.precision_mode)
+    optimizer.parameter_map[
+        "maximum_cached_engines"].i = conversion_params.maximum_cached_engines
+    optimizer.parameter_map[
+        "use_calibration"].b = conversion_params.use_calibration
+    optimizer.parameter_map["is_dynamic_op"].b = conversion_params.is_dynamic_op
+    if not is_v2:
+      optimizer.parameter_map[
+          "max_batch_size"].i = conversion_params.max_batch_size
   else:
     rewriter_config_with_trt.CopyFrom(
         conversion_params.rewriter_config_template)
 
-  optimizer = rewriter_config_with_trt.custom_optimizers.add()
-  # Add a constfold optimizer to cleanup the unused Const nodes.
-  rewriter_config_with_trt.custom_optimizers.add().name = "constfold"
+  # Disabling optimizers should happen after CopyFrom the temaplte
+  # otherwise the template can overwrite the disablement.
+  if disable_non_trt_optimizers:
+    off = rewriter_config_pb2.RewriterConfig.OFF
+    rewriter_config_with_trt.layout_optimizer = off
+    rewriter_config_with_trt.constant_folding = off
+    rewriter_config_with_trt.shape_optimization = off
+    rewriter_config_with_trt.remapping = off
+    rewriter_config_with_trt.arithmetic_optimization = off
+    rewriter_config_with_trt.dependency_optimization = off
+    rewriter_config_with_trt.loop_optimization = off
+    rewriter_config_with_trt.function_optimization = off
+    rewriter_config_with_trt.debug_stripper = off
+    rewriter_config_with_trt.disable_model_pruning = True
+    rewriter_config_with_trt.scoped_allocator_optimization = off
+    rewriter_config_with_trt.memory_optimization = (
+        rewriter_config_pb2.RewriterConfig.NO_MEM_OPT)
+    rewriter_config_with_trt.pin_to_host_optimization = off
+    rewriter_config_with_trt.auto_parallel.enable = False
 
-  optimizer.name = "TensorRTOptimizer"
-  optimizer.parameter_map[
-      "minimum_segment_size"].i = conversion_params.minimum_segment_size
-  optimizer.parameter_map[
-      "max_workspace_size_bytes"].i = conversion_params.max_workspace_size_bytes
-  optimizer.parameter_map["precision_mode"].s = _to_bytes(
-      conversion_params.precision_mode)
-  optimizer.parameter_map[
-      "maximum_cached_engines"].i = conversion_params.maximum_cached_engines
-  optimizer.parameter_map[
-      "use_calibration"].b = conversion_params.use_calibration
-  optimizer.parameter_map[
-      "max_batch_size"].i = conversion_params.max_batch_size
-  optimizer.parameter_map["is_dynamic_op"].b = conversion_params.is_dynamic_op
   return rewriter_config_with_trt
 
 
@@ -372,7 +459,8 @@ class TrtGraphConverter(object):
       RuntimeError: if this class is used in TF 2.0.
     """
     if context.executing_eagerly():
-      raise RuntimeError("Please use TrtGraphConverterV2 in TF 2.0.")
+      raise RuntimeError(
+          "Please use tf.experimental.tensorrt.Converter in TF 2.0.")
 
     if input_graph_def and input_saved_model_dir:
       raise ValueError(
@@ -487,7 +575,7 @@ class TrtGraphConverter(object):
 
       def _gather_names(tensor_info):
         """Get the node names from a TensorInfo."""
-        return set([tensor_info[key].name.split(":")[0] for key in tensor_info])
+        return {tensor_info[key].name.split(":")[0] for key in tensor_info}
 
       # Get input and outputs from all SignatureDef.
       output_node_names = _gather_names(input_signature_def.inputs).union(
@@ -578,7 +666,7 @@ class TrtGraphConverter(object):
       for k, v in input_map_fn().items():
         if not isinstance(k, str):
           raise ValueError("Keys of input_map_fn must be of type str")
-        if not isinstance(v, tf.Tensor):
+        if not isinstance(v, ops.Tensor):
           raise ValueError("Values of input_map_fn must be of type tf.Tensor")
 
     self._calibration_graph = ops.Graph()
@@ -683,7 +771,7 @@ class TrtGraphConverter(object):
               # exists
               try:
                 col_op = dest_graph.as_graph_element(name)
-              except (TypeError, ValueError, KeyError) as e:
+              except (TypeError, ValueError, KeyError):
                 continue
               dest_graph.add_to_collection(key, col_op)
           elif kind == "int64_list":
@@ -748,7 +836,7 @@ class _TRTEngineResource(tracking.TrackableResource):
     self._resource_name = resource_name
     # Track the serialized engine file in the SavedModel.
     self._filename = self._track_trackable(
-        tracking.TrackableAsset(filename), "_serialized_trt_resource_filename")
+        tracking.Asset(filename), "_serialized_trt_resource_filename")
     self._maximum_cached_engines = maximum_cached_engines
 
   def _create_resource(self):
@@ -761,36 +849,25 @@ class _TRTEngineResource(tracking.TrackableResource):
         max_cached_engines_count=self._maximum_cached_engines)
 
 
+@tf_export("experimental.tensorrt.Converter", v1=[])
 class TrtGraphConverterV2(object):
   """An offline converter for TF-TRT transformation for TF 2.0 SavedModels.
 
+  Currently this is not available on Windows platform.
+
+  Note that in V2, is_dynamic_op=False is not supported, meaning TRT engines
+  will be built only when the corresponding TRTEngineOp is executed. But we
+  still provide a way to avoid the cost of building TRT engines during inference
+  (see more below).
+
   There are several ways to run the conversion:
 
-  1. FP32/FP16 precision, static mode (i.e. one TRT engine will be built for
-     each segment without executing the TRTEngineOp)
+  1. FP32/FP16 precision
 
      ```python
      params = DEFAULT_TRT_CONVERSION_PARAMS._replace(
-         precision_mode='FP16',
-         is_dynamic_op=False)
-     converter = TrtGraphConverterV2(
-         input_saved_model_dir="my_dir", conversion_params=params)
-     converter.convert()
-     converter.save(output_saved_model_dir)  # Save the converted SavedModel.
-     ```
-
-     This saves the cost of building engines during inference, but also requires
-     that the input model has all tensor shapes fully specified (except for the
-     batch dimension).
-
-  2. FP32/FP16 precision, dynamic mode (i.e. TRT engines will be built only when
-     the corresponding TRTEngineOp is executed)
-
-     ```python
-     params = DEFAULT_TRT_CONVERSION_PARAMS._replace(
-         precision_mode='FP16',
-         is_dynamic_op=True)
-     converter = TrtGraphConverterV2(
+         precision_mode='FP16')
+     converter = tf.experimental.tensorrt.Converter(
          input_saved_model_dir="my_dir", conversion_params=params)
      converter.convert()
      converter.save(output_saved_model_dir)
@@ -799,21 +876,29 @@ class TrtGraphConverterV2(object):
      In this case, no TRT engines will be built or saved in the converted
      SavedModel. But if input data is available during conversion, we can still
      build and save the TRT engines to reduce the cost during inference (see
-     option 3 below).
+     option 2 below).
 
-  3. FP32/FP16 precision, dynamic mode with pre-built engines
+  2. FP32/FP16 precision with pre-built engines
 
      ```python
      params = DEFAULT_TRT_CONVERSION_PARAMS._replace(
          precision_mode='FP16',
-         is_dynamic_op=True,
          # Set this to a large enough number so it can cache all the engines.
          maximum_cached_engines=16)
-     converter = TrtGraphConverterV2(
+     converter = tf.experimental.tensorrt.Converter(
          input_saved_model_dir="my_dir", conversion_params=params)
-     converted_func = converter.convert()
-     for data in my_input_data:
-       converted_func(my_input_data)  # Generate corresponding TRT engines.
+     converter.convert()
+
+     # Define a generator function that yields input data, and use it to execute
+     # the graph to build TRT engines.
+     # With TensorRT 5.1, different engines will be built (and saved later) for
+     # different input shapes to the TRTEngineOp.
+     def my_input_fn():
+       for _ in range(num_runs):
+         inp1, inp2 = ...
+         yield inp1, inp2
+
+     converter.build(input_fn=my_input_fn)  # Generate corresponding TRT engines
      converter.save(output_saved_model_dir)  # Generated engines will be saved.
      ```
 
@@ -822,31 +907,44 @@ class TrtGraphConverterV2(object):
      engines during inference but have access to input data that is similar to
      the one used in production (for example, that has the same input shapes).
      Also, the generated TRT engines is platform dependent, so we need to run
-     `converted_func` in an environment that is similar to production (e.g. with
+     `build()` in an environment that is similar to production (e.g. with
      same type of GPU).
 
-  4. INT8 precision with calibration, dynamic mode with pre-built engine
+  3. INT8 precision and calibration with pre-built engines
 
      ```python
      params = DEFAULT_TRT_CONVERSION_PARAMS._replace(
          precision_mode='INT8',
-         is_dynamic_op=True,
          # Currently only one INT8 engine is supported in this mode.
          maximum_cached_engines=1,
          use_calibration=True)
-     converter = TrtGraphConverterV2(
+     converter = tf.experimental.tensorrt.Converter(
          input_saved_model_dir="my_dir", conversion_params=params)
-     converted_func = converter.convert()
 
-     # Run INT8 calibration.
-     for data in my_input_data:
-       converted_func(my_input_data)
+     # Define a generator function that yields input data, and run INT8
+     # calibration with the data. All input data should have the same shape.
+     # At the end of convert(), the calibration stats (e.g. range information)
+     # will be saved and can be used to generate more TRT engines with different
+     # shapes. Also, one TRT engine will be generated (with the same shape as
+     # the calibration data) for save later.
+     def my_calibration_input_fn():
+       for _ in range(num_runs):
+         inp1, inp2 = ...
+         yield inp1, inp2
 
-     # Finalize the calibration, generate and save the TRT engine.
+     converter.convert(calibration_input_fn=my_calibration_input_fn)
+
+     # (Optional) Generate more TRT engines offline (same as the previous
+     # option), to avoid the cost of generating them during inference.
+     def my_input_fn():
+       for _ in range(num_runs):
+         inp1, inp2 = ...
+         yield inp1, inp2
+     converter.build(input_fn=my_input_fn)
+
+     # Save the TRT engine and the engines.
      converter.save(output_saved_model_dir)
      ```
-
-     The steps are similar to option 3 for FP32/FP16 precisions.
   """
 
   def __init__(self,
@@ -869,7 +967,7 @@ class TrtGraphConverterV2(object):
     """
     assert context.executing_eagerly()
     _check_trt_version_compatibility()
-    _check_conversion_params(conversion_params)
+    _check_conversion_params(conversion_params, is_v2=True)
 
     self._conversion_params = conversion_params
     self._input_saved_model_dir = input_saved_model_dir
@@ -898,22 +996,49 @@ class TrtGraphConverterV2(object):
       The optimized GraphDef.
     """
     rewriter_config = get_tensorrt_rewriter_config(
-        conversion_params=self._conversion_params)
+        conversion_params=self._conversion_params, is_v2=True)
     grappler_session_config = config_pb2.ConfigProto()
     grappler_session_config.graph_options.rewrite_options.CopyFrom(
         rewriter_config)
     return tf_optimizer.OptimizeGraph(
         grappler_session_config, meta_graph_def, graph_id=b"tf_graph")
 
+  def _for_each_trt_node(self, graph_def, fn):
+    """Helper method to manipulate all TRTEngineOps in a GraphDef."""
+    for node in graph_def.node:
+      if node.op == _TRT_ENGINE_OP_NAME:
+        fn(node)
+    for func in graph_def.library.function:
+      for node in func.node_def:
+        if node.op == _TRT_ENGINE_OP_NAME:
+          fn(node)
+
   # TODO(laigd): provide a utility function to optimize a ConcreteFunction and
   # use it here (b/124792963).
-  def convert(self):
+  def convert(self, calibration_input_fn=None):
     """Convert the input SavedModel in 2.0 format.
+
+    Args:
+      calibration_input_fn: a generator function that yields input data as a
+        list or tuple, which will be used to execute the converted signature for
+        calibration. All the returned input data should have the same shape.
+        Example: `def input_fn(): yield input1, input2, input3`
+
+    Raises:
+      ValueError: if the input combination is invalid.
 
     Returns:
       The TF-TRT converted Function.
     """
     assert not self._converted
+
+    if (self._need_calibration and not calibration_input_fn):
+      raise ValueError("Should specify calibration_input_fn because INT8 "
+                       "calibration is needed")
+    if (not self._need_calibration and calibration_input_fn):
+      raise ValueError("Should not specify calibration_input_fn because INT8 "
+                       "calibration is not needed")
+
     self._saved_model = load.load(self._input_saved_model_dir,
                                   self._input_saved_model_tags)
     func = self._saved_model.signatures[self._input_saved_model_signature_key]
@@ -939,15 +1064,41 @@ class TrtGraphConverterV2(object):
         func.graph.structured_outputs,
         self._converted_func.graph.structured_outputs)
 
+    if self._need_calibration:
+      for inp in calibration_input_fn():
+        self._converted_func(*map(ops.convert_to_tensor, inp))
+
+      def _save_calibration_table(node):
+        calibration_table = gen_trt_ops.get_calibration_data_op(
+            _get_canonical_engine_name(node.name))
+        node.attr["calibration_data"].s = calibration_table.numpy()
+
+      self._for_each_trt_node(self._converted_graph_def,
+                              _save_calibration_table)
+
+      # Rebuild the function since calibration has changed the graph.
+      calibrated_func = wrap_function.function_from_graph_def(
+          self._converted_graph_def,
+          [tensor.name for tensor in self._converted_func.inputs],
+          [tensor.name for tensor in self._converted_func.outputs])
+      calibrated_func.graph.structured_outputs = nest.pack_sequence_as(
+          self._converted_func.graph.structured_outputs,
+          calibrated_func.graph.structured_outputs)
+      self._converted_func = calibrated_func
+
     self._converted = True
 
-    # Wrap the converted ConcreteFunction in a Function so it can accept numpy
-    # arrays as input.
-    @def_function.function
-    def wrapper_func(*args, **kwargs):
-      return self._converted_func(*args, **kwargs)
+  def build(self, input_fn):
+    """Run inference with converted graph in order to build TensorRT engines.
 
-    return wrapper_func
+    Args:
+      input_fn: a generator function that yields input data as a list or tuple,
+        which will be used to execute the converted signature to generate TRT
+        engines.
+        Example: `def input_fn(): yield input1, input2, input3`
+    """
+    for inp in input_fn():
+      self._converted_func(*map(ops.convert_to_tensor, inp))
 
   def save(self, output_saved_model_dir):
     """Save the converted SavedModel.
@@ -962,22 +1113,26 @@ class TrtGraphConverterV2(object):
     engine_asset_dir = tempfile.mkdtemp()
     resource_map = {}
 
-    def _serialize_and_track_engine(canonical_engine_name):
+    def _serialize_and_track_engine(node):
       """Serialize TRT engines in the cache and track them."""
       # Don't dump the same cache twice.
+      canonical_engine_name = _get_canonical_engine_name(node.name)
       if canonical_engine_name in resource_map:
         return
 
       filename = os.path.join(engine_asset_dir,
                               "trt-serialized-engine." + canonical_engine_name)
+
       try:
         gen_trt_ops.serialize_trt_resource(
             resource_name=canonical_engine_name,
             filename=filename,
             delete_resource=True)
       except errors.NotFoundError:
-        # If user haven't run the function to populate the engine, it's fine,
-        # and we don't need to track any serialized TRT engines.
+        tf_logging.info("Could not find %s in TF-TRT cache. "
+                        "This can happen if build() is not called, "
+                        "which means TensorRT engines will be built "
+                        "and cached at runtime." % canonical_engine_name)
         return
 
       # TODO(laigd): add an option for the user to choose the device.
@@ -985,14 +1140,8 @@ class TrtGraphConverterV2(object):
           canonical_engine_name, filename,
           self._conversion_params.maximum_cached_engines)
 
-    for node in self._converted_graph_def.node:
-      if node.op == _TRT_ENGINE_OP_NAME:
-        _serialize_and_track_engine(_get_canonical_engine_name(node.name))
-    for func in self._converted_graph_def.library.function:
-      for node in func.node_def:
-        if node.op == _TRT_ENGINE_OP_NAME:
-          _serialize_and_track_engine(canonical_engine_name(node))
-
+    self._for_each_trt_node(self._converted_graph_def,
+                            _serialize_and_track_engine)
     self._saved_model.trt_engine_resources = resource_map
 
     # Rewrite the signature map using the optimized ConcreteFunction.

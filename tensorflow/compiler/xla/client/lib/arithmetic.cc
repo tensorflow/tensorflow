@@ -27,9 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
-namespace {
-
-using XlaOpGenerator = XlaOp (*)(XlaBuilder*, const XlaOp&, const XlaOp&);
 
 XlaComputation CreateScalarComputation(const string& name, PrimitiveType type,
                                        XlaBuilder* builder,
@@ -45,69 +42,50 @@ XlaComputation CreateScalarComputation(const string& name, PrimitiveType type,
   const Shape scalar = ShapeUtil::MakeShape(type, {});
   auto lhs = Parameter(b.get(), 0, scalar, "lhs");
   auto rhs = Parameter(b.get(), 1, scalar, "rhs");
-  generator(b.get(), lhs, rhs);
+  generator(lhs, rhs);
   return b->BuildAndNoteError();
 }
-
-}  // namespace
 
 XlaComputation CreateScalarAddComputation(PrimitiveType type,
                                           XlaBuilder* builder) {
   return CreateScalarComputation(
-      "add", type, builder,
-      [](XlaBuilder* b, const XlaOp& lhs, const XlaOp& rhs) {
-        return Add(lhs, rhs);
-      });
+      "add", type, builder, [](XlaOp lhs, XlaOp rhs) { return Add(lhs, rhs); });
 }
 
 XlaComputation CreateScalarMultiplyComputation(PrimitiveType type,
                                                XlaBuilder* builder) {
   return CreateScalarComputation(
-      "mul", type, builder,
-      [](XlaBuilder* b, const XlaOp& lhs, const XlaOp& rhs) {
-        return Mul(lhs, rhs);
-      });
+      "mul", type, builder, [](XlaOp lhs, XlaOp rhs) { return Mul(lhs, rhs); });
 }
 
 XlaComputation CreateScalarGeComputation(PrimitiveType type,
                                          XlaBuilder* builder) {
-  return CreateScalarComputation("ge", type, builder,
-                                 [](XlaBuilder* b, const XlaOp& lhs,
-                                    const XlaOp& rhs) { return Ge(lhs, rhs); });
+  return CreateScalarComputation(
+      "ge", type, builder, [](XlaOp lhs, XlaOp rhs) { return Ge(lhs, rhs); });
 }
 
 XlaComputation CreateScalarMaxComputation(PrimitiveType type,
                                           XlaBuilder* builder) {
   return CreateScalarComputation(
-      "max", type, builder,
-      [](XlaBuilder* b, const XlaOp& lhs, const XlaOp& rhs) {
-        return Max(lhs, rhs);
-      });
+      "max", type, builder, [](XlaOp lhs, XlaOp rhs) { return Max(lhs, rhs); });
 }
 
 XlaComputation CreateScalarMinComputation(PrimitiveType type,
                                           XlaBuilder* builder) {
   return CreateScalarComputation(
-      "min", type, builder,
-      [](XlaBuilder* b, const XlaOp& lhs, const XlaOp& rhs) {
-        return Min(lhs, rhs);
-      });
+      "min", type, builder, [](XlaOp lhs, XlaOp rhs) { return Min(lhs, rhs); });
 }
 
 XlaComputation CreateScalarAndComputation(PrimitiveType type,
                                           XlaBuilder* builder) {
   return CreateScalarComputation(
-      "and", type, builder,
-      [](XlaBuilder* b, const XlaOp& lhs, const XlaOp& rhs) {
-        return And(lhs, rhs);
-      });
+      "and", type, builder, [](XlaOp lhs, XlaOp rhs) { return And(lhs, rhs); });
 }
 
 XlaComputation CreateScalarOrComputation(PrimitiveType type,
                                          XlaBuilder* builder) {
-  return CreateScalarComputation("or", type, builder,
-                                 [](XlaBuilder* b, const XlaOp& lhs,
-                                    const XlaOp& rhs) { return Or(lhs, rhs); });
+  return CreateScalarComputation(
+      "or", type, builder, [](XlaOp lhs, XlaOp rhs) { return Or(lhs, rhs); });
 }
 
 XlaComputation CreateScalarIdentityWithZeroComputation(PrimitiveType type,

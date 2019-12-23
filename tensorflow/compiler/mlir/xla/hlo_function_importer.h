@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
+#include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -56,12 +57,21 @@ class HloFunctionImporter {
 
   StatusOr<mlir::FuncOp> ImportFunction(xla::HloComputation* computation);
 
+  // Imports the given computation in the specified region.
+  tensorflow::Status ImportComputation(HloComputation* computation,
+                                       mlir::Region* region);
+
+  // Imports instructions from the given computation in the specified block.
+  // Assumes that the block already has correct arguments populated.
+  tensorflow::Status ImportInstructions(HloComputation* computation,
+                                        mlir::Block* block);
+
   // Imports an instruction.
   StatusOr<mlir::Operation*> ImportInstruction(xla::HloInstruction* instruction,
                                                mlir::OpBuilder* func_builder);
 
   // Gets the MLIR operand values from an HLO Instruction.
-  StatusOr<llvm::SmallVector<mlir::Value*, 4>> GetOperands(
+  StatusOr<llvm::SmallVector<mlir::ValuePtr, 4>> GetOperands(
       xla::HloInstruction* instruction);
 
   // Converts xla Tensor type to the corresponding MLIR type.
@@ -79,7 +89,7 @@ class HloFunctionImporter {
                       llvm::SmallVectorImpl<mlir::Type>* types);
 
   // Returns the Mlir Value for the corresponding HloInstruction.
-  StatusOr<mlir::Value*> GetMlirValue(xla::HloInstruction* instruction);
+  StatusOr<mlir::ValuePtr> GetMlirValue(xla::HloInstruction* instruction);
 
   // Converts an XLA PrecisionConfig to the corresponding MLIR attribute.
   mlir::NamedAttribute ConvertPrecisionConfig(xla::HloInstruction* instruction);
@@ -89,14 +99,27 @@ class HloFunctionImporter {
       xla::HloInstruction* instruction);
 
   // Converts the dimensions of an HLO instruction into an MLIR attribute.
-  mlir::ElementsAttr ConvertDimensions(
+  mlir::DenseIntElementsAttr ConvertDimensions(
       llvm::ArrayRef<tensorflow::int64> op_dimensions);
 
-  // Converts Array ref to an ElementsAttr.
-  mlir::ElementsAttr Convert(llvm::ArrayRef<int64_t> op_dimensions);
+  // Converts Array ref to an DenseIntElementsAttr.
+  mlir::DenseIntElementsAttr Convert(llvm::ArrayRef<int64_t> op_dimensions);
 
-  // Ensures dot instruction has only default contracting and batch dimensions.
-  Status ValidateDotDimensions(xla::HloInstruction* instruction);
+  // Converts Array ref to padding attribute. Input is a flattened list of
+  // padding low and padding high for each of the spatial dimensions.
+  mlir::NamedAttribute ConvertPadding(llvm::ArrayRef<int64_t> padding);
+
+  // Converts the dot dimensions to attribute.
+  mlir::NamedAttribute ConvertDotDimensionNumbers(
+      const DotDimensionNumbers& dnums);
+
+  // Converts the conv dimensions to attributes.
+  mlir::NamedAttribute ConvertConvDimensionNumbers(
+      const xla::ConvolutionDimensionNumbers& dnums);
+
+  // Converts the gather dimensions to attributes.
+  mlir::NamedAttribute ConvertGatherDimensionNumbers(
+      const xla::GatherDimensionNumbers& dnums);
 
   mlir::MLIRContext* context_;
   mlir::ModuleOp module_;
@@ -106,7 +129,8 @@ class HloFunctionImporter {
   std::unordered_map<xla::HloComputation*, mlir::FuncOp>* function_map_;
 
   // Mapping from HloInstructions to the associative MLIR values.
-  std::unordered_map<xla::HloInstruction*, mlir::Value*> instruction_value_map_;
+  std::unordered_map<xla::HloInstruction*, mlir::ValuePtr>
+      instruction_value_map_;
 };
 
 }  // namespace xla

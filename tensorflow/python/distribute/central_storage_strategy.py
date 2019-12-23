@@ -24,7 +24,7 @@ from tensorflow.python.distribute import parameter_server_strategy
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export("distribute.experimental.CentralStorageStrategy", v1=[])
+@tf_export('distribute.experimental.CentralStorageStrategy', v1=[])
 class CentralStorageStrategy(distribute_lib.Strategy):
   """A one-machine strategy that puts all variables on a single device.
 
@@ -67,6 +67,8 @@ class CentralStorageStrategy(distribute_lib.Strategy):
       variables on. The default one is CPU or GPU if there is only one.
     """
     super(CentralStorageStrategy, self).__init__(extended)
+    distribute_lib.distribution_strategy_gauge.get_cell('V2').set(
+        'CentralStorageStrategy')
 
   @classmethod
   def _from_num_gpus(cls, num_gpus):
@@ -243,7 +245,7 @@ class CentralStorageStrategy(distribute_lib.Strategy):
     return super(CentralStorageStrategy, self).reduce(reduce_op, value, axis)
 
 
-@tf_export(v1=["distribute.experimental.CentralStorageStrategy"])  # pylint: disable=missing-docstring
+@tf_export(v1=['distribute.experimental.CentralStorageStrategy'])  # pylint: disable=missing-docstring
 class CentralStorageStrategyV1(distribute_lib.StrategyV1):
 
   __doc__ = CentralStorageStrategy.__doc__
@@ -254,4 +256,11 @@ class CentralStorageStrategyV1(distribute_lib.StrategyV1):
             self,
             compute_devices=compute_devices,
             parameter_device=parameter_device))
+    distribute_lib.distribution_strategy_gauge.get_cell('V1').set(
+        'CentralStorageStrategy')
+
   __init__.__doc__ = CentralStorageStrategy.__init__.__doc__
+
+  def _in_multi_worker_mode(self):
+    """Whether this strategy indicates working in multi-worker settings."""
+    return False

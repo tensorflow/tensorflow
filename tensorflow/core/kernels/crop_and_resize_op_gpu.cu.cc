@@ -38,10 +38,11 @@ enum InterpolationMethod {
 
 template <typename T>
 __global__ void CropAndResizeKernel(
-    const int32 nthreads, const T* image_ptr, const float* boxes_ptr,
-    const int32* box_ind_ptr, int num_boxes, int batch, int image_height,
-    int image_width, int crop_height, int crop_width, int depth, int method_id,
-    float extrapolation_value, float* crops_ptr) {
+    const int32 nthreads, const T* __restrict__ image_ptr,
+    const float* __restrict__ boxes_ptr, const int32* __restrict__ box_ind_ptr,
+    int num_boxes, int batch, int image_height, int image_width,
+    int crop_height, int crop_width, int depth, int method_id,
+    float extrapolation_value, float* __restrict__ crops_ptr) {
   GPU_1D_KERNEL_LOOP(out_idx, nthreads) {
     // out_idx = d + depth * (w + crop_width * (h + crop_height * b))
     int idx = out_idx;
@@ -130,10 +131,11 @@ __global__ void CropAndResizeKernel(
 
 template <typename T>
 __global__ void CropAndResizeBackpropImageKernel(
-    const int32 nthreads, const float* grads_ptr, const float* boxes_ptr,
-    const int32* box_ind_ptr, int num_boxes, int batch, int image_height,
-    int image_width, int crop_height, int crop_width, int depth,
-    T* grads_image_ptr, int method_id) {
+    const int32 nthreads, const float* __restrict__ grads_ptr,
+    const float* __restrict__ boxes_ptr, const int32* __restrict__ box_ind_ptr,
+    int num_boxes, int batch, int image_height, int image_width,
+    int crop_height, int crop_width, int depth, T* __restrict__ grads_image_ptr,
+    int method_id) {
   GPU_1D_KERNEL_LOOP(out_idx, nthreads) {
     // out_idx = d + depth * (w + crop_width * (h + crop_height * b))
     int idx = out_idx;
@@ -225,10 +227,11 @@ __global__ void CropAndResizeBackpropImageKernel(
 
 template <typename T>
 __global__ void CropAndResizeBackpropBoxesKernel(
-    const int32 nthreads, const float* grads_ptr, const T* image_ptr,
-    const float* boxes_ptr, const int32* box_ind_ptr, int num_boxes, int batch,
+    const int32 nthreads, const float* __restrict__ grads_ptr,
+    const T* __restrict__ image_ptr, const float* __restrict__ boxes_ptr,
+    const int32* __restrict__ box_ind_ptr, int num_boxes, int batch,
     int image_height, int image_width, int crop_height, int crop_width,
-    int depth, float* grads_boxes_ptr) {
+    int depth, float* __restrict__ grads_boxes_ptr) {
   GPU_1D_KERNEL_LOOP(out_idx, nthreads) {
     // out_idx = d + depth * (w + crop_width * (h + crop_height * b))
     int idx = out_idx;

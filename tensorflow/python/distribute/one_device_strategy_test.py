@@ -73,7 +73,7 @@ class OneDeviceStrategyTest(
   def testMakeInputFnIteratorWithCallable(self, distribution):
     def fn():
       dataset = dataset_ops.Dataset.range(10)
-      it = dataset.make_one_shot_iterator()
+      it = dataset_ops.make_one_shot_iterator(dataset)
       return it.get_next
     expected_values = [[i] for i in range(10)]
     input_fn = self._input_fn_to_test_input_context(

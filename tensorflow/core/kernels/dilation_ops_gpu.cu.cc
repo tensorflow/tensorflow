@@ -35,13 +35,12 @@ typedef Eigen::GpuDevice GPUDevice;
 namespace {
 
 template <typename T>
-__global__ void DilationKernel(const int32 nthreads, const T* input_ptr,
-                               const T* filter_ptr, int batch, int input_rows,
-                               int input_cols, int depth, int filter_rows,
-                               int filter_cols, int output_rows,
-                               int output_cols, int stride_rows,
-                               int stride_cols, int rate_rows, int rate_cols,
-                               int pad_top, int pad_left, T* output_ptr) {
+__global__ void DilationKernel(
+    const int32 nthreads, const T* __restrict__ input_ptr,
+    const T* __restrict__ filter_ptr, int batch, int input_rows, int input_cols,
+    int depth, int filter_rows, int filter_cols, int output_rows,
+    int output_cols, int stride_rows, int stride_cols, int rate_rows,
+    int rate_cols, int pad_top, int pad_left, T* __restrict__ output_ptr) {
   GPU_1D_KERNEL_LOOP(out_idx, nthreads) {
     // out_idx = d + depth * (w_out + output_cols * (h_out + output_rows * b))
     const int d = out_idx % depth;
@@ -76,11 +75,12 @@ __global__ void DilationKernel(const int32 nthreads, const T* input_ptr,
 
 template <typename T>
 __global__ void DilationBackpropInputKernel(
-    const int32 nthreads, const T* input_ptr, const T* filter_ptr,
-    const T* out_backprop_ptr, int batch, int input_rows, int input_cols,
-    int depth, int filter_rows, int filter_cols, int output_rows,
-    int output_cols, int stride_rows, int stride_cols, int rate_rows,
-    int rate_cols, int pad_top, int pad_left, T* in_backprop_ptr) {
+    const int32 nthreads, const T* __restrict__ input_ptr,
+    const T* __restrict__ filter_ptr, const T* __restrict__ out_backprop_ptr,
+    int batch, int input_rows, int input_cols, int depth, int filter_rows,
+    int filter_cols, int output_rows, int output_cols, int stride_rows,
+    int stride_cols, int rate_rows, int rate_cols, int pad_top, int pad_left,
+    T* __restrict__ in_backprop_ptr) {
   GPU_1D_KERNEL_LOOP(out_idx, nthreads) {
     // out_idx = d + depth * (w_out + output_cols * (h_out + output_rows * b))
     const int d = out_idx % depth;
@@ -125,11 +125,12 @@ __global__ void DilationBackpropInputKernel(
 
 template <typename T>
 __global__ void DilationBackpropFilterKernel(
-    const int32 nthreads, const T* input_ptr, const T* filter_ptr,
-    const T* out_backprop_ptr, int batch, int input_rows, int input_cols,
-    int depth, int filter_rows, int filter_cols, int output_rows,
-    int output_cols, int stride_rows, int stride_cols, int rate_rows,
-    int rate_cols, int pad_top, int pad_left, T* filter_backprop_ptr) {
+    const int32 nthreads, const T* __restrict__ input_ptr,
+    const T* __restrict__ filter_ptr, const T* __restrict__ out_backprop_ptr,
+    int batch, int input_rows, int input_cols, int depth, int filter_rows,
+    int filter_cols, int output_rows, int output_cols, int stride_rows,
+    int stride_cols, int rate_rows, int rate_cols, int pad_top, int pad_left,
+    T* __restrict__ filter_backprop_ptr) {
   GPU_1D_KERNEL_LOOP(out_idx, nthreads) {
     // out_idx = d + depth * (w_out + output_cols * (h_out + output_rows * b))
     const int d = out_idx % depth;

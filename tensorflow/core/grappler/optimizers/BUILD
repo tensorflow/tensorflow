@@ -3,7 +3,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 
 # Platform specific build config
 load(
-    "//tensorflow/core/platform:default/build_config_root.bzl",
+    "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
 )
 
@@ -340,6 +340,7 @@ cc_library(
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/costs:graph_properties",
         "//tensorflow/core/grappler/utils:topological_sort",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 
@@ -361,6 +362,8 @@ tf_cuda_cc_test(
         "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
         "//tensorflow/core/grappler/utils:grappler_test",
         "//tensorflow/core/grappler/utils:topological_sort",
+        "//tensorflow/core/platform:test",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -374,12 +377,12 @@ cc_library(
     deps = [
         ":graph_optimizer",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:mutable_graph_view",
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
-        "//tensorflow/core/grappler/utils:graph_view",
+        "//tensorflow/core/grappler/utils:transitive_fanin",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
     ],
@@ -606,6 +609,7 @@ cc_library(
         ":shape_optimizer",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
@@ -919,6 +923,7 @@ tf_cc_test(
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
+        "//tensorflow/core/grappler/utils:topological_sort",
     ],
 )
 

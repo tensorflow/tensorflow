@@ -25,6 +25,27 @@ limitations under the License.
 
 namespace tensorflow {
 
+namespace boosted_trees {
+// TODO(nponomareva, youngheek): consider using vector.
+struct SplitCandidate {
+  SplitCandidate() {}
+
+  // Index in the list of the feature ids.
+  int64 feature_idx = 0;
+
+  // Index in the tensor of node_ids for the feature with idx feature_idx.
+  int64 candidate_idx = 0;
+
+  float gain = 0.0;
+  int32 threshold = 0.0;
+  int32 dimension_id = 0;
+  std::vector<float> left_node_contribs;
+  std::vector<float> right_node_contribs;
+  // The split type, i.e., with missing value to left/right.
+  string split_type;
+};
+}  // namespace boosted_trees
+
 static bool GainsAreEqual(const float g1, const float g2) {
   const float kTolerance = 1e-15;
   return std::abs(g1 - g2) < kTolerance;

@@ -53,7 +53,7 @@ struct StringLoc {
 } // namespace
 
 // Find the next TableGen variable in the given pattern.  These variables start
-// with a `$` character and can contain alphannumeric characters or underscores.
+// with a `$` character and can contain alphanumeric characters or underscores.
 // Return the position of the variable in the pattern and its length, including
 // the `$` character.  The escape syntax `$$` is also detected and returned.
 static StringLoc findNextVariable(StringRef str) {

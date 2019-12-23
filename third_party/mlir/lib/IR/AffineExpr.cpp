@@ -160,7 +160,7 @@ bool AffineExpr::isPureAffine() const {
 }
 
 // Returns the greatest known integral divisor of this affine expression.
-uint64_t AffineExpr::getLargestKnownDivisor() const {
+int64_t AffineExpr::getLargestKnownDivisor() const {
   AffineBinaryOpExpr binExpr(nullptr);
   switch (getKind()) {
   case AffineExprKind::SymbolId:
@@ -279,6 +279,10 @@ int64_t AffineConstantExpr::getValue() const {
   return static_cast<ImplType *>(expr)->constant;
 }
 
+bool AffineExpr::operator==(int64_t v) const {
+  return *this == getAffineConstantExpr(v, getContext());
+}
+
 AffineExpr mlir::getAffineConstantExpr(int64_t constant, MLIRContext *context) {
   auto assignCtx = [context](AffineConstantExprStorage *storage) {
     storage->context = context;
@@ -341,7 +345,7 @@ static AffineExpr simplifyAdd(AffineExpr lhs, AffineExpr rhs) {
 
   // Process lrhs, which is 'expr floordiv c'.
   AffineBinaryOpExpr lrBinOpExpr = lrhs.dyn_cast<AffineBinaryOpExpr>();
-  if (!lrBinOpExpr)
+  if (!lrBinOpExpr || lrBinOpExpr.getKind() != AffineExprKind::FloorDiv)
     return nullptr;
 
   auto llrhs = lrBinOpExpr.getLHS();
@@ -440,6 +444,7 @@ static AffineExpr simplifyFloorDiv(AffineExpr lhs, AffineExpr rhs) {
   auto lhsConst = lhs.dyn_cast<AffineConstantExpr>();
   auto rhsConst = rhs.dyn_cast<AffineConstantExpr>();
 
+  // mlir floordiv by zero or negative numbers is undefined and preserved as is.
   if (!rhsConst || rhsConst.getValue() < 1)
     return nullptr;
 
@@ -449,16 +454,30 @@ static AffineExpr simplifyFloorDiv(AffineExpr lhs, AffineExpr rhs) {
 
   // Fold floordiv of a multiply with a constant that is a multiple of the
   // divisor. Eg: (i * 128) floordiv 64 = i * 2.
-  if (rhsConst.getValue() == 1)
+  if (rhsConst == 1)
     return lhs;
 
+  // Simplify (expr * const) floordiv divConst when expr is known to be a
+  // multiple of divConst.
   auto lBin = lhs.dyn_cast<AffineBinaryOpExpr>();
   if (lBin && lBin.getKind() == AffineExprKind::Mul) {
     if (auto lrhs = lBin.getRHS().dyn_cast<AffineConstantExpr>()) {
-      // rhsConst is known to be positive if a constant.
+      // rhsConst is known to be a positive constant.
       if (lrhs.getValue() % rhsConst.getValue() == 0)
         return lBin.getLHS() * (lrhs.getValue() / rhsConst.getValue());
     }
+  }
+
+  // Simplify (expr1 + expr2) floordiv divConst when either expr1 or expr2 is
+  // known to be a multiple of divConst.
+  if (lBin && lBin.getKind() == AffineExprKind::Add) {
+    int64_t llhsDiv = lBin.getLHS().getLargestKnownDivisor();
+    int64_t lrhsDiv = lBin.getRHS().getLargestKnownDivisor();
+    // rhsConst is known to be a positive constant.
+    if (llhsDiv % rhsConst.getValue() == 0 ||
+        lrhsDiv % rhsConst.getValue() == 0)
+      return lBin.getLHS().floorDiv(rhsConst.getValue()) +
+             lBin.getRHS().floorDiv(rhsConst.getValue());
   }
 
   return nullptr;
@@ -493,10 +512,12 @@ static AffineExpr simplifyCeilDiv(AffineExpr lhs, AffineExpr rhs) {
   if (rhsConst.getValue() == 1)
     return lhs;
 
+  // Simplify (expr * const) ceildiv divConst when const is known to be a
+  // multiple of divConst.
   auto lBin = lhs.dyn_cast<AffineBinaryOpExpr>();
   if (lBin && lBin.getKind() == AffineExprKind::Mul) {
     if (auto lrhs = lBin.getRHS().dyn_cast<AffineConstantExpr>()) {
-      // rhsConst is known to be positive if a constant.
+      // rhsConst is known to be a positive constant.
       if (lrhs.getValue() % rhsConst.getValue() == 0)
         return lBin.getLHS() * (lrhs.getValue() / rhsConst.getValue());
     }
@@ -522,6 +543,7 @@ static AffineExpr simplifyMod(AffineExpr lhs, AffineExpr rhs) {
   auto lhsConst = lhs.dyn_cast<AffineConstantExpr>();
   auto rhsConst = rhs.dyn_cast<AffineConstantExpr>();
 
+  // mod w.r.t zero or negative numbers is undefined and preserved as is.
   if (!rhsConst || rhsConst.getValue() < 1)
     return nullptr;
 
@@ -535,11 +557,20 @@ static AffineExpr simplifyMod(AffineExpr lhs, AffineExpr rhs) {
   if (lhs.getLargestKnownDivisor() % rhsConst.getValue() == 0)
     return getAffineConstantExpr(0, lhs.getContext());
 
+  // Simplify (expr1 + expr2) mod divConst when either expr1 or expr2 is
+  // known to be a multiple of divConst.
+  auto lBin = lhs.dyn_cast<AffineBinaryOpExpr>();
+  if (lBin && lBin.getKind() == AffineExprKind::Add) {
+    int64_t llhsDiv = lBin.getLHS().getLargestKnownDivisor();
+    int64_t lrhsDiv = lBin.getRHS().getLargestKnownDivisor();
+    // rhsConst is known to be a positive constant.
+    if (llhsDiv % rhsConst.getValue() == 0)
+      return lBin.getRHS() % rhsConst.getValue();
+    if (lrhsDiv % rhsConst.getValue() == 0)
+      return lBin.getLHS() % rhsConst.getValue();
+  }
+
   return nullptr;
-  // TODO(bondhugula): In general, this can be simplified more by using the GCD
-  // test, or in general using quantifier elimination (add two new variables q
-  // and r, and eliminate all variables from the linear system other than r. All
-  // of this can be done through mlir/Analysis/'s FlatAffineConstraints.
 }
 
 AffineExpr AffineExpr::operator%(uint64_t v) const {
@@ -835,9 +866,10 @@ AffineExpr mlir::simplifyAffineExpr(AffineExpr expr, unsigned numDims,
 // Flattens the expressions in map. Returns true on success or false
 // if 'expr' was unable to be flattened (i.e., semi-affine expressions not
 // handled yet).
-static bool getFlattenedAffineExprs(
-    ArrayRef<AffineExpr> exprs, unsigned numDims, unsigned numSymbols,
-    std::vector<llvm::SmallVector<int64_t, 8>> *flattenedExprs) {
+static bool
+getFlattenedAffineExprs(ArrayRef<AffineExpr> exprs, unsigned numDims,
+                        unsigned numSymbols,
+                        std::vector<SmallVector<int64_t, 8>> *flattenedExprs) {
   if (exprs.empty()) {
     return true;
   }
@@ -863,9 +895,9 @@ static bool getFlattenedAffineExprs(
 // Flattens 'expr' into 'flattenedExpr'. Returns true on success or false
 // if 'expr' was unable to be flattened (semi-affine expressions not handled
 // yet).
-bool mlir::getFlattenedAffineExpr(
-    AffineExpr expr, unsigned numDims, unsigned numSymbols,
-    llvm::SmallVectorImpl<int64_t> *flattenedExpr) {
+bool mlir::getFlattenedAffineExpr(AffineExpr expr, unsigned numDims,
+                                  unsigned numSymbols,
+                                  SmallVectorImpl<int64_t> *flattenedExpr) {
   std::vector<SmallVector<int64_t, 8>> flattenedExprs;
   bool ret =
       ::getFlattenedAffineExprs({expr}, numDims, numSymbols, &flattenedExprs);
@@ -877,7 +909,7 @@ bool mlir::getFlattenedAffineExpr(
 /// if 'expr' was unable to be flattened (i.e., semi-affine expressions not
 /// handled yet).
 bool mlir::getFlattenedAffineExprs(
-    AffineMap map, std::vector<llvm::SmallVector<int64_t, 8>> *flattenedExprs) {
+    AffineMap map, std::vector<SmallVector<int64_t, 8>> *flattenedExprs) {
   if (map.getNumResults() == 0) {
     return true;
   }
@@ -886,8 +918,7 @@ bool mlir::getFlattenedAffineExprs(
 }
 
 bool mlir::getFlattenedAffineExprs(
-    IntegerSet set,
-    std::vector<llvm::SmallVector<int64_t, 8>> *flattenedExprs) {
+    IntegerSet set, std::vector<SmallVector<int64_t, 8>> *flattenedExprs) {
   if (set.getNumConstraints() == 0) {
     return true;
   }

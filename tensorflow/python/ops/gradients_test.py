@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 import sys
 import warnings
+
 from absl.testing import parameterized
 import numpy as np
 from tensorflow.python.client import session
@@ -227,9 +228,29 @@ class GradientsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       z = x * 2.0
       w = z * 3.0
       grads = gradients.gradients(z, [c])
-      self.assertTrue(isinstance(grads[0], ops.Tensor))
+      self.assertIsInstance(grads[0], ops.Tensor)
       grads = gradients.gradients(w, [c])
-      self.assertTrue(isinstance(grads[0], ops.Tensor))
+      self.assertIsInstance(grads[0], ops.Tensor)
+
+  def testNoGradientForStringOutputsWithOpNamespace(self):
+    with ops.Graph().as_default():
+
+      def _TestOpGrad(_, float_grad, string_grad):
+        """Gradient function for TestStringOutput."""
+        self.assertEqual(float_grad.dtype, dtypes.float32)
+        self.assertFalse(string_grad)
+        return float_grad
+
+      ops.RegisterGradient("Namespace>TestStringOutput")(_TestOpGrad)
+
+      c = constant(1.0)
+      x, _ = test_ops.namespace_test_string_output(c)
+      z = x * 2.0
+      w = z * 3.0
+      grads = gradients.gradients(z, [c])
+      self.assertIsInstance(grads[0], ops.Tensor)
+      grads = gradients.gradients(w, [c])
+      self.assertIsInstance(grads[0], ops.Tensor)
 
   def testSingletonIndexedSlices(self):
     with ops.Graph().as_default():
@@ -1056,6 +1077,24 @@ class CustomGradientTest(test_util.TensorFlowTestCase):
       dy = gradients.gradients(y, [x1, x2])
       with session.Session() as sess:
         self.assertAllEqual([3., 5.], self.evaluate(dy))
+
+  def testCustomGradientClass(self):
+
+    class Model(object):
+
+      @custom_gradient.custom_gradient
+      def Multiply(self, x1, x2):
+        result = x1 * x2
+        grad = lambda dy: (dy * x1, dy * x2)
+        return result, grad
+
+    with ops.Graph().as_default():
+      x1 = constant(3.)
+      x2 = constant(5.)
+      m = Model()
+      y = m.Multiply(x1, x2)
+      dy = gradients.gradients(y, [x1, x2])
+      self.assertAllEqual([3., 5.], self.evaluate(dy))
 
   def testCustomGradientErrors(self):
 

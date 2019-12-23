@@ -1,4 +1,16 @@
 op {
   graph_op_name: "LogicalNot"
-  summary: "Returns the truth value of NOT x element-wise."
+  in_arg {
+    name: "x"
+    description: <<END
+A `Tensor` of type `bool`.
+END
+  }
+  out_arg {
+    name: "y"
+    description: <<END
+A `Tensor` of type `bool` with the same shape as `x`. The logical negation of `x`.
+END
+  }
+  summary: "Returns the truth value of `NOT x` element-wise."
 }

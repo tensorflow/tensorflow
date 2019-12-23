@@ -18,8 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+
 from absl.testing import parameterized
 import numpy as np
+import wrapt
 
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -39,6 +42,7 @@ from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_tensor_value
 from tensorflow.python.platform import test
+from tensorflow.python.util.compat import collections_abc
 
 
 # NOTE(mrry): Arguments of parameterized tests are lifted into lambdas to make
@@ -737,6 +741,35 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase,
     self.assertEqual(ds_struct._element_spec, element_spec)
     # Note: shape was automatically converted from a list to a TensorShape.
     self.assertEqual(ds_struct._dataset_shape, tensor_shape.TensorShape([5]))
+
+  def testCustomMapping(self):
+    elem = CustomMap(foo=constant_op.constant(37.))
+    spec = structure.type_spec_from_value(elem)
+    self.assertIsInstance(spec, CustomMap)
+    self.assertEqual(spec["foo"], tensor_spec.TensorSpec([], dtypes.float32))
+
+  def testObjectProxy(self):
+    nt_type = collections.namedtuple("A", ["x", "y"])
+    proxied = wrapt.ObjectProxy(nt_type(1, 2))
+    proxied_spec = structure.type_spec_from_value(proxied)
+    self.assertEqual(structure.type_spec_from_value(nt_type(1, 2)),
+                     proxied_spec)
+
+
+class CustomMap(collections_abc.Mapping):
+  """Custom, immutable map."""
+
+  def __init__(self, *args, **kwargs):
+    self.__dict__.update(dict(*args, **kwargs))
+
+  def __getitem__(self, x):
+    return self.__dict__[x]
+
+  def __iter__(self):
+    return iter(self.__dict__)
+
+  def __len__(self):
+    return len(self.__dict__)
 
 
 if __name__ == "__main__":

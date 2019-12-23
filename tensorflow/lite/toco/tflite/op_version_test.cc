@@ -78,9 +78,11 @@ TEST(OpVersionTest, MinimumVersionForMultipleOpVersions) {
   std::unique_ptr<FullyConnectedOperator> fc(new FullyConnectedOperator());
   const string fc_input = "fc_input";
   const string fc_weights = "fc_weights";
+  const string fc_bias = "fc_bias";
   const string fc_output = "fc_output";
   fc->inputs.push_back(fc_input);
   fc->inputs.push_back(fc_weights);
+  fc->inputs.push_back(fc_bias);
   fc->outputs.push_back(fc_output);
   array_map[fc_input] = std::unique_ptr<Array>(new Array);
   array_map[fc_weights] = std::unique_ptr<Array>(new Array);
@@ -120,9 +122,11 @@ TEST(OpVersionTest, MinimumVersionForMixedOpVersions) {
   std::unique_ptr<FullyConnectedOperator> fc(new FullyConnectedOperator());
   const string fc_input = "fc_input";
   const string fc_weights = "fc_weights";
+  const string fc_bias = "fc_bias";
   const string fc_output = "fc_output";
   fc->inputs.push_back(fc_input);
   fc->inputs.push_back(fc_weights);
+  fc->inputs.push_back(fc_bias);
   fc->outputs.push_back(fc_output);
   auto& array_map = model.GetMutableArrayMap();
   array_map[fc_input] = std::unique_ptr<Array>(new Array);
@@ -131,7 +135,19 @@ TEST(OpVersionTest, MinimumVersionForMixedOpVersions) {
   fc->weights_format = FullyConnectedWeightsFormat::kShuffled4x16Int8;
   model.operators.push_back(std::move(fc));
 
-  EXPECT_EQ(GetMinimumRuntimeVersionForModel(model), "");
+  EXPECT_EQ(GetMinimumRuntimeVersionForModel(model), "1.10.0");
+}
+
+TEST(OpVersionTest, CompareVersionString) {
+  EXPECT_TRUE(CompareVersion("1.9", "1.13"));
+  EXPECT_FALSE(CompareVersion("1.13", "1.13"));
+  EXPECT_TRUE(CompareVersion("1.14", "1.14.1"));
+  EXPECT_FALSE(CompareVersion("1.14.1", "1.14"));
+  EXPECT_FALSE(CompareVersion("1.14.1", "1.9"));
+  EXPECT_FALSE(CompareVersion("1.0.9", "1.0.8"));
+  EXPECT_FALSE(CompareVersion("2.1.0", "1.2.0"));
+  EXPECT_TRUE(CompareVersion("", "1.13"));
+  EXPECT_FALSE(CompareVersion("", ""));
 }
 
 }  // namespace

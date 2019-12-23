@@ -20,6 +20,10 @@ limitations under the License.
   #include <vector>
   #include "tensorflow/c/tf_status.h"
   #include "tensorflow/core/platform/types.h"
+  #include "tensorflow/c/tf_datatype.h"
+  #include "tensorflow/python/lib/core/py_exception_registry.h"
+
+  using tensorflow::int64;
   using tensorflow::uint64;
   using tensorflow::string;
 
@@ -231,7 +235,50 @@ _COPY_TYPEMAPS(unsigned int, mode_t);
 %define override %enddef
 #endif
 
+
+// This was originally included in pywrap_tfe.i, but is used by tf_session.i
 %include "tensorflow/c/tf_status.h"
+%include "tensorflow/c/tf_datatype.h"
+
+%typemap(in) (const void* proto) {
+  char* c_string;
+  Py_ssize_t py_size;
+  // PyBytes_AsStringAndSize() does not copy but simply interprets the input
+  if (PyBytes_AsStringAndSize($input, &c_string, &py_size) == -1) {
+    // Python has raised an error (likely TypeError or UnicodeEncodeError).
+    SWIG_fail;
+  }
+  $1 = static_cast<void*>(c_string);
+}
+
+%typemap(in) int64_t {
+  $1 = PyLong_AsLongLong($input);
+}
+
+%typemap(out) TF_DataType {
+  $result = PyInt_FromLong($1);
+}
+
+%typemap(out) int64_t {
+  $result = PyInt_FromLong($1);
+}
+
+%typemap(out) TF_AttrType {
+  $result = PyInt_FromLong($1);
+}
+
+%typemap(in, numinputs=0) unsigned char* is_list (unsigned char tmp) {
+  tmp = 0;
+  $1 = &tmp;
+}
+
+%typemap(argout) unsigned char* is_list {
+  if (*$1 == 1) {
+    PyObject* list = PyList_New(1);
+    PyList_SetItem(list, 0, $result);
+    $result = list;
+  }
+}
 
 // Typemaps to automatically raise a Python exception from bad output TF_Status.
 // TODO(b/77295559): expand this to all TF_Status* output params and deprecate

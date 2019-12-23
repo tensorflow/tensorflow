@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_TOOLS_EVALUATION_STAGES_IMAGE_PREPROCESSING_STAGE_H_
 
 #include <stdint.h>
+
 #include <vector>
 
 #include "tensorflow/core/util/stats_calculator.h"
@@ -38,13 +39,16 @@ class ImagePreprocessingStage : public EvaluationStage {
 
   EvaluationStageMetrics LatestMetrics() override;
 
-  ~ImagePreprocessingStage() {}
+  ~ImagePreprocessingStage() override {}
 
   // Call before Run().
   void SetImagePath(std::string* image_path) { image_path_ = image_path; }
 
   // Provides preprocessing output.
   void* GetPreprocessedImageData();
+
+  // Get total size of data.
+  int GetTotalSize() { return total_size_; }
 
  private:
   std::string* image_path_ = nullptr;

@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 
 namespace mlir {
 
@@ -25,8 +26,10 @@ static DialectRegistration<TFControlFlow::TFControlFlowDialect>
     tf_control_flow_ops;
 static DialectRegistration<TF::TensorFlowDialect> tf_ops;
 static DialectRegistration<tf_executor::TensorFlowExecutorDialect>
-    tf_excutor_dialect;
+    tf_executor_dialect;
 static DialectRegistration<tf_device::TensorFlowDeviceDialect>
     tf_device_dialect;
+static DialectRegistration<tf_saved_model::TensorFlowSavedModelDialect>
+    tf_saved_model_dialect;
 
 }  // namespace mlir

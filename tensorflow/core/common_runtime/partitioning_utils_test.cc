@@ -47,7 +47,7 @@ class PartitioningUtilsTest : public ::testing::Test {
                                           &devices));
     device0_ = devices[0].get();
     device1_ = devices[1].get();
-    device_mgr_.reset(new DeviceMgr(std::move(devices)));
+    device_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(devices));
 
     for (auto d : device_mgr_->ListDevices()) {
       device_set_.AddDevice(d);

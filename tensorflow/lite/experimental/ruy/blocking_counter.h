@@ -17,8 +17,8 @@ limitations under the License.
 #define TENSORFLOW_LITE_EXPERIMENTAL_RUY_BLOCKING_COUNTER_H_
 
 #include <atomic>
-#include <condition_variable>  // NOLINT(build/c++11)
-#include <mutex>               // NOLINT(build/c++11)
+#include <condition_variable>  // NOLINT(build/c++11) // IWYU pragma: keep
+#include <mutex>               // NOLINT(build/c++11) // IWYU pragma: keep
 
 namespace ruy {
 

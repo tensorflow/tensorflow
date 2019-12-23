@@ -99,8 +99,8 @@ __global__ void GenerateNormalizedProb(const T* logits, const U* sum_probs,
 
 template <typename T, typename U>
 struct SubtractAndExpFunctor {
-  __host__ __device__ SubtractAndExpFunctor(const T* logits,
-                                            const T* max_logits,
+  __host__ __device__ SubtractAndExpFunctor(const T* __restrict__ logits,
+                                            const T* __restrict__ max_logits,
                                             const int num_cols)
       : logits_(logits), max_logits_(max_logits), num_cols_(num_cols) {}
 

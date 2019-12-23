@@ -81,8 +81,16 @@ AnonymousRandomSeedGeneratorHandleOp::AnonymousRandomSeedGeneratorHandleOp(
     : AnonymousResourceOp<RandomSeedGenerator>(ctx) {}
 
 void AnonymousRandomSeedGeneratorHandleOp::Compute(OpKernelContext* ctx) {
-  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kSeed, &seed_));
-  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kSeed2, &seed2_));
+  int64 seed;
+  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kSeed, &seed));
+  int64 seed2;
+  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kSeed2, &seed2));
+  if (seed == 0 && seed2 == 0) {
+    seed = random::New64();
+    seed2 = random::New64();
+  }
+  seed_ = seed;
+  seed2_ = seed2;
   AnonymousResourceOp<RandomSeedGenerator>::Compute(ctx);
 }
 
@@ -103,14 +111,7 @@ void DeleteRandomSeedGeneratorOp::Compute(OpKernelContext* ctx) {
   // The resource is guaranteed to exist because the variant tensor wrapping the
   // deleter is provided as an unused input to this op, which guarantees that it
   // has not run yet.
-  Status s = ctx->resource_manager()->Delete(handle);
-  if (errors::IsNotFound(s)) {
-    // TODO(b/135948230): Investigate why is the above statement not true and
-    // then get rid of the special case.
-    ctx->SetStatus(Status::OK());
-    return;
-  }
-  ctx->SetStatus(s);
+  OP_REQUIRES_OK(ctx, ctx->resource_manager()->Delete(handle));
 }
 
 namespace {

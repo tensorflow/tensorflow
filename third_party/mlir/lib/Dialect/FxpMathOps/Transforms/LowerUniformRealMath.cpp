@@ -19,10 +19,10 @@
 
 #include "mlir/Dialect/FxpMathOps/FxpMathOps.h"
 #include "mlir/Dialect/FxpMathOps/Passes.h"
+#include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/StandardOps/Ops.h"
 
 using namespace mlir;
 using namespace mlir::fxpmath;
@@ -46,9 +46,9 @@ struct LowerUniformCastsPass : public FunctionPass<LowerUniformCastsPass> {
 // Dequantize
 //===----------------------------------------------------------------------===//
 
-static Value *emitUniformPerLayerDequantize(Location loc, Value *input,
-                                            UniformQuantizedType elementType,
-                                            PatternRewriter &rewriter) {
+static ValuePtr emitUniformPerLayerDequantize(Location loc, ValuePtr input,
+                                              UniformQuantizedType elementType,
+                                              PatternRewriter &rewriter) {
   // Pre-conditions.
   if (!elementType.isSigned()) {
     // TODO: Support unsigned storage type.
@@ -71,7 +71,7 @@ static Value *emitUniformPerLayerDequantize(Location loc, Value *input,
 
   // Apply zero-point offset.
   if (elementType.getZeroPoint() != 0) {
-    Value *negZeroPointConst = rewriter.create<ConstantOp>(
+    ValuePtr negZeroPointConst = rewriter.create<ConstantOp>(
         loc, broadcastScalarConstIntValue(intermediateType,
                                           -elementType.getZeroPoint()));
     input = rewriter.create<AddIOp>(loc, input, negZeroPointConst);
@@ -81,14 +81,14 @@ static Value *emitUniformPerLayerDequantize(Location loc, Value *input,
   input = rewriter.create<ConvertISToFOp>(loc, realType, input);
 
   // Mul by scale.
-  Value *scaleConst = rewriter.create<ConstantOp>(
+  ValuePtr scaleConst = rewriter.create<ConstantOp>(
       loc, broadcastScalarConstFloatValue(realType,
                                           APFloat(elementType.getScale())));
   return rewriter.create<MulFOp>(loc, input, scaleConst);
 }
 
-static Value *
-emitUniformPerAxisDequantize(Location loc, Value *input,
+static ValuePtr
+emitUniformPerAxisDequantize(Location loc, ValuePtr input,
                              UniformQuantizedPerAxisType elementType,
                              PatternRewriter &rewriter) {
   // TODO: Support per-axis dequantize.
@@ -97,8 +97,8 @@ emitUniformPerAxisDequantize(Location loc, Value *input,
   return nullptr;
 }
 
-static Value *emitDequantize(Location loc, Value *input,
-                             PatternRewriter &rewriter) {
+static ValuePtr emitDequantize(Location loc, ValuePtr input,
+                               PatternRewriter &rewriter) {
   Type inputType = input->getType();
   QuantizedType qElementType =
       QuantizedType::getQuantizedElementType(inputType);
@@ -121,7 +121,7 @@ struct UniformDequantizePattern : public OpRewritePattern<DequantizeCastOp> {
   using OpRewritePattern<DequantizeCastOp>::OpRewritePattern;
 
   PatternMatchResult matchAndRewrite(DequantizeCastOp op,
-                                     PatternRewriter &rewriter) const {
+                                     PatternRewriter &rewriter) const override {
     Type inputType = op.arg()->getType();
     Type outputType = op.getResult()->getType();
 
@@ -133,7 +133,7 @@ struct UniformDequantizePattern : public OpRewritePattern<DequantizeCastOp> {
       return matchFailure();
     }
 
-    Value *dequantizedValue = emitDequantize(op.getLoc(), op.arg(), rewriter);
+    ValuePtr dequantizedValue = emitDequantize(op.getLoc(), op.arg(), rewriter);
     if (!dequantizedValue) {
       return matchFailure();
     }
@@ -170,14 +170,14 @@ tryRewriteAffineAddEwIsomorphicSigned(const UniformBinaryOpInfo &info,
       castElementType(info.resultStorageType, intermediateElementType);
 
   // Cast operands to storage type.
-  Value *lhsValue = rewriter
-                        .create<StorageCastOp>(info.op->getLoc(),
-                                               info.lhsStorageType, info.lhs)
-                        .getResult();
-  Value *rhsValue = rewriter
-                        .create<StorageCastOp>(info.op->getLoc(),
-                                               info.rhsStorageType, info.rhs)
-                        .getResult();
+  ValuePtr lhsValue = rewriter
+                          .create<StorageCastOp>(info.op->getLoc(),
+                                                 info.lhsStorageType, info.lhs)
+                          .getResult();
+  ValuePtr rhsValue = rewriter
+                          .create<StorageCastOp>(info.op->getLoc(),
+                                                 info.rhsStorageType, info.rhs)
+                          .getResult();
 
   // Cast to the intermediate sized type.
   lhsValue = rewriter.create<ConvertISOp>(info.op->getLoc(), intermediateType,
@@ -186,7 +186,7 @@ tryRewriteAffineAddEwIsomorphicSigned(const UniformBinaryOpInfo &info,
                                           rhsValue);
 
   // Add.
-  Value *resultValue =
+  ValuePtr resultValue =
       rewriter.create<AddIOp>(info.op->getLoc(), lhsValue, rhsValue);
 
   // Zero point offset adjustment.
@@ -194,7 +194,7 @@ tryRewriteAffineAddEwIsomorphicSigned(const UniformBinaryOpInfo &info,
   // zpOffset = -zp
   int zpOffset = -1 * info.resultType.getZeroPoint();
   if (zpOffset != 0) {
-    Value *zpOffsetConst = rewriter.create<ConstantOp>(
+    ValuePtr zpOffsetConst = rewriter.create<ConstantOp>(
         info.op->getLoc(),
         broadcastScalarConstIntValue(intermediateType, zpOffset));
     resultValue =
@@ -232,7 +232,8 @@ tryRewriteAffineMulEwSigned(const UniformBinaryOpInfo &info,
                                 info.rhsType.getScale() /
                                 info.resultType.getScale();
   if (outputMultiplierReal > 1.0) {
-    info.op->emitWarning("unimplemented: cannot multiply with multipler > 1.0");
+    info.op->emitWarning(
+        "unimplemented: cannot multiply with multiplier > 1.0");
     return failure();
   }
 
@@ -245,14 +246,14 @@ tryRewriteAffineMulEwSigned(const UniformBinaryOpInfo &info,
       castElementType(info.resultStorageType, intermediateElementType);
 
   // Cast operands to storage type.
-  Value *lhsValue = rewriter
-                        .create<StorageCastOp>(info.op->getLoc(),
-                                               info.lhsStorageType, info.lhs)
-                        .getResult();
-  Value *rhsValue = rewriter
-                        .create<StorageCastOp>(info.op->getLoc(),
-                                               info.rhsStorageType, info.rhs)
-                        .getResult();
+  ValuePtr lhsValue = rewriter
+                          .create<StorageCastOp>(info.op->getLoc(),
+                                                 info.lhsStorageType, info.lhs)
+                          .getResult();
+  ValuePtr rhsValue = rewriter
+                          .create<StorageCastOp>(info.op->getLoc(),
+                                                 info.rhsStorageType, info.rhs)
+                          .getResult();
 
   // Cast to the intermediate sized type.
   lhsValue = rewriter.create<ConvertISOp>(info.op->getLoc(), intermediateType,
@@ -262,7 +263,7 @@ tryRewriteAffineMulEwSigned(const UniformBinaryOpInfo &info,
 
   // Apply argument zeroPoints.
   if (info.lhsType.getZeroPoint() != 0) {
-    Value *zpOffsetConst = rewriter.create<ConstantOp>(
+    ValuePtr zpOffsetConst = rewriter.create<ConstantOp>(
         info.op->getLoc(), broadcastScalarConstIntValue(
                                intermediateType, -info.lhsType.getZeroPoint()));
     lhsValue =
@@ -270,7 +271,7 @@ tryRewriteAffineMulEwSigned(const UniformBinaryOpInfo &info,
   }
 
   if (info.rhsType.getZeroPoint() != 0) {
-    Value *zpOffsetConst = rewriter.create<ConstantOp>(
+    ValuePtr zpOffsetConst = rewriter.create<ConstantOp>(
         info.op->getLoc(), broadcastScalarConstIntValue(
                                intermediateType, -info.rhsType.getZeroPoint()));
     rhsValue =
@@ -278,7 +279,7 @@ tryRewriteAffineMulEwSigned(const UniformBinaryOpInfo &info,
   }
 
   // Mul.
-  Value *resultValue =
+  ValuePtr resultValue =
       rewriter.create<MulIOp>(info.op->getLoc(), lhsValue, rhsValue);
 
   // Scale output.
@@ -292,7 +293,7 @@ tryRewriteAffineMulEwSigned(const UniformBinaryOpInfo &info,
 
   // Zero point offset adjustment.
   if (info.resultType.getZeroPoint() != 0) {
-    Value *zpOffsetConst = rewriter.create<ConstantOp>(
+    ValuePtr zpOffsetConst = rewriter.create<ConstantOp>(
         info.op->getLoc(),
         broadcastScalarConstIntValue(intermediateType,
                                      info.resultType.getZeroPoint()));
@@ -322,7 +323,7 @@ struct UniformRealAddEwPattern : public OpRewritePattern<RealAddEwOp> {
   using OpRewritePattern<RealAddEwOp>::OpRewritePattern;
 
   PatternMatchResult matchAndRewrite(RealAddEwOp op,
-                                     PatternRewriter &rewriter) const {
+                                     PatternRewriter &rewriter) const override {
     const UniformBinaryOpInfo info(op, op.lhs(), op.rhs(), op.clamp_min(),
                                    op.clamp_max());
     if (!info.isValid()) {
@@ -342,7 +343,7 @@ struct UniformRealMulEwPattern : public OpRewritePattern<RealMulEwOp> {
   using OpRewritePattern<RealMulEwOp>::OpRewritePattern;
 
   PatternMatchResult matchAndRewrite(RealMulEwOp op,
-                                     PatternRewriter &rewriter) const {
+                                     PatternRewriter &rewriter) const override {
     const UniformBinaryOpInfo info(op, op.lhs(), op.rhs(), op.clamp_min(),
                                    op.clamp_max());
     if (!info.isValid()) {
@@ -372,7 +373,7 @@ void LowerUniformRealMathPass::runOnFunction() {
   applyPatternsGreedily(fn, patterns);
 }
 
-FunctionPassBase *mlir::fxpmath::createLowerUniformRealMathPass() {
+OpPassBase<FuncOp> *mlir::fxpmath::createLowerUniformRealMathPass() {
   return new LowerUniformRealMathPass();
 }
 
@@ -392,7 +393,7 @@ void LowerUniformCastsPass::runOnFunction() {
   applyPatternsGreedily(fn, patterns);
 }
 
-FunctionPassBase *mlir::fxpmath::createLowerUniformCastsPass() {
+OpPassBase<FuncOp> *mlir::fxpmath::createLowerUniformCastsPass() {
   return new LowerUniformCastsPass();
 }
 

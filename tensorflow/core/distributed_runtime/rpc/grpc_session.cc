@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/rpc/grpc_remote_master.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -57,6 +58,8 @@ Status GrpcSession::Create(const SessionOptions& options,
         NewHostPortGrpcChannel(options.target.substr(kSchemePrefixLength),
                                &options.config.rpc_options(), &master_channel));
     master.reset(NewGrpcMaster(master_channel));
+  } else {
+    session->is_local_ = true;
   }
   session->SetRemoteMaster(std::move(master));
   *out_session = std::move(session);
@@ -327,7 +330,7 @@ Status GrpcSession::PRunSetup(const std::vector<string>& input_names,
   for (const string& target : target_nodes) {
     req.add_target(target);
   }
-  req.set_request_id(GetUniqueRequestId());
+  if (!is_local_) req.set_request_id(GetUniqueRequestId());
   call_options.SetTimeout(options_.config.operation_timeout_in_ms());
   TF_RETURN_IF_ERROR(master_->PartialRunSetup(&call_options, &req, &resp));
   *handle = resp.partial_run_handle();
@@ -424,7 +427,7 @@ Status GrpcSession::MakeCallable(const CallableOptions& callable_options,
   MakeCallableRequest req;
   TF_RETURN_IF_ERROR(Handle(req.mutable_session_handle()));
   *req.mutable_options() = callable_options;
-  req.set_request_id(GetUniqueRequestId());
+  if (!is_local_) req.set_request_id(GetUniqueRequestId());
   MakeCallableResponse resp;
   CallOptions call_options;
   call_options.SetTimeout(options_.config.operation_timeout_in_ms());
@@ -440,7 +443,7 @@ Status GrpcSession::RunCallable(CallableHandle handle,
   RunCallableRequest req;
   TF_RETURN_IF_ERROR(Handle(req.mutable_session_handle()));
   req.set_handle(handle);
-  req.set_request_id(GetUniqueRequestId());
+  if (!is_local_) req.set_request_id(GetUniqueRequestId());
   for (const Tensor& feed : feed_tensors) {
     feed.AsProtoTensorContent(req.mutable_feed()->Add());
   }

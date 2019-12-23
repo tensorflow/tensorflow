@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <memory>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/run_handler_util.h"
@@ -97,10 +98,61 @@ class RunHandlerEnvironment {
 typedef typename RunHandlerEnvironment::Task Task;
 typedef Eigen::RunQueue<Task, 1024> Queue;
 
+// To reduce cache misses, we use a doubly-linked list of Waiter structs and
+// queue them in LIFO order rather than the FIFO order used by a single
+// condition variable.
+struct Waiter {
+  Waiter() {
+    next = this;
+    prev = this;
+  }
+  condition_variable cv;
+  mutex mu;
+  Waiter* next;
+  Waiter* prev;
+};
+
+void WaitOnWaiter(Waiter* waiter, Waiter* queue_head, mutex* mutex,
+                  int max_sleep_micros) {
+  {
+    mutex_lock l(*mutex);
+    CHECK_EQ(waiter->next, waiter);  // Crash OK.
+    CHECK_EQ(waiter->prev, waiter);  // Crash OK.
+
+    // Add waiter to the LIFO queue
+    waiter->prev = queue_head;
+    waiter->next = queue_head->next;
+    waiter->next->prev = waiter;
+    waiter->prev->next = waiter;
+  }
+  {
+    mutex_lock l(waiter->mu);
+    // Wait on the condition variable
+    waiter->cv.wait_for(l, std::chrono::microseconds(max_sleep_micros));
+  }
+
+  mutex_lock l(*mutex);
+  // Remove waiter from the LIFO queue. Note even when a waiter wakes up due
+  // to a notification we cannot conclude the waiter is not in the queue.
+  // This is due to the fact that a thread preempted right before notifying
+  // may resume after a waiter got re-added.
+  if (waiter->next != waiter) {
+    CHECK(waiter->prev != waiter);  // Crash OK.
+    waiter->next->prev = waiter->prev;
+    waiter->prev->next = waiter->next;
+    waiter->next = waiter;
+    waiter->prev = waiter;
+  } else {
+    CHECK_EQ(waiter->prev, waiter);  // Crash OK.
+  }
+}
+
 class ThreadWorkSource {
  public:
   ThreadWorkSource()
-      : non_blocking_work_sharding_factor_(2),
+      : non_blocking_work_sharding_factor_(
+            static_cast<int32>(ParamFromEnvWithDefault(
+                "TF_RUN_HANDLER_NUM_OF_NON_BLOCKING_QUEUES", 1))),
         non_blocking_work_queues_(non_blocking_work_sharding_factor_),
         blocking_inflight_(0),
         non_blocking_inflight_(0),
@@ -144,12 +196,59 @@ class ThreadWorkSource {
     // resource. The non-blocking threads are used only to compensate for
     // threads that may be blocked on some tasks. There is less need to
     // proactively wake up those threads.
-    static int max_rank_to_wakeup = static_cast<int>(ParamFromEnvWithDefault(
-        "TF_RUN_HANDLER_MAX_RANK_TO_WAKE_UP", kMaxConcurrentHandlers));
+    static int max_rank_to_wakeup = static_cast<int>(
+        ParamFromEnvWithDefault("TF_RUN_HANDLER_MAX_RANK_TO_WAKE_UP",
+                                static_cast<int32>(ParamFromEnvWithDefault(
+                                    "TF_RUN_HANDLER_MAX_CONCURRENT_HANDLERS",
+                                    kMaxConcurrentHandlers))));
     if (max_rank_to_wakeup > 0 &&
         rank_.load(std::memory_order_relaxed) <= max_rank_to_wakeup) {
-      mutex_lock l(waiters_mu_);
-      queue_waiters_.next->cv.notify_one();
+      Waiter* w = nullptr;
+      bool use_sub_thread_pool = ParamFromEnvBoolWithDefault(
+          "TF_RUN_HANDLER_USE_SUB_THREAD_POOL", false);
+
+      Waiter* waiter_queue;
+      mutex* waiter_queue_mu;
+      if (use_sub_thread_pool) {
+        // When we use multiple sub thread pools, free threads wait on sub
+        // thread pool waiting queues. Wake up threads from sub thread waiting
+        // queues.
+        // The waiting queues are defined at RunHandlerPool.
+        // Get the waiter_queue and coresponding mutex. Note, the thread work
+        // source may change afterwards if a new request comes or an old request
+        // finishes.
+        tf_shared_lock lock(run_handler_waiter_mu_);
+        waiter_queue = sub_thread_pool_waiter_;
+        waiter_queue_mu = sub_thread_pool_waiter_mu_;
+      } else {
+        waiter_queue = &queue_waiters_;
+        waiter_queue_mu = &waiters_mu_;
+      }
+
+      {
+        mutex_lock l(*waiter_queue_mu);
+        if (waiter_queue->next != waiter_queue) {
+          // Remove waiter from the LIFO queue
+          w = waiter_queue->next;
+
+          CHECK(w->prev != w);
+          CHECK(w->next != w);
+
+          w->next->prev = w->prev;
+          w->prev->next = w->next;
+
+          // Use `w->next == &w` to indicate that the waiter has been removed
+          // from the queue.
+          w->next = w;
+          w->prev = w;
+        }
+      }
+      if (w != nullptr) {
+        // We call notify_one() without any locks, so we can miss notifications.
+        // The wake up logic is best effort and a thread will wake in short
+        // period of time in case a notification is missed.
+        w->cv.notify_one();
+      }
     }
     VLOG(3) << "Added " << (is_blocking ? "inter" : "intra") << " work from "
             << traceme_id_.load(std::memory_order_relaxed);
@@ -158,23 +257,25 @@ class ThreadWorkSource {
 
   Task PopBlockingTask() { return blocking_work_queue_.PopBack(); }
 
-  Task PopNonBlockingTask(int index) {
-    return non_blocking_work_queues_[index]->queue.PopBack();
+  Task PopNonBlockingTask(int start_index, bool search_from_all_queue) {
+    Task t;
+    unsigned sharding_factor = NonBlockingWorkShardingFactor();
+    for (unsigned j = 0; j < sharding_factor; ++j) {
+      t = non_blocking_work_queues_[(start_index + j) % sharding_factor]
+              ->queue.PopBack();
+      if (t.f) {
+        return t;
+      }
+      if (!search_from_all_queue) {
+        break;
+      }
+    }
+    return t;
   }
 
   void WaitForWork(int max_sleep_micros) {
-    mutex_lock l(waiters_mu_);
-    Waiter waiter;
-    // Add waiter to the LIFO queue
-    waiter.prev = &queue_waiters_;
-    waiter.next = queue_waiters_.next;
-    waiter.next->prev = &waiter;
-    waiter.prev->next = &waiter;
-    // Wait on the condition variable
-    waiter.cv.wait_for(l, std::chrono::microseconds(max_sleep_micros));
-    // Remove waiter from the LIFO queue
-    waiter.next->prev = waiter.prev;
-    waiter.prev->next = waiter.next;
+    thread_local Waiter waiter;
+    WaitOnWaiter(&waiter, &queue_waiters_, &waiters_mu_, max_sleep_micros);
   }
 
   int TaskQueueSize(bool is_blocking) {
@@ -193,6 +294,12 @@ class ThreadWorkSource {
 
   void SetTracemeId(int64 value) { traceme_id_ = value; }
   void SetRank(int64 value) { rank_ = value; }
+
+  void SetWaiter(Waiter* waiter, mutex* mutex) {
+    mutex_lock l(run_handler_waiter_mu_);
+    sub_thread_pool_waiter_ = waiter;
+    sub_thread_pool_waiter_mu_ = mutex;
+  }
 
   int64 GetInflightTaskCount(bool is_blocking) {
     std::atomic<int64>* counter =
@@ -225,15 +332,6 @@ class ThreadWorkSource {
   }
 
  private:
-  // To reduce cache misses, we use a doubly-linked list of Waiter structs and
-  // queue them in LIFO order rather than the FIFO order used by a single
-  // condition variable.
-  struct Waiter {
-    condition_variable cv;
-    Waiter* next;
-    Waiter* prev;
-  };
-
   struct NonBlockingQueue {
     mutex queue_op_mu;
     char pad[128];
@@ -253,6 +351,10 @@ class ThreadWorkSource {
   Waiter queue_waiters_ GUARDED_BY(waiters_mu_);
   std::atomic<int64> traceme_id_;
   std::atomic<int64> rank_;
+
+  mutex run_handler_waiter_mu_;
+  mutex* sub_thread_pool_waiter_mu_ GUARDED_BY(run_handler_waiter_mu_);
+  Waiter* sub_thread_pool_waiter_ GUARDED_BY(run_handler_waiter_mu_);
 };
 
 class RunHandlerThreadPool {
@@ -265,25 +367,33 @@ class RunHandlerThreadPool {
 
   RunHandlerThreadPool(int num_blocking_threads, int num_non_blocking_threads,
                        Env* env, const ThreadOptions& thread_options,
-                       const string& name)
+                       const string& name,
+                       Eigen::MaxSizeVector<mutex>* waiters_mu,
+                       Eigen::MaxSizeVector<Waiter>* queue_waiters)
       : num_threads_(num_blocking_threads + num_non_blocking_threads),
         num_blocking_threads_(num_blocking_threads),
         num_non_blocking_threads_(num_non_blocking_threads),
         thread_data_(num_threads_),
         env_(env, thread_options, name),
-        name_(name) {
+        name_(name),
+        waiters_mu_(waiters_mu),
+        queue_waiters_(queue_waiters),
+        use_sub_thread_pool_(ParamFromEnvBoolWithDefault(
+            "TF_RUN_HANDLER_USE_SUB_THREAD_POOL", false)),
+        num_threads_in_sub_thread_pool_(ParamFromEnvWithDefault(
+            "TF_RUN_HANDLER_NUM_THREADS_IN_SUB_THREAD_POOL",
+            std::vector<int>(
+                {num_blocking_threads / 2,
+                 num_blocking_threads - num_blocking_threads / 2}))),
+        sub_thread_pool_start_request_percentage_(ParamFromEnvWithDefault(
+            "TF_RUN_HANDLER_SUB_THREAD_POOL_START_REQUEST_PERCENTAGE",
+            std::vector<double>({0, 0.4}))),
+        sub_thread_pool_end_request_percentage_(ParamFromEnvWithDefault(
+            "TF_RUN_HANDLER_SUB_THREAD_POOL_END_REQUEST_PERCENTAGE",
+            std::vector<double>({0.4, 1}))) {
     VLOG(1) << "Creating RunHandlerThreadPool " << name << " with  "
             << num_blocking_threads_ << " blocking threads and "
             << num_non_blocking_threads_ << " non-blocking threads.";
-    cancelled_ = false;
-
-    thread_data_.resize(num_threads_);
-    for (int i = 0; i < num_threads_; i++) {
-      thread_data_[i].thread.reset(
-          env_.CreateThread([this, i, num_blocking_threads]() {
-            WorkerLoop(i, i < num_blocking_threads);
-          }));
-    }
   }
 
   ~RunHandlerThreadPool() {
@@ -296,6 +406,26 @@ class RunHandlerThreadPool {
         thread_data_[i].sources_not_empty.notify_all();
       }
       thread_data_[i].thread.reset();
+    }
+  }
+
+  void Start() {
+    cancelled_ = false;
+    thread_data_.resize(num_threads_);
+    int num_blocking_threads = num_blocking_threads_;
+    for (int i = 0; i < num_threads_; i++) {
+      int sub_thread_pool_id = num_threads_in_sub_thread_pool_.size() - 1;
+      for (int j = 0; j < num_threads_in_sub_thread_pool_.size(); ++j) {
+        if (i < num_threads_in_sub_thread_pool_[j]) {
+          sub_thread_pool_id = j;
+          break;
+        }
+      }
+      thread_data_[i].sub_thread_pool_id = sub_thread_pool_id;
+      thread_data_[i].thread.reset(
+          env_.CreateThread([this, i, num_blocking_threads]() {
+            WorkerLoop(i, i < num_blocking_threads);
+          }));
     }
   }
 
@@ -320,19 +450,47 @@ class RunHandlerThreadPool {
   // provide better performance due to less lock retention. The drawback is that
   // the profiler will be a bit harder to read.
   void SetThreadWorkSources(
-      int tid, int start_request_idx,
+      int tid, int start_request_idx, uint64 version,
       const Eigen::MaxSizeVector<ThreadWorkSource*>& thread_work_sources) {
     mutex_lock l(thread_data_[tid].mu);
+    if (version > thread_data_[tid].version) {
+      thread_data_[tid].version = version;
+    } else {
+      // A newer version is already updated. No need to update.
+      return;
+    }
     thread_data_[tid].thread_work_sources.resize(0);
-    thread_data_[tid].thread_work_sources.emplace_back(
-        thread_work_sources[start_request_idx]);
-    for (int i = 0; i < thread_work_sources.size(); ++i) {
-      if (i != start_request_idx) {
+
+    if (use_sub_thread_pool_) {
+      for (int i = 0; i < thread_work_sources.size(); ++i) {
         thread_data_[tid].thread_work_sources.emplace_back(
             thread_work_sources[i]);
       }
+    } else {
+      thread_data_[tid].thread_work_sources.emplace_back(
+          thread_work_sources[start_request_idx]);
+      // The number of shards for the queue. Threads in each shard will
+      // prioritize different thread_work_sources. Increase the number of shards
+      // could decrease the contention in the queue. For example, when
+      // num_shards == 1: thread_work_sources are ordered as start_request_idx,
+      // 0, 1, 2, 3, 4 ... for all threads. When num_shards == 2:
+      // thread_work_sources are order as start_request_idx, 0, 2, 4 ... 1, 3,
+      // 5... for half of the threads and start_request_idx, 1, 3, 5 ... 0, 2,
+      // 4... for the other half of the threads.
+      int num_shards =
+          ParamFromEnvWithDefault("TF_RUN_HANDLER_QUEUE_SHARDS", 1);
+      int token = tid % num_shards;
+      for (int i = 0; i < num_shards; ++i) {
+        for (int j = token; j < thread_work_sources.size(); j += num_shards) {
+          if (j != start_request_idx) {
+            thread_data_[tid].thread_work_sources.emplace_back(
+                thread_work_sources[j]);
+          }
+        }
+        token = (token + 1) % num_shards;
+      }
+      thread_data_[tid].sources_not_empty.notify_all();
     }
-    thread_data_[tid].sources_not_empty.notify_all();
   }
 
   PerThread* GetPerThread() {
@@ -359,16 +517,36 @@ class RunHandlerThreadPool {
 
   void WorkerLoop(int thread_id, bool may_steal_blocking_work);
 
+  // Search tasks from Requets range searching_range_start to
+  // searching_range_end. If there is no tasks in the search range and
+  // may_steal_blocking_work is true, then search from all reuqests.
+  Task FindTask(
+      int searching_range_start, int searching_range_end, int thread_id,
+      int sub_thread_pool_id, int max_blocking_inflight,
+      bool may_steal_blocking_work,
+      const Eigen::MaxSizeVector<ThreadWorkSource*>& thread_work_sources,
+      bool* task_from_blocking_queue, ThreadWorkSource** tws);
+
   void WaitForWork(bool is_blocking, int thread_id,
                    int32 max_blocking_inflight);
 
+  void WaitForWorkInSubThreadPool(bool is_blocking, int sub_thread_pool_id);
+
  private:
   struct ThreadData {
-    ThreadData() : thread_work_sources(kMaxConcurrentHandlers) {}
+    ThreadData()
+        : version(0),
+          current_index(0),
+          thread_work_sources(static_cast<int32>(
+              ParamFromEnvWithDefault("TF_RUN_HANDLER_MAX_CONCURRENT_HANDLERS",
+                                      kMaxConcurrentHandlers))) {}
     mutex mu;
+    uint64 version;
     condition_variable sources_not_empty;
     std::unique_ptr<Thread> thread;
+    int current_index;
     Eigen::MaxSizeVector<ThreadWorkSource*> thread_work_sources GUARDED_BY(mu);
+    int sub_thread_pool_id;
   };
 
   const int num_threads_;
@@ -378,7 +556,57 @@ class RunHandlerThreadPool {
   RunHandlerEnvironment env_;
   std::atomic<bool> cancelled_;
   string name_;
+  Eigen::MaxSizeVector<mutex>* waiters_mu_;
+  Eigen::MaxSizeVector<Waiter>* queue_waiters_;
+
+  bool use_sub_thread_pool_;
+  std::vector<int> num_threads_in_sub_thread_pool_;
+
+  // Threads in each sub thread pool will search tasks from the given
+  // start_request_percentage to end_request_percentage in a round robin
+  // fashion.
+  std::vector<double> sub_thread_pool_start_request_percentage_;
+  std::vector<double> sub_thread_pool_end_request_percentage_;
 };
+
+Task RunHandlerThreadPool::FindTask(
+    int searching_range_start, int searching_range_end, int thread_id,
+    int sub_thread_pool_id, int max_blocking_inflight,
+    bool may_steal_blocking_work,
+    const Eigen::MaxSizeVector<ThreadWorkSource*>& thread_work_sources,
+    bool* task_from_blocking_queue, ThreadWorkSource** tws) {
+  Task t;
+  int current_index = thread_data_[thread_id].current_index;
+  *task_from_blocking_queue = false;
+
+  // TODO(chaox): Chagne the search algorithm from round robin to random
+  // walk.
+  for (int i = 0; i < searching_range_end - searching_range_start; ++i) {
+    if (current_index >= searching_range_end) {
+      current_index = searching_range_start;
+    }
+    *tws = thread_work_sources[current_index];
+    ++current_index;
+
+    // For blocking thread, search for blocking tasks first.
+    if (may_steal_blocking_work &&
+        (*tws)->GetInflightTaskCount(true) < max_blocking_inflight) {
+      t = (*tws)->PopBlockingTask();
+      if (t.f) {
+        *task_from_blocking_queue = true;
+        break;
+      }
+    }
+
+    // Search for non-blocking tasks.
+    t = (*tws)->PopNonBlockingTask(thread_id, true);
+    if (t.f) {
+      break;
+    }
+  }
+  thread_data_[thread_id].current_index = current_index;
+  return t;
+}
 
 // Main worker thread loop.
 void RunHandlerThreadPool::WorkerLoop(int thread_id,
@@ -394,11 +622,47 @@ void RunHandlerThreadPool::WorkerLoop(int thread_id,
     bool task_from_blocking_queue = true;
     Eigen::MaxSizeVector<ThreadWorkSource*>* thread_work_sources =
         &thread_data_[thread_id].thread_work_sources;
-    {
+    int sub_thread_pool_id;
+    if (use_sub_thread_pool_) {
+      // The mutex is not hot since its per thread and can only be held
+      // by some other thread when a session run starts/finishes.
+      mutex_lock l(thread_data_[thread_id].mu);
+      sub_thread_pool_id = thread_data_[thread_id].sub_thread_pool_id;
+      int active_requests = thread_work_sources->size();
+      if (may_steal_blocking_work) {
+        // Each thread will first look for tasks from requests that belongs to
+        // its sub thread pool.
+        t = FindTask(
+            active_requests *
+                sub_thread_pool_start_request_percentage_[sub_thread_pool_id],
+            active_requests *
+                sub_thread_pool_end_request_percentage_[sub_thread_pool_id],
+            thread_id, sub_thread_pool_id, kMaxBlockingInflight,
+            /*may_steal_blocking_work=*/true, *thread_work_sources,
+            &task_from_blocking_queue, &tws);
+        if (!t.f) {
+          // Search from all requests if the thread cannot find tasks from
+          // requests that belong to its own sub thread pool.
+          t = FindTask(0, active_requests, thread_id, sub_thread_pool_id,
+                       kMaxBlockingInflight,
+                       /*may_steal_blocking_work=*/true, *thread_work_sources,
+                       &task_from_blocking_queue, &tws);
+        }
+      } else {
+        // For non-blocking threads, it will always search from all pending
+        // requests.
+        t = FindTask(0, active_requests, thread_id, sub_thread_pool_id,
+                     kMaxBlockingInflight,
+                     /*may_steal_blocking_work=*/false, *thread_work_sources,
+                     &task_from_blocking_queue, &tws);
+      }
+    } else {
       // The mutex is not hot since its per thread and can only be held
       // by some other thread when a session run starts/finishes.
       mutex_lock l(thread_data_[thread_id].mu);
 
+      // TODO(chaox): Refactor the following code to share the logic with
+      // FindTask.
       for (int i = 0; i < thread_work_sources->size(); ++i) {
         tws = (*thread_work_sources)[i];
         // We want a smallish numbers of inter threads since
@@ -415,20 +679,16 @@ void RunHandlerThreadPool::WorkerLoop(int thread_id,
           // Always look for any work from the "primary" work source.
           // This way when we wake up a thread for a new closure we are
           // guaranteed it can be worked on.
-          for (int j = 0; j < tws->NonBlockingWorkShardingFactor(); ++j) {
-            t = tws->PopNonBlockingTask((j + thread_id) %
-                                        tws->NonBlockingWorkShardingFactor());
-            if (t.f) {
-              task_from_blocking_queue = false;
-              break;
-            }
+          t = tws->PopNonBlockingTask(thread_id, true);
+          if (t.f) {
+            task_from_blocking_queue = false;
+            break;
           }
           if (t.f) {
             break;
           }
         } else {
-          t = tws->PopNonBlockingTask(thread_id %
-                                      tws->NonBlockingWorkShardingFactor());
+          t = tws->PopNonBlockingTask(thread_id, false);
           if (t.f) {
             task_from_blocking_queue = false;
             break;
@@ -462,10 +722,28 @@ void RunHandlerThreadPool::WorkerLoop(int thread_id,
                   << (*thread_work_sources)[i]->ToString();
         }
       }
-
-      WaitForWork(may_steal_blocking_work, thread_id, kMaxBlockingInflight);
+      if (use_sub_thread_pool_) {
+        WaitForWorkInSubThreadPool(may_steal_blocking_work, sub_thread_pool_id);
+      } else {
+        WaitForWork(may_steal_blocking_work, thread_id, kMaxBlockingInflight);
+      }
     }
   }
+}
+
+void RunHandlerThreadPool::WaitForWorkInSubThreadPool(bool is_blocking,
+                                                      int sub_thread_pool_id) {
+  const int kMaxSleepMicros = 250;
+
+  // The non-blocking thread will just sleep.
+  if (!is_blocking) {
+    Env::Default()->SleepForMicroseconds(kMaxSleepMicros);
+    return;
+  }
+
+  thread_local Waiter waiter;
+  WaitOnWaiter(&waiter, &(*queue_waiters_)[sub_thread_pool_id],
+               &(*waiters_mu_)[sub_thread_pool_id], kMaxSleepMicros);
 }
 
 void RunHandlerThreadPool::WaitForWork(bool is_blocking, int thread_id,
@@ -554,16 +832,35 @@ class RunHandler::Impl {
 class RunHandlerPool::Impl {
  public:
   explicit Impl(int num_inter_op_threads, int num_intra_op_threads)
-      : max_handlers_(kMaxConcurrentHandlers),
+      : max_handlers_(static_cast<int32>(ParamFromEnvWithDefault(
+            "TF_RUN_HANDLER_MAX_CONCURRENT_HANDLERS", kMaxConcurrentHandlers))),
+        waiters_mu_(
+            ParamFromEnvWithDefault("TF_RUN_HANDLER_NUM_SUB_THREAD_POOL", 2)),
+        queue_waiters_(
+            ParamFromEnvWithDefault("TF_RUN_HANDLER_NUM_SUB_THREAD_POOL", 2)),
         run_handler_thread_pool_(new RunHandlerThreadPool(
             num_inter_op_threads, num_intra_op_threads, Env::Default(),
-            ThreadOptions(), "tf_run_handler_pool")),
-        iterations_(0) {
+            ThreadOptions(), "tf_run_handler_pool", &waiters_mu_,
+            &queue_waiters_)),
+        iterations_(0),
+        version_(0),
+        sub_thread_pool_end_request_percentage_(ParamFromEnvWithDefault(
+            "TF_RUN_HANDLER_SUB_THREAD_POOL_END_REQUEST_PERCENTAGE",
+            std::vector<double>({1}))) {
     VLOG(1) << "Creating a RunHandlerPool with max handlers: " << max_handlers_;
     for (int i = 0; i < max_handlers_; ++i) {
       handlers_.emplace_back(new RunHandler::Impl(this));
       free_handlers_.push_back(handlers_.back().get());
     }
+    queue_waiters_.resize(
+        ParamFromEnvWithDefault("TF_RUN_HANDLER_NUM_SUB_THREAD_POOL", 2));
+    waiters_mu_.resize(
+        ParamFromEnvWithDefault("TF_RUN_HANDLER_NUM_SUB_THREAD_POOL", 2));
+    for (auto& queue_waiter : queue_waiters_) {
+      queue_waiter.next = &queue_waiter;
+      queue_waiter.prev = &queue_waiter;
+    }
+    run_handler_thread_pool_->Start();
   }
 
   ~Impl() {
@@ -583,25 +880,67 @@ class RunHandlerPool::Impl {
   }
 
   std::unique_ptr<RunHandler> Get(int64 step_id) LOCKS_EXCLUDED(mu_) {
-    mutex_lock l(mu_);
-    while (free_handlers_.empty()) {
-      one_handler_free_.wait(l);
-    }
-    // Remove the last entry from free_handlers_ and add to the end of
-    // sorted_active_handlers_.
-    auto* handler_impl = free_handlers_.back();
-    handler_impl->Reset(step_id);
-    // Sortedness isn't violated if we simply add at the end of the list, since
-    // handlers are expected to be obtained in increasing order of time.
-    sorted_active_handlers_.push_back(handler_impl);
-    DCHECK_LE(sorted_active_handlers_.size(), max_handlers_);
-    free_handlers_.pop_back();
+    std::unique_ptr<Eigen::MaxSizeVector<ThreadWorkSource*>>
+        thread_work_sources;
+    uint64 version;
+    int num_active_requests;
+    RunHandler::Impl* handler_impl;
+    {
+      mutex_lock l(mu_);
+      if (free_handlers_.empty()) {
+        profiler::TraceMe activity(
+            [&] {
+              return strings::StrCat("WaitingForHandler#step_id=", step_id,
+                                     "#");
+            },
+            profiler::TraceMeLevel::kInfo);
+        while (free_handlers_.empty()) {
+          one_handler_free_.wait(l);
+        }
+      }
+      // Remove the last entry from free_handlers_ and add to the end of
+      // sorted_active_handlers_.
+      handler_impl = free_handlers_.back();
+      handler_impl->Reset(step_id);
+      // Sortedness isn't violated if we simply add at the end of the list,
+      // since handlers are expected to be obtained in increasing order of time.
+      sorted_active_handlers_.push_back(handler_impl);
+      DCHECK_LE(sorted_active_handlers_.size(), max_handlers_);
+      free_handlers_.pop_back();
 
-    RecomputePoolStatsLocked();
+      num_active_requests = sorted_active_handlers_.size();
+      thread_work_sources =
+          std::unique_ptr<Eigen::MaxSizeVector<ThreadWorkSource*>>(
+              new Eigen::MaxSizeVector<ThreadWorkSource*>(num_active_requests));
+      thread_work_sources->resize(num_active_requests);
+      for (int i = 0; i < num_active_requests; ++i) {
+        (*thread_work_sources)[i] = sorted_active_handlers_[i]->tws();
+        (*thread_work_sources)[i]->SetRank(i);
+        int sub_thread_pool_id =
+            sub_thread_pool_end_request_percentage_.size() - 1;
+        for (int j = 0; j < sub_thread_pool_end_request_percentage_.size();
+             ++j) {
+          if (i < num_active_requests *
+                      sub_thread_pool_end_request_percentage_[j]) {
+            sub_thread_pool_id = j;
+            break;
+          }
+        }
+        (*thread_work_sources)[i]->SetWaiter(
+            &queue_waiters_[sub_thread_pool_id],
+            &waiters_mu_[sub_thread_pool_id]);
+      }
+      version = ++version_;
+    }
+    RecomputePoolStats(num_active_requests, version, *thread_work_sources);
     return WrapUnique<RunHandler>(new RunHandler(handler_impl));
   }
 
   void ReleaseHandler(RunHandler::Impl* handler) LOCKS_EXCLUDED(mu_) {
+    std::unique_ptr<Eigen::MaxSizeVector<ThreadWorkSource*>>
+        thread_work_sources;
+    uint64 version;
+    int num_active_requests;
     {
       mutex_lock l(mu_);
       DCHECK_GT(sorted_active_handlers_.size(), 0);
@@ -609,7 +948,7 @@ class RunHandlerPool::Impl {
       CHECK_EQ(handler->tws()->TaskQueueSize(true), 0);
       CHECK_EQ(handler->tws()->TaskQueueSize(false), 0);
 
-      uint64 now = tensorflow::Env::Default()->NowMicros();
+      uint64 now = tensorflow::EnvTime::NowMicros();
       double elapsed = (now - handler->start_time_us()) / 1000.0;
       time_hist_.Add(elapsed);
 
@@ -627,19 +966,50 @@ class RunHandlerPool::Impl {
       free_handlers_.push_back(handler);
       DCHECK_LE(free_handlers_.size(), max_handlers_);
 
-      RecomputePoolStatsLocked();
+      num_active_requests = sorted_active_handlers_.size();
+      thread_work_sources =
+          std::unique_ptr<Eigen::MaxSizeVector<ThreadWorkSource*>>(
+              new Eigen::MaxSizeVector<ThreadWorkSource*>(num_active_requests));
+      thread_work_sources->resize(num_active_requests);
+      for (int i = 0; i < num_active_requests; ++i) {
+        (*thread_work_sources)[i] = sorted_active_handlers_[i]->tws();
+        (*thread_work_sources)[i]->SetRank(i);
+        int sub_thread_pool_id =
+            sub_thread_pool_end_request_percentage_.size() - 1;
+        for (int j = 0; j < sub_thread_pool_end_request_percentage_.size();
+             ++j) {
+          if (i < num_active_requests *
+                      sub_thread_pool_end_request_percentage_[j]) {
+            sub_thread_pool_id = j;
+            break;
+          }
+        }
+        (*thread_work_sources)[i]->SetWaiter(
+            &queue_waiters_[sub_thread_pool_id],
+            &waiters_mu_[sub_thread_pool_id]);
+      }
+      version = ++version_;
+      LogInfo();
     }
+    RecomputePoolStats(num_active_requests, version, *thread_work_sources);
     one_handler_free_.notify_one();
   }
 
  private:
-  void RecomputePoolStatsLocked() EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  void RecomputePoolStats(
+      int num_active_requests, uint64 version,
+      const Eigen::MaxSizeVector<ThreadWorkSource*>& thread_work_sources);
+
+  void LogInfo() EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Maximum number of handlers pre-created during pool construction time. The
   // number has been chosen expecting each handler might at least want 1
   // inter-op thread for execution (during compute intensive workloads like
   // inference).
   const int max_handlers_;
+
+  Eigen::MaxSizeVector<mutex> waiters_mu_;
+  Eigen::MaxSizeVector<Waiter> queue_waiters_;
 
   std::unique_ptr<RunHandlerThreadPool> run_handler_thread_pool_;
   // Thread compatible part used only by lock under RunHandlerPool.
@@ -654,19 +1024,14 @@ class RunHandlerPool::Impl {
   int64 iterations_ GUARDED_BY(mu_);
   condition_variable one_handler_free_;
   mutex mu_;
+  int64 version_ GUARDED_BY(mu_);
+  const std::vector<double> sub_thread_pool_end_request_percentage_;
 };
 
-void RunHandlerPool::Impl::RecomputePoolStatsLocked() {
-  int num_active_requests = sorted_active_handlers_.size();
+void RunHandlerPool::Impl::RecomputePoolStats(
+    int num_active_requests, uint64 version,
+    const Eigen::MaxSizeVector<ThreadWorkSource*>& thread_work_sources) {
   if (num_active_requests == 0) return;
-  Eigen::MaxSizeVector<ThreadWorkSource*> thread_work_sources(
-      num_active_requests);
-
-  thread_work_sources.resize(num_active_requests);
-  for (int i = 0; i < num_active_requests; ++i) {
-    thread_work_sources[i] = sorted_active_handlers_[i]->tws();
-    thread_work_sources[i]->SetRank(i);
-  }
 
   int num_threads = run_handler_thread_pool()->NumThreads();
   int num_blocking_threads = run_handler_thread_pool()->NumBlockingThreads();
@@ -677,8 +1042,8 @@ void RunHandlerPool::Impl::RecomputePoolStatsLocked() {
   for (int i = 0; i < num_blocking_threads; ++i) {
     VLOG(2) << "Set work for tid=" << i
             << " with start_request_idx=" << request_idx_list[i];
-    run_handler_thread_pool()->SetThreadWorkSources(i, request_idx_list[i],
-                                                    thread_work_sources);
+    run_handler_thread_pool()->SetThreadWorkSources(
+        i, request_idx_list[i], version, thread_work_sources);
   }
 
   request_idx_list = ChooseRequestsWithExponentialDistribution(
@@ -687,10 +1052,14 @@ void RunHandlerPool::Impl::RecomputePoolStatsLocked() {
     VLOG(2) << "Set work for tid=" << (i + num_blocking_threads)
             << " with start_request_idx=" << request_idx_list[i];
     run_handler_thread_pool()->SetThreadWorkSources(
-        i + num_blocking_threads, request_idx_list[i], thread_work_sources);
+        i + num_blocking_threads, request_idx_list[i], version,
+        thread_work_sources);
   }
+}
 
+void RunHandlerPool::Impl::LogInfo() {
   if (iterations_++ % 50000 == 10 && VLOG_IS_ON(1)) {
+    int num_active_requests = sorted_active_handlers_.size();
     VLOG(1) << "Printing time histogram: " << time_hist_.ToString();
     VLOG(1) << "Active session runs: " << num_active_requests;
     uint64 now = tensorflow::Env::Default()->NowMicros();

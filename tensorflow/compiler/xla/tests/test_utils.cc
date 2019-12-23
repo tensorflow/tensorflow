@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/xla/tests/test_utils.h"
+
 #include <cmath>
 
 #include "absl/base/casts.h"
@@ -21,9 +23,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
-#include "tensorflow/compiler/xla/tests/test_utils.h"
 
 namespace xla {
 
@@ -216,6 +218,23 @@ void PopulateWithFloatingPointData<bfloat16>(Literal* literal,
   }
 }
 
+// uniform_int_distribution is not defined for 8-bit integers.
+// Use 'short' for those types.
+template <typename IntT>
+struct RngT {
+  using type = IntT;
+};
+
+template <>
+struct RngT<int8> {
+  using type = int16;
+};
+
+template <>
+struct RngT<uint8> {
+  using type = uint16;
+};
+
 template <typename IntT>
 void PopulateWithRandomIntegralData(Literal* literal, std::minstd_rand0* engine,
                                     bool no_duplicates) {
@@ -228,7 +247,7 @@ void PopulateWithRandomIntegralData(Literal* literal, std::minstd_rand0* engine,
     std::shuffle(literal->data<IntT>().begin(), literal->data<IntT>().end(),
                  *engine);
   } else {
-    std::uniform_int_distribution<IntT> generator(
+    std::uniform_int_distribution<typename RngT<IntT>::type> generator(
         std::numeric_limits<IntT>::lowest(), std::numeric_limits<IntT>::max());
     for (IntT& value : literal->data<IntT>()) {
       value = generator(*engine);
@@ -339,7 +358,7 @@ void PopulateWithRandomIntegralDataWithBounds(Literal* literal,
   CHECK(engine != nullptr);
   CHECK_EQ(literal->shape().element_type(),
            primitive_util::NativeToPrimitiveType<IntT>());
-  std::uniform_int_distribution<IntT> generator(min, max);
+  std::uniform_int_distribution<typename RngT<IntT>::type> generator(min, max);
   for (IntT& value : literal->data<IntT>()) {
     value = generator(*engine);
   }
@@ -349,13 +368,14 @@ void PopulateWithRandomIntegralDataWithBounds(Literal* literal,
 // range [min, max]. Currently this works only for INT types.
 StatusOr<Literal> MakeFakeLiteralInternalWithBounds(const Shape& shape,
                                                     std::minstd_rand0* engine,
-                                                    int64 min, int64 max) {
+                                                    int64 min, int64 max,
+                                                    bool is_sorted) {
   if (shape.IsTuple()) {
     std::vector<Literal> elements;
     for (const Shape& element_shape : shape.tuple_shapes()) {
-      TF_ASSIGN_OR_RETURN(
-          Literal element,
-          MakeFakeLiteralInternalWithBounds(element_shape, engine, min, max));
+      TF_ASSIGN_OR_RETURN(Literal element,
+                          MakeFakeLiteralInternalWithBounds(
+                              element_shape, engine, min, max, is_sorted));
       elements.push_back(std::move(element));
     }
     return LiteralUtil::MakeTupleOwned(std::move(elements));
@@ -373,34 +393,58 @@ StatusOr<Literal> MakeFakeLiteralInternalWithBounds(const Shape& shape,
     case S8:
       PopulateWithRandomIntegralDataWithBounds<int8>(
           &literal, engine, static_cast<int8>(min), static_cast<int8>(max));
+      if (is_sorted) {
+        std::sort(literal.data<int8>().begin(), literal.data<int8>().end());
+      }
       break;
     case U8:
       PopulateWithRandomIntegralDataWithBounds<uint8>(
           &literal, engine, static_cast<uint8>(min), static_cast<uint8>(max));
+      if (is_sorted) {
+        std::sort(literal.data<uint8>().begin(), literal.data<uint8>().end());
+      }
       break;
     case S16:
       PopulateWithRandomIntegralDataWithBounds<int16>(
           &literal, engine, static_cast<int16>(min), static_cast<int16>(max));
+      if (is_sorted) {
+        std::sort(literal.data<int16>().begin(), literal.data<int16>().end());
+      }
       break;
     case U16:
       PopulateWithRandomIntegralDataWithBounds<uint16>(
           &literal, engine, static_cast<uint16>(min), static_cast<uint16>(max));
+      if (is_sorted) {
+        std::sort(literal.data<uint16>().begin(), literal.data<uint16>().end());
+      }
       break;
     case S32:
       PopulateWithRandomIntegralDataWithBounds<int32>(
           &literal, engine, static_cast<int32>(min), static_cast<int32>(max));
+      if (is_sorted) {
+        std::sort(literal.data<int32>().begin(), literal.data<int32>().end());
+      }
       break;
     case U32:
       PopulateWithRandomIntegralDataWithBounds<uint32>(
           &literal, engine, static_cast<uint32>(min), static_cast<uint32>(max));
+      if (is_sorted) {
+        std::sort(literal.data<uint32>().begin(), literal.data<uint32>().end());
+      }
       break;
     case S64:
       PopulateWithRandomIntegralDataWithBounds<int64>(
           &literal, engine, static_cast<int64>(min), static_cast<int64>(max));
+      if (is_sorted) {
+        std::sort(literal.data<int64>().begin(), literal.data<int64>().end());
+      }
       break;
     case U64:
       PopulateWithRandomIntegralDataWithBounds<uint64>(
           &literal, engine, static_cast<uint64>(min), static_cast<uint64>(max));
+      if (is_sorted) {
+        std::sort(literal.data<uint64>().begin(), literal.data<uint64>().end());
+      }
       break;
     default:
       return Unimplemented(
@@ -510,6 +554,7 @@ StatusOr<Literal> CreateLiteralForConstrainedUses(
   int64 index_bound = INT64_MAX;
   bool no_duplicates = false;
   bool needs_constant = false;
+  bool needs_sorted_indices = false;
   ConstantType constant_type = ConstantType::kUnknown;
   for (HloInstruction* use : constrained_uses) {
     switch (use->opcode()) {
@@ -547,6 +592,13 @@ StatusOr<Literal> CreateLiteralForConstrainedUses(
                 std::min(index_bound, operand_shape.dimensions(dim_in_operand));
           }
         }
+        if (use->opcode() == HloOpcode::kScatter) {
+          needs_sorted_indices |=
+              Cast<const HloScatterInstruction>(use)->indices_are_sorted();
+        } else {
+          needs_sorted_indices |=
+              Cast<const HloGatherInstruction>(use)->indices_are_sorted();
+        }
         break;
       }
       case HloOpcode::kReduce:
@@ -579,7 +631,7 @@ StatusOr<Literal> CreateLiteralForConstrainedUses(
   }
   if (index_bound != INT64_MAX) {
     return MakeFakeLiteralInternalWithBounds(param.shape(), engine, -1,
-                                             index_bound);
+                                             index_bound, needs_sorted_indices);
   } else if (needs_constant) {
     switch (constant_type) {
       case ConstantType::kZero:

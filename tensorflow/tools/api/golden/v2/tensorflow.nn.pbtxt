@@ -12,10 +12,6 @@ tf_module {
     name: "RNNCellResidualWrapper"
     mtype: "<type \'type\'>"
   }
-  member {
-    name: "swish"
-    mtype: "<class \'tensorflow.python.framework.function._OverloadedFunction\'>"
-  }
   member_method {
     name: "all_candidate_sampler"
     argspec: "args=[\'true_classes\', \'num_true\', \'num_sampled\', \'unique\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
@@ -311,6 +307,10 @@ tf_module {
   member_method {
     name: "sufficient_statistics"
     argspec: "args=[\'x\', \'axes\', \'shift\', \'keepdims\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "swish"
+    argspec: "args=[\'features\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "tanh"

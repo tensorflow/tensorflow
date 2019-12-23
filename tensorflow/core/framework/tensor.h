@@ -50,7 +50,6 @@ class Var;
 
 namespace batch_util {
 Status CopyElementToSlice(Tensor element, Tensor* parent, int64 index);
-Status MaybeMoveSliceToElement(Tensor* parent, Tensor* element, int64 index);
 }  // namespace batch_util
 
 /// @ingroup core
@@ -78,6 +77,8 @@ class TensorBuffer : public core::RefCounted {
   /// \brief Fills metadata about the allocation into the proto.
   virtual void FillAllocationDescription(
       AllocationDescription* proto) const = 0;
+
+  virtual bool GetAllocatedBytes(size_t* out_bytes) const;
 
   /// \brief Helper method to reinterpret the buffer as an array of `T`.
   template <typename T>
@@ -339,7 +340,7 @@ class Tensor {
   /// methods that have alignment requirement (e.g., `flat()`, `tensor()`).
   ///
   /// REQUIRES: `dims()` >= 1
-  /// REQUIRES: `0 <= dim0_start < dim_size(0)`
+  /// REQUIRES: `0 <= index < dim_size(0)`
   Tensor SubSlice(int64 index) const;
 
   /// \brief Parse `other` and construct the tensor.
@@ -631,10 +632,11 @@ class Tensor {
     TF_CHECK_OK(BitcastFrom(other, dtype, shape));
   }
 
- private:
   // Returns true if the refcount on buf_ and any possible underlying root
   // buffer is one.
   bool RefCountIsOne() const;
+
+ private:
   void CheckType(DataType expected_dtype) const;
   void CheckTypeAndIsAligned(DataType expected_dtype) const;
   void CheckIsAlignedAndSingleElement() const;
@@ -651,29 +653,16 @@ class Tensor {
 
   friend class DMAHelper;             // For access to buf_.
   friend class TensorCApi;            // For access to buf_.
+  friend class TensorCord;            // For access to buf_.
   friend class TensorReference;       // For access to buf_.
   friend class VariableOp;            // For access to set_shape.
   friend class AutoReloadVariableOp;  // For access to set_shape.
   friend class TensorTestHelper;      // For access to set_shape.
   friend class CastOpBase;            // For access to set_dtype.
-  friend class OpKernelContext;       // For access to RefCountIsOne().
   friend class ScopedAllocator;       // For access to buf_.
-  friend class XlaTensor;             // For access to RefCountIsOne().
-  template <typename Device, typename T>
-  friend class AssignVariableOp;  // For access to RefCountIsOne().
-  template <typename Device, typename T>
-  friend Status PrepareToUpdateVariable(
-      OpKernelContext* ctx, Tensor* tensor,
-      bool copy_on_read_mode);  // For access to RefCountIsOne().
-  template <typename Device, typename T>
-  friend Status EnsureSparseVariableAccess(
-      OpKernelContext* ctx, Var* var);  // For access to RefCountIsOne().
   friend Status batch_util::CopyElementToSlice(
       Tensor element, Tensor* parent,
-      int64 index);  // For access to RefCountIsOne().
-  friend Status batch_util::MaybeMoveSliceToElement(
-      Tensor* parent, Tensor* element,
-      int64 index);  // For access to RefCountIsOne().
+      int64 index);  // For access to base<T>().
 
   bool CanUseDMA() const;
 
@@ -869,11 +858,28 @@ typename TTypes<T>::Scalar Tensor::scalar() {
   return typename TTypes<T>::Scalar(base<T>());
 }
 
+#ifdef USE_TSTRING
+template <>
+inline typename TTypes<std::string>::Scalar Tensor::scalar<std::string>() {
+  LOG(FATAL)
+      << "std::string is no longer a scalar type, use tensorflow::tstring";
+}
+#endif  // USE_TSTRING
+
 template <typename T>
 typename TTypes<T>::ConstScalar Tensor::scalar() const {
   CheckIsAlignedAndSingleElement();
   return typename TTypes<T>::ConstScalar(base<T>());
 }
+
+#ifdef USE_TSTRING
+template <>
+inline typename TTypes<std::string>::ConstScalar Tensor::scalar<std::string>()
+    const {
+  LOG(FATAL)
+      << "std::string is no longer a scalar type, use tensorflow::tstring";
+}
+#endif  // USE_TSTRING
 
 template <typename T, size_t NDIMS>
 typename TTypes<T, NDIMS>::Tensor Tensor::flat_inner_dims() {
@@ -923,6 +929,7 @@ inline Tensor::Tensor(Tensor&& other)
 class Tensor::HostScalarTensorBufferBase : public TensorBuffer {
  public:
   using TensorBuffer::TensorBuffer;
+  bool GetAllocatedBytes(size_t* out_bytes) const final;
   void FillAllocationDescription(AllocationDescription* proto) const final;
 };
 
@@ -933,7 +940,8 @@ template <typename T>
 struct Tensor::ValueAndTensorBuffer {
   class HostScalarTensorBuffer : public Tensor::HostScalarTensorBufferBase {
    public:
-    HostScalarTensorBuffer(void* data) : HostScalarTensorBufferBase(data) {}
+    explicit HostScalarTensorBuffer(void* data)
+        : HostScalarTensorBufferBase(data) {}
     size_t size() const final { return sizeof(T); }
     TensorBuffer* root_buffer() final { return this; }
 

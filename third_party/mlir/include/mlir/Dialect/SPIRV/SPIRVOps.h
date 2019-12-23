@@ -26,6 +26,8 @@
 #include "mlir/IR/Function.h"
 
 namespace mlir {
+class OpBuilder;
+
 namespace spirv {
 
 #define GET_OP_CLASSES
@@ -39,7 +41,7 @@ namespace spirv {
 ///
 /// Get the function that can be used to symbolize an enum value.
 /// template <typename EnumClass>
-/// llvm::Optional<EnumClass> (*)(StringRef) symbolizeEnum();
+/// Optional<EnumClass> (*)(StringRef) symbolizeEnum();
 #include "mlir/Dialect/SPIRV/SPIRVOpUtils.inc"
 
 } // end namespace spirv

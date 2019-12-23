@@ -22,16 +22,18 @@
 
 #include "mlir/Transforms/FoldUtils.h"
 
+#include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Matchers.h"
 #include "mlir/IR/Operation.h"
-#include "mlir/StandardOps/Ops.h"
 
 using namespace mlir;
 
 /// Given an operation, find the parent region that folded constants should be
 /// inserted into.
-static Region *getInsertionRegion(Operation *op) {
+static Region *getInsertionRegion(
+    DialectInterfaceCollection<OpFolderDialectInterface> &interfaces,
+    Operation *op) {
   while (Region *region = op->getParentRegion()) {
     // Insert in this region for any of the following scenarios:
     //  * The parent is unregistered, or is known to be isolated from above.
@@ -40,6 +42,12 @@ static Region *getInsertionRegion(Operation *op) {
     if (!parentOp->isRegistered() || parentOp->isKnownIsolatedFromAbove() ||
         !parentOp->getBlock())
       return region;
+
+    // Otherwise, check if this region is a desired insertion region.
+    auto *interface = interfaces.getInterfaceFor(parentOp);
+    if (LLVM_UNLIKELY(interface && interface->shouldMaterializeInto(region)))
+      return region;
+
     // Traverse up the parent looking for an insertion region.
     op = parentOp;
   }
@@ -74,16 +82,15 @@ static Operation *materializeConstant(Dialect *dialect, OpBuilder &builder,
 //===----------------------------------------------------------------------===//
 
 LogicalResult OperationFolder::tryToFold(
-    Operation *op,
-    llvm::function_ref<void(Operation *)> processGeneratedConstants,
-    llvm::function_ref<void(Operation *)> preReplaceAction) {
+    Operation *op, function_ref<void(Operation *)> processGeneratedConstants,
+    function_ref<void(Operation *)> preReplaceAction) {
   // If this is a unique'd constant, return failure as we know that it has
   // already been folded.
   if (referencedDialects.count(op))
     return failure();
 
   // Try to fold the operation.
-  SmallVector<Value *, 8> results;
+  SmallVector<ValuePtr, 8> results;
   if (failed(tryToFold(op, results, processGeneratedConstants)))
     return failure();
 
@@ -119,7 +126,7 @@ void OperationFolder::notifyRemoval(Operation *op) {
   assert(constValue);
 
   // Get the constant map that this operation was uniqued in.
-  auto &uniquedConstants = foldScopes[getInsertionRegion(op)];
+  auto &uniquedConstants = foldScopes[getInsertionRegion(interfaces, op)];
 
   // Erase all of the references to this operation.
   auto type = op->getResult(0)->getType();
@@ -131,8 +138,8 @@ void OperationFolder::notifyRemoval(Operation *op) {
 /// Tries to perform folding on the given `op`. If successful, populates
 /// `results` with the results of the folding.
 LogicalResult OperationFolder::tryToFold(
-    Operation *op, SmallVectorImpl<Value *> &results,
-    llvm::function_ref<void(Operation *)> processGeneratedConstants) {
+    Operation *op, SmallVectorImpl<ValuePtr> &results,
+    function_ref<void(Operation *)> processGeneratedConstants) {
   SmallVector<Attribute, 8> operandConstants;
   SmallVector<OpFoldResult, 8> foldResults;
 
@@ -161,12 +168,12 @@ LogicalResult OperationFolder::tryToFold(
 
   // Create a builder to insert new operations into the entry block of the
   // insertion region.
-  auto *insertionRegion = getInsertionRegion(op);
-  auto &entry = insertionRegion->front();
+  auto *insertRegion = getInsertionRegion(interfaces, op);
+  auto &entry = insertRegion->front();
   OpBuilder builder(&entry, entry.begin());
 
   // Get the constant map for the insertion region of this operation.
-  auto &uniquedConstants = foldScopes[insertionRegion];
+  auto &uniquedConstants = foldScopes[insertRegion];
 
   // Create the result constants and replace the results.
   auto *dialect = op->getDialect();
@@ -174,13 +181,13 @@ LogicalResult OperationFolder::tryToFold(
     assert(!foldResults[i].isNull() && "expected valid OpFoldResult");
 
     // Check if the result was an SSA value.
-    if (auto *repl = foldResults[i].dyn_cast<Value *>()) {
+    if (auto repl = foldResults[i].dyn_cast<ValuePtr>()) {
       results.emplace_back(repl);
       continue;
     }
 
     // Check to see if there is a canonicalized version of this constant.
-    auto *res = op->getResult(i);
+    auto res = op->getResult(i);
     Attribute attrRepl = foldResults[i].get<Attribute>();
     if (auto *constOp =
             tryGetOrCreateConstant(uniquedConstants, dialect, builder, attrRepl,

@@ -58,14 +58,12 @@ def range(starts, limits=None, deltas=1, dtype=None,
 
   Examples:
 
-  ```python
-  >>> ragged.range([3, 5, 2]).eval().tolist()
+  >>> tf.ragged.range([3, 5, 2]).to_list()
   [[0, 1, 2], [0, 1, 2, 3, 4], [0, 1]]
-  >>> ragged.range([0, 5, 8], [3, 3, 12]).eval().tolist()
+  >>> tf.ragged.range([0, 5, 8], [3, 3, 12]).to_list()
   [[0, 1, 2], [], [8, 9, 10, 11]]
-  >>> ragged.range([0, 5, 8], [3, 3, 12], 2).eval().tolist()
+  >>> tf.ragged.range([0, 5, 8], [3, 3, 12], 2).to_list()
   [[0, 2], [], [8, 10]]
-  ```
 
   The input tensors `starts`, `limits`, and `deltas` may be scalars or vectors.
   The vector inputs must all have the same size.  Scalar inputs are broadcast
@@ -371,56 +369,56 @@ Computes the %(combination)s of elements across dimensions of a `RaggedTensor`.
   Raises:
     ValueError: If `axis` contains a `Tensor` whose value is not constant.
   ####Example:
-    ```python%(example)s    ```
+    %(example)s
 """
 _RAGGED_REDUCE_SUM_EXAMPLE = """
-    >>> rt = ragged.constant([[3, 1, 4], [1, 5], [9], [2, 6]])
-    >>> ragged.reduce_sum(rt, axis=0).eval().tolist()
-    [15, 12, 4]  # = [3+1+9+2, 1+5+6, 4]
-    >>> ragged.reduce_sum(rt, axis=1).eval().tolist()
-    [8, 6, 9, 8]  # = [3+1+4, 1+5, 9, 2+6]
+    >>> rt = tf.ragged.constant([[3, 1, 4], [1, 5], [9], [2, 6]])
+    >>> tf.reduce_sum(rt, axis=0).numpy()  # = [3+1+9+2, 1+5+6, 4]
+    array([15, 12, 4], dtype=int32)
+    >>> tf.reduce_sum(rt, axis=1).numpy()  # = [3+1+4, 1+5, 9, 2+6]
+    array([8, 6, 9, 8], dtype=int32)
 """
 _RAGGED_REDUCE_PROD_EXAMPLE = """
-    >>> rt = ragged.constant([[3, 1, 4], [1, 5], [9], [2, 6]])
-    >>> ragged.reduce_prod(rt, axis=0).eval().tolist()
-    [54, 30, 4]  # = [3*1*9*2, 1*5*6, 4]
-    >>> ragged.reduce_prod(rt, axis=1).eval().tolist()
-    [12, 5, 9, 12]  # = [3*1*4, 1*5, 9, 2*6]
+    >>> rt = tf.ragged.constant([[3, 1, 4], [1, 5], [9], [2, 6]])
+    >>> tf.reduce_prod(rt, axis=0).numpy()  # = [3*1*9*2, 1*5*6, 4]
+    array([54, 30, 4], dtype=int32)
+    >>> tf.reduce_prod(rt, axis=1).numpy()  # = [3*1*4, 1*5, 9, 2*6]
+    array([12, 5, 9, 12], dtype=int32)
 """
 _RAGGED_REDUCE_MIN_EXAMPLE = """
-    >>> rt = ragged.constant([[3, 1, 4], [1, 5], [9], [2, 6]])
-    >>> ragged.reduce_min(rt, axis=0).eval().tolist()
-    [1, 1, 4]  # = [min(3, 1, 9, 2), min(1, 5, 6), 4]
-    >>> ragged.reduce_min(rt, axis=1).eval().tolist()
-    [1, 1, 9, 2]  # = [min(3, 1, 4), min(1, 5), 9, min(2, 6)]
+    >>> rt = tf.ragged.constant([[3, 1, 4], [1, 5], [9], [2, 6]])
+    >>> tf.reduce_min(rt, axis=0).numpy()
+    array([1, 1, 4], dtype=int32)
+    >>> tf.reduce_min(rt, axis=1).numpy()
+    array([1, 1, 9, 2], dtype=int32)
 """
 _RAGGED_REDUCE_MAX_EXAMPLE = """
-    >>> rt = ragged.constant([[3, 1, 4], [1, 5], [9], [2, 6]])
-    >>> ragged.reduce_max(rt, axis=0).eval().tolist()
-    [9, 6, 4]  # = [max(3, 1, 9, 2), max(1, 5, 6), 4]
-    >>> ragged.reduce_max(rt, axis=1).eval().tolist()
-    [4, 5, 9, 6]  # = [max(3, 1, 4), max(1, 5), 9, max(2, 6)]
+    >>> rt = tf.ragged.constant([[3, 1, 4], [1, 5], [9], [2, 6]])
+    >>> tf.reduce_max(rt, axis=0).numpy()
+    array([9, 6, 4], dtype=int32)
+    >>> tf.reduce_max(rt, axis=1).numpy()
+    array([4, 5, 9, 6], dtype=int32)
 """
 _RAGGED_REDUCE_MEAN_EXAMPLE = """
-    >>> rt = ragged.constant([[3, 1, 4], [1, 5], [9], [2, 6]])
-    >>> ragged.reduce_mean(rt, axis=0).eval().tolist()
-    [3.75, 4, 4]  # = [mean(3, 1, 9, 2), mean(1, 5, 6), 4]
-    >>> ragged.reduce_mean(rt, axis=1).eval().tolist()
-    [2.66666, 3, 9, 4]  # = [mean(3, 1, 4), mean(1, 5), 9, mean(2, 6)]
+    >>> rt = tf.ragged.constant([[3, 1, 4], [1, 5], [9], [2, 6]])
+    >>> tf.reduce_mean(rt, axis=0).numpy()
+    array([3.75, 4.  , 4. ])
+    >>> tf.reduce_mean(rt, axis=1).numpy()
+    array([2.66666667, 3.  , 9.  , 4.  ])
 """
 _RAGGED_REDUCE_ALL_EXAMPLE = """
-    >>> rt = ragged.constant([[True, True], [True, True, False, True], [False, True]])
-    >>> ragged.reduce_all(rt, axis=0).eval().tolist()
-    [False, True, False, True]
-    >>> ragged.reduce_all(rt, axis=1).eval().tolist()
-    [True, False, False]
+    >>> rt = tf.ragged.constant([[True, True], [True, True, False, True], [False, True]])
+    >>> tf.reduce_all(rt, axis=0).numpy()
+    array([False,  True, False,  True])
+    >>> tf.reduce_all(rt, axis=1).numpy()
+    array([ True, False, False])
 """
 _RAGGED_REDUCE_ANY_EXAMPLE = """
-    >>> rt = ragged.constant([[True, True], [True, True, False, True], [False, True]])
-    >>> ragged.reduce_any(rt, axis=0).eval().tolist()
-    [True, True, False, True]
-    >>> ragged.reduce_any(rt, axis=1).eval().tolist()
-    [True, True, True]
+    >>> rt = tf.ragged.constant([[True, True], [True, True, False, True], [False, True]])
+    >>> tf.reduce_any(rt, axis=0).numpy()
+    array([ True,  True, False,  True])
+    >>> tf.reduce_any(rt, axis=1).numpy()
+    array([ True,  True,  True])
 """
 
 

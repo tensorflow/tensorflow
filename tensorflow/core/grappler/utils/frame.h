@@ -28,7 +28,7 @@ namespace grappler {
 // any) the given node can be running in. It's constructed from an immutable
 // GraphView, and any modification of the underlying graph might invalidate it.
 //
-// All execution frames assigned an unique integer id, but they do not have any
+// All execution frames assigned a unique integer id, but they do not have any
 // meaning whatsoever, it's just a sequence number.
 //
 // See the paper "Dynamic Control Flow in Large-Scale Machine Learning" for

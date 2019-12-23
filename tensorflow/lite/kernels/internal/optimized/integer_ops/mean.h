@@ -23,18 +23,10 @@ limitations under the License.
 namespace tflite {
 namespace optimized_integer_ops {
 
-#ifdef USE_NEON
-
-using optimized_ops::DivideSumForMeanImpl;
-using optimized_ops::RoundToNearest;
-
-#endif  // USE_NEON
-
 inline void MeanImpl(const tflite::MeanParams& op_params,
                      const RuntimeShape& input_shape, const int8_t* input_data,
-                     int32 input_zero_point, float input_scale,
+                     int32 multiplier, int32 shift, int32 bias,
                      const RuntimeShape& output_shape, int8_t* output_data,
-                     int32 output_zero_point, float output_scale,
                      int start_depth, int end_depth) {
   gemmlowp::ScopedProfilingLabel label("Mean4D/Int8/MeanImpl");
 
@@ -45,90 +37,105 @@ inline void MeanImpl(const tflite::MeanParams& op_params,
   const int output_width = output_shape.Dims(2);
   const int input_height = input_shape.Dims(1);
   const int input_width = input_shape.Dims(2);
-  const float num_elements_in_axis = input_width * input_height;
 
-  TFLITE_DCHECK_EQ(op_params.axis_count, 2);
-  TFLITE_DCHECK((op_params.axis[0] == 1 && op_params.axis[1] == 2) ||
-                (op_params.axis[0] == 2 && op_params.axis[1] == 1));
-  TFLITE_DCHECK_EQ(output_height, 1);
-  TFLITE_DCHECK_EQ(output_width, 1);
+  TFLITE_CHECK_EQ(op_params.axis_count, 2);
+  TFLITE_CHECK((op_params.axis[0] == 1 && op_params.axis[1] == 2) ||
+               (op_params.axis[0] == 2 && op_params.axis[1] == 1));
+  TFLITE_CHECK_EQ(output_height, 1);
+  TFLITE_CHECK_EQ(output_width, 1);
 
-  const bool ordinary_mean =
-      (input_zero_point == output_zero_point && input_scale == output_scale);
-  float scale = 0.0f, bias = 0.0f;
-  if (!ordinary_mean) {
-    scale = input_scale / output_scale;
-    bias = -input_zero_point * scale + 0.5;
-  }
+  constexpr static int32_t kMinValue = std::numeric_limits<int8_t>::min();
+  constexpr static int32_t kMaxValue = std::numeric_limits<int8_t>::max();
 
 #ifdef USE_NEON
-  const float32x4_t num_elements_dup = vdupq_n_f32(num_elements_in_axis);
-  // This is only an approximation as NEON does not offer division instruction.
-  const float32x4_t scale_dup = vdupq_n_f32(scale);
-  const float32x4_t num_elements_reverse = vrecpeq_f32(num_elements_dup);
-  float32x4_t zero_point_with_bias_dup = vdupq_n_f32(output_zero_point + bias);
+  const int32x4_t bias_dup = vdupq_n_s32(bias);
+  const int32x4_t min_dup = vdupq_n_s32(kMinValue);
+  const int32x4_t max_dup = vdupq_n_s32(kMaxValue);
 #endif  // USE_NEON
-
   for (int out_b = 0; out_b < output_batch; ++out_b) {
     int out_d = start_depth;
 #ifdef USE_NEON
 
-    for (; out_d < end_depth - 8; out_d += 8) {
-      float32x4_t temp_sum_1 = vdupq_n_f32(0);
-      float32x4_t temp_sum_2 = vdupq_n_f32(0);
+    for (; out_d <= end_depth - 16; out_d += 16) {
+      int32x4x4_t temp_sum;
+      temp_sum.val[0] = vdupq_n_s32(0);
+      temp_sum.val[1] = vdupq_n_s32(0);
+      temp_sum.val[2] = vdupq_n_s32(0);
+      temp_sum.val[3] = vdupq_n_s32(0);
       for (int in_h = 0; in_h < input_height; ++in_h) {
         for (int in_w = 0; in_w < input_width; ++in_w) {
           const int8_t* input_data_ptr =
               input_data + Offset(input_shape, out_b, in_h, in_w, out_d);
-          int8x8_t input_data_val = vld1_s8(input_data_ptr);
-          int16x8_t input_data_val_shift = vmovl_s8(input_data_val);
-          float32x4_t input_float_1 =
-              vcvtq_f32_s32(vmovl_s16(vget_high_s16(input_data_val_shift)));
-          float32x4_t input_float_2 =
-              vcvtq_f32_s32(vmovl_s16(vget_low_s16(input_data_val_shift)));
-          temp_sum_1 = vaddq_f32(temp_sum_1, input_float_1);
-          temp_sum_2 = vaddq_f32(temp_sum_2, input_float_2);
+          int8x16_t input_data_val = vld1q_s8(input_data_ptr);
+
+          int16x8_t input_data_low_shift =
+              vmovl_s8(vget_low_s8(input_data_val));
+          int16x8_t input_data_high_shift =
+              vmovl_s8(vget_high_s8(input_data_val));
+
+          int32x4_t input_low_low =
+              vmovl_s16(vget_low_s16(input_data_low_shift));
+          int32x4_t input_high_low =
+              vmovl_s16(vget_high_s16(input_data_low_shift));
+          int32x4_t input_low_high =
+              vmovl_s16(vget_low_s16(input_data_high_shift));
+          int32x4_t input_high_high =
+              vmovl_s16(vget_high_s16(input_data_high_shift));
+
+          temp_sum.val[0] = vaddq_s32(temp_sum.val[0], input_low_low);
+          temp_sum.val[1] = vaddq_s32(temp_sum.val[1], input_high_low);
+          temp_sum.val[2] = vaddq_s32(temp_sum.val[2], input_low_high);
+          temp_sum.val[3] = vaddq_s32(temp_sum.val[3], input_high_high);
         }
       }
 
-      const float32x4_t mean_1 =
-          DivideSumForMeanImpl(temp_sum_1, num_elements_reverse, ordinary_mean,
-                               scale_dup, zero_point_with_bias_dup);
-      const float32x4_t mean_2 =
-          DivideSumForMeanImpl(temp_sum_2, num_elements_reverse, ordinary_mean,
-                               scale_dup, zero_point_with_bias_dup);
+      temp_sum = optimized_ops::MultiplyByQuantizedMultiplier4Rows(
+          temp_sum, multiplier, shift);
 
-      int32x4_t casted_mean_1 = RoundToNearest(mean_1);
-      int16x4_t narrow_range_mean_1 = vmovn_s32(casted_mean_1);
-      int32x4_t casted_mean_2 = RoundToNearest(mean_2);
-      int16x4_t narrow_range_mean_2 = vmovn_s32(casted_mean_2);
-      int16x8_t combined_mean =
-          vcombine_u16(narrow_range_mean_2, narrow_range_mean_1);
-      int8x8_t narrowed_combined_mean = vmovn_s16(combined_mean);
+      temp_sum.val[0] = vaddq_s32(temp_sum.val[0], bias_dup);
+      temp_sum.val[1] = vaddq_s32(temp_sum.val[1], bias_dup);
+      temp_sum.val[2] = vaddq_s32(temp_sum.val[2], bias_dup);
+      temp_sum.val[3] = vaddq_s32(temp_sum.val[3], bias_dup);
+
+      temp_sum.val[0] = vminq_s32(vmaxq_s32(temp_sum.val[0], min_dup), max_dup);
+      temp_sum.val[1] = vminq_s32(vmaxq_s32(temp_sum.val[1], min_dup), max_dup);
+      temp_sum.val[2] = vminq_s32(vmaxq_s32(temp_sum.val[2], min_dup), max_dup);
+      temp_sum.val[3] = vminq_s32(vmaxq_s32(temp_sum.val[3], min_dup), max_dup);
+
+      int16x4_t narrowed_low_low = vmovn_s32(temp_sum.val[0]);
+      int16x4_t narrowed_high_low = vmovn_s32(temp_sum.val[1]);
+      int16x4_t narrowed_low_high = vmovn_s32(temp_sum.val[2]);
+      int16x4_t narrowed_high_high = vmovn_s32(temp_sum.val[3]);
+
+      int16x8_t combined_low =
+          vcombine_s16(narrowed_low_low, narrowed_high_low);
+      int16x8_t combined_high =
+          vcombine_s16(narrowed_low_high, narrowed_high_high);
+
+      int8x8_t narrowed_low = vmovn_s16(combined_low);
+      int8x8_t narrowed_high = vmovn_s16(combined_high);
+
+      int8x16_t combined_output = vcombine_s8(narrowed_low, narrowed_high);
+
       int8_t* output_data_ptr =
           output_data + Offset(output_shape, out_b, 0, 0, out_d);
-      vst1_s8(output_data_ptr, narrowed_combined_mean);
+      vst1q_s8(output_data_ptr, combined_output);
     }
 #endif  // USE_NEON
 
     for (; out_d < end_depth; ++out_d) {
-      float temp_value = 0;
+      int acc = 0;
       for (int in_h = 0; in_h < input_height; ++in_h) {
         for (int in_w = 0; in_w < input_width; ++in_w) {
-          temp_value +=
-              input_data[Offset(input_shape, out_b, in_h, in_w, out_d)];
+          acc += input_data[Offset(input_shape, out_b, in_h, in_w, out_d)];
         }
       }
 
-      temp_value = temp_value / num_elements_in_axis;
-      if (ordinary_mean) {
-        output_data[Offset(output_shape, out_b, 0, 0, out_d)] =
-            static_cast<int8_t>(round(temp_value));
-      } else {
-        output_data[Offset(output_shape, out_b, 0, 0, out_d)] =
-            static_cast<int8_t>(round(temp_value * scale + bias)) +
-            output_zero_point;
-      }
+      acc = MultiplyByQuantizedMultiplier(acc, multiplier, shift);
+      acc += bias;
+      acc = std::min(std::max(acc, kMinValue), kMaxValue);
+      output_data[Offset(output_shape, out_b, 0, 0, out_d)] =
+          static_cast<int8_t>(acc);
     }
   }
 }
@@ -136,38 +143,34 @@ inline void MeanImpl(const tflite::MeanParams& op_params,
 struct MeanWorkerTask : cpu_backend_threadpool::Task {
   MeanWorkerTask(const tflite::MeanParams& op_params,
                  const RuntimeShape& input_shape, const int8_t* input_data,
-                 int32 input_zero_point, float input_scale,
+                 int32 multiplier, int32 shift, int32 bias,
                  const RuntimeShape& output_shape, int8_t* output_data,
-                 int32 output_zero_point, float output_scale, int start_height,
-                 int end_height)
+                 int start_height, int end_height)
       : op_params(op_params),
         input_shape(input_shape),
         input_data(input_data),
-        input_zero_point(input_zero_point),
-        input_scale(input_scale),
+        multiplier(multiplier),
+        shift(shift),
+        bias(bias),
         output_shape(output_shape),
         output_data(output_data),
-        output_zero_point(output_zero_point),
-        output_scale(output_scale),
         start_height(start_height),
         end_height(end_height) {}
 
   void Run() override {
-    MeanImpl(op_params, input_shape, input_data, input_zero_point, input_scale,
-             output_shape, output_data, output_zero_point, output_scale,
-             start_height, end_height);
+    MeanImpl(op_params, input_shape, input_data, multiplier, shift, bias,
+             output_shape, output_data, start_height, end_height);
   }
 
  private:
   const tflite::MeanParams& op_params;
   const RuntimeShape& input_shape;
   const int8_t* input_data;
-  int32 input_zero_point;
-  float input_scale;
+  int32 multiplier;
+  int32 shift;
+  int32 bias;
   const RuntimeShape& output_shape;
   int8_t* output_data;
-  int32 output_zero_point;
-  float output_scale;
   int start_height;
   int end_height;
 };
@@ -191,11 +194,23 @@ inline void Mean(const tflite::MeanParams& op_params,
   const int output_width = output_shape.Dims(2);
   const int output_depth = output_shape.Dims(3);
 
-  TFLITE_DCHECK_EQ(op_params.axis_count, 2);
-  TFLITE_DCHECK((op_params.axis[0] == 1 && op_params.axis[1] == 2) ||
-                (op_params.axis[0] == 2 && op_params.axis[1] == 1));
-  TFLITE_DCHECK_EQ(output_height, 1);
-  TFLITE_DCHECK_EQ(output_width, 1);
+  TFLITE_CHECK_EQ(op_params.axis_count, 2);
+  TFLITE_CHECK((op_params.axis[0] == 1 && op_params.axis[1] == 2) ||
+               (op_params.axis[0] == 2 && op_params.axis[1] == 1));
+  TFLITE_CHECK_EQ(output_height, 1);
+  TFLITE_CHECK_EQ(output_width, 1);
+
+  const int input_height = input_shape.Dims(1);
+  const int input_width = input_shape.Dims(2);
+  const float num_elements_in_axis = input_width * input_height;
+
+  int32 bias =
+      output_zero_point -
+      static_cast<int32>(input_zero_point * input_scale / output_scale);
+  float real_scale = input_scale / (num_elements_in_axis * output_scale);
+
+  int32 multiplier, shift;
+  QuantizeMultiplier(real_scale, &multiplier, &shift);
 
   constexpr int kMinDepthPerThread = 8;
   int thread_count = output_depth / kMinDepthPerThread;
@@ -204,9 +219,8 @@ inline void Mean(const tflite::MeanParams& op_params,
       std::min(thread_count, cpu_backend_context->max_num_threads());
 
   if (capped_thread_count == 1) {
-    MeanImpl(op_params, input_shape, input_data, input_zero_point, input_scale,
-             output_shape, output_data, output_zero_point, output_scale, 0,
-             output_depth);
+    MeanImpl(op_params, input_shape, input_data, multiplier, shift, bias,
+             output_shape, output_data, 0, output_depth);
   } else {
     // Instead parrallel for batch, we loop for the output_depth since batch
     // is typical 1.
@@ -219,9 +233,8 @@ inline void Mean(const tflite::MeanParams& op_params,
       // Try to distribute the tasks as even as possible.
       int depth_end = depth_start +
                       (output_depth - depth_start) / (capped_thread_count - i);
-      tasks.emplace_back(op_params, input_shape, input_data, input_zero_point,
-                         input_scale, output_shape, output_data,
-                         output_zero_point, output_scale, depth_start,
+      tasks.emplace_back(op_params, input_shape, input_data, multiplier, shift,
+                         bias, output_shape, output_data, depth_start,
                          depth_end);
       depth_start = depth_end;
     }

@@ -53,7 +53,6 @@ struct TraceEntry {
 
 struct Trace {
   BlockMap block_map;
-  int thread_count = 0;
   // During recording, to avoid having to use locks or atomics, we let
   // each thread append to its own specific vector.
   std::vector<std::vector<TraceEntry>> thread_specific_entries;
@@ -103,7 +102,7 @@ void Dump(const Trace& trace) {
             errno);
     RUY_CHECK(false);
   }
-  fprintf(trace_file, "thread_count:%d\n", trace.thread_count);
+  fprintf(trace_file, "thread_count:%d\n", trace.block_map.thread_count);
   fprintf(trace_file, "rows:%d\n", trace.block_map.dims[Side::kLhs]);
   fprintf(trace_file, "cols:%d\n", trace.block_map.dims[Side::kRhs]);
   fprintf(trace_file, "Execute: %lld\n",
@@ -234,14 +233,12 @@ void TraceRecordStart(Trace* trace) {
   }
 }
 
-void TraceRecordExecute(const BlockMap& block_map, int thread_count,
-                        Trace* trace) {
+void TraceRecordExecute(const BlockMap& block_map, Trace* trace) {
   if (trace) {
     trace->time_execute = Now();
     trace->block_map = block_map;
-    trace->thread_count = thread_count;
-    trace->thread_specific_entries.resize(thread_count);
-    for (int thread = 0; thread < thread_count; thread++) {
+    trace->thread_specific_entries.resize(block_map.thread_count);
+    for (int thread = 0; thread < block_map.thread_count; thread++) {
       trace->thread_specific_entries[thread].clear();
       // Reserve some large size to avoid frequent heap allocations
       // affecting the recorded timings.

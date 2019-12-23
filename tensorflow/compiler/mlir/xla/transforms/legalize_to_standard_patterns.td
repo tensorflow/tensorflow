@@ -16,8 +16,15 @@ limitations under the License.
 // This is the legalization pattern definition file for XLA to StandardOps.
 
 include "mlir/IR/OpBase.td"
-include "mlir/StandardOps/Ops.td"
-include "tensorflow/compiler/mlir/xla/ir/xla_ops.td"
+include "mlir/Dialect/StandardOps/Ops.td"
+include "tensorflow/compiler/mlir/xla/ir/hlo_ops.td"
+
+//===----------------------------------------------------------------------===//
+// Nullary op patterns.
+//===----------------------------------------------------------------------===//
+
+def : Pat<(HLO_ConstOp ElementsAttr:$value),
+          (ConstantOp $value)>;
 
 //===----------------------------------------------------------------------===//
 // Binary op patterns.
@@ -28,37 +35,48 @@ def IsSameSizePred : CPred<
     "== $1->getType().cast<ShapedType>().getShape()">;
 def IsSameSizeConstraint : Constraint<IsSameSizePred, "inputs are same size">;
 
-def : Pat<(XLA_AddOp XLA_FpTensor:$l, XLA_FpTensor:$r,
+
+def : Pat<(HLO_AndOp HLO_PredTensor:$l, HLO_PredTensor:$r,
+                     IsNullAttr:$broadcast_dimensions),
+          (AndOp $l, $r),
+          [(IsSameSizeConstraint $l, $r)]>;
+def : Pat<(HLO_AddOp HLO_FpTensor:$l, HLO_FpTensor:$r,
                      IsNullAttr:$broadcast_dimensions),
           (AddFOp $l, $r),
           [(IsSameSizeConstraint $l, $r)]>;
-def : Pat<(XLA_SubOp XLA_FpTensor:$l, XLA_FpTensor:$r,
+def : Pat<(HLO_SubOp HLO_FpTensor:$l, HLO_FpTensor:$r,
                      IsNullAttr:$broadcast_dimensions),
           (SubFOp $l, $r),
           [(IsSameSizeConstraint $l, $r)]>;
-def : Pat<(XLA_MulOp XLA_FpTensor:$l, XLA_FpTensor:$r,
+def : Pat<(HLO_MulOp HLO_FpTensor:$l, HLO_FpTensor:$r,
                      IsNullAttr:$broadcast_dimensions),
           (MulFOp $l, $r),
           [(IsSameSizeConstraint $l, $r)]>;
-def : Pat<(XLA_DivOp XLA_FpTensor:$l, XLA_FpTensor:$r,
+def : Pat<(HLO_DivOp HLO_FpTensor:$l, HLO_FpTensor:$r,
                      IsNullAttr:$broadcast_dimensions),
           (DivFOp $l, $r),
           [(IsSameSizeConstraint $l, $r)]>;
-
-def : Pat<(XLA_AddOp XLA_IntTensor:$l, XLA_IntTensor:$r,
+def : Pat<(HLO_RemOp HLO_FpTensor:$l, HLO_FpTensor:$r,
+                     IsNullAttr:$broadcast_dimensions),
+          (RemFOp $l, $r),
+          [(IsSameSizeConstraint $l, $r)]>;
+def : Pat<(HLO_AddOp HLO_IntTensor:$l, HLO_IntTensor:$r,
                      IsNullAttr:$broadcast_dimensions),
           (AddIOp $l, $r),
           [(IsSameSizeConstraint $l, $r)]>;
-def : Pat<(XLA_SubOp XLA_IntTensor:$l, XLA_IntTensor:$r,
+def : Pat<(HLO_SubOp HLO_IntTensor:$l, HLO_IntTensor:$r,
                      IsNullAttr:$broadcast_dimensions),
           (SubIOp $l, $r),
           [(IsSameSizeConstraint $l, $r)]>;
-def : Pat<(XLA_MulOp XLA_IntTensor:$l, XLA_IntTensor:$r,
+def : Pat<(HLO_MulOp HLO_IntTensor:$l, HLO_IntTensor:$r,
                      IsNullAttr:$broadcast_dimensions),
           (MulIOp $l, $r),
           [(IsSameSizeConstraint $l, $r)]>;
-def : Pat<(XLA_DivOp XLA_IntTensor:$l, XLA_IntTensor:$r,
+def : Pat<(HLO_DivOp HLO_IntTensor:$l, HLO_IntTensor:$r,
                      IsNullAttr:$broadcast_dimensions),
-          (DivISOp $l, $r),
+          (SignedDivIOp $l, $r),
           [(IsSameSizeConstraint $l, $r)]>;
-
+def : Pat<(HLO_RemOp HLO_IntTensor:$l, HLO_IntTensor:$r,
+                     IsNullAttr:$broadcast_dimensions),
+          (SignedRemIOp $l, $r),
+          [(IsSameSizeConstraint $l, $r)]>;

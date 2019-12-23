@@ -114,6 +114,8 @@ class GlBuffer {
 
 Status CopyBuffer(const GlBuffer& read_buffer, const GlBuffer& write_buffer);
 
+Status GetSSBOSize(GLuint id, int64_t* size_bytes);
+
 // Creates new shader storage buffer that will be modified and used many
 // times.
 //
@@ -204,16 +206,22 @@ class BufferId {
 // RAII for binding and unbinding a buffer.
 class BufferBinder {
  public:
-  BufferBinder(GLenum target, GLuint id) : target_(target) {
+  BufferBinder(GLenum target, GLuint id) : target_(target), prev_id_(0) {
+    TFLITE_GPU_CALL_GL(glBindBuffer, target_, id).IgnoreError();
+  }
+
+  BufferBinder(GLenum target, GLuint id, GLuint prev_id)
+      : target_(target), prev_id_(prev_id) {
     TFLITE_GPU_CALL_GL(glBindBuffer, target_, id).IgnoreError();
   }
 
   ~BufferBinder() {
-    TFLITE_GPU_CALL_GL(glBindBuffer, target_, 0).IgnoreError();
+    TFLITE_GPU_CALL_GL(glBindBuffer, target_, prev_id_).IgnoreError();
   }
 
  private:
   const GLenum target_;
+  GLuint prev_id_;
 };
 
 // RAII for mapping and unmapping a buffer.

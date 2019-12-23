@@ -41,7 +41,6 @@ import tempfile
 # External tools we use that come with visual studio sdk
 UNDNAME = "%{undname_bin_path}"
 DUMPBIN_CMD = "\"{}\" /SYMBOLS".format("%{dumpbin_bin_path}")
-GREP_CMD = "| grep External"
 
 # Exclude if matched
 EXCLUDE_RE = re.compile(r"RTTI|deleting destructor|::internal::")
@@ -70,6 +69,7 @@ INCLUDE_RE = re.compile(r"^(TF_\w*)$|"
                         r"^(TFE_\w*)$|"
                         r"nsync::|"
                         r"tensorflow::|"
+                        r"toco::|"
                         r"functor::|"
                         r"perftools::gputools")
 
@@ -91,7 +91,7 @@ def get_args():
   Examples:
   (usecases in //tensorflow/python:pywrap_tensorflow_filtered_def_file)
     --symbols $(location //tensorflow/tools/def_file_filter:symbols_pybind)
-    --lib_paths $(execpath :cpp_python_util) $(execpath :kernel_registry)
+    --lib_paths_file $(location :pybind_symbol_target_libs_file)
   """
   filename_list = lambda x: x.split(";")
   parser = argparse.ArgumentParser()
@@ -100,8 +100,8 @@ def get_args():
                       required=True)
   parser.add_argument("--output", help="output deffile", required=True)
   parser.add_argument("--target", help="name of the target")
-  parser.add_argument("--symbols", help="name of the target")
-  parser.add_argument("--lib_paths", nargs="+", help="lib_paths")
+  parser.add_argument("--symbols", help="file that lists symbols to be exported.")
+  parser.add_argument("--lib_paths_file", help="file that lists cc_library targets for pybind")
   args = parser.parse_args()
   return args
 
@@ -112,30 +112,47 @@ def get_symbols(path_to_lib, re_filter):
     path_to_lib: String that is path (execpath) to target .lib file.
     re_filter: String that is regex filter for filtering symbols from .lib.
   """
-  sym_found = subprocess.check_output("{} {} {}".format(DUMPBIN_CMD, path_to_lib, GREP_CMD), shell=True)
-  sym_found = sym_found.decode()
+  try:
+    full_output = subprocess.check_output(
+        "{} {}".format(DUMPBIN_CMD, path_to_lib),
+        stderr=subprocess.STDOUT, shell=True)
+  except subprocess.CalledProcessError as e:
+    print("Getting symbol list using dumpbin failed with code %d:" % (
+              e.returncode))
+    print("\t\tFailing command: %s" % (e.cmd))
+    print("\t\tOutput: %s" % (e.output))
+    print("\t\tError details: %s" % (e))
+    raise e
+
+  # Convert to normal string from bytes type.
+  full_output = full_output.decode()
+
+  # Split and filter the list
+  sym_split = [x for x in full_output.split("\r\n")
+               if "External" in x]
+
   # Example symbol line:
   # 954 00000000 SECT2BD notype ()    External    | ?IsSequence@swig@tensorflow@@YA_NPEAU_object@@@Z (bool __cdecl tensorflow::swig::IsSequence(struct _object *))
-  # Split lines with `External` since each line must have the string.
-  sym_split = sym_found.split("External")
   sym_filtered = []
   re_filter_comp = re.compile(r"{}".format(re_filter))
 
+  # Filter out symbol from the split line (`sym_split` in the for loop below).
+  sym_line_filter = r".*\s+\| (.*) \(.*"
+
   for sym_line in sym_split:
     if re_filter_comp.search(sym_line):
-      # Spliting each symbol line by ` ` returns below (fifth element = symbol):
-      # ["", "", "|", "", "?IsSequence@swig@tensorflow@@YA_NPEAU_object@@@Z", ...]
-      sym = sym_line.split(" ")[5]
+      sym = re.match(sym_line_filter, sym_line).groups()[0]
       sym_filtered.append(sym)
 
   return sym_filtered
 
-def get_pybind_export_symbols(symbols_file, lib_paths):
+def get_pybind_export_symbols(symbols_file, lib_paths_file):
   """Returns a list of symbols to be exported from the target libs.
 
   Args:
     symbols_file: String that is the path to symbols_pybind.txt.
-    lib_paths: List of cc_library target execpaths.
+    lib_paths_file: String that is the path to txt file that lists
+                    cc_library target execpaths for exporting symbols.
   """
   # cc_library target name is always in [target_name] format in
   # `symbols_pybind.txt`.
@@ -160,10 +177,13 @@ def get_pybind_export_symbols(symbols_file, lib_paths):
         # line. e.g. `tensorflow::swig::IsSequence`
         symbols[curr_lib].append(line)
 
+  lib_paths = []
+  with open(lib_paths_file, "r") as f:
+    lib_paths = [line.strip() for line in f]
+
   # All symbols to be exported.
   symbols_all = []
   for lib in lib_paths:
-    lib = lib.strip()
     if lib:
       for cc_lib in symbols:  # keys in symbols = cc_library target name
         if cc_lib in lib:
@@ -178,8 +198,8 @@ def main():
 
   # Get symbols that need to be exported from specific libraries for pybind.
   symbols_pybind = []
-  if args.symbols and args.lib_paths:
-    symbols_pybind = get_pybind_export_symbols(args.symbols, args.lib_paths)
+  if args.symbols and args.lib_paths_file:
+    symbols_pybind = get_pybind_export_symbols(args.symbols, args.lib_paths_file)
 
   # Pipe dumpbin to extract all linkable symbols from libs.
   # Good symbols are collected in candidates and also written to

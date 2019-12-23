@@ -18,7 +18,6 @@
 #ifndef MLIR_PASS_ANALYSISMANAGER_H
 #define MLIR_PASS_ANALYSISMANAGER_H
 
-#include "mlir/IR/Function.h"
 #include "mlir/IR/Module.h"
 #include "mlir/Pass/PassInstrumentation.h"
 #include "mlir/Support/LLVM.h"
@@ -77,9 +76,36 @@ private:
   SmallPtrSet<const void *, 2> preservedIDs;
 };
 
+namespace analysis_impl {
+/// Trait to check if T provides a static 'isInvalidated' method.
+template <typename T, typename... Args>
+using has_is_invalidated = decltype(std::declval<T &>().isInvalidated(
+    std::declval<const PreservedAnalyses &>()));
+
+/// Implementation of 'isInvalidated' if the analysis provides a definition.
+template <typename AnalysisT>
+std::enable_if_t<is_detected<has_is_invalidated, AnalysisT>::value, bool>
+isInvalidated(AnalysisT &analysis, const PreservedAnalyses &pa) {
+  return analysis.isInvalidated(pa);
+}
+/// Default implementation of 'isInvalidated'.
+template <typename AnalysisT>
+std::enable_if_t<!is_detected<has_is_invalidated, AnalysisT>::value, bool>
+isInvalidated(AnalysisT &analysis, const PreservedAnalyses &pa) {
+  return !pa.isPreserved<AnalysisT>();
+}
+} // end namespace analysis_impl
+
 /// The abstract polymorphic base class representing an analysis.
 struct AnalysisConcept {
   virtual ~AnalysisConcept() = default;
+
+  /// A hook used to query analyses for invalidation. Given a preserved analysis
+  /// set, returns true if it should truly be invalidated. This allows for more
+  /// fine-tuned invalidation in cases where an analysis wasn't explicitly
+  /// marked preserved, but may be preserved(or invalidated) based upon other
+  /// properties such as analyses sets.
+  virtual bool isInvalidated(const PreservedAnalyses &pa) = 0;
 };
 
 /// A derived analysis model used to hold a specific analysis object.
@@ -88,18 +114,24 @@ template <typename AnalysisT> struct AnalysisModel : public AnalysisConcept {
   explicit AnalysisModel(Args &&... args)
       : analysis(std::forward<Args>(args)...) {}
 
+  /// A hook used to query analyses for invalidation.
+  bool isInvalidated(const PreservedAnalyses &pa) final {
+    return analysis_impl::isInvalidated(analysis, pa);
+  }
+
+  /// The actual analysis object.
   AnalysisT analysis;
 };
 
-/// This class represents a cache of analyses for a single IR unit. All
+/// This class represents a cache of analyses for a single operation. All
 /// computation, caching, and invalidation of analyses takes place here.
-template <typename IRUnitT> class AnalysisMap {
+class AnalysisMap {
   /// A mapping between an analysis id and an existing analysis instance.
   using ConceptMap =
-      llvm::DenseMap<const AnalysisID *, std::unique_ptr<AnalysisConcept>>;
+      DenseMap<const AnalysisID *, std::unique_ptr<AnalysisConcept>>;
 
   /// Utility to return the name of the given analysis class.
-  template <typename AnalysisT> static llvm::StringRef getAnalysisName() {
+  template <typename AnalysisT> static StringRef getAnalysisName() {
     StringRef name = llvm::getTypeName<AnalysisT>();
     if (!name.consume_front("mlir::"))
       name.consume_front("(anonymous namespace)::");
@@ -107,7 +139,7 @@ template <typename IRUnitT> class AnalysisMap {
   }
 
 public:
-  explicit AnalysisMap(IRUnitT ir) : ir(ir) {}
+  explicit AnalysisMap(Operation *ir) : ir(ir) {}
 
   /// Get an analysis for the current IR unit, computing it if necessary.
   template <typename AnalysisT> AnalysisT &getAnalysis(PassInstrumentor *pi) {
@@ -123,7 +155,7 @@ public:
       if (pi)
         pi->runBeforeAnalysis(getAnalysisName<AnalysisT>(), id, ir);
 
-      it->second = llvm::make_unique<AnalysisModel<AnalysisT>>(ir);
+      it->second = std::make_unique<AnalysisModel<AnalysisT>>(ir);
 
       if (pi)
         pi->runAfterAnalysis(getAnalysisName<AnalysisT>(), id, ir);
@@ -133,36 +165,52 @@ public:
 
   /// Get a cached analysis instance if one exists, otherwise return null.
   template <typename AnalysisT>
-  llvm::Optional<std::reference_wrapper<AnalysisT>> getCachedAnalysis() const {
+  Optional<std::reference_wrapper<AnalysisT>> getCachedAnalysis() const {
     auto res = analyses.find(AnalysisID::getID<AnalysisT>());
     if (res == analyses.end())
       return llvm::None;
     return {static_cast<AnalysisModel<AnalysisT> &>(*res->second).analysis};
   }
 
-  /// Returns the IR unit that this analysis map represents.
-  IRUnitT getIRUnit() { return ir; }
-  const IRUnitT getIRUnit() const { return ir; }
+  /// Returns the operation that this analysis map represents.
+  Operation *getOperation() const { return ir; }
 
   /// Clear any held analyses.
   void clear() { analyses.clear(); }
 
   /// Invalidate any cached analyses based upon the given set of preserved
   /// analyses.
-  void invalidate(const detail::PreservedAnalyses &pa) {
-    // Remove any analyses not marked as preserved.
+  void invalidate(const PreservedAnalyses &pa) {
+    // Remove any analyses that were invalidated.
     for (auto it = analyses.begin(), e = analyses.end(); it != e;) {
       auto curIt = it++;
-      if (!pa.isPreserved(curIt->first))
+      if (curIt->second->isInvalidated(pa))
         analyses.erase(curIt);
     }
   }
 
 private:
-  IRUnitT ir;
+  Operation *ir;
   ConceptMap analyses;
 };
 
+/// An analysis map that contains a map for the current operation, and a set of
+/// maps for any child operations.
+struct NestedAnalysisMap {
+  NestedAnalysisMap(Operation *op) : analyses(op) {}
+
+  /// Get the operation for this analysis map.
+  Operation *getOperation() const { return analyses.getOperation(); }
+
+  /// Invalidate any non preserved analyses.
+  void invalidate(const PreservedAnalyses &pa);
+
+  /// The cached analyses for nested operations.
+  DenseMap<Operation *, std::unique_ptr<NestedAnalysisMap>> childAnalyses;
+
+  /// The analyses for the owning module.
+  detail::AnalysisMap analyses;
+};
 } // namespace detail
 
 //===----------------------------------------------------------------------===//
@@ -170,123 +218,119 @@ private:
 //===----------------------------------------------------------------------===//
 class ModuleAnalysisManager;
 
-/// An analysis manager for a specific function instance. This class can only be
-/// constructed from a ModuleAnalysisManager instance.
-class FunctionAnalysisManager {
+/// This class represents an analysis manager for a particular operation
+/// instance. It is used to manage and cache analyses on the operation as well
+/// as those for child operations, via nested AnalysisManager instances
+/// accessible via 'slice'. This class is intended to be passed around by value,
+/// and cannot be constructed directly.
+class AnalysisManager {
+  using ParentPointerT =
+      PointerUnion<const ModuleAnalysisManager *, const AnalysisManager *>;
+
 public:
-  // Query for a cached analysis on the parent Module. The analysis may not
-  // exist and if it does it may be stale.
-  template <typename AnalysisT>
-  llvm::Optional<std::reference_wrapper<AnalysisT>>
-  getCachedModuleAnalysis() const;
+  using PreservedAnalyses = detail::PreservedAnalyses;
 
-  // Query for the given analysis for the current function.
+  // Query for a cached analysis on the given parent operation. The analysis may
+  // not exist and if it does it may be out-of-date.
+  template <typename AnalysisT>
+  Optional<std::reference_wrapper<AnalysisT>>
+  getCachedParentAnalysis(Operation *parentOp) const {
+    ParentPointerT curParent = parent;
+    while (auto *parentAM = curParent.dyn_cast<const AnalysisManager *>()) {
+      if (parentAM->impl->getOperation() == parentOp)
+        return parentAM->getCachedAnalysis<AnalysisT>();
+      curParent = parentAM->parent;
+    }
+    return None;
+  }
+
+  // Query for the given analysis for the current operation.
   template <typename AnalysisT> AnalysisT &getAnalysis() {
-    return impl->getAnalysis<AnalysisT>(getPassInstrumentor());
+    return impl->analyses.getAnalysis<AnalysisT>(getPassInstrumentor());
   }
 
-  // Query for a cached entry of the given analysis on the current function.
+  // Query for a cached entry of the given analysis on the current operation.
   template <typename AnalysisT>
-  llvm::Optional<std::reference_wrapper<AnalysisT>> getCachedAnalysis() const {
-    return impl->getCachedAnalysis<AnalysisT>();
+  Optional<std::reference_wrapper<AnalysisT>> getCachedAnalysis() const {
+    return impl->analyses.getCachedAnalysis<AnalysisT>();
   }
+
+  /// Query for a analysis of a child operation, constructing it if necessary.
+  template <typename AnalysisT> AnalysisT &getChildAnalysis(Operation *op) {
+    return slice(op).template getAnalysis<AnalysisT>();
+  }
+
+  /// Query for a cached analysis of a child operation, or return null.
+  template <typename AnalysisT>
+  Optional<std::reference_wrapper<AnalysisT>>
+  getCachedChildAnalysis(Operation *op) const {
+    assert(op->getParentOp() == impl->getOperation());
+    auto it = impl->childAnalyses.find(op);
+    if (it == impl->childAnalyses.end())
+      return llvm::None;
+    return it->second->analyses.getCachedAnalysis<AnalysisT>();
+  }
+
+  /// Get an analysis manager for the given child operation.
+  AnalysisManager slice(Operation *op);
 
   /// Invalidate any non preserved analyses,
-  void invalidate(const detail::PreservedAnalyses &pa) {
-    // If all analyses were preserved, then there is nothing to do here.
-    if (pa.isAll())
-      return;
-    impl->invalidate(pa);
-  }
+  void invalidate(const PreservedAnalyses &pa) { impl->invalidate(pa); }
 
   /// Clear any held analyses.
-  void clear() { impl->clear(); }
+  void clear() {
+    impl->analyses.clear();
+    impl->childAnalyses.clear();
+  }
 
-  /// Returns a pass instrumentation object for the current function. This value
-  /// may be null.
+  /// Returns a pass instrumentation object for the current operation. This
+  /// value may be null.
   PassInstrumentor *getPassInstrumentor() const;
 
 private:
-  FunctionAnalysisManager(const ModuleAnalysisManager *parent,
-                          detail::AnalysisMap<FuncOp> *impl)
+  AnalysisManager(const AnalysisManager *parent,
+                  detail::NestedAnalysisMap *impl)
+      : parent(parent), impl(impl) {}
+  AnalysisManager(const ModuleAnalysisManager *parent,
+                  detail::NestedAnalysisMap *impl)
       : parent(parent), impl(impl) {}
 
-  /// A reference to the parent analysis manager.
-  const ModuleAnalysisManager *parent;
+  /// A reference to the parent analysis manager, or the top-level module
+  /// analysis manager.
+  ParentPointerT parent;
 
-  /// A reference to the impl analysis map within the owning analysis manager.
-  detail::AnalysisMap<FuncOp> *impl;
+  /// A reference to the impl analysis map within the parent analysis manager.
+  detail::NestedAnalysisMap *impl;
 
   /// Allow access to the constructor.
   friend class ModuleAnalysisManager;
 };
 
-/// An analysis manager for a specific module instance.
+/// An analysis manager class specifically for the top-level module operation.
+/// This class contains the memory allocations for all nested analysis managers,
+/// and provides an anchor point. This is necessary because AnalysisManager is
+/// designed to be a thin wrapper around an existing analysis map instance.
 class ModuleAnalysisManager {
 public:
   ModuleAnalysisManager(ModuleOp module, PassInstrumentor *passInstrumentor)
-      : moduleAnalyses(module), passInstrumentor(passInstrumentor) {}
+      : analyses(module), passInstrumentor(passInstrumentor) {}
   ModuleAnalysisManager(const ModuleAnalysisManager &) = delete;
   ModuleAnalysisManager &operator=(const ModuleAnalysisManager &) = delete;
-
-  /// Query for the analysis of a function. The analysis is computed if it does
-  /// not exist.
-  template <typename AnalysisT>
-  AnalysisT &getFunctionAnalysis(FuncOp function) {
-    return slice(function).getAnalysis<AnalysisT>();
-  }
-
-  /// Query for a cached analysis of a child function, or return null.
-  template <typename AnalysisT>
-  llvm::Optional<std::reference_wrapper<AnalysisT>>
-  getCachedFunctionAnalysis(FuncOp function) const {
-    auto it = functionAnalyses.find(function);
-    if (it == functionAnalyses.end())
-      return llvm::None;
-    return it->second->getCachedAnalysis<AnalysisT>();
-  }
-
-  /// Query for the analysis for the module. The analysis is computed if it does
-  /// not exist.
-  template <typename AnalysisT> AnalysisT &getAnalysis() {
-    return moduleAnalyses.getAnalysis<AnalysisT>(getPassInstrumentor());
-  }
-
-  /// Query for a cached analysis for the module, or return null.
-  template <typename AnalysisT>
-  llvm::Optional<std::reference_wrapper<AnalysisT>> getCachedAnalysis() const {
-    return moduleAnalyses.getCachedAnalysis<AnalysisT>();
-  }
-
-  /// Create an analysis slice for the given child function.
-  FunctionAnalysisManager slice(FuncOp function);
-
-  /// Invalidate any non preserved analyses.
-  void invalidate(const detail::PreservedAnalyses &pa);
 
   /// Returns a pass instrumentation object for the current module. This value
   /// may be null.
   PassInstrumentor *getPassInstrumentor() const { return passInstrumentor; }
 
-private:
-  /// The cached analyses for functions within the current module.
-  llvm::DenseMap<FuncOp, std::unique_ptr<detail::AnalysisMap<FuncOp>>>
-      functionAnalyses;
+  /// Returns an analysis manager for the current top-level module.
+  operator AnalysisManager() { return AnalysisManager(this, &analyses); }
 
+private:
   /// The analyses for the owning module.
-  detail::AnalysisMap<ModuleOp> moduleAnalyses;
+  detail::NestedAnalysisMap analyses;
 
   /// An optional instrumentation object.
   PassInstrumentor *passInstrumentor;
 };
-
-// Query for a cached analysis on the parent Module. The analysis may not exist
-// and if it does it may be stale.
-template <typename AnalysisT>
-llvm::Optional<std::reference_wrapper<AnalysisT>>
-FunctionAnalysisManager::getCachedModuleAnalysis() const {
-  return parent->getCachedAnalysis<AnalysisT>();
-}
 
 } // end namespace mlir
 

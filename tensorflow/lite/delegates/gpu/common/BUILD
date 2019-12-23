@@ -20,6 +20,19 @@ cc_library(
 )
 
 cc_library(
+    name = "custom_parsers",
+    srcs = ["custom_parsers.cc"],
+    hdrs = ["custom_parsers.h"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common:shape",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:any",
+        "@flatbuffers",
+    ],
+)
+
+cc_library(
     name = "access_type",
     hdrs = ["access_type.h"],
 )
@@ -41,11 +54,29 @@ cc_library(
 
 cc_library(
     name = "memory_management",
-    srcs = ["memory_management.cc"],
-    hdrs = ["memory_management.h"],
+    srcs = [
+        "memory_management.cc",
+        "memory_management/greedy_by_breadth_assignment.cc",
+        "memory_management/greedy_by_size_assignment.cc",
+        "memory_management/internal.cc",
+        "memory_management/min_cost_flow_assignment.cc",
+        "memory_management/types.cc",
+    ],
+    hdrs = [
+        "memory_management.h",
+        "memory_management/equality_assignment.h",
+        "memory_management/greedy_by_breadth_assignment.h",
+        "memory_management/greedy_by_size_assignment.h",
+        "memory_management/greedy_in_order_assignment.h",
+        "memory_management/internal.h",
+        "memory_management/min_cost_flow_assignment.h",
+        "memory_management/naive_assignment.h",
+        "memory_management/types.h",
+    ],
     deps = [
         ":shape",
         ":status",
+        ":types",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
     ],
@@ -78,6 +109,7 @@ cc_library(
     srcs = ["model_builder.cc"],
     hdrs = ["model_builder.h"],
     deps = [
+        ":custom_parsers",
         ":data_type",
         ":model",
         ":operations",
@@ -87,7 +119,7 @@ cc_library(
         "//tensorflow/lite:context",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:util",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/schema:schema_fbs",
         "@FP16",
@@ -104,7 +136,7 @@ cc_test(
         ":model_builder",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:kernel_api",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -195,10 +227,39 @@ cc_test(
 )
 
 cc_test(
+    name = "memory_management_internal_test",
+    srcs = ["memory_management/internal_test.cc"],
+    deps = [
+        ":memory_management",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "memory_management_types_test",
+    srcs = ["memory_management/types_test.cc"],
+    deps = [
+        ":memory_management",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "util_test",
     srcs = ["util_test.cc"],
     deps = [
         ":util",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "workgroup_selection",
+    srcs = ["workgroup_selection.cc"],
+    hdrs = ["workgroup_selection.h"],
+    deps = [
+        ":status",
+        ":types",
+        ":util",
     ],
 )

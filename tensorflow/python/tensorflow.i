@@ -17,46 +17,20 @@ limitations under the License.
  * The includes are intentionally not alphabetically sorted, as the order of
  * includes follows dependency order */
 
-%include "tensorflow/python/pywrap_tfe.i"
-
-%include "tensorflow/python/util/port.i"
-%include "tensorflow/python/util/py_checkpoint_reader.i"
-%include "tensorflow/python/util/stat_summarizer.i"
-%include "tensorflow/python/util/tfprof.i"
-
-%include "tensorflow/python/lib/core/py_func.i"
-%include "tensorflow/python/lib/core/py_exception_registry.i"
+%include "tensorflow/python/client/tf_session.i"
 
 %include "tensorflow/python/lib/io/py_record_reader.i"
-%include "tensorflow/python/lib/io/py_record_writer.i"
-%include "tensorflow/python/client/events_writer.i"
-
-%include "tensorflow/python/client/tf_session.i"
-%include "tensorflow/python/client/device_lib.i"
-
-%include "tensorflow/python/lib/core/bfloat16.i"
-
-%include "tensorflow/lite/toco/python/toco.i"
-
-%include "tensorflow/python/lib/io/file_io.i"
-%include "tensorflow/python/training/quantize_training.i"
-
-%include "tensorflow/python/framework/python_op_gen.i"
-
-%include "tensorflow/python/framework/cpp_shape_inference.i"
-%include "tensorflow/python/platform/stacktrace_handler.i"
-%include "tensorflow/python/util/kernel_registry.i"
-
-%include "tensorflow/python/util/transform_graph.i"
-
-%include "tensorflow/python/util/util.i"
 
 %include "tensorflow/python/grappler/cluster.i"
 %include "tensorflow/python/grappler/item.i"
 %include "tensorflow/python/grappler/tf_optimizer.i"
 %include "tensorflow/python/grappler/cost_analyzer.i"
-%include "tensorflow/python/grappler/graph_analyzer.i"
-%include "tensorflow/python/grappler/model_analyzer.i"
 
-%include "tensorflow/python/util/traceme.i"
-%include "tensorflow/python/util/scoped_annotation.i"
+%include "tensorflow/compiler/mlir/python/mlir.i"
+
+// TODO(slebedev): This is a temporary workaround for projects implicitly
+// relying on TensorFlow exposing tensorflow::Status.
+%unignoreall
+
+%ignore tensorflow::Status::operator=;
+%include "tensorflow/core/platform/status.h"

@@ -22,16 +22,24 @@
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/Types.h"
+#include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringMap.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Mutex.h"
 #include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/Regex.h"
+#include "llvm/Support/Signals.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
 
 using namespace mlir;
 using namespace mlir::detail;
+
+static llvm::cl::opt<bool> printStackTraceOnDiagnostic(
+    "mlir-print-stacktrace-on-diagnostic",
+    llvm::cl::desc("When a diagnostic is emitted, also print the stack trace "
+                   "as an attached note"));
 
 //===----------------------------------------------------------------------===//
 // DiagnosticArgument
@@ -73,7 +81,7 @@ void DiagnosticArgument::print(raw_ostream &os) const {
     os << getAsInteger();
     break;
   case DiagnosticArgumentKind::Operation:
-    os << getAsOperation();
+    getAsOperation().print(os, OpPrintingFlags().useLocalScope());
     break;
   case DiagnosticArgumentKind::String:
     os << getAsString();
@@ -96,7 +104,7 @@ void DiagnosticArgument::print(raw_ostream &os) const {
 static StringRef twineToStrRef(const Twine &val,
                                std::vector<std::unique_ptr<char[]>> &strings) {
   // Allocate memory to hold this string.
-  llvm::SmallString<64> data;
+  SmallString<64> data;
   auto strRef = val.toStringRef(data);
   strings.push_back(std::unique_ptr<char[]>(new char[strRef.size()]));
   memcpy(&strings.back()[0], strRef.data(), strRef.size());
@@ -149,7 +157,7 @@ std::string Diagnostic::str() const {
 /// Attaches a note to this diagnostic. A new location may be optionally
 /// provided, if not, then the location defaults to the one specified for this
 /// diagnostic. Notes may not be attached to other notes.
-Diagnostic &Diagnostic::attachNote(llvm::Optional<Location> noteLoc) {
+Diagnostic &Diagnostic::attachNote(Optional<Location> noteLoc) {
   // We don't allow attaching notes to notes.
   assert(severity != DiagnosticSeverity::Note &&
          "cannot attach a note to a note");
@@ -160,7 +168,7 @@ Diagnostic &Diagnostic::attachNote(llvm::Optional<Location> noteLoc) {
 
   /// Append and return a new note.
   notes.push_back(
-      llvm::make_unique<Diagnostic>(*noteLoc, DiagnosticSeverity::Note));
+      std::make_unique<Diagnostic>(*noteLoc, DiagnosticSeverity::Note));
   return *notes.back();
 }
 
@@ -205,9 +213,14 @@ struct DiagnosticEngineImpl {
   /// A mutex to ensure that diagnostics emission is thread-safe.
   llvm::sys::SmartMutex<true> mutex;
 
-  /// This is the handler to use to report diagnostics, or null if not
-  /// registered.
-  DiagnosticEngine::HandlerTy handler;
+  /// These are the handlers used to report diagnostics.
+  llvm::SmallMapVector<DiagnosticEngine::HandlerID, DiagnosticEngine::HandlerTy,
+                       2>
+      handlers;
+
+  /// This is a unique identifier counter for diagnostic handlers in the
+  /// context. This id starts at 1 to allow for 0 to be used as a sentinel.
+  DiagnosticEngine::HandlerID uniqueHandlerId = 1;
 };
 } // namespace detail
 } // namespace mlir
@@ -217,9 +230,12 @@ struct DiagnosticEngineImpl {
 void DiagnosticEngineImpl::emit(Diagnostic diag) {
   llvm::sys::SmartScopedLock<true> lock(mutex);
 
-  // If we had a handler registered, emit the diagnostic using it.
-  if (handler)
-    return handler(std::move(diag));
+  // Try to process the given diagnostic on one of the registered handlers.
+  // Handlers are walked in reverse order, so that the most recent handler is
+  // processed first.
+  for (auto &handlerIt : llvm::reverse(handlers))
+    if (succeeded(handlerIt.second(diag)))
+      return;
 
   // Otherwise, if this is an error we emit it to stderr.
   if (diag.getSeverity() != DiagnosticSeverity::Error)
@@ -242,18 +258,20 @@ void DiagnosticEngineImpl::emit(Diagnostic diag) {
 DiagnosticEngine::DiagnosticEngine() : impl(new DiagnosticEngineImpl()) {}
 DiagnosticEngine::~DiagnosticEngine() {}
 
-/// Set the diagnostic handler for this engine.  The handler is passed
-/// location information if present (nullptr if not) along with a message and
-/// a severity that indicates whether this is an error, warning, etc. Note
-/// that this replaces any existing handler.
-void DiagnosticEngine::setHandler(const HandlerTy &handler) {
-  impl->handler = handler;
+/// Register a new handler for diagnostics to the engine. This function returns
+/// a unique identifier for the registered handler, which can be used to
+/// unregister this handler at a later time.
+auto DiagnosticEngine::registerHandler(const HandlerTy &handler) -> HandlerID {
+  llvm::sys::SmartScopedLock<true> lock(impl->mutex);
+  auto uniqueID = impl->uniqueHandlerId++;
+  impl->handlers.insert({uniqueID, handler});
+  return uniqueID;
 }
 
-/// Return the current diagnostic handler, or null if none is present.
-auto DiagnosticEngine::getHandler() -> HandlerTy {
+/// Erase the registered diagnostic handler with the given identifier.
+void DiagnosticEngine::eraseHandler(HandlerID handlerID) {
   llvm::sys::SmartScopedLock<true> lock(impl->mutex);
-  return impl->handler;
+  impl->handlers.erase(handlerID);
 }
 
 /// Emit a diagnostic using the registered issue handler if present, or with
@@ -267,13 +285,24 @@ void DiagnosticEngine::emit(Diagnostic diag) {
 /// Helper function used to emit a diagnostic with an optionally empty twine
 /// message. If the message is empty, then it is not inserted into the
 /// diagnostic.
-static InFlightDiagnostic emitDiag(Location location,
-                                   DiagnosticSeverity severity,
-                                   const llvm::Twine &message) {
+static InFlightDiagnostic
+emitDiag(Location location, DiagnosticSeverity severity, const Twine &message) {
   auto &diagEngine = location->getContext()->getDiagEngine();
   auto diag = diagEngine.emit(location, severity);
   if (!message.isTriviallyEmpty())
     diag << message;
+
+  // Add the stack trace as a note if necessary.
+  if (printStackTraceOnDiagnostic) {
+    std::string bt;
+    {
+      llvm::raw_string_ostream stream(bt);
+      llvm::sys::PrintStackTrace(stream);
+    }
+    if (!bt.empty())
+      diag.attachNote() << "diagnostic emitted with trace:\n" << bt;
+  }
+
   return diag;
 }
 
@@ -303,15 +332,9 @@ InFlightDiagnostic mlir::emitRemark(Location loc, const Twine &message) {
 // ScopedDiagnosticHandler
 //===----------------------------------------------------------------------===//
 
-ScopedDiagnosticHandler::ScopedDiagnosticHandler(MLIRContext *ctx)
-    : existingHandler(ctx->getDiagEngine().getHandler()), ctx(ctx) {}
-ScopedDiagnosticHandler::ScopedDiagnosticHandler(
-    MLIRContext *ctx, const DiagnosticEngine::HandlerTy &handler)
-    : ScopedDiagnosticHandler(ctx) {
-  ctx->getDiagEngine().setHandler(handler);
-}
 ScopedDiagnosticHandler::~ScopedDiagnosticHandler() {
-  ctx->getDiagEngine().setHandler(existingHandler);
+  if (handlerID)
+    ctx->getDiagEngine().eraseHandler(handlerID);
 }
 
 //===----------------------------------------------------------------------===//
@@ -350,7 +373,7 @@ struct SourceMgrDiagnosticHandlerImpl {
 } // end namespace mlir
 
 /// Return a processable FileLineColLoc from the given location.
-static llvm::Optional<FileLineColLoc> getFileLineColLoc(Location loc) {
+static Optional<FileLineColLoc> getFileLineColLoc(Location loc) {
   switch (loc->getKind()) {
   case StandardAttributes::NameLocation:
     return getFileLineColLoc(loc.cast<NameLoc>().getChildLoc());
@@ -381,12 +404,10 @@ static llvm::SourceMgr::DiagKind getDiagKind(DiagnosticSeverity kind) {
 
 SourceMgrDiagnosticHandler::SourceMgrDiagnosticHandler(llvm::SourceMgr &mgr,
                                                        MLIRContext *ctx,
-                                                       llvm::raw_ostream &os)
+                                                       raw_ostream &os)
     : ScopedDiagnosticHandler(ctx), mgr(mgr), os(os),
       impl(new SourceMgrDiagnosticHandlerImpl()) {
-  // Register a simple diagnostic handler.
-  ctx->getDiagEngine().setHandler(
-      [this](Diagnostic diag) { emitDiagnostic(diag); });
+  setHandler([this](Diagnostic &diag) { emitDiagnostic(diag); });
 }
 
 SourceMgrDiagnosticHandler::SourceMgrDiagnosticHandler(llvm::SourceMgr &mgr,
@@ -534,8 +555,7 @@ struct SourceMgrDiagnosticVerifierHandlerImpl {
   SourceMgrDiagnosticVerifierHandlerImpl() : status(success()) {}
 
   /// Returns the expected diagnostics for the given source file.
-  llvm::Optional<MutableArrayRef<ExpectedDiag>>
-  getExpectedDiags(StringRef bufName);
+  Optional<MutableArrayRef<ExpectedDiag>> getExpectedDiags(StringRef bufName);
 
   /// Computes the expected diagnostics for the given source buffer.
   MutableArrayRef<ExpectedDiag>
@@ -548,8 +568,8 @@ struct SourceMgrDiagnosticVerifierHandlerImpl {
   llvm::StringMap<SmallVector<ExpectedDiag, 2>> expectedDiagsPerFile;
 
   /// Regex to match the expected diagnostics format.
-  llvm::Regex expected = llvm::Regex(
-      "expected-(error|note|remark|warning) *(@[+-][0-9]+)? *{{(.*)}}");
+  llvm::Regex expected = llvm::Regex("expected-(error|note|remark|warning) "
+                                     "*(@([+-][0-9]+|above|below))? *{{(.*)}}");
 };
 } // end namespace detail
 } // end namespace mlir
@@ -570,7 +590,7 @@ static StringRef getDiagKindStr(DiagnosticSeverity kind) {
 }
 
 /// Returns the expected diagnostics for the given source file.
-llvm::Optional<MutableArrayRef<ExpectedDiag>>
+Optional<MutableArrayRef<ExpectedDiag>>
 SourceMgrDiagnosticVerifierHandlerImpl::getExpectedDiags(StringRef bufName) {
   auto expectedDiags = expectedDiagsPerFile.find(bufName);
   if (expectedDiags != expectedDiagsPerFile.end())
@@ -587,13 +607,28 @@ SourceMgrDiagnosticVerifierHandlerImpl::computeExpectedDiags(
     return llvm::None;
   auto &expectedDiags = expectedDiagsPerFile[buf->getBufferIdentifier()];
 
+  // The number of the last line that did not correlate to a designator.
+  unsigned lastNonDesignatorLine = 0;
+
+  // The indices of designators that apply to the next non designator line.
+  SmallVector<unsigned, 1> designatorsForNextLine;
+
   // Scan the file for expected-* designators.
   SmallVector<StringRef, 100> lines;
   buf->getBuffer().split(lines, '\n');
   for (unsigned lineNo = 0, e = lines.size(); lineNo < e; ++lineNo) {
-    SmallVector<StringRef, 3> matches;
-    if (!expected.match(lines[lineNo], &matches))
+    SmallVector<StringRef, 4> matches;
+    if (!expected.match(lines[lineNo], &matches)) {
+      // Check for designators that apply to this line.
+      if (!designatorsForNextLine.empty()) {
+        for (unsigned diagIndex : designatorsForNextLine)
+          expectedDiags[diagIndex].lineNo = lineNo + 1;
+        designatorsForNextLine.clear();
+      }
+      lastNonDesignatorLine = lineNo;
       continue;
+    }
+
     // Point to the start of expected-*.
     auto expectedStart = llvm::SMLoc::getFromPointer(matches[0].data());
 
@@ -609,16 +644,33 @@ SourceMgrDiagnosticVerifierHandlerImpl::computeExpectedDiags(
       kind = DiagnosticSeverity::Note;
     }
 
-    ExpectedDiag record{kind, lineNo + 1, matches[3], expectedStart, false};
+    ExpectedDiag record{kind, lineNo + 1, matches[4], expectedStart, false};
     auto offsetMatch = matches[2];
     if (!offsetMatch.empty()) {
-      int offset;
+      offsetMatch = offsetMatch.drop_front(1);
+
       // Get the integer value without the @ and +/- prefix.
-      if (!offsetMatch.drop_front(2).getAsInteger(0, offset)) {
-        if (offsetMatch[1] == '+')
+      if (offsetMatch[0] == '+' || offsetMatch[0] == '-') {
+        int offset;
+        offsetMatch.drop_front().getAsInteger(0, offset);
+
+        if (offsetMatch.front() == '+')
           record.lineNo += offset;
         else
           record.lineNo -= offset;
+      } else if (offsetMatch.consume_front("above")) {
+        // If the designator applies 'above' we add it to the last non
+        // designator line.
+        record.lineNo = lastNonDesignatorLine + 1;
+      } else {
+        // Otherwise, this is a 'below' designator and applies to the next
+        // non-designator line.
+        assert(offsetMatch.consume_front("below"));
+        designatorsForNextLine.push_back(expectedDiags.size());
+
+        // Set the line number to the last in the case that this designator ends
+        // up dangling.
+        record.lineNo = e;
       }
     }
     expectedDiags.push_back(record);
@@ -627,7 +679,7 @@ SourceMgrDiagnosticVerifierHandlerImpl::computeExpectedDiags(
 }
 
 SourceMgrDiagnosticVerifierHandler::SourceMgrDiagnosticVerifierHandler(
-    llvm::SourceMgr &srcMgr, MLIRContext *ctx, llvm::raw_ostream &out)
+    llvm::SourceMgr &srcMgr, MLIRContext *ctx, raw_ostream &out)
     : SourceMgrDiagnosticHandler(srcMgr, ctx, out),
       impl(new SourceMgrDiagnosticVerifierHandlerImpl()) {
   // Compute the expected diagnostics for each of the current files in the
@@ -635,8 +687,8 @@ SourceMgrDiagnosticVerifierHandler::SourceMgrDiagnosticVerifierHandler(
   for (unsigned i = 0, e = mgr.getNumBuffers(); i != e; ++i)
     (void)impl->computeExpectedDiags(mgr.getMemoryBuffer(i + 1));
 
-  // Register a handler to verfy the diagnostics.
-  ctx->getDiagEngine().setHandler([&](Diagnostic diag) {
+  // Register a handler to verify the diagnostics.
+  setHandler([&](Diagnostic &diag) {
     // Process the main diagnostics.
     process(diag);
 
@@ -651,7 +703,7 @@ SourceMgrDiagnosticVerifierHandler::SourceMgrDiagnosticVerifierHandler(
     : SourceMgrDiagnosticVerifierHandler(srcMgr, ctx, llvm::errs()) {}
 
 SourceMgrDiagnosticVerifierHandler::~SourceMgrDiagnosticVerifierHandler() {
-  // Ensure that all expected diagnosics were handled.
+  // Ensure that all expected diagnostics were handled.
   (void)verify();
 }
 
@@ -753,22 +805,25 @@ struct ParallelDiagnosticHandlerImpl : public llvm::PrettyStackTraceEntry {
     Diagnostic diag;
   };
 
-  ParallelDiagnosticHandlerImpl(MLIRContext *ctx)
-      : prevHandler(ctx->getDiagEngine().getHandler()), context(ctx) {
-    ctx->getDiagEngine().setHandler([this](Diagnostic diag) {
+  ParallelDiagnosticHandlerImpl(MLIRContext *ctx) : handlerID(0), context(ctx) {
+    handlerID = ctx->getDiagEngine().registerHandler([this](Diagnostic &diag) {
       uint64_t tid = llvm::get_threadid();
       llvm::sys::SmartScopedLock<true> lock(mutex);
-      assert(threadToOrderID.count(tid) &&
-             "current thread does not have a valid orderID");
+
+      // If this thread is not tracked, then return failure to let another
+      // handler process this diagnostic.
+      if (!threadToOrderID.count(tid))
+        return failure();
 
       // Append a new diagnostic.
       diagnostics.emplace_back(threadToOrderID[tid], std::move(diag));
+      return success();
     });
   }
 
-  ~ParallelDiagnosticHandlerImpl() {
-    // Restore the previous diagnostic handler.
-    context->getDiagEngine().setHandler(prevHandler);
+  ~ParallelDiagnosticHandlerImpl() override {
+    // Erase this handler from the context.
+    context->getDiagEngine().eraseHandler(handlerID);
 
     // Early exit if there are no diagnostics, this is the common case.
     if (diagnostics.empty())
@@ -781,7 +836,7 @@ struct ParallelDiagnosticHandlerImpl : public llvm::PrettyStackTraceEntry {
   }
 
   /// Utility method to emit any held diagnostics.
-  void emitDiagnostics(std::function<void(Diagnostic)> emitFn) {
+  void emitDiagnostics(std::function<void(Diagnostic)> emitFn) const {
     // Stable sort all of the diagnostics that were emitted. This creates a
     // deterministic ordering for the diagnostics based upon which order id they
     // were emitted for.
@@ -799,6 +854,13 @@ struct ParallelDiagnosticHandlerImpl : public llvm::PrettyStackTraceEntry {
     threadToOrderID[tid] = orderID;
   }
 
+  /// Remove the order id for the current thread.
+  void eraseOrderIDForThread() {
+    uint64_t tid = llvm::get_threadid();
+    llvm::sys::SmartScopedLock<true> lock(mutex);
+    threadToOrderID.erase(tid);
+  }
+
   /// Dump the current diagnostics that were inflight.
   void print(raw_ostream &os) const override {
     // Early exit if there are no diagnostics, this is the common case.
@@ -806,34 +868,30 @@ struct ParallelDiagnosticHandlerImpl : public llvm::PrettyStackTraceEntry {
       return;
 
     os << "In-Flight Diagnostics:\n";
-    const_cast<ParallelDiagnosticHandlerImpl *>(this)->emitDiagnostics(
-        [&](Diagnostic diag) {
-          os.indent(4);
+    emitDiagnostics([&](Diagnostic diag) {
+      os.indent(4);
 
-          // Print each diagnostic with the format:
-          //   "<location>: <kind>: <msg>"
-          if (!diag.getLocation().isa<UnknownLoc>())
-            os << diag.getLocation() << ": ";
-          switch (diag.getSeverity()) {
-          case DiagnosticSeverity::Error:
-            os << "error: ";
-            break;
-          case DiagnosticSeverity::Warning:
-            os << "warning: ";
-            break;
-          case DiagnosticSeverity::Note:
-            os << "note: ";
-            break;
-          case DiagnosticSeverity::Remark:
-            os << "remark: ";
-            break;
-          }
-          os << diag << '\n';
-        });
+      // Print each diagnostic with the format:
+      //   "<location>: <kind>: <msg>"
+      if (!diag.getLocation().isa<UnknownLoc>())
+        os << diag.getLocation() << ": ";
+      switch (diag.getSeverity()) {
+      case DiagnosticSeverity::Error:
+        os << "error: ";
+        break;
+      case DiagnosticSeverity::Warning:
+        os << "warning: ";
+        break;
+      case DiagnosticSeverity::Note:
+        os << "note: ";
+        break;
+      case DiagnosticSeverity::Remark:
+        os << "remark: ";
+        break;
+      }
+      os << diag << '\n';
+    });
   }
-
-  /// The previous context diagnostic handler.
-  DiagnosticEngine::HandlerTy prevHandler;
 
   /// A smart mutex to lock access to the internal state.
   llvm::sys::SmartMutex<true> mutex;
@@ -842,7 +900,10 @@ struct ParallelDiagnosticHandlerImpl : public llvm::PrettyStackTraceEntry {
   DenseMap<uint64_t, size_t> threadToOrderID;
 
   /// An unordered list of diagnostics that were emitted.
-  std::vector<ThreadDiagnostic> diagnostics;
+  mutable std::vector<ThreadDiagnostic> diagnostics;
+
+  /// The unique id for the parallel handler.
+  DiagnosticEngine::HandlerID handlerID;
 
   /// The context to emit the diagnostics to.
   MLIRContext *context;
@@ -857,4 +918,10 @@ ParallelDiagnosticHandler::~ParallelDiagnosticHandler() {}
 /// Set the order id for the current thread.
 void ParallelDiagnosticHandler::setOrderIDForThread(size_t orderID) {
   impl->setOrderIDForThread(orderID);
+}
+
+/// Remove the order id for the current thread. This removes the thread from
+/// diagnostics tracking.
+void ParallelDiagnosticHandler::eraseOrderIDForThread() {
+  impl->eraseOrderIDForThread();
 }

@@ -21,6 +21,9 @@ from __future__ import print_function
 import os
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -28,6 +31,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import collective_ops
 from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging as logging
 
 
 class CollectiveOpGPUTest(test.TestCase):
@@ -49,6 +53,17 @@ class CollectiveOpGPUTest(test.TestCase):
       experimental.collective_nccl = True
     return config_pb2.ConfigProto(gpu_options=gpu_options,
                                   experimental=experimental)
+
+  def _ensure_context_initialized(self):
+    gpus = config.list_physical_devices('GPU')
+    if len(gpus) < 1:
+      self.skipTest('Expected at least 1 GPU but found {} GPUs'.format(
+          len(gpus)))
+    config.set_logical_device_configuration(gpus[0], [
+        context.LogicalDeviceConfiguration(1024),
+        context.LogicalDeviceConfiguration(1024)
+    ])
+    context.ensure_initialized()
 
   @test_util.run_deprecated_v1
   def testBasicNcclAllReduce(self):
@@ -94,6 +109,30 @@ class CollectiveOpGPUTest(test.TestCase):
           errors.InternalError,
           'does not support datatype DT_INT32 on DEVICE_GPU'):
         sess.run(collectives)
+
+  @test_util.run_deprecated_v1
+  def testFp16Reduce(self):
+    inputs = [[0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1],
+              [0.3, 1.3, 2.3, 3.3, 4.3, 5.3, 6.3, 7.3]]
+    expected = [0.2, 1.2, 2.2, 3.2, 4.2, 5.2, 6.2, 7.2]
+    group_size = len(inputs)
+    group_key = 1
+    instance_key = 100
+    devices = ['/GPU:{}'.format(i) for i in range(group_size)]
+
+    with self.session(config=self._configure(group_size)) as sess:
+      if not test_util.is_gpu_available(cuda_only=True):
+        self.skipTest('No GPU available')
+      collectives = []
+      for i in range(group_size):
+        with ops.device(devices[i]):
+          t = constant_op.constant(inputs[i], dtype=dtypes.float16)
+          collectives.append(collective_ops.all_reduce(
+              t, group_size, group_key, instance_key, 'Add', 'Div'))
+      results = sess.run(collectives)
+    for result in results:
+      logging.info('i {} result {} expected {}'.format(i, results[i], expected))
+      self.assertAllClose(result, expected, rtol=1e-3, atol=1e-3)
 
   @test_util.run_deprecated_v1
   def testNcclHintAllReduce(self):
@@ -208,6 +247,84 @@ class CollectiveOpGPUTest(test.TestCase):
       results = sess.run(collectives)
     for result in results:
       self.assertAllClose(result, expected, rtol=1e-5, atol=1e-5)
+
+  @test_util.run_deprecated_v1
+  def testCollectiveDeviceMismatch(self):
+    group_size = 2
+    group_key = 10
+    instance_key = 20
+    t0 = [1, 2, 3, 4]
+    t1 = [5, 6, 7, 8]
+    with self.session(
+        config=self._configure(group_size,
+                               set_config_proto_nccl=False)) as sess:
+      if not test_util.is_gpu_available(cuda_only=True):
+        self.skipTest('No GPU available')
+      with ops.device('/CPU:0'):
+        in0 = constant_op.constant(t0)
+        c0 = collective_ops.all_reduce(in0, group_size, group_key,
+                                       instance_key, 'Add', 'Id')
+      with ops.device('/GPU:0'):
+        in1 = constant_op.constant(t1)
+        c1 = collective_ops.all_reduce(in1, group_size, group_key,
+                                       instance_key, 'Add', 'Id')
+      run_options = config_pb2.RunOptions()
+      run_options.experimental.collective_graph_key = 100
+      with self.assertRaisesRegexp(errors.InternalError,
+                                   'but that group has type'):
+        sess.run([c0, c1], options=run_options)
+
+  @test_util.run_v2_only
+  def testCollectiveReduceMinMax(self):
+    self._ensure_context_initialized()
+
+    @def_function.function
+    def run_all_reduce(group_key, instance_key, merge_op):
+      group_size = 2
+      t0 = [1., 20., 3., 40., 5.]
+      t1 = [10., 2., 30., 4., 50.]
+      os.environ['NCCL_DEBUG'] = 'INFO'
+      os.environ['NCCL_LAUNCH_MODE'] = 'PARALLEL'
+      with ops.device('/GPU:0'):
+        in0 = constant_op.constant(t0)
+        c0 = collective_ops.all_reduce(
+            in0, group_size, group_key, instance_key, merge_op, final_op='Id',
+            communication_hint='nccl')
+      with ops.device('/GPU:1'):
+        in1 = constant_op.constant(t1)
+        c1 = collective_ops.all_reduce(
+            in1, group_size, group_key, instance_key, merge_op, final_op='Id',
+            communication_hint='nccl')
+      return c0, c1
+
+    for combination in [('Max', [10., 20., 30., 40., 50.]),
+                        ('Min', [1., 2., 3., 4., 5.])]:
+      merge_op = combination[0]
+      results = run_all_reduce(group_key=10, instance_key=20, merge_op=merge_op)
+      expected = combination[1]
+      for result in results:
+        self.assertAllClose(result, expected, rtol=1e-5, atol=1e-5)
+
+  @test_util.run_v2_only
+  def testCollectiveGroupSizeOne(self):
+    self._ensure_context_initialized()
+
+    group_size = 1
+    group_key = 100
+    instance_key = 100
+    in_value = [1., 2., 3., 4.]
+    in_tensor = constant_op.constant(in_value)
+
+    with ops.device('/GPU:0'):
+      reduced_tensor = collective_ops.all_reduce(
+          in_tensor, group_size, group_key, instance_key, 'Add', 'Id',
+          communication_hint='nccl')
+    self.assertAllEqual(in_value, reduced_tensor.numpy())
+
+    with ops.device('/GPU:0'):
+      gathered_tensor = collective_ops.all_gather(
+          in_tensor, group_size, group_key, instance_key)
+    self.assertAllEqual(in_value, gathered_tensor.numpy())
 
 
 if __name__ == '__main__':

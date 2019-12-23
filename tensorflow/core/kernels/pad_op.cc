@@ -52,7 +52,7 @@ class PadOp : public OpKernel {
     const Tensor& in1 = context->input(1);
     const int dims = in0.dims();
     static const int kMinDims = 0;
-    static const int kMaxDims = 6;
+    static const int kMaxDims = 8;
     OP_REQUIRES(context, kMinDims <= dims && dims <= kMaxDims,
                 errors::Unimplemented("inputs rank not in [", kMinDims, ",",
                                       kMaxDims, "]: ", dims));

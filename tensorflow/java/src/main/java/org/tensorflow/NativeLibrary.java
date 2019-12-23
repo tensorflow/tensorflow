@@ -51,7 +51,8 @@ final class NativeLibrary {
       // (2) The required native code has been statically linked (through a custom launcher), OR
       // (3) The native code is part of another library (such as an application-level library)
       // that has already been loaded. For example, tensorflow/examples/android and
-      // tensorflow/contrib/android include the required native code in differently named libraries.
+      // tensorflow/tools/android/inference_interface include the required native code in
+      // differently named libraries.
       //
       // Doesn't matter how, but it seems the native code is loaded, so nothing else to do.
       return;
@@ -131,11 +132,6 @@ final class NativeLibrary {
   }
 
   private static String getVersionedLibraryName(String libFilename) {
-    // If the resource exists as an unversioned file, return that.
-    if (resourceExists(libFilename)) {
-      return libFilename;
-    }
-
     final String versionName = getMajorVersionNumber();
 
     // If we're on darwin, the versioned libraries look like blah.1.dylib.
@@ -173,11 +169,13 @@ final class NativeLibrary {
    * determined.
    */
   private static String getMajorVersionNumber() {
+    // getImplementationVersion() retrun null.
     String version = NativeLibrary.class.getPackage().getImplementationVersion();
     // expecting a string like 1.14.0, we want to get the first '1'.
     int dotIndex;
     if (version == null || (dotIndex = version.indexOf('.')) == -1) {
-      return null;
+      // we want to get the version 1.
+      return "1";
     }
     String majorVersion = version.substring(0, dotIndex);
     try {

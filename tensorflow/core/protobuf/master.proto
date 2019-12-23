@@ -26,8 +26,8 @@ option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobu
 import "tensorflow/core/framework/device_attributes.proto";
 import "tensorflow/core/framework/graph.proto";
 import "tensorflow/core/framework/tensor.proto";
-import "tensorflow/core/lib/core/error_codes.proto";
 import "tensorflow/core/protobuf/config.proto";
+import "tensorflow/core/protobuf/error_codes.proto";
 import "tensorflow/core/protobuf/named_tensor.proto";
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -498,7 +498,7 @@ CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuLdg, CudaLdg);
 // Note: this function does not synchronize, and therefore the memory range is
 // not guaranteed to be zero until the next kernel launch.
 template <typename T>
-__global__ void SetZero(const int count, T* ptr) {
+__global__ void SetZero(const int count, T* __restrict__ ptr) {
   // Check that the grid is one dimensional and index doesn't overflow.
   assert(blockDim.y == 1);
   assert(blockDim.z == 1);
@@ -510,7 +510,7 @@ __global__ void SetZero(const int count, T* ptr) {
 
 // Helper to set all tensor entries to a specific value.
 template <typename T>
-__global__ void SetToValue(const int count, T* ptr, T value) {
+__global__ void SetToValue(const int count, T* __restrict__ ptr, T value) {
   // Check that the grid is one dimensional and index doesn't overflow.
   assert(blockDim.y == 1);
   assert(blockDim.z == 1);

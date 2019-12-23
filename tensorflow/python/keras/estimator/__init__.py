@@ -18,11 +18,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.eager import monitoring
 from tensorflow.python.util.tf_export import keras_export
 
 # Keras has undeclared dependency on tensorflow/estimator:estimator_py.
 # As long as you depend //third_party/py/tensorflow:tensorflow target
 # everything will work as normal.
+
+_model_to_estimator_usage_gauge = monitoring.BoolGauge(
+    '/tensorflow/api/keras/model_to_estimator',
+    'Whether tf.keras.estimator.model_to_estimator() is called.', 'version')
 
 
 # LINT.IfChange
@@ -36,9 +41,13 @@ def model_to_estimator(
     checkpoint_format='saver'):
   """Constructs an `Estimator` instance from given keras model.
 
+  If you use infrastructure or other tooling that relies on Estimators, you can
+  still build a Keras model and use model_to_estimator to convert the Keras
+  model to an Estimator for use with downstream systems.
+
   For usage example, please see:
   [Creating estimators from Keras
-  Models](https://tensorflow.org/guide/estimators#model_to_estimator).
+  Models](https://www.tensorflow.org/guide/estimators#creating_estimators_from_keras_models).
 
   __Sample Weights__
   Estimators returned by `model_to_estimator` are configured to handle sample
@@ -97,6 +106,7 @@ def model_to_estimator(
     raise NotImplementedError(
         'tf.keras.estimator.model_to_estimator function not available in your '
         'installation.')
+  _model_to_estimator_usage_gauge.get_cell('v1').set(True)
   return keras_lib.model_to_estimator(  # pylint:disable=unexpected-keyword-arg
       keras_model=keras_model,
       keras_model_path=keras_model_path,
@@ -117,9 +127,34 @@ def model_to_estimator_v2(
     checkpoint_format='checkpoint'):
   """Constructs an `Estimator` instance from given keras model.
 
+  If you use infrastructure or other tooling that relies on Estimators, you can
+  still build a Keras model and use model_to_estimator to convert the Keras
+  model to an Estimator for use with downstream systems.
+
   For usage example, please see:
   [Creating estimators from Keras
-  Models](https://tensorflow.org/guide/estimators#model_to_estimator).
+  Models](https://www.tensorflow.org/guide/estimators#creating_estimators_from_keras_models).
+
+  __Sample Weights__
+  Estimators returned by `model_to_estimator` are configured to handle sample
+  weights (similar to `keras_model.fit(x, y, sample_weights)`). To pass sample
+  weights when training or evaluating the Estimator, the first item returned by
+  the input function should be a dictionary with keys `features` and
+  `sample_weights`. Example below:
+
+  ```
+  keras_model = tf.keras.Model(...)
+  keras_model.compile(...)
+
+  estimator = tf.keras.estimator.model_to_estimator(keras_model)
+
+  def input_fn():
+    return dataset_ops.Dataset.from_tensors(
+        ({'features': features, 'sample_weights': sample_weights},
+         targets))
+
+  estimator.train(input_fn, steps=1)
+  ```
 
   Args:
     keras_model: A compiled Keras model object. This argument is mutually
@@ -156,6 +191,7 @@ def model_to_estimator_v2(
     raise NotImplementedError(
         'tf.keras.estimator.model_to_estimator function not available in your '
         'installation.')
+  _model_to_estimator_usage_gauge.get_cell('v2').set(True)
   return keras_lib.model_to_estimator(  # pylint:disable=unexpected-keyword-arg
       keras_model=keras_model,
       keras_model_path=keras_model_path,

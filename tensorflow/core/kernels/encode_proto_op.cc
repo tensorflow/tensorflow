@@ -298,6 +298,26 @@ Status WriteVarLenField(const FieldDescriptor& field_desc, const Tensor& input,
   return Status::OK();
 }
 
+static void WriteStringAdapter(int field_number, const tstring& value,
+                               CodedOutputStream* output) {
+  // Unfortunately, external proto does not accept string_view.
+#if defined(PLATFORM_GOOGLE)
+  WireFormatLite::WriteString(field_number, StringPiece(value), output);
+#else
+  WireFormatLite::WriteString(field_number, string(value), output);
+#endif
+}
+
+static void WriteBytesAdapter(int field_number, const tstring& value,
+                              CodedOutputStream* output) {
+  // Unfortunately, external proto does not accept string_view.
+#if defined(PLATFORM_GOOGLE)
+  WireFormatLite::WriteBytes(field_number, StringPiece(value), output);
+#else
+  WireFormatLite::WriteBytes(field_number, string(value), output);
+#endif
+}
+
 // Writes a group field. Groups are treated like submessages, but tag-delimited
 // instead of length-delimited. WireFormatLite handles this differently so we
 // code it ourselves.
@@ -388,15 +408,15 @@ Status WriteField(const FieldDescriptor& field_desc, const Tensor& input,
                         WireFormatLite::WriteBoolNoTag>(
           field_desc, input, message_index, size, output);
     case WireFormatLite::TYPE_STRING:
-      return WriteVarLenField<string, WireFormatLite::WriteString>(
+      return WriteVarLenField<tstring, WriteStringAdapter>(
           field_desc, input, message_index, size, output);
     case WireFormatLite::TYPE_GROUP:
       return WriteGroup(field_desc, input, message_index, size, output);
     case WireFormatLite::TYPE_MESSAGE:
-      return WriteVarLenField<string, WireFormatLite::WriteBytes>(
+      return WriteVarLenField<tstring, WriteBytesAdapter>(
           field_desc, input, message_index, size, output);
     case WireFormatLite::TYPE_BYTES:
-      return WriteVarLenField<string, WireFormatLite::WriteBytes>(
+      return WriteVarLenField<tstring, WriteBytesAdapter>(
           field_desc, input, message_index, size, output);
     case WireFormatLite::TYPE_UINT32:
       switch (dtype) {
@@ -592,7 +612,7 @@ class EncodeProtoOp : public OpKernel {
          message_index++) {
       // TODO(nix): possibly optimize allocation here by calling
       // `bufs(message_index).reserve(DEFAULT_BUF_SIZE)`.
-      StringOutputStream output_string(&bufs(message_index));
+      TStringOutputStream output_string(&bufs(message_index));
       CodedOutputStream out(&output_string);
       // Write fields in ascending field_number order.
       for (int i : sorted_field_index_) {

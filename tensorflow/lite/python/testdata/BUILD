@@ -1,8 +1,9 @@
 load("//tensorflow/lite:build_def.bzl", "tf_to_tflite")
+load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],  # Apache 2.0,
 )
 
 exports_files(glob(["*.pb"]))
@@ -45,6 +46,7 @@ tf_to_tflite(
 filegroup(
     name = "interpreter_test_data",
     srcs = [
+        "pc_conv.bin",
         ":gather_string",
         ":permute_float",
         ":permute_uint8",
@@ -58,8 +60,9 @@ cc_library(
     srcs = ["test_delegate.cc"],
     visibility = ["//tensorflow/lite:__subpackages__"],
     deps = [
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
     ],
+    alwayslink = 1,
 )
 
 cc_binary(
@@ -69,5 +72,28 @@ cc_binary(
     linkstatic = 1,
     deps = [
         ":test_delegate",
+    ],
+)
+
+cc_library(
+    name = "test_registerer",
+    srcs = ["test_registerer.cc"],
+    hdrs = ["test_registerer.h"],
+    visibility = ["//tensorflow/lite:__subpackages__"],
+    deps = [
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels:builtin_ops",
+    ],
+    alwayslink = 1,
+)
+
+tf_py_wrap_cc(
+    name = "test_registerer_wrapper",
+    srcs = [
+        "test_registerer.i",
+    ],
+    deps = [
+        ":test_registerer",
+        "//third_party/python_runtime:headers",
     ],
 )

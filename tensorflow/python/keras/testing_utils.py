@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
 import threading
 
 import numpy as np
@@ -37,6 +38,7 @@ from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_de
 from tensorflow.python.keras.optimizer_v2 import nadam as nadam_v2
 from tensorflow.python.keras.optimizer_v2 import rmsprop as rmsprop_v2
 from tensorflow.python.util import tf_contextlib
+from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 
 
@@ -263,6 +265,7 @@ _thread_local_data = threading.local()
 _thread_local_data.model_type = None
 _thread_local_data.run_eagerly = None
 _thread_local_data.experimental_run_tf_function = None
+_thread_local_data.saved_model_format = None
 
 
 @tf_contextlib.contextmanager
@@ -352,6 +355,37 @@ def should_run_tf_function():
           context.executing_eagerly())
 
 
+@tf_contextlib.contextmanager
+def saved_model_format_scope(value):
+  """Provides a scope within which the savde model format to test is `value`.
+
+  The saved model format gets restored to its original value upon exiting the
+  scope.
+
+  Arguments:
+     value: saved model format value
+
+  Yields:
+    The provided value.
+  """
+  previous_value = _thread_local_data.saved_model_format
+  try:
+    _thread_local_data.saved_model_format = value
+    yield value
+  finally:
+    # Restore saved model format to initial value.
+    _thread_local_data.saved_model_format = previous_value
+
+
+def get_save_format():
+  if _thread_local_data.saved_model_format is None:
+    raise ValueError(
+        'Cannot call `get_save_format()` outside of a '
+        '`saved_model_format_scope()` or `run_with_all_saved_model_formats` '
+        'decorator.')
+  return _thread_local_data.saved_model_format
+
+
 def get_model_type():
   """Gets the model type that should be tested."""
   if _thread_local_data.model_type is None:
@@ -382,17 +416,28 @@ def get_small_functional_mlp(num_hidden, num_classes, input_dim):
   return keras.Model(inputs, outputs)
 
 
-class _SmallSubclassMLP(keras.Model):
+class SmallSubclassMLP(keras.Model):
   """A subclass model based small MLP."""
 
-  def __init__(self, num_hidden, num_classes):
-    super(_SmallSubclassMLP, self).__init__()
+  def __init__(self, num_hidden, num_classes, use_bn=False, use_dp=False):
+    super(SmallSubclassMLP, self).__init__(name='test_model')
+    self.use_bn = use_bn
+    self.use_dp = use_dp
+
     self.layer_a = keras.layers.Dense(num_hidden, activation='relu')
     activation = 'sigmoid' if num_classes == 1 else 'softmax'
     self.layer_b = keras.layers.Dense(num_classes, activation=activation)
+    if self.use_dp:
+      self.dp = keras.layers.Dropout(0.5)
+    if self.use_bn:
+      self.bn = keras.layers.BatchNormalization(axis=-1)
 
   def call(self, inputs, **kwargs):
     x = self.layer_a(inputs)
+    if self.use_dp:
+      x = self.dp(x)
+    if self.use_bn:
+      x = self.bn(x)
     return self.layer_b(x)
 
 
@@ -417,7 +462,7 @@ class _SmallSubclassMLPCustomBuild(keras.Model):
 
 
 def get_small_subclass_mlp(num_hidden, num_classes):
-  return _SmallSubclassMLP(num_hidden, num_classes)
+  return SmallSubclassMLP(num_hidden, num_classes)
 
 
 def get_small_subclass_mlp_with_custom_build(num_hidden, num_classes):
@@ -560,12 +605,21 @@ def get_model_from_layers(layers,
   raise ValueError('Unknown model type {}'.format(model_type))
 
 
+class Bias(keras.layers.Layer):
+
+  def build(self, input_shape):
+    self.bias = self.add_variable('bias', (1,), initializer='zeros')
+
+  def call(self, inputs):
+    return inputs + self.bias
+
+
 class _MultiIOSubclassModel(keras.Model):
   """Multi IO Keras subclass model."""
 
   def __init__(self, branch_a, branch_b, shared_input_branch=None,
-               shared_output_branch=None):
-    super(_MultiIOSubclassModel, self).__init__()
+               shared_output_branch=None, name=None):
+    super(_MultiIOSubclassModel, self).__init__(name=name)
     self._shared_input_branch = shared_input_branch
     self._branch_a = branch_a
     self._branch_b = branch_b
@@ -829,6 +883,7 @@ def disable_v2_dtype_behavior(fn):
 
 def _set_v2_dtype_behavior(fn, enabled):
   """Returns version of 'fn' that runs with v2 dtype behavior on or off."""
+  @functools.wraps(fn)
   def wrapper(*args, **kwargs):
     v2_dtype_behavior = base_layer_utils.V2_DTYPE_BEHAVIOR
     base_layer_utils.V2_DTYPE_BEHAVIOR = enabled
@@ -837,4 +892,4 @@ def _set_v2_dtype_behavior(fn, enabled):
     finally:
       base_layer_utils.V2_DTYPE_BEHAVIOR = v2_dtype_behavior
 
-  return wrapper
+  return tf_decorator.make_decorator(fn, wrapper)

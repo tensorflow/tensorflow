@@ -20,7 +20,7 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/lite/allocation.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"
 
@@ -109,6 +109,7 @@ struct NNAPIOpMappingArgs {
   std::vector<int>* model_state_outputs;
   std::vector<int>* model_state_tfl_inputs;
   std::vector<std::tuple<int, int>>* feedback_loops;
+  int* nnapi_errno;
 };
 
 // RAII NN API Model Destructor for use with std::unique_ptr
@@ -168,6 +169,73 @@ class NNMemory {
   ANeuralNetworksMemory* nn_memory_handle_ = nullptr;
 };
 
+
+enum class NNAPIValidationFailureType : int {
+  // The operator is not supported by either NNAPI or the NNAPI Delegate.
+  kUnsupportedOperator = 0,
+  // The given operation or operands are not supported on the specified
+  // Android SDK version. The min supported version is specified in the
+  // validation failure message.
+  kUnsupportedAndroidVersion = 1,
+  // The version of the operator (value of TfLiteRegistration::version)
+  // for the given op is not supported. The max supported version
+  // is specified in the validation failure message.
+  // For more details on each operator version see
+  // the GetBuiltinOperatorVersion function in
+  // third_party/tensorflow/lite/tools/versioning/op_version.cc.
+  kUnsupportedOperatorVersion = 2,
+  // The given input operand type is not supported for the current combination
+  // of operator type and sdk version.
+  kUnsupportedInputType = 3,
+  // When using NN API version 1.0 or 1.1, the condition
+  //   input_scale * filter_scale < output_scale
+  // must be true for quantized versions of the following ops:
+  // * CONV_2D
+  // * DEPTHWISE_CONV_2D
+  // * FULLY_CONNECTED (where filter actually stands for weights)
+  // The condition is relaxed and no longer required since version 1.2.
+  kNotRestrictedScaleCompliant = 4,
+  // The given output operand type is not supported for the current combination
+  // of operator type and sdk version.
+  kUnsupportedOutputType = 5,
+  // The size of the operand tensor is too large.
+  kUnsupportedOperandSize = 6,
+  // The value of one of the operands or of a combination of operands is
+  // not supported. Details are provided in the failure message.
+  kUnsupportedOperandValue = 7,
+  // The combination of float inputs and quantized weights or filters
+  // is not supported
+  kUnsupportedHybridOperator = 8,
+  // The quantization type (for example per-channel quantization) is not
+  // supported.
+  kUnsupportedQuantizationType = 9,
+  // The accelerated version of operation requires a specific operand to be
+  // specified.
+  kMissingRequiredOperand = 10,
+  // The rank of the operand is not supported. Details in the failure message.
+  kUnsupportedOperandRank = 11,
+  // The input tensor cannot be dynamically-sized.
+  kInputTensorShouldHaveConstantShape = 12,
+  // The operator has a different number of inputs of the one or ones that
+  // are supported by NNAPI.
+  kUnsupportedOperatorVariant = 13,
+  // The accelerated version of the operator cannot specify an activation
+  // function.
+  kNoActivationExpected = 14,
+  // Quantization scale and/or zero point are not in the supported value(s)
+  // for the accelerated operation.
+  kUnsupportedQuantizationParameters = 15,
+};
+
+
+struct NNAPIValidationFailure {
+  NNAPIValidationFailureType type;
+  std::string message;
+
+  NNAPIValidationFailure(NNAPIValidationFailureType type, const char* message)
+      : type(type), message(message) {}
+};
+
 // The kernel that represents the node sub set of TF Lite being run on NN API.
 class NNAPIDelegateKernel {
  public:
@@ -178,28 +246,48 @@ class NNAPIDelegateKernel {
     }
   }
 
-  typedef ANeuralNetworksOperationType (*MappingFn)(
-      const NNAPIOpMappingArgs& mapping_args);
+  // Translate a node into its operands
+  // It assumes that the call to Validate for has been successful for
+  // the operation.
+  // In case of success it returns kTfLiteOk and stores in n_op_type the
+  // NNAPI Operation code.
+  // Returns kTfLiteError in case of failures during mapping.
+  static TfLiteStatus Map(TfLiteContext* context, int builtin_code, int version,
+                          int android_sdk_version,
+                          const NNAPIOpMappingArgs& mapping_args,
+                          ANeuralNetworksOperationType* nn_op_type);
 
-  // Return a function that knows how to translate a node into its operands
-  // when called. You can use this function to see if a node is supported
-  // (i.e. if the returned MappingFn is null, then the node is not supported).
-  static MappingFn Map(const TfLiteContext* context, int builtin_code,
-                       int version, int android_sdk_version,
-                       const TfLiteNode* node, bool is_accelerator_specified);
+  // Returns true if the node can be accelerated with NNAPI.
+  static bool Validate(
+      const TfLiteContext* context, int builtin_code, int version,
+      int android_sdk_version, const TfLiteNode* node,
+      bool is_accelerator_specified,
+      // Collects lists of failures collected during
+      // the validation of the possibility of accelerating
+      // the given node
+      std::vector<NNAPIValidationFailure>* map_failures = nullptr);
 
   // Initialize the kernel (a NN model).
-  TfLiteStatus Init(TfLiteContext* context, const TfLiteDelegateParams* params);
+  // Any NNAPI Related error causing this method to fail will have the
+  // associated error number stored in nnapi_errno
+  TfLiteStatus Init(TfLiteContext* context, const TfLiteDelegateParams* params,
+                    int* nnapi_errno);
 
-  TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node);
+  // Any NNAPI Related error causing this method to fail will have the
+  // associated error number stored in nnapi_errno
+  TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node,
+                       int* nnapi_errno);
 
-  TfLiteStatus Invoke(TfLiteContext* context, TfLiteNode* node);
+  // Any NNAPI Related error causing this method to fail will have the
+  // associated error number stored in nnapi_errno
+  TfLiteStatus Invoke(TfLiteContext* context, TfLiteNode* node,
+                      int* nnapi_errno);
 
  private:
   // Access to NNApi.
   const NnApi* nnapi_;
   // ANN device handle.
-  ANeuralNetworksDevice* nnapi_device_ = nullptr;
+  std::vector<ANeuralNetworksDevice*> nnapi_devices_;
   // ANN API state.
   std::unique_ptr<ANeuralNetworksModel, NNFreeModel> nn_model_;
   std::unique_ptr<ANeuralNetworksCompilation, NNFreeCompilation>
@@ -227,13 +315,15 @@ class NNAPIDelegateKernel {
   void AddDequantizeOperatorsWhereNeeded(const TfLiteContext* context,
                                          int builtin_code,
                                          const TfLiteNode* node,
-                                         NNAPIOpBuilder* builder);
+                                         NNAPIOpBuilder* builder,
+                                         int* nnapi_errno);
 
-  TfLiteStatus AddOpsAndTensors(TfLiteContext* context);
+  TfLiteStatus AddOpsAndTensors(TfLiteContext* context, int* nnapi_errno);
 
   TfLiteStatus BuildGraph(TfLiteContext* context,
                           const TfLiteIntArray* input_tensors,
-                          const TfLiteIntArray* output_tensors);
+                          const TfLiteIntArray* output_tensors,
+                          int* nnapi_errno);
 };
 
 }  // namespace nnapi

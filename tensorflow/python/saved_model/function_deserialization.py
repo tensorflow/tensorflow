@@ -244,8 +244,7 @@ def recreate_function(saved_function, concrete_functions):
 
     def _pretty_format_positional(positional):
       return "Positional arguments ({} total):\n    * {}".format(
-          len(positional),
-          "\n    * ".join([str(a) for a in positional]))
+          len(positional), "\n    * ".join(str(a) for a in positional))
 
     for index, function_name in enumerate(saved_function.concrete_functions):
       concrete_function = concrete_functions[function_name]
@@ -286,7 +285,7 @@ def load_function_def_library(library, load_shared_name_suffix=None):
   Args:
     library: FunctionDefLibrary proto message.
     load_shared_name_suffix: If specified, used to uniquify shared
-      names. Otherwise a unique name is generated.
+      names. Otherwise, a unique name is generated.
 
   Returns:
     Map of original function names in the library to instances of
@@ -297,6 +296,7 @@ def load_function_def_library(library, load_shared_name_suffix=None):
   """
   library_function_names = set(fdef.signature.name for fdef in library.function)
   functions = {}
+  renamed_functions = {}
 
   if load_shared_name_suffix is None:
     load_shared_name_suffix = "_load_{}".format(ops.uid())
@@ -308,8 +308,8 @@ def load_function_def_library(library, load_shared_name_suffix=None):
     # extra function definitions are a no-op since they already imported as a
     # function before and passed in explicitly (due to the topologic sort
     # import).
-    func_graph = function_def_lib.function_def_to_graph(
-        copy, copy_functions=False)
+    func_graph = function_def_lib.function_def_to_graph(copy)
+    _restore_gradient_functions(func_graph, renamed_functions)
 
     for dep in _list_function_deps(fdef, library_function_names):
       functions[dep].add_to_graph(func_graph)
@@ -319,12 +319,21 @@ def load_function_def_library(library, load_shared_name_suffix=None):
       func.add_to_graph(ops.get_default_graph())
 
     functions[fdef.signature.name] = func
-
-    # Also register the gradients in the current root context.
-    with ops.init_scope():
-      func._register_delayed_rewrite_gradient()  # pylint: disable=protected-access
+    renamed_functions[func.name] = func
 
   return functions
+
+
+def _restore_gradient_functions(func_graph, renamed_functions):
+  """Populate function op's _gradient_function with default gradient."""
+  for op in func_graph.get_operations():
+    # TODO(andresp): This code assumes that the gradient registered for this
+    # function call is the default gradient for the function and not a custom
+    # one.
+    if op.type in ["StatefulPartitionedCall", "PartitionedCall"]:
+      function = renamed_functions[compat.as_bytes(
+          op.node_def.attr["f"].func.name)]
+      op._gradient_function = function._get_gradient_function()  # pylint: disable=protected-access
 
 
 def _sort_function_defs(library, library_function_names):
@@ -362,18 +371,11 @@ def _sort_function_defs(library, library_function_names):
 
 def fix_node_def(node_def, functions, shared_name_suffix, debug_name):
   """Replace functions calls and shared names in `node_def`."""
-  if "_gradient_op_type" in node_def.attr:
-    if node_def.op in ["StatefulPartitionedCall", "PartitionedCall"]:
-      # TODO(andresp): This code assumes that the gradient registered for this
-      # function call is the default gradient for the function and not a
-      # custom one.
-      fname = node_def.attr["f"].func.name
-      gradient_name = functions[fname]._register_delayed_rewrite_gradient()  # pylint: disable=protected-access
-      node_def.attr["_gradient_op_type"].s = compat.as_bytes(gradient_name)
-    else:
-      logging.warning("Importing a function (%s) with ops with custom "
-                      "gradients. Will likely fail if a gradient is "
-                      "requested.", debug_name)
+  if ("_gradient_op_type" in node_def.attr and
+      node_def.op not in ["StatefulPartitionedCall", "PartitionedCall"]):
+    logging.warning(
+        "Importing a function (%s) with ops with custom gradients. Will likely "
+        "fail if a gradient is requested.", debug_name)
   if node_def.op in functions:
     node_def.op = functions[node_def.op].name
   for _, attr_value in node_def.attr.items():
@@ -444,11 +446,15 @@ def _list_function_deps(fdef, library_function_names):
   return deps
 
 
+_FUNCTION_WARPPER_NAME_REGEX = r"^%s(.*)_\d+$" % (
+    function_lib._INFERENCE_PREFIX)  # pylint:disable=protected-access
+
+
 def _clean_function_name(name):
   """Vanity function to keep the function names comprehensible."""
   # Note: each time a function is wrapped into `function_lib.ConcreteFunction`
   # its name becomes "__inference_<orig>_xyz".
-  match = re.search(r"^__inference_(.*)_\d+$", name)
+  match = re.search(_FUNCTION_WARPPER_NAME_REGEX, name)
   if match:
     return match.group(1)
   else:

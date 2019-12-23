@@ -13,12 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <zlib.h>
-
 #include "tensorflow/core/lib/io/zlib_inputstream.h"
 
-#include "tensorflow/core/lib/strings/strcat.h"
+#include <zlib.h>
+
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/strcat.h"
 
 namespace tensorflow {
 namespace io {
@@ -76,7 +76,7 @@ ZlibInputStream::ZlibInputStream(InputStreamInterface* input_stream,
                       zlib_options, false) {}
 
 ZlibInputStream::~ZlibInputStream() {
-  if (z_stream_def_->stream) {
+  if (z_stream_def_->stream && !init_error_) {
     inflateEnd(z_stream_def_->stream.get());
   }
   if (owns_input_stream_) {
@@ -85,6 +85,9 @@ ZlibInputStream::~ZlibInputStream() {
 }
 
 Status ZlibInputStream::Reset() {
+  if (init_error_) {
+    return errors::DataLoss("unable to reset stream, cannot decompress.");
+  }
   TF_RETURN_IF_ERROR(input_stream_->Reset());
   inflateEnd(z_stream_def_->stream.get());
   InitZlibBuffer();
@@ -104,6 +107,10 @@ void ZlibInputStream::InitZlibBuffer() {
   int status =
       inflateInit2(z_stream_def_->stream.get(), zlib_options_.window_bits);
 
+  if (zlib_options_.soft_fail_on_error && status != Z_OK) {
+    init_error_ = true;
+    return;
+  }
   CHECK_EQ(status, Z_OK) << "inflateInit failed with status " << status;
 
   z_stream_def_->stream->next_in = z_stream_def_->input.get();
@@ -132,7 +139,7 @@ Status ZlibInputStream::ReadFromStream() {
     bytes_to_read -= z_stream_def_->stream->avail_in;
     read_location += z_stream_def_->stream->avail_in;
   }
-  string data;
+  tstring data;
   // Try to read enough data to fill up z_stream_def_->input.
   // TODO(rohanj): Add a char* version of ReadNBytes to InputStreamInterface
   // and use that instead to make this more efficient.
@@ -166,7 +173,7 @@ Status ZlibInputStream::ReadFromStream() {
 }
 
 size_t ZlibInputStream::ReadBytesFromCache(size_t bytes_to_read,
-                                           string* result) {
+                                           tstring* result) {
   size_t unread_bytes =
       reinterpret_cast<char*>(z_stream_def_->stream->next_out) -
       next_unread_byte_;
@@ -186,7 +193,11 @@ size_t ZlibInputStream::NumUnreadBytes() const {
          read_bytes;
 }
 
-Status ZlibInputStream::ReadNBytes(int64 bytes_to_read, string* result) {
+Status ZlibInputStream::ReadNBytes(int64 bytes_to_read, tstring* result) {
+  if (init_error_) {
+    return errors::DataLoss("Unable to decompress Zlib file.");
+  }
+
   result->clear();
   // Read as many bytes as possible from cache.
   bytes_to_read -= ReadBytesFromCache(bytes_to_read, result);

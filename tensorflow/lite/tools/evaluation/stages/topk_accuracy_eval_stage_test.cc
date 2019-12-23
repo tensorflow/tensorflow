@@ -181,8 +181,7 @@ TEST(TopkAccuracyEvalStage, InvalidGroundTruth) {
   float array[kNumCategories];
   float* tensor = ResetOutputArray(array);
   tensor[0] = 0.8;
-  std::string ground_truth = "XYZ";
-  stage.SetEvalInputs(tensor, &ground_truth);
+  stage.SetEvalInputs(tensor, /*ground_truth_label=*/nullptr);
   EXPECT_EQ(stage.Run(), kTfLiteError);
 }
 

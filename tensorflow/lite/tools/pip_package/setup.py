@@ -36,9 +36,9 @@ from setuptools import find_packages
 from setuptools import setup
 from setuptools.command.build_py import build_py
 PACKAGE_NAME = 'tflite_runtime'
-PACKAGE_VERSION = os.environ['TENSORFLOW_VERSION']
+PACKAGE_VERSION = os.environ['PACKAGE_VERSION']
 DOCLINES = __doc__.split('\n')
-TENSORFLOW_DIR = os.environ['TENSORFLOW_SRC_ROOT']
+TENSORFLOW_DIR = os.environ['TENSORFLOW_DIR']
 
 # Setup cross compiling
 TARGET = os.environ.get('TENSORFLOW_TARGET', None)
@@ -149,20 +149,40 @@ ext = Extension(
     libraries=[LIB_TFLITE],
     library_dirs=[LIB_TFLITE_DIR])
 
-
 setup(
-    name=PACKAGE_NAME,
+    name=PACKAGE_NAME.replace('_', '-'),
     version=PACKAGE_VERSION,
     description=DOCLINES[0],
     long_description='\n'.join(DOCLINES[2:]),
     url='https://www.tensorflow.org/lite/',
-    author='Google Inc.',
+    author='Google, LLC',
     author_email='packages@tensorflow.org',
     license='Apache 2.0',
     include_package_data=True,
     keywords='tflite tensorflow tensor machine learning',
+    classifiers=[
+        'Development Status :: 5 - Production/Stable',
+        'Intended Audience :: Developers',
+        'Intended Audience :: Education',
+        'Intended Audience :: Science/Research',
+        'License :: OSI Approved :: Apache Software License',
+        'Programming Language :: Python :: 3',
+        'Programming Language :: Python :: 3.4',
+        'Programming Language :: Python :: 3.5',
+        'Programming Language :: Python :: 3.6',
+        'Programming Language :: Python :: 3.7',
+        'Topic :: Scientific/Engineering',
+        'Topic :: Scientific/Engineering :: Mathematics',
+        'Topic :: Scientific/Engineering :: Artificial Intelligence',
+        'Topic :: Software Development',
+        'Topic :: Software Development :: Libraries',
+        'Topic :: Software Development :: Libraries :: Python Modules',
+    ],
     packages=find_packages(exclude=[]),
     ext_modules=[ext],
+    install_requires=[
+        'numpy >= 1.12.1',
+    ],
     cmdclass={
         'build_ext': CustomBuildExt,
         'build_py': CustomBuildPy,

@@ -22,9 +22,11 @@
 #ifndef MLIR_IR_FUNCTION_H
 #define MLIR_IR_FUNCTION_H
 
+#include "mlir/Analysis/CallInterfaces.h"
 #include "mlir/IR/Block.h"
 #include "mlir/IR/FunctionSupport.h"
 #include "mlir/IR/OpDefinition.h"
+#include "mlir/IR/SymbolTable.h"
 
 namespace mlir {
 //===--------------------------------------------------------------------===//
@@ -37,7 +39,8 @@ namespace mlir {
 /// Function arguments or attributes that establish a symbolic connection(e.g.
 /// symbols referenced by name via a string attribute).
 class FuncOp : public Op<FuncOp, OpTrait::ZeroOperands, OpTrait::ZeroResult,
-                         OpTrait::IsIsolatedFromAbove, OpTrait::FunctionLike> {
+                         OpTrait::IsIsolatedFromAbove, OpTrait::Symbol,
+                         OpTrait::FunctionLike, CallableOpInterface::Trait> {
 public:
   using Op::Op;
   using Op::print;
@@ -47,21 +50,27 @@ public:
   static FuncOp create(Location location, StringRef name, FunctionType type,
                        ArrayRef<NamedAttribute> attrs = {});
   static FuncOp create(Location location, StringRef name, FunctionType type,
-                       llvm::iterator_range<dialect_attr_iterator> attrs);
+                       iterator_range<dialect_attr_iterator> attrs);
   static FuncOp create(Location location, StringRef name, FunctionType type,
                        ArrayRef<NamedAttribute> attrs,
                        ArrayRef<NamedAttributeList> argAttrs);
 
-  static void build(Builder *builder, OperationState *result, StringRef name,
+  static void build(Builder *builder, OperationState &result, StringRef name,
                     FunctionType type, ArrayRef<NamedAttribute> attrs);
-  static void build(Builder *builder, OperationState *result, StringRef name,
+  static void build(Builder *builder, OperationState &result, StringRef name,
                     FunctionType type, ArrayRef<NamedAttribute> attrs,
                     ArrayRef<NamedAttributeList> argAttrs);
 
   /// Operation hooks.
-  static ParseResult parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p);
+  static ParseResult parse(OpAsmParser &parser, OperationState &result);
+  void print(OpAsmPrinter &p);
   LogicalResult verify();
+
+  /// Erase a single argument at `argIndex`.
+  void eraseArgument(unsigned argIndex) { eraseArguments({argIndex}); }
+  /// Erases the arguments listed in `argIndices`.
+  /// `argIndices` is allowed to have duplicates and can be in any order.
+  void eraseArguments(ArrayRef<unsigned> argIndices);
 
   /// Returns the type of this function.
   FunctionType getType() {
@@ -74,10 +83,20 @@ public:
   /// operation and it is up to the caller to ensure that this is legal for this
   /// function, and to restore invariants:
   ///  - the entry block args must be updated to match the function params.
-  ///  - the arguments attributes may need an update: if the new type has less
-  ///    parameters we drop the extra attributes, if there are more parameters
-  ///    they won't have any attributes.
+  ///  - the argument/result attributes may need an update: if the new type has
+  ///  less parameters we drop the extra attributes, if there are more
+  ///  parameters they won't have any attributes.
   void setType(FunctionType newType) {
+    SmallVector<char, 16> nameBuf;
+    auto oldType = getType();
+    for (int i = newType.getNumInputs(), e = oldType.getNumInputs(); i < e;
+         i++) {
+      removeAttr(getArgAttrName(i, nameBuf));
+    }
+    for (int i = newType.getNumResults(), e = oldType.getNumResults(); i < e;
+         i++) {
+      removeAttr(getResultAttrName(i, nameBuf));
+    }
     setAttr(getTypeAttrName(), TypeAttr::get(newType));
   }
 
@@ -104,17 +123,48 @@ public:
   /// returned.
   Block *addEntryBlock();
 
+  /// Add a normal block to the end of the function's block list. The function
+  /// should at least already have an entry block.
+  Block *addBlock();
+
+  //===--------------------------------------------------------------------===//
+  // CallableOpInterface
+  //===--------------------------------------------------------------------===//
+
+  /// Returns a region on the current operation that the given callable refers
+  /// to. This may return null in the case of an external callable object, e.g.
+  /// an external function.
+  Region *getCallableRegion(CallInterfaceCallable callable) {
+    assert(callable.get<SymbolRefAttr>().getLeafReference() == getName());
+    return isExternal() ? nullptr : &getBody();
+  }
+
+  /// Returns all of the callable regions of this operation.
+  void getCallableRegions(SmallVectorImpl<Region *> &callables) {
+    if (!isExternal())
+      callables.push_back(&getBody());
+  }
+
+  /// Returns the results types that the given callable region produces when
+  /// executed.
+  ArrayRef<Type> getCallableResults(Region *region) {
+    assert(!isExternal() && region == &getBody() && "invalid callable");
+    return getType().getResults();
+  }
+
 private:
-  // This trait needs access to `getNumFuncArguments` and `verifyType` hooks
-  // defined below.
+  // This trait needs access to the hooks defined below.
   friend class OpTrait::FunctionLike<FuncOp>;
 
   /// Returns the number of arguments. This is a hook for OpTrait::FunctionLike.
   unsigned getNumFuncArguments() { return getType().getInputs().size(); }
 
+  /// Returns the number of results. This is a hook for OpTrait::FunctionLike.
+  unsigned getNumFuncResults() { return getType().getResults().size(); }
+
   /// Hook for OpTrait::FunctionLike, called after verifying that the 'type'
   /// attribute is present and checks if it holds a function type.  Ensures
-  /// getType and getNumFuncArguments can be called safely.
+  /// getType, getNumFuncArguments, and getNumFuncResults can be called safely.
   LogicalResult verifyType() {
     auto type = getTypeAttr().getValue();
     if (!type.isa<FunctionType>())

@@ -282,10 +282,28 @@ TEST(NodeDefUtilTest, ValidSyntax) {
     )proto");
   ExpectValidSyntax(node_def);
 
+  const NodeDef node_def_namespace = ToNodeDef(R"proto(
+    name: 'n'
+    op: 'Project>AnyIn'
+    input: 'a'
+    input: 'b'
+    attr {
+      key: 'T'
+      value { list { type: [ DT_INT32, DT_STRING ] } }
+    }
+  )proto");
+  ExpectValidSyntax(node_def_namespace);
+
   const NodeDef node_def_explicit_inputs = ToNodeDef(R"proto(
-    name:'n' op:'AnyIn' input:'a:0' input:'b:123'
-    attr { key:'T' value { list { type: [DT_INT32, DT_STRING] } } }
-    )proto");
+    name: 'n'
+    op: 'AnyIn'
+    input: 'a:0'
+    input: 'b:123'
+    attr {
+      key: 'T'
+      value { list { type: [ DT_INT32, DT_STRING ] } }
+    }
+  )proto");
   ExpectValidSyntax(node_def_explicit_inputs);
 
   EXPECT_EQ("{{node n}} = AnyIn[T=[DT_INT32, DT_STRING]](a:0, b:123)",

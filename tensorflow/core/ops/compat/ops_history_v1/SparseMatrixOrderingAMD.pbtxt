@@ -1,0 +1,11 @@
+op {
+  name: "SparseMatrixOrderingAMD"
+  input_arg {
+    name: "input"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "output"
+    type: DT_INT32
+  }
+}

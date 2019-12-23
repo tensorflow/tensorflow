@@ -18,7 +18,9 @@ limitations under the License.
 #include <map>
 #include <memory>
 
+#if !defined(__APPLE__)
 #include "tensorflow/lite/delegates/flex/delegate.h"
+#endif
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/register_ref.h"
@@ -64,6 +66,10 @@ class TfLiteDriver : public TestRunner {
   bool CheckResults() override;
   string ReadOutput(int id) override;
   void SetThreshold(double relative_threshold, double absolute_threshold);
+  void SetQuantizationErrorMultiplier(int quantization_error_multiplier);
+
+ protected:
+  Interpreter::TfLiteDelegatePtr delegate_;
 
  private:
   void DeallocateStringTensor(TfLiteTensor* t) {
@@ -80,18 +86,19 @@ class TfLiteDriver : public TestRunner {
 
   void ResetLSTMStateTensors();
 
-  class Expectation;
+  class DataExpectation;
+  class ShapeExpectation;
 
   std::unique_ptr<OpResolver> resolver_;
-  Interpreter::TfLiteDelegatePtr delegate_;
   std::unique_ptr<FlatBufferModel> model_;
   std::unique_ptr<Interpreter> interpreter_;
-  std::map<int, std::unique_ptr<Expectation>> expected_output_;
-  std::map<int, std::unique_ptr<Expectation>> expected_output_shape_;
+  std::map<int, std::unique_ptr<DataExpectation>> expected_output_;
+  std::map<int, std::unique_ptr<ShapeExpectation>> expected_output_shape_;
   bool must_allocate_tensors_ = true;
   std::map<int, TfLiteTensor*> tensors_to_deallocate_;
   double relative_threshold_;
   double absolute_threshold_;
+  int quantization_error_multiplier_;
 };
 
 }  // namespace testing

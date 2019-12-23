@@ -23,7 +23,7 @@ using namespace mlir;
 /// If this value is the result of an Operation, return the operation that
 /// defines it.
 Operation *Value::getDefiningOp() {
-  if (auto *result = dyn_cast<OpResult>(this))
+  if (auto *result = dyn_cast<OpResult>())
     return result->getOwner();
   return nullptr;
 }
@@ -36,13 +36,9 @@ Location Value::getLoc() {
 
 /// Return the Region in which this Value is defined.
 Region *Value::getParentRegion() {
-  switch (getKind()) {
-  case Value::Kind::BlockArgument:
-    return cast<BlockArgument>(this)->getOwner()->getParent();
-  case Value::Kind::OpResult:
-    return getDefiningOp()->getParentRegion();
-  }
-  llvm_unreachable("Unknown Value Kind");
+  if (auto *op = getDefiningOp())
+    return op->getParentRegion();
+  return cast<BlockArgument>()->getOwner()->getParent();
 }
 
 //===----------------------------------------------------------------------===//

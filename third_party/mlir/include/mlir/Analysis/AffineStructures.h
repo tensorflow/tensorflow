@@ -123,9 +123,8 @@ public:
   // Creates an empty AffineValueMap (users should call 'reset' to reset map
   // and operands).
   AffineValueMap() {}
-  AffineValueMap(AffineMap map);
-  AffineValueMap(AffineMap map, ArrayRef<Value *> operands,
-                 ArrayRef<Value *> results = llvm::None);
+  AffineValueMap(AffineMap map, ArrayRef<ValuePtr> operands,
+                 ArrayRef<ValuePtr> results = llvm::None);
 
   explicit AffineValueMap(AffineApplyOp applyOp);
   explicit AffineValueMap(AffineBound bound);
@@ -133,15 +132,21 @@ public:
   ~AffineValueMap();
 
   // Resets this AffineValueMap with 'map', 'operands', and 'results'.
-  void reset(AffineMap map, ArrayRef<Value *> operands,
-             ArrayRef<Value *> results = llvm::None);
+  void reset(AffineMap map, ArrayRef<ValuePtr> operands,
+             ArrayRef<ValuePtr> results = llvm::None);
+
+  /// Return the value map that is the difference of value maps 'a' and 'b',
+  /// represented as an affine map and its operands. The output map + operands
+  /// are canonicalized and simplified.
+  static void difference(const AffineValueMap &a, const AffineValueMap &b,
+                         AffineValueMap *res);
 
   /// Return true if the idx^th result can be proved to be a multiple of
   /// 'factor', false otherwise.
   inline bool isMultipleOf(unsigned idx, int64_t factor) const;
 
   /// Return true if the idx^th result depends on 'value', false otherwise.
-  bool isFunctionOf(unsigned idx, Value *value) const;
+  bool isFunctionOf(unsigned idx, ValuePtr value) const;
 
   /// Return true if the result at 'idx' is a constant, false
   /// otherwise.
@@ -150,13 +155,15 @@ public:
   /// Return true if this is an identity map.
   bool isIdentity() const;
 
+  void setResult(unsigned i, AffineExpr e) { map.setResult(i, e); }
+  AffineExpr getResult(unsigned i) { return map.getResult(i); }
   inline unsigned getNumOperands() const { return operands.size(); }
   inline unsigned getNumDims() const { return map.getNumDims(); }
   inline unsigned getNumSymbols() const { return map.getNumSymbols(); }
   inline unsigned getNumResults() const { return map.getNumResults(); }
 
-  Value *getOperand(unsigned i) const;
-  ArrayRef<Value *> getOperands() const;
+  ValuePtr getOperand(unsigned i) const;
+  ArrayRef<ValuePtr> getOperands() const;
   AffineMap getAffineMap() const;
 
 private:
@@ -165,9 +172,9 @@ private:
 
   // TODO: make these trailing objects?
   /// The SSA operands binding to the dim's and symbols of 'map'.
-  SmallVector<Value *, 4> operands;
+  SmallVector<ValuePtr, 4> operands;
   /// The SSA results binding to the results of 'map'.
-  SmallVector<Value *, 4> results;
+  SmallVector<ValuePtr, 4> results;
 };
 
 /// An IntegerValueSet is an integer set plus its operands.
@@ -181,7 +188,7 @@ class IntegerValueSet {
   /// Returns true if this integer set is determined to be empty. Emptiness is
   /// checked by by eliminating identifiers successively (through either
   /// Gaussian or Fourier-Motzkin) while using the GCD test and a trivial
-  /// invalid constraint check. Returns 'true' if the constaint system is found
+  /// invalid constraint check. Returns 'true' if the constraint system is found
   /// to be empty; false otherwise. This method is exact for rational spaces but
   /// not integer spaces - thus, if it returns true, the set is provably integer
   /// empty as well, but if it returns false, it doesn't necessarily mean an
@@ -200,12 +207,12 @@ private:
   // 'AffineCondition'.
   MutableIntegerSet set;
   /// The SSA operands binding to the dim's and symbols of 'set'.
-  SmallVector<Value *, 4> operands;
+  SmallVector<ValuePtr, 4> operands;
 };
 
 /// A flat list of affine equalities and inequalities in the form.
-/// Inequality: c_0*x_0 + c_1*x_1 + .... + c_{n-1}*x_{n-1} == 0
-/// Equality: c_0*x_0 + c_1*x_1 + .... + c_{n-1}*x_{n-1} >= 0
+/// Inequality: c_0*x_0 + c_1*x_1 + .... + c_{n-1}*x_{n-1} >= 0
+/// Equality: c_0*x_0 + c_1*x_1 + .... + c_{n-1}*x_{n-1} == 0
 ///
 /// FlatAffineConstraints stores coefficients in a contiguous buffer (one buffer
 /// for equalities and one for inequalities). The size of each buffer is
@@ -238,7 +245,7 @@ public:
                         unsigned numReservedEqualities,
                         unsigned numReservedCols, unsigned numDims = 0,
                         unsigned numSymbols = 0, unsigned numLocals = 0,
-                        ArrayRef<Optional<Value *>> idArgs = {})
+                        ArrayRef<Optional<ValuePtr>> idArgs = {})
       : numReservedCols(numReservedCols), numDims(numDims),
         numSymbols(numSymbols) {
     assert(numReservedCols >= numDims + numSymbols + 1);
@@ -257,7 +264,7 @@ public:
   /// dimensions and symbols.
   FlatAffineConstraints(unsigned numDims = 0, unsigned numSymbols = 0,
                         unsigned numLocals = 0,
-                        ArrayRef<Optional<Value *>> idArgs = {})
+                        ArrayRef<Optional<ValuePtr>> idArgs = {})
       : numReservedCols(numDims + numSymbols + numLocals + 1), numDims(numDims),
         numSymbols(numSymbols) {
     assert(numReservedCols >= numDims + numSymbols + 1);
@@ -297,10 +304,10 @@ public:
   // Clears any existing data and reserves memory for the specified constraints.
   void reset(unsigned numReservedInequalities, unsigned numReservedEqualities,
              unsigned numReservedCols, unsigned numDims, unsigned numSymbols,
-             unsigned numLocals = 0, ArrayRef<Value *> idArgs = {});
+             unsigned numLocals = 0, ArrayRef<ValuePtr> idArgs = {});
 
   void reset(unsigned numDims = 0, unsigned numSymbols = 0,
-             unsigned numLocals = 0, ArrayRef<Value *> idArgs = {});
+             unsigned numLocals = 0, ArrayRef<ValuePtr> idArgs = {});
 
   /// Appends constraints from 'other' into this. This is equivalent to an
   /// intersection with no simplification of any sort attempted.
@@ -389,7 +396,7 @@ public:
   /// operands. If `eq` is true, add a single equality equal to the bound map's
   /// first result expr.
   LogicalResult addLowerOrUpperBound(unsigned pos, AffineMap boundMap,
-                                     ArrayRef<Value *> operands, bool eq,
+                                     ArrayRef<ValuePtr> operands, bool eq,
                                      bool lower = true);
 
   /// Computes the lower and upper bounds of the first 'num' dimensional
@@ -408,10 +415,10 @@ public:
   /// operand list 'operands'.
   /// This function assumes 'values.size' == 'lbMaps.size' == 'ubMaps.size'.
   /// Note that both lower/upper bounds use operands from 'operands'.
-  LogicalResult addSliceBounds(ArrayRef<Value *> values,
+  LogicalResult addSliceBounds(ArrayRef<ValuePtr> values,
                                ArrayRef<AffineMap> lbMaps,
                                ArrayRef<AffineMap> ubMaps,
-                               ArrayRef<Value *> operands);
+                               ArrayRef<ValuePtr> operands);
 
   // Adds an inequality (>= 0) from the coefficients specified in inEq.
   void addInequality(ArrayRef<int64_t> inEq);
@@ -440,25 +447,25 @@ public:
 
   /// Sets the identifier corresponding to the specified Value id to a
   /// constant. Asserts if the 'id' is not found.
-  void setIdToConstant(Value &id, int64_t val);
+  void setIdToConstant(ValueRef id, int64_t val);
 
   /// Looks up the position of the identifier with the specified Value. Returns
   /// true if found (false otherwise). `pos' is set to the (column) position of
   /// the identifier.
-  bool findId(Value &id, unsigned *pos) const;
+  bool findId(ValueRef id, unsigned *pos) const;
 
   /// Returns true if an identifier with the specified Value exists, false
   /// otherwise.
-  bool containsId(Value &id) const;
+  bool containsId(ValueRef id) const;
 
   // Add identifiers of the specified kind - specified positions are relative to
   // the kind of identifier. The coefficient column corresponding to the added
   // identifier is initialized to zero. 'id' is the Value corresponding to the
   // identifier that can optionally be provided.
-  void addDimId(unsigned pos, Value *id = nullptr);
-  void addSymbolId(unsigned pos, Value *id = nullptr);
+  void addDimId(unsigned pos, ValuePtr id = nullptr);
+  void addSymbolId(unsigned pos, ValuePtr id = nullptr);
   void addLocalId(unsigned pos);
-  void addId(IdKind kind, unsigned pos, Value *id = nullptr);
+  void addId(IdKind kind, unsigned pos, ValuePtr id = nullptr);
 
   /// Add the specified values as a dim or symbol id depending on its nature, if
   /// it already doesn't exist in the system. `id' has to be either a terminal
@@ -466,7 +473,7 @@ public:
   /// symbols or loop IVs. The identifier is added to the end of the existing
   /// dims or symbols. Additional information on the identifier is extracted
   /// from the IR and added to the constraint system.
-  void addInductionVarOrTerminalSymbol(Value *id);
+  void addInductionVarOrTerminalSymbol(ValuePtr id);
 
   /// Composes the affine value map with this FlatAffineConstrains, adding the
   /// results of the map as dimensions at the front [0, vMap->getNumResults())
@@ -477,7 +484,13 @@ public:
   /// symbolic operands of vMap should match 1:1 (in the same order) with those
   /// of this constraint system, but the latter could have additional trailing
   /// operands.
-  LogicalResult composeMap(AffineValueMap *vMap);
+  LogicalResult composeMap(const AffineValueMap *vMap);
+
+  /// Composes an affine map whose dimensions match one to one to the
+  /// dimensions of this FlatAffineConstraints. The results of the map 'other'
+  /// are added as the leading dimensions of this constraint system. Returns
+  /// failure if 'other' is a semi-affine map.
+  LogicalResult composeMatchingMap(AffineMap other);
 
   /// Projects out (aka eliminates) 'num' identifiers starting at position
   /// 'pos'. The resulting constraint system is the shadow along the dimensions
@@ -487,8 +500,8 @@ public:
   void projectOut(unsigned pos, unsigned num);
   inline void projectOut(unsigned pos) { return projectOut(pos, 1); }
 
-  /// Projects out the identifier that is associate with Value *.
-  void projectOut(Value *id);
+  /// Projects out the identifier that is associate with ValuePtr .
+  void projectOut(ValuePtr id);
 
   void removeId(IdKind idKind, unsigned pos);
   void removeId(unsigned pos);
@@ -518,12 +531,6 @@ public:
   /// This method calls constantFoldId for the specified range of identifiers,
   /// 'num' identifiers starting at position 'pos'.
   void constantFoldIdRange(unsigned pos, unsigned num);
-
-  /// Returns true if all the identifiers in the specified range [start, limit)
-  /// can only take a single value each if the remaining identifiers are treated
-  /// as symbols/parameters, i.e., for given values of the latter, there only
-  /// exists a unique value for each of the dimensions in the specified range.
-  bool isRangeOneToOne(unsigned start, unsigned limit) const;
 
   /// Updates the constraints to be the smallest bounding (enclosing) box that
   /// contains the points of 'this' set and that of 'other', with the symbols
@@ -570,20 +577,20 @@ public:
     return numIds - numDims - numSymbols;
   }
 
-  inline ArrayRef<Optional<Value *>> getIds() const {
+  inline ArrayRef<Optional<ValuePtr>> getIds() const {
     return {ids.data(), ids.size()};
   }
-  inline MutableArrayRef<Optional<Value *>> getIds() {
+  inline MutableArrayRef<Optional<ValuePtr>> getIds() {
     return {ids.data(), ids.size()};
   }
 
   /// Returns the optional Value corresponding to the pos^th identifier.
-  inline Optional<Value *> getId(unsigned pos) const { return ids[pos]; }
-  inline Optional<Value *> &getId(unsigned pos) { return ids[pos]; }
+  inline Optional<ValuePtr> getId(unsigned pos) const { return ids[pos]; }
+  inline Optional<ValuePtr> &getId(unsigned pos) { return ids[pos]; }
 
   /// Returns the Value associated with the pos^th identifier. Asserts if
   /// no Value identifier was associated.
-  inline Value *getIdValue(unsigned pos) const {
+  inline ValuePtr getIdValue(unsigned pos) const {
     assert(ids[pos].hasValue() && "identifier's Value not set");
     return ids[pos].getValue();
   }
@@ -591,7 +598,7 @@ public:
   /// Returns the Values associated with identifiers in range [start, end).
   /// Asserts if no Value was associated with one of these identifiers.
   void getIdValues(unsigned start, unsigned end,
-                   SmallVectorImpl<Value *> *values) const {
+                   SmallVectorImpl<ValuePtr> *values) const {
     assert((start < numIds || start == end) && "invalid start position");
     assert(end <= numIds && "invalid end position");
     values->clear();
@@ -600,17 +607,17 @@ public:
       values->push_back(getIdValue(i));
     }
   }
-  inline void getAllIdValues(SmallVectorImpl<Value *> *values) const {
+  inline void getAllIdValues(SmallVectorImpl<ValuePtr> *values) const {
     getIdValues(0, numIds, values);
   }
 
   /// Sets Value associated with the pos^th identifier.
-  inline void setIdValue(unsigned pos, Value *val) {
+  inline void setIdValue(unsigned pos, ValuePtr val) {
     assert(pos < numIds && "invalid id position");
     ids[pos] = val;
   }
   /// Sets Values associated with identifiers in the range [start, end).
-  void setIdValues(unsigned start, unsigned end, ArrayRef<Value *> values) {
+  void setIdValues(unsigned start, unsigned end, ArrayRef<ValuePtr> values) {
     assert((start < numIds || end == start) && "invalid start position");
     assert(end <= numIds && "invalid end position");
     assert(values.size() == end - start);
@@ -648,7 +655,7 @@ public:
   Optional<int64_t> getConstantUpperBound(unsigned pos) const;
 
   /// Gets the lower and upper bound of the pos^th identifier treating
-  /// [0, offset) U [offset + num, symbStartPos) as dimensions and
+  /// [0, offset) U [offset + num, symStartPos) as dimensions and
   /// [symStartPos, getNumDimAndSymbolIds) as symbols. The returned
   /// multi-dimensional maps in the pair represent the max and min of
   /// potentially multiple affine expressions. The upper bound is exclusive.
@@ -657,7 +664,7 @@ public:
   std::pair<AffineMap, AffineMap>
   getLowerAndUpperBound(unsigned pos, unsigned offset, unsigned num,
                         unsigned symStartPos, ArrayRef<AffineExpr> localExprs,
-                        MLIRContext *context);
+                        MLIRContext *context) const;
 
   /// Returns true if the set can be trivially detected as being
   /// hyper-rectangular on the specified contiguous set of identifiers.
@@ -759,7 +766,7 @@ private:
   /// system appearing in the order the identifiers correspond to columns.
   /// Temporary ones or those that aren't associated to any Value are set to
   /// None.
-  SmallVector<Optional<Value *>, 8> ids;
+  SmallVector<Optional<ValuePtr>, 8> ids;
 
   /// A parameter that controls detection of an unrealistic number of
   /// constraints. If the number of constraints is this many times the number of
@@ -781,15 +788,17 @@ private:
 AffineExpr simplifyAffineExpr(AffineExpr expr, unsigned numDims,
                               unsigned numSymbols);
 
-/// Flattens 'expr' into 'flattenedExpr'. Returns failure if 'expr' could not be
-/// flattened (i.e., semi-affine is not yet handled). 'cst' contains constraints
-/// that connect newly introduced local identifiers to existing dimensional and
-/// symbolic identifiers. See documentation for AffineExprFlattener on how
-/// mod's and div's are flattened.
-LogicalResult
-getFlattenedAffineExpr(AffineExpr expr, unsigned numDims, unsigned numSymbols,
-                       llvm::SmallVectorImpl<int64_t> *flattenedExpr,
-                       FlatAffineConstraints *cst = nullptr);
+/// Flattens 'expr' into 'flattenedExpr', which contains the coefficients of the
+/// dimensions, symbols, and additional variables that represent floor divisions
+/// of dimensions, symbols, and in turn other floor divisions.  Returns failure
+/// if 'expr' could not be flattened (i.e., semi-affine is not yet handled).
+/// 'cst' contains constraints that connect newly introduced local identifiers
+/// to existing dimensional and symbolic identifiers. See documentation for
+/// AffineExprFlattener on how mod's and div's are flattened.
+LogicalResult getFlattenedAffineExpr(AffineExpr expr, unsigned numDims,
+                                     unsigned numSymbols,
+                                     SmallVectorImpl<int64_t> *flattenedExpr,
+                                     FlatAffineConstraints *cst = nullptr);
 
 /// Flattens the result expressions of the map to their corresponding flattened
 /// forms and set in 'flattenedExprs'. Returns failure if any expression in the
@@ -801,12 +810,14 @@ getFlattenedAffineExpr(AffineExpr expr, unsigned numDims, unsigned numSymbols,
 /// method should be used instead of repeatedly calling getFlattenedAffineExpr
 /// since local variables added to deal with div's and mod's will be reused
 /// across expressions.
-LogicalResult getFlattenedAffineExprs(
-    AffineMap map, std::vector<llvm::SmallVector<int64_t, 8>> *flattenedExprs,
-    FlatAffineConstraints *cst = nullptr);
-LogicalResult getFlattenedAffineExprs(
-    IntegerSet set, std::vector<llvm::SmallVector<int64_t, 8>> *flattenedExprs,
-    FlatAffineConstraints *cst = nullptr);
+LogicalResult
+getFlattenedAffineExprs(AffineMap map,
+                        std::vector<SmallVector<int64_t, 8>> *flattenedExprs,
+                        FlatAffineConstraints *cst = nullptr);
+LogicalResult
+getFlattenedAffineExprs(IntegerSet set,
+                        std::vector<SmallVector<int64_t, 8>> *flattenedExprs,
+                        FlatAffineConstraints *cst = nullptr);
 
 } // end namespace mlir.
 

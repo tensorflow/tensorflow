@@ -70,7 +70,7 @@ Status GetInputNode(const GraphOptimizerContext& ctx, const string& input,
                     NodeDef** node);
 Status GetTensorProperties(const GraphOptimizerContext& ctx,
                            const string& tensor,
-                           OpInfo::TensorProperties* properties);
+                           const OpInfo::TensorProperties** properties);
 
 NodeDef* AddCopyNode(const GraphOptimizerContext& ctx, const string& name,
                      const NodeDef* node_to_copy);
@@ -189,8 +189,8 @@ class GraphOptimizerStage {
   // Lookup tensor properties by name. Tensor name might have non-zero port
   // number. Return an error if tensor node doesn't exists in a graph, or it
   // doesn't have properties defined for requested port.
-  Status GetTensorProperties(const string& tensor,
-                             OpInfo::TensorProperties* properties) const {
+  Status GetTensorProperties(
+      const string& tensor, const OpInfo::TensorProperties** properties) const {
     return ::tensorflow::grappler::GetTensorProperties(ctx_, tensor,
                                                        properties);
   }

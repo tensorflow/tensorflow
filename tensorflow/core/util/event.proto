@@ -106,9 +106,14 @@ message WatchdogConfig {
   int64 timeout_ms = 1;
 }
 
+message RequestedExitCode {
+  int32 exit_code = 1;
+}
+
 message WorkerHeartbeatRequest {
   WorkerShutdownMode shutdown_mode = 1;
   WatchdogConfig watchdog_config = 2;
+  RequestedExitCode exit_code = 3;
 }
 
 message WorkerHeartbeatResponse {

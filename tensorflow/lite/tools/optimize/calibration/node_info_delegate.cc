@@ -33,11 +33,14 @@ TfLiteStatus NodeInfoDelegatePrepare(TfLiteContext* context,
 }  // namespace
 
 TfLiteDelegate CreateNodeInfoDelegate(NodeInfoDelegateParams* params) {
-  return {/*data_ */ params,
-          /* Prepare */ NodeInfoDelegatePrepare,
-          /* CopyFromBufferHandle*/ nullptr,
-          /* CopyToBufferHandle*/ nullptr,
-          /* FreeBufferHandle*/ nullptr};
+  auto delegate = TfLiteDelegateCreate();
+  delegate.data_ = params;
+  delegate.Prepare = NodeInfoDelegatePrepare;
+  delegate.CopyFromBufferHandle = nullptr;
+  delegate.CopyToBufferHandle = nullptr;
+  delegate.FreeBufferHandle = nullptr;
+  delegate.flags = kTfLiteDelegateFlagsAllowDynamicTensors;
+  return delegate;
 }
 
 TfLiteStatus NodeInfoDelegateObserver::OnDelegatePrepareCalled(

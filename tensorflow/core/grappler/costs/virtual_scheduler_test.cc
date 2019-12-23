@@ -377,31 +377,32 @@ TEST_F(ReadyNodeManagerTest, GetAndRemoveMultiplePriorityReadyManager) {
   TF_EXPECT_OK(manager.Init(&node_states_));
 
   // Sets up node priorities.
-  std::unordered_map<string, int> node_priority = {{"Node1", 1}, {"Node2", 2},
-                                                   {"Node3", 3}, {"Node4", 4},
-                                                   {"Node5", 5}, {"Node6", 6}};
+  std::unordered_map<string, int> node_priority = {
+      {"Node1", 1}, {"Node2", 2}, {"Node3", 2}, {"Node4", 4}, {"Node5", 5}};
   TF_EXPECT_OK(manager.SetPriority(node_priority));
 
   // Inserts nodes in some random order.
-  manager.AddNode(&node2_);
+  manager.AddNode(&node3_);
   manager.AddNode(&node1_);
   manager.AddNode(&node4_);
   manager.AddNode(&node5_);
-  manager.AddNode(&node3_);
+  manager.AddNode(&node2_);
   manager.AddNode(&node6_);
 
   // Expects nodes scheduled based on priority.
+  // Node6 should default to lowest priority, since it is not found.
+  EXPECT_EQ(manager.GetCurrNode()->name(), "Node6");
+  manager.RemoveCurrNode();
   EXPECT_EQ(manager.GetCurrNode()->name(), "Node1");
   manager.RemoveCurrNode();
-  EXPECT_EQ(manager.GetCurrNode()->name(), "Node2");
-  manager.RemoveCurrNode();
+  // Nodes 2 and 3 have equal priority and so should be scheduled ready-first.
   EXPECT_EQ(manager.GetCurrNode()->name(), "Node3");
+  manager.RemoveCurrNode();
+  EXPECT_EQ(manager.GetCurrNode()->name(), "Node2");
   manager.RemoveCurrNode();
   EXPECT_EQ(manager.GetCurrNode()->name(), "Node4");
   manager.RemoveCurrNode();
   EXPECT_EQ(manager.GetCurrNode()->name(), "Node5");
-  manager.RemoveCurrNode();
-  EXPECT_EQ(manager.GetCurrNode()->name(), "Node6");
   manager.RemoveCurrNode();
   EXPECT_TRUE(manager.Empty());
 }

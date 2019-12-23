@@ -21,6 +21,7 @@ import collections
 import functools
 
 import six
+import wrapt
 
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import composite_tensor
@@ -31,7 +32,9 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import deprecation
+from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -83,24 +86,31 @@ def normalize_element(element):
   components = nest.flatten(element)
   normalized_components = []
   with ops.name_scope("normalize_element"):
-    # Imported here to avoid circular dependency
+    # Imported here to avoid circular dependency.
     from tensorflow.python.data.ops import dataset_ops  # pylint: disable=g-import-not-at-top
     for i, t in enumerate(components):
-      spec = type_spec_from_value(t)
-      if isinstance(spec, sparse_tensor.SparseTensorSpec):
-        normalized_components.append(sparse_tensor.SparseTensor.from_value(t))
-      elif isinstance(spec, ragged_tensor.RaggedTensorSpec):
-        normalized_components.append(
-            ragged_tensor.convert_to_tensor_or_ragged_tensor(
-                t, name="component_%d" % i))
-      elif isinstance(
-          spec, (tensor_array_ops.TensorArraySpec, dataset_ops.DatasetSpec)):
-        normalized_components.append(t)
-      elif isinstance(t, composite_tensor.CompositeTensor):
-        normalized_components.append(t)
-      else:
+      try:
+        spec = type_spec_from_value(t, use_fallback=False)
+      except TypeError:
+        # TypeError indicates it was not possible to compute a `TypeSpec` for
+        # the value. As a fallback try converting the value to a tensor.
         normalized_components.append(
             ops.convert_to_tensor(t, name="component_%d" % i))
+      else:
+        if isinstance(spec, sparse_tensor.SparseTensorSpec):
+          normalized_components.append(sparse_tensor.SparseTensor.from_value(t))
+        elif isinstance(spec, ragged_tensor.RaggedTensorSpec):
+          normalized_components.append(
+              ragged_tensor.convert_to_tensor_or_ragged_tensor(
+                  t, name="component_%d" % i))
+        elif isinstance(
+            spec, (tensor_array_ops.TensorArraySpec, dataset_ops.DatasetSpec)):
+          normalized_components.append(t)
+        elif isinstance(t, composite_tensor.CompositeTensor):
+          normalized_components.append(t)
+        else:
+          normalized_components.append(
+              ops.convert_to_tensor(t, name="component_%d" % i))
   return nest.pack_sequence_as(element, normalized_components)
 
 
@@ -392,11 +402,13 @@ def are_compatible(spec1, spec2):
   return True
 
 
-def type_spec_from_value(element):
+def type_spec_from_value(element, use_fallback=True):
   """Creates a type specification for the given value.
 
   Args:
     element: The element to create the type specification for.
+    use_fallback: Whether to fall back to converting the element to a tensor
+      in order to compute its `TypeSpec`.
 
   Returns:
     A nested structure of `TypeSpec`s that represents the type specification
@@ -410,7 +422,7 @@ def type_spec_from_value(element):
   if spec is not None:
     return spec
 
-  if isinstance(element, dict):
+  if isinstance(element, collections_abc.Mapping):
     # We create a shallow copy in an attempt to preserve the key order.
     #
     # Note that we do not guarantee that the key order is preserved, which is
@@ -418,28 +430,35 @@ def type_spec_from_value(element):
     # `type_spec_from_value` should not assume that the key order of a `dict`
     # in the returned nested structure matches the key order of the
     # corresponding `dict` in the input value.
-    result = element.copy()
-    for k in element:
-      result[k] = type_spec_from_value(element[k])
-    return result
+    if isinstance(element, collections.defaultdict):
+      ctor = lambda items: type(element)(element.default_factory, items)
+    else:
+      ctor = type(element)
+    return ctor([(k, type_spec_from_value(v)) for k, v in element.items()])
 
   if isinstance(element, tuple):
     if hasattr(element, "_fields") and isinstance(
         element._fields, collections.Sequence) and all(
             isinstance(f, six.string_types) for f in element._fields):
+      if isinstance(element, wrapt.ObjectProxy):
+        element_type = type(element.__wrapped__)
+      else:
+        element_type = type(element)
       # `element` is a namedtuple
-      return type(element)(*[type_spec_from_value(v) for v in element])
+      return element_type(*[type_spec_from_value(v) for v in element])
     # `element` is not a namedtuple
     return tuple([type_spec_from_value(v) for v in element])
 
-  # Fallback: try converting value to a tensor.
-  try:
-    tensor = ops.convert_to_tensor(element)
-    spec = type_spec_from_value(tensor)
-    if spec is not None:
-      return spec
-  except (ValueError, TypeError):
-    pass
+  if use_fallback:
+    # As a fallback try converting the element to a tensor.
+    try:
+      tensor = ops.convert_to_tensor(element)
+      spec = type_spec_from_value(tensor)
+      if spec is not None:
+        return spec
+    except (ValueError, TypeError) as e:
+      logging.vlog(
+          3, "Failed to convert %r to tensor: %s" % (type(element).__name__, e))
 
   raise TypeError("Could not build a TypeSpec for %r with type %s" %
                   (element, type(element).__name__))

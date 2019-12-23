@@ -46,11 +46,12 @@ namespace {
 //   n = a.shape[-2]
 //   l = np.zeros_like(a)
 //   for j in xrange(n):
-//     row = l[..., j, :j]
-//     row_t = np.swapaxes(row, -1, -2)
-//     l[..., j, j] = np.sqrt(a[..., j, j] - np.dot(row, row_t))
-//     l[..., j+1:, j] = (a[..., j+1:, j] - np.dot(l[..., j+1:, :j], row_t)) /
-//                       l[..., j, j]
+//     mask = np.zeros_like(a)
+//     mask[i, k] == 1 when i >= k and k == j
+//     l_square = np.dot(l, l_t)
+//     temp = a - l_square
+//     l[..., j, j] = temp(j, j)
+//     l = temp / l[..., j, j) * mask + l
 //   return l
 // Returns a (result, error) pair.
 std::pair<XlaOp, XlaOp> CholeskyUnblocked(
@@ -65,6 +66,11 @@ std::pair<XlaOp, XlaOp> CholeskyUnblocked(
                               /*pos=*/0,
                               /*len=*/n_dims - 2);
 
+    auto matrix_dims = AsInt64Slice(a_shape.dimensions())
+                           .subspan(
+                               /*pos=*/0,
+                               /*len=*/n_dims);
+
     XlaOp l = ZerosLike(a);
 
     // Construct the for loop body to iterate over rows.
@@ -73,63 +79,33 @@ std::pair<XlaOp, XlaOp> CholeskyUnblocked(
             XlaBuilder* body_builder) -> StatusOr<std::vector<XlaOp>> {
       std::vector<int64> row_shape_dims(major_dims.begin(), major_dims.end());
       std::vector<int64> col_shape_dims(major_dims.begin(), major_dims.end());
-      row_shape_dims.push_back(1);
-      row_shape_dims.push_back(n);
-      auto mask_zeros_row =
-          Zeros(body_builder,
-                ShapeUtil::MakeShape(a_shape.element_type(), row_shape_dims));
-
-      col_shape_dims.push_back(n);
-      col_shape_dims.push_back(1);
-      auto mask_zeros_col =
-          Zeros(body_builder,
-                ShapeUtil::MakeShape(a_shape.element_type(), col_shape_dims));
-
-      auto mask_range_row =
-          Iota(body_builder, ShapeUtil::MakeShape(S32, row_shape_dims),
-               /*iota_dimension=*/n_dims - 1);
-      auto mask_range_col =
-          Iota(body_builder, ShapeUtil::MakeShape(S32, col_shape_dims),
-               /*iota_dimension=*/n_dims - 2);
       auto body_a = loop_vars[0];
       auto body_l = loop_vars[1];
       auto seen_error = loop_vars[2];
+      auto iota_row = Iota(body_builder, ShapeUtil::MakeShape(S32, matrix_dims),
+                           n_dims - 1);
+      auto iota_col = Iota(body_builder, ShapeUtil::MakeShape(S32, matrix_dims),
+                           n_dims - 2);
 
-      // row = l[..., i, :i]
-      // select the whole i-th row, then mask out all columns past i-1
-      auto zero = ConstantR0<int32>(body_builder, 0);
-      auto l_i = DynamicSliceInMinorDims(body_l, {i, zero}, {1, n});
-      auto row = Select(Ge(mask_range_row, i), mask_zeros_row, l_i);
-      // a[..., i, i]
-      auto a_ii = DynamicSliceInMinorDims(body_a, {i, i}, {1, 1});
-      // np.dot(row, np.swapaxes(row, -1, -2))
-      auto diag_dot = BatchDot(row, false, row, true, precision);
-      // l[..., i, i] = np.sqrt(a[..., i, i] - np.dot(row,
-      //                                              np.swapaxes(row, -1, -2)))
-      auto l_ii = a_ii - diag_dot;
+      auto mask_pred = Ge(iota_col, iota_row);
+      mask_pred = And(mask_pred, Eq(iota_row, i));
+      auto mask_zeros =
+          Zeros(body_builder,
+                ShapeUtil::MakeShape(a_shape.element_type(), matrix_dims));
+      // L * L.T, This matrix has of a lot of multiplying with zero
+      // (namely, L[:, j:] = 0) and redundant computation, but it is faster
+      // than slice.
+      auto l_square = BatchDot(body_l, false, body_l, true, precision);
+
+      // A - L*L.T
+      l_square = body_a - l_square;
+      auto l_ii = DynamicSliceInMinorDims(l_square, {i, i}, {1, 1});
+      l_ii = Sqrt(l_ii);
+      // L = (A - L*L.T) / l_ii * mask + L
+      body_l = Select(mask_pred, l_square / l_ii, mask_zeros) + body_l;
+
       seen_error =
           Or(seen_error, Any(Or(Le(l_ii, ZerosLike(l_ii)), IsNan(l_ii))));
-      l_ii = Sqrt(l_ii);
-
-      // a[..., i+1:, i]
-      // select the whole i-th column, then mask out all rows above i+1
-      auto a_0i = DynamicSliceInMinorDims(body_a, {i}, {1});
-      auto a_ip1i = Select(Le(mask_range_col, i), mask_zeros_col, a_0i);
-
-      // l[..., i+1:, i] = (a[..., i+1:, i] - np.dot(l[..., i+1:, :i], r.T)) /
-      //                   l[..., i, i]
-      // The columns in [i, n] are zeroed out in `row`, so we just have to
-      // zero out rows above i+1 after the BatchDot. np.dot(l[..., :, :i],
-      // r.T)
-      auto dot = BatchDot(body_l, false, row, true, precision);
-      // np.dot(l[..., i+1:, :i], r.T)
-      auto dot_ip1 = Select(Le(mask_range_col, i), mask_zeros_col, dot);
-
-      body_l =
-          DynamicUpdateSliceInMinorDims(body_l, (a_ip1i - dot_ip1) / l_ii, {i});
-      // Assign the diagonal after the rest of the column because otherwise the
-      // column assign will wrap around and overwrite the diagonal assign.
-      body_l = DynamicUpdateSliceInMinorDims(body_l, l_ii, {i, i});
 
       return std::vector<XlaOp>{body_a, body_l, seen_error};
     };

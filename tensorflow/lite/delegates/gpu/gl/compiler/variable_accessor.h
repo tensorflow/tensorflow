@@ -46,8 +46,8 @@ namespace gl {
 // uniforms. Uniform declarations are returned by GetUniformDeclarations.
 class VariableAccessor : public InlineRewrite {
  public:
-  explicit VariableAccessor(bool inline_values)
-      : inline_values_(inline_values) {}
+  explicit VariableAccessor(bool inline_values, bool vulkan_support = false)
+      : inline_values_(inline_values), vulkan_support_(vulkan_support) {}
 
   RewriteStatus Rewrite(absl::string_view input, std::string* output) final;
 
@@ -71,6 +71,7 @@ class VariableAccessor : public InlineRewrite {
 
  private:
   const bool inline_values_;
+  const bool vulkan_support_;
   std::unordered_map<std::string, Variable> name_to_variable_;
   std::set<std::string> shared_variables_;
   std::set<std::string> uniform_parameters_;

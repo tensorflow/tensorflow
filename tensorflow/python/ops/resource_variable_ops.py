@@ -24,6 +24,7 @@ import functools
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import variable_pb2
+from tensorflow.python import _pywrap_utils
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
@@ -32,6 +33,7 @@ from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_logging_ops
@@ -130,20 +132,22 @@ def _combine_handle_data(handle, initial_value):
   return variable_handle_data
 
 
-def variable_handle_from_shape_and_dtype(
-    shape, dtype, shared_name, name, graph_mode, extra_handle_data=None):
-  """Create a new variable handle, optionally copying in `extra_handle_data`."""
+def _variable_handle_from_shape_and_dtype(
+    shape, dtype, shared_name, name, graph_mode, initial_value=None):
+  """Create a variable handle, copying in handle data from `initial_value`."""
   container = ops.get_default_graph()._container  # pylint: disable=protected-access
   if container is None:
     container = ""
+  shape = tensor_shape.as_shape(shape)
+  dtype = dtypes.as_dtype(dtype)
   handle = gen_resource_variable_ops.var_handle_op(shape=shape, dtype=dtype,
                                                    shared_name=shared_name,
                                                    name=name,
                                                    container=container)
-  if extra_handle_data is None:
-    extra_handle_data = handle
+  if initial_value is None:
+    initial_value = handle
   if graph_mode:
-    full_handle_data = _combine_handle_data(handle, extra_handle_data)
+    full_handle_data = _combine_handle_data(handle, initial_value)
     _set_handle_shapes_and_types(handle, full_handle_data, graph_mode)
     return handle
   else:
@@ -159,22 +163,24 @@ def variable_handle_from_shape_and_dtype(
     gen_logging_ops._assert(  # pylint: disable=protected-access
         math_ops.logical_not(exists), [exists], name="EagerVariableNameReuse")
 
-    with context.graph_mode(), ops.Graph().as_default() as graph:
-      h = gen_resource_variable_ops.var_handle_op(shape=shape, dtype=dtype,
-                                                  shared_name=shared_name,
-                                                  name=name,
-                                                  container=container)
+    handle_data = cpp_shape_inference_pb2.CppShapeInferenceResult.HandleData()
+    handle_data.is_set = True
+    handle_data.shape_and_type.append(
+        cpp_shape_inference_pb2.CppShapeInferenceResult.HandleShapeAndType(
+            shape=shape.as_proto(), dtype=dtype.as_datatype_enum))
 
-      # Tensor._handle_data contains information for the shape-inference code to
-      # know the shape and dtype of the variable pointed to by a handle. Since
-      # shape inference doesn't run in eager mode we copy this data here for
-      # when the handle is captured by an eager mode function.
-      # pylint: disable=protected-access
-      full_handle_data = _combine_handle_data(h, extra_handle_data)
-      _set_handle_shapes_and_types(handle, full_handle_data, graph_mode)
-      # pylint: enable=protected-access
-    # Clean up op->graph->op reference cycles.
-    ops.dismantle_graph(graph)
+    if initial_value is not None and initial_value.dtype == dtypes.variant:
+      extra_handle_data = get_eager_safe_handle_data(initial_value)
+      if extra_handle_data is not None and extra_handle_data.is_set:
+        if (not handle_data.is_set
+            or len(handle_data.shape_and_type) != 1):
+          raise RuntimeError(
+              "Expected VarHandleOp to return a length==1 shape_and_type, "
+              "but saw: '%s'" % (handle_data,))
+        handle_data.shape_and_type.extend(
+            extra_handle_data.shape_and_type)
+
+    _set_handle_shapes_and_types(handle, handle_data, graph_mode)
     return handle
 
 
@@ -222,7 +228,7 @@ def eager_safe_variable_handle(initial_value, shape, shared_name, name,
     The handle, a `Tensor` of type `resource`.
   """
   dtype = initial_value.dtype.base_dtype
-  return variable_handle_from_shape_and_dtype(
+  return _variable_handle_from_shape_and_dtype(
       shape, dtype, shared_name, name, graph_mode, initial_value)
 
 
@@ -461,7 +467,7 @@ class BaseResourceVariable(variables.VariableV1):
         trainable=self._trainable,
         constraint=self._constraint,
         dtype=self._dtype,
-        name=self._shared_name + "_copy",
+        name=self._shared_name,
         distribute_strategy=self._distribute_strategy)
     memo[self._unique_id] = copied_variable
     return copied_variable
@@ -490,6 +496,9 @@ class BaseResourceVariable(variables.VariableV1):
   def shape(self):
     """The shape of this variable."""
     return self._shape
+
+  def set_shape(self, shape):
+    self._shape = self._shape.merge_with(shape)
 
   def _shape_as_list(self):
     if self.shape.ndims is None:
@@ -520,8 +529,7 @@ class BaseResourceVariable(variables.VariableV1):
     if self._cached_value is not None:
       return self._cached_value
     with ops.colocate_with(None, ignore_existing=True):
-      with ops.device(self._handle.device):
-        return self._read_variable_op()
+      return self._read_variable_op()
 
   def _as_graph_element(self):
     """Conversion function for Graph.as_graph_element()."""
@@ -540,9 +548,6 @@ class BaseResourceVariable(variables.VariableV1):
     return self._initial_value
 
   @property
-  @deprecated(
-      None,
-      "Apply a constraint manually following the optimizer update step.")
   def constraint(self):
     """Returns the constraint function associated with this variable.
 
@@ -615,7 +620,9 @@ class BaseResourceVariable(variables.VariableV1):
       # Note that if a control flow context is active the input of the read op
       # might not actually be the handle. This line bypasses it.
       tape.record_operation(
-          "ReadVariableOp", [result], [self._handle], lambda x: [x])
+          "ReadVariableOp", [result], [self._handle],
+          backward_function=lambda x: [x],
+          forward_function=lambda x: [x])
     return result
 
   def read_value(self):
@@ -628,9 +635,7 @@ class BaseResourceVariable(variables.VariableV1):
      the read operation.
     """
     with ops.name_scope("Read"):
-      # Ensure we read the variable in the same device as the handle.
-      with ops.device(self._handle.device):
-        value = self._read_variable_op()
+      value = self._read_variable_op()
     # Return an identity so it can get placed on whatever device the context
     # specifies instead of the device where the variable is.
     return array_ops.identity(value)
@@ -715,10 +720,6 @@ class BaseResourceVariable(variables.VariableV1):
       raise RuntimeError("from_proto not supported in EAGER mode.")
     return ResourceVariable(
         variable_def=variable_def, import_scope=import_scope)
-
-  def set_shape(self, shape):
-    """Unsupported."""
-    raise NotImplementedError("ResourceVariable does not implement set_shape()")
 
   __array_priority__ = 100
 
@@ -1514,8 +1515,10 @@ class ResourceVariable(BaseResourceVariable):
       collections = list(collections) + [ops.GraphKeys.TRAINABLE_VARIABLES]
     with ops.init_scope():
       self._in_graph_mode = not context.executing_eagerly()
-      with ops.name_scope(name, "Variable", []
-                          if init_from_fn else [initial_value]) as name:
+      with ops.name_scope(
+          name,
+          "Variable", [] if init_from_fn else [initial_value],
+          skip_on_eager=False) as name:
         # pylint: disable=protected-access
         handle_name = ops.name_from_scope_name(name)
         if self._in_graph_mode:
@@ -1751,7 +1754,7 @@ class UninitializedVariable(BaseResourceVariable):
     with ops.init_scope():
       self._in_graph_mode = not context.executing_eagerly()
     with ops.init_scope():
-      with ops.name_scope(name, "Variable") as name:
+      with ops.name_scope(name, "Variable", skip_on_eager=False) as name:
         handle_name = ops.name_from_scope_name(name)
         if self._in_graph_mode:
           shared_name = handle_name
@@ -1759,10 +1762,10 @@ class UninitializedVariable(BaseResourceVariable):
         else:
           unique_id = "%s_%d" % (handle_name, ops.uid())
           shared_name = context.shared_name(unique_id)
-        handle = variable_handle_from_shape_and_dtype(
+        handle = _variable_handle_from_shape_and_dtype(
             shape=shape, dtype=dtype, shared_name=shared_name,
             name=name, graph_mode=self._in_graph_mode,
-            extra_handle_data=extra_handle_data)
+            initial_value=extra_handle_data)
         if not context.executing_eagerly():
           with ops.name_scope("Read"):
             # Manually assign reads to the handle's device to avoid log
@@ -1784,7 +1787,7 @@ class UninitializedVariable(BaseResourceVariable):
         synchronization=synchronization, aggregation=aggregation)
 
 
-pywrap_tensorflow.RegisterType("ResourceVariable", ResourceVariable)
+_pywrap_utils.RegisterType("ResourceVariable", ResourceVariable)
 math_ops._resource_variable_type = ResourceVariable  # pylint: disable=protected-access
 
 
@@ -1963,3 +1966,24 @@ def copy_to_graph_uninitialized(var):
 ops.NotDifferentiable("Assert")
 ops.NotDifferentiable("VarIsInitializedOp")
 ops.NotDifferentiable("VariableShape")
+
+
+class VariableSpec(tensor_spec.DenseSpec):
+  """Describes a tf.Variable."""
+
+  __slots__ = []
+
+  value_type = property(lambda self: BaseResourceVariable)
+
+  def _to_components(self, value):
+    raise NotImplementedError
+
+  def _from_components(self, components):
+    raise NotImplementedError
+
+  def _from_compatible_tensor_list(self, tensor_list):
+    assert len(tensor_list) == 1
+    return tensor_list[0]
+
+
+_pywrap_utils.RegisterType("VariableSpec", VariableSpec)

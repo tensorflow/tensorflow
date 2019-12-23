@@ -25,6 +25,7 @@ namespace tflite {
 namespace gpu {
 namespace {
 
+using ::testing::ElementsAre;
 using ::testing::UnorderedElementsAre;
 
 TEST(Model, SingleNode) {
@@ -106,6 +107,21 @@ TEST(Model, SetSameProducer) {
   EXPECT_FALSE(graph.SetProducer(node->id, graph_output->id).ok());
 }
 
+TEST(Model, ReplaceInput) {
+  GraphFloat32 graph;
+  Node* node = graph.NewNode();
+  Value<TensorRef<BHWC>>* v0 = graph.NewValue();
+  Value<TensorRef<BHWC>>* v1 = graph.NewValue();
+  Value<TensorRef<BHWC>>* v2 = graph.NewValue();
+  Value<TensorRef<BHWC>>* v3 = graph.NewValue();
+  ASSERT_TRUE(graph.AddConsumer(node->id, v0->id).ok());
+  ASSERT_TRUE(graph.AddConsumer(node->id, v1->id).ok());
+  ASSERT_TRUE(graph.AddConsumer(node->id, v2->id).ok());
+  EXPECT_THAT(graph.FindInputs(node->id), ElementsAre(v0, v1, v2));
+  ASSERT_TRUE(graph.ReplaceInput(node->id, v1->id, v3->id).ok());
+  EXPECT_THAT(graph.FindInputs(node->id), ElementsAre(v0, v3, v2));
+}
+
 TEST(Model, RemoveProducer) {
   GraphFloat32 graph;
   Node* node = graph.NewNode();
@@ -181,7 +197,7 @@ TEST(Model, RemoveSimpleNodeNoAfterNodes) {
 
   ASSERT_TRUE(RemoveOneInputOneOutputNode(&graph, simple_node).ok());
   EXPECT_THAT(graph.inputs(), UnorderedElementsAre(graph_input));
-  EXPECT_THAT(graph.outputs(), UnorderedElementsAre(graph_output));
+  EXPECT_THAT(graph.outputs(), UnorderedElementsAre(value));
   EXPECT_THAT(graph.nodes(), UnorderedElementsAre(producer_node));
 }
 
@@ -211,6 +227,63 @@ TEST(Model, RemoveSimpleNodeGeneralCase) {
   EXPECT_THAT(graph.outputs(), UnorderedElementsAre(graph_output));
   EXPECT_THAT(graph.nodes(),
               UnorderedElementsAre(producer_node, consumer_node));
+  EXPECT_THAT(graph.values(),
+              UnorderedElementsAre(graph_input, graph_output, value0));
+}
+
+TEST(Model, RemoveSimpleNodeComplexCase) {
+  // We have this graph and we are going to delete n1 and preserve order of
+  // v0, v1 for n0 node and v2, v3 for n2 node
+  //  v0   v1
+  //   \  /  \
+  //    n0    n1
+  //    |      \
+  //    o1      v2   v3
+  //             \  /
+  //              n2
+  //              |
+  //              o2
+  //
+  // And we are going to receive this:
+  //  v0   v1
+  //   \  /  \
+  //    n0    \
+  //    |      \
+  //    o1      \   v3
+  //             \  /
+  //              n2
+  //              |
+  //              o2
+  GraphFloat32 graph;
+  Node* n0 = graph.NewNode();
+  Node* n1 = graph.NewNode();  // node to remove
+  Node* n2 = graph.NewNode();
+  Value<TensorRef<BHWC>>* v0 = graph.NewValue();
+  Value<TensorRef<BHWC>>* v1 = graph.NewValue();
+  Value<TensorRef<BHWC>>* v2 = graph.NewValue();  // value to be removed
+  Value<TensorRef<BHWC>>* v3 = graph.NewValue();
+  Value<TensorRef<BHWC>>* o1 = graph.NewValue();
+  Value<TensorRef<BHWC>>* o2 = graph.NewValue();
+
+  ASSERT_TRUE(graph.AddConsumer(n0->id, v0->id).ok());
+  ASSERT_TRUE(graph.AddConsumer(n0->id, v1->id).ok());
+  ASSERT_TRUE(graph.SetProducer(n0->id, o1->id).ok());
+  ASSERT_TRUE(graph.AddConsumer(n1->id, v1->id).ok());
+  ASSERT_TRUE(graph.SetProducer(n1->id, v2->id).ok());
+  ASSERT_TRUE(graph.AddConsumer(n2->id, v2->id).ok());
+  ASSERT_TRUE(graph.AddConsumer(n2->id, v3->id).ok());
+  ASSERT_TRUE(graph.SetProducer(n2->id, o2->id).ok());
+  EXPECT_THAT(graph.inputs(), UnorderedElementsAre(v0, v1, v3));
+  EXPECT_THAT(graph.outputs(), UnorderedElementsAre(o1, o2));
+  EXPECT_THAT(graph.nodes(), UnorderedElementsAre(n0, n1, n2));
+
+  ASSERT_TRUE(RemoveOneInputOneOutputNode(&graph, n1).ok());
+  EXPECT_THAT(graph.inputs(), UnorderedElementsAre(v0, v1, v3));
+  EXPECT_THAT(graph.outputs(), UnorderedElementsAre(o1, o2));
+  EXPECT_THAT(graph.nodes(), UnorderedElementsAre(n0, n2));
+  EXPECT_THAT(graph.values(), UnorderedElementsAre(v0, v1, v3, o1, o2));
+  EXPECT_THAT(graph.FindInputs(n0->id), ElementsAre(v0, v1));
+  EXPECT_THAT(graph.FindInputs(n2->id), ElementsAre(v1, v3));
 }
 
 TEST(Model, CircularDependency) {

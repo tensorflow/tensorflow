@@ -106,7 +106,7 @@ class Convolution : public NodeShader {
     }
     source += R"(
           for (int l = 0; l < $src_depth$; ++l) {
-            highp vec4 input_ = $input_data_0[coord.x, coord.y, l]$;
+            vec4 input_ = $input_data_0[coord.x, coord.y, l]$;
             value_0.x += dot(input_, $weights[l * 4 + 0, i, gid.z]$);
             value_0.y += dot(input_, $weights[l * 4 + 1, i, gid.z]$);
             value_0.z += dot(input_, $weights[l * 4 + 2, i, gid.z]$);

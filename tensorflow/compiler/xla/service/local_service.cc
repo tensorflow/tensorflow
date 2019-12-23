@@ -111,6 +111,8 @@ ExecutionOptions CreateExecutionOptions(
         result_shape.ToProto();
   }
   execution_options.set_num_replicas(build_options.num_replicas());
+  execution_options.set_alias_passthrough_params(
+      build_options.alias_passthrough_params());
   return execution_options;
 }
 

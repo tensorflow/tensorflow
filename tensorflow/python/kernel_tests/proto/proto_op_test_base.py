@@ -131,6 +131,11 @@ class ProtoOpTestBase(test.TestCase):
     field.name = "bytes_value_with_default"
     field.dtype = types_pb2.DT_STRING
     field.value.string_value.append("a longer default string")
+    test_case.sizes.append(0)
+    field = test_case.fields.add()
+    field.name = "enum_value_with_default"
+    field.dtype = types_pb2.DT_INT32
+    field.value.enum_value.append(test_example_pb2.Color.GREEN)
     return test_case
 
   @staticmethod
@@ -421,6 +426,7 @@ class ProtoOpTestBase(test.TestCase):
     value = test_case.values.add()
     value.double_value.append(23.5)
     value.bool_value.append(True)
+    value.enum_value.append(test_example_pb2.Color.INDIGO)
     test_case.shapes.append(1)
     test_case.sizes.append(1)
     field = test_case.fields.add()
@@ -432,4 +438,9 @@ class ProtoOpTestBase(test.TestCase):
     field.name = "bool_value"
     field.dtype = types_pb2.DT_BOOL
     field.value.bool_value.append(True)
+    test_case.sizes.append(1)
+    field = test_case.fields.add()
+    field.name = "enum_value"
+    field.dtype = types_pb2.DT_INT32
+    field.value.enum_value.append(test_example_pb2.Color.INDIGO)
     return test_case

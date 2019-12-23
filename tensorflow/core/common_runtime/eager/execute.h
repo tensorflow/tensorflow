@@ -37,21 +37,22 @@ namespace tensorflow {
 //    Eager execute will send an RPC to execute the op on a remote device.
 //  Note that in the Async + Remote case, EagerExecute should still return
 //  quickly, but it will schedule the op to be executed remotely.
-Status EagerExecute(
-    EagerOperation* op,
-    tensorflow::gtl::InlinedVector<tensorflow::TensorHandle*, 2>* retvals,
-    int* num_retvals);
+//
+// 'retvals' must point to a pre-allocated array of TensorHandle* and
+// '*num_retvals' should be set to the size of this array. It is an error if
+// the size of 'retvals' is less than the number of outputs. This call sets
+// *num_retvals to the number of outputs.
+Status EagerExecute(EagerOperation* op, TensorHandle** retvals,
+                    int* num_retvals);
 
 // Low-level utility to execute the kernel specified by `kernel` on
 // `kernel->device()`, with the inputs op_inputs, in the context 'ctx'.
-Status EagerKernelExecute(EagerContext* ctx,
-                          const gtl::InlinedVector<TensorHandle*, 4>& op_inputs,
-                          const core::RefCountPtr<KernelAndDevice>& kernel,
-                          NodeExecStats* maybe_stats,
-                          StepStats* maybe_step_stats,
-                          GraphCollector* graph_collector,
-                          CancellationManager* cancellation_manager,
-                          absl::Span<TensorHandle*> retvals);
+Status EagerKernelExecute(
+    EagerContext* ctx, const gtl::InlinedVector<TensorHandle*, 4>& op_inputs,
+    const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
+    const core::RefCountPtr<KernelAndDevice>& kernel,
+    GraphCollector* graph_collector, CancellationManager* cancellation_manager,
+    absl::Span<TensorHandle*> retvals);
 
 // Low-level utility to copy a tensor handle from one device to another. If
 // successful, result TensorHandle will be populated. If the caller requests for

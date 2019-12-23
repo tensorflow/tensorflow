@@ -99,9 +99,7 @@ def word2vec_basic(log_dir):
     """Process raw inputs into a dataset."""
     count = [['UNK', -1]]
     count.extend(collections.Counter(words).most_common(n_words - 1))
-    dictionary = {}
-    for word, _ in count:
-      dictionary[word] = len(dictionary)
+    dictionary = {word: index for index, (word, _) in enumerate(count)}
     data = []
     unk_count = 0
     for word in words:
@@ -151,7 +149,7 @@ def word2vec_basic(log_dir):
         buffer.append(data[data_index])
         data_index += 1
     # Backtrack a little bit to avoid skipping words in the end of a batch
-    data_index = (data_index + len(data) - span) % len(data)
+    data_index = (data_index - span) % len(data)
     return batch, labels
 
   batch, labels = generate_batch(batch_size=8, num_skips=2, skip_window=1)
@@ -294,10 +292,10 @@ def word2vec_basic(log_dir):
           top_k = 8  # number of nearest neighbors
           nearest = (-sim[i, :]).argsort()[1:top_k + 1]
           log_str = 'Nearest to %s:' % valid_word
-          for k in xrange(top_k):
-            close_word = reverse_dictionary[nearest[k]]
-            log_str = '%s %s,' % (log_str, close_word)
-          print(log_str)
+
+          print(
+              log_str,
+              ', '.join([reverse_dictionary[nearest[k]] for k in range(top_k)]))
     final_embeddings = normalized_embeddings.eval()
 
     # Write corresponding labels for the embeddings.

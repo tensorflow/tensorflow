@@ -48,7 +48,7 @@ public:
   }
 
 private:
-  llvm::Optional<int64_t> constantFoldImpl(AffineExpr expr) {
+  Optional<int64_t> constantFoldImpl(AffineExpr expr) {
     switch (expr.getKind()) {
     case AffineExprKind::Add:
       return constantFoldBinExpr(
@@ -83,8 +83,8 @@ private:
   }
 
   // TODO: Change these to operate on APInts too.
-  llvm::Optional<int64_t> constantFoldBinExpr(AffineExpr expr,
-                                              int64_t (*op)(int64_t, int64_t)) {
+  Optional<int64_t> constantFoldBinExpr(AffineExpr expr,
+                                        int64_t (*op)(int64_t, int64_t)) {
     auto binOpExpr = expr.cast<AffineBinaryOpExpr>();
     if (auto lhs = constantFoldImpl(binOpExpr.getLHS()))
       if (auto rhs = constantFoldImpl(binOpExpr.getRHS()))
@@ -106,6 +106,20 @@ AffineMap AffineMap::getConstantMap(int64_t val, MLIRContext *context) {
              {getAffineConstantExpr(val, context)});
 }
 
+/// Returns an AffineMap representing a permutation.
+AffineMap AffineMap::getPermutationMap(ArrayRef<unsigned> permutation,
+                                       MLIRContext *context) {
+  assert(!permutation.empty() &&
+         "Cannot create permutation map from empty permutation vector");
+  SmallVector<AffineExpr, 4> affExprs;
+  for (auto index : permutation)
+    affExprs.push_back(getAffineDimExpr(index, context));
+  auto m = std::max_element(permutation.begin(), permutation.end());
+  auto permutationMap = AffineMap::get(*m + 1, 0, affExprs);
+  assert(permutationMap.isPermutation() && "Invalid permutation vector");
+  return permutationMap;
+}
+
 AffineMap AffineMap::getMultiDimIdentityMap(unsigned numDims,
                                             MLIRContext *context) {
   SmallVector<AffineExpr, 4> dimExprs;
@@ -115,7 +129,7 @@ AffineMap AffineMap::getMultiDimIdentityMap(unsigned numDims,
   return get(/*dimCount=*/numDims, /*symbolCount=*/0, dimExprs);
 }
 
-MLIRContext *AffineMap::getContext() const { return getResult(0).getContext(); }
+MLIRContext *AffineMap::getContext() const { return map->context; }
 
 bool AffineMap::isIdentity() const {
   if (getNumDims() != getNumResults())
@@ -127,6 +141,10 @@ bool AffineMap::isIdentity() const {
       return false;
   }
   return true;
+}
+
+bool AffineMap::isEmpty() const {
+  return getNumDims() == 0 && getNumSymbols() == 0 && getNumResults() == 0;
 }
 
 bool AffineMap::isSingleConstant() const {
@@ -306,7 +324,7 @@ AffineMap mlir::concatAffineMaps(ArrayRef<AffineMap> maps) {
   for (auto m : maps)
     numResults += m ? m.getNumResults() : 0;
   unsigned numDims = 0;
-  llvm::SmallVector<AffineExpr, 8> results;
+  SmallVector<AffineExpr, 8> results;
   results.reserve(numResults);
   for (auto m : maps) {
     if (!m)

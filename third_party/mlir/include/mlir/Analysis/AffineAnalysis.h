@@ -24,6 +24,7 @@
 #ifndef MLIR_ANALYSIS_AFFINE_ANALYSIS_H
 #define MLIR_ANALYSIS_AFFINE_ANALYSIS_H
 
+#include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Optional.h"
@@ -38,12 +39,14 @@ class FlatAffineConstraints;
 class Operation;
 class Value;
 
+// TODO(riverriddle) Remove this after Value is value-typed.
+using ValuePtr = Value *;
+
 /// Returns in `affineApplyOps`, the sequence of those AffineApplyOp
 /// Operations that are reachable via a search starting from `operands` and
 /// ending at those operands that are not the result of an AffineApplyOp.
-void getReachableAffineApplyOps(
-    llvm::ArrayRef<Value *> operands,
-    llvm::SmallVectorImpl<Operation *> &affineApplyOps);
+void getReachableAffineApplyOps(ArrayRef<ValuePtr> operands,
+                                SmallVectorImpl<Operation *> &affineApplyOps);
 
 /// Builds a system of constraints with dimensional identifiers corresponding to
 /// the loop IVs of the forOps appearing in that order. Bounds of the loop are
@@ -51,14 +54,14 @@ void getReachableAffineApplyOps(
 /// operands are added as symbols in the system. Returns failure for the yet
 /// unimplemented cases.
 //  TODO(bondhugula): handle non-unit strides.
-LogicalResult getIndexSet(llvm::MutableArrayRef<AffineForOp> forOps,
+LogicalResult getIndexSet(MutableArrayRef<AffineForOp> forOps,
                           FlatAffineConstraints *domain);
 
 /// Encapsulates a memref load or store access information.
 struct MemRefAccess {
-  Value *memref;
+  ValuePtr memref;
   Operation *opInst;
-  llvm::SmallVector<Value *, 4> indices;
+  SmallVector<ValuePtr, 4> indices;
 
   /// Constructs a MemRefAccess from a load or store operation.
   // TODO(b/119949820): add accessors to standard op's load, store, DMA op's to
@@ -71,8 +74,17 @@ struct MemRefAccess {
   bool isStore() const;
 
   /// Populates 'accessMap' with composition of AffineApplyOps reachable from
-  // 'indices'.
+  /// 'indices'.
   void getAccessMap(AffineValueMap *accessMap) const;
+
+  /// Equal if both affine accesses can be proved to be equivalent at compile
+  /// time (considering the memrefs, their respective affine access maps  and
+  /// operands). The equality of access functions + operands is checked by
+  /// subtracting fully composed value maps, and then simplifying the difference
+  /// using the expression flattener.
+  /// TODO: this does not account for aliasing of memrefs.
+  bool operator==(const MemRefAccess &rhs) const;
+  bool operator!=(const MemRefAccess &rhs) const { return !(*this == rhs); }
 };
 
 // DependenceComponent contains state about the direction of a dependence as an
@@ -85,9 +97,9 @@ struct DependenceComponent {
   // The AffineForOp Operation associated with this dependence component.
   Operation *op;
   // The lower bound of the dependence distance.
-  llvm::Optional<int64_t> lb;
+  Optional<int64_t> lb;
   // The upper bound of the dependence distance (inclusive).
-  llvm::Optional<int64_t> ub;
+  Optional<int64_t> ub;
   DependenceComponent() : lb(llvm::None), ub(llvm::None) {}
 };
 
@@ -113,7 +125,7 @@ struct DependenceResult {
 DependenceResult checkMemrefAccessDependence(
     const MemRefAccess &srcAccess, const MemRefAccess &dstAccess,
     unsigned loopDepth, FlatAffineConstraints *dependenceConstraints,
-    llvm::SmallVector<DependenceComponent, 2> *dependenceComponents,
+    SmallVector<DependenceComponent, 2> *dependenceComponents,
     bool allowRAR = false);
 
 /// Utility function that returns true if the provided DependenceResult
@@ -127,7 +139,7 @@ inline bool hasDependence(DependenceResult result) {
 /// [1, maxLoopDepth].
 void getDependenceComponents(
     AffineForOp forOp, unsigned maxLoopDepth,
-    std::vector<llvm::SmallVector<DependenceComponent, 2>> *depCompsVec);
+    std::vector<SmallVector<DependenceComponent, 2>> *depCompsVec);
 
 } // end namespace mlir
 

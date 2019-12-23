@@ -14,7 +14,7 @@
 # ==============================================================================
 """Control Flow Operations.
 
-See the [autograph](https://www.tensorflow.org/guide/autographs) guide.
+See the [autograph](https://www.tensorflow.org/guide/autograph) guide.
 """
 # pylint: disable=g-bad-name
 from __future__ import absolute_import
@@ -503,13 +503,16 @@ def _shape_invariant_to_type_spec(var, shape):
   Returns:
     A `TypeSpec` for `var`, consistent with the given shape.
   """
-  if isinstance(shape, type_spec.TypeSpec):
+  if shape is None:
+    return type_spec.type_spec_from_value(var)
+  elif isinstance(shape, type_spec.TypeSpec):
     if not shape.is_compatible_with(var):
       raise TypeError("TypeSpec %r is not compatible with %r" % (shape, var))
     return shape
   elif not isinstance(shape, tensor_shape.TensorShape):
-    raise TypeError("Expected shape to be a TypeSpec or TensorShape, got %r"
-                    % shape)
+    raise TypeError(
+        "Expected shape to be a TypeSpec, TensorShape or None, got %r for"
+        " value %r" % (shape, var))
 
   if isinstance(var, ops.Tensor):
     return tensor_spec.TensorSpec(shape, var.dtype)
@@ -749,10 +752,10 @@ class ControlFlowContext(object):
   def ExitResult(self, result):
     """Make a list of tensors available in the outer context."""
     if self._outer_context:
-      nest.map_structure(
-          lambda x: self._outer_context.AddName(x.name),
-          result,
-          expand_composites=True)
+      def fn(x):
+        self._outer_context.AddName(x.name)
+        return x
+      nest.map_structure(fn, result, expand_composites=True)
 
   def GetWhileContext(self):
     """Return the while context containing this context."""
@@ -1067,7 +1070,7 @@ class CondContext(ControlFlowContext):
       with ops.control_dependencies(new_summaries):
         if original_result is None:
           return no_op(), None
-        else:
+        elif not isinstance(original_result, ops.Operation):
           original_result = nest.map_structure(
               array_ops.identity, original_result, expand_composites=True)
     if original_result is None:
@@ -2300,6 +2303,15 @@ class WhileContext(ControlFlowContext):
 # @TODO(b/133606651) Replace "shape_invariants" with "loop_vars_signature".
 # pylint: disable=redefined-outer-name
 @tf_export("while_loop", v1=[])
+@deprecation.deprecated_arg_values(
+    None,
+    """back_prop=False is deprecated. Consider using tf.stop_gradient instead.
+Instead of:
+results = tf.while_loop(c, b, vars, back_prop=False)
+Use:
+results = tf.nest.map_structure(tf.stop_gradient, tf.while_loop(c, b, vars))""",
+    warn_once=True,
+    back_prop=False)
 def while_loop_v2(cond,
                   body,
                   loop_vars,
@@ -2377,7 +2389,8 @@ def while_loop_v2(cond,
     shape_invariants: The shape invariants for the loop variables.
     parallel_iterations: The number of iterations allowed to run in parallel. It
       must be a positive integer.
-    back_prop: Whether backprop is enabled for this while loop.
+    back_prop: (optional) Deprecated. False disables support for back
+      propagation. Prefer using `tf.stop_gradient` instead.
     swap_memory: Whether GPU-CPU memory swap is enabled for this loop.
     maximum_iterations: Optional maximum number of iterations of the while loop
       to run.  If provided, the `cond` output is AND-ed with an additional
@@ -3269,7 +3282,7 @@ def _indexed_case_helper(branch_fns, default, branch_index, name):
   branch_fns = _indexed_case_verify_and_canonicalize_args(
       branch_fns, default, branch_index)
   with ops.name_scope(name, "case", [branch_index]):
-    if context.executing_eagerly():
+    if context.executing_eagerly() and not hasattr(branch_index, "graph"):
       branch_index = array_ops.where(
           math_ops.less(branch_index, 0)
           | math_ops.greater_equal(branch_index, len(branch_fns)),
@@ -3503,8 +3516,8 @@ def switch_case(branch_index,
   branch will be selected. `tf.switch_case` is more like a C++ switch/case
   statement than `tf.case`, which is more like an if/elif/elif/else chain.
 
-  The `branch_fns` parameter is either a list
-  of (int, callable) pairs, or simply a list of callables (in which case the
+  The `branch_fns` parameter is either a dict from `int` to callables, or list
+  of (`int`, callable) pairs, or simply a list of callables (in which case the
   index is implicitly the key). The `branch_index` `Tensor` is used to select an
   element in `branch_fns` with matching `int` key, falling back to `default`
   if none match, or `max(keys)` if no `default` is provided. The keys must form
@@ -3513,12 +3526,6 @@ def switch_case(branch_index,
   `tf.switch_case` supports nested structures as implemented in `tf.nest`. All
   callables must return the same (possibly nested) value structure of lists,
   tuples, and/or named tuples.
-
-  @compatibility(v2)
-  `branch_fns` could be a dictionary in v1. However, tf.Tensor and
-  tf.Variable are no longer hashable in v2, so cannot be used as a key for a
-  dictionary.  Please use a list or a tuple instead.
-  @end_compatibility
 
   **Example:**
 
@@ -3550,9 +3557,10 @@ def switch_case(branch_index,
   Args:
     branch_index: An int Tensor specifying which of `branch_fns` should be
       executed.
-    branch_fns: A `list` of (int, callable) pairs, or simply a list of
-    callables (in which case the index serves as the key). Each callable must
-    return a matching structure of tensors.
+    branch_fns: A `dict` mapping `int`s to callables, or a `list` of
+      (`int`, callable) pairs, or simply a list of callables (in which case the
+      index serves as the key). Each callable must return a matching structure
+      of tensors.
     default: Optional callable that returns a structure of tensors.
     name: A name for this operation (optional).
 

@@ -18,7 +18,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/str_cat.h"
-#include "tensorflow/compiler/xla/service/gpu/cudnn_conv_runner.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_conv_runner.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -57,9 +57,8 @@ Status ConvolutionThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   auto op_profiler =
       params.profiler->MakeScopedInstructionProfiler(hlo_instruction());
-  TF_RETURN_IF_ERROR(RunCudnnConv(cudnn_call_,
-                                  absl::MakeSpan(operand_se_buffers),
-                                  result_buffer, scratch, params.stream));
+  TF_RETURN_IF_ERROR(RunGpuConv(cudnn_call_, absl::MakeSpan(operand_se_buffers),
+                                result_buffer, scratch, params.stream));
 
   // Write the output tuple.
   const int kNumOutputs = 2;

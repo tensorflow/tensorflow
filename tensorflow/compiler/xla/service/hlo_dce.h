@@ -38,6 +38,9 @@ class HloDCE : public HloModulePass {
   ~HloDCE() override {}
   absl::string_view name() const override { return "dce"; }
 
+  // Run DCE on a computation.
+  static StatusOr<bool> RunOnComputation(HloComputation* computation);
+
   // Run the pass on the given module. Returns whether the module was changed
   // (instructions were removed).
   StatusOr<bool> Run(HloModule* module) override;

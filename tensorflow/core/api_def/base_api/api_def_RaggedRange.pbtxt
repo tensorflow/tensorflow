@@ -31,13 +31,11 @@ Returns a `RaggedTensor` `result` composed from `rt_dense_values` and
 `result[i] = range(starts[i], limits[i], deltas[i])`.
 
 ```python
->>> (rt_nested_splits, rt_dense_values) = gen_ragged_ops.ragged_range(
-...     starts=[2, 5, 8], limits=[3, 5, 12], deltas=1)
->>> result = ragged.from_nested_row_splits(rt_dense_values, rt_nested_splits)
->>> print result.eval().tolist()
-[[2],               # result[0] = range(2, 3)
- [],                # result[1] = range(5, 5)
- [8, 9, 10, 11]]    # result[2] = range(8, 12)
+(rt_nested_splits, rt_dense_values) = ragged_range(
+      starts=[2, 5, 8], limits=[3, 5, 12], deltas=1)
+result = tf.ragged.from_row_splits(rt_dense_values, rt_nested_splits)
+print(result)
+<tf.RaggedTensor [[2], [], [8, 9, 10, 11]] >
 ```
 
 The input tensors `starts`, `limits`, and `deltas` may be scalars or vectors.

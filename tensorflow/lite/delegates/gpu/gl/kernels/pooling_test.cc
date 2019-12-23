@@ -58,8 +58,8 @@ TEST(PoolingTest, MaxKernel2x2Stride2x2WithIndices) {
   attr.type = PoolingType::MAX;
   attr.output_indices = true;
 
-  SingleOpModel model({ToString(OperationType::MAX_UNPOOLING_2D), attr},
-                      {input}, {output, indices});
+  SingleOpModel model({ToString(OperationType::POOLING_2D), attr}, {input},
+                      {output, indices});
   ASSERT_TRUE(model.PopulateTensor(
       0, {1, 2, 1, 2, 3, 4, 3, 4, 7, 8, 7, 8, 5, 6, 5, 6}));
   ASSERT_OK(model.Invoke(*NewPoolingNodeShader()));
@@ -87,8 +87,8 @@ TEST(PoolingTest, MaxKernel2x2Stride2x2WithoutIndices) {
   attr.strides = HW(2, 2);
   attr.type = PoolingType::MAX;
 
-  SingleOpModel model({ToString(OperationType::MAX_UNPOOLING_2D), attr},
-                      {input}, {output});
+  SingleOpModel model({ToString(OperationType::POOLING_2D), attr}, {input},
+                      {output});
   ASSERT_TRUE(model.PopulateTensor(
       0, {1, 2, 1, 2, 3, 4, 3, 4, 7, 8, 7, 8, 5, 6, 5, 6}));
   ASSERT_OK(model.Invoke(*NewPoolingNodeShader()));

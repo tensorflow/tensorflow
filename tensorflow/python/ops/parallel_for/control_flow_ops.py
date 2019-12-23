@@ -22,8 +22,7 @@ from __future__ import print_function
 import functools
 
 from tensorflow.python.eager import context
-from tensorflow.python.eager import function
-from tensorflow.python.framework import dtypes
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -75,7 +74,7 @@ def for_loop(loop_fn, loop_fn_dtypes, iters, parallel_iterations=None):
                                                 len(fn_output)))
     outputs = []
     del is_none_list[:]
-    is_none_list.extend([x is None for x in fn_output])
+    is_none_list.extend(x is None for x in fn_output)
     for out, ta in zip(fn_output, ta_list):
       # TODO(agarwal): support returning Operation objects from loop_fn.
       if out is not None:
@@ -185,9 +184,21 @@ def pfor(loop_fn, iters, parallel_iterations=None):
   # Note that we wrap into a tf.function if in eager execution mode or under
   # XLA compilation. The latter is so that we don't compile operations like
   # tf.placeholder that are created by the loop body.
+  functions_run_eagerly = None
   if context.executing_eagerly() or _is_under_xla_context():
-    f = function.defun(f)
-  return f()
+    functions_run_eagerly = def_function.functions_run_eagerly()
+    if functions_run_eagerly:
+      logging.warning(
+          "It looks like tf.function behavior was disabled, perhaps using "
+          "tf.config.experimental_run_functions_eagerly. Vectorization "
+          "primitives (e.g. tf.vectorized_map) require tf.function to work. "
+          "These primitives will override the disable.")
+      def_function.run_functions_eagerly(False)
+    f = def_function.function(f)
+  outputs = f()
+  if functions_run_eagerly is not None:
+    def_function.run_functions_eagerly(functions_run_eagerly)
+  return outputs
 
 
 def _loop_fn_has_config(loop_fn):
@@ -210,11 +221,12 @@ def _loop_fn_has_config(loop_fn):
 
 def _pfor_impl(loop_fn, iters, parallel_iterations=None, pfor_config=None):
   """Implementation of pfor."""
+  assert not context.executing_eagerly()
   loop_fn_has_config = _loop_fn_has_config(loop_fn)
   existing_ops = set(ops.get_default_graph().get_operations())
   # Run the loop body
   with ops.name_scope("loop_body"):
-    loop_var = array_ops.placeholder(dtypes.int32, shape=[])
+    loop_var = array_ops.placeholder_with_default(0, shape=[])
     if loop_fn_has_config:
       if pfor_config is None:
         pfor_config = PForConfig()
@@ -335,20 +347,6 @@ def vectorized_map(fn, elems):
     - The shape and dtype of any intermediate or output tensors in the
       computation of `fn` should not depend on the input to `fn`.
 
-  Args:
-    fn: The callable to be performed. It accepts one argument, which will have
-      the same (possibly nested) structure as `elems`, and returns a possibly
-      nested structure of Tensors and Operations, which may be different than
-      the structure of `elems`.
-    elems: A tensor or (possibly nested) sequence of tensors, each of which will
-      be unpacked along their first dimension. The nested sequence of the
-      resulting slices will be mapped over by `fn`.
-
-  Returns:
-    A tensor or (possibly nested) sequence of tensors. Each tensor packs the
-    results of applying fn to tensors unpacked from elems along the first
-    dimension, from first to last.
-
   Examples:
   ```python
   def outer_product(a):
@@ -376,15 +374,34 @@ def vectorized_map(fn, elems):
       loss = tf.nn.l2_loss(label - prediction)
     return g.gradient(loss, (layer.kernel, layer.bias))
 
-  inputs = tf.random_uniform([batch_size, num_features])
-  labels = tf.random_uniform([batch_size, 1])
+  inputs = tf.random.uniform([batch_size, num_features])
+  labels = tf.random.uniform([batch_size, 1])
   per_example_gradients = tf.vectorized_map(model_fn, (inputs, labels))
   assert per_example_gradients[0].shape == (batch_size, num_features, 1)
   assert per_example_gradients[1].shape == (batch_size, 1)
   ```
+
+  Args:
+    fn: The callable to be performed. It accepts one argument, which will have
+      the same (possibly nested) structure as `elems`, and returns a possibly
+      nested structure of Tensors and Operations, which may be different than
+      the structure of `elems`.
+    elems: A tensor or (possibly nested) sequence of tensors, each of which will
+      be unpacked along their first dimension. The nested sequence of the
+      resulting slices will be mapped over by `fn`.
+
+  Returns:
+    A tensor or (possibly nested) sequence of tensors. Each tensor packs the
+    results of applying fn to tensors unpacked from elems along the first
+    dimension, from first to last.
   """
   def loop_fn(i):
     gathered_elems = nest.map_structure(lambda x: array_ops.gather(x, i), elems)
     return fn(gathered_elems)
-  batch_size = array_ops.shape(nest.flatten(elems)[0])[0]
+  batch_size = None
+  first_elem = ops.convert_to_tensor(nest.flatten(elems)[0])
+  if first_elem.shape.rank is not None:
+    batch_size = first_elem.shape.as_list()[0]
+  if batch_size is None:
+    batch_size = array_ops.shape(first_elem)[0]
   return pfor(loop_fn, batch_size)

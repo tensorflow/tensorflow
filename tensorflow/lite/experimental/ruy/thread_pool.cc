@@ -60,10 +60,10 @@ class Thread {
   void ChangeState(State new_state, Task* task = nullptr) {
     state_mutex_.lock();
     State old_state = state_.load(std::memory_order_relaxed);
-    RUY_DCHECK(old_state != new_state);
+    RUY_DCHECK_NE(old_state, new_state);
     switch (old_state) {
       case State::Startup:
-        RUY_DCHECK(new_state == State::Ready);
+        RUY_DCHECK_EQ(new_state, State::Ready);
         break;
       case State::Ready:
         RUY_DCHECK(new_state == State::HasWork ||

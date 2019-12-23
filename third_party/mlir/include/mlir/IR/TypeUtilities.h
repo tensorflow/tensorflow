@@ -41,8 +41,8 @@ Type getElementTypeOrSelf(Type type);
 
 /// Return the element type or return the type itself.
 Type getElementTypeOrSelf(Attribute attr);
-Type getElementTypeOrSelf(Value *val);
-Type getElementTypeOrSelf(Value &val);
+Type getElementTypeOrSelf(ValuePtr val);
+Type getElementTypeOrSelf(ValueRef val);
 
 /// Get the types within a nested Tuple. A helper for the class method that
 /// handles storage concerns, which is tricky to do in tablegen.
@@ -52,42 +52,56 @@ SmallVector<Type, 10> getFlattenedTypes(TupleType t);
 /// dialect and typeData.
 bool isOpaqueTypeWithName(Type type, StringRef dialect, StringRef typeData);
 
+/// Returns success if the given two shapes are compatible. That is, they have
+/// the same size and each pair of the elements are equal or one of them is
+/// dynamic.
+LogicalResult verifyCompatibleShape(ArrayRef<int64_t> shape1,
+                                    ArrayRef<int64_t> shape2);
+
+/// Returns success if the given two types have compatible shape. That is,
+/// they are both scalars (not shaped), or they are both shaped types and at
+/// least one is unranked or they have compatible dimensions. Dimensions are
+/// compatible if at least one is dynamic or both are equal. The element type
+/// does not matter.
+LogicalResult verifyCompatibleShape(Type type1, Type type2);
+
 //===----------------------------------------------------------------------===//
 // Utility Iterators
 //===----------------------------------------------------------------------===//
 
 // An iterator for the element types of an op's operands of shaped types.
 class OperandElementTypeIterator final
-    : public llvm::mapped_iterator<OperandIterator, Type (*)(Value *)> {
+    : public llvm::mapped_iterator<Operation::operand_iterator,
+                                   Type (*)(ValuePtr)> {
 public:
   using reference = Type;
 
   /// Initializes the result element type iterator to the specified operand
   /// iterator.
-  explicit OperandElementTypeIterator(OperandIterator it);
+  explicit OperandElementTypeIterator(Operation::operand_iterator it);
 
 private:
-  static Type unwrap(Value *value);
+  static Type unwrap(ValuePtr value);
 };
 
-using OperandElementTypeRange =
-    llvm::iterator_range<OperandElementTypeIterator>;
+using OperandElementTypeRange = iterator_range<OperandElementTypeIterator>;
 
 // An iterator for the tensor element types of an op's results of shaped types.
 class ResultElementTypeIterator final
-    : public llvm::mapped_iterator<ResultIterator, Type (*)(Value *)> {
+    : public llvm::mapped_iterator<Operation::result_iterator,
+                                   Type (*)(ValuePtr)> {
 public:
   using reference = Type;
 
   /// Initializes the result element type iterator to the specified result
   /// iterator.
-  explicit ResultElementTypeIterator(ResultIterator it);
+  explicit ResultElementTypeIterator(Operation::result_iterator it);
 
 private:
-  static Type unwrap(Value *value);
+  static Type unwrap(ValuePtr value);
 };
 
-using ResultElementTypeRange = llvm::iterator_range<ResultElementTypeIterator>;
+using ResultElementTypeRange = iterator_range<ResultElementTypeIterator>;
 
 } // end namespace mlir
 

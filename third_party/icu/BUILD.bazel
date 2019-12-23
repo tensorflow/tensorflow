@@ -48,12 +48,10 @@ cc_library(
     ] + select({
         ":android": [
             "-fdata-sections",
-            "-DGOOGLE_VENDOR_SRC_BRANCH",
             "-DU_HAVE_NL_LANGINFO_CODESET=0",
             "-Wno-deprecated-declarations",
         ],
         ":apple": [
-            "-DGOOGLE_VENDOR_SRC_BRANCH",
             "-Wno-shorten-64-to-32",
             "-Wno-unused-variable",
         ],

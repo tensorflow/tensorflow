@@ -67,7 +67,7 @@ class NVPTXCompiler : public GpuCompiler {
 
   // Tries to compile the given ptx string to cubin.  Returns a vector with the
   // compiled cubin.  If compilation was unsuccessful, returns an empty vector.
-  std::vector<uint8> CompilePtxOrGetCachedResult(
+  std::vector<uint8> CompileGpuAsmOrGetCachedResult(
       se::StreamExecutor* stream_exec, const string& ptx, int cc_major,
       int cc_minor, const HloModuleConfig& hlo_module_config);
 

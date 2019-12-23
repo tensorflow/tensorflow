@@ -247,7 +247,7 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
       }
     }
     if (!dev_mgr_ || device_type == DEVICE_CPU) {
-      dev_mgr_ = absl::make_unique<DeviceMgr>(std::move(local_devices));
+      dev_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(local_devices));
     }
     if (!gpu_ring_order_) {
       gpu_ring_order_ = absl::make_unique<string>();
@@ -644,7 +644,6 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
       gtl::InlinedVector<AllocatorAttributes, 4> input_aa(
           {AllocatorAttributes()});
       op_params.input_alloc_attrs = &input_aa;
-      gtl::InlinedVector<DeviceContext*, 4> input_dc;
       DeviceContext* dev_ctx = nullptr;
       auto* dev_info = device_->tensorflow_gpu_device_info();
       if (dev_info) {
@@ -653,8 +652,6 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
       } else {
         dev_ctx = new DeviceContext;
       }
-      input_dc.push_back(dev_ctx);
-      op_params.input_device_contexts = &input_dc;
       op_params.op_device_context = dev_ctx;
       int forward_from[] = {OpKernelContext::Params::kNeverForward};
       if (forward_input) forward_from[0] = 0;

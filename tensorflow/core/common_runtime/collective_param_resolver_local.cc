@@ -124,28 +124,34 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
   }
   {
     mutex_lock gr_lock(gr->mu);
-    if (!gr->device_set.empty()) {
+    // If there is ever an error associated with a group key, we store the error
+    // status and invoke all waiting and future callbacks with this error
+    // status.
+    VLOG(2) << "gr device_type=" << gr->group.device_type
+            << " cp device_type=" << cp->group.device_type
+            << " current device=" << device;
+    if (gr->status.ok()) {
       // Check for consistency with existing GroupRec.
       if (cp->group.device_type != gr->group.device_type) {
-        status = errors::Internal(
+        gr->status = errors::Internal(
             "Collective Op ", cp->name, " is assigned to device ", device,
             " with type ", cp->group.device_type.type_string(),
             " and group_key ", cp->group.group_key, " but that group has type ",
             gr->group.device_type.type_string());
       } else if (cp->group.group_size != gr->group.group_size) {
-        status = errors::Internal(
+        gr->status = errors::Internal(
             "Collective Op ", cp->name, " has group_size ",
-            cp->group.group_size, " and group_key", cp->group.group_key,
+            cp->group.group_size, " and group_key ", cp->group.group_key,
             " but that group has size ", gr->group.group_size);
       }
     }
-    if (status.ok()) {
+    if (gr->status.ok()) {
       // Insert device if not already present.
       auto it = gr->device_set.find(device);
       if (it == gr->device_set.end()) {
         if (gr->device_set.size() == gr->group.group_size) {
           // The group is already full.
-          status = errors::Internal(
+          gr->status = errors::Internal(
               "Collective Op ", cp->name, " is assigned to device ", device,
               " and group_key ", cp->group.group_key,
               " but that group doesn't contain that device.");
@@ -176,7 +182,7 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
       }
     }
 
-    if (status.ok()) {
+    if (gr->status.ok()) {
       cp->group.runtime_details = gr->group.runtime_details;
       // If the group is not yet complete, queue to wait for it.
       VLOG(2) << "group_size " << gr->group.group_size << " set size "
@@ -187,14 +193,17 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
         return;
       }
       CHECK_EQ(gr->device_set.size(), gr->group.group_size);
-      if (!gr->waiting.empty()) {
-        std::swap(to_be_called, gr->waiting);
-      }
     }
+    // At this point, we either have a full group, or an error status.  Ensure
+    // that all callbacks are invoked with the appropriate status.
+    if (!gr->waiting.empty()) {
+      std::swap(to_be_called, gr->waiting);
+    }
+    status = gr->status;
   }
   done(status, gr);
   for (int i = 0; i < to_be_called.size(); ++i) {
-    to_be_called[i](Status::OK());
+    to_be_called[i](status);
   }
 }
 

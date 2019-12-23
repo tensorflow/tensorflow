@@ -34,6 +34,7 @@ API_ATTRS_V1 = tf_export.API_ATTRS_V1
 _LAZY_LOADING = False
 _API_VERSIONS = [1, 2]
 _COMPAT_MODULE_TEMPLATE = 'compat.v%d'
+_SUBCOMPAT_MODULE_TEMPLATE = 'compat.v%d.compat.v%d'
 _COMPAT_MODULE_PREFIX = 'compat.v'
 _DEFAULT_PACKAGE = 'tensorflow.python'
 _GENFILES_DIR_SUFFIX = 'genfiles/'
@@ -105,7 +106,9 @@ def get_canonical_import(import_set):
 class _ModuleInitCodeBuilder(object):
   """Builds a map from module name to imports included in that module."""
 
-  def __init__(self, output_package, api_version, lazy_loading=_LAZY_LOADING):
+  def __init__(
+      self, output_package, api_version, lazy_loading=_LAZY_LOADING,
+      use_relative_imports=False):
     self._output_package = output_package
     # Maps API module to API symbol name to set of tuples of the form
     # (module name, priority).
@@ -120,6 +123,7 @@ class _ModuleInitCodeBuilder(object):
     # Controls whether or not exported symbols are lazily loaded or statically
     # imported.
     self._lazy_loading = lazy_loading
+    self._use_relative_imports = use_relative_imports
 
   def _check_already_imported(self, symbol_id, api_name):
     if (api_name in self._dest_import_to_id and
@@ -162,10 +166,14 @@ class _ModuleInitCodeBuilder(object):
     # We store all possible ways of importing this symbol and later pick just
     # one.
     priority = 0
-    if symbol and hasattr(symbol, '__module__'):
+    if symbol:
       # Give higher priority to source module if it matches
       # symbol's original module.
-      priority = int(source_module_name == symbol.__module__)
+      if hasattr(symbol, '__module__'):
+        priority = int(source_module_name == symbol.__module__)
+      # Give higher priority if symbol name matches its __name__.
+      if hasattr(symbol, '__name__'):
+        priority += int(source_name == symbol.__name__)
     self._module_imports[dest_module_name][full_api_name].add(
         (import_str, priority))
 
@@ -195,7 +203,9 @@ class _ModuleInitCodeBuilder(object):
               dest_module_name=parent_module,
               dest_name=module_split[submodule_index])
         else:
-          if submodule_index > 0:
+          if self._use_relative_imports:
+            import_from = '.'
+          elif submodule_index > 0:
             import_from += '.' + '.'.join(module_split[:submodule_index])
           self.add_import(
               symbol=None,
@@ -233,34 +243,38 @@ class _ModuleInitCodeBuilder(object):
     # from it using * import. Don't need this for lazy_loading because the
     # underscore symbols are already included in __all__ when passed in and
     # handled by TFModuleWrapper.
+    root_module_footer = ''
     if not self._lazy_loading:
       underscore_names_str = ', '.join(
           '\'%s\'' % name for name in self._underscore_names_in_root)
 
-      module_text_map[''] = module_text_map.get('', '') + '''
+      root_module_footer = """
 _names_with_underscore = [%s]
 __all__ = [_s for _s in dir() if not _s.startswith('_')]
 __all__.extend([_s for _s in _names_with_underscore])
-''' % underscore_names_str
+""" % underscore_names_str
 
-    for dest_module, _ in self._module_imports.items():
-      deprecation = 'False'
-      has_lite = 'False'
-      if self._api_version == 1:  # Add 1.* deprecations.
-        if not dest_module.startswith(_COMPAT_MODULE_PREFIX):
-          deprecation = 'True'
-      # Workaround to make sure not load lite from lite/__init__.py
-      if (not dest_module and 'lite' in self._module_imports
-          and self._lazy_loading):
-        has_lite = 'True'
-      if self._lazy_loading:
-        public_apis_name = '_PUBLIC_APIS'
-      else:
-        public_apis_name = 'None'
-      footer_text_map[dest_module] = _DEPRECATION_FOOTER % (
-          dest_module, public_apis_name, deprecation, has_lite)
+    # Add module wrapper if we need to print deprecation messages
+    # or if we use lazy loading.
+    if self._api_version == 1 or self._lazy_loading:
+      for dest_module, _ in self._module_imports.items():
+        deprecation = 'False'
+        has_lite = 'False'
+        if self._api_version == 1:  # Add 1.* deprecations.
+          if not dest_module.startswith(_COMPAT_MODULE_PREFIX):
+            deprecation = 'True'
+        # Workaround to make sure not load lite from lite/__init__.py
+        if (not dest_module and 'lite' in self._module_imports
+            and self._lazy_loading):
+          has_lite = 'True'
+        if self._lazy_loading:
+          public_apis_name = '_PUBLIC_APIS'
+        else:
+          public_apis_name = 'None'
+        footer_text_map[dest_module] = _DEPRECATION_FOOTER % (
+            dest_module, public_apis_name, deprecation, has_lite)
 
-    return module_text_map, footer_text_map
+    return module_text_map, footer_text_map, root_module_footer
 
   def format_import(self, source_module_name, source_name, dest_name):
     """Formats import statement.
@@ -288,6 +302,71 @@ __all__.extend([_s for _s in _names_with_underscore])
           return 'import %s' % source_name
         else:
           return 'import %s as %s' % (source_name, dest_name)
+
+  def get_destination_modules(self):
+    return set(self._module_imports.keys())
+
+  def copy_imports(self, from_dest_module, to_dest_module):
+    self._module_imports[to_dest_module] = (
+        self._module_imports[from_dest_module].copy())
+
+
+def add_nested_compat_imports(
+    module_builder, compat_api_versions, output_package):
+  """Adds compat.vN.compat.vK modules to module builder.
+
+  To avoid circular imports, we want to add __init__.py files under
+  compat.vN.compat.vK and under compat.vN.compat.vK.compat. For all other
+  imports, we point to corresponding modules under compat.vK.
+
+  Args:
+    module_builder: `_ModuleInitCodeBuilder` instance.
+    compat_api_versions: Supported compatibility versions.
+    output_package: Base output python package where generated API will be
+      added.
+  """
+  imported_modules = module_builder.get_destination_modules()
+
+  # Copy over all imports in compat.vK to compat.vN.compat.vK and
+  # all imports in compat.vK.compat to compat.vN.compat.vK.compat.
+  for v in compat_api_versions:
+    for sv in compat_api_versions:
+      subcompat_module = _SUBCOMPAT_MODULE_TEMPLATE % (v, sv)
+      compat_module = _COMPAT_MODULE_TEMPLATE % sv
+      module_builder.copy_imports(compat_module, subcompat_module)
+      module_builder.copy_imports(
+          '%s.compat' % compat_module, '%s.compat' % subcompat_module)
+
+  # Prefixes of modules under compatibility packages, for e.g. "compat.v1.".
+  compat_prefixes = tuple(
+      _COMPAT_MODULE_TEMPLATE % v + '.' for v in compat_api_versions)
+
+  # Above, we only copied function, class and constant imports. Here
+  # we also add imports for child modules.
+  for imported_module in imported_modules:
+    if not imported_module.startswith(compat_prefixes):
+      continue
+    module_split = imported_module.split('.')
+
+    # Handle compat.vN.compat.vK.compat.foo case. That is,
+    # import compat.vK.compat.foo in compat.vN.compat.vK.compat.
+    if len(module_split) > 3 and module_split[2] == 'compat':
+      src_module = '.'.join(module_split[:3])
+      src_name = module_split[3]
+      assert src_name != 'v1' and src_name != 'v2', imported_module
+    else:  # Handle compat.vN.compat.vK.foo case.
+      src_module = '.'.join(module_split[:2])
+      src_name = module_split[2]
+      if src_name == 'compat':
+        continue  # compat.vN.compat.vK.compat is handled separately
+
+    for compat_api_version in compat_api_versions:
+      module_builder.add_import(
+          symbol=None,
+          source_module_name='%s.%s' % (output_package, src_module),
+          source_name=src_name,
+          dest_module_name='compat.v%d.%s' % (compat_api_version, src_module),
+          dest_name=src_name)
 
 
 def _get_name_and_module(full_name):
@@ -372,7 +451,8 @@ def get_api_init_text(packages,
                       api_name,
                       api_version,
                       compat_api_versions=None,
-                      lazy_loading=_LAZY_LOADING):
+                      lazy_loading=_LAZY_LOADING,
+                      use_relative_imports=False):
   """Get a map from destination module to __init__.py code for that module.
 
   Args:
@@ -386,6 +466,8 @@ def get_api_init_text(packages,
       directory.
     lazy_loading: Boolean flag. If True, a lazy loading `__init__.py` file is
       produced and if `False`, static imports are used.
+    use_relative_imports: True if we should use relative imports when
+      importing submodules.
 
   Returns:
     A dictionary where
@@ -396,7 +478,7 @@ def get_api_init_text(packages,
   if compat_api_versions is None:
     compat_api_versions = []
   module_code_builder = _ModuleInitCodeBuilder(
-      output_package, api_version, lazy_loading)
+      output_package, api_version, lazy_loading, use_relative_imports)
   # Traverse over everything imported above. Specifically,
   # we want to traverse over TensorFlow Python modules.
 
@@ -429,6 +511,9 @@ def get_api_init_text(packages,
             api_name, compat_api_version,
             _COMPAT_MODULE_TEMPLATE % compat_api_version)
 
+  if compat_api_versions:
+    add_nested_compat_imports(
+        module_code_builder, compat_api_versions, output_package)
   return module_code_builder.build()
 
 
@@ -499,7 +584,7 @@ def get_module_docstring(module_name, package, api_name):
 def create_api_files(output_files, packages, root_init_template, output_dir,
                      output_package, api_name, api_version,
                      compat_api_versions, compat_init_templates,
-                     lazy_loading=_LAZY_LOADING):
+                     lazy_loading=_LAZY_LOADING, use_relative_imports=False):
   """Creates __init__.py files for the Python API.
 
   Args:
@@ -519,6 +604,8 @@ def create_api_files(output_files, packages, root_init_template, output_dir,
       in the same order as compat_api_versions.
     lazy_loading: Boolean flag. If True, a lazy loading `__init__.py` file is
       produced and if `False`, static imports are used.
+    use_relative_imports: True if we should use relative imports when
+      import submodules.
 
   Raises:
     ValueError: if output_files list is missing a required file.
@@ -534,9 +621,12 @@ def create_api_files(output_files, packages, root_init_template, output_dir,
       os.makedirs(os.path.dirname(file_path))
     open(file_path, 'a').close()
 
-  module_text_map, deprecation_footer_map = get_api_init_text(
-      packages, output_package, api_name,
-      api_version, compat_api_versions, lazy_loading)
+  (
+      module_text_map,
+      deprecation_footer_map,
+      root_module_footer,
+  ) = get_api_init_text(packages, output_package, api_name, api_version,
+                        compat_api_versions, lazy_loading, use_relative_imports)
 
   # Add imports to output files.
   missing_output_files = []
@@ -546,6 +636,11 @@ def create_api_files(output_files, packages, root_init_template, output_dir,
       _COMPAT_MODULE_TEMPLATE % v: t
       for v, t in zip(compat_api_versions, compat_init_templates)
   }
+  for v in compat_api_versions:
+    compat_module_to_template.update({
+        _SUBCOMPAT_MODULE_TEMPLATE % (v, vs): t
+        for vs, t in zip(compat_api_versions, compat_init_templates)
+    })
 
   for module, text in module_text_map.items():
     # Make sure genrule output file list is in sync with API exports.
@@ -561,6 +656,7 @@ def create_api_files(output_files, packages, root_init_template, output_dir,
       with open(root_init_template, 'r') as root_init_template_file:
         contents = root_init_template_file.read()
         contents = contents.replace('# API IMPORTS PLACEHOLDER', text)
+        contents = contents.replace('# __all__ PLACEHOLDER', root_module_footer)
     elif module in compat_module_to_template:
       # Read base init file for compat module
       with open(compat_module_to_template[module], 'r') as init_template_file:
@@ -639,6 +735,10 @@ def main():
            '\'static\' means all exported symbols are loaded in the '
            '__init__.py file. \'default\' uses the value of the '
            '_LAZY_LOADING constant in create_python_api.py.')
+  parser.add_argument(
+      '--use_relative_imports', default=False, type=bool,
+      help='Whether to import submodules using relative imports or absolute '
+           'imports')
   args = parser.parse_args()
 
   if len(args.outputs) == 1:
@@ -669,7 +769,7 @@ def main():
   create_api_files(outputs, packages, args.root_init_template, args.apidir,
                    args.output_package, args.apiname, args.apiversion,
                    args.compat_apiversions, args.compat_init_templates,
-                   lazy_loading)
+                   lazy_loading, args.use_relative_imports)
 
 
 if __name__ == '__main__':

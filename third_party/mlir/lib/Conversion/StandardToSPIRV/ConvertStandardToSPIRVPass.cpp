@@ -16,17 +16,31 @@
 // =============================================================================
 //
 // This file implements a pass to convert MLIR standard ops into the SPIR-V
-// ops. It does not legalize FuncOps.
+// ops.
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/Conversion/StandardToSPIRV/ConvertStandardToSPIRVPass.h"
 #include "mlir/Conversion/StandardToSPIRV/ConvertStandardToSPIRV.h"
-#include "mlir/Dialect/SPIRV/Passes.h"
 #include "mlir/Dialect/SPIRV/SPIRVDialect.h"
+#include "mlir/Dialect/SPIRV/SPIRVLowering.h"
+#include "mlir/Pass/Pass.h"
 
 using namespace mlir;
 
 namespace {
+
+/// A simple pattern for rewriting function signature to convert arguments of
+/// functions to be of valid SPIR-V types.
+class FuncOpConversion final : public SPIRVOpLowering<FuncOp> {
+public:
+  using SPIRVOpLowering<FuncOp>::SPIRVOpLowering;
+
+  PatternMatchResult
+  matchAndRewrite(FuncOp funcOp, ArrayRef<ValuePtr> operands,
+                  ConversionPatternRewriter &rewriter) const override;
+};
+
 /// A pass converting MLIR Standard operations into the SPIR-V dialect.
 class ConvertStandardToSPIRVPass
     : public ModulePass<ConvertStandardToSPIRVPass> {
@@ -34,23 +48,51 @@ class ConvertStandardToSPIRVPass
 };
 } // namespace
 
+PatternMatchResult
+FuncOpConversion::matchAndRewrite(FuncOp funcOp, ArrayRef<ValuePtr> operands,
+                                  ConversionPatternRewriter &rewriter) const {
+  auto fnType = funcOp.getType();
+  if (fnType.getNumResults()) {
+    return matchFailure();
+  }
+
+  TypeConverter::SignatureConversion signatureConverter(fnType.getNumInputs());
+  {
+    for (auto argType : enumerate(funcOp.getType().getInputs())) {
+      auto convertedType = typeConverter.convertType(argType.value());
+      signatureConverter.addInputs(argType.index(), convertedType);
+    }
+  }
+  auto newFuncOp = rewriter.cloneWithoutRegions(funcOp);
+  rewriter.inlineRegionBefore(funcOp.getBody(), newFuncOp.getBody(),
+                              newFuncOp.end());
+  newFuncOp.setType(rewriter.getFunctionType(
+      signatureConverter.getConvertedTypes(), llvm::None));
+  rewriter.applySignatureConversion(&newFuncOp.getBody(), signatureConverter);
+  rewriter.replaceOp(funcOp.getOperation(), llvm::None);
+  return matchSuccess();
+}
+
 void ConvertStandardToSPIRVPass::runOnModule() {
   OwningRewritePatternList patterns;
+  auto context = &getContext();
   auto module = getModule();
 
-  populateStandardToSPIRVPatterns(module.getContext(), patterns);
+  SPIRVTypeConverter typeConverter;
+  populateStandardToSPIRVPatterns(context, typeConverter, patterns);
+  patterns.insert<FuncOpConversion>(context, typeConverter);
   ConversionTarget target(*(module.getContext()));
   target.addLegalDialect<spirv::SPIRVDialect>();
-  target.addLegalOp<FuncOp>();
+  target.addDynamicallyLegalOp<FuncOp>(
+      [&](FuncOp op) { return typeConverter.isSignatureLegal(op.getType()); });
 
   if (failed(applyPartialConversion(module, target, patterns))) {
     return signalPassFailure();
   }
 }
 
-std::unique_ptr<ModulePassBase>
-mlir::spirv::createConvertStandardToSPIRVPass() {
-  return llvm::make_unique<ConvertStandardToSPIRVPass>();
+std::unique_ptr<OpPassBase<ModuleOp>> mlir::createConvertStandardToSPIRVPass() {
+  return std::make_unique<ConvertStandardToSPIRVPass>();
 }
 
 static PassRegistration<ConvertStandardToSPIRVPass>

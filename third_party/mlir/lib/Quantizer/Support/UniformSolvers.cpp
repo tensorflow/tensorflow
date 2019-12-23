@@ -16,9 +16,8 @@
 // =============================================================================
 
 #include "mlir/Quantizer/Support/UniformSolvers.h"
-
+#include "mlir/Support/LLVM.h"
 #include "llvm/Support/raw_ostream.h"
-
 #include <cmath>
 
 using namespace mlir;
@@ -59,7 +58,7 @@ bool UniformParamsFromMinMaxSolver::compute() {
       double minOvershoot = boundingMin - adjMinMax.first;
       // If undershooting on the min or max end, return that because it is
       // to be unconditionally avoided. Otherwise return the end with the
-      // greateast magnitude of overshoot.
+      // greatest magnitude of overshoot.
       if (maxOvershoot < 0)
         return maxOvershoot;
       if (minOvershoot < 0)
@@ -82,7 +81,7 @@ bool UniformParamsFromMinMaxSolver::compute() {
     auto fMid =
         fns::overshoot(origMinAdj, origMaxAdj, numLevelsDouble, deltaMid);
     if (fMid == 0 || (fMid > 0 && std::fabs(deltaMid - prevDeltaMid) < 1e-15)) {
-      // Solution found (or step size is infinitessimal and an overshoot).
+      // Solution found (or step size is infinitesimal and an overshoot).
       // Empirically, this seems to terminate around 30-50 steps or so.
       // This will find a zero point for exactly representable ranges and
       // will terminate on a small step size for inexact, biasing towards
@@ -128,17 +127,15 @@ double UniformParamsFromMinMaxSolver::dequantize(int64_t xq) const {
   return (xq - zp) * delta;
 }
 
-namespace mlir {
-namespace quantizer {
-
-llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
-                              const UniformStorageParams &p) {
+raw_ostream &mlir::quantizer::operator<<(raw_ostream &os,
+                                         const UniformStorageParams &p) {
   os << "UniformStorageParams{" << p.numLevels << ", " << p.minValue << "}";
   return os;
 }
 
-llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
-                              const UniformParamsFromMinMaxSolver &s) {
+raw_ostream &
+mlir::quantizer::operator<<(raw_ostream &os,
+                            const UniformParamsFromMinMaxSolver &s) {
   os << "UniformParamsFromMinMaxSolver(" << s.getStepCount() << "){";
   os << "(" << s.getBoundingMin() << ":" << s.getBoundingMax() << ") -> ";
   if (!s.isSatisfied()) {
@@ -153,6 +150,3 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
 
   return os;
 }
-
-} // end namespace quantizer
-} // end namespace mlir

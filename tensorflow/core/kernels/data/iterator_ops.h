@@ -40,10 +40,15 @@ class IteratorResource : public ResourceBase {
                    FunctionLibraryRuntime* flr)
       : unbounded_thread_pool_(env, "tf_data_iterator_resource"),
         device_mgr_(std::move(device_mgr)),
-        iterator_state_(std::make_shared<State>(
-            std::move(flib_def), std::move(pflr), flr, /*iterator=*/nullptr)),
+        iterator_state_(std::make_shared<State>(std::move(flib_def),
+                                                std::move(pflr), flr,
+                                                /*iterator=*/nullptr)),
         output_dtypes_(output_dtypes),
-        output_shapes_(output_shapes) {}
+        output_shapes_(output_shapes) {
+    VLOG(2) << "constructor";
+  }
+
+  ~IteratorResource() override { VLOG(2) << "destructor"; }
 
   Status GetNext(OpKernelContext* ctx, std::vector<Tensor>* out_tensors,
                  bool* end_of_sequence);
@@ -63,15 +68,25 @@ class IteratorResource : public ResourceBase {
   }
 
  private:
+  // TODO(aaudibert): convert to a class for better encapsulation.
   struct State {
     State(std::shared_ptr<FunctionLibraryDefinition> flib_def,
           std::shared_ptr<ProcessFunctionLibraryRuntime> pflr,
-          FunctionLibraryRuntime* flr, std::unique_ptr<IteratorBase> iterator)
-        : flib_def(flib_def),
+          FunctionLibraryRuntime* flr,
+          std::unique_ptr<DatasetBaseIterator> iterator)
+        : flib_def(std::move(flib_def)),
           flr(flr),
-          pflr(pflr),
+          pflr(std::move(pflr)),
           function_handle_cache(absl::make_unique<FunctionHandleCache>(flr)),
           iterator(std::move(iterator)) {}
+
+    ~State() { cancellation_manager.StartCancel(); }
+
+    // Downcasts the given `IteratorBase` to a `DatasetBaseIterator`, and uses
+    // it to set the `iterator` field.
+    void DowncastAndSetIterator(std::unique_ptr<IteratorBase> it) {
+      iterator.reset(static_cast<DatasetBaseIterator*>(it.release()));
+    }
 
     std::shared_ptr<FunctionLibraryDefinition> flib_def;
     FunctionLibraryRuntime* flr = nullptr;  // not owned.
@@ -79,7 +94,7 @@ class IteratorResource : public ResourceBase {
     std::unique_ptr<FunctionHandleCache> function_handle_cache;
     ResourceMgr resource_mgr;
     CancellationManager cancellation_manager;
-    std::unique_ptr<IteratorBase> iterator;
+    std::unique_ptr<DatasetBaseIterator> iterator;
   };
 
   UnboundedThreadPool unbounded_thread_pool_;
@@ -232,6 +247,27 @@ class IteratorFromStringHandleOp : public OpKernel {
  private:
   DataTypeVector output_dtypes_;
   std::vector<PartialTensorShape> output_shapes_;
+};
+
+class SerializeIteratorOp : public OpKernel {
+ public:
+  static constexpr const char* const kExternalStatePolicy =
+      "external_state_policy";
+
+  explicit SerializeIteratorOp(OpKernelConstruction* ctx);
+
+  void Compute(OpKernelContext* ctx) override;
+
+ private:
+  SerializationContext::ExternalStatePolicy external_state_policy_ =
+      SerializationContext::ExternalStatePolicy::kWarn;
+};
+
+class DeserializeIteratorOp : public OpKernel {
+ public:
+  explicit DeserializeIteratorOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override;
 };
 
 }  // namespace data

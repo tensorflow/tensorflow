@@ -78,6 +78,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "stateful"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "submodules"
     mtype: "<type \'property\'>"
   }

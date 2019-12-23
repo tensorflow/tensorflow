@@ -30,7 +30,7 @@ typedef Eigen::GpuDevice GPUDevice;
 
 template <typename Scalar>
 __global__ void EyeKernel(int num_threads, int batch_size, int m, int n,
-                          Scalar* output_ptr) {
+                          Scalar* __restrict__ output_ptr) {
   const Scalar one = Scalar(1);
   const Scalar zero = Scalar(0);
   GPU_1D_KERNEL_LOOP(index, num_threads) {

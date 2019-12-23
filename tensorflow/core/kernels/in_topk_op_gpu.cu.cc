@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
@@ -37,11 +37,11 @@ namespace functor {
 //   1: If prediction is larger than the target prediction for the batch.
 template <typename T, typename TargetT>
 __global__ void ComputePredictionMaskKernel(
-    const T* predictions,    // dims: [ num_targets x num_classes ]
-    const TargetT* targets,  // dims: [ num_targets ]
-    int64* mask,             // dims: [ num_targets x num_classes ]
+    const T* __restrict__ predictions,    // dims: [ num_targets x num_classes ]
+    const TargetT* __restrict__ targets,  // dims: [ num_targets ]
+    int64* __restrict__ mask,             // dims: [ num_targets x num_classes ]
     int num_targets, int num_classes) {
-  CUDA_1D_KERNEL_LOOP(i, num_targets * num_classes) {
+  GPU_1D_KERNEL_LOOP(i, num_targets * num_classes) {
     const int batch_index = i / num_classes;
     TargetT target_idx = ldg(targets + batch_index);
 
@@ -118,7 +118,7 @@ struct InTopKFunctor<GPUDevice, T, TargetT> {
     const auto& d = context->eigen_device<GPUDevice>();
 
     // Compute a mask for all predictions.
-    CudaLaunchConfig config = GetGpuLaunchConfig(num_targets * num_classes, d);
+    GpuLaunchConfig config = GetGpuLaunchConfig(num_targets * num_classes, d);
     OP_REQUIRES_OK(
         context, GpuLaunchKernel(ComputePredictionMaskKernel<T, TargetT>,
                                  config.block_count, config.thread_per_block, 0,
@@ -173,4 +173,4 @@ DEFINE_GPU_KERNELS(float, int64);
 
 }  // end namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

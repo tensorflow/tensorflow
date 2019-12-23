@@ -455,9 +455,9 @@ class LayoutPattern {
   template <typename NewImpl>
   auto AppendImpl(NewImpl new_impl) const
       -> LayoutPattern<LayoutType,
-                       decltype(AllOf<Layout>(std::declval<Impl>(),
-                                              std::move(new_impl)))> {
-    auto new_allof = AllOf<Layout>(impl_, std::move(new_impl));
+                       decltype(AllOf<::xla::Layout>(std::declval<Impl>(),
+                                                     std::move(new_impl)))> {
+    auto new_allof = AllOf<::xla::Layout>(impl_, std::move(new_impl));
     return LayoutPattern<LayoutType, decltype(new_allof)>(std::move(new_allof),
                                                           matched_layout_);
   }
@@ -869,7 +869,7 @@ class ShapePatternLayoutImpl {
            layout_.Match(&shape->layout(), option);
   }
 
-  bool Match(Shape* shape, MatchOption option) const {
+  bool Match(::xla::Shape* shape, MatchOption option) const {
     if (!LayoutUtil::HasLayout(*shape)) {
       EXPLAIN << "Shape does not have a layout";
       return false;
@@ -946,9 +946,10 @@ class ShapePattern {
  private:
   template <typename NewImpl>
   auto AppendImpl(NewImpl new_impl) const
-      -> ShapePattern<ShapeType, decltype(AllOf<Shape>(std::declval<Impl>(),
-                                                       std::move(new_impl)))> {
-    auto new_all_of = AllOf<Shape>(impl_, std::move(new_impl));
+      -> ShapePattern<ShapeType,
+                      decltype(AllOf<::xla::Shape>(std::declval<Impl>(),
+                                                   std::move(new_impl)))> {
+    auto new_all_of = AllOf<::xla::Shape>(impl_, std::move(new_impl));
     return ShapePattern<ShapeType, decltype(new_all_of)>(std::move(new_all_of),
                                                          matched_shape_);
   }
@@ -1077,7 +1078,7 @@ class ShapePattern {
   }
 
   ShapePattern<ShapeType,
-               AllOfPattern<Shape, Impl,
+               AllOfPattern<::xla::Shape, Impl,
                             ShapePatternSubshapeImpl<
                                 const ::xla::Shape,
                                 AllOfPattern<::xla::Shape, ShapePatternBaseImpl,
@@ -1090,7 +1091,7 @@ class ShapePattern {
   }
 
   ShapePattern<ShapeType,
-               AllOfPattern<Shape, Impl,
+               AllOfPattern<::xla::Shape, Impl,
                             ShapePatternSubshapeImpl<
                                 const ::xla::Shape,
                                 AllOfPattern<::xla::Shape, ShapePatternBaseImpl,
@@ -1385,11 +1386,11 @@ class HloInstructionPatternBinaryOperandsAnyOrderImpl {
       const HloInstructionPattern<OperandType2, OperandImpl2>& op2)
       : op1_(op1), op2_(op2) {}
 
-  bool Match(HloInstruction* inst, MatchOption option) const {
+  bool Match(::xla::HloInstruction* inst, MatchOption option) const {
     return MatchImpl(inst, option);
   }
 
-  bool Match(const HloInstruction* inst, MatchOption option) const {
+  bool Match(const ::xla::HloInstruction* inst, MatchOption option) const {
     return MatchImpl(inst, option);
   }
 
@@ -1663,7 +1664,7 @@ class HloInstructionPatternOneUseOrUserImpl {
 class HloInstructionPatternOneUseImpl
     : public HloInstructionPatternOneUseOrUserImpl {
  public:
-  bool Match(const HloInstruction* inst, MatchOption option) const {
+  bool Match(const ::xla::HloInstruction* inst, MatchOption option) const {
     if (!MatchOneUser(inst, option)) {
       return false;
     }
@@ -1688,7 +1689,7 @@ class HloInstructionPatternOneUseImpl
 class HloInstructionPatternOneUserImpl
     : public HloInstructionPatternOneUseOrUserImpl {
  public:
-  bool Match(const HloInstruction* inst, MatchOption option) const {
+  bool Match(const ::xla::HloInstruction* inst, MatchOption option) const {
     return MatchOneUser(inst, option);
   }
 
@@ -1804,9 +1805,9 @@ class HloInstructionPattern {
  private:
   template <typename NewImpl>
   auto AppendImpl(NewImpl new_impl) const -> HloInstructionPattern<
-      HloInstructionType, decltype(AllOf<HloInstruction>(
+      HloInstructionType, decltype(AllOf<::xla::HloInstruction>(
                               std::declval<Impl>(), std::move(new_impl)))> {
-    auto new_allof = AllOf<HloInstruction>(impl_, std::move(new_impl));
+    auto new_allof = AllOf<::xla::HloInstruction>(impl_, std::move(new_impl));
     return HloInstructionPattern<HloInstructionType, decltype(new_allof)>(
         std::move(new_allof), matched_inst_);
   }

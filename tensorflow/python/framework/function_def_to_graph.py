@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.core.framework import function_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import tensor_shape_pb2
 from tensorflow.core.framework import types_pb2
@@ -29,7 +30,7 @@ from tensorflow.python.framework import versions
 from tensorflow.python.framework.func_graph import FuncGraph
 
 
-def function_def_to_graph(fdef, input_shapes=None, copy_functions=True):
+def function_def_to_graph(fdef, input_shapes=None):
   """Converts a FunctionDef to a FuncGraph (sub-class Graph).
 
   The returned FuncGraph's `name`, `inputs` and `outputs` fields will be set.
@@ -45,9 +46,6 @@ def function_def_to_graph(fdef, input_shapes=None, copy_functions=True):
       specified, its length must match length of `fdef.signature.input_arg`. If
       a shape is None, the corresponding input placeholder will have unknown
       shape.
-    copy_functions: Whether to copy all functions that exists in default graph
-      (independently of being used or not) to the created FuncGraph. Functions
-      required for graph import will be copied regardless.
 
   Returns:
     A FuncGraph.
@@ -58,7 +56,7 @@ def function_def_to_graph(fdef, input_shapes=None, copy_functions=True):
     if input_shapes_attr is not None:
       input_shapes = input_shapes_attr.list.shape
   graph_def, nested_to_flat_tensor_name = function_def_to_graph_def(
-      fdef, input_shapes, copy_functions)
+      fdef, input_shapes)
 
   with func_graph.as_default():
     # Add all function nodes to the graph.
@@ -111,10 +109,17 @@ def is_function(fname):
   if context.executing_eagerly():
     return context.context().has_function(fname)
   else:
-    return ops.get_default_graph()._is_function(fname)  # pylint: disable=protected-access
+    graph = ops.get_default_graph()
+    while graph is not None:
+      if graph._is_function(fname):  # pylint: disable=protected-access
+        return True
+      if hasattr(graph, "outer_graph"):
+        graph = graph.outer_graph
+      else:
+        return False
 
 
-def function_def_to_graph_def(fdef, input_shapes=None, copy_functions=True):
+def function_def_to_graph_def(fdef, input_shapes=None):
   """Convert a FunctionDef to a GraphDef.
 
   Steps:
@@ -131,9 +136,6 @@ def function_def_to_graph_def(fdef, input_shapes=None, copy_functions=True):
       function inputs. If specified, its length must match length of
       `fdef.signature.input_arg`. If a shape is None, the corresponding input
       placeholder will have unknown shape.
-    copy_functions: Whether to copy all functions that exists in default graph
-      (independently of being used or not) to the created GraphDef. Directly
-      referenced functions are copied regardless.
 
   Returns:
     A tuple of (GraphDef, dict<string, string>). The dict contains a mapping
@@ -152,15 +154,6 @@ def function_def_to_graph_def(fdef, input_shapes=None, copy_functions=True):
   default_graph = ops.get_default_graph()
 
   copied_functions = set()
-
-  # Copy *all* functions from outer graph to `graph_def` so that both direct
-  # and indirect references are safely handled.
-  if copy_functions:
-    # pylint: disable=protected-access
-    default_graph._copy_functions_to_graph_def(graph_def, 0)
-    for function_name in default_graph._functions.keys():
-      copied_functions.add(function_name)
-    # pylint: enable=protected-access
 
   if input_shapes and len(input_shapes) != len(fdef.signature.input_arg):
     raise ValueError("Length of input_shapes must match the number of " +
@@ -201,17 +194,28 @@ def function_def_to_graph_def(fdef, input_shapes=None, copy_functions=True):
     nested_to_flat_tensor_name[control_name] = control_name
 
   for node_def in fdef.node_def:
-    f = default_graph._functions.get(node_def.op, None)  # pylint: disable=protected-access
-    if f is not None and hasattr(f, "signature"):
-      op_def = f.signature
+    graph = default_graph
+    while True:
+      f = graph._functions.get(node_def.op, None)  # pylint: disable=protected-access
+      if f is not None or not hasattr(graph, "outer_graph"):
+        break
+      graph = graph.outer_graph
+
+    if f is not None:
+      op_def = f.definition.signature
       if node_def.op not in copied_functions:
         # Since this function is referenced as an op type, we have no choice but
         # to copy it into the GraphDef if we want downstream tools to process
         # it.
         graph_def.library.function.add().CopyFrom(f.definition)
         copied_functions.add(node_def.op)
+        if f.grad_func_name:
+          grad_def = function_pb2.GradientDef()
+          grad_def.function_name = f.name
+          grad_def.gradient_func = f.grad_func_name
+          graph_def.library.gradient.extend([grad_def])
     else:
-      op_def = ops.get_default_graph()._get_op_def(node_def.op)  # pylint: disable=protected-access
+      op_def = default_graph._get_op_def(node_def.op)  # pylint: disable=protected-access
 
     for attr in op_def.attr:
       if attr.type == "func":

@@ -1,5 +1,5 @@
-load("//tensorflow/core/platform:default/build_config.bzl", "pyx_library")
-load("//tensorflow/compiler/xla:xla.bzl", "xla_py_test_deps", "xla_python_default_plugins")
+load("//tensorflow/core/platform:build_config.bzl", "pyx_library")
+load("//tensorflow/compiler/xla:xla.bzl", "xla_py_test_deps")
 load("//tensorflow:tensorflow.bzl", "pybind_extension")
 load("//tensorflow:tensorflow.bzl", "py_test", "tf_cc_test")
 
@@ -10,10 +10,7 @@ package(
 
 py_library(
     name = "xla_client",
-    srcs = [
-        "xla_client.py",
-        "xrt.py",
-    ],
+    srcs = ["xla_client.py"],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [":xla_extension"],
@@ -56,47 +53,21 @@ cc_library(
     copts = [
         "-fexceptions",
         "-fno-strict-aliasing",
-        "-Wno-c++98-c++11-compat",
     ],
     features = ["-use_header_modules"],
     deps = [
+        ":bfloat16",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/core:lib",
+        "//third_party/py/numpy:headers",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/types:optional",
-        "@pybind11",
-    ],
-)
-
-cc_library(
-    name = "xrt",
-    srcs = ["xrt.cc"],
-    hdrs = ["xrt.h"],
-    copts = [
-        "-fexceptions",
-        "-fno-strict-aliasing",
-        "-Wno-c++98-c++11-compat",
-    ],
-    features = ["-use_header_modules"],
-    deps = [
-        ":types",
-        "//tensorflow/compiler/xla:status",
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/compiler/xla/service:computation_placer",
-        "//tensorflow/compiler/xrt/client:xrt_client",
-        "//tensorflow/compiler/xrt/client:xrt_grpc_eager_client",
-        "//tensorflow/core:lib",
-        "//tensorflow/core/distributed_runtime/rpc:grpc_channel",
-        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/types:optional",
         "@pybind11",
     ],
@@ -169,9 +140,9 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "device_state",
-    srcs = ["device_state.cc"],
-    hdrs = ["device_state.h"],
+    name = "local_device_state",
+    srcs = ["local_device_state.cc"],
+    hdrs = ["local_device_state.h"],
     deps = [
         ":event_pool",
         ":semaphore",
@@ -190,7 +161,7 @@ cc_library(
     srcs = ["local_client.cc"],
     hdrs = ["local_client.h"],
     deps = [
-        ":device_state",
+        ":local_device_state",
         ":shared_device_buffer",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:literal",
@@ -199,7 +170,7 @@ cc_library(
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:executable_build_options",
         "//tensorflow/compiler/xla/client:local_client",
@@ -214,6 +185,7 @@ cc_library(
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/stream_executor:tf_allocator_adapter",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
@@ -228,7 +200,6 @@ cc_library(
     copts = [
         "-fexceptions",
         "-fno-strict-aliasing",
-        "-Wno-c++98-c++11-compat",
     ],
     features = ["-use_header_modules"],
     deps = [
@@ -239,6 +210,47 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "bfloat16",
+    srcs = ["bfloat16.cc"],
+    hdrs = ["bfloat16.h"],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
+    deps = [
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core/lib/bfloat16",
+        "//tensorflow/core/platform:logging",
+        "//third_party/py/numpy:headers",
+        "//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@com_google_absl//absl/strings",
+        "@pybind11",
+    ],
+)
+
+py_test(
+    name = "bfloat16_test",
+    srcs = ["bfloat16_test.py"],
+    main = "bfloat16_test.py",
+    python_version = "PY3",
+    tags = ["no_oss"],
+    deps = [
+        ":xla_client",
+        ":xla_extension",
+        "@absl_py//absl/testing:absltest",
+        "@absl_py//absl/testing:parameterized",
+    ] + xla_py_test_deps(),
+)
+
+config_setting(
+    name = "enable_gpu",
+    values = {"define": "xla_python_enable_gpu=true"},
+)
+
 pybind_extension(
     name = "xla_extension",
     srcs = [
@@ -247,16 +259,15 @@ pybind_extension(
     copts = [
         "-fexceptions",
         "-fno-strict-aliasing",
-        "-Wno-c++98-c++11-compat",
     ],
     features = ["-use_header_modules"],
     module_name = "xla_extension",
     deps = [
+        ":bfloat16",
         ":local_client",
         ":shared_device_buffer",
         ":python_ref_manager",
         ":types",
-        ":xrt",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/memory",
@@ -264,6 +275,7 @@ pybind_extension(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
+        "//third_party/py/numpy:headers",
         "@pybind11",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
         "//tensorflow/compiler/xla:literal",
@@ -271,7 +283,7 @@ pybind_extension(
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:executable_build_options",
         "//tensorflow/compiler/xla/client:local_client",
@@ -300,18 +312,8 @@ pybind_extension(
         # not require Tensorflow.
         "//tensorflow/core:lib_internal_impl",  # buildcleaner: keep
         "//tensorflow/stream_executor:device_memory_allocator",
-    ] + xla_python_default_plugins(),
+    ] + select({
+        ":enable_gpu": ["//tensorflow/compiler/xla/service:gpu_plugin"],
+        "//conditions:default": [],
+    }),
 )
-
-# TODO(phawkins): enable this test.
-# py_test(
-#     name = "xrt_test",
-#     srcs = ["xrt_test.py"],
-#     deps = [
-#         ":xla_client",
-#         "//third_party/py/numpy",
-#         "//tensorflow/compiler/jit:xla_cpu_device",
-#         "//tensorflow/compiler/xrt:xrt_server",
-#         "//tensorflow/python:client_testlib",
-#     ],
-# )

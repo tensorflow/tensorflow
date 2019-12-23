@@ -46,8 +46,8 @@ elif [[ -n "${GPU_VERSION}" ]]; then
   # Currently we create a special toolchain for clang when compiling with
   # cuda enabled. We can get rid of this once the default toolchain bazel
   # provides supports cuda.
-  if [[ "${COMPILER}" == "clang" ]]; then
-    COMPILER="cuda-clang"
+  if [[ "${COMPILER}" == clang* ]]; then
+    COMPILER="${COMPILER}-${GPU_VERSION}"
   fi
 fi
 
@@ -58,7 +58,8 @@ echo "CUDA/ROCm: ${GPU_VERSION}"
 echo "CUDNN: ${CUDNN_VERSION}"
 echo "TensorRT: ${TENSORRT_VERSION}"
 
-bazel build --define=mount_project="${PWD}" "${PKG}/generate:${TARGET}"
+bazel build --host_force_python=PY2 --define=mount_project="${PWD}" \
+  "${PKG}/generate:${TARGET}"
 cd "${TEMPDIR}"
 tar xvf "${ROOT}/bazel-bin/${PKG}/generate/${TARGET}_outputs.tar"
 

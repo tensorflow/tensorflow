@@ -112,11 +112,12 @@ class DepthwiseConvolution : public NodeShader {
     source += R"(
         int src_layer = gid.z / $channel_multiplier$;
         vec4 input_ = $input_data_0[coord.x, coord.y, src_layer]$;
-        highp vec4 input_shifted;
-        input_shifted[0] = input_[(src_layer_offset + 0) / $channel_multiplier$];
-        input_shifted[1] = input_[(src_layer_offset + 1) / $channel_multiplier$];
-        input_shifted[2] = input_[(src_layer_offset + 2) / $channel_multiplier$];
-        input_shifted[3] = input_[(src_layer_offset + 3) / $channel_multiplier$];
+        vec4 input_shifted = vec4(
+          input_[(src_layer_offset + 0) / $channel_multiplier$],
+          input_[(src_layer_offset + 1) / $channel_multiplier$],
+          input_[(src_layer_offset + 2) / $channel_multiplier$],
+          input_[(src_layer_offset + 3) / $channel_multiplier$]
+        );
         int filter_offset = gid.z * offsets_count + i;
         value_0 += input_shifted * $weights[filter_offset]$;
       }

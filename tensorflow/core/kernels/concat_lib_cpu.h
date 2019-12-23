@@ -45,14 +45,15 @@ void ConcatCPUImpl(
     row_size += sizes.back();
   }
 
+  // cost_per_unit is estimated bytes to copy per output array element (for
+  // strings this includes an estimate of the number of bytes of the actual
+  // string data, as well).
+  const int64 estimated_total_cost = output->size() * cost_per_unit;
+
   auto worker_threads = d->tensorflow_cpu_worker_threads();
   int num_threads = std::min(4, worker_threads->num_threads);
-  // strings define a different amount of work (generally much more) compared
-  // with standard POD, so we parallelize differently.
-  if (!std::is_same<T, string>::value) {
-    num_threads =
-        static_cast<int>(std::min<int64>(num_threads, output->size() / 4096));
-  }
+  num_threads = static_cast<int>(
+      std::min<int64>(num_threads, estimated_total_cost / 16384));
   // Single threaded mode.
   // TODO(dga):  Deduplicate this code w.r.t. sharded code below.
   if (num_threads == 0) {

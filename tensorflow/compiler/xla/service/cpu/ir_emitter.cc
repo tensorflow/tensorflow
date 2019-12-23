@@ -37,10 +37,13 @@ limitations under the License.
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Intrinsics.h"
+#include "llvm/IR/IntrinsicsX86.h"
 #include "llvm/IR/LLVMContext.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
+#include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_options.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 #include "tensorflow/compiler/xla/service/cpu/dot_op_emitter.h"
@@ -68,6 +71,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/math/math_util.h"
@@ -973,7 +977,7 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
   auto rhs = dot->operand(1);
   TF_RETURN_IF_ERROR(ElementTypesSameAndSupported(
       /*instruction=*/*dot, /*operands=*/{lhs, rhs},
-      /*supported_types=*/{F16, F32, F64, C64, C128}));
+      /*supported_types=*/{S32, F16, F32, F64, C64, C128}));
   const DotDimensionNumbers& dnums = dot->dot_dimension_numbers();
 
   if (dnums.lhs_contracting_dimensions_size() != 1) {
@@ -1156,7 +1160,7 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
       /*instruction=*/*convolution, /*operands=*/{lhs, rhs},
       /*supported_types=*/{F16, F32, F64, C64, C128}));
 
-  // TODO(tonywy): Add PotentiallyImplementedAsMKLCovolution to support
+  // TODO(tonywy): Add PotentiallyImplementedAsMKLConvolution to support
   // different data layouts.
   if (PotentiallyImplementedAsEigenConvolution(*convolution,
                                                target_machine_features_)) {
@@ -1365,13 +1369,7 @@ Status IrEmitter::HandleFft(HloInstruction* fft) {
   return Status::OK();
 }
 
-Status IrEmitter::HandleAllReduce(HloInstruction* crs) {
-  if (hlo_module_config_.replica_count() != 1) {
-    // TODO(b/33011107): Support nontrivial cross replica sum on CPU.
-    return Unimplemented(
-        "AllReduce with >1 replica is not implemented on CPU.");
-  }
-
+Status IrEmitter::HandleAllReduceSingleReplica(HloInstruction* crs) {
   // When there is a single replica, a cross replica sum is the identity
   // function, and the buffer assignment expects a copy.
   //
@@ -1403,6 +1401,137 @@ Status IrEmitter::HandleAllReduce(HloInstruction* crs) {
            /*SrcAlign=*/1, ShapeUtil::ByteSizeOf(operand_shape));
   }
   llvm_ir::EmitTuple(GetIrArrayFor(crs), operand_ptrs, &b_);
+  return Status::OK();
+}
+
+Status IrEmitter::HandleAllReduceMultipleReplica(HloInstruction* crs) {
+  CHECK_GE(crs->operand_count(), 1);
+  PrimitiveType datatype = crs->operand(0)->shape().element_type();
+  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(crs));
+
+  bool is_datatype_supported = [&] {
+    // TODO(cheshire): Fix duplication wrt. cpu_runtime
+    switch (datatype) {
+      case S8:
+      case U8:
+      case S32:
+      case U32:
+      case S64:
+      case U64:
+      case F16:
+      case F32:
+      case F64:
+        return true;
+      default:
+        return false;
+    }
+  }();
+
+  if (!is_datatype_supported) {
+    return Unimplemented("AllReduce for datatype '%s' is not supported",
+                         primitive_util::LowercasePrimitiveTypeName(datatype));
+  }
+
+  if (!MatchReductionComputation(crs->to_apply()).has_value()) {
+    return Unimplemented("AllReduce for computation '%s' is not supported",
+                         crs->to_apply()->ToString());
+  }
+
+  llvm::Type* i8_ptr_type = llvm::Type::getInt8PtrTy(module_->getContext());
+  llvm::Type* int32_type = b_.getInt32Ty();
+  llvm::Type* int64_type = b_.getInt64Ty();
+  llvm::FunctionType* all_reduce_func_ty =
+      llvm::FunctionType::get(b_.getVoidTy(),
+                              {/*run_options=*/i8_ptr_type,
+                               /*replica_groups=*/i8_ptr_type,
+                               /*replica_groups_size=*/int32_type,
+                               /*channel_id_present=*/int32_type,
+                               /*op_id=*/int64_type,
+                               /*reduction_kind=*/int32_type,
+                               /*shape_ptr=*/i8_ptr_type,
+                               /*shape_length=*/int32_type,
+                               /*input_buffer=*/i8_ptr_type,
+                               /*output_buffer=*/i8_ptr_type},
+                              /*isVarArg=*/false);
+
+  auto all_reduce_func = llvm::dyn_cast<llvm::Function>(
+      module_
+          ->getOrInsertFunction(runtime::kAllReduceSymbolName,
+                                all_reduce_func_ty)
+          .getCallee());
+  all_reduce_func->setCallingConv(llvm::CallingConv::C);
+
+  std::string replica_groups = ReplicaGroupsToString(crs->replica_groups());
+  int32 replica_groups_size = replica_groups.size();
+  llvm::Value* replica_groups_v = b_.CreateGlobalStringPtr(replica_groups);
+
+  Shape shape = crs->operand(0)->shape();
+  int32 shape_length;
+  TF_ASSIGN_OR_RETURN(
+      llvm::Value * shape_ptr,
+      llvm_ir::EncodeSelfDescribingShapeConstant(shape, &shape_length, &b_));
+
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice input_slice,
+                      assignment_.GetUniqueSlice(crs->operand(0), {}));
+  llvm::Value* input_buffer = EmitBufferPointer(input_slice, shape);
+
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice output_slice,
+                      assignment_.GetUniqueSlice(crs, {}));
+  llvm::Value* output_buffer = EmitBufferPointer(output_slice, shape);
+
+  Call(all_reduce_func,
+       {/*run_options=*/GetExecutableRunOptionsArgument(),
+        /*replica_groups=*/replica_groups_v,
+        /*replica_groups_size=*/b_.getInt32(replica_groups_size),
+
+        /*channel_id_present=*/
+        b_.getInt32(static_cast<int32>(crs->channel_id().has_value())),
+        /*op_id=*/
+        b_.getInt64(crs->channel_id().has_value()
+                        ? *crs->channel_id()
+                        : crs->GetModule()->unique_id()),
+
+        /*reduction_kind=*/
+        b_.getInt32(
+            static_cast<int32>(*MatchReductionComputation(crs->to_apply()))),
+
+        /*shape_ptr=*/shape_ptr,
+        /*shape_length=*/b_.getInt32(shape_length),
+
+        /*input_buffer=*/b_.CreateBitCast(input_buffer, i8_ptr_type),
+        /*output_buffer=*/b_.CreateBitCast(output_buffer, i8_ptr_type)});
+
+  return Status::OK();
+}
+
+Status IrEmitter::HandleAllReduce(HloInstruction* crs) {
+  if (hlo_module_config_.replica_count() == 1) {
+    return HandleAllReduceSingleReplica(crs);
+  }
+  return HandleAllReduceMultipleReplica(crs);
+}
+
+Status IrEmitter::HandleReplicaId(HloInstruction* hlo) {
+  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(hlo));
+  llvm::Type* i8_ptr_type = llvm::Type::getInt8PtrTy(module_->getContext());
+  llvm::FunctionType* replica_id_function_ty =
+      llvm::FunctionType::get(b_.getVoidTy(),
+                              {/*run_options=*/i8_ptr_type,
+                               /*output_buffer=*/i8_ptr_type},
+                              /*isVarArg=*/false);
+  auto* replica_id_func = llvm::dyn_cast<llvm::Function>(
+      module_
+          ->getOrInsertFunction(runtime::kReplicaIdSymbolName,
+                                replica_id_function_ty)
+          .getCallee());
+  replica_id_func->setCallingConv(llvm::CallingConv::C);
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice output_slice,
+                      assignment_.GetUniqueSlice(hlo, {}));
+  llvm::Value* output_buffer = EmitBufferPointer(output_slice, hlo->shape());
+  Call(replica_id_func,
+       {/*run_options=*/GetExecutableRunOptionsArgument(),
+        /*output_buffer=*/b_.CreateBitCast(output_buffer, i8_ptr_type)});
+
   return Status::OK();
 }
 
@@ -2784,8 +2913,9 @@ Status IrEmitter::HandleRngGetAndUpdateState(HloInstruction* rng_state) {
                                  old_state->getType()->getScalarType(),
                                  address->getType()->getPointerAddressSpace()));
   llvm::StoreInst* store = Store(old_state, address);
-  store->setAlignment(IrEmitter::MinimumAlignmentForPrimitiveType(
-      rng_state->shape().element_type()));
+  store->setAlignment(
+      llvm::MaybeAlign(IrEmitter::MinimumAlignmentForPrimitiveType(
+          rng_state->shape().element_type())));
 
   return Status::OK();
 }
@@ -2859,7 +2989,7 @@ void IrEmitter::ProfilingState::UpdateProfileCounter(llvm::IRBuilder<>* b,
 
 llvm::Value* IrEmitter::ProfilingState::ReadCycleCounter(llvm::IRBuilder<>* b) {
   llvm::Module* module = b->GetInsertBlock()->getModule();
-  if (use_rdtscp_) {
+  if (!use_rdtscp_) {
     llvm::Function* func_llvm_readcyclecounter =
         llvm::Intrinsic::getDeclaration(module,
                                         llvm::Intrinsic::readcyclecounter);
@@ -2867,20 +2997,8 @@ llvm::Value* IrEmitter::ProfilingState::ReadCycleCounter(llvm::IRBuilder<>* b) {
   }
   llvm::Function* func_llvm_x86_rdtscp =
       llvm::Intrinsic::getDeclaration(module, llvm::Intrinsic::x86_rdtscp);
-  if (!aux_i8ptr_) {
-    llvm::AllocaInst* rdtscp_aux =
-        llvm_ir::EmitAllocaAtFunctionEntry(b->getInt32Ty(), "rdtscp_aux", b);
-    aux_i8ptr_ = b->CreateBitCast(rdtscp_aux, b->getInt8PtrTy());
-  }
-  llvm::ConstantInt* alloca_size = b->getInt64(4);
-  llvm::Function* func_llvm_lifetime_start =
-      llvm::Intrinsic::getDeclaration(module, llvm::Intrinsic::lifetime_start);
-  b->CreateCall(func_llvm_lifetime_start, {alloca_size, aux_i8ptr_});
-  llvm::Value* rdtscp_call = b->CreateCall(func_llvm_x86_rdtscp, aux_i8ptr_);
-  llvm::Function* func_llvm_lifetime_end =
-      llvm::Intrinsic::getDeclaration(module, llvm::Intrinsic::lifetime_end);
-  b->CreateCall(func_llvm_lifetime_end, {alloca_size, aux_i8ptr_});
-  return rdtscp_call;
+  llvm::Value* rdtscp_call = b->CreateCall(func_llvm_x86_rdtscp);
+  return b->CreateExtractValue(rdtscp_call, {0});
 }
 
 void IrEmitter::ProfilingState::RecordCycleStart(llvm::IRBuilder<>* b,

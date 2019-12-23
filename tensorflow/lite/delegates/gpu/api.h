@@ -57,13 +57,9 @@ namespace gpu {
 //   C4 - is the constant = 4.
 enum class DataLayout {
   UNKNOWN,
-
   BHWC,
-
   DHWC4,
-
   HWDC4,
-
   HDWC4,
 };
 
@@ -77,24 +73,41 @@ enum class ObjectType {
 };
 
 struct OpenGlBuffer {
+  OpenGlBuffer() = default;
+  explicit OpenGlBuffer(GLuint new_id) : id(new_id) {}
+
   GLuint id = GL_INVALID_INDEX;
 };
 
 struct OpenGlTexture {
+  OpenGlTexture() = default;
+  OpenGlTexture(GLuint new_id, GLenum new_format)
+      : id(new_id), format(new_format) {}
+
   GLuint id = GL_INVALID_INDEX;
   GLenum format = GL_INVALID_ENUM;
 };
 
 struct OpenClBuffer {
-  cl_mem memobj;
+  OpenClBuffer() = default;
+  explicit OpenClBuffer(cl_mem new_memobj) : memobj(new_memobj) {}
+
+  cl_mem memobj = nullptr;
 };
 
 struct OpenClTexture {
-  cl_mem memobj;
+  OpenClTexture() = default;
+  explicit OpenClTexture(cl_mem new_memobj) : memobj(new_memobj) {}
+
+  cl_mem memobj = nullptr;
   // TODO(akulik): should it specify texture format?
 };
 
 struct CpuMemory {
+  CpuMemory() = default;
+  CpuMemory(void* new_data, size_t new_size_bytes)
+      : data(new_data), size_bytes(new_size_bytes) {}
+
   void* data = nullptr;
   size_t size_bytes = 0;
 };
@@ -170,6 +183,9 @@ struct TensorObjectDef {
 
 // @return true if tensor object def is defined.
 bool IsValid(const TensorObjectDef& def);
+
+// @return the number of elements in a tensor object.
+uint32_t NumElements(const TensorObjectDef& def);
 
 using TensorObject = absl::variant<absl::monostate, OpenGlBuffer, OpenGlTexture,
                                    CpuMemory, OpenClBuffer, OpenClTexture>;
@@ -251,6 +267,86 @@ class InferenceRunner {
 
   virtual Status Run() = 0;
 };
+
+// Encapsulated compilation/runtime tradeoffs.
+enum class InferenceUsage {
+  UNKNOWN,
+
+  // InferenceRunner will be used only once. Therefore, it is important to
+  // minimize bootstrap time as well.
+  FAST_SINGLE_ANSWER,
+
+  // Prefer maximizing the throughput. Same inference runner will be used
+  // repeatedly on different inputs.
+  SUSTAINED_SPEED,
+};
+
+// Defines aspects to control while instantiating a runner.
+enum class InferencePriority {
+  UNKNOWN,
+
+  AUTO,
+
+  MIN_LATENCY,
+
+  MAX_PRECISION,
+
+  MIN_MEMORY_USAGE,
+};
+
+struct InferenceOptions {
+  InferenceUsage usage = InferenceUsage::SUSTAINED_SPEED;
+
+  // Ordered priorities provide better understanding of desired semantics,
+  // where priority(n) is more important than priority(n+1).
+  // AUTO priority is needed when a single priority is the most important
+  // factor. For example, priority1 = InferencePriority::MIN_LATENCY and leaving
+  // everything else to AUTO would result in configuration that achieves maximum
+  // performance.
+  //
+  // AUTO priority can only be used when higher priorities are fully specified.
+  // For example:
+  //   VALID:   priority1 = MIN_LATENCY, priority2 = AUTO, priority3 = AUTO
+  //   VALID:   priority1 = MIN_LATENCY, priority2 = MAX_PRECISION,
+  //            priority3 = AUTO
+  //   INVALID: priority1 = AUTO, priority2 = MIN_LATENCY, priority3 = AUTO
+  //   INVALID: priority1 = MIN_LATENCY, priority2 = AUTO,
+  //            priority3 = MAX_PRECISION
+  // Invalid priorities will result in error.
+  InferencePriority priority1 = InferencePriority::MAX_PRECISION;
+
+  InferencePriority priority2 = InferencePriority::AUTO;
+
+  InferencePriority priority3 = InferencePriority::AUTO;
+};
+
+// Returns a position number for the priority. If priority is missing,
+// then it it would return 'max num priorities + 1'.
+int GetPosition(const InferenceOptions& options, InferencePriority p);
+
+// Return true if options are valid.
+bool IsValid(const InferenceOptions& options);
+
+// Resolves AUTO priorities and specifies them explicitly.
+// Note, no-one should assume that these mappings will not change.
+// Technically this function is declared here for code re-use purposes and
+// by no means it should be treated as canonical way to resolve AUTO.
+void ResolveAutoPriority(InferenceOptions* options);
+
+enum class PriorityImportance {
+  UNKNOWN,
+  HIGHER,
+  LOWER,
+};
+
+// If both p1 and p2 are not present in options, return UNKNOWN
+// If p1 is present, but p2 is not, return HIGHER
+// If p2 is present, but p1 is not, return LOWER
+// If both are present, and p1 is more important, return HIGHER, otherwise,
+// LOWER.
+PriorityImportance GetRelativeImportance(const InferenceOptions& options,
+                                         InferencePriority p1,
+                                         InferencePriority p2);
 
 }  // namespace gpu
 }  // namespace tflite

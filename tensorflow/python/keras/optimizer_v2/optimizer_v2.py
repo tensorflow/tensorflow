@@ -40,6 +40,7 @@ from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -304,8 +305,8 @@ class OptimizerV2(trackable.Trackable):
       name: Optional name for the returned operation.
 
     Returns:
-      An Operation that updates the variables in `var_list`.  If `global_step`
-      was not `None`, that operation also increments `global_step`.
+      An `Operation` that updates the variables in `var_list`. The `iterations`
+      will be automatically increased by 1.
 
     Raises:
       ValueError: If some of the variables are not `Variable` objects.
@@ -415,8 +416,8 @@ class OptimizerV2(trackable.Trackable):
         passed to the `Optimizer` constructor.
 
     Returns:
-      An `Operation` that applies the specified gradients. If `global_step`
-      was not None, that operation also increments `global_step`.
+      An `Operation` that applies the specified gradients. The `iterations`
+      will be automatically increased by 1.
 
     Raises:
       TypeError: If `grads_and_vars` is malformed.
@@ -432,6 +433,10 @@ class OptimizerV2(trackable.Trackable):
         self._create_hypers()
         self._create_slots(var_list)
 
+      if not grads_and_vars:
+        # Distribution strategy does not support reducing an empty list of
+        # gradients
+        return control_flow_ops.no_op()
       apply_state = self._prepare(var_list)
       return distribute_ctx.get_replica_context().merge_call(
           functools.partial(self._distributed_apply, apply_state=apply_state),
@@ -469,18 +474,17 @@ class OptimizerV2(trackable.Trackable):
       else:
         return update_op
 
+    eagerly_outside_functions = ops.executing_eagerly_outside_functions()
     update_ops = []
-    with backend.name_scope(name or self._name):
+    with ops.name_scope(name or self._name, skip_on_eager=True):
       for grad, var in grads_and_vars:
-        scope_name = ("update" if ops.executing_eagerly_outside_functions() else
-                      "update_" + var.op.name)
         # Colocate the update with variables to avoid unnecessary communication
         # delays. See b/136304694.
-        with backend.name_scope(
-            scope_name), distribution.extended.colocate_vars_with(var):
-          update_ops.extend(
-              distribution.extended.update(
-                  var, apply_grad_to_update_var, args=(grad,), group=False))
+        with distribution.extended.colocate_vars_with(var):
+          with ops.name_scope("update" if eagerly_outside_functions else
+                              "update_" + var.op.name, skip_on_eager=True):
+            update_ops.extend(distribution.extended.update(
+                var, apply_grad_to_update_var, args=(grad,), group=False))
 
       any_symbolic = any(isinstance(i, ops.Operation) or
                          tf_utils.is_symbolic_tensor(i) for i in update_ops)
@@ -577,6 +581,15 @@ class OptimizerV2(trackable.Trackable):
       else:
         initial_value = initializer
       strategy = distribute_ctx.get_strategy()
+      if not strategy.extended.variable_created_in_scope(var):
+        raise ValueError(
+            "Trying to create optimizer slot variable under the scope for "
+            "tf.distribute.Strategy ({}), which is different from the scope "
+            "used for the original variable ({}). Make sure the slot "
+            "variables are created under the same strategy scope. This may "
+            "happen if you're restoring from a checkpoint outside the scope"
+            .format(strategy, var))
+
       with strategy.extended.colocate_vars_with(var):
         weight = tf_variables.Variable(
             name="%s/%s" % (var._shared_name, slot_name),  # pylint: disable=protected-access
@@ -739,11 +752,65 @@ class OptimizerV2(trackable.Trackable):
     return self._weights
 
   def get_weights(self):
+    """Returns the current weights of the optimizer.
+
+    The weights of an optimizer are its state (ie, variables).
+    This function returns the weight values associated with this
+    optimizer as a list of Numpy arrays. The first value is always the
+    iterations count of the optimizer, followed by the optimizer's state
+    variables in the order they were created. The returned list can in turn
+    be used to load state into similarly parameterized optimizers.
+
+    For example, the RMSprop optimizer for this simple model returns a list of
+    three values-- the iteration count, followed by the root-mean-square value
+    of the kernel and bias of the single Dense layer:
+
+    >>> opt = tf.keras.optimizers.RMSprop()
+    >>> m = tf.keras.models.Sequential([tf.keras.layers.Dense(10)])
+    >>> m.compile(opt, loss='mse')
+    >>> data = np.arange(100).reshape(5, 20)
+    >>> labels = np.zeros(5)
+    >>> print('Training'); results = m.fit(data, labels)
+    Training ...
+    >>> len(opt.get_weights())
+    3
+
+    Returns:
+        Weights values as a list of numpy arrays.
+    """
     params = self.weights
     return backend.batch_get_value(params)
 
   # TODO(tanzheny): Maybe share this logic with base_layer.
   def set_weights(self, weights):
+    """Sett the weights of the optimizer.
+
+    The weights of an optimizer are its state (ie, variables).
+    This function takes the weight values associated with this
+    optimizer as a list of Numpy arrays. The first value is always the
+    iterations count of the optimizer, followed by the optimizer's state
+    variables in the order they are created. The passed values are used to set
+    the new state of the optimizer.
+
+    For example, the RMSprop optimizer for this simple model takes a list of
+    three values-- the iteration count, followed by the root-mean-square value
+    of the kernel and bias of the single Dense layer:
+
+    >>> opt = tf.keras.optimizers.RMSprop()
+    >>> m = tf.keras.models.Sequential([tf.keras.layers.Dense(10)])
+    >>> m.compile(opt, loss='mse')
+    >>> data = np.arange(100).reshape(5, 20)
+    >>> labels = np.zeros(5)
+    >>> print('Training'); results = m.fit(data, labels)
+    Training ...
+    >>> new_weights = [np.array(10), np.ones([20, 10]), np.zeros([10])]
+    >>> opt.set_weights(new_weights)
+    >>> opt.iterations
+    <tf.Variable 'RMSprop/iter:0' shape=() dtype=int64, numpy=10>
+
+    Arguments:
+        weights: weight values as a list of numpy arrays.
+    """
     params = self.weights
     if len(params) != len(weights):
       raise ValueError(
@@ -837,8 +904,10 @@ class OptimizerV2(trackable.Trackable):
     Returns:
       Valid types for loss, variables and gradients.
     """
-    return set(
-        [dtypes.float16, dtypes.bfloat16, dtypes.float32, dtypes.float64])
+    return set([
+        dtypes.float16, dtypes.bfloat16, dtypes.float32, dtypes.float64,
+        dtypes.complex64, dtypes.complex128
+    ])
 
   def _call_if_callable(self, param):
     """Call the function if param is callable."""

@@ -20,12 +20,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Analysis/AffineStructures.h"
-#include "mlir/IR/AffineMap.h"
-#include "mlir/IR/Function.h"
 #include "mlir/IR/IntegerSet.h"
-#include "mlir/IR/Operation.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/Passes.h"
+#include "mlir/Transforms/Utils.h"
 
 #define DEBUG_TYPE "simplify-affine-structure"
 
@@ -33,10 +31,10 @@ using namespace mlir;
 
 namespace {
 
-/// Simplifies all affine expressions appearing in the operations of
-/// the Function. This is mainly to test the simplifyAffineExpr method.
-/// TODO(someone): This should just be defined as a canonicalization pattern
-/// on AffineMap and driven from the existing canonicalization pass.
+/// Simplifies affine maps and sets appearing in the operations of the Function.
+/// This part is mainly to test the simplifyAffineExpr method. In addition,
+/// all memrefs with non-trivial layout maps are converted to ones with trivial
+/// identity layout ones.
 struct SimplifyAffineStructures
     : public FunctionPass<SimplifyAffineStructures> {
   void runOnFunction() override;
@@ -88,13 +86,14 @@ struct SimplifyAffineStructures
 
 } // end anonymous namespace
 
-std::unique_ptr<FunctionPassBase> mlir::createSimplifyAffineStructuresPass() {
-  return llvm::make_unique<SimplifyAffineStructures>();
+std::unique_ptr<OpPassBase<FuncOp>> mlir::createSimplifyAffineStructuresPass() {
+  return std::make_unique<SimplifyAffineStructures>();
 }
 
 void SimplifyAffineStructures::runOnFunction() {
+  auto func = getFunction();
   simplifiedAttributes.clear();
-  getFunction().walk([&](Operation *opInst) {
+  func.walk([&](Operation *opInst) {
     for (auto attr : opInst->getAttrs()) {
       if (auto mapAttr = attr.second.dyn_cast<AffineMapAttr>())
         simplifyAndUpdateAttribute(opInst, attr.first, mapAttr);
@@ -102,7 +101,17 @@ void SimplifyAffineStructures::runOnFunction() {
         simplifyAndUpdateAttribute(opInst, attr.first, setAttr);
     }
   });
+
+  // Turn memrefs' non-identity layouts maps into ones with identity. Collect
+  // alloc ops first and then process since normalizeMemRef replaces/erases ops
+  // during memref rewriting.
+  SmallVector<AllocOp, 4> allocOps;
+  func.walk([&](AllocOp op) { allocOps.push_back(op); });
+  for (auto allocOp : allocOps) {
+    normalizeMemRef(allocOp);
+  }
 }
 
 static PassRegistration<SimplifyAffineStructures>
-    pass("simplify-affine-structures", "Simplify affine expressions");
+    pass("simplify-affine-structures",
+         "Simplify affine expressions in maps/sets and normalize memrefs");

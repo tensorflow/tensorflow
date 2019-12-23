@@ -1,3 +1,4 @@
+# Lint as: python2, python3
 # Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,8 +20,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
 import enum
+import sys
+
+import six
+
 from google.protobuf import message
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import deprecation
@@ -51,7 +55,7 @@ if sys.version_info.major == 3:
   _NORMALIZE_TYPE = {}
   for t in ('property', 'object', 'getset_descriptor', 'int', 'str', 'type',
             'tuple', 'module', 'collections.defaultdict', 'set', 'dict',
-            'NoneType', 'frozenset'):
+            'NoneType', 'frozenset', 'member_descriptor'):
     _NORMALIZE_TYPE["<class '%s'>" % t] = "<type '%s'>" % t
   for e in 'Exception', 'RuntimeError':
     _NORMALIZE_TYPE["<class '%s'>" % e] = "<type 'exceptions.%s'>" % e
@@ -75,8 +79,16 @@ if sys.version_info.major == 3:
     return (member == 'with_traceback' or member in ('name', 'value') and
             isinstance(cls, type) and issubclass(cls, enum.Enum))
 else:
-  _NORMALIZE_TYPE = {"<class 'abc.ABCMeta'>": "<type 'type'>"}
-  _NORMALIZE_ISINSTANCE = {}
+  _NORMALIZE_TYPE = {
+      "<class 'abc.ABCMeta'>":
+          "<type 'type'>",
+      "<class 'pybind11_type'>":
+          "<class 'pybind11_builtins.pybind11_type'>",
+  }
+  _NORMALIZE_ISINSTANCE = {
+      "<class 'pybind11_object'>":
+          "<class 'pybind11_builtins.pybind11_object'>",
+  }
 
   def _SkipMember(cls, member):  # pylint: disable=unused-argument
     return False
@@ -191,7 +203,8 @@ class PythonObjectToProtoVisitor(object):
       if (_SkipMember(parent, member_name) or
           isinstance(member_obj, deprecation.HiddenTfApiAttribute)):
         return
-      if member_name == '__init__' or not member_name.startswith('_'):
+      if member_name == '__init__' or not six.ensure_str(
+          member_name).startswith('_'):
         if tf_inspect.isroutine(member_obj):
           new_method = proto.member_method.add()
           new_method.name = member_name

@@ -24,11 +24,11 @@
 #ifndef MLIR_TRANSFORMS_LOOP_UTILS_H
 #define MLIR_TRANSFORMS_LOOP_UTILS_H
 
+#include "mlir/IR/Block.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 
 namespace mlir {
-class AffineMap;
 class AffineForOp;
 class FuncOp;
 class OpBuilder;
@@ -85,7 +85,7 @@ void promoteSingleIterationLoops(FuncOp f);
 /// expression.
 void getCleanupLoopLowerBound(AffineForOp forOp, unsigned unrollFactor,
                               AffineMap *map,
-                              SmallVectorImpl<Value *> *operands,
+                              SmallVectorImpl<ValuePtr> *operands,
                               OpBuilder &builder);
 
 /// Skew the operations in the body of a 'affine.for' operation with the
@@ -140,7 +140,7 @@ SmallVector<SmallVector<AffineForOp, 8>, 8> tile(ArrayRef<AffineForOp> forOps,
                                                  ArrayRef<uint64_t> sizes,
                                                  ArrayRef<AffineForOp> targets);
 SmallVector<Loops, 8> tile(ArrayRef<loop::ForOp> forOps,
-                           ArrayRef<Value *> sizes,
+                           ArrayRef<ValuePtr> sizes,
                            ArrayRef<loop::ForOp> targets);
 
 /// Performs tiling (with interchange) by strip-mining the `forOps` by `sizes`
@@ -149,7 +149,7 @@ SmallVector<Loops, 8> tile(ArrayRef<loop::ForOp> forOps,
 /// `target`.
 SmallVector<AffineForOp, 8> tile(ArrayRef<AffineForOp> forOps,
                                  ArrayRef<uint64_t> sizes, AffineForOp target);
-Loops tile(ArrayRef<loop::ForOp> forOps, ArrayRef<Value *> sizes,
+Loops tile(ArrayRef<loop::ForOp> forOps, ArrayRef<ValuePtr> sizes,
            loop::ForOp target);
 
 /// Tile a nest of loop::ForOp loops rooted at `rootForOp` with the given
@@ -157,7 +157,35 @@ Loops tile(ArrayRef<loop::ForOp> forOps, ArrayRef<Value *> sizes,
 /// runtime.  If more sizes than loops are provided, discard the trailing values
 /// in sizes.  Assumes the loop nest is permutable.
 /// Returns the newly created intra-tile loops.
-Loops tilePerfectlyNested(loop::ForOp rootForOp, ArrayRef<Value *> sizes);
+Loops tilePerfectlyNested(loop::ForOp rootForOp, ArrayRef<ValuePtr> sizes);
+
+/// Explicit copy / DMA generation options for mlir::affineDataCopyGenerate.
+struct AffineCopyOptions {
+  // True if DMAs should be generated instead of point-wise copies.
+  bool generateDma;
+  // The slower memory space from which data is to be moved.
+  unsigned slowMemorySpace;
+  // Memory space of the faster one (typically a scratchpad).
+  unsigned fastMemorySpace;
+  // Memory space to place tags in: only meaningful for DMAs.
+  unsigned tagMemorySpace;
+  // Capacity of the fast memory space in bytes.
+  uint64_t fastMemCapacityBytes;
+};
+
+/// Performs explicit copying for the contiguous sequence of operations in the
+/// block iterator range [`begin', `end'), where `end' can't be past the
+/// terminator of the block (since additional operations are potentially
+/// inserted right before `end`. Returns the total size of fast memory space
+/// buffers used. `copyOptions` provides various parameters, and the output
+/// argument `copyNests` is the set of all copy nests inserted, each represented
+/// by its root affine.for. Since we generate alloc's and dealloc's for all fast
+/// buffers (before and after the range of operations resp. or at a hoisted
+/// position), all of the fast memory capacity is assumed to be available for
+/// processing this block range.
+uint64_t affineDataCopyGenerate(Block::iterator begin, Block::iterator end,
+                                const AffineCopyOptions &copyOptions,
+                                DenseSet<Operation *> &copyNests);
 
 /// Tile a nest of standard for loops rooted at `rootForOp` by finding such
 /// parametric tile sizes that the outer loops have a fixed number of iterations
@@ -196,13 +224,13 @@ void coalesceLoops(MutableArrayRef<loop::ForOp> loops);
 /// is rewritten into a version resembling the following pseudo-IR:
 ///
 /// ```
-///    loop.for %i = %lb + threadIdx.x + blockIdx.x * blockDim.x to %ub
-///       step %gridDim.x * blockDim.x {
+///    loop.for %i = %lb + %step * (threadIdx.x + blockIdx.x * blockDim.x)
+///       to %ub step %gridDim.x * blockDim.x * %step {
 ///      ...
 ///    }
 /// ```
-void mapLoopToProcessorIds(loop::ForOp forOp, ArrayRef<Value *> processorId,
-                           ArrayRef<Value *> numProcessors);
+void mapLoopToProcessorIds(loop::ForOp forOp, ArrayRef<ValuePtr> processorId,
+                           ArrayRef<ValuePtr> numProcessors);
 } // end namespace mlir
 
 #endif // MLIR_TRANSFORMS_LOOP_UTILS_H

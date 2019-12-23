@@ -1,7 +1,8 @@
-// RUN: tf-opt %s --run-tf-graph-optimization --graph-passes=FunctionalizeControlFlowPass 2>&1 | FileCheck %s; test ${PIPESTATUS[0]} -ne 0
+// RUN: not tf-opt %s --run-tf-graph-optimization --graph-passes=FunctionalizeControlFlowForXlaPass 2>&1 | FileCheck %s
 
-// CHECK:       FunctionalizeControlFlowPass: Graph contains node with inputs predicated on incompatible predicates: {s(Cond:0,then)} and {s(Cond:0,else)}
+// CHECK:       error: FunctionalizeControlFlowForXlaPass: Graph contains node with inputs predicated on incompatible predicates: {s(Cond:0,then)} and {s(Cond:0,else)}
 // CHECK-NEXT:  for node {{[{][{]node Add[}][}]}}
+
 func @main() {
   %0 = "_tf._TPUReplicate"() {computation = @foo, Tinputs = [], Tbroadcast_inputs = [], NumVariables = 0, Tguaranteed_constants = [], output_types = []} : () -> !_tf.control loc("_TPUReplicate")
   return

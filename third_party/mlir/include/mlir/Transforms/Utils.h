@@ -25,8 +25,8 @@
 #ifndef MLIR_TRANSFORMS_UTILS_H
 #define MLIR_TRANSFORMS_UTILS_H
 
+#include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/IR/AffineMap.h"
-#include "mlir/StandardOps/Ops.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 
@@ -37,26 +37,26 @@ class AffineForOp;
 class Location;
 class OpBuilder;
 
-/// Replaces all "deferencing" uses of oldMemRef with newMemRef while optionally
-/// remapping the old memref's indices using the supplied affine map,
-/// 'indexRemap'. The new memref could be of a different shape or rank.
-/// 'extraIndices' provides additional access indices to be added to the start.
+/// Replaces all "dereferencing" uses of `oldMemRef` with `newMemRef` while
+/// optionally remapping the old memref's indices using the supplied affine map,
+/// `indexRemap`. The new memref could be of a different shape or rank.
+/// `extraIndices` provides any additional access indices to be added to the
+/// start.
 ///
-/// 'indexRemap' remaps indices of the old memref access to a new set of indices
+/// `indexRemap` remaps indices of the old memref access to a new set of indices
 /// that are used to index the memref. Additional input operands to indexRemap
-/// can be optionally provided, and they are added at the start of its input
-/// list. 'indexRemap' is expected to have only dimensional inputs, and the
-/// number of its inputs equal to extraOperands.size() plus rank of the memref.
-/// 'extraOperands' is an optional argument that corresponds to additional
-/// operands (inputs) for indexRemap at the beginning of its input list.
+/// can be optionally provided in `extraOperands`, and they occupy the start
+/// of its input list. `indexRemap`'s dimensional inputs are expected to
+/// correspond to memref's indices, and its symbolic inputs if any should be
+/// provided in `symbolOperands`.
 ///
-/// 'domInstFilter', if non-null, restricts the replacement to only those
+/// `domInstFilter`, if non-null, restricts the replacement to only those
 /// operations that are dominated by the former; similarly, `postDomInstFilter`
 /// restricts replacement to only those operations that are postdominated by it.
 ///
 /// Returns true on success and false if the replacement is not possible,
-/// whenever a memref is used as an operand in a non-deferencing context, except
-/// for dealloc's on the memref which are left untouched. See comments at
+/// whenever a memref is used as an operand in a non-dereferencing context,
+/// except for dealloc's on the memref which are left untouched. See comments at
 /// function definition for an example.
 //
 //  Ex: to replace load %A[%i, %j] with load %Abuf[%t mod 2, %ii - %i, %j]:
@@ -66,12 +66,27 @@ class OpBuilder;
 //  extra operands, note that 'indexRemap' would just be applied to existing
 //  indices (%i, %j).
 //  TODO(bondhugula): allow extraIndices to be added at any position.
-bool replaceAllMemRefUsesWith(Value *oldMemRef, Value *newMemRef,
-                              ArrayRef<Value *> extraIndices = {},
-                              AffineMap indexRemap = AffineMap(),
-                              ArrayRef<Value *> extraOperands = {},
-                              Operation *domInstFilter = nullptr,
-                              Operation *postDomInstFilter = nullptr);
+LogicalResult replaceAllMemRefUsesWith(ValuePtr oldMemRef, ValuePtr newMemRef,
+                                       ArrayRef<ValuePtr> extraIndices = {},
+                                       AffineMap indexRemap = AffineMap(),
+                                       ArrayRef<ValuePtr> extraOperands = {},
+                                       ArrayRef<ValuePtr> symbolOperands = {},
+                                       Operation *domInstFilter = nullptr,
+                                       Operation *postDomInstFilter = nullptr);
+
+/// Performs the same replacement as the other version above but only for the
+/// dereferencing uses of `oldMemRef` in `op`.
+LogicalResult replaceAllMemRefUsesWith(ValuePtr oldMemRef, ValuePtr newMemRef,
+                                       Operation *op,
+                                       ArrayRef<ValuePtr> extraIndices = {},
+                                       AffineMap indexRemap = AffineMap(),
+                                       ArrayRef<ValuePtr> extraOperands = {},
+                                       ArrayRef<ValuePtr> symbolOperands = {});
+
+/// Rewrites the memref defined by this alloc op to have an identity layout map
+/// and updates all its indexing uses. Returns failure if any of its uses
+/// escape (while leaving the IR in a valid state).
+LogicalResult normalizeMemRef(AllocOp op);
 
 /// Creates and inserts into 'builder' a new AffineApplyOp, with the number of
 /// its results equal to the number of operands, as a composition
@@ -81,9 +96,9 @@ bool replaceAllMemRefUsesWith(Value *oldMemRef, Value *newMemRef,
 /// The final results of the composed AffineApplyOp are returned in output
 /// parameter 'results'. Returns the affine apply op created.
 Operation *createComposedAffineApplyOp(OpBuilder &builder, Location loc,
-                                       ArrayRef<Value *> operands,
+                                       ArrayRef<ValuePtr> operands,
                                        ArrayRef<Operation *> affineApplyOps,
-                                       SmallVectorImpl<Value *> *results);
+                                       SmallVectorImpl<ValuePtr> *results);
 
 /// Given an operation, inserts one or more single result affine apply
 /// operations, results of which are exclusively used by this operation.

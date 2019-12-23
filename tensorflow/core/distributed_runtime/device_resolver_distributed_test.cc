@@ -69,7 +69,7 @@ class FakeWorker : public TestWorkerInterface {
       : name_(name), device_mgr_(dev_mgr), device_resolver_(dres) {}
 
   void GetStatusAsync(const GetStatusRequest* request,
-                      GetStatusResponse* response,
+                      GetStatusResponse* response, bool fail_fast,
                       StatusCallback done) override {
     std::vector<DeviceAttributes> dev_attr;
     device_mgr_->ListDeviceAttributes(&dev_attr);
@@ -163,7 +163,7 @@ class DeviceResDistTest : public ::testing::Test {
           strings::StrCat(worker_name, "/device:", device_type, ":", i), i,
           device_incarnation_base + i));
     }
-    DeviceMgr* dev_mgr = new DeviceMgr(std::move(devices));
+    DeviceMgr* dev_mgr = new StaticDeviceMgr(std::move(devices));
     TestableDeviceResolverDistributed* dev_res =
         new TestableDeviceResolverDistributed(dev_mgr, &wc_, worker_name);
     resolvers_[worker_name] = dev_res;

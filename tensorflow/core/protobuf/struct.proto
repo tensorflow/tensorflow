@@ -1,9 +1,9 @@
 syntax = "proto3";
 
+package tensorflow;
+
 import "tensorflow/core/framework/tensor_shape.proto";
 import "tensorflow/core/framework/types.proto";
-
-package tensorflow;
 
 // `StructuredValue` represents a dynamically typed value representing various
 // data structures that are inspired by Python data structures typically used in
@@ -120,6 +120,7 @@ message TypeSpecProto {
     DATA_ITERATOR_SPEC = 6;   // IteratorSpec from data/ops/iterator_ops.py
     OPTIONAL_SPEC = 7;        // tf.OptionalSpec
     PER_REPLICA_SPEC = 8;     // PerReplicaSpec from distribute/values.py
+    VARIABLE_SPEC = 9;        // tf.VariableSpec
   }
   TypeSpecClass type_spec_class = 1;
 

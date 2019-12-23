@@ -113,13 +113,14 @@ def _get_logged_ops(graph, run_meta=None, add_trace=True,
       add_entry = True
 
     if add_trace:
-      for tb in op.traceback_with_start_lines:
+      for tb in op.traceback:
         trace = entry.code_def.traces.add()
         trace.file_id = _str_id(tb[0], string_to_id) if tb[0] else 0
         trace.lineno = tb[1] if tb[1] else -1
         trace.function_id = _str_id(tb[2], string_to_id) if tb[2] else 0
         trace.line_id = _str_id(tb[3], string_to_id) if tb[3] else 0
-        trace.func_start_line = tb[4] if tb[4] else -1
+        # TODO(slebedev): remove this unused field from the proto.
+        trace.func_start_line = -1
       add_entry = True
 
     if add_entry:

@@ -265,7 +265,8 @@ Service::ResolveAndValidateArguments(
 StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
     const ProgramShape& program_shape,
     absl::Span<const Shape* const> argument_shapes,
-    const ExecutionOptions* execution_options) {
+    const ExecutionOptions* execution_options,
+    const AotCompilationOptions* aot_options) {
   auto config = absl::make_unique<HloModuleConfig>(program_shape);
   ComputationLayout* computation_layout =
       config->mutable_entry_computation_layout();
@@ -309,6 +310,9 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
     } else {
       config->set_replica_count(options_.number_of_replicas());
     }
+    if (execution_options->num_partitions() > 0) {
+      config->set_num_partitions(execution_options->num_partitions());
+    }
     config->set_seed(execution_options->seed());
     config->set_debug_options(execution_options->debug_options());
   } else {
@@ -329,6 +333,15 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
         DeviceAssignment::Deserialize(execution_options->device_assignment()));
     config->set_static_device_assignment(*device_assignment);
   }
+  config->set_alias_passthrough_params(
+      execution_options->alias_passthrough_params());
+
+  if (aot_options != nullptr &&
+      aot_options->fusion_config_collection() != FusionConfigCollection::kOff) {
+    config->set_fusion_config_collection(
+        aot_options->fusion_config_collection());
+    *config->mutable_fusion_config() = aot_options->fusion_config();
+  }
 
   return std::move(config);
 }
@@ -336,12 +349,14 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
 StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
     const ProgramShape& program_shape,
     absl::Span<const ShapedBuffer* const> arguments,
-    const ExecutionOptions& execution_options) {
+    const ExecutionOptions& execution_options,
+    const AotCompilationOptions* aot_options) {
   std::vector<const Shape*> argument_shapes;
   for (const auto* arg : arguments) {
     argument_shapes.push_back(&arg->on_host_shape());
   }
-  return CreateModuleConfig(program_shape, argument_shapes, &execution_options);
+  return CreateModuleConfig(program_shape, argument_shapes, &execution_options,
+                            aot_options);
 }
 
 StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
@@ -645,7 +660,7 @@ Status Service::ExecuteGraphParallel(const ExecuteGraphParallelRequest* arg,
     const ExecuteGraphRequest& request = arg->requests(i);
     TF_RET_CHECK(request.has_computation()) << "computations may not be empty";
     TF_RET_CHECK(request.computation().has_host_program_shape())
-        << "programe shape may not be empty";
+        << "program shape may not be empty";
 
     // Get the executors.
     TF_ASSIGN_OR_RETURN(auto executors, GetExecutors(execution_options,
@@ -822,7 +837,7 @@ Status Service::Compile(const CompileRequest* arg, CompileResponse* result) {
     return InvalidArgument("computations may not be empty");
   }
   if (!arg->computation().has_host_program_shape()) {
-    return InvalidArgument("programe shape may not be empty");
+    return InvalidArgument("program shape may not be empty");
   }
 
   if (arg->execution_options().device_handles_size() > 1) {
@@ -872,7 +887,7 @@ Status Service::Execute(const ExecuteRequest* arg, ExecuteResponse* result) {
       ResolveAndValidateArguments(arg->arguments(), replicas));
 
   // Check that the replicated_arguments has the same shape and layout as the
-  // module config used when creating the exectuable.
+  // module config used when creating the executable.
   const int64 num_module_args =
       executable->module_config().entry_computation_layout().parameter_count();
   if (num_module_args != arg->arguments_size()) {
@@ -887,7 +902,7 @@ Status Service::Execute(const ExecuteRequest* arg, ExecuteResponse* result) {
     const Shape& shape_arg = replicated_arguments.front()[i]->on_host_shape();
     if (!ShapeUtil::Equal(shape_module, shape_arg)) {
       return InvalidArgumentStrCat(
-          "The executable exepcts the ", i, "th argument in shape ",
+          "The executable expects the ", i, "th argument in shape ",
           ShapeUtil::HumanStringWithLayout(shape_module), " but sees ",
           ShapeUtil::HumanStringWithLayout(shape_arg));
     }

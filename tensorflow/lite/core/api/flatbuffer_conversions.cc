@@ -18,7 +18,7 @@ limitations under the License.
 #include <cstdlib>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
@@ -527,6 +527,15 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       *builtin_data = reinterpret_cast<void*>(params.release());
       break;
     }
+    case BuiltinOperator_DEPTH_TO_SPACE: {
+      auto params = safe_allocator.Allocate<TfLiteDepthToSpaceParams>();
+      if (const auto* schema_params =
+              op->builtin_options_as_DepthToSpaceOptions()) {
+        params->block_size = schema_params->block_size();
+      }
+      *builtin_data = reinterpret_cast<void*>(params.release());
+      break;
+    }
     case BuiltinOperator_GATHER: {
       auto params = safe_allocator.Allocate<TfLiteGatherParams>();
       params->axis = 0;
@@ -782,6 +791,7 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_ROUND:
     case BuiltinOperator_RSQRT:
     case BuiltinOperator_SELECT:
+    case BuiltinOperator_SELECT_V2:
     case BuiltinOperator_SIN:
     case BuiltinOperator_SLICE:
     case BuiltinOperator_SPACE_TO_BATCH_ND:
@@ -807,6 +817,10 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_WHERE:
     case BuiltinOperator_RANK:
     case BuiltinOperator_QUANTIZE:
+    case BuiltinOperator_NON_MAX_SUPPRESSION_V4:
+    case BuiltinOperator_NON_MAX_SUPPRESSION_V5:
+    case BuiltinOperator_SCATTER_ND:
+    case BuiltinOperator_DENSIFY:
       break;
   }
   return kTfLiteOk;

@@ -50,7 +50,7 @@ def get_seed(seed):
   else:
     with ops.name_scope("seed2") as scope:
       seed2 = ops.convert_to_tensor(seed2, dtype=dtypes.int64)
-      seed2 = array_ops.where(
+      seed2 = array_ops.where_v2(
           math_ops.logical_and(
               math_ops.equal(seed, 0), math_ops.equal(seed2, 0)),
           constant_op.constant(2**31 - 1, dtype=dtypes.int64),

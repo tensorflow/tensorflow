@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_LIB_IO_INPUTBUFFER_H_
 
 #include <string>
+
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/env.h"
@@ -43,7 +44,8 @@ class InputBuffer {
   // If successful, returns OK.  If we are already at the end of the
   // file, we return an OUT_OF_RANGE error.  Otherwise, we return
   // some other non-OK status.
-  Status ReadLine(string* result);
+  template <typename T>
+  Status ReadLine(T* result);
 
   // Reads bytes_to_read bytes into *result, overwriting *result.
   //
@@ -106,6 +108,12 @@ class InputBuffer {
 };
 
 // Implementation details.
+
+// Explicit instantiations defined in inputbuffer.cc.
+extern template Status InputBuffer::ReadLine<string>(string* result);
+#ifdef USE_TSTRING
+extern template Status InputBuffer::ReadLine<tstring>(tstring* result);
+#endif  // USE_TSTRING
 
 // Inlined for performance.
 inline Status InputBuffer::ReadVarint32(uint32* result) {

@@ -173,7 +173,7 @@ class LinearOperatorIdentityTest(
       operator_matmul = operator.matmul(x)
       expected = x
 
-      self.assertAllEqual(operator_matmul.get_shape(), expected.get_shape())
+      self.assertAllEqual(operator_matmul.shape, expected.shape)
       self.assertAllClose(*self.evaluate([operator_matmul, expected]))
 
   def test_default_batch_shape_broadcasts_with_everything_dynamic(self):
@@ -207,7 +207,7 @@ class LinearOperatorIdentityTest(
       expected = x + zeros
 
       operator_matmul = operator.matmul(x)
-      self.assertAllEqual(operator_matmul.get_shape(), expected.get_shape())
+      self.assertAllEqual(operator_matmul.shape, expected.shape)
       self.assertAllClose(*self.evaluate([operator_matmul, expected]))
 
   def test_broadcast_matmul_dynamic_shapes(self):
@@ -423,13 +423,13 @@ class LinearOperatorScaledIdentityTest(
       # Test matmul
       expected = x * 2.2 + zeros
       operator_matmul = operator.matmul(x)
-      self.assertAllEqual(operator_matmul.get_shape(), expected.get_shape())
+      self.assertAllEqual(operator_matmul.shape, expected.shape)
       self.assertAllClose(*self.evaluate([operator_matmul, expected]))
 
       # Test solve
       expected = x / 2.2 + zeros
       operator_solve = operator.solve(x)
-      self.assertAllEqual(operator_solve.get_shape(), expected.get_shape())
+      self.assertAllEqual(operator_solve.shape, expected.shape)
       self.assertAllClose(*self.evaluate([operator_solve, expected]))
 
   def test_broadcast_matmul_and_solve_scalar_scale_multiplier(self):
@@ -449,13 +449,13 @@ class LinearOperatorScaledIdentityTest(
       # Test matmul
       expected = x * 2.2
       operator_matmul = operator.matmul(x)
-      self.assertAllEqual(operator_matmul.get_shape(), expected.get_shape())
+      self.assertAllEqual(operator_matmul.shape, expected.shape)
       self.assertAllClose(*self.evaluate([operator_matmul, expected]))
 
       # Test solve
       expected = x / 2.2
       operator_solve = operator.solve(x)
-      self.assertAllEqual(operator_solve.get_shape(), expected.get_shape())
+      self.assertAllEqual(operator_solve.shape, expected.shape)
       self.assertAllClose(*self.evaluate([operator_solve, expected]))
 
   def test_is_x_flags(self):
@@ -470,39 +470,53 @@ class LinearOperatorScaledIdentityTest(
     operator1 = linalg_lib.LinearOperatorIdentity(num_rows=2)
     operator2 = linalg_lib.LinearOperatorScaledIdentity(
         num_rows=2, multiplier=3.)
-    self.assertTrue(isinstance(
+    self.assertIsInstance(
         operator1.matmul(operator1),
-        linalg_lib.LinearOperatorIdentity))
+        linalg_lib.LinearOperatorIdentity)
 
-    self.assertTrue(isinstance(
+    self.assertIsInstance(
         operator1.matmul(operator1),
-        linalg_lib.LinearOperatorIdentity))
+        linalg_lib.LinearOperatorIdentity)
+
+    self.assertIsInstance(
+        operator2.matmul(operator2),
+        linalg_lib.LinearOperatorScaledIdentity)
 
     operator_matmul = operator1.matmul(operator2)
-    self.assertTrue(isinstance(
+    self.assertIsInstance(
         operator_matmul,
-        linalg_lib.LinearOperatorScaledIdentity))
+        linalg_lib.LinearOperatorScaledIdentity)
     self.assertAllClose(3., self.evaluate(operator_matmul.multiplier))
 
     operator_matmul = operator2.matmul(operator1)
-    self.assertTrue(isinstance(
+    self.assertIsInstance(
         operator_matmul,
-        linalg_lib.LinearOperatorScaledIdentity))
+        linalg_lib.LinearOperatorScaledIdentity)
     self.assertAllClose(3., self.evaluate(operator_matmul.multiplier))
 
   def test_identity_solve(self):
     operator1 = linalg_lib.LinearOperatorIdentity(num_rows=2)
     operator2 = linalg_lib.LinearOperatorScaledIdentity(
         num_rows=2, multiplier=3.)
-    self.assertTrue(isinstance(
+    self.assertIsInstance(
         operator1.solve(operator1),
-        linalg_lib.LinearOperatorIdentity))
+        linalg_lib.LinearOperatorIdentity)
+
+    self.assertIsInstance(
+        operator2.solve(operator2),
+        linalg_lib.LinearOperatorScaledIdentity)
 
     operator_solve = operator1.solve(operator2)
-    self.assertTrue(isinstance(
+    self.assertIsInstance(
         operator_solve,
-        linalg_lib.LinearOperatorScaledIdentity))
+        linalg_lib.LinearOperatorScaledIdentity)
     self.assertAllClose(3., self.evaluate(operator_solve.multiplier))
+
+    operator_solve = operator2.solve(operator1)
+    self.assertIsInstance(
+        operator_solve,
+        linalg_lib.LinearOperatorScaledIdentity)
+    self.assertAllClose(1. / 3., self.evaluate(operator_solve.multiplier))
 
   def test_scaled_identity_cholesky_type(self):
     operator = linalg_lib.LinearOperatorScaledIdentity(

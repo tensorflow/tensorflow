@@ -26,11 +26,16 @@ cc_library(
     srcs = ["dataset_test_base.cc"],
     hdrs = ["dataset_test_base.h"],
     deps = [
+        ":batch_dataset_op",
+        ":concatenate_dataset_op",
         ":dataset_utils",
         ":iterator_ops",
+        ":map_dataset_op",
         ":name_utils",
         ":range_dataset_op",
+        ":serialization_utils",
         ":take_dataset_op",
+        ":tensor_slice_dataset_op",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -55,14 +60,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/grappler:graph_view",
-        "//tensorflow/core/grappler:grappler_item",
-        "//tensorflow/core/grappler:grappler_item_builder",
-        "//tensorflow/core/grappler/clusters:virtual_cluster",
-        "//tensorflow/core/grappler/optimizers:meta_optimizer",
-        "//tensorflow/core/grappler/optimizers/data",
-        "//tensorflow/core/grappler/optimizers/data:function_utils",
-        "//tensorflow/core/grappler/optimizers/data:graph_utils",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 
@@ -71,6 +69,7 @@ tf_cc_test(
     srcs = ["dataset_utils_test.cc"],
     deps = [
         ":dataset_utils",
+        "//tensorflow/cc:cc_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
@@ -104,6 +103,41 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "rewrite_utils",
+    srcs = ["rewrite_utils.cc"],
+    hdrs = ["rewrite_utils.h"],
+    deps = [
+        ":dataset_utils",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler:graph_view",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:grappler_item_builder",
+        "//tensorflow/core/grappler/clusters:virtual_cluster",
+        "//tensorflow/core/grappler/optimizers:meta_optimizer",
+        "//tensorflow/core/grappler/optimizers/data",
+        "//tensorflow/core/grappler/optimizers/data:function_utils",
+        "//tensorflow/core/grappler/optimizers/data:graph_utils",
+    ],
+)
+
+cc_library(
+    name = "serialization_utils",
+    srcs = ["serialization_utils.cc"],
+    hdrs = ["serialization_utils.h"],
+    deps = [
+        ":captured_function",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/lib/core:status",
+    ],
+)
+
+cc_library(
     name = "stats_utils",
     srcs = ["stats_utils.cc"],
     hdrs = ["stats_utils.h"],
@@ -127,6 +161,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/kernels:variable_ops",
+        "//tensorflow/core/profiler/lib:traceme",
         "@com_google_absl//absl/time",
     ],
 )
@@ -326,12 +361,10 @@ tf_cc_test(
     size = "small",
     srcs = ["padded_batch_dataset_op_test.cc"],
     deps = [
-        ":concatenate_dataset_op",
         ":dataset_test_base",
         ":dataset_utils",
         ":iterator_ops",
         ":padded_batch_dataset_op",
-        ":tensor_slice_dataset_op",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
@@ -422,10 +455,7 @@ tf_cc_test(
 
 tf_kernel_library(
     name = "parallel_map_dataset_op",
-    srcs = [
-        "parallel_map_dataset_op.cc",
-        "parallel_map_iterator.cc",
-    ],
+    srcs = ["parallel_map_dataset_op.cc"],
     hdrs = ["parallel_map_dataset_op.h"],
     deps = [
         ":captured_function",
@@ -435,6 +465,7 @@ tf_kernel_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
@@ -573,8 +604,10 @@ tf_kernel_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -795,6 +828,7 @@ tf_kernel_library(
     srcs = ["shuffle_dataset_op.cc"],
     hdrs = ["shuffle_dataset_op.h"],
     deps = [
+        ":dataset_utils",
         ":name_utils",
         ":random_seed_ops",
         "//tensorflow/core:dataset_ops_op_lib",
@@ -1190,6 +1224,7 @@ tf_kernel_library(
     hdrs = ["optimize_dataset_op.h"],
     deps = [
         ":dataset_utils",
+        ":rewrite_utils",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
@@ -1238,11 +1273,15 @@ tf_kernel_library(
     srcs = ["dataset_ops.cc"],
     hdrs = ["dataset_ops.h"],
     deps = [
+        ":captured_function",
         ":dataset_utils",
+        ":serialization_utils",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler:graph_topology_view",
+        "//tensorflow/core/grappler/utils:traversal",
     ],
 )
 
@@ -1349,4 +1388,24 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
     ],
+)
+
+# A file group which contains all operators which are known to work on mobile.
+filegroup(
+    name = "android_all_op_kernels",
+    srcs = glob(
+        [
+            "*.cc",
+            "*.h",
+        ],
+        exclude = [
+            "dataset_ops*",  # includes grappler dependency, which isn't supported on mobile.
+            "optimize_dataset_op.*",  # includes grappler dependency, which isn't supported on mobile.
+            "rewrite_utils*",  # includes grappler dependency, which isn't supported on mobile.
+            "*test.cc",
+            "*test.h",
+            "*_test_*",
+        ],
+    ),
+    visibility = ["//tensorflow:__subpackages__"],
 )

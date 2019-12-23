@@ -50,25 +50,6 @@ StatusOr<std::unique_ptr<Executable>> FailoverCompiler::RunBackend(
   return result;
 }
 
-Status FailoverCompiler::RunHloPassesOnModuleGroup(
-    HloModuleGroup* module_group,
-    absl::Span<se::StreamExecutor* const> executors,
-    se::DeviceMemoryAllocator* device_allocator) {
-  // This is not supported by GPU compiler anyway.
-  return Unimplemented(
-      "Model partitioning not implemented for the failover compiler!");
-}
-
-StatusOr<std::vector<std::unique_ptr<Executable>>>
-FailoverCompiler::RunBackendOnModuleGroup(
-    std::unique_ptr<HloModuleGroup> module_group,
-    std::vector<std::vector<se::StreamExecutor*>> stream_exec,
-    se::DeviceMemoryAllocator* device_allocator) {
-  // This is not supported by GPU compiler anyway.
-  return Unimplemented(
-      "Model partitioning not implemented for the failover compiler!");
-}
-
 StatusOr<std::vector<std::unique_ptr<Executable>>> FailoverCompiler::Compile(
     std::unique_ptr<HloModuleGroup> module_group,
     std::vector<std::vector<se::StreamExecutor*>> stream_execs,
@@ -123,7 +104,7 @@ FailoverCompiler::CompileAheadOfTime(
     const AotCompilationOptions& options) {
   // This is not supported by GPU compiler anyway.
   return Unimplemented(
-      "CompileAheadOfTime not implemeneted in failover compiler!");
+      "CompileAheadOfTime not implemented in failover compiler!");
 }
 
 HloCostAnalysis::ShapeSizeFunction FailoverCompiler::ShapeSizeBytesFunction()

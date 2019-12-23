@@ -107,7 +107,7 @@ class SparsifyGatherTest : public ::testing::Test {
           CreateNode("save/Const", "Const", {}, &graph_def);
 
       Tensor tensor_names_values(DT_STRING, TensorShape({1}));
-      test::FillValues<string>(&tensor_names_values, {"w"});
+      test::FillValues<tstring>(&tensor_names_values, {"w"});
       NodeDef* tensor_names_node =
           CreateNode("save/RestoreV2/tensor_names", "Const", {}, &graph_def);
       SetNodeTensorAttr<string>("value", tensor_names_values,
@@ -320,7 +320,7 @@ class SparsifyGatherTest : public ::testing::Test {
       NodeDef* tensor_names_node =
           CreateNode("save/RestoreV2/tensor_names", "Const", {}, &graph_def);
       Tensor tensor_names_values(DT_STRING, TensorShape({2}));
-      test::FillValues<string>(&tensor_names_values, {"w1", "w2"});
+      test::FillValues<tstring>(&tensor_names_values, {"w1", "w2"});
       SetNodeTensorAttr<string>("value", tensor_names_values,
                                 tensor_names_node);
 

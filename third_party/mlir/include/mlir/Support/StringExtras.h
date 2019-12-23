@@ -46,7 +46,7 @@ inline std::string convertToSnakeCase(llvm::StringRef input) {
   return snakeCase;
 }
 
-/// Converts a string from camel-case to snake_case by replacing all occurences
+/// Converts a string from camel-case to snake_case by replacing all occurrences
 /// of '_' followed by a lowercase letter with the letter in
 /// uppercase. Optionally allow capitalization of the first letter (if it is a
 /// lowercase letter)

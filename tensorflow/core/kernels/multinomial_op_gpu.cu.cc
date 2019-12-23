@@ -45,8 +45,10 @@ using GPUDevice = Eigen::GpuDevice;
 //   scores: [B, S, C];  maxima: [B, S];  output: [B, S].
 template <typename OutputType>
 __global__ void MultinomialKernel(int32 nthreads, const int32 num_classes,
-                                  const int32 num_samples, const float* scores,
-                                  const float* maxima, OutputType* output) {
+                                  const int32 num_samples,
+                                  const float* __restrict__ scores,
+                                  const float* __restrict__ maxima,
+                                  OutputType* __restrict__ output) {
   GPU_1D_KERNEL_LOOP(index, nthreads) {
     const int maxima_idx = index / num_classes;
     if (ldg(maxima + maxima_idx) == ldg(scores + index)) {

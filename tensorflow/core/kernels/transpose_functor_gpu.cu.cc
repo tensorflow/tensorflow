@@ -32,8 +32,9 @@ namespace tensorflow {
 namespace internal {
 
 template <typename T, bool conjugate>
-__global__ void TransposeKernel(int nthreads, const T* src, const int32* buf,
-                                const int32 ndims, T* dst) {
+__global__ void TransposeKernel(int nthreads, const T* __restrict__ src,
+                                const int32* __restrict__ buf,
+                                const int32 ndims, T* __restrict__ dst) {
   const int32* in_strides = buf;
   const int32* out_strides = buf + ndims;
   const int32* perm = buf + ndims * 2;

@@ -19,11 +19,12 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
+
 import numpy as np
 
 from PIL import Image
 
-from tensorflow.lite.python.interpreter import Interpreter
+import tensorflow as tf # TF2
 
 
 def load_labels(filename):
@@ -48,12 +49,17 @@ if __name__ == '__main__':
       '--label_file',
       default='/tmp/labels.txt',
       help='name of file containing labels')
-  parser.add_argument('--input_mean', default=127.5, help='input_mean')
   parser.add_argument(
-      '--input_std', default=127.5, help='input standard deviation')
+      '--input_mean',
+      default=127.5, type=float,
+      help='input_mean')
+  parser.add_argument(
+      '--input_std',
+      default=127.5, type=float,
+      help='input standard deviation')
   args = parser.parse_args()
 
-  interpreter = Interpreter(model_path=args.model_file)
+  interpreter = tf.lite.Interpreter(model_path=args.model_file)
   interpreter.allocate_tensors()
 
   input_details = interpreter.get_input_details()

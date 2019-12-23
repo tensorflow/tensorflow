@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+
 import numpy as np
 
 from tensorflow.python import keras
@@ -33,6 +34,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import cond_v2
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import rnn
 from tensorflow.python.ops import rnn_cell_impl
@@ -431,6 +433,36 @@ class VariablesToConstantsTest(test.TestCase):
       return model(x)
 
     root, output_func = self._freezeModel(to_save)
+    self._testConvertedFunction(root, root.f, output_func, input_data)
+
+  @test_util.run_v2_only
+  def testEmbeddings(self):
+    """Test model with embeddings."""
+    input_data = {
+        "x":
+            constant_op.constant(
+                np.array(np.random.random_sample((20)), dtype=np.int32))
+    }
+
+    class EmbeddingModel(keras.Model):
+
+      def __init__(self):
+        super(EmbeddingModel, self).__init__()
+        self.shared_weights = self.add_weight(
+            "weights",
+            shape=(2000, 300),
+            dtype=dtypes.float32,
+            initializer=init_ops.random_normal_initializer(
+                mean=0.0, stddev=300**(-0.5)))
+
+      @def_function.function(input_signature=[
+          tensor_spec.TensorSpec(shape=(20), dtype=dtypes.int32)
+      ])
+      def func(self, x):
+        return array_ops.gather(self.shared_weights, x)
+
+    model = EmbeddingModel()
+    root, output_func = self._freezeModel(model.func)
     self._testConvertedFunction(root, root.f, output_func, input_data)
 
 

@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 import os
 import sys
+
 from absl import app
 from absl import flags
 from distutils.version import LooseVersion
@@ -27,6 +28,7 @@ from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver a
 from tensorflow.python.eager import profiler_client
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import versions
+from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.tpu.profiler import version as profiler_version
 
@@ -186,6 +188,10 @@ def main(unused_argv=None):
   else:
     if not FLAGS.logdir:
       sys.exit('You must specify either --logdir or --monitoring_level.')
+
+    if not gfile.Exists(FLAGS.logdir):
+      gfile.MakeDirs(FLAGS.logdir)
+
     try:
       profiler_client.start_tracing(service_addr,
                                     os.path.expanduser(FLAGS.logdir),

@@ -111,8 +111,15 @@ XLAJIT_MAKE_UNARY(Real, xla::Real(x));
 XLAJIT_MAKE_UNARY(Imag, xla::Imag(x));
 XLAJIT_MAKE_UNARY(Erf, xla::Erf(x));
 XLAJIT_MAKE_UNARY(Erfc, xla::Erfc(x));
+XLAJIT_MAKE_UNARY(Erfinv, xla::ErfInv(x));
+// ndtri = sqrt(2) * erfinv(2 * x - 1)
+XLAJIT_MAKE_UNARY(Ndtri, xla::ScalarLike(x, std::sqrt(2.0)) *
+                             xla::ErfInv(xla::ScalarLike(x, 2.0) * x -
+                                         xla::ScalarLike(x, 1.0)));
 XLAJIT_MAKE_UNARY(Lgamma, xla::Lgamma(x));
 XLAJIT_MAKE_UNARY(Digamma, xla::Digamma(x));
+XLAJIT_MAKE_UNARY(BesselI0e, xla::BesselI0e(x));
+XLAJIT_MAKE_UNARY(BesselI1e, xla::BesselI1e(x));
 
 }  // namespace
 }  // namespace tensorflow

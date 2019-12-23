@@ -61,8 +61,8 @@ limitations under the License.
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
-#include "tensorflow/stream_executor/cuda/ptxas_utils.h"
-#include "tensorflow/stream_executor/cuda/redzone_allocator.h"
+#include "tensorflow/stream_executor/gpu/asm_compiler.h"
+#include "tensorflow/stream_executor/gpu/redzone_allocator.h"
 #include "tensorflow/stream_executor/tf_allocator_adapter.h"
 #endif  // GOOGLE_CUDA
 
@@ -327,17 +327,17 @@ Status FindBestConvolveAlgorithm(const FusedConvParameters& params,
   }
 
   se::TfAllocatorAdapter tf_allocator_adapter(
-      stream->parent()->platform(), context->device()->GetAllocator({}));
-  se::cuda::RedzoneAllocator rz_allocator(stream, &tf_allocator_adapter,
-                                          se::cuda::PtxCompilationOptions());
+      context->device()->GetAllocator({}), stream);
+  se::RedzoneAllocator rz_allocator(stream, &tf_allocator_adapter,
+                                    se::GpuAsmOpts());
   se::DeviceMemory<T> output_ptr_rz(
       WrapRedzoneBestEffort(&rz_allocator, output_ptr));
 
   std::vector<tensorflow::AutotuneResult> results;
   for (auto profile_algorithm : algorithms) {
     DnnScratchAllocator scratch_allocator(ConvolveScratchSize(), context);
-    se::cuda::RedzoneAllocator rz_scratch_allocator(
-        stream, &tf_allocator_adapter, se::cuda::PtxCompilationOptions(),
+    se::RedzoneAllocator rz_scratch_allocator(
+        stream, &tf_allocator_adapter, se::GpuAsmOpts(),
         /*memory_limit=*/ConvolveScratchSize());
     se::ScratchAllocator* allocator_used =
         !RedzoneCheckDisabled()

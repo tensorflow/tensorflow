@@ -38,6 +38,7 @@ typedef Eigen::GpuDevice GPUDevice;
   template struct functor::StridedSlice<GPUDevice, T, 5>;       \
   template struct functor::StridedSlice<GPUDevice, T, 6>;       \
   template struct functor::StridedSlice<GPUDevice, T, 7>;       \
+  template struct functor::StridedSlice<GPUDevice, T, 8>;       \
   template struct functor::StridedSliceGrad<GPUDevice, T, 1>;   \
   template struct functor::StridedSliceGrad<GPUDevice, T, 2>;   \
   template struct functor::StridedSliceGrad<GPUDevice, T, 3>;   \
@@ -45,6 +46,7 @@ typedef Eigen::GpuDevice GPUDevice;
   template struct functor::StridedSliceGrad<GPUDevice, T, 5>;   \
   template struct functor::StridedSliceGrad<GPUDevice, T, 6>;   \
   template struct functor::StridedSliceGrad<GPUDevice, T, 7>;   \
+  template struct functor::StridedSliceGrad<GPUDevice, T, 8>;   \
   template struct functor::StridedSliceAssign<GPUDevice, T, 1>; \
   template struct functor::StridedSliceAssign<GPUDevice, T, 2>; \
   template struct functor::StridedSliceAssign<GPUDevice, T, 3>; \
@@ -52,6 +54,7 @@ typedef Eigen::GpuDevice GPUDevice;
   template struct functor::StridedSliceAssign<GPUDevice, T, 5>; \
   template struct functor::StridedSliceAssign<GPUDevice, T, 6>; \
   template struct functor::StridedSliceAssign<GPUDevice, T, 7>; \
+  template struct functor::StridedSliceAssign<GPUDevice, T, 8>; \
   template struct functor::StridedSliceAssignScalar<GPUDevice, T>;
 
 }  // end namespace tensorflow

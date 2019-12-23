@@ -24,6 +24,7 @@ message AlgorithmBlacklistEntry {
   string hlo = 1;
   tensorflow.ComputeCapability cc = 2;
   tensorflow.CudnnVersion cudnn_version = 3;
+  string blas_version = 5;
   repeated BlacklistedAlgorithm algos = 4;
 }
 

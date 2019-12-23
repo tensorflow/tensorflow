@@ -26,6 +26,7 @@
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "llvm/ADT/MapVector.h"
+#include "llvm/ADT/StringMap.h"
 
 namespace mlir {
 
@@ -55,17 +56,18 @@ public:
     SignatureConversion(unsigned numOrigInputs)
         : remappedInputs(numOrigInputs) {}
 
-    /// This struct represents a range of new types that remap an existing
-    /// signature input.
+    /// This struct represents a range of new types or a single value that
+    /// remaps an existing signature input.
     struct InputMapping {
       size_t inputNo, size;
+      ValuePtr replacementValue;
     };
 
     /// Return the argument types for the new signature.
     ArrayRef<Type> getConvertedTypes() const { return argTypes; }
 
     /// Get the input mapping for the given argument.
-    llvm::Optional<InputMapping> getInputMapping(unsigned input) const {
+    Optional<InputMapping> getInputMapping(unsigned input) const {
       return remappedInputs[input];
     }
 
@@ -86,22 +88,26 @@ public:
     void remapInput(unsigned origInputNo, unsigned newInputNo,
                     unsigned newInputCount = 1);
 
+    /// Remap an input of the original signature to another `replacement`
+    /// value. This drops the original argument.
+    void remapInput(unsigned origInputNo, ValuePtr replacement);
+
   private:
     /// The remapping information for each of the original arguments.
-    SmallVector<llvm::Optional<InputMapping>, 4> remappedInputs;
+    SmallVector<Optional<InputMapping>, 4> remappedInputs;
 
     /// The set of new argument types.
     SmallVector<Type, 4> argTypes;
   };
 
-  /// This hooks allows for converting a type. This function should return
+  /// This hook allows for converting a type. This function should return
   /// failure if no valid conversion exists, success otherwise. If the new set
   /// of types is empty, the type is removed and any usages of the existing
   /// value are expected to be removed during conversion.
   virtual LogicalResult convertType(Type t, SmallVectorImpl<Type> &results);
 
   /// This hook simplifies defining 1-1 type conversions. This function returns
-  /// the type convert to on success, and a null type on failure.
+  /// the type to convert to on success, and a null type on failure.
   virtual Type convertType(Type t) { return t; }
 
   /// Convert the given set of types, filling 'results' as necessary. This
@@ -127,7 +133,7 @@ public:
   /// This function converts the type signature of the given block, by invoking
   /// 'convertSignatureArg' for each argument. This function should return a
   /// valid conversion for the signature on success, None otherwise.
-  llvm::Optional<SignatureConversion> convertBlockSignature(Block *block);
+  Optional<SignatureConversion> convertBlockSignature(Block *block);
 
   /// This hook allows for materializing a conversion from a set of types into
   /// one result type by generating a cast operation of some kind. The generated
@@ -137,7 +143,7 @@ public:
   /// the conversion has finished.
   virtual Operation *materializeConversion(PatternRewriter &rewriter,
                                            Type resultType,
-                                           ArrayRef<Value *> inputs,
+                                           ArrayRef<ValuePtr> inputs,
                                            Location loc) {
     llvm_unreachable("expected 'materializeConversion' to be overridden");
   }
@@ -166,7 +172,7 @@ public:
   /// ConversionPattern ever needs to replace an operation that does not
   /// have successors. This function should not fail. If some specific cases of
   /// the operation are not supported, these cases should not be matched.
-  virtual void rewrite(Operation *op, ArrayRef<Value *> operands,
+  virtual void rewrite(Operation *op, ArrayRef<ValuePtr> operands,
                        ConversionPatternRewriter &rewriter) const {
     llvm_unreachable("unimplemented rewrite");
   }
@@ -181,18 +187,18 @@ public:
   /// terminator operation that has successors. This function should not fail
   /// the pass. If some specific cases of the operation are not supported,
   /// these cases should not be matched.
-  virtual void rewrite(Operation *op, ArrayRef<Value *> properOperands,
+  virtual void rewrite(Operation *op, ArrayRef<ValuePtr> properOperands,
                        ArrayRef<Block *> destinations,
-                       ArrayRef<ArrayRef<Value *>> operands,
+                       ArrayRef<ArrayRef<ValuePtr>> operands,
                        ConversionPatternRewriter &rewriter) const {
     llvm_unreachable("unimplemented rewrite for terminators");
   }
 
   /// Hook for derived classes to implement combined matching and rewriting.
   virtual PatternMatchResult
-  matchAndRewrite(Operation *op, ArrayRef<Value *> properOperands,
+  matchAndRewrite(Operation *op, ArrayRef<ValuePtr> properOperands,
                   ArrayRef<Block *> destinations,
-                  ArrayRef<ArrayRef<Value *>> operands,
+                  ArrayRef<ArrayRef<ValuePtr>> operands,
                   ConversionPatternRewriter &rewriter) const {
     if (!match(op))
       return matchFailure();
@@ -202,7 +208,7 @@ public:
 
   /// Hook for derived classes to implement combined matching and rewriting.
   virtual PatternMatchResult
-  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+  matchAndRewrite(Operation *op, ArrayRef<ValuePtr> operands,
                   ConversionPatternRewriter &rewriter) const {
     if (!match(op))
       return matchFailure();
@@ -216,6 +222,82 @@ public:
 
 private:
   using RewritePattern::rewrite;
+};
+
+/// OpConversionPattern is a wrapper around ConversionPattern that allows for
+/// matching and rewriting against an instance of a derived operation class as
+/// opposed to a raw Operation.
+template <typename SourceOp>
+struct OpConversionPattern : public ConversionPattern {
+  OpConversionPattern(MLIRContext *context, PatternBenefit benefit = 1)
+      : ConversionPattern(SourceOp::getOperationName(), benefit, context) {}
+
+  /// Wrappers around the ConversionPattern methods that pass the derived op
+  /// type.
+  void rewrite(Operation *op, ArrayRef<ValuePtr> operands,
+               ConversionPatternRewriter &rewriter) const final {
+    rewrite(cast<SourceOp>(op), operands, rewriter);
+  }
+  void rewrite(Operation *op, ArrayRef<ValuePtr> properOperands,
+               ArrayRef<Block *> destinations,
+               ArrayRef<ArrayRef<ValuePtr>> operands,
+               ConversionPatternRewriter &rewriter) const final {
+    rewrite(cast<SourceOp>(op), properOperands, destinations, operands,
+            rewriter);
+  }
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<ValuePtr> properOperands,
+                  ArrayRef<Block *> destinations,
+                  ArrayRef<ArrayRef<ValuePtr>> operands,
+                  ConversionPatternRewriter &rewriter) const final {
+    return matchAndRewrite(cast<SourceOp>(op), properOperands, destinations,
+                           operands, rewriter);
+  }
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<ValuePtr> operands,
+                  ConversionPatternRewriter &rewriter) const final {
+    return matchAndRewrite(cast<SourceOp>(op), operands, rewriter);
+  }
+
+  // TODO(b/142763075): Use OperandAdaptor when it supports access to unnamed
+  // operands.
+
+  /// Rewrite and Match methods that operate on the SourceOp type. These must be
+  /// overridden by the derived pattern class.
+  virtual void rewrite(SourceOp op, ArrayRef<ValuePtr> operands,
+                       ConversionPatternRewriter &rewriter) const {
+    llvm_unreachable("must override matchAndRewrite or a rewrite method");
+  }
+
+  virtual void rewrite(SourceOp op, ArrayRef<ValuePtr> properOperands,
+                       ArrayRef<Block *> destinations,
+                       ArrayRef<ArrayRef<ValuePtr>> operands,
+                       ConversionPatternRewriter &rewriter) const {
+    llvm_unreachable("unimplemented rewrite for terminators");
+  }
+
+  virtual PatternMatchResult
+  matchAndRewrite(SourceOp op, ArrayRef<ValuePtr> properOperands,
+                  ArrayRef<Block *> destinations,
+                  ArrayRef<ArrayRef<ValuePtr>> operands,
+                  ConversionPatternRewriter &rewriter) const {
+    if (!match(op))
+      return matchFailure();
+    rewrite(op, properOperands, destinations, operands, rewriter);
+    return matchSuccess();
+  }
+
+  virtual PatternMatchResult
+  matchAndRewrite(SourceOp op, ArrayRef<ValuePtr> operands,
+                  ConversionPatternRewriter &rewriter) const {
+    if (!match(op))
+      return matchFailure();
+    rewrite(op, operands, rewriter);
+    return matchSuccess();
+  }
+
+private:
+  using ConversionPattern::matchAndRewrite;
 };
 
 /// Add a pattern to the given pattern list to convert the signature of a FuncOp
@@ -240,35 +322,56 @@ public:
   ConversionPatternRewriter(MLIRContext *ctx, TypeConverter *converter);
   ~ConversionPatternRewriter() override;
 
-  /// Apply a signature conversion to the entry block of the given region.
-  void applySignatureConversion(Region *region,
-                                TypeConverter::SignatureConversion &conversion);
+  /// Apply a signature conversion to the entry block of the given region. This
+  /// replaces the entry block with a new block containing the updated
+  /// signature. The new entry block to the region is returned for convenience.
+  Block *
+  applySignatureConversion(Region *region,
+                           TypeConverter::SignatureConversion &conversion);
 
-  /// Clone the given operation without cloning its regions.
-  Operation *cloneWithoutRegions(Operation *op);
-  template <typename OpT> OpT cloneWithoutRegions(OpT op) {
-    return cast<OpT>(cloneWithoutRegions(op.getOperation()));
-  }
+  /// Replace all the uses of the block argument `from` with value `to`.
+  void replaceUsesOfBlockArgument(BlockArgumentPtr from, ValuePtr to);
+
+  /// Return the converted value that replaces 'key'. Return 'key' if there is
+  /// no such a converted value.
+  ValuePtr getRemappedValue(ValuePtr key);
 
   //===--------------------------------------------------------------------===//
   // PatternRewriter Hooks
   //===--------------------------------------------------------------------===//
 
   /// PatternRewriter hook for replacing the results of an operation.
-  void replaceOp(Operation *op, ArrayRef<Value *> newValues,
-                 ArrayRef<Value *> valuesToRemoveIfDead) override;
+  void replaceOp(Operation *op, ValueRange newValues,
+                 ValueRange valuesToRemoveIfDead) override;
   using PatternRewriter::replaceOp;
+
+  /// PatternRewriter hook for erasing a dead operation. The uses of this
+  /// operation *must* be made dead by the end of the conversion process,
+  /// otherwise an assert will be issued.
+  void eraseOp(Operation *op) override;
 
   /// PatternRewriter hook for splitting a block into two parts.
   Block *splitBlock(Block *block, Block::iterator before) override;
+
+  /// PatternRewriter hook for merging a block into another.
+  void mergeBlocks(Block *source, Block *dest, ValueRange argValues) override;
 
   /// PatternRewriter hook for moving blocks out of a region.
   void inlineRegionBefore(Region &region, Region &parent,
                           Region::iterator before) override;
   using PatternRewriter::inlineRegionBefore;
 
-  /// PatternRewriter hook for creating a new operation.
-  Operation *createOperation(const OperationState &state) override;
+  /// PatternRewriter hook for cloning blocks of one region into another. The
+  /// given region to clone *must* not have been modified as part of conversion
+  /// yet, i.e. it must be within an operation that is either in the process of
+  /// conversion, or has not yet been converted.
+  void cloneRegionBefore(Region &region, Region &parent,
+                         Region::iterator before,
+                         BlockAndValueMapping &mapping) override;
+  using PatternRewriter::cloneRegionBefore;
+
+  /// PatternRewriter hook for inserting a new operation.
+  Operation *insert(Operation *op) override;
 
   /// PatternRewriter hook for updating the root operation in-place.
   void notifyRootUpdated(Operation *op) override;
@@ -301,8 +404,14 @@ public:
     Illegal,
   };
 
-  /// The type used to store operation legality information.
-  using LegalityMapTy = llvm::MapVector<OperationName, LegalizationAction>;
+  /// A structure containing additional information describing a specific legal
+  /// operation instance.
+  struct LegalOpDetails {
+    /// A flag that indicates if this operation is 'recursively' legal. This
+    /// means that if an operation is legal, either statically or dynamically,
+    /// all of the operations nested within are also considered legal.
+    bool isRecursivelyLegal = false;
+  };
 
   /// The signature of the callback used to determine if an operation is
   /// dynamically legal on the target.
@@ -371,6 +480,28 @@ public:
     addIllegalOp<OpT2, OpTs...>();
   }
 
+  /// Mark an operation, that *must* have either been set as `Legal` or
+  /// `DynamicallyLegal`, as being recursively legal. This means that in
+  /// addition to the operation itself, all of the operations nested within are
+  /// also considered legal. An optional dynamic legality callback may be
+  /// provided to mark subsets of legal instances as recursively legal.
+  template <typename OpT>
+  void markOpRecursivelyLegal(const DynamicLegalityCallbackFn &callback = {}) {
+    OperationName opName(OpT::getOperationName(), &ctx);
+    markOpRecursivelyLegal(opName, callback);
+  }
+  template <typename OpT, typename OpT2, typename... OpTs>
+  void markOpRecursivelyLegal(const DynamicLegalityCallbackFn &callback = {}) {
+    markOpRecursivelyLegal<OpT>(callback);
+    markOpRecursivelyLegal<OpT2, OpTs...>(callback);
+  }
+  template <typename OpT, class Callable>
+  typename std::enable_if<!is_invocable<Callable, Operation *>::value>::type
+  markOpRecursivelyLegal(Callable &&callback) {
+    markOpRecursivelyLegal<OpT>(
+        [=](Operation *op) { return callback(cast<OpT>(op)); });
+  }
+
   /// Register a legality action for the given dialects.
   void setDialectAction(ArrayRef<StringRef> dialectNames,
                         LegalizationAction action);
@@ -395,7 +526,7 @@ public:
   }
   template <typename... Args>
   void addDynamicallyLegalDialect(
-      llvm::Optional<DynamicLegalityCallbackFn> callback = llvm::None) {
+      Optional<DynamicLegalityCallbackFn> callback = llvm::None) {
     SmallVector<StringRef, 2> dialectNames({Args::getDialectNamespace()...});
     setDialectAction(dialectNames, LegalizationAction::Dynamic);
     if (callback)
@@ -419,10 +550,12 @@ public:
   //===--------------------------------------------------------------------===//
 
   /// Get the legality action for the given operation.
-  llvm::Optional<LegalizationAction> getOpAction(OperationName op) const;
+  Optional<LegalizationAction> getOpAction(OperationName op) const;
 
-  /// Return true if the given operation instance is legal on this target.
-  bool isLegal(Operation *op) const;
+  /// If the given operation instance is legal on this target, a structure
+  /// containing legality information is returned. If the operation is not
+  /// legal, None is returned.
+  Optional<LegalOpDetails> isLegal(Operation *op) const;
 
 protected:
   /// Runs a custom legalization query for the given operation. This should
@@ -441,12 +574,33 @@ private:
   void setLegalityCallback(ArrayRef<StringRef> dialects,
                            const DynamicLegalityCallbackFn &callback);
 
-  /// A deterministic mapping of operation name to the specific legality action
-  /// to take.
-  LegalityMapTy legalOperations;
+  /// Set the recursive legality callback for the given operation and mark the
+  /// operation as recursively legal.
+  void markOpRecursivelyLegal(OperationName name,
+                              const DynamicLegalityCallbackFn &callback);
+
+  /// The set of information that configures the legalization of an operation.
+  struct LegalizationInfo {
+    /// The legality action this operation was given.
+    LegalizationAction action;
+
+    /// If some legal instances of this operation may also be recursively legal.
+    bool isRecursivelyLegal;
+  };
+
+  /// Get the legalization information for the given operation.
+  Optional<LegalizationInfo> getOpInfo(OperationName op) const;
+
+  /// A deterministic mapping of operation name and its respective legality
+  /// information.
+  llvm::MapVector<OperationName, LegalizationInfo> legalOperations;
 
   /// A set of dynamic legality callbacks for given operation names.
   DenseMap<OperationName, DynamicLegalityCallbackFn> opLegalityFns;
+
+  /// A set of legality callbacks for given operation names that are used to
+  /// check if an operation instance is recursively legal.
+  DenseMap<OperationName, DynamicLegalityCallbackFn> opRecursiveLegalityFns;
 
   /// A deterministic mapping of dialect name to the specific legality action to
   /// take.
@@ -462,6 +616,12 @@ private:
 //===----------------------------------------------------------------------===//
 // Op Conversion Entry Points
 //===----------------------------------------------------------------------===//
+
+/// Below we define several entry points for operation conversion. It is
+/// important to note that the patterns provided to the conversion framework may
+/// have additional constraints. See the `PatternRewriter Hooks` section of the
+/// ConversionPatternRewriter, to see what additional constraints are imposed on
+/// the use of the PatternRewriter.
 
 /// Apply a partial conversion on the given operations, and all nested
 /// operations. This method converts as many operations to the target as

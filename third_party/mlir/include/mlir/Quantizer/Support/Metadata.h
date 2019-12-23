@@ -86,7 +86,7 @@ struct CAGUniformMetadata {
   /// expressed which must be satisfied.
   static constexpr int SalienceRequired = 200;
 
-  /// The range that the scheme must represent in order to accomadate the
+  /// The range that the scheme must represent in order to accommodate the
   /// underlying data.
   ExpandingMinMaxFact requiredRange;
 
@@ -101,7 +101,7 @@ struct CAGUniformMetadata {
   DiscreteScaleZeroPointFact explicitScaleZeroPoint;
 
   /// Prints a summary of the metadata suitable for display in a graph label.
-  void printSummary(llvm::raw_ostream &os) const;
+  void printSummary(raw_ostream &os) const;
 };
 
 } // end namespace quantizer

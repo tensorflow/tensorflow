@@ -39,7 +39,6 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.util import nest
-from tensorflow.python.util import object_identity
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -62,7 +61,8 @@ class VariableHolder(object):
     v = None
 
     # Get expected variable name.
-    with ops.name_scope(kwargs.get("name", None), "Variable") as name:
+    with ops.name_scope(
+        kwargs.get("name", None), "Variable", skip_on_eager=False) as name:
       variable_name = ops.name_from_scope_name(name)
       kwargs["name"] = name
 
@@ -162,29 +162,28 @@ def _lift_unlifted_variables(graph, variable_holder):
         ops.GraphKeys.GLOBAL_VARIABLES)
     local_collection_variables = ops.get_collection(
         ops.GraphKeys.LOCAL_VARIABLES)
-    existing_captures = object_identity.ObjectIdentitySet(
-        graph.internal_captures)
-    lifted_variables = object_identity.ObjectIdentityDictionary()
+    existing_captures = {id(c) for c in graph.internal_captures}
+    lifted_variables = {}
 
     def _should_lift_variable(v):
       return ((v._in_graph_mode  # pylint: disable=protected-access
                and v.graph.building_function)
               and isinstance(v, resource_variable_ops.BaseResourceVariable)
-              and v.handle not in existing_captures)
+              and id(v.handle) not in existing_captures)
 
     for old_variable in global_collection_variables:
       if _should_lift_variable(old_variable):
         new_variable = _lift_single_variable(
             old_variable, graph, variable_holder)
-        lifted_variables[old_variable] = new_variable
-        existing_captures.add(old_variable.handle)
+        lifted_variables[id(old_variable)] = new_variable
+        existing_captures.add(id(old_variable.handle))
 
     for old_variable in local_collection_variables:
       if _should_lift_variable(old_variable):
         new_variable = _lift_single_variable(
             old_variable, graph, variable_holder)
-        lifted_variables[old_variable] = new_variable
-        existing_captures.add(old_variable.handle)
+        lifted_variables[id(old_variable)] = new_variable
+        existing_captures.add(id(old_variable.handle))
         if new_variable._in_graph_mode:  # pylint: disable=protected-access
           outer_graph = new_variable.graph
           # Variables are added to the global collection by default. In this
@@ -203,15 +202,17 @@ def _lift_unlifted_variables(graph, variable_holder):
     ]:
       mutable_collection = ops.get_collection_ref(collection_name)
       for index, current in enumerate(mutable_collection):
-        mutable_collection[index] = lifted_variables.get(current, current)
+        mutable_collection[index] = lifted_variables.get(id(current), current)
         if not resource_variable_ops.is_resource_variable(
             mutable_collection[index]):
-          logging.warning(
+          logging.log_first_n(
+              logging.WARN,
               "Unable to create a python object for variable {} because it is "
               "a reference variable. It may not be visible to training APIs. "
               "If this is a problem, consider rebuilding the SavedModel after "
               "running tf.compat.v1.enable_resource_variables().".format(
-                  mutable_collection[index]))
+                  mutable_collection[index]),
+              5)
 
 
 # TODO(allenl): make this trackable
@@ -262,9 +263,8 @@ class WrappedFunction(function.ConcreteFunction):
 
     # Ignoring all feeds that are captures allows prune to be called
     # using wrapped_func.inputs even when it uses variables
-    internal_captures = object_identity.ObjectIdentitySet(
-        self.graph.internal_captures)
-    flat_feeds = [f for f in flat_feeds if f not in internal_captures]
+    internal_captures = {id(c) for c in self.graph.internal_captures}
+    flat_feeds = [f for f in flat_feeds if id(f) not in internal_captures]
 
     operation_fetches = []
     tensor_fetches = []
@@ -317,7 +317,8 @@ class WrappedFunction(function.ConcreteFunction):
     lift_map = lift_to_graph.lift_to_graph(
         operation_fetches + tensor_fetches,
         pruned_graph,
-        sources=flat_feeds + self.graph.internal_captures)
+        sources=flat_feeds + self.graph.internal_captures,
+        base_graph=self._func_graph)
 
     # Note that we add the component tensors of any composite tensors to the
     # returned function's outputs list; the list must contain these component

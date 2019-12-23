@@ -21,7 +21,8 @@ limitations under the License.
 #include <ratio>    // NOLINT(build/c++11)
 
 #ifdef __linux__
-#include <sys/time.h>  // for CLOCK_MONOTONIC_COARSE
+#include <sys/time.h>
+// IWYU pragma: no_include <type_traits>
 
 #include <ctime>
 #endif

@@ -22,6 +22,8 @@ from absl.testing import parameterized
 
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import strategy_combinations
+from tensorflow.python.distribute import tpu_strategy
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -30,15 +32,19 @@ from tensorflow.python.ops import variables
 from tensorflow.python.training import moving_averages
 
 
+all_distributions = [
+    strategy_combinations.default_strategy,
+    strategy_combinations.one_device_strategy,
+    strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+    strategy_combinations.central_storage_strategy_with_gpu_and_cpu,
+    strategy_combinations.tpu_strategy,
+]
+
 all_combinations = combinations.combine(
-    distribution=[
-        strategy_combinations.default_strategy,
-        strategy_combinations.one_device_strategy,
-        strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
-        strategy_combinations.central_storage_strategy_with_gpu_and_cpu,
-        strategy_combinations.tpu_strategy,
-    ],
-    mode=["graph"])
+    distribution=all_distributions, mode=["graph"])
+
+all_combinations_eager = combinations.combine(
+    distribution=all_distributions, mode=["eager"], use_function=[True, False])
 
 
 class AssignMovingAveragesTest(test.TestCase, parameterized.TestCase):
@@ -163,6 +169,97 @@ class AssignMovingAveragesTest(test.TestCase, parameterized.TestCase):
       self.assertAllClose(
           [10 * 0.25 + 1. * (1 - 0.25), 11 * 0.25 + 2. * (1 - 0.25)],
           var.eval())
+
+
+class ExponentialMovingAverageTest(test.TestCase, parameterized.TestCase):
+
+  def _ema_replica_fn_eager(self, w, ema):
+    ema.apply([w])
+    w.assign_sub([0.5])
+    ema.apply([w])
+    return ema.average(w)
+
+  @combinations.generate(all_combinations_eager)
+  def testReplicaContextEager(self, distribution, use_function):
+    if isinstance(distribution,
+                  (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1)):
+      self.skipTest("b/139429499: TPUStrategy is not supported yet.")
+    with distribution.scope():
+      w = variables.Variable([1.0],
+                             name="w",
+                             aggregation=variables.VariableAggregation.MEAN)
+      ema = moving_averages.ExponentialMovingAverage(0.8)
+
+      def fn(w, ema):
+        return distribution.experimental_run_v2(
+            self._ema_replica_fn_eager, args=(w, ema))
+
+      if use_function:
+        fn = def_function.function(fn)
+      ema_w = fn(w, ema)
+    self.assertAllClose(
+        self.evaluate(distribution.experimental_local_results(ema_w))[0],
+        [0.89999998])
+
+  @combinations.generate(all_combinations_eager)
+  def testCrossReplicaContextEager(self, distribution, use_function):
+    with distribution.scope():
+      w = variables.Variable([1.0],
+                             name="w",
+                             aggregation=variables.VariableAggregation.MEAN)
+      ema = moving_averages.ExponentialMovingAverage(0.8)
+
+      def fn(w, ema):
+        return self._ema_replica_fn_eager(w, ema)
+
+      if use_function:
+        fn = def_function.function(fn)
+      avg = fn(w, ema)
+    self.assertAllClose(
+        self.evaluate(distribution.experimental_local_results(avg))[0],
+        [0.89999998])
+
+  def _ema_replica_fn_graph(self):
+    w = variables.Variable([1.0],
+                           name="w",
+                           aggregation=variables.VariableAggregation.MEAN)
+    ema = moving_averages.ExponentialMovingAverage(0.8)
+    w_apply = ema.apply([w])
+    w_assign = w.assign_sub([0.5])
+    return w_assign, w_apply, ema.average(w)
+
+  @combinations.generate(all_combinations)
+  def testReplicaContextGraph(self, distribution):
+    if isinstance(distribution,
+                  (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1)):
+      self.skipTest("b/139550827: Cannot do variable.assign in replica context "
+                    "of TPUStrategy")
+    with distribution.scope():
+      w_assign, w_apply, ema_w = distribution.experimental_run_v2(
+          self._ema_replica_fn_graph)
+    self.assertEqual(ema_w.name, "w/ExponentialMovingAverage:0")
+    with self.cached_session():
+      variables.global_variables_initializer().run()
+      self.evaluate(distribution.experimental_local_results(w_apply))
+      self.evaluate(distribution.experimental_local_results(w_assign))
+      self.evaluate(distribution.experimental_local_results(w_apply))
+      self.assertAllClose(
+          self.evaluate(distribution.experimental_local_results(ema_w))[0],
+          [0.89999998])
+
+  @combinations.generate(all_combinations)
+  def testCrossReplicaContextGraph(self, distribution):
+    with distribution.scope():
+      w_assign, w_apply, ema_w = self._ema_replica_fn_graph()
+    self.assertEqual(ema_w.name, "w/ExponentialMovingAverage:0")
+    with self.cached_session():
+      variables.global_variables_initializer().run()
+      self.evaluate(distribution.experimental_local_results(w_apply))
+      self.evaluate(distribution.experimental_local_results(w_assign))
+      self.evaluate(distribution.experimental_local_results(w_apply))
+      self.assertAllClose(
+          self.evaluate(distribution.experimental_local_results(ema_w))[0],
+          [0.89999998])
 
 
 if __name__ == "__main__":

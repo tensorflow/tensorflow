@@ -25,25 +25,51 @@
 
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Dialect.h"
+#include "mlir/IR/DialectInterface.h"
 
 namespace mlir {
 class Operation;
 class Value;
 
+//===--------------------------------------------------------------------===//
+// Operation Folding Interface
+//===--------------------------------------------------------------------===//
+
+/// This class defines a dialect interface used to assist the operation folder.
+/// It provides hooks for materializing and folding operations.
+class OpFolderDialectInterface
+    : public DialectInterface::Base<OpFolderDialectInterface> {
+public:
+  OpFolderDialectInterface(Dialect *dialect) : Base(dialect) {}
+
+  /// Registered hook to check if the given region, which is attached to an
+  /// operation that is *not* isolated from above, should be used when
+  /// materializing constants. The folder will generally materialize constants
+  /// into the top-level isolated region, this allows for materializing into a
+  /// lower level ancestor region if it is more profitable/correct.
+  virtual bool shouldMaterializeInto(Region *region) const { return false; }
+};
+
+//===--------------------------------------------------------------------===//
+// OperationFolder
+//===--------------------------------------------------------------------===//
+
 /// A utility class for folding operations, and unifying duplicated constants
 /// generated along the way.
 class OperationFolder {
 public:
+  OperationFolder(MLIRContext *ctx) : interfaces(ctx) {}
+
   /// Tries to perform folding on the given `op`, including unifying
   /// deduplicated constants. If successful, replaces `op`'s uses with
   /// folded results, and returns success. `preReplaceAction` is invoked on `op`
   /// before it is replaced. 'processGeneratedConstants' is invoked for any new
   /// operations generated when folding. If the op was completely folded it is
   /// erased.
-  LogicalResult tryToFold(
-      Operation *op,
-      llvm::function_ref<void(Operation *)> processGeneratedConstants = nullptr,
-      llvm::function_ref<void(Operation *)> preReplaceAction = nullptr);
+  LogicalResult
+  tryToFold(Operation *op,
+            function_ref<void(Operation *)> processGeneratedConstants = nullptr,
+            function_ref<void(Operation *)> preReplaceAction = nullptr);
 
   /// Notifies that the given constant `op` should be remove from this
   /// OperationFolder's internal bookkeeping.
@@ -56,7 +82,7 @@ public:
   /// and immediately try to fold it. This function populates 'results' with
   /// the results after folding the operation.
   template <typename OpTy, typename... Args>
-  void create(OpBuilder &builder, SmallVectorImpl<Value *> &results,
+  void create(OpBuilder &builder, SmallVectorImpl<ValuePtr> &results,
               Location location, Args &&... args) {
     Operation *op = builder.create<OpTy>(location, std::forward<Args>(args)...);
     if (failed(tryToFold(op, results)))
@@ -68,9 +94,9 @@ public:
   /// Overload to create or fold a single result operation.
   template <typename OpTy, typename... Args>
   typename std::enable_if<OpTy::template hasTrait<OpTrait::OneResult>(),
-                          Value *>::type
+                          ValuePtr>::type
   create(OpBuilder &builder, Location location, Args &&... args) {
-    SmallVector<Value *, 1> results;
+    SmallVector<ValuePtr, 1> results;
     create<OpTy>(builder, results, location, std::forward<Args>(args)...);
     return results.front();
   }
@@ -81,7 +107,7 @@ public:
                           OpTy>::type
   create(OpBuilder &builder, Location location, Args &&... args) {
     auto op = builder.create<OpTy>(location, std::forward<Args>(args)...);
-    SmallVector<Value *, 0> unused;
+    SmallVector<ValuePtr, 0> unused;
     (void)tryToFold(op.getOperation(), unused);
 
     // Folding cannot remove a zero-result operation, so for convenience we
@@ -99,9 +125,9 @@ private:
 
   /// Tries to perform folding on the given `op`. If successful, populates
   /// `results` with the results of the folding.
-  LogicalResult tryToFold(Operation *op, SmallVectorImpl<Value *> &results,
-                          llvm::function_ref<void(Operation *)>
-                              processGeneratedConstants = nullptr);
+  LogicalResult tryToFold(
+      Operation *op, SmallVectorImpl<ValuePtr> &results,
+      function_ref<void(Operation *)> processGeneratedConstants = nullptr);
 
   /// Try to get or create a new constant entry. On success this returns the
   /// constant operation, nullptr otherwise.
@@ -116,6 +142,9 @@ private:
   /// This map tracks all of the dialects that an operation is referenced by;
   /// given that many dialects may generate the same constant.
   DenseMap<Operation *, SmallVector<Dialect *, 2>> referencedDialects;
+
+  /// A collection of dialect folder interfaces.
+  DialectInterfaceCollection<OpFolderDialectInterface> interfaces;
 };
 
 } // end namespace mlir

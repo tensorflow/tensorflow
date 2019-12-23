@@ -182,8 +182,10 @@ EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Index<IndexCount> FlatToTensorIndex(
 // Requires that nthreads is equal to the total number of elements in the input
 // tensor.
 template <typename T, int sp0, int sp1, int sp2, bool conjugate = false>
-__global__ void ShuffleInTensor3Simple(int nthreads, const T* input,
-                                       Dimension<3> input_dims, T* output) {
+__global__ void ShuffleInTensor3Simple(int nthreads,
+                                       const T* __restrict__ input,
+                                       Dimension<3> input_dims,
+                                       T* __restrict__ output) {
   Dimension<3> output_dims;
   output_dims[sp0] = input_dims[0];
   output_dims[sp1] = input_dims[1];
@@ -366,8 +368,10 @@ __global__ void SwapDimension1And2InTensor3UsingTiles(
 // A Gpu custom kernel that convert input to output, given proper padding on
 // the left and the top. The padded value is zero.
 template <typename T, int NDIMS>
-__global__ void PadInputCustomKernelNHWC(int nthreads, const T* input,
-                                         Dimension<NDIMS> input_dims, T* output,
+__global__ void PadInputCustomKernelNHWC(int nthreads,
+                                         const T* __restrict__ input,
+                                         Dimension<NDIMS> input_dims,
+                                         T* __restrict__ output,
                                          Dimension<NDIMS> output_dims,
                                          Dimension<NDIMS - 2> padding_left) {
   GPU_1D_KERNEL_LOOP(index, nthreads) {
@@ -395,8 +399,10 @@ __global__ void PadInputCustomKernelNHWC(int nthreads, const T* input,
 }
 
 template <typename T, int NDIMS>
-__global__ void PadInputCustomKernelNCHW(int nthreads, const T* input,
-                                         Dimension<NDIMS> input_dims, T* output,
+__global__ void PadInputCustomKernelNCHW(int nthreads,
+                                         const T* __restrict__ input,
+                                         Dimension<NDIMS> input_dims,
+                                         T* __restrict__ output,
                                          Dimension<NDIMS> output_dims,
                                          Dimension<NDIMS - 2> padding_left) {
   GPU_1D_KERNEL_LOOP(index, nthreads) {

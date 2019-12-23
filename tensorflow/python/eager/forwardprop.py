@@ -18,12 +18,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import functools
+import threading
 
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import pywrap_tfe
 from tensorflow.python.eager import backprop
+from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import execute
+from tensorflow.python.eager import forwardprop_util
 
 from tensorflow.python.framework import ops
 
@@ -31,13 +33,42 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.unconnected_gradients import UnconnectedGradients
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
+from tensorflow.python.util.tf_export import tf_export
 
 
-# TODO(allenl): experimental_relax_shapes for gradients which rely on static
-# shape information may be underspecialized. We may want hand-written forward
-# implementations.
-@def_function.function(experimental_relax_shapes=True)
-def _forward_gradient(op_name, attr_tuple, inputs, outputs, tangents):
+# Dictionary mapping from op names to special-cased jvp functions. Otherwise
+# backward functions are transposed on the tape.
+_SPECIAL_CASES = {}
+
+
+def _identity_jvp(attr_tuple, inputs, outputs, tangents):
+  # Special-cased mostly for resource handles, where creating ones Tensors from
+  # handle data for transposing the backward function on the tape is error-prone
+  # (even if we get good handle data, partially defined shapes are an issue).
+  del attr_tuple, inputs, outputs
+  return [array_ops.identity(t) for t in tangents]
+
+
+_SPECIAL_CASES["Identity"] = _identity_jvp
+
+
+def _read_variable_jvp(attr_tuple, inputs, outputs, tangents):
+  # Like for Identity, this special case means we don't need to create
+  # variable-shaped Tensors from resource handles.
+  del attr_tuple, inputs, outputs
+  return [array_ops.identity(t) for t in tangents]
+
+
+_SPECIAL_CASES["ReadVariableOp"] = _read_variable_jvp
+
+
+_TRACE_COUNT_CONSISTENCY_LOCK = threading.Lock()
+# Map from op names to number of traces of _jvp_helper. Used to cap the number
+# of traces due to shape differences while still specializing where possible.
+_TRACE_COUNT = {}
+
+
+def _jvp_helper(op_name, attr_tuple, inputs, outputs, tangents):
   """Computes a Jacobian-vector product for an op.
 
   Note that this function would be wasteful if executed eagerly. It runs the
@@ -55,84 +86,232 @@ def _forward_gradient(op_name, attr_tuple, inputs, outputs, tangents):
   Returns:
     A flat list of tangents corresponding to `outputs`.
   """
-  float_inputs = []
-  float_indices = []
-  nontrivial_tangents = []
-  for input_index, tensor in enumerate(inputs):
-    if tensor.dtype.is_floating:
-      float_inputs.append(tensor)
-      float_indices.append(input_index)
-      nontrivial_tangents.append(tangents[input_index])
+  with _TRACE_COUNT_CONSISTENCY_LOCK:
+    # Just make sure writes don't clobber each other's increments; reads in
+    # _jvp_dispatch do not lock.
+    _TRACE_COUNT[op_name] = _TRACE_COUNT.get(op_name, 0) + 1
 
-  with backprop.GradientTape() as transpose_tape:
-    with backprop.GradientTape() as backfunc_tape:
-      backfunc_tape.watch(float_inputs)
-      execute.record_gradient(op_name, inputs, attr_tuple, outputs,
-                              "forward_op_replay")
+  special_case = _SPECIAL_CASES.get(op_name, None)
+  if special_case is not None:
+    return special_case(attr_tuple, inputs, outputs, tangents)
+  if not outputs:
+    # tape.gradients([], inputs) doesn't make much sense
+    return []
+  # Generally inner GradientTapes won't function while outer accumulators are
+  # recording. We temporarily reset forwardprop state to allow GradientTapes to
+  # function here.
+  with forwardprop_util.push_forwardprop_state():
+    trainable_inputs = []
+    trainable_indices = []
+    nontrivial_tangents = []
+    for input_index, tensor in enumerate(inputs):
+      if backprop_util.IsTrainable(tensor):
+        trainable_inputs.append(tensor)
+        trainable_indices.append(input_index)
+        nontrivial_tangents.append(tangents[input_index])
 
-    forwardprop_aids = []
-    float_outputs = []
-    nontrivial_output_indices = []
-    for output_index, output in enumerate(outputs):
-      if output.dtype.is_floating:
-        forwardprop_aids.append(
-            array_ops.ones_like(output, name="unused_forwardprop_aid"))
-        float_outputs.append(output)
-        nontrivial_output_indices.append(output_index)
+    with backprop.GradientTape() as transpose_tape:
+      with backprop.GradientTape() as backfunc_tape:
+        backfunc_tape.watch(trainable_inputs)
+        execute.record_gradient(op_name, inputs, attr_tuple, outputs)
 
-    transpose_tape.watch(forwardprop_aids)
-    grads = backfunc_tape.gradient(
-        float_outputs,
-        float_inputs,
-        forwardprop_aids,
-        unconnected_gradients=UnconnectedGradients.ZERO)
-  nontrivial_output_tangents = transpose_tape.gradient(
-      grads, forwardprop_aids, output_gradients=nontrivial_tangents)
-  output_tangents = [None] * len(outputs)
-  for index, tangent in zip(nontrivial_output_indices,
-                            nontrivial_output_tangents):
-    output_tangents[index] = tangent
-  return output_tangents
+      forwardprop_aids = []
+      trainable_outputs = []
+      nontrivial_output_indices = []
+      for output_index, output in enumerate(outputs):
+        if backprop_util.IsTrainable(output):
+          forwardprop_aids.append(
+              array_ops.ones_like(output, name="unused_forwardprop_aid"))
+          trainable_outputs.append(output)
+          nontrivial_output_indices.append(output_index)
+
+      transpose_tape.watch(forwardprop_aids)
+      grads = backfunc_tape.gradient(
+          trainable_outputs,
+          trainable_inputs,
+          forwardprop_aids,
+          unconnected_gradients=UnconnectedGradients.ZERO)
+    nontrivial_output_tangents = transpose_tape.gradient(
+        grads, forwardprop_aids, output_gradients=nontrivial_tangents)
+    output_tangents = [None] * len(outputs)
+    for index, tangent in zip(nontrivial_output_indices,
+                              nontrivial_output_tangents):
+      output_tangents[index] = tangent
+    return output_tangents
 
 
-pywrap_tensorflow.TFE_Py_RegisterForwardGradientFunction(_forward_gradient)
+# TODO(allenl): experimental_relax_shapes for gradients which rely on static
+# shape information are underspecialized. We may want hand-written forward
+# implementations, or a more satisfying story about how we re-specialize
+# gradients which were traced with relaxed shapes (e.g. use conds instead of
+# trace-time Python logic).
+_jvp_relaxed_shapes = def_function.function(
+    _jvp_helper, experimental_relax_shapes=True)
+_jvp_exact_shapes = def_function.function(
+    _jvp_helper, experimental_relax_shapes=False)
+
+# The maximum number of exact-shape traces to perform for a single op before
+# switching to shape relaxation.
+_TRACE_COUNT_LIMIT = 32
 
 
-class ForwardGradientAccumulator(object):
-  """Computes Jacobian-vector products using forward-mode autodiff.
+def _jvp_dispatch(op_name, attr_tuple, inputs, outputs, tangents):
+  """Determine which forwardprop function to call."""
+  # Note that this _TRACE_COUNT read races with writes. That's fine, it just
+  # means we may trace a few more exact shapes before moving on to relaxation.
+  if _TRACE_COUNT.get(op_name, 0) < _TRACE_COUNT_LIMIT:
+    return _jvp_exact_shapes(
+        op_name, attr_tuple, inputs, outputs, tangents)
+  else:
+    return _jvp_relaxed_shapes(
+        op_name, attr_tuple, inputs, outputs, tangents)
 
-  Example:
 
-  ```
-  with ForwardGradientAccumulator() as acc:
-    x = tf.constant([[2.0, 3.0], [1.0, 4.0]])
-    acc.watch(x, tf.constant([[5., 6.], [7., 8.]]))
-    y = tf.reduce_sum(tf.sin(x) * tf.tan(x), axis=1)
-  jvp = acc.jvp(y)
-  ```
+pywrap_tfe.TFE_Py_RegisterJVPFunction(_jvp_dispatch)
 
-  Note that `ForwardGradientAccumulator`s are always applied in creation order,
-  so inner accumulators may not see JVP computation from outer
-  accumulators. Take higher-order gradients from outer accumulators:
 
-  ```
-  primal = tf.constant(1.1)
-  with ForwardGradientAccumulator() as outer_acc:
-    outer_acc.watch(primal, tf.constant(1.))
-    with ForwardGradientAccumulator() as acc:
-      acc.watch(primal, tf.constant(1.))
-      primal_out = primal ** tf.constant(3.5)
-  inner_jvp = acc.jvp(primal_out)
-  outer_jvp = outer_acc.jvp(inner_jvp)
-  ```
+@tf_export("autodiff.ForwardAccumulator", v1=[])
+class ForwardAccumulator(object):
+  """Computes Jacobian-vector products ("JVP"s) using forward-mode autodiff.
 
-  Reversing the collection in the last two lines to instead retrieve
-  `acc.jvp(outer_acc.jvp(primal_out))` will not work.
+  Compare to `tf.GradientTape` which computes vector-Jacobian products ("VJP"s)
+  using reverse-mode autodiff (backprop). Reverse mode is more attractive when
+  computing gradients of a scalar-valued function with respect to many inputs
+  (e.g. a neural network with many parameters and a scalar loss). Forward mode
+  works best on functions with many outputs and few inputs. Since it does not
+  hold on to intermediate activations, it is much more memory efficient than
+  backprop where it is applicable.
+
+  Consider a simple linear regression:
+
+  >>> x = tf.constant([[2.0, 3.0], [1.0, 4.0]])
+  >>> dense = tf.keras.layers.Dense(1)
+  >>> dense.build([2])
+  >>> with tf.autodiff.ForwardAccumulator(
+  ...    primals=dense.kernel,
+  ...    tangents=tf.constant([[1.], [0.]])) as acc:
+  ...   loss = tf.reduce_sum((dense(x) - tf.constant([1., -1.])) ** 2.)
+  >>> acc.jvp(loss)
+  <tf.Tensor: shape=(), dtype=float32, numpy=...>
+
+  The example has two variables containing parameters, `dense.kernel` (2
+  parameters) and `dense.bias` (1 parameter). Considering the training data `x`
+  as a constant, this means the Jacobian matrix for the function mapping from
+  parameters to loss has one row and three columns.
+
+  With forwardprop, we specify a length-three vector in advance which multiplies
+  the Jacobian. The `primals` constructor argument is the parameter (a
+  `tf.Tensor` or `tf.Variable`) we're specifying a vector for, and the
+  `tangents` argument is the "vector" in Jacobian-vector product. If our goal is
+  to compute the entire Jacobian matrix, forwardprop computes one column at a
+  time while backprop computes one row at a time. Since the Jacobian in the
+  linear regression example has only one row, backprop requires fewer
+  invocations:
+
+  >>> x = tf.constant([[2.0, 3.0], [1.0, 4.0]])
+  >>> dense = tf.keras.layers.Dense(1)
+  >>> dense.build([2])
+  >>> loss_fn = lambda: tf.reduce_sum((dense(x) - tf.constant([1., -1.])) ** 2.)
+  >>> kernel_fprop = []
+  >>> with tf.autodiff.ForwardAccumulator(
+  ...     dense.kernel, tf.constant([[1.], [0.]])) as acc:
+  ...   kernel_fprop.append(acc.jvp(loss_fn()))
+  >>> with tf.autodiff.ForwardAccumulator(
+  ...     dense.kernel, tf.constant([[0.], [1.]])) as acc:
+  ...   kernel_fprop.append(acc.jvp(loss_fn()))
+  >>> with tf.autodiff.ForwardAccumulator(dense.bias, tf.constant([1.])) as acc:
+  ...   bias_fprop = acc.jvp(loss_fn())
+  >>> with tf.GradientTape() as tape:
+  ...   loss = loss_fn()
+  >>> kernel_grad, bias_grad = tape.gradient(loss, (dense.kernel, dense.bias))
+  >>> np.testing.assert_allclose(
+  ...     kernel_grad, tf.stack(kernel_fprop)[:, tf.newaxis])
+  >>> np.testing.assert_allclose(bias_grad, bias_fprop[tf.newaxis])
+
+  Implicit in the `tape.gradient` call is a length-one vector which
+  left-multiplies the Jacobian, a vector-Jacobian product.
+
+  `ForwardAccumulator` maintains JVPs corresponding primal tensors it is
+  watching, derived from the original `primals` specified in the constructor. As
+  soon as a primal tensor is deleted, `ForwardAccumulator` deletes the
+  corresponding JVP.
+
+  `acc.jvp(x)` retrieves `acc`'s JVP corresponding to the primal tensor `x`. It
+  does not perform any computation. `acc.jvp` calls can be repeated as long as
+  `acc` is accessible, whether the context manager is active or not. New JVPs
+  are only computed while the context manager is active.
+
+  Note that `ForwardAccumulator`s are always applied in the order their context
+  managers were entered, so inner accumulators will not see JVP computation from
+  outer accumulators. Take higher-order JVPs from outer accumulators:
+
+  >>> primal = tf.constant(1.1)
+  >>> with tf.autodiff.ForwardAccumulator(primal, tf.constant(1.)) as outer:
+  ...   with tf.autodiff.ForwardAccumulator(primal, tf.constant(1.)) as inner:
+  ...     primal_out = primal ** tf.constant(3.5)
+  >>> inner_jvp = inner.jvp(primal_out)
+  >>> inner_jvp  # 3.5 * 1.1 ** 2.5
+  <tf.Tensor: shape=(), dtype=float32, numpy=4.4417057>
+  >>> outer.jvp(inner_jvp)  # 3.5 * 2.5 * 1.1 ** 1.5
+  <tf.Tensor: shape=(), dtype=float32, numpy=10.094786>
+
+  Reversing the collection in the last line to instead retrieve
+  `inner.jvp(outer.jvp(primal_out))` will not work.
+
+  Strict nesting also applies to combinations of `ForwardAccumulator` and
+  `tf.GradientTape`. More deeply nested `GradientTape` objects will ignore the
+  products of outer `ForwardAccumulator` objects. This allows (for example)
+  memory-efficient forward-over-backward computation of Hessian-vector products,
+  where the inner `GradientTape` would otherwise hold on to all intermediate
+  JVPs:
+
+  >>> v = tf.Variable([1., 2.])
+  >>> with tf.autodiff.ForwardAccumulator(
+  ...     v,
+  ...     # The "vector" in Hessian-vector product.
+  ...     tf.constant([1., 0.])) as acc:
+  ...   with tf.GradientTape() as tape:
+  ...     y = tf.reduce_sum(v ** 3.)
+  ...   backward = tape.gradient(y, v)
+  >>> backward  # gradient from backprop
+  <tf.Tensor: shape=(2,), dtype=float32, numpy=array([ 3., 12.], dtype=float32)>
+  >>> acc.jvp(backward)  # forward-over-backward Hessian-vector product
+  <tf.Tensor: shape=(2,), dtype=float32, numpy=array([6., 0.], dtype=float32)>
   """
 
-  def __init__(self):
-    self._accumulator = None
+  def __init__(self, primals, tangents):
+    """Specify tensors to watch and their Jacobian-vector products.
+
+    Mathematically, `tangents` is a vector right-multiplying the Jacobian matrix
+    (a Jacobian-vector product) for the function computed while this accumulator
+    is active. Since JVPs are computed in forward mode as the computation
+    happens, this vector must be supplied in advance.
+
+    Listing a single tensor multiple times in `primals` raises an
+    exception. Excluding a tensor from `primals` is equivalent to watching it
+    with a tangent tensor of zeros.
+
+    Args:
+      primals: A tensor or nested structure of tensors to watch.
+      tangents: A tensor or nested structure of tensors, with the same nesting
+        structure as `primals`, with each element being a vector with the same
+        size as the corresponding primal element.
+
+    Raises:
+      ValueError: If the same tensor or variable is specified multiple times in
+        `primals`.
+    """
+    self._accumulator = pywrap_tfe.TFE_Py_ForwardAccumulatorNew()
     self._recording = False
+    primal_ids = set()
+    for primal in nest.flatten(primals):
+      if id(primal) in primal_ids:
+        raise ValueError(
+            "Tensor {} was specified as a primal multiple times. This may "
+            "indicate an error. If it was intended, please sum the "
+            "corresponding tangents.")
+      primal_ids.add(id(primal))
+    self._watch(primals, tangents)
 
   def __enter__(self):
     self._push_accumulator()
@@ -145,67 +324,70 @@ class ForwardGradientAccumulator(object):
   def _push_accumulator(self):
     if self._recording:
       raise ValueError("Accumulator is already recording.")
-    if self._accumulator is None:
-      self._accumulator = pywrap_tensorflow.TFE_Py_ForwardAccumulatorNew()
-    else:
-      # TODO(allenl): Allow reuse
-      raise NotImplementedError("Accumulator reuse isn't implemented yet.")
+    pywrap_tfe.TFE_Py_ForwardAccumulatorSetAdd(self._accumulator)
     self._recording = True
 
   def _pop_accumulator(self):
     if not self._recording:
-      raise ValueError("Tape is not recording.")
-    pywrap_tensorflow.TFE_Py_ForwardAccumulatorSetRemove(self._accumulator)
+      raise ValueError("Accumulator is not recording.")
+    pywrap_tfe.TFE_Py_ForwardAccumulatorSetRemove(self._accumulator)
     self._recording = False
 
-  # TODO(allenl): Does this need to be public, or should the constructor instead
-  # take all watched Tensors? Write a realistic usage example (e.g. Hessian-free
-  # optimization) and decide.
-  def watch(self, tensor, tangents):
-    """Ensures that `tensor` is being traced by this tape.
+  def _watch(self, primals, tangents):
+    """Ensures that `primals` are being traced by this accumulator.
 
-    Mathematically, `tangents` is part of a vector right-multiplying the
-    Jacobian matrix (a Jacobian-vector product) for the function computed while
-    the tape is active. Since JVPs are computed in forward mode as the
-    computation happens, this vector must be supplied before the computation
-    takes place.
+    Mathematically, `tangents` is a vector right-multiplying the Jacobian matrix
+    (a Jacobian-vector product) for the function computed while this accumulator
+    is active. Since JVPs are computed in forward mode as the computation
+    happens, this vector must be supplied in advance.
 
-    Watching a single Tensor multiple times sums each `tangents`. An un-watched
-    Tensor has zeros for its tangent vector.
+    Watching a single tensor multiple times sums each of its `tangents`. Any
+    un-watched tensor has zeros for its tangent vector.
 
     Args:
-      tensor: A Tensor or list of Tensors.
-      tangents: A Tensor or list of Tensors matching `tensor`.
+      primals: A Tensor or list of Tensors.
+      tangents: A Tensor or list of Tensors matching `primals`.
     """
-    nest.assert_same_structure(tensor, tangents)
-    for t, g in zip(nest.flatten(tensor), nest.flatten(tangents)):
+    nest.assert_same_structure(primals, tangents)
+    for t, g in zip(nest.flatten(primals), nest.flatten(tangents)):
       if not t.dtype.is_floating:
         logging.log_first_n(
-            logging.WARN, "The dtype of the watched tensor must be "
+            logging.WARN, "The dtype of the watched primal must be "
             "floating (e.g. tf.float32), got %r", 5, t.dtype)
-      if hasattr(t, "handle"):
-        # TODO(allenl): Handle watching variables.
-        raise NotImplementedError("Currently only Tensors may be watched.")
       g = ops.convert_to_tensor(g, dtype=t.dtype)
-      pywrap_tensorflow.TFE_Py_ForwardAccumulatorWatch(self._accumulator, t, g)
+      if hasattr(t, "handle"):
+        # Run convert_to_tensor to get the captured handle from whichever
+        # function we're running if necessary.
+        t = ops.convert_to_tensor(t.handle)
+      pywrap_tfe.TFE_Py_ForwardAccumulatorWatch(self._accumulator, t, g)
 
-  def jvp(self, target):
-    """Fetches the Jacobian-vector product computed for `target`.
+  def jvp(self, primals, unconnected_gradients=UnconnectedGradients.NONE):
+    """Fetches the Jacobian-vector product computed for `primals`.
 
-    Note that this function performs no computation, and simply looks up a
-    JVP that was already computed (unlike backprop using a
-    `tf.GradientTape`, where the computation happens on the call to
-    `tape.gradient`).
+    Note that this method performs no computation, and simply looks up a JVP
+    that was already computed (unlike backprop using a `tf.GradientTape`, where
+    the computation happens on the call to `tape.gradient`).
 
     Args:
-      target: A watched Tensor or structure of Tensors to fetch the JVPs for.
+      primals: A watched Tensor or structure of Tensors to fetch the JVPs for.
+      unconnected_gradients: A value which can either hold 'none' or 'zero' and
+        alters the value which will be returned if no JVP was computed for
+        `primals`. The possible values and effects are detailed in
+        'tf.UnconnectedGradients' and it defaults to 'none'.
 
     Returns:
-      Tensors with the same shapes and dtypes as `target`, or None if no JVP
+      Tensors with the same shapes and dtypes as `primals`, or None if no JVP
       is available.
     """
+    unconnected_gradients = UnconnectedGradients(unconnected_gradients)
     if self._accumulator is None:
       raise ValueError("Called jvp() without first tracing anything.")
-    return nest.map_structure(
-        functools.partial(pywrap_tensorflow.TFE_Py_ForwardAccumulatorJVP,
-                          self._accumulator), target)
+    def _fetch_jvp(tensor):
+      if hasattr(tensor, "handle"):
+        tensor = ops.convert_to_tensor(tensor.handle)
+      result = pywrap_tfe.TFE_Py_ForwardAccumulatorJVP(self._accumulator,
+                                                       tensor)
+      if result is None and unconnected_gradients == UnconnectedGradients.ZERO:
+        return array_ops.zeros_like(tensor)
+      return result
+    return nest.map_structure(_fetch_jvp, primals)

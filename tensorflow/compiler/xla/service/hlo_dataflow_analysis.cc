@@ -189,8 +189,20 @@ bool HloDataflowAnalysis::Phi(
   for (const InstructionValueSet* input : inputs) {
     VLOG(5) << "input value set = " << input->ToString();
   }
-  for (const InstructionValueSet* input : inputs) {
-    DCHECK(ShapeUtil::Compatible(instruction->shape(), input->shape()));
+
+  if (bitcast_defines_value_) {
+    absl::c_for_each(inputs, [&](const InstructionValueSet* input) {
+      DCHECK(ShapeUtil::Compatible(instruction->shape(), input->shape()));
+    });
+  } else {
+    const Shape& shape = instruction->shape();
+    PrimitiveType ty = shape.element_type();
+    bool is_array = shape.IsArray();
+    absl::c_for_each(inputs, [&](const InstructionValueSet* input) {
+      DCHECK(ty == input->shape().element_type() &&
+             (!is_array || ShapeUtil::ElementsIn(shape) ==
+                               ShapeUtil::ElementsIn(input->shape())));
+    });
   }
 
   bool changed = false;
@@ -327,6 +339,20 @@ bool HloDataflowAnalysis::UpdateBitcastValueSet(HloInstruction* bitcast) {
   InstructionValueSet& bitcast_set = GetInstructionValueSet(bitcast);
   if (!bitcast_defines_value_ && operand_set != bitcast_set) {
     bitcast_set = operand_set;
+    return true;
+  }
+  return false;
+}
+
+bool HloDataflowAnalysis::UpdateSetDimensionSizeValueSet(
+    HloInstruction* set_dimension_size) {
+  CHECK_EQ(set_dimension_size->opcode(), HloOpcode::kSetDimensionSize);
+  const InstructionValueSet& operand_set =
+      GetInstructionValueSet(set_dimension_size->operand(0));
+  InstructionValueSet& set_dimension_size_set =
+      GetInstructionValueSet(set_dimension_size);
+  if (operand_set != set_dimension_size_set) {
+    set_dimension_size_set = operand_set;
     return true;
   }
   return false;
@@ -634,6 +660,8 @@ bool HloDataflowAnalysis::UpdateInstructionValueSet(
       return UpdateAddDependencyValueSet(instruction);
     case HloOpcode::kBitcast:
       return UpdateBitcastValueSet(instruction);
+    case HloOpcode::kSetDimensionSize:
+      return UpdateSetDimensionSizeValueSet(instruction);
     case HloOpcode::kDomain:
       return UpdateDomainValueSet(instruction);
     case HloOpcode::kCopy:
@@ -774,9 +802,9 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
                           std::forward_as_tuple(instruction),
                           std::forward_as_tuple(instruction->shape()));
 
-      // Lambda to set the value set to define all values in the output of the
-      // instruction.
-      auto define_all_values = [this, &instruction](bool is_phi = false) {
+      // For each sub-shape of the instruction shape, add a new HloValue to its
+      // HloValueSet.
+      auto define_all_values = [this, &instruction]() {
         for (auto& pair : GetInstructionValueSet(instruction)) {
           const ShapeIndex& index = pair.first;
           HloValue* value = NewHloValue(instruction, index, /*is_phi=*/false);
@@ -784,16 +812,8 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
         }
       };
 
-      // Lambda to set the value set to define only the top-level buffer in the
-      // output of the instruction. Any other values flow from the operands of
-      // the instruction (or from cross-computation dataflow).
-      auto define_top_level_only = [this, &instruction]() {
-        HloValue* value =
-            NewHloValue(instruction, /*index=*/{}, /*is_phi=*/false);
-        GetValueSet(instruction, /*index=*/{}).AddValue(value);
-      };
-
-      // Lambda to set the value set at the given index of the output.
+      // Add a new HloValue to the HloValueSet corresponding to the given index
+      // of the instruction shape.
       auto define_value_at = [this, &instruction](const ShapeIndex& index) {
         HloValue* value = NewHloValue(instruction, index, /*is_phi=*/false);
         GetValueSet(instruction, index).AddValue(value);
@@ -805,6 +825,7 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
             define_all_values();
           }
           break;
+        case HloOpcode::kSetDimensionSize:
         case HloOpcode::kAddDependency:
         case HloOpcode::kWhile:
         case HloOpcode::kCall:
@@ -840,7 +861,7 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
         case HloOpcode::kTuple:
           // These instructions only define their top-level values. Any other
           // values flow from their operands.
-          define_top_level_only();
+          define_value_at(/*index=*/{});
           break;
         case HloOpcode::kCopyDone:
           // CopyDone produces an element. Its output aliases its input tuple
@@ -1071,7 +1092,7 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
     // TODO(b/80315712): This code is in a bit of a weird intermediate state
     // at the moment. The in-place DUS check really needs to be common to all
     // backends, so it runs first. Then we run the backend-specific check if
-    // provided, or go through the target-indepdendent check if not.
+    // provided, or go through the target-independent check if not.
     // Unfortunately, the notionally "target-independent" path actually contains
     // some target-specific code, so we can't run all of it *in addition* to the
     // target-specific function, like the interface documentation says.
@@ -1134,7 +1155,7 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
       user->opcode() == HloOpcode::kWhile) {
     // We eliminated other users in HloOrdering::LiveRangeStrictlyBefore
     // so here we just need to check that the use is at the right operand index.
-    std::vector<int64> operand_indices = user->OperandIndices(operand);
+    const auto operand_indices = user->OperandIndices(operand);
     int64 operand_no = user->opcode() == HloOpcode::kTriangularSolve ? 1 : 0;
     return operand_indices.size() == 1 && operand_indices[0] == operand_no;
   }
@@ -1150,7 +1171,7 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
     }
     CHECK(!user_index.empty());
     // Only share with the right tuple element buffer.
-    std::vector<int64> operand_indices = user->OperandIndices(operand);
+    const auto operand_indices = user->OperandIndices(operand);
     return operand_indices.size() == 1 && user_index[0] == operand_indices[0];
   }
   if (user->opcode() == HloOpcode::kCall) {

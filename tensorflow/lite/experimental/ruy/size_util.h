@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_RUY_SIZE_UTIL_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_RUY_SIZE_UTIL_H_
 
+#include <type_traits>
+
 #include "tensorflow/lite/experimental/ruy/check_macros.h"
 
 #ifdef _WIN32
@@ -24,47 +26,66 @@ limitations under the License.
 
 namespace ruy {
 
-inline int floor_log2(int n) {
+template <typename Integer>
+inline Integer floor_log2(Integer n) {
+  static_assert(std::is_integral<Integer>::value, "");
+  static_assert(std::is_signed<Integer>::value, "");
+  static_assert(sizeof(Integer) == 4 || sizeof(Integer) == 8, "");
+
   RUY_DCHECK_GE(n, 1);
 #ifdef _WIN32
   unsigned long result;  // NOLINT[runtime/int]
-  _BitScanReverse(&result, n);
+  if (sizeof(Integer) == 4) {
+    _BitScanReverse(&result, n);
+  } else {
+    _BitScanReverse64(&result, n);
+  }
   return result;
 #else
-  return 31 - __builtin_clz(n);
+  if (sizeof(Integer) == 4) {
+    return 31 - __builtin_clz(n);
+  } else {
+    return 63 - __builtin_clzll(n);
+  }
 #endif
 }
 
-inline int ceil_log2(int n) {
+template <typename Integer>
+Integer ceil_log2(Integer n) {
   RUY_DCHECK_GE(n, 1);
   return n == 1 ? 0 : floor_log2(n - 1) + 1;
 }
 
-inline bool is_pot(int value) {
+template <typename Integer>
+bool is_pot(Integer value) {
   return (value > 0) && ((value & (value - 1)) == 0);
 }
 
-inline int round_down_pot(int value) { return 1 << floor_log2(value); }
+template <typename Integer>
+Integer pot_log2(Integer n) {
+  RUY_DCHECK(is_pot(n));
+  return floor_log2(n);
+}
 
-inline int round_up_pot(int value) { return 1 << ceil_log2(value); }
+template <typename Integer>
+Integer round_down_pot(Integer value) {
+  return static_cast<Integer>(1) << floor_log2(value);
+}
 
-inline int round_down_pot(int value, int modulo) {
+template <typename Integer>
+Integer round_up_pot(Integer value) {
+  return static_cast<Integer>(1) << ceil_log2(value);
+}
+
+template <typename Integer, typename Modulo>
+Integer round_down_pot(Integer value, Modulo modulo) {
   RUY_DCHECK_EQ(modulo & (modulo - 1), 0);
   return value & ~(modulo - 1);
 }
 
-inline int round_up_pot(int value, int modulo) {
+template <typename Integer, typename Modulo>
+Integer round_up_pot(Integer value, Modulo modulo) {
   return round_down_pot(value + modulo - 1, modulo);
-}
-
-inline int clamp(int x, int lo, int hi) {
-  if (x < lo) {
-    return lo;
-  } else if (x > hi) {
-    return hi;
-  } else {
-    return x;
-  }
 }
 
 }  // namespace ruy

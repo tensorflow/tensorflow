@@ -26,6 +26,7 @@
 # The 'operand_kinds' dict of spirv.core.grammar.json contains all supported
 # SPIR-V enum classes.
 
+import itertools
 import re
 import requests
 import textwrap
@@ -109,52 +110,75 @@ def split_list_into_sublists(items, offset):
   return chuncks
 
 
-def uniquify(lst, equality_fn):
-  """Returns a list after pruning duplicate elements.
+def uniquify_enum_cases(lst):
+  """Prunes duplicate enum cases from the list.
 
   Arguments:
-   - lst: List whose elements are to be uniqued.
-   - equality_fn: Function used to compare equality between elements of the
-     list.
+   - lst: List whose elements are to be uniqued. Assumes each element is a
+     (symbol, value) pair and elements already sorted according to value.
 
   Returns:
-   - A list with all duplicated removed. The order of elements is same as the
-     original list, with only the first occurence of duplicates retained.
+   - A list with all duplicates removed. The elements are sorted according to
+     value and, for each value, uniqued according to symbol.
+     original list,
   """
-  keys = set()
-  unique_lst = []
-  for elem in lst:
-    key = equality_fn(elem)
-    if key not in keys:
-      unique_lst.append(elem)
-      keys.add(key)
-  return unique_lst
+  cases = lst
+  uniqued_cases = []
+
+  # First sort according to the value
+  cases.sort(key=lambda x: x[1])
+
+  # Then group them according to the value
+  for _, groups in itertools.groupby(cases, key=lambda x: x[1]):
+    # For each value, sort according to the enumerant symbol.
+    sorted_group = sorted(groups, key=lambda x: x[0])
+    # Keep the "smallest" case, which is typically the symbol without extension
+    # suffix. But we have special cases that we want to fix.
+    case = sorted_group[0]
+    if case[0] == 'HlslSemanticGOOGLE':
+      case = sorted_group[1]
+    uniqued_cases.append(case)
+
+  return uniqued_cases
 
 
 def gen_operand_kind_enum_attr(operand_kind):
-  """Generates the TableGen I32EnumAttr definition for the given operand kind.
+  """Generates the TableGen EnumAttr definition for the given operand kind.
 
   Returns:
     - The operand kind's name
-    - A string containing the TableGen I32EnumAttr definition
+    - A string containing the TableGen EnumAttr definition
   """
   if 'enumerants' not in operand_kind:
     return '', ''
 
+  # Returns a symbol for the given case in the given kind. This function
+  # handles Dim specially to avoid having numbers as the start of symbols,
+  # which does not play well with C++ and the MLIR parser.
+  def get_case_symbol(kind_name, case_name):
+    if kind_name == 'Dim':
+      if case_name == '1D' or case_name == '2D' or case_name == '3D':
+        return 'Dim{}'.format(case_name)
+    return case_name
+
   kind_name = operand_kind['kind']
+  is_bit_enum = operand_kind['category'] == 'BitEnum'
+  kind_category = 'Bit' if is_bit_enum else 'I32'
   kind_acronym = ''.join([c for c in kind_name if c >= 'A' and c <= 'Z'])
   kind_cases = [(case['enumerant'], case['value'])
                 for case in operand_kind['enumerants']]
-  kind_cases = uniquify(kind_cases, lambda x: x[1])
+  kind_cases = uniquify_enum_cases(kind_cases)
   max_len = max([len(symbol) for (symbol, _) in kind_cases])
 
   # Generate the definition for each enum case
-  fmt_str = 'def SPV_{acronym}_{symbol} {colon:>{offset}} '\
-            'I32EnumAttrCase<"{symbol}", {value}>;'
+  fmt_str = 'def SPV_{acronym}_{case} {colon:>{offset}} '\
+            '{category}EnumAttrCase<"{symbol}", {value}>;'
   case_defs = [
       fmt_str.format(
+          category=kind_category,
           acronym=kind_acronym,
-          symbol=case[0],
+          case=case[0],
+          symbol=get_case_symbol(kind_name, case[0]),
           value=case[1],
           colon=':',
           offset=(max_len + 1 - len(case[0]))) for case in kind_cases
@@ -174,12 +198,10 @@ def gen_operand_kind_enum_attr(operand_kind):
 
   # Generate the enum attribute definition
   enum_attr = 'def SPV_{name}Attr :\n    '\
-      'I32EnumAttr<"{name}", "valid SPIR-V {name}", [\n{cases}\n    ]> {{\n'\
-      '  let returnType = "::mlir::spirv::{name}";\n'\
-      '  let convertFromStorage = '\
-            '"static_cast<::mlir::spirv::{name}>($_self.getInt())";\n'\
+      '{category}EnumAttr<"{name}", "valid SPIR-V {name}", [\n{cases}\n'\
+      '    ]> {{\n'\
       '  let cppNamespace = "::mlir::spirv";\n}}'.format(
-          name=kind_name, cases=case_names)
+          name=kind_name, category=kind_category, cases=case_names)
   return kind_name, case_defs + '\n\n' + enum_attr
 
 
@@ -215,9 +237,6 @@ def gen_opcode(instructions):
               '    I32EnumAttr<"{name}", "valid SPIR-V instructions", [\n'\
               '{lst}\n'\
               '      ]> {{\n'\
-              '    let returnType = "::mlir::spirv::{name}";\n'\
-              '    let convertFromStorage = '\
-              '"static_cast<::mlir::spirv::{name}>($_self.getInt())";\n'\
               '    let cppNamespace = "::mlir::spirv";\n}}'.format(
                   name='Opcode', lst=opcode_list)
   return opcode_str + '\n\n' + enum_attr
@@ -284,7 +303,10 @@ def update_td_enum_attrs(path, operand_kinds, filter_list):
   # Sort alphabetically according to enum name
   defs.sort(key=lambda enum : enum[0])
   # Only keep the definitions from now on
-  defs = [enum[1] for enum in defs]
+  # Put Capability's definition at the very beginning because capability cases
+  # will be referenced later
+  defs = [enum[1] for enum in defs if enum[0] == 'Capability'
+         ] + [enum[1] for enum in defs if enum[0] != 'Capability']
 
   # Substitute the old section
   content = content[0] + AUTOGEN_ENUM_SECTION_MARKER + '\n\n' + \
@@ -296,7 +318,7 @@ def update_td_enum_attrs(path, operand_kinds, filter_list):
 
 
 def snake_casify(name):
-  """Turns the given name to follow snake_case convension."""
+  """Turns the given name to follow snake_case convention."""
   name = re.sub('\W+', '', name).split()
   name = [s.lower() for s in name]
   return '_'.join(name)
@@ -328,10 +350,10 @@ def map_spec_operand_to_ods_argument(operand):
       arg_type = 'Variadic<SPV_Type>'
   elif kind == 'IdMemorySemantics' or kind == 'IdScope':
     # TODO(antiagainst): Need to further constrain 'IdMemorySemantics'
-    # and 'IdScope' given that they should be gernated from OpConstant.
+    # and 'IdScope' given that they should be generated from OpConstant.
     assert quantifier == '', ('unexpected to have optional/variadic memory '
                               'semantics or scope <id>')
-    arg_type = 'I32'
+    arg_type = 'SPV_' + kind[2:] + 'Attr'
   elif kind == 'LiteralInteger':
     if quantifier == '':
       arg_type = 'I32Attr'
@@ -360,6 +382,21 @@ def map_spec_operand_to_ods_argument(operand):
   return '{}:${}'.format(arg_type, name)
 
 
+def get_description(text, assembly):
+  """Generates the description for the given SPIR-V instruction.
+
+  Arguments:
+    - text: Textual description of the operation as string.
+    - assembly: Custom Assembly format with example as string.
+
+  Returns:
+    - A string that corresponds to the description of the Tablegen op.
+  """
+  fmt_str = ('{text}\n\n    ### Custom assembly ' 'form\n{assembly}\n  ')
+  return fmt_str.format(
+      text=text, assembly=assembly)
+
+
 def get_op_definition(instruction, doc, existing_info):
   """Generates the TableGen op definition for the given SPIR-V instruction.
 
@@ -372,21 +409,28 @@ def get_op_definition(instruction, doc, existing_info):
   Returns:
     - A string containing the TableGen op definition
   """
-  fmt_str = 'def SPV_{opname}Op : SPV_Op<"{opname}", [{traits}]> {{\n'\
-            '  let summary = {summary};\n\n'\
-            '  let description = [{{\n'\
-            '{description}\n\n'\
-            '    ### Custom assembly form\n'\
-            '{assembly}'\
-            '}}];\n\n'\
-            '  let arguments = (ins{args});\n\n'\
-            '  let results = (outs{results});\n'\
-            '{extras}'\
+  fmt_str = ('def SPV_{opname}Op : '
+             'SPV_{inst_category}<"{opname}"{category_args}[{traits}]> '
+             '{{\n  let summary = {summary};\n\n  let description = '
+             '[{{\n{description}}}];\n')
+  inst_category = existing_info.get('inst_category', 'Op')
+  if inst_category == 'Op':
+    fmt_str +='\n  let arguments = (ins{args});\n\n'\
+              '  let results = (outs{results});\n'
+
+  fmt_str +='{extras}'\
             '}}\n'
 
   opname = instruction['opname'][2:]
+  category_args = existing_info.get('category_args', '')
+  # Make sure we have ', ' to separate the category arguments from traits
+  category_args = category_args.rstrip(', ') + ', '
 
-  summary, description = doc.split('\n', 1)
+  if '\n' in doc:
+    summary, text = doc.split('\n', 1)
+  else:
+    summary = doc
+    text = ''
   wrapper = textwrap.TextWrapper(
       width=76, initial_indent='    ', subsequent_indent='    ')
 
@@ -398,10 +442,10 @@ def get_op_definition(instruction, doc, existing_info):
   else:
     summary = '[{{\n{}\n  }}]'.format(wrapper.fill(summary))
 
-  # Wrap description
-  description = description.split('\n')
-  description = [wrapper.fill(line) for line in description if line]
-  description = '\n\n'.join(description)
+  # Wrap text
+  text = text.split('\n')
+  text = [wrapper.fill(line) for line in text if line]
+  text = '\n\n'.join(text)
 
   operands = instruction.get('operands', [])
 
@@ -421,30 +465,91 @@ def get_op_definition(instruction, doc, existing_info):
   arguments = existing_info.get('arguments', None)
   if arguments is None:
     arguments = [map_spec_operand_to_ods_argument(o) for o in operands]
-    arguments = '\n    '.join(arguments)
+    arguments = ',\n    '.join(arguments)
     if arguments:
       # Prepend and append whitespace for formatting
       arguments = '\n    {}\n  '.format(arguments)
 
-  assembly = existing_info.get('assembly', None)
-  if assembly is None:
-    assembly = '    ``` {.ebnf}\n'\
+  description = existing_info.get('description', None)
+  if description is None:
+    assembly = '\n    ```\n'\
                '    [TODO]\n'\
                '    ```\n\n'\
                '    For example:\n\n'\
                '    ```\n'\
-               '    [TODO]\n'\
-               '    ```\n  '
+               '    [TODO]\n' \
+               '    ```'
+    description = get_description(text, assembly)
 
   return fmt_str.format(
       opname=opname,
+      category_args=category_args,
+      inst_category=inst_category,
       traits=existing_info.get('traits', ''),
       summary=summary,
       description=description,
-      assembly=assembly,
       args=arguments,
       results=results,
       extras=existing_info.get('extras', ''))
+
+
+def get_string_between(base, start, end):
+  """Extracts a substring with a specified start and end from a string.
+
+  Arguments:
+    - base: string to extract from.
+    - start: string to use as the start of the substring.
+    - end: string to use as the end of the substring.
+
+  Returns:
+    - The substring if found
+    - The part of the base after end of the substring. Is the base string itself
+      if the substring wasnt found.
+  """
+  split = base.split(start, 1)
+  if len(split) == 2:
+    rest = split[1].split(end, 1)
+    assert len(rest) == 2, \
+           'cannot find end "{end}" while extracting substring '\
+           'starting with {start}'.format(start=start, end=end)
+    return rest[0].rstrip(end), rest[1]
+  return '', split[0]
+
+
+def get_string_between_nested(base, start, end):
+  """Extracts a substring with a nested start and end from a string.
+
+  Arguments:
+    - base: string to extract from.
+    - start: string to use as the start of the substring.
+    - end: string to use as the end of the substring.
+
+  Returns:
+    - The substring if found
+    - The part of the base after end of the substring. Is the base string itself
+      if the substring wasnt found.
+  """
+  split = base.split(start, 1)
+  if len(split) == 2:
+    # Handle nesting delimiters
+    rest = split[1]
+    unmatched_start = 1
+    index = 0
+    while unmatched_start > 0 and index < len(rest):
+      if rest[index:].startswith(end):
+        unmatched_start -= 1
+        index += len(end)
+      elif rest[index:].startswith(start):
+        unmatched_start += 1
+        index += len(start)
+      else:
+        index += 1
+
+    assert index < len(rest), \
+           'cannot find end "{end}" while extracting substring '\
+           'starting with "{start}"'.format(start=start, end=end)
+    return rest[:index - len(end)].rstrip(end), rest[index:]
+  return '', split[0]
 
 
 def extract_td_op_info(op_def):
@@ -461,48 +566,51 @@ def extract_td_op_info(op_def):
   assert len(opname) == 1, 'more than one ops in the same section!'
   opname = opname[0]
 
-  # Get traits
-  op_tmpl_params = op_def.split('<', 1)[1].split('>', 1)[0].split(', ', 1)
-  if len(op_tmpl_params) == 1:
-    traits = ''
-  else:
-    traits = op_tmpl_params[1].strip('[]')
+  # Get instruction category
+  inst_category = [
+      o[4:] for o in re.findall('SPV_\w+Op',
+                                op_def.split(':', 1)[1])
+  ]
+  assert len(inst_category) <= 1, 'more than one ops in the same section!'
+  inst_category = inst_category[0] if len(inst_category) == 1 else 'Op'
 
-  # Get custom assembly form
-  rest = op_def.split('### Custom assembly form\n')
-  assert len(rest) == 2, \
-          '{}: cannot find "### Custom assembly form"'.format(opname)
-  rest = rest[1].split('  let arguments = (ins')
-  assert len(rest) == 2, '{}: cannot find arguments'.format(opname)
-  assembly = rest[0].rstrip('}];\n')
+  # Get category_args
+  op_tmpl_params = get_string_between_nested(op_def, '<', '>')[0]
+  opstringname, rest = get_string_between(op_tmpl_params, '"', '"')
+  category_args = rest.split('[', 1)[0]
+
+  # Get traits
+  traits, _ = get_string_between(rest, '[', ']')
+
+  # Get description
+  description, rest = get_string_between(op_def, 'let description = [{\n',
+                                         '}];\n')
 
   # Get arguments
-  rest = rest[1].split('  let results = (outs')
-  assert len(rest) == 2, '{}: cannot find results'.format(opname)
-  args = rest[0].rstrip(');\n')
+  args, rest = get_string_between(rest, '  let arguments = (ins', ');\n')
 
   # Get results
-  rest = rest[1].split(');', 1)
-  assert len(rest) == 2, \
-          '{}: cannot find ");" ending results'.format(opname)
-  results = rest[0]
+  results, rest = get_string_between(rest, '  let results = (outs', ');\n')
 
-  extras = rest[1].strip(' }\n')
+  extras = rest.strip(' }\n')
   if extras:
     extras = '\n  {}\n'.format(extras)
 
   return {
       # Prefix with 'Op' to make it consistent with SPIR-V spec
       'opname': 'Op{}'.format(opname),
+      'inst_category': inst_category,
+      'category_args': category_args,
       'traits': traits,
-      'assembly': assembly,
+      'description': description,
       'arguments': args,
       'results': results,
       'extras': extras
   }
 
 
-def update_td_op_definitions(path, instructions, docs, filter_list):
+def update_td_op_definitions(path, instructions, docs, filter_list,
+                             inst_category):
   """Updates SPIRVOps.td with newly generated op definition.
 
   Arguments:
@@ -526,10 +634,12 @@ def update_td_op_definitions(path, instructions, docs, filter_list):
   # For each existing op, extract the manually-written sections out to retain
   # them when re-generating the ops. Also append the existing ops to filter
   # list.
+  name_op_map = {}  # Map from opname to its existing ODS definition
   op_info_dict = {}
   for op in ops:
     info_dict = extract_td_op_info(op)
     opname = info_dict['opname']
+    name_op_map[opname] = op
     op_info_dict[opname] = info_dict
     filter_list.append(opname)
   filter_list = sorted(list(set(filter_list)))
@@ -537,11 +647,16 @@ def update_td_op_definitions(path, instructions, docs, filter_list):
   op_defs = []
   for opname in filter_list:
     # Find the grammar spec for this op
-    instruction = next(
-        inst for inst in instructions if inst['opname'] == opname)
-    op_defs.append(
-        get_op_definition(instruction, docs[opname],
-                          op_info_dict.get(opname, {})))
+    try:
+      instruction = next(
+          inst for inst in instructions if inst['opname'] == opname)
+      op_defs.append(
+          get_op_definition(
+              instruction, docs[opname],
+              op_info_dict.get(opname, {'inst_category': inst_category})))
+    except StopIteration:
+      # This is an op added by us; use the existing ODS definition.
+      op_defs.append(name_op_map[opname])
 
   # Substitute the old op definitions
   op_defs = [header] + op_defs + [footer]
@@ -588,7 +703,15 @@ if __name__ == '__main__':
       dest='new_inst',
       type=str,
       default=None,
-      help='SPIR-V instruction to be added to SPIRVOps.td')
+      nargs='*',
+      help='SPIR-V instruction to be added to ops file')
+  cli_parser.add_argument(
+      '--inst-category',
+      dest='inst_category',
+      type=str,
+      default='Op',
+      help='SPIR-V instruction category used for choosing '\
+           'the TableGen base class to define this op')
 
   args = cli_parser.parse_args()
 
@@ -608,9 +731,9 @@ if __name__ == '__main__':
   # Define new op
   if args.new_inst is not None:
     assert args.op_td_path is not None
-    filter_list = [args.new_inst] if args.new_inst else []
     docs = get_spirv_doc_from_html_spec()
-    update_td_op_definitions(args.op_td_path, instructions, docs, filter_list)
+    update_td_op_definitions(args.op_td_path, instructions, docs, args.new_inst,
+                             args.inst_category)
     print('Done. Note that this script just generates a template; ', end='')
     print('please read the spec and update traits, arguments, and ', end='')
     print('results accordingly.')

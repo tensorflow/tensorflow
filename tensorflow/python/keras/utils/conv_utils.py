@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import itertools
+
 import numpy as np
 from six.moves import range  # pylint: disable=redefined-builtin
 
@@ -240,17 +241,17 @@ def conv_kernel_mask(input_shape, kernel_shape, strides, padding):
   indicating pairs of input and output locations that are connected by a weight.
 
   Example:
-    ```python
-        >>> input_shape = (4,)
-        >>> kernel_shape = (2,)
-        >>> strides = (1,)
-        >>> padding = "valid"
-        >>> conv_kernel_mask(input_shape, kernel_shape, strides, padding)
-        array([[ True, False, False],
-               [ True,  True, False],
-               [False,  True,  True],
-               [False, False,  True]], dtype=bool)
-    ```
+
+    >>> input_shape = (4,)
+    >>> kernel_shape = (2,)
+    >>> strides = (1,)
+    >>> padding = "valid"
+    >>> conv_kernel_mask(input_shape, kernel_shape, strides, padding)
+    array([[ True, False, False],
+           [ True,  True, False],
+           [False,  True,  True],
+           [False, False,  True]])
+
     where rows and columns correspond to inputs and outputs respectively.
 
 
@@ -316,18 +317,18 @@ def conv_kernel_idxs(input_shape, kernel_shape, strides, padding, filters_in,
     weights) to the respective single input image at `input_idx`
 
   Example:
-    ```python
-        >>> input_shape = (2, 2)
-        >>> kernel_shape = (2, 1)
-        >>> strides = (1, 1)
-        >>> padding = "valid"
-        >>> filters_in = 1
-        >>> filters_out = 1
-        >>> data_format = "channels_last"
-        >>> list(conv_kernel_idxs(input_shape, kernel_shape, strides, padding,
-        >>>                       filters_in, filters_out, data_format))
-        [(0, 0), (0, 2), (1, 1), (1, 3)]
-    ```
+
+    >>> input_shape = (2, 2)
+    >>> kernel_shape = (2, 1)
+    >>> strides = (1, 1)
+    >>> padding = "valid"
+    >>> filters_in = 1
+    >>> filters_out = 1
+    >>> data_format = "channels_last"
+    >>> list(conv_kernel_idxs(input_shape, kernel_shape, strides, padding,
+    ...                       filters_in, filters_out, data_format))
+    [(0, 0), (0, 2), (1, 1), (1, 3)]
+
   Args:
     input_shape: tuple of size N: `(d_in1, ..., d_inN)`, spatial shape of the
       input.
@@ -408,16 +409,16 @@ def conv_connected_inputs(input_shape, kernel_shape, output_position, strides,
   `output_position = (p_out1, ..., p_outN)`.
 
   Example:
-    ```python
-        >>> input_shape = (4, 4)
-        >>> kernel_shape = (2, 1)
-        >>> output_position = (1, 1)
-        >>> strides = (1, 1)
-        >>> padding = "valid"
-        >>> conv_connected_inputs(input_shape, kernel_shape, output_position,
-        >>>                       strides, padding)
-        [xrange(1, 3), xrange(1, 2)]
-    ```
+
+    >>> input_shape = (4, 4)
+    >>> kernel_shape = (2, 1)
+    >>> output_position = (1, 1)
+    >>> strides = (1, 1)
+    >>> padding = "valid"
+    >>> conv_connected_inputs(input_shape, kernel_shape, output_position,
+    ...                       strides, padding)
+    [range(1, 3), range(1, 2)]
+
   Args:
     input_shape: tuple of size N: `(d_in1, ..., d_inN)`, spatial shape of the
       input.

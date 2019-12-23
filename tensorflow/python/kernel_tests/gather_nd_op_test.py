@@ -206,6 +206,7 @@ class GatherNdTest(test.TestCase):
     self.assertEqual(None, tensor_shape.dimension_value(shape[0]))
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla("XLA does not have assertions in kernels.")
   def testBadIndicesCPU(self):
     with self.session(use_gpu=False):
       params = [0, 1, 2]
@@ -229,6 +230,7 @@ class GatherNdTest(test.TestCase):
         self.evaluate(gather_nd)
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla("XLA does not have assertions in kernels.")
   def testBadIndicesWithSlicesCPU(self):
     with self.session(use_gpu=False):
       params = [[0, 1, 2]]

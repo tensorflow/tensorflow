@@ -27,7 +27,7 @@ using namespace mlir;
 
 namespace {
 struct PrintOpStatsPass : public ModulePass<PrintOpStatsPass> {
-  explicit PrintOpStatsPass(llvm::raw_ostream &os = llvm::errs()) : os(os) {}
+  explicit PrintOpStatsPass(raw_ostream &os = llvm::errs()) : os(os) {}
 
   // Prints the resultant operation statistics post iterating over the module.
   void runOnModule() override;
@@ -37,7 +37,7 @@ struct PrintOpStatsPass : public ModulePass<PrintOpStatsPass> {
 
 private:
   llvm::StringMap<int64_t> opCount;
-  llvm::raw_ostream &os;
+  raw_ostream &os;
 };
 } // namespace
 

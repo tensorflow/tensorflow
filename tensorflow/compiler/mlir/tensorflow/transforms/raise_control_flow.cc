@@ -110,7 +110,7 @@ void RaiseTFControlFlow::rewriteOps() {
 
       // Add a result type for each non-control result we find.
       bool sawControlResult = false;
-      for (auto *opResult : op.getResults()) {
+      for (auto opResult : op.getResults()) {
         if (opResult->getType().isa<TFControlType>()) {
           sawControlResult = true;
         } else {
@@ -145,8 +145,8 @@ void RaiseTFControlFlow::rewriteOps() {
 
 }  // namespace
 
-std::unique_ptr<FunctionPassBase> CreateRaiseTFControlFlowPass() {
-  return llvm::make_unique<RaiseTFControlFlow>();
+std::unique_ptr<OpPassBase<FuncOp>> CreateRaiseTFControlFlowPass() {
+  return std::make_unique<RaiseTFControlFlow>();
 }
 
 static PassRegistration<RaiseTFControlFlow> pass(

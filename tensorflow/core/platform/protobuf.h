@@ -58,6 +58,12 @@ bool ParseProtoUnlimited(protobuf::MessageLite* proto,
                          const string& serialized);
 bool ParseProtoUnlimited(protobuf::MessageLite* proto, const void* serialized,
                          size_t size);
+#ifdef USE_TSTRING
+inline bool ParseProtoUnlimited(protobuf::MessageLite* proto,
+                                const tstring& serialized) {
+  return ParseProtoUnlimited(proto, serialized.data(), serialized.size());
+}
+#endif  // USE_TSTRING
 
 // Returns the string value for the value of a string or bytes protobuf field.
 inline const string& ProtobufStringToString(const string& s) { return s; }
@@ -89,6 +95,29 @@ inline bool SerializeToTString(const protobuf::MessageLite& proto,
   return proto.SerializeToString(output);
 #endif  // USE_TSTRING
 }
+
+#ifdef USE_TSTRING
+// Analogue to StringOutputStream for tstring.
+class TStringOutputStream : public protobuf::io::ZeroCopyOutputStream {
+ public:
+  explicit TStringOutputStream(tstring* target);
+  ~TStringOutputStream() override = default;
+
+  TStringOutputStream(const TStringOutputStream&) = delete;
+  void operator=(const TStringOutputStream&) = delete;
+
+  bool Next(void** data, int* size) override;
+  void BackUp(int count) override;
+  int64_t ByteCount() const override;
+
+ private:
+  static const int kMinimumSize = 16;
+
+  tstring* target_;
+};
+#else   // USE_TSTRING
+typedef protobuf::io::StringOutputStream TStringOutputStream;
+#endif  // USE_TSTRING
 
 }  // namespace tensorflow
 

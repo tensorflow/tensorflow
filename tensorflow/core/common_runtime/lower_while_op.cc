@@ -14,11 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/common_runtime/lower_while_op.h"
-#include "tensorflow/core/common_runtime/lower_functional_ops.h"
-#include "tensorflow/core/common_runtime/lower_if_op.h"
 
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/lower_functional_ops.h"
+#include "tensorflow/core/common_runtime/lower_if_op.h"
 #include "tensorflow/core/framework/node_def_builder.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
 
@@ -54,6 +55,13 @@ constexpr const char* const kLowerAsMultiDeviceFunctionAttr =
 //                     Exit
 //                      |
 //                   consumer
+//
+// DT_RESOURCE tensors are handled specially:
+//
+// resource_loop_var -> Enter[is_constant=True] -> cond_func and body_func
+//      |
+//      V
+//   consumer
 class LowerWhileHelper {
  public:
   static Status Run(Node* while_op, const NameAttrList& cond_fn,
@@ -73,6 +81,8 @@ class LowerWhileHelper {
                    Graph* graph, bool keep_node_fetchable);
 
   Status RunInternal();
+
+  void InitializeInputOutputToLoweredNodeMap();
 
   // Creates an Enter node for each `while_op_` input and adds them to
   // `enter_nodes_`. If the `while_op_` has an incoming control edge from a
@@ -118,6 +128,9 @@ class LowerWhileHelper {
   // (name_), infix and a suffix to ensure it is unique within the graph.
   string NewName(const string& infix);
 
+  // Returns whether the While op's input/output at `index` is a `DT_RESOURCE`.
+  bool IsResource(int index);
+
   // The original While op.
   Node* while_op_;
   // The call node for the cond branch.
@@ -144,11 +157,21 @@ class LowerWhileHelper {
   NodeBuilder cond_call_builder_;
   NodeBuilder body_call_builder_;
 
+  // `Enter` nodes, one per loop input/output.
+  // Note: `Enter` nodes with type `DT_RESOURCE` have attr `is_constant=True`.
   std::vector<Node*> enter_nodes_;
+
+  // Merge/Switch/NextIteration/Exit nodes, one per non-resource loop
+  // input/output.
   std::vector<Node*> merge_nodes_;
   std::vector<Node*> switch_nodes_;
   std::vector<Node*> exit_nodes_;
   std::vector<Node*> next_iterations_nodes_;
+  // Maps from the loop input/output indices to their corresponding
+  // Merge/Switch/NextIteration/Exit node indices. For inputs/outputs of
+  // `DT_RESOURCE` type there are no Merge/Switch/NextIteration/Exit nodes
+  // in which case the mapping contains -1.
+  std::vector<int> op_input_output_to_lowered_node_;
 
   size_t num_loop_inputs_;
 };
@@ -183,9 +206,11 @@ LowerWhileHelper::LowerWhileHelper(Node* while_op, const NameAttrList& cond_fn,
   switch_nodes_.reserve(num_loop_inputs_);
   exit_nodes_.reserve(num_loop_inputs_);
   next_iterations_nodes_.reserve(num_loop_inputs_);
+  op_input_output_to_lowered_node_.resize(num_loop_inputs_, -1);
 }
 
 Status LowerWhileHelper::RunInternal() {
+  InitializeInputOutputToLoweredNodeMap();
   TF_RETURN_IF_ERROR(CreateEnterNodes());
   TF_RETURN_IF_ERROR(CreateMergeNodes());
   TF_RETURN_IF_ERROR(CreateCondFuncCallNode());
@@ -198,6 +223,15 @@ Status LowerWhileHelper::RunInternal() {
   return Status::OK();
 }
 
+void LowerWhileHelper::InitializeInputOutputToLoweredNodeMap() {
+  int counter = 0;
+  for (int i = 0; i < num_loop_inputs_; i++) {
+    if (!IsResource(i)) {
+      op_input_output_to_lowered_node_[i] = counter++;
+    }
+  }
+}
+
 Status LowerWhileHelper::CreateEnterNodes() {
   // Note: `Node::input_edge` runs in  O(num_inputs) so we use
   // `Node::input_edges` instead so that below loop runs in O(num_inputs) time
@@ -206,13 +240,16 @@ Status LowerWhileHelper::CreateEnterNodes() {
   TF_RETURN_IF_ERROR(while_op_->input_edges(&edges));
   for (const Edge* edge : edges) {
     Node* enter_node;
-    TF_RETURN_IF_ERROR(NodeBuilder(NewName("enter"), "Enter",
-                                   graph_->op_registry(), &debug_info_)
-                           .Input(NodeOut(edge->src(), edge->src_output()))
-                           .Attr("frame_name", name_)
-                           .Attr("parallel_iterations", parallel_iterations_)
-                           .Device(while_op_->requested_device())
-                           .Finalize(graph_, &enter_node));
+    NodeBuilder builder = NodeBuilder(NewName("enter"), "Enter",
+                                      graph_->op_registry(), &debug_info_)
+                              .Input(NodeOut(edge->src(), edge->src_output()))
+                              .Attr("frame_name", name_)
+                              .Attr("parallel_iterations", parallel_iterations_)
+                              .Device(while_op_->requested_device());
+    if (IsResource(edge->dst_input())) {
+      builder.Attr("is_constant", true);
+    }
+    TF_RETURN_IF_ERROR(builder.Finalize(graph_, &enter_node));
     enter_nodes_[edge->dst_input()] = enter_node;
   }
   // Create a NoOp node that takes incoming control inputs of the original While
@@ -239,6 +276,9 @@ Status LowerWhileHelper::CreateEnterNodes() {
 
 Status LowerWhileHelper::CreateMergeNodes() {
   for (Node* enter_node : enter_nodes_) {
+    if (enter_node->output_type(0) == DT_RESOURCE) {
+      continue;
+    }
     Node* merge_node;
     TF_RETURN_IF_ERROR(
         NodeBuilder(NewName("merge"), "Merge", graph_->op_registry(),
@@ -252,8 +292,13 @@ Status LowerWhileHelper::CreateMergeNodes() {
 }
 
 Status LowerWhileHelper::CreateCondFuncCallNode() {
-  for (Node* merge_node : merge_nodes_) {
-    cond_call_builder_.Input(NodeOut(merge_node, 0));
+  for (int i = 0; i < num_loop_inputs_; i++) {
+    if (IsResource(i)) {
+      cond_call_builder_.Input(NodeOut(enter_nodes_[i], 0));
+    } else {
+      cond_call_builder_.Input(
+          NodeOut(merge_nodes_[op_input_output_to_lowered_node_[i]], 0));
+    }
   }
   cond_call_builder_.Device(while_op_->requested_device());
   TF_RETURN_IF_ERROR(cond_call_builder_.Finalize(graph_, &cond_call_node_));
@@ -271,6 +316,9 @@ Status LowerWhileHelper::CreateCondFuncCallNode() {
 
 Status LowerWhileHelper::CreateSwitchNodes() {
   for (int i = 0; i < num_loop_inputs_; i++) {
+    if (IsResource(i)) {
+      continue;
+    }
     string op_name;
     {
       const Node* input_node;
@@ -279,23 +327,32 @@ Status LowerWhileHelper::CreateSwitchNodes() {
     }
     Node* switch_node;
     string op_type = "Switch";
-    if (IsRefType(merge_nodes_[i]->output_type(0))) {
+    if (IsRefType(
+            merge_nodes_[op_input_output_to_lowered_node_[i]]->output_type(
+                0))) {
       op_type = "RefSwitch";
     }
-    TF_RETURN_IF_ERROR(NodeBuilder(NewName(op_name), op_type,
-                                   graph_->op_registry(), &debug_info_)
-                           .Input(NodeOut(merge_nodes_[i], 0))
-                           .Input(NodeOut(loop_cond_node_, 0))
-                           .Device(while_op_->requested_device())
-                           .Finalize(graph_, &switch_node));
+    TF_RETURN_IF_ERROR(
+        NodeBuilder(NewName(op_name), op_type, graph_->op_registry(),
+                    &debug_info_)
+            .Input(
+                NodeOut(merge_nodes_[op_input_output_to_lowered_node_[i]], 0))
+            .Input(NodeOut(loop_cond_node_, 0))
+            .Device(while_op_->requested_device())
+            .Finalize(graph_, &switch_node));
     switch_nodes_.emplace_back(switch_node);
   }
   return Status::OK();
 }
 
 Status LowerWhileHelper::CreateBodyFuncCallNode() {
-  for (Node* switch_node : switch_nodes_) {
-    body_call_builder_.Input(NodeOut(switch_node, 1));
+  for (int i = 0; i < num_loop_inputs_; i++) {
+    if (IsResource(i)) {
+      body_call_builder_.Input(NodeOut(enter_nodes_[i], 0));
+    } else {
+      body_call_builder_.Input(
+          NodeOut(switch_nodes_[op_input_output_to_lowered_node_[i]], 1));
+    }
   }
   body_call_builder_.Device(while_op_->requested_device());
   TF_RETURN_IF_ERROR(body_call_builder_.Finalize(graph_, &body_call_node_));
@@ -323,15 +380,25 @@ Status LowerWhileHelper::CreateBodyFuncCallNode() {
 Status LowerWhileHelper::CreateExitNodes() {
   std::vector<NodeOut> outputs;
   outputs.reserve(num_loop_inputs_);
-  for (Node* switch_node : switch_nodes_) {
-    Node* exit_node;
-    TF_RETURN_IF_ERROR(NodeBuilder(NewName("exit"), "Exit",
-                                   graph_->op_registry(), &debug_info_)
-                           .Input(NodeOut(switch_node, 0))
-                           .Device(while_op_->requested_device())
-                           .Finalize(graph_, &exit_node));
-    exit_nodes_.emplace_back(exit_node);
-    outputs.emplace_back(NodeOut(exit_node, 0));
+  for (int i = 0; i < num_loop_inputs_; i++) {
+    if (IsResource(i)) {
+      // Note(srbs): A resource output of this While should never be used but we
+      // need this for the IdentityN node below.
+      OutputTensor resource_tensor;
+      TF_RETURN_IF_ERROR(enter_nodes_[i]->input_tensor(0, &resource_tensor));
+      outputs.emplace_back(resource_tensor);
+    } else {
+      Node* exit_node;
+      TF_RETURN_IF_ERROR(
+          NodeBuilder(NewName("exit"), "Exit", graph_->op_registry(),
+                      &debug_info_)
+              .Input(NodeOut(switch_nodes_[op_input_output_to_lowered_node_[i]],
+                             0))
+              .Device(while_op_->requested_device())
+              .Finalize(graph_, &exit_node));
+      exit_nodes_.emplace_back(exit_node);
+      outputs.emplace_back(NodeOut(exit_node, 0));
+    }
   }
 
   // We split data and control outputs of lowered while op, because otherwise
@@ -372,6 +439,9 @@ Status LowerWhileHelper::CreateExitNodes() {
 Status LowerWhileHelper::CreateNextIterationNodes() {
   for (int i = 0; i < num_loop_inputs_; i++) {
     Node* next_iteration;
+    if (IsResource(i)) {
+      continue;
+    }
     TF_RETURN_IF_ERROR(NodeBuilder(NewName("next_iteration"), "NextIteration",
                                    graph_->op_registry(), &debug_info_)
                            .Input(NodeOut(body_call_node_, i))
@@ -384,7 +454,7 @@ Status LowerWhileHelper::CreateNextIterationNodes() {
 }
 
 Status LowerWhileHelper::UpdateMergeNodes() {
-  for (int i = 0; i < num_loop_inputs_; i++) {
+  for (int i = 0; i < merge_nodes_.size(); i++) {
     TF_RETURN_IF_ERROR(
         graph_->UpdateEdge(next_iterations_nodes_[i], 0, merge_nodes_[i], 1));
   }
@@ -396,10 +466,23 @@ Status LowerWhileHelper::UpdateConsumers() {
     if (e->IsControlEdge()) {
       graph_->AddControlEdge(lowered_while_executed_, e->dst());
     } else {
-      // Feed the outputs directly from the exit nodes so that downstream ops
-      // can start before all the outputs have been computed.
-      graph_->AddEdge(exit_nodes_[e->src_output()], 0, e->dst(),
-                      e->dst_input());
+      if (IsResource(e->src_output())) {
+        OutputTensor resource;
+        TF_RETURN_IF_ERROR(
+            enter_nodes_[e->src_output()]->input_tensor(0, &resource));
+        graph_->AddEdge(resource.node, resource.index, e->dst(),
+                        e->dst_input());
+      } else {
+        // Feed the outputs directly from the exit nodes so that downstream ops
+        // can start before all the outputs have been computed.
+        int exit_node_index = op_input_output_to_lowered_node_[e->src_output()];
+        if (exit_node_index < 0) {
+          return errors::Internal(
+              "Expecting an Exit node for a Resource tensor.");
+        }
+        graph_->AddEdge(exit_nodes_[exit_node_index], 0, e->dst(),
+                        e->dst_input());
+      }
     }
   }
   return Status::OK();
@@ -407,6 +490,10 @@ Status LowerWhileHelper::UpdateConsumers() {
 
 string LowerWhileHelper::NewName(const string& infix) {
   return graph_->NewName(strings::StrCat(name_, "/", infix));
+}
+
+bool LowerWhileHelper::IsResource(int index) {
+  return while_op_->input_type(index) == DT_RESOURCE;
 }
 
 }  // namespace

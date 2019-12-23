@@ -18,13 +18,18 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.keras import activations
 from tensorflow.python.keras import backend as K
-from tensorflow.python.keras.engine import training
+from tensorflow.python.keras import layers as layer_module
+from tensorflow.python.keras.engine import base_layer
+from tensorflow.python.keras.engine import training as keras_training
+from tensorflow.python.keras.utils import generic_utils
+from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
 
 
 @keras_export('keras.experimental.WideDeepModel')
-class WideDeepModel(training.Model):
+class WideDeepModel(keras_training.Model):
   r"""Wide & Deep Model for regression and classification problems.
 
   This model jointly train a linear and a dnn model.
@@ -78,20 +83,27 @@ class WideDeepModel(training.Model):
         Allowed keyword arguments include `name`.
     """
     super(WideDeepModel, self).__init__(**kwargs)
+    base_layer._keras_model_gauge.get_cell('WideDeep').set(True)  # pylint: disable=protected-access
     self.linear_model = linear_model
     self.dnn_model = dnn_model
-    self.activation = activation
+    self.activation = activations.get(activation)
 
-  def call(self, inputs):
+  def call(self, inputs, training=None):
     if not isinstance(inputs, (tuple, list)) or len(inputs) != 2:
       linear_inputs = dnn_inputs = inputs
     else:
       linear_inputs, dnn_inputs = inputs
     linear_output = self.linear_model(linear_inputs)
-    dnn_output = self.dnn_model(dnn_inputs)
-    output = .5 * (linear_output + dnn_output)
+    # pylint: disable=protected-access
+    if self.dnn_model._expects_training_arg:
+      if training is None:
+        training = K.learning_phase()
+      dnn_output = self.dnn_model(dnn_inputs, training=training)
+    else:
+      dnn_output = self.dnn_model(dnn_inputs)
+    output = nest.map_structure(lambda x, y: (x + y), linear_output, dnn_output)
     if self.activation:
-      return self.activation(output)
+      return nest.map_structure(self.activation, output)
     return output
 
   def _get_optimizers(self):
@@ -102,8 +114,8 @@ class WideDeepModel(training.Model):
 
   # This does not support gradient scaling and LossScaleOptimizer.
   def _backwards(self, tape, loss):
-    linear_vars = self.linear_model._unique_trainable_weights  # pylint: disable=protected-access
-    dnn_vars = self.dnn_model._unique_trainable_weights  # pylint: disable=protected-access
+    linear_vars = self.linear_model.trainable_weights  # pylint: disable=protected-access
+    dnn_vars = self.dnn_model.trainable_weights  # pylint: disable=protected-access
     linear_grads, dnn_grads = tape.gradient(loss, (linear_vars, dnn_vars))
     linear_optimizer, dnn_optimizer = self._get_optimizers()
     linear_optimizer.apply_gradients(zip(linear_grads, linear_vars))
@@ -134,11 +146,11 @@ class WideDeepModel(training.Model):
           # Training updates
           updates = []
           linear_updates = linear_optimizer.get_updates(
-              params=self.linear_model._unique_trainable_weights,  # pylint: disable=protected-access
+              params=self.linear_model.trainable_weights,  # pylint: disable=protected-access
               loss=self.total_loss)
           updates += linear_updates
           dnn_updates = dnn_optimizer.get_updates(
-              params=self.dnn_model._unique_trainable_weights,  # pylint: disable=protected-access
+              params=self.dnn_model.trainable_weights,  # pylint: disable=protected-access
               loss=self.total_loss)
           updates += dnn_updates
           # Unconditional updates
@@ -162,3 +174,28 @@ class WideDeepModel(training.Model):
 
       # Restore the current trainable state
       self._set_trainable_state(current_trainable_state)
+
+  def get_config(self):
+    linear_config = generic_utils.serialize_keras_object(self.linear_model)
+    dnn_config = generic_utils.serialize_keras_object(self.dnn_model)
+    config = {
+        'linear_model': linear_config,
+        'dnn_model': dnn_config,
+        'activation': activations.serialize(self.activation),
+    }
+    base_config = base_layer.Layer.get_config(self)
+    return dict(list(base_config.items()) + list(config.items()))
+
+  @classmethod
+  def from_config(cls, config, custom_objects=None):
+    linear_config = config.pop('linear_model')
+    linear_model = layer_module.deserialize(linear_config, custom_objects)
+    dnn_config = config.pop('dnn_model')
+    dnn_model = layer_module.deserialize(dnn_config, custom_objects)
+    activation = activations.deserialize(
+        config.pop('activation', None), custom_objects=custom_objects)
+    return cls(
+        linear_model=linear_model,
+        dnn_model=dnn_model,
+        activation=activation,
+        **config)

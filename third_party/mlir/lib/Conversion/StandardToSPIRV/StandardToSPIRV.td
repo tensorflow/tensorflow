@@ -10,39 +10,26 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef MLIR_CONVERSION_STANDARDTOSPIRV_TD
-#else
+#ifndef MLIR_CONVERSION_STANDARDTOSPIRV_TD
 #define MLIR_CONVERSION_STANDARDTOSPIRV_TD
 
-#ifdef STANDARD_OPS
-#else
-include "mlir/StandardOps/Ops.td"
-#endif // STANDARD_OPS
-
-#ifdef SPIRV_OPS
-#else
+include "mlir/Dialect/StandardOps/Ops.td"
 include "mlir/Dialect/SPIRV/SPIRVOps.td"
-#endif // SPIRV_OPS
 
-def IsScalar : TypeConstraint<CPred<"!($_self.isa<ShapedType>())">, "scalar">;
+class BinaryOpPattern<Op src, Op tgt> :
+      Pat<(src SPV_ScalarOrVector:$l, SPV_ScalarOrVector:$r),
+          (tgt $l, $r)>;
 
-class IsVectorLengthPred<int vecLength> :
-      CPred<"($_self.cast<VectorType>().getShape().size() == 1 && " #
-            "$_self.cast<VectorType>().getShape()[0] == " # vecLength # ")">;
+def : BinaryOpPattern<AddFOp, SPV_FAddOp>;
+def : BinaryOpPattern<DivFOp, SPV_FDivOp>;
+def : BinaryOpPattern<MulFOp, SPV_FMulOp>;
+def : BinaryOpPattern<RemFOp, SPV_FRemOp>;
+def : BinaryOpPattern<SubFOp, SPV_FSubOp>;
 
-class IsVectorOfLength<int vecLength>:
-    TypeConstraint<And<[IsVectorTypePred, IsVectorLengthPred<vecLength>]>,
-                   vecLength # "-element vector">;
-
-multiclass BinaryOpPattern<Op src, SPV_Op tgt> {
-  def : Pat<(src IsScalar:$l, IsScalar:$r), (tgt $l, $r)>;
-  foreach vecLength = [2, 3, 4] in {
-    def : Pat<(src IsVectorOfLength<vecLength>:$l,
-                   IsVectorOfLength<vecLength>:$r),
-              (tgt $l, $r)>;
-  }
-}
-
-defm : BinaryOpPattern<MulFOp, SPV_FMulOp>;
+// Constant Op
+// TODO(ravishankarm): Handle lowering other constant types.
+def : Pat<(ConstantOp:$result $valueAttr),
+          (SPV_ConstantOp $valueAttr),
+          [(SPV_ScalarOrVector $result)]>;
 
 #endif // MLIR_CONVERSION_STANDARDTOSPIRV_TD

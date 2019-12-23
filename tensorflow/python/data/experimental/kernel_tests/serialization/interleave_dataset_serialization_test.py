@@ -21,7 +21,9 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.data.experimental.kernel_tests.serialization import dataset_serialization_test_base
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.platform import test
@@ -39,16 +41,13 @@ class InterleaveDatasetSerializationTest(
             lambda x: dataset_ops.Dataset.from_tensors(x).repeat(x),
             cycle_length, block_length, num_parallel_calls)
 
-  @parameterized.named_parameters(
-      ("1", 2, 3, None),
-      ("2", 2, 3, 1),
-      ("3", 2, 3, 2),
-      ("4", 1, 3, None),
-      ("5", 1, 3, 1),
-      ("6", 2, 1, None),
-      ("7", 2, 1, 1),
-      ("8", 2, 1, 2),
-  )
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              cycle_length=2,
+              block_length=[1, 3],
+              num_parallel_calls=[None, 1, 2])))
   def testSerializationCore(self, cycle_length, block_length,
                             num_parallel_calls):
     input_values = np.array([4, 5, 6], dtype=np.int64)
@@ -60,6 +59,7 @@ class InterleaveDatasetSerializationTest(
         num_outputs)
     # pylint: enable=g-long-lambda
 
+  @combinations.generate(test_base.default_test_combinations())
   def testSparseCore(self):
 
     def _map_fn(i):

@@ -28,10 +28,9 @@ from tensorflow.python.ops import sparse_ops
 from tensorflow.python.platform import googletest
 
 
-_INEQUALITY_DEFAULT_LEFT = 'inequality_default_left'.encode('utf-8')
-_INEQUALITY_DEFAULT_RIGHT = 'inequality_default_right'.encode('utf-8')
-_EQUALITY_DEFAULT_LEFT = 'equality_default_left'.encode('utf-8')
-_EQUALITY_DEFAULT_RIGHT = 'equality_default_right'.encode('utf-8')
+_INEQUALITY_DEFAULT_LEFT = 'INEQUALITY_DEFAULT_LEFT'.encode('utf-8')
+_INEQUALITY_DEFAULT_RIGHT = 'INEQUALITY_DEFAULT_RIGHT'.encode('utf-8')
+_EQUALITY_DEFAULT_RIGHT = 'EQUALITY_DEFAULT_RIGHT'.encode('utf-8')
 
 
 class StatsOpsTest(test_util.TensorFlowTestCase):

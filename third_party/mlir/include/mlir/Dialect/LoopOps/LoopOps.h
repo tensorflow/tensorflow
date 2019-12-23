@@ -26,6 +26,7 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/OpDefinition.h"
+#include "mlir/Transforms/LoopLikeInterface.h"
 
 namespace mlir {
 namespace loop {
@@ -49,7 +50,7 @@ void ensureLoopTerminator(Region &region, Builder &builder, Location loc);
 
 /// Returns the loop parent of an induction variable. If the provided value is
 /// not an induction variable, then return nullptr.
-ForOp getForInductionVarOwner(Value *val);
+ForOp getForInductionVarOwner(ValuePtr val);
 
 } // end namespace loop
 } // end namespace mlir

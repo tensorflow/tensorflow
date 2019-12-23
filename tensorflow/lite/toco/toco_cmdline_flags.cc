@@ -124,6 +124,10 @@ bool ParseTocoFlagsFromCommandLineFlags(
            parsed_flags.allow_custom_ops.default_value(),
            "If true, allow TOCO to create TF Lite Custom operators for all the "
            "unsupported TensorFlow ops."),
+      Flag("custom_opdefs", parsed_flags.custom_opdefs.bind(),
+           parsed_flags.custom_opdefs.default_value(),
+           "List of strings representing custom ops OpDefs that are included "
+           "in the GraphDef."),
       Flag("allow_dynamic_tensors", parsed_flags.allow_dynamic_tensors.bind(),
            parsed_flags.allow_dynamic_tensors.default_value(),
            "Boolean flag indicating whether the converter should allow models "

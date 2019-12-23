@@ -97,7 +97,7 @@ size_t Bitmap::FirstUnset(size_t start) const {
 string Bitmap::ToString() const {
   string result;
   result.resize(bits());
-  for (int i = 0; i < nbits_; i++) {
+  for (size_t i = 0; i < nbits_; i++) {
     result[i] = get(i) ? '1' : '0';
   }
   return result;

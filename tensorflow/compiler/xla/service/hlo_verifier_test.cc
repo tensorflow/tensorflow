@@ -323,7 +323,7 @@ TEST_F(HloVerifierTestAllowMixedPrecision, RngMixedPrecisionAllowed) {
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+                          ParseAndReturnVerifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_TRUE(status.ok());
@@ -440,7 +440,7 @@ static const char* const kAddWithLayoutChangeHlo = R"(
 
 TEST_F(HloVerifierTest, AddWithLayoutChange) {
   TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnUnverifiedModule(kAddWithLayoutChangeHlo));
+      auto module, ParseAndReturnVerifiedModule(kAddWithLayoutChangeHlo));
   auto status = verifier().Run(module.get()).status();
   ASSERT_TRUE(status.ok());
 }
@@ -462,7 +462,7 @@ TEST_F(HloVerifierTest, ScalarIndexDynamicSlice) {
   debug_options.set_xla_allow_scalar_index_dynamic_ops(true);
   config.set_debug_options(debug_options);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
                                            kScalarIndexDynamicSlice, config));
   auto status = verifier().Run(module.get()).status();
   ASSERT_TRUE(status.ok());
@@ -488,7 +488,7 @@ TEST_F(HloVerifierTest, ScalarIndexDynamicUpdateSlice) {
   debug_options.set_xla_allow_scalar_index_dynamic_ops(true);
   config.set_debug_options(debug_options);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
                                            kScalarIndexDynamicSlice, config));
   auto status = verifier().Run(module.get()).status();
   ASSERT_TRUE(status.ok());
@@ -590,7 +590,7 @@ TEST_F(HloVerifierTestAllowMixedPrecision, SelectMixedPrecisionAllowed) {
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+                          ParseAndReturnVerifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_TRUE(status.ok());
@@ -627,7 +627,7 @@ TEST_F(HloVerifierTestLayoutSensitive, CopyStartAndCopyDone) {
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+                          ParseAndReturnVerifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_TRUE(status.ok());
@@ -794,7 +794,7 @@ TEST_F(HloVerifierTest, MapOperandComputationMismatch) {
 }
 
 TEST_F(HloVerifierTestAllowMixedPrecision, MapOperandComputationMismatch) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
                                            kMapOperandComputationMismatchHlo));
   auto status = verifier().Run(module.get()).status();
   ASSERT_TRUE(status.ok());
@@ -827,7 +827,7 @@ TEST_F(HloVerifierTest, ReduceOperandComputationMismatch) {
 TEST_F(HloVerifierTestAllowMixedPrecision, ReduceOperandComputationMismatch) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-      ParseAndReturnUnverifiedModule(kReduceOperandComputationMismatchHlo));
+      ParseAndReturnVerifiedModule(kReduceOperandComputationMismatchHlo));
   auto status = verifier().Run(module.get()).status();
   ASSERT_TRUE(status.ok());
 }
@@ -986,6 +986,31 @@ TEST_F(HloVerifierTest, FusionShapeVerifier) {
                           ParseAndReturnUnverifiedModule(kModuleStr));
   EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
               HasSubstr("Fused computation shape"));
+}
+
+TEST_F(HloVerifierTest, AllReduceVerifier) {
+  const char* const kModuleStr = R"(
+  HloModule test
+
+  add {
+    lhs = f32[] parameter(0)
+    rhs = f32[] parameter(1)
+    ROOT add = f32[] add(lhs, rhs)
+  }
+
+  ENTRY entry {
+    input = f32[8,12]{0,1} parameter(0)
+    crs0 = f32[8,12]{0,1} all-reduce(input), replica_groups={}, to_apply=add
+    crs1 = f32[8,12]{0,1} all-reduce(input), replica_groups={}, to_apply=add,
+      constrain_layout=true
+    ROOT result = (f32[8,12]{0,1}, f32[8,12]{0,1}) tuple(crs0, crs1)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr));
+  EXPECT_THAT(
+      verifier().Run(module.get()).status().error_message(),
+      HasSubstr("mix of layout constrained and unconstrained AllReduce"));
 }
 
 }  // namespace

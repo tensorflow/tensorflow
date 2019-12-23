@@ -28,7 +28,7 @@ class MapBenchmark(benchmark_base.DatasetBenchmarkBase):
   def benchmark_chain_of_maps(self):
 
     def benchmark_helper(chain_length, map_fn, use_inter_op_parallelism, label):
-      dataset = dataset_ops.Dataset.from_tensors(0).repeat(None)
+      dataset = dataset_ops.Dataset.range(10000)
       for _ in range(chain_length):
         dataset = dataset_ops.MapDataset(
             dataset, map_fn, use_inter_op_parallelism=use_inter_op_parallelism)

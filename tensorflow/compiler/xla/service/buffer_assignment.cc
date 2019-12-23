@@ -234,8 +234,9 @@ BufferAllocation::Slice BufferAllocation::GetSlice(
 
 void BufferAllocation::AddAssignment(const HloValue& buffer, int64 offset,
                                      int64 size) {
-  VLOG(4) << "Adding the following buffer to allocation #" << index() << " ["
-          << offset << ", " << size << "]: " << buffer;
+  VLOG(4) << "Adding the following buffer to allocation #" << index()
+          << absl::StrFormat(" (size=%d, offset=%d) %s", size, offset,
+                             buffer.ToShortString());
   CHECK(!assigned_buffers_.contains(&buffer))
       << "LogicalBuffer " << buffer << " already assigned to allocation "
       << index_;
@@ -253,10 +254,12 @@ void BufferAllocation::AddAssignment(const HloValue& buffer, int64 offset,
   assigned_buffers_.emplace(&buffer, offset_size);
   // For debugging purposes, store the assigned memory space in the
   // instruction's layout.
-  HloInstruction* defining_instruction = buffer.defining_instruction();
-  if (defining_instruction->shape().has_layout()) {
-    defining_instruction->mutable_shape()->mutable_layout()->set_memory_space(
-        buffer.color().value());
+  for (HloPosition position : buffer.positions()) {
+    Shape* shape = ShapeUtil::GetMutableSubshape(
+        position.instruction->mutable_shape(), position.index);
+    if (shape->has_layout()) {
+      shape->mutable_layout()->set_memory_space(buffer.color().value());
+    }
   }
 }
 
@@ -291,6 +294,42 @@ BufferAllocationProto BufferAllocation::ToProto() const {
   return proto;
 }
 
+static bool CompareHloValuesById(const HloValue* a, const HloValue* b) {
+  return a->id() < b->id();
+}
+
+// Returns parameter instruction corresponding to the allocation or nullptr.
+static const HloInstruction* GetEntryParameterInstruction(
+    const BufferAllocation& alloc) {
+  for (const auto& p : alloc.assigned_buffers()) {
+    const HloValue* value = p.first;
+    const HloInstruction* instr = value->instruction();
+    if (instr->opcode() == HloOpcode::kParameter &&
+        instr->parent() == instr->parent()->parent()->entry_computation()) {
+      return instr;
+    }
+  }
+  return nullptr;
+}
+
+// Returns root module output instruction corresponding to the allocation or
+// nullptr.
+static const HloInstruction* GetOutputInstruction(
+    const BufferAllocation& alloc) {
+  for (const auto& p : alloc.assigned_buffers()) {
+    const HloValue* value = p.first;
+    for (const HloPosition& position : value->positions()) {
+      const HloInstruction* instr = position.instruction;
+      if (position.index.empty() &&
+          instr->parent()->root_instruction() == instr &&
+          instr->parent()->IsEntryComputation()) {
+        return instr;
+      }
+    }
+  }
+  return nullptr;
+}
+
 string BufferAllocation::ToString() const {
   string output;
   StrAppendFormat(&output, "allocation %d: %p, size %d", index_, this, size());
@@ -298,8 +337,15 @@ string BufferAllocation::ToString() const {
     StrAppend(&output, ", color ", color().value());
   }
   if (is_entry_computation_parameter()) {
-    StrAppend(&output, ", parameter ", parameter_number(), " at ShapeIndex ",
-              param_shape_index().ToString());
+    const HloInstruction* param = GetEntryParameterInstruction(*this);
+    CHECK(param);
+    StrAppend(&output, ", parameter ", parameter_number(), ", shape |",
+              param->shape().ToString(/*print_layout=*/false),
+              "| at ShapeIndex ", param_shape_index().ToString());
+  }
+  if (const HloInstruction* instr = GetOutputInstruction(*this)) {
+    StrAppend(&output, ", output shape is |",
+              instr->shape().ToString(/*print_layout=*/false), "|");
   }
   if (is_constant()) {
     StrAppend(&output, ", constant");
@@ -319,15 +365,14 @@ string BufferAllocation::ToString() const {
   for (const auto& buffer_offset_size : assigned_buffers_) {
     sorted_buffers.push_back(buffer_offset_size.first);
   }
-  absl::c_sort(sorted_buffers, [](const HloValue* a, const HloValue* b) {
-    return a->id() < b->id();
-  });
+  absl::c_sort(sorted_buffers, &CompareHloValuesById);
   for (const HloValue* buffer : sorted_buffers) {
     const OffsetSize& offset_size = FindOrDie(assigned_buffers_, buffer);
-    StrAppend(&output, absl::StrFormat(
-                           "  %s [%d,%d]: %s\n", buffer->ToString(),
-                           offset_size.offset, offset_size.size,
-                           ShapeUtil::HumanStringWithLayout(buffer->shape())));
+    StrAppend(&output,
+              absl::StrFormat(
+                  " value: %s (size=%d,offset=%d): %s\n",
+                  buffer->ToShortString(), offset_size.size, offset_size.offset,
+                  ShapeUtil::HumanStringWithLayout(buffer->shape())));
   }
   return output;
 }
@@ -715,8 +760,20 @@ string BufferAssignment::Stats::ToString() const {
 string BufferAssignment::ToString() const {
   string output;
   absl::StrAppend(&output, "BufferAssignment:\n");
+  std::vector<const HloValue*> used_values;
+  int64 total_size = 0;
   for (auto& allocation : allocations_) {
+    total_size += allocation.size();
     absl::StrAppend(&output, allocation.ToString());
+    for (const auto& p : allocation.assigned_buffers()) {
+      used_values.push_back(p.first);
+    }
+  }
+  absl::StrAppend(&output, "\nTotal bytes used: ", total_size, "\n");
+  absl::StrAppend(&output, "\nUsed values:\n");
+  absl::c_sort(used_values, &CompareHloValuesById);
+  for (const HloValue* value : used_values) {
+    absl::StrAppend(&output, value->ToString());
   }
   return output;
 }
@@ -808,12 +865,18 @@ bool BufferAssigner::LiveRangeInterferes(const HloValue* buffer1,
       auto operand_value = buffer1;
       auto user_value = buffer2;
       if (!can_share_as_operand(user_value, operand_value)) {
+        VLOG(4) << "End of live range of " << buffer1->ToShortString()
+                << " is equal to the start of live range of "
+                << buffer2->ToShortString() << ", buffer cannot be shared.";
         return true;
       }
     } else if (live_range_2.end == live_range_1.start) {
       auto operand_value = buffer2;
       auto user_value = buffer1;
       if (!can_share_as_operand(user_value, operand_value)) {
+        VLOG(4) << "End of live range of " << buffer2->ToShortString()
+                << " is equal to the start of live range of "
+                << buffer1->ToShortString() << ", buffer cannot be shared.";
         return true;
       }
     } else {
@@ -898,6 +961,9 @@ bool BufferAssigner::MaybeAssignBuffer(BufferAllocation* allocation,
     for (const HloValue* new_value : hlo_buffer.values()) {
       if (assignment->hlo_live_range().total_order_scheduled()) {
         if (LiveRangeInterferes(new_value, &assigned_buffer, assignment)) {
+          VLOG(4) << "Can't assign: assignee " << assigned_buffer
+                  << " live range interferes with "
+                  << new_value->ToShortString();
           return false;
         }
       } else if (assignment->hlo_ordering().MayInterfere(
@@ -1247,8 +1313,7 @@ Status BufferAssigner::AssignBuffersForComputations(
         };
         const HloValue* a_min = *absl::c_min_element(a->values(), compare);
         const HloValue* b_min = *absl::c_min_element(b->values(), compare);
-        return post_order_position.at(a_min->instruction()) <
-               post_order_position.at(b_min->instruction());
+        return compare(a_min, b_min);
       });
 
   std::vector<BufferAllocation::Index> allocation_indices;
@@ -1299,22 +1364,24 @@ Status BufferAssigner::AssignPresetBuffers(
   }
 
   const HloAliasAnalysis& alias_analysis = assignment->alias_analysis();
+  const HloDataflowAnalysis& dataflow_analysis =
+      alias_analysis.dataflow_analysis();
 
   for (auto& position_and_chunk : preset_assignments_->chunks()) {
     const HloPosition& position = position_and_chunk.first;
-    const HloBuffer& buffer =
-        alias_analysis.GetUniqueBufferAt(position.instruction, position.index);
-    VLOG(3) << "Preset allocation for buffer: " << buffer;
+    const HloValue& value = dataflow_analysis.GetUniqueValueAt(
+        position.instruction, position.index);
+    VLOG(3) << "Preset allocation for value: " << value.ToShortString();
     const HeapSimulator::Chunk& chunk = position_and_chunk.second;
-    auto preset_allocations_iter = preset_allocations.find(buffer.color());
+    auto preset_allocations_iter = preset_allocations.find(value.color());
     CHECK(preset_allocations_iter != preset_allocations.end())
-        << "No preset buffer allocation for color " << buffer.color()
+        << "No preset value allocation for color " << value.color()
         << " found.";
-    preset_allocations_iter->second->AddAssignment(buffer.GetUniqueValue(),
-                                                   chunk.offset, chunk.size);
-    // Ensure that there is at most one preset allocation for each buffer.
-    CHECK_EQ(assigned_buffers->count(&buffer), 0);
-    assigned_buffers->emplace(&buffer);
+    preset_allocations_iter->second->AddAssignment(value, chunk.offset,
+                                                   chunk.size);
+
+    const HloBuffer& buffer = alias_analysis.GetBufferContainingValue(value);
+    assigned_buffers->insert(&buffer);
   }
 
   // Upon consumption of the preset assignments, delete it so that if this
@@ -1580,7 +1647,7 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
       /*is_thread_local=*/false, &buffers_to_assign_sequentially,
       assignment.get()));
   // Assign buffers with sequential ordering, if any. If all global
-  // computations are sequential, we can run heap simuation on the whole
+  // computations are sequential, we can run heap simulation on the whole
   // module, which reduces memory usage.
   const bool run_whole_module_heap_simulation =
       buffers_to_assign_sequentially.size() == global_computations.size();

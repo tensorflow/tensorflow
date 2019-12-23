@@ -13,27 +13,35 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/platform/file_system.h"
+
 #include <sys/stat.h>
+
 #include <algorithm>
 #include <deque>
 
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/file_system.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/platform.h"
+#include "tensorflow/core/platform/str_util.h"
+#include "tensorflow/core/platform/strcat.h"
 
 namespace tensorflow {
-
-FileSystem::~FileSystem() {}
 
 string FileSystem::TranslateName(const string& name) const {
   // If the name is empty, CleanPath returns "." which is incorrect and
   // we should return the empty path instead.
   if (name.empty()) return name;
-  return io::CleanPath(name);
+
+  // Otherwise, properly separate the URI components and clean the path one
+  StringPiece scheme, host, path;
+  io::ParseURI(name, &scheme, &host, &path);
+
+  // If `path` becomes empty, return `/` (`file://` should be `/`), not `.`.
+  if (path.empty()) return "/";
+
+  return io::CleanPath(path);
 }
 
 Status FileSystem::IsDirectory(const string& name) {
@@ -48,12 +56,6 @@ Status FileSystem::IsDirectory(const string& name) {
 }
 
 void FileSystem::FlushCaches() {}
-
-RandomAccessFile::~RandomAccessFile() {}
-
-WritableFile::~WritableFile() {}
-
-FileSystemRegistry::~FileSystemRegistry() {}
 
 bool FileSystem::FilesExist(const std::vector<string>& files,
                             std::vector<Status>* status) {
@@ -85,6 +87,14 @@ Status FileSystem::DeleteRecursively(const string& dirname,
     (*undeleted_dirs)++;
     return exists_status;
   }
+
+  // If given path to a single file, we should just delete it.
+  if (!IsDirectory(dirname).ok()) {
+    Status delete_root_status = DeleteFile(dirname);
+    if (!delete_root_status.ok()) (*undeleted_files)++;
+    return delete_root_status;
+  }
+
   std::deque<string> dir_q;      // Queue for the BFS
   std::vector<string> dir_list;  // List of all dirs discovered
   dir_q.push_back(dirname);
@@ -140,12 +150,23 @@ Status FileSystem::RecursivelyCreateDir(const string& dirname) {
   io::ParseURI(dirname, &scheme, &host, &remaining_dir);
   std::vector<StringPiece> sub_dirs;
   while (!remaining_dir.empty()) {
-    Status status = FileExists(io::CreateURI(scheme, host, remaining_dir));
-    if (status.ok()) {
-      break;
+    std::string current_entry = io::CreateURI(scheme, host, remaining_dir);
+    Status exists_status = FileExists(current_entry);
+    if (exists_status.ok()) {
+      // FileExists cannot differentiate between existence of a file or a
+      // directory, hence we need an additional test as we must not assume that
+      // a path to a file is a path to a parent directory.
+      Status directory_status = IsDirectory(current_entry);
+      if (directory_status.ok()) {
+        break;  // We need to start creating directories from here.
+      } else if (directory_status.code() == tensorflow::error::UNIMPLEMENTED) {
+        return directory_status;
+      } else {
+        return errors::FailedPrecondition(remaining_dir, " is not a directory");
+      }
     }
-    if (status.code() != error::Code::NOT_FOUND) {
-      return status;
+    if (exists_status.code() != error::Code::NOT_FOUND) {
+      return exists_status;
     }
     // Basename returns "" for / ending dirs.
     if (!str_util::EndsWith(remaining_dir, "/")) {

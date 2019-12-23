@@ -79,6 +79,7 @@ REGISTER_OP("_ConfigureDistributedTPU")
     .Input("inputs: N * int32")
     .Output("output: string")
     .Attr("N: int >= 1")
+    .Attr("enable_whole_mesh_compilations: bool = false")
     .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input;
@@ -98,6 +99,11 @@ there are on the host.
 output: A tensor containing a TPUHostConfiguration proto serialized to
 a string, containing the information necessary to initialize the chips
 in a host.
+enable_whole_mesh_compilations: Usually the master TPU worker is the only
+worker compile ops are sent, and the master worker is the only one which
+can execute them. Other TPU clients distribute TPU compilation across all
+the hosts of the mesh, and setting this flag to True enables such mesh
+initialization mode.
 )doc");
 
 REGISTER_OP("_WaitForDistributedTPU")
@@ -160,6 +166,7 @@ the system.
 REGISTER_OP("_InitializeHostForDistributedTPU")
     .Input("input: string")
     .Output("tpu_ids: int32")
+    .Attr("enable_whole_mesh_compilations: bool = false")
     .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input;
@@ -173,6 +180,11 @@ them to operate as a distributed system with chips in other hosts.
 
 input: A string containing the address of the UberDriver to connect to.
 tpu_ids: A vector containing the global TPU id of each TPU on the host.
+enable_whole_mesh_compilations: Usually the master TPU worker is the only
+worker compile ops are sent, and the master worker is the only one which
+can execute them. Other TPU clients distribute TPU compilation across all
+the hosts of the mesh, and setting this flag to True enables such mesh
+initialization mode.
 )doc");
 
 REGISTER_OP("_DisconnectHostFromDistributedTPUSystem")
@@ -192,6 +204,8 @@ REGISTER_OP("ConfigureDistributedTPU")
     .Attr("embedding_config: string = ''")
     .Attr("tpu_embedding_config: string = ''")
     .Attr("is_global_init: bool = false")
+    .Attr("enable_whole_mesh_compilations: bool = false")
+    .Attr("compilation_failure_closes_chips: bool = true")
     .SetIsStateful()
     .SetShapeFn(shape_inference::UnknownShape);
 

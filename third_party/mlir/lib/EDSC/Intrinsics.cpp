@@ -18,7 +18,6 @@
 #include "mlir/EDSC/Intrinsics.h"
 #include "mlir/EDSC/Builders.h"
 #include "mlir/IR/AffineExpr.h"
-#include "mlir/VectorOps/VectorOps.h"
 
 using namespace mlir;
 using namespace mlir::edsc;
@@ -30,7 +29,7 @@ OperationHandle mlir::edsc::intrinsics::br(BlockHandle bh,
     (void)o;
     assert(o && "Expected already captured ValueHandle");
   }
-  SmallVector<Value *, 4> ops(operands.begin(), operands.end());
+  SmallVector<ValuePtr, 4> ops(operands.begin(), operands.end());
   return OperationHandle::create<BranchOp>(bh.getBlock(), ops);
 }
 static void enforceEmptyCapturesMatchOperands(ArrayRef<ValueHandle *> captures,
@@ -53,7 +52,7 @@ OperationHandle mlir::edsc::intrinsics::br(BlockHandle *bh,
   assert(!*bh && "Unexpected already captured BlockHandle");
   enforceEmptyCapturesMatchOperands(captures, operands);
   BlockBuilder(bh, captures)(/* no body */);
-  SmallVector<Value *, 4> ops(operands.begin(), operands.end());
+  SmallVector<ValuePtr, 4> ops(operands.begin(), operands.end());
   return OperationHandle::create<BranchOp>(bh->getBlock(), ops);
 }
 
@@ -62,8 +61,8 @@ mlir::edsc::intrinsics::cond_br(ValueHandle cond, BlockHandle trueBranch,
                                 ArrayRef<ValueHandle> trueOperands,
                                 BlockHandle falseBranch,
                                 ArrayRef<ValueHandle> falseOperands) {
-  SmallVector<Value *, 4> trueOps(trueOperands.begin(), trueOperands.end());
-  SmallVector<Value *, 4> falseOps(falseOperands.begin(), falseOperands.end());
+  SmallVector<ValuePtr, 4> trueOps(trueOperands.begin(), trueOperands.end());
+  SmallVector<ValuePtr, 4> falseOps(falseOperands.begin(), falseOperands.end());
   return OperationHandle::create<CondBranchOp>(
       cond, trueBranch.getBlock(), trueOps, falseBranch.getBlock(), falseOps);
 }
@@ -79,8 +78,8 @@ OperationHandle mlir::edsc::intrinsics::cond_br(
   enforceEmptyCapturesMatchOperands(falseCaptures, falseOperands);
   BlockBuilder(trueBranch, trueCaptures)(/* no body */);
   BlockBuilder(falseBranch, falseCaptures)(/* no body */);
-  SmallVector<Value *, 4> trueOps(trueOperands.begin(), trueOperands.end());
-  SmallVector<Value *, 4> falseOps(falseOperands.begin(), falseOperands.end());
+  SmallVector<ValuePtr, 4> trueOps(trueOperands.begin(), trueOperands.end());
+  SmallVector<ValuePtr, 4> falseOps(falseOperands.begin(), falseOperands.end());
   return OperationHandle::create<CondBranchOp>(
       cond, trueBranch->getBlock(), trueOps, falseBranch->getBlock(), falseOps);
 }

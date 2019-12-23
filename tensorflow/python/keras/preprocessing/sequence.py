@@ -21,7 +21,7 @@ from __future__ import print_function
 
 from keras_preprocessing import sequence
 
-from tensorflow.python.keras import utils
+from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.util.tf_export import keras_export
 
 pad_sequences = sequence.pad_sequences
@@ -32,7 +32,7 @@ _remove_long_seq = sequence._remove_long_seq  # pylint: disable=protected-access
 
 
 @keras_export('keras.preprocessing.sequence.TimeseriesGenerator')
-class TimeseriesGenerator(sequence.TimeseriesGenerator, utils.Sequence):
+class TimeseriesGenerator(sequence.TimeseriesGenerator, data_utils.Sequence):
   """Utility class for generating batches of temporal data.
   This class takes in a sequence of data-points gathered at
   equal intervals, along with time series parameters such as

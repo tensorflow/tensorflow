@@ -540,6 +540,33 @@ message ConfigProto {
     // GraphDef must be passed in a single call to Session::Create(), and
     // Session::Extend() may not be supported.
     bool optimize_for_static_graph = 12;
+
+    // Whether to enable the MLIR-based TF->XLA bridge.
+    //
+    // This is a replacement to the existing bridge, and not ready for
+    // production usage yet.
+    // If this option is set to true when a session is created, MLIR is used to
+    // perform the set of graph transformations to put the graph in a form that
+    // can be executed with delegation of some computations to an accelerator.
+    // This builds on the model of XLA where a subset of the graph is
+    // encapsulated and attached to a "compile" operation, whose result is fed
+    // to an "execute" operation. The kernel for these operations is responsible
+    // to lower the encapsulated graph to a particular device.
+    bool enable_mlir_bridge = 13;
+
+    // If true, the session will not store an additional copy of the graph for
+    // each subgraph.
+    //
+    // If this option is set to true when a session is created, the
+    // `RunOptions.output_partition_graphs` options must not be set.
+    bool disable_output_partition_graphs = 14;
+
+    // Minimum number of batches run through the XLA graph before XLA fusion
+    // autotuner is enabled. Default value of zero disables the autotuner.
+    //
+    // The XLA fusion autotuner can improve performance by executing a heuristic
+    // search on the compiler parameters.
+    int64 xla_fusion_autotuner_thresh = 15;
   };
 
   Experimental experimental = 16;

@@ -23,9 +23,12 @@
 #include "mlir/TableGen/OpTrait.h"
 #include "mlir/TableGen/Predicate.h"
 #include "mlir/TableGen/Type.h"
+#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/TableGen/Error.h"
 #include "llvm/TableGen/Record.h"
+
+#define DEBUG_TYPE "mlir-tblgen-operator"
 
 using namespace mlir;
 
@@ -126,22 +129,37 @@ unsigned tblgen::Operator::getNumVariadicOperands() const {
       [](const NamedTypeConstraint &c) { return c.constraint.isVariadic(); });
 }
 
+tblgen::Operator::arg_iterator tblgen::Operator::arg_begin() const {
+  return arguments.begin();
+}
+
+tblgen::Operator::arg_iterator tblgen::Operator::arg_end() const {
+  return arguments.end();
+}
+
+tblgen::Operator::arg_range tblgen::Operator::getArgs() const {
+  return {arg_begin(), arg_end()};
+}
+
 StringRef tblgen::Operator::getArgName(int index) const {
   DagInit *argumentValues = def.getValueAsDag("arguments");
   return argumentValues->getArgName(index)->getValue();
 }
 
-bool tblgen::Operator::hasTrait(StringRef trait) const {
-  for (auto t : getTraits()) {
+const tblgen::OpTrait *tblgen::Operator::getTrait(StringRef trait) const {
+  for (const auto &t : traits) {
     if (auto opTrait = dyn_cast<tblgen::NativeOpTrait>(&t)) {
       if (opTrait->getTrait() == trait)
-        return true;
+        return opTrait;
     } else if (auto opTrait = dyn_cast<tblgen::InternalOpTrait>(&t)) {
       if (opTrait->getTrait() == trait)
-        return true;
+        return opTrait;
+    } else if (auto opTrait = dyn_cast<tblgen::InterfaceOpTrait>(&t)) {
+      if (opTrait->getTrait() == trait)
+        return opTrait;
     }
   }
-  return false;
+  return nullptr;
 }
 
 unsigned tblgen::Operator::getNumRegions() const { return regions.size(); }
@@ -193,12 +211,11 @@ void tblgen::Operator::populateOpStructure() {
   auto derivedAttrClass = recordKeeper.getClass("DerivedAttr");
   numNativeAttributes = 0;
 
-  // The argument ordering is operands, native attributes, derived
-  // attributes.
   DagInit *argumentValues = def.getValueAsDag("arguments");
-  unsigned i = 0;
+  unsigned numArgs = argumentValues->getNumArgs();
+
   // Handle operands and native attributes.
-  for (unsigned e = argumentValues->getNumArgs(); i != e; ++i) {
+  for (unsigned i = 0; i != numArgs; ++i) {
     auto arg = argumentValues->getArg(i);
     auto givenName = argumentValues->getArgNameStr(i);
     auto argDefInit = dyn_cast<DefInit>(arg);
@@ -210,7 +227,6 @@ void tblgen::Operator::populateOpStructure() {
     if (argDef->isSubClassOf(typeConstraintClass)) {
       operands.push_back(
           NamedTypeConstraint{givenName, TypeConstraint(argDefInit)});
-      arguments.emplace_back(&operands.back());
     } else if (argDef->isSubClassOf(attrClass)) {
       if (givenName.empty())
         PrintFatalError(argDef->getLoc(), "attributes must be named");
@@ -218,7 +234,6 @@ void tblgen::Operator::populateOpStructure() {
         PrintFatalError(argDef->getLoc(),
                         "derived attributes not allowed in argument list");
       attributes.push_back({givenName, Attribute(argDef)});
-      arguments.emplace_back(&attributes.back());
       ++numNativeAttributes;
     } else {
       PrintFatalError(def.getLoc(), "unexpected def type; only defs deriving "
@@ -246,6 +261,22 @@ void tblgen::Operator::populateOpStructure() {
     }
   }
 
+  // Populate `arguments`. This must happen after we've finalized `operands` and
+  // `attributes` because we will put their elements' pointers in `arguments`.
+  // SmallVector may perform re-allocation under the hood when adding new
+  // elements.
+  int operandIndex = 0, attrIndex = 0;
+  for (unsigned i = 0; i != numArgs; ++i) {
+    Record *argDef = dyn_cast<DefInit>(argumentValues->getArg(i))->getDef();
+
+    if (argDef->isSubClassOf(typeConstraintClass)) {
+      arguments.emplace_back(&operands[operandIndex++]);
+    } else {
+      assert(argDef->isSubClassOf(attrClass));
+      arguments.emplace_back(&attributes[attrIndex++]);
+    }
+  }
+
   auto *resultsDag = def.getValueAsDag("results");
   auto *outsOp = dyn_cast<DefInit>(resultsDag->getOperator());
   if (!outsOp || outsOp->getDef()->getName() != "outs") {
@@ -263,12 +294,18 @@ void tblgen::Operator::populateOpStructure() {
     results.push_back({name, TypeConstraint(resultDef)});
   }
 
-  auto traitListInit = def.getValueAsListInit("traits");
-  if (!traitListInit)
-    return;
-  traits.reserve(traitListInit->size());
-  for (auto traitInit : *traitListInit)
-    traits.push_back(OpTrait::create(traitInit));
+  // Create list of traits, skipping over duplicates: appending to lists in
+  // tablegen is easy, making them unique less so, so dedupe here.
+  if (auto traitList = def.getValueAsListInit("traits")) {
+    // This is uniquing based on pointers of the trait.
+    SmallPtrSet<const llvm::Init *, 32> traitSet;
+    traits.reserve(traitSet.size());
+    for (auto traitInit : *traitList) {
+      // Keep traits in the same order while skipping over duplicates.
+      if (traitSet.insert(traitInit).second)
+        traits.push_back(OpTrait::create(traitInit));
+    }
+  }
 
   // Handle regions
   auto *regionsDag = def.getValueAsDag("regions");
@@ -286,6 +323,8 @@ void tblgen::Operator::populateOpStructure() {
     }
     regions.push_back({name, Region(regionInit->getDef())});
   }
+
+  LLVM_DEBUG(print(llvm::dbgs()));
 }
 
 ArrayRef<llvm::SMLoc> tblgen::Operator::getLoc() const { return def.getLoc(); }
@@ -304,4 +343,14 @@ bool tblgen::Operator::hasSummary() const {
 
 StringRef tblgen::Operator::getSummary() const {
   return def.getValueAsString("summary");
+}
+
+void tblgen::Operator::print(llvm::raw_ostream &os) const {
+  os << "op '" << getOperationName() << "'\n";
+  for (Argument arg : arguments) {
+    if (auto *attr = arg.dyn_cast<NamedAttribute *>())
+      os << "[attribute] " << attr->name << '\n';
+    else
+      os << "[operand] " << arg.get<NamedTypeConstraint *>()->name << '\n';
+  }
 }

@@ -28,7 +28,6 @@ limitations under the License.
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/MemoryBuffer.h"
-#include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/SMLoc.h"
 #include "llvm/Support/SourceMgr.h"
 #include "mlir/IR/Function.h"  // TF:local_config_mlir
@@ -36,6 +35,7 @@ limitations under the License.
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "mlir/Parser.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/lite/flatbuffer_translate.h"
+#include "tensorflow/compiler/mlir/lite/flatbuffer_translate_flags.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/delegates/flex/delegate.h"
@@ -79,9 +79,7 @@ static std::string TfLiteTensorString(const TfLiteTensor& tensor) {
 }
 
 int main(int argc, char** argv) {
-  llvm::PrettyStackTraceProgram x(argc, argv);
   llvm::InitLLVM y(argc, argv);
-
   llvm::cl::ParseCommandLineOptions(argc, argv, "MLIR TFLite runner\n");
 
   auto file_or_err = llvm::MemoryBuffer::getFileOrSTDIN(inputFileName.c_str());

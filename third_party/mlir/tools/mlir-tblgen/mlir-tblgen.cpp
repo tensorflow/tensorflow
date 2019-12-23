@@ -24,8 +24,8 @@
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/ManagedStatic.h"
-#include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/Signals.h"
 #include "llvm/TableGen/Error.h"
 #include "llvm/TableGen/Main.h"
@@ -74,18 +74,19 @@ const mlir::GenInfo *generator;
 // TableGenMain requires a function pointer so this function is passed in which
 // simply wraps the call to the generator.
 static bool MlirTableGenMain(raw_ostream &os, RecordKeeper &records) {
-  assert(generator && "no generator specified");
+  if (!generator) {
+    os << records;
+    return false;
+  }
   return generator->invoke(records, os);
 }
 
 int main(int argc, char **argv) {
-  sys::PrintStackTraceOnErrorSignal(argv[0]);
-  PrettyStackTraceProgram X(argc, argv);
+  llvm::InitLLVM y(argc, argv);
   llvm::cl::opt<const mlir::GenInfo *, false, mlir::GenNameParser> generator(
       "", llvm::cl::desc("Generator to run"));
   cl::ParseCommandLineOptions(argc, argv);
   ::generator = generator.getValue();
 
-  llvm_shutdown_obj Y;
   return TableGenMain(argv[0], &MlirTableGenMain);
 }

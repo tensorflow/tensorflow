@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,12 +15,10 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOOLS_OPTIMIZE_CALIBRATION_CALIBRATION_LOGGER_H_
 #define TENSORFLOW_LITE_TOOLS_OPTIMIZE_CALIBRATION_CALIBRATION_LOGGER_H_
 
-#include <algorithm>
 #include <limits>
 #include <unordered_map>
 
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 
 namespace tflite {
 namespace optimize {
@@ -28,27 +26,7 @@ namespace calibration {
 
 class MinMax {
  public:
-  TfLiteStatus Update(const float* values, size_t tensor_size) {
-    if (tensor_size <= 0) return kTfLiteOk;
-
-    // TODO(shashishekhar): Make it possible to use weighted/moving average.
-    for (size_t i = 0; i < tensor_size; ++i) {
-      if (std::isnan(values[i])) {
-        // TODO(suharshs): Propagate ErrorReporter here.
-        LOG(ERROR) << "Model resulted in Nan value during calibration. Please "
-                      "make sure model results in all real-values during "
-                      "inference with provided dataset.";
-        return kTfLiteError;
-      }
-    }
-    // We are only logging absolute min/max here.
-    const auto minmax = std::minmax_element(values, values + tensor_size);
-    min_ = std::min<float>(min_, *minmax.first);
-    max_ = std::max<float>(max_, *minmax.second);
-
-    if (!has_values_) has_values_ = true;
-    return kTfLiteOk;
-  }
+  TfLiteStatus Update(const float* values, size_t tensor_size);
 
   bool HasValues() const { return has_values_; }
 

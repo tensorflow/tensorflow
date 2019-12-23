@@ -20,8 +20,9 @@
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/StandardTypes.h"
 
-namespace mlir {
-namespace quant {
+using namespace mlir;
+using namespace mlir::quant;
+
 /// Converts a possible primitive, real expressed value attribute to a
 /// corresponding storage attribute (typically FloatAttr -> IntegerAttr).
 /// quantizedElementType is the QuantizedType that describes the expressed
@@ -104,10 +105,9 @@ convertSparseElementsAttr(SparseElementsAttr realSparseAttr,
 /// Converts a real expressed Attribute to a corresponding Attribute containing
 /// quantized storage values assuming the given uniform quantizedElementType and
 /// converter.
-Attribute quantizeAttrUniform(Attribute realValue,
-                              UniformQuantizedType quantizedElementType,
-                              const UniformQuantizedValueConverter &converter,
-                              Type &outConvertedType) {
+Attribute mlir::quant::quantizeAttrUniform(
+    Attribute realValue, UniformQuantizedType quantizedElementType,
+    const UniformQuantizedValueConverter &converter, Type &outConvertedType) {
   // Fork to handle different variants of constants supported.
   if (realValue.isa<DenseFPElementsAttr>()) {
     // Dense tensor or vector constant.
@@ -133,19 +133,25 @@ Attribute quantizeAttrUniform(Attribute realValue,
 /// quantizedElementType.getStorageType().
 /// Returns nullptr if the conversion is not supported.
 /// On success, stores the converted type in outConvertedType.
-Attribute quantizeAttr(Attribute realValue, QuantizedType quantizedElementType,
-                       Type &outConvertedType) {
-  // Hard-coded to just support UniformQuantizedType. This will need to
-  // be generalized when there is more than one.
-  auto uniformQuantizedType =
-      quantizedElementType.dyn_cast<UniformQuantizedType>();
-  if (!uniformQuantizedType) {
+Attribute mlir::quant::quantizeAttr(Attribute realValue,
+                                    QuantizedType quantizedElementType,
+                                    Type &outConvertedType) {
+  if (auto uniformQuantized =
+          quantizedElementType.dyn_cast<UniformQuantizedType>()) {
+    UniformQuantizedValueConverter converter(uniformQuantized);
+    return quantizeAttrUniform(realValue, uniformQuantized, converter,
+                               outConvertedType);
+
+  } else if (auto uniformQuantizedPerAxis =
+                 quantizedElementType.dyn_cast<UniformQuantizedPerAxisType>()) {
+    UniformQuantizedPerAxisValueConverter converter(uniformQuantizedPerAxis);
+    auto converted = converter.convert(realValue);
+    // TODO(fengliuai): why we need this outConvertedType? remove it?
+    if (converted) {
+      outConvertedType = converted.getType();
+    }
+    return converted;
+  } else {
     return nullptr;
   }
-  UniformQuantizedValueConverter converter(uniformQuantizedType);
-  return quantizeAttrUniform(realValue, uniformQuantizedType, converter,
-                             outConvertedType);
 }
-
-} // namespace quant
-} // namespace mlir

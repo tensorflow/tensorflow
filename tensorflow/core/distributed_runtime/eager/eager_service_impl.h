@@ -80,12 +80,18 @@ class EagerServiceImpl {
   Status CreateContext(const CreateContextRequest* request,
                        CreateContextResponse* response);
 
+  Status UpdateContext(const UpdateContextRequest* request,
+                       UpdateContextResponse* response);
+
   // Create a ServerContext for master eager context.
   Status CreateMasterContext(const tensorflow::uint64 context_id,
                              EagerContext* context);
 
+  static const uint64 kInvalidStreamId = 0;
+
   // Used by both Enqueue and StreamingEnqueue RPCs.
-  Status Enqueue(const EnqueueRequest* request, EnqueueResponse* response);
+  Status Enqueue(const EnqueueRequest* request, EnqueueResponse* response,
+                 uint64 stream_id = kInvalidStreamId);
 
   Status WaitQueueDone(const WaitQueueDoneRequest* request,
                        WaitQueueDoneResponse* response);
@@ -95,12 +101,6 @@ class EagerServiceImpl {
 
   Status CloseContext(const CloseContextRequest* request,
                       CloseContextResponse* response);
-
-  Status RegisterFunction(const RegisterFunctionRequest* request,
-                          RegisterFunctionResponse* response);
-
-  Status SendTensor(const SendTensorRequest* request,
-                    SendTensorResponse* response);
 
  protected:
   // This is the server-side execution context. All state regarding execution of
@@ -124,7 +124,7 @@ class EagerServiceImpl {
       RecordAccess();
     }
 
-    ~ServerContext() {
+    ~ServerContext() override {
       // TFE_Context is responsible for shutting down master eager context.
       if (!is_master_) {
         ctx_->WaitForAndCloseRemoteContexts();
@@ -186,6 +186,13 @@ class EagerServiceImpl {
 
     void Abort(Status status) override {}
 
+    string DebugString() const override {
+      string out = "[ClientTensorHandleDeleteNode]";
+      strings::StrAppend(&out, " op_id: ", handle_to_delete_->op_id);
+      strings::StrAppend(&out, ", output_num: ", handle_to_delete_->output_num);
+      return out;
+    }
+
    private:
     // Owns one reference.
     ServerContext* const context_;
@@ -194,13 +201,23 @@ class EagerServiceImpl {
 
  private:
   Status ExecuteOp(const Operation& operation, EagerContext* eager_context,
+                   EagerExecutor* eager_executor,
                    QueueResponse* queue_response);
   Status SendTensor(const SendTensorOp& send_tensor,
                     EagerContext* eager_context);
+  Status RegisterFunction(const RegisterFunctionOp& register_function,
+                          EagerContext* eager_context);
+  Status CleanupFunction(const CleanupFunctionOp& cleanup_function);
   const WorkerEnv* const env_;  // Not owned.
 
   mutex contexts_mu_;
   std::unordered_map<uint64, ServerContext*> contexts_ GUARDED_BY(contexts_mu_);
+
+  // Mutex to guard access to EagerContext in `contexts_`. Different from
+  // `contexts_mu_` which guards adding / removing item from the map, this mutex
+  // is supposed to be used to avoid concurrent reading/updating the state of an
+  // EagerContext inside the map.
+  mutex context_update_mu_;
 
   std::unique_ptr<Thread> gc_thread_;
   mutex gc_thread_shutdown_mu_;

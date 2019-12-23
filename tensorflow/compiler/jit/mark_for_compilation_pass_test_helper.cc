@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/jit/mark_for_compilation_pass_test_helper.h"
+
+#include "tensorflow/compiler/jit/cluster_scoping_pass.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/public/session_options.h"
@@ -48,8 +50,14 @@ namespace tensorflow {
   opt_options.graph = graph;
   opt_options.session_options = &session_options;
   opt_options.flib_def = flib_def;
-  MarkForCompilationPass pass;
-  return pass.RunForTest(
+
+  if (options.enable_cluster_scoping) {
+    ClusterScopingPass cluster_scoping_pass;
+    TF_RETURN_IF_ERROR(cluster_scoping_pass.Run(opt_options));
+  }
+
+  MarkForCompilationPass mark_for_compilation_pass;
+  return mark_for_compilation_pass.RunForTest(
       opt_options,
       /*disable_deadness_analysis=*/options.disable_deadness_analysis);
 }

@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 
 namespace xla {
@@ -458,7 +457,7 @@ TEST_P(IndirectUseTest, IndirectUseNotRematerialized) {
   //   F32[1024] %call = call(Subcomputation, {%add_1})
   //   F32[1024] %add_2 = add(%bcast, call)
   //   {F32[1024], F32[1024]} %tuple = tuple(%bcast, %add_2)
-  //   F32[1024] %gte = GetTupleElememt(%tuple, 0)
+  //   F32[1024] %gte = GetTupleElement(%tuple, 0)
   //   F32[1024] %negate = negate(%gte)
   //
   // Subcomputation:
@@ -533,6 +532,142 @@ TEST_P(IndirectUseTest, IndirectUseNotRematerialized) {
 
 INSTANTIATE_TEST_SUITE_P(IndirectUseTestInstantiation, IndirectUseTest,
                          ::testing::Values(true, false));
+
+class CompressingRematerializationTest : public RematerializationTestBase {
+ protected:
+  // A special shape size function, which pads the most minor dimension to 64.
+  static int64 ShapeSizePadMinorTo64(const Shape& shape) {
+    if (shape.IsTuple()) {
+      // Size of a tuple is 4 bytes.
+      return 4;
+    }
+    Shape descending_shape =
+        ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(shape);
+    int64 size =
+        ShapeUtil::ByteSizeOfPrimitiveType(descending_shape.element_type());
+    for (int64 i = 0; i < descending_shape.rank(); ++i) {
+      int64 dim = descending_shape.dimensions(i);
+      if (i == descending_shape.rank() - 1) {
+        dim = RoundUpToNearest<int64>(dim, 64);
+      }
+      size *= dim;
+    }
+    return size;
+  }
+
+  // Swap the layout of the two most-minor dimensions if the second-minor
+  // dimension is bigger than the most-minor dimension.
+  static StatusOr<Shape> ChooseCompactLayoutForShape(const Shape& shape) {
+    Shape result = shape;
+    Layout layout = result.layout();
+    int64 most_minor_index = layout.minor_to_major()[0];
+    int64 second_minor_index = layout.minor_to_major()[1];
+    int64 most_minor = result.dimensions(most_minor_index);
+    int64 second_minor = result.dimensions(second_minor_index);
+    if (most_minor < second_minor) {
+      Layout new_layout = layout;
+      new_layout.set_minor_to_major(0, second_minor_index);
+      new_layout.set_minor_to_major(1, most_minor_index);
+      *result.mutable_layout() = new_layout;
+    }
+    return result;
+  }
+
+  StatusOr<bool> RunHloRematerialization(int64 memory_limit_bytes,
+                                         HloModule* module) {
+    TF_EXPECT_OK(verifier().Run(module).status());
+    HloRematerialization remat(ShapeSizePadMinorTo64, memory_limit_bytes,
+                               /*sizes=*/nullptr, ChooseCompactLayoutForShape);
+    return remat.Run(module);
+  }
+};
+
+// Test rematerialization of a single instruction.
+TEST_F(CompressingRematerializationTest, SingleRemat) {
+  const string& hlo_string = R"(
+HloModule fusion, is_scheduled=true
+
+%add_float {
+  %x = f32[] parameter(0)
+  %y = f32[] parameter(1)
+  ROOT %add = f32[] add(f32[] %x, f32[] %y)
+}
+
+ENTRY %entry {
+  %param.0 = f32[] parameter(0)
+  %constant = f32[] constant(0)
+  %broadcast.0 = f32[64,2]{1,0} broadcast(f32[] %param.0), dimensions={}
+  %negate = f32[64,2]{1,0} negate(f32[64,2]{1,0} broadcast.0)
+  %reduce.0 = f32[] reduce(f32[64,2]{1,0} %negate, f32[] %constant), dimensions={1, 0}, to_apply=%add_float
+  %reduce.1 = f32[] reduce(f32[64,2]{1,0} %broadcast.0, f32[] %constant), dimensions={1, 0}, to_apply=%add_float
+  %add = f32[] add(f32[] %reduce.0, f32[] %reduce.1)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          RunHloRematerialization(
+                              /*memory_limit_bytes=*/30 * 1024, module.get()));
+  EXPECT_TRUE(changed);
+  HloInstruction* broadcast =
+      module->entry_computation()->GetInstructionWithName("broadcast.0");
+  HloInstruction* reduce =
+      module->entry_computation()->GetInstructionWithName("reduce.1");
+  EXPECT_THAT(reduce,
+              op::Reduce(op::Copy(op::Copy(broadcast)), op::Constant()));
+}
+
+TEST_F(CompressingRematerializationTest, AllUsersUseSameCopy) {
+  const string& hlo_string = R"(
+HloModule fusion, is_scheduled=true
+
+%add_float {
+  %x = f32[] parameter(0)
+  %y = f32[] parameter(1)
+  ROOT %add = f32[] add(f32[] %x, f32[] %y)
+}
+
+ENTRY %entry {
+  %param.0 = f32[] parameter(0)
+  %constant = f32[] constant(0)
+  %broadcast.0 = f32[64,2]{1,0} broadcast(f32[] %param.0), dimensions={}
+  %negate = f32[64,2]{1,0} negate(f32[64,2]{1,0} broadcast.0)
+  %reduce.0 = f32[] reduce(f32[64,2]{1,0} %negate, f32[] %constant), dimensions={1, 0}, to_apply=%add_float
+  %reduce.1 = f32[] reduce(f32[64,2]{1,0} %negate, f32[] %constant), dimensions={1, 0}, to_apply=%add_float
+  %reduce.2 = f32[] reduce(f32[64,2]{1,0} %broadcast.0, f32[] %constant), dimensions={1, 0}, to_apply=%add_float
+  %add = f32[] add(f32[] %reduce.0, f32[] %reduce.1)
+  %reduce.3 = f32[] reduce(f32[64,2]{1,0} %broadcast.0, f32[] %constant), dimensions={1, 0}, to_apply=%add_float
+  %add.2 = f32[] add(f32[] %reduce.2, f32[] %reduce.3)
+  ROOT %tuple = (f32[], f32[]) tuple (f32[] add, f32[] add.2)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          RunHloRematerialization(
+                              /*memory_limit_bytes=*/30 * 1024, module.get()));
+  EXPECT_TRUE(changed);
+
+  HloInstruction* broadcast =
+      module->entry_computation()->GetInstructionWithName("broadcast.0");
+
+  // Both reduces reuse the same copy instruction.
+  HloInstruction* reduce_2 =
+      module->entry_computation()->GetInstructionWithName("reduce.2");
+
+  HloInstruction* reduce_3 =
+      module->entry_computation()->GetInstructionWithName("reduce.3");
+
+  EXPECT_THAT(reduce_2,
+              op::Reduce(op::Copy(op::Copy(broadcast)), op::Constant()));
+
+  EXPECT_THAT(reduce_3,
+              op::Reduce(op::Copy(op::Copy(broadcast)), op::Constant()));
+}
 
 }  // namespace
 

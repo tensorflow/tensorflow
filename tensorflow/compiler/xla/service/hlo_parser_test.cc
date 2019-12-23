@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 
+#include <memory>
 #include <string>
+
+#include "absl/memory/memory.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -23,6 +26,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
+#include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/tests/verified_hlo_module.h"
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -37,6 +42,7 @@ using absl::string_view;
 struct TestData {
   string test_name;
   string module_string;
+  bool enable_verification = true;
 };
 
 string TestDataToString(const ::testing::TestParamInfo<TestData>& data) {
@@ -451,10 +457,10 @@ ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,1], filter: f32[1,1,1]) -> f32[1,2
 "ConvolutionR2",
 R"(HloModule ConvolveR2_module
 
-ENTRY %ConvolveR2.v3 (input: f32[1,2], filter: f32[1,1]) -> f32[1,2] {
+ENTRY %ConvolveR2.v3 (input: f32[1,2], filter: f32[2,2]) -> f32[1,2] {
   %input = f32[1,2]{1,0} parameter(0)
-  %filter = f32[1,1]{1,0} parameter(1)
-  ROOT %convolution = f32[1,2]{0,1} convolution(f32[1,2]{1,0} %input, f32[1,1]{1,0} %filter), dim_labels=bf_io->bf
+  %filter = f32[2,2]{1,0} parameter(1)
+  ROOT %convolution = f32[1,2]{0,1} convolution(f32[1,2]{1,0} %input, f32[2,2]{1,0} %filter), dim_labels=bf_io->bf
 }
 
 )"
@@ -780,10 +786,10 @@ ENTRY %Irfft3d (input: c64[5,64,128,33]) -> f32[5,64,128,64] {
 "Pad",
 R"(HloModule Pad1DS3Array_module
 
-ENTRY %Pad1DS3Array.v3 () -> f32[8] {
+ENTRY %Pad1DS3Array.v3 () -> f32[7] {
   %constant = f32[3]{0} constant({1, 2, 3})
   %constant.1 = f32[] constant(0.1)
-  ROOT %pad = f32[8]{0} pad(f32[3]{0} %constant, f32[] %constant.1), padding=3_1
+  ROOT %pad = f32[7]{0} pad(f32[3]{0} %constant, f32[] %constant.1), padding=3_1
 }
 
 )"
@@ -806,10 +812,10 @@ ENTRY %PadHasInterior.v3 (input: f32[1,25,7,7]) -> f32[1,25,17,11] {
 "PadHasNegativePadding",
 R"(HloModule PadHasNegativePadding_module
 
-ENTRY %PadHasNegativePadding (input: f32[1,25,7,7,10]) -> f32[1,15,6,3,29] {
+ENTRY %PadHasNegativePadding (input: f32[1,25,7,7,10]) -> f32[1,15,6,3,35] {
   %input = f32[1,25,7,7,10]{4,3,2,1,0} parameter(0)
   %constant = f32[] constant(-5.123)
-  ROOT %pad = f32[1,15,6,3,29]{4,3,2,1,0} pad(f32[1,25,7,7,10]{4,3,2,1,0} %input, f32[] %constant), padding=0_0_0x0_-10_0x0_-1_0x-2_-2_0x-1_-1_3
+  ROOT %pad = f32[1,15,6,3,35]{4,3,2,1,0} pad(f32[1,25,7,7,10]{4,3,2,1,0} %input, f32[] %constant), padding=0_0_0x0_-10_0x0_-1_0x-2_-2_0x-1_-1_3
 }
 
 )"
@@ -842,7 +848,8 @@ ENTRY %sparse () -> f32[2,3,4] {
   ROOT %foo = f32[2,3,4]sparse{10} constant({[0, 1, 2]: 1, [1, 2, 2]: 2, [1, 2, 3]: 3})
 }
 
-)"
+)",
+/*enable_verification=*/false
 },
 {
 "SparseC128",
@@ -852,7 +859,8 @@ ENTRY %sparse () -> c128[2,3,4] {
   ROOT %foo = c128[2,3,4]sparse{10} constant({[0, 1, 2]: (1, 0), [1, 2, 2]: (2, 5), [1, 2, 3]: (3, 10)})
 }
 
-)"
+)",
+/*enable_verification=*/false
 },
 {
 "SparseEmpty",
@@ -862,7 +870,8 @@ ENTRY %sparse_f32_empty () -> f32[2,3,4] {
   ROOT %foo = f32[2,3,4]sparse{10} constant({})
 }
 
-)"
+)",
+/*enable_verification=*/false,
 },
 {
 "SparseR1",
@@ -872,10 +881,11 @@ ENTRY %sparse_f32_r1 () -> f32[9] {
   ROOT %foo = f32[9]sparse{10} constant({1: 2, 3: 4, 5: 6})
 }
 
-)"
+)",
+/*enable_verification=*/false,
 },
 {
-"gather",
+"Gather",
 R"(HloModule StringifyGather
 
 ENTRY %Gather (input_tensor: f32[50,49,48,47,46], start_indices: s64[10,9,8,7,5]) -> f32[10,9,8,7,30,29,28,27,26] {
@@ -887,7 +897,19 @@ ENTRY %Gather (input_tensor: f32[50,49,48,47,46], start_indices: s64[10,9,8,7,5]
 )"
 },
 {
-"scatter",
+"SortedGather",
+R"(HloModule StringifyGather
+
+ENTRY %Gather (input_tensor: f32[50,49,48,47,46], start_indices: s64[10,9,8,7,5]) -> f32[10,9,8,7,30,29,28,27,26] {
+  %input_tensor = f32[50,49,48,47,46]{4,3,2,1,0} parameter(0)
+  %start_indices = s64[10,9,8,7,5]{4,3,2,1,0} parameter(1)
+  ROOT %gather = f32[10,9,8,7,30,29,28,27,26]{8,7,6,5,4,3,2,1,0} gather(f32[50,49,48,47,46]{4,3,2,1,0} %input_tensor, s64[10,9,8,7,5]{4,3,2,1,0} %start_indices), offset_dims={4,5,6,7,8}, collapsed_slice_dims={}, start_index_map={0,1,2,3,4}, index_vector_dim=4, slice_sizes={30,29,28,27,26}, indices_are_sorted=true
+}
+
+)"
+},
+{
+"Scatter",
 R"(HloModule StringifyScatter
 
 %add_F32.v3 (lhs: f32[], rhs: f32[]) -> f32[] {
@@ -901,6 +923,44 @@ ENTRY %Scatter (input_tensor: f32[50,49,48,47,46], scatter_indices: s64[10,9,8,7
   %scatter_indices = s64[10,9,8,7,5]{4,3,2,1,0} parameter(1)
   %updates = f32[10,9,8,7,30,29,28,27,26]{8,7,6,5,4,3,2,1,0} parameter(2)
   ROOT %scatter = f32[50,49,48,47,46]{4,3,2,1,0} scatter(f32[50,49,48,47,46]{4,3,2,1,0} %input_tensor, s64[10,9,8,7,5]{4,3,2,1,0} %scatter_indices, f32[10,9,8,7,30,29,28,27,26]{8,7,6,5,4,3,2,1,0} %updates), update_window_dims={4,5,6,7,8}, inserted_window_dims={}, scatter_dims_to_operand_dims={0,1,2,3,4}, index_vector_dim=4, to_apply=%add_F32.v3
+}
+
+)"
+},
+{
+"SortedScatter",
+R"(HloModule StringifySortedScatter
+
+%add_F32.v3 (lhs: f32[], rhs: f32[]) -> f32[] {
+  %lhs = f32[] parameter(0)
+  %rhs = f32[] parameter(1)
+  ROOT %add = f32[] add(f32[] %lhs, f32[] %rhs)
+}
+
+ENTRY %Scatter (input_tensor: f32[50,49,48,47,46], scatter_indices: s64[10,9,8,7,5], updates: f32[10,9,8,7,30,29,28,27,26]) -> f32[50,49,48,47,46] {
+  %input_tensor = f32[50,49,48,47,46]{4,3,2,1,0} parameter(0)
+  %scatter_indices = s64[10,9,8,7,5]{4,3,2,1,0} parameter(1)
+  %updates = f32[10,9,8,7,30,29,28,27,26]{8,7,6,5,4,3,2,1,0} parameter(2)
+  ROOT %scatter = f32[50,49,48,47,46]{4,3,2,1,0} scatter(f32[50,49,48,47,46]{4,3,2,1,0} %input_tensor, s64[10,9,8,7,5]{4,3,2,1,0} %scatter_indices, f32[10,9,8,7,30,29,28,27,26]{8,7,6,5,4,3,2,1,0} %updates), update_window_dims={4,5,6,7,8}, inserted_window_dims={}, scatter_dims_to_operand_dims={0,1,2,3,4}, index_vector_dim=4, indices_are_sorted=true, to_apply=%add_F32.v3
+}
+
+)"
+},
+{
+"UniqueIndicesScatter",
+R"(HloModule StringifyUniqueIndicesScatter
+
+%add_F32.v3 (lhs: f32[], rhs: f32[]) -> f32[] {
+  %lhs = f32[] parameter(0)
+  %rhs = f32[] parameter(1)
+  ROOT %add = f32[] add(f32[] %lhs, f32[] %rhs)
+}
+
+ENTRY %Scatter (input_tensor: f32[50,49,48,47,46], scatter_indices: s64[10,9,8,7,5], updates: f32[10,9,8,7,30,29,28,27,26]) -> f32[50,49,48,47,46] {
+  %input_tensor = f32[50,49,48,47,46]{4,3,2,1,0} parameter(0)
+  %scatter_indices = s64[10,9,8,7,5]{4,3,2,1,0} parameter(1)
+  %updates = f32[10,9,8,7,30,29,28,27,26]{8,7,6,5,4,3,2,1,0} parameter(2)
+  ROOT %scatter = f32[50,49,48,47,46]{4,3,2,1,0} scatter(f32[50,49,48,47,46]{4,3,2,1,0} %input_tensor, s64[10,9,8,7,5]{4,3,2,1,0} %scatter_indices, f32[10,9,8,7,30,29,28,27,26]{8,7,6,5,4,3,2,1,0} %updates), update_window_dims={4,5,6,7,8}, inserted_window_dims={}, scatter_dims_to_operand_dims={0,1,2,3,4}, index_vector_dim=4, unique_indices=true, to_apply=%add_F32.v3
 }
 
 )"
@@ -1028,6 +1088,17 @@ ENTRY %Parameters1.v4 () -> f32[] {
 
 )"
 },
+// rng-get-and-update-state
+{
+"RngGetAndUpdateState",
+R"(HloModule rng_get_and_update_state
+
+ENTRY %RngGetAndUpdateState () -> u64[2] {
+  ROOT %rng-get-and-update-state = u64[2]{0} rng-get-and-update-state(), delta=4096
+}
+
+)"
+},
   });
   // clang-format on
 }
@@ -1091,7 +1162,7 @@ max_argmax {
 
 ENTRY reduce_entry {
   values = f32[1024]{0} parameter(0)
-  indices = f32[1024]{0} parameter(1)
+  indices = s32[1024]{0} parameter(1)
   init_value = f32[] constant(-inf)
   init_index = s32[] constant(-1)
   ROOT result = (f32[], s32[]) reduce(values, indices, init_value, init_index), dimensions={0}, to_apply=max_argmax
@@ -1132,7 +1203,7 @@ ENTRY Rng {
 },
 // Reduce precision
 {
-"ReducePrevison",
+"ReducePrecision",
 R"(HloModule reduce_precision
 
 ENTRY ReducePrecision {
@@ -1349,8 +1420,8 @@ R"(HloModule dot
 
 ENTRY dot {
   a = f32[2,10]{1,0} parameter(0)
-  b = f32[10,3]{1,0} parameter(1)
-  ROOT dot = f32[2,3]{1,0} dot(a, b), lhs_batch_dims={0}, lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  b = f32[10,2]{1,0} parameter(1)
+  ROOT dot = f32[2]{0} dot(a, b), lhs_batch_dims={0}, lhs_contracting_dims={1}, rhs_batch_dims={1}, rhs_contracting_dims={0}
 }
 
 )"
@@ -1403,6 +1474,24 @@ ENTRY AllReduceWithSubgroups {
 
 )"
 },
+// all-reduce with constrained layout
+{
+"AllReduceWithLayout",
+R"(HloModule CRS
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY CRS {
+  input = f32[8]{0} parameter(0)
+  ROOT crs = f32[8]{0} all-reduce(input), replica_groups={}, constrain_layout=true, to_apply=add
+}
+
+)"
+},
 // all-reduce with all-reduce-id
 {
 "AllReduceAllReduce",
@@ -1429,7 +1518,7 @@ R"(HloModule AllToAll
 
 ENTRY AllToAll {
   input = f32[128,32]{0,1} parameter(0)
-  ROOT a2a = f32[128,32]{0,1} all-to-all(input), replica_groups={}
+  ROOT a2a = (f32[128,32]{0,1}) all-to-all(input), replica_groups={}
 }
 
 )"
@@ -1440,8 +1529,9 @@ ENTRY AllToAll {
 R"(HloModule AllToAllWithSubgroups
 
 ENTRY AllToAllWithSubgroups {
-  input = f32[128,32]{0,1} parameter(0)
-  ROOT a2a = f32[128,32]{0,1} all-to-all(input), replica_groups={{1,2},{3,0}}
+  p0 = f32[128,32]{0,1} parameter(0)
+  p1 = f32[128,32]{0,1} parameter(1)
+  ROOT a2a = (f32[128,32]{0,1}, f32[128,32]{0,1}) all-to-all(p0, p1), replica_groups={{1,2},{3,0}}
 }
 
 )"
@@ -1569,7 +1659,7 @@ ENTRY MinMaxValues {
   x.u16 = u16[2]{0} constant({0, 65535})
   x.u32 = u32[2]{0} constant({0, 4294967295})
   x.f16 = f16[2]{0} constant({-65504, 65504})
-  x.bf16 = bf16[2]{0} constant({-3.38953e+38, 3.38953e+38})
+  x.bf16 = bf16[2]{0} constant({-3.39e+38, 3.39e+38})
   x.f32 = f32[2]{0} constant({-3.40282e+38, 3.40282e+38})
   x.f64 = f64[2]{0} constant({-1.79769e+308, 1.79769e+308})
   x.c64 = c64[2]{0} constant({(-3.40282e+38, 3.40282e+38), (3.40282e+38, -3.40282e+38)})
@@ -1623,13 +1713,23 @@ class HloParameterizedParserTest
     : public ::testing::Test,
       public ::testing::WithParamInterface<TestData> {
  protected:
-  // Expects "ToString(ParseAndReturnUnverifiedModule(string)) == string", that
-  // is, parses the string, asserts that it succeeded, stringifies the parsed
-  // module, and checks that it equals the original string.
+  // Expects "ToString(ParseHloModule(string)) == string", that is, parses the
+  // string, asserts that it succeeded, stringifies the parsed module, and
+  // checks that it equals the original string.
   void ExpectEqual() {
+    std::unique_ptr<HloModule> module;
     const string& original = GetParam().module_string;
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                            ParseAndReturnUnverifiedModule(original));
+    if (GetParam().enable_verification) {
+      auto verified_module = absl::make_unique<VerifiedHloModule>(
+          GetParam().test_name, HloModuleConfig(),
+          /*verifier_layout_sensitive=*/false,
+          /*allow_mixed_precision_in_hlo_verifier=*/true,
+          ShapeUtil::ByteSizeOfElements);
+      TF_ASSERT_OK(verified_module->ParseHloStringAndVerifyModule(original));
+      module = std::move(verified_module);
+    } else {
+      TF_ASSERT_OK_AND_ASSIGN(module, ParseAndReturnUnverifiedModule(original));
+    }
     if (proto_round_trip) {
       TF_ASSERT_OK_AND_ASSIGN(module, HloModule::CreateFromProto(
                                           module->ToProto(), module->config()));
@@ -1677,6 +1777,17 @@ class HloParserTest : public ::testing::Test {
     EXPECT_TRUE(absl::StrContains(s, expected))
         << "'" << s << "' does not contain '" << expected << "'";
   }
+  StatusOr<std::unique_ptr<VerifiedHloModule>> ParseAndReturnVerifiedModule(
+      absl::string_view hlo_text) {
+    auto module = absl::make_unique<VerifiedHloModule>(
+        ::testing::UnitTest::GetInstance()->current_test_info()->name(),
+        HloModuleConfig(),
+        /*verifier_layout_sensitive=*/false,
+        /*allow_mixed_precision_in_hlo_verifier=*/true,
+        ShapeUtil::ByteSizeOfElements);
+    TF_RETURN_IF_ERROR(module->ParseHloStringAndVerifyModule(hlo_text));
+    return std::move(module);
+  }
 };
 
 TEST_F(HloParserTest, Empty) {
@@ -1703,6 +1814,27 @@ ENTRY %blabla (x: f32[], y: f32[]) -> f32[] {
 )";
   auto result = ParseAndReturnUnverifiedModule(original);
   EXPECT_NE(Status::OK(), result.status());
+}
+
+TEST_F(HloParserTest, MetadataWithCholesky) {
+  const string original = R"(HloModule metadata_with_cholesky
+ENTRY %blabla (a: f32[1,291,291]) -> f32[1,291,291] {
+  %a = f32[1,291,291] parameter(0)
+  %out = f32[1,291,291] cholesky(f32[1,291,291] %a), lower=true, metadata={op_type="Cholesky" op_name="Cholesky"}
+}
+)";
+  auto result = ParseAndReturnVerifiedModule(original);
+  EXPECT_EQ(Status::OK(), result.status());
+  EXPECT_EQ("Cholesky", result.ValueOrDie()
+                            ->entry_computation()
+                            ->root_instruction()
+                            ->metadata()
+                            .op_name());
+  EXPECT_EQ("Cholesky", result.ValueOrDie()
+                            ->entry_computation()
+                            ->root_instruction()
+                            ->metadata()
+                            .op_type());
 }
 
 TEST_F(HloParserTest, WrongShape) {
@@ -1752,7 +1884,7 @@ ENTRY %SelectScalarS32True.v4 () -> s32[] {
 }
 
 )";
-  auto result = ParseAndReturnUnverifiedModule(original);
+  auto result = ParseAndReturnVerifiedModule(original);
   TF_EXPECT_OK(result.status());
   // Constant instructions have no name. The string will be parsed successfully
   // but the constant names will not be exactly the same.
@@ -1763,7 +1895,7 @@ TEST_F(HloParserTest, ConfigurationField) {
 ENTRY %configuration_test() -> s32[] {
   %constant = s32[] constant(42), backend_config="foo bar"
 })";
-  auto result = ParseAndReturnUnverifiedModule(original);
+  auto result = ParseAndReturnVerifiedModule(original);
   TF_ASSERT_OK(result.status());
   EXPECT_EQ("foo bar", result.ValueOrDie()
                            ->entry_computation()
@@ -1818,7 +1950,7 @@ TEST_F(HloParserTest, ConstantF16Overflow) {
       R"(HloModule ConstantF16Overflow_module
 
 ENTRY %ConstantF16Overflow.v4 () -> f16[] {
-  ROOT %constant = f16[] constant(-65505)
+  ROOT %constant = f16[] constant(-65520)
 }
 
 )";
@@ -1835,7 +1967,7 @@ TEST_F(HloParserTest, ConstantBf16NoOverflow) {
   ENTRY test {
     ROOT c = bf16[] constant(-65505)
   })";
-  EXPECT_EQ(Status::OK(), ParseAndReturnUnverifiedModule(original).status());
+  EXPECT_EQ(Status::OK(), ParseAndReturnVerifiedModule(original).status());
 }
 
 TEST_F(HloParserTest, ConstantBf16Overflow) {
@@ -1854,7 +1986,7 @@ TEST_F(HloParserTest, ConstantF16OverflowInSparseArray) {
   const string original = R"(
     HloModule test_module
     ENTRY test {
-      ROOT c = f16[5]sparse{10} constant({[0]: 0, [1]: -65505})
+      ROOT c = f16[5]sparse{10} constant({[0]: 0, [1]: -65520})
     })";
   ExpectHasSubstr(
       ParseAndReturnUnverifiedModule(original).status().error_message(),
@@ -1943,7 +2075,7 @@ ENTRY %ConstantWithExp.v4 () -> f32[] {
 }
 
 )";
-  auto result = ParseAndReturnUnverifiedModule(original);
+  auto result = ParseAndReturnVerifiedModule(original);
   TF_EXPECT_OK(result.status());
   // The string will be parsed successfully but the output strings are not
   // exactly the same, because "3e2" is parsed into value 300 and will be
@@ -1951,30 +2083,30 @@ ENTRY %ConstantWithExp.v4 () -> f32[] {
 }
 
 TEST_F(HloParserTest, ShortConstant) {
-  const string original = R"(HloModule ShortCOnstant_module
+  const string original = R"(HloModule ShortConstant_module
 
 ENTRY %ShortConstant.v4 () -> f32[67,89] {
   ROOT %constant.1 = f32[67,89]{1,0} constant({...})
 }
 
 )";
-  auto result = ParseAndReturnUnverifiedModule(original);
+  auto result = ParseAndReturnVerifiedModule(original);
   TF_EXPECT_OK(result.status());
   EXPECT_EQ(result.ValueOrDie()->ToString(HloPrintOptions()), original);
 }
 
-TEST_F(HloParserTest, AttibutesAnyOrder) {
+TEST_F(HloParserTest, AttributesAnyOrder) {
   const string original = R"(HloModule any_order_module
 
-ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,1], filter: f32[1,1,1]) -> f32[1,2,1] {
+ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,1], filter: f32[1,1,1]) -> f32[1,4,1] {
   %input = f32[1,2,1]{2,1,0} parameter(0)
   %copy = f32[1,2,1]{2,0,1} copy(f32[1,2,1]{2,1,0} %input)
   %filter = f32[1,1,1]{2,1,0} parameter(1)
-  ROOT %convolution = f32[1,2,1]{2,0,1} convolution(f32[1,2,1]{2,0,1} %copy, f32[1,1,1]{2,1,0} %filter), feature_group_count=1, sharding={maximal device=1}, backend_config="foo", dim_labels=b0f_0io->b0f, window={pad=1_1 size=2}
+  ROOT %convolution = f32[1,4,1]{2,0,1} convolution(f32[1,2,1]{2,0,1} %copy, f32[1,1,1]{2,1,0} %filter), feature_group_count=1, sharding={maximal device=1}, backend_config="foo", dim_labels=b0f_0io->b0f, window={pad=1_1 size=1}
 }
 
 )";
-  TF_EXPECT_OK(ParseAndReturnUnverifiedModule(original).status());
+  TF_EXPECT_OK(ParseAndReturnVerifiedModule(original).status());
 }
 
 TEST_F(HloParserTest, InvalidDimLabels) {
@@ -2066,7 +2198,7 @@ ENTRY %slice.v2 (p0: f32[3,3,4,4]) -> f32[3,3,2,4] {
 }
 
 )";
-  TF_EXPECT_OK(ParseAndReturnUnverifiedModule(original).status());
+  TF_EXPECT_OK(ParseAndReturnVerifiedModule(original).status());
 }
 
 TEST_F(HloParserTest, PaddingConfigIsNotWindowPad) {
@@ -2093,7 +2225,7 @@ ENTRY %test_comma.v4 () -> f32[] {
 }
 
 )";
-  TF_EXPECT_OK(ParseAndReturnUnverifiedModule(original).status());
+  TF_EXPECT_OK(ParseAndReturnVerifiedModule(original).status());
 }
 
 TEST_F(HloParserTest, ComputationShapeDoesNotMatchRootShape) {
@@ -2123,7 +2255,7 @@ ENTRY %Reduce (input: f32[8,16,256]) -> f32[8,16] {
   ROOT reduce = f32[8,16]{0,1} reduce(input, constant), dimensions={2}, to_apply=add_F32.v3
 })";
 
-  auto module = ParseAndReturnUnverifiedModule(original);
+  auto module = ParseAndReturnVerifiedModule(original);
   TF_ASSERT_OK(module.status());
   auto program_layout = module.ValueOrDie()->entry_computation_layout();
   ASSERT_EQ(program_layout.parameter_count(), 1);
@@ -2146,7 +2278,7 @@ c1 {
 c2 {
   const2 = f32[1]{0} constant({67890})
 })";
-  auto module = ParseAndReturnUnverifiedModule(original);
+  auto module = ParseAndReturnVerifiedModule(original);
   TF_ASSERT_OK(module.status());
   EXPECT_EQ(module.ValueOrDie()->entry_computation()->name(), "c2");
 }
@@ -2157,7 +2289,7 @@ ENTRY consts {
   first = f32[1]{0} constant({12345})
   last = f32[1]{0} constant({67890})
 })";
-  auto module = ParseAndReturnUnverifiedModule(original);
+  auto module = ParseAndReturnVerifiedModule(original);
   TF_ASSERT_OK(module.status());
   EXPECT_EQ(
       module.ValueOrDie()->entry_computation()->root_instruction()->name(),
@@ -2177,7 +2309,7 @@ ENTRY /*comment*/ c1 {
 /* something else */
 
 )";
-  auto module = ParseAndReturnUnverifiedModule(original);
+  auto module = ParseAndReturnVerifiedModule(original);
   TF_ASSERT_OK(module.status());
 }
 
@@ -2196,7 +2328,7 @@ d
 
 */
 })";
-  auto module = ParseAndReturnUnverifiedModule(original);
+  auto module = ParseAndReturnVerifiedModule(original);
   TF_ASSERT_OK(module.status());
 }
 
@@ -2220,7 +2352,7 @@ ENTRY c1 {
   // Foo bar
   ROOT const1 = f32[1]{0} constant({12345}) // Something else
 })";
-  auto module = ParseAndReturnUnverifiedModule(original);
+  auto module = ParseAndReturnVerifiedModule(original);
   TF_ASSERT_OK(module.status());
 }
 
@@ -2228,7 +2360,7 @@ TEST_F(HloParserTest, SlashSlashCommentMsDosEolFormat) {
   const string original =
       "HloModule slash_slash_comment:\r\n// Garbage\r\nENTRY c1 {\r\n// Foo "
       "bar\r\nROOT const1 = f32[1]{0} constant({12345}) // Something else\r\n}";
-  auto module = ParseAndReturnUnverifiedModule(original);
+  auto module = ParseAndReturnVerifiedModule(original);
   TF_ASSERT_OK(module.status());
 }
 
@@ -2236,7 +2368,7 @@ TEST_F(HloParserTest, SlashSlashCommentMacEolFormat) {
   const string original =
       "HloModule slash_slash_comment:\r// Garbage\rENTRY c1 {\r// Foo "
       "bar\rROOT const1 = f32[1]{0} constant({12345}) // Something else\r}";
-  auto module = ParseAndReturnUnverifiedModule(original);
+  auto module = ParseAndReturnVerifiedModule(original);
   TF_ASSERT_OK(module.status());
 }
 
@@ -2314,8 +2446,7 @@ ENTRY ReduceR3ToR2 {
   ROOT result = f32[8,16]{1,0} reduce(p0, p1), dimensions={2}, to_apply=add
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(original));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(original));
   ASSERT_NE(module->entry_computation(), nullptr);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Reduce()));
@@ -2325,6 +2456,13 @@ TEST_F(HloParserTest, ParseSharding) {
   const string original = "{maximal device=42}";
   TF_ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
   EXPECT_EQ(sharding.ToString(), original);
+}
+
+TEST_F(HloParserTest, ParseFrontendAttributes) {
+  const string original = "{attr_a=test_a,attr_b=b}";
+  TF_ASSERT_OK_AND_ASSIGN(FrontendAttributes frontend_attributes,
+                          ParseFrontendAttributes(original));
+  EXPECT_EQ(FrontendAttributesToString(frontend_attributes), original);
 }
 
 TEST_F(HloParserTest, ParseWindow) {
@@ -2581,8 +2719,7 @@ ENTRY %axpy.v5 (alpha: f32[], x: f32[2,4], y: f32[2,4]) -> f32[2,4] {
   ROOT %add = f32[2,4]{1,0} add(f32[2,4]{1,0} %multiply, f32[2,4]{1,0} %y)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(text));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(text));
   ASSERT_FALSE(module->has_schedule());
 }
 
@@ -2599,8 +2736,7 @@ ENTRY %axpy.v5 (alpha: f32[], x: f32[2,4], y: f32[2,4]) -> f32[2,4] {
   ROOT %add = f32[2,4]{1,0} add(f32[2,4]{1,0} %multiply, f32[2,4]{1,0} %y)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(text));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(text));
   ASSERT_FALSE(module->has_schedule());
 }
 
@@ -2617,8 +2753,7 @@ ENTRY %axpy.v5 (alpha: f32[], x: f32[2,4], y: f32[2,4]) -> f32[2,4] {
   ROOT %add = f32[2,4]{1,0} add(f32[2,4]{1,0} %multiply, f32[2,4]{1,0} %y)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(text));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(text));
   ASSERT_TRUE(module->has_schedule());
   TF_ASSERT_OK(module->schedule().Verify());
   EXPECT_EQ(module->schedule().sequences().size(), 1);
@@ -2646,8 +2781,7 @@ ENTRY %axpy.v5 (alpha: f32[], x: f32[2,4], y: f32[2,4]) -> f32[2,4] {
   ROOT %add = f32[2,4]{1,0} add(f32[2,4]{1,0} %multiply, f32[2,4]{1,0} %y)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(text));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(text));
   ASSERT_TRUE(module->has_schedule());
   TF_ASSERT_OK(module->schedule().Verify());
   EXPECT_EQ(module->schedule().sequences().size(), 1);
@@ -2699,8 +2833,7 @@ ENTRY entry {
   ROOT root = f32[ 1, 2,3, 4, 5]{0, 1, 2,3, 4 } parameter(0)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(text));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(text));
 }
 
 TEST_F(HloParserTest, ShapeMismatchInOperand) {

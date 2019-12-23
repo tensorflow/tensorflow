@@ -37,7 +37,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
-#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
@@ -61,7 +60,7 @@ inline void SetOutputAttrs(OpKernelContext::Params* params,
     attr.set_on_host(on_host);
     attrs->push_back(attr);
   }
-  params->output_attr_array = gtl::vector_as_array(attrs);
+  params->output_attr_array = attrs->data();
 }
 
 }  // namespace test
@@ -78,20 +77,26 @@ class OpsTestBase : public ::testing::Test {
     CHECK(device) << "Could not create CPU device";
 
     device_ = device.get();
-    device_mgr_ = absl::make_unique<DeviceMgr>(std::move(device));
+    device_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(device));
 
     allocator_ = device_->GetAllocator(AllocatorAttributes());
 
     flib_def_ = absl::make_unique<FunctionLibraryDefinition>(
         OpRegistry::Global(), FunctionDefLibrary{});
     pflr_ = absl::make_unique<ProcessFunctionLibraryRuntime>(
-        device_mgr_.get(), Env::Default(), TF_GRAPH_DEF_VERSION,
-        flib_def_.get(), OptimizerOptions());
+        device_mgr_.get(), Env::Default(), /*config=*/nullptr,
+        TF_GRAPH_DEF_VERSION, flib_def_.get(), OptimizerOptions());
   }
 
   ~OpsTestBase() override {
-    gtl::STLDeleteElements(&tensors_);
-    gtl::STLDeleteElements(&managed_outputs_);
+    for (auto& temp : tensors_) {
+      delete temp;
+    }
+    for (auto& temp : managed_outputs_) {
+      delete temp;
+    }
+    tensors_.clear();
+    managed_outputs_.clear();
     context_.reset(nullptr);
     params_.reset(nullptr);
   }
@@ -177,7 +182,10 @@ class OpsTestBase : public ::testing::Test {
     context_.reset(nullptr);
 
     // Delete the output copies from previous runs.
-    gtl::STLDeleteElements(&managed_outputs_);
+    for (auto& temp : managed_outputs_) {
+      delete temp;
+    }
+    managed_outputs_.clear();
     managed_outputs_.resize(0);
 
     params_.reset(new OpKernelContext::Params);

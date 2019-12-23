@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/public/version.h"
+#include "tensorflow/core/util/device_name_utils.h"
 
 class DummyKernel : public tensorflow::OpKernel {
  public:
@@ -107,6 +108,8 @@ REGISTER_KERNEL_BUILDER(Name("Test4").Device(DEVICE_GPU), DummyKernel);
 // Kernels with different priorities.
 REGISTER_OP("Test5").Input("a: T").Input("b: T").Attr("T: type");
 
+REGISTER_OP("OpWithoutKernel").Input("a: T").Input("b: T").Attr("T: type");
+
 class TestOp5Cpu : public tensorflow::OpKernel {
  public:
   explicit TestOp5Cpu(OpKernelConstruction* context) : OpKernel(context) {}
@@ -134,11 +137,13 @@ class OpKernelTest : public ::testing::Test {
   OpKernelTest() : device_(Env::Default()) {}
 
  protected:
-  NodeDef CreateNodeDef(const string& op_type, const DataTypeVector& inputs) {
+  NodeDef CreateNodeDef(const string& op_type, const DataTypeVector& inputs,
+                        const string& device = "") {
     NodeDefBuilder builder(op_type + "-op", op_type);
     for (DataType dt : inputs) {
       builder.Input(FakeInput(dt));
     }
+    builder.Device(device);
     NodeDef node_def;
     TF_CHECK_OK(builder.Finalize(&node_def));
     return node_def;
@@ -212,6 +217,38 @@ TEST_F(OpKernelTest, CpuTypeRegistered) {
   TF_ASSERT_OK(SupportedDeviceTypesForNode(DeviceTypes(), ndef, &devs));
   EXPECT_EQ(1, devs.size());
   EXPECT_EQ(DeviceType(DEVICE_CPU), devs[0].first);
+}
+
+TEST_F(OpKernelTest, KernelNotRegistered) {
+  const string& local_device = "/job:localhost/replica:0/task:0/device:CPU:0";
+  const string& remote_device = "/job:worker/replica:0/task:0/device";
+  {
+    // Try a node def of an op which does not have kernel. And the requested
+    // device in NodeDef is on a different address space than the local device.
+    NodeDef ndef =
+        CreateNodeDef("OpWithoutKernel", {DT_STRING, DT_STRING}, remote_device);
+    PrioritizedDeviceTypeVector devs;
+    DeviceNameUtils::ParsedName local_device_name;
+    DeviceNameUtils::ParseFullName(local_device, &local_device_name);
+    TF_ASSERT_OK(SupportedDeviceTypesForNode(DeviceTypes(), ndef, &devs,
+                                             &local_device_name));
+    EXPECT_EQ(2, devs.size());
+    EXPECT_EQ(DeviceType(DEVICE_GPU), devs[0].first);
+    EXPECT_EQ(DeviceType(DEVICE_CPU), devs[1].first);
+  }
+
+  {
+    // Try a node def of an op which does not have kernel. And the requested
+    // device in NodeDef is on the same address space as the local device.
+    NodeDef ndef =
+        CreateNodeDef("OpWithoutKernel", {DT_STRING, DT_STRING}, local_device);
+    PrioritizedDeviceTypeVector devs;
+    DeviceNameUtils::ParsedName local_device_name;
+    DeviceNameUtils::ParseFullName(local_device, &local_device_name);
+    TF_ASSERT_OK(SupportedDeviceTypesForNode(DeviceTypes(), ndef, &devs,
+                                             &local_device_name));
+    EXPECT_EQ(0, devs.size());
+  }
 }
 
 TEST_F(OpKernelTest, CpuAndGpuTypeRegistered) {

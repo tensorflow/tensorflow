@@ -25,7 +25,11 @@ void* GetDsoHandle() {
   static auto handle = []() -> void* {
     auto handle_or =
         stream_executor::internal::DsoLoader::GetCudaRuntimeDsoHandle();
-    if (!handle_or.ok()) return nullptr;
+    if (!handle_or.ok()) {
+      LOG(INFO) << "Ignore above cudart dlerror if you do not have a GPU set "
+                   "up on your machine.";
+      return nullptr;
+    }
     return handle_or.ValueOrDie();
   }();
   return handle;

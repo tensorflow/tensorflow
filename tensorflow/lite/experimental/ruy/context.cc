@@ -16,7 +16,10 @@ limitations under the License.
 #include "tensorflow/lite/experimental/ruy/context.h"
 
 #include "tensorflow/lite/experimental/ruy/check_macros.h"
-#include "tensorflow/lite/experimental/ruy/detect_dotprod.h"
+#include "tensorflow/lite/experimental/ruy/detect_arm.h"
+#include "tensorflow/lite/experimental/ruy/detect_x86.h"
+#include "tensorflow/lite/experimental/ruy/have_built_path_for.h"
+#include "tensorflow/lite/experimental/ruy/platform.h"
 
 namespace ruy {
 
@@ -37,20 +40,45 @@ Path Context::GetRuntimeEnabledPaths() {
   // Need to resolve now. Start by considering all paths enabled.
   runtime_enabled_paths_ = kAllPaths;
 
+  // This mechanism is intended to be used for testing and benchmarking. For
+  // example, one can set RUY_FORCE_DISABLE_PATHS to Path::kAvx512 in order to
+  // evaluate AVX2 performance on an AVX-512 machine.
+#ifdef RUY_FORCE_DISABLE_PATHS
+  runtime_enabled_paths_ = runtime_enabled_paths_ & ~(RUY_FORCE_DISABLE_PATHS);
+#endif
+
 #if RUY_PLATFORM(ARM)
   // Now selectively disable paths that aren't supported on this machine.
   if ((runtime_enabled_paths_ & Path::kNeonDotprod) != Path::kNone) {
     if (!DetectDotprod()) {
-      runtime_enabled_paths_ = runtime_enabled_paths_ ^ Path::kNeonDotprod;
+      runtime_enabled_paths_ = runtime_enabled_paths_ & ~Path::kNeonDotprod;
       // Sanity check.
       RUY_DCHECK((runtime_enabled_paths_ & Path::kNeonDotprod) == Path::kNone);
     }
   }
-#endif
+#endif  // RUY_PLATFORM(ARM)
+
+#if RUY_PLATFORM(X86)
+  if ((runtime_enabled_paths_ & Path::kAvx2) != Path::kNone) {
+    if (!(HaveBuiltPathForAvx2() && DetectCpuAvx2())) {
+      runtime_enabled_paths_ = runtime_enabled_paths_ & ~Path::kAvx2;
+      // Sanity check.
+      RUY_DCHECK((runtime_enabled_paths_ & Path::kAvx2) == Path::kNone);
+    }
+  }
+
+  if ((runtime_enabled_paths_ & Path::kAvx512) != Path::kNone) {
+    if (!(HaveBuiltPathForAvx512() && DetectCpuAvx512())) {
+      runtime_enabled_paths_ = runtime_enabled_paths_ & ~Path::kAvx512;
+      // Sanity check.
+      RUY_DCHECK((runtime_enabled_paths_ & Path::kAvx512) == Path::kNone);
+    }
+  }
+#endif  // RUY_PLATFORM(X86)
 
   // Sanity check. We can't possibly have disabled all paths, as some paths
   // are universally available (kReference, kStandardCpp).
-  RUY_DCHECK(runtime_enabled_paths_ != Path::kNone);
+  RUY_DCHECK_NE(runtime_enabled_paths_, Path::kNone);
   return runtime_enabled_paths_;
 }
 

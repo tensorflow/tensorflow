@@ -55,6 +55,8 @@ template <typename T> struct DenseMapInfo;
 template <typename ValueT, typename ValueInfoT> class DenseSet;
 template <typename KeyT, typename ValueT, typename KeyInfoT, typename BucketT>
 class DenseMap;
+template <typename Fn> class function_ref;
+template <typename IteratorT> class iterator_range;
 
 // Other common classes.
 class raw_ostream;
@@ -80,6 +82,8 @@ template <typename KeyT, typename ValueT,
 using DenseMap = llvm::DenseMap<KeyT, ValueT, KeyInfoT, BucketT>;
 template <typename ValueT, typename ValueInfoT = DenseMapInfo<ValueT>>
 using DenseSet = llvm::DenseSet<ValueT, ValueInfoT>;
+template <typename Fn> using function_ref = llvm::function_ref<Fn>;
+using llvm::iterator_range;
 using llvm::MutableArrayRef;
 using llvm::None;
 using llvm::Optional;

@@ -34,3 +34,46 @@ op {
   }
   is_stateful: true
 }
+op {
+  name: "LoadTPUEmbeddingAdagradParameters"
+  input_arg {
+    name: "parameters"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "accumulators"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "table_id"
+    type: "int"
+    default_value {
+      i: -1
+    }
+    has_minimum: true
+    minimum: -1
+  }
+  attr {
+    name: "table_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "num_shards"
+    type: "int"
+  }
+  attr {
+    name: "shard_id"
+    type: "int"
+  }
+  attr {
+    name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  is_stateful: true
+}

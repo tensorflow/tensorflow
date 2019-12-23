@@ -28,10 +28,26 @@ py_library(
     srcs = ["linalg_impl.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":linear_operator_util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:special_math_ops",
+    ],
+)
+
+py_library(
+    name = "linear_operator_util",
+    srcs = ["linear_operator_util.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:check_ops",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:linalg_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/module",
     ],
 )

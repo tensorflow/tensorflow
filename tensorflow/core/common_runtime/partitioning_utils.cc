@@ -141,8 +141,8 @@ std::vector<Tensor> GetArgsForIndices(const std::vector<int>& indices,
 }
 
 string FunctionNameGenerator::GetName() {
-  for (;; ++counter_) {
-    const string candidate = strings::StrCat(name_, "_", counter_);
+  while (true) {
+    const string candidate = strings::StrCat(name_, "_", counter_++);
     if (flib_def_->Find(candidate) == nullptr) {
       return candidate;
     }

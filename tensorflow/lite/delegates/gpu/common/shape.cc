@@ -111,15 +111,5 @@ std::string ToString(const Shape& s) {
                       absl::StrJoin(s.dimensions, ", "), "}}");
 }
 
-template <>
-int64_t StrongShape<Layout::OHWI>::LinearIndex(
-    const std::array<int32_t, 4>& coordinates) const {
-  int64_t index = coordinates[0];
-  index = index * StrongShape::get(1) + coordinates[1];
-  index = index * StrongShape::get(2) + coordinates[2];
-  index = index * StrongShape::get(3) + coordinates[3];
-  return index;
-}
-
 }  // namespace gpu
 }  // namespace tflite

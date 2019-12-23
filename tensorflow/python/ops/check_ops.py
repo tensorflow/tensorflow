@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+
 import numpy as np
 
 from tensorflow.python.eager import context
@@ -310,7 +311,7 @@ def _binary_assert(sym, opname, op_func, static_func, x, y, data, summarize,
     static_func: Function that, if passed numpy ndarray versions of the two
       inputs to the assertion, will return a Boolean ndarray with containing
       True in all positions where the assertion PASSES.
-      i.e. lambda x,y: (x == y) for assert_equal()
+      i.e. np.equal for assert_equal()
     x:  Numeric `Tensor`.
     y:  Numeric `Tensor`, same dtype as and broadcastable to `x`.
     data:  The tensors to print out if the condition is False.  Defaults to
@@ -351,7 +352,7 @@ def _binary_assert(sym, opname, op_func, static_func, x, y, data, summarize,
       raise errors.InvalidArgumentError(
           node_def=None,
           op=None,
-          message=('\n'.join([_pretty_print(d, summarize) for d in data])))
+          message=('\n'.join(_pretty_print(d, summarize) for d in data)))
 
     else:  # not context.executing_eagerly()
       if data is None:
@@ -366,7 +367,7 @@ def _binary_assert(sym, opname, op_func, static_func, x, y, data, summarize,
       x_static = tensor_util.constant_value(x)
       y_static = tensor_util.constant_value(y)
       if x_static is not None and y_static is not None:
-        condition_static = static_func(x_static, y_static).all()
+        condition_static = np.all(static_func(x_static, y_static))
         _assert_static(condition_static, data)
       return control_flow_ops.Assert(condition, data, summarize=summarize)
 
@@ -654,9 +655,8 @@ def assert_equal(x, y, data=None, summarize=None, message=None, name=None):  # p
     # Short-circuit if x and y are the same tensor.
     if x is y:
       return None if context.executing_eagerly() else control_flow_ops.no_op()
-  return _binary_assert('==', 'assert_equal', math_ops.equal,
-                        lambda x, y: (x == y),
-                        x, y, data, summarize, message, name)
+  return _binary_assert('==', 'assert_equal', math_ops.equal, np.equal, x, y,
+                        data, summarize, message, name)
 
 
 @tf_export('debugging.assert_none_equal', v1=[])
@@ -703,8 +703,7 @@ def assert_none_equal_v2(x, y, summarize=None, message=None, name=None):
 def assert_none_equal(
     x, y, data=None, summarize=None, message=None, name=None):
   return _binary_assert('!=', 'assert_none_equal', math_ops.not_equal,
-                        lambda x, y: (x != y), x, y, data, summarize, message,
-                        name)
+                        np.not_equal, x, y, data, summarize, message, name)
 
 
 @tf_export('debugging.assert_near', v1=[])
@@ -877,8 +876,8 @@ def assert_less_v2(x, y, message=None, summarize=None, name=None):
 @tf_export(v1=['debugging.assert_less', 'assert_less'])
 @_binary_assert_doc('<')
 def assert_less(x, y, data=None, summarize=None, message=None, name=None):
-  return _binary_assert('<', 'assert_less', math_ops.less, lambda x, y: (x < y),
-                        x, y, data, summarize, message, name)
+  return _binary_assert('<', 'assert_less', math_ops.less, np.less, x, y, data,
+                        summarize, message, name)
 
 
 @tf_export('debugging.assert_less_equal', v1=[])
@@ -922,8 +921,7 @@ def assert_less_equal_v2(x, y, message=None, summarize=None, name=None):
 @_binary_assert_doc('<=')
 def assert_less_equal(x, y, data=None, summarize=None, message=None, name=None):
   return _binary_assert('<=', 'assert_less_equal', math_ops.less_equal,
-                        lambda x, y: (x <= y), x, y, data, summarize, message,
-                        name)
+                        np.less_equal, x, y, data, summarize, message, name)
 
 
 @tf_export('debugging.assert_greater', 'assert_greater', v1=[])
@@ -965,9 +963,8 @@ def assert_greater_v2(x, y, message=None, summarize=None, name=None):
 @tf_export(v1=['debugging.assert_greater', 'assert_greater'])
 @_binary_assert_doc('>')
 def assert_greater(x, y, data=None, summarize=None, message=None, name=None):  # pylint: disable=missing-docstring
-  return _binary_assert('>', 'assert_greater', math_ops.greater,
-                        lambda x, y: (x > y),
-                        x, y, data, summarize, message, name)
+  return _binary_assert('>', 'assert_greater', math_ops.greater, np.greater, x,
+                        y, data, summarize, message, name)
 
 
 @tf_export('debugging.assert_greater_equal', v1=[])
@@ -1013,8 +1010,7 @@ def assert_greater_equal_v2(x, y, message=None, summarize=None, name=None):
 def assert_greater_equal(x, y, data=None, summarize=None, message=None,
                          name=None):
   return _binary_assert('>=', 'assert_greater_equal', math_ops.greater_equal,
-                        lambda x, y: (x >= y), x, y, data, summarize, message,
-                        name)
+                        np.greater_equal, x, y, data, summarize, message, name)
 
 
 def _assert_rank_condition(
@@ -1026,8 +1022,8 @@ def _assert_rank_condition(
     rank:  Scalar `Tensor`.
     static_condition:   A python function that takes `[actual_rank, given_rank]`
       and returns `True` if the condition is satisfied, `False` otherwise.
-    dynamic_condition:  An `op` that takes [actual_rank, given_rank]
-      and return `True` if the condition is satisfied, `False` otherwise.
+    dynamic_condition:  An `op` that takes [actual_rank, given_rank] and return
+      `True` if the condition is satisfied, `False` otherwise.
     data:  The tensors to print out if the condition is false.  Defaults to
       error message and first few entries of `x`.
     summarize: Print this many entries of each tensor.
@@ -1597,14 +1593,27 @@ def assert_shapes_v2(shapes, data=None, summarize=None, message=None,
 
   Example:
 
-  ```python
-  tf.assert_shapes([
-    (x: ('N', 'Q')),
-    (y: ('N', 'D')),
-    (param: ('Q',)),
-    (scalar: ()),
-  ])
-  ```
+  >>> n = 10
+  >>> q = 3
+  >>> d = 7
+  >>> x = tf.zeros([n,q]) 
+  >>> y = tf.ones([n,d])
+  >>> param = tf.Variable([1.0, 2.0, 3.0])
+  >>> scalar = 1.0
+  >>> tf.debugging.assert_shapes([
+  ...  (x, ('N', 'Q')),
+  ...  (y, ('N', 'D')),
+  ...  (param, ('Q',)),
+  ...  (scalar, ()),
+  ... ])
+  
+  >>> tf.debugging.assert_shapes([
+  ...   (x, ('N', 'D')), 
+  ...   (y, ('N', 'D'))
+  ... ])
+  Traceback (most recent call last):
+  ...
+  ValueError: ...
 
   If `x`, `y`, `param` or `scalar` does not have a shape that satisfies
   all specified constraints, `message`, as well as the first `summarize` entries
@@ -1650,12 +1659,12 @@ def assert_shapes(shapes, data=None, summarize=None, message=None, name=None):
   Example:
 
   ```python
-  tf.assert_shapes({
+  tf.assert_shapes([
     (x, ('N', 'Q')),
     (y, ('N', 'D')),
     (param, ('Q',)),
     (scalar, ())
-  })
+  ])
   ```
 
   Example of adding a dependency to an operation:
@@ -2159,4 +2168,3 @@ def ensure_shape(x, shape, name=None):
 def _ensure_shape_grad(op, grad):
   del op  # Unused.
   return grad
-

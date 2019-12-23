@@ -53,6 +53,30 @@ public:
   /// Failure is true in a boolean context.
   explicit operator bool() const { return failed(*this); }
 };
+/// This class implements `Optional` functionality for ParseResult. We don't
+/// directly use Optional here, because it provides an implicit conversion
+/// to 'bool' which we want to avoid. This class is used to implement tri-state
+/// 'parseOptional' functions that may have a failure mode when parsing that
+/// shouldn't be attributed to "not present".
+class OptionalParseResult {
+public:
+  OptionalParseResult() = default;
+  OptionalParseResult(LogicalResult result) : impl(result) {}
+  OptionalParseResult(ParseResult result) : impl(result) {}
+  OptionalParseResult(const InFlightDiagnostic &)
+      : OptionalParseResult(failure()) {}
+  OptionalParseResult(llvm::NoneType) : impl(llvm::None) {}
+
+  /// Returns true if we contain a valid ParseResult value.
+  bool hasValue() const { return impl.hasValue(); }
+
+  /// Access the internal ParseResult value.
+  ParseResult getValue() const { return impl.getValue(); }
+  ParseResult operator*() const { return getValue(); }
+
+private:
+  Optional<ParseResult> impl;
+};
 
 // These functions are out-of-line utilities, which avoids them being template
 // instantiated/duplicated.
@@ -61,15 +85,14 @@ namespace impl {
 /// region's only block if it does not have a terminator already. If the region
 /// is empty, insert a new block first. `buildTerminatorOp` should return the
 /// terminator operation to insert.
-void ensureRegionTerminator(
-    Region &region, Location loc,
-    llvm::function_ref<Operation *()> buildTerminatorOp);
+void ensureRegionTerminator(Region &region, Location loc,
+                            function_ref<Operation *()> buildTerminatorOp);
 /// Templated version that fills the generates the provided operation type.
 template <typename OpTy>
 void ensureRegionTerminator(Region &region, Builder &builder, Location loc) {
   ensureRegionTerminator(region, loc, [&] {
     OperationState state(loc, OpTy::getOperationName());
-    OpTy::build(&builder, &state);
+    OpTy::build(&builder, state);
     return Operation::create(state);
   });
 }
@@ -105,7 +128,9 @@ public:
   MLIRContext *getContext() { return getOperation()->getContext(); }
 
   /// Print the operation to the given stream.
-  void print(raw_ostream &os) { state->print(os); }
+  void print(raw_ostream &os, OpPrintingFlags flags = llvm::None) {
+    state->print(os, flags);
+  }
 
   /// Dump this operation.
   void dump() { state->dump(); }
@@ -189,16 +214,10 @@ public:
 
   /// Walk the operation in postorder, calling the callback for each nested
   /// operation(including this one).
-  void walk(llvm::function_ref<void(Operation *)> callback) {
-    state->walk(callback);
-  }
-
-  /// Specialization of walk to only visit operations of 'OpTy'.
-  template <typename OpTy> void walk(llvm::function_ref<void(OpTy)> callback) {
-    walk([&](Operation *opInst) {
-      if (auto op = dyn_cast<OpTy>(opInst))
-        callback(op);
-    });
+  /// See Operation::walk for more details.
+  template <typename FnT, typename RetT = detail::walkResultType<FnT>>
+  RetT walk(FnT &&callback) {
+    return state->walk(std::forward<FnT>(callback));
   }
 
   // These are default implementations of customization hooks.
@@ -216,10 +235,10 @@ protected:
   /// Unless overridden, the custom assembly form of an op is always rejected.
   /// Op implementations should implement this to return failure.
   /// On success, they should fill in result with the fields to use.
-  static ParseResult parse(OpAsmParser *parser, OperationState *result);
+  static ParseResult parse(OpAsmParser &parser, OperationState &result);
 
   // The fallback for the printer is to print it the generic assembly form.
-  void print(OpAsmPrinter *p);
+  void print(OpAsmPrinter &p);
 
   /// Mutability management is handled by the OpWrapper/OpConstWrapper classes,
   /// so we can cast it away here.
@@ -238,8 +257,8 @@ inline bool operator!=(OpState lhs, OpState rhs) {
 }
 
 /// This class represents a single result from folding an operation.
-class OpFoldResult : public llvm::PointerUnion<Attribute, Value *> {
-  using llvm::PointerUnion<Attribute, Value *>::PointerUnion;
+class OpFoldResult : public PointerUnion<Attribute, ValuePtr> {
+  using PointerUnion<Attribute, ValuePtr>::PointerUnion;
 };
 
 /// This template defines the foldHook as used by AbstractOperation.
@@ -292,8 +311,8 @@ class FoldingHook<ConcreteType, isSingleResult,
                   typename std::enable_if<isSingleResult>::type> {
 public:
   /// If the operation returns a single value, then the Op can be implicitly
-  /// converted to an Value*.  This yields the value of the only result.
-  operator Value *() {
+  /// converted to an Value.  This yields the value of the only result.
+  operator ValuePtr() {
     return static_cast<ConcreteType *>(this)->getOperation()->getResult(0);
   }
 
@@ -307,7 +326,7 @@ public:
 
     // Check if the operation was folded in place. In this case, the operation
     // returns itself.
-    if (result.template dyn_cast<Value *>() != op->getResult(0))
+    if (result.template dyn_cast<ValuePtr>() != op->getResult(0))
       results.push_back(result);
     return success();
   }
@@ -357,13 +376,17 @@ LogicalResult verifyZeroResult(Operation *op);
 LogicalResult verifyOneResult(Operation *op);
 LogicalResult verifyNResults(Operation *op, unsigned numOperands);
 LogicalResult verifyAtLeastNResults(Operation *op, unsigned numOperands);
+LogicalResult verifySameOperandsShape(Operation *op);
 LogicalResult verifySameOperandsAndResultShape(Operation *op);
+LogicalResult verifySameOperandsElementType(Operation *op);
 LogicalResult verifySameOperandsAndResultElementType(Operation *op);
 LogicalResult verifySameOperandsAndResultType(Operation *op);
 LogicalResult verifyResultsAreBoolLike(Operation *op);
 LogicalResult verifyResultsAreFloatLike(Operation *op);
 LogicalResult verifyResultsAreIntegerLike(Operation *op);
 LogicalResult verifyIsTerminator(Operation *op);
+LogicalResult verifyOperandSizeAttr(Operation *op, StringRef sizeAttrName);
+LogicalResult verifyResultSizeAttr(Operation *op, StringRef sizeAttrName);
 } // namespace impl
 
 /// Helper class for implementing traits.  Clients are not expected to interact
@@ -405,10 +428,12 @@ struct MultiOperandTraitBase : public TraitBase<ConcreteType, TraitType> {
   unsigned getNumOperands() { return this->getOperation()->getNumOperands(); }
 
   /// Return the operand at index 'i'.
-  Value *getOperand(unsigned i) { return this->getOperation()->getOperand(i); }
+  ValuePtr getOperand(unsigned i) {
+    return this->getOperation()->getOperand(i);
+  }
 
   /// Set the operand at index 'i' to 'value'.
-  void setOperand(unsigned i, Value *value) {
+  void setOperand(unsigned i, ValuePtr value) {
     this->getOperation()->setOperand(i, value);
   }
 
@@ -452,9 +477,11 @@ private:
 template <typename ConcreteType>
 class OneOperand : public TraitBase<ConcreteType, OneOperand> {
 public:
-  Value *getOperand() { return this->getOperation()->getOperand(0); }
+  ValuePtr getOperand() { return this->getOperation()->getOperand(0); }
 
-  void setOperand(Value *value) { this->getOperation()->setOperand(0, value); }
+  void setOperand(ValuePtr value) {
+    this->getOperation()->setOperand(0, value);
+  }
 
   static LogicalResult verifyTrait(Operation *op) {
     return impl::verifyOneOperand(op);
@@ -527,7 +554,7 @@ struct MultiResultTraitBase : public TraitBase<ConcreteType, TraitType> {
   unsigned getNumResults() { return this->getOperation()->getNumResults(); }
 
   /// Return the result at index 'i'.
-  Value *getResult(unsigned i) { return this->getOperation()->getResult(i); }
+  ValuePtr getResult(unsigned i) { return this->getOperation()->getResult(i); }
 
   /// Replace all uses of results of this operation with the provided 'values'.
   /// 'values' may correspond to an existing operation, or a range of 'Value'.
@@ -563,13 +590,13 @@ struct MultiResultTraitBase : public TraitBase<ConcreteType, TraitType> {
 template <typename ConcreteType>
 class OneResult : public TraitBase<ConcreteType, OneResult> {
 public:
-  Value *getResult() { return this->getOperation()->getResult(0); }
+  ValuePtr getResult() { return this->getOperation()->getResult(0); }
   Type getType() { return getResult()->getType(); }
 
   /// Replace all uses of 'this' value with the new value, updating anything in
   /// the IR that uses 'this' to use the other value instead.  When this returns
   /// there are zero uses of 'this'.
-  void replaceAllUsesWith(Value *newValue) {
+  void replaceAllUsesWith(ValuePtr newValue) {
     getResult()->replaceAllUsesWith(newValue);
   }
 
@@ -626,6 +653,17 @@ class VariadicResults
     : public detail::MultiResultTraitBase<ConcreteType, VariadicResults> {};
 
 /// This class provides verification for ops that are known to have the same
+/// operand shape: all operands are scalars, vectors/tensors of the same
+/// shape.
+template <typename ConcreteType>
+class SameOperandsShape : public TraitBase<ConcreteType, SameOperandsShape> {
+public:
+  static LogicalResult verifyTrait(Operation *op) {
+    return impl::verifySameOperandsShape(op);
+  }
+};
+
+/// This class provides verification for ops that are known to have the same
 /// operand and result shape: both are scalars, vectors/tensors of the same
 /// shape.
 template <typename ConcreteType>
@@ -638,7 +676,19 @@ public:
 };
 
 /// This class provides verification for ops that are known to have the same
-/// operand and result element type.
+/// operand element type (or the type itself if it is scalar).
+///
+template <typename ConcreteType>
+class SameOperandsElementType
+    : public TraitBase<ConcreteType, SameOperandsElementType> {
+public:
+  static LogicalResult verifyTrait(Operation *op) {
+    return impl::verifySameOperandsElementType(op);
+  }
+};
+
+/// This class provides verification for ops that are known to have the same
+/// operand and result element type (or the type itself if it is scalar).
 ///
 template <typename ConcreteType>
 class SameOperandsAndResultElementType
@@ -774,10 +824,10 @@ public:
     return this->getOperation()->setSuccessor(block, index);
   }
 
-  void addSuccessorOperand(unsigned index, Value *value) {
+  void addSuccessorOperand(unsigned index, ValuePtr value) {
     return this->getOperation()->addSuccessorOperand(index, value);
   }
-  void addSuccessorOperands(unsigned index, ArrayRef<Value *> values) {
+  void addSuccessorOperands(unsigned index, ArrayRef<ValuePtr> values) {
     return this->getOperation()->addSuccessorOperand(index, values);
   }
 };
@@ -862,6 +912,43 @@ template <typename ParentOpType> struct HasParent {
   };
 };
 
+/// A trait for operations that have an attribute specifying operand segments.
+///
+/// Certain operations can have multiple variadic operands and their size
+/// relationship is not always known statically. For such cases, we need
+/// a per-op-instance specification to divide the operands into logical groups
+/// or segments. This can be modeled by attributes. The attribute will be named
+/// as `operand_segment_sizes`.
+///
+/// This trait verifies the attribute for specifying operand segments has
+/// the correct type (1D vector) and values (non-negative), etc.
+template <typename ConcreteType>
+class AttrSizedOperandSegments
+    : public TraitBase<ConcreteType, AttrSizedOperandSegments> {
+public:
+  static StringRef getOperandSegmentSizeAttr() {
+    return "operand_segment_sizes";
+  }
+
+  static LogicalResult verifyTrait(Operation *op) {
+    return ::mlir::OpTrait::impl::verifyOperandSizeAttr(
+        op, getOperandSegmentSizeAttr());
+  }
+};
+
+/// Similar to AttrSizedOperandSegments but used for results.
+template <typename ConcreteType>
+class AttrSizedResultSegments
+    : public TraitBase<ConcreteType, AttrSizedResultSegments> {
+public:
+  static StringRef getResultSegmentSizeAttr() { return "result_segment_sizes"; }
+
+  static LogicalResult verifyTrait(Operation *op) {
+    return ::mlir::OpTrait::impl::verifyResultSizeAttr(
+        op, getResultSegmentSizeAttr());
+  }
+};
+
 } // end namespace OpTrait
 
 //===----------------------------------------------------------------------===//
@@ -887,6 +974,16 @@ public:
   /// Return the operation that this refers to.
   Operation *getOperation() { return OpState::getOperation(); }
 
+  /// Create a deep copy of this operation.
+  ConcreteType clone() { return cast<ConcreteType>(getOperation()->clone()); }
+
+  /// Create a partial copy of this operation without traversing into attached
+  /// regions. The new operation will have the same number of regions as the
+  /// original one, but they will be left empty.
+  ConcreteType cloneWithoutRegions() {
+    return cast<ConcreteType>(getOperation()->cloneWithoutRegions());
+  }
+
   /// Return the dialect that this refers to.
   Dialect *getDialect() { return getOperation()->getDialect(); }
 
@@ -894,10 +991,9 @@ public:
   Region *getParentRegion() { return getOperation()->getParentRegion(); }
 
   /// Return true if this "op class" can match against the specified operation.
-  /// This hook can be overridden with a more specific implementation in
-  /// the subclass of Base.
-  ///
   static bool classof(Operation *op) {
+    if (auto *abstractOp = op->getAbstractOperation())
+      return &classof == abstractOp->classof;
     return op->getName().getStringRef() == ConcreteType::getOperationName();
   }
 
@@ -905,14 +1001,14 @@ public:
   /// op from an .mlir file.  Op implementations should provide a parse method,
   /// which returns failure.  On success, they should return fill in result with
   /// the fields to use.
-  static ParseResult parseAssembly(OpAsmParser *parser,
-                                   OperationState *result) {
+  static ParseResult parseAssembly(OpAsmParser &parser,
+                                   OperationState &result) {
     return ConcreteType::parse(parser, result);
   }
 
   /// This is the hook used by the AsmPrinter to emit this to the .mlir file.
   /// Op implementations should provide a print method.
-  static void printAssembly(Operation *op, OpAsmPrinter *p) {
+  static void printAssembly(Operation *op, OpAsmPrinter &p) {
     auto opPointer = dyn_cast<ConcreteType>(op);
     assert(opPointer &&
            "op's name does not match name of concrete type instantiated with");
@@ -996,30 +1092,146 @@ private:
                               traitID);
   }
 
-  /// Allow access to 'hasTrait'.
+  /// Returns an opaque pointer to a concept instance of the interface with the
+  /// given ID if one was registered to this operation.
+  static void *getRawInterface(ClassID *id) {
+    return InterfaceLookup::template lookup<Traits<ConcreteType>...>(id);
+  }
+
+  struct InterfaceLookup {
+    /// Trait to check if T provides a static 'getInterfaceID' method.
+    template <typename T, typename... Args>
+    using has_get_interface_id = decltype(T::getInterfaceID());
+
+    /// If 'T' is the same interface as 'interfaceID' return the concept
+    /// instance.
+    template <typename T>
+    static typename std::enable_if<is_detected<has_get_interface_id, T>::value,
+                                   void *>::type
+    lookup(ClassID *interfaceID) {
+      return (T::getInterfaceID() == interfaceID) ? &T::instance() : nullptr;
+    }
+
+    /// 'T' is known to not be an interface, return nullptr.
+    template <typename T>
+    static typename std::enable_if<!is_detected<has_get_interface_id, T>::value,
+                                   void *>::type
+    lookup(ClassID *) {
+      return nullptr;
+    }
+
+    template <typename T, typename T2, typename... Ts>
+    static void *lookup(ClassID *interfaceID) {
+      auto *concept = lookup<T>(interfaceID);
+      return concept ? concept : lookup<T2, Ts...>(interfaceID);
+    }
+  };
+
+  /// Allow access to 'hasTrait' and 'getRawInterface'.
   friend AbstractOperation;
 };
 
-// These functions are out-of-line implementations of the methods in BinaryOp,
-// which avoids them being template instantiated/duplicated.
+/// This class represents the base of an operation interface. Operation
+/// interfaces provide access to derived *Op properties through an opaquely
+/// Operation instance. Derived interfaces must also provide a 'Traits' class
+/// that defines a 'Concept' and a 'Model' class. The 'Concept' class defines an
+/// abstract virtual interface, where as the 'Model' class implements this
+/// interface for a specific derived *Op type. Both of these classes *must* not
+/// contain non-static data. A simple example is shown below:
+///
+///  struct ExampleOpInterfaceTraits {
+///    struct Concept {
+///      virtual unsigned getNumInputs(Operation *op) = 0;
+///    };
+///    template <typename OpT> class Model {
+///      unsigned getNumInputs(Operation *op) final {
+///        return cast<OpT>(op).getNumInputs();
+///      }
+///    };
+///  };
+///
+template <typename ConcreteType, typename Traits>
+class OpInterface : public Op<ConcreteType> {
+public:
+  using Concept = typename Traits::Concept;
+  template <typename T> using Model = typename Traits::template Model<T>;
+
+  OpInterface(Operation *op = nullptr)
+      : Op<ConcreteType>(op), impl(op ? getInterfaceFor(op) : nullptr) {
+    assert((!op || impl) &&
+           "instantiating an interface with an unregistered operation");
+  }
+
+  /// Support 'classof' by checking if the given operation defines the concrete
+  /// interface.
+  static bool classof(Operation *op) { return getInterfaceFor(op); }
+
+  /// Define an accessor for the ID of this interface.
+  static ClassID *getInterfaceID() { return ClassID::getID<ConcreteType>(); }
+
+  /// This is a special trait that registers a given interface with an
+  /// operation.
+  template <typename ConcreteOp>
+  struct Trait : public OpTrait::TraitBase<ConcreteOp, Trait> {
+    /// Define an accessor for the ID of this interface.
+    static ClassID *getInterfaceID() { return ClassID::getID<ConcreteType>(); }
+
+    /// Provide an accessor to a static instance of the interface model for the
+    /// concrete operation type.
+    /// The implementation is inspired from Sean Parent's concept-based
+    /// polymorphism. A key difference is that the set of classes erased is
+    /// statically known, which alleviates the need for using dynamic memory
+    /// allocation.
+    /// We use a zero-sized templated class `Model<ConcreteOp>` to emit the
+    /// virtual table and generate a singleton object for each instantiation of
+    /// this class.
+    static Concept &instance() {
+      static Model<ConcreteOp> singleton;
+      return singleton;
+    }
+  };
+
+protected:
+  /// Get the raw concept in the correct derived concept type.
+  Concept *getImpl() { return impl; }
+
+private:
+  /// Returns the impl interface instance for the given operation.
+  static Concept *getInterfaceFor(Operation *op) {
+    // Access the raw interface from the abstract operation.
+    auto *abstractOp = op->getAbstractOperation();
+    return abstractOp ? abstractOp->getInterface<ConcreteType>() : nullptr;
+  }
+
+  /// A pointer to the impl concept object.
+  Concept *impl;
+};
+
+// These functions are out-of-line implementations of the methods in UnaryOp and
+// BinaryOp, which avoids them being template instantiated/duplicated.
 namespace impl {
-void buildBinaryOp(Builder *builder, OperationState *result, Value *lhs,
-                   Value *rhs);
-ParseResult parseBinaryOp(OpAsmParser *parser, OperationState *result);
+ParseResult parseOneResultOneOperandTypeOp(OpAsmParser &parser,
+                                           OperationState &result);
+
+void buildBinaryOp(Builder *builder, OperationState &result, ValuePtr lhs,
+                   ValuePtr rhs);
+ParseResult parseOneResultSameOperandTypeOp(OpAsmParser &parser,
+                                            OperationState &result);
+
 // Prints the given binary `op` in custom assembly form if both the two operands
 // and the result have the same time. Otherwise, prints the generic assembly
 // form.
-void printBinaryOp(Operation *op, OpAsmPrinter *p);
+void printOneResultOp(Operation *op, OpAsmPrinter &p);
 } // namespace impl
 
 // These functions are out-of-line implementations of the methods in CastOp,
 // which avoids them being template instantiated/duplicated.
 namespace impl {
-void buildCastOp(Builder *builder, OperationState *result, Value *source,
+void buildCastOp(Builder *builder, OperationState &result, ValuePtr source,
                  Type destType);
-ParseResult parseCastOp(OpAsmParser *parser, OperationState *result);
-void printCastOp(Operation *op, OpAsmPrinter *p);
-Value *foldCastOp(Operation *op);
+ParseResult parseCastOp(OpAsmParser &parser, OperationState &result);
+void printCastOp(Operation *op, OpAsmPrinter &p);
+ValuePtr foldCastOp(Operation *op);
 } // namespace impl
 } // end namespace mlir
 

@@ -60,6 +60,8 @@ typedef enum {} cublasMath_t;
 // Parameter constness changed in cuBLAS 9.2
 #if CUDA_VERSION < 9020
 #include "tensorflow/stream_executor/cuda/cublas_9_0.inc"
-#else
+#elif CUDA_VERSION < 10010
 #include "tensorflow/stream_executor/cuda/cublas_10_0.inc"
+#else
+#include "tensorflow/stream_executor/cuda/cublas_10_1.inc"
 #endif

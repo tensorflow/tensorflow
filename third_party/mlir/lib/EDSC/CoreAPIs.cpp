@@ -25,39 +25,16 @@
 #include "mlir/IR/Types.h"
 #include "mlir/Support/LLVM.h"
 
+#include "mlir/Parser.h"
+
 #include "llvm/ADT/StringSwitch.h"
 
 using namespace mlir;
 
-mlir_type_t makeScalarType(mlir_context_t context, const char *name,
-                           unsigned bitwidth) {
-  mlir::MLIRContext *c = reinterpret_cast<mlir::MLIRContext *>(context);
-  mlir_type_t res =
-      llvm::StringSwitch<mlir_type_t>(name)
-          .Case("bf16",
-                mlir_type_t{mlir::FloatType::getBF16(c).getAsOpaquePointer()})
-          .Case("f16",
-                mlir_type_t{mlir::FloatType::getF16(c).getAsOpaquePointer()})
-          .Case("f32",
-                mlir_type_t{mlir::FloatType::getF32(c).getAsOpaquePointer()})
-          .Case("f64",
-                mlir_type_t{mlir::FloatType::getF64(c).getAsOpaquePointer()})
-          .Case("index",
-                mlir_type_t{mlir::IndexType::get(c).getAsOpaquePointer()})
-          .Case("i",
-                mlir_type_t{
-                    mlir::IntegerType::get(bitwidth, c).getAsOpaquePointer()})
-          .Default(mlir_type_t{nullptr});
-  if (!res) {
-    llvm_unreachable("Invalid type specifier");
-  }
-  return res;
-}
-
 mlir_type_t makeMemRefType(mlir_context_t context, mlir_type_t elemType,
                            int64_list_t sizes) {
   auto t = mlir::MemRefType::get(
-      llvm::ArrayRef<int64_t>(sizes.values, sizes.n),
+      ArrayRef<int64_t>(sizes.values, sizes.n),
       mlir::Type::getFromOpaquePointer(elemType),
       {mlir::AffineMap::getMultiDimIdentityMap(
           sizes.n, reinterpret_cast<mlir::MLIRContext *>(context))},
@@ -67,7 +44,7 @@ mlir_type_t makeMemRefType(mlir_context_t context, mlir_type_t elemType,
 
 mlir_type_t makeFunctionType(mlir_context_t context, mlir_type_list_t inputs,
                              mlir_type_list_t outputs) {
-  llvm::SmallVector<mlir::Type, 8> ins(inputs.n), outs(outputs.n);
+  SmallVector<mlir::Type, 8> ins(inputs.n), outs(outputs.n);
   for (unsigned i = 0; i < inputs.n; ++i) {
     ins[i] = mlir::Type::getFromOpaquePointer(inputs.types[i]);
   }
@@ -97,7 +74,29 @@ mlir_attr_t makeBoolAttr(mlir_context_t context, bool value) {
   return mlir_attr_t{attr.getAsOpaquePointer()};
 }
 
+mlir_attr_t makeFloatAttr(mlir_context_t context, float value) {
+  auto *ctx = reinterpret_cast<mlir::MLIRContext *>(context);
+  auto attr = FloatAttr::get(FloatType::getF32(ctx), APFloat(value));
+  return mlir_attr_t{attr.getAsOpaquePointer()};
+}
+
+mlir_attr_t makeStringAttr(mlir_context_t context, const char *value) {
+  auto *ctx = reinterpret_cast<mlir::MLIRContext *>(context);
+  auto attr = StringAttr::get(value, ctx);
+  return mlir_attr_t{attr.getAsOpaquePointer()};
+}
+
 unsigned getFunctionArity(mlir_func_t function) {
   auto f = mlir::FuncOp::getFromOpaquePointer(function);
   return f.getNumArguments();
+}
+
+mlir_type_t mlirParseType(const char *type, mlir_context_t context,
+                          uint64_t *charsRead) {
+  auto *ctx = reinterpret_cast<MLIRContext *>(context);
+  size_t numRead = 0;
+  Type ty = parseType(type, ctx, numRead);
+  if (charsRead)
+    *charsRead = numRead;
+  return mlir_type_t{ty.getAsOpaquePointer()};
 }

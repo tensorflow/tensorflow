@@ -114,14 +114,6 @@ class LRUCache {
   }
 };
 
-// Define a hash function for vector<TensorShape> because it is used as the key
-// for the engine cache.
-struct VectorTensorShapeHasher {
-  std::size_t operator()(const std::vector<TensorShape>& key) const {
-    return std::hash<std::string>()(TensorShapeUtils::ShapeListString(key));
-  }
-};
-
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
 
@@ -142,19 +134,7 @@ struct EngineContext {
 // Contains the context required to build the calibration data.
 class CalibrationContext {
  public:
-  void SetCalibrationTable() {
-    calibration_table_ = calibrator_->getCalibrationTableAsString();
-  }
-
-  Status SerializeToString(string* serialized) {
-    calibrator_->waitAndSetDone();
-    thr_->join();
-    *serialized = calibration_table_;
-    if (serialized->empty()) {
-      return errors::Unknown("Calibration table is empty.");
-    }
-    return Status::OK();
-  }
+  string TerminateCalibration();
 
   // Lookup table for temporary staging areas of input tensors for calibration.
   std::unordered_map<string, std::pair<void*, size_t>> device_buffers_;
@@ -162,12 +142,16 @@ class CalibrationContext {
   // Temporary staging areas for calibration inputs.
   std::vector<PersistentTensor> device_tensors_;
 
-  string calibration_table_;
   std::unique_ptr<TRTInt8Calibrator> calibrator_;
   TrtUniquePtrType<nvinfer1::IBuilder> builder_;
   TrtUniquePtrType<nvinfer1::ICudaEngine> engine_;
   // TODO(sami): Use threadpool threads!
   std::unique_ptr<std::thread> thr_;
+
+ private:
+  mutex mu_;
+  bool terminated_ GUARDED_BY(mu_) = false;
+  std::string calibration_table_ GUARDED_BY(mu_);
 };
 
 ABSL_CONST_INIT extern const absl::string_view kTfTrtContainerName;

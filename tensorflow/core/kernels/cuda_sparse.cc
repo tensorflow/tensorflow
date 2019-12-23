@@ -1,20 +1,21 @@
 /* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
-   Licensed under the Apache License, Version 2.0 (the "License");
-   you may not use this file except in compliance with the License.
-   You may obtain a copy of the License at
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
 
-   http://www.apache.org/licenses/LICENSE-2.0
+    http://www.apache.org/licenses/LICENSE-2.0
 
-   Unless required by applicable law or agreed to in writing, software
-   distributed under the License is distributed on an "AS IS" BASIS,
-   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-   See the License for the specific language governing permissions and
-   limitations under the License.
-   =============================================================================
-*/
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
 
 #ifdef GOOGLE_CUDA
+
+#include "tensorflow/core/kernels/cuda_sparse.h"
 
 #include <complex>
 #include <memory>
@@ -26,7 +27,7 @@
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/cuda_sparse.h"
+#include "tensorflow/core/kernels/cuda_solvers.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -36,6 +37,8 @@
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/types.h"
+
+// TODO(rmlarsen,penporn): Investigate using newer kernels in CUDA 10.1+.
 
 namespace tensorflow {
 namespace {
@@ -126,6 +129,13 @@ class CudaSparseHandles {
   TF_DISALLOW_COPY_AND_ASSIGN(CudaSparseHandles);
 };
 
+// TODO(ebrevdo): Replace global mutex guarding CudaSparseHandles
+// lookup with one of:
+//    1. Adding the handle to the CudaStream structure; do the lookup there.
+//    2. Add a thread-local cusparse, set it to the current stream
+//       upon each call.
+// #1 seems like the cleanest option but will need to wait until this
+// is moved into TF core.
 static mutex handle_map_mutex(LINKER_INITIALIZED);
 
 using HandleMap = std::unordered_map<cudaStream_t, CudaSparseHandles>;
@@ -141,11 +151,13 @@ HandleMap* GetHandleMapSingleton() {
 
 CudaSparse::CudaSparse(OpKernelContext* context)
     : initialized_(false), context_(context) {
-  cuda_stream_ =
-      *reinterpret_cast<const cudaStream_t*>(context->op_device_context()
-                                                 ->stream()
-                                                 ->implementation()
-                                                 ->GpuStreamMemberHack());
+  auto cuda_stream_ptr =
+      reinterpret_cast<const cudaStream_t*>(context->op_device_context()
+                                                ->stream()
+                                                ->implementation()
+                                                ->GpuStreamMemberHack());
+  DCHECK(cuda_stream_ptr);
+  cuda_stream_ = *cuda_stream_ptr;
 }
 
 Status CudaSparse::Initialize() {
@@ -375,6 +387,303 @@ static inline Status Gtsv2StridedBatchBufferSizeImpl(
   }
 
 TF_CALL_LAPACK_TYPES(GTSV2_STRIDED_BATCH_BUFFER_SIZE_INSTANCE);
+
+Status CudaSparse::Coo2csr(const int* cooRowInd, int nnz, int m,
+                           int* csrRowPtr) const {
+  // cusparseStatus_t CUSPARSEAPI cusparseXcoo2csr(cusparseHandle_t handle,
+  //                                               const int *cooRowInd,
+  //                                               int nnz,
+  //                                               int m,
+  //                                               int *csrSortedRowPtr,
+  //                                               cusparseIndexBase_t
+  //                                               idxBase);
+  DCHECK(initialized_);
+  TF_RETURN_IF_CUSPARSE_ERROR(cusparseXcoo2csr(*cusparse_handle_, cooRowInd,
+                                               nnz, m, csrRowPtr,
+                                               CUSPARSE_INDEX_BASE_ZERO));
+  return Status::OK();
+}
+
+Status CudaSparse::Csr2coo(const int* csrRowPtr, int nnz, int m,
+                           int* cooRowInd) const {
+  // cusparseStatus_t CUSPARSEAPI cusparseXcsr2coo(cusparseHandle_t handle,
+  //                                               const int *csrRowPtr,
+  //                                               int nnz,
+  //                                               int m,
+  //                                               int *cooRowInd,
+  //                                               cusparseIndexBase_t
+  //                                               idxBase);
+  DCHECK(initialized_);
+  TF_RETURN_IF_CUSPARSE_ERROR(cusparseXcsr2coo(*cusparse_handle_, csrRowPtr,
+                                               nnz, m, cooRowInd,
+                                               CUSPARSE_INDEX_BASE_ZERO));
+  return Status::OK();
+}
+
+Status CudaSparse::CsrgeamNnz(int m, int n, const cusparseMatDescr_t descrA,
+                              int nnzA, const int* csrSortedRowPtrA,
+                              const int* csrSortedColIndA,
+                              const cusparseMatDescr_t descrB, int nnzB,
+                              const int* csrSortedRowPtrB,
+                              const int* csrSortedColIndB,
+                              const cusparseMatDescr_t descrC,
+                              int* csrSortedRowPtrC, int* nnzTotalDevHostPtr) {
+  DCHECK(initialized_);
+  DCHECK(nnzTotalDevHostPtr != nullptr);
+  TF_RETURN_IF_CUSPARSE_ERROR(cusparseXcsrgeamNnz(
+      *cusparse_handle_, m, n, descrA, nnzA, csrSortedRowPtrA, csrSortedColIndA,
+      descrB, nnzB, csrSortedRowPtrB, csrSortedColIndB, descrC,
+      csrSortedRowPtrC, nnzTotalDevHostPtr));
+  return Status::OK();
+}
+
+template <typename Scalar, typename SparseFnT>
+static inline Status CsrmmImpl(
+    SparseFnT op, OpKernelContext* context, cusparseHandle_t cusparse_handle,
+    cusparseOperation_t transA, cusparseOperation_t transB, int m, int n, int k,
+    int nnz, const Scalar* alpha_host, const cusparseMatDescr_t descrA,
+    const Scalar* csrSortedValA, const int* csrSortedRowPtrA,
+    const int* csrSortedColIndA, const Scalar* B, int ldb,
+    const Scalar* beta_host, Scalar* C, int ldc) {
+  // cusparseStatus_t CUSPARSEAPI cusparseScsrmm2(
+  //     cusparseHandle_t handle, cusparseOperation_t transA,
+  //     cusparseOperation_t transB, int m, int n, int k, int nnz,
+  //     const float* alpha, const cusparseMatDescr_t descrA,
+  //     const float* csrSortedValA, const int* csrSortedRowPtrA,
+  //     const int* csrSortedColIndA, const float* B, int ldb, const float*
+  //     beta, float* C, int ldc);
+  TF_RETURN_IF_CUSPARSE_ERROR(op(
+      cusparse_handle, transA, transB, m, n, k, nnz, AsCudaComplex(alpha_host),
+      descrA, AsCudaComplex(csrSortedValA), csrSortedRowPtrA, csrSortedColIndA,
+      AsCudaComplex(B), ldb, AsCudaComplex(beta_host), AsCudaComplex(C), ldc));
+  return Status::OK();
+}
+
+#define CSRMM_INSTANCE(Scalar, sparse_prefix)                                \
+  template <>                                                                \
+  Status CudaSparse::Csrmm<Scalar>(                                          \
+      cusparseOperation_t transA, cusparseOperation_t transB, int m, int n,  \
+      int k, int nnz, const Scalar* alpha_host,                              \
+      const cusparseMatDescr_t descrA, const Scalar* csrSortedValA,          \
+      const int* csrSortedRowPtrA, const int* csrSortedColIndA,              \
+      const Scalar* B, int ldb, const Scalar* beta_host, Scalar* C, int ldc) \
+      const {                                                                \
+    DCHECK(initialized_);                                                    \
+    return CsrmmImpl(SPARSE_FN(csrmm2, sparse_prefix), context_,             \
+                     *cusparse_handle_, transA, transB, m, n, k, nnz,        \
+                     alpha_host, descrA, csrSortedValA, csrSortedRowPtrA,    \
+                     csrSortedColIndA, B, ldb, beta_host, C, ldc);           \
+  }
+
+TF_CALL_LAPACK_TYPES(CSRMM_INSTANCE);
+
+template <typename Scalar, typename SparseFnT>
+static inline Status CsrmvImpl(
+    SparseFnT op, OpKernelContext* context, cusparseHandle_t cusparse_handle,
+    cusparseOperation_t transA, int m, int n, int nnz, const Scalar* alpha_host,
+    const cusparseMatDescr_t descrA, const Scalar* csrSortedValA,
+    const int* csrSortedRowPtrA, const int* csrSortedColIndA, const Scalar* x,
+    const Scalar* beta_host, Scalar* y) {
+  TF_RETURN_IF_CUSPARSE_ERROR(
+      op(cusparse_handle, transA, m, n, nnz, AsCudaComplex(alpha_host), descrA,
+         AsCudaComplex(csrSortedValA), csrSortedRowPtrA, csrSortedColIndA,
+         AsCudaComplex(x), AsCudaComplex(beta_host), AsCudaComplex(y)));
+  return Status::OK();
+}
+
+// TODO(ebrevdo,rmlarsen): Use csrmv_mp for all cases when available in CUDA 9.
+#define CSRMV_INSTANCE(Scalar, sparse_prefix)                                \
+  template <>                                                                \
+  Status CudaSparse::Csrmv<Scalar>(                                          \
+      cusparseOperation_t transA, int m, int n, int nnz,                     \
+      const Scalar* alpha_host, const cusparseMatDescr_t descrA,             \
+      const Scalar* csrSortedValA, const int* csrSortedRowPtrA,              \
+      const int* csrSortedColIndA, const Scalar* x, const Scalar* beta_host, \
+      Scalar* y) const {                                                     \
+    DCHECK(initialized_);                                                    \
+    if (transA == CUSPARSE_OPERATION_NON_TRANSPOSE) {                        \
+      return CsrmvImpl(SPARSE_FN(csrmv_mp, sparse_prefix), context_,         \
+                       *cusparse_handle_, transA, m, n, nnz, alpha_host,     \
+                       descrA, csrSortedValA, csrSortedRowPtrA,              \
+                       csrSortedColIndA, x, beta_host, y);                   \
+    } else {                                                                 \
+      return CsrmvImpl(SPARSE_FN(csrmv, sparse_prefix), context_,            \
+                       *cusparse_handle_, transA, m, n, nnz, alpha_host,     \
+                       descrA, csrSortedValA, csrSortedRowPtrA,              \
+                       csrSortedColIndA, x, beta_host, y);                   \
+    }                                                                        \
+  }
+
+TF_CALL_LAPACK_TYPES(CSRMV_INSTANCE);
+
+template <typename Scalar, typename SparseFnT>
+static inline Status CsrgeamImpl(
+    SparseFnT op, OpKernelContext* context, cusparseHandle_t cusparse_handle,
+    int m, int n, const Scalar* alpha, const cusparseMatDescr_t descrA,
+    int nnzA, const Scalar* csrSortedValA, const int* csrSortedRowPtrA,
+    const int* csrSortedColIndA, const Scalar* beta,
+    const cusparseMatDescr_t descrB, int nnzB, const Scalar* csrSortedValB,
+    const int* csrSortedRowPtrB, const int* csrSortedColIndB,
+    const cusparseMatDescr_t descrC, Scalar* csrSortedValC,
+    int* csrSortedRowPtrC, int* csrSortedColIndC) {
+  TF_RETURN_IF_CUSPARSE_ERROR(
+      op(cusparse_handle, m, n, AsCudaComplex(alpha), descrA, nnzA,
+         AsCudaComplex(csrSortedValA), csrSortedRowPtrA, csrSortedColIndA,
+         AsCudaComplex(beta), descrB, nnzB, AsCudaComplex(csrSortedValB),
+         csrSortedRowPtrB, csrSortedColIndB, descrC,
+         AsCudaComplex(csrSortedValC), csrSortedRowPtrC, csrSortedColIndC));
+  return Status::OK();
+}
+
+#define CSRGEAM_INSTANCE(Scalar, sparse_prefix)                               \
+  template <>                                                                 \
+  Status CudaSparse::Csrgeam<Scalar>(                                         \
+      int m, int n, const Scalar* alpha, const cusparseMatDescr_t descrA,     \
+      int nnzA, const Scalar* csrSortedValA, const int* csrSortedRowPtrA,     \
+      const int* csrSortedColIndA, const Scalar* beta,                        \
+      const cusparseMatDescr_t descrB, int nnzB, const Scalar* csrSortedValB, \
+      const int* csrSortedRowPtrB, const int* csrSortedColIndB,               \
+      const cusparseMatDescr_t descrC, Scalar* csrSortedValC,                 \
+      int* csrSortedRowPtrC, int* csrSortedColIndC) {                         \
+    DCHECK(initialized_);                                                     \
+    return CsrgeamImpl(SPARSE_FN(csrgeam, sparse_prefix), context_,           \
+                       *cusparse_handle_, m, n, alpha, descrA, nnzA,          \
+                       csrSortedValA, csrSortedRowPtrA, csrSortedColIndA,     \
+                       beta, descrB, nnzB, csrSortedValB, csrSortedRowPtrB,   \
+                       csrSortedColIndB, descrC, csrSortedValC,               \
+                       csrSortedRowPtrC, csrSortedColIndC);                   \
+  }
+
+TF_CALL_LAPACK_TYPES(CSRGEAM_INSTANCE);
+
+Status CudaSparse::CsrgemmNnz(
+    cusparseOperation_t transA, cusparseOperation_t transB, int m, int k, int n,
+    const cusparseMatDescr_t descrA, int nnzA, const int* csrSortedRowPtrA,
+    const int* csrSortedColIndA, const cusparseMatDescr_t descrB, int nnzB,
+    const int* csrSortedRowPtrB, const int* csrSortedColIndB,
+    const cusparseMatDescr_t descrC, int* csrSortedRowPtrC,
+    int* nnzTotalDevHostPtr) {
+  DCHECK(initialized_);
+  DCHECK(nnzTotalDevHostPtr != nullptr);
+  TF_RETURN_IF_CUSPARSE_ERROR(cusparseXcsrgemmNnz(
+      *cusparse_handle_, transA, transB, m, k, n, descrA, nnzA,
+      csrSortedRowPtrA, csrSortedColIndA, descrB, nnzB, csrSortedRowPtrB,
+      csrSortedColIndB, descrC, csrSortedRowPtrC, nnzTotalDevHostPtr));
+  return Status::OK();
+}
+
+template <typename Scalar, typename SparseFnT>
+static inline Status CsrgemmImpl(
+    SparseFnT op, OpKernelContext* context, cusparseHandle_t cusparse_handle,
+    cusparseOperation_t transA, cusparseOperation_t transB, int m, int k, int n,
+    const cusparseMatDescr_t descrA, int nnzA, const Scalar* csrSortedValA,
+    const int* csrSortedRowPtrA, const int* csrSortedColIndA,
+    const cusparseMatDescr_t descrB, int nnzB, const Scalar* csrSortedValB,
+    const int* csrSortedRowPtrB, const int* csrSortedColIndB,
+    const cusparseMatDescr_t descrC, Scalar* csrSortedValC,
+    int* csrSortedRowPtrC, int* csrSortedColIndC) {
+  TF_RETURN_IF_CUSPARSE_ERROR(
+      op(cusparse_handle, transA, transB, m, k, n, descrA, nnzA,
+         AsCudaComplex(csrSortedValA), csrSortedRowPtrA, csrSortedColIndA,
+         descrB, nnzB, AsCudaComplex(csrSortedValB), csrSortedRowPtrB,
+         csrSortedColIndB, descrC, AsCudaComplex(csrSortedValC),
+         csrSortedRowPtrC, csrSortedColIndC));
+  return Status::OK();
+}
+
+#define CSRGEMM_INSTANCE(Scalar, sparse_prefix)                               \
+  template <>                                                                 \
+  Status CudaSparse::Csrgemm<Scalar>(                                         \
+      cusparseOperation_t transA, cusparseOperation_t transB, int m, int k,   \
+      int n, const cusparseMatDescr_t descrA, int nnzA,                       \
+      const Scalar* csrSortedValA, const int* csrSortedRowPtrA,               \
+      const int* csrSortedColIndA, const cusparseMatDescr_t descrB, int nnzB, \
+      const Scalar* csrSortedValB, const int* csrSortedRowPtrB,               \
+      const int* csrSortedColIndB, const cusparseMatDescr_t descrC,           \
+      Scalar* csrSortedValC, int* csrSortedRowPtrC, int* csrSortedColIndC) {  \
+    DCHECK(initialized_);                                                     \
+    return CsrgemmImpl(SPARSE_FN(csrgemm, sparse_prefix), context_,           \
+                       *cusparse_handle_, transA, transB, m, k, n, descrA,    \
+                       nnzA, csrSortedValA, csrSortedRowPtrA,                 \
+                       csrSortedColIndA, descrB, nnzB, csrSortedValB,         \
+                       csrSortedRowPtrB, csrSortedColIndB, descrC,            \
+                       csrSortedValC, csrSortedRowPtrC, csrSortedColIndC);    \
+  }
+
+TF_CALL_LAPACK_TYPES(CSRGEMM_INSTANCE);
+
+template <typename Scalar, typename BufferSizeFnT, typename SparseFnT>
+static inline Status Csru2csrImpl(SparseFnT op, BufferSizeFnT buffer_size_op,
+                                  OpKernelContext* context,
+                                  cusparseHandle_t cusparse_handle, int m,
+                                  int n, int nnz,
+                                  const cusparseMatDescr_t descrA,
+                                  Scalar* csrVal, const int* csrRowPtr,
+                                  int* csrColInd) {
+  CudaSparseCsrSortingConversionInfo info;
+  TF_RETURN_IF_ERROR(info.Initialize());
+
+  size_t pBufferSizeInBytes = 0;
+
+  TF_RETURN_IF_CUSPARSE_ERROR(
+      buffer_size_op(cusparse_handle, m, n, nnz, AsCudaComplex(csrVal),
+                     csrRowPtr, csrColInd, info.info(), &pBufferSizeInBytes));
+
+  Tensor pBuffer_t;
+  TF_RETURN_IF_ERROR(context->allocate_temp(
+      DT_INT8, TensorShape({static_cast<int64>(pBufferSizeInBytes)}),
+      &pBuffer_t));
+  auto pBuffer = pBuffer_t.flat<int8>();
+  DCHECK(pBuffer.data() != nullptr);
+
+  TF_RETURN_IF_CUSPARSE_ERROR(op(cusparse_handle, m, n, nnz, descrA,
+                                 AsCudaComplex(csrVal), csrRowPtr, csrColInd,
+                                 info.info(), pBuffer.data()));
+
+  return Status::OK();
+}
+
+#define CSRU2CSR_INSTANCE(Scalar, sparse_prefix)                              \
+  template <>                                                                 \
+  Status CudaSparse::Csru2csr<Scalar>(                                        \
+      int m, int n, int nnz, const cusparseMatDescr_t descrA, Scalar* csrVal, \
+      const int* csrRowPtr, int* csrColInd) {                                 \
+    DCHECK(initialized_);                                                     \
+    return Csru2csrImpl(SPARSE_FN(csru2csr, sparse_prefix),                   \
+                        BUFSIZE_FN(csru2csr, sparse_prefix), context_,        \
+                        *cusparse_handle_, m, n, nnz, descrA, csrVal,         \
+                        csrRowPtr, csrColInd);                                \
+  }
+
+TF_CALL_LAPACK_TYPES(CSRU2CSR_INSTANCE);
+
+template <typename Scalar, typename SparseFnT>
+static inline Status Csr2cscImpl(SparseFnT op, OpKernelContext* context,
+                                 cusparseHandle_t cusparse_handle, int m, int n,
+                                 int nnz, const Scalar* csrVal,
+                                 const int* csrRowPtr, const int* csrColInd,
+                                 Scalar* cscVal, int* cscRowInd, int* cscColPtr,
+                                 const cusparseAction_t copyValues) {
+  TF_RETURN_IF_CUSPARSE_ERROR(op(cusparse_handle, m, n, nnz,
+                                 AsCudaComplex(csrVal), csrRowPtr, csrColInd,
+                                 AsCudaComplex(cscVal), cscRowInd, cscColPtr,
+                                 copyValues, CUSPARSE_INDEX_BASE_ZERO));
+  return Status::OK();
+}
+
+#define CSR2CSC_INSTANCE(Scalar, sparse_prefix)                              \
+  template <>                                                                \
+  Status CudaSparse::Csr2csc<Scalar>(                                        \
+      int m, int n, int nnz, const Scalar* csrVal, const int* csrRowPtr,     \
+      const int* csrColInd, Scalar* cscVal, int* cscRowInd, int* cscColPtr,  \
+      const cusparseAction_t copyValues) {                                   \
+    DCHECK(initialized_);                                                    \
+    return Csr2cscImpl(SPARSE_FN(csr2csc, sparse_prefix), context_,          \
+                       *cusparse_handle_, m, n, nnz, csrVal, csrRowPtr,      \
+                       csrColInd, cscVal, cscRowInd, cscColPtr, copyValues); \
+  }
+
+TF_CALL_LAPACK_TYPES(CSR2CSC_INSTANCE);
 
 }  // namespace tensorflow
 

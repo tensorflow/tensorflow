@@ -341,8 +341,9 @@ __device__ void mergeShards(int num_shards, int k,
 extern __shared__ char shared_memory[];
 
 template <typename T>
-__global__ void TopKKernel(const T* input, int length, int k, bool sorted,
-                           T* output, int* indices) {
+__global__ void TopKKernel(const T* __restrict__ input, int length, int k,
+                           bool sorted, T* __restrict__ output,
+                           int* __restrict__ indices) {
   const int batch_index = blockIdx.x;
   const T* batch_input = input + batch_index * length;
 

@@ -3,7 +3,7 @@
 FROM ubuntu:xenial
 MAINTAINER Jeff Poznanovic <jeffrey.poznanovic@amd.com>
 
-ARG DEB_ROCM_REPO=http://repo.radeon.com/rocm/apt/debian/
+ARG DEB_ROCM_REPO=http://repo.radeon.com/rocm/apt/2.8.0/
 ARG ROCM_PATH=/opt/rocm
 
 ENV DEBIAN_FRONTEND noninteractive
@@ -57,9 +57,8 @@ RUN apt-get update --allow-insecure-repositories && DEBIAN_FRONTEND=noninteracti
 # Install rocm pkgs
 RUN apt-get update --allow-insecure-repositories && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --allow-unauthenticated \
-    rocm-dev rocm-libs rocm-utils rocm-cmake \
-    rocfft miopen-hip miopengemm rocblas hipblas rocrand rccl \
-    rocm-profiler cxlactivitylogger && \
+    rocm-dev rocm-libs hipcub rocm-utils rocm-cmake \
+    rocfft miopen-hip miopengemm rocblas hipblas rocrand rccl && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 

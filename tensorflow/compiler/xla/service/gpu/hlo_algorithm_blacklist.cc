@@ -23,15 +23,21 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+// MSVC requires the extra const. Without, it reports an
+// "error C2131: expression did not evaluate to a constant".
+constexpr const absl::string_view kDefaultBlacklist = R"pb(
+)pb";
+
 absl::Span<const stream_executor::dnn::AlgorithmDesc>
 GetBlacklistedConvAlgorithms(tensorflow::ComputeCapability cc,
                              tensorflow::CudnnVersion cudnn_version,
+                             absl::string_view blas_version,
                              absl::string_view hlo) {
   // Key is the tuple of canonicalized hlo, compute capability major/minor,
-  // cudnn version major/minor/patch.
-  using MapType =
-      absl::flat_hash_map<std::tuple<std::string, int, int, int, int, int>,
-                          std::vector<stream_executor::dnn::AlgorithmDesc>>;
+  // cudnn version major/minor/patch, blas version.
+  using MapType = absl::flat_hash_map<
+      std::tuple<std::string, int, int, int, int, int, std::string>,
+      std::vector<stream_executor::dnn::AlgorithmDesc>>;
 
   static MapType* blacklist = [] {
     MapType* list = new MapType();
@@ -41,14 +47,17 @@ GetBlacklistedConvAlgorithms(tensorflow::ComputeCapability cc,
     if (!file_path.empty()) {
       TF_CHECK_OK(tensorflow::ReadTextProto(tensorflow::Env::Default(),
                                             file_path, &proto));
+    } else {
+      CHECK(tensorflow::protobuf::TextFormat::ParseFromString(
+          std::string(kDefaultBlacklist), &proto));
     }
     for (const auto& entry : proto.entries()) {
       for (const auto& algo : entry.algos()) {
-        (*list)[std::make_tuple(std::string(entry.hlo()), entry.cc().major(),
-                                entry.cc().minor(),
-                                entry.cudnn_version().major(),
-                                entry.cudnn_version().minor(),
-                                entry.cudnn_version().patch())]
+        (*list)[std::make_tuple(
+                    std::string(entry.hlo()), entry.cc().major(),
+                    entry.cc().minor(), entry.cudnn_version().major(),
+                    entry.cudnn_version().minor(),
+                    entry.cudnn_version().patch(), entry.blas_version())]
             .push_back({algo.id(), algo.tensor_ops()});
       }
     }
@@ -57,17 +66,10 @@ GetBlacklistedConvAlgorithms(tensorflow::ComputeCapability cc,
 
   auto iter = blacklist->find(std::make_tuple(
       std::string(hlo), cc.major(), cc.minor(), cudnn_version.major(),
-      cudnn_version.minor(), cudnn_version.patch()));
+      cudnn_version.minor(), cudnn_version.patch(), std::string(blas_version)));
   if (iter != blacklist->end()) {
     return iter->second;
   }
-  return {};
-}
-
-absl::Span<const stream_executor::blas::AlgorithmType>
-GetBlacklistedBlasAlgorithms(tensorflow::ComputeCapability,
-                             absl::string_view blas_version,
-                             absl::string_view) {
   return {};
 }
 

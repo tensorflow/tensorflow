@@ -886,7 +886,7 @@ IndexedArrayAnalysis::ComputeArrayForElementwiseBinaryOp(HloOpcode opcode,
 
   // To figure out the broadcast dimensions for the (constant) source for the
   // scalar-indexed node, we "simulate" the index transformation done by the
-  // existing broadcsat:
+  // existing broadcast:
   enum class IndexComponent { Broadcasted, NotBroadcasted };
   std::vector<IndexComponent> simulated_index(
       broadcast_instr->shape().dimensions_size(), IndexComponent::Broadcasted);
@@ -964,7 +964,7 @@ IndexedArrayAnalysis::ComputeArrayForElementwiseUnaryOp(HloOpcode opcode,
   return Construct<ScalarIndexedConstantArray>(
       new_source, scalar_indexed_const->indices(),
       scalar_indexed_const->source_dim(),
-      ArraySliceToVector(scalar_indexed_const->output_dims()),
+      SpanToVector(scalar_indexed_const->output_dims()),
       scalar_indexed_const->shape());
 }
 
@@ -1060,7 +1060,7 @@ IndexedArrayAnalysis::ComputeArrayForDotWithIndexedLhs(
   ConstantArray* new_source = Construct<ConstantArray>(literal_for_new_source);
   return Construct<ScalarIndexedConstantArray>(
       new_source, lhs->indices(), new_source_dim,
-      ArraySliceToVector(lhs->output_dims()), shape);
+      SpanToVector(lhs->output_dims()), shape);
 }
 
 StatusOr<Analysis::Array*>
@@ -1096,7 +1096,7 @@ IndexedArrayAnalysis::ComputeArrayForDotWithIndexedRhs(
   ConstantArray* new_source = Construct<ConstantArray>(literal_for_new_source);
   return Construct<ScalarIndexedConstantArray>(
       new_source, rhs->indices(), new_source_dim,
-      ArraySliceToVector(rhs->output_dims()), shape);
+      SpanToVector(rhs->output_dims()), shape);
 }
 
 StatusOr<Analysis::Array*> IndexedArrayAnalysis::ComputeArrayForDot(

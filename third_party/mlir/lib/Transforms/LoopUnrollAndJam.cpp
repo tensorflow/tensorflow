@@ -43,8 +43,8 @@
 //===----------------------------------------------------------------------===//
 #include "mlir/Transforms/Passes.h"
 
-#include "mlir/AffineOps/AffineOps.h"
 #include "mlir/Analysis/LoopAnalysis.h"
+#include "mlir/Dialect/AffineOps/AffineOps.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/BlockAndValueMapping.h"
@@ -82,9 +82,9 @@ struct LoopUnrollAndJam : public FunctionPass<LoopUnrollAndJam> {
 };
 } // end anonymous namespace
 
-std::unique_ptr<FunctionPassBase>
+std::unique_ptr<OpPassBase<FuncOp>>
 mlir::createLoopUnrollAndJamPass(int unrollJamFactor) {
-  return llvm::make_unique<LoopUnrollAndJam>(
+  return std::make_unique<LoopUnrollAndJam>(
       unrollJamFactor == -1 ? None : Optional<unsigned>(unrollJamFactor));
 }
 
@@ -191,7 +191,7 @@ LogicalResult mlir::loopUnrollJamByFactor(AffineForOp forOp,
     // Adjust the lower bound of the cleanup loop; its upper bound is the same
     // as the original loop's upper bound.
     AffineMap cleanupMap;
-    SmallVector<Value *, 4> cleanupOperands;
+    SmallVector<ValuePtr, 4> cleanupOperands;
     getCleanupLoopLowerBound(forOp, unrollJamFactor, &cleanupMap,
                              &cleanupOperands, builder);
     cleanupAffineForOp.setLowerBound(cleanupOperands, cleanupMap);
@@ -208,22 +208,22 @@ LogicalResult mlir::loopUnrollJamByFactor(AffineForOp forOp,
   int64_t step = forOp.getStep();
   forOp.setStep(step * unrollJamFactor);
 
-  auto *forOpIV = forOp.getInductionVar();
-  for (auto &subBlock : subBlocks) {
-    // Builder to insert unroll-jammed bodies. Insert right at the end of
-    // sub-block.
-    OpBuilder builder(subBlock.first->getBlock(), std::next(subBlock.second));
-
-    // Unroll and jam (appends unrollJamFactor-1 additional copies).
-    for (unsigned i = 1; i < unrollJamFactor; i++) {
-      BlockAndValueMapping operandMapping;
+  auto forOpIV = forOp.getInductionVar();
+  // Unroll and jam (appends unrollJamFactor - 1 additional copies).
+  for (unsigned i = unrollJamFactor - 1; i >= 1; --i) {
+    // Operand map persists across all sub-blocks.
+    BlockAndValueMapping operandMapping;
+    for (auto &subBlock : subBlocks) {
+      // Builder to insert unroll-jammed bodies. Insert right at the end of
+      // sub-block.
+      OpBuilder builder(subBlock.first->getBlock(), std::next(subBlock.second));
 
       // If the induction variable is used, create a remapping to the value for
       // this unrolled instance.
       if (!forOpIV->use_empty()) {
         // iv' = iv + i, i = 1 to unrollJamFactor-1.
         auto d0 = builder.getAffineDimExpr(0);
-        auto bumpMap = builder.getAffineMap(1, 0, {d0 + i * step});
+        auto bumpMap = AffineMap::get(1, 0, {d0 + i * step});
         auto ivUnroll =
             builder.create<AffineApplyOp>(forInst->getLoc(), bumpMap, forOpIV);
         operandMapping.map(forOpIV, ivUnroll);

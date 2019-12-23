@@ -15,13 +15,19 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/lib/matrix.h"
 
+#include <algorithm>
 #include <array>
+#include <limits>
 #include <numeric>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/strings/ascii.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -29,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/lib/slicing.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -73,27 +80,130 @@ XlaOp GetMatrixDiagonal(XlaOp x, int k) {
     const int64 m = shape.dimensions(n_dims - 2);
     const int64 n = shape.dimensions(n_dims - 1);
 
+    if (k <= -m || k >= n) {
+      auto zero_size_shape = shape;
+      zero_size_shape.DeleteDimension(n_dims - 1);
+      zero_size_shape.set_dimensions(n_dims - 2, 0);
+      return ConstantLiteral(builder, Literal{zero_size_shape});
+    }
     auto mask = GetDiagonalMask(x, k);
 
-    // TPUs don't support S64 add reduction at the moment. But fortunately
-    // OR-reductions work just as well for integers.
-    XlaComputation reducer =
-        CreateScalarIdentityWithZeroComputation(shape.element_type(), builder);
+    int64 reduce_dim = n_dims - 1;
+    if ((k == 0 && m >= n) || k < 0) {
+      reduce_dim = n_dims - 2;
+    }
+    auto result = Reduce(
+        Select(mask, x, Zeros(builder, shape)), ScalarLike(x, 0),
+        CreateScalarIdentityWithZeroComputation(shape.element_type(), builder),
+        {reduce_dim});
     // k == 0, we can save one slice op.
     if (k == 0) {
-      return Reduce(Select(mask, x, Zeros(builder, shape)), ScalarLike(x, 0),
-                    reducer, {m >= n ? n_dims - 2 : n_dims - 1});
-    } else if (k > 0) {
-      auto result = Reduce(Select(mask, x, Zeros(builder, shape)),
-                           ScalarLike(x, 0), reducer, {n_dims - 2});
-      return SliceInMinorDims(result, {std::min<int64>(k, n)},
-                              {std::min(m + k, n)});
-    } else {
-      auto result = Reduce(Select(mask, x, Zeros(builder, shape)),
-                           ScalarLike(x, 0), reducer, {n_dims - 1});
-      return SliceInMinorDims(result, {std::min<int64>(-k, m)},
-                              {std::min(m, n - k)});
+      return result;
     }
+    return SliceInMinorDims(result, {0},
+                            {k > 0 ? std::min(m, n - k) : std::min(n, m + k)});
+  });
+}
+
+XlaOp GetMatrixDiagonalViaGather(XlaOp x, int k) {
+  XlaBuilder* builder = x.builder();
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
+    auto n_dims = static_cast<int32>(shape.rank());
+    TF_RET_CHECK(n_dims >= 2);
+    const int64 m = shape.dimensions(n_dims - 2);
+    const int64 n = shape.dimensions(n_dims - 1);
+
+    // The start_indices has a shape of {diag_len, 2}, and each pair of value in
+    // its dimension 1 represents the (row, col) of the diagonal. We set
+    // index_vector_dim to 1 and make start_index_map and collapsed_slice_dims
+    // contain the same two dimension indices. This makes sure that the (row,
+    // col) pairs in start_indices are propagated to the indices for the two
+    // collapsed dimensions in the operand indices through start_index_map.
+    const int64 num_index_dims = 2;
+    const int64 axis = n_dims - num_index_dims;
+
+    // Calculate the indices of diagonal part with offset k.
+    const int64 diag_len =
+        std::max(std::min(m + std::min(k, 0), n - std::max(k, 0)), 0LL);
+    XlaOp diag_base_indices = BroadcastInDim(Iota(builder, S32, diag_len),
+                                             {diag_len, num_index_dims}, {0});
+    XlaOp diag_offset =
+        Broadcast(ConstantR1<int>(builder, {std::max(-k, 0), std::max(k, 0)}),
+                  {diag_len});
+    XlaOp start_indices = Add(diag_base_indices, diag_offset);
+
+    // Example of a 3D diag-part extracting diagonal part with offset=1 out of a
+    // tensor of shape [2,5,4].
+    //
+    //  operand = s32[2,5,4] parameter(0)
+    //  indices = s32[3,2] parameter(1)
+    //  gather = s32[2,3] gather(operand, indices),
+    //       offset_dims={0},
+    //       collapsed_slice_dims={1,2},
+    //       start_index_map={1,2},
+    //       index_vector_dim=1,
+    //       slice_sizes={2, 1, 1}
+
+    xla::GatherDimensionNumbers dim_numbers;
+    std::vector<int64> slice_sizes;
+    slice_sizes.reserve(n_dims);
+    for (int64 i = 0; i < n_dims; i++) {
+      int64 window_bound;
+      if (axis <= i) {
+        dim_numbers.add_collapsed_slice_dims(i);
+        dim_numbers.add_start_index_map(i);
+        window_bound = (shape.dimensions(i) != 0) ? 1 : 0;
+      } else {
+        dim_numbers.add_offset_dims(i);
+        window_bound = shape.dimensions(i);
+      }
+      slice_sizes.push_back(window_bound);
+    }
+
+    dim_numbers.set_index_vector_dim(1);
+
+    return Gather(x, start_indices, dim_numbers, slice_sizes,
+                  /*indices_are_sorted=*/true);
+  });
+}
+
+XlaOp SetMatrixDiagonal(XlaOp matrix, XlaOp diag, int k) {
+  XlaBuilder* builder = matrix.builder();
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(matrix));
+    TF_ASSIGN_OR_RETURN(Shape diag_shape, builder->GetShape(diag));
+    auto n_dims = static_cast<int32>(shape.rank());
+    TF_RET_CHECK(n_dims >= 2);
+    const int64 m = shape.dimensions(n_dims - 2);
+    const int64 n = shape.dimensions(n_dims - 1);
+    const int64 d = diag_shape.dimensions(n_dims - 2);
+    std::vector<int64> broadcast_dims(n_dims - 1);
+    absl::c_iota(broadcast_dims, 0);
+    int64 pad_high = m - d;
+    if (k < 0) {
+      ++(broadcast_dims.back());
+      pad_high = n - d;
+    }
+
+    if (pad_high != 0) {
+      PaddingConfig padding_config;
+      for (xla::int64 i = 0; i < diag_shape.rank() - 1; ++i) {
+        auto* dims = padding_config.add_dimensions();
+        dims->set_edge_padding_low(0);
+        dims->set_interior_padding(0);
+        dims->set_edge_padding_high(0);
+      }
+      auto* dims = padding_config.add_dimensions();
+      dims->set_edge_padding_low(0);
+      dims->set_interior_padding(0);
+      dims->set_edge_padding_high(pad_high);
+      diag = Pad(diag, ScalarLike(diag, 0), padding_config);
+    }
+
+    return Select(GetDiagonalMask(matrix, k),
+                  BroadcastInDim(diag, shape.dimensions(), broadcast_dims),
+                  matrix);
   });
 }
 
@@ -124,6 +234,53 @@ XlaOp UpperTriangle(XlaOp x) { return Triangle(x, false); }
 
 XlaOp LowerTriangle(XlaOp x) { return Triangle(x, true); }
 
+namespace {
+std::vector<int64> EinsumDiagonalLabels(absl::Span<const int64> config) {
+  std::vector<int64> unique_labels;
+  for (auto label = config.begin(); label != config.end(); ++label) {
+    auto first_label = absl::c_find(config, *label);
+    if (first_label == label) {
+      unique_labels.push_back(*label);
+    }
+  }
+  if (unique_labels.size() == config.size()) {
+    unique_labels.clear();
+  }
+  return unique_labels;
+}
+}  // namespace
+
+xla::XlaOp EinsumDiagonal(XlaOp x, absl::Span<const int64> config) {
+  XlaBuilder* builder = x.builder();
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    if (EinsumDiagonalLabels(config).empty()) {
+      return x;
+    }
+    TF_ASSIGN_OR_RETURN(Shape x_shape, builder->GetShape(x));
+    Shape iota_shape = x_shape;
+    iota_shape.set_element_type(S32);
+    XlaOp mask = ConstantR0(builder, true);
+
+    absl::InlinedVector<int64, 8> reduce_dims;
+    for (auto label = config.begin(); label != config.end(); ++label) {
+      const int64 dim = label - config.begin();
+      auto first_label = absl::c_find(config, *label);
+      if (first_label == label) {
+        continue;
+      }
+      reduce_dims.push_back(dim);
+      const int64 first_dim = first_label - config.begin();
+      mask = And(mask, Eq(Iota(builder, iota_shape, first_dim),
+                          Iota(builder, iota_shape, dim)));
+    }
+    auto zero = ScalarLike(x, 0);
+    return Reduce(Select(mask, x, zero), zero,
+                  CreateScalarIdentityWithZeroComputation(
+                      x_shape.element_type(), builder),
+                  reduce_dims);
+  });
+}
+
 Status ValidateEinsumNumericDimensions(absl::Span<const int64> x_config,
                                        absl::Span<const int64> y_config,
                                        absl::Span<const int64> output_config) {
@@ -144,11 +301,7 @@ Status ValidateEinsumNumericDimensions(absl::Span<const int64> x_config,
       if (absl::c_count(x_config, dim) > 1) {
         return InvalidArgument("Einsum has repeated lhs dimension.");
       }
-      continue;
     }
-    return InvalidArgument(
-        "Einsum has lhs dimension without corresponding rhs or output "
-        "dimension.");
   }
   for (auto dim : y_config) {
     if (absl::c_linear_search(x_config, dim) ||
@@ -156,14 +309,36 @@ Status ValidateEinsumNumericDimensions(absl::Span<const int64> x_config,
       if (absl::c_count(y_config, dim) > 1) {
         return InvalidArgument("Einsum has repeated rhs dimension.");
       }
-      continue;
     }
-    return InvalidArgument(
-        "Einsum has rhs dimension without corresponding lhs or output "
-        "dimension.");
   }
   return Status::OK();
 }
+
+namespace {
+// Helper method to remove dimensions from a shape and dot dimension numbers
+// used to implement implicit broadcasting.
+template <typename C>
+void DeleteDimsFromContainer(absl::Span<const int64> to_delete, Shape* shape,
+                             C* batch_dims, C* contracting_dims) {
+  if (to_delete.empty()) {
+    return;
+  }
+  for (int64 i = to_delete.size() - 1; i >= 0; --i) {
+    int64 dim = to_delete[i];
+    shape->DeleteDimension(dim);
+    for (auto& b : *batch_dims) {
+      if (b > dim) {
+        --b;
+      }
+    }
+    for (auto& c : *contracting_dims) {
+      if (c > dim) {
+        --c;
+      }
+    }
+  }
+}
+}  // namespace
 
 xla::XlaOp Einsum(xla::XlaOp x, absl::Span<const int64> x_config, xla::XlaOp y,
                   absl::Span<const int64> y_config,
@@ -171,8 +346,24 @@ xla::XlaOp Einsum(xla::XlaOp x, absl::Span<const int64> x_config, xla::XlaOp y,
                   xla::PrecisionConfig::Precision precision) {
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    auto x_diagonal_labels = EinsumDiagonalLabels(x_config);
+    auto y_diagonal_labels = EinsumDiagonalLabels(y_config);
+    if (!x_diagonal_labels.empty() && !y_diagonal_labels.empty()) {
+      return Einsum(EinsumDiagonal(x, x_config), x_diagonal_labels,
+                    EinsumDiagonal(y, y_config), y_diagonal_labels,
+                    output_config, precision);
+    } else if (!x_diagonal_labels.empty()) {
+      return Einsum(EinsumDiagonal(x, x_config), x_diagonal_labels, y, y_config,
+                    output_config, precision);
+    } else if (!y_diagonal_labels.empty()) {
+      return Einsum(x, x_config, EinsumDiagonal(y, y_config), y_diagonal_labels,
+                    output_config, precision);
+    }
+
     TF_RETURN_IF_ERROR(
         ValidateEinsumNumericDimensions(x_config, y_config, output_config));
+    TF_ASSIGN_OR_RETURN(Shape x_shape, builder->GetShape(x));
+    TF_ASSIGN_OR_RETURN(Shape y_shape, builder->GetShape(y));
     const int64 x_rank = x_config.size();
     const int64 y_rank = y_config.size();
     const int64 output_rank = output_config.size();
@@ -180,52 +371,69 @@ xla::XlaOp Einsum(xla::XlaOp x, absl::Span<const int64> x_config, xla::XlaOp y,
     absl::flat_hash_set<int64> y_map;
     absl::flat_hash_set<int64> output_map;
 
-    auto find = [&](const absl::flat_hash_set<int64>& map, int64 d) {
-      return map.count(d) != 0;
-    };
-
-    auto insert = [&](absl::flat_hash_set<int64>& map, char d) {
-      CHECK(!find(map, d));
-      map.insert(d);
-    };
-
     for (auto d : x_config) {
-      insert(x_map, d);
+      if (!x_map.insert(d).second) {
+        return InvalidArgument("XLA Einsum does not support rhs tracing");
+      }
     }
 
     for (auto d : y_config) {
-      insert(y_map, d);
+      if (!y_map.insert(d).second) {
+        return InvalidArgument("XLA Einsum does not support lhs tracing");
+      }
     }
 
     for (auto d : output_config) {
-      insert(output_map, d);
+      if (!output_map.insert(d).second) {
+        return InvalidArgument("XLA Einsum does not support output tracing");
+      }
     }
 
     DotDimensionNumbers dnums;
     std::vector<int64> lhs_outer_dims;
     auto is_batch_dim = [&](int64 d) {
-      return find(x_map, d) && find(y_map, d) && find(output_map, d);
+      return x_map.contains(d) && y_map.contains(d) && output_map.contains(d);
     };
     auto is_contracting = [&](int64 d) {
-      return find(x_map, d) && find(y_map, d);
+      return x_map.contains(d) && y_map.contains(d);
     };
     auto rhs_dimension_number = [&](int64 d) {
       return absl::c_find(y_config, d) - y_config.begin();
     };
+
+    absl::InlinedVector<int64, 8> rhs_outer_dims;
+    absl::InlinedVector<int64, 8> rhs_delete_dims;
+    absl::InlinedVector<int64, 8> lhs_delete_dims;
     for (int64 i = 0; i < x_rank; ++i) {
       auto dim_name = x_config[i];
+      const int64 rhs_dim = rhs_dimension_number(dim_name);
       if (is_batch_dim(dim_name)) {
-        dnums.add_lhs_batch_dimensions(i);
-        dnums.add_rhs_batch_dimensions(rhs_dimension_number(dim_name));
+        if (x_shape.dimensions(i) == y_shape.dimensions(rhs_dim)) {
+          dnums.add_lhs_batch_dimensions(i);
+          dnums.add_rhs_batch_dimensions(rhs_dim);
+        } else if (x_shape.dimensions(i) == 1) {
+          rhs_outer_dims.push_back(rhs_dim);
+          lhs_delete_dims.push_back(i);
+        } else {
+          lhs_outer_dims.push_back(i);
+          rhs_delete_dims.push_back(rhs_dim);
+        }
       } else if (is_contracting(dim_name)) {
-        dnums.add_lhs_contracting_dimensions(i);
-        dnums.add_rhs_contracting_dimensions(rhs_dimension_number(dim_name));
+        if (x_shape.dimensions(i) == y_shape.dimensions(rhs_dim)) {
+          dnums.add_lhs_contracting_dimensions(i);
+          dnums.add_rhs_contracting_dimensions(rhs_dim);
+        } else if (x_shape.dimensions(i) == 1) {
+          rhs_outer_dims.push_back(rhs_dim);
+          lhs_delete_dims.push_back(i);
+        } else {
+          lhs_outer_dims.push_back(i);
+          rhs_delete_dims.push_back(rhs_dim);
+        }
       } else {
         lhs_outer_dims.push_back(i);
       }
     }
 
-    std::vector<int64> rhs_outer_dims;
     for (int64 i = 0; i < y_rank; ++i) {
       auto dim_name = y_config[i];
       if (!is_batch_dim(dim_name) && !is_contracting(dim_name)) {
@@ -233,31 +441,64 @@ xla::XlaOp Einsum(xla::XlaOp x, absl::Span<const int64> x_config, xla::XlaOp y,
       }
     }
 
-    auto output_dimension_number = [&](char d) {
-      return absl::c_find(output_config, d) - output_config.begin();
+    absl::c_sort(rhs_outer_dims);
+
+    absl::InlinedVector<int64, 8> output_transpose_dims;
+    absl::InlinedVector<int64, 8> output_reduce_dims;
+    auto output_dimension_number = [&](int64 d) {
+      auto pos = absl::c_find(output_config, d);
+      if (pos == output_config.end()) {
+        const int64 dim =
+            output_transpose_dims.size() + output_reduce_dims.size();
+        output_reduce_dims.push_back(dim);
+      } else {
+        output_transpose_dims.push_back(pos - output_config.begin());
+      }
     };
 
-    std::vector<int64> output_dims;
-    output_dims.reserve(output_rank);
     for (auto d : dnums.lhs_batch_dimensions()) {
-      output_dims.push_back(output_dimension_number(x_config[d]));
+      output_dimension_number(x_config[d]);
     }
+
     for (auto d : lhs_outer_dims) {
-      output_dims.push_back(output_dimension_number(x_config[d]));
+      output_dimension_number(x_config[d]);
     }
+
     for (auto d : rhs_outer_dims) {
-      output_dims.push_back(output_dimension_number(y_config[d]));
+      output_dimension_number(y_config[d]);
     }
 
     std::vector<int64> transpose_dims(output_rank);
     for (int64 i = 0; i < output_rank; ++i) {
-      transpose_dims[output_dims[i]] = i;
+      transpose_dims[output_transpose_dims[i]] = i;
+    }
+
+    // Remove ones that where broadcasted from the x and the y shape and adjust
+    // the dimension numbers that are more minor than those dimensions.
+    DeleteDimsFromContainer(lhs_delete_dims, &x_shape,
+                            dnums.mutable_lhs_batch_dimensions(),
+                            dnums.mutable_lhs_contracting_dimensions());
+    DeleteDimsFromContainer(rhs_delete_dims, &y_shape,
+                            dnums.mutable_rhs_batch_dimensions(),
+                            dnums.mutable_rhs_contracting_dimensions());
+    if (!lhs_delete_dims.empty()) {
+      x = Reshape(x, x_shape.dimensions());
+    }
+
+    if (!rhs_delete_dims.empty()) {
+      y = Reshape(y, y_shape.dimensions());
     }
 
     PrecisionConfig precision_proto;
     precision_proto.add_operand_precision(precision);
     precision_proto.add_operand_precision(precision);
-    return Transpose(DotGeneral(x, y, dnums, &precision_proto), transpose_dims);
+    auto dot = DotGeneral(x, y, dnums, &precision_proto);
+    if (!output_reduce_dims.empty()) {
+      dot = Reduce(dot, ScalarLike(dot, 0),
+                   CreateScalarAddComputation(x_shape.element_type(), builder),
+                   output_reduce_dims);
+    }
+    return Transpose(dot, transpose_dims);
   });
 }
 
@@ -269,89 +510,22 @@ XlaOp BatchDot(XlaOp x, bool transpose_x, XlaOp y, bool transpose_y,
                PrecisionConfig::Precision precision) {
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    TF_ASSIGN_OR_RETURN(Shape x_shape, builder->GetShape(x));
-    TF_ASSIGN_OR_RETURN(Shape y_shape, builder->GetShape(y));
-
-    // The batch dimensions must be broadcast-compatible and the matrix
-    // dimensions must be valid.
-    std::vector<int64> x_config;
-    std::vector<int64> y_config;
-    std::vector<int64> output_config;
-
-    std::vector<int64> x_implicit_broadcast;
-    std::vector<int64> y_implicit_broadcast;
-
-    const int64 ndims = std::max(y_shape.rank(), x_shape.rank());
-    // If X and Y have unequal ranks, the major dimensions of the higher rank
-    // shape are broadcasted.
-    //
-    // A dimension of size 1 can be implicitly broadcasted to any other
-    // dimension.
-    const int64 x_offset = std::max<int64>(0, y_shape.rank() - x_shape.rank());
-    const int64 y_offset = std::max<int64>(0, x_shape.rank() - y_shape.rank());
-    for (int i = 0; i < ndims - 2; ++i) {
-      const int64 x_dim = i - x_offset;
-      const int64 y_dim = i - y_offset;
-      output_config.push_back(i);
-      if (x_dim < 0) {
-        y_config.push_back(i);
-      } else if (y_dim < 0) {
-        x_config.push_back(i);
-      } else if (x_shape.dimensions(x_dim) == y_shape.dimensions(y_dim)) {
-        y_config.push_back(i);
-        x_config.push_back(i);
-      } else if (x_shape.dimensions(x_dim) == 1) {
-        y_config.push_back(i);
-        x_implicit_broadcast.push_back(x_dim);
-      } else if (y_shape.dimensions(y_dim) == 1) {
-        x_config.push_back(i);
-        y_implicit_broadcast.push_back(y_dim);
-      } else {
-        return InvalidArgument("Expected batch dot dimension to be equal or 1");
-      }
-    }
+    std::string string("...mk,...kn->...mn");
     if (transpose_x) {
-      x_config.push_back(ndims);
-      x_config.push_back(ndims - 2);
-    } else {
-      x_config.push_back(ndims - 2);
-      x_config.push_back(ndims);
+      std::swap(string[3], string[4]);
     }
     if (transpose_y) {
-      y_config.push_back(ndims - 1);
-      y_config.push_back(ndims);
-    } else {
-      y_config.push_back(ndims);
-      y_config.push_back(ndims - 1);
+      std::swap(string[6 + 3], string[6 + 4]);
     }
-    output_config.push_back(ndims - 2);
-    output_config.push_back(ndims - 1);
-    if (!x_implicit_broadcast.empty()) {
-      x_shape = ShapeUtil::FilterDimensions(
-          [&](int64 dim) {
-            return !absl::c_linear_search(x_implicit_broadcast, dim);
-          },
-          x_shape);
-      x = Reshape(x, x_shape.dimensions());
-    }
-    if (!y_implicit_broadcast.empty()) {
-      y_shape = ShapeUtil::FilterDimensions(
-          [&](int64 dim) {
-            return !absl::c_linear_search(y_implicit_broadcast, dim);
-          },
-          y_shape);
-      y = Reshape(y, y_shape.dimensions());
-    }
-    return Einsum(x, x_config, y, y_config, output_config, precision);
+    return Einsum(x, y, string, precision);
   });
 }
 
 StatusOr<std::array<std::vector<int64>, 3>> ParseEinsumString(
-    absl::string_view einsum_config) {
+    absl::string_view einsum_config, int64 x_rank, int64 y_rank) {
   std::array<std::vector<int64>, 3> einsum_config_numeric;
   std::vector<absl::string_view> main_split =
       absl::StrSplit(einsum_config, ',');
-
   if (main_split.size() != 2) {
     return InvalidArgument("Expected one \",\" in einsum_config.");
   }
@@ -361,46 +535,129 @@ StatusOr<std::array<std::vector<int64>, 3>> ParseEinsumString(
       return Status::OK();
     }
     if (d == '.') {
-      return InvalidArgument("Unsupported \"...\" or \".\" in einsum config.");
+      return InvalidArgument("Unsupported \".\" in einsum config.");
     }
     return InvalidArgument("Unexpected character in einsum config.");
   };
 
-  auto& x_config = einsum_config_numeric[0];
-  x_config.reserve(main_split[0].size());
-  for (auto d : main_split[0]) {
-    TF_RETURN_IF_ERROR(maybe_invalid_character(d));
-    x_config.push_back(static_cast<int64>(d));
-  }
+  auto string_config_to_numeric =
+      [&](absl::string_view config, bool is_input_config, int64 input_rank,
+          int64 ellipsis_rank,
+          std::vector<int64>* numeric_config) -> StatusOr<int64> {
+    std::vector<absl::string_view> splits = absl::StrSplit(config, "...");
+    if (splits.empty()) {
+      return ellipsis_rank;
+    }
+    if (splits.size() > 2) {
+      return InvalidArgument("Too many ellipses (\"...\") in einsum config.");
+    }
+    // There is one split if we don't have an ellipsis, and two splits if we do.
+    const bool has_ellipsis = splits.size() > 1;
+    // We only compute ellipsis_rank for input configs.
+    if (is_input_config && has_ellipsis) {
+      // ellipsis_rank is input rank minus the number of named labels.
+      ellipsis_rank =
+          input_rank - static_cast<int64>(splits[0].size() + splits[1].size());
+      if (ellipsis_rank < 0) {
+        return InvalidArgument(
+            "Too few dimensions in the input for the given einsum config.");
+      }
+    }
+    for (char d : splits[0]) {
+      TF_RETURN_IF_ERROR(maybe_invalid_character(d));
+      numeric_config->push_back(static_cast<int64>(d));
+    }
+    if (has_ellipsis) {
+      // For input configs, we use the value of ellipsis_rank we just computed.
+      // For output config, we use the existing value of ellipsis_rank.
+      for (int64 i = ellipsis_rank; i > 0; --i) {
+        numeric_config->push_back(-i);
+      }
+      for (char d : splits[1]) {
+        TF_RETURN_IF_ERROR(maybe_invalid_character(d));
+        numeric_config->push_back(static_cast<int64>(d));
+      }
+    }
+    return ellipsis_rank;
+  };
+
+  TF_ASSIGN_OR_RETURN(
+      const int64 x_ellipsis_rank,
+      string_config_to_numeric(main_split[0],
+                               /*is_input_config=*/true, x_rank,
+                               /*ellipsis_rank=*/0, &einsum_config_numeric[0]));
+
   std::vector<absl::string_view> y_output_split =
       absl::StrSplit(main_split[1], "->");
   if (y_output_split.size() != 2) {
     return InvalidArgument("Expected one \"->\" in einsum_config.");
   }
-  auto& y_config = einsum_config_numeric[1];
-  y_config.reserve(y_output_split[0].size());
-  for (auto d : y_output_split[0]) {
-    TF_RETURN_IF_ERROR(maybe_invalid_character(d));
-    y_config.push_back(static_cast<int64>(d));
-  }
-  auto& output_config = einsum_config_numeric[2];
-  output_config.reserve(y_output_split[1].size());
-  for (auto d : y_output_split[1]) {
-    TF_RETURN_IF_ERROR(maybe_invalid_character(d));
-    output_config.push_back(static_cast<int64>(d));
-  }
+
+  TF_ASSIGN_OR_RETURN(
+      const int64 y_ellipsis_rank,
+      string_config_to_numeric(y_output_split[0],
+                               /*is_input_config=*/true, y_rank,
+                               /*ellipsis_rank=*/0, &einsum_config_numeric[1]));
+
+  // Replace ellipsis in output_config with numeric labels with the same
+  // ellipsis rank as in the inputs.
+  // Note: This implementation doesn't support different-rank broadcasting.
+  TF_ASSIGN_OR_RETURN(
+      std::ignore,
+      string_config_to_numeric(
+          y_output_split[1], /*is_input_config=*/false,
+          /*input_rank=*/0,
+          /*ellipsis_rank=*/std::max(x_ellipsis_rank, y_ellipsis_rank),
+          &einsum_config_numeric[2]));
   return einsum_config_numeric;
+}
+
+std::string NormalizeEinsumString(absl::string_view einsum_config) {
+  if (einsum_config.find("->") != einsum_config.npos) {
+    return "";
+  }
+  bool has_ellipsis = einsum_config.find("...") != einsum_config.npos;
+  std::map<char, int64> chars;
+  for (char c : einsum_config) {
+    if (absl::ascii_isalpha(c)) {
+      ++chars[c];
+    }
+  }
+  std::string new_config(einsum_config.begin(), einsum_config.end());
+  new_config.append("->");
+  if (has_ellipsis) {
+    new_config.append("...");
+  }
+  for (auto p : chars) {
+    if (p.second == 1) {
+      new_config.push_back(p.first);
+    }
+  }
+  return new_config;
 }
 
 XlaOp Einsum(XlaOp x, XlaOp y, absl::string_view einsum_config,
              PrecisionConfig::Precision precision) {
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    TF_ASSIGN_OR_RETURN(auto einsum_config_numeric,
-                        ParseEinsumString(einsum_config));
+    auto new_config = NormalizeEinsumString(einsum_config);
+    if (!new_config.empty()) {
+      return Einsum(x, y, new_config, precision);
+    }
+    TF_ASSIGN_OR_RETURN(Shape x_shape, builder->GetShape(x));
+    TF_ASSIGN_OR_RETURN(Shape y_shape, builder->GetShape(y));
+    TF_ASSIGN_OR_RETURN(
+        auto einsum_config_numeric,
+        ParseEinsumString(einsum_config, x_shape.rank(), y_shape.rank()));
     return Einsum(x, einsum_config_numeric[0], y, einsum_config_numeric[1],
                   einsum_config_numeric[2], precision);
   });
+}
+
+XlaOp Einsum(XlaOp x, absl::string_view einsum_config,
+             PrecisionConfig::Precision precision) {
+  return Einsum(ScalarLike(x, 1), x, absl::StrCat(",", einsum_config),
+                precision);
 }
 
 XlaOp TransposeInMinorDims(XlaOp x) {

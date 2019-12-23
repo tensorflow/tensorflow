@@ -450,36 +450,43 @@ def is_dataset_shape_fully_defined(dataset):
   return not unknown_shapes
 
 
-def process_batch_and_step_size(
-    strategy, inputs, batch_size, steps_per_epoch, mode):
+def process_batch_and_step_size(strategy,
+                                inputs,
+                                batch_size,
+                                steps_per_epoch,
+                                mode,
+                                validation_split=0.):
   """Process the batch size and step size based on input and dist strategy."""
   first_x_value = nest.flatten(inputs)[0]
   if isinstance(first_x_value, np.ndarray):
+    num_samples = first_x_value.shape[0]
+    if validation_split and 0. < validation_split < 1.:
+      num_samples = int(num_samples * (1 - validation_split))
     # Until support for partial batch is implemented across all
     # functions and distribution strategy, we pass `mode` to selectively
     # relax the constraint to consume all the training samples.
-    steps_per_epoch, batch_size = get_input_params(strategy,
-                                                   first_x_value,
-                                                   steps_per_epoch,
-                                                   batch_size,
-                                                   mode=mode)
+    steps_per_epoch, batch_size = get_input_params(
+        strategy, num_samples, steps_per_epoch, batch_size, mode=mode)
   return batch_size, steps_per_epoch
 
 
-def get_input_params(distribution_strategy, first_x_value, steps, batch_size,
+def get_input_params(distribution_strategy,
+                     num_samples,
+                     steps,
+                     batch_size,
                      mode=None):
   """Calculate the number of batches and steps/steps_per_epoch.
 
   Args:
     distribution_strategy: The DistributionStrategy used to compile the model.
-    first_x_value: This is the first input numpy array that is passed in as the
-      model input.
+    num_samples: The number of samples from which we determine the batch size
+      and steps.
     steps:  The specified number of steps.
     batch_size: The specified batch_size.
     mode: ModeKey representing whether input will be used for training,
       evaluation, or prediction. This is used to relax the constraints on
-      consuming all the training samples to keep compatibility till we
-      support partial batches. If none, then partial batches are not allowed.
+      consuming all the training samples to keep compatibility till we support
+      partial batches. If none, then partial batches are not allowed.
 
   Returns:
     steps: The steps or steps_per_epoch argument depending on if a user is
@@ -491,7 +498,6 @@ def get_input_params(distribution_strategy, first_x_value, steps, batch_size,
     ValueError: If the number of batches or steps evaluates to 0.
 
   """
-  num_samples = first_x_value.shape[0]
   # TODO(b/118776054): Use global batch size for Keras/DS support.
   # Currently this is only supported in TPUStrategy and CoreMirroredStrategy.
   use_per_replica_batch = not global_batch_size_supported(

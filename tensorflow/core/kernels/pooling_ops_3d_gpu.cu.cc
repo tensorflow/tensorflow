@@ -28,13 +28,14 @@ namespace {
 
 template <typename dtype>
 __global__ void MaxPoolGradBackwardNoMaskNCDHW(
-    const int nthreads, const dtype* bottom_data, const dtype* output_data,
-    const int pooled_plane, const int pooled_height, const int pooled_width,
-    const int channels, const int plane, const int height, const int width,
-    const int kernel_p, const int kernel_h, const int kernel_w,
-    const int stride_p, const int stride_h, const int stride_w, const int pad_p,
-    const int pad_t, const int pad_l, const dtype* top_diff,
-    dtype* bottom_diff) {
+    const int nthreads, const dtype* __restrict__ bottom_data,
+    const dtype* __restrict__ output_data, const int pooled_plane,
+    const int pooled_height, const int pooled_width, const int channels,
+    const int plane, const int height, const int width, const int kernel_p,
+    const int kernel_h, const int kernel_w, const int stride_p,
+    const int stride_h, const int stride_w, const int pad_p, const int pad_t,
+    const int pad_l, const dtype* __restrict__ top_diff,
+    dtype* __restrict__ bottom_diff) {
   GPU_1D_KERNEL_LOOP(index, nthreads) {
     // First find out the index to the maximum, since we have no mask.
     int pw = index % pooled_width;
@@ -78,13 +79,14 @@ __global__ void MaxPoolGradBackwardNoMaskNCDHW(
 
 template <typename dtype>
 __global__ void MaxPoolGradBackwardNoMaskNDHWC(
-    const int nthreads, const dtype* bottom_data, const dtype* output_data,
-    const int pooled_plane, const int pooled_height, const int pooled_width,
-    const int channels, const int plane, const int height, const int width,
-    const int kernel_p, const int kernel_h, const int kernel_w,
-    const int stride_p, const int stride_h, const int stride_w, const int pad_p,
-    const int pad_t, const int pad_l, const dtype* top_diff,
-    dtype* bottom_diff) {
+    const int nthreads, const dtype* __restrict__ bottom_data,
+    const dtype* __restrict__ output_data, const int pooled_plane,
+    const int pooled_height, const int pooled_width, const int channels,
+    const int plane, const int height, const int width, const int kernel_p,
+    const int kernel_h, const int kernel_w, const int stride_p,
+    const int stride_h, const int stride_w, const int pad_p, const int pad_t,
+    const int pad_l, const dtype* __restrict__ top_diff,
+    dtype* __restrict__ bottom_diff) {
   GPU_1D_KERNEL_LOOP(index, nthreads) {
     // First find out the index to the maximum, since we have no mask.
     int n = index;

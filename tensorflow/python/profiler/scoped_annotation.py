@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""ScopedAnnotation allows the profiler to track python events.
+"""ScopedAnnotation allows the profiler to annotate device (e.g., GPU) events.
 
 Usage:
     with scoped_annotation.ScopedAnnotation('name'):
@@ -23,20 +23,27 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python import pywrap_tensorflow
+import six
+
+from tensorflow.python.profiler.internal import _pywrap_scoped_annotation
 
 
 class ScopedAnnotation(object):
-  """Context manager that generates a trace event in the profiler."""
+  """Context manager that generates an annotation for the profiler."""
 
   def __init__(self, name, **kwargs):
-    if kwargs:
-      name += '#' + ','.join(
-          [key + '=' + str(value) for key, value in kwargs.iteritems()]) + '#'
-    self._scoped_annotation = pywrap_tensorflow.PythonScopedAnnotation(name)
+    if _pywrap_scoped_annotation.ScopedAnnotation.IsEnabled():
+      if kwargs:
+        name += '#' + ','.join(key + '=' + str(value)
+                               for key, value in six.iteritems(kwargs)) + '#'
+      self._scoped_annotation = _pywrap_scoped_annotation.ScopedAnnotation(name)
+    else:
+      self._scoped_annotation = None
 
   def __enter__(self):
-    self._scoped_annotation.Enter()
+    if self._scoped_annotation:
+      self._scoped_annotation.Enter()
 
   def __exit__(self, exc_type, exc_val, exc_tb):
-    self._scoped_annotation.Exit()
+    if self._scoped_annotation:
+      self._scoped_annotation.Exit()

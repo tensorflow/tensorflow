@@ -26,7 +26,6 @@
 #include "mlir/Support/MlirOptMain.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/InitLLVM.h"
-#include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ToolOutputFile.h"
 
@@ -57,19 +56,14 @@ static cl::opt<bool>
                  cl::desc("Run the verifier after each transformation pass"),
                  cl::init(true));
 
-static std::vector<const PassRegistryEntry *> *passList;
-
 int main(int argc, char **argv) {
-  llvm::PrettyStackTraceProgram x(argc, argv);
   InitLLVM y(argc, argv);
 
   // Register any pass manager command line options.
   registerPassManagerCLOptions();
+  PassPipelineCLParser passPipeline("", "Compiler passes to run");
 
   // Parse pass names in main to ensure static initialization completed.
-  llvm::cl::list<const PassRegistryEntry *, bool, PassNameParser> passList(
-      "", llvm::cl::desc("Compiler passes to run"));
-  ::passList = &passList;
   cl::ParseCommandLineOptions(argc, argv, "MLIR modular optimizer driver\n");
 
   // Set up the input file.
@@ -86,6 +80,6 @@ int main(int argc, char **argv) {
     exit(1);
   }
 
-  return failed(MlirOptMain(output->os(), std::move(file), passList,
+  return failed(MlirOptMain(output->os(), std::move(file), passPipeline,
                             splitInputFile, verifyDiagnostics, verifyPasses));
 }

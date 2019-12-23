@@ -41,6 +41,33 @@ cc_library(
 )
 
 cc_library(
+    name = "api2",
+    srcs = ["api2.cc"],
+    hdrs = ["api2.h"],
+    deps = [
+        ":command_queue",
+        ":compiler",
+        ":egl_environment",
+        ":gl_call",
+        ":object",
+        ":portable",
+        ":request_gpu_info",
+        ":runtime",
+        ":variable",
+        "//tensorflow/lite/delegates/gpu:api",
+        "//tensorflow/lite/delegates/gpu/common:data_type",
+        "//tensorflow/lite/delegates/gpu/common:model",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:tensor",
+        "//tensorflow/lite/delegates/gpu/gl/kernels:converter",
+        "//tensorflow/lite/delegates/gpu/gl/kernels:registry",
+        "//tensorflow/lite/delegates/gpu/gl/workgroups:default_calculator",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
     name = "command_queue",
     srcs = ["command_queue.cc"],
     hdrs = ["command_queue.h"],
@@ -364,6 +391,7 @@ cc_library(
         ":variable",
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:gpu_info",
+        "//tensorflow/lite/delegates/gpu/common:memory_management",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/gl/runtime:shared_buffer",

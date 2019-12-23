@@ -66,12 +66,25 @@ TEST(Model, EmptyRecords) {
   EXPECT_TRUE(assignment.object_sizes.empty());
 
   ASSERT_TRUE(
-      AssignObjectsToTensors({}, MemoryStrategy::GREEDY, &assignment).ok());
+      AssignObjectsToTensors({}, MemoryStrategy::GREEDY_IN_ORDER, &assignment)
+          .ok());
   EXPECT_TRUE(assignment.object_ids.empty());
   EXPECT_TRUE(assignment.object_sizes.empty());
 
   ASSERT_TRUE(
       AssignObjectsToTensors({}, MemoryStrategy::MINCOSTFLOW, &assignment)
+          .ok());
+  EXPECT_TRUE(assignment.object_ids.empty());
+  EXPECT_TRUE(assignment.object_sizes.empty());
+
+  ASSERT_TRUE(
+      AssignObjectsToTensors({}, MemoryStrategy::GREEDY_BY_BREADTH, &assignment)
+          .ok());
+  EXPECT_TRUE(assignment.object_ids.empty());
+  EXPECT_TRUE(assignment.object_sizes.empty());
+
+  ASSERT_TRUE(
+      AssignObjectsToTensors({}, MemoryStrategy::GREEDY_BY_SIZE, &assignment)
           .ok());
   EXPECT_TRUE(assignment.object_ids.empty());
   EXPECT_TRUE(assignment.object_sizes.empty());
@@ -101,14 +114,26 @@ TEST(Model, OneRecord) {
   EXPECT_THAT(assignment.object_ids, ElementsAre(0));
   EXPECT_THAT(assignment.object_sizes, ElementsAre(16));
 
-  ASSERT_TRUE(
-      AssignObjectsToTensors(usage_records, MemoryStrategy::GREEDY, &assignment)
-          .ok());
+  ASSERT_TRUE(AssignObjectsToTensors(
+                  usage_records, MemoryStrategy::GREEDY_IN_ORDER, &assignment)
+                  .ok());
   EXPECT_THAT(assignment.object_ids, ElementsAre(0));
   EXPECT_THAT(assignment.object_sizes, ElementsAre(16));
 
   ASSERT_TRUE(AssignObjectsToTensors(usage_records, MemoryStrategy::MINCOSTFLOW,
                                      &assignment)
+                  .ok());
+  EXPECT_THAT(assignment.object_ids, ElementsAre(0));
+  EXPECT_THAT(assignment.object_sizes, ElementsAre(16));
+
+  ASSERT_TRUE(AssignObjectsToTensors(
+                  usage_records, MemoryStrategy::GREEDY_BY_BREADTH, &assignment)
+                  .ok());
+  EXPECT_THAT(assignment.object_ids, ElementsAre(0));
+  EXPECT_THAT(assignment.object_sizes, ElementsAre(16));
+
+  ASSERT_TRUE(AssignObjectsToTensors(
+                  usage_records, MemoryStrategy::GREEDY_BY_SIZE, &assignment)
                   .ok());
   EXPECT_THAT(assignment.object_ids, ElementsAre(0));
   EXPECT_THAT(assignment.object_sizes, ElementsAre(16));
@@ -144,14 +169,26 @@ TEST(Model, ChainRecords) {
   EXPECT_THAT(assignment.object_ids, ElementsAre(0, 1, 2, 3, 1));
   EXPECT_THAT(assignment.object_sizes, ElementsAre(16, 8, 64, 32));
 
-  ASSERT_TRUE(
-      AssignObjectsToTensors(usage_records, MemoryStrategy::GREEDY, &assignment)
-          .ok());
+  ASSERT_TRUE(AssignObjectsToTensors(usage_records, MemoryStrategy::MINCOSTFLOW,
+                                     &assignment)
+                  .ok());
   EXPECT_THAT(assignment.object_ids, ElementsAre(0, 1, 0, 1, 0));
   EXPECT_THAT(assignment.object_sizes, ElementsAre(64, 32));
 
-  ASSERT_TRUE(AssignObjectsToTensors(usage_records, MemoryStrategy::MINCOSTFLOW,
-                                     &assignment)
+  ASSERT_TRUE(AssignObjectsToTensors(
+                  usage_records, MemoryStrategy::GREEDY_IN_ORDER, &assignment)
+                  .ok());
+  EXPECT_THAT(assignment.object_ids, ElementsAre(0, 1, 0, 1, 0));
+  EXPECT_THAT(assignment.object_sizes, ElementsAre(64, 32));
+
+  ASSERT_TRUE(AssignObjectsToTensors(
+                  usage_records, MemoryStrategy::GREEDY_BY_BREADTH, &assignment)
+                  .ok());
+  EXPECT_THAT(assignment.object_ids, ElementsAre(0, 1, 0, 1, 0));
+  EXPECT_THAT(assignment.object_sizes, ElementsAre(64, 32));
+
+  ASSERT_TRUE(AssignObjectsToTensors(
+                  usage_records, MemoryStrategy::GREEDY_BY_SIZE, &assignment)
                   .ok());
   EXPECT_THAT(assignment.object_ids, ElementsAre(0, 1, 0, 1, 0));
   EXPECT_THAT(assignment.object_sizes, ElementsAre(64, 32));
@@ -191,17 +228,29 @@ TEST(Model, ComplexRecords) {
   EXPECT_THAT(assignment.object_ids, ElementsAre(0, 1, 2, 3, 4, 5, 4, 2, 3));
   EXPECT_THAT(assignment.object_sizes, ElementsAre(32, 32, 8, 16, 8, 64));
 
-  ASSERT_TRUE(
-      AssignObjectsToTensors(usage_records, MemoryStrategy::GREEDY, &assignment)
-          .ok());
-  EXPECT_THAT(assignment.object_ids, ElementsAre(0, 1, 0, 2, 3, 1, 3, 2, 0));
-  EXPECT_THAT(assignment.object_sizes, ElementsAre(32, 64, 16, 8));
-
   ASSERT_TRUE(AssignObjectsToTensors(usage_records, MemoryStrategy::MINCOSTFLOW,
                                      &assignment)
                   .ok());
   EXPECT_THAT(assignment.object_ids, ElementsAre(0, 1, 2, 0, 3, 1, 3, 2, 0));
   EXPECT_THAT(assignment.object_sizes, ElementsAre(32, 64, 8, 8));
+
+  ASSERT_TRUE(AssignObjectsToTensors(
+                  usage_records, MemoryStrategy::GREEDY_IN_ORDER, &assignment)
+                  .ok());
+  EXPECT_THAT(assignment.object_ids, ElementsAre(0, 1, 0, 2, 3, 1, 3, 2, 0));
+  EXPECT_THAT(assignment.object_sizes, ElementsAre(32, 64, 16, 8));
+
+  ASSERT_TRUE(AssignObjectsToTensors(
+                  usage_records, MemoryStrategy::GREEDY_BY_BREADTH, &assignment)
+                  .ok());
+  EXPECT_THAT(assignment.object_ids, ElementsAre(0, 4, 2, 1, 3, 0, 2, 3, 1));
+  EXPECT_THAT(assignment.object_sizes, ElementsAre(64, 16, 8, 8, 32));
+
+  ASSERT_TRUE(AssignObjectsToTensors(
+                  usage_records, MemoryStrategy::GREEDY_BY_SIZE, &assignment)
+                  .ok());
+  EXPECT_THAT(assignment.object_ids, ElementsAre(1, 0, 2, 1, 3, 0, 1, 2, 0));
+  EXPECT_THAT(assignment.object_sizes, ElementsAre(64, 32, 8, 8));
 
   OffsetsAssignment offsets_assignment;
   ASSERT_TRUE(AssignOffsetsToTensors(usage_records,
@@ -244,6 +293,84 @@ TEST(Model, BHWCRecords) {
       assignment.object_sizes,
       ElementsAre(BHWC(1, 1, 2, 8), BHWC(1, 1, 2, 8), BHWC(1, 1, 1, 16),
                   BHWC(1, 1, 8, 2), BHWC(1, 16, 1, 1), BHWC(16, 1, 1, 1)));
+}
+
+TEST(Model, UInt2Records) {
+  std::vector<TensorUsageRecord<uint2>> usage_records{
+      {/*size=*/uint2(2, 8), /*first=*/0, /*last=*/1},
+      {/*size=*/uint2(2, 8), /*first=*/1, /*last=*/2},
+      {/*size=*/uint2(1, 12), /*first=*/2, /*last=*/4},
+      {/*size=*/uint2(2, 8), /*first=*/3, /*last=*/5},
+      {/*size=*/uint2(8, 2), /*first=*/4, /*last=*/5},
+      {/*size=*/uint2(2, 8), /*first=*/5, /*last=*/7},
+      {/*size=*/uint2(1, 8), /*first=*/6, /*last=*/8},
+      {/*size=*/uint2(2, 8), /*first=*/7, /*last=*/8},
+      {/*size=*/uint2(4, 1), /*first=*/8, /*last=*/9}};
+
+  ObjectsAssignment<uint2> assignment;
+  ASSERT_TRUE(
+      AssignObjectsToTensors(usage_records, MemoryStrategy::NAIVE, &assignment)
+          .ok());
+  EXPECT_THAT(assignment.object_ids, ElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8));
+  EXPECT_THAT(assignment.object_sizes,
+              ElementsAre(uint2(2, 8), uint2(2, 8), uint2(1, 12), uint2(2, 8),
+                          uint2(8, 2), uint2(2, 8), uint2(1, 8), uint2(2, 8),
+                          uint2(4, 1)));
+
+  ASSERT_TRUE(AssignObjectsToTensors(usage_records, MemoryStrategy::EQUALITY,
+                                     &assignment)
+                  .ok());
+  EXPECT_THAT(assignment.object_ids, ElementsAre(0, 1, 2, 0, 3, 1, 4, 0, 5));
+  EXPECT_THAT(assignment.object_sizes,
+              ElementsAre(uint2(2, 8), uint2(2, 8), uint2(1, 12), uint2(8, 2),
+                          uint2(1, 8), uint2(4, 1)));
+
+  ASSERT_TRUE(AssignObjectsToTensors(
+                  usage_records, MemoryStrategy::GREEDY_IN_ORDER, &assignment)
+                  .ok());
+  EXPECT_THAT(assignment.object_ids, ElementsAre(0, 1, 2, 0, 3, 1, 2, 0, 3));
+  EXPECT_THAT(assignment.object_sizes,
+              ElementsAre(uint2(2, 8), uint2(2, 8), uint2(1, 12), uint2(8, 2)));
+}
+
+TEST(Model, UInt3Records) {
+  std::vector<TensorUsageRecord<uint3>> usage_records{
+      {/*size=*/uint3(1, 2, 8), /*first=*/0, /*last=*/1},
+      {/*size=*/uint3(4, 3, 2), /*first=*/1, /*last=*/2},
+      {/*size=*/uint3(1, 1, 1), /*first=*/2, /*last=*/4},
+      {/*size=*/uint3(2, 4, 1), /*first=*/3, /*last=*/5},
+      {/*size=*/uint3(2, 2, 2), /*first=*/4, /*last=*/5},
+      {/*size=*/uint3(8, 1, 2), /*first=*/5, /*last=*/7},
+      {/*size=*/uint3(1, 2, 1), /*first=*/6, /*last=*/8},
+      {/*size=*/uint3(1, 1, 1), /*first=*/7, /*last=*/8},
+      {/*size=*/uint3(2, 2, 2), /*first=*/8, /*last=*/9}};
+
+  ObjectsAssignment<uint3> assignment;
+  ASSERT_TRUE(
+      AssignObjectsToTensors(usage_records, MemoryStrategy::NAIVE, &assignment)
+          .ok());
+  EXPECT_THAT(assignment.object_ids, ElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8));
+  EXPECT_THAT(assignment.object_sizes,
+              ElementsAre(uint3(1, 2, 8), uint3(4, 3, 2), uint3(1, 1, 1),
+                          uint3(2, 4, 1), uint3(2, 2, 2), uint3(8, 1, 2),
+                          uint3(1, 2, 1), uint3(1, 1, 1), uint3(2, 2, 2)));
+
+  ASSERT_TRUE(AssignObjectsToTensors(usage_records, MemoryStrategy::EQUALITY,
+                                     &assignment)
+                  .ok());
+  EXPECT_THAT(assignment.object_ids, ElementsAre(0, 1, 2, 3, 4, 5, 6, 2, 4));
+  EXPECT_THAT(assignment.object_sizes,
+              ElementsAre(uint3(1, 2, 8), uint3(4, 3, 2), uint3(1, 1, 1),
+                          uint3(2, 4, 1), uint3(2, 2, 2), uint3(8, 1, 2),
+                          uint3(1, 2, 1)));
+
+  ASSERT_TRUE(AssignObjectsToTensors(
+                  usage_records, MemoryStrategy::GREEDY_IN_ORDER, &assignment)
+                  .ok());
+  EXPECT_THAT(assignment.object_ids, ElementsAre(0, 1, 0, 2, 1, 3, 2, 0, 1));
+  EXPECT_THAT(assignment.object_sizes,
+              ElementsAre(uint3(1, 2, 8), uint3(4, 3, 2), uint3(2, 4, 1),
+                          uint3(8, 1, 2)));
 }
 
 }  // namespace

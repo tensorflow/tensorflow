@@ -90,7 +90,7 @@ class MemoryOptimizerSwapTest(test.TestCase):
 
       self.assertEqual(len(graph.node), graph_size + 2)
       self.assertTrue(
-          set([node.name for node in graph.node]) > set(
+          set(node.name for node in graph.node) > set(
               ['a', 'b', 'c', 'd', 'swap_in_d_0', 'swap_out_d_0']))
       for node in graph.node:
         if node.name == 'swap_in_d_0':
@@ -318,7 +318,7 @@ class MemoryOptimizerRecomputeTest(test.TestCase):
             memory_optimization=rewriter_config_pb2.RewriterConfig.MANUAL))
     rewritten_graph_def = tf_optimizer.OptimizeGraph(config, metagraph)
     self.assertEqual(
-        7,
+        9,
         len([
             node for node in rewritten_graph_def.node
             if 'Recomputed/' in node.name

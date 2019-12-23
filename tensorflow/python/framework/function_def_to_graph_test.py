@@ -23,10 +23,11 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function_def_to_graph
 from tensorflow.python.framework import graph_to_function_def
+from tensorflow.python.framework import op_def_library
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import test_util
 from tensorflow.python.framework import test_ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
@@ -119,8 +120,7 @@ class FunctionDefToGraphDefTest(test.TestCase):
       y = array_ops.placeholder(dtypes.int32, name="y")
       z = array_ops.placeholder(dtypes.int32, name="z")
 
-      d_1, e_1 = test_ops._op_def_lib.apply_op(
-          "Foo1", name="foo_1", a=x, b=y, c=z)
+      d_1, e_1 = op_def_library.apply_op("Foo1", name="foo_1", a=x, b=y, c=z)
 
       list_output0, list_output1 = test_ops.list_output(
           T=[dtypes.int32, dtypes.int32], name="list_output")
@@ -193,42 +193,6 @@ class FunctionDefToGraphDefTest(test.TestCase):
         tensor_shape.TensorShape(g.node[1].attr["shape"].shape).as_list(), [5])
     self.assertEqual(g.node[0].attr["shape"].shape.unknown_rank, False)
     self.assertFalse("shape" in g.node[2].attr)
-
-  @test_util.run_deprecated_v1
-  def testFunctionCallsFromFunction(self):
-    ops.disable_tensor_equality()
-    x = constant_op.constant(5.0)
-    y = constant_op.constant(10.0)
-
-    @function.defun
-    def fn():
-
-      @function.defun
-      def inner_fn():
-        return x + y
-
-      return inner_fn()
-
-    @function.defun
-    def fn2():
-      return 2 * fn()
-
-    fn2_defun = fn2.get_concrete_function()
-
-    # Call `fn2` to make sure `fn` is correctly instantiated so
-    # `function_def_to_graph` can find it.
-    fn2_defun()
-
-    fdef = fn2_defun.function_def
-    func_graph = function_def_to_graph.function_def_to_graph(fdef)
-    with func_graph.as_default():
-      x_ph, y_ph = func_graph.inputs
-      with self.session(graph=func_graph) as sess:
-        self.assertEqual(
-            sess.run(func_graph.outputs[0], feed_dict={
-                x_ph: 5.0,
-                y_ph: 10.0
-            }), 30.0)
 
   def testControlDependencies(self):
 

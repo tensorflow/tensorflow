@@ -20,15 +20,11 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/kernels/boosted_trees/boosted_trees.pb.h"
 #include "tensorflow/core/kernels/boosted_trees/tree_helper.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
-
-// TODO(tanzheny): Make these const as proto enum.
-const char kInequalityDefaultLeft[] = "inequality_default_left";
-const char kInequalityDefaultRight[] = "inequality_default_right";
-const char kEqualityDefaultRight[] = "equality_default_right";
 
 using Matrix =
     Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
@@ -459,6 +455,12 @@ class BoostedTreesCalculateBestFeatureSplitOp : public OpKernel {
           cum_hess.push_back(total_hess);
         }
       }
+      const string kInequalityDefaultLeft =
+          boosted_trees::SplitTypeWithDefault_Name(
+              boosted_trees::INEQUALITY_DEFAULT_LEFT);
+      const string kInequalityDefaultRight =
+          boosted_trees::SplitTypeWithDefault_Name(
+              boosted_trees::INEQUALITY_DEFAULT_RIGHT);
 
       // Iterate from left to right, excluding default bucket.
       for (int bucket = 0; bucket < num_buckets; ++bucket) {
@@ -491,6 +493,9 @@ class BoostedTreesCalculateBestFeatureSplitOp : public OpKernel {
       const float l2, float* best_gain, int32* best_bucket, int32* best_f_dim,
       string* best_split_type, Eigen::VectorXf* best_contrib_for_left,
       Eigen::VectorXf* best_contrib_for_right) {
+    const string kEqualityDefaultRight =
+        boosted_trees::SplitTypeWithDefault_Name(
+            boosted_trees::EQUALITY_DEFAULT_RIGHT);
     for (int f_dim = 0; f_dim < feature_dims; ++f_dim) {
       for (int bucket = 0; bucket < num_buckets; ++bucket) {
         ConstVectorMap stats_vec(&stats_summary(node_id, f_dim, bucket, 0),
@@ -734,7 +739,8 @@ class BoostedTreesSparseCalculateBestFeatureSplitOp : public OpKernel {
     float best_gain = std::numeric_limits<float>::lowest();
     float best_bucket = 0;
     float best_f_dim = 0;
-    string best_split_type = kInequalityDefaultLeft;
+    string best_split_type = boosted_trees::SplitTypeWithDefault_Name(
+        boosted_trees::INEQUALITY_DEFAULT_LEFT);
     float best_contrib_for_left = 0.0;
     float best_contrib_for_right = 0.0;
     // the sum of gradients including default bucket.
@@ -801,7 +807,8 @@ class BoostedTreesSparseCalculateBestFeatureSplitOp : public OpKernel {
           best_gain = gain_for_left + gain_for_right;
           best_bucket = bucket_id;
           best_f_dim = feature_dim;
-          best_split_type = kInequalityDefaultRight;
+          best_split_type = boosted_trees::SplitTypeWithDefault_Name(
+              boosted_trees::INEQUALITY_DEFAULT_RIGHT);
           best_contrib_for_left = contrib_for_left[0];
           best_contrib_for_right = contrib_for_right[0];
         }
@@ -818,7 +825,8 @@ class BoostedTreesSparseCalculateBestFeatureSplitOp : public OpKernel {
           best_gain = gain_for_left + gain_for_right;
           best_bucket = bucket_id;
           best_f_dim = feature_dim;
-          best_split_type = kInequalityDefaultLeft;
+          best_split_type = boosted_trees::SplitTypeWithDefault_Name(
+              boosted_trees::INEQUALITY_DEFAULT_LEFT);
           best_contrib_for_left = contrib_for_left[0];
           best_contrib_for_right = contrib_for_right[0];
         }

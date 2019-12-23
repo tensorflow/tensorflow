@@ -83,9 +83,11 @@ Status XlaCompileOnDemandOp::Run(OpKernelContext* ctx,
       executable->Run(launch_context.arguments(), run_options);
   TF_RETURN_IF_ERROR(run_result.status());
 
+  const xla::HloInputOutputAliasConfig& input_output_alias =
+      executable->executable()->module().input_output_alias_config();
   TF_RETURN_IF_ERROR(launch_context.PopulateOutputs(
       ctx, result, run_result.ConsumeValueOrDie(),
-      /*missing_ctx_input_prefix=*/0));
+      /*missing_ctx_input_prefix=*/0, input_output_alias, variables));
   return Status::OK();
 }
 
@@ -191,10 +193,6 @@ Status XlaCompileOnDemandOp::Compile(
 
   XlaCompiler::CompileOptions compile_options;
   compile_options.is_entry_computation = true;
-  // Optimization: don't resolve constants. If we resolve constants we never
-  // emit them on the device, meaning that if they are needed by a following
-  // computation the host has to transfer them.
-  compile_options.resolve_compile_time_constants = false;
   // Optimization: where possible, have the computation return a naked array
   // rather than a one-element tuple.
   compile_options.always_return_tuple = false;

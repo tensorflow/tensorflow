@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/lite/tools/evaluation/stages/image_preprocessing_stage.h"
 
 #include <cmath>
+#include <cstdint>
 #include <fstream>
 #include <streambuf>
 #include <string>
@@ -26,6 +27,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/profiling/time.h"
+#include "tensorflow/lite/tools/evaluation/proto/evaluation_config.pb.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_stages.pb.h"
 
 namespace tflite {
@@ -90,6 +92,88 @@ inline void ResizeBilinear(int input_height, int input_width,
         static_cast<T>((temp_float_data[i] - input_mean) * scale));
   }
 }
+
+// Loads the JPEG image then does the crop, resize and quantization.
+template <typename T>
+void LoadImageJpeg(std::string* filename, float input_mean, float scale,
+                   float cropping_fraction, int image_height, int image_width,
+                   std::vector<T>& output_data, int total_size,
+                   bool aspect_preserving) {
+  // Read image.
+  std::ifstream t(*filename);
+  std::string image_str((std::istreambuf_iterator<char>(t)),
+                        std::istreambuf_iterator<char>());
+  const int fsize = image_str.size();
+  auto temp = absl::bit_cast<const uint8_t*>(image_str.data());
+  std::unique_ptr<uint8_t[]> original_image;
+  int original_width, original_height, original_channels;
+  tensorflow::jpeg::UncompressFlags flags;
+  // JDCT_ISLOW performs slower but more accurate pre-processing.
+  // This isn't always obvious in unit tests, but makes a difference during
+  // accuracy testing with ILSVRC dataset.
+  flags.dct_method = JDCT_ISLOW;
+  // We necessarily require a 3-channel image as the output.
+  flags.components = kNumChannels;
+  original_image.reset(Uncompress(temp, fsize, flags, &original_width,
+                                  &original_height, &original_channels,
+                                  nullptr));
+
+  // Central Crop.
+  int crop_height, crop_width;
+  if (aspect_preserving) {
+    float ratio =
+        std::max(image_width / (cropping_fraction * original_width),
+                 image_height / (cropping_fraction * original_height));
+    crop_height = static_cast<int>(round(image_height / ratio));
+    crop_width = static_cast<int>(round(image_width / ratio));
+  } else {
+    crop_height = static_cast<int>(round(cropping_fraction * original_height));
+    crop_width = static_cast<int>(round(cropping_fraction * original_width));
+  }
+  int left = static_cast<int>(round((original_width - crop_width) / 2.0));
+  int top = static_cast<int>(round((original_height - crop_height) / 2.0));
+  std::vector<float> cropped_image;
+  cropped_image.reserve(crop_height * crop_width * kNumChannels);
+  Crop(original_height, original_width, top, left, crop_height, crop_width,
+       original_image.get(), &cropped_image);
+
+  // Billinear-Resize & apply mean & scale.
+  ResizeBilinear<T>(crop_height, crop_width, cropped_image, image_height,
+                    image_width, total_size, output_data, input_mean, scale);
+}
+
+// Loads the raw image and performs quantization only.
+template <typename T>
+void LoadImageRaw(std::string* filename, float input_mean, float scale,
+                  std::vector<T>& output_data, int total_size) {
+  std::ifstream stream(filename->c_str(), std::ios::in | std::ios::binary);
+  std::vector<uint8_t> raw_data((std::istreambuf_iterator<char>(stream)),
+                                std::istreambuf_iterator<char>());
+  if (raw_data.size() != total_size) {
+    LOG(ERROR) << "Got unexpected size of the image";
+  }
+
+  output_data.clear();
+  output_data.reserve(total_size);
+  for (int i = 0; i < total_size; ++i) {
+    output_data.push_back(static_cast<T>((raw_data[i] - input_mean) * scale));
+  }
+}
+
+// LoadImage can load both raw and JPEG images based on the preprocessed flag.
+template <typename T>
+void LoadImage(std::string* filename, float input_mean, float scale,
+               float cropping_fraction, int image_height, int image_width,
+               std::vector<T>& output_data, int total_size, bool preprocessed,
+               bool aspect_preserving) {
+  if (preprocessed) {
+    LoadImageRaw<T>(filename, input_mean, scale, output_data, total_size);
+  } else {
+    LoadImageJpeg<T>(filename, input_mean, scale, cropping_fraction,
+                     image_height, image_width, output_data, total_size,
+                     aspect_preserving);
+  }
+}
 }  // namespace
 
 TfLiteStatus ImagePreprocessingStage::Init() {
@@ -132,52 +216,22 @@ TfLiteStatus ImagePreprocessingStage::Run() {
 
   int64_t start_us = profiling::time::NowMicros();
 
-  // Read image.
-  std::ifstream t(*image_path_);
-  std::string image_str((std::istreambuf_iterator<char>(t)),
-                        std::istreambuf_iterator<char>());
-  const int fsize = image_str.size();
-  auto temp = absl::bit_cast<const uint8_t*>(image_str.data());
-  std::unique_ptr<uint8_t[]> original_image;
-  int original_width, original_height, original_channels;
-  tensorflow::jpeg::UncompressFlags flags;
-  // JDCT_ISLOW performs slower but more accurate pre-processing.
-  // This isn't always obvious in unit tests, but makes a difference during
-  // accuracy testing with ILSVRC dataset.
-  flags.dct_method = JDCT_ISLOW;
-  // We necessarily require a 3-channel image as the output.
-  flags.components = kNumChannels;
-  original_image.reset(Uncompress(temp, fsize, flags, &original_width,
-                                  &original_height, &original_channels,
-                                  nullptr));
-
-  // Central Crop.
-  const int left = static_cast<int>(
-      std::round(original_width * (1 - cropping_fraction_) / 2));
-  const int top = static_cast<int>(
-      std::round(original_height * (1 - cropping_fraction_) / 2));
-  const int crop_width =
-      static_cast<int>(std::round(original_width * cropping_fraction_));
-  const int crop_height =
-      static_cast<int>(std::round(original_height * cropping_fraction_));
-  std::vector<float> cropped_image;
-  cropped_image.reserve(crop_height * crop_width * kNumChannels);
-  Crop(original_height, original_width, top, left, crop_height, crop_width,
-       original_image.get(), &cropped_image);
-
   // Billinear-Resize & apply mean & scale.
   if (output_type_ == kTfLiteUInt8) {
-    ResizeBilinear(crop_height, crop_width, cropped_image,
-                   params.image_height(), params.image_width(), total_size_,
-                   uint8_preprocessed_image_, input_mean_value_, scale_);
+    evaluation::LoadImage<uint8_t>(
+        image_path_, input_mean_value_, scale_, cropping_fraction_,
+        params.image_height(), params.image_width(), uint8_preprocessed_image_,
+        total_size_, params.load_raw_images(), params.aspect_preserving());
   } else if (output_type_ == kTfLiteInt8) {
-    ResizeBilinear(crop_height, crop_width, cropped_image,
-                   params.image_height(), params.image_width(), total_size_,
-                   int8_preprocessed_image_, input_mean_value_, scale_);
+    evaluation::LoadImage<int8_t>(
+        image_path_, input_mean_value_, scale_, cropping_fraction_,
+        params.image_height(), params.image_width(), int8_preprocessed_image_,
+        total_size_, params.load_raw_images(), params.aspect_preserving());
   } else if (output_type_ == kTfLiteFloat32) {
-    ResizeBilinear(crop_height, crop_width, cropped_image,
-                   params.image_height(), params.image_width(), total_size_,
-                   float_preprocessed_image_, input_mean_value_, scale_);
+    evaluation::LoadImage<float>(
+        image_path_, input_mean_value_, scale_, cropping_fraction_,
+        params.image_height(), params.image_width(), float_preprocessed_image_,
+        total_size_, params.load_raw_images(), params.aspect_preserving());
   }
 
   latency_stats_.UpdateStat(profiling::time::NowMicros() - start_us);

@@ -22,6 +22,8 @@ option cc_enable_arenas = true;
 // Primitive types are the individual values that can be held in rectangular
 // multidimensional arrays. A description of the rectangular multidimensional
 // array dimensions / primitive type is given by Shape, below.
+//
+// LINT.IfChange
 enum PrimitiveType {
   // Invalid primitive type to serve as default.
   PRIMITIVE_TYPE_INVALID = 0;
@@ -82,6 +84,9 @@ enum PrimitiveType {
 
   // Next = 19
 }
+// LINT.ThenChange(
+//   https://www.tensorflow.org/code/tensorflow/compiler/xla/tools/driver.cc
+// )
 
 // Describes the padding configuration for Pad operation. The padding amount on
 // both edges as well as between the elements are specified for each dimension.
@@ -573,7 +578,7 @@ message TriangularSolveOptions {
     NO_TRANSPOSE = 1;  // Don't transpose 'a'.
     TRANSPOSE = 2;     // Transpose 'a'.
     ADJOINT = 3;       // Complex conjugate and transpose 'a'.
-  };
+  }
   Transpose transpose_a = 4;
 }
 
@@ -581,6 +586,12 @@ message CholeskyOptions {
   // If true, uses the lower triangle of `a`. If false, uses the upper triangle
   // of `a`.
   bool lower = 1;
+}
+
+// Generic map of attributes used to pass hints / configuration options from
+// the Python frontend to the XLA backend.
+message FrontendAttributes {
+  map<string, string> map = 1;
 }
 
 message OpSharding {

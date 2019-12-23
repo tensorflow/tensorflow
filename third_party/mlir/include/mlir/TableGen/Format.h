@@ -26,6 +26,7 @@
 
 #include "mlir/Support/LLVM.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/StringMap.h"
 #include "llvm/Support/FormatVariadic.h"
 
 namespace mlir {
@@ -43,7 +44,7 @@ namespace tblgen {
 /// named as $<name>, and we can potentially support referencing those entities
 /// directly in the format template in the future.
 //
-/// Custom ones are registered by dialect-specific TablGen backends and use the
+/// Custom ones are registered by dialect-specific TableGen backends and use the
 /// same unified setter.
 class FmtContext {
 public:

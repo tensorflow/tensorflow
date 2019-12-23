@@ -87,6 +87,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "stateful"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "submodules"
     mtype: "<type \'property\'>"
   }
@@ -148,7 +152,7 @@ tf_class {
   }
   member_method {
     name: "call"
-    argspec: "args=[\'self\', \'inputs\', \'states\', \'constants\'], varargs=None, keywords=kwargs, defaults=[\'None\'], "
+    argspec: "args=[\'self\', \'inputs\', \'states\', \'constants\', \'training\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "compute_mask"

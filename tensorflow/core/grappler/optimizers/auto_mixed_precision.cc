@@ -898,6 +898,38 @@ bool CanForceFP16(const NodeDef& node) {
          !IsStateful(node) && !HasInputOrOutputRefs(node);
 }
 
+int GetCudaVersion(const Cluster& cluster) {
+  auto devices = cluster.GetDevices();
+  for (const auto& device : devices) {
+    const DeviceProperties& device_properties = device.second;
+    if (device_properties.type() == "GPU") {
+      const auto& device_env = device_properties.environment();
+      auto it = device_env.find("cuda");
+      if (it != device_env.end()) {
+        string cuda_version_str = it->second;
+        return std::stoi(cuda_version_str);
+      }
+    }
+  }
+  return 0;
+}
+
+int GetCudnnVersion(const Cluster& cluster) {
+  auto devices = cluster.GetDevices();
+  for (const auto& device : devices) {
+    const DeviceProperties& device_properties = device.second;
+    if (device_properties.type() == "GPU") {
+      const auto& device_env = device_properties.environment();
+      auto it = device_env.find("cudnn");
+      if (it != device_env.end()) {
+        string cudnn_version_str = it->second;
+        return std::stoi(cudnn_version_str);
+      }
+    }
+  }
+  return 0;
+}
+
 class AutoMixedPrecisionImpl {
  public:
   AutoMixedPrecisionImpl(Cluster* cluster,
@@ -907,7 +939,9 @@ class AutoMixedPrecisionImpl {
         nodes_to_preserve_(nodes_to_preserve),
         graph_(graph),
         id_(id),
-        graph_view_(graph) {}
+        graph_view_(graph),
+        cuda_version_(GetCudaVersion(*cluster)),
+        cudnn_version_(GetCudnnVersion(*cluster)) {}
 
   Status Optimize();
 
@@ -926,12 +960,14 @@ class AutoMixedPrecisionImpl {
   bool IsOnSuitableGPUArch(const NodeDef& node) const;
   bool ShouldProcess(const NodeDef& node) const;
   bool NodeHasFP16KernelForTypeAttr(const NodeDef& node, TypeAttrId taid) const;
-  bool IsIdentityAfterVariable(const NodeDef& node) const;
+  bool NodeImplicitlyReadsNonResourceVariable(const NodeDef& node) const;
   void ConvertBatchNormOpsToV2();
   bool SupportsFloat16(const NodeTypeId& node_type) const;
-  const NodeDef* GetTailOfChain(const NodeDef& node, const string& op) const;
+  const NodeDef* GetTailOfChain(
+      const NodeDef& node, const absl::flat_hash_set<string>& match_ops) const;
   Status AddDataStructureOpsToMap(
-      const string& data_structure_op, TypeAttrId data_structure_type_attr,
+      const absl::flat_hash_set<string>& data_structure_ops,
+      TypeAttrId data_structure_type_attr,
       const absl::flat_hash_map<string, TypeAttrId>& write_ops,
       const absl::flat_hash_map<string, TypeAttrId>& read_ops,
       DataStructureOpsMap* object_clients_map) const;
@@ -958,6 +994,8 @@ class AutoMixedPrecisionImpl {
   GraphDef* graph_;
   string id_;
   MutableGraphView graph_view_;
+  int cuda_version_;
+  int cudnn_version_;
   NodeTypeAttrMap node_type_map_;
   GraphTypeTopologyView graph_type_view_;
   bool force_all_fp16_;
@@ -1012,7 +1050,8 @@ Status AutoMixedPrecisionImpl::PrintDebugLogs(bool preop, size_t timestamp) {
                          strings::StrCat("paintbuckets", suffix, ".txt"));
     f.open(fname.c_str(), std::fstream::out);
     f << "WhiteList:\n";
-    for (auto x : AutoMixedPrecisionLists::WhiteList()) {
+    for (auto x :
+         AutoMixedPrecisionLists::WhiteList(cuda_version_, cudnn_version_)) {
       f << x << "\n";
     }
     f << "\nBlackList:\n";
@@ -1157,7 +1196,8 @@ Status AutoMixedPrecisionImpl::Optimize() {
   optimization_level = absl::AsciiStrToUpper(optimization_level);
   force_all_fp16_ = optimization_level == "UNSAFE_FORCE_ALL";
 
-  fp16_whitelist_ = AutoMixedPrecisionLists::WhiteList();
+  fp16_whitelist_ =
+      AutoMixedPrecisionLists::WhiteList(cuda_version_, cudnn_version_);
   fp16_blacklist_ = AutoMixedPrecisionLists::BlackList();
   fp16_graylist_ = AutoMixedPrecisionLists::GrayList();
   fp16_clearlist_ = AutoMixedPrecisionLists::ClearList();
@@ -1183,21 +1223,71 @@ Status AutoMixedPrecisionImpl::Optimize() {
   VLOG(2) << "Building node type map for graph";
   TF_RETURN_IF_ERROR(node_type_map_.Init(*graph_));
 
+  // Note: If an op is added to this list that has a data type attribute, it
+  // should also be added to the AddDataStructureOpsToMap call below (and to the
+  // clearlist if it involves data flow).
+  // TODO(benbarsdell): Add support for TensorListPushBackBatch and
+  // TensorListConcatLists. They require special handling because they connect
+  // multiple list objects together. Currently if they appear in the graph then
+  // we have no choice but to disallow changing any tensor list ops, as
+  // otherwise we risk breaking the graph if some are changed and some are not
+  // (within a connected cluster of tensor list nodes).
+  const gtl::FlatSet<string> supported_list_ops = {
+      "EmptyTensorList",
+      "TensorListSplit",
+      "TensorListFromTensor",
+      "TensorListReserve",
+      "TensorListScatter",
+      "TensorListScatterV2",
+      "TensorListPushBack",
+      "TensorListSetItem",
+      "TensorListScatterIntoExistingList",
+      "TensorListPopBack",
+      "TensorListStack",
+      "TensorListConcat",
+      "TensorListConcatV2",
+      "TensorListGetItem",
+      "TensorListGather",
+      "TensorListLength",
+      "TensorListElementShape",
+      "TensorListResize"};
+
+  bool can_change_tensor_list_ops = true;
+  for (const NodeDef& node : graph_->node()) {
+    if (absl::StartsWith(node.op(), "TensorList") &&
+        !supported_list_ops.count(node.op())) {
+      LOG(WARNING) << "Unsupported " << node.op() << " node found in graph ("
+                   << node.name()
+                   << "), tensor list ops will not be converted.";
+      can_change_tensor_list_ops = false;
+      break;
+    }
+  }
+
   DataStructureOpsMap object_clients_map;
-  VLOG(2) << "Identifying Stack*V2 nodes";
-  TF_RETURN_IF_ERROR(AddDataStructureOpsToMap(
-      "StackV2", TypeAttrId("elem_type"), {{"StackPushV2", TypeAttrId("T")}},
-      {{"StackPopV2", TypeAttrId("elem_type")}}, &object_clients_map));
-  VLOG(2) << "Identifying TensorArray*V3 nodes";
-  TF_RETURN_IF_ERROR(
-      AddDataStructureOpsToMap("TensorArrayV3", TypeAttrId("dtype"),
-                               {{"TensorArrayWriteV3", TypeAttrId("T")},
-                                {"TensorArrayScatterV3", TypeAttrId("T")},
-                                {"TensorArraySplitV3", TypeAttrId("T")}},
-                               {{"TensorArrayReadV3", TypeAttrId("dtype")},
-                                {"TensorArrayGatherV3", TypeAttrId("dtype")},
-                                {"TensorArrayConcatV3", TypeAttrId("dtype")}},
-                               &object_clients_map));
+  if (can_change_tensor_list_ops) {
+    VLOG(2) << "Identifying TensorList* nodes";
+    TF_RETURN_IF_ERROR(AddDataStructureOpsToMap(
+        {"EmptyTensorList", "TensorListSplit", "TensorListFromTensor",
+         "TensorListReserve", "TensorListScatter", "TensorListScatterV2"},
+        TypeAttrId("element_dtype"),
+        {{"TensorListPushBack", TypeAttrId("element_dtype")},
+         {"TensorListSetItem", TypeAttrId("element_dtype")},
+         {"TensorListScatterIntoExistingList", TypeAttrId("element_dtype")}},
+        {{"TensorListPopBack", TypeAttrId("element_dtype")},
+         {"TensorListStack", TypeAttrId("element_dtype")},
+         {"TensorListConcat", TypeAttrId("element_dtype")},
+         {"TensorListConcatV2", TypeAttrId("element_dtype")},
+         {"TensorListGetItem", TypeAttrId("element_dtype")},
+         {"TensorListGather", TypeAttrId("element_dtype")}},
+        &object_clients_map));
+  } else {
+    for (const string& list_op : supported_list_ops) {
+      fp16_whitelist_.erase(list_op);
+      fp16_graylist_.erase(list_op);
+      fp16_clearlist_.erase(list_op);
+    }
+  }
 
   // Create ephemeral edges between writers and readers of data structure ops.
   std::vector<NodeTypeIdEdge> ephemeral_edges;
@@ -1206,6 +1296,17 @@ Status AutoMixedPrecisionImpl::Optimize() {
     for (const NodeTypeId& write_node_type : client_nodes.first) {
       for (const NodeTypeId& read_node_type : client_nodes.second) {
         ephemeral_edges.emplace_back(write_node_type, read_node_type);
+      }
+    }
+    const NodeTypeId& object_node_type = object_clients.first;
+    // These object types also act as writers because they initialize the object
+    // from an input tensor.
+    if (object_node_type.node->op() == "TensorListSplit" ||
+        object_node_type.node->op() == "TensorListFromTensor" ||
+        object_node_type.node->op() == "TensorListScatter" ||
+        object_node_type.node->op() == "TensorListScatterV2") {
+      for (const NodeTypeId& read_node_type : client_nodes.second) {
+        ephemeral_edges.emplace_back(object_node_type, read_node_type);
       }
     }
   }
@@ -1294,7 +1395,8 @@ Status AutoMixedPrecisionImpl::Optimize() {
 // Finds data structure object ops (e.g., StackV2) and the sets of nodes that
 // write (e.g., StackPushV2) and read (e.g., StackPopV2) from them.
 Status AutoMixedPrecisionImpl::AddDataStructureOpsToMap(
-    const string& data_structure_op, TypeAttrId data_structure_type_attr,
+    const absl::flat_hash_set<string>& data_structure_ops,
+    TypeAttrId data_structure_type_attr,
     const absl::flat_hash_map<string, TypeAttrId>& write_ops,
     const absl::flat_hash_map<string, TypeAttrId>& read_ops,
     DataStructureOpsMap* object_clients_map) const {
@@ -1304,11 +1406,11 @@ Status AutoMixedPrecisionImpl::AddDataStructureOpsToMap(
     bool is_writer = write_iter != write_ops.end();
     bool is_reader = read_iter != read_ops.end();
     if (is_writer || is_reader) {
-      const NodeDef* object_node = GetTailOfChain(node, data_structure_op);
+      const NodeDef* object_node = GetTailOfChain(node, data_structure_ops);
       if (!object_node) {
-        return errors::FailedPrecondition("No ", data_structure_op,
-                                          " found upstream of ", node.op(),
-                                          " node ", node.name());
+        return errors::FailedPrecondition(
+            "No data structure op found upstream of ", node.op(), " node ",
+            node.name());
       }
       NodeTypeId object_node_type(object_node, data_structure_type_attr);
       TypeAttrId type_attr = is_writer ? write_iter->second : read_iter->second;
@@ -1470,10 +1572,11 @@ void AutoMixedPrecisionImpl::PropagateWhiteThroughClear(
                   ShouldProcess(*item.node) && IsFloat32(item) &&
                   SupportsFloat16(item) &&
                   (fp16_clearlist_.count(item.node->op())) &&
-                  // We don't propagate (backwards) through Identity nodes when
-                  // they immediately follow Variable nodes because otherwise it
-                  // breaks TensorBoard visualization.
-                  !IsIdentityAfterVariable(*item.node));
+                  // We don't propagate (backwards) through nodes that read
+                  // Variables because it can break the behavior of TensorBoard
+                  // visualization and/or (in the case of Enter nodes) the model
+                  // itself. This is only a problem for non-resource variables.
+                  !NodeImplicitlyReadsNonResourceVariable(*item.node));
         }),
         DfsTypeCallbacks::PreOrder([&](int idx) {
           clear_prop_set.insert(idx);
@@ -1554,15 +1657,15 @@ Status AutoMixedPrecisionImpl::ForceColorMatchOnRecurrentEdges(
 // Returns the last node in the simple chain starting at node and traversing
 // backwards through the input(0) edge from each node until one with a matching
 // op is found, or nullptr if no matching node is found.
-const NodeDef* AutoMixedPrecisionImpl::GetTailOfChain(const NodeDef& node,
-                                                      const string& op) const {
+const NodeDef* AutoMixedPrecisionImpl::GetTailOfChain(
+    const NodeDef& node, const absl::flat_hash_set<string>& match_ops) const {
   const NodeDef* node_ptr = &node;
   do {
     GraphView::InputPort node_input(node_ptr, 0);
     MutableGraphView::OutputPort prev_output =
         graph_view_.GetRegularFanin(node_input);
     node_ptr = prev_output.node;
-  } while (node_ptr && node_ptr->op() != op);
+  } while (node_ptr && !match_ops.count(node_ptr->op()));
   return node_ptr;
 }
 
@@ -1578,6 +1681,9 @@ void AutoMixedPrecisionImpl::ForceColorMatchBetweenDataStructureOps(
     NodeTypeIdSet all_client_nodes = client_nodes.first;
     all_client_nodes.insert(client_nodes.second.begin(),
                             client_nodes.second.end());
+    // The object node may be considered a client too (e.g.,
+    // TensorListFromTensor).
+    all_client_nodes.insert(object_node_type);
     bool any_black = false;
     bool any_white = false;
     for (const NodeTypeId& node_type : all_client_nodes) {
@@ -1595,8 +1701,6 @@ void AutoMixedPrecisionImpl::ForceColorMatchBetweenDataStructureOps(
         any_white = true;
       }
     }
-    // Apply coloring to the object node too.
-    all_client_nodes.insert(object_node_type);
     if (any_black || any_white) {
       for (const NodeTypeId& node_type : all_client_nodes) {
         VLOG(2) << "Painting type " << node_type.type_attr.DebugString()
@@ -1623,13 +1727,17 @@ void AutoMixedPrecisionImpl::ForceColorMatchBetweenDataStructureOps(
   }
 }
 
-bool AutoMixedPrecisionImpl::IsIdentityAfterVariable(
+bool AutoMixedPrecisionImpl::NodeImplicitlyReadsNonResourceVariable(
     const NodeDef& node) const {
-  if (node.op() == "Identity") {
+  if (node.op() == "Identity" || node.op() == "Enter") {
     GraphView::InputPort node_input(&node, 0);
     MutableGraphView::OutputPort prev_output =
         graph_view_.GetRegularFanin(node_input);
-    if (prev_output.node && IsVariable(*prev_output.node)) {
+    const NodeDef* input = prev_output.node;
+    if (input && ((node.op() == "Identity" && (input->op() == "Variable" ||
+                                               input->op() == "VariableV2")) ||
+                  (node.op() == "Enter" &&
+                   NodeImplicitlyReadsNonResourceVariable(*input)))) {
       return true;
     }
   }
@@ -1735,7 +1843,7 @@ Status AutoMixedPrecisionImpl::ChangeTypeAttrsAndAddCasts(
               added_cast_node = graph_view_.AddNode(
                   BuildCastNode(src, to_fp16, src.node->device()));
               if (to_fp16 && !IsConstant(*node) && !IsVariable(*node) &&
-                  !IsIdentityAfterVariable(*node)) {
+                  !NodeImplicitlyReadsNonResourceVariable(*node)) {
                 ++num_nonvar_casts_to_fp16;
               }
             }

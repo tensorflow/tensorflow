@@ -26,6 +26,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.linalg import linalg_impl as linalg
 from tensorflow.python.ops.linalg import linear_operator
 from tensorflow.python.ops.linalg import linear_operator_circulant
+from tensorflow.python.ops.linalg import linear_operator_util
 from tensorflow.python.ops.signal import fft_ops
 from tensorflow.python.util.tf_export import tf_export
 
@@ -79,6 +80,7 @@ class LinearOperatorToeplitz(linear_operator.LinearOperator):
   x = ... Shape [3, 4] Tensor
   operator.matmul(x)
   ==> Shape [3, 4] Tensor
+  ```
 
   #### Shape compatibility
 
@@ -138,19 +140,9 @@ class LinearOperatorToeplitz(linear_operator.LinearOperator):
     """
 
     with ops.name_scope(name, values=[row, col]):
-      self._row = ops.convert_to_tensor(row, name="row")
-      self._col = ops.convert_to_tensor(col, name="col")
+      self._row = linear_operator_util.convert_nonref_to_tensor(row, name="row")
+      self._col = linear_operator_util.convert_nonref_to_tensor(col, name="col")
       self._check_row_col(self._row, self._col)
-
-      circulant_col = array_ops.concat(
-          [self._col,
-           array_ops.zeros_like(self._col[..., 0:1]),
-           array_ops.reverse(self._row[..., 1:], axis=[-1])], axis=-1)
-
-      # To be used for matmul.
-      self._circulant = linear_operator_circulant.LinearOperatorCirculant(
-          fft_ops.fft(_to_complex(circulant_col)),
-          input_output_dtype=self._row.dtype)
 
       if is_square is False:  # pylint:disable=g-bool-id-comparison
         raise ValueError("Only square Toeplitz operators currently supported.")
@@ -158,22 +150,23 @@ class LinearOperatorToeplitz(linear_operator.LinearOperator):
 
       super(LinearOperatorToeplitz, self).__init__(
           dtype=self._row.dtype,
-          graph_parents=[self._row, self._col],
+          graph_parents=None,
           is_non_singular=is_non_singular,
           is_self_adjoint=is_self_adjoint,
           is_positive_definite=is_positive_definite,
           is_square=is_square,
           name=name)
+      self._set_graph_parents([self._row, self._col])
 
   def _check_row_col(self, row, col):
     """Static check of row and column."""
     for name, tensor in [["row", row], ["col", col]]:
-      if tensor.get_shape().ndims is not None and tensor.get_shape().ndims < 1:
+      if tensor.shape.ndims is not None and tensor.shape.ndims < 1:
         raise ValueError("Argument {} must have at least 1 dimension.  "
                          "Found: {}".format(name, tensor))
 
-    if row.get_shape()[-1] is not None and col.get_shape()[-1] is not None:
-      if row.get_shape()[-1] != col.get_shape()[-1]:
+    if row.shape[-1] is not None and col.shape[-1] is not None:
+      if row.shape[-1] != col.shape[-1]:
         raise ValueError(
             "Expected square matrix, got row and col with mismatched "
             "dimensions.")
@@ -184,10 +177,12 @@ class LinearOperatorToeplitz(linear_operator.LinearOperator):
         self.row.shape, self.col.shape)
     return v_shape.concatenate(v_shape[-1:])
 
-  def _shape_tensor(self):
+  def _shape_tensor(self, row=None, col=None):
+    row = self.row if row is None else row
+    col = self.col if col is None else col
     v_shape = array_ops.broadcast_dynamic_shape(
-        array_ops.shape(self.row),
-        array_ops.shape(self.col))
+        array_ops.shape(row),
+        array_ops.shape(col))
     k = v_shape[-1]
     return array_ops.concat((v_shape, [k]), 0)
 
@@ -214,11 +209,20 @@ class LinearOperatorToeplitz(linear_operator.LinearOperator):
     # for more details.
     x = linalg.adjoint(x) if adjoint_arg else x
     expanded_x = array_ops.concat([x, array_ops.zeros_like(x)], axis=-2)
-    result = self._circulant.matmul(
-        expanded_x, adjoint=adjoint, adjoint_arg=False)
+    col = ops.convert_to_tensor(self.col)
+    row = ops.convert_to_tensor(self.row)
+    circulant_col = array_ops.concat(
+        [col,
+         array_ops.zeros_like(col[..., 0:1]),
+         array_ops.reverse(row[..., 1:], axis=[-1])], axis=-1)
+    circulant = linear_operator_circulant.LinearOperatorCirculant(
+        fft_ops.fft(_to_complex(circulant_col)),
+        input_output_dtype=row.dtype)
+    result = circulant.matmul(expanded_x, adjoint=adjoint, adjoint_arg=False)
 
+    shape = self._shape_tensor(row=row, col=col)
     return math_ops.cast(
-        result[..., :self.domain_dimension_tensor(), :],
+        result[..., :self._domain_dimension_tensor(shape=shape), :],
         self.dtype)
 
   def _trace(self):
@@ -230,6 +234,33 @@ class LinearOperatorToeplitz(linear_operator.LinearOperator):
     diag_entry = self.col[..., 0:1]
     return diag_entry * array_ops.ones(
         [self.domain_dimension_tensor()], self.dtype)
+
+  def _to_dense(self):
+    row = ops.convert_to_tensor(self.row)
+    col = ops.convert_to_tensor(self.col)
+    total_shape = array_ops.broadcast_dynamic_shape(
+        array_ops.shape(row), array_ops.shape(col))
+    n = array_ops.shape(row)[-1]
+    row = array_ops.broadcast_to(row, total_shape)
+    col = array_ops.broadcast_to(col, total_shape)
+    # We concatenate the column in reverse order to the row.
+    # This gives us 2*n + 1 elements.
+    elements = array_ops.concat(
+        [array_ops.reverse(col, axis=[-1]), row[..., 1:]], axis=-1)
+    # Given the above vector, the i-th row of the Toeplitz matrix
+    # is the last n elements of the above vector shifted i right
+    # (hence the first row is just the row vector provided, and
+    # the first element of each row will belong to the column vector).
+    # We construct these set of indices below.
+    indices = math_ops.mod(
+        # How much to shift right. This corresponds to `i`.
+        math_ops.range(0, n) +
+        # Specifies the last `n` indices.
+        math_ops.range(n - 1, -1, -1)[..., array_ops.newaxis],
+        # Mod out by the total number of elements to ensure the index is
+        # non-negative (for tf.gather) and < 2 * n - 1.
+        2 * n - 1)
+    return array_ops.gather(elements, indices, axis=-1)
 
   @property
   def col(self):

@@ -66,9 +66,9 @@ void RemoveInstrumentationPass::runOnFunction() {
   applyPatternsGreedily(func, patterns);
 }
 
-std::unique_ptr<FunctionPassBase>
+std::unique_ptr<OpPassBase<FuncOp>>
 mlir::quantizer::createRemoveInstrumentationPass() {
-  return llvm::make_unique<RemoveInstrumentationPass>();
+  return std::make_unique<RemoveInstrumentationPass>();
 }
 
 static PassRegistration<RemoveInstrumentationPass>

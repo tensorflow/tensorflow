@@ -19,6 +19,12 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python import tf2
+from tensorflow.python.data.experimental.ops import counter
+from tensorflow.python.data.experimental.ops import interleave_ops
+from tensorflow.python.data.experimental.ops import random_ops
+from tensorflow.python.data.experimental.ops import readers as exp_readers
+from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import readers
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import control_flow_v2_toggles
@@ -46,8 +52,23 @@ def enable_v2_behavior():
   ops.enable_eager_execution()
   tensor_shape.enable_v2_tensorshape()  # Also switched by tf2
   variable_scope.enable_resource_variables()
+  ops.enable_tensor_equality()
   # Enables TensorArrayV2 and control flow V2.
   control_flow_v2_toggles.enable_control_flow_v2()
+  # Make sure internal uses of tf.data symbols map to V2 versions.
+  dataset_ops.Dataset = dataset_ops.DatasetV2
+  readers.FixedLengthRecordDataset = readers.FixedLengthRecordDatasetV2
+  readers.TFRecordDataset = readers.TFRecordDatasetV2
+  readers.TextLineDataset = readers.TextLineDatasetV2
+  counter.Counter = counter.CounterV2
+  interleave_ops.choose_from_datasets = interleave_ops.choose_from_datasets_v2
+  interleave_ops.sample_from_datasets = interleave_ops.sample_from_datasets_v2
+  random_ops.RandomDataset = random_ops.RandomDatasetV2
+  exp_readers.CsvDataset = exp_readers.CsvDatasetV2
+  exp_readers.SqlDataset = exp_readers.SqlDatasetV2
+  exp_readers.make_batched_features_dataset = (
+      exp_readers.make_batched_features_dataset_v2)
+  exp_readers.make_csv_dataset = exp_readers.make_csv_dataset_v2
 
 
 @tf_export(v1=["disable_v2_behavior"])
@@ -65,5 +86,20 @@ def disable_v2_behavior():
   ops.disable_eager_execution()
   tensor_shape.disable_v2_tensorshape()  # Also switched by tf2
   variable_scope.disable_resource_variables()
+  ops.disable_tensor_equality()
   # Disables TensorArrayV2 and control flow V2.
   control_flow_v2_toggles.disable_control_flow_v2()
+  # Make sure internal uses of tf.data symbols map to V1 versions.
+  dataset_ops.Dataset = dataset_ops.DatasetV1
+  readers.FixedLengthRecordDataset = readers.FixedLengthRecordDatasetV1
+  readers.TFRecordDataset = readers.TFRecordDatasetV1
+  readers.TextLineDataset = readers.TextLineDatasetV1
+  counter.Counter = counter.CounterV1
+  interleave_ops.choose_from_datasets = interleave_ops.choose_from_datasets_v1
+  interleave_ops.sample_from_datasets = interleave_ops.sample_from_datasets_v1
+  random_ops.RandomDataset = random_ops.RandomDatasetV1
+  exp_readers.CsvDataset = exp_readers.CsvDatasetV1
+  exp_readers.SqlDataset = exp_readers.SqlDatasetV1
+  exp_readers.make_batched_features_dataset = (
+      exp_readers.make_batched_features_dataset_v1)
+  exp_readers.make_csv_dataset = exp_readers.make_csv_dataset_v1

@@ -27,8 +27,6 @@ InputColocationExemptionRegistry* InputColocationExemptionRegistry::Global() {
   return registry;
 }
 
-const std::set<string>& InputColocationExemptionRegistry::Get() { return ops_; }
-
 void InputColocationExemptionRegistry::Register(const string& op) {
   auto it = ops_.find(op);
   if (it != ops_.end()) {

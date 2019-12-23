@@ -951,7 +951,14 @@ tensorflow::Status ConvertDepthToSpaceOperator(
   CHECK_EQ(node.op(), "DepthToSpace");
   TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 1));
 
-  CHECK_EQ(GetDataTypeAttr(node, "T"), DT_FLOAT);
+  tensorflow::DataType dtype = GetDataTypeAttr(node, "T");
+  if (dtype != DT_FLOAT && dtype != DT_UINT8 && dtype != DT_INT32 &&
+      dtype != DT_INT64) {
+    const auto* enum_descriptor = tensorflow::DataType_descriptor();
+    LOG(FATAL) << "TFLite does not support DepthToSpace with type T:"
+               << enum_descriptor->FindValueByNumber(dtype)->name() << ". "
+               << "T must be one of {DT_FLOAT, DT_UINT8, DT_INT32, DT_INT64}.";
+  }
   auto* op = new DepthToSpaceOperator;
   op->inputs.push_back(node.input(0));
   op->outputs.push_back(node.name());
@@ -973,7 +980,7 @@ tensorflow::Status ConvertSpaceToDepthOperator(
     const auto* enum_descriptor = tensorflow::DataType_descriptor();
     LOG(FATAL) << "TFLite does not support SpaceToDepth with type T:"
                << enum_descriptor->FindValueByNumber(dtype)->name() << ". "
-               << "T must be one of {DT_FLOAT, DT_INT8, DT_INT32, DT_INT64}.";
+               << "T must be one of {DT_FLOAT, DT_UINT8, DT_INT32, DT_INT64}.";
   }
   auto* op = new SpaceToDepthOperator;
   op->inputs.push_back(node.input(0));
@@ -1024,15 +1031,7 @@ tensorflow::Status ConvertIdentityOperator(
     const ModelFlags& model_flags, Model* model) {
   CHECK(node.op() == "Identity" || node.op() == "CheckNumerics" ||
         node.op() == "PlaceholderWithDefault" || node.op() == "StopGradient" ||
-        node.op() == "Snapshot" || node.op() == "IdentityN");
-
-  if (node.op() == "IdentityN" && node.input_size() != 1) {
-    // When IdentityN doesn't have exactly 1 input, convert it as an unsupported
-    // op so it's still possible to run with Flex runtime.
-    return ConvertUnsupportedOperator(node, tf_import_flags, model_flags,
-                                      model);
-  }
-
+        node.op() == "Snapshot");
   auto* op = new TensorFlowIdentityOperator;
   // Amazingly, some TensorFlow graphs (at least rajeev_lstm.pb) have
   // identity nodes with multiple inputs, but the other inputs seem
@@ -1047,6 +1046,24 @@ tensorflow::Status ConvertIdentityOperator(
   op->inputs.push_back(input_name);
   op->outputs.push_back(node.name());
   model->operators.emplace_back(op);
+  return tensorflow::Status::OK();
+}
+
+tensorflow::Status ConvertIdentityNOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    const ModelFlags& model_flags, Model* model) {
+  CHECK_EQ(node.op(), "IdentityN");
+  for (int i = 0; i < node.input_size(); ++i) {
+    auto* op = new TensorFlowIdentityOperator;
+    const auto& input_name = node.input(i);
+    string output_name = node.name();
+    if (i > 0) {
+      output_name = output_name + ":" + std::to_string(i);
+    }
+    op->inputs.push_back(input_name);
+    op->outputs.push_back(output_name);
+    model->operators.emplace_back(op);
+  }
   return tensorflow::Status::OK();
 }
 
@@ -2217,11 +2234,11 @@ bool InlineAllFunctions(GraphDef* graphdef) {
 
   tensorflow::FunctionLibraryDefinition fld(tensorflow::OpRegistry::Global(),
                                             graphdef_copy.library());
-  tensorflow::DeviceMgr device_mgr(std::move(devices));
-  tensorflow::OptimizerOptions o_opts;
+  tensorflow::StaticDeviceMgr device_mgr(std::move(devices));
   tensorflow::ProcessFunctionLibraryRuntime pflr(
-      &device_mgr, tensorflow::Env::Default(), TF_GRAPH_DEF_VERSION, &fld,
-      o_opts, nullptr);
+      &device_mgr, tensorflow::Env::Default(), &options.config,
+      TF_GRAPH_DEF_VERSION, &fld,
+      options.config.graph_options().optimizer_options(), nullptr);
   tensorflow::FunctionLibraryRuntime* flr;
   flr = pflr.GetFLR("/job:localhost/replica:0/task:0/cpu:0");
 
@@ -2528,7 +2545,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"GreaterEqual",
        ConvertSimpleOperator<TensorFlowGreaterEqualOperator, 2, 1>},
       {"Identity", ConvertIdentityOperator},
-      {"IdentityN", ConvertIdentityOperator},
+      {"IdentityN", ConvertIdentityNOperator},
       {"LRN", ConvertLRNOperator},
       {"LeakyRelu", ConvertLeakyReluOperator},
       {"LegacyFedInput", ConvertPlaceholderOperator},
@@ -2542,8 +2559,16 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"MatMul", ConvertMatMulOperator},
       {"MatrixDiag", ConvertSimpleOperator<MatrixDiagOperator, 1, 1>},
       {"MatrixDiagV2", ConvertSimpleOperator<MatrixDiagV2Operator, 5, 1>},
+      // `MatrixDiagV3` has an `align` attribute. However, Toco only converts
+      // `MatrixDiagV3` to `MatrixDiag` with default `k, num_rows, num_cols,
+      // padding_value` inputs. In this case, `align` can be ignored.
+      {"MatrixDiagV3", ConvertSimpleOperator<MatrixDiagV3Operator, 5, 1>},
       {"MatrixSetDiag", ConvertSimpleOperator<MatrixSetDiagOperator, 2, 1>},
       {"MatrixSetDiagV2", ConvertSimpleOperator<MatrixSetDiagV2Operator, 3, 1>},
+      // `MatrixSetDiagV3` has an `align` attribute. However, Toco only converts
+      // `MatrixSetDiagV3` to `MatrixSetDiag` with default `k` inputs. In this
+      // case, `align` can be ignored.
+      {"MatrixSetDiagV3", ConvertSimpleOperator<MatrixSetDiagV3Operator, 3, 1>},
       {"Max", ConvertReduceOperator<TensorFlowMaxOperator>},
       {"MaxPool", ConvertMaxPoolOperator},
       {"Maximum", ConvertSimpleOperator<TensorFlowMaximumOperator, 2, 1>},

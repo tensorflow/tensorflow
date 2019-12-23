@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import collections
 import enum
+
 import six
 
 from tensorflow.python.client import device_lib
@@ -65,10 +66,7 @@ def validate_destinations(destinations):
           ops.Tensor,
           value_lib.AggregatingVariable,
           six.string_types,
-          value_lib.TPUMirroredVariable,
-          # LogicalDeviceSpec is only used internally, e.g. as a
-          # broadcast destination, never supplied by a user.
-          value_lib.LogicalDeviceSpec)):
+          value_lib.TPUMirroredVariable)):
     raise ValueError("destinations must be one of a `DistributedValues` object,"
                      " a tf.Variable object, or a device string.")
 
@@ -76,7 +74,8 @@ def validate_destinations(destinations):
     raise ValueError("destinations can not be empty")
 
 
-def reduce_non_distributed_value(reduce_op, device_map, value, destinations):
+def reduce_non_distributed_value(
+    reduce_op, value, destinations, num_replicas_in_graph):
   """Reduce a non-DistributedValue `value` to `destinations`."""
   if isinstance(value, value_lib.DistributedValues):
     raise ValueError("You are passing a `DistributedValue` to "
@@ -92,15 +91,16 @@ def reduce_non_distributed_value(reduce_op, device_map, value, destinations):
   # that value should be on all destinations.
   if reduce_op == reduce_util.ReduceOp.MEAN:
     return value
-
-  validate_destinations(destinations)
-  # We do not support a reduce op of SUM if the value is the same across
-  # all replicas. We call this as part of assign functions for MirroredVariables
-  # and summing up identical values across replicas is not clearly defined.
-  if device_map.num_replicas_in_graph != 1:
+  elif num_replicas_in_graph != 1:
+    # We do not support a reduce op of SUM if the value is the same across
+    # all replicas. We call this as part of assign functions for
+    # MirroredVariables and summing up identical values across replicas is not
+    # clearly defined.
     raise ValueError("A non-DistributedValues value %s cannot be reduced with "
                      "the given reduce op %s." % (value, reduce_op))
-  return simple_broadcast(value, destinations)
+  else:
+    validate_destinations(destinations)
+    return simple_broadcast(value, destinations)
 
 
 def _make_tensor_into_per_replica(input_tensor):
@@ -111,15 +111,11 @@ def _make_tensor_into_per_replica(input_tensor):
                      % (input_tensor,))
   if isinstance(input_tensor, value_lib.PerReplica):
     return input_tensor
-
-  try:
-    device = input_tensor.device
-  except AttributeError:
+  elif hasattr(input_tensor, "device"):
+    return value_lib.PerReplica((input_tensor,))
+  else:
     raise ValueError("Cannot convert `input_tensor` to a `PerReplica` object "
                      "because it doesn't have device set.")
-
-  device_map = value_lib.SingleDeviceMap(device)
-  return value_lib.PerReplica(device_map, (input_tensor,))
 
 
 def _normalize_value_destination_pairs(value_destination_pairs):
@@ -161,23 +157,9 @@ def _validate_value_destination_pairs(value_destination_pairs):
 def get_devices_from(destinations):
   if isinstance(destinations, value_lib.DistributedValues):
     return destinations.devices
-  elif isinstance(destinations, value_lib.LogicalDeviceSpec):
-    return destinations.device_map.logical_to_actual_devices(
-        destinations.logical_device)
   elif isinstance(destinations, six.string_types):
     return (device_util.resolve(destinations),)
   return (device_util.resolve(destinations.device),)
-
-
-def get_device_map_from(destinations):
-  if isinstance(destinations, (value_lib.DistributedValues,
-                               value_lib.LogicalDeviceSpec)):
-    return destinations.device_map, destinations.logical_device
-  if isinstance(destinations, six.string_types):
-    device = device_util.resolve(destinations)
-  else:
-    device = destinations.device
-  return value_lib.SingleDeviceMap(device), 0
 
 
 def _devices_match(left, right):
@@ -195,8 +177,7 @@ def _all_devices_match(value_destination_pairs):
 
 def simple_broadcast(value, destinations, always_mirrored=False):
   """Broadcast `value` to `destinations` using simple copies."""
-  device_map, logical_device = get_device_map_from(destinations)
-  devices = device_map.logical_to_actual_devices(logical_device)
+  devices = get_devices_from(destinations)
   if len(devices) == 1 and not always_mirrored:
     return cross_device_utils.copy_tensor_or_indexed_slices_to_device(
         value, devices[0])
@@ -204,10 +185,8 @@ def simple_broadcast(value, destinations, always_mirrored=False):
     value_updates = []
     for d in devices:
       value_updates.append(
-          cross_device_utils.copy_tensor_or_indexed_slices_to_device(
-              value, d))
-    return value_lib.regroup(
-        device_map, value_updates, wrap_class=value_lib.Mirrored)
+          cross_device_utils.copy_tensor_or_indexed_slices_to_device(value, d))
+    return value_lib.regroup(value_updates, wrap_class=value_lib.Mirrored)
 
 
 def _simple_reduce(per_replica_value, reduce_to_device, accumulation_fn,
@@ -252,8 +231,8 @@ class CrossDeviceOps(object):
     result on `destinations`.
 
     Args:
-      reduce_op: Indicates how per_replica_value will be reduced. Accepted
-        values are `tf.distribute.ReduceOp.SUM`, `tf.distribute.ReduceOp.MEAN`.
+      reduce_op: An instance of `tf.distribute.ReduceOp` that indicates how
+        per_replica_value will be reduced.
       per_replica_value: a PerReplica object or a tensor with device set.
       destinations: the reduction destinations.
 
@@ -262,7 +241,7 @@ class CrossDeviceOps(object):
 
     Raises:
       ValueError: if per_replica_value can't be converted to a PerReplica
-        object.
+        object or if destinations aren't strings, Variables or DistributedValues
     """
     if not isinstance(per_replica_value, value_lib.DistributedValues):
       per_replica_value = _make_tensor_into_per_replica(per_replica_value)
@@ -274,7 +253,6 @@ class CrossDeviceOps(object):
         per_replica_value.values) == 1 and _devices_match(
             per_replica_value, destinations):
       return value_lib.regroup(
-          per_replica_value.device_map,
           per_replica_value.values,
           wrap_class=value_lib.Mirrored)
 
@@ -287,18 +265,21 @@ class CrossDeviceOps(object):
     Reduce each first element in `value_destination_pairs` to each second
     element which indicates the destinations.
 
+    This can be faster than multiple individual `reduce`s because we can
+    fuse several tensors into one or multiple packs before reduction.
+
     Args:
-      reduce_op: Indicates how per_replica_value will be reduced. Accepted
-        values are `tf.distribute.ReduceOp.SUM`, `tf.distribute.ReduceOp.MEAN`.
-      value_destination_pairs: a list or a tuple of tuples of PerReplica objects
+      reduce_op: An instance of `tf.distribute.ReduceOp` that indicates how
+        the `per_replica_value` will be reduced.
+      value_destination_pairs: a list or a tuple of PerReplica objects
         (or tensors with device set if there is one device) and destinations.
 
     Returns:
       a list of Mirrored objects.
 
     Raises:
-      ValueError: if `value_destination_pairs` is not a list or a tuple of
-        tuples of PerReplica objects and destinations
+      ValueError: if `value_destination_pairs` is not an iterable of
+        tuples of PerReplica objects and destinations.
     """
     # TODO(yuefengz): if destinations are different, split into several
     # `_batch_reduce` invocations.
@@ -316,8 +297,7 @@ class CrossDeviceOps(object):
         value_destination_pairs) and len(
             value_destination_pairs[0][0].values) == 1:
       return [
-          value_lib.regroup(
-              v.device_map, v.values, wrap_class=value_lib.Mirrored)
+          value_lib.regroup(v.values, wrap_class=value_lib.Mirrored)
           for v, _ in value_destination_pairs
       ]
 
@@ -340,12 +320,14 @@ class CrossDeviceOps(object):
   def reduce_implementation(self, reduce_op, per_replica_value, destinations):
     """The implementation of reduce of `per_replica_value` to `destinations`.
 
+    Overriding this method is useful for subclass implementers.
+
     It runs the reduction operation defined by `reduce_op` and put the
     result on `destinations`.
 
     Args:
-      reduce_op: Indicates how per_replica_value will be reduced. Accepted
-        values are `tf.distribute.ReduceOp.SUM`, `tf.distribute.ReduceOp.MEAN`.
+      reduce_op: An instance `tf.distribute.ReduceOp` that indicates of how
+        per_replica_value will be reduced.
       per_replica_value: a PerReplica object or a tensor with device set.
       destinations: the reduction destinations.
 
@@ -363,20 +345,22 @@ class CrossDeviceOps(object):
   def batch_reduce_implementation(self, reduce_op, value_destination_pairs):
     """Implementation of reduce PerReplica objects in a batch.
 
+    Overriding this method is useful for subclass implementers.
+
     Reduce each first element in `value_destination_pairs` to each second
     element which indicates the destinations.
 
     Args:
-      reduce_op: Indicates how per_replica_value will be reduced. Accepted
-        values are `tf.distribute.ReduceOp.SUM`, `tf.distribute.ReduceOp.MEAN`.
-      value_destination_pairs: a list or a tuple of tuples of PerReplica objects
+      reduce_op: An instance of `tf.distribute.ReduceOp` that indicates how
+        per_replica_value will be reduced.
+      value_destination_pairs: an iterable of tuples of PerReplica objects
         (or tensors with device set if there is one device) and destinations.
 
     Returns:
       a list of Mirrored objects.
 
     Raises:
-      ValueError: if `value_destination_pairs` is not a list or a tuple of
+      ValueError: if `value_destination_pairs` is not an iterable of
         tuples of PerReplica objects and destinations
     """
     raise NotImplementedError(
@@ -400,15 +384,20 @@ class CrossDeviceOps(object):
 class ReductionToOneDevice(CrossDeviceOps):
   """Always do reduction to one device first and then do broadcasting.
 
-    Batch reduction is done by reduction on each element one by one.
+  Batch reduction is done by reduction on each element one by one.
+
+  ```
+    mirrored_strategy = tf.distribute.MirroredStrategy(
+      cross_device_ops=tf.distribute.ReductionToOneDevice())
+  ```
   """
 
   def __init__(self, reduce_to_device=None, accumulation_fn=None):
-    """Constructor.
+    """Initializes with a device to reduce to and a way to accumulate.
 
     Args:
       reduce_to_device: the intermediate device to reduce to. If None, reduce
-        to the first device in `destinations` of the reduce() method.
+        to the first device in `destinations` of the `reduce()` method.
       accumulation_fn: a function that does accumulation.  If None, then
         `tf.math.add_n` is used.
     """
@@ -486,8 +475,7 @@ def _ungroup_and_make_mirrored(grouped_reduced,
   Returns:
     a list of Mirrored objects.
   """
-  device_map, _ = get_device_map_from(destinations)
-  num_replicas = device_map.num_replicas_in_graph * num_between_graph_workers
+  num_replicas = len(get_devices_from(destinations)) * num_between_graph_workers
   index = [[] for _ in range(len(grouped_reduced[0]))]
   for per_replica_reduced in grouped_reduced:
     for i, (v, _) in enumerate(per_replica_reduced):
@@ -496,10 +484,7 @@ def _ungroup_and_make_mirrored(grouped_reduced,
           index[i].append(v / num_replicas)
       else:
         index[i].append(v)
-  return [
-      value_lib.regroup(device_map, v, wrap_class=value_lib.Mirrored)
-      for v in index
-  ]
+  return [value_lib.regroup(v, wrap_class=value_lib.Mirrored) for v in index]
 
 
 class _ConcatAndSplitPacker(object):
@@ -998,23 +983,24 @@ class CollectiveAllReduce(CrossDeviceOps):
   def __init__(self,
                num_workers=1,
                num_gpus_per_worker=0,
-               all_reduce_merge_scope=32,
-               collective_keys=None):
+               num_packs=1,
+               collective_keys=None,
+               communication=CollectiveCommunication.AUTO):
     """Initializes the object.
 
     Args:
       num_workers: number of workers in the between-graph replicated training.
       num_gpus_per_worker: number of GPUs per worker.
-      all_reduce_merge_scope: size of groups into which to partition consecutive
-        gradients grouped under a common 'allreduce' name scope. This is useful
-        for some optimization of collective ops.
+      num_packs: gradients will be packed into `num_packs` chunks.
       collective_keys: an optional CollectiveKey object.
+      communication: indicates which collective communication to use.
     """
     self._num_workers = num_workers
     self._num_gpus_per_worker = num_gpus_per_worker
-    self._all_reduce_merge_scope = all_reduce_merge_scope
+    self._num_packs = num_packs
     self._collective_keys = (collective_keys or
                              cross_device_utils.CollectiveKeys())
+    self._communication = communication
     super(CollectiveAllReduce, self).__init__()
 
   @property
@@ -1023,32 +1009,33 @@ class CollectiveAllReduce(CrossDeviceOps):
 
   def reduce_implementation(self, reduce_op, per_replica_value, destinations):
     all_reduced = self._batch_all_reduce(reduce_op, [per_replica_value])[0]
-    device_map, logical_device = get_device_map_from(destinations)
-    devices = device_map.logical_to_actual_devices(logical_device)
+    devices = get_devices_from(destinations)
 
     if (isinstance(all_reduced, value_lib.Mirrored) and
-        all_reduced.device_map is device_map and
-        all_reduced.logical_device == logical_device):
+        (all_reduced.devices == devices)):
       return all_reduced
 
     # Convert `all_reduced` to a `Mirrored` object, as a simple and uniform
     # utility to access component for a particular device.
     if not isinstance(all_reduced, value_lib.Mirrored):
-      all_reduced = value_lib.Mirrored(
-          value_lib.SingleDeviceMap(all_reduced.device), [all_reduced])
+      all_reduced = value_lib.Mirrored([all_reduced])
 
+    # If we got this far, the destination devices do not match the all-reduce
+    # devices, so we must map from one to the other.
     index = []
+    # We must add these control dependencies, otherwise we can get deadlock.
     with ops.control_dependencies(all_reduced.values):
       for d in devices:
         with ops.device(d):
-          if d in all_reduced.devices:
-            index.append(array_ops.identity(all_reduced.get(d)))
+          for v in all_reduced.values:
+            if v.device == d:
+              index.append(array_ops.identity(v))
+              break
           else:
             # TODO(josh11b): Once we add support for model parallelism, get the
             # copy from the corresponding replica instead of the primary.
             index.append(array_ops.identity(all_reduced.primary))
-
-    return value_lib.regroup(device_map, index, wrap_class=value_lib.Mirrored)
+    return value_lib.regroup(index, wrap_class=value_lib.Mirrored)
 
   def batch_reduce_implementation(self, reduce_op, value_destination_pairs):
     all_devices_match = _all_devices_match(value_destination_pairs)
@@ -1066,21 +1053,35 @@ class CollectiveAllReduce(CrossDeviceOps):
           for t, v in value_destination_pairs
       ]
 
-  def _make_gradient_chunks(self, per_replica_values, all_reduce_merge_scope):
+  def _make_gradient_chunks(self, per_replica_values, num_packs):
     """Make `per_replica_values` into chunks."""
-    grouped_by_device = _group_value_by_device(per_replica_values)
-
-    grouped_by_var = list(zip(*grouped_by_device))
-    # grouped_by_var is grouped by variables and takes the following format:
+    chunked_by_device = _group_value_by_device(per_replica_values)
+    chunked_by_var = list(zip(*chunked_by_device))
+    # chunked_by_var is chunked by variables and takes the following format:
     # [((grad0_gpu0, v0_gpu0), (grad0_gpu1, v0_gpu1), (grad0_gpu2, v0_gpu2) ..),
     #  ((grad1_gpu0, v1_gpu0), (grad1_gpu1, v1_gpu1), (grad1_gpu0, v1_gpu2) ..),
     #  ((grad2_gpu0, v2_gpu0), (grad2_gpu1, v2_gpu1), (grad2_gpu0, v2_gpu2) ..),
     #  ...
     # ]
+
+    # No chunking if number of variables is fewer than number of packs.
+    if len(chunked_by_var) < num_packs:
+      return [chunked_by_var]
+
+    # First n-1 chunks get `chunk_size` grads, last chunk gets leftover grads.
+    # This strategy can cause the last chunk to have larger size compared to the
+    # first n-1 chunks.  Alternatively, we can increment chunk_size by 1 to get
+    # slightly larger first n-1 chunks and smaller last chunk.
+    # TODO(ayushd): compare different packing strategies.
+    chunk_size = len(chunked_by_var) // num_packs
+    leftover_size = len(chunked_by_var) - chunk_size * (num_packs - 1)
+    assert leftover_size > 0
     chunked_gv = [
-        grouped_by_var[x:x + all_reduce_merge_scope]
-        for x in range(0, len(grouped_by_var), all_reduce_merge_scope)
+        chunked_by_var[x:x + chunk_size]
+        for x in range(0, len(chunked_by_var) - leftover_size, chunk_size)
     ]
+    chunked_gv.append(chunked_by_var[-leftover_size:])
+
     return chunked_gv
 
   def _batch_all_reduce(self, reduce_op, per_replica_values):
@@ -1102,22 +1103,35 @@ class CollectiveAllReduce(CrossDeviceOps):
   def _do_batch_all_reduce_dense(self, reduce_op, per_replica_values):
     """All-reduce across all workers in a batch."""
 
+    chunked_gv = self._make_gradient_chunks(per_replica_values, self._num_packs)
+
+    batch_size = len(per_replica_values)
+    # Pass self._communication to the runtime as a communication hint.
+    communication_hint = self._communication.value
+    # For now, we use NCCL only when batch_size > 1 and num_packs is 1.
+    # TODO(b/132575814): switch to NCCL for all collectives when communication
+    # is NCCL.
+    if self._communication == CollectiveCommunication.NCCL and (
+        batch_size == 1 or self._num_packs != 1):
+      communication_hint = CollectiveCommunication.AUTO.value
+
     logging.log_first_n(
         logging.INFO, "Collective batch_all_reduce: %d all-reduces, "
-        "num_workers = %d" % (len(per_replica_values), self._num_workers), 10)
-
-    chunked_gv = self._make_gradient_chunks(per_replica_values,
-                                            self._all_reduce_merge_scope)
+        "num_workers = %d, communication_hint = %s" % (
+            batch_size, self._num_workers, communication_hint), 10)
 
     reduced_gv_list = []
     for chunk in chunked_gv:
+      # By placing all collective ops in a chunk under single name scope, we
+      # ensure they will be picked up by the `ScopedAllocator` grappler
+      # optimizer and packed into a single all-reduce.
       with ops.name_scope("allreduce"):
         for grad_and_vars in chunk:
           # Gradients for the same variable but from different devices.
           scaled_grads = [g for g, _ in grad_and_vars]
           collective_reduced = cross_device_utils.build_collective_reduce(
               scaled_grads, self._num_workers, self._collective_keys, "Add",
-              "Id")
+              "Id", communication_hint)
           result = []
           for (_, v), g in zip(grad_and_vars, collective_reduced):
             result.append([g, v])
@@ -1138,8 +1152,7 @@ class CollectiveAllReduce(CrossDeviceOps):
         "%d all-reduces, num_workers = %d" %
         (len(per_replica_values), self._num_workers), 10)
 
-    chunked_gv = self._make_gradient_chunks(per_replica_values,
-                                            self._all_reduce_merge_scope)
+    chunked_gv = self._make_gradient_chunks(per_replica_values, self._num_packs)
 
     reduced_gv_list = []
     for chunk in chunked_gv:
@@ -1187,13 +1200,24 @@ def choose_the_best(devices, session_config=None):
   Args:
     devices: a list of devices passed to `tf.distribute.Strategy`.
     session_config: a `tf.compat.v1.ConfigProto` or `None`. If `None`, it will
-      make decision based on all local devices.
+      make decision based on all logical devices.
 
   Returns:
     A subclass of `CrossDeviceOps`.
   """
-  requested_devices = set([device_util.canonicalize(d) for d in devices])
-  machine_devices = device_lib.list_local_devices(session_config=session_config)
+  requested_devices = set(device_util.canonicalize(d) for d in devices)
+  if ops.executing_eagerly_outside_functions():
+    logical_gpus = context.context().list_logical_devices(device_type="GPU")
+    physical_gpus = context.context().list_physical_devices(device_type="GPU")
+    if len(logical_gpus) != len(physical_gpus):
+      logging.warning("NCCL is not supported when using virtual GPUs, falling"
+                      "back to reduction to one device")
+      return ReductionToOneDevice()
+
+    machine_devices = context.context().list_logical_devices()
+  else:
+    machine_devices = device_lib.list_local_devices(
+        session_config=session_config)
   using_devices = set()
   for d in machine_devices:
     if device_util.canonicalize(d.name) in requested_devices:
@@ -1203,11 +1227,10 @@ def choose_the_best(devices, session_config=None):
     logging.warning(
         "Some requested devices in `tf.distribute.Strategy` are not visible "
         "to TensorFlow: %s", ",".join(list(requested_devices - using_devices)))
-    return ReductionToOneDevice()
 
-  if any("gpu" not in d.lower() for d in using_devices):
-    logging.warning("There is non-GPU devices in `tf.distribute.Strategy`, not "
-                    "using nccl allreduce.")
+  if any("gpu" not in d.lower() for d in requested_devices):
+    logging.warning("There are non-GPU devices in `tf.distribute.Strategy`, "
+                    "not using nccl allreduce.")
     return ReductionToOneDevice()
 
   if kernels.get_registered_kernels_for_op("NcclAllReduce"):

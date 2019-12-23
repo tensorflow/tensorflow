@@ -117,16 +117,16 @@ TEST_F(LiteralUtilTest, LiteralScalarToString) {
   auto c64_lit = LiteralUtil::CreateR0<complex64>({3.14f, 2.78f});
   EXPECT_EQ("c64[] (3.14, 2.78)", c64_lit.ToString());
 
-  auto c128_lit = LiteralUtil::CreateR0<complex128>({3.14f, 2.78f});
+  auto c128_lit = LiteralUtil::CreateR0<complex128>({3.14, 2.78});
   EXPECT_EQ("c128[] (3.14, 2.78)", c128_lit.ToString());
 
   auto bf16_lit = LiteralUtil::CreateR0<bfloat16>(static_cast<bfloat16>(0.5f));
   EXPECT_EQ("bf16[] 0.5", bf16_lit.ToString());
 
-  // 3.14 will be rounded to 3.14062 in bfloat16 format.
+  // 3.14 will be rounded to 3.140625 in bfloat16 format.
   auto bf16_lit_truncated =
       LiteralUtil::CreateR0<bfloat16>(static_cast<bfloat16>(3.14f));
-  ASSERT_EQ("bf16[] 3.14062", bf16_lit_truncated.ToString());
+  ASSERT_EQ("bf16[] 3.141", bf16_lit_truncated.ToString());
 
   auto bf16_lit_truncated2 =
       LiteralUtil::CreateR0<bfloat16>(static_cast<bfloat16>(9.001f));
@@ -1134,7 +1134,7 @@ TEST_F(LiteralUtilTest, CopyFromDifferentShapes) {
 TEST_F(LiteralUtilTest, F16) {
   // Verify that the internal data views are consistent and that they
   // are in little endian format
-  // TODO - modify if we make the data format machine endianess dependent
+  // TODO - modify if we make the data format machine endianness dependent
   Literal m1 = Literal::CreateFromShape(ShapeUtil::MakeShape(F16, {2, 2}));
   const char* d1 = reinterpret_cast<const char*>(m1.data<half>().data());
   EXPECT_EQ(d1[0], 0);
@@ -1845,6 +1845,30 @@ TEST_F(LiteralUtilTest, InvalidProtoNoValues) {
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.error_message(),
               HasSubstr("Expected 3 elements in LiteralProto"));
+}
+
+TEST_F(LiteralUtilTest, ValidProtoNoValues) {
+  // Proto contains a shape, but no values.
+  LiteralProto proto;
+  *proto.mutable_shape() = ShapeUtil::MakeShape(F32, {3}).ToProto();
+  Status status =
+      Literal::CreateFromProto(proto, /*prohibit_empty_literal=*/false)
+          .status();
+  EXPECT_TRUE(status.ok());
+}
+
+TEST_F(LiteralUtilTest, ValidProtoWithClearedValues) {
+  auto literal = LiteralUtil::CreateR1<bool>({true, false, true});
+  LiteralProto proto = literal.ToProto();
+  EXPECT_EQ(proto.preds_size(), 3);
+
+  // Clear values.
+  proto.clear_preds();
+  EXPECT_EQ(proto.preds_size(), 0);
+  Status status =
+      Literal::CreateFromProto(proto, /*prohibit_empty_literal=*/false)
+          .status();
+  EXPECT_TRUE(status.ok());
 }
 
 TEST_F(LiteralUtilTest, InvalidProtoNoShape) {

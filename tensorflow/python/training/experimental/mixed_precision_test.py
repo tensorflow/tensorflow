@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+
 from absl.testing import parameterized
 
 from tensorflow.core.protobuf import config_pb2
@@ -27,6 +28,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import config
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer as loss_scale_optimizer_v2
 from tensorflow.python.keras.mixed_precision.experimental import policy
 from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_v2
@@ -188,8 +190,9 @@ class MixedPrecisionTest(test.TestCase, parameterized.TestCase):
         self.assertNotIn('You already have existing Sessions that do not use '
                          'mixed precision', msg)
 
+  @testing_utils.enable_v2_dtype_behavior
   def test_error_if_policy_is_set(self):
-    with policy.policy_scope('infer_float32_vars'):
+    with policy.policy_scope('mixed_float16'):
       with self.assertRaisesRegexp(
           ValueError, 'a keras mixed precision Policy has been set'):
         enable_mixed_precision_graph_rewrite(gradient_descent_v2.SGD(1.0))

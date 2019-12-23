@@ -9,7 +9,7 @@ llvm_canonicalize_cmake_booleans(
 
 # Passed to lit.site.cfg.py.in to set up the path where to find the libraries
 # for linalg integration tests.
-set(MLIR_LINALG_INTEGRATION_TEST_LIB_DIR ${CMAKE_LIBRARY_OUTPUT_DIRECTORY})
+set(MLIR_DIALECT_LINALG_INTEGRATION_TEST_LIB_DIR ${CMAKE_LIBRARY_OUTPUT_DIRECTORY})
 
 # Passed to lit.site.cfg.py.in to set up the path where to find the libraries
 # for the mlir cuda runner tests.
@@ -39,16 +39,18 @@ set(MLIR_TEST_DEPENDS
   mlir-translate
   cblas
   cblas_interface
+  mlir_runner_utils
   )
 
 if(LLVM_BUILD_EXAMPLES)
   list(APPEND MLIR_TEST_DEPENDS
-    linalg1-opt
     toyc-ch1
     toyc-ch2
     toyc-ch3
     toyc-ch4
     toyc-ch5
+    toyc-ch6
+    toyc-ch7
     )
 endif()
 

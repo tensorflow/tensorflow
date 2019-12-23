@@ -1,5 +1,4 @@
-// RUN: tf-opt -tf-executor-to-control-conversion %s  | FileCheck %s --dump-input=fail
-
+// RUN: tf-opt -tf-executor-to-control-conversion %s | FileCheck %s --dump-input=fail
 // CHECK-LABEL: func @LoopTest() {
 func @LoopTest() {
   tf_executor.graph {
@@ -43,7 +42,6 @@ func @LoopTest() {
   }
   return
 }
-
 // CHECK-NEXT:   %[[CONST:[0-9]*]]:2 = "_tf.Const"() {device = "", dtype = "tfdtype$DT_INT32", name = "Const", value = dense<1> : tensor<i32>} : () -> (tensor<i32>, !_tf.control)
 // CHECK-NEXT:   %[[ENTER:[0-9]*]]:2 = "_tf.Enter"(%[[CONST]]#0) {T = "tfdtype$DT_INT32", device = "", frame_name = "while/while_context", is_constant = false, name = "while/Enter", parallel_iterations = 10 : i64} : (tensor<i32>) -> (tensor<*xi32>, !_tf.control)
 // CHECK-NEXT:   %[[NOOP:[0-9]*]] = "_tf.NoOp"() {device = "", name = "cluster/pivot"} : () -> !_tf.control
@@ -61,6 +59,8 @@ func @LoopTest() {
 // CHECK-NEXT:   %[[SINK:[0-9]*]] = "_tf.NextIteration.sink"(%[[ADD]]#0, %[[CT]]) {T = "tfdtype$DT_INT32", device = "", id = 0 : i64, name = "while/NextIteration"} : (tensor<*xi32>, !_tf.control) -> !_tf.control
 // CHECK-NEXT:   return
 
+// -----
+
 // CHECK-LABEL: func @multiple_ops_region
 func @multiple_ops_region(%arg0 : tensor<*xi32>, %arg1 : tensor<i32>) {
   tf_executor.graph {
@@ -77,23 +77,77 @@ func @multiple_ops_region(%arg0 : tensor<*xi32>, %arg1 : tensor<i32>) {
   }
   return
 }
-
 // CHECK-NEXT: %[[ADD1:[0-9]*]]:2 = "_tf.Add"(%arg0, %arg1) {T = "tfdtype$DT_INT32", device = "", name = "while/Add1"} : (tensor<*xi32>, tensor<i32>) -> (tensor<*xi32>, !_tf.control)
 // CHECK-NEXT: %[[ADD2:[0-9]*]]:2 = "_tf.Add"(%arg0, %arg1, %[[ADD1]]#1) {T = "tfdtype$DT_INT32", device = "", name = "while/Add2"} : (tensor<*xi32>, tensor<i32>, !_tf.control) -> (tensor<*xi32>, !_tf.control)
 // CHECK-NEXT: %[[ADD3:[0-9]*]]:2 = "_tf.Add"(%arg0, %arg1, %[[ADD2]]#1) {T = "tfdtype$DT_INT32", device = "", name = "while/Add3"} : (tensor<*xi32>, tensor<i32>, !_tf.control) -> (tensor<*xi32>, !_tf.control)
 // CHECK-NEXT: %[[ADD4:[0-9]*]]:2 = "_tf.Add"(%arg0, %arg1, %[[ADD3]]#1) {T = "tfdtype$DT_INT32", device = "", name = "while/Add4"} : (tensor<*xi32>, tensor<i32>, !_tf.control) -> (tensor<*xi32>, !_tf.control)
 
+// -----
+
 // CHECK-LABEL: func @switchN(
 func @switchN(%arg0: tensor<i32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
   %fetches = tf_executor.graph {
-
-// CHECK: [[S1:%.*]]:6 = "_tf._SwitchN"(%arg1, %arg0) {num_outs = 5 : i64}
-     %1:6 = tf_executor.SwitchN %arg1, %arg0 of 5 : tensor<*xf32>
-
-// CHECK: "_tf._SwitchN"(%arg1, %arg0, [[S1]]#5) {num_outs = 12 : i64}
-     %2:13 = tf_executor.SwitchN %arg1, %arg0 of 12 (%1#5) : tensor<*xf32>
-
-     tf_executor.fetch %2#0 : tensor<*xf32>
+    // CHECK: [[S1:%.*]]:6 = "_tf._SwitchN"(%arg1, %arg0) {num_outs = 5 : i64}
+    %1:6 = tf_executor.SwitchN %arg1, %arg0 of 5 : tensor<*xf32>
+    // CHECK: "_tf._SwitchN"(%arg1, %arg0, [[S1]]#5) {num_outs = 12 : i64}
+    %2:13 = tf_executor.SwitchN %arg1, %arg0 of 12 (%1#5) : tensor<*xf32>
+    tf_executor.fetch %2#0 : tensor<*xf32>
   }
   return %fetches : tensor<*xf32>
+}
+
+// -----
+
+// Test if tf_executor dialect ops with Ref types are mapped correctly to the ops in control dialect.
+// CHECK-LABEL: func @ref_tf_executor_ops
+func @ref_tf_executor_ops(%arg0: tensor<4x!tf.f32ref>, %arg1: tensor<4x!tf.f32ref>, %arg3: tensor<i32>, %arg4: tensor<i1> ) -> tensor<4x!tf.f32ref> {
+  %result = tf_executor.graph {
+          // CHECK: _tf.Enter
+          %0:2 = tf_executor.Enter %arg0 frame "while/while_context" : (tensor<4x!tf.f32ref>) -> (tensor<4x!tf.f32ref>, !tf_executor.control)
+          // CHECK: _tf.Exit
+          %1:2 = tf_executor.Exit %arg0 : tensor<4x!tf.f32ref>
+          // CHECK: _tf.Switch
+          %2:3 = tf_executor.Switch %arg0, %arg4 : (tensor<4x!tf.f32ref>, tensor<i1>) -> (tensor<4x!tf.f32ref>, tensor<4x!tf.f32ref>, !tf_executor.control)
+          // CHECK: _tf.Merge
+          %3:3 = tf_executor.Merge %arg0, %arg1 : (tensor<4x!tf.f32ref>, tensor<4x!tf.f32ref>) -> (tensor<4x!tf.f32ref>, tensor<i32>, !tf_executor.control)
+          // CHECK: _tf.NextIteration.source
+          %4:3 = tf_executor.NextIteration.Source : tensor<4x!tf.f32ref>
+          // CHECK: _tf.NextIteration.sink
+          tf_executor.NextIteration.Sink [%4#1] %4#0 : tensor<4x!tf.f32ref>
+          tf_executor.fetch %0#0 : tensor<4x!tf.f32ref>
+  }
+  return %result : tensor<4x!tf.f32ref>
+}
+
+// -----
+
+// Tests if empty island with just control dependency inputs and output is
+// handled correctly.
+// CHECK-LABEL: func @empty_island_control_dep_only
+func @empty_island_control_dep_only() -> tensor<i32> {
+  %fetch = tf_executor.graph {
+    %0:2 = tf_executor.island {
+      %4 = "tf.Const"() {device = "", dtype = "tfdtype$DT_INT32", name = "Const", value = dense<1> : tensor<i32>} : () -> tensor<i32>
+      tf_executor.yield %4 : tensor<i32>
+    }
+    // CHECK-NEXT: %[[CONST1:[0-9]*]]:2 = "_tf.Const"()
+    // CHECK-SAME: () -> (tensor<i32>, !_tf.control)
+    %1:2 = tf_executor.island {
+      %5 = "tf.Const"() {device = "", dtype = "tfdtype$DT_INT32", name = "Const", value = dense<1> : tensor<i32>} : () -> tensor<i32>
+      tf_executor.yield %5 : tensor<i32>
+    }
+    // CHECK-NEXT: %[[CONST2:[0-9]*]]:2 = "_tf.Const"()
+    // CHECK-SAME: () -> (tensor<i32>, !_tf.control)
+    %2 = tf_executor.island(%0#1, %1#1) {
+      tf_executor.yield
+    }
+    %3:2 = tf_executor.island(%2) {
+      %6 = "tf.Add"(%0#0, %1#0) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+      tf_executor.yield %6 : tensor<i32>
+    }
+    // CHECK-NEXT: %[[ADD:[0-9]*]]:2 = "_tf.Add"(%[[CONST1]]#0, %[[CONST2]]#0, %[[CONST1]]#1, %[[CONST2]]#1)
+    // CHECK-SAME: (tensor<i32>, tensor<i32>, !_tf.control, !_tf.control) -> (tensor<i32>, !_tf.control)
+    tf_executor.fetch %3#0 : tensor<i32>
+  }
+  return %fetch : tensor<i32>
 }

@@ -22,6 +22,7 @@ import gc
 import os
 import tempfile
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.compiler.tf2tensorrt.wrap_py_utils import is_tensorrt_enabled
@@ -62,7 +63,7 @@ gen_trt_ops = LazyLoader(
     "tensorflow.compiler.tf2tensorrt.ops.gen_trt_ops")
 
 
-class TrtConvertTest(test_util.TensorFlowTestCase):
+class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   """Class to test Tensorflow-TensorRT integration python API."""
 
   # Use a small max_workspace_size for tests so they don't consume too much GPU
@@ -110,29 +111,76 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
         trt_optimizer.parameter_map["precision_mode"].s)
     self.assertEqual(2, trt_optimizer.parameter_map["maximum_cached_engines"].i)
 
-  def _GetConfigProto(self):
+  def testGetTensorrtRewriterConfigTemplate(self):
+    """Test case for TrtGraphConverter.get_tensorrt_rewriter_config()."""
+    if not is_tensorrt_enabled():
+      return
+
+    rewriter_config_with_trt = rewriter_config_pb2.RewriterConfig()
+    rewriter_config_with_trt.optimizers.extend(
+        ["constfold", "layout", "constfold"])
+    rewriter_config_with_trt.meta_optimizer_iterations = (
+        rewriter_config_pb2.RewriterConfig.ONE)
+    optimizer = rewriter_config_with_trt.custom_optimizers.add()
+    rewriter_config_with_trt.custom_optimizers.add().name = "constfold"
+    optimizer.name = "TensorRTOptimizer"
+    optimizer.parameter_map["minimum_segment_size"].i = 10
+    optimizer.parameter_map["max_batch_size"].i = 128
+    optimizer.parameter_map["is_dynamic_op"].b = True
+    optimizer.parameter_map["max_workspace_size_bytes"].i = 1234
+    optimizer.parameter_map["precision_mode"].s = trt_convert._to_bytes(
+        trt_convert.TrtPrecisionMode.INT8)
+    optimizer.parameter_map["maximum_cached_engines"].i = 2
+    optimizer.parameter_map["use_calibration"].b = False
+    optimizer.parameter_map["use_implicit_batch"].b = True
+
+    conversion_params = trt_convert.DEFAULT_TRT_CONVERSION_PARAMS._replace(
+        rewriter_config_template=rewriter_config_with_trt)
+    rewriter_cfg = trt_convert.get_tensorrt_rewriter_config(
+        conversion_params=conversion_params)
+    self.assertEqual(["constfold", "layout", "constfold"],
+                     rewriter_cfg.optimizers)
+    self.assertEqual(rewriter_config_pb2.RewriterConfig.ONE,
+                     rewriter_cfg.meta_optimizer_iterations)
+    trt_optimizer = None
+    for optimizer in rewriter_cfg.custom_optimizers:
+      if optimizer.name == "TensorRTOptimizer":
+        self.assertIsNone(trt_optimizer)
+        trt_optimizer = optimizer
+    self.assertIsNotNone(trt_optimizer)
+    for key in [
+        "minimum_segment_size", "max_batch_size", "is_dynamic_op",
+        "max_workspace_size_bytes", "precision_mode", "maximum_cached_engines"
+    ]:
+      self.assertIn(key, trt_optimizer.parameter_map)
+    self.assertEqual(10, trt_optimizer.parameter_map["minimum_segment_size"].i)
+    self.assertEqual(128, trt_optimizer.parameter_map["max_batch_size"].i)
+    self.assertEqual(True, trt_optimizer.parameter_map["is_dynamic_op"].b)
+    self.assertEqual(1234,
+                     trt_optimizer.parameter_map["max_workspace_size_bytes"].i)
+    self.assertEqual(
+        trt_convert._to_bytes("INT8"),
+        trt_optimizer.parameter_map["precision_mode"].s)
+    self.assertEqual(2, trt_optimizer.parameter_map["maximum_cached_engines"].i)
+    self.assertEqual(False, trt_optimizer.parameter_map["use_calibration"].b)
+    self.assertEqual(True, trt_optimizer.parameter_map["use_implicit_batch"].b)
+
+  def _GetConfigProto(self, rewriter_config=None):
     """Get ConfigProto for session creation."""
     config = config_pb2.ConfigProto(
         gpu_options=config_pb2.GPUOptions(allow_growth=True))
+    if rewriter_config:
+      config.graph_options.rewrite_options.CopyFrom(rewriter_config)
     return config
 
   @classmethod
-  def _GetGraph(cls, inp, var):
+  def _GetGraph(cls, inp1, inp2, var):
     """Get the graph for testing."""
-    # The graph computes (input+1)^2, it looks like:
-    #
-    # input (Placeholder)  v1 (Variable)
-    #               |   \ /
-    #                \   +
-    #                 \ / \
-    #                  *   |
-    #                   \ /
-    #                    +
-    #                    |
-    #                 output (Identity)
-    add = inp + var
-    mul = inp * add
+    # The graph computes: inp1^2 + inp1*var + inp1 + inp2 + var
+    add = inp1 + var
+    mul = inp1 * add
     add = mul + add
+    add = add + inp2
     out = array_ops.identity(add, name="output")
     return out
 
@@ -144,28 +192,37 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
         self.v = None
 
       @def_function.function(input_signature=[
+          tensor_spec.TensorSpec(shape=[None, 1, 1], dtype=dtypes.float32),
           tensor_spec.TensorSpec(shape=[None, 1, 1], dtype=dtypes.float32)
       ])
-      def run(self, inp):
+      def run(self, inp1, inp2):
         if self.v is None:
           self.v = variables.Variable([[[1.0]]], dtype=dtypes.float32)
-        return TrtConvertTest._GetGraph(inp, self.v)
+        return TrtConvertTest._GetGraph(inp1, inp2, self.v)
 
     return SimpleModel()
 
-  def _GetGraphForV1(self):
+  def _GetGraphForV1(self, device):
+
+    def _GraphFn():
+      inp1 = array_ops.placeholder(
+          dtype=dtypes.float32, shape=[None, 1, 1], name="input1")
+      inp2 = array_ops.placeholder(
+          dtype=dtypes.float32, shape=[None, 1, 1], name="input2")
+      var = variables.Variable([[[1.0]]], dtype=dtypes.float32, name="v1")
+      out = TrtConvertTest._GetGraph(inp1, inp2, var)
+      return g, var, inp1, inp2, out
+
     g = ops.Graph()
     with g.as_default():
-      with g.device("/GPU:0"):
-        inp = array_ops.placeholder(
-            dtype=dtypes.float32, shape=[None, 1, 1], name="input")
-        var = variables.Variable([[[1.0]]], dtype=dtypes.float32, name="v1")
-        out = TrtConvertTest._GetGraph(inp, var)
-        return g, var, inp, out
+      if device:
+        with g.device(device):
+          return _GraphFn()
+      return _GraphFn()
 
-  def _GetGraphDef(self):
+  def _GetGraphDefForV1(self, device):
     """Get the graph def for testing."""
-    g, var, _, _ = self._GetGraphForV1()
+    g, var, _, _, _ = self._GetGraphForV1(device)
     with self.session(graph=g, config=self._GetConfigProto()) as sess:
       sess.run(var.initializer)
       graph_def = graph_util.convert_variables_to_constants(
@@ -175,19 +232,24 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
         {
             "v1": "Const",
             "add/ReadVariableOp": "Identity",
-            "input": "Placeholder",
+            "input1": "Placeholder",
+            "input2": "Placeholder",
             "add": "AddV2",
             "mul": "Mul",
             "add_1": "AddV2",
+            "add_2": "AddV2",
             "output": "Identity"
         }, node_name_to_op)
     return graph_def
 
-  def _WriteInputSavedModel(self, input_saved_model_dir):
+  def _WriteInputSavedModelForV1(self, input_saved_model_dir, device):
     """Write the saved model as an input for testing."""
-    g, var, inp, out = self._GetGraphForV1()
+    g, var, inp1, inp2, out = self._GetGraphForV1(device)
     signature_def = signature_def_utils.build_signature_def(
-        inputs={"myinput": utils.build_tensor_info(inp)},
+        inputs={
+            "myinput1": utils.build_tensor_info(inp1),
+            "myinput2": utils.build_tensor_info(inp2)
+        },
         outputs={"myoutput": utils.build_tensor_info(out)},
         method_name=signature_constants.PREDICT_METHOD_NAME)
     saved_model_builder = builder.SavedModelBuilder(input_saved_model_dir)
@@ -198,19 +260,25 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
           signature_def_map={_SAVED_MODEL_SIGNATURE_KEY: signature_def})
     saved_model_builder.save()
 
-  def _ConvertGraph(self,
-                    input_saved_model_dir=None,
-                    output_saved_model_dir=None,
-                    need_calibration=False,
-                    max_batch_size=1,
-                    minimum_segment_size=3,
-                    is_dynamic_op=False,
-                    maximum_cached_engines=1):
+  def _ConvertGraphV1(self,
+                      output_saved_model_dir=None,
+                      need_calibration=False,
+                      max_batch_size=1,
+                      minimum_segment_size=3,
+                      is_dynamic_op=False,
+                      maximum_cached_engines=1,
+                      device=None):
     """Helper method to convert a GraphDef or SavedModel using TF-TRT."""
+    input_saved_model_dir = None
+    if output_saved_model_dir:
+      input_saved_model_dir = self.mkdtemp()
+      self._WriteInputSavedModelForV1(input_saved_model_dir, device)
+
     converter = trt_convert.TrtGraphConverter(
         input_saved_model_dir=input_saved_model_dir,
         input_saved_model_signature_key=_SAVED_MODEL_SIGNATURE_KEY,
-        input_graph_def=None if input_saved_model_dir else self._GetGraphDef(),
+        input_graph_def=None
+        if input_saved_model_dir else self._GetGraphDefForV1(device),
         nodes_blacklist=None if input_saved_model_dir else ["output"],
         session_config=self._GetConfigProto(),
         max_batch_size=max_batch_size,
@@ -231,7 +299,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
 
         def next(self):
           self._data += 1
-          return {"input:0": [[[self._data]]]}
+          return {"input1:0": [[[self._data]]], "input2:0": [[[self._data]]]}
 
       output_graph_def = converter.calibrate(
           fetch_names=["output:0"],
@@ -243,16 +311,16 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
     return output_graph_def
 
   def _TestTrtGraphConverter(self,
-                             input_saved_model_dir=None,
+                             device,
                              output_saved_model_dir=None,
                              need_calibration=False,
                              is_dynamic_op=False):
     """General method to test trt_convert.TrtGraphConverter()."""
-    output_graph_def = self._ConvertGraph(
-        input_saved_model_dir=input_saved_model_dir,
+    output_graph_def = self._ConvertGraphV1(
         output_saved_model_dir=output_saved_model_dir,
         need_calibration=need_calibration,
-        is_dynamic_op=is_dynamic_op)
+        is_dynamic_op=is_dynamic_op,
+        device=device)
     graph_defs_to_verify = [output_graph_def]
 
     if output_saved_model_dir:
@@ -265,7 +333,8 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
       node_name_to_op = {node.name: node.op for node in graph_def.node}
       self.assertEqual(
           {
-              "input": "Placeholder",
+              "input1": "Placeholder",
+              "input2": "Placeholder",
               "TRTEngineOp_0": "TRTEngineOp",
               "output": "Identity"
           }, node_name_to_op)
@@ -283,44 +352,104 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
           importer.import_graph_def(graph_def, name="")
           with self.session(config=self._GetConfigProto()) as sess:
             for test_data in range(10):
-              self.assertEqual(
-                  (test_data + 1.0)**2,
-                  sess.run("output:0", feed_dict={"input:0": [[[test_data]]]}))
+              self.assertEqual((test_data + 1.0)**2 + test_data,
+                               sess.run(
+                                   "output:0",
+                                   feed_dict={
+                                       "input1:0": [[[test_data]]],
+                                       "input2:0": [[[test_data]]]
+                                   }))
 
+  @parameterized.named_parameters([
+      ("NoDeviceAssignment", None),
+      ("GPU", "/GPU:0"),
+      ("CPU", "/CPU:0"),
+  ])
   @test_util.deprecated_graph_mode_only
-  def testTrtGraphConverter_BasicConversion(self):
+  def testTrtGraphConverter_OfflineConversion(self, device):
     """Test case for trt_convert.TrtGraphConverter()."""
     if not is_tensorrt_enabled():
       return
 
-    input_saved_model_dir = self.mkdtemp()
-    self._WriteInputSavedModel(input_saved_model_dir)
-
     for need_calibration in [False, True]:
       # Use GraphDef as input.
-      self._TestTrtGraphConverter()
+      self._TestTrtGraphConverter(device)
 
       # Use SavedModel as input.
       self._TestTrtGraphConverter(
-          input_saved_model_dir=input_saved_model_dir,
+          device,
           output_saved_model_dir=self.mkdtemp(),
           need_calibration=need_calibration)
+
+  @parameterized.named_parameters([
+      ("NoDeviceAssignment", None),
+      ("GPU", "/device:GPU:0"),
+      ("CPU", "/device:CPU:0"),
+  ])
+  @test_util.deprecated_graph_mode_only
+  def testTrtGraphConverter_OnlineConversion(self, device):
+    """Test case for TF-TRT conversion using Grappler directly."""
+    if not is_tensorrt_enabled():
+      return
+
+    conversion_params = trt_convert.DEFAULT_TRT_CONVERSION_PARAMS._replace(
+        precision_mode=trt_convert.TrtPrecisionMode.FP32, is_dynamic_op=True)
+    config = self._GetConfigProto(
+        rewriter_config=trt_convert.get_tensorrt_rewriter_config(
+            conversion_params, is_v2=False))
+
+    with ops.Graph().as_default():
+      # Online conversion requires a frozen graph, so we reuse inp1 as the var
+      # argument.
+      inp1 = array_ops.placeholder(
+          dtype=dtypes.float32, shape=[None, 1, 1], name="input1")
+      inp2 = array_ops.placeholder(
+          dtype=dtypes.float32, shape=[None, 1, 1], name="input2")
+      if device:
+        with ops.device(device):
+          TrtConvertTest._GetGraph(inp1, inp2, inp1)
+      else:
+        TrtConvertTest._GetGraph(inp1, inp2, inp1)
+      with self.session(config=config) as sess:
+        self._TestRun(sess, batch_size=1)
 
   def _CreateConverterV2(
       self,
       input_saved_model_dir,
       input_saved_model_signature_key=_SAVED_MODEL_SIGNATURE_KEY,
       precision_mode=trt_convert.TrtPrecisionMode.FP32,
-      max_batch_size=None):
+      is_dynamic_op=True,
+      maximum_cached_engines=2):
     return trt_convert.TrtGraphConverterV2(
         input_saved_model_dir=input_saved_model_dir,
         input_saved_model_signature_key=input_saved_model_signature_key,
         conversion_params=trt_convert.DEFAULT_TRT_CONVERSION_PARAMS._replace(
             max_workspace_size_bytes=10 << 20,  # Use a smaller workspace.
             precision_mode=precision_mode,
-            is_dynamic_op=False if max_batch_size else True,
-            maximum_cached_engines=2,
-            max_batch_size=max_batch_size if max_batch_size else 1))
+            is_dynamic_op=is_dynamic_op,
+            maximum_cached_engines=maximum_cached_engines))
+
+  def _CheckTrtOps(self, concrete_func, check_fn=None):
+    graph_def = concrete_func.graph.as_graph_def()
+    trt_op_names = []
+    for node in graph_def.node:
+      if node.op == "TRTEngineOp":
+        trt_op_names.append(node.name)
+        if check_fn:
+          check_fn(node)
+    for func in graph_def.library.function:
+      for node in func.node_def:
+        if node.op == "TRTEngineOp":
+          trt_op_names.append(node.name)
+          if check_fn:
+            check_fn(node)
+    self.assertEqual(1, len(trt_op_names))
+    self.assertIn("TRTEngineOp_0", trt_op_names[0])
+
+  def _RandomInput(self, shape, dtype=np.float32):
+    inp1 = np.random.random_sample(shape).astype(dtype)
+    inp2 = np.random.random_sample(shape).astype(dtype)
+    return inp1, inp2
 
   @test_util.run_v2_only
   def testTrtGraphConverter_DynamicConversion_v2(self):
@@ -328,35 +457,21 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
     if not is_tensorrt_enabled():
       return
 
-    np_input = np.random.random_sample([4, 1, 1]).astype(np.float32)
+    np_input1, np_input2 = self._RandomInput([4, 1, 1])
 
     # Create a model and save it.
     input_saved_model_dir = self.mkdtemp()
     root = self._GetModelForV2()
-    expected_output = root.run(np_input)
+    expected_output = root.run(np_input1, np_input2)
     save.save(root, input_saved_model_dir,
               {_SAVED_MODEL_SIGNATURE_KEY: root.run})
 
     # Run TRT conversion.
     converter = self._CreateConverterV2(input_saved_model_dir)
-    converted_func = converter.convert()
-
-    def _CheckTrtOps(graph_def):
-      trt_op_names = [
-          node.name for node in graph_def.node if node.op == "TRTEngineOp"
-      ]
-      for func in graph_def.library.function:
-        for node in func.node_def:
-          if node.op == "TRTEngineOp":
-            trt_op_names.append(node.name)
-      self.assertEqual(1, len(trt_op_names))
-      self.assertIn("TRTEngineOp_0", trt_op_names[0])
+    converter.convert()
 
     # Verify the converted GraphDef and ConcreteFunction.
-    self.assertIsInstance(converted_func, def_function.Function)
-    converted_concrete_func = converted_func.get_concrete_function(
-        tensor_spec.TensorSpec(shape=[None, 1, 1], dtype=dtypes.float32))
-    _CheckTrtOps(converted_concrete_func.graph.as_graph_def())
+    self._CheckTrtOps(converter._converted_func)  # pylint: disable=protected-access
 
     # Save the converted model without any TRT engine cache.
     output_saved_model_dir = self.mkdtemp()
@@ -366,10 +481,10 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
     self.assertFalse(os.path.exists(unexpected_asset_file))
 
     # Run the converted function to populate the engine cache.
-    output_with_trt = converted_func(np_input)
-    self.assertEqual(1, len(output_with_trt))
-    self.assertAllClose(
-        expected_output, output_with_trt.values()[0], atol=1e-6, rtol=1e-6)
+    def _InputFn():
+      yield np_input1, np_input2
+
+    converter.build(input_fn=_InputFn)
 
     # Save the converted model again with serialized engine cache.
     output_saved_model_dir = self.mkdtemp()
@@ -378,6 +493,9 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
         output_saved_model_dir, "assets/trt-serialized-engine.TRTEngineOp_0")
     self.assertTrue(os.path.exists(expected_asset_file))
     self.assertTrue(os.path.getsize(expected_asset_file))
+
+    del converter
+    gc.collect()  # Force GC to destroy the TRT engine cache.
 
     # Load and verify the converted model.
     #
@@ -387,96 +505,81 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
     root_with_trt = load.load(output_saved_model_dir)
     # TODO(laigd): `root_with_trt.run` is still using the original graph without
     # trt. Consider changing that.
-    # _CheckTrtOps(
-    #     root_with_trt.run.get_concrete_function().graph.as_graph_def())
+    # self._CheckTrtOps(root_with_trt.run.get_concrete_function())
     converted_signature = root_with_trt.signatures[_SAVED_MODEL_SIGNATURE_KEY]
-    _CheckTrtOps(converted_signature.graph.as_graph_def())
-    output_with_trt = converted_signature(ops.convert_to_tensor(np_input))
+    self._CheckTrtOps(converted_signature)
+    output_with_trt = converted_signature(
+        inp1=ops.convert_to_tensor(np_input1),
+        inp2=ops.convert_to_tensor(np_input2))
     # The output of running the converted signature is a dict due to
     # compatibility reasons with V1 SavedModel signature mechanism.
-    output_with_trt = output_with_trt.values()[0]
-    self.assertAllClose(expected_output, output_with_trt, atol=1e-6, rtol=1e-6)
+    self.assertAllClose(
+        expected_output,
+        list(output_with_trt.values())[0],
+        atol=1e-6,
+        rtol=1e-6)
+
+    del root_with_trt
+    gc.collect()  # Force GC to destroy the TRT engine cache.
 
   @test_util.run_v2_only
-  def testTrtGraphConverter_StaticConversion_v2(self):
+  def testTrtGraphConverter_StaticConversionNotSupportedInV2(self):
     """Test case for trt_convert.TrtGraphConverter() using static mode."""
     if not is_tensorrt_enabled():
       return
 
-    np_input = np.random.random_sample([4, 1, 1]).astype(np.float32)
-
     # Create a model and save it.
     input_saved_model_dir = self.mkdtemp()
     root = self._GetModelForV2()
-    expected_output = root.run(np_input)
     save.save(root, input_saved_model_dir,
               {_SAVED_MODEL_SIGNATURE_KEY: root.run})
 
     # Run TRT conversion.
-    converter = self._CreateConverterV2(input_saved_model_dir, max_batch_size=4)
-    converted_func = converter.convert()
-
-    def _CheckTrtOps(graph_def):
-      trt_op_names = [
-          node.name for node in graph_def.node if node.op == "TRTEngineOp"
-      ]
-      for func in graph_def.library.function:
-        for node in func.node_def:
-          if node.op == "TRTEngineOp":
-            trt_op_names.append(node.name)
-            self.assertTrue(len(node.attr["serialized_segment"].s), node.name)
-      self.assertEqual(1, len(trt_op_names))
-      self.assertIn("TRTEngineOp_0", trt_op_names[0])
-
-    # Verify the converted GraphDef and ConcreteFunction.
-    self.assertIsInstance(converted_func, def_function.Function)
-    converted_concrete_func = converted_func.get_concrete_function(
-        tensor_spec.TensorSpec(shape=[None, 1, 1], dtype=dtypes.float32))
-    _CheckTrtOps(converted_concrete_func.graph.as_graph_def())
-
-    # Save the converted model with the statically-built engine inlined.
-    output_saved_model_dir = self.mkdtemp()
-    converter.save(output_saved_model_dir)
-    unexpected_asset_file = os.path.join(
-        output_saved_model_dir, "assets/trt-serialized-engine.TRTEngineOp_0")
-    self.assertFalse(os.path.exists(unexpected_asset_file))
-
-    # Load and verify the converted model.
-    root_with_trt = load.load(output_saved_model_dir)
-    converted_signature = root_with_trt.signatures[_SAVED_MODEL_SIGNATURE_KEY]
-    _CheckTrtOps(converted_signature.graph.as_graph_def())
-    output_with_trt = converted_signature(ops.convert_to_tensor(np_input))
-    # The output of running the converted signature is a dict due to
-    # compatibility reasons with V1 SavedModel signature mechanism.
-    output_with_trt = output_with_trt.values()[0]
-    self.assertAllClose(expected_output, output_with_trt, atol=1e-6, rtol=1e-6)
+    with self.assertRaisesRegexp(
+        ValueError, r"Option is_dynamic_op=False is not supported in TF 2.0, "
+        "please set it to True instead."):
+      self._CreateConverterV2(input_saved_model_dir, is_dynamic_op=False)
 
   @test_util.run_v2_only
   def testTrtGraphConverter_Int8Conversion_v2(self):
     if not is_tensorrt_enabled():
       return
 
-    np_input = np.random.random_sample([4, 1, 1]).astype(np.float32)
+    np_input1, np_input2 = self._RandomInput([4, 1, 1])
 
     # Create a model and save it.
     input_saved_model_dir = tempfile.mkdtemp(dir=self.get_temp_dir())
     root = self._GetModelForV2()
-    expected_output = root.run(np_input)
+    expected_output = root.run(np_input1, np_input2)
     save.save(root, input_saved_model_dir,
               {_SAVED_MODEL_SIGNATURE_KEY: root.run})
 
     # Run TRT conversion.
     converter = self._CreateConverterV2(
-        input_saved_model_dir, precision_mode=trt_convert.TrtPrecisionMode.INT8)
-    converted_func = converter.convert()
+        input_saved_model_dir,
+        precision_mode=trt_convert.TrtPrecisionMode.INT8,
+        maximum_cached_engines=3)
 
-    # Run the converted function for INT8 calibration.
-    calibration_output = converted_func(np_input)
-    self.assertEqual(1, len(calibration_output))
-    self.assertAllClose(
-        expected_output, calibration_output.values()[0], atol=1e-6, rtol=1e-6)
+    # Convert and perform INT8 calibration
+    def _CalibrationInputFn():
+      yield np_input1, np_input2
 
-    # Save the converted model again with serialized engine cache.
+    converter.convert(calibration_input_fn=_CalibrationInputFn)
+
+    def _CheckFn(node):
+      self.assertTrue(len(node.attr["calibration_data"].s), node.name)
+
+    # Verify the converted GraphDef.
+    self._CheckTrtOps(converter._converted_func, _CheckFn)  # pylint: disable=protected-access
+
+    # Build another engine with different batch size.
+    def _InputFn():
+      yield self._RandomInput([5, 1, 1])
+
+    converter.build(input_fn=_InputFn)
+
+    # Save the converted model.
+    # TODO(laigd): check that it should contain two engines.
     output_saved_model_dir = self.mkdtemp()
     converter.save(output_saved_model_dir)
     expected_asset_file = os.path.join(
@@ -484,16 +587,35 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
     self.assertTrue(os.path.exists(expected_asset_file))
     self.assertTrue(os.path.getsize(expected_asset_file))
 
+    del converter
+    gc.collect()  # Force GC to destroy the TRT engine cache.
+
     # Load and verify the converted model.
     root_with_trt = load.load(output_saved_model_dir)
     converted_signature = root_with_trt.signatures[_SAVED_MODEL_SIGNATURE_KEY]
-    output_with_trt = converted_signature(ops.convert_to_tensor(np_input))
+    self._CheckTrtOps(converted_signature, _CheckFn)
+    output_with_trt = converted_signature(
+        inp1=ops.convert_to_tensor(np_input1),
+        inp2=ops.convert_to_tensor(np_input2))
     self.assertEqual(1, len(output_with_trt))
-
     # The output of running the converted signature is a dict due to
     # compatibility reasons with V1 SavedModel signature mechanism.
     self.assertAllClose(
-        expected_output, output_with_trt.values()[0], atol=1e-6, rtol=1e-6)
+        expected_output,
+        list(output_with_trt.values())[0],
+        atol=1e-6,
+        rtol=1e-6)
+
+    # Run with an input of different batch size. It should build a new engine
+    # using calibration table.
+    # TODO(laigd): check that it should contain three engines.
+    np_input1, np_input2 = self._RandomInput([6, 1, 1])
+    converted_signature(
+        inp1=ops.convert_to_tensor(np_input1),
+        inp2=ops.convert_to_tensor(np_input2))
+
+    del root_with_trt
+    gc.collect()  # Force GC to destroy the TRT engine cache.
 
   @test_util.run_v2_only
   def testTrtGraphConverter_DestroyEngineCache(self):
@@ -501,7 +623,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
     if not is_tensorrt_enabled():
       return
 
-    np_input = np.random.random_sample([4, 1, 1]).astype(np.float32)
+    np_input1, np_input2 = self._RandomInput([4, 1, 1])
 
     # Create a model and save it.
     input_saved_model_dir = self.mkdtemp()
@@ -511,8 +633,12 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
 
     # Run TRT conversion.
     converter = self._CreateConverterV2(input_saved_model_dir)
-    converted_func = converter.convert()
-    converted_func(np_input)  # Populate the TRT engine cache.
+    converter.convert()
+
+    def _InputFn():
+      yield np_input1, np_input2
+
+    converter.build(input_fn=_InputFn)  # Populate the TRT engine cache.
     output_saved_model_dir = self.mkdtemp()
     converter.save(output_saved_model_dir)
 
@@ -597,6 +723,8 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
 
   @test_util.run_v2_only
   def testRetainSignatureInfo_NoInputs(self):
+    if not is_tensorrt_enabled():
+      return
 
     class _Model(tracking.AutoTrackable):
 
@@ -608,6 +736,8 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
 
   @test_util.run_v2_only
   def testRetainSignatureInfo_OneInput(self):
+    if not is_tensorrt_enabled():
+      return
 
     class _Model(tracking.AutoTrackable):
 
@@ -621,6 +751,8 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
 
   @test_util.run_v2_only
   def testRetainSignatureInfo_TwoInputs(self):
+    if not is_tensorrt_enabled():
+      return
 
     class _Model(tracking.AutoTrackable):
 
@@ -635,6 +767,8 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
 
   @test_util.run_v2_only
   def testRetainSignatureInfo_OneOutputSignatureKey(self):
+    if not is_tensorrt_enabled():
+      return
 
     class _Model(tracking.AutoTrackable):
 
@@ -646,6 +780,8 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
 
   @test_util.run_v2_only
   def testRetainSignatureInfo_TwoOutputSignatureKeys(self):
+    if not is_tensorrt_enabled():
+      return
 
     class _Model(tracking.AutoTrackable):
 
@@ -661,23 +797,30 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
 
     self._CompareSavedModel(_Model)
 
-  def _TestRun(self, sess, batch_size, expect_engine_is_run=True):
-    result = sess.run("output:0", feed_dict={"input:0": [[[1.0]]] * batch_size})
-    self.assertAllEqual([[[4.0]]] * batch_size, result)
+  def _TestRun(self, sess, batch_size):
+    result = sess.run(
+        "output:0",
+        feed_dict={
+            "input1:0": [[[1.0]]] * batch_size,
+            "input2:0": [[[1.0]]] * batch_size
+        })
+    self.assertAllEqual([[[5.0]]] * batch_size, result)
 
   @test_util.deprecated_graph_mode_only
   def testTrtGraphConverter_MinimumSegmentSize(self):
     if not is_tensorrt_enabled():
       return
-    output_graph_def = self._ConvertGraph(minimum_segment_size=5)
+    output_graph_def = self._ConvertGraphV1(minimum_segment_size=7)
     node_name_to_op = {node.name: node.op for node in output_graph_def.node}
     self.assertEqual(
         {
             "add/ReadVariableOp": "Const",
-            "input": "Placeholder",
+            "input1": "Placeholder",
+            "input2": "Placeholder",
             "add": "AddV2",
             "mul": "Mul",
             "add_1": "AddV2",
+            "add_2": "AddV2",
             "output": "Identity"
         }, node_name_to_op)
 
@@ -686,11 +829,8 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
     if not is_tensorrt_enabled():
       return
 
-    input_saved_model_dir = self.mkdtemp()
     output_saved_model_dir = self.mkdtemp()
-    self._WriteInputSavedModel(input_saved_model_dir)
-    output_graph_def = self._ConvertGraph(
-        input_saved_model_dir=input_saved_model_dir,
+    output_graph_def = self._ConvertGraphV1(
         output_saved_model_dir=output_saved_model_dir,
         is_dynamic_op=True,
         maximum_cached_engines=2)
@@ -719,17 +859,14 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
         # the max, it should evict an old engine and create a new one.
         self._TestRun(sess, 3)
 
-  def _TestStaticOp(self):
+  @test_util.deprecated_graph_mode_only
+  def testTrtGraphConverter_StaticOp(self):
     if not is_tensorrt_enabled():
       return
 
-    input_saved_model_dir = self.mkdtemp()
     output_saved_model_dir = self.mkdtemp()
-    self._WriteInputSavedModel(input_saved_model_dir)
-    output_graph_def = self._ConvertGraph(
-        input_saved_model_dir=input_saved_model_dir,
-        output_saved_model_dir=output_saved_model_dir,
-        maximum_cached_engines=2)
+    output_graph_def = self._ConvertGraphV1(
+        output_saved_model_dir=output_saved_model_dir, maximum_cached_engines=1)
 
     # Test the output GraphDef.
     with ops.Graph().as_default():
@@ -737,10 +874,10 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
       with self.session(config=self._GetConfigProto()) as sess:
         # Run with batch size 1, the default engine embedded in the graphdef
         # will be used.
-        self._TestRun(sess, 1, expect_engine_is_run=True)
+        self._TestRun(sess, 1)
         # Run with batch size 2, which exceed the max_batch_size, it should try
         # to fall back to TF function.
-        self._TestRun(sess, 2, expect_engine_is_run=False)
+        self._TestRun(sess, 2)
 
     # Test the output SavedModel
     with ops.Graph().as_default():
@@ -748,14 +885,30 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
         loader.load(sess, [tag_constants.SERVING], output_saved_model_dir)
         # Run with batch size 1, the default engine embedded in the graphdef
         # will be used.
-        self._TestRun(sess, 1, expect_engine_is_run=True)
+        self._TestRun(sess, 1)
         # Run with batch size 2, which exceed the max_batch_size, it should try
         # to fall back to TF function.
-        self._TestRun(sess, 2, expect_engine_is_run=False)
+        self._TestRun(sess, 2)
 
-  @test_util.deprecated_graph_mode_only
-  def testTrtGraphConverter_StaticOp(self):
-    self._TestStaticOp()
+  @test_util.run_v2_only
+  def testBackwardCompatibility(self):
+    """Load and execute a model that was saved in TF2.0."""
+    if not is_tensorrt_enabled():
+      return
+
+    model_dir = test.test_src_dir_path(
+        "python/compiler/tensorrt/test/testdata/tftrt_2.0_saved_model")
+    saved_model_loaded = load.load(model_dir, tags=[tag_constants.SERVING])
+    graph_func = saved_model_loaded.signatures[
+        signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY]
+
+    np_input1 = ops.convert_to_tensor(np.ones([4, 1, 1]).astype(np.float32))
+    np_input2 = ops.convert_to_tensor(np.ones([4, 1, 1]).astype(np.float32))
+    output = graph_func(input1=np_input1, input2=np_input2)["output_0"]
+
+    self.assertEqual(output.shape, (4, 1, 1))
+    self.assertAllClose(
+        np.asarray([5.0, 5.0, 5.0, 5.0]).reshape([4, 1, 1]), output)
 
 
 if __name__ == "__main__":

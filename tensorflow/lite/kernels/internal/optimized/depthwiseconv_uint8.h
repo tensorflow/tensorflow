@@ -2083,13 +2083,6 @@ inline void DepthwiseConvImpl(
       thread_dim);
 }
 
-void DepthwiseConv(const DepthwiseParams& params,
-                   const RuntimeShape& input_shape, const uint8* input_data,
-                   const RuntimeShape& filter_shape, const uint8* filter_data,
-                   const RuntimeShape& bias_shape, const int32* bias_data,
-                   const RuntimeShape& output_shape, uint8* output_data,
-                   const CpuFlags& cpu_flags);
-
 }  // namespace optimized_ops
 }  // namespace tflite
 

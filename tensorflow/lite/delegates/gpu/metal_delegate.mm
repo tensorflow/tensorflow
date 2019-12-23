@@ -28,7 +28,7 @@ limitations under the License.
 
 #include "absl/types/span.h"
 #include "tensorflow/lite/builtin_ops.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/gpu/common/convert.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/model_builder.h"
@@ -167,17 +167,17 @@ class Delegate {
   };
 
  public:
-  explicit Delegate(const GpuDelegateOptions* options) {
+  explicit Delegate(const TFLGpuDelegateOptions* options) {
     if (options) {
       options_ = *options;
     } else {
       // Default options.
       options_.allow_precision_loss = false;
-      options_.wait_type = GpuDelegateOptions::WaitType::kPassive;
+      options_.wait_type = TFLGpuDelegateWaitType::TFLGpuDelegateWaitTypePassive;
     }
     metal_device_ = MTLCreateSystemDefaultDevice();
     command_queue_ = [metal_device_ newCommandQueue];
-    if (options_.wait_type == GpuDelegateOptions::WaitType::kAggressive) {
+    if (options_.wait_type == TFLGpuDelegateWaitType::TFLGpuDelegateWaitTypeAggressive) {
       gpu_alarm_clock_ = std::unique_ptr<GpuAlarmClock>(new GpuAlarmClock(command_queue_));
       NSString* code = @R"(
           kernel void ComputeFunction(device int* output_buffer [[buffer(0)]],
@@ -399,7 +399,8 @@ class Delegate {
   }
 
   Status Invoke(TfLiteContext* context) {
-    if (options_.wait_type == GpuDelegateOptions::WaitType::kAggressive) gpu_alarm_clock_->Stop();
+    if (options_.wait_type == TFLGpuDelegateWaitType::TFLGpuDelegateWaitTypeAggressive)
+      gpu_alarm_clock_->Stop();
     // We need only synchronization so volatile works better than atomic which reads from global
     // memory each time.
     __block volatile bool buffer_completed = false;
@@ -431,30 +432,31 @@ class Delegate {
       }
     }
 
-    [inference_context_ encodeWithEncoder:encoder
-                       inputOutputBuffers:bphwc4_buffers_
-                             encoderBlock:^(bool isLast) {
-                               if (control_encoder_ != nullptr) {
-                                 return control_encoder_(isLast);
-                               }
-                               if (external_command_encoder_ != nil ||
-                                   options_.wait_type == GpuDelegateOptions::WaitType::kPassive) {
-                                 return encoder;
-                               }
-                               if (isLast) {
-                                 if (options_.wait_type == GpuDelegateOptions::WaitType::kActive) {
-                                   [command_buffer addCompletedHandler:^(id<MTLCommandBuffer>) {
-                                     buffer_completed = true;
-                                   }];
-                                 }
-                               } else {
-                                 [encoder endEncoding];
-                                 [command_buffer commit];
-                                 command_buffer = [command_queue_ commandBuffer];
-                                 encoder = [command_buffer computeCommandEncoder];
-                               }
-                               return encoder;
-                             }];
+    [inference_context_
+         encodeWithEncoder:encoder
+        inputOutputBuffers:bphwc4_buffers_
+              encoderBlock:^(bool isLast) {
+                if (control_encoder_ != nullptr) {
+                  return control_encoder_(isLast);
+                }
+                if (external_command_encoder_ != nil ||
+                    options_.wait_type == TFLGpuDelegateWaitType::TFLGpuDelegateWaitTypePassive) {
+                  return encoder;
+                }
+                if (isLast) {
+                  if (options_.wait_type == TFLGpuDelegateWaitType::TFLGpuDelegateWaitTypeActive) {
+                    [command_buffer addCompletedHandler:^(id<MTLCommandBuffer>) {
+                      buffer_completed = true;
+                    }];
+                  }
+                } else {
+                  [encoder endEncoding];
+                  [command_buffer commit];
+                  command_buffer = [command_queue_ commandBuffer];
+                  encoder = [command_buffer computeCommandEncoder];
+                }
+                return encoder;
+              }];
     for (const auto& output : graph_outputs_) {
       if (output.set_externally) continue;
       if (bphwc4_buffers_[output.id] == input_output_buffers_[output.id]) continue;
@@ -467,16 +469,16 @@ class Delegate {
     if (external_command_encoder_ == nil) {
       [encoder endEncoding];
       [command_buffer commit];
-      if (options_.wait_type == GpuDelegateOptions::WaitType::kActive) {
+      if (options_.wait_type == TFLGpuDelegateWaitType::TFLGpuDelegateWaitTypeActive) {
         while (!buffer_completed) {
           // Busy wait. Use local variable. Volatile uses RAM access all the time.
           for (volatile int i = 0; i < 100; i++) {
           }
         }
-      } else if (options_.wait_type == GpuDelegateOptions::WaitType::kPassive) {
+      } else if (options_.wait_type == TFLGpuDelegateWaitType::TFLGpuDelegateWaitTypePassive) {
         // passive wait: this thread sleeps until GPU finishes.
         [command_buffer waitUntilCompleted];
-      } else if (options_.wait_type == GpuDelegateOptions::WaitType::kAggressive) {
+      } else if (options_.wait_type == TFLGpuDelegateWaitType::TFLGpuDelegateWaitTypeAggressive) {
         command_buffer = [command_queue_ commandBuffer];
         encoder = [command_buffer computeCommandEncoder];
         [encoder setComputePipelineState:signal_program_];
@@ -531,7 +533,7 @@ class Delegate {
       kTfLiteDelegateFlagsNone,       // .flags
   };
 
-  GpuDelegateOptions options_;
+  TFLGpuDelegateOptions options_;
 
   id<MTLDevice> metal_device_;
 
@@ -617,7 +619,7 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
 }  // namespace gpu
 }  // namespace tflite
 
-TfLiteDelegate* TFLGpuDelegateCreate(const GpuDelegateOptions* options) {
+TfLiteDelegate* TFLGpuDelegateCreate(const TFLGpuDelegateOptions* options) {
   TFLITE_LOG_PROD_ONCE(tflite::TFLITE_LOG_INFO, "Created TensorFlow Lite delegate for Metal.");
   auto* metal_delegate = new ::tflite::gpu::metal::Delegate(options);
   return metal_delegate ? metal_delegate->tflite_delegate() : nullptr;

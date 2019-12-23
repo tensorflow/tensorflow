@@ -31,6 +31,7 @@ from google.protobuf import text_format
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
+from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -458,6 +459,7 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     k = math_ops.add(i, j, name="k")
 
     self.evaluate(variables.global_variables_initializer())
+    self.assertAllEqual([100] * 3, i)
     self.assertAllEqual([120] * 3, k)
     self.assertAllEqual([20] * 3, j)
 
@@ -767,6 +769,23 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     test_object.test_modes_function()
     self.assertTrue(test_object.graph_mode_tested)
     self.assertTrue(test_object.inside_function_tested)
+
+  def test_with_forward_compatibility_horizons(self):
+
+    tested_codepaths = set()
+    def some_function_with_forward_compat_behavior():
+      if compat.forward_compatible(2050, 1, 1):
+        tested_codepaths.add("future")
+      else:
+        tested_codepaths.add("present")
+
+    @test_util.with_forward_compatibility_horizons(None, [2051, 1, 1])
+    def some_test(self):
+      del self  # unused
+      some_function_with_forward_compat_behavior()
+
+    some_test(None)
+    self.assertEqual(tested_codepaths, set(["present", "future"]))
 
 
 # Its own test case to reproduce variable sharing issues which only pop up when

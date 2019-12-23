@@ -695,8 +695,12 @@ REGISTER_OP("IteratorFromStringHandleV2")
 
 REGISTER_OP("SerializeIterator")
     .Input("resource_handle: resource")
+    .Attr("external_state_policy: int = 0")
     .Output("serialized: variant")
-    .SetShapeFn(shape_inference::ScalarShape);
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(0, c->Vector(c->UnknownDim()));
+      return Status::OK();
+    });
 
 REGISTER_OP("DeserializeIterator")
     .Input("resource_handle: resource")
@@ -706,6 +710,15 @@ REGISTER_OP("DeserializeIterator")
 REGISTER_OP("DatasetToGraph")
     .Input("input_dataset: variant")
     .Attr("stateful_whitelist: list(string) >= 0 = []")
+    .Attr("allow_stateful: bool = false")
+    .Attr("strip_device_assignment: bool = false")
+    .Output("graph: string")
+    .SetShapeFn(shape_inference::ScalarShape);
+
+REGISTER_OP("DatasetToGraphV2")
+    .Input("input_dataset: variant")
+    .Attr("external_state_policy: int = 0")
+    .Attr("strip_device_assignment: bool = false")
     .Output("graph: string")
     .SetShapeFn(shape_inference::ScalarShape);
 

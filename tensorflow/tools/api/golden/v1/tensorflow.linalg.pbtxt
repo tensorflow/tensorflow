@@ -61,6 +61,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "LinearOperatorPermutation"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "LinearOperatorScaledIdentity"
     mtype: "<type \'type\'>"
   }
@@ -69,8 +73,16 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "LinearOperatorTridiag"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "LinearOperatorZeros"
     mtype: "<type \'type\'>"
+  }
+  member {
+    name: "experimental"
+    mtype: "<type \'module\'>"
   }
   member_method {
     name: "adjoint"
@@ -98,11 +110,11 @@ tf_module {
   }
   member_method {
     name: "diag"
-    argspec: "args=[\'diagonal\', \'name\', \'k\', \'num_rows\', \'num_cols\', \'padding_value\'], varargs=None, keywords=None, defaults=[\'diag\', \'0\', \'-1\', \'-1\', \'0\'], "
+    argspec: "args=[\'diagonal\', \'name\', \'k\', \'num_rows\', \'num_cols\', \'padding_value\', \'align\'], varargs=None, keywords=None, defaults=[\'diag\', \'0\', \'-1\', \'-1\', \'0\', \'RIGHT_LEFT\'], "
   }
   member_method {
     name: "diag_part"
-    argspec: "args=[\'input\', \'name\', \'k\', \'padding_value\'], varargs=None, keywords=None, defaults=[\'diag_part\', \'0\', \'0\'], "
+    argspec: "args=[\'input\', \'name\', \'k\', \'padding_value\', \'align\'], varargs=None, keywords=None, defaults=[\'diag_part\', \'0\', \'0\', \'RIGHT_LEFT\'], "
   }
   member_method {
     name: "eigh"
@@ -153,8 +165,24 @@ tf_module {
     argspec: "args=[\'input\', \'output_idx_type\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'int32\'>\", \'None\'], "
   }
   member_method {
+    name: "lu_matrix_inverse"
+    argspec: "args=[\'lower_upper\', \'perm\', \'validate_args\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
+    name: "lu_reconstruct"
+    argspec: "args=[\'lower_upper\', \'perm\', \'validate_args\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
+    name: "lu_solve"
+    argspec: "args=[\'lower_upper\', \'perm\', \'rhs\', \'validate_args\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
     name: "matmul"
     argspec: "args=[\'a\', \'b\', \'transpose_a\', \'transpose_b\', \'adjoint_a\', \'adjoint_b\', \'a_is_sparse\', \'b_is_sparse\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'False\', \'False\', \'False\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "matrix_rank"
+    argspec: "args=[\'a\', \'tol\', \'validate_args\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'None\'], "
   }
   member_method {
     name: "matrix_transpose"
@@ -173,12 +201,16 @@ tf_module {
     argspec: "args=[\'tensor\', \'ord\', \'axis\', \'name\'], varargs=None, keywords=None, defaults=[\'euclidean\', \'None\', \'None\'], "
   }
   member_method {
+    name: "pinv"
+    argspec: "args=[\'a\', \'rcond\', \'validate_args\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'None\'], "
+  }
+  member_method {
     name: "qr"
     argspec: "args=[\'input\', \'full_matrices\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
     name: "set_diag"
-    argspec: "args=[\'input\', \'diagonal\', \'name\', \'k\'], varargs=None, keywords=None, defaults=[\'set_diag\', \'0\'], "
+    argspec: "args=[\'input\', \'diagonal\', \'name\', \'k\', \'align\'], varargs=None, keywords=None, defaults=[\'set_diag\', \'0\', \'RIGHT_LEFT\'], "
   }
   member_method {
     name: "slogdet"

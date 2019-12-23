@@ -30,6 +30,10 @@ tf_class {
     argspec: "args=[\'self\', \'transformation_func\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "as_numpy_iterator"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "batch"
     argspec: "args=[\'self\', \'batch_size\', \'drop_remainder\'], varargs=None, keywords=None, defaults=[\'False\'], "
   }
@@ -111,7 +115,7 @@ tf_class {
   }
   member_method {
     name: "range"
-    argspec: "args=[], varargs=args, keywords=None, defaults=None"
+    argspec: "args=[], varargs=args, keywords=kwargs, defaults=None"
   }
   member_method {
     name: "reduce"

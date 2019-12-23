@@ -194,6 +194,10 @@ class DropoutWrapperBase(object):
   def output_size(self):
     return self.cell.output_size
 
+  def build(self, inputs_shape):
+    self.cell.build(inputs_shape)
+    self.built = True
+
   def zero_state(self, batch_size, dtype):
     with ops.name_scope(type(self).__name__ + "ZeroState", values=[batch_size]):
       return self.cell.zero_state(batch_size, dtype)
@@ -206,7 +210,7 @@ class DropoutWrapperBase(object):
 
     # 0. if [keep_prob, 1.0) and 1. if [1.0, 1.0 + keep_prob)
     binary_tensor = math_ops.floor(random_tensor)
-    ret = math_ops.div(value, keep_prob) * binary_tensor
+    ret = math_ops.divide(value, keep_prob) * binary_tensor
     ret.set_shape(value.get_shape())
     return ret
 

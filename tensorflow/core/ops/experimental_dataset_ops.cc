@@ -48,6 +48,7 @@ REGISTER_OP("AutoShardDataset")
     .Input("num_workers: int64")
     .Input("index: int64")
     .Output("handle: variant")
+    .Attr("auto_shard_policy: int = 0")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::ScalarShape);
@@ -57,6 +58,7 @@ REGISTER_OP("ExperimentalAutoShardDataset")
     .Input("num_workers: int64")
     .Input("index: int64")
     .Output("handle: variant")
+    .Attr("auto_shard_policy: int = 0")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::ScalarShape);
@@ -589,6 +591,9 @@ REGISTER_OP("ParseExampleDataset")
                                               // sorted by key (dense_keys and
                                               // sparse_keys combined) here.
     .Attr("sloppy: bool = false")
+    .Attr("ragged_keys: list(string) >= 0 = []")
+    .Attr("ragged_value_types: list({float,int64,string}) >= 0 = []")
+    .Attr("ragged_split_types: list({int32,int64}) >= 0 = []")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("ExperimentalParseExampleDataset")
@@ -702,6 +707,7 @@ REGISTER_OP("ScanDataset")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .Attr("preserve_cardinality: bool = false")
+    .Attr("use_default_device: bool = true")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("ExperimentalScanDataset")
@@ -814,6 +820,11 @@ REGISTER_OP("SnapshotDataset")
     .Attr("reader_buffer_size: int = 1")
     .Attr("num_writer_threads: int = 1")
     .Attr("writer_buffer_size: int = 1")
+    .Attr("shuffle_on_read: bool = false")
+    .Attr("seed: int = 0")
+    .Attr("seed2: int = 0")
+    .Attr("mode: string = 'auto'")
+    .Attr("snapshot_name: string = ''")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
       // snapshot_path should be a scalar.

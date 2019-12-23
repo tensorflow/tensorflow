@@ -57,7 +57,7 @@ class SimpleOrcJIT {
   SimpleOrcJIT(
       const llvm::TargetOptions& target_options,
       llvm::CodeGenOpt::Level opt_level, bool optimize_for_size,
-      bool disable_expensive_passes,
+      bool disable_expensive_passes, llvm::FastMathFlags fast_math_flags,
       LLVMCompiler::ModuleHook pre_optimization_hook,
       LLVMCompiler::ModuleHook post_optimization_hook,
       std::function<void(const llvm::object::ObjectFile&)> post_codegen_hook);

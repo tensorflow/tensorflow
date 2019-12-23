@@ -20,6 +20,7 @@ from __future__ import print_function
 import json
 
 from tensorflow.python.eager import function as defun
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras import regularizers
 from tensorflow.python.keras.engine import input_spec
@@ -46,12 +47,18 @@ models_lib = LazyLoader("models_lib", globals(),
 base_layer = LazyLoader(
     "base_layer", globals(),
     "tensorflow.python.keras.engine.base_layer")
+input_layer = LazyLoader(
+    "input_layer", globals(),
+    "tensorflow.python.keras.engine.input_layer")
 network_lib = LazyLoader(
     "network_lib", globals(),
     "tensorflow.python.keras.engine.network")
 training_lib = LazyLoader(
     "training_lib", globals(),
     "tensorflow.python.keras.engine.training")
+training_lib_v1 = LazyLoader(
+    "training_lib_v1", globals(),
+    "tensorflow.python.keras.engine.training_v1")
 # pylint:enable=g-inconsistent-quotes
 
 
@@ -85,14 +92,27 @@ def load(path, compile=True):  # pylint: disable=redefined-builtin
   # TODO(kathywu): Add code to load from objects that contain all endpoints
   model = tf_load.load_internal(path, loader_cls=KerasObjectLoader)
 
-  if isinstance(model, RevivedModel) and compile:
+  # pylint: disable=protected-access
+  if isinstance(model, training_lib.Model) and compile:
     # TODO(kathywu): Use compiled objects from SavedModel, instead of
     # creating new objects from the training config.
-    if model._training_config is not None:  # pylint: disable=protected-access
+    training_config = model._serialized_attributes['metadata'].get(
+        'training_config', None)
+    if training_config is not None:
       model.compile(**saving_utils.compile_args_from_training_config(
-          model._training_config))  # pylint: disable=protected-access
+          training_config))
+  # pylint: disable=protected-access
 
   return model
+
+
+def _is_graph_network(node):
+  # pylint: disable=protected-access
+  return (
+      isinstance(node, RevivedNetwork) and
+      node._serialized_attributes['metadata'].get('is_graph_network', False) and
+      hasattr(node, '_config'))
+  # pylint: enable=protected-access
 
 
 class KerasObjectLoader(tf_load.Loader):
@@ -104,9 +124,14 @@ class KerasObjectLoader(tf_load.Loader):
 
   def _finalize(self):
     # pylint: disable=protected-access
+
+    # Set up call functions for all layers (skip this step for Sequential and
+    # Functional models).
     for node in self._nodes:
       if isinstance(node, RevivedLayer):
-        if not isinstance(node, RevivedSequential):
+        node.built = True
+        is_graph_network = _is_graph_network(node)
+        if not (isinstance(node, models_lib.Sequential) or is_graph_network):
           if hasattr(node.keras_api, 'call_and_return_conditional_losses'):
             node.call = utils.use_wrapped_call(
                 node, node.keras_api.call_and_return_conditional_losses,
@@ -114,22 +139,36 @@ class KerasObjectLoader(tf_load.Loader):
             node._init_call_fn_args()
 
     for node in self._nodes:
-      if isinstance(node, RevivedModel):
+      if isinstance(node, RevivedNetwork):
         call_fn = node.keras_api.call_and_return_conditional_losses
         if call_fn.input_signature is None:
           inputs = infer_inputs_from_restored_call_function(call_fn)
         else:
           inputs = call_fn.input_signature[0]
-        if isinstance(node, RevivedSequential):
+
+        # Set model inputs and outputs.
+        is_graph_network = _is_graph_network(node)
+        if isinstance(node, models_lib.Sequential):
           with trackable.no_automatic_dependency_tracking_scope(node):
             node._layers = []
           for layer in node.keras_api.layers:
             node.add(layer)
-
-        if not node.inputs:
-          # Since this revived object is technically a subclassed model (even if
-          # the original model is functional/sequential), inputs should be set.
+        elif is_graph_network:
+          # Reconstruct functional model from the config and layers loaded
+          # from the SavedModel.
+          inputs, outputs, _ = network_lib.reconstruct_from_config(
+              node.get_config(),
+              created_layers={layer.name: layer for layer in node.layers})
+          node._init_graph_network(
+              inputs, outputs,
+              name=node._serialized_attributes['metadata']['name'])
+          # Set the metadata attributes once more, since _init_graph_network
+          # resets these attributes.
+          _set_network_attributes_from_metadata(node)
+        else:  # Model is subclassed.
           node._set_inputs(inputs)
+
+      # Add unconditional losses.
       if isinstance(node, RevivedLayer):
         if hasattr(node.keras_api, 'layer_regularization_losses'):
           losses = getattr(node.keras_api, 'layer_regularization_losses', [])
@@ -161,11 +200,17 @@ class KerasObjectLoader(tf_load.Loader):
     # pylint: enable=protected-access
 
   def _recreate_base_user_object(self, proto):
+    if ops.executing_eagerly_outside_functions():
+      model_class = training_lib.Model
+    else:
+      model_class = training_lib_v1.Model
+
     revived_classes = {
         '_tf_keras_layer': (RevivedLayer, base_layer.Layer),
+        '_tf_keras_input_layer': (RevivedInputLayer, input_layer.InputLayer),
         '_tf_keras_network': (RevivedNetwork, network_lib.Network),
-        '_tf_keras_model': (RevivedModel, training_lib.Model),
-        '_tf_keras_sequential': (RevivedSequential, models_lib.Sequential)
+        '_tf_keras_model': (RevivedNetwork, model_class),
+        '_tf_keras_sequential': (RevivedNetwork, models_lib.Sequential)
     }
 
     parent_classes = revived_classes.get(proto.identifier, None)
@@ -174,11 +219,8 @@ class KerasObjectLoader(tf_load.Loader):
       parent_classes = revived_classes[proto.identifier]
       metadata = json.loads(proto.metadata)
       revived_cls = type(
-          compat.as_str(metadata['class_name']),
-          parent_classes,
-          {'__setattr__': parent_classes[1].__setattr__})
-      obj = revived_cls._init_from_metadata(metadata)  # pylint: disable=protected-access
-      return obj, revived_cls._revive_setter  # pylint: disable=protected-access
+          compat.as_str(metadata['class_name']), parent_classes, {})
+      return revived_cls._init_from_metadata(metadata)  # pylint: disable=protected-access
 
     return super(KerasObjectLoader, self)._recreate_base_user_object(proto)
 
@@ -219,19 +261,10 @@ class RevivedLayer(object):
       # Store attributes revived from SerializedAttributes in a un-tracked
       # dictionary. The attributes are the ones listed in CommonEndpoints or
       # "keras_api" for keras-specific attributes.
-      revived_obj._serialized_attributes = {}
+      revived_obj._serialized_attributes = {'metadata': metadata}
       # pylint:enable=protected-access
 
-    return revived_obj
-
-  def _revive_setter(self, name, value):
-    """Reattaches attributes from the SavedModel to the newly revived object."""
-    if name in PUBLIC_ATTRIBUTES:
-      if isinstance(value, trackable.Trackable):
-        self._track_trackable(value, name=name)
-      self._serialized_attributes[name] = value
-    else:
-      setattr(self, name, value)
+    return revived_obj, _revive_setter
 
   @property
   def keras_api(self):
@@ -242,6 +275,40 @@ class RevivedLayer(object):
       return self._config
     else:
       raise NotImplementedError
+
+
+def _revive_setter(layer, name, value):
+  """Reattaches attributes from the SavedModel to the newly revived object."""
+  if name in PUBLIC_ATTRIBUTES:
+    # pylint: disable=protected-access
+    if isinstance(value, trackable.Trackable):
+      layer._track_trackable(value, name=name)
+    layer._serialized_attributes[name] = value
+    # pylint: enable=protected-access
+  else:
+    setattr(layer, name, value)
+
+
+class RevivedInputLayer(object):
+  """InputLayer loaded from a SavedModel."""
+
+  @classmethod
+  def _init_from_metadata(cls, metadata):
+    """Revives the saved InputLayer from the Metadata."""
+    init_args = dict(
+        name=metadata['name'],
+        dtype=metadata['dtype'],
+        sparse=metadata['sparse'],
+        ragged=metadata['ragged'],
+        batch_input_shape=metadata['batch_input_shape'])
+    revived_obj = cls(**init_args)
+    with trackable.no_automatic_dependency_tracking_scope(revived_obj):
+      revived_obj._config = metadata['config']  # pylint:disable=protected-access
+
+    return revived_obj, setattr
+
+  def get_config(self):
+    return self._config
 
 
 def recursively_deserialize_keras_object(config, module_objects=None):
@@ -288,48 +355,32 @@ class RevivedNetwork(RevivedLayer):
     """Create revived network from metadata stored in the SavedModel proto."""
     revived_obj = cls(name=metadata['name'])
 
+    # Store attributes revived from SerializedAttributes in a un-tracked
+    # dictionary. The attributes are the ones listed in CommonEndpoints or
+    # "keras_api" for keras-specific attributes.
     with trackable.no_automatic_dependency_tracking_scope(revived_obj):
       # pylint:disable=protected-access
-      if metadata.get('dtype') is not None:
-        revived_obj._dtype = metadata['dtype']
-      revived_obj.trainable = metadata['trainable']
-
-      revived_obj._expects_training_arg = metadata['expects_training_arg']
-      if metadata.get('config') is not None:
-        revived_obj._config = metadata['config']
-
-      if metadata.get('activity_regularizer') is not None:
-        revived_obj.activity_regularizer = regularizers.deserialize(
-            metadata['activity_regularizer'])
-
-      # Store attributes revived from SerializedAttributes in a un-tracked
-      # dictionary. The attributes are the ones listed in CommonEndpoints or
-      # "keras_api" for keras-specific attributes.
-      revived_obj._serialized_attributes = {}
+      revived_obj._serialized_attributes = {'metadata': metadata}
+      _set_network_attributes_from_metadata(revived_obj)
       # pylint:enable=protected-access
 
-    return revived_obj
+    return revived_obj, _revive_setter  # pylint:disable=protected-access
 
 
-class RevivedModel(RevivedNetwork):
-  """Keras model loaded from a SavedModel."""
+def _set_network_attributes_from_metadata(revived_obj):
+  """Sets attributes recorded in the metadata."""
+  with trackable.no_automatic_dependency_tracking_scope(revived_obj):
+    # pylint:disable=protected-access
+    metadata = revived_obj._serialized_attributes['metadata']
+    if metadata.get('dtype') is not None:
+      revived_obj._set_dtype_policy(metadata['dtype'])
+    revived_obj.trainable = metadata['trainable']
 
-  @classmethod
-  def _init_from_metadata(cls, metadata):
-    """Create revived model from metadata stored in the SavedModel proto."""
-    revived_obj = super(RevivedModel, cls)._init_from_metadata(metadata)
+    revived_obj._expects_training_arg = metadata['expects_training_arg']
+    if metadata.get('config') is not None:
+      revived_obj._config = metadata['config']
 
-    with trackable.no_automatic_dependency_tracking_scope(revived_obj):
-      revived_obj._training_config = metadata.get('training_config')  # pylint:disable=protected-access
-
-    return revived_obj
-
-
-class RevivedSequential(RevivedModel):
-  """Keras sequential model loaded from a SavedModel."""
-
-  @classmethod
-  def _init_from_metadata(cls, metadata):
-    """Create revived Sequential model from SavedModel metadata."""
-    revived_obj = super(RevivedSequential, cls)._init_from_metadata(metadata)
-    return revived_obj
+    if metadata.get('activity_regularizer') is not None:
+      revived_obj.activity_regularizer = regularizers.deserialize(
+          metadata['activity_regularizer'])
+    # pylint:enable=protected-access

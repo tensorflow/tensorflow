@@ -13,12 +13,59 @@ exports_files(glob([
 ]))
 
 cc_library(
+    name = "quantization_wrapper_utils",
+    srcs = ["quantization_wrapper_utils.cc"],
+    hdrs = ["quantization_wrapper_utils.h"],
+    deps = [
+        ":operator_property",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/core/api",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@flatbuffers",
+    ],
+)
+
+tf_cc_test(
+    name = "quantization_wrapper_utils_test",
+    srcs = ["quantization_wrapper_utils_test.cc"],
+    tags = [
+        "tflite_not_portable_android",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":quantization_wrapper_utils",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/memory",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+cc_library(
+    name = "quantization_wrapper",
+    srcs = ["quantization_wrapper.cc"],
+    hdrs = ["quantization_wrapper.h"],
+    deps = [
+        ":quantization_wrapper_utils",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/core/api",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/tools/optimize:quantize_model",
+        "@flatbuffers",
+    ],
+)
+
+cc_library(
     name = "quantization_utils",
     srcs = ["quantization_utils.cc"],
     hdrs = ["quantization_utils.h"],
     deps = [
+        ":model_utils",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite:minimal_logging",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels/internal:quantization_util",
         "//tensorflow/lite/kernels/internal:round",
         "//tensorflow/lite/kernels/internal:tensor_utils",
@@ -93,6 +140,7 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/testing:util",
         "@com_google_absl//absl/memory",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
@@ -167,6 +215,7 @@ cc_library(
         ":operator_property",
         ":quantization_utils",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite:util",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/schema:schema_fbs",
         "@flatbuffers",
@@ -184,12 +233,23 @@ tf_cc_test(
         "//tensorflow/lite/tools/optimize:testdata/argmax.bin",
         "//tensorflow/lite/tools/optimize:testdata/concat.bin",
         "//tensorflow/lite/tools/optimize:testdata/fc.bin",
+        "//tensorflow/lite/tools/optimize:testdata/lstm_calibrated.bin",
+        "//tensorflow/lite/tools/optimize:testdata/lstm_calibrated2.bin",
+        "//tensorflow/lite/tools/optimize:testdata/lstm_quantized.bin",
+        "//tensorflow/lite/tools/optimize:testdata/lstm_quantized2.bin",
+        "//tensorflow/lite/tools/optimize:testdata/maximum.bin",
+        "//tensorflow/lite/tools/optimize:testdata/minimum.bin",
         "//tensorflow/lite/tools/optimize:testdata/mixed.bin",
         "//tensorflow/lite/tools/optimize:testdata/multi_input_add_reshape.bin",
         "//tensorflow/lite/tools/optimize:testdata/single_avg_pool_min_minus_5_max_plus_5.bin",
+        "//tensorflow/lite/tools/optimize:testdata/single_conv_no_bias.bin",
         "//tensorflow/lite/tools/optimize:testdata/single_conv_weights_min_0_max_plus_10.bin",
         "//tensorflow/lite/tools/optimize:testdata/single_conv_weights_min_minus_127_max_plus_127.bin",
         "//tensorflow/lite/tools/optimize:testdata/single_softmax_min_minus_5_max_plus_5.bin",
+        "//tensorflow/lite/tools/optimize:testdata/split.bin",
+        "//tensorflow/lite/tools/optimize:testdata/svdf_calibrated.bin",
+        "//tensorflow/lite/tools/optimize:testdata/svdf_quantized.bin",
+        "//tensorflow/lite/tools/optimize:testdata/unpack.bin",
     ],
     tags = [
         "tflite_not_portable_android",

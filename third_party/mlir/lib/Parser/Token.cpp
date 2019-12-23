@@ -73,13 +73,16 @@ Optional<unsigned> Token::getIntTypeBitwidth() const {
   return result;
 }
 
-/// Given a 'string' token, return its value, including removing the quote
-/// characters and unescaping the contents of the string.  The lexer has already
-/// verified that this token is valid.
+/// Given a token containing a string literal, return its value, including
+/// removing the quote characters and unescaping the contents of the string. The
+/// lexer has already verified that this token is valid.
 std::string Token::getStringValue() const {
-  assert(getKind() == string);
+  assert(getKind() == string ||
+         (getKind() == at_identifier && getSpelling()[1] == '"'));
   // Start by dropping the quotes.
   StringRef bytes = getSpelling().drop_front().drop_back();
+  if (getKind() == at_identifier)
+    bytes = bytes.drop_front();
 
   std::string result;
   result.reserve(bytes.size());
@@ -90,7 +93,7 @@ std::string Token::getStringValue() const {
       continue;
     }
 
-    assert(i + 1 < e && "invalid string should be caught by lexer");
+    assert(i + 1 <= e && "invalid string should be caught by lexer");
     auto c1 = bytes[i++];
     switch (c1) {
     case '"':

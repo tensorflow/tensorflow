@@ -336,12 +336,32 @@ class HloAllReduceInstruction : public HloCollectiveInstruction {
   explicit HloAllReduceInstruction(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* reduce_computation,
-      const std::vector<ReplicaGroup>& replica_groups,
+      const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
       const absl::optional<int64>& channel_id);
 
   // Returns true if the AllReduce does no communication, so it's equivalent
   // to a mem copy.
   bool IsNoop() const;
+
+  // Returns true if the layout of the AllReduce is enforced by XLA client (as
+  // the layout set in the shape). The only reason for the client to set the
+  // layout is to separately compile computations that communicate with
+  // AllReduce. Since this field is only set `true` by the client, the compiler
+  // only needs to propagate existing values (e.g., Clone, X64Rewriter) or set
+  // `false` for all other cases.
+  //
+  // When this is `true`, there may be communication endpoints outside the
+  // current compilation unit, so the compiler considers this AllReduce as
+  // side-effecting to disable compiler transformations. The compiler is free to
+  // transform unconstrained AllReduces differently across compilation units.
+  // It is an error for an HloModule to have a mix of constrained and
+  // unconstrained AllReduce instructions (checked by HloVerifier).
+  bool constrain_layout() const { return constrain_layout_; }
+
+ protected:
+  std::vector<string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const override;
+  HloInstructionProto ToProto() const override;
 
  private:
   bool IdenticalSlowPath(
@@ -353,13 +373,16 @@ class HloAllReduceInstruction : public HloCollectiveInstruction {
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
       const Shape& shape, absl::Span<HloInstruction* const> new_operands,
       HloCloneContext* context) const override;
+
+  bool constrain_layout_;
 };
 
 class HloAllToAllInstruction : public HloCollectiveInstruction {
  public:
   explicit HloAllToAllInstruction(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
-      const std::vector<ReplicaGroup>& replica_groups);
+      const std::vector<ReplicaGroup>& replica_groups,
+      const absl::optional<int64>& channel_id);
 
  private:
   // Implementation for non-common logic of CloneWithNewOperands.
@@ -745,7 +768,7 @@ class HloFusionInstruction : public HloInstruction {
   // Merges the fused instructions from 'instruction_to_merge' into the
   // fused instruction set of 'this', updating operands as necessary.
   //
-  // Predondition: 'instruction_to_merge' must be an operand of 'this'.
+  // Precondition: 'instruction_to_merge' must be an operand of 'this'.
   void MergeFusionInstruction(HloFusionInstruction* instruction_to_merge);
 
   // Merges the fused instructions from instruction_to_merge into the fused
@@ -1077,10 +1100,14 @@ class HloConvolutionInstruction : public HloInstruction {
   // The number of feature groups. Must be a divisor of the input feature
   // dimension and output feature dimension.
   int64 feature_group_count() const { return feature_group_count_; }
-
-  // The number of feature groups. Must be a divisor of the input batch
-  // dimension.
+  void set_feature_group_count(int64 num_feature_groups) {
+    feature_group_count_ = num_feature_groups;
+  }
+  // The number of batch groups. Must be a divisor of the input batch dimension.
   int64 batch_group_count() const { return batch_group_count_; }
+  void set_batch_group_count(int64 num_batch_groups) {
+    batch_group_count_ = num_batch_groups;
+  }
 
   // Returns the information used to tell the implementation information about
   // what sort of precision is requested. The meaning of the field is backend
@@ -1110,8 +1137,7 @@ class HloConvolutionInstruction : public HloInstruction {
   // The number of feature groups. Must be a divisor of the input feature
   // dimension and output feature dimension.
   int64 feature_group_count_;
-  // The number of feature groups. Must be a divisor of the input batch
-  // dimension.
+  // The number of batch groups. Must be a divisor of the input batch dimension.
   int64 batch_group_count_;
   // Describes the window used for a convolution.
   Window window_;
@@ -1401,13 +1427,17 @@ class HloGatherInstruction : public HloInstruction {
       const Shape& shape, HloInstruction* operand,
       HloInstruction* start_indices,
       const GatherDimensionNumbers& gather_dim_numbers,
-      absl::Span<const int64> slice_sizes);
+      absl::Span<const int64> slice_sizes, bool indices_are_sorted);
   const GatherDimensionNumbers& gather_dimension_numbers() const {
     CHECK(gather_dimension_numbers_ != nullptr);
     return *gather_dimension_numbers_;
   }
   absl::Span<const int64> gather_slice_sizes() const {
     return gather_slice_sizes_;
+  }
+  bool indices_are_sorted() const { return indices_are_sorted_; }
+  void set_indices_are_sorted(bool indices_are_sorted) {
+    indices_are_sorted_ = indices_are_sorted;
   }
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
@@ -1434,6 +1464,7 @@ class HloGatherInstruction : public HloInstruction {
 
   std::unique_ptr<GatherDimensionNumbers> gather_dimension_numbers_;
   std::vector<int64> gather_slice_sizes_;
+  bool indices_are_sorted_;
 };
 
 class HloScatterInstruction : public HloInstruction {
@@ -1442,11 +1473,17 @@ class HloScatterInstruction : public HloInstruction {
       const Shape& shape, HloInstruction* operand,
       HloInstruction* scatter_indices, HloInstruction* updates,
       HloComputation* update_computation,
-      const ScatterDimensionNumbers& scatter_dim_numbers);
+      const ScatterDimensionNumbers& scatter_dim_numbers,
+      bool indices_are_sorted, bool unique_indices);
   const ScatterDimensionNumbers& scatter_dimension_numbers() const {
     CHECK(scatter_dimension_numbers_ != nullptr);
     return *scatter_dimension_numbers_;
   }
+  bool indices_are_sorted() const { return indices_are_sorted_; }
+  void set_indices_are_sorted(bool indices_are_sorted) {
+    indices_are_sorted_ = indices_are_sorted;
+  }
+  bool unique_indices() const override { return unique_indices_; }
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
 
@@ -1473,6 +1510,8 @@ class HloScatterInstruction : public HloInstruction {
       HloCloneContext* context) const override;
 
   std::unique_ptr<ScatterDimensionNumbers> scatter_dimension_numbers_;
+  bool indices_are_sorted_;
+  bool unique_indices_;
 };
 
 class HloIotaInstruction : public HloInstruction {
@@ -1587,6 +1626,32 @@ class HloGetDimensionSizeInstruction : public HloInstruction {
   explicit HloGetDimensionSizeInstruction(const Shape& shape,
                                           HloInstruction* operand,
                                           int64 dimension);
+
+  // Returns the dimension sizes or numbers associated with this instruction.
+  int64 dimension() const { return dimension_; }
+  // Returns a serialized representation of this instruction.
+  HloInstructionProto ToProto() const override;
+
+ private:
+  std::vector<string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const override;
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const override;
+  // Implementation for non-common logic of CloneWithNewOperands.
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+      HloCloneContext* context) const override;
+
+  int64 dimension_;
+};
+
+class HloSetDimensionSizeInstruction : public HloInstruction {
+ public:
+  explicit HloSetDimensionSizeInstruction(const Shape& shape,
+                                          HloInstruction* operand,
+                                          HloInstruction* val, int64 dimension);
 
   // Returns the dimension sizes or numbers associated with this instruction.
   int64 dimension() const { return dimension_; }

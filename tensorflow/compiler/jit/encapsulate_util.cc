@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/graph/node_builder.h"
-#include "tensorflow/core/lib/core/error_codes.pb.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 using stream_executor::port::StatusOr;

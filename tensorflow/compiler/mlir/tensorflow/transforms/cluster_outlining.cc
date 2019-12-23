@@ -17,6 +17,7 @@ limitations under the License.
 // `tf_device.launch` with equivalent `tf_device.launch_func` operations.
 
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Block.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
@@ -24,7 +25,6 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // TF:local_config_mlir
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
 #include "mlir/Pass/PassRegistry.h"  // TF:local_config_mlir
-#include "mlir/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/Transforms/RegionUtils.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
@@ -35,25 +35,28 @@ namespace TFDevice {
 
 namespace {
 
+constexpr char kDeviceAttr[] = "device";
+constexpr char kFuncAttr[] = "func";
+
 struct ClusterOutliningPass : public ModulePass<ClusterOutliningPass> {
   void runOnModule() override;
 };
 
 void ReplaceLaunchReturnWithReturn(tf_device::ReturnOp launch_return_op,
                                    OpBuilder* builder) {
-  llvm::SmallVector<Value*, 4> operands(launch_return_op.getOperands());
-  builder->create<ReturnOp>(launch_return_op.getLoc(), operands);
+  builder->create<ReturnOp>(launch_return_op.getLoc(),
+                            launch_return_op.getOperands());
   launch_return_op.erase();
 }
 
 // Builds a function that outlines region attached to launch_op and inserts
 // built function into given module.
-FuncOp BuildFunction(StringRef device, llvm::ArrayRef<Value*> live_ins,
-                     tf_device::LaunchOp launch_op,
-                     ModuleManager* module_manager, OpBuilder* builder) {
+FuncOp BuildFunction(StringRef device, llvm::ArrayRef<ValuePtr> live_ins,
+                     tf_device::LaunchOp launch_op, SymbolTable* symbol_table,
+                     OpBuilder* builder) {
   llvm::SmallVector<Type, 4> operand_types;
   operand_types.reserve(live_ins.size());
-  for (Value* v : live_ins) operand_types.emplace_back(v->getType());
+  for (ValuePtr v : live_ins) operand_types.emplace_back(v->getType());
 
   llvm::SmallVector<Type, 4> result_types(launch_op.getResultTypes());
 
@@ -89,29 +92,31 @@ FuncOp BuildFunction(StringRef device, llvm::ArrayRef<Value*> live_ins,
   builder->setInsertionPoint(launch_return_op);
   ReplaceLaunchReturnWithReturn(launch_return_op, builder);
 
-  module_manager->insert(outlined_func);
+  symbol_table->insert(outlined_func);
   return outlined_func;
 }
 
 // Outlines body of `tf_device.launch` into a function and create a
 // `tf_device.launch_func` to invoke that function. `tf_device.launch` is
 // removed afterwards.`
-void OutlineLaunch(tf_device::LaunchOp launch_op, ModuleManager* module_manager,
+void OutlineLaunch(tf_device::LaunchOp launch_op, SymbolTable* symbol_table,
                    OpBuilder* builder) {
-  llvm::SetVector<Value*> live_ins;
+  llvm::SetVector<ValuePtr> live_ins;
   getUsedValuesDefinedAbove(launch_op.body(), launch_op.body(), live_ins);
 
-  StringRef device = launch_op.getAttrOfType<StringAttr>("device").getValue();
+  StringRef device =
+      launch_op.getAttrOfType<StringAttr>(kDeviceAttr).getValue();
 
   FuncOp outlined_func = BuildFunction(device, live_ins.getArrayRef(),
-                                       launch_op, module_manager, builder);
+                                       launch_op, symbol_table, builder);
+  launch_op.setAttr(builder->getIdentifier(kFuncAttr),
+                    builder->getSymbolRefAttr(outlined_func.getName()));
+
   builder->setInsertionPoint(launch_op);
   tf_device::LaunchFuncOp launch_func_op =
       builder->create<tf_device::LaunchFuncOp>(
           launch_op.getLoc(), outlined_func.getType().getResults(),
-          builder->getStringAttr(device),
-          builder->getSymbolRefAttr(outlined_func.getName()),
-          live_ins.getArrayRef());
+          live_ins.getArrayRef(), launch_op.getAttrs());
 
   launch_op.replaceAllUsesWith(launch_func_op);
   launch_op.erase();
@@ -119,17 +124,17 @@ void OutlineLaunch(tf_device::LaunchOp launch_op, ModuleManager* module_manager,
 
 void ClusterOutliningPass::runOnModule() {
   ModuleOp m = getModule();
-  ModuleManager module_manager(m);
+  SymbolTable symbol_table(m);
   OpBuilder builder(m.getContext());
-  m.walk<tf_device::LaunchOp>([&](tf_device::LaunchOp launch) {
-    OutlineLaunch(launch, &module_manager, &builder);
+  m.walk([&](tf_device::LaunchOp launch) {
+    OutlineLaunch(launch, &symbol_table, &builder);
   });
 }
 
 }  // namespace
 
-std::unique_ptr<ModulePassBase> CreateClusterOutliningPass() {
-  return llvm::make_unique<ClusterOutliningPass>();
+std::unique_ptr<OpPassBase<ModuleOp>> CreateClusterOutliningPass() {
+  return std::make_unique<ClusterOutliningPass>();
 }
 
 static PassRegistration<ClusterOutliningPass> pass(

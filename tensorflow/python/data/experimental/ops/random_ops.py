@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import functools
 
+from tensorflow.python import tf2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import random_seed
 from tensorflow.python.framework import dtypes
@@ -53,6 +54,7 @@ class RandomDatasetV1(dataset_ops.DatasetV1Adapter):
     super(RandomDatasetV1, self).__init__(wrapped)
 
 
-# TODO(b/119044825): Until all `tf.data` unit tests are converted to V2, keep
-# this alias in place.
-RandomDataset = RandomDatasetV1
+if tf2.enabled():
+  RandomDataset = RandomDatasetV2
+else:
+  RandomDataset = RandomDatasetV1

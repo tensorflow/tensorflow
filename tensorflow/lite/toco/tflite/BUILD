@@ -32,6 +32,7 @@ cc_library(
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/toco:graph_transformations",
         "//tensorflow/lite/toco:model",
+        "//tensorflow/lite/tools/versioning:op_version",
         "@com_google_absl//absl/memory",
         "@flatbuffers",
     ],
@@ -146,6 +147,7 @@ cc_library(
         ":operator",
         "//tensorflow/lite/toco:model",
         "//tensorflow/lite/toco:tooling_util",
+        "@com_google_absl//absl/strings",
     ],
 )
 

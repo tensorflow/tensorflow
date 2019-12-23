@@ -58,6 +58,7 @@ UNARY_FLOAT_OPS = [
     math_ops.digamma,
     math_ops.erf,
     math_ops.erfc,
+    math_ops.erfinv,
     math_ops.exp,
     math_ops.expm1,
     math_ops.floor,
@@ -69,6 +70,7 @@ UNARY_FLOAT_OPS = [
     math_ops.log,
     math_ops.log1p,
     math_ops.log_sigmoid,
+    math_ops.ndtri,
     math_ops.negative,
     math_ops.real,
     math_ops.reciprocal,
@@ -756,6 +758,13 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
               ragged_factory_ops.constant_value([[1]])
           ],
           result_is_list=True),
+      dict(
+          op=array_ops.reverse,
+          kwargs={
+              'tensor': ragged_factory_ops.constant_value([[1, 2, 3], [4, 5]]),
+              'axis': [0, -1]
+          },
+          expected=ragged_factory_ops.constant_value([[5, 4], [3, 2, 1]]))
   ])
   def testRaggedDispatch(self, op, expected, args=(), result_is_list=False,
                          kwargs=None):
@@ -773,7 +782,7 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
     supported_ops = [
         'bitwise.bitwise_and', 'bitwise.bitwise_or', 'bitwise.bitwise_xor',
         'bitwise.invert', 'bitwise.left_shift', 'bitwise.right_shift',
-        'clip_by_value', 'concat', 'debugging.check_numerics', 'dtypes.cast',
+        'clip_by_value', 'concat', 'debugging.check_numerics', 'cast',
         'dtypes.complex', 'dtypes.saturate_cast', 'expand_dims', 'gather_nd',
         'gather', 'identity', 'io.decode_base64', 'io.decode_compressed',
         'io.encode_base64', 'math.abs', 'math.acos', 'math.acosh', 'math.add_n',
@@ -802,7 +811,7 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
         'strings.substr', 'strings.to_hash_bucket_fast',
         'strings.to_hash_bucket_strong', 'strings.to_hash_bucket',
         'strings.to_number', 'strings.unicode_script', 'tile', 'truncatediv',
-        'truncatemod', 'zeros_like', 'dynamic_partition'
+        'truncatemod', 'zeros_like', 'dynamic_partition', 'reverse'
     ]
 
     # Ops that should be listed as supported in v1 only.

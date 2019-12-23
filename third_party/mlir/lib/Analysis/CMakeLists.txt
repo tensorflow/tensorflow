@@ -1,7 +1,10 @@
 add_llvm_library(MLIRAnalysis STATIC
   AffineAnalysis.cpp
   AffineStructures.cpp
+  CallGraph.cpp
   Dominance.cpp
+  InferTypeOpInterface.cpp
+  Liveness.cpp
   LoopAnalysis.cpp
   MemRefBoundCheck.cpp
   NestedMatcher.cpp
@@ -16,5 +19,11 @@ add_llvm_library(MLIRAnalysis STATIC
   ADDITIONAL_HEADER_DIRS
   ${MLIR_MAIN_INCLUDE_DIR}/mlir/Analysis
   )
-add_dependencies(MLIRAnalysis MLIRAffineOps MLIRLoopOps)
-target_link_libraries(MLIRAnalysis MLIRAffineOps MLIRLoopOps)
+add_dependencies(MLIRAnalysis
+  MLIRAffineOps
+  MLIRCallOpInterfacesIncGen
+  MLIRTypeInferOpInterfaceIncGen
+  MLIRLoopOps
+  MLIRVectorOps
+  )
+target_link_libraries(MLIRAnalysis MLIRAffineOps MLIRLoopOps MLIRVectorOps)

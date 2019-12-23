@@ -253,7 +253,7 @@ def _evaluate_once(checkpoint_path,
 
   logging.info('Starting evaluation at ' +
                time.strftime('%Y-%m-%dT%H:%M:%SZ', time.localtime()))
-
+  start = time.time()
   # Prepare the session creator.
   session_creator = monitored_session.ChiefSessionCreator(
       scaffold=scaffold,
@@ -270,6 +270,7 @@ def _evaluate_once(checkpoint_path,
     if eval_ops is not None:
       while not session.should_stop():
         session.run(eval_ops, feed_dict)
+  logging.info('Inference Time : {:0.5f}s'.format(time.time() - start))
 
   logging.info('Finished evaluation at ' +
                time.strftime('%Y-%m-%d-%H:%M:%S', time.localtime()))

@@ -127,6 +127,14 @@ void Pack8bitNeonDotprodInOrder(const void* src_ptr0, const void* src_ptr1,
                                 int end_col, std::int32_t* sums_ptr,
                                 int input_xor);
 
+#elif RUY_PLATFORM(NEON_32) && RUY_OPT_ENABLED(RUY_OPT_ASM)
+void Pack8bitNeonOutOfOrder4Cols(const PackParams8bit& params);
+void Pack8bitNeonOutOfOrder2Cols(const PackParams8bit& params);
+#endif  // (RUY_PLATFORM(NEON_64)&& RUY_OPT_ENABLED(RUY_OPT_ASM)
+
+#if (RUY_PLATFORM(NEON_32) || RUY_PLATFORM(NEON_64)) && \
+    RUY_OPT_ENABLED(RUY_OPT_ASM)
+
 template <typename Scalar>
 struct PackImpl<Path::kNeon, FixedKernelLayout<Order::kColMajor, 16, 4>, Scalar,
                 std::int8_t, std::int32_t> {
@@ -176,6 +184,7 @@ struct PackImpl<Path::kNeon, FixedKernelLayout<Order::kColMajor, 16, 4>, Scalar,
       std::int8_t* packed_ptr =
           packed_matrix->data + packed_matrix->layout.stride * block_col;
       std::int32_t* sums_ptr = sums ? sums + block_col : nullptr;
+#if RUY_PLATFORM(NEON_64)
       if (__builtin_expect(tuning == Tuning::kInOrder, true)) {
         Pack8bitNeonInOrder(
             src_ptr0, src_ptr1, src_ptr2, src_ptr3, src_inc0, src_inc1,
@@ -187,10 +196,76 @@ struct PackImpl<Path::kNeon, FixedKernelLayout<Order::kColMajor, 16, 4>, Scalar,
             src_inc2, src_inc3, src_matrix.layout.rows, src_matrix.zero_point,
             packed_ptr, start_col, end_col, sums_ptr, kInputXor);
       }
+#else
+      // We have a more limited set of general purpose registers in ARMv7, so
+      // we use the "params" struct technique from the kernel code to save
+      // registers.
+      PackParams8bit params;
+      MakePackParams8bit(src_ptr0, src_ptr1, src_ptr2, src_ptr3, sums_ptr,
+                         packed_ptr, src_inc0, src_inc1, src_inc2, src_inc3,
+                         src_matrix.layout.rows, src_matrix.zero_point,
+                         kInputXor, &params);
+      Pack8bitNeonOutOfOrder4Cols(params);
+#endif  // RUY_PLATFORM(NEON_64)
     }
   }
 };
 
+#endif  // (RUY_PLATFORM(NEON_32) || RUY_PLATFORM(NEON_64)) &&
+        // RUY_OPT_ENABLED(RUY_OPT_ASM)
+
+#if RUY_PLATFORM(NEON_32) && RUY_OPT_ENABLED(RUY_OPT_ASM)
+// The 32-bit float kernel is 4 rows X 2 columns, so we need an additional
+// partial specialization for the RHS, which has a FixedKernelLayout with 2
+// columns.
+template <typename Scalar>
+struct PackImpl<Path::kNeon, FixedKernelLayout<Order::kColMajor, 16, 2>, Scalar,
+                std::int8_t, std::int32_t> {
+  static_assert(std::is_same<Scalar, std::int8_t>::value ||
+                    std::is_same<Scalar, std::uint8_t>::value,
+                "");
+  static constexpr int kInputXor =
+      std::is_same<Scalar, std::int8_t>::value ? 0 : 0x80;
+  static void Run(Tuning tuning, const Matrix<Scalar>& src_matrix,
+                  PackedMatrix<std::int8_t>* packed_matrix, int start_col,
+                  int end_col) {
+    RUY_DCHECK(IsColMajor(src_matrix.layout));
+    RUY_DCHECK(IsColMajor(packed_matrix->layout));
+    RUY_DCHECK_EQ(start_col % 2, 0);
+    std::int32_t* sums = packed_matrix->sums;
+    Scalar zerobuf[16];
+    memset(zerobuf, src_matrix.zero_point, sizeof(zerobuf));
+    for (int block_col = start_col; block_col < end_col; block_col += 2) {
+      int src_stride = src_matrix.layout.stride;
+      const Scalar* src_ptr0 = src_matrix.data.get() + src_stride * block_col;
+      const Scalar* src_ptr1 = src_ptr0 + src_stride;
+      int src_inc0 = 16;
+      int src_inc1 = 16;
+      if (block_col >= src_matrix.layout.cols - 2) {
+        if (block_col >= src_matrix.layout.cols - 0) {
+          src_ptr0 = zerobuf;
+          src_inc0 = 0;
+        }
+        if (block_col >= src_matrix.layout.cols - 1) {
+          src_ptr1 = zerobuf;
+          src_inc1 = 0;
+        }
+      }
+      std::int8_t* packed_ptr =
+          packed_matrix->data + packed_matrix->layout.stride * block_col;
+      std::int32_t* sums_ptr = sums ? sums + block_col : nullptr;
+      PackParams8bit params;
+      MakePackParams8bit(src_ptr0, src_ptr1, nullptr, nullptr, sums_ptr,
+                         packed_ptr, src_inc0, src_inc1, -1, -1,
+                         src_matrix.layout.rows, src_matrix.zero_point,
+                         kInputXor, &params);
+      Pack8bitNeonOutOfOrder2Cols(params);
+    }
+  }
+};
+#endif  // (RUY_PLATFORM(NEON_32)) && RUY_OPT_ENABLED(RUY_OPT_ASM)
+
+#if RUY_PLATFORM(NEON_64) && RUY_OPT_ENABLED(RUY_OPT_ASM)
 template <typename Scalar>
 struct PackImpl<Path::kNeonDotprod, FixedKernelLayout<Order::kColMajor, 4, 8>,
                 Scalar, std::int8_t, std::int32_t> {

@@ -34,7 +34,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/interpreter/executable.h"
 #include "tensorflow/compiler/xla/service/layout_assignment.h"
 #include "tensorflow/compiler/xla/service/map_inliner.h"
-#include "tensorflow/compiler/xla/service/reduce_precision_insertion.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/triangular_solve_expander.h"
 #include "tensorflow/compiler/xla/service/while_loop_simplifier.h"
@@ -87,10 +86,6 @@ Status InterpreterCompiler::RunHloOptimization(HloModule* hlo_module) {
       hlo_module->mutable_entry_computation_layout(),
       LayoutAssignment::InstructionCanChangeLayout);
 
-  ReducePrecisionInsertion::AddPasses(
-      &pipeline, hlo_module->config().debug_options(),
-      ReducePrecisionInsertion::PassTiming::BEFORE_OPTIMIZATION);
-
   return pipeline.Run(hlo_module).status();
 }
 
@@ -100,13 +95,6 @@ StatusOr<std::unique_ptr<HloModule>> InterpreterCompiler::RunHloPasses(
   VLOG(1) << "Run hlo passes on graph " << hlo_module->name();
   TF_RETURN_IF_ERROR(RunHloOptimization(hlo_module.get()));
   return std::move(hlo_module);
-}
-
-Status InterpreterCompiler::RunHloPassesOnModuleGroup(
-    HloModuleGroup* module_group,
-    absl::Span<se::StreamExecutor* const> executors,
-    se::DeviceMemoryAllocator* device_allocator) {
-  return Unimplemented("Module group compilation not supported on Interpreter");
 }
 
 StatusOr<std::unique_ptr<Executable>> InterpreterCompiler::RunBackend(
@@ -131,15 +119,6 @@ StatusOr<std::unique_ptr<Executable>> InterpreterCompiler::RunBackend(
                                                std::move(evaluator));
 
   return std::move(executable);
-}
-
-StatusOr<std::vector<std::unique_ptr<Executable>>>
-InterpreterCompiler::RunBackendOnModuleGroup(
-    std::unique_ptr<HloModuleGroup> module_group,
-    std::vector<std::vector<se::StreamExecutor*>> stream_exec,
-    se::DeviceMemoryAllocator* device_allocator) {
-  return Unimplemented(
-      "Module group compilation is not supported on Interpreter.");
 }
 
 StatusOr<std::vector<std::unique_ptr<Executable>>> InterpreterCompiler::Compile(

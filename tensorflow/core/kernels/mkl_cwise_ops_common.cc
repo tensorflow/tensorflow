@@ -70,6 +70,8 @@ class MklBinaryOp : public BinaryOp<Device, Functor> {
 
 REGISTER6(MklBinaryOp, CPU, "_MklAdd", functor::add, float, Eigen::half, double,
           int32, int64, bfloat16);
+REGISTER6(MklBinaryOp, CPU, "_MklAddV2", functor::add, float, Eigen::half,
+          double, int32, int64, bfloat16);
 REGISTER8(MklBinaryOp, CPU, "_MklSub", functor::sub, float, Eigen::half, double,
           int32, int64, complex64, complex128, bfloat16);
 REGISTER6(MklBinaryOp, CPU, "_MklMul", functor::mul, float, Eigen::half, double,

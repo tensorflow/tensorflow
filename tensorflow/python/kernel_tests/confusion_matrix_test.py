@@ -22,7 +22,6 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import confusion_matrix
@@ -214,22 +213,6 @@ class ConfusionMatrixTest(test.TestCase):
     with self.assertRaisesOpError("`predictions`.*negative values"):
       self._testConfMatrix(
           labels=labels, predictions=predictions, num_classes=3, truth=None)
-
-  @test_util.run_deprecated_v1
-  def testInvalidRank_predictionsTooBig(self):
-    labels = np.asarray([1, 2, 3])
-    predictions = np.asarray([[1, 2, 3]])
-    self.assertRaisesRegexp(ValueError, "an not squeeze dim",
-                            confusion_matrix.confusion_matrix, predictions,
-                            labels)
-
-  @test_util.run_deprecated_v1
-  def testInvalidRank_predictionsTooSmall(self):
-    labels = np.asarray([[1, 2, 3]])
-    predictions = np.asarray([1, 2, 3])
-    self.assertRaisesRegexp(ValueError, "an not squeeze dim",
-                            confusion_matrix.confusion_matrix, predictions,
-                            labels)
 
   @test_util.run_deprecated_v1
   def testInputDifferentSize(self):
@@ -454,24 +437,18 @@ class RemoveSqueezableDimensionsTest(test.TestCase):
   def testUnsqueezableLabels(self):
     label_values = np.ones(shape=(2, 3, 2))
     prediction_values = np.zeros(shape=(2, 3))
-    with self.assertRaisesRegexp(ValueError, r"Can not squeeze dim\[2\]"):
-      confusion_matrix.remove_squeezable_dimensions(
-          label_values, prediction_values)
 
     labels_placeholder = array_ops.placeholder(dtype=dtypes.int32)
     predictions_placeholder = array_ops.placeholder(dtype=dtypes.int32)
-    dynamic_labels, dynamic_predictions = (
-        confusion_matrix.remove_squeezable_dimensions(
-            labels_placeholder, predictions_placeholder))
+    _, dynamic_predictions = (
+        confusion_matrix.remove_squeezable_dimensions(labels_placeholder,
+                                                      predictions_placeholder))
 
     with self.cached_session():
       feed_dict = {
           labels_placeholder: label_values,
           predictions_placeholder: prediction_values
       }
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   r"Can not squeeze dim\[2\]"):
-        dynamic_labels.eval(feed_dict=feed_dict)
       self.assertAllEqual(
           prediction_values, dynamic_predictions.eval(feed_dict=feed_dict))
 
@@ -479,15 +456,12 @@ class RemoveSqueezableDimensionsTest(test.TestCase):
   def testUnsqueezablePredictions(self):
     label_values = np.ones(shape=(2, 3))
     prediction_values = np.zeros(shape=(2, 3, 2))
-    with self.assertRaisesRegexp(ValueError, r"Can not squeeze dim\[2\]"):
-      confusion_matrix.remove_squeezable_dimensions(
-          label_values, prediction_values)
 
     labels_placeholder = array_ops.placeholder(dtype=dtypes.int32)
     predictions_placeholder = array_ops.placeholder(dtype=dtypes.int32)
-    dynamic_labels, dynamic_predictions = (
-        confusion_matrix.remove_squeezable_dimensions(
-            labels_placeholder, predictions_placeholder))
+    dynamic_labels, _ = (
+        confusion_matrix.remove_squeezable_dimensions(labels_placeholder,
+                                                      predictions_placeholder))
 
     with self.cached_session():
       feed_dict = {
@@ -496,9 +470,6 @@ class RemoveSqueezableDimensionsTest(test.TestCase):
       }
       self.assertAllEqual(
           label_values, dynamic_labels.eval(feed_dict=feed_dict))
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   r"Can not squeeze dim\[2\]"):
-        dynamic_predictions.eval(feed_dict=feed_dict)
 
 
 if __name__ == "__main__":

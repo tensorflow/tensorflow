@@ -63,7 +63,7 @@ For an operation to have float operation statistics:
     run_count.
 
 ```python
-# To profile float opertions in commandline, you need to pass --graph_path
+# To profile float operations in commandline, you need to pass --graph_path
 # and --op_log_path.
 tfprof> scope -min_float_ops 1 -select float_ops -account_displayed_op_only
 node name | # float_ops

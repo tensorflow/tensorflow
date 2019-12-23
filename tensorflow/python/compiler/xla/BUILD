@@ -24,9 +24,9 @@ cuda_py_test(
     name = "jit_test",
     size = "small",
     srcs = ["jit_test.py"],
-    additional_deps = [
+    xla_enabled = True,
+    deps = [
         ":compiler_py",
-        "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
@@ -40,9 +40,8 @@ cuda_py_test(
         "//tensorflow/python:random_ops",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//third_party/py/numpy",
     ],
-    xla_enable_strict_auto_jit = True,
-    xla_enabled = True,
 )
 
 py_library(
@@ -69,11 +68,14 @@ py_library(
 cuda_py_test(
     name = "xla_test",
     srcs = ["xla_test.py"],
-    additional_deps = [
+    tags = [
+        "no_mac",
+        "no_windows",
+    ],
+    xla_enabled = True,
+    deps = [
         ":xla",
-        "@absl_py//absl/testing:parameterized",
         "//tensorflow/compiler/tests:xla_test",
-        "//tensorflow/python/tpu:tpu_lib",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
@@ -83,12 +85,25 @@ cuda_py_test(
         "//tensorflow/python:state_ops",
         "//tensorflow/python:summary",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python/estimator:estimator_py",
+        "//tensorflow/python/tpu:tpu_lib",
+        "@absl_py//absl/testing:parameterized",
     ],
+)
+
+cuda_py_test(
+    name = "experimental_compile_test",
+    srcs = ["experimental_compile_test.py"],
+    additional_deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:resource_variable_ops",
+    ],
+    python_version = "PY3",
     tags = [
         "no_mac",
-        "no_rocm",  # XLA support is not enabled on the ROCm platform
         "no_windows",
     ],
-    xla_enable_strict_auto_jit = True,
     xla_enabled = True,
 )

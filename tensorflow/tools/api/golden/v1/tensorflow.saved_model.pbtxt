@@ -9,6 +9,10 @@ tf_module {
     mtype: "<type \'str\'>"
   }
   member {
+    name: "Asset"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Builder"
     mtype: "<type \'type\'>"
   }
@@ -26,6 +30,14 @@ tf_module {
   }
   member {
     name: "CLASSIFY_OUTPUT_SCORES"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "DEBUG_DIRECTORY"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "DEBUG_INFO_FILENAME_PB"
     mtype: "<type \'str\'>"
   }
   member {
@@ -83,6 +95,10 @@ tf_module {
   member {
     name: "SERVING"
     mtype: "<type \'str\'>"
+  }
+  member {
+    name: "SaveOptions"
+    mtype: "<type \'type\'>"
   }
   member {
     name: "TPU"
@@ -186,7 +202,7 @@ tf_module {
   }
   member_method {
     name: "save"
-    argspec: "args=[\'obj\', \'export_dir\', \'signatures\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'obj\', \'export_dir\', \'signatures\', \'options\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "simple_save"

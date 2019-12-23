@@ -512,7 +512,7 @@ class XRTReadLiteralOp : public OpKernel {
     xla::LiteralProto literal_proto = literal.ToProto();
 
     Tensor output(DT_STRING, TensorShape({}));
-    literal_proto.SerializeToString(&output.scalar<string>()());
+    SerializeToTString(literal_proto, &output.scalar<tstring>()());
     ctx->set_output(0, output);
   }
 };

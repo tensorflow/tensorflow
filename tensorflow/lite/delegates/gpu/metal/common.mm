@@ -34,61 +34,33 @@ namespace metal {
 
 id<MTLDevice> GetBestSupportedMetalDevice() { return MTLCreateSystemDefaultDevice(); }
 
-int GetMacOsGpuVersion(id<MTLDevice> device) {
-  const std::vector<std::pair<MTLFeatureSet, int>> features = {
-#if defined(__MAC_10_11) && __MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_10_11
-    {MTLFeatureSet_macOS_GPUFamily1_v1, 1},
-#endif
-#if defined(__MAC_10_12) && __MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_10_12
-    {MTLFeatureSet_macOS_GPUFamily1_v2, 1},
-#endif
-#if defined(__MAC_10_13) && __MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_10_13
-    {MTLFeatureSet_macOS_GPUFamily1_v3, 1},
-#endif
-#if defined(__MAC_10_14) && __MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_10_14
-    {MTLFeatureSet_macOS_GPUFamily1_v4, 1},
-    {MTLFeatureSet_macOS_GPUFamily2_v1, 2},
-#endif
-  };
-  for (const auto& type : features) {
-    if ([device supportsFeatureSet:type.first]) {
-      return type.second;
-    }
-  }
-  return 0;
-}
-
 Status CreateComputeProgram(id<MTLDevice> device, NSString* code, NSString* functionName,
                             NSDictionary<NSString*, NSString*>* macros,
                             id<MTLComputePipelineState>* program) {
   MTLCompileOptions* options = [[MTLCompileOptions alloc] init];
 
-#if (defined(__MAC_10_14) && __MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_10_14) ||      \
-    (defined(__IPHONE_12_0) && __IPHONE_OS_VERSION_MIN_REQUIRED >= __IPHONE_12_0) || \
-    (defined(__TVOS_12_0) && __TV_OS_VERSION_MIN_REQUIRED >= __TVOS_12_0)
-  [options setLanguageVersion:MTLLanguageVersion2_1];
-#elif (defined(__MAC_10_13) && __MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_10_13) ||    \
-    (defined(__IPHONE_11_0) && __IPHONE_OS_VERSION_MIN_REQUIRED >= __IPHONE_11_0) || \
-    (defined(__TVOS_11_0) && __TV_OS_VERSION_MIN_REQUIRED >= __TVOS_11_0)
-  [options setLanguageVersion:MTLLanguageVersion2_0];
-#elif (defined(__MAC_10_12) && __MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_10_12) ||    \
-    (defined(__IPHONE_10_0) && __IPHONE_OS_VERSION_MIN_REQUIRED >= __IPHONE_10_0) || \
-    (defined(__TVOS_10_0) && __TV_OS_VERSION_MIN_REQUIRED >= __TVOS_10_0)
-  [options setLanguageVersion:MTLLanguageVersion1_2];
-#elif (defined(__MAC_10_11) && __MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_10_11) ||  \
+  // Runtime checks for the iOS version independently of minimum target iOS.
+  if (@available(macOS 10.14, iOS 12.0, tvOS 12.0, *)) {
+    [options setLanguageVersion:MTLLanguageVersion2_1];
+  } else if (@available(macOS 10.13, iOS 11.0, tvOS 11.0, *)) {
+    [options setLanguageVersion:MTLLanguageVersion2_0];
+  } else if (@available(macOS 10.12, iOS 10.0, tvOS 10.0, *)) {
+    [options setLanguageVersion:MTLLanguageVersion1_2];
+  } else if (@available(macOS 10.11, iOS 9.0, tvOS 9.0, *)) {
+    [options setLanguageVersion:MTLLanguageVersion1_1];
+  }
+#if (defined(__MAC_10_11) && __MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_10_11) ||    \
     (defined(__IPHONE_9_0) && __IPHONE_OS_VERSION_MIN_REQUIRED >= __IPHONE_9_0) || \
     (defined(__TVOS_9_0) && __TV_OS_VERSION_MIN_REQUIRED >= __TVOS_9_0)
-  [options setLanguageVersion:MTLLanguageVersion1_1];
+  // Minimum target OS version is able to support Metal.
 #else
 #pragma message(VAR_NAME_VALUE(__MAC_OS_X_VERSION_MIN_REQUIRED))
 #pragma message(VAR_NAME_VALUE(__IPHONE_OS_VERSION_MIN_REQUIRED))
 #pragma message(VAR_NAME_VALUE(__TV_OS_VERSION_MIN_REQUIRED))
-#if !defined(TARGET_OS_SIMULATOR) || TARGET_OS_SIMULATOR == 0
 // NOLINTBEGIN
 #error \
     "The Metal delegate is not supported on current target SDK. Minimum supported os: iOS/tvOS 9.0, macOS 10.11"
 // NOLINTEND
-#endif
 #endif
 
   [options setFastMathEnabled:YES];

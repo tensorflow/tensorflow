@@ -117,7 +117,8 @@ class NcclTestBase : public ::testing::Test {
       device_names.push_back(device->name());
       VLOG(2) << device->name();
     }
-    if (!dev_mgr_) dev_mgr_.reset(new DeviceMgr(std::move(local_devices)));
+    if (!dev_mgr_)
+      dev_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(local_devices));
     col_exec_ = new BaseCollectiveExecutor(
         &col_exec_mgr_, /*remote_access=*/nullptr, kStepId, dev_mgr_.get(),
         /*gpu_ring_order=*/nullptr);
@@ -302,9 +303,6 @@ class NcclTestBase : public ::testing::Test {
       gtl::InlinedVector<AllocatorAttributes, 4> input_aa(
           {AllocatorAttributes()});
       op_params.input_alloc_attrs = &input_aa;
-      gtl::InlinedVector<DeviceContext*, 4> input_dc;
-      input_dc.push_back(op_params.op_device_context);
-      op_params.input_device_contexts = &input_dc;
       int forward_from = 0;
       op_params.forward_from_array = &forward_from;
       AllocatorAttributes generic_alloc_attr;

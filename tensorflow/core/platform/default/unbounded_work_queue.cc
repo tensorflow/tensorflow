@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/unbounded_work_queue.h"
+#include "tensorflow/core/platform/default/unbounded_work_queue.h"
 
 #include "absl/memory/memory.h"
 #include "tensorflow/core/platform/env.h"

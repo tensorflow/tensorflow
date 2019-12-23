@@ -153,14 +153,31 @@ def main(_):
   with tf.compat.v1.name_scope('cross_entropy'):
     cross_entropy_mean = tf.compat.v1.losses.sparse_softmax_cross_entropy(
         labels=ground_truth_input, logits=logits)
+
   if FLAGS.quantize:
-    tf.contrib.quantize.create_training_graph(quant_delay=0)
+    try:
+      tf.contrib.quantize.create_training_graph(quant_delay=0)
+    except ImportError as e:
+      msg = e.args[0]
+      msg += ('\n\n The --quantize option still requires contrib, which is not '
+              'part of TensorFlow 2.0. Please install a previous version:'
+              '\n    `pip install tensorflow<=1.15`')
+      e.args = (msg,)
+      raise e
+
   with tf.compat.v1.name_scope('train'), tf.control_dependencies(
       control_dependencies):
     learning_rate_input = tf.compat.v1.placeholder(
         tf.float32, [], name='learning_rate_input')
-    train_step = tf.compat.v1.train.GradientDescentOptimizer(
-        learning_rate_input).minimize(cross_entropy_mean)
+    if FLAGS.optimizer == 'gradient_descent':
+      train_step = tf.compat.v1.train.GradientDescentOptimizer(
+          learning_rate_input).minimize(cross_entropy_mean)
+    elif FLAGS.optimizer == 'momentum':
+      train_step = tf.compat.v1.train.MomentumOptimizer(
+          learning_rate_input, .9,
+          use_nesterov=True).minimize(cross_entropy_mean)
+    else:
+      raise Exception('Invalid Optimizer')
   predicted_indices = tf.argmax(input=logits, axis=1)
   correct_prediction = tf.equal(predicted_indices, ground_truth_input)
   confusion_matrix = tf.math.confusion_matrix(labels=ground_truth_input,
@@ -296,8 +313,8 @@ def main(_):
       total_conf_matrix = conf_matrix
     else:
       total_conf_matrix += conf_matrix
-  tf.compat.v1.logging.info('Confusion Matrix:\n %s' % (total_conf_matrix))
-  tf.compat.v1.logging.info('Final test accuracy = %.1f%% (N=%d)' %
+  tf.compat.v1.logging.warn('Confusion Matrix:\n %s' % (total_conf_matrix))
+  tf.compat.v1.logging.warn('Final test accuracy = %.1f%% (N=%d)' %
                             (total_accuracy * 100, set_size))
 
 
@@ -481,6 +498,11 @@ if __name__ == '__main__':
       type=verbosity_arg,
       default=tf.compat.v1.logging.INFO,
       help='Log verbosity. Can be "INFO", "DEBUG", "ERROR", "FATAL", or "WARN"')
+  parser.add_argument(
+      '--optimizer',
+      type=str,
+      default='gradient_descent',
+      help='Optimizer (gradient_descent or momentum)')
 
   FLAGS, unparsed = parser.parse_known_args()
   tf.compat.v1.app.run(main=main, argv=[sys.argv[0]] + unparsed)

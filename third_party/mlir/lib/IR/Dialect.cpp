@@ -18,6 +18,7 @@
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/DialectHooks.h"
+#include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/DialectInterface.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
@@ -27,6 +28,8 @@
 
 using namespace mlir;
 using namespace detail;
+
+DialectAsmParser::~DialectAsmParser() {}
 
 //===----------------------------------------------------------------------===//
 // Dialect Registration
@@ -49,7 +52,7 @@ void mlir::registerDialectAllocator(const DialectAllocatorFunction &function) {
 }
 
 /// Registers a function to set specific hooks for a specific dialect, typically
-/// used through the DialectHooksRegistreation template.
+/// used through the DialectHooksRegistration template.
 void mlir::registerDialectHooksSetter(const DialectHooksSetter &function) {
   assert(
       function &&
@@ -89,24 +92,33 @@ LogicalResult Dialect::verifyRegionArgAttribute(Operation *, unsigned, unsigned,
   return success();
 }
 
+/// Verify an attribute from this dialect on the result at 'resultIndex' for
+/// the region at 'regionIndex' on the given operation. Returns failure if
+/// the verification failed, success otherwise. This hook may optionally be
+/// invoked from any operation containing a region.
+LogicalResult Dialect::verifyRegionResultAttribute(Operation *, unsigned,
+                                                   unsigned, NamedAttribute) {
+  return success();
+}
+
 /// Parse an attribute registered to this dialect.
-Attribute Dialect::parseAttribute(StringRef attrData, Type type,
-                                  Location loc) const {
-  emitError(loc) << "dialect '" << getNamespace()
-                 << "' provides no attribute parsing hook";
+Attribute Dialect::parseAttribute(DialectAsmParser &parser, Type type) const {
+  parser.emitError(parser.getNameLoc())
+      << "dialect '" << getNamespace()
+      << "' provides no attribute parsing hook";
   return Attribute();
 }
 
 /// Parse a type registered to this dialect.
-Type Dialect::parseType(StringRef tyData, Location loc) const {
+Type Dialect::parseType(DialectAsmParser &parser) const {
   // If this dialect allows unknown types, then represent this with OpaqueType.
   if (allowsUnknownTypes()) {
     auto ns = Identifier::get(getNamespace(), getContext());
-    return OpaqueType::get(ns, tyData, getContext());
+    return OpaqueType::get(ns, parser.getFullSymbolSpec(), getContext());
   }
 
-  emitError(loc) << "dialect '" << getNamespace()
-                 << "' provides no type parsing hook";
+  parser.emitError(parser.getNameLoc())
+      << "dialect '" << getNamespace() << "' provides no type parsing hook";
   return Type();
 }
 
@@ -135,9 +147,12 @@ DialectInterface::~DialectInterface() {}
 
 DialectInterfaceCollectionBase::DialectInterfaceCollectionBase(
     MLIRContext *ctx, ClassID *interfaceKind) {
-  for (auto *dialect : ctx->getRegisteredDialects())
-    if (auto *interface = dialect->getRegisteredInterface(interfaceKind))
-      interfaces.try_emplace(dialect, interface);
+  for (auto *dialect : ctx->getRegisteredDialects()) {
+    if (auto *interface = dialect->getRegisteredInterface(interfaceKind)) {
+      interfaces.insert(interface);
+      orderedInterfaces.push_back(interface);
+    }
+  }
 }
 
 DialectInterfaceCollectionBase::~DialectInterfaceCollectionBase() {}
@@ -146,5 +161,5 @@ DialectInterfaceCollectionBase::~DialectInterfaceCollectionBase() {}
 /// is not registered.
 const DialectInterface *
 DialectInterfaceCollectionBase::getInterfaceFor(Operation *op) const {
-  return interfaces.lookup(op->getDialect());
+  return getInterfaceFor(op->getDialect());
 }

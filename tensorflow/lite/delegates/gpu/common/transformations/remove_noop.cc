@@ -109,6 +109,13 @@ class RemoveIdentityReshape : public NodeTransformation {
     if (input_shape != reshape_attr.new_shape) {
       return {TransformStatus::SKIPPED, ""};
     }
+    auto output = graph->FindOutputs(node->id)[0];
+    const auto& graph_outputs = graph->outputs();
+    if (std::find(graph_outputs.begin(), graph_outputs.end(), output) !=
+        graph_outputs.end()) {
+      return {TransformStatus::SKIPPED,
+              "Can not apply transformation when node output is graph output"};
+    }
     Status status = RemoveOneInputOneOutputNode(graph, node);
     if (!status.ok()) {
       return {TransformStatus::INVALID,

@@ -22,12 +22,23 @@ limitations under the License.
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/graph/node_builder.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace tensorflow {
 namespace data {
 namespace {
+
+static mutex* get_dataset_op_registry_lock() {
+  static mutex dataset_op_registry_lock(LINKER_INITIALIZED);
+  return &dataset_op_registry_lock;
+}
+
+static std::unordered_set<string>* get_dataset_op_registry() {
+  static std::unordered_set<string>* names = new std::unordered_set<string>;
+  return names;
+}
 
 // A wrapper class for storing a `DatasetBase` instance in a DT_VARIANT tensor.
 // Objects of the wrapper class own a reference on an instance of `DatasetBase`,
@@ -337,6 +348,20 @@ int64 GetAllocatedBytes(const std::vector<Tensor>& element) {
   return allocated_bytes;
 }
 
+int64 GetTotalBytes(const std::vector<Tensor>& element) {
+  int64 total_bytes = 0;
+  DatasetBase* dataset;
+  for (auto& tensor : element) {
+    if (tensor.dtype() == DT_VARIANT &&
+        GetDatasetFromVariantTensor(tensor, &dataset).ok()) {
+      total_bytes += dataset->TotalBytes();
+    } else {
+      total_bytes += tensor.TotalBytes();
+    }
+  }
+  return total_bytes;
+}
+
 Status GetDatasetFromVariantTensor(const Tensor& tensor,
                                    DatasetBase** out_dataset) {
   if (!(tensor.dtype() == DT_VARIANT &&
@@ -379,7 +404,7 @@ Status DatasetBase::DatasetGraphDefBuilder::AddInputDataset(
     TF_RETURN_IF_ERROR(AddPlaceholder(t, output));
     DCHECK_NE(ctx->input_list(), nullptr);
     ctx->input_list()->emplace_back((*output)->name(), std::move(t));
-    LOG(WARNING)
+    LOG_EVERY_N_SEC(WARNING, 30)
         << "Input of " << dataset->DebugString()
         << " will not be optimized because the dataset does not implement the "
            "AsGraphDefInternal() method needed to apply optimizations.";
@@ -393,6 +418,7 @@ Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
                                     bool* end_of_sequence) {
   profiler::TraceMe activity([&] { return BuildTraceMeName(); },
                              profiler::TraceMeLevel::kInfo);
+  DVLOG(3) << prefix() << " GetNext enter";
   RecordStart(ctx, /*stop_output=*/true);
   Status s = GetNextInternal(ctx, out_tensors, end_of_sequence);
   if (s.ok() && !*end_of_sequence) RecordElement(ctx);
@@ -405,6 +431,7 @@ Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
                          s.error_message());
     LOG(ERROR) << s;
   }
+  DVLOG(3) << prefix() << " GetNext exit";
   return s;
 }
 
@@ -416,6 +443,18 @@ void DatasetOpKernel::Compute(OpKernelContext* ctx) {
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output));
     OP_REQUIRES_OK(ctx, StoreDatasetInVariantTensor(dataset, output));
   }
+}
+
+// static
+bool DatasetOpKernel::IsDatasetOp(const OpDef* op_def) {
+  if (DatasetOpRegistry::IsRegistered(op_def->name())) {
+    return true;
+  }
+
+  return (op_def->output_arg_size() == 1 &&
+          op_def->output_arg(0).type() == DT_VARIANT &&
+          (absl::EndsWith(op_def->name(), "Dataset") ||
+           absl::EndsWith(op_def->name(), "DatasetV2")));
 }
 
 void UnaryDatasetOpKernel::MakeDataset(OpKernelContext* ctx,
@@ -484,6 +523,19 @@ void BackgroundWorker::WorkerLoop() {
     DCHECK(work_item != nullptr);
     work_item();
   }
+}
+
+// static
+void DatasetOpRegistry::Register(const string& op_name) {
+  mutex_lock l(*get_dataset_op_registry_lock());
+  get_dataset_op_registry()->insert(op_name);
+}
+
+// static
+bool DatasetOpRegistry::IsRegistered(const string& op_name) {
+  mutex_lock l(*get_dataset_op_registry_lock());
+  std::unordered_set<string>* op_names = get_dataset_op_registry();
+  return op_names->find(op_name) != op_names->end();
 }
 
 namespace {

@@ -14,8 +14,18 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/test_util.h"
 
+#include <numeric>
+
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/delegates/nnapi/acceleration_test_util.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
+#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/kernels/acceleration_test_util.h"
+#include "tensorflow/lite/minimal_logging.h"
+#include "tensorflow/lite/nnapi/nnapi_implementation.h"
 #include "tensorflow/lite/version.h"
 
 namespace tflite {
@@ -78,8 +88,26 @@ int SingleOpModel::AddInput(const TensorData& t, bool is_variable) {
   return id;
 }
 
+int SingleOpModel::AddIntermediate(TensorType type,
+                                   const std::vector<float>& scale,
+                                   const std::vector<int64_t>& zero_point) {
+  // Currently supports only int16 intermediate types.
+  // TODO(jianlijianli): make use of the type.
+  int id = tensors_.size();
+  flatbuffers::Offset<QuantizationParameters> q_params =
+      CreateQuantizationParameters(builder_, /*min=*/0, /*max=*/0,
+                                   builder_.CreateVector<float>(scale),
+                                   builder_.CreateVector<int64_t>(zero_point));
+  tensors_.push_back(CreateTensor(builder_, builder_.CreateVector<int>({}),
+                                  type,
+                                  /*buffer=*/0,
+                                  /*name=*/0, q_params, false));
+  intermediates_.push_back(id);
+  return id;
+}
+
 int SingleOpModel::AddNullInput() {
-  int id = kOptionalTensor;
+  int id = kTfLiteOptionalTensor;
   inputs_.push_back(id);
   return id;
 }
@@ -98,7 +126,8 @@ void SingleOpModel::SetBuiltinOp(BuiltinOperator type,
       builder_, /*opcode_index=*/0, builder_.CreateVector<int32_t>(inputs_),
       builder_.CreateVector<int32_t>(outputs_), builtin_options_type,
       builtin_options,
-      /*custom_options=*/0, CustomOptionsFormat_FLEXBUFFERS));
+      /*custom_options=*/0, CustomOptionsFormat_FLEXBUFFERS, 0,
+      builder_.CreateVector<int32_t>(intermediates_)));
 }
 
 void SingleOpModel::SetCustomOp(
@@ -150,7 +179,7 @@ void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
 
   for (size_t i = 0; i < input_shapes.size(); ++i) {
     const int input_idx = interpreter_->inputs()[i];
-    if (input_idx == kOptionalTensor) continue;
+    if (input_idx == kTfLiteOptionalTensor) continue;
     const auto& shape = input_shapes[i];
     if (shape.empty()) continue;
     CHECK(interpreter_->ResizeInputTensor(input_idx, shape) == kTfLiteOk);
@@ -236,4 +265,63 @@ std::vector<string> SingleOpModel::ExtractVector(int index) const {
   }
   return result;
 }
+
+namespace {
+
+// Returns the number of partitions associated, as result of a call to
+// ModifyGraphWithDelegate, to the given delegate.
+int CountPartitionsDelegatedTo(Subgraph* subgraph,
+                               const TfLiteDelegate* delegate) {
+  return std::count_if(
+      subgraph->nodes_and_registration().begin(),
+      subgraph->nodes_and_registration().end(),
+      [delegate](
+          std::pair<TfLiteNode, TfLiteRegistration> node_and_registration) {
+        return node_and_registration.first.delegate == delegate;
+      });
+}
+
+// Returns the number of partitions associated, as result of a call to
+// ModifyGraphWithDelegate, to the given delegate.
+int CountPartitionsDelegatedTo(Interpreter* interpreter,
+                               const TfLiteDelegate* delegate) {
+  int result = 0;
+  for (int i = 0; i < interpreter->subgraphs_size(); i++) {
+    Subgraph* subgraph = interpreter->subgraph(i);
+
+    result += CountPartitionsDelegatedTo(subgraph, delegate);
+  }
+
+  return result;
+}
+
+}  // namespace
+
+void SingleOpModel::ExpectOpAcceleratedWithNnapi(const std::string& test_id) {
+  absl::optional<NnapiAccelerationTestParams> validation_params =
+      GetNnapiAccelerationTestParam(test_id);
+  if (!validation_params.has_value()) {
+    return;
+  }
+
+  TFLITE_LOG_PROD(TFLITE_LOG_INFO, "Validating acceleration");
+  const NnApi* nnapi = NnApiImplementation();
+  if (nnapi && nnapi->nnapi_exists &&
+      nnapi->android_sdk_version >=
+          validation_params.value().MinAndroidSdkVersion()) {
+    EXPECT_EQ(
+        CountPartitionsDelegatedTo(interpreter_.get(), TestNnApiDelegate()), 1)
+        << "Expecting operation to be accelerated but cannot find a partition "
+           "associated to the NNAPI delegate";
+  }
+}
+
+void SingleOpModel::ValidateAcceleration() {
+  if (force_use_nnapi) {
+    ExpectOpAcceleratedWithNnapi(GetCurrentTestId());
+  }
+}
+
+SingleOpModel::~SingleOpModel() { ValidateAcceleration(); }
+
 }  // namespace tflite

@@ -86,9 +86,9 @@ class StatelessRandomOpsTest(xla_test.XLATestCase):
         x = stateless.stateless_random_uniform(
             shape=[n], seed=seed_t, maxval=maxval, dtype=dtype)
         y = sess.run(x, {seed_t: [565656, 121212]})
-        if maxval > 1:
-          # Normalize y to range [0, 1).
-          y = y.astype(float) / maxval
+        # Convert y to float and normalize its value to range [0, 1) when
+        # maxval != 1.
+        y = y.astype(float) / maxval
         # Tests that the values are distributed amongst 10 bins with equal
         # probability. 16.92 is the Chi^2 value for 9 degrees of freedom with
         # p=0.05. This test is probabilistic and would be flaky if the random

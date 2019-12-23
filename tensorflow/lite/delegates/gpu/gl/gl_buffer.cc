@@ -35,6 +35,17 @@ Status CopyBuffer(const GlBuffer& read_buffer, const GlBuffer& write_buffer) {
                             write_buffer.offset(), read_buffer.bytes_size());
 }
 
+Status GetSSBOSize(GLuint id, int64_t* size_bytes) {
+  GLuint prev_id;
+  RETURN_IF_ERROR(TFLITE_GPU_CALL_GL(glGetIntegerv,
+                                     GL_SHADER_STORAGE_BUFFER_BINDING,
+                                     reinterpret_cast<GLint*>(&prev_id)));
+  gl_buffer_internal::BufferBinder binder(GL_SHADER_STORAGE_BUFFER, id,
+                                          prev_id);
+  return TFLITE_GPU_CALL_GL(glGetBufferParameteri64v, GL_SHADER_STORAGE_BUFFER,
+                            GL_BUFFER_SIZE, size_bytes);
+}
+
 GlBuffer::GlBuffer(GlBuffer&& buffer)
     : GlBuffer(buffer.target_, buffer.id_, buffer.bytes_size_, buffer.offset_,
                buffer.has_ownership_) {

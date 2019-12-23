@@ -37,7 +37,7 @@ from __future__ import print_function
 
 import six as _six
 
-from tensorflow.python import pywrap_tensorflow as _pywrap_tensorflow
+from tensorflow.python import _pywrap_utils
 from tensorflow.python.framework import sparse_tensor as _sparse_tensor
 from tensorflow.python.util.compat import collections_abc as _collections_abc
 
@@ -95,10 +95,10 @@ def _yield_value(iterable):
 
 
 # See the swig file (../../util/util.i) for documentation.
-is_sequence = _pywrap_tensorflow.IsSequenceForData
+is_sequence = _pywrap_utils.IsSequenceForData
 
 # See the swig file (../../util/util.i) for documentation.
-flatten = _pywrap_tensorflow.FlattenForData
+flatten = _pywrap_utils.FlattenForData
 
 
 def assert_same_structure(nest1, nest2, check_types=True):
@@ -120,7 +120,7 @@ def assert_same_structure(nest1, nest2, check_types=True):
     TypeError: If the two structures differ in the type of sequence in any of
       their substructures. Only possible if `check_types` is `True`.
   """
-  _pywrap_tensorflow.AssertSameStructureForData(nest1, nest2, check_types)
+  _pywrap_utils.AssertSameStructureForData(nest1, nest2, check_types)
 
 
 def _packed_nest_with_indices(structure, flat, index):

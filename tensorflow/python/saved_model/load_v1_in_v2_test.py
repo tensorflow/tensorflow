@@ -37,9 +37,12 @@ from tensorflow.python.framework import versions
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import lookup_ops
+from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import builder_impl
 from tensorflow.python.saved_model import load
@@ -48,6 +51,7 @@ from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import simple_save
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.saved_model import utils_impl
+from tensorflow.python.training import saver
 
 
 class LoadTest(test.TestCase):
@@ -529,6 +533,38 @@ class LoadTest(test.TestCase):
     forty_two = constant_op.constant([42], dtype=dtypes.int64)
     self.assertEqual([84], imported_fn(forty_two)["output"].values.numpy())
 
+  def _model_with_sparse_input(self):
+    """Generate a graph with a SparseTensor input and serialize in V1 format."""
+    export_graph = ops.Graph()
+    with export_graph.as_default():
+      in_sparse_placeholder = array_ops.sparse_placeholder(
+          dtype=dtypes.int64, shape=[2, 2])
+      out_sparse_tensor = sparse_tensor.SparseTensor(
+          indices=in_sparse_placeholder.indices,
+          values=in_sparse_placeholder.values,
+          dense_shape=in_sparse_placeholder.dense_shape) * 2
+      with session_lib.Session() as session:
+        path = os.path.join(self.get_temp_dir(), "saved_model", str(ops.uid()))
+        simple_save.simple_save(
+            session,
+            path,
+            inputs={"start": in_sparse_placeholder},
+            outputs={"output": out_sparse_tensor})
+    return path
+
+  def test_load_sparse_inputs(self):
+    path = self._model_with_sparse_input()
+    imported = load.load(path)
+    imported_fn = imported.signatures["serving_default"]
+    indices = constant_op.constant([[0, 0], [0, 1], [1, 1]], dtype=dtypes.int64)
+    values = constant_op.constant([42, 43, 44], dtype=dtypes.int64)
+    dense_shape = constant_op.constant([2, 2], dtype=dtypes.int64)
+    result = imported_fn(
+        start_indices=indices,
+        start_values=values,
+        start_dense_shape=dense_shape)
+    self.assertAllEqual([84, 86, 88], result["output"].values.numpy())
+
   def _model_with_defun(self):
     """Generate a graph with a Defun and serialize in V1 format."""
     export_graph = ops.Graph()
@@ -561,6 +597,38 @@ class LoadTest(test.TestCase):
     imported_fn = imported.signatures["serving_default"]
     forty_two = constant_op.constant([42], dtype=dtypes.int64)
     self.assertEqual([45], imported_fn(forty_two)["output"].numpy())
+
+  def test_load_and_restore_partitioned_variables(self):
+    export_graph = ops.Graph()
+    with export_graph.as_default():
+      partitioned_var = variable_scope.get_variable(
+          "a", shape=[6], initializer=init_ops.constant_initializer(13),
+          partitioner=partitioned_variables.fixed_size_partitioner(2),
+          use_resource=True)
+      x = array_ops.placeholder(shape=[], dtype=dtypes.float32)
+      y = x * partitioned_var
+      with session_lib.Session() as session:
+        session.run(variables.global_variables_initializer())
+        path = os.path.join(self.get_temp_dir(), "saved_model", str(ops.uid()))
+        simple_save.simple_save(session, path,
+                                inputs={"x": x}, outputs={"y": y})
+
+        # Create a name-based checkpoint with different values.
+        session.run(partitioned_var.assign([[5, 4, 3], [2, 1, 0]]))
+        ckpt_path = os.path.join(self.get_temp_dir(), "restore_ckpt")
+        saver.Saver().save(session, ckpt_path)
+
+    imported = load.load(path)
+    self.assertAllClose(self.evaluate(imported.variables),
+                        [[13, 13, 13], [13, 13, 13]])
+
+    self.evaluate(imported.restore(ckpt_path))
+    self.assertAllClose(self.evaluate(imported.variables),
+                        [[5, 4, 3], [2, 1, 0]])
+    self.assertAllClose(
+        self.evaluate(
+            imported.signatures["serving_default"](constant_op.constant(2.))),
+        {"y": [10, 8, 6, 4, 2, 0]})
 
 
 if __name__ == "__main__":

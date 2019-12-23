@@ -21,18 +21,18 @@
 
 #include "mlir/Transforms/LoopFusionUtils.h"
 
-#include "mlir/AffineOps/AffineOps.h"
 #include "mlir/Analysis/AffineAnalysis.h"
 #include "mlir/Analysis/AffineStructures.h"
 #include "mlir/Analysis/LoopAnalysis.h"
 #include "mlir/Analysis/Utils.h"
+#include "mlir/Dialect/AffineOps/AffineOps.h"
+#include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Function.h"
 #include "mlir/IR/Operation.h"
-#include "mlir/StandardOps/Ops.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Debug.h"
@@ -45,7 +45,7 @@ using namespace mlir;
 // Gathers all load and store memref accesses in 'opA' into 'values', where
 // 'values[memref] == true' for each store operation.
 static void getLoadAndStoreMemRefAccesses(Operation *opA,
-                                          DenseMap<Value *, bool> &values) {
+                                          DenseMap<ValuePtr, bool> &values) {
   opA->walk([&](Operation *op) {
     if (auto loadOp = dyn_cast<AffineLoadOp>(op)) {
       if (values.count(loadOp.getMemRef()) == 0)
@@ -60,7 +60,7 @@ static void getLoadAndStoreMemRefAccesses(Operation *opA,
 // accessed 'values' and at least one of the access is a store operation.
 // Returns false otherwise.
 static bool isDependentLoadOrStoreOp(Operation *op,
-                                     DenseMap<Value *, bool> &values) {
+                                     DenseMap<ValuePtr, bool> &values) {
   if (auto loadOp = dyn_cast<AffineLoadOp>(op)) {
     return values.count(loadOp.getMemRef()) > 0 &&
            values[loadOp.getMemRef()] == true;
@@ -75,7 +75,7 @@ static bool isDependentLoadOrStoreOp(Operation *op,
 static Operation *getFirstDependentOpInRange(Operation *opA, Operation *opB) {
   // Record memref values from all loads/store in loop nest rooted at 'opA'.
   // Map from memref value to bool which is true if store, false otherwise.
-  DenseMap<Value *, bool> values;
+  DenseMap<ValuePtr, bool> values;
   getLoadAndStoreMemRefAccesses(opA, values);
 
   // For each 'opX' in block in range ('opA', 'opB'), check if there is a data
@@ -101,7 +101,7 @@ static Operation *getFirstDependentOpInRange(Operation *opA, Operation *opB) {
 static Operation *getLastDependentOpInRange(Operation *opA, Operation *opB) {
   // Record memref values from all loads/store in loop nest rooted at 'opB'.
   // Map from memref value to bool which is true if store, false otherwise.
-  DenseMap<Value *, bool> values;
+  DenseMap<ValuePtr, bool> values;
   getLoadAndStoreMemRefAccesses(opB, values);
 
   // For each 'opX' in block in range ('opA', 'opB') in reverse order,
@@ -114,23 +114,25 @@ static Operation *getLastDependentOpInRange(Operation *opA, Operation *opB) {
        it != Block::reverse_iterator(opA); ++it) {
     Operation *opX = &(*it);
     opX->walk([&](Operation *op) {
-      if (lastDepOp)
-        return;
       if (isa<AffineLoadOp>(op) || isa<AffineStoreOp>(op)) {
-        if (isDependentLoadOrStoreOp(op, values))
+        if (isDependentLoadOrStoreOp(op, values)) {
           lastDepOp = opX;
-        return;
+          return WalkResult::interrupt();
+        }
+        return WalkResult::advance();
       }
-      for (auto *value : op->getResults()) {
-        for (auto *user : value->getUsers()) {
+      for (auto value : op->getResults()) {
+        for (auto user : value->getUsers()) {
           SmallVector<AffineForOp, 4> loops;
           // Check if any loop in loop nest surrounding 'user' is 'opB'.
           getLoopIVs(*user, &loops);
           if (llvm::is_contained(loops, cast<AffineForOp>(opB))) {
             lastDepOp = opX;
+            return WalkResult::interrupt();
           }
         }
       }
+      return WalkResult::advance();
     });
     if (lastDepOp)
       break;
@@ -185,7 +187,7 @@ static bool
 gatherLoadsAndStores(AffineForOp forOp,
                      SmallVectorImpl<Operation *> &loadAndStoreOps) {
   bool hasIfOp = false;
-  forOp.getOperation()->walk([&](Operation *op) {
+  forOp.walk([&](Operation *op) {
     if (isa<AffineLoadOp>(op) || isa<AffineStoreOp>(op))
       loadAndStoreOps.push_back(op);
     else if (isa<AffineIfOp>(op))
@@ -217,7 +219,7 @@ FusionResult mlir::canFuseLoops(AffineForOp srcForOp, AffineForOp dstForOp,
     return FusionResult::FailBlockDependence;
   }
 
-  // Check if 'srcForOp' precedeces 'dstForOp' in 'block'.
+  // Check if 'srcForOp' precedes 'dstForOp' in 'block'.
   bool isSrcForOpBeforeDstForOp =
       srcForOp.getOperation()->isBeforeInBlock(dstForOp.getOperation());
   // 'forOpA' executes before 'forOpB' in 'block'.
@@ -257,15 +259,13 @@ FusionResult mlir::canFuseLoops(AffineForOp srcForOp, AffineForOp dstForOp,
 /// in 'stats' for loop nest rooted at 'forOp'. Returns true on success,
 /// returns false otherwise.
 bool mlir::getLoopNestStats(AffineForOp forOpRoot, LoopNestStats *stats) {
-  bool ret = true;
-  forOpRoot.getOperation()->walk<AffineForOp>([&](AffineForOp forOp) {
+  auto walkResult = forOpRoot.walk([&](AffineForOp forOp) {
     auto *childForOp = forOp.getOperation();
-    auto *parentForOp = forOp.getOperation()->getParentOp();
+    auto *parentForOp = forOp.getParentOp();
     if (!llvm::isa<FuncOp>(parentForOp)) {
       if (!isa<AffineForOp>(parentForOp)) {
         LLVM_DEBUG(llvm::dbgs() << "Expected parent AffineForOp");
-        ret = false;
-        return;
+        return WalkResult::interrupt();
       }
       // Add mapping to 'forOp' from its parent AffineForOp.
       stats->loopMap[parentForOp].push_back(forOp);
@@ -279,18 +279,20 @@ bool mlir::getLoopNestStats(AffineForOp forOpRoot, LoopNestStats *stats) {
         ++count;
     }
     stats->opCountMap[childForOp] = count;
+
     // Record trip count for 'forOp'. Set flag if trip count is not
     // constant.
     Optional<uint64_t> maybeConstTripCount = getConstantTripCount(forOp);
     if (!maybeConstTripCount.hasValue()) {
       // Currently only constant trip count loop nests are supported.
       LLVM_DEBUG(llvm::dbgs() << "Non-constant trip count unsupported");
-      ret = false;
-      return;
+      return WalkResult::interrupt();
     }
+
     stats->tripCountMap[childForOp] = maybeConstTripCount.getValue();
+    return WalkResult::advance();
   });
-  return ret;
+  return !walkResult.wasInterrupted();
 }
 
 // Computes the total cost of the loop nest rooted at 'forOp'.
@@ -441,8 +443,8 @@ bool mlir::getFusionComputeCost(AffineForOp srcForOp, LoopNestStats &srcStats,
     // Subtract from operation count the loads/store we expect load/store
     // forwarding to remove.
     unsigned storeCount = 0;
-    llvm::SmallDenseSet<Value *, 4> storeMemrefs;
-    srcForOp.getOperation()->walk([&](Operation *op) {
+    llvm::SmallDenseSet<ValuePtr, 4> storeMemrefs;
+    srcForOp.walk([&](Operation *op) {
       if (auto storeOp = dyn_cast<AffineStoreOp>(op)) {
         storeMemrefs.insert(storeOp.getMemRef());
         ++storeCount;
@@ -453,7 +455,7 @@ bool mlir::getFusionComputeCost(AffineForOp srcForOp, LoopNestStats &srcStats,
       computeCostMap[insertPointParent] = -storeCount;
     // Subtract out any load users of 'storeMemrefs' nested below
     // 'insertPointParent'.
-    for (auto *value : storeMemrefs) {
+    for (auto value : storeMemrefs) {
       for (auto *user : value->getUsers()) {
         if (auto loadOp = dyn_cast<AffineLoadOp>(user)) {
           SmallVector<AffineForOp, 4> loops;

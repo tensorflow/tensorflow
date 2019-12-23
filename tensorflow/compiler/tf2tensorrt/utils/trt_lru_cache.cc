@@ -30,6 +30,26 @@ limitations under the License.
 namespace tensorflow {
 namespace tensorrt {
 
+string CalibrationContext::TerminateCalibration() {
+  mutex_lock l(mu_);
+  if (terminated_) return calibration_table_;
+
+  TRTInt8Calibrator* raw_calibrator = calibrator_.get();
+  raw_calibrator->waitAndSetDone();
+  terminated_ = true;
+
+  // At this point the calibration thread `thr_` is woken up and can
+  // transfer the ownership of `calibrator_` and `engine_` at any time, so
+  // it's not safe to use `calibrator_` below, but we can still access it
+  // using raw pointer.
+  // TODO(laigd): make TRTEngineOp::AllocateCalibrationResources() a member
+  // function of this class instead.
+
+  thr_->join();
+  calibration_table_ = raw_calibrator->getCalibrationTableAsString();
+  return calibration_table_;
+}
+
 const absl::string_view kTfTrtContainerName = "TF-TRT";
 
 Logger& TRTEngineCacheResource::GetLogger() {

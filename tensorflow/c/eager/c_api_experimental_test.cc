@@ -82,14 +82,12 @@ void ExecuteWithProfiling(bool async) {
       {reinterpret_cast<const char*>(profiler_result->data),
        profiler_result->length}));
   string profile_proto_str = profile_proto.DebugString();
+#ifndef TENSORFLOW_USE_ROCM
+  // TODO(rocm): enable once GPU profiling is supported in ROCm mode
   if (!gpu_device_name.empty()) {
     EXPECT_TRUE(HasSubstr(profile_proto_str, "/device:GPU:0"));
-    // device name with "stream:all" is collected by Device Tracer.
-#ifndef TENSORFLOW_USE_ROCM
-    // ROCm platform does not yet support stream level tracing
-    EXPECT_TRUE(HasSubstr(profile_proto_str, "stream:all"));
-#endif
   }
+#endif
   // "/host:CPU" is collected by TraceMe
   EXPECT_TRUE(HasSubstr(profile_proto_str, "/host:CPU"));
   EXPECT_TRUE(HasSubstr(profile_proto_str, "MatMul"));
@@ -496,6 +494,55 @@ void Executor_MatMul_CPU(bool async) {
 }
 TEST(CAPI, Executor_MatMul_CPU) { Executor_MatMul_CPU(false); }
 TEST(CAPI, Executor_MatMul_CPUAsync) { Executor_MatMul_CPU(true); }
+
+void Deleter(void* data, size_t unused, void* tensor_handle) {
+  TFE_DeleteTensorHandle(static_cast<TFE_TensorHandle*>(tensor_handle));
+}
+
+TEST(CAPI, TensorHandleOnDeviceMemory) {
+  TF_Status* status = TF_NewStatus();
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
+  TFE_Context* ctx = TFE_NewContext(opts, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_DeleteContextOptions(opts);
+
+  TFE_TensorHandle* m = TestMatrixTensorHandle();
+  TF_Tensor* m_data = TFE_TensorHandleResolve(m, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  float* m_float = static_cast<float*>(TF_TensorData(m_data));
+  TF_DeviceList* devices = TFE_ContextListDevices(ctx, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  int num_devices = TF_DeviceListCount(devices);
+  for (int d = 0; d < num_devices; ++d) {
+    const char* name = TF_DeviceListName(devices, d, status);
+    CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+    TFE_TensorHandle* copy = TFE_TensorHandleCopyToDevice(m, ctx, name, status);
+    CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+    void* data = TFE_TensorHandleDevicePointer(copy, status);
+    CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+    size_t size = TFE_TensorHandleDeviceMemorySize(copy, status);
+    CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+    int64_t dims[] = {2, 2};
+    TFE_TensorHandle* copy_aliased = TFE_NewTensorHandleFromDeviceMemory(
+        ctx, name, TF_FLOAT, dims, 2, data, size, &Deleter, copy, status);
+    CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+    TFE_TensorHandle* on_host =
+        TFE_TensorHandleCopyToDevice(copy_aliased, ctx, "CPU:0", status);
+    CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+    TF_Tensor* resolved = TFE_TensorHandleResolve(on_host, status);
+    CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+    const float* resolved_data =
+        static_cast<const float*>(TF_TensorData(resolved));
+    EXPECT_EQ(0, memcmp(m_float, resolved_data, 4 * sizeof(float)));
+    TF_DeleteTensor(resolved);
+    TFE_DeleteTensorHandle(copy_aliased);  // Note that this will delete copy.
+    TFE_DeleteTensorHandle(on_host);
+  }
+  TF_DeleteTensor(m_data);
+  TFE_DeleteTensorHandle(m);
+  TFE_DeleteContext(ctx);
+  TF_DeleteStatus(status);
+}
 
 }  // namespace
 }  // namespace tensorflow
