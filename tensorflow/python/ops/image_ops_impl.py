@@ -102,7 +102,7 @@ def _ImageDimensions(image, rank):
 
   Returns:
     A list of corresponding to the dimensions of the
-    input image.  Dimensions that are statically known are python integers,
+    input image. Dimensions that are statically known are python integers,
     otherwise they are integer scalar tensors.
   """
   if image.get_shape().is_fully_defined():
@@ -1852,7 +1852,7 @@ def rgb_to_grayscale(images, name=None):
 def grayscale_to_rgb(images, name=None):
   """Converts one or more images from Grayscale to RGB.
 
-  Outputs a tensor of the same `DType` and rank as `images`.  The size of the
+  Outputs a tensor of the same `DType` and rank as `images`. The size of the
   last dimension of the output is 3, containing the RGB value of the pixels.
   The input images' last dimension must be size 1.
 
