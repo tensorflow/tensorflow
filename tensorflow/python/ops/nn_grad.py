@@ -513,23 +513,6 @@ def _BroadcastMul(vec, mat):
   return vec * mat
 
 
-def _IsZero(tensor):
-  """Check if tensor contains only zeros.
-
-  Args:
-    tensor: tensor to check
-
-  Returns:
-    True if tensor contains only zeros and False otherwise
-  """
-  if context.executing_eagerly():
-    return getattr(tensor, "_is_zeros_tensor", False)
-  if tensor.op.type in ("ZerosLike", "Zeros"):
-    return True
-  const_fill_value = tensor_util.constant_value(tensor)
-  return const_fill_value is not None and (const_fill_value == 0).all()
-
-
 @ops.RegisterGradient("SoftmaxCrossEntropyWithLogits")
 def _SoftmaxCrossEntropyWithLogitsGrad(op, grad_loss, grad_grad):
   """Gradient function for SoftmaxCrossEntropyWithLogits."""
@@ -542,7 +525,8 @@ def _SoftmaxCrossEntropyWithLogitsGrad(op, grad_loss, grad_grad):
   grad = _BroadcastMul(grad_loss, softmax_grad)
 
   logits = op.inputs[0]
-  if grad_grad is not None and not _IsZero(grad_grad):
+  if (grad_grad is not None
+      and not getattr(grad_grad, "_is_zeros_tensor", False)):
     softmax = nn_ops.softmax(logits)
 
     grad += ((grad_grad - array_ops.squeeze(
@@ -567,7 +551,8 @@ def _SparseSoftmaxCrossEntropyWithLogitsGrad(op, grad_loss, grad_grad):
   grad = _BroadcastMul(grad_loss, softmax_grad)
 
   logits = op.inputs[0]
-  if grad_grad is not None and not _IsZero(grad_grad):
+  if (grad_grad is not None
+      and not getattr(grad_grad, "_is_zeros_tensor", False)):
     softmax = nn_ops.softmax(logits)
 
     grad += ((grad_grad - array_ops.squeeze(
