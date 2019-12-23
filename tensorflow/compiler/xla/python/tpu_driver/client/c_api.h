@@ -54,11 +54,13 @@ typedef struct TpuLoadedProgramHandle {
 } TpuLoadedProgramHandle;
 
 typedef struct HloProto {
-  // TODO(b/146662059): this is a temp plug for xla::HloProto
+  void* bytes;
+  int32_t size;
 } HloProto;
 
 typedef struct DeviceAssignmentProto {
-  // TODO(b/146662059): this is a temp plug for xla::DeviceAssignmentProto
+  void* bytes;
+  int32_t size;
 } DeviceAssignmentProto;
 
 typedef struct TpuStatus {
@@ -91,7 +93,7 @@ typedef struct TpuEvent*(PrototypeTpuDriver_ExecuteProgram)(
     struct TpuDriver* driver, struct TpuLoadedProgramHandle* handle,
     int32_t inputc, struct TpuBufferHandle** input_buffer_handle,
     int32_t outputc, struct TpuBufferHandle** output_buffer_handle,
-    const DeviceAssignmentProto& device_assignment, int32_t eventc,
+    const struct DeviceAssignmentProto& device_assignment, int32_t eventc,
     struct TpuEvent** eventv);
 
 typedef struct TpuBufferHandle*(PrototypeTpuDriver_AllocateTuple)(
