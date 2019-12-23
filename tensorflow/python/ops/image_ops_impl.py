@@ -3031,7 +3031,7 @@ def yuv_to_rgb(images):
 
   Usage Example:
   ```python
-  >> import tensorflow as tf
+  
   >>> x = tf.random.normal(shape=(256, 256, 3))
   >>> tf.image.yuv_to_rgb(x)
   ```
