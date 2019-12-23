@@ -287,6 +287,18 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
               llvm::ArrayRef<Value*>(operands.begin() + 2, operands.end()))
           .getOperation();
     }
+    case HloOpcode::kInfeed: {
+      attributes.push_back(builder_->getNamedAttr(
+          "infeed_config", mlir::StringAttr::get(instruction->infeed_config(),
+                                                 builder_->getContext())));
+      MakeAndReturn(InfeedOp);
+    }
+    case HloOpcode::kOutfeed: {
+      attributes.push_back(builder_->getNamedAttr(
+          "outfeed_config", mlir::StringAttr::get(instruction->outfeed_config(),
+                                                  builder_->getContext())));
+      MakeAndReturn(OutfeedOp);
+    }
     case HloOpcode::kPad: {
       const auto& padding_config = instruction->padding_config();
       llvm::SmallVector<int64_t, 4> edge_padding_low;
@@ -358,6 +370,28 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
               loc, result_type, operands[0],
               ConvertDimensions(instruction->dimensions()))
           .getOperation();
+    }
+    case HloOpcode::kRng: {
+      auto shape = func_builder->create<mlir::ConstantOp>(
+          loc, Convert(result_type.cast<RankedTensorType>().getShape()));
+      switch (instruction->random_distribution()) {
+        case xla::RNG_UNIFORM:
+          return func_builder
+              ->create<mlir::xla_hlo::RngUniformOp>(
+                  loc, result_type, operands[0], operands[1], shape)
+              .getOperation();
+
+        case xla::RNG_NORMAL:
+          return func_builder
+              ->create<mlir::xla_hlo::RngNormalOp>(
+                  loc, result_type, operands[0], operands[1], shape)
+              .getOperation();
+
+        default:
+          return tensorflow::errors::InvalidArgument(absl::StrCat(
+              "Unsupported distribution: ",
+              RandomDistributionToString(instruction->random_distribution())));
+      }
     }
     case HloOpcode::kWhile: {
       auto op = func_builder->create<mlir::xla_hlo::WhileOp>(
@@ -461,10 +495,12 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
       NoAttributeCase(kPower, PowOp);
       NoAttributeCase(kReal, RealOp);
       NoAttributeCase(kRemainder, RemOp);
+      NoAttributeCase(kReplicaId, ReplicaIdOp);
       // The dimensions attribute is not present on the HLO Reshape instruction.
       // If dimensions are non-default, the XLA builder implements it as a
       // separate transpose.
       NoAttributeCase(kReshape, ReshapeOp);
+      NoAttributeCase(kRoundNearestAfz, RoundOp);
       NoAttributeCase(kRsqrt, RsqrtOp);
       NoAttributeCase(kSelect, SelectOp);
       NoAttributeCase(kShiftLeft, ShiftLeftOp);

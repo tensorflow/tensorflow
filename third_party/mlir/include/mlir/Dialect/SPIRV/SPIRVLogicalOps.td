@@ -858,8 +858,8 @@ def SPV_SelectOp : SPV_Op<"Select", [NoSideEffect]> {
   );
 
   let builders = [OpBuilder<[{Builder *builder, OperationState &state,
-                              Value *cond, Value *trueValue,
-                              Value *falseValue}]>];
+                              ValuePtr cond, ValuePtr trueValue,
+                              ValuePtr falseValue}]>];
 }
 
 // -----

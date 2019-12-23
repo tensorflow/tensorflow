@@ -25,6 +25,7 @@ import re
 import string
 import traceback
 import zipfile
+
 import numpy as np
 from six import StringIO
 

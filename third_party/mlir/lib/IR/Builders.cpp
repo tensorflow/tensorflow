@@ -343,7 +343,7 @@ Operation *OpBuilder::createOperation(const OperationState &state) {
 /// 'results'. Returns success if the operation was folded, failure otherwise.
 /// Note: This function does not erase the operation on a successful fold.
 LogicalResult OpBuilder::tryFold(Operation *op,
-                                 SmallVectorImpl<Value *> &results) {
+                                 SmallVectorImpl<ValuePtr> &results) {
   results.reserve(op->getNumResults());
   auto cleanupFailure = [&] {
     results.assign(op->result_begin(), op->result_end());
@@ -374,7 +374,7 @@ LogicalResult OpBuilder::tryFold(Operation *op,
   Dialect *dialect = op->getDialect();
   for (auto &it : llvm::enumerate(foldResults)) {
     // Normal values get pushed back directly.
-    if (auto *value = it.value().dyn_cast<Value *>()) {
+    if (auto value = it.value().dyn_cast<ValuePtr>()) {
       results.push_back(value);
       continue;
     }

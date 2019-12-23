@@ -151,6 +151,29 @@ static void emitModelDecl(OpInterface &interface, raw_ostream &os) {
   os << "  };\n";
 }
 
+static void emitTraitDecl(OpInterface &interface, raw_ostream &os,
+                          StringRef interfaceName,
+                          StringRef interfaceTraitsName) {
+  os << "  template <typename ConcreteOp>\n  "
+     << llvm::formatv("struct Trait : public OpInterface<{0},"
+                      " detail::{1}>::Trait<ConcreteOp> {{\n",
+                      interfaceName, interfaceTraitsName);
+
+  // Insert the default implementation for any methods.
+  for (auto &method : interface.getMethods()) {
+    auto defaultImpl = method.getDefaultImplementation();
+    if (!defaultImpl)
+      continue;
+
+    os << "  " << (method.isStatic() ? "static " : "") << method.getReturnType()
+       << " ";
+    emitMethodNameAndArgs(method, os, /*addOperationArg=*/false);
+    os << " {\n" << defaultImpl.getValue() << "  }\n";
+  }
+
+  os << "  };\n";
+}
+
 static void emitInterfaceDecl(OpInterface &interface, raw_ostream &os) {
   StringRef interfaceName = interface.getName();
   auto interfaceTraitsName = (interfaceName + "InterfaceTraits").str();
@@ -167,6 +190,9 @@ static void emitInterfaceDecl(OpInterface &interface, raw_ostream &os) {
                       "public:\n"
                       "  using OpInterface<{1}, detail::{2}>::OpInterface;\n",
                       interfaceName, interfaceName, interfaceTraitsName);
+
+  // Emit the derived trait for the interface.
+  emitTraitDecl(interface, os, interfaceName, interfaceTraitsName);
 
   // Insert the method declarations.
   for (auto &method : interface.getMethods()) {

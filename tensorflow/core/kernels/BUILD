@@ -65,7 +65,7 @@ package_group(
     name = "friends",
     packages = [
         "//learning/brain/contrib/...",
-        "//learning/brain/research/sparse_matrix/...",
+        "//learning/brain/research/...",
         "//learning/faster_training/...",
         "//tensorflow/...",
         "//tensorflow_text/...",
@@ -2614,6 +2614,7 @@ LOOKUP_DEPS = [
     ":bounds_check",
     ":initializable_lookup_table",
     ":lookup_util",
+    "@com_google_absl//absl/container:flat_hash_map",
     "//tensorflow/core:core_cpu",
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
@@ -6727,6 +6728,7 @@ filegroup(
             "decode_proto_op.cc",
             "encode_proto_op.cc",
             "rpc_op.cc",
+            "sobol_op.cc",
             # Excluded due to experimental status:
             "debug_ops.*",
             "mutex_ops.*",
@@ -8320,3 +8322,16 @@ exports_files([
     "sparse_reshape_op.cc",
     "unary_ops_composition.cc",
 ])
+
+tf_kernel_library(
+    name = "sobol_op",
+    srcs = [
+        "sobol_op.cc",
+    ],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//third_party/eigen3",
+        "@sobol_data",
+    ],
+)

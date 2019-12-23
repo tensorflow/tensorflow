@@ -183,7 +183,7 @@ public:
   }
 
   /// Gets argument.
-  BlockArgument *getArgument(unsigned idx) {
+  BlockArgumentPtr getArgument(unsigned idx) {
     return getBlocks().front().getArgument(idx);
   }
 
@@ -191,7 +191,7 @@ public:
   using args_iterator = Block::args_iterator;
   args_iterator args_begin() { return front().args_begin(); }
   args_iterator args_end() { return front().args_end(); }
-  llvm::iterator_range<args_iterator> getArguments() {
+  iterator_range<args_iterator> getArguments() {
     return {args_begin(), args_end()};
   }
 

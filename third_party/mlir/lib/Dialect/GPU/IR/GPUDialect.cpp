@@ -94,9 +94,9 @@ LogicalResult GPUDialect::verifyOperationAttribute(Operation *op,
     // Check that `launch_func` refers to a well-formed kernel function.
     StringRef kernelName = launchOp.kernel();
     Operation *kernelFunc = kernelModule.lookupSymbol(kernelName);
-    auto kernelStdFunction = dyn_cast_or_null<::mlir::FuncOp>(kernelFunc);
+    auto kernelGPUFunction = dyn_cast_or_null<gpu::GPUFuncOp>(kernelFunc);
     auto kernelLLVMFunction = dyn_cast_or_null<LLVM::LLVMFuncOp>(kernelFunc);
-    if (!kernelStdFunction && !kernelLLVMFunction)
+    if (!kernelGPUFunction && !kernelLLVMFunction)
       return launchOp.emitOpError("kernel function '")
              << kernelName << "' is undefined";
     if (!kernelFunc->getAttrOfType<mlir::UnitAttr>(
@@ -107,7 +107,7 @@ LogicalResult GPUDialect::verifyOperationAttribute(Operation *op,
     unsigned actualNumArguments = launchOp.getNumKernelOperands();
     unsigned expectedNumArguments = kernelLLVMFunction
                                         ? kernelLLVMFunction.getNumArguments()
-                                        : kernelStdFunction.getNumArguments();
+                                        : kernelGPUFunction.getNumArguments();
     if (expectedNumArguments != actualNumArguments)
       return launchOp.emitOpError("got ")
              << actualNumArguments << " kernel operands but expected "
@@ -145,7 +145,7 @@ static LogicalResult verifyAllReduce(gpu::AllReduceOp allReduce) {
   if (!allReduce.body().empty()) {
     if (allReduce.body().front().getNumArguments() != 2)
       return allReduce.emitError("expected two region arguments");
-    for (auto *argument : allReduce.body().front().getArguments()) {
+    for (auto argument : allReduce.body().front().getArguments()) {
       if (argument->getType() != allReduce.getType())
         return allReduce.emitError("incorrect region argument type");
     }
@@ -165,6 +165,47 @@ static LogicalResult verifyAllReduce(gpu::AllReduceOp allReduce) {
   return success();
 }
 
+static LogicalResult verifyShuffleOp(gpu::ShuffleOp shuffleOp) {
+  auto type = shuffleOp.value()->getType();
+  if (shuffleOp.result()->getType() != type) {
+    return shuffleOp.emitOpError()
+           << "requires the same type for value operand and result";
+  }
+  if (!type.isIntOrFloat() || type.getIntOrFloatBitWidth() != 32) {
+    return shuffleOp.emitOpError()
+           << "requires value operand type to be f32 or i32";
+  }
+  return success();
+}
+
+static void printShuffleOp(OpAsmPrinter &p, ShuffleOp op) {
+  p << ShuffleOp::getOperationName() << ' ';
+  p.printOperands(op.getOperands());
+  p << ' ' << op.mode() << " : ";
+  p.printType(op.value()->getType());
+}
+
+static ParseResult parseShuffleOp(OpAsmParser &parser, OperationState &state) {
+  SmallVector<OpAsmParser::OperandType, 3> operandInfo;
+  if (parser.parseOperandList(operandInfo, 3))
+    return failure();
+
+  StringRef mode;
+  if (parser.parseKeyword(&mode))
+    return failure();
+  state.addAttribute("mode", parser.getBuilder().getStringAttr(mode));
+
+  Type valueType;
+  Type int32Type = parser.getBuilder().getIntegerType(32);
+  Type int1Type = parser.getBuilder().getI1Type();
+  if (parser.parseColonType(valueType) ||
+      parser.resolveOperands(operandInfo, {valueType, int32Type, int32Type},
+                             parser.getCurrentLocation(), state.operands) ||
+      parser.addTypesToList({valueType, int1Type}, state.types))
+    return failure();
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // LaunchOp
 //===----------------------------------------------------------------------===//
@@ -172,15 +213,15 @@ static LogicalResult verifyAllReduce(gpu::AllReduceOp allReduce) {
 static SmallVector<Type, 4> getValueTypes(ValueRange values) {
   SmallVector<Type, 4> types;
   types.reserve(values.size());
-  for (Value *v : values)
+  for (ValuePtr v : values)
     types.push_back(v->getType());
   return types;
 }
 
-void LaunchOp::build(Builder *builder, OperationState &result, Value *gridSizeX,
-                     Value *gridSizeY, Value *gridSizeZ, Value *blockSizeX,
-                     Value *blockSizeY, Value *blockSizeZ,
-                     ValueRange operands) {
+void LaunchOp::build(Builder *builder, OperationState &result,
+                     ValuePtr gridSizeX, ValuePtr gridSizeY, ValuePtr gridSizeZ,
+                     ValuePtr blockSizeX, ValuePtr blockSizeY,
+                     ValuePtr blockSizeZ, ValueRange operands) {
   // Add grid and block sizes as op operands, followed by the data operands.
   result.addOperands(
       {gridSizeX, gridSizeY, gridSizeZ, blockSizeX, blockSizeY, blockSizeZ});
@@ -237,7 +278,7 @@ KernelDim3 LaunchOp::getBlockSizeOperandValues() {
   return KernelDim3{getOperand(3), getOperand(4), getOperand(5)};
 }
 
-llvm::iterator_range<Block::args_iterator> LaunchOp::getKernelArguments() {
+iterator_range<Block::args_iterator> LaunchOp::getKernelArguments() {
   auto args = body().getBlocks().front().getArguments();
   return llvm::drop_begin(args, LaunchOp::kNumConfigRegionAttributes);
 }
@@ -448,22 +489,22 @@ class PropagateConstantBounds : public OpRewritePattern<LaunchOp> {
     // and use it instead of passing the value from the parent region.  Perform
     // the traversal in the inverse order to simplify index arithmetics when
     // dropping arguments.
-    SmallVector<Value *, 8> operands(launchOp.getKernelOperandValues().begin(),
-                                     launchOp.getKernelOperandValues().end());
-    SmallVector<Value *, 8> kernelArgs(launchOp.getKernelArguments().begin(),
-                                       launchOp.getKernelArguments().end());
+    SmallVector<ValuePtr, 8> operands(launchOp.getKernelOperandValues().begin(),
+                                      launchOp.getKernelOperandValues().end());
+    SmallVector<ValuePtr, 8> kernelArgs(launchOp.getKernelArguments().begin(),
+                                        launchOp.getKernelArguments().end());
     bool found = false;
     for (unsigned i = operands.size(); i > 0; --i) {
       unsigned index = i - 1;
-      Value *operand = operands[index];
+      ValuePtr operand = operands[index];
       if (!isa_and_nonnull<ConstantOp>(operand->getDefiningOp())) {
         continue;
       }
 
       found = true;
-      Value *internalConstant =
+      ValuePtr internalConstant =
           rewriter.clone(*operand->getDefiningOp())->getResult(0);
-      Value *kernelArg = kernelArgs[index];
+      ValuePtr kernelArg = kernelArgs[index];
       kernelArg->replaceAllUsesWith(internalConstant);
       launchOp.eraseKernelArgument(index);
     }
@@ -488,10 +529,10 @@ void LaunchOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 //===----------------------------------------------------------------------===//
 
 void LaunchFuncOp::build(Builder *builder, OperationState &result,
-                         ::mlir::FuncOp kernelFunc, Value *gridSizeX,
-                         Value *gridSizeY, Value *gridSizeZ, Value *blockSizeX,
-                         Value *blockSizeY, Value *blockSizeZ,
-                         ValueRange kernelOperands) {
+                         GPUFuncOp kernelFunc, ValuePtr gridSizeX,
+                         ValuePtr gridSizeY, ValuePtr gridSizeZ,
+                         ValuePtr blockSizeX, ValuePtr blockSizeY,
+                         ValuePtr blockSizeZ, ValueRange kernelOperands) {
   // Add grid and block sizes as op operands, followed by the data operands.
   result.addOperands(
       {gridSizeX, gridSizeY, gridSizeZ, blockSizeX, blockSizeY, blockSizeZ});
@@ -505,7 +546,7 @@ void LaunchFuncOp::build(Builder *builder, OperationState &result,
 }
 
 void LaunchFuncOp::build(Builder *builder, OperationState &result,
-                         ::mlir::FuncOp kernelFunc, KernelDim3 gridSize,
+                         GPUFuncOp kernelFunc, KernelDim3 gridSize,
                          KernelDim3 blockSize, ValueRange kernelOperands) {
   build(builder, result, kernelFunc, gridSize.x, gridSize.y, gridSize.z,
         blockSize.x, blockSize.y, blockSize.z, kernelOperands);
@@ -524,7 +565,7 @@ StringRef LaunchFuncOp::getKernelModuleName() {
       .getRootReference();
 }
 
-Value *LaunchFuncOp::getKernelOperand(unsigned i) {
+ValuePtr LaunchFuncOp::getKernelOperand(unsigned i) {
   return getOperation()->getOperand(i + kNumConfigOperands);
 }
 
@@ -687,13 +728,14 @@ static ParseResult parseGPUFuncOp(OpAsmParser &parser, OperationState &result) {
 }
 
 static void printAttributions(OpAsmPrinter &p, StringRef keyword,
-                              ArrayRef<BlockArgument *> values) {
+                              ArrayRef<BlockArgumentPtr> values) {
   if (values.empty())
     return;
 
   p << ' ' << keyword << '(';
-  interleaveComma(values, p,
-                  [&p](BlockArgument *v) { p << *v << " : " << v->getType(); });
+  interleaveComma(values, p, [&p](BlockArgumentPtr v) {
+    p << *v << " : " << v->getType();
+  });
   p << ')';
 }
 
@@ -718,12 +760,40 @@ void printGPUFuncOp(OpAsmPrinter &p, GPUFuncOp op) {
   p.printRegion(op.getBody(), /*printEntryBlockArgs=*/false);
 }
 
+void GPUFuncOp::setType(FunctionType newType) {
+  auto oldType = getType();
+  assert(newType.getNumResults() == oldType.getNumResults() &&
+         "unimplemented: changes to the number of results");
+
+  SmallVector<char, 16> nameBuf;
+  for (int i = newType.getNumInputs(), e = oldType.getNumInputs(); i < e; i++)
+    removeAttr(getArgAttrName(i, nameBuf));
+
+  setAttr(getTypeAttrName(), TypeAttr::get(newType));
+}
+
 /// Hook for FunctionLike verifier.
 LogicalResult GPUFuncOp::verifyType() {
   Type type = getTypeAttr().getValue();
   if (!type.isa<FunctionType>())
     return emitOpError("requires '" + getTypeAttrName() +
                        "' attribute of function type");
+  return success();
+}
+
+static LogicalResult verifyAttributions(Operation *op,
+                                        ArrayRef<BlockArgumentPtr> attributions,
+                                        unsigned memorySpace) {
+  for (ValuePtr v : attributions) {
+    auto type = v->getType().dyn_cast<MemRefType>();
+    if (!type)
+      return op->emitOpError() << "expected memref type in attribution";
+
+    if (type.getMemorySpace() != memorySpace) {
+      return op->emitOpError()
+             << "expected memory space " << memorySpace << " in attribution";
+    }
+  }
   return success();
 }
 
@@ -745,6 +815,12 @@ LogicalResult GPUFuncOp::verifyBody() {
                            << " to be of type " << funcArgTypes[i] << ", got "
                            << blockArgType;
   }
+
+  if (failed(verifyAttributions(getOperation(), getWorkgroupAttributions(),
+                                GPUDialect::getWorkgroupAddressSpace())) ||
+      failed(verifyAttributions(getOperation(), getPrivateAttributions(),
+                                GPUDialect::getPrivateAddressSpace())))
+    return failure();
 
   return success();
 }

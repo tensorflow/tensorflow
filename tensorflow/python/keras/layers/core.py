@@ -592,8 +592,7 @@ class Flatten(Layer):
     if (self.data_format == 'channels_first'
         and K.ndim(inputs) is not None and K.ndim(inputs) > 1):
       permutation = [0]
-      permutation.extend([i for i in
-                          range(2, K.ndim(inputs))])
+      permutation.extend(range(2, K.ndim(inputs)))
       permutation.append(1)
       inputs = array_ops.transpose(inputs, perm=permutation)
 
@@ -630,7 +629,7 @@ class Flatten(Layer):
       output_shape = tensor_shape.TensorShape([1])
     else:
       output_shape = [input_shape[0]]
-    if all(input_shape[1:]):
+    if np.all(input_shape[1:]):
       output_shape += [np.prod(input_shape[1:], dtype=int)]
     else:
       output_shape += [None]
@@ -858,7 +857,7 @@ class Lambda(Layer):
     untracked_new_vars = [v for v in created_variables
                           if v.experimental_ref() not in tracked_weights]
     if untracked_new_vars:
-      variable_str = '\n'.join(['  {}'.format(i) for i in untracked_new_vars])
+      variable_str = '\n'.join('  {}'.format(i) for i in untracked_new_vars)
       error_str = textwrap.dedent(
           '''
           The following Variables were created within a Lambda layer ({name})
@@ -875,7 +874,7 @@ class Lambda(Layer):
     untracked_used_vars = [v for v in accessed_variables
                            if v.experimental_ref() not in tracked_weights]
     if untracked_used_vars and not self._already_warned:
-      variable_str = '\n'.join(['  {}'.format(i) for i in untracked_used_vars])
+      variable_str = '\n'.join('  {}'.format(i) for i in untracked_used_vars)
       self._warn(textwrap.dedent(
           '''
           The following Variables were used a Lambda layer's call ({name}), but

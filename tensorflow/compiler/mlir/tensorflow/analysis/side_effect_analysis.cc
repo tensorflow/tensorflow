@@ -157,7 +157,7 @@ void ResourceAliasAnalysis::AnalyzeFunction(FuncOp func_op) {
                                 std::get<1>(operand_and_result));
       }
     } else if (auto replicate = llvm::dyn_cast<tf_device::ReplicateOp>(op)) {
-      // The nested block for RepliateOp is handled separately in side-effect
+      // The nested block for ReplicateOp is handled separately in side-effect
       // analysis. Inside that block, we can still treat its block arguments as
       // different resources.
       for (auto arg : replicate.GetBody().getArguments()) {
@@ -310,7 +310,21 @@ bool OpIsKnownToHaveNoSideEffect(Operation* op) {
   if (auto while_op = llvm::dyn_cast<TF::WhileOp>(op)) {
     return while_op.is_stateless();
   }
-  return false;
+
+  // Try to get the statefulness flag from the registry.
+  //
+  // TODO(yuanzx): Remove this after all ops are defined in the dialect.
+  if (op->getName().getDialect() !=
+      TF::TensorFlowDialect::getDialectNamespace()) {
+    return false;
+  }
+  StringRef op_name = op->getName().getStringRef();
+  // Drop the `tf.` prefix to query TF registry.
+  auto node_name =
+      op_name.drop_front(TensorFlowDialect::getDialectNamespace().size() + 1);
+  const tensorflow::OpRegistrationData* op_reg_data =
+      tensorflow::OpRegistry::Global()->LookUp(node_name.data());
+  return op_reg_data && !op_reg_data->op_def.is_stateful();
 }
 
 }  // namespace
@@ -399,7 +413,7 @@ void SideEffectAnalysis::AnalyzeRegion(
   // region, and tracking resource accesses in per_resource_access_info_.
 
   // Returns whether an access to `resource` can skip control edges from
-  // prevoius accesses to unknown resources, due to that earlier accesses to
+  // previous accesses to unknown resources, due to that earlier accesses to
   // `resource` already indirectly tracked previous accesses to uknown
   // resources. `read_only` specifies the type of access of the current op being
   // considered.

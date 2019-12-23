@@ -331,6 +331,9 @@ struct ScatterNdOptionsT;
 struct SelectV2Options;
 struct SelectV2OptionsT;
 
+struct DensifyOptions;
+struct DensifyOptionsT;
+
 struct OperatorCode;
 struct OperatorCodeT;
 
@@ -641,11 +644,12 @@ enum BuiltinOperator {
   BuiltinOperator_NON_MAX_SUPPRESSION_V5 = 121,
   BuiltinOperator_SCATTER_ND = 122,
   BuiltinOperator_SELECT_V2 = 123,
+  BuiltinOperator_DENSIFY = 124,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_SELECT_V2
+  BuiltinOperator_MAX = BuiltinOperator_DENSIFY
 };
 
-inline const BuiltinOperator (&EnumValuesBuiltinOperator())[124] {
+inline const BuiltinOperator (&EnumValuesBuiltinOperator())[125] {
   static const BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -770,7 +774,8 @@ inline const BuiltinOperator (&EnumValuesBuiltinOperator())[124] {
     BuiltinOperator_NON_MAX_SUPPRESSION_V4,
     BuiltinOperator_NON_MAX_SUPPRESSION_V5,
     BuiltinOperator_SCATTER_ND,
-    BuiltinOperator_SELECT_V2
+    BuiltinOperator_SELECT_V2,
+    BuiltinOperator_DENSIFY
   };
   return values;
 }
@@ -901,13 +906,14 @@ inline const char * const *EnumNamesBuiltinOperator() {
     "NON_MAX_SUPPRESSION_V5",
     "SCATTER_ND",
     "SELECT_V2",
+    "DENSIFY",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOperator(BuiltinOperator e) {
-  if (e < BuiltinOperator_ADD || e > BuiltinOperator_SELECT_V2) return "";
+  if (e < BuiltinOperator_ADD || e > BuiltinOperator_DENSIFY) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOperator()[index];
 }
@@ -1012,11 +1018,12 @@ enum BuiltinOptions {
   BuiltinOptions_NonMaxSuppressionV5Options = 96,
   BuiltinOptions_ScatterNdOptions = 97,
   BuiltinOptions_SelectV2Options = 98,
+  BuiltinOptions_DensifyOptions = 99,
   BuiltinOptions_MIN = BuiltinOptions_NONE,
-  BuiltinOptions_MAX = BuiltinOptions_SelectV2Options
+  BuiltinOptions_MAX = BuiltinOptions_DensifyOptions
 };
 
-inline const BuiltinOptions (&EnumValuesBuiltinOptions())[99] {
+inline const BuiltinOptions (&EnumValuesBuiltinOptions())[100] {
   static const BuiltinOptions values[] = {
     BuiltinOptions_NONE,
     BuiltinOptions_Conv2DOptions,
@@ -1116,7 +1123,8 @@ inline const BuiltinOptions (&EnumValuesBuiltinOptions())[99] {
     BuiltinOptions_NonMaxSuppressionV4Options,
     BuiltinOptions_NonMaxSuppressionV5Options,
     BuiltinOptions_ScatterNdOptions,
-    BuiltinOptions_SelectV2Options
+    BuiltinOptions_SelectV2Options,
+    BuiltinOptions_DensifyOptions
   };
   return values;
 }
@@ -1222,13 +1230,14 @@ inline const char * const *EnumNamesBuiltinOptions() {
     "NonMaxSuppressionV5Options",
     "ScatterNdOptions",
     "SelectV2Options",
+    "DensifyOptions",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOptions(BuiltinOptions e) {
-  if (e < BuiltinOptions_NONE || e > BuiltinOptions_SelectV2Options) return "";
+  if (e < BuiltinOptions_NONE || e > BuiltinOptions_DensifyOptions) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOptions()[index];
 }
@@ -1627,6 +1636,10 @@ template<> struct BuiltinOptionsTraits<ScatterNdOptions> {
 
 template<> struct BuiltinOptionsTraits<SelectV2Options> {
   static const BuiltinOptions enum_value = BuiltinOptions_SelectV2Options;
+};
+
+template<> struct BuiltinOptionsTraits<DensifyOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_DensifyOptions;
 };
 
 struct BuiltinOptionsUnion {
@@ -2444,6 +2457,14 @@ struct BuiltinOptionsUnion {
   const SelectV2OptionsT *AsSelectV2Options() const {
     return type == BuiltinOptions_SelectV2Options ?
       reinterpret_cast<const SelectV2OptionsT *>(value) : nullptr;
+  }
+  DensifyOptionsT *AsDensifyOptions() {
+    return type == BuiltinOptions_DensifyOptions ?
+      reinterpret_cast<DensifyOptionsT *>(value) : nullptr;
+  }
+  const DensifyOptionsT *AsDensifyOptions() const {
+    return type == BuiltinOptions_DensifyOptions ?
+      reinterpret_cast<const DensifyOptionsT *>(value) : nullptr;
   }
 };
 
@@ -8598,6 +8619,46 @@ inline flatbuffers::Offset<SelectV2Options> CreateSelectV2Options(
 
 flatbuffers::Offset<SelectV2Options> CreateSelectV2Options(flatbuffers::FlatBufferBuilder &_fbb, const SelectV2OptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct DensifyOptionsT : public flatbuffers::NativeTable {
+  typedef DensifyOptions TableType;
+  DensifyOptionsT() {
+  }
+};
+
+struct DensifyOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef DensifyOptionsT NativeTableType;
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           verifier.EndTable();
+  }
+  DensifyOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(DensifyOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<DensifyOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const DensifyOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct DensifyOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  explicit DensifyOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  DensifyOptionsBuilder &operator=(const DensifyOptionsBuilder &);
+  flatbuffers::Offset<DensifyOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<DensifyOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<DensifyOptions> CreateDensifyOptions(
+    flatbuffers::FlatBufferBuilder &_fbb) {
+  DensifyOptionsBuilder builder_(_fbb);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<DensifyOptions> CreateDensifyOptions(flatbuffers::FlatBufferBuilder &_fbb, const DensifyOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct OperatorCodeT : public flatbuffers::NativeTable {
   typedef OperatorCode TableType;
   BuiltinOperator builtin_code;
@@ -9028,6 +9089,9 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const SelectV2Options *builtin_options_as_SelectV2Options() const {
     return builtin_options_type() == BuiltinOptions_SelectV2Options ? static_cast<const SelectV2Options *>(builtin_options()) : nullptr;
   }
+  const DensifyOptions *builtin_options_as_DensifyOptions() const {
+    return builtin_options_type() == BuiltinOptions_DensifyOptions ? static_cast<const DensifyOptions *>(builtin_options()) : nullptr;
+  }
   const flatbuffers::Vector<uint8_t> *custom_options() const {
     return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_CUSTOM_OPTIONS);
   }
@@ -9454,6 +9518,10 @@ template<> inline const ScatterNdOptions *Operator::builtin_options_as<ScatterNd
 
 template<> inline const SelectV2Options *Operator::builtin_options_as<SelectV2Options>() const {
   return builtin_options_as_SelectV2Options();
+}
+
+template<> inline const DensifyOptions *Operator::builtin_options_as<DensifyOptions>() const {
+  return builtin_options_as_DensifyOptions();
 }
 
 struct OperatorBuilder {
@@ -12727,6 +12795,29 @@ inline flatbuffers::Offset<SelectV2Options> CreateSelectV2Options(flatbuffers::F
       _fbb);
 }
 
+inline DensifyOptionsT *DensifyOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new DensifyOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void DensifyOptions::UnPackTo(DensifyOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+}
+
+inline flatbuffers::Offset<DensifyOptions> DensifyOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const DensifyOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateDensifyOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<DensifyOptions> CreateDensifyOptions(flatbuffers::FlatBufferBuilder &_fbb, const DensifyOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const DensifyOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  return tflite::CreateDensifyOptions(
+      _fbb);
+}
+
 inline OperatorCodeT *OperatorCode::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new OperatorCodeT();
   UnPackTo(_o, _resolver);
@@ -13412,6 +13503,10 @@ inline bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier, const void *ob
       auto ptr = reinterpret_cast<const SelectV2Options *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case BuiltinOptions_DensifyOptions: {
+      auto ptr = reinterpret_cast<const DensifyOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     default: return true;
   }
 }
@@ -13822,6 +13917,10 @@ inline void *BuiltinOptionsUnion::UnPack(const void *obj, BuiltinOptions type, c
       auto ptr = reinterpret_cast<const SelectV2Options *>(obj);
       return ptr->UnPack(resolver);
     }
+    case BuiltinOptions_DensifyOptions: {
+      auto ptr = reinterpret_cast<const DensifyOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
     default: return nullptr;
   }
 }
@@ -14220,6 +14319,10 @@ inline flatbuffers::Offset<void> BuiltinOptionsUnion::Pack(flatbuffers::FlatBuff
       auto ptr = reinterpret_cast<const SelectV2OptionsT *>(value);
       return CreateSelectV2Options(_fbb, ptr, _rehasher).Union();
     }
+    case BuiltinOptions_DensifyOptions: {
+      auto ptr = reinterpret_cast<const DensifyOptionsT *>(value);
+      return CreateDensifyOptions(_fbb, ptr, _rehasher).Union();
+    }
     default: return 0;
   }
 }
@@ -14616,6 +14719,10 @@ inline BuiltinOptionsUnion::BuiltinOptionsUnion(const BuiltinOptionsUnion &u) FL
     }
     case BuiltinOptions_SelectV2Options: {
       value = new SelectV2OptionsT(*reinterpret_cast<SelectV2OptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_DensifyOptions: {
+      value = new DensifyOptionsT(*reinterpret_cast<DensifyOptionsT *>(u.value));
       break;
     }
     default:
@@ -15112,6 +15219,11 @@ inline void BuiltinOptionsUnion::Reset() {
     }
     case BuiltinOptions_SelectV2Options: {
       auto ptr = reinterpret_cast<SelectV2OptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_DensifyOptions: {
+      auto ptr = reinterpret_cast<DensifyOptionsT *>(value);
       delete ptr;
       break;
     }

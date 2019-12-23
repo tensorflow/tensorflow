@@ -127,7 +127,7 @@ bool DominanceInfo::properlyDominates(Operation *a, Operation *b) {
 }
 
 /// Return true if value A properly dominates operation B.
-bool DominanceInfo::properlyDominates(Value *a, Operation *b) {
+bool DominanceInfo::properlyDominates(ValuePtr a, Operation *b) {
   if (auto *aOp = a->getDefiningOp()) {
     // The values defined by an operation do *not* dominate any nested
     // operations.

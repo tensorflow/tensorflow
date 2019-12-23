@@ -105,7 +105,7 @@ array-type ::= `!spv.array<` integer-literal `x` element-type `>`
 
 For example,
 
-```{.mlir}
+```mlir
 !spv.array<4 x i32>
 !spv.array<16 x vector<4 x f32>>
 ```
@@ -154,7 +154,7 @@ pointer-type ::= `!spv.ptr<` element-type `,` storage-class `>`
 
 For example,
 
-```{.mlir}
+```mlir
 !spv.ptr<i32, Function>
 !spv.ptr<vector<4 x f32>, Uniform>
 ```
@@ -169,7 +169,7 @@ runtime-array-type ::= `!spv.rtarray<` element-type `>`
 
 For example,
 
-```{.mlir}
+```mlir
 !spv.rtarray<i32>
 !spv.rtarray<vector<4 x f32>>
 ```

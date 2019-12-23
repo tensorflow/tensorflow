@@ -1125,7 +1125,7 @@ def partitioned_call(args,
   if executor_type is None:
     executor_type = ""
 
-  if executing_eagerly or len(tout):
+  if executing_eagerly:
     if f.stateful_ops:
       outputs = gen_functional_ops.stateful_partitioned_call(
           args=args,
@@ -1158,23 +1158,24 @@ def partitioned_call(args,
   # When running in graph mode, the graph and function graphs are optimized
   # (i.e. run through grappler) per the session options, so we can disable any
   # eager-specific rewriting.
-  config_proto = attr_value_pb2.AttrValue(
-      s=function_utils.get_disabled_rewriter_config())
+  config_proto = attr_value_pb2.AttrValue(s=config)
 
   graph = ops.get_default_graph()
   f.add_to_graph(graph)
   op_name = "StatefulPartitionedCall" if f.stateful_ops else "PartitionedCall"
-  op = graph.create_op(
-      op_name,
-      args,
-      tout,
-      name="PartitionedFunctionCall",
-      attrs={
-          "Tin": tin_attr,
-          "Tout": tout_attr,
-          "f": func_attr,
-          "config_proto": config_proto,
-          "executor_type": executor_type_attr,
-      })
+
+  # Propagate the attribute indicating the need to compile from function to the
+  # call itself.
+  xla_compile_attr = "_XlaMustCompile"
+  op_attrs = {
+      "Tin": tin_attr,
+      "Tout": tout_attr,
+      "f": func_attr,
+      "config_proto": config_proto,
+      "executor_type": executor_type_attr,
+  }
+  if xla_compile_attr in f.definition.attr:
+    op_attrs[xla_compile_attr] = f.definition.attr[xla_compile_attr]
+  op = graph.create_op(op_name, args, tout, name=op_name, attrs=op_attrs)
   outputs = op.outputs
   return outputs if outputs else op

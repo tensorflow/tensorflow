@@ -418,16 +418,14 @@ TfLiteStatus MicroAllocator::InitializeRuntimeTensor(
   size_t type_size;
   TF_LITE_ENSURE_STATUS(BytesRequiredForTensor(
       flatbuffer_tensor, &result->bytes, &type_size, error_reporter));
-  // Copy the shape of the tensor from the serialized data into the runtime
-  // form. We have to allocate memory for this.
-  result->dims =
-      reinterpret_cast<TfLiteIntArray*>(memory_allocator_.AllocateFromTail(
-          TfLiteIntArrayGetSizeInBytes(flatbuffer_tensor.shape()->Length()),
-          alignof(TfLiteIntArray)));
-  result->dims->size = flatbuffer_tensor.shape()->Length();
-  for (size_t n = 0; n < flatbuffer_tensor.shape()->Length(); ++n) {
-    result->dims->data[n] = flatbuffer_tensor.shape()->Get(n);
-  }
+
+  // TFLM doesn't allow reshaping the tensor which requires dynamic memory
+  // allocation so it is safe to drop the const qualifier. In the future, if we
+  // really want to update the tensor shape, we can always pass in a new
+  // TfLiteIntArray - especially we have to do so if the dimension is changed.
+  result->dims = const_cast<TfLiteIntArray*>(
+      reinterpret_cast<const TfLiteIntArray*>(flatbuffer_tensor.shape()));
+
   // Copy the quantization information from the serialized data.
   const auto* src_quantization = flatbuffer_tensor.quantization();
   if (src_quantization && src_quantization->scale() &&

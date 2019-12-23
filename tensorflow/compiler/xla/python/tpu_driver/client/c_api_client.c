@@ -13,15 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+// Before you start, make sure c_api.so, c_api.h and and c_api_client.c are in
+// the same working directory.
+//
 // To compile: gcc -o c_api_client c_api_client.c -ldl
-// To run, make sure c_api.so and c_api_client in the same directory, and then
-//   sudo ./c_api_client
+// To run: sudo ./c_api_client
 
 #include <dlfcn.h>
 #include <stdio.h>
 #include <stdlib.h>
 
-int main(int argc, char** argv) {
+#include "c_api.h"
+
+void* LoadAndInitializeDriver(const char* shared_lib,
+                              struct TpuDriverFn* driver_fn) {
   void* handle;
   handle = dlopen("./c_api.so", RTLD_NOW);
   if (!handle) {
@@ -29,21 +34,32 @@ int main(int argc, char** argv) {
     exit(EXIT_FAILURE);
   }
 
-  const char* (*TpuDriver_Version)(void);
-  void (*TpuDriver_Initialize)(void);
-  void (*TpuDriver_Open)(const char* worker);
+  PrototypeTpuDriver_Initialize* initialize_fn;
+  *(void**)(&initialize_fn) = dlsym(handle, "TpuDriver_Initialize");
+  initialize_fn(driver_fn);
 
-  fprintf(stdout, "------ Going to Find Out Version ------\n");
-  *(void**)(&TpuDriver_Version) = dlsym(handle, "TpuDriver_Version");
-  fprintf(stdout, "TPU Driver Version: %s\n", TpuDriver_Version());
+  return handle;
+}
 
-  fprintf(stdout, "------ Going to Initialize ------\n");
-  *(void**)(&TpuDriver_Initialize) = dlsym(handle, "TpuDriver_Initialize");
-  TpuDriver_Initialize();
+int main(int argc, char** argv) {
+  struct TpuDriverFn driver_fn;
+  void* handle = LoadAndInitializeDriver("./c_api.so", &driver_fn);
+
+  fprintf(stdout, "------ Going to Query Version ------\n");
+  fprintf(stdout, "TPU Driver Version: %s\n", driver_fn.TpuDriver_Version());
 
   fprintf(stdout, "------ Going to Open a TPU Driver ------\n");
-  *(void**)(&TpuDriver_Open) = dlsym(handle, "TpuDriver_Open");
-  TpuDriver_Open("local://");
+  struct TpuDriver* driver = driver_fn.TpuDriver_Open("local://");
+
+  fprintf(stdout, "------ Going to Allocate a TPU Buffer ------\n");
+  struct TpuBufferHandle* buffer_handle =
+      driver_fn.TpuDriver_Allocate(driver, 0, 1, 32 * 1024 * 1024, 0, NULL);
+
+  fprintf(stdout, "------ Going to Deallocate a TPU Buffer ------\n");
+  struct TpuEvent* tpu_event =
+      driver_fn.TpuDriver_Deallocate(driver, buffer_handle, 0, NULL);
+
+  driver_fn.TpuDriver_FreeEvent(tpu_event);
 
   dlclose(handle);
   exit(EXIT_SUCCESS);

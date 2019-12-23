@@ -229,9 +229,9 @@ getOrInsertBuiltinVariable(spirv::ModuleOp &moduleOp, Location loc,
 
 /// Gets the global variable associated with a builtin and add
 /// it if it doesn't exist.
-Value *mlir::spirv::getBuiltinVariableValue(Operation *op,
-                                            spirv::BuiltIn builtin,
-                                            OpBuilder &builder) {
+ValuePtr mlir::spirv::getBuiltinVariableValue(Operation *op,
+                                              spirv::BuiltIn builtin,
+                                              OpBuilder &builder) {
   auto moduleOp = op->getParentOfType<spirv::ModuleOp>();
   if (!moduleOp) {
     op->emitError("expected operation to be within a SPIR-V module");
@@ -239,52 +239,15 @@ Value *mlir::spirv::getBuiltinVariableValue(Operation *op,
   }
   spirv::GlobalVariableOp varOp =
       getOrInsertBuiltinVariable(moduleOp, op->getLoc(), builtin, builder);
-  Value *ptr = builder.create<spirv::AddressOfOp>(op->getLoc(), varOp);
+  ValuePtr ptr = builder.create<spirv::AddressOfOp>(op->getLoc(), varOp);
   return builder.create<spirv::LoadOp>(op->getLoc(), ptr,
                                        /*memory_access =*/nullptr,
                                        /*alignment =*/nullptr);
 }
 
 //===----------------------------------------------------------------------===//
-// Entry Function signature Conversion
+// Set ABI attributes for lowering entry functions.
 //===----------------------------------------------------------------------===//
-
-FuncOp mlir::spirv::lowerAsEntryFunction(
-    FuncOp funcOp, SPIRVTypeConverter &typeConverter,
-    ConversionPatternRewriter &rewriter,
-    spirv::EntryPointABIAttr entryPointInfo,
-    ArrayRef<spirv::InterfaceVarABIAttr> argABIInfo) {
-  auto fnType = funcOp.getType();
-  if (fnType.getNumResults()) {
-    funcOp.emitError("SPIR-V lowering only supports entry functions"
-                     "with no return values right now");
-    return nullptr;
-  }
-  if (fnType.getNumInputs() != argABIInfo.size()) {
-    funcOp.emitError(
-        "lowering as entry functions requires ABI info for all arguments");
-    return nullptr;
-  }
-  // For entry functions need to make the signature void(void). Compute the
-  // replacement value for all arguments and replace all uses.
-  TypeConverter::SignatureConversion signatureConverter(fnType.getNumInputs());
-  {
-    for (auto argType : enumerate(funcOp.getType().getInputs())) {
-      auto convertedType = typeConverter.convertType(argType.value());
-      signatureConverter.addInputs(argType.index(), convertedType);
-    }
-  }
-  auto newFuncOp = rewriter.cloneWithoutRegions(funcOp);
-  rewriter.inlineRegionBefore(funcOp.getBody(), newFuncOp.getBody(),
-                              newFuncOp.end());
-  newFuncOp.setType(rewriter.getFunctionType(
-      signatureConverter.getConvertedTypes(), llvm::None));
-  rewriter.applySignatureConversion(&newFuncOp.getBody(), signatureConverter);
-  rewriter.eraseOp(funcOp);
-
-  spirv::setABIAttrs(newFuncOp, entryPointInfo, argABIInfo);
-  return newFuncOp;
-}
 
 LogicalResult
 mlir::spirv::setABIAttrs(FuncOp funcOp, spirv::EntryPointABIAttr entryPointInfo,

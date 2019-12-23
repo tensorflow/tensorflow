@@ -80,6 +80,10 @@ download_and_extract() {
   local tempfile=${tempdir}/temp_file
   local curl_retries=3
 
+  command -v curl >/dev/null 2>&1 || {
+    echo >&2 "The required 'curl' tool isn't installed. Try 'apt-get install curl'."; exit 1;
+  }
+  
   echo "downloading ${url}" >&2
   mkdir -p "${dir}"
   # We've been seeing occasional 56 errors from valid URLs, so set up a retry

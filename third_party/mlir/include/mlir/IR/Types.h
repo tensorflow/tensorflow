@@ -121,11 +121,8 @@ public:
   /* implicit */ Type(const ImplType *impl)
       : impl(const_cast<ImplType *>(impl)) {}
 
-  Type(const Type &other) : impl(other.impl) {}
-  Type &operator=(Type other) {
-    impl = other.impl;
-    return *this;
-  }
+  Type(const Type &other) = default;
+  Type &operator=(const Type &other) = default;
 
   bool operator==(Type other) const { return impl == other.impl; }
   bool operator!=(Type other) const { return !(*this == other); }

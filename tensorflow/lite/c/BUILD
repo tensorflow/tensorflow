@@ -136,6 +136,7 @@ cc_library(
     ],
     build_for_embedded = True,
     visibility = [
+        "//speech/micro/nn:__pkg__",
         "//tensorflow/lite:__subpackages__",
     ],
     alwayslink = 1,

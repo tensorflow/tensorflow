@@ -39,6 +39,98 @@ using namespace mlir;
 using vector::TransferReadOp;
 using vector::TransferWriteOp;
 
+/// Analyzes the `transfer` to find an access dimension along the fastest remote
+/// MemRef dimension. If such a dimension with coalescing properties is found,
+/// `pivs` and `vectorView` are swapped so that the invocation of
+/// LoopNestBuilder captures it in the innermost loop.
+template <typename TransferOpTy>
+static void coalesceCopy(TransferOpTy transfer,
+                         SmallVectorImpl<edsc::ValueHandle *> *pivs,
+                         edsc::VectorView *vectorView) {
+  // rank of the remote memory access, coalescing behavior occurs on the
+  // innermost memory dimension.
+  auto remoteRank = transfer.getMemRefType().getRank();
+  // Iterate over the results expressions of the permutation map to determine
+  // the loop order for creating pointwise copies between remote and local
+  // memories.
+  int coalescedIdx = -1;
+  auto exprs = transfer.permutation_map().getResults();
+  for (auto en : llvm::enumerate(exprs)) {
+    auto dim = en.value().template dyn_cast<AffineDimExpr>();
+    if (!dim) {
+      continue;
+    }
+    auto memRefDim = dim.getPosition();
+    if (memRefDim == remoteRank - 1) {
+      // memRefDim has coalescing properties, it should be swapped in the last
+      // position.
+      assert(coalescedIdx == -1 && "Unexpected > 1 coalesced indices");
+      coalescedIdx = en.index();
+    }
+  }
+  if (coalescedIdx >= 0) {
+    std::swap(pivs->back(), (*pivs)[coalescedIdx]);
+    vectorView->swapRanges(pivs->size() - 1, coalescedIdx);
+  }
+}
+
+/// Emits remote memory accesses that are clipped to the boundaries of the
+/// MemRef.
+template <typename TransferOpTy>
+static SmallVector<edsc::ValueHandle, 8> clip(TransferOpTy transfer,
+                                              edsc::MemRefView &view,
+                                              ArrayRef<edsc::IndexHandle> ivs) {
+  using namespace mlir::edsc;
+  using namespace edsc::op;
+  using edsc::intrinsics::select;
+
+  IndexHandle zero(index_t(0)), one(index_t(1));
+  SmallVector<edsc::ValueHandle, 8> memRefAccess(transfer.indices());
+  SmallVector<edsc::ValueHandle, 8> clippedScalarAccessExprs(
+      memRefAccess.size(), edsc::IndexHandle());
+
+  // Indices accessing to remote memory are clipped and their expressions are
+  // returned in clippedScalarAccessExprs.
+  for (unsigned memRefDim = 0; memRefDim < clippedScalarAccessExprs.size();
+       ++memRefDim) {
+    // Linear search on a small number of entries.
+    int loopIndex = -1;
+    auto exprs = transfer.permutation_map().getResults();
+    for (auto en : llvm::enumerate(exprs)) {
+      auto expr = en.value();
+      auto dim = expr.template dyn_cast<AffineDimExpr>();
+      // Sanity check.
+      assert(
+          (dim || expr.template cast<AffineConstantExpr>().getValue() == 0) &&
+          "Expected dim or 0 in permutationMap");
+      if (dim && memRefDim == dim.getPosition()) {
+        loopIndex = en.index();
+        break;
+      }
+    }
+
+    // We cannot distinguish atm between unrolled dimensions that implement
+    // the "always full" tile abstraction and need clipping from the other
+    // ones. So we conservatively clip everything.
+    auto N = view.ub(memRefDim);
+    auto i = memRefAccess[memRefDim];
+    if (loopIndex < 0) {
+      auto N_minus_1 = N - one;
+      auto select_1 = select(i < N, i, N_minus_1);
+      clippedScalarAccessExprs[memRefDim] = select(i < zero, zero, select_1);
+    } else {
+      auto ii = ivs[loopIndex];
+      auto i_plus_ii = i + ii;
+      auto N_minus_1 = N - one;
+      auto select_1 = select(i_plus_ii < N, i_plus_ii, N_minus_1);
+      clippedScalarAccessExprs[memRefDim] =
+          select(i_plus_ii < zero, zero, select_1);
+    }
+  }
+
+  return clippedScalarAccessExprs;
+}
+
 namespace {
 
 using vector_type_cast = edsc::intrinsics::ValueBuilder<vector::TypeCastOp>;
@@ -116,98 +208,6 @@ struct VectorTransferRewriter : public RewritePattern {
   PatternMatchResult matchAndRewrite(Operation *op,
                                      PatternRewriter &rewriter) const override;
 };
-
-/// Analyzes the `transfer` to find an access dimension along the fastest remote
-/// MemRef dimension. If such a dimension with coalescing properties is found,
-/// `pivs` and `vectorView` are swapped so that the invocation of
-/// LoopNestBuilder captures it in the innermost loop.
-template <typename TransferOpTy>
-void coalesceCopy(TransferOpTy transfer,
-                  SmallVectorImpl<edsc::ValueHandle *> *pivs,
-                  edsc::VectorView *vectorView) {
-  // rank of the remote memory access, coalescing behavior occurs on the
-  // innermost memory dimension.
-  auto remoteRank = transfer.getMemRefType().getRank();
-  // Iterate over the results expressions of the permutation map to determine
-  // the loop order for creating pointwise copies between remote and local
-  // memories.
-  int coalescedIdx = -1;
-  auto exprs = transfer.permutation_map().getResults();
-  for (auto en : llvm::enumerate(exprs)) {
-    auto dim = en.value().template dyn_cast<AffineDimExpr>();
-    if (!dim) {
-      continue;
-    }
-    auto memRefDim = dim.getPosition();
-    if (memRefDim == remoteRank - 1) {
-      // memRefDim has coalescing properties, it should be swapped in the last
-      // position.
-      assert(coalescedIdx == -1 && "Unexpected > 1 coalesced indices");
-      coalescedIdx = en.index();
-    }
-  }
-  if (coalescedIdx >= 0) {
-    std::swap(pivs->back(), (*pivs)[coalescedIdx]);
-    vectorView->swapRanges(pivs->size() - 1, coalescedIdx);
-  }
-}
-
-/// Emits remote memory accesses that are clipped to the boundaries of the
-/// MemRef.
-template <typename TransferOpTy>
-llvm::SmallVector<edsc::ValueHandle, 8> clip(TransferOpTy transfer,
-                                             edsc::MemRefView &view,
-                                             ArrayRef<edsc::IndexHandle> ivs) {
-  using namespace mlir::edsc;
-  using namespace edsc::op;
-  using edsc::intrinsics::select;
-
-  IndexHandle zero(index_t(0)), one(index_t(1));
-  llvm::SmallVector<edsc::ValueHandle, 8> memRefAccess(transfer.indices());
-  llvm::SmallVector<edsc::ValueHandle, 8> clippedScalarAccessExprs(
-      memRefAccess.size(), edsc::IndexHandle());
-
-  // Indices accessing to remote memory are clipped and their expressions are
-  // returned in clippedScalarAccessExprs.
-  for (unsigned memRefDim = 0; memRefDim < clippedScalarAccessExprs.size();
-       ++memRefDim) {
-    // Linear search on a small number of entries.
-    int loopIndex = -1;
-    auto exprs = transfer.permutation_map().getResults();
-    for (auto en : llvm::enumerate(exprs)) {
-      auto expr = en.value();
-      auto dim = expr.template dyn_cast<AffineDimExpr>();
-      // Sanity check.
-      assert(
-          (dim || expr.template cast<AffineConstantExpr>().getValue() == 0) &&
-          "Expected dim or 0 in permutationMap");
-      if (dim && memRefDim == dim.getPosition()) {
-        loopIndex = en.index();
-        break;
-      }
-    }
-
-    // We cannot distinguish atm between unrolled dimensions that implement
-    // the "always full" tile abstraction and need clipping from the other
-    // ones. So we conservatively clip everything.
-    auto N = view.ub(memRefDim);
-    auto i = memRefAccess[memRefDim];
-    if (loopIndex < 0) {
-      auto N_minus_1 = N - one;
-      auto select_1 = select(i < N, i, N_minus_1);
-      clippedScalarAccessExprs[memRefDim] = select(i < zero, zero, select_1);
-    } else {
-      auto ii = ivs[loopIndex];
-      auto i_plus_ii = i + ii;
-      auto N_minus_1 = N - one;
-      auto select_1 = select(i_plus_ii < N, i_plus_ii, N_minus_1);
-      clippedScalarAccessExprs[memRefDim] =
-          select(i_plus_ii < zero, zero, select_1);
-    }
-  }
-
-  return clippedScalarAccessExprs;
-}
 
 /// Lowers TransferReadOp into a combination of:
 ///   1. local memory allocation;
@@ -357,6 +357,7 @@ PatternMatchResult VectorTransferRewriter<TransferWriteOp>::matchAndRewrite(
   rewriter.eraseOp(op);
   return matchSuccess();
 }
+
 } // namespace
 
 void mlir::populateVectorToAffineLoopsConversionPatterns(

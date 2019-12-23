@@ -127,7 +127,10 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
     // If there is ever an error associated with a group key, we store the error
     // status and invoke all waiting and future callbacks with this error
     // status.
-    if (gr->status.ok() && !gr->device_set.empty()) {
+    VLOG(2) << "gr device_type=" << gr->group.device_type
+            << " cp device_type=" << cp->group.device_type
+            << " current device=" << device;
+    if (gr->status.ok()) {
       // Check for consistency with existing GroupRec.
       if (cp->group.device_type != gr->group.device_type) {
         gr->status = errors::Internal(

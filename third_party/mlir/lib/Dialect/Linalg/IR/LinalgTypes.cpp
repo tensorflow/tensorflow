@@ -42,7 +42,7 @@ mlir::linalg::LinalgDialect::LinalgDialect(MLIRContext *context)
       >();
   addOperations<
 #define GET_OP_LIST
-#include "mlir/Dialect/Linalg/IR/LinalgLibraryOps.cpp.inc"
+#include "mlir/Dialect/Linalg/IR/LinalgStructuredOps.cpp.inc"
       >();
 }
 Type mlir::linalg::LinalgDialect::parseType(DialectAsmParser &parser) const {

@@ -15,6 +15,7 @@ py_library(
     srcs = [
         "__init__.py",
         "densenet.py",
+        "efficientnet.py",
         "imagenet_utils.py",
         "inception_resnet_v2.py",
         "inception_v3.py",

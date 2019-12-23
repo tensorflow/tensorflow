@@ -138,7 +138,7 @@ LogicalResult OperationVerifier::verifyRegion(Region &region) {
 }
 
 LogicalResult OperationVerifier::verifyBlock(Block &block) {
-  for (auto *arg : block.getArguments())
+  for (auto arg : block.getArguments())
     if (arg->getOwner() != &block)
       return emitError(block, "block argument not owned by block");
 
@@ -175,7 +175,7 @@ LogicalResult OperationVerifier::verifyBlock(Block &block) {
 
 LogicalResult OperationVerifier::verifyOperation(Operation &op) {
   // Check that operands are non-nil and structurally ok.
-  for (auto *operand : op.getOperands())
+  for (auto operand : op.getOperands())
     if (!operand)
       return op.emitError("null operand found");
 
@@ -244,7 +244,7 @@ LogicalResult OperationVerifier::verifyDominance(Operation &op) {
   // Check that operands properly dominate this use.
   for (unsigned operandNo = 0, e = op.getNumOperands(); operandNo != e;
        ++operandNo) {
-    auto *operand = op.getOperand(operandNo);
+    auto operand = op.getOperand(operandNo);
     if (domInfo->properlyDominates(operand, &op))
       continue;
 

@@ -41,6 +41,20 @@ struct TestOpAsmInterface : public OpAsmDialectInterface {
     if (auto asmOp = dyn_cast<AsmDialectInterfaceOp>(op))
       setNameFn(asmOp, "result");
   }
+
+  void getAsmBlockArgumentNames(Block *block,
+                                OpAsmSetValueNameFn setNameFn) const final {
+    auto op = block->getParentOp();
+    auto arrayAttr = op->getAttrOfType<ArrayAttr>("arg_names");
+    if (!arrayAttr)
+      return;
+    auto args = block->getArguments();
+    auto e = std::min(arrayAttr.size(), args.size());
+    for (unsigned i = 0; i < e; ++i) {
+      if (auto strAttr = arrayAttr.getValue()[i].dyn_cast<StringAttr>())
+        setNameFn(args[i], strAttr.getValue());
+    }
+  }
 };
 
 struct TestOpFolderDialectInterface : public OpFolderDialectInterface {
@@ -86,7 +100,7 @@ struct TestInlinerInterface : public DialectInlinerInterface {
   /// Handle the given inlined terminator by replacing it with a new operation
   /// as necessary.
   void handleTerminator(Operation *op,
-                        ArrayRef<Value *> valuesToRepl) const final {
+                        ArrayRef<ValuePtr> valuesToRepl) const final {
     // Only handle "test.return" here.
     auto returnOp = dyn_cast<TestReturnOp>(op);
     if (!returnOp)
@@ -103,7 +117,7 @@ struct TestInlinerInterface : public DialectInlinerInterface {
   /// operation that takes 'input' as the only operand, and produces a single
   /// result of 'resultType'. If a conversion can not be generated, nullptr
   /// should be returned.
-  Operation *materializeCallConversion(OpBuilder &builder, Value *input,
+  Operation *materializeCallConversion(OpBuilder &builder, ValuePtr input,
                                        Type resultType,
                                        Location conversionLoc) const final {
     // Only allow conversion for i16/i32 types.
@@ -217,7 +231,7 @@ static ParseResult parseWrappingRegionOp(OpAsmParser &parser,
 
   // Create a return terminator in the inner region, pass as operand to the
   // terminator the returned values from the wrapped operation.
-  SmallVector<Value *, 8> return_operands(wrapped_op->getResults());
+  SmallVector<ValuePtr, 8> return_operands(wrapped_op->getResults());
   OpBuilder builder(parser.getBuilder().getContext());
   builder.setInsertionPointToEnd(&block);
   builder.create<TestReturnOp>(wrapped_op->getLoc(), return_operands);
@@ -283,7 +297,7 @@ OpFoldResult TestOpWithRegionFold::fold(ArrayRef<Attribute> operands) {
 
 LogicalResult TestOpWithVariadicResultsAndFolder::fold(
     ArrayRef<Attribute> operands, SmallVectorImpl<OpFoldResult> &results) {
-  for (Value *input : this->operands()) {
+  for (ValuePtr input : this->operands()) {
     results.push_back(input);
   }
   return success();

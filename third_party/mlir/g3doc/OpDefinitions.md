@@ -243,19 +243,21 @@ like `"0.5f"`, and an integer array default value should be specified as like
 `Confined` is provided as a general mechanism to help modelling further
 constraints on attributes beyond the ones brought by value types. You can use
 `Confined` to compose complex constraints out of more primitive ones. For
-example, a 32-bit integer attribute whose minimal value must be 10 can be
+example, a 32-bit integer attribute whose minimum value must be 10 can be
 expressed as `Confined<I32Attr, [IntMinValue<10>]>`.
 
 Right now, the following primitive constraints are supported:
 
-* `IntMinValue<N>`: Specifying an integer attribute to be greater than or equal
-  to `N`
-* `ArrayMinCount<N>`: Specifying an array attribute to have at least `N`
-  elements
-* `IntArrayNthElemEq<I, N>`: Specifying an integer array attribute's `I`-th
-  element to be equal to `N`
-* `IntArrayNthElemMinValue<I, N>`: Specifying an integer array attribute's
-  `I`-th element to be greater than or equal to `N`
+*   `IntMinValue<N>`: Specifying an integer attribute to be greater than or
+    equal to `N`
+*   `IntMaxValue<N>`: Specifying an integer attribute to be less than or equal
+    to `N`
+*   `ArrayMinCount<N>`: Specifying an array attribute to have at least `N`
+    elements
+*   `IntArrayNthElemEq<I, N>`: Specifying an integer array attribute's `I`-th
+    element to be equal to `N`
+*   `IntArrayNthElemMinValue<I, N>`: Specifying an integer array attribute's
+    `I`-th element to be greater than or equal to `N`
 
 TODO: Design and implement more primitive constraints
 
@@ -330,6 +332,13 @@ An `InterfaceMethod` is comprised of the following components:
         to the type of the derived operation currently being operated on.
     -   In non-static methods, a variable 'ConcreteOp op' is defined and may be
         used to refer to an instance of the derived operation.
+*   DefaultImplementation (Optional)
+    -   An optional explicit default implementation of the interface method.
+    -   This method is placed within the `Trait` class that is attached to the
+        operation. As such, this method has the same characteristics as any
+        other [`Trait`](Traits.md) method.
+    -   `ConcreteOp` is an implicitly defined typename that can be used to refer
+        to the type of the derived operation currently being operated on.
 
 ODS also allows generating the declarations for the `InterfaceMethod` of the op
 if one specifies the interface with `DeclareOpInterfaceMethods` (see example
@@ -351,7 +360,7 @@ def MyInterface : OpInterface<"MyInterface"> {
 
     // A new non-static method accepting an input argument.
     InterfaceMethod<"/*insert doc here*/",
-      "Value *", "bar", (ins "unsigned":$i)
+      "ValuePtr ", "bar", (ins "unsigned":$i)
     >,
 
     // Query a static property of the derived operation.
@@ -370,6 +379,14 @@ def MyInterface : OpInterface<"MyInterface"> {
     // Note: `op` corresponds to the derived operation variable.
     InterfaceMethod<"/*insert doc here*/",
       "unsigned", "getNumInputsAndOutputs", (ins), [{
+        return op.getNumInputs() + op.getNumOutputs();
+    }]>,
+
+    // Provide only a default definition of the method.
+    // Note: `ConcreteOp` corresponds to the derived operation typename.
+    InterfaceMethod<"/*insert doc here*/",
+      "unsigned", "getNumInputsAndOutputs", (ins), /*methodBody=*/[{}], [{
+        ConcreteOp op = cast<ConcreteOp>(getOperation());
         return op.getNumInputs() + op.getNumOutputs();
     }]>,
   ];
@@ -421,7 +438,7 @@ static void build(Builder *tblgen_builder, OperationState &tblgen_state,
 // for attributes are of mlir::Attribute types.
 static void build(Builder *tblgen_builder, OperationState &tblgen_state,
                   Type i32_result, Type f32_result, ...,
-                  Value *i32_operand, Value *f32_operand, ...,
+                  ValuePtr i32_operand, ValuePtr f32_operand, ...,
                   IntegerAttr i32_attr, FloatAttr f32_attr, ...);
 
 // Each result-type/operand/attribute has a separate parameter. The parameters
@@ -430,13 +447,13 @@ static void build(Builder *tblgen_builder, OperationState &tblgen_state,
 // explanation for more details.)
 static void build(Builder *tblgen_builder, OperationState &tblgen_state,
                   Type i32_result, Type f32_result, ...,
-                  Value *i32_operand, Value *f32_operand, ...,
+                  ValuePtr i32_operand, ValuePtr f32_operand, ...,
                   APInt i32_attr, StringRef f32_attr, ...);
 
 // Each operand/attribute has a separate parameter but result type is aggregate.
 static void build(Builder *tblgen_builder, OperationState &tblgen_state,
                   ArrayRef<Type> resultTypes,
-                  Value *i32_operand, Value *f32_operand, ...,
+                  ValuePtr i32_operand, ValuePtr f32_operand, ...,
                   IntegerAttr i32_attr, FloatAttr f32_attr, ...);
 
 // All operands/attributes have aggregate parameters.
@@ -505,7 +522,7 @@ def MyOp : ... {
   let builders = [
     OpBuilder<"Builder *builder, OperationState &state, float val = 0.5f", [{
       state.addAttribute("attr", builder->getF32FloatAttr(val));
-    ]}>
+    }]>
   ];
 }
 ```
@@ -598,7 +615,7 @@ coding style requirements.
 For each operation, we automatically generate an _operand adaptor_. This class
 solves the problem of accessing operands provided as a list of `Value`s without
 using "magic" constants. The operand adaptor takes a reference to an array of
-`Value *` and provides methods with the same names as those in the operation
+`ValuePtr` and provides methods with the same names as those in the operation
 class to access them. For example, for a binary arithmetic operation, it may
 provide `.lhs()` to access the first operand and `.rhs()` to access the second
 operand.
@@ -612,11 +629,11 @@ Operand adaptors can be used in function templates that also process operations:
 
 ```c++
 template <typename BinaryOpTy>
-std::pair<Value *, Value *> zip(BinaryOpTy &&op) {
+std::pair<ValuePtr, ValuePtr> zip(BinaryOpTy &&op) {
   return std::make_pair(op.lhs(), op.rhs());;
 }
 
-void process(AddOp op, ArrayRef<Value *> newOperands) {
+void process(AddOp op, ArrayRef<ValuePtr> newOperands) {
   zip(op);
   zip(OperandAdaptor<AddOp>(newOperands));
   /*...*/

@@ -94,7 +94,7 @@ template <
     typename RetT = decltype(std::declval<FuncTy>()(std::declval<ArgT>()))>
 typename std::enable_if<std::is_same<ArgT, Operation *>::value, RetT>::type
 walkOperations(Operation *op, FuncTy &&callback) {
-  return detail::walkOperations(op, llvm::function_ref<RetT(ArgT)>(callback));
+  return detail::walkOperations(op, function_ref<RetT(ArgT)>(callback));
 }
 
 /// Walk all of the operations of type 'ArgT' nested under and including the

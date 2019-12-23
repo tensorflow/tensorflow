@@ -41,7 +41,7 @@ public:
     // SSA values for the transformation are created out of thin air by
     // unregistered "new_processor_id_and_range" operations. This is enough to
     // emulate mapping conditions.
-    SmallVector<Value *, 8> processorIds, numProcessors;
+    SmallVector<ValuePtr, 8> processorIds, numProcessors;
     func.walk([&processorIds, &numProcessors](Operation *op) {
       if (op->getName().getStringRef() != "new_processor_id_and_range")
         return;

@@ -128,7 +128,7 @@ complicated :)
   if (match(LHS, m_Xor(m_Value(Y), m_APInt(C1))))
     if (C1->countTrailingZeros() == 0)
       if (match(Y, m_And(m_Value(Z), m_APInt(C2))) && *C1 == (*C2 + 1)) {
-        Value *NewOr = Builder.CreateOr(Z, ~(*C2));
+        ValuePtr NewOr = Builder.CreateOr(Z, ~(*C2));
         return Builder.CreateSub(RHS, NewOr, "sub");
       }
 ```

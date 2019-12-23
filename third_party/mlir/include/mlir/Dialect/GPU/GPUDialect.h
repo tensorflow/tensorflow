@@ -26,6 +26,7 @@
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/FunctionSupport.h"
 #include "mlir/IR/OpDefinition.h"
+#include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/SymbolTable.h"
 
 namespace mlir {
@@ -63,7 +64,11 @@ public:
 
   /// Returns the numeric value used to identify the workgroup memory address
   /// space.
-  static int getWorkgroupAddressSpace() { return 3; }
+  static unsigned getWorkgroupAddressSpace() { return 3; }
+
+  /// Returns the numeric value used to identify the private memory address
+  /// space.
+  static unsigned getPrivateAddressSpace() { return 5; }
 
   LogicalResult verifyOperationAttribute(Operation *op,
                                          NamedAttribute attr) override;
@@ -72,9 +77,9 @@ public:
 /// Utility class for the GPU dialect to represent triples of `Value`s
 /// accessible through `.x`, `.y`, and `.z` similarly to CUDA notation.
 struct KernelDim3 {
-  Value *x;
-  Value *y;
-  Value *z;
+  ValuePtr x;
+  ValuePtr y;
+  ValuePtr z;
 };
 
 #define GET_OP_CLASSES

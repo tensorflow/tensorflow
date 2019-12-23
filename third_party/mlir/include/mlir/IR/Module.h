@@ -81,7 +81,7 @@ public:
 
   /// This returns a range of operations of the given type 'T' held within the
   /// module.
-  template <typename T> llvm::iterator_range<Block::op_iterator<T>> getOps() {
+  template <typename T> iterator_range<Block::op_iterator<T>> getOps() {
     return getBody()->getOps<T>();
   }
 

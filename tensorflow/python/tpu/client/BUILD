@@ -49,20 +49,3 @@ tf_py_test(
         "//tensorflow/python:training_server_lib",
     ],
 )
-
-tf_py_test(
-    name = "client_py2_test",
-    size = "small",
-    srcs = ["client_test.py"],
-    grpc_enabled = True,
-    main = "client_test.py",
-    python_version = "PY2",
-    deps = [
-        ":client",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
-        "//tensorflow/python:training_server_lib",
-    ],
-)

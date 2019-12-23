@@ -215,7 +215,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
             for replica in range(1, num_parameter_devices)
         ]
         variables = list(variables) + extended_variables
-        return set([v + ":0" for v in variables])
+        return set(v + ":0" for v in variables)
 
       self.assertEqual(
           get_expected_variables(len(distribution.extended.parameter_devices)),

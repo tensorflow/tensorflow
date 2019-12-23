@@ -78,7 +78,7 @@ private:
   /// Top level OpBuilder.
   OpBuilder &builder;
   /// The previous insertion point of the builder.
-  llvm::Optional<OpBuilder::InsertPoint> prevBuilderInsertPoint;
+  Optional<OpBuilder::InsertPoint> prevBuilderInsertPoint;
   /// Current location.
   Location location;
   /// Parent context we return into.
@@ -152,7 +152,7 @@ private:
 
 /// A LoopBuilder is a generic NestedBuilder for loop-like MLIR operations.
 /// More specifically it is meant to be used as a temporary object for
-/// representing any nested MLIR construct that is "related to" an mlir::Value*
+/// representing any nested MLIR construct that is "related to" an mlir::Value
 /// (for now an induction variable).
 /// This is extensible and will evolve in the future as MLIR evolves, hence
 /// the name LoopBuilder (as opposed to say ForBuilder or AffineForBuilder).
@@ -178,7 +178,7 @@ public:
   /// The only purpose of this operator is to serve as a sequence point so that
   /// the evaluation of `fun` (which build IR snippets in a scoped fashion) is
   /// scoped within a LoopBuilder.
-  void operator()(llvm::function_ref<void(void)> fun = nullptr);
+  void operator()(function_ref<void(void)> fun = nullptr);
 
 private:
   LoopBuilder() = default;
@@ -217,7 +217,7 @@ public:
   AffineLoopNestBuilder(ArrayRef<ValueHandle *> ivs, ArrayRef<ValueHandle> lbs,
                         ArrayRef<ValueHandle> ubs, ArrayRef<int64_t> steps);
 
-  void operator()(llvm::function_ref<void(void)> fun = nullptr);
+  void operator()(function_ref<void(void)> fun = nullptr);
 
 private:
   SmallVector<LoopBuilder, 4> loops;
@@ -228,13 +228,12 @@ private:
 /// loop.for.
 class LoopNestBuilder {
 public:
-  LoopNestBuilder(llvm::ArrayRef<edsc::ValueHandle *> ivs,
-                  ArrayRef<ValueHandle> lbs, ArrayRef<ValueHandle> ubs,
-                  ArrayRef<ValueHandle> steps);
+  LoopNestBuilder(ArrayRef<edsc::ValueHandle *> ivs, ArrayRef<ValueHandle> lbs,
+                  ArrayRef<ValueHandle> ubs, ArrayRef<ValueHandle> steps);
   void operator()(std::function<void(void)> fun = nullptr);
 
 private:
-  llvm::SmallVector<LoopBuilder, 4> loops;
+  SmallVector<LoopBuilder, 4> loops;
 };
 
 // This class exists solely to handle the C++ vexing parse case when
@@ -243,7 +242,7 @@ class Append {};
 
 /// A BlockBuilder is a NestedBuilder for mlir::Block*.
 /// This exists by opposition to LoopBuilder which is not related to an
-/// mlir::Block* but to a mlir::Value*.
+/// mlir::Block* but to a mlir::Value.
 /// It is meant to be used as a temporary object for representing any nested
 /// MLIR construct that is "related to" an mlir::Block*.
 class BlockBuilder : public NestedBuilder {
@@ -258,13 +257,13 @@ public:
   ///
   /// Prerequisites:
   ///   The ValueHandle `args` are typed delayed ValueHandles; i.e. they are
-  ///   not yet bound to mlir::Value*.
+  ///   not yet bound to mlir::Value.
   BlockBuilder(BlockHandle *bh, ArrayRef<ValueHandle *> args);
 
   /// The only purpose of this operator is to serve as a sequence point so that
   /// the evaluation of `fun` (which build IR snippets in a scoped fashion) is
   /// scoped within a BlockBuilder.
-  void operator()(llvm::function_ref<void(void)> fun = nullptr);
+  void operator()(function_ref<void(void)> fun = nullptr);
 
 private:
   BlockBuilder(BlockBuilder &) = delete;
@@ -292,10 +291,10 @@ protected:
 ///      typed "delayed" value that can be hold a Value in the future;
 ///   3. constructed state,in which case it holds a Value.
 ///
-/// A ValueHandle is meant to capture a single Value* and should be used for
+/// A ValueHandle is meant to capture a single Value and should be used for
 /// operations that have a single result. For convenience of use, we also
 /// include AffineForOp in this category although it does not return a value.
-/// In the case of AffineForOp, the captured Value* is the loop induction
+/// In the case of AffineForOp, the captured Value is the loop induction
 /// variable.
 class ValueHandle : public CapturableHandle {
 public:
@@ -305,15 +304,15 @@ public:
   /// A ValueHandle that is constructed from a Type represents a typed "delayed"
   /// Value. A delayed Value can only capture Values of the specified type.
   /// Such a delayed value represents the declaration (in the PL sense) of a
-  /// placeholder for an mlir::Value* that will be constructed and captured at
+  /// placeholder for an mlir::Value that will be constructed and captured at
   /// some later point in the program.
   explicit ValueHandle(Type t) : t(t), v(nullptr) {}
 
-  /// A ValueHandle that is constructed from an mlir::Value* is an "eager"
+  /// A ValueHandle that is constructed from an mlir::Value is an "eager"
   /// Value. An eager Value represents both the declaration and the definition
-  /// (in the PL sense) of a placeholder for an mlir::Value* that has already
+  /// (in the PL sense) of a placeholder for an mlir::Value that has already
   /// been constructed in the past and that is captured "now" in the program.
-  explicit ValueHandle(Value *v) : t(v->getType()), v(v) {}
+  explicit ValueHandle(ValuePtr v) : t(v->getType()), v(v) {}
 
   /// Builds a ConstantIndexOp of value `cst`. The constant is created at the
   /// current insertion point.
@@ -337,8 +336,8 @@ public:
     std::swap(v, other.v);
   }
 
-  /// Implicit conversion useful for automatic conversion to Container<Value*>.
-  operator Value *() const { return getValue(); }
+  /// Implicit conversion useful for automatic conversion to Container<Value>.
+  operator ValuePtr() const { return getValue(); }
 
   /// Generic mlir::Op create. This is the key to being extensible to the whole
   /// of MLIR without duplicating the type system or the op definitions.
@@ -356,7 +355,7 @@ public:
   /// Special case to build composed AffineApply operations.
   // TODO: createOrFold when available and move inside of the `create` method.
   static ValueHandle createComposedAffineApply(AffineMap map,
-                                               ArrayRef<Value *> operands);
+                                               ArrayRef<ValuePtr> operands);
 
   /// Generic create for a named operation producing a single value.
   static ValueHandle create(StringRef name, ArrayRef<ValueHandle> operands,
@@ -364,7 +363,7 @@ public:
                             ArrayRef<NamedAttribute> attributes = {});
 
   bool hasValue() const { return v != nullptr; }
-  Value *getValue() const {
+  ValuePtr getValue() const {
     assert(hasValue() && "Unexpected null value;");
     return v;
   }
@@ -381,12 +380,12 @@ protected:
   ValueHandle() : t(), v(nullptr) {}
 
   Type t;
-  Value *v;
+  ValuePtr v;
 };
 
 /// An OperationHandle can be used in lieu of ValueHandle to capture the
 /// operation in cases when one does not care about, or cannot extract, a
-/// unique Value* from the operation.
+/// unique Value from the operation.
 /// This can be used for capturing zero result operations as well as
 /// multi-result operations that are not supported by ValueHandle.
 /// We do not distinguish further between zero and multi-result operations at
@@ -530,7 +529,7 @@ ValueHandle operator>=(ValueHandle lhs, ValueHandle rhs);
 
 } // namespace op
 
-/// Entry point to build multiple ValueHandle from a `Container` of Value* or
+/// Entry point to build multiple ValueHandle from a `Container` of Value or
 /// Type.
 template <typename Container>
 inline SmallVector<ValueHandle, 8> makeValueHandles(Container values) {

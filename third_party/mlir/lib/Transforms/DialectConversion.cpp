@@ -35,7 +35,7 @@ using namespace mlir::detail;
 /// If 'target' is nonnull, operations that are recursively legal have their
 /// regions pre-filtered to avoid considering them for legalization.
 static LogicalResult
-computeConversionSet(llvm::iterator_range<Region::iterator> region,
+computeConversionSet(iterator_range<Region::iterator> region,
                      Location regionLoc, std::vector<Operation *> &toConvert,
                      ConversionTarget *target = nullptr) {
   if (llvm::empty(region))
@@ -86,13 +86,13 @@ namespace {
 struct ConversionValueMapping {
   /// Lookup a mapped value within the map. If a mapping for the provided value
   /// does not exist then return the provided value.
-  Value *lookupOrDefault(Value *from) const;
+  ValuePtr lookupOrDefault(ValuePtr from) const;
 
   /// Map a value to the one provided.
-  void map(Value *oldVal, Value *newVal) { mapping.map(oldVal, newVal); }
+  void map(ValuePtr oldVal, ValuePtr newVal) { mapping.map(oldVal, newVal); }
 
   /// Drop the last mapping for the given value.
-  void erase(Value *value) { mapping.erase(value); }
+  void erase(ValuePtr value) { mapping.erase(value); }
 
 private:
   /// Current value mappings.
@@ -102,10 +102,10 @@ private:
 
 /// Lookup a mapped value within the map. If a mapping for the provided value
 /// does not exist then return the provided value.
-Value *ConversionValueMapping::lookupOrDefault(Value *from) const {
+ValuePtr ConversionValueMapping::lookupOrDefault(ValuePtr from) const {
   // If this value had a valid mapping, unmap that value as well in the case
   // that it was also replaced.
-  while (auto *mappedValue = mapping.lookupOrNull(from))
+  while (auto mappedValue = mapping.lookupOrNull(from))
     from = mappedValue;
   return from;
 }
@@ -127,7 +127,7 @@ struct ArgConverter {
   /// been converted.
   struct ConvertedArgInfo {
     ConvertedArgInfo(unsigned newArgIdx, unsigned newArgSize,
-                     Value *castValue = nullptr)
+                     ValuePtr castValue = nullptr)
         : newArgIdx(newArgIdx), newArgSize(newArgSize), castValue(castValue) {}
 
     /// The start index of in the new argument list that contains arguments that
@@ -139,7 +139,7 @@ struct ArgConverter {
 
     /// The cast value that was created to cast from the new arguments to the
     /// old. This only used if 'newArgSize' > 1.
-    Value *castValue;
+    ValuePtr castValue;
   };
 
   /// This structure contains information pertaining to a block that has had its
@@ -164,9 +164,10 @@ struct ArgConverter {
   // Rewrite Application
   //===--------------------------------------------------------------------===//
 
-  /// Erase any rewrites registered for the current block that is about to be
-  /// removed. This merely drops the rewrites without undoing them.
-  void notifyBlockRemoved(Block *block);
+  /// Erase any rewrites registered for the blocks within the given operation
+  /// which is about to be removed. This merely drops the rewrites without
+  /// undoing them.
+  void notifyOpRemoved(Operation *op);
 
   /// Cleanup and undo any generated conversions for the arguments of block.
   /// This method replaces the new block with the original, reverting the IR to
@@ -194,8 +195,15 @@ struct ArgConverter {
       Block *block, TypeConverter::SignatureConversion &signatureConversion,
       ConversionValueMapping &mapping);
 
+  /// Insert a new conversion into the cache.
+  void insertConversion(Block *newBlock, ConvertedBlockInfo &&info);
+
   /// A collection of blocks that have had their arguments converted.
   llvm::MapVector<Block *, ConvertedBlockInfo> conversionInfo;
+
+  /// A mapping from valid regions, to those containing the original blocks of a
+  /// conversion.
+  DenseMap<Region *, std::unique_ptr<Region>> regionMapping;
 
   /// An instance of the unknown location that is used when materializing
   /// conversions.
@@ -212,18 +220,26 @@ struct ArgConverter {
 //===----------------------------------------------------------------------===//
 // Rewrite Application
 
-void ArgConverter::notifyBlockRemoved(Block *block) {
-  auto it = conversionInfo.find(block);
-  if (it == conversionInfo.end())
-    return;
+void ArgConverter::notifyOpRemoved(Operation *op) {
+  for (Region &region : op->getRegions()) {
+    for (Block &block : region) {
+      // Drop any rewrites from within.
+      for (Operation &nestedOp : block)
+        if (nestedOp.getNumRegions())
+          notifyOpRemoved(&nestedOp);
 
-  // Drop all uses of the original arguments and delete the original block.
-  Block *origBlock = it->second.origBlock;
-  for (BlockArgument *arg : origBlock->getArguments())
-    arg->dropAllUses();
-  delete origBlock;
+      // Check if this block was converted.
+      auto it = conversionInfo.find(&block);
+      if (it == conversionInfo.end())
+        return;
 
-  conversionInfo.erase(it);
+      // Drop all uses of the original arguments and delete the original block.
+      Block *origBlock = it->second.origBlock;
+      for (BlockArgumentPtr arg : origBlock->getArguments())
+        arg->dropAllUses();
+      conversionInfo.erase(it);
+    }
+  }
 }
 
 void ArgConverter::discardRewrites(Block *block) {
@@ -239,7 +255,7 @@ void ArgConverter::discardRewrites(Block *block) {
 
   // Move the operations back the original block and the delete the new block.
   origBlock->getOperations().splice(origBlock->end(), block->getOperations());
-  origBlock->insertBefore(block);
+  origBlock->moveBefore(block);
   block->erase();
 
   conversionInfo.erase(it);
@@ -254,7 +270,7 @@ void ArgConverter::applyRewrites(ConversionValueMapping &mapping) {
     // Process the remapping for each of the original arguments.
     for (unsigned i = 0, e = origBlock->getNumArguments(); i != e; ++i) {
       Optional<ConvertedArgInfo> &argInfo = blockInfo.argInfo[i];
-      BlockArgument *origArg = origBlock->getArgument(i);
+      BlockArgumentPtr origArg = origBlock->getArgument(i);
 
       // Handle the case of a 1->0 value mapping.
       if (!argInfo) {
@@ -289,7 +305,7 @@ void ArgConverter::applyRewrites(ConversionValueMapping &mapping) {
       }
 
       // Otherwise this is a 1->N value mapping.
-      Value *castValue = argInfo->castValue;
+      ValuePtr castValue = argInfo->castValue;
       assert(argInfo->newArgSize > 1 && castValue && "expected 1->N mapping");
 
       // If the argument is still used, replace it with the generated cast.
@@ -301,9 +317,6 @@ void ArgConverter::applyRewrites(ConversionValueMapping &mapping) {
       if (castValue->use_empty())
         castValue->getDefiningOp()->erase();
     }
-
-    // Drop the original block now the rewrites were applied.
-    delete origBlock;
   }
 }
 
@@ -331,8 +344,8 @@ Block *ArgConverter::applySignatureConversion(
   Block *newBlock = block->splitBlock(block->begin());
   block->replaceAllUsesWith(newBlock);
 
-  SmallVector<Value *, 4> newArgRange(newBlock->addArguments(convertedTypes));
-  ArrayRef<Value *> newArgs(newArgRange);
+  SmallVector<ValuePtr, 4> newArgRange(newBlock->addArguments(convertedTypes));
+  ArrayRef<ValuePtr> newArgs(newArgRange);
 
   // Remap each of the original arguments as determined by the signature
   // conversion.
@@ -345,7 +358,7 @@ Block *ArgConverter::applySignatureConversion(
     auto inputMap = signatureConversion.getInputMapping(i);
     if (!inputMap)
       continue;
-    BlockArgument *origArg = block->getArgument(i);
+    BlockArgumentPtr origArg = block->getArgument(i);
 
     // If inputMap->replacementValue is not nullptr, then the argument is
     // dropped and a replacement value is provided to be the remappedValue.
@@ -377,9 +390,22 @@ Block *ArgConverter::applySignatureConversion(
   }
 
   // Remove the original block from the region and return the new one.
-  newBlock->getParent()->getBlocks().remove(block);
-  conversionInfo.insert({newBlock, std::move(info)});
+  insertConversion(newBlock, std::move(info));
   return newBlock;
+}
+
+void ArgConverter::insertConversion(Block *newBlock,
+                                    ConvertedBlockInfo &&info) {
+  // Get a region to insert the old block.
+  Region *region = newBlock->getParent();
+  std::unique_ptr<Region> &mappedRegion = regionMapping[region];
+  if (!mappedRegion)
+    mappedRegion = std::make_unique<Region>(region->getParentOp());
+
+  // Move the original block to the mapped region and emplace the conversion.
+  mappedRegion->getBlocks().splice(mappedRegion->end(), region->getBlocks(),
+                                   info.origBlock->getIterator());
+  conversionInfo.insert({newBlock, std::move(info)});
 }
 
 //===----------------------------------------------------------------------===//
@@ -419,7 +445,7 @@ struct ConversionPatternRewriterImpl {
         : op(op), newValues(newValues.begin(), newValues.end()) {}
 
     Operation *op;
-    SmallVector<Value *, 2> newValues;
+    SmallVector<ValuePtr, 2> newValues;
   };
 
   /// The kind of the block action performed during the rewrite.  Actions can be
@@ -511,13 +537,12 @@ struct ConversionPatternRewriterImpl {
                                         Region::iterator before);
 
   /// Notifies that the blocks of a region were cloned into another.
-  void
-  notifyRegionWasClonedBefore(llvm::iterator_range<Region::iterator> &blocks,
-                              Location origRegionLoc);
+  void notifyRegionWasClonedBefore(iterator_range<Region::iterator> &blocks,
+                                   Location origRegionLoc);
 
   /// Remap the given operands to those with potentially different types.
   void remapValues(Operation::operand_range operands,
-                   SmallVectorImpl<Value *> &remapped);
+                   SmallVectorImpl<ValuePtr> &remapped);
 
   /// Returns true if the given operation is ignored, and does not need to be
   /// converted.
@@ -566,7 +591,7 @@ void ConversionPatternRewriterImpl::resetState(RewriterState state) {
 
   // Reset any replaced operations and undo any saved mappings.
   for (auto &repl : llvm::drop_begin(replacements, state.numReplacements))
-    for (auto *result : repl.op->getResults())
+    for (auto result : repl.op->getResults())
       mapping.erase(result);
   replacements.resize(state.numReplacements);
 
@@ -635,18 +660,15 @@ void ConversionPatternRewriterImpl::applyRewrites() {
   // Apply all of the rewrites replacements requested during conversion.
   for (auto &repl : replacements) {
     for (unsigned i = 0, e = repl.newValues.size(); i != e; ++i) {
-      if (auto *newValue = repl.newValues[i])
+      if (auto newValue = repl.newValues[i])
         repl.op->getResult(i)->replaceAllUsesWith(
             mapping.lookupOrDefault(newValue));
     }
 
     // If this operation defines any regions, drop any pending argument
     // rewrites.
-    if (argConverter.typeConverter && repl.op->getNumRegions()) {
-      for (auto &region : repl.op->getRegions())
-        for (auto &block : region)
-          argConverter.notifyBlockRemoved(&block);
-    }
+    if (argConverter.typeConverter && repl.op->getNumRegions())
+      argConverter.notifyOpRemoved(repl.op);
   }
 
   // In a second pass, erase all of the replaced operations in reverse. This
@@ -693,7 +715,7 @@ void ConversionPatternRewriterImpl::replaceOp(Operation *op,
 
   // Create mappings for each of the new result values.
   for (unsigned i = 0, e = newValues.size(); i < e; ++i)
-    if (auto *repl = newValues[i])
+    if (auto repl = newValues[i])
       mapping.map(op->getResult(i), repl);
 
   // Record the requested operation replacement.
@@ -719,7 +741,7 @@ void ConversionPatternRewriterImpl::notifyRegionIsBeingInlinedBefore(
 }
 
 void ConversionPatternRewriterImpl::notifyRegionWasClonedBefore(
-    llvm::iterator_range<Region::iterator> &blocks, Location origRegionLoc) {
+    iterator_range<Region::iterator> &blocks, Location origRegionLoc) {
   for (Block &block : blocks)
     blockActions.push_back(BlockAction::getCreate(&block));
 
@@ -733,9 +755,9 @@ void ConversionPatternRewriterImpl::notifyRegionWasClonedBefore(
 }
 
 void ConversionPatternRewriterImpl::remapValues(
-    Operation::operand_range operands, SmallVectorImpl<Value *> &remapped) {
+    Operation::operand_range operands, SmallVectorImpl<ValuePtr> &remapped) {
   remapped.reserve(llvm::size(operands));
-  for (Value *operand : operands)
+  for (ValuePtr operand : operands)
     remapped.push_back(mapping.lookupOrDefault(operand));
 }
 
@@ -781,7 +803,7 @@ void ConversionPatternRewriter::replaceOp(Operation *op, ValueRange newValues,
 void ConversionPatternRewriter::eraseOp(Operation *op) {
   LLVM_DEBUG(llvm::dbgs() << "** Erasing operation : " << op->getName()
                           << "\n");
-  SmallVector<Value *, 1> nullRepls(op->getNumResults(), nullptr);
+  SmallVector<ValuePtr, 1> nullRepls(op->getNumResults(), nullptr);
   impl->replaceOp(op, nullRepls, /*valuesToRemoveIfDead=*/llvm::None);
 }
 
@@ -791,8 +813,8 @@ Block *ConversionPatternRewriter::applySignatureConversion(
   return impl->applySignatureConversion(region, conversion);
 }
 
-void ConversionPatternRewriter::replaceUsesOfBlockArgument(BlockArgument *from,
-                                                           Value *to) {
+void ConversionPatternRewriter::replaceUsesOfBlockArgument(
+    BlockArgumentPtr from, ValuePtr to) {
   for (auto &u : from->getUses()) {
     if (u.getOwner() == to->getDefiningOp())
       continue;
@@ -803,7 +825,7 @@ void ConversionPatternRewriter::replaceUsesOfBlockArgument(BlockArgument *from,
 
 /// Return the converted value that replaces 'key'. Return 'key' if there is
 /// no such a converted value.
-Value *ConversionPatternRewriter::getRemappedValue(Value *key) {
+ValuePtr ConversionPatternRewriter::getRemappedValue(ValuePtr key) {
   return impl->mapping.lookupOrDefault(key);
 }
 
@@ -874,7 +896,7 @@ detail::ConversionPatternRewriterImpl &ConversionPatternRewriter::getImpl() {
 PatternMatchResult
 ConversionPattern::matchAndRewrite(Operation *op,
                                    PatternRewriter &rewriter) const {
-  SmallVector<Value *, 4> operands;
+  SmallVector<ValuePtr, 4> operands;
   auto &dialectRewriter = static_cast<ConversionPatternRewriter &>(rewriter);
   dialectRewriter.getImpl().remapValues(op->getOperands(), operands);
 
@@ -886,7 +908,7 @@ ConversionPattern::matchAndRewrite(Operation *op,
   SmallVector<Block *, 2> destinations;
   destinations.reserve(op->getNumSuccessors());
 
-  SmallVector<ArrayRef<Value *>, 2> operandsPerDestination;
+  SmallVector<ArrayRef<ValuePtr>, 2> operandsPerDestination;
   unsigned firstSuccessorOperand = op->getSuccessorOperandIndex(0);
   for (unsigned i = 0, seen = 0, e = op->getNumSuccessors(); i < e; ++i) {
     destinations.push_back(op->getSuccessor(i));
@@ -963,7 +985,7 @@ private:
   void computeLegalizationGraphBenefit();
 
   /// The current set of patterns that have been applied.
-  llvm::SmallPtrSet<RewritePattern *, 8> appliedPatterns;
+  SmallPtrSet<RewritePattern *, 8> appliedPatterns;
 
   /// The set of legality information for operations transitively supported by
   /// the target.
@@ -1037,7 +1059,7 @@ OperationLegalizer::legalizeWithFold(Operation *op,
   RewriterState curState = rewriterImpl.getCurrentState();
 
   // Try to fold the operation.
-  SmallVector<Value *, 2> replacementValues;
+  SmallVector<ValuePtr, 2> replacementValues;
   rewriter.setInsertionPoint(op);
   if (failed(rewriter.tryFold(op, replacementValues)))
     return failure();
@@ -1437,7 +1459,7 @@ void TypeConverter::SignatureConversion::remapInput(unsigned origInputNo,
 /// Remap an input of the original signature to another `replacementValue`
 /// value. This would make the signature converter drop this argument.
 void TypeConverter::SignatureConversion::remapInput(unsigned origInputNo,
-                                                    Value *replacementValue) {
+                                                    ValuePtr replacementValue) {
   assert(!remappedInputs[origInputNo] && "input has already been remapped");
   remappedInputs[origInputNo] =
       InputMapping{origInputNo, /*size=*/0, replacementValue};
@@ -1506,7 +1528,7 @@ struct FuncOpSignatureConversion : public OpConversionPattern<FuncOp> {
 
   /// Hook for derived classes to implement combined matching and rewriting.
   PatternMatchResult
-  matchAndRewrite(FuncOp funcOp, ArrayRef<Value *> operands,
+  matchAndRewrite(FuncOp funcOp, ArrayRef<ValuePtr> operands,
                   ConversionPatternRewriter &rewriter) const override {
     FunctionType type = funcOp.getType();
 
@@ -1549,7 +1571,7 @@ void mlir::populateFuncOpTypeConversionPattern(
 /// 'convertSignatureArg' for each argument. This function should return a valid
 /// conversion for the signature on success, None otherwise.
 auto TypeConverter::convertBlockSignature(Block *block)
-    -> llvm::Optional<SignatureConversion> {
+    -> Optional<SignatureConversion> {
   SignatureConversion conversion(block->getNumArguments());
   for (unsigned i = 0, e = block->getNumArguments(); i != e; ++i)
     if (failed(convertSignatureArg(i, block->getArgument(i)->getType(),

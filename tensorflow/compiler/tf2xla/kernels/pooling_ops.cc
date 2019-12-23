@@ -329,7 +329,7 @@ class MaxPoolGradOp : public XlaOpKernel {
         (padding_ == VALID) ? xla::Padding::kValid : xla::Padding::kSame;
 
     // Create a MaxPool operation to check the expected resulting shape, and
-    // then throw away the operation because we don't actually neeed it here.
+    // then throw away the operation because we don't actually need it here.
     TensorShape expected_out_shape;
     auto pooling =
         xla::MaxPool(ctx->Input(0), ksize_, stride_, xla_padding,

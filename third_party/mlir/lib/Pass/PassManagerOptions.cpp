@@ -105,7 +105,7 @@ struct PassManagerOptions {
 };
 } // end anonymous namespace
 
-static llvm::ManagedStatic<llvm::Optional<PassManagerOptions>> options;
+static llvm::ManagedStatic<Optional<PassManagerOptions>> options;
 
 /// Add an IR printing instrumentation if enabled by any 'print-ir' flags.
 void PassManagerOptions::addPrinterInstrumentation(PassManager &pm) {

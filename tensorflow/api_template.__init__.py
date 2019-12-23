@@ -89,6 +89,7 @@ except ImportError:
 # Enable TF2 behaviors
 from tensorflow.python.compat import v2_compat as _compat  # pylint: disable=g-import-not-at-top
 _compat.enable_v2_behavior()
+_major_api_version = 2
 
 
 # Load all plugin libraries from site-packages/tensorflow-plugins if we are

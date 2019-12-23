@@ -2091,6 +2091,32 @@ def TFL_SelectOp : TFL_Op<"select", [NoSideEffect,
   let hasOptions = 1;
 }
 
+def TFL_SelectV2Op : TFL_Op<"select_v2", [NoSideEffect]> {
+  let summary = "SelectV2 operator";
+
+  let description = [{
+    Select values of 'x' if the corresponding value of 'condition' is true or
+    the value of 'y' if false. There are valid condition input sizes:
+
+    1. Either the same shape (in which case the select is elementwise), or
+    2. Broadcastable shapes between 'condition', 'x' and 'y'.
+  }];
+
+  let arguments = (ins
+    TFL_BoolTensor:$condition,
+    TensorOf<[F32, I1, I8, I16, I32, I64, TFL_Uint8]>:$x,
+    TensorOf<[F32, I1, I8, I16, I32, I64, TFL_Uint8]>:$y);
+  let results = (outs AnyTensor:$output);
+
+  let builders = [OpBuilder<"Builder *builder, OperationState &result, "
+                            "Value *cond, Value *x, Value *y",
+  [{
+    BuildSelectV2Op(builder, result, cond, x, y);
+  }]>];
+
+  let hasOptions = 1;
+}
+
 def TFL_SinOp: TFL_Op<"sin", [
     NoSideEffect, SameOperandsAndResultType, NoQuantizableResult]> {
   let summary = "Sine operator";

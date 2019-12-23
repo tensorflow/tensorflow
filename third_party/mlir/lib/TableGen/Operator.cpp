@@ -23,6 +23,7 @@
 #include "mlir/TableGen/OpTrait.h"
 #include "mlir/TableGen/Predicate.h"
 #include "mlir/TableGen/Type.h"
+#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/TableGen/Error.h"
 #include "llvm/TableGen/Record.h"
@@ -293,12 +294,18 @@ void tblgen::Operator::populateOpStructure() {
     results.push_back({name, TypeConstraint(resultDef)});
   }
 
-  auto traitListInit = def.getValueAsListInit("traits");
-  if (!traitListInit)
-    return;
-  traits.reserve(traitListInit->size());
-  for (auto traitInit : *traitListInit)
-    traits.push_back(OpTrait::create(traitInit));
+  // Create list of traits, skipping over duplicates: appending to lists in
+  // tablegen is easy, making them unique less so, so dedupe here.
+  if (auto traitList = def.getValueAsListInit("traits")) {
+    // This is uniquing based on pointers of the trait.
+    SmallPtrSet<const llvm::Init *, 32> traitSet;
+    traits.reserve(traitSet.size());
+    for (auto traitInit : *traitList) {
+      // Keep traits in the same order while skipping over duplicates.
+      if (traitSet.insert(traitInit).second)
+        traits.push_back(OpTrait::create(traitInit));
+    }
+  }
 
   // Handle regions
   auto *regionsDag = def.getValueAsDag("regions");

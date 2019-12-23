@@ -860,7 +860,7 @@ gen_api_init_files(
     output_files = TENSORFLOW_API_INIT_FILES_V1,
     output_package = "tensorflow._api.v1",
     root_file_name = "v1.py",
-    root_init_template = "api_template_v1.__init__.py",
+    root_init_template = "$(location api_template_v1.__init__.py)",
 )
 
 gen_api_init_files(
@@ -883,7 +883,7 @@ gen_api_init_files(
     output_files = TENSORFLOW_API_INIT_FILES_V2,
     output_package = "tensorflow._api.v2",
     root_file_name = "v2.py",
-    root_init_template = "api_template.__init__.py",
+    root_init_template = "$(location api_template.__init__.py)",
 )
 
 py_library(

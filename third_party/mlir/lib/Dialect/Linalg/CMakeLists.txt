@@ -23,7 +23,7 @@ add_dependencies(MLIRLinalg
   MLIRAnalysis
   MLIREDSC
   MLIRLinalgOpsIncGen
-  MLIRLinalgLibraryOpsIncGen
+  MLIRLinalgStructuredOpsIncGen
   MLIRLinalgTransformPatternsIncGen
   MLIRStandardOps
   MLIRStandardToLLVM

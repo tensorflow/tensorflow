@@ -768,7 +768,7 @@ class HloFusionInstruction : public HloInstruction {
   // Merges the fused instructions from 'instruction_to_merge' into the
   // fused instruction set of 'this', updating operands as necessary.
   //
-  // Predondition: 'instruction_to_merge' must be an operand of 'this'.
+  // Precondition: 'instruction_to_merge' must be an operand of 'this'.
   void MergeFusionInstruction(HloFusionInstruction* instruction_to_merge);
 
   // Merges the fused instructions from instruction_to_merge into the fused

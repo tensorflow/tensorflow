@@ -30,14 +30,17 @@ class OpBuilder;
 class RewritePattern;
 class Value;
 
+// TODO(riverriddle) Remove this after Value is value-typed.
+using ValuePtr = Value *;
+
 // Owning list of rewriting patterns.
 class OwningRewritePatternList;
 
 /// Emit code that computes the given affine expression using standard
 /// arithmetic operations applied to the provided dimension and symbol values.
-Value *expandAffineExpr(OpBuilder &builder, Location loc, AffineExpr expr,
-                        ArrayRef<Value *> dimValues,
-                        ArrayRef<Value *> symbolValues);
+ValuePtr expandAffineExpr(OpBuilder &builder, Location loc, AffineExpr expr,
+                          ArrayRef<ValuePtr> dimValues,
+                          ArrayRef<ValuePtr> symbolValues);
 
 /// Collect a set of patterns to convert from the Affine dialect to the Standard
 /// dialect, in particular convert structured affine control flow into CFG
@@ -47,11 +50,11 @@ void populateAffineToStdConversionPatterns(OwningRewritePatternList &patterns,
 
 /// Emit code that computes the lower bound of the given affine loop using
 /// standard arithmetic operations.
-Value *lowerAffineLowerBound(AffineForOp op, OpBuilder &builder);
+ValuePtr lowerAffineLowerBound(AffineForOp op, OpBuilder &builder);
 
 /// Emit code that computes the upper bound of the given affine loop using
 /// standard arithmetic operations.
-Value *lowerAffineUpperBound(AffineForOp op, OpBuilder &builder);
+ValuePtr lowerAffineUpperBound(AffineForOp op, OpBuilder &builder);
 } // namespace mlir
 
 #endif // MLIR_CONVERSION_AFFINETOSTANDARD_AFFINETOSTANDARD_H

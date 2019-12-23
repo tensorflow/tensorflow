@@ -96,9 +96,9 @@ PYBIND11_MODULE(tpu_client_extension, m) {
                           std::make_move_iterator(tree.leaves.end()));
 
             py::gil_scoped_release gil_release;
-            return PyTpuBuffer::FromLiterals(
-                std::move(leaves), tree.shape, std::move(py_buffer_ref),
-                std::move(client), device->local_device_ordinal());
+            return PyTpuBuffer::FromLiterals(std::move(leaves), tree.shape,
+                                             std::move(py_buffer_ref),
+                                             std::move(client), device->id());
           })
       .def_static(
           "from_python",
@@ -135,8 +135,8 @@ PYBIND11_MODULE(tpu_client_extension, m) {
                           "Cannot make tuple on device '%s' with '%s' backend",
                           device->DebugString(), client->platform_name());
                     }
-                    return PyTpuBuffer::MakeTuple(
-                        buffers, client, device->local_device_ordinal());
+                    return PyTpuBuffer::MakeTuple(buffers, client,
+                                                  device->id());
                   })
       .def_static("make_tuple", &PyTpuBuffer::MakeTuple)
       .def("copy_to_device",
@@ -144,7 +144,7 @@ PYBIND11_MODULE(tpu_client_extension, m) {
              CHECK(dst_device != nullptr);
              GlobalPyRefManager()->CollectGarbage();
              py::gil_scoped_release gil_release;
-             return buffer->CopyToDevice(dst_device->local_device_ordinal());
+             return buffer->CopyToDevice(dst_device->id());
            })
       .def("copy_to_device",
            [](PyTpuBuffer* buffer, int dst_device_ordinal) {
@@ -193,7 +193,7 @@ PYBIND11_MODULE(tpu_client_extension, m) {
            [](const PyTpuExecutable& executable) {
              std::vector<int> device_ordinals;
              for (std::shared_ptr<Device> device : executable.local_devices()) {
-               device_ordinals.push_back(device->local_device_ordinal());
+               device_ordinals.push_back(device->id());
              }
              return device_ordinals;
            })

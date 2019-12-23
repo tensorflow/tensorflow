@@ -125,11 +125,11 @@ cc_library(
     deps = [
         ":constants",
         "@com_google_absl//absl/container:flat_hash_set",
-        "//tensorflow/core/platform:strcat",
-        "//tensorflow/core/util/tensor_bundle",
     ] + if_not_mobile([
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:strcat",
+        "//tensorflow/core/util/tensor_bundle",
     ]),
 )
 

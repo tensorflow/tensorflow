@@ -756,6 +756,9 @@ def tf_windows_aware_platform_deps(name):
 def tf_platform_deps(name):
     return ["//tensorflow/core/platform/default:" + name]
 
+def tf_platform_alias(name):
+    return ["//tensorflow/core/platform/default:" + name]
+
 def tf_logging_deps():
     return ["//tensorflow/core/platform/default:logging"]
 

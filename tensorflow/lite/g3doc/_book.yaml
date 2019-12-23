@@ -42,8 +42,6 @@ upper_tabs:
         path: /lite/convert/quantization
       - title: "Convert RNN models"
         path: /lite/convert/rnn
-      - title: "Generate a concrete function"
-        path: /lite/convert/concrete_function
 
       - heading: "Inference"
       - title: "Overview"

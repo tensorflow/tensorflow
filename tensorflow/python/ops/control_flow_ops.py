@@ -503,13 +503,16 @@ def _shape_invariant_to_type_spec(var, shape):
   Returns:
     A `TypeSpec` for `var`, consistent with the given shape.
   """
-  if isinstance(shape, type_spec.TypeSpec):
+  if shape is None:
+    return type_spec.type_spec_from_value(var)
+  elif isinstance(shape, type_spec.TypeSpec):
     if not shape.is_compatible_with(var):
       raise TypeError("TypeSpec %r is not compatible with %r" % (shape, var))
     return shape
   elif not isinstance(shape, tensor_shape.TensorShape):
-    raise TypeError("Expected shape to be a TypeSpec or TensorShape, got %r"
-                    % shape)
+    raise TypeError(
+        "Expected shape to be a TypeSpec, TensorShape or None, got %r for"
+        " value %r" % (shape, var))
 
   if isinstance(var, ops.Tensor):
     return tensor_spec.TensorSpec(shape, var.dtype)

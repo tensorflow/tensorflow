@@ -166,6 +166,9 @@ class GcsFileSystem : public FileSystem {
   /// Set an object to collect runtime statistics from the GcsFilesystem.
   void SetStats(GcsStatsInterface* stats);
 
+  /// Set an object to collect file block cache stats.
+  void SetCacheStats(FileBlockCacheStatsInterface* cache_stats);
+
   /// These accessors are mainly for testing purposes, to verify that the
   /// environment variables that control these parameters are handled correctly.
   size_t block_size() {

@@ -188,26 +188,31 @@ def model_metadata(model, include_optimizer=True, require_config=True):
           'Prefer using a Keras optimizer instead '
           '(see keras.io/optimizers).')
     else:
-      metadata['training_config'] = {
-          'loss': model.loss,
-          # pylint: disable=protected-access
-          'metrics': model._compile_metrics,
-          'weighted_metrics': model._compile_weighted_metrics,
-          # pylint: enable=protected-access
-          'sample_weight_mode': model.sample_weight_mode,
-          'loss_weights': model.loss_weights,
-      }
-      if isinstance(model.optimizer, optimizer_v2.RestoredOptimizer):
-        raise NotImplementedError(
-            'As of now, Optimizers loaded from SavedModel cannot be saved. '
-            'If you\'re calling `model.save` or `tf.keras.models.save_model`, '
-            'please set the `include_optimizer` option to `False`. For '
-            '`tf.saved_model.save`, delete the optimizer from the model.')
-      else:
-        optimizer_config = {
-            'class_name': model.optimizer.__class__.__name__,
-            'config': model.optimizer.get_config()}
-      metadata['training_config']['optimizer_config'] = optimizer_config
+      try:
+        metadata['training_config'] = {
+            'loss': model.loss,
+            # pylint: disable=protected-access
+            'metrics': model._compile_metrics,
+            'weighted_metrics': model._compile_weighted_metrics,
+            # pylint: enable=protected-access
+            'sample_weight_mode': model.sample_weight_mode,
+            'loss_weights': model.loss_weights,
+        }
+        if isinstance(model.optimizer, optimizer_v2.RestoredOptimizer):
+          raise NotImplementedError(
+              'As of now, Optimizers loaded from SavedModel cannot be saved. '
+              'If you\'re calling `model.save` or `tf.keras.models.save_model`,'
+              ' please set the `include_optimizer` option to `False`. For '
+              '`tf.saved_model.save`, delete the optimizer from the model.')
+        else:
+          optimizer_config = {
+              'class_name': model.optimizer.__class__.__name__,
+              'config': model.optimizer.get_config()}
+        metadata['training_config']['optimizer_config'] = optimizer_config
+      except AttributeError:
+        pass  # If the model has an optimizer, but not all of the attributes
+              # loss, _compile_metrics, etc., then it was not compiled using
+              # model.compile. In this case, do not save the training config.
   return metadata
 
 
@@ -219,6 +224,18 @@ def should_overwrite(filepath, overwrite):
   return True
 
 
+def convert_output_metrics(metrics_config, custom_objects):
+  from tensorflow.python.keras import metrics as metrics_module  # pylint:disable=g-import-not-at-top
+  if isinstance(metrics_config, list):
+    return [convert_output_metrics(mc, custom_objects) for mc in metrics_config]
+  elif (isinstance(metrics_config, dict) or
+        (metrics_config not in ['accuracy', 'acc', 'crossentropy', 'ce'])):
+    # Do not deserialize accuracy and cross-entropy strings as we have special
+    # case handling for these in compile, based on model output shape.
+    return metrics_module.deserialize(metrics_config, custom_objects)
+  return metrics_config
+
+
 def compile_args_from_training_config(training_config, custom_objects=None):
   """Return model.compile arguments from training config."""
   if custom_objects is None:
@@ -228,17 +245,50 @@ def compile_args_from_training_config(training_config, custom_objects=None):
   optimizer = optimizers.deserialize(
       optimizer_config, custom_objects=custom_objects)
 
-  # Recover loss functions and metrics.
-  loss_config = training_config['loss']  # Deserialize loss class.
-  if isinstance(loss_config, dict) and 'class_name' in loss_config:
-    loss_config = losses.get(loss_config)
-  loss = nest.map_structure(
-      lambda obj: custom_objects.get(obj, obj), loss_config)
-  metrics = nest.map_structure(
-      lambda obj: custom_objects.get(obj, obj), training_config['metrics'])
-  weighted_metrics = nest.map_structure(
-      lambda obj: custom_objects.get(obj, obj),
-      training_config.get('weighted_metrics', None))
+  # Recover losses.
+  loss_config = training_config['loss']
+  if isinstance(loss_config, list):  # Loss fed to compile as a list.
+    loss = [losses.deserialize(lc, custom_objects) for lc in loss_config]
+  elif isinstance(loss_config, dict) and 'class_name' not in loss_config:
+    # Loss fed to compile as a dict.
+    loss = {
+        k: losses.deserialize(v, custom_objects)
+        for (k, v) in loss_config.items()
+    }
+  else:  # Loss fed to compile as a str/ function/ class instance.
+    loss = losses.deserialize(loss_config, custom_objects)
+
+  # Recover metrics.
+  metrics_config = training_config.get('metrics', None)
+  if isinstance(metrics_config, dict):  # Metrics fed to compile as a dict.
+    metrics = {
+        k: convert_output_metrics(v, custom_objects)
+        for (k, v) in metrics_config.items()
+    }
+  elif isinstance(metrics_config, list):  # Metrics fed to compile as a list.
+    metrics = [
+        convert_output_metrics(m, custom_objects) for m in metrics_config
+    ]
+  else:  # No metrics.
+    metrics = None
+
+  # Recover weighted metrics.
+  weighted_metrics_config = training_config.get('weighted_metrics', None)
+  if isinstance(weighted_metrics_config, dict):
+    # Metrics fed to compile as a dict.
+    weighted_metrics = {
+        k: convert_output_metrics(v, custom_objects)
+        for (k, v) in weighted_metrics_config.items()
+    }
+  elif isinstance(weighted_metrics_config, list):
+    # Metrics fed to compile as a list.
+    weighted_metrics = [
+        convert_output_metrics(m, custom_objects)
+        for m in weighted_metrics_config
+    ]
+  else:  # No metrics.
+    weighted_metrics = None
+
   sample_weight_mode = training_config['sample_weight_mode']
   loss_weights = training_config['loss_weights']
 

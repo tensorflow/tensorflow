@@ -24,7 +24,6 @@ import os
 
 import numpy as np
 
-from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -46,7 +45,6 @@ from tensorflow.python.ops.gen_nn_ops import *
 # pylint: enable=wildcard-import
 from tensorflow.python.platform import build_info
 from tensorflow.python.platform import device_context
-from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.deprecation import deprecated_args
@@ -1851,7 +1849,7 @@ def conv2d_v2(input,  # pylint: disable=redefined-builtin
                           filter[di, dj, q, k]
 
   Must have `strides[0] = strides[3] = 1`.  For the most common case of the same
-  horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
+  horizontal and vertical strides, `strides = [1, stride, stride, 1]`.
 
   Args:
     input: A `Tensor`. Must be one of the following types:
@@ -1937,7 +1935,7 @@ def conv2d(  # pylint: disable=redefined-builtin,dangerous-default-value
                           * filter[di, dj, q, k]
 
   Must have `strides[0] = strides[3] = 1`.  For the most common case of the same
-  horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
+  horizontal and vertical strides, `strides = [1, stride, stride, 1]`.
 
   Args:
     input: A `Tensor`. Must be one of the following types:
@@ -4404,27 +4402,24 @@ def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
       which is likely not what was intended.
   """
   with ops.name_scope(name, "dropout", [x]) as name:
-    # TODO(b/144930399): Remove this once the compatible window is passed.
-    if compat.forward_compatible(2019, 12, 16):
-      is_rate_number = isinstance(rate, numbers.Real)
-      if is_rate_number and (rate < 0 or rate >= 1):
-        raise ValueError("rate must be a scalar tensor or a float in the "
-                         "range [0, 1), got %g" % rate)
-      x = ops.convert_to_tensor(x, name="x")
-      x_dtype = x.dtype
-      if not x_dtype.is_floating:
-        raise ValueError("x has to be a floating point tensor since it's going "
-                         "to be scaled. Got a %s tensor instead." % x_dtype)
-      is_executing_eagerly = context.executing_eagerly()
-      if not tensor_util.is_tensor(rate):
-        if is_rate_number:
-          keep_prob = 1 - rate
-          scale = 1 / keep_prob
-          scale = ops.convert_to_tensor(scale, dtype=x_dtype)
-          ret = gen_math_ops.mul(x, scale)
-        else:
-          raise ValueError("rate is neither scalar nor scalar tensor %r" % rate)
+    is_rate_number = isinstance(rate, numbers.Real)
+    if is_rate_number and (rate < 0 or rate >= 1):
+      raise ValueError("rate must be a scalar tensor or a float in the "
+                       "range [0, 1), got %g" % rate)
+    x = ops.convert_to_tensor(x, name="x")
+    x_dtype = x.dtype
+    if not x_dtype.is_floating:
+      raise ValueError("x has to be a floating point tensor since it's going "
+                       "to be scaled. Got a %s tensor instead." % x_dtype)
+    is_executing_eagerly = context.executing_eagerly()
+    if not tensor_util.is_tensor(rate):
+      if is_rate_number:
+        keep_prob = 1 - rate
+        scale = 1 / keep_prob
+        scale = ops.convert_to_tensor(scale, dtype=x_dtype)
+        ret = gen_math_ops.mul(x, scale)
       else:
+<<<<<<< HEAD
         rate.get_shape().assert_has_rank(0)
         rate_dtype = rate.dtype
         if rate_dtype != x_dtype:
@@ -4516,6 +4511,36 @@ def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
       if not context.executing_eagerly():
         ret.set_shape(x.get_shape())
       return ret
+=======
+        raise ValueError("rate is neither scalar nor scalar tensor %r" % rate)
+    else:
+      rate.get_shape().assert_has_rank(0)
+      rate_dtype = rate.dtype
+      if rate_dtype != x_dtype:
+        if not rate_dtype.is_compatible_with(x_dtype):
+          raise ValueError(
+              "Tensor dtype %s is incomptaible with Tensor dtype %s: %r" %
+              (x_dtype.name, rate_dtype.name, rate))
+        rate = gen_math_ops.cast(rate, x_dtype, name="rate")
+      one_tensor = constant_op.constant(1, dtype=x_dtype)
+      ret = gen_math_ops.real_div(x, gen_math_ops.sub(one_tensor, rate))
+
+    noise_shape = _get_noise_shape(x, noise_shape)
+    # Sample a uniform distribution on [0.0, 1.0) and select values larger
+    # than rate.
+    #
+    # NOTE: Random uniform can only generate 2^23 floats on [1.0, 2.0)
+    # and subtract 1.0.
+    random_tensor = random_ops.random_uniform(
+        noise_shape, seed=seed, dtype=x_dtype)
+    # NOTE: if (1.0 + rate) - 1 is equal to rate, then that float is selected,
+    # hence a >= comparison is used.
+    keep_mask = random_tensor >= rate
+    ret = gen_math_ops.mul(ret, gen_math_ops.cast(keep_mask, x_dtype))
+    if not is_executing_eagerly:
+      ret.set_shape(x.get_shape())
+    return ret
+>>>>>>> google_upstream/master
 
 
 @tf_export("math.top_k", "nn.top_k")

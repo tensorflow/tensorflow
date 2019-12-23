@@ -84,6 +84,12 @@ extern const char* kModelSplit;
 extern const char* kLstmCalibrated;
 extern const char* kLstmQuantized;
 
+// Test model with a minimum op.
+extern const char* kModelWithMinimumOp;
+
+// Test model with a maximum op.
+extern const char* kModelWithMaximumOp;
+
 // Test model with LSTM op that has peephole, without layer norm, without
 // projection, without cifg.
 extern const char* kLstmCalibrated2;

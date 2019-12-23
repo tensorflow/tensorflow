@@ -1333,7 +1333,7 @@ Status ColocationGraph::InitializeMember(const Node& node, Member* member) {
       return errors::InvalidArgument(
           "No OpKernel was registered to support Op '", node.type_string(),
           "' used by ", errors::FormatNodeNameForError(node.name()),
-          "with these attrs: [", node.attrs().DebugString(),
+          " with these attrs: [", node.attrs().DebugString(),
           "]\n"
           "Registered devices: [",
           absl::StrJoin(registered_device_types, ", "), "]\n",

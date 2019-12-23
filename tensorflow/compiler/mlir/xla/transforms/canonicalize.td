@@ -38,7 +38,7 @@ def DynamicSliceToSlice: Pat<(HLO_DynamicSliceOp HLO_Tensor:$input,
            (BuildSliceLimits $starting_indices, $slice_sizes),
             (BuildSliceStrides $input))>;
 
-def UnaryToBianryEinsumEq : NativeCodeCall<
+def UnaryToBinaryEinsumEq : NativeCodeCall<
   "$_builder.getStringAttr(\",\" + $0.getValue().str())">;
 
 // Convert UnaryEinsumOp to EinsumOp with two operands with redundant first
@@ -46,4 +46,4 @@ def UnaryToBianryEinsumEq : NativeCodeCall<
 def UnaryEinsumToEinsum : Pat<
   (HLO_UnaryEinsumOp $operand, $equation),
   (HLO_EinsumOp (HLO_ConstOp (GetScalarOfType<1> $operand)),
-                $operand, (UnaryToBianryEinsumEq $equation))>;
+                $operand, (UnaryToBinaryEinsumEq $equation))>;

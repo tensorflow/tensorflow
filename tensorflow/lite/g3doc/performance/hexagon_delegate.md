@@ -62,6 +62,13 @@ public class HexagonDelegate implements Delegate, Closeable {
 1.  Add the ‘tensorflow-lite-hexagon.aar’ to your app - this is in addition to
     the standard tensorflow-lite AAR (nightly or release).
     [Relevant instructions](https://stackoverflow.com/questions/16682847/how-to-manually-include-external-aar-package-using-new-gradle-android-build-syst).
+    You can do this by running bazel command like example below for arm64.
+    We will provide a version hosted on JCenter soon.
+
+```
+bazel build -c opt --config=android_arm64 tensorflow/lite/experimental/delegates/hexagon/java:tensorflow-lite-hexagon
+```
+
 1.  Run “hexagon_nn_skel.run” - Note: you will need to accept the license
     agreement. It should provide 3 different shared libraries
     “libhexagon_nn_skel.so”, “libhexagon_nn_skel_v65.so”,

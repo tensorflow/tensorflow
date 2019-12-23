@@ -73,8 +73,7 @@ MLIRContext *IntegerSet::getContext() const {
 
 /// Walk all of the AffineExpr's in this set. Each node in an expression
 /// tree is visited in postorder.
-void IntegerSet::walkExprs(
-    llvm::function_ref<void(AffineExpr)> callback) const {
+void IntegerSet::walkExprs(function_ref<void(AffineExpr)> callback) const {
   for (auto expr : getConstraints())
     expr.walk(callback);
 }

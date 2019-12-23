@@ -29,6 +29,7 @@ to
 [announce@tensorflow.org](https://groups.google.com/a/tensorflow.org/forum/#!forum/announce).
 See all the [mailing lists](https://www.tensorflow.org/community/forums).
 
+<<<<<<< HEAD
 **Tensorflow ROCm port**
 Please follow the instructions [here](https://github.com/RadeonOpenCompute/ROCm-docker/blob/master/quick-start.md) to set up your ROCm stack.
 A docker container: **rocm/tensorflow:latest(https://hub.docker.com/r/rocm/tensorflow/)** is readily available to be used:
@@ -45,6 +46,21 @@ sudo apt install rocm-libs hipcub miopen-hip
 pip3 install --user tensorflow-rocm --upgrade
 ```
 For details on Tensorflow ROCm port, please take a look at the [ROCm-specific README file](README.ROCm.md).
+=======
+## Feature Prioritization Survey
+
+The TensorFlow team is working on building/improving features, and understands
+that it is very important to prioritize these efforts based on what TF users
+need.
+
+The goal of this short, < 5 minute
+[survey](https://google.qualtrics.com/jfe/form/SV_d5nqhCEbkDkQ7ad), is to help
+the TensorFlow team better understand what features to prioritize based on your
+feedback. Participation is of course optional.
+
+Take the survey
+[HERE](https://google.qualtrics.com/jfe/form/SV_d5nqhCEbkDkQ7ad).
+>>>>>>> google_upstream/master
 
 ## Install
 
@@ -54,23 +70,26 @@ See the [TensorFlow install guide](https://www.tensorflow.org/install) for the
 [Docker container](https://www.tensorflow.org/install/docker), and
 [build from source](https://www.tensorflow.org/install/source).
 
-To install the current release for CPU-only:
+To install the current release, which includes support for
+[CUDA-enabled GPU cards](https://www.tensorflow.org/install/gpu) *(Ubuntu and
+Windows)*:
 
 ```
 $ pip install tensorflow
 ```
 
-Use the GPU package for
-[CUDA-enabled GPU cards](https://www.tensorflow.org/install/gpu) *(Ubuntu and
-Windows)*:
+A smaller CPU-only package is also available:
 
 ```
-$ pip install tensorflow-gpu
+$ pip install tensorflow-cpu
 ```
+
+To update TensorFlow to the latest version, add `--upgrade` flag to the above
+commands.
 
 *Nightly binaries are available for testing using the
 [tf-nightly](https://pypi.python.org/pypi/tf-nightly) and
-[tf-nightly-gpu](https://pypi.python.org/pypi/tf-nightly-gpu) packages on PyPi.*
+[tf-nightly-cpu](https://pypi.python.org/pypi/tf-nightly-cpu) packages on PyPi.*
 
 #### *Try your first TensorFlow program*
 
@@ -165,16 +184,3 @@ Learn more about the
 
 [Apache License 2.0](LICENSE)
 
-## Feature Prioritization Survey
-
-The TensorFlow team is working on building/improving features, and understands
-that it is very important to prioritize these efforts based on what TF users
-need.
-
-The goal of this short, < 5min
-[survey](https://google.qualtrics.com/jfe/form/SV_d5nqhCEbkDkQ7ad), is to help
-the TensorFlow team better understand what features to prioritize based on your
-feedback. Participation is of course optional.
-
-Take the survey
-[HERE](https://google.qualtrics.com/jfe/form/SV_d5nqhCEbkDkQ7ad).

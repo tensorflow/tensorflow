@@ -132,7 +132,7 @@ def SPV_BranchConditionalOp : SPV_Op<"BranchConditional",
 
   let builders = [
     OpBuilder<
-      "Builder *builder, OperationState &state, Value *condition, "
+      "Builder *builder, OperationState &state, ValuePtr condition, "
       "Block *trueBlock, ValueRange trueArguments, "
       "Block *falseBlock, ValueRange falseArguments, "
       "Optional<std::pair<uint32_t, uint32_t>> weights = {}",

@@ -27,7 +27,7 @@ namespace {
 
 // Traverses the callee computation, inlining cloned nodes into the caller
 // computation and connecting them to producers/consumers appropriately.
-// When the traversal has completed, the provided call instruction is entriely
+// When the traversal has completed, the provided call instruction is entirely
 // replaced in the caller's graph.
 class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
  public:

@@ -49,7 +49,7 @@ static StringRef toStringRef(LinalgDependenceGraph::DependenceType dt) {
   llvm_unreachable("Unexpected DependenceType");
 }
 
-Value *Aliases::find(Value *v) {
+ValuePtr Aliases::find(ValuePtr v) {
   if (isa<BlockArgument>(v))
     return v;
 
@@ -147,9 +147,9 @@ LinalgDependenceGraph::getDependencesInto(
 }
 
 void LinalgDependenceGraph::addDependencesBetween(LinalgOp src, LinalgOp dst) {
-  for (auto *srcView : src.getOutputs()) { // W
+  for (auto srcView : src.getOutputs()) { // W
     // RAW graph
-    for (auto *dstView : dst.getInputs()) {  // R
+    for (auto dstView : dst.getInputs()) {   // R
       if (aliases.alias(srcView, dstView)) { // if alias, fill RAW
         addDependenceElem(DependenceType::RAW,
                           LinalgOpView{src.getOperation(), srcView},
@@ -157,7 +157,7 @@ void LinalgDependenceGraph::addDependencesBetween(LinalgOp src, LinalgOp dst) {
       }
     }
     // WAW graph
-    for (auto *dstView : dst.getOutputs()) { // W
+    for (auto dstView : dst.getOutputs()) {  // W
       if (aliases.alias(srcView, dstView)) { // if alias, fill WAW
         addDependenceElem(DependenceType::WAW,
                           LinalgOpView{src.getOperation(), srcView},
@@ -165,9 +165,9 @@ void LinalgDependenceGraph::addDependencesBetween(LinalgOp src, LinalgOp dst) {
       }
     }
   }
-  for (auto *srcView : src.getInputs()) { // R
+  for (auto srcView : src.getInputs()) { // R
     // RAR graph
-    for (auto *dstView : dst.getInputs()) {  // R
+    for (auto dstView : dst.getInputs()) {   // R
       if (aliases.alias(srcView, dstView)) { // if alias, fill RAR
         addDependenceElem(DependenceType::RAR,
                           LinalgOpView{src.getOperation(), srcView},
@@ -175,7 +175,7 @@ void LinalgDependenceGraph::addDependencesBetween(LinalgOp src, LinalgOp dst) {
       }
     }
     // WAR graph
-    for (auto *dstView : dst.getOutputs()) { // W
+    for (auto dstView : dst.getOutputs()) {  // W
       if (aliases.alias(srcView, dstView)) { // if alias, fill WAR
         addDependenceElem(DependenceType::WAR,
                           LinalgOpView{src.getOperation(), srcView},
@@ -194,14 +194,14 @@ LinalgDependenceGraph::findCoveringDependences(LinalgOp srcLinalgOp,
 }
 
 SmallVector<Operation *, 8> LinalgDependenceGraph::findCoveringWrites(
-    LinalgOp srcLinalgOp, LinalgOp dstLinalgOp, Value *view) const {
+    LinalgOp srcLinalgOp, LinalgOp dstLinalgOp, ValuePtr view) const {
   return findOperationsWithCoveringDependences(
       srcLinalgOp, dstLinalgOp, view,
       {DependenceType::WAW, DependenceType::WAR});
 }
 
 SmallVector<Operation *, 8> LinalgDependenceGraph::findCoveringReads(
-    LinalgOp srcLinalgOp, LinalgOp dstLinalgOp, Value *view) const {
+    LinalgOp srcLinalgOp, LinalgOp dstLinalgOp, ValuePtr view) const {
   return findOperationsWithCoveringDependences(
       srcLinalgOp, dstLinalgOp, view,
       {DependenceType::RAR, DependenceType::RAW});
@@ -209,7 +209,7 @@ SmallVector<Operation *, 8> LinalgDependenceGraph::findCoveringReads(
 
 SmallVector<Operation *, 8>
 LinalgDependenceGraph::findOperationsWithCoveringDependences(
-    LinalgOp srcLinalgOp, LinalgOp dstLinalgOp, Value *view,
+    LinalgOp srcLinalgOp, LinalgOp dstLinalgOp, ValuePtr view,
     ArrayRef<DependenceType> types) const {
   auto *src = srcLinalgOp.getOperation();
   auto *dst = dstLinalgOp.getOperation();

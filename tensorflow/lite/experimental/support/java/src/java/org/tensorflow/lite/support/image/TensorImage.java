@@ -263,8 +263,8 @@ public class TensorImage {
       // Create a new bitmap and reallocate memory for it.
       if (bitmapImage == null || bitmapImage.getAllocationByteCount() < requiredAllocation) {
         int[] shape = bufferImage.getShape();
-        int w = shape[0];
-        int h = shape[1];
+        int h = shape[0];
+        int w = shape[1];
         bitmapImage = Bitmap.createBitmap(w, h, Config.ARGB_8888);
       }
       ImageConversions.convertTensorBufferToBitmap(bufferImage, bitmapImage);

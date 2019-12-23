@@ -22,10 +22,9 @@
 #include <vector>
 
 namespace mlir {
-class FuncOp;
 struct LogicalResult;
 class MLIRContext;
-template <typename T> class OpPassBase;
+class Pass;
 class RewritePattern;
 
 // Owning list of rewriting patterns.
@@ -38,7 +37,7 @@ void populateLoopToStdConversionPatterns(OwningRewritePatternList &patterns,
                                          MLIRContext *ctx);
 
 /// Creates a pass to convert loop.for, loop.if and loop.terminator ops to CFG.
-std::unique_ptr<OpPassBase<FuncOp>> createLowerToCFGPass();
+std::unique_ptr<Pass> createLowerToCFGPass();
 
 } // namespace mlir
 
