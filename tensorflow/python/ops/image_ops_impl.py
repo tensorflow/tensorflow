@@ -2964,7 +2964,7 @@ def yiq_to_rgb(images):
     ```python
     >> import tensorflow as tf
     >>> x = tf.random.normal(shape=(256, 256, 3))
-    >> tf.image.yiq_to_rgb(x)
+    >>> tf.image.yiq_to_rgb(x)
     ```
   """
   images = ops.convert_to_tensor(images, name='images')
