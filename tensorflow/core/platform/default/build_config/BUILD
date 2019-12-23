@@ -237,15 +237,3 @@ cc_library(
         ["@local_config_sycl//sycl:sycl_headers"],
     ),
 )
-
-filegroup(
-    name = "mobile_srcs",
-    srcs = glob(["*.h"]),
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "android_srcs",
-    actual = ":mobile_srcs",
-    visibility = ["//visibility:public"],
-)
