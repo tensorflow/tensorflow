@@ -50,7 +50,6 @@ using ::mlir::ModuleOp;
 using ::mlir::OpBuilder;
 using ::mlir::Type;
 using ::mlir::Value;
-using ::mlir::ValuePtr;
 using ::mlir::LLVM::LLVMDialect;
 using ::xla::gpu::Thunk;
 using ::xla::gpu::ThunkEmitter;
@@ -60,7 +59,7 @@ namespace lhlo = ::mlir::xla_lhlo;
 
 // TODO(b/137624192) Use tablegen for this.
 Status InsertMlirOp(HloOpcode opcode, OpBuilder func_builder, Location loc,
-                    ArrayRef<Type> rets, ArrayRef<ValuePtr> args,
+                    ArrayRef<Type> rets, ArrayRef<Value> args,
                     ArrayRef<std::pair<Identifier, Attribute>> attrs) {
   switch (opcode) {
     case HloOpcode::kAbs:
@@ -190,8 +189,8 @@ StatusOr<FuncOp> LhloDialectEmitter::CreateFunction(
 Status LhloDialectEmitter::DefaultAction(HloInstruction* instr) {
   TF_ASSIGN_OR_RETURN(auto function, CreateFunction(*instr));
   OpBuilder func_builder(function.getBody());
-  llvm::SmallVector<ValuePtr, 4> arg_values{function.args_begin(),
-                                            function.args_end()};
+  llvm::SmallVector<Value, 4> arg_values{function.args_begin(),
+                                         function.args_end()};
   TF_RETURN_IF_ERROR(InsertMlirOp(instr->opcode(), func_builder,
                                   getLocation(instr), ArrayRef<Type>{},
                                   arg_values, llvm::None));
@@ -219,7 +218,7 @@ Status LhloDialectEmitter::HandleFusion(HloInstruction* fusion) {
   // Load the HLO argument tensors from the corresponding buffers. The last
   // argument is for the result, so no need to load it.
   OpBuilder body_builder(fusion_op.region());
-  llvm::SmallVector<ValuePtr, 4> arg_values;
+  llvm::SmallVector<Value, 4> arg_values;
   for (int i = 0, e = function.getNumArguments() - 1; i < e; ++i) {
     arg_values.push_back(body_builder.create<::mlir::TensorLoadOp>(
         getLocation(fusion), function.getArgument(i)));
@@ -233,7 +232,7 @@ Status LhloDialectEmitter::HandleFusion(HloInstruction* fusion) {
   // Insert the write-back from the HLO computation to the result argument
   // buffer.
   body_builder.setInsertionPoint(fusion_op.region().back().getTerminator());
-  ValuePtr result_memref = function.getArgument(function.getNumArguments() - 1);
+  Value result_memref = function.getArgument(function.getNumArguments() - 1);
   body_builder.create<::mlir::TensorStoreOp>(getLocation(fusion), result,
                                              result_memref);
 
@@ -242,8 +241,8 @@ Status LhloDialectEmitter::HandleFusion(HloInstruction* fusion) {
 
 Status LhloDialectEmitter::HandleReduce(HloInstruction* reduce) {
   TF_ASSIGN_OR_RETURN(auto function, CreateFunction(*reduce));
-  llvm::SmallVector<ValuePtr, 4> arg_values{function.args_begin(),
-                                            function.args_end()};
+  llvm::SmallVector<Value, 4> arg_values{function.args_begin(),
+                                         function.args_end()};
   OpBuilder builder(function.getBody());
   auto loc = getLocation(reduce);
   int input_count = reduce->operand_count() / 3;
@@ -261,7 +260,7 @@ Status LhloDialectEmitter::HandleReduce(HloInstruction* reduce) {
   OpBuilder body_builder(reduce_op.body());
   auto block = body_builder.getInsertionBlock();
   auto to_apply = reduce->to_apply();
-  llvm::SmallVector<ValuePtr, 4> reduce_arg_values;
+  llvm::SmallVector<Value, 4> reduce_arg_values;
   // First map parameters to memrefs on the operation.
   for (auto param : to_apply->parameter_instructions()) {
     TF_ASSIGN_OR_RETURN(auto arg_type, ConvertShapeToType<MemRefType>(
@@ -302,8 +301,8 @@ Status LhloDialectEmitter::HandleCompare(HloInstruction* compare) {
 
   TF_ASSIGN_OR_RETURN(auto function, CreateFunction(*compare));
   OpBuilder func_builder(function.getBody());
-  llvm::SmallVector<ValuePtr, 4> arg_values{function.args_begin(),
-                                            function.args_end()};
+  llvm::SmallVector<Value, 4> arg_values{function.args_begin(),
+                                         function.args_end()};
   func_builder.create<lhlo::CompareOp>(getLocation(compare), llvm::None,
                                        arg_values, comparison_direction_attr);
   return Status::OK();

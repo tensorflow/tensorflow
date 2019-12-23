@@ -92,15 +92,15 @@ struct VariableAccessInfo {
 // Information about all resource accesses to be fused into a TPUExecute op.
 struct VariableAccessesForTPUExecute {
   // Maps each resource detected to VariableAccessInfo.
-  llvm::SmallDenseMap<ValuePtr, VariableAccessInfo, 8> per_resource_info;
+  llvm::SmallDenseMap<Value, VariableAccessInfo, 8> per_resource_info;
   // The corresponding new output index in TPUExecuteAndUpdateVariables for
   // each old output index in TPUExecute.
   llvm::SmallVector<int, 8> old_to_new_output_mapping;
   // The resources read by ReadVariableOps that are inputs to TPUExecute.
   // Ordered by the input indices to TPUExecute
-  llvm::SmallVector<ValuePtr, 8> resources_read;
+  llvm::SmallVector<Value, 8> resources_read;
   // Operands for the new TPUExecuteAndUpdateVariables.
-  llvm::SmallVector<ValuePtr, 8> new_operand_values;
+  llvm::SmallVector<Value, 8> new_operand_values;
 };
 
 // Returns if an op accesses a resource.
@@ -206,7 +206,7 @@ VariableAccessesForTPUExecute BuildVariableAccessInfo(Operation* execute,
     }
     infos.resources_read.erase(
         llvm::remove_if(infos.resources_read,
-                        [&](const ValuePtr resource) {
+                        [&](const Value resource) {
                           return infos.per_resource_info.count(resource) == 0;
                         }),
         infos.resources_read.end());

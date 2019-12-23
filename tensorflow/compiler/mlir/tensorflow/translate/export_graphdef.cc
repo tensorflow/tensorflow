@@ -69,12 +69,10 @@ using llvm::cast;
 using llvm::dyn_cast;
 using llvm::isa;
 using mlir::BlockArgument;
-using mlir::BlockArgumentPtr;
 using mlir::Dialect;
 using mlir::Operation;
 using mlir::OperationState;
 using mlir::Value;
-using mlir::ValuePtr;
 using stream_executor::port::StatusOr;
 
 namespace {
@@ -163,7 +161,7 @@ class Exporter {
   explicit Exporter(Graph* graph, const Dialect* tf_dialect)
       : graph_(graph), tf_dialect_(tf_dialect) {}
 
-  Status AddArgumentNode(BlockArgumentPtr arg, unsigned index,
+  Status AddArgumentNode(BlockArgument arg, unsigned index,
                          llvm::StringRef name);
   Status AddReturnNode(mlir::ReturnOp op,
                        llvm::ArrayRef<llvm::StringRef> names);
@@ -171,7 +169,7 @@ class Exporter {
   Status AddNextIterationNode(Operation* inst);
   Status AddEdge(Operation* inst);
 
-  StatusOr<std::unique_ptr<NodeDef>> GetArgumentNode(BlockArgumentPtr arg,
+  StatusOr<std::unique_ptr<NodeDef>> GetArgumentNode(BlockArgument arg,
                                                      unsigned index,
                                                      llvm::StringRef name);
   StatusOr<std::unique_ptr<NodeDef>> GetReturnNode(Operation* inst,
@@ -179,7 +177,7 @@ class Exporter {
                                                    llvm::StringRef name);
   // Adds one edge between src_node and dst_node. If it is not a control edge,
   // an index is used to find out the right operand of the dst_node.
-  Status AddEdgeBetweenNodes(ValuePtr src, Node* dst_node, unsigned dst_index);
+  Status AddEdgeBetweenNodes(Value src, Node* dst_node, unsigned dst_index);
 
   // Returns a unique name for `op`.
   std::string UniqueName(Operation* op);
@@ -191,7 +189,7 @@ class Exporter {
   absl::flat_hash_map<Operation*, string> op_to_name_;
   absl::flat_hash_map<string, int64> name_to_count_;
   absl::flat_hash_map<Operation*, Node*> nodes_;
-  llvm::DenseMap<BlockArgumentPtr, Node*> args_;
+  llvm::DenseMap<BlockArgument, Node*> args_;
   // One single return operation can return multiple results, and each of them
   // will be converted to one node in the graph.
   typedef absl::InlinedVector<Node*, 4> NodeVector;
@@ -233,7 +231,7 @@ std::string Exporter::UniqueName(Operation* op) {
 }
 
 StatusOr<std::unique_ptr<NodeDef>> Exporter::GetArgumentNode(
-    BlockArgumentPtr arg, unsigned index, llvm::StringRef name) {
+    BlockArgument arg, unsigned index, llvm::StringRef name) {
   auto func = arg->getParentRegion()->getParentOfType<mlir::FuncOp>();
 
   auto node_def = absl::make_unique<NodeDef>();
@@ -294,7 +292,7 @@ StatusOr<std::unique_ptr<NodeDef>> Exporter::GetReturnNode(
   return node_def;
 }
 
-Status Exporter::AddEdgeBetweenNodes(ValuePtr src, Node* dst_node,
+Status Exporter::AddEdgeBetweenNodes(Value src, Node* dst_node,
                                      unsigned dst_index) {
   if (auto input_result = src->dyn_cast<mlir::OpResult>()) {
     auto* input_inst = input_result->getOwner();
@@ -363,14 +361,14 @@ Status Exporter::AddInstructionNode(Operation* inst) {
   return Status::OK();
 }
 
-bool IsEntryFunctionArg(BlockArgumentPtr arg) {
+bool IsEntryFunctionArg(BlockArgument arg) {
   return arg->getParentRegion()->getParentOfType<mlir::FuncOp>().getName() ==
          "main";
 }
 
 // Creates argument nodes from Block argument. If a name is supplied, that
 // name will be used instead of generating a unique name.
-Status Exporter::AddArgumentNode(BlockArgumentPtr arg, unsigned index,
+Status Exporter::AddArgumentNode(BlockArgument arg, unsigned index,
                                  llvm::StringRef name) {
   if (!IsEntryFunctionArg(arg) || !name.empty()) {
     TF_ASSIGN_OR_RETURN(auto node_def, GetArgumentNode(arg, index, name));

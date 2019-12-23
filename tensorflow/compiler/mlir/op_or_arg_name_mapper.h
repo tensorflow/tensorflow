@@ -30,7 +30,7 @@ namespace tensorflow {
 
 // PointerUnion for operation and value.
 // TODO(jpienaar): Rename the files.
-using OpOrVal = llvm::PointerUnion<mlir::Operation*, mlir::ValuePtr>;
+using OpOrVal = llvm::PointerUnion<mlir::Operation*, mlir::Value>;
 
 // Mapper from operation or value to name.
 class OpOrArgNameMapper {

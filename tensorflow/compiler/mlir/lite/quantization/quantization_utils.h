@@ -161,7 +161,7 @@ struct QuantizationPattern : public RewritePattern {
     if (op->getNumResults() != 1) {
       return matchFailure();
     }
-    ValuePtr quantized_value = op->getResult(0);
+    Value quantized_value = op->getResult(0);
     for (Operation* quantized_op : quantized_value->getUsers()) {
       // If it is requantize op, we shouldn't rewrite this op.
       if (llvm::isa<Q>(quantized_op) || llvm::isa<DQ>(quantized_op)) {
@@ -176,7 +176,7 @@ struct QuantizationPattern : public RewritePattern {
 
       // Collect all the quantized inputs and "clone" the matched op by these
       // inputs.
-      SmallVector<ValuePtr, 4> inputs;
+      SmallVector<Value, 4> inputs;
       inputs.reserve(quantized_op->getNumOperands());
       for (auto operand : quantized_op->getOperands()) {
         Type operand_type = operand->getType();
@@ -201,12 +201,12 @@ struct QuantizationPattern : public RewritePattern {
 
       // Collect all the quantized outputs and replace them by the results of
       // the new quantized op.
-      llvm::SmallDenseMap<ValuePtr, int> outputs_replaced;
+      llvm::SmallDenseMap<Value, int> outputs_replaced;
       SmallVector<Type, 4> output_types;
       output_types.reserve(quantized_op->getNumResults());
       for (auto enumerated_result :
            llvm::enumerate(quantized_op->getResults())) {
-        ValuePtr result = enumerated_result.value();
+        Value result = enumerated_result.value();
         Type result_type = result->getType();
         // Add this to the test coverage once we create test ops with none type
         // results.

@@ -50,7 +50,7 @@ namespace TFL {
 // The actual Optimize Pass.
 namespace {
 
-bool L2NormalizeReduceAxis(ValuePtr sq_op, DenseElementsAttr axis) {
+bool L2NormalizeReduceAxis(Value sq_op, DenseElementsAttr axis) {
   if (sq_op->getType().cast<ShapedType>().getRank() - 1 ==
           *axis.getValues<int>().begin() ||
       *axis.getValues<int>().begin() == -1) {
@@ -142,7 +142,7 @@ ElementsAttr ExpandTo4DForDepthwiseConv(Attribute a) {
 
 // Returns shape of a ranked tensor.
 // Precondition: output_val's is ranked tensor.
-DenseElementsAttr GetShape(ValuePtr output_val) {
+DenseElementsAttr GetShape(Value output_val) {
   auto output_type = output_val->getType().cast<RankedTensorType>();
   auto shape_vector = output_type.getShape();
   std::vector<int32_t> shape(shape_vector.size());
@@ -167,7 +167,7 @@ struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
                                      PatternRewriter &rewriter) const override {
     // Add.
     DenseElementsAttr added_value;
-    ValuePtr constant_val = add_op.rhs();
+    Value constant_val = add_op.rhs();
     if (!matchPattern(constant_val, m_Constant(&added_value)))
       return matchFailure();
 
@@ -176,8 +176,8 @@ struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
         dyn_cast_or_null<TFL::FullyConnectedOp>(add_op.lhs()->getDefiningOp());
     if (!fc_op) return matchFailure();
 
-    ValuePtr filter = fc_op.filter();
-    ValuePtr bias = fc_op.bias();
+    Value filter = fc_op.filter();
+    Value bias = fc_op.bias();
     ElementsAttr bias_value;
     const bool is_none_bias = bias->getType().isa<NoneType>();
     if (!is_none_bias && !matchPattern(bias, m_Constant(&bias_value)))
@@ -242,15 +242,15 @@ struct FuseFullyConnectedAndMul : public OpRewritePattern<TFL::MulOp> {
                                      PatternRewriter &rewriter) const override {
     // Mul.
     DenseElementsAttr cst;
-    ValuePtr constant_val = mul_op.rhs();
+    Value constant_val = mul_op.rhs();
     if (!matchPattern(constant_val, m_Constant(&cst))) return matchFailure();
 
     // Fully Connected.
     auto fc_op =
         dyn_cast_or_null<TFL::FullyConnectedOp>(mul_op.lhs()->getDefiningOp());
     if (!fc_op) return matchFailure();
-    ValuePtr filter = fc_op.filter();
-    ValuePtr bias = fc_op.bias();
+    Value filter = fc_op.filter();
+    Value bias = fc_op.bias();
     ElementsAttr cst_tmp;
     if (!matchPattern(filter, m_Constant(&cst_tmp))) return matchFailure();
     if (!bias->getType().isa<NoneType>() &&
@@ -261,7 +261,7 @@ struct FuseFullyConnectedAndMul : public OpRewritePattern<TFL::MulOp> {
     // Broadcast the constant operand of Mul if it isn't compatible to the
     // filter input. We only support broadcasting the operand along the depth
     // dimension, when the operand's depth is 1.
-    ValuePtr new_const_val = constant_val;
+    Value new_const_val = constant_val;
     if (!IsBroadcastableElementsAttrAndType(cst.getType(), filter->getType())) {
       auto original_shape = cst.getType().getShape();
       llvm::SmallVector<int64_t, 4> normalized_shape(original_shape.begin(),
@@ -325,8 +325,8 @@ struct FuseBinaryOpToFollowingAffineOp : public OpRewritePattern<AffineOpType> {
     APFloat cst_value = *cst.float_value_begin();
 
     // Affine op.
-    ValuePtr filter = fc_op.filter();
-    ValuePtr bias = fc_op.bias();
+    Value filter = fc_op.filter();
+    Value bias = fc_op.bias();
     DenseFPElementsAttr filter_cst, bias_cst;
     if (!matchPattern(filter, m_Constant(&filter_cst))) {
       // The filter maybe quantized, then we should set it to the real constant.

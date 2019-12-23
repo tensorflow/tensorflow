@@ -299,7 +299,7 @@ def TF_IntTypeAttr : TypeAttrBase<"IntegerType", "integer type"> {
 // behavior. The result type has the same element type as both operands.
 class WithBroadcastableBinOpBuilder {
   list<OpBuilder> builders = [OpBuilder<
-"Builder *builder, OperationState &result, ValuePtr  x, ValuePtr  y",
+"Builder *builder, OperationState &result, Value  x, Value  y",
 [{
   auto resultType =
       OpTrait::util::getBroadcastedType(x->getType(), y->getType());
@@ -314,7 +314,7 @@ class WithBroadcastableBinOpBuilder {
 // behavior. The result type has bool element type.
 class WithBroadcastableCmpOpBuilder {
   list<OpBuilder> builders = [OpBuilder<
-"Builder *builder, OperationState &result, ValuePtr  x, ValuePtr  y",
+"Builder *builder, OperationState &result, Value  x, Value  y",
 [{
   Type resultType;
   if (x->getType().isa<UnrankedTensorType>() ||

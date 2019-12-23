@@ -71,7 +71,7 @@ struct ReplicateInvariantOpHoistingPass
 // }
 void MakeShapeOpInvariant(tf_device::ReplicateOp replicate_op, int num_replicas,
                           Block* replicate_block, TF::ShapeOp shape_op) {
-  ValuePtr input = shape_op.input();
+  Value input = shape_op.input();
   // If ShapeOp operand is replicate tensor block argument, replace with the
   // associated first replica operand.
   if (auto block_arg = input->dyn_cast<BlockArgument>()) {
@@ -111,7 +111,7 @@ void MakeShapeOpInvariant(tf_device::ReplicateOp replicate_op, int num_replicas,
 // Checks if op and inner op operands are all replicate invariant.
 bool IsOpReplicateInvariant(Region* replicate_region, Operation* op) {
   auto result = op->walk([&](Operation* inner_op) {
-    for (ValuePtr operand : inner_op->getOperands()) {
+    for (Value operand : inner_op->getOperands()) {
       Region* parent_region = operand->getParentRegion();
       if (!parent_region || !parent_region->isProperAncestor(replicate_region))
         return WalkResult::interrupt();

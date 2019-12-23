@@ -264,7 +264,7 @@ class ImporterBase {
   mlir::Operation* createOperation(
       const Node& node, llvm::StringRef node_type_name,
       const mlir::OperationState& result,
-      const llvm::SmallVectorImpl<mlir::ValuePtr>& control_operands,
+      const llvm::SmallVectorImpl<mlir::Value>& control_operands,
       bool convert_to_legacy_call = false);
 
   // Converts one NodeDef from the input GraphDef into an Operation and
@@ -1174,7 +1174,7 @@ Status ImporterBase::ConvertFunctionArgAndRets(
     const absl::InlinedVector<OutputTensor, 4>& ret_nodes,
     const absl::InlinedVector<Node*, 4>& control_ret_nodes) {
   auto* bb = &func.front();
-  llvm::SmallDenseMap<std::pair<Node*, int>, mlir::ValuePtr, 4>
+  llvm::SmallDenseMap<std::pair<Node*, int>, mlir::Value, 4>
       arg_nodes_to_values;
   for (int i = 0, e = arg_types.size(); i < e; ++i) {
     auto& arg_node = arg_nodes[i];
@@ -1183,7 +1183,7 @@ Status ImporterBase::ConvertFunctionArgAndRets(
     mlir::Operation* island = node_values_.find(arg_node.node->id())->second;
 
     auto bb_arg = bb->getArgument(i);
-    mlir::ValuePtr arg_def = bb_arg;
+    mlir::Value arg_def = bb_arg;
 
     if (island->getNumResults() != 2)
       return errors::InvalidArgument(
@@ -1206,7 +1206,7 @@ Status ImporterBase::ConvertFunctionArgAndRets(
     island->erase();
   }
 
-  llvm::SmallVector<mlir::ValuePtr, 8> inst_to_return;
+  llvm::SmallVector<mlir::Value, 8> inst_to_return;
   for (const auto& ret : ret_nodes) {
     auto* inst = node_values_[ret.node->id()];
     auto op = absl::string_view(ret.node->type_string());
@@ -1347,14 +1347,14 @@ std::string ImporterBase::GetLocationStr(const Node& node,
 mlir::Operation* ImporterBase::createOperation(
     const Node& node, llvm::StringRef node_type_name,
     const mlir::OperationState& result,
-    const llvm::SmallVectorImpl<mlir::ValuePtr>& control_operands,
+    const llvm::SmallVectorImpl<mlir::Value>& control_operands,
     bool convert_to_legacy_call) {
   // For the tf.executor specific operations (not wrapped in an island), we
   // have an extra returned value for the control result, and we concatenate
   // control and non-control operands.
   mlir::SmallVector<mlir::Type, 4> types(result.types);
   types.push_back(mlir::tf_executor::ControlType::get(builder_.getContext()));
-  mlir::SmallVector<mlir::ValuePtr, 4> operands(result.operands);
+  mlir::SmallVector<mlir::Value, 4> operands(result.operands);
   operands.append(control_operands.begin(), control_operands.end());
 
   auto loc = result.location;
@@ -1497,7 +1497,7 @@ Status ImporterBase::ConvertNode(const Node& node) {
   result.operands.reserve(in_edges.size());
 
   // Collect the control operands separately, they will be held by the island.
-  mlir::SmallVector<mlir::ValuePtr, 8> control_operands;
+  mlir::SmallVector<mlir::Value, 8> control_operands;
 
   for (const auto* input_edge : in_edges) {
     const Node& input_node = *input_edge->src();
@@ -2533,7 +2533,7 @@ Status CreateSavedModelIR(
         module.insert(module.getBody()->begin(), func);
         func.addEntryBlock();
         func.setName("__sm_exported_" + orig_func.getName().str());
-        llvm::SmallVector<mlir::ValuePtr, 4> args_as_values;
+        llvm::SmallVector<mlir::Value, 4> args_as_values;
         for (auto block_argument : func.getArguments()) {
           args_as_values.push_back(block_argument);
         }

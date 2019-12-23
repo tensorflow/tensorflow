@@ -71,7 +71,7 @@ bool HasSameStaticShapes(Operation* op) {
   auto values = op->getOperands();
   int index = 0;
   ArrayRef<int64_t> shape;
-  for (ValuePtr value : values) {
+  for (Value value : values) {
     auto shaped_type = value->getType().dyn_cast<ShapedType>();
     if (!shaped_type && !shaped_type.hasStaticShape()) {
       return false;
@@ -183,7 +183,7 @@ PatternMatchResult ConvertTFPackOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_pack_op = cast<TF::PackOp>(op);
 
-  SmallVector<ValuePtr, 4> values(tf_pack_op.values());
+  SmallVector<Value, 4> values(tf_pack_op.values());
   auto output_type = tf_pack_op.output()->getType();
   auto values_count = rewriter.getI32IntegerAttr(tf_pack_op.N());
   // Axis can be negative.
@@ -222,7 +222,7 @@ PatternMatchResult ConvertTFSplitOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_split_op = cast<TF::SplitOp>(op);
 
-  auto output_types = functional::map([](ValuePtr v) { return v->getType(); },
+  auto output_types = functional::map([](Value v) { return v->getType(); },
                                       tf_split_op.output());
   // Number of splits cannot be negative.
   auto num_split = rewriter.getI32IntegerAttr(tf_split_op.num_split());
@@ -237,7 +237,7 @@ PatternMatchResult ConvertTFSplitVOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_splitv_op = cast<TF::SplitVOp>(op);
 
-  auto output_types = functional::map([](ValuePtr v) { return v->getType(); },
+  auto output_types = functional::map([](Value v) { return v->getType(); },
                                       tf_splitv_op.output());
   // Number of splits cannot be negative.
   auto num_split = rewriter.getI32IntegerAttr(tf_splitv_op.num_split());
@@ -248,10 +248,9 @@ PatternMatchResult ConvertTFSplitVOp::matchAndRewrite(
   return matchSuccess();
 }
 
-ValuePtr PadStridedSliceAttributeArray(Operation* op, PatternRewriter& rewriter,
-                                       ValuePtr attribute,
-                                       ArrayRef<int32_t> padding_val,
-                                       int* mask) {
+Value PadStridedSliceAttributeArray(Operation* op, PatternRewriter& rewriter,
+                                    Value attribute,
+                                    ArrayRef<int32_t> padding_val, int* mask) {
   DenseIntElementsAttr dense_elem_attr;
   SmallVector<int32_t, 8> padded_val;
 
@@ -306,17 +305,17 @@ PatternMatchResult ConvertTFStridedSliceOp::matchAndRewrite(
   // Pad `begin` array with zero values and update the `begin_mask`.
   SmallVector<int32_t, 8> begin_pad_val(num_input_dims, 0);
   int begin_mask = tf_strided_slice_op.begin_mask().getSExtValue();
-  ValuePtr padded_begin = PadStridedSliceAttributeArray(
+  Value padded_begin = PadStridedSliceAttributeArray(
       op, rewriter, tf_strided_slice_op.begin(), begin_pad_val, &begin_mask);
   // Pad `end` array with `input_shape` and update the `end_mask`.
   int end_mask = tf_strided_slice_op.end_mask().getSExtValue();
   auto input_shape = ranked_input_type.getShape();
   SmallVector<int32_t, 8> end_pad_val(input_shape.begin(), input_shape.end());
-  ValuePtr padded_end = PadStridedSliceAttributeArray(
+  Value padded_end = PadStridedSliceAttributeArray(
       op, rewriter, tf_strided_slice_op.end(), end_pad_val, &end_mask);
   // Pad `strides` array with ones.
   SmallVector<int32_t, 8> strides_pad_val(num_input_dims, 1);
-  ValuePtr padded_strides = PadStridedSliceAttributeArray(
+  Value padded_strides = PadStridedSliceAttributeArray(
       op, rewriter, tf_strided_slice_op.strides(), strides_pad_val, nullptr);
   rewriter.replaceOpWithNewOp<TFL::StridedSliceOp>(
       op, tf_strided_slice_op.output()->getType(), tf_strided_slice_op.input(),
@@ -337,7 +336,7 @@ PatternMatchResult ConvertTFUnpackOp::matchAndRewrite(
   auto tf_unpack_op = cast<TF::UnpackOp>(op);
 
   auto input = tf_unpack_op.value();
-  auto output_types = functional::map([](ValuePtr v) { return v->getType(); },
+  auto output_types = functional::map([](Value v) { return v->getType(); },
                                       tf_unpack_op.output());
   auto num = rewriter.getI32IntegerAttr(tf_unpack_op.num());
   // Axis can be negative.

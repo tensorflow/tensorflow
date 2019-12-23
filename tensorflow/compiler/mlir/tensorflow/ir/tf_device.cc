@@ -183,7 +183,7 @@ void Print(ReplicateOp op, OpAsmPrinter* p) {
   if (op.getNumOperands()) {
     *p << '(';
     Block& block = op.body().front();
-    interleaveComma(block.getArguments(), *p, [&](BlockArgumentPtr arg) {
+    interleaveComma(block.getArguments(), *p, [&](BlockArgument arg) {
       const int block_arg_num = arg->getArgNumber();
       *p << '[';
       p->printOperands(std::next(op.operand_begin(), block_arg_num * n),
@@ -296,7 +296,7 @@ void BuildReplicateOp(
 void ReplicateOp::build(
     Builder* builder, OperationState& state, int n,
     llvm::ArrayRef<llvm::StringRef> devices,
-    llvm::ArrayRef<std::pair<llvm::ArrayRef<ValuePtr>, Type>> replicated_inputs,
+    llvm::ArrayRef<std::pair<llvm::ArrayRef<Value>, Type>> replicated_inputs,
     llvm::ArrayRef<Type> replica_output_types) {
   BuildReplicateOp(builder, &state, n, devices, replicated_inputs,
                    replica_output_types);

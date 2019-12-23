@@ -39,14 +39,14 @@ using ::mlir::OpBuilder;
 using ::mlir::RankedTensorType;
 using ::mlir::Type;
 using ::mlir::Value;
-using ::mlir::ValuePtr;
 
 namespace hlo = ::mlir::xla_hlo;
 
 // TODO(b/137624192) Use tablegen for this.
-StatusOr<ValuePtr> InsertMlirOp(
-    HloOpcode opcode, OpBuilder func_builder, Location loc, ArrayRef<Type> rets,
-    ArrayRef<ValuePtr> args, ArrayRef<std::pair<Identifier, Attribute>> attrs) {
+StatusOr<Value> InsertMlirOp(HloOpcode opcode, OpBuilder func_builder,
+                             Location loc, ArrayRef<Type> rets,
+                             ArrayRef<Value> args,
+                             ArrayRef<std::pair<Identifier, Attribute>> attrs) {
   switch (opcode) {
     case HloOpcode::kAbs:
       return {func_builder.create<hlo::AbsOp>(loc, rets, args, attrs)};
@@ -93,7 +93,7 @@ mlir::Location HloDialectEmitter::getLocation(
   return emission_context_->getLocation(instr);
 }
 
-StatusOr<ValuePtr> HloDialectEmitter::EmitComputation(
+StatusOr<Value> HloDialectEmitter::EmitComputation(
     const HloComputation& computation) {
   const auto root = computation.root_instruction();
   TF_RETURN_IF_ERROR(root->Accept(this));
@@ -103,7 +103,7 @@ StatusOr<ValuePtr> HloDialectEmitter::EmitComputation(
 Status HloDialectEmitter::DefaultAction(HloInstruction* instr) {
   TF_ASSIGN_OR_RETURN(auto res_type, ConvertTensorShapeToType<RankedTensorType>(
                                          instr->shape(), builder_));
-  llvm::SmallVector<ValuePtr, 4> arguments;
+  llvm::SmallVector<Value, 4> arguments;
   for (auto operand : instr->operands()) {
     arguments.push_back(instruction_to_values_[operand]);
   }
@@ -150,7 +150,7 @@ Status HloDialectEmitter::HandleConstant(HloInstruction* constant) {
 }
 
 Status HloDialectEmitter::HandleReduce(HloInstruction* reduce) {
-  llvm::SmallVector<ValuePtr, 4> operands;
+  llvm::SmallVector<Value, 4> operands;
   for (auto operand : reduce->operands()) {
     operands.push_back(instruction_to_values_.at(operand));
   }
@@ -167,7 +167,7 @@ Status HloDialectEmitter::HandleReduce(HloInstruction* reduce) {
   {
     auto computation = reduce->to_apply();
     auto block = new mlir::Block();
-    llvm::SmallVector<ValuePtr, 4> arguments;
+    llvm::SmallVector<Value, 4> arguments;
     arguments.reserve(computation->num_parameters());
     for (auto parameter : computation->parameter_instructions()) {
       TF_ASSIGN_OR_RETURN(auto param_type,
@@ -181,7 +181,7 @@ Status HloDialectEmitter::HandleReduce(HloInstruction* reduce) {
     OpBuilder body_builder(block);
     body_builder.setInsertionPointToEnd(block);
     body_builder.create<hlo::ReturnOp>(getLocation(reduce),
-                                       ArrayRef<ValuePtr>{result});
+                                       ArrayRef<Value>{result});
   }
   // TODO(b/137624192) Add support for multiple results.
   instruction_to_values_[reduce] = reduceOp.getResult(0);
@@ -195,7 +195,7 @@ Status HloDialectEmitter::HandleCompare(HloInstruction* compare) {
       "comparison_direction",
       builder_.getStringAttr(
           ComparisonDirectionToString(compare->comparison_direction())));
-  llvm::SmallVector<ValuePtr, 4> arguments;
+  llvm::SmallVector<Value, 4> arguments;
   for (auto operand : compare->operands()) {
     arguments.push_back(instruction_to_values_[operand]);
   }

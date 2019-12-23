@@ -61,7 +61,6 @@ namespace mlir_gpu {
 namespace {
 
 using ::mlir::BlockArgument;
-using ::mlir::BlockArgumentPtr;
 using ::mlir::dyn_cast;
 using ::mlir::FuncOp;
 using ::mlir::MLIRContext;
@@ -69,7 +68,6 @@ using ::mlir::ModuleOp;
 using ::mlir::OwningModuleRef;
 using ::mlir::UnknownLoc;
 using ::mlir::Value;
-using ::mlir::ValuePtr;
 using ::mlir::gpu::LaunchFuncOp;
 using ::mlir::LLVM::LLVMDialect;
 using ::mlir::LLVM::LLVMFuncOp;
@@ -215,7 +213,7 @@ static absl::optional<int64> getLaunchBound(const mlir::gpu::KernelDim3& dim) {
 }
 
 using OperandToValueMap =
-    absl::flat_hash_map<const HloInstruction*, std::vector<BlockArgumentPtr>>;
+    absl::flat_hash_map<const HloInstruction*, std::vector<BlockArgument>>;
 
 static StatusOr<std::vector<const HloInstruction*>> ComputeOperandToValueMap(
     OperandToValueMap* operand_to_value_map, const HloInstruction* instr,
@@ -274,7 +272,7 @@ Status InsertBufferLoadPreduleIntoKernel(
   std::vector<mlir::Type> as_mlir_types(new_arg_types.begin(),
                                         new_arg_types.end());
   auto new_args = kernel.front().addArguments(as_mlir_types);
-  std::vector<ValuePtr> buffer_args(new_args.begin(), new_args.end());
+  std::vector<Value> buffer_args(new_args.begin(), new_args.end());
 
   auto zero = builder.create<mlir::LLVM::ConstantOp>(
       loc, offset_type, builder.getI64IntegerAttr(0));
@@ -312,23 +310,21 @@ Status InsertBufferLoadPreduleIntoKernel(
           builder.create<mlir::LLVM::AllocaOp>(loc, target_type, one, 0);
       // Fill the base and aligned pointers.
       auto casted = builder.create<mlir::LLVM::BitcastOp>(
-          loc, struct_type.getStructElementType(0),
-          llvm::ArrayRef<ValuePtr>{ptr});
+          loc, struct_type.getStructElementType(0), llvm::ArrayRef<Value>{ptr});
       auto structPtrAddr = builder.create<mlir::LLVM::GEPOp>(
           loc, struct_type.getStructElementType(0), descPtr,
-          llvm::ArrayRef<ValuePtr>{zero, baseIndex});
+          llvm::ArrayRef<Value>{zero, baseIndex});
       builder.create<mlir::LLVM::StoreOp>(loc, casted, structPtrAddr);
       casted = builder.create<mlir::LLVM::BitcastOp>(
-          loc, struct_type.getStructElementType(1),
-          llvm::ArrayRef<ValuePtr>{ptr});
+          loc, struct_type.getStructElementType(1), llvm::ArrayRef<Value>{ptr});
       structPtrAddr = builder.create<mlir::LLVM::GEPOp>(
           loc, struct_type.getStructElementType(1), descPtr,
-          llvm::ArrayRef<ValuePtr>{zero, dataIndex});
+          llvm::ArrayRef<Value>{zero, dataIndex});
       builder.create<mlir::LLVM::StoreOp>(loc, casted, structPtrAddr);
       // Fill the offset value.
       auto structOffsetAddr = builder.create<mlir::LLVM::GEPOp>(
           loc, struct_type.getStructElementType(1), descPtr,
-          llvm::ArrayRef<ValuePtr>{zero, offsetIndex});
+          llvm::ArrayRef<Value>{zero, offsetIndex});
       builder.create<mlir::LLVM::StoreOp>(loc, offset, structOffsetAddr);
       // Fill the shape.
       auto shape = operand->shape();
@@ -343,7 +339,7 @@ Status InsertBufferLoadPreduleIntoKernel(
               loc, offset_type, builder.getI64IntegerAttr(extent.index()));
           auto shapeEntryPtr = builder.create<mlir::LLVM::GEPOp>(
               loc, entry_type, descPtr,
-              llvm::ArrayRef<ValuePtr>{zero, shapeIndex, index});
+              llvm::ArrayRef<Value>{zero, shapeIndex, index});
           auto extentValue = builder.create<mlir::LLVM::ConstantOp>(
               loc, entry_type, builder.getI64IntegerAttr(extent.value()));
           builder.create<mlir::LLVM::StoreOp>(loc, extentValue, shapeEntryPtr);
@@ -351,13 +347,13 @@ Status InsertBufferLoadPreduleIntoKernel(
         // Finally, fill the strides.
         // TODO(b/137624192): Take assigned layout into account.
         entry_type = struct_type.getStructElementType(4).getArrayElementType();
-        ValuePtr accumulator = nullptr;
+        Value accumulator = nullptr;
         for (int64 idx = shape.rank() - 1; idx >= 0; --idx) {
           auto indexValue = builder.create<mlir::LLVM::ConstantOp>(
               loc, offset_type, builder.getI64IntegerAttr(idx));
           auto strideEntryPtr = builder.create<mlir::LLVM::GEPOp>(
               loc, entry_type, descPtr,
-              llvm::ArrayRef<ValuePtr>{zero, strideIndex, indexValue});
+              llvm::ArrayRef<Value>{zero, strideIndex, indexValue});
           if (accumulator) {
             auto strideValue = builder.create<mlir::LLVM::ConstantOp>(
                 loc, entry_type,

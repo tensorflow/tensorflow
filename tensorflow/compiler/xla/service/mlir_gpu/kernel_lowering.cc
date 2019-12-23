@@ -107,8 +107,7 @@ struct FusionOpRemover : public mlir::FunctionPass<FusionOpRemover> {
 struct SingleTripLoopRemoval
     : public mlir::FunctionPass<SingleTripLoopRemoval> {
   void runOnFunction() override {
-    auto getConstantValue =
-        [](mlir::ValuePtr value) -> llvm::Optional<int64_t> {
+    auto getConstantValue = [](mlir::Value value) -> llvm::Optional<int64_t> {
       auto definingOp = value->getDefiningOp();
       if (!definingOp) return llvm::None;
       auto constantOp = llvm::dyn_cast<mlir::ConstantOp>(definingOp);
@@ -145,7 +144,7 @@ struct SingleTripLoopRemoval
 // same address with the stored value. This needs generalization.
 struct StoreForwardingPass : mlir::FunctionPass<StoreForwardingPass> {
   void runOnFunction() override {
-    llvm::DenseMap<mlir::ValuePtr, mlir::Operation*> memrefToAllocOp;
+    llvm::DenseMap<mlir::Value, mlir::Operation*> memrefToAllocOp;
 
     getFunction().walk([&](mlir::LoadOp loadOp) {
       auto* block = loadOp.getOperation()->getBlock();
@@ -180,7 +179,7 @@ struct StoreForwardingPass : mlir::FunctionPass<StoreForwardingPass> {
 
   // Recursively checks defining ops until finds AllocOp. Return either AllocOp
   // if it is found or nullptr.
-  mlir::Operation* SearchAllocOp(mlir::ValuePtr memref) {
+  mlir::Operation* SearchAllocOp(mlir::Value memref) {
     mlir::Operation* defOp = memref->getDefiningOp();
     while (auto subviewOp = mlir::dyn_cast_or_null<mlir::SubViewOp>(defOp)) {
       defOp = subviewOp.source()->getDefiningOp();
@@ -193,8 +192,8 @@ struct StoreForwardingPass : mlir::FunctionPass<StoreForwardingPass> {
 
   // Retrieves AllocOp from the cache or actually looks for it.
   mlir::Operation* GetAllocOp(
-      mlir::ValuePtr memref,
-      llvm::DenseMap<mlir::ValuePtr, mlir::Operation*>* memrefToAllocOp) {
+      mlir::Value memref,
+      llvm::DenseMap<mlir::Value, mlir::Operation*>* memrefToAllocOp) {
     auto allocOpIt = memrefToAllocOp->find(memref);
     if (allocOpIt != memrefToAllocOp->end()) {
       return allocOpIt->second;

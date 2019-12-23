@@ -185,7 +185,7 @@ For example:
   let builders = [
     OpBuilder<"Builder* builder, OperationState& state, int n, "
               "llvm::ArrayRef<llvm::StringRef> devices, "
-              "llvm::ArrayRef<std::pair<llvm::ArrayRef<ValuePtr>, Type>>"
+              "llvm::ArrayRef<std::pair<llvm::ArrayRef<Value>, Type>>"
               "    replicated_inputs, "
               "llvm::ArrayRef<Type> replica_output_types">,
     OpBuilder<"Builder* builder, OperationState& state, int n, "

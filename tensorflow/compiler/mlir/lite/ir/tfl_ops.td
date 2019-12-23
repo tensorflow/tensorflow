@@ -224,7 +224,7 @@ def BinaryOpSameElementTypeConstraint :
 //===----------------------------------------------------------------------===//
 
 def TFL_BroadcastableBinaryBuilder : OpBuilder<
-  "Builder *builder, OperationState &result, ValuePtr lhs, ValuePtr rhs",
+  "Builder *builder, OperationState &result, Value lhs, Value rhs",
   [{
     auto resultType =
       OpTrait::util::getBroadcastedType(lhs->getType(), rhs->getType());
@@ -235,7 +235,7 @@ def TFL_BroadcastableBinaryBuilder : OpBuilder<
   }]>;
 
 def TFL_FusedBroadcastableBinaryBuilder : OpBuilder<
-  "Builder *builder, OperationState &result, ValuePtr lhs, ValuePtr rhs, "
+  "Builder *builder, OperationState &result, Value lhs, Value rhs, "
   "StringAttr fusedActivationFunction",
   [{
     buildFusedBroadcastableBinOp(
@@ -243,7 +243,7 @@ def TFL_FusedBroadcastableBinaryBuilder : OpBuilder<
   }]>;
 
 def TFL_ComparisonBinaryBuilder : OpBuilder<
-  "Builder *builder, OperationState &result, ValuePtr lhs, ValuePtr rhs",
+  "Builder *builder, OperationState &result, Value lhs, Value rhs",
   [{
     buildComparisonBinOp(builder, result, lhs, rhs);
   }]>;
@@ -669,7 +669,7 @@ def TFL_GatherOp : TFL_Op<"gather", [
   let builders =
   [
     OpBuilder<"Builder *builder, OperationState &result, "
-      "ValuePtr params, ValuePtr indices, IntegerAttr axis",
+      "Value params, Value indices, IntegerAttr axis",
         [{ BuildGatherOp(builder, result, params, indices, axis); }]>
   ];
 
@@ -932,7 +932,7 @@ def TFL_NotEqualOp : TFL_Op<"not_equal", [
   let builders =
   [
     OpBuilder<
-      "Builder *builder, OperationState &result, ValuePtr lhs, ValuePtr rhs",
+      "Builder *builder, OperationState &result, Value lhs, Value rhs",
       [{
         buildComparisonBinOp(builder, result, lhs, rhs);
       }]>
@@ -2081,7 +2081,7 @@ def TFL_SelectOp : TFL_Op<"select", [NoSideEffect,
 
   // TODO(jpienaar): autogenerate this.
   let builders = [OpBuilder<"Builder *builder, OperationState &result, "
-                            "ValuePtr condition, ValuePtr x, ValuePtr y",
+                            "Value condition, Value x, Value y",
   [{
     auto resultType = x->getType();
     result.addOperands({condition, x, y});
@@ -2109,7 +2109,7 @@ def TFL_SelectV2Op : TFL_Op<"select_v2", [NoSideEffect]> {
   let results = (outs AnyTensor:$output);
 
   let builders = [OpBuilder<"Builder *builder, OperationState &result, "
-                            "ValuePtr cond, ValuePtr x, ValuePtr y",
+                            "Value cond, Value x, Value y",
   [{
     BuildSelectV2Op(builder, result, cond, x, y);
   }]>];
@@ -2303,7 +2303,7 @@ def TFL_TopKV2Op: TFL_Op<"topk_v2", [NoSideEffect, TFL_OperandHasRank<1,0>,
     I32Tensor:$indices);
 
   let builders = [OpBuilder<"Builder *builder, OperationState &result, "
-                            "ValuePtr input, ValuePtr k",
+                            "Value input, Value k",
                   [{ BuildTopKOp(builder, result, input, k); }]>];
 
   let hasOptions = 1;

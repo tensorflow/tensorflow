@@ -53,7 +53,7 @@ class PointwiseToLinalgConverter : public OpConversionPattern<LhloOp> {
   using OpConversionPattern<LhloOp>::OpConversionPattern;
 
   PatternMatchResult matchAndRewrite(
-      LhloOp lhlo_op, ArrayRef<ValuePtr> args,
+      LhloOp lhlo_op, ArrayRef<Value> args,
       ConversionPatternRewriter& rewriter) const final {
     auto loc = lhlo_op.getLoc();
     auto argType =
@@ -101,7 +101,7 @@ class PointwiseToLinalgConverter : public OpConversionPattern<LhloOp> {
     block->addArguments(bodyArgTypes);
     block->addArguments(bodyResultTypes);
 
-    SmallVector<ValuePtr, 4> bodyArgs;
+    SmallVector<Value, 4> bodyArgs;
     for (int i = 0, e = bodyArgTypes.size(); i < e; ++i) {
       bodyArgs.push_back(block->getArgument(i));
     }
@@ -121,7 +121,7 @@ class ScalarPointwiseToStandardConverter : public OpConversionPattern<LhloOp> {
   using OpConversionPattern<LhloOp>::OpConversionPattern;
 
   PatternMatchResult matchAndRewrite(
-      LhloOp lhlo_op, ArrayRef<ValuePtr> args,
+      LhloOp lhlo_op, ArrayRef<Value> args,
       ConversionPatternRewriter& rewriter) const final {
     auto loc = lhlo_op.getLoc();
     auto argType =
@@ -136,7 +136,7 @@ class ScalarPointwiseToStandardConverter : public OpConversionPattern<LhloOp> {
     auto rhs = rewriter.create<LoadOp>(loc, lhlo_op.rhs());
     Operation* op = MapLhloOpToStdScalarOp<LhloOp>(
         llvm::cast<LhloOp>(lhlo_op), argType.getElementType(),
-        llvm::ArrayRef<ValuePtr>{lhs, rhs}, rewriter);
+        llvm::ArrayRef<Value>{lhs, rhs}, rewriter);
     rewriter.create<StoreOp>(loc, op->getResult(0), lhlo_op.out());
     rewriter.eraseOp(lhlo_op);
     return ConversionPattern::matchSuccess();
@@ -148,7 +148,7 @@ class BroadcastInDimConverter : public OpConversionPattern<BroadcastInDimOp> {
   using OpConversionPattern<BroadcastInDimOp>::OpConversionPattern;
 
   PatternMatchResult matchAndRewrite(
-      BroadcastInDimOp broadcastOp, ArrayRef<ValuePtr> args,
+      BroadcastInDimOp broadcastOp, ArrayRef<Value> args,
       ConversionPatternRewriter& rewriter) const final {
     auto operandMemrefType =
         broadcastOp.operand()->getType().dyn_cast<MemRefType>();
@@ -167,7 +167,7 @@ class BroadcastInDimConverter : public OpConversionPattern<BroadcastInDimOp> {
 
  private:
   PatternMatchResult emitScalarBroadcast(
-      BroadcastInDimOp broadcastOp, ArrayRef<ValuePtr> args,
+      BroadcastInDimOp broadcastOp, ArrayRef<Value> args,
       MemRefType resultMemrefType, ConversionPatternRewriter* rewriter) const {
     unsigned nloops = resultMemrefType.getRank();
     SmallVector<Attribute, 1> indexingMaps{
@@ -195,7 +195,7 @@ class BroadcastInDimConverter : public OpConversionPattern<BroadcastInDimOp> {
   }
 
   PatternMatchResult emitNonScalarBroadcast(
-      BroadcastInDimOp broadcastOp, ArrayRef<ValuePtr> args,
+      BroadcastInDimOp broadcastOp, ArrayRef<Value> args,
       MemRefType operandMemrefType, MemRefType resultMemrefType,
       ConversionPatternRewriter* rewriter) const {
     SmallVector<Type, 4> bodyArgTypes{operandMemrefType.getElementType()};
@@ -250,7 +250,7 @@ class IotaConverter : public OpConversionPattern<IotaOp> {
   using OpConversionPattern<IotaOp>::OpConversionPattern;
 
   PatternMatchResult matchAndRewrite(
-      IotaOp iotaOp, ArrayRef<ValuePtr> args,
+      IotaOp iotaOp, ArrayRef<Value> args,
       ConversionPatternRewriter& rewriter) const final {
     auto resultMemrefType =
         iotaOp.getOperand()->getType().dyn_cast<MemRefType>();
@@ -301,7 +301,7 @@ class ConstConverter : public OpConversionPattern<ConstOp> {
   using OpConversionPattern<ConstOp>::OpConversionPattern;
 
   PatternMatchResult matchAndRewrite(
-      ConstOp constOp, ArrayRef<ValuePtr> args,
+      ConstOp constOp, ArrayRef<Value> args,
       ConversionPatternRewriter& rewriter) const final {
     auto loc = constOp.getLoc();
     auto valueAttr = constOp.value().cast<DenseElementsAttr>();

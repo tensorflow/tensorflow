@@ -106,7 +106,7 @@ void RemoveQuantizationAdaptorOps(FuncOp func) {
     Operation* returned_op = returned_value->getDefiningOp();
     if (returned_op && llvm::isa<DequantizeOp>(returned_op)) {
       auto dequantize_op = llvm::cast<DequantizeOp>(returned_op);
-      ValuePtr dequantized_result = dequantize_op.input();
+      Value dequantized_result = dequantize_op.input();
       output_types.push_back(dequantized_result->getType());
       terminator->setOperand(i, dequantized_result);
       returned_op->erase();

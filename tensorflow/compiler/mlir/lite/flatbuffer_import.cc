@@ -91,7 +91,6 @@ using mlir::OwningModuleRef;
 using mlir::RankedTensorType;
 using mlir::UnrankedTensorType;
 using mlir::Value;
-using mlir::ValuePtr;
 using mlir::quant::QuantizedType;
 using tflite::TensorT;
 using xla::StatusOr;
@@ -213,7 +212,7 @@ StatusOr<mlir::TensorType> GetTensorType(const TensorT& tensor, Builder builder,
 // type, thus none stats op is required and nullptr is retruned.
 // If the min max information is invalid, nullptr is returned.
 mlir::Operation* ConvertMinMaxToStatsOp(const TensorT& tensor, OpBuilder b,
-                                        ValuePtr res) {
+                                        Value res) {
   // If the `tensor` has scale/zero_point, it must have been quantized, then the
   // min/max stats is just for comments, so ignore it.
   if (!tensor.quantization || IsQuantized(tensor)) return nullptr;
@@ -498,12 +497,12 @@ bool IsBasicLSTMOp(tflite::BuiltinOptionsUnion op_union) {
 
 // TODO(krzysd) Handle function calls
 StatusOr<Operation*> ConvertOp(
-    const tflite::OperatorT& op, const std::vector<ValuePtr>& vals_map,
-    ValuePtr optional_arg_marker, const std::vector<std::string>& op_names,
+    const tflite::OperatorT& op, const std::vector<Value>& vals_map,
+    Value optional_arg_marker, const std::vector<std::string>& op_names,
     const std::vector<std::string>& func_names,
     const std::vector<std::unique_ptr<tflite::TensorT>>& tensors, Location loc,
     OpBuilder builder) {
-  llvm::SmallVector<ValuePtr, 4> operands;
+  llvm::SmallVector<Value, 4> operands;
   llvm::SmallVector<mlir::Type, 2> outputTypes;
 
   if (op.outputs.empty()) {
@@ -693,8 +692,8 @@ StatusOr<FuncOp> ConvertSubgraph(
   auto& body = func.getBody();
   OpBuilder op_builder{body};
 
-  std::vector<ValuePtr> vals_map(subgraph.tensors.size(), nullptr);
-  ValuePtr maybe_optional_arg_marker = nullptr;
+  std::vector<Value> vals_map(subgraph.tensors.size(), nullptr);
+  Value maybe_optional_arg_marker = nullptr;
 
   // Get or construct MLIR values for each input
   for (int i = 0, e = subgraph.inputs.size(); i < e; i++) {
@@ -705,7 +704,7 @@ StatusOr<FuncOp> ConvertSubgraph(
       auto err = errors::FailedPrecondition("duplicate input arguments");
       return emitError(loc, err.ToString()), err;
     }
-    ValuePtr input_value = func.getArgument(i);
+    Value input_value = func.getArgument(i);
 
     // If the `tensor` has min/max and doesn't have scale/zero_point
     // information, a stats op is created to use the input_value, then the
@@ -769,7 +768,7 @@ StatusOr<FuncOp> ConvertSubgraph(
             ? base_loc
             : TensorLoc(*subgraph.tensors[op->outputs[0]], builder, base_loc);
     // If there's an optional argument, maybe_optional_arg_marker has been set
-    // to a valid ValuePtr
+    // to a valid Value
     TF_ASSIGN_OR_RETURN(
         auto* mlir_op,
         ConvertOp(*op, vals_map, maybe_optional_arg_marker, op_names,
@@ -792,7 +791,7 @@ StatusOr<FuncOp> ConvertSubgraph(
   }
 
   // Construct return values
-  llvm::SmallVector<ValuePtr, 4> return_operands;
+  llvm::SmallVector<Value, 4> return_operands;
   for (auto index : func_outputs) {
     if (!vals_map.at(index)) {
       auto& const_tensor = *subgraph.tensors[index];

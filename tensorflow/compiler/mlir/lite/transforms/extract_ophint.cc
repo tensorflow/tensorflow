@@ -188,10 +188,10 @@ struct OphintCompositeOp {
 
   // This function will process the aggregated inputs based on different
   // strategies like "first", "last", "stack".
-  std::map<int, ValuePtr> GetAggregatedInputs(OpBuilder* builder) {
-    std::map<int, ValuePtr> aggregated_inputs;
+  std::map<int, Value> GetAggregatedInputs(OpBuilder* builder) {
+    std::map<int, Value> aggregated_inputs;
     for (const auto& kv : inputs) {
-      ValuePtr op_input = nullptr;
+      Value op_input = nullptr;
       const AggregatedOperand& operand = kv.second;
       // Dealing with "stack" strategy:
       // This breaks into two parts:
@@ -203,7 +203,7 @@ struct OphintCompositeOp {
         if (operand.ops.size() == 1) {
           // If ops size is 1, it will be simply expanding dimensions at dim 0.
           Operation* current_identity_op = operand.ops.begin()->second;
-          ValuePtr input = current_identity_op->getOperand(0);
+          Value input = current_identity_op->getOperand(0);
           RankedTensorType input_type =
               input->getType().cast<RankedTensorType>();
           // The Reshape will be {1, (original_shape)}
@@ -234,8 +234,8 @@ struct OphintCompositeOp {
 
         } else {
           // Insert a pack op to pack all the inputs together.
-          std::vector<ValuePtr> pack_input_operands;
-          std::vector<ValuePtr> packed_input_consumers;
+          std::vector<Value> pack_input_operands;
+          std::vector<Value> packed_input_consumers;
           for (int i = 0, e = operand.ops.size(); i < e; ++i) {
             pack_input_operands.push_back(operand.ops.at(i)->getOperand(0));
             packed_input_consumers.push_back(operand.ops.at(i)->getResult(0));
@@ -288,7 +288,7 @@ struct OphintCompositeOp {
       const AggregatedOperand& operand = kv.second;
       if (operand.aggregation == kStrategyStack) {
         const int output_numer = operand.ops.size();
-        ValuePtr first_output = operand.ops.at(0)->getOperand(0);
+        Value first_output = operand.ops.at(0)->getOperand(0);
         RankedTensorType first_output_type =
             first_output->getType().cast<RankedTensorType>();
         // The aggregated output shape will be {N, original_shape}.
@@ -300,11 +300,11 @@ struct OphintCompositeOp {
         aggregated_output_types[kv.first] =
             RankedTensorType::get(shape, first_output_type.getElementType());
       } else if (operand.aggregation == kStrategyLast) {
-        ValuePtr last_output =
+        Value last_output =
             operand.ops.at(operand.ops.size() - 1)->getOperand(0);
         aggregated_output_types[kv.first] = last_output->getType();
       } else {
-        ValuePtr first_output = operand.ops.at(0)->getOperand(0);
+        Value first_output = operand.ops.at(0)->getOperand(0);
         aggregated_output_types[kv.first] = first_output->getType();
       }
     }
@@ -507,14 +507,14 @@ LogicalResult TopoSortOperations(OpBuilder* builder) {
 
 Operation* BuildFusedFuncOp(StringRef func_name, StringRef fused_func_type,
                             Operation* insert_before_op,
-                            const std::map<int, ValuePtr>& inputs,
+                            const std::map<int, Value>& inputs,
                             const std::map<int, Type>& output_types,
                             OpBuilder* builder, ModuleOp* module_op) {
   SmallVector<Type, 4> input_types;
-  SmallVector<ValuePtr, 4> input_values;
+  SmallVector<Value, 4> input_values;
   SmallVector<int, 4> input_indexes;
   for (const auto& kv : inputs) {
-    ValuePtr input = kv.second;
+    Value input = kv.second;
     input_types.push_back(input->getType());
     input_values.push_back(input);
     input_indexes.push_back(kv.first);
@@ -588,7 +588,7 @@ llvm::DenseSet<Operation*> BfsForReachableOps(ArrayRef<Operation*> input_ops) {
   llvm::DenseSet<Operation*> reachable_ops;
   std::queue<Operation*> ops_queue;
   for (auto& input_op : input_ops) {
-    for (ValuePtr value : input_op->getOperands()) {
+    for (Value value : input_op->getOperands()) {
       Operation* op = value->getDefiningOp();
       if (op != nullptr) ops_queue.push(op);
     }
@@ -598,7 +598,7 @@ llvm::DenseSet<Operation*> BfsForReachableOps(ArrayRef<Operation*> input_ops) {
     Operation* current_op = ops_queue.front();
     ops_queue.pop();
     reachable_ops.insert(current_op);
-    for (ValuePtr value : current_op->getOperands()) {
+    for (Value value : current_op->getOperands()) {
       Operation* upstream_op = value->getDefiningOp();
       // Not visited, put it into the queue.
       if (upstream_op != nullptr &&
@@ -625,7 +625,7 @@ LogicalResult ConvertOphintToStub(StringRef stub_name,
       BfsForReachableOps(ophint_composite_op.GetAllOutputOps());
 
   // Step 3, deal with inputs aggregation strategies.
-  const std::map<int, ValuePtr>& aggregated_inputs =
+  const std::map<int, Value>& aggregated_inputs =
       ophint_composite_op.GetAggregatedInputs(builder);
 
   // Step 4, get aggregated output types.

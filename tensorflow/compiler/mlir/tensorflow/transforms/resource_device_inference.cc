@@ -64,7 +64,7 @@ class PerFunctionResult {
 
   // Returns the recorded device assignment for a resource, if any.
   llvm::Optional<llvm::StringRef> DeviceForResource(
-      const ValuePtr resource) const {
+      const Value resource) const {
     llvm::Optional<llvm::StringRef> result;
     if (alias_analysis_.IsUnknownResource(resource)) return result;
     for (int64_t id : alias_analysis_.GetResourceUniqueIds(resource)) {
@@ -87,8 +87,7 @@ class PerFunctionResult {
   // conflicts with an existing one, returns an error.
   //
   // If `changed` is provided, assign *changed to true if anything is modified.
-  LogicalResult AddResourceDevice(const ValuePtr resource,
-                                  llvm::StringRef device,
+  LogicalResult AddResourceDevice(const Value resource, llvm::StringRef device,
                                   bool* changed = nullptr) {
     if (alias_analysis_.IsUnknownResource(resource)) return success();
     for (int64_t id : alias_analysis_.GetResourceUniqueIds(resource)) {
@@ -109,7 +108,7 @@ class PerFunctionResult {
 };
 
 // Tries to record device assignment for a resource.
-LogicalResult AddResourceDeviceAndEmitError(const ValuePtr resource,
+LogicalResult AddResourceDeviceAndEmitError(const Value resource,
                                             llvm::StringRef device,
                                             Operation* error_reporting_op,
                                             PerFunctionResult* result,

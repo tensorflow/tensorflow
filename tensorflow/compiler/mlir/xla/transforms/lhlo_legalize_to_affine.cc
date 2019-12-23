@@ -47,7 +47,7 @@ struct BinaryOpConverter : public OpRewritePattern<LhloOp> {
       return this->matchFailure();
     }
     const auto& shape = lhs_type.getShape();
-    SmallVector<ValuePtr, 4> induction_vars;
+    SmallVector<Value, 4> induction_vars;
     const auto loc = op.getLoc();
     for (int i = 0; i < shape.size(); ++i) {
       auto forOp = rewriter.create<AffineForOp>(loc, 0, shape[i]);

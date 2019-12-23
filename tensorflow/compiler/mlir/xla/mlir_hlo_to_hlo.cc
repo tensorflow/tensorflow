@@ -348,7 +348,7 @@ namespace mlir {
 namespace {
 class ConvertToHloModule {
  public:
-  using ValueLoweringMap = llvm::DenseMap<ValuePtr, xla::XlaOp>;
+  using ValueLoweringMap = llvm::DenseMap<Value, xla::XlaOp>;
   using FunctionLoweringMap = llvm::DenseMap<mlir::FuncOp, xla::XlaComputation>;
 
   // If use_tuple_args is true, then the entry function's arguments are
@@ -430,7 +430,7 @@ class ConvertToHloModule {
 namespace {
 
 struct OpLoweringContext {
-  llvm::DenseMap<mlir::ValuePtr, xla::XlaOp>* values;
+  llvm::DenseMap<mlir::Value, xla::XlaOp>* values;
   mlir::ConvertToHloModule* converter;
   xla::XlaBuilder* builder;
 };
@@ -438,7 +438,7 @@ struct OpLoweringContext {
 llvm::SmallVector<xla::XlaOp, 4> GetTuple(mlir::Operation::operand_range values,
                                           OpLoweringContext ctx) {
   llvm::SmallVector<xla::XlaOp, 4> ops;
-  for (mlir::ValuePtr value : values) {
+  for (mlir::Value value : values) {
     ops.push_back((*ctx.values)[value]);
   }
   return ops;

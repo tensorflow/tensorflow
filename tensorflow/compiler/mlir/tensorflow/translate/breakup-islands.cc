@@ -44,7 +44,7 @@ struct BreakUpIslands : OperationPass<BreakUpIslands, FuncOp> {
 
   void BreakUpIsland(tf_executor::IslandOp op,
                      const TF::SideEffectAnalysis& side_effect_analysis,
-                     llvm::DenseMap<Operation*, llvm::SmallVector<ValuePtr, 4>>*
+                     llvm::DenseMap<Operation*, llvm::SmallVector<Value, 4>>*
                          new_control_edges);
 };
 
@@ -64,7 +64,7 @@ void BreakUpIslands::runOnOperation() {
 
   // Map from the users of the existing islands to the list of control
   // edges that need to be added.
-  llvm::DenseMap<Operation*, llvm::SmallVector<ValuePtr, 4>> new_control_edges;
+  llvm::DenseMap<Operation*, llvm::SmallVector<Value, 4>> new_control_edges;
   auto& side_effect_analysis = getAnalysis<TF::SideEffectAnalysis>();
   // Iterate in reverse order to avoid invalidating Operation* stored in
   // new_control_edges.
@@ -78,7 +78,7 @@ void BreakUpIslands::runOnOperation() {
 
   // Apply edge additions in reverse order so that the ops don't get
   // invalidated.
-  llvm::SmallVector<ValuePtr, 8> edges;
+  llvm::SmallVector<Value, 8> edges;
   llvm::SmallPtrSet<Operation*, 4> dups;
   llvm::SmallVector<Type, 4> types;
   for (auto& item :
@@ -96,11 +96,11 @@ void BreakUpIslands::runOnOperation() {
     edges.assign(item.operand_begin(), item.operand_end());
     dups.clear();
 
-    for (ValuePtr input : edges) {
+    for (Value input : edges) {
       dups.insert(input->getDefiningOp());
     }
     // Insert new control edges removing duplicates.
-    for (ValuePtr value : llvm::reverse(edge.second)) {
+    for (Value value : llvm::reverse(edge.second)) {
       if (dups.insert(value->getDefiningOp()).second) edges.push_back(value);
     }
     state.addOperands(edges);
@@ -114,7 +114,7 @@ void BreakUpIslands::runOnOperation() {
 // Helper that creates an island. If `sub_op` is not nullptr, it will be moved
 // to the island.
 tf_executor::IslandOp CreateIsland(ArrayRef<Type> result_types,
-                                   ArrayRef<ValuePtr> control_inputs,
+                                   ArrayRef<Value> control_inputs,
                                    const tf_executor::ControlType& control_type,
                                    const Location& loc, Operation* sub_op,
                                    tf_executor::IslandOp original_island) {
@@ -132,7 +132,7 @@ tf_executor::IslandOp CreateIsland(ArrayRef<Type> result_types,
   if (sub_op) {
     island_builder.create<tf_executor::YieldOp>(loc, sub_op->getResults());
   } else {
-    island_builder.create<tf_executor::YieldOp>(loc, ArrayRef<ValuePtr>{});
+    island_builder.create<tf_executor::YieldOp>(loc, ArrayRef<Value>{});
   }
   return island;
 }
@@ -178,7 +178,7 @@ IslandSourcesAndSinks FindSourcesAndSinksInIsland(
 void BreakUpIslands::BreakUpIsland(
     tf_executor::IslandOp op,
     const TF::SideEffectAnalysis& side_effect_analysis,
-    llvm::DenseMap<Operation*, llvm::SmallVector<ValuePtr, 4>>*
+    llvm::DenseMap<Operation*, llvm::SmallVector<Value, 4>>*
         new_control_edges) {
   auto island_body = op.GetBody().without_terminator();
   // Skip islands that are already only a single op.
@@ -214,9 +214,9 @@ void BreakUpIslands::BreakUpIsland(
   auto sources_and_sinks =
       FindSourcesAndSinksInIsland(op, side_effect_analysis);
   // The corresponding control output of the new island created for each sub-op.
-  llvm::SmallDenseMap<Operation*, ValuePtr, 8> new_control_for_sub_ops;
+  llvm::SmallDenseMap<Operation*, Value, 8> new_control_for_sub_ops;
   // Control outputs of newly created islands that are sinks.
-  llvm::SmallVector<ValuePtr, 8> sink_island_controls;
+  llvm::SmallVector<Value, 8> sink_island_controls;
   // For each operation in the island, construct a new island to wrap the op,
   // yield all the results, and replace all the usages with the results of the
   // new island.
@@ -224,7 +224,7 @@ void BreakUpIslands::BreakUpIsland(
     const auto predecessors =
         side_effect_analysis.DirectControlPredecessors(&sub_op);
     // Get the controls from the predecessors.
-    llvm::SmallVector<ValuePtr, 4> predecessors_control;
+    llvm::SmallVector<Value, 4> predecessors_control;
     predecessors_control.reserve(predecessors.size());
     for (auto predecessor : predecessors) {
       predecessors_control.push_back(new_control_for_sub_ops[predecessor]);
@@ -233,9 +233,9 @@ void BreakUpIslands::BreakUpIsland(
     // by inter-islands dependencies; otherwise, we do not need to include
     // island_control_inputs, since they must have been tracked by the (direct
     // or indirect) control predecessors or operands.
-    ArrayRef<ValuePtr> control = sources_and_sinks.sources.count(&sub_op) > 0
-                                     ? island_control_inputs
-                                     : predecessors_control;
+    ArrayRef<Value> control = sources_and_sinks.sources.count(&sub_op) > 0
+                                  ? island_control_inputs
+                                  : predecessors_control;
     auto island =
         CreateIsland(llvm::to_vector<4>(sub_op.getResultTypes()), control,
                      control_type, sub_op.getLoc(), &sub_op, op);
@@ -258,7 +258,7 @@ void BreakUpIslands::BreakUpIsland(
   op.control()->replaceAllUsesWith(sink_island_controls[0]);
   // All existing outputs need to add a control flow edge from
   // sink_island_controls[0].
-  for (ValuePtr out : op.outputs()) {
+  for (Value out : op.outputs()) {
     for (auto& use : out->getUses()) {
       Operation* owner = use.getOwner();
       if (auto island_op =

@@ -95,7 +95,6 @@ using mlir::TranslateFromMLIRRegistration;
 using mlir::Type;
 using mlir::UnknownLoc;
 using mlir::Value;
-using mlir::ValuePtr;
 using tensorflow::OpOrArgLocNameMapper;
 using tensorflow::OpOrArgNameMapper;
 using tensorflow::Status;
@@ -232,7 +231,7 @@ static bool IsConst(Operation* op) {
 }
 
 template <typename T>
-static bool HasValidTFLiteType(ValuePtr value, T& error_handler) {
+static bool HasValidTFLiteType(Value value, T& error_handler) {
   // None type is allowed to represent unspecified operands.
   if (value->getType().isa<NoneType>()) return true;
 
@@ -363,7 +362,7 @@ class Translator {
 
   // Builds TFLite tensor from the given value. `buffer_idx` is index of the
   // corresponding buffer. Emits error and returns llvm::None on failure.
-  Optional<BufferOffset<tflite::Tensor>> BuildTensor(ValuePtr value,
+  Optional<BufferOffset<tflite::Tensor>> BuildTensor(Value value,
                                                      const std::string& name,
                                                      unsigned buffer_idx);
 
@@ -421,7 +420,7 @@ class Translator {
   bool IsStatefulOperand(mlir::Operation* op, int operand_index);
 
   // Returns a unique name for `val`.
-  std::string UniqueName(mlir::ValuePtr val);
+  std::string UniqueName(mlir::Value val);
 
   ModuleOp module_;
 
@@ -451,7 +450,7 @@ class Translator {
   std::vector<std::string> failed_custom_ops_;
 };
 
-std::string Translator::UniqueName(mlir::ValuePtr val) {
+std::string Translator::UniqueName(mlir::Value val) {
   return name_mapper_.GetUniqueName(val);
 }
 
@@ -504,7 +503,7 @@ Optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
 }
 
 Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
-    ValuePtr value, const std::string& name, unsigned buffer_idx) {
+    Value value, const std::string& name, unsigned buffer_idx) {
   auto type = value->getType().cast<TensorType>();
 
   // TFLite requires tensor shape only for the inputs and constants.
@@ -918,11 +917,11 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(FuncOp fn) {
   bool has_input_attr = false;
   InitializeNamesFromAttribute(fn, &has_input_attr);
   std::vector<BufferOffset<tflite::Tensor>> tensors;
-  llvm::DenseMap<ValuePtr, int> tensor_index_map;
+  llvm::DenseMap<Value, int> tensor_index_map;
 
   // Builds tensor and buffer for argument or operation result. Returns false
   // on failure.
-  auto build_tensor_and_buffer = [&](ValuePtr value, const std::string& name) {
+  auto build_tensor_and_buffer = [&](Value value, const std::string& name) {
     // NoneType represents optional and may be skipped here.
     if (value->getType().isa<NoneType>()) {
       return true;
@@ -954,7 +953,7 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(FuncOp fn) {
   // have associated tensor and buffer. Build FlatBuffer tensor and buffer for
   // other functions.
   for (unsigned i = 0, e = bb.getNumArguments(); i < e; ++i) {
-    mlir::BlockArgumentPtr arg = bb.getArgument(i);
+    mlir::BlockArgument arg = bb.getArgument(i);
     std::string name;
     if (has_input_attr) name = name_mapper_.GetUniqueName(arg);
     if (name.empty()) name = absl::StrCat("arg", i);

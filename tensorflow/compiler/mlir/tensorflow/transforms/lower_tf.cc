@@ -134,8 +134,8 @@ class LowerAddNOp : public OpRewritePattern<TF::AddNOp> {
 
     // TODO(hinsu): Improve parallelism by splitting operands in two halves and
     // accumulating them first.
-    ValuePtr result = *op.inputs().begin();
-    for (ValuePtr operand : llvm::drop_begin(op.inputs(), 1)) {
+    Value result = *op.inputs().begin();
+    for (Value operand : llvm::drop_begin(op.inputs(), 1)) {
       result = rewriter.create<TF::AddV2Op>(op.getLoc(), result, operand);
     }
 
@@ -189,8 +189,8 @@ class LowerDynamicStitchOp : public OpRewritePattern<TF::DynamicStitchOp> {
     SmallVector<DenseIntElementsAttr, 4> indices;
     indices.reserve(op.N());
     for (auto it : llvm::zip(op.indices(), op.data())) {
-      ValuePtr index = std::get<0>(it);
-      ValuePtr data = std::get<1>(it);
+      Value index = std::get<0>(it);
+      Value data = std::get<1>(it);
 
       DenseIntElementsAttr index_attr;
       if (!matchPattern(index, m_Constant(&index_attr))) return matchFailure();
@@ -214,10 +214,10 @@ class LowerDynamicStitchOp : public OpRewritePattern<TF::DynamicStitchOp> {
 
     // Prepare each of the output item by unpacking data and then putting it to
     // the specified index.
-    SmallVector<ValuePtr, 8> values(out_ty.getDimSize(0));
+    SmallVector<Value, 8> values(out_ty.getDimSize(0));
     for (auto it : llvm::zip(indices, op.data())) {
       DenseIntElementsAttr index_attr = std::get<0>(it);
-      ValuePtr data = std::get<1>(it);
+      Value data = std::get<1>(it);
 
       auto reshaped_data =
           rewriter.create<ReshapeOp>(loc, data, packed_shape_val);
@@ -228,7 +228,7 @@ class LowerDynamicStitchOp : public OpRewritePattern<TF::DynamicStitchOp> {
           /*axis=*/APInt(64, 0));
       for (auto index_item : llvm::zip(index_attr, items.getResults())) {
         int64_t output_index = std::get<0>(index_item).getSExtValue();
-        ValuePtr item = std::get<1>(index_item);
+        Value item = std::get<1>(index_item);
         values[output_index] = item;
       }
     }
@@ -264,9 +264,9 @@ class LowerPackOp : public OpRewritePattern<TF::PackOp> {
     int64_t axis = op.axis().getSExtValue();
 
     Type prev_input_ty, inferred_ty;
-    SmallVector<ValuePtr, 4> expanded_inputs;
+    SmallVector<Value, 4> expanded_inputs;
     expanded_inputs.reserve(op.N());
-    for (ValuePtr input : op.values()) {
+    for (Value input : op.values()) {
       // If input type is different than the previous input type, infer the
       // output type. Otherwise, use the already inferred output type from the
       // previous iteration.
