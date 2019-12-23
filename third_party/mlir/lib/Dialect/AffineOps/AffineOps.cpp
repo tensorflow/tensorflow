@@ -116,7 +116,7 @@ static bool isFunctionRegion(Region *region) {
 /// function. A value of index type defined at the top level is always a valid
 /// symbol.
 bool mlir::isTopLevelValue(ValuePtr value) {
-  if (auto arg = value.dyn_cast<BlockArgument>())
+  if (auto arg = dyn_cast<BlockArgument>(value))
     return isFunctionRegion(arg->getOwner()->getParent());
   return isFunctionRegion(value->getDefiningOp()->getParentRegion());
 }
@@ -143,7 +143,7 @@ bool mlir::isValidDim(ValuePtr value) {
     return false;
   }
   // This value has to be a block argument for a FuncOp or an affine.for.
-  auto *parentOp = value.cast<BlockArgument>()->getOwner()->getParentOp();
+  auto *parentOp = cast<BlockArgument>(value)->getOwner()->getParentOp();
   return isa<FuncOp>(parentOp) || isa<AffineForOp>(parentOp);
 }
 
@@ -1580,7 +1580,7 @@ bool mlir::isForInductionVar(ValuePtr val) {
 /// Returns the loop parent of an induction variable. If the provided value is
 /// not an induction variable, then return nullptr.
 AffineForOp mlir::getForInductionVarOwner(ValuePtr val) {
-  auto ivArg = val.dyn_cast<BlockArgument>();
+  auto ivArg = dyn_cast<BlockArgument>(val);
   if (!ivArg || !ivArg->getOwner())
     return AffineForOp();
   auto *containingInst = ivArg->getOwner()->getParent()->getParentOp();

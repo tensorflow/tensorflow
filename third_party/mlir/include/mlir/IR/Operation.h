@@ -255,7 +255,7 @@ public:
 
   unsigned getNumResults() { return numResults; }
 
-  ValuePtr getResult(unsigned idx) { return getOpResult(idx); }
+  ValuePtr getResult(unsigned idx) { return &getOpResult(idx); }
 
   /// Support result iteration.
   using result_range = ResultRange;

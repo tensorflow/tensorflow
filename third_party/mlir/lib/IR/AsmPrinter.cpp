@@ -1621,7 +1621,7 @@ void OperationPrinter::numberValuesInRegion(Region &region) {
 void OperationPrinter::numberValuesInBlock(Block &block) {
   auto setArgNameFn = [&](ValuePtr arg, StringRef name) {
     assert(!valueIDs.count(arg) && "arg numbered multiple times");
-    assert(arg.cast<BlockArgument>()->getOwner() == &block &&
+    assert(cast<BlockArgument>(arg)->getOwner() == &block &&
            "arg not defined in 'block'");
     setValueName(arg, name);
   };
@@ -1667,7 +1667,7 @@ void OperationPrinter::numberValuesInOp(Operation &op) {
     setValueName(result, name);
 
     // Record the result number for groups not anchored at 0.
-    if (int resultNo = result.cast<OpResult>()->getResultNumber())
+    if (int resultNo = cast<OpResult>(result)->getResultNumber())
       resultGroups.push_back(resultNo);
   };
 
@@ -1840,7 +1840,7 @@ void OperationPrinter::printValueIDImpl(ValuePtr value, bool printResultNo,
   // If this is a reference to the result of a multi-result operation or
   // operation, print out the # identifier and make sure to map our lookup
   // to the first result of the operation.
-  if (OpResultPtr result = value.dyn_cast<OpResult>())
+  if (OpResultPtr result = dyn_cast<OpResult>(value))
     getResultIDAndNumber(result, lookupValue, resultNo);
 
   auto it = valueIDs.find(lookupValue);

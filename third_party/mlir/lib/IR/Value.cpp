@@ -22,8 +22,8 @@ using namespace mlir;
 
 /// If this value is the result of an Operation, return the operation that
 /// defines it.
-Operation *Value::getDefiningOp() const {
-  if (auto result = dyn_cast<OpResult>())
+Operation *Value::getDefiningOp() {
+  if (auto *result = dyn_cast<OpResult>())
     return result->getOwner();
   return nullptr;
 }

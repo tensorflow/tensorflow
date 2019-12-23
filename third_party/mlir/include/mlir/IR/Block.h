@@ -72,7 +72,7 @@ public:
   //===--------------------------------------------------------------------===//
 
   // This is the list of arguments to the block.
-  using BlockArgListType = MutableArrayRef<BlockArgumentPtr>;
+  using BlockArgListType = ArrayRef<BlockArgumentPtr>;
 
   BlockArgListType getArguments() { return arguments; }
 

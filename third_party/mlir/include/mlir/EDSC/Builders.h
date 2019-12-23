@@ -338,7 +338,6 @@ public:
 
   /// Implicit conversion useful for automatic conversion to Container<Value>.
   operator ValuePtr() const { return getValue(); }
-  operator bool() const { return hasValue(); }
 
   /// Generic mlir::Op create. This is the key to being extensible to the whole
   /// of MLIR without duplicating the type system or the op definitions.

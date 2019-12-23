@@ -77,29 +77,23 @@ OperationName OperationName::getFromOpaquePointer(void *pointer) {
 //===----------------------------------------------------------------------===//
 
 /// Return the result number of this result.
-unsigned OpResult::getResultNumber() const {
-  // Results are not stored in place, so we have to find it within the list.
-  auto resList = getOwner()->getOpResults();
-  return std::distance(resList.begin(), llvm::find(resList, *this));
+unsigned OpResult::getResultNumber() {
+  // Results are always stored consecutively, so use pointer subtraction to
+  // figure out what number this is.
+  return this - &getOwner()->getOpResults()[0];
 }
 
 //===----------------------------------------------------------------------===//
 // OpOperand
 //===----------------------------------------------------------------------===//
 
-OpOperand::OpOperand(Operation *owner, Value value)
-    : IROperand(owner, value.impl) {}
-
-/// Return the current value being used by this operand.
-Value OpOperand::get() { return (detail::ValueImpl *)IROperand::get(); }
-
-/// Set the current value being used by this operand.
-void OpOperand::set(Value newValue) { IROperand::set(newValue.impl); }
-
+// TODO: This namespace is only required because of a bug in GCC<7.0.
+namespace mlir {
 /// Return which operand this is in the operand list.
-unsigned OpOperand::getOperandNumber() {
+template <> unsigned OpOperand::getOperandNumber() {
   return this - &getOwner()->getOpOperands()[0];
 }
+} // end namespace mlir
 
 //===----------------------------------------------------------------------===//
 // BlockOperand
@@ -194,7 +188,7 @@ Operation *Operation::create(Location location, OperationName name,
 
   auto instResults = op->getOpResults();
   for (unsigned i = 0, e = resultTypes.size(); i != e; ++i)
-    new (&instResults[i]) OpResult(OpResult::create(resultTypes[i], op));
+    new (&instResults[i]) OpResult(resultTypes[i], op);
 
   auto opOperands = op->getOpOperands();
 
@@ -271,7 +265,7 @@ Operation::~Operation() {
   getOperandStorage().~OperandStorage();
 
   for (auto &result : getOpResults())
-    result.destroy();
+    result.~OpResult();
 
   // Explicitly run the destructors for the successors.
   for (auto &successor : getBlockOperands())

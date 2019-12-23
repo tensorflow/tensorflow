@@ -151,14 +151,17 @@ private:
 
 // Make the implementations convenient to use.
 inline OpAsmPrinter &operator<<(OpAsmPrinter &p, ValueRef value) {
-  p.printOperand(value);
+  p.printOperand(&value);
   return p;
 }
+inline OpAsmPrinter &operator<<(OpAsmPrinter &p, ValuePtr value) {
+  return p << *value;
+}
 
-template <typename T,
-          typename std::enable_if<std::is_convertible<T &, ValueRange>::value &&
-                                      !std::is_convertible<T &, Value &>::value,
-                                  T>::type * = nullptr>
+template <typename T, typename std::enable_if<
+                          std::is_convertible<T &, ValueRange>::value &&
+                              !std::is_convertible<T &, ValuePtr>::value,
+                          T>::type * = nullptr>
 inline OpAsmPrinter &operator<<(OpAsmPrinter &p, const T &values) {
   p.printOperands(values);
   return p;
@@ -178,7 +181,8 @@ inline OpAsmPrinter &operator<<(OpAsmPrinter &p, Attribute attr) {
 // even if it isn't exactly one of them.  For example, we want to print
 // FunctionType with the Type version above, not have it match this.
 template <typename T, typename std::enable_if<
-                          !std::is_convertible<T &, Value &>::value &&
+                          !std::is_convertible<T &, ValueRef>::value &&
+                              !std::is_convertible<T &, ValuePtr>::value &&
                               !std::is_convertible<T &, Type &>::value &&
                               !std::is_convertible<T &, Attribute &>::value &&
                               !std::is_convertible<T &, ValueRange>::value &&

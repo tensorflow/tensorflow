@@ -518,7 +518,7 @@ void Serializer::printValueIDMap(raw_ostream &os) {
        << "id = " << valueIDPair.second << ' ';
     if (auto *op = val->getDefiningOp()) {
       os << "from op '" << op->getName() << "'";
-    } else if (auto arg = val.dyn_cast<BlockArgument>()) {
+    } else if (auto arg = dyn_cast<BlockArgument>(val)) {
       Block *block = arg->getOwner();
       os << "from argument of block " << block << ' ';
       os << " in op '" << block->getParentOp()->getName() << "'";

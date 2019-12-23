@@ -50,7 +50,7 @@ static StringRef toStringRef(LinalgDependenceGraph::DependenceType dt) {
 }
 
 ValuePtr Aliases::find(ValuePtr v) {
-  if (v.isa<BlockArgument>())
+  if (isa<BlockArgument>(v))
     return v;
 
   auto it = aliases.find(v);
@@ -60,7 +60,7 @@ ValuePtr Aliases::find(ValuePtr v) {
   }
 
   while (true) {
-    if (v.isa<BlockArgument>())
+    if (isa<BlockArgument>(v))
       return v;
     if (auto alloc = dyn_cast_or_null<AllocOp>(v->getDefiningOp())) {
       if (isStrided(alloc.getType()))

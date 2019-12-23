@@ -138,7 +138,7 @@ bool DominanceInfo::properlyDominates(ValuePtr a, Operation *b) {
 
   // block arguments properly dominate all operations in their own block, so
   // we use a dominates check here, not a properlyDominates check.
-  return dominates(a.cast<BlockArgument>()->getOwner(), b->getBlock());
+  return dominates(cast<BlockArgument>(a)->getOwner(), b->getBlock());
 }
 
 DominanceInfoNode *DominanceInfo::getNode(Block *a) {

@@ -42,6 +42,7 @@ Type getElementTypeOrSelf(Type type);
 /// Return the element type or return the type itself.
 Type getElementTypeOrSelf(Attribute attr);
 Type getElementTypeOrSelf(ValuePtr val);
+Type getElementTypeOrSelf(ValueRef val);
 
 /// Get the types within a nested Tuple. A helper for the class method that
 /// handles storage concerns, which is tricky to do in tablegen.
