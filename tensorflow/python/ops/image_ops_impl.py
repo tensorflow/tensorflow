@@ -2929,7 +2929,7 @@ def rgb_to_yiq(images):
     Usage Example:
     ```python
    
-    >> x = tf.random.normal(shape=(256, 256, 3))
+    >>> x = tf.random.normal(shape=(256, 256, 3))
     >> tf.image.rgb_to_yiq(x)
     ```
   """
