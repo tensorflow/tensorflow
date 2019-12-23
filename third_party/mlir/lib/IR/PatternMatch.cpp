@@ -179,23 +179,6 @@ void PatternRewriter::cloneRegionBefore(Region &region, Block *before) {
   cloneRegionBefore(region, *before->getParent(), before->getIterator());
 }
 
-/// This method is used as the final notification hook for patterns that end
-/// up modifying the pattern root in place, by changing its operands.  This is
-/// a minor efficiency win (it avoids creating a new operation and removing
-/// the old one) but also often allows simpler code in the client.
-///
-/// The opsToRemoveIfDead list is an optional list of nodes that the rewriter
-/// should remove if they are dead at this point.
-///
-void PatternRewriter::updatedRootInPlace(Operation *op,
-                                         ValueRange valuesToRemoveIfDead) {
-  // Notify the rewriter subclass that we're about to replace this root.
-  notifyRootUpdated(op);
-
-  // TODO: Process the valuesToRemoveIfDead list, removing things and calling
-  // the notifyOperationRemoved hook in the process.
-}
-
 //===----------------------------------------------------------------------===//
 // PatternMatcher implementation
 //===----------------------------------------------------------------------===//

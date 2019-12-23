@@ -206,13 +206,11 @@ FuncOpLowering::matchAndRewrite(FuncOp funcOp, ArrayRef<ValuePtr> operands,
   }
 
   // Creates a new function with the update signature.
-  auto newFuncOp = rewriter.cloneWithoutRegions(funcOp);
-  rewriter.inlineRegionBefore(funcOp.getBody(), newFuncOp.getBody(),
-                              newFuncOp.end());
-  newFuncOp.setType(rewriter.getFunctionType(
-      signatureConverter.getConvertedTypes(), llvm::None));
-  rewriter.applySignatureConversion(&newFuncOp.getBody(), signatureConverter);
-  rewriter.eraseOp(funcOp.getOperation());
+  rewriter.updateRootInPlace(funcOp, [&] {
+    funcOp.setType(rewriter.getFunctionType(
+        signatureConverter.getConvertedTypes(), llvm::None));
+    rewriter.applySignatureConversion(&funcOp.getBody(), signatureConverter);
+  });
   return matchSuccess();
 }
 

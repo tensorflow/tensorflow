@@ -374,7 +374,16 @@ public:
   Operation *insert(Operation *op) override;
 
   /// PatternRewriter hook for updating the root operation in-place.
-  void notifyRootUpdated(Operation *op) override;
+  /// Note: These methods only track updates to the top-level operation itself,
+  /// and not nested regions. Updates to regions will still require notification
+  /// through other more specific hooks above.
+  void startRootUpdate(Operation *op) override;
+
+  /// PatternRewriter hook for updating the root operation in-place.
+  void finalizeRootUpdate(Operation *op) override;
+
+  /// PatternRewriter hook for updating the root operation in-place.
+  void cancelRootUpdate(Operation *op) override;
 
   /// Return a reference to the internal implementation.
   detail::ConversionPatternRewriterImpl &getImpl();

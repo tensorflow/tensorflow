@@ -394,6 +394,12 @@ public:
     return {getTrailingObjects<BlockOperand>(), numSuccs};
   }
 
+  // Successor iteration.
+  using succ_iterator = SuccessorRange::iterator;
+  succ_iterator successor_begin() { return getSuccessors().begin(); }
+  succ_iterator successor_end() { return getSuccessors().end(); }
+  SuccessorRange getSuccessors() { return SuccessorRange(this); }
+
   /// Return the operands of this operation that are *not* successor arguments.
   operand_range getNonSuccessorOperands();
 

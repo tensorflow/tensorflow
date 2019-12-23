@@ -370,15 +370,31 @@ public:
   /// block into a new block, and return it.
   virtual Block *splitBlock(Block *block, Block::iterator before);
 
-  /// This method is used as the final notification hook for patterns that end
-  /// up modifying the pattern root in place, by changing its operands.  This is
-  /// a minor efficiency win (it avoids creating a new operation and removing
-  /// the old one) but also often allows simpler code in the client.
-  ///
-  /// The valuesToRemoveIfDead list is an optional list of values that the
-  /// rewriter should remove if they are dead at this point.
-  ///
-  void updatedRootInPlace(Operation *op, ValueRange valuesToRemoveIfDead = {});
+  /// This method is used to notify the rewriter that an in-place operation
+  /// modification is about to happen. A call to this function *must* be
+  /// followed by a call to either `finalizeRootUpdate` or `cancelRootUpdate`.
+  /// This is a minor efficiency win (it avoids creating a new operation and
+  /// removing the old one) but also often allows simpler code in the client.
+  virtual void startRootUpdate(Operation *op) {}
+
+  /// This method is used to signal the end of a root update on the given
+  /// operation. This can only be called on operations that were provided to a
+  /// call to `startRootUpdate`.
+  virtual void finalizeRootUpdate(Operation *op) {}
+
+  /// This method cancels a pending root update. This can only be called on
+  /// operations that were provided to a call to `startRootUpdate`.
+  virtual void cancelRootUpdate(Operation *op) {}
+
+  /// This method is a utility wrapper around a root update of an operation. It
+  /// wraps calls to `startRootUpdate` and `finalizeRootUpdate` around the given
+  /// callable.
+  template <typename CallableT>
+  void updateRootInPlace(Operation *root, CallableT &&callable) {
+    startRootUpdate(root);
+    callable();
+    finalizeRootUpdate(root);
+  }
 
 protected:
   explicit PatternRewriter(MLIRContext *ctx) : OpBuilder(ctx) {}
@@ -386,10 +402,6 @@ protected:
 
   // These are the callback methods that subclasses can choose to implement if
   // they would like to be notified about certain types of mutations.
-
-  /// Notify the pattern rewriter that the specified operation has been mutated
-  /// in place.  This is called after the mutation is done.
-  virtual void notifyRootUpdated(Operation *op) {}
 
   /// Notify the pattern rewriter that the specified operation is about to be
   /// replaced with another set of operations.  This is called before the uses

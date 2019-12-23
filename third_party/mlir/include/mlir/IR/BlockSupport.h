@@ -70,6 +70,7 @@ class SuccessorRange final
 public:
   using RangeBaseT::RangeBaseT;
   SuccessorRange(Block *block);
+  SuccessorRange(Operation *term);
 
 private:
   /// See `detail::indexed_accessor_range_base` for details.

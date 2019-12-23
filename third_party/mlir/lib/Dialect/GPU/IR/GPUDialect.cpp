@@ -481,7 +481,8 @@ class PropagateConstantBounds : public OpRewritePattern<LaunchOp> {
 
   PatternMatchResult matchAndRewrite(LaunchOp launchOp,
                                      PatternRewriter &rewriter) const override {
-    auto origInsertionPoint = rewriter.saveInsertionPoint();
+    rewriter.startRootUpdate(launchOp);
+    PatternRewriter::InsertionGuard guard(rewriter);
     rewriter.setInsertionPointToStart(&launchOp.body().front());
 
     // Traverse operands passed to kernel and check if some of them are known
@@ -489,31 +490,29 @@ class PropagateConstantBounds : public OpRewritePattern<LaunchOp> {
     // and use it instead of passing the value from the parent region.  Perform
     // the traversal in the inverse order to simplify index arithmetics when
     // dropping arguments.
-    SmallVector<ValuePtr, 8> operands(launchOp.getKernelOperandValues().begin(),
-                                      launchOp.getKernelOperandValues().end());
-    SmallVector<ValuePtr, 8> kernelArgs(launchOp.getKernelArguments().begin(),
-                                        launchOp.getKernelArguments().end());
+    auto operands = launchOp.getKernelOperandValues();
+    auto kernelArgs = launchOp.getKernelArguments();
     bool found = false;
     for (unsigned i = operands.size(); i > 0; --i) {
       unsigned index = i - 1;
-      ValuePtr operand = operands[index];
-      if (!isa_and_nonnull<ConstantOp>(operand->getDefiningOp())) {
+      Value operand = operands[index];
+      if (!isa_and_nonnull<ConstantOp>(operand->getDefiningOp()))
         continue;
-      }
 
       found = true;
-      ValuePtr internalConstant =
+      Value internalConstant =
           rewriter.clone(*operand->getDefiningOp())->getResult(0);
-      ValuePtr kernelArg = kernelArgs[index];
+      Value kernelArg = *std::next(kernelArgs.begin(), index);
       kernelArg->replaceAllUsesWith(internalConstant);
       launchOp.eraseKernelArgument(index);
     }
-    rewriter.restoreInsertionPoint(origInsertionPoint);
 
-    if (!found)
+    if (!found) {
+      rewriter.cancelRootUpdate(launchOp);
       return matchFailure();
+    }
 
-    rewriter.updatedRootInPlace(launchOp);
+    rewriter.finalizeRootUpdate(launchOp);
     return matchSuccess();
   }
 };
