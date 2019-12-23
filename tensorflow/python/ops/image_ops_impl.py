@@ -643,8 +643,17 @@ def transpose(image, name=None):
 
   Usage Example:
     ```python
-    >>> x = tf.random.normal(shape=(256, 256, 3))
-    >>> tf.image.transpose(x) 
+    from skimage import io
+    
+    #url to sample image
+    image = 'https://i.etsystatic.com/8880742/d/il/76af02/668762798/il_340x270.668762798_i3b1.jpg?version=0'
+    
+    #getting the image from the url
+    read_img = io.imread(image)
+    
+    print(read_img.shape) #(270, 340, 3)
+    
+    tf.image.transpose(read_img) #ouput shape(340, 270, 3)
   """
   with ops.name_scope(name, 'transpose', [image]):
     image = ops.convert_to_tensor(image, name='image')
@@ -1982,9 +1991,9 @@ def adjust_hue(image, delta, name=None):
 
   Usage Example:
     ```python
-    >> import tensorflow as tf
-    >> x = tf.random.normal(shape=(256, 256, 3))
-    >> tf.image.adjust_hue(x, 0.2)
+    >>> import tensorflow as tf
+    >>> x = tf.random.normal(shape=(256, 256, 3))
+    >>> tf.image.adjust_hue(x, 0.2)
     ```
   """
   with ops.name_scope(name, 'adjust_hue', [image]) as name:
@@ -2929,8 +2938,8 @@ def rgb_to_yiq(images):
     Usage Example:
     ```python
    
-    >>> x = tf.random.normal(shape=(256, 256, 3))
-    >>> tf.image.rgb_to_yiq(x)
+    >>> x = tf.random.normal(shape=(200, 210, 3))
+    >>> tf.image.rgb_to_yiq(x)#(200, 210, 3)
     ```
   """
   images = ops.convert_to_tensor(images, name='images')
