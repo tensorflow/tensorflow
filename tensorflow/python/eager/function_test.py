@@ -2738,11 +2738,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     def get_list():
       return [constant_op.constant(0.), constant_op.constant(1.)]
 
-    expected_msg = (
-        'Function to be traced should not modify structure of input '
-        'arguments. Check if your function has list and dictionary '
-        'operations that alter input arguments, '
-        'such as `list.pop`, `list.append`')
+    expected_msg = '.*() should not modify'
 
     with self.assertRaisesRegexp(ValueError, expected_msg):
 
@@ -2818,11 +2814,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     def get_dict():
       return {'t1': constant_op.constant(0.), 't2': constant_op.constant(1.)}
 
-    expected_msg = (
-        'Function to be traced should not modify structure of input '
-        'arguments. Check if your function has list and dictionary '
-        'operations that alter input arguments, '
-        'such as `list.pop`, `list.append`')
+    expected_msg = '.* should not modify'
 
     with self.assertRaisesRegexp(ValueError, expected_msg):
 
@@ -2865,14 +2857,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       setdefault(get_dict())
 
   def testFunctionModifiesInputNest(self):
-    # Test on functions that modify structure of nested input arguments
-    expected_msg = (
-        'Function to be traced should not modify structure of input '
-        'arguments. Check if your function has list and dictionary '
-        'operations that alter input arguments, '
-        'such as `list.pop`, `list.append`')
-
-    with self.assertRaisesRegexp(ValueError, expected_msg):
+    with self.assertRaisesRegexp(
+        ValueError, 'modify.* should not modify'):
 
       @def_function.function
       def modify(n):
@@ -2886,7 +2872,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
       modify(nested_input)
 
-    with self.assertRaisesRegexp(ValueError, expected_msg):
+    with self.assertRaisesRegexp(
+        ValueError, 'modify_same_flat.* should not modify'):
 
       # The flat list doesn't change whereas the true structure changes
       @def_function.function
