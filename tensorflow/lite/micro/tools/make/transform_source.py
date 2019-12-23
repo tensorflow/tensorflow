@@ -61,8 +61,8 @@ def check_ino_functions(input_text):
   # have to have a setup() and loop() function, just like their IDE expects.
   if not re.search(r'void setup\(\) \{', input_text):
     raise Exception(
-        'All examples must have a setup() function for Arduino compatibility\n' +
-        input_text)
+        'All examples must have a setup() function for Arduino compatibility\n'
+        + input_text)
   if not re.search(r'void loop\(\) \{', input_text):
     raise Exception(
         'All examples must have a loop() function for Arduino compatibility')
