@@ -51,7 +51,7 @@ def compute_capability_from_device_desc(device_attrs):
   match = _PHYSICAL_DEVICE_DESCRIPTION_REGEX.search(
       device_attrs.physical_device_desc)
   # LINT.ThenChange(//tensorflow/core/common_runtime/gpu/gpu_device.cc)
-  if not match:
+  if not match or match.group(2)==None or match.group(3)==None:
     return GpuInfo(None, None)
   cc = int(match.group(2)), int(match.group(3)) if match.group(2) else None
   return GpuInfo(match.group(1), cc)
