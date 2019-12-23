@@ -57,6 +57,8 @@ releases:
             - "{ubuntu-devel}{jupyter}"
             - "{ubuntu-ppc64le}{jupyter}"
             - "{ubuntu-devel-ppc64le}{jupyter}"
+            - "{ubuntu-horovod}{jupyter}"
+            - "{ubuntu-devel-horovod}{jupyter}"
 
 slice_sets:
 
@@ -83,21 +85,6 @@ slice_sets:
               - ubuntu/python
               - tensorflow
               - shell
-        - add_to_name: "-horovod"
-          dockerfile_exclusive_name: "horovod"
-          dockerfile_subdirectory: "mkl_horovod"
-          partials:
-              - ubuntu/version
-              - ubuntu/cpu
-              - ubuntu/python
-              - tensorflow
-              - mkl_horovod/mpi
-              - mkl_horovod/horovod
-              - shell
-          tests:
-              - import-mkl-horovod.sh
-          args:
-              - TF_PACKAGE=intel-tensorflow
         - add_to_name: "-gpu"
           dockerfile_exclusive_name: "gpu"
           args:
@@ -125,6 +112,38 @@ slice_sets:
               - build-cpu.sh
           args:
               - CHECKOUT_TF_SRC=1
+        - add_to_name: "devel-gpu"
+          dockerfile_exclusive_name: "devel-gpu"
+          partials:
+              - ubuntu/version
+              - ubuntu/devel-nvidia
+              - ubuntu/python
+              - ubuntu/bazel
+              - shell
+          tests:
+              - build-gpu.sh
+          test_runtime: nvidia
+          args:
+              - CHECKOUT_TF_SRC=1
+
+    ubuntu-horovod:
+        - add_to_name: "-horovod"
+          dockerfile_exclusive_name: "horovod"
+          dockerfile_subdirectory: "mkl_horovod"
+          partials:
+              - ubuntu/version
+              - ubuntu/cpu
+              - ubuntu/python
+              - tensorflow
+              - mkl_horovod/mpi
+              - mkl_horovod/horovod
+              - shell
+          tests:
+              - import-mkl-horovod.sh
+          args:
+              - TF_PACKAGE=intel-tensorflow
+
+    ubuntu-devel-horovod:
         - add_to_name: "devel-horovod"
           dockerfile_exclusive_name: "devel-horovod"
           dockerfile_subdirectory: "mkl_horovod"
@@ -141,19 +160,6 @@ slice_sets:
           args:
               - CHECKOUT_TF_SRC=1
               - CHECKOUT_HOROVOD_SRC=1
-        - add_to_name: "devel-gpu"
-          dockerfile_exclusive_name: "devel-gpu"
-          partials:
-              - ubuntu/version
-              - ubuntu/devel-nvidia
-              - ubuntu/python
-              - ubuntu/bazel
-              - shell
-          tests:
-              - build-gpu.sh
-          test_runtime: nvidia
-          args:
-              - CHECKOUT_TF_SRC=1
 
     ubuntu-ppc64le:
         - add_to_name: "-ppc64le"
