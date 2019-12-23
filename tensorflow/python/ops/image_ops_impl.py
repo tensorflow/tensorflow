@@ -644,7 +644,7 @@ def transpose(image, name=None):
   Usage Example:
     ```python
     >>> x = tf.random.normal(shape=(256, 256, 3))
-    tf.image.transpose(x) 
+    >>> tf.image.transpose(x) 
   """
   with ops.name_scope(name, 'transpose', [image]):
     image = ops.convert_to_tensor(image, name='image')
