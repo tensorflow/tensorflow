@@ -2852,16 +2852,10 @@ tf_cuda_library(
         "graph/mkl_layout_pass.cc",
         "graph/mkl_tfconversion_pass.cc",
         "graph/quantize_training.cc",
-<<<<<<< HEAD
         "graph/gpu_fusion_pass.cc",
-        "public/session.h",
-        "public/session_options.h",
-        "public/version.h",
-=======
         "//tensorflow/core/public:session.h",
         "//tensorflow/core/public:session_options.h",
         "//tensorflow/core/public:version.h",
->>>>>>> google_upstream/master
     ],
     hdrs = CORE_CPU_LIB_HEADERS,
     copts = tf_copts() + tf_openmp_copts(),

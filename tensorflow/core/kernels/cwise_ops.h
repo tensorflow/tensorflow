@@ -572,17 +572,9 @@ struct functor_traits<scalar_round_half_to_even_op<Scalar>> {
   enum {
     Cost = Eigen::NumTraits<Scalar>::IsInteger ? 0
                                                : 4 * NumTraits<Scalar>::AddCost,
-<<<<<<< HEAD
-    PacketAccess = Eigen::NumTraits<Scalar>::IsInteger
-=======
-#if TENSORFLOW_USE_ROCM
-    PacketAccess = false,
-#else
     PacketAccess = packet_traits<Scalar>::HasFloor &&
                    packet_traits<Scalar>::HasAdd &&
                    packet_traits<Scalar>::HasMul,
-#endif
->>>>>>> google_upstream/master
   };
 };
 
