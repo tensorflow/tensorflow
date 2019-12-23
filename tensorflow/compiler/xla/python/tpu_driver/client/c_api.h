@@ -79,15 +79,15 @@ typedef struct TpuCompiledProgramHandle*(PrototypeTpuDriver_CompileProgram)(
 
 typedef struct TpuLoadedProgramHandle*(PrototypeTpuDriver_LoadProgram)(
     struct TpuDriver* driver, int32_t core_id,
-    const struct TpuCompiledProgramHandle* handle, int32_t eventc,
-    struct TpuEvent** eventv);
+    const struct TpuCompiledProgramHandle* compiled_program_handle,
+    int32_t eventc, struct TpuEvent** eventv);
 
-typedef struct TpuLoadedProgramHandle*(PrototypeTpuDriver_UnloadProgram)(
+typedef struct TpuEvent*(PrototypeTpuDriver_UnloadProgram)(
     struct TpuDriver* driver, int32_t core_id,
-    struct TpuLoadedProgramHandle* handle, int32_t eventc,
+    struct TpuLoadedProgramHandle* loaded_program_handle, int32_t eventc,
     struct TpuEvent** eventv);
 
-typedef struct TpuLoadedProgramHandle*(PrototypeTpuDriver_ExecuteProgram)(
+typedef struct TpuEvent*(PrototypeTpuDriver_ExecuteProgram)(
     struct TpuDriver* driver, struct TpuLoadedProgramHandle* handle,
     int32_t inputc, struct TpuBufferHandle** input_buffer_handle,
     int32_t outputc, struct TpuBufferHandle** output_buffer_handle,
