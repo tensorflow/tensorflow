@@ -2936,8 +2936,8 @@ def rgb_to_yiq(images):
 
     Usage Example:
     
-     x = tf.random.normal(shape=(200, 210, 3))
-     tf.image.rgb_to_yiq(x)#(200, 210, 3)
+    >>> x = tf.random.normal(shape=(200, 210, 3))
+    >>> tf.image.rgb_to_yiq(x)#(200, 210, 3)
     
   """
   images = ops.convert_to_tensor(images, name='images')
@@ -3036,8 +3036,8 @@ def yuv_to_rgb(images):
 
   Usage Example:
   
-  x = tf.random.normal(shape=(256, 256, 3))
-  tf.image.yuv_to_rgb(x)
+  >>> x = tf.random.normal(shape=(256, 256, 3))
+  >>> tf.image.yuv_to_rgb(x)
   """
   images = ops.convert_to_tensor(images, name='images')
   kernel = ops.convert_to_tensor(
