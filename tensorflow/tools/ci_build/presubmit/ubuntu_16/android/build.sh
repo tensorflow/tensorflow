@@ -42,20 +42,20 @@ function run_build () {
   # target that would output the log generated above and return the expected
   # error code.
   cat << EOF > tensorflow/tools/ci_build/builds/BUILD
-  package(default_visibility = ["//tensorflow:internal"])
+package(default_visibility = ["//tensorflow:internal"])
 
-  sh_test(
-      name = "${ANDROID_OUT_TARGET}",
-      srcs = ["${ANDROID_OUT_TARGET}.sh"],
-      data = ["${ANDROID_OUT}"],
-      tags = ["local"],
-  )
+sh_test(
+    name = "${ANDROID_OUT_TARGET}",
+    srcs = ["${ANDROID_OUT_TARGET}.sh"],
+    data = ["${ANDROID_OUT}"],
+    tags = ["local"],
+)
 EOF
 
   cat << EOF > tensorflow/tools/ci_build/builds/${ANDROID_OUT_TARGET}.sh
-  #!/bin/bash
-  cat tensorflow/tools/ci_build/builds/${ANDROID_OUT}
-  exit ${RC}
+#!/bin/bash
+cat tensorflow/tools/ci_build/builds/${ANDROID_OUT}
+exit ${RC}
 EOF
 
   # Now trigger the rbe build that outputs the log
