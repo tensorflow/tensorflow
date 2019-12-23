@@ -35,7 +35,7 @@ class Value;
 class VectorType;
 
 // TODO(riverriddle) Remove this after Value is value-typed.
-using ValuePtr = Value *;
+using ValuePtr = Value;
 
 /// Computes and returns the multi-dimensional ratio of `superShape` to
 /// `subShape`. This is calculated by performing a traversal from minor to major

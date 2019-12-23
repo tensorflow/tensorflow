@@ -145,7 +145,7 @@ LogicalResult ForOp::moveOutOfLoop(ArrayRef<Operation *> ops) {
 }
 
 ForOp mlir::loop::getForInductionVarOwner(ValuePtr val) {
-  auto ivArg = dyn_cast<BlockArgument>(val);
+  auto ivArg = val.dyn_cast<BlockArgument>();
   if (!ivArg)
     return ForOp();
   assert(ivArg->getOwner() && "unlinked block argument");

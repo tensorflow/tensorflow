@@ -31,7 +31,7 @@ class RewritePattern;
 class Value;
 
 // TODO(riverriddle) Remove this after Value is value-typed.
-using ValuePtr = Value *;
+using ValuePtr = Value;
 
 // Owning list of rewriting patterns.
 class OwningRewritePatternList;

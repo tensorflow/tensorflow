@@ -42,7 +42,7 @@ class Region;
 class Value;
 
 // TODO(riverriddle) Remove this after Value is value-typed.
-using ValuePtr = Value *;
+using ValuePtr = Value;
 
 /// Represents an analysis for computing liveness information from a
 /// given top-level operation. The analysis iterates over all associated

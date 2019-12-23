@@ -25,10 +25,10 @@ using namespace mlir;
 //===----------------------------------------------------------------------===//
 
 /// Returns the number of this argument.
-unsigned BlockArgument::getArgNumber() {
+unsigned BlockArgument::getArgNumber() const {
   // Arguments are not stored in place, so we have to find it within the list.
   auto argList = getOwner()->getArguments();
-  return std::distance(argList.begin(), llvm::find(argList, this));
+  return std::distance(argList.begin(), llvm::find(argList, *this));
 }
 
 //===----------------------------------------------------------------------===//
@@ -38,7 +38,8 @@ unsigned BlockArgument::getArgNumber() {
 Block::~Block() {
   assert(!verifyOpOrder() && "Expected valid operation ordering.");
   clear();
-  llvm::DeleteContainerPointers(arguments);
+  for (BlockArgument arg : arguments)
+    arg.destroy();
 }
 
 Region *Block::getParent() const { return parentValidOpOrderPair.getPointer(); }
@@ -152,7 +153,7 @@ void Block::recomputeOpOrder() {
 //===----------------------------------------------------------------------===//
 
 BlockArgumentPtr Block::addArgument(Type type) {
-  auto *arg = new BlockArgument(type, this);
+  BlockArgument arg = BlockArgument::create(type, this);
   arguments.push_back(arg);
   return arg;
 }
@@ -172,7 +173,7 @@ void Block::eraseArgument(unsigned index, bool updatePredTerms) {
   assert(index < arguments.size());
 
   // Delete the argument.
-  delete arguments[index];
+  arguments[index].destroy();
   arguments.erase(arguments.begin() + index);
 
   // If we aren't updating predecessors, there is nothing left to do.

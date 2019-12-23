@@ -164,7 +164,7 @@ ResultRange::ResultRange(Operation *op)
 //===----------------------------------------------------------------------===//
 // ValueRange
 
-ValueRange::ValueRange(ArrayRef<ValuePtr> values)
+ValueRange::ValueRange(ArrayRef<Value> values)
     : ValueRange(values.data(), values.size()) {}
 ValueRange::ValueRange(OperandRange values)
     : ValueRange(values.begin().getBase(), values.size()) {}
@@ -176,19 +176,18 @@ ValueRange::OwnerT ValueRange::offset_base(const OwnerT &owner,
                                            ptrdiff_t index) {
   if (OpOperand *operand = owner.dyn_cast<OpOperand *>())
     return operand + index;
-  if (OpResultPtr result = owner.dyn_cast<OpResultPtr>())
+  if (OpResult *result = owner.dyn_cast<OpResult *>())
     return result + index;
-  return owner.get<ValuePtr const *>() + index;
+  return owner.get<const Value *>() + index;
 }
 /// See `detail::indexed_accessor_range_base` for details.
-ValuePtr ValueRange::dereference_iterator(const OwnerT &owner,
-                                          ptrdiff_t index) {
+Value ValueRange::dereference_iterator(const OwnerT &owner, ptrdiff_t index) {
   // Operands access the held value via 'get'.
   if (OpOperand *operand = owner.dyn_cast<OpOperand *>())
     return operand[index].get();
   // An OpResult is a value, so we can return it directly.
-  if (OpResultPtr result = owner.dyn_cast<OpResultPtr>())
-    return &result[index];
+  if (OpResult *result = owner.dyn_cast<OpResult *>())
+    return result[index];
   // Otherwise, this is a raw value array so just index directly.
-  return owner.get<ValuePtr const *>()[index];
+  return owner.get<const Value *>()[index];
 }

@@ -96,7 +96,8 @@ struct PythonValueHandle {
   operator ValueHandle &() { return value; }
 
   std::string str() const {
-    return std::to_string(reinterpret_cast<intptr_t>(value.getValue()));
+    return std::to_string(
+        reinterpret_cast<intptr_t>(value.getValue().getAsOpaquePointer()));
   }
 
   PythonValueHandle call(const std::vector<PythonValueHandle> &args) {
