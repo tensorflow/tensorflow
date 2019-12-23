@@ -319,7 +319,7 @@ void ModuleState::visitOperation(Operation *op) {
     visitType(type);
   for (auto &region : op->getRegions())
     for (auto &block : region)
-      for (auto *arg : block.getArguments())
+      for (auto arg : block.getArguments())
         visitType(arg->getType());
 
   // Visit each of the attributes.
@@ -1437,7 +1437,7 @@ public:
   void printAttribute(Attribute attr) override {
     ModulePrinter::printAttribute(attr);
   }
-  void printOperand(Value *value) override { printValueID(value); }
+  void printOperand(ValuePtr value) override { printValueID(value); }
 
   void printOptionalAttrDict(ArrayRef<NamedAttribute> attrs,
                              ArrayRef<StringRef> elidedAttrs = {}) override {
@@ -1519,7 +1519,7 @@ protected:
   void numberValuesInRegion(Region &region);
   void numberValuesInBlock(Block &block);
   void numberValuesInOp(Operation &op);
-  void printValueID(Value *value, bool printResultNo = true) const {
+  void printValueID(ValuePtr value, bool printResultNo = true) const {
     printValueIDImpl(value, printResultNo, os);
   }
 
@@ -1528,13 +1528,13 @@ private:
   /// 'lookupValue' and the result of 'result' within that group in
   /// 'lookupResultNo'. 'lookupResultNo' is only filled in if the result group
   /// has more than 1 result.
-  void getResultIDAndNumber(OpResult *result, Value *&lookupValue,
+  void getResultIDAndNumber(OpResultPtr result, ValuePtr &lookupValue,
                             int &lookupResultNo) const;
-  void printValueIDImpl(Value *value, bool printResultNo,
+  void printValueIDImpl(ValuePtr value, bool printResultNo,
                         raw_ostream &stream) const;
 
   /// Set a special value name for the given value.
-  void setValueName(Value *value, StringRef name);
+  void setValueName(ValuePtr value, StringRef name);
 
   /// Uniques the given value name within the printer. If the given name
   /// conflicts, it is automatically renamed.
@@ -1542,8 +1542,8 @@ private:
 
   /// This is the value ID for each SSA value. If this returns ~0, then the
   /// valueID has an entry in valueNames.
-  DenseMap<Value *, unsigned> valueIDs;
-  DenseMap<Value *, StringRef> valueNames;
+  DenseMap<ValuePtr, unsigned> valueIDs;
+  DenseMap<ValuePtr, StringRef> valueNames;
 
   /// This is a map of operations that contain multiple named result groups,
   /// i.e. there may be multiple names for the results of the operation. The key
@@ -1619,7 +1619,7 @@ void OperationPrinter::numberValuesInRegion(Region &region) {
 }
 
 void OperationPrinter::numberValuesInBlock(Block &block) {
-  auto setArgNameFn = [&](Value *arg, StringRef name) {
+  auto setArgNameFn = [&](ValuePtr arg, StringRef name) {
     assert(!valueIDs.count(arg) && "arg numbered multiple times");
     assert(cast<BlockArgument>(arg)->getOwner() == &block &&
            "arg not defined in 'block'");
@@ -1638,7 +1638,7 @@ void OperationPrinter::numberValuesInBlock(Block &block) {
   // 'arg'.
   SmallString<32> specialNameBuffer(isEntryBlock ? "arg" : "");
   llvm::raw_svector_ostream specialName(specialNameBuffer);
-  for (auto *arg : block.getArguments()) {
+  for (auto arg : block.getArguments()) {
     if (valueIDs.count(arg))
       continue;
     if (isEntryBlock) {
@@ -1657,11 +1657,11 @@ void OperationPrinter::numberValuesInOp(Operation &op) {
   unsigned numResults = op.getNumResults();
   if (numResults == 0)
     return;
-  Value *resultBegin = op.getResult(0);
+  ValuePtr resultBegin = op.getResult(0);
 
   // Function used to set the special result names for the operation.
   SmallVector<int, 2> resultGroups(/*Size=*/1, /*Value=*/0);
-  auto setResultNameFn = [&](Value *result, StringRef name) {
+  auto setResultNameFn = [&](ValuePtr result, StringRef name) {
     assert(!valueIDs.count(result) && "result numbered multiple times");
     assert(result->getDefiningOp() == &op && "result not defined by 'op'");
     setValueName(result, name);
@@ -1690,7 +1690,7 @@ void OperationPrinter::numberValuesInOp(Operation &op) {
 }
 
 /// Set a special value name for the given value.
-void OperationPrinter::setValueName(Value *value, StringRef name) {
+void OperationPrinter::setValueName(ValuePtr value, StringRef name) {
   // If the name is empty, the value uses the default numbering.
   if (name.empty()) {
     valueIDs[value] = nextValueID++;
@@ -1737,7 +1737,7 @@ void OperationPrinter::print(Block *block, bool printBlockArgs,
     // Print the argument list if non-empty.
     if (!block->args_empty()) {
       os << '(';
-      interleaveComma(block->getArguments(), [&](BlockArgument *arg) {
+      interleaveComma(block->getArguments(), [&](BlockArgumentPtr arg) {
         printValueID(arg);
         os << ": ";
         printType(arg->getType());
@@ -1788,8 +1788,8 @@ void OperationPrinter::print(Operation *op) {
   printTrailingLocation(op->getLoc());
 }
 
-void OperationPrinter::getResultIDAndNumber(OpResult *result,
-                                            Value *&lookupValue,
+void OperationPrinter::getResultIDAndNumber(OpResultPtr result,
+                                            ValuePtr &lookupValue,
                                             int &lookupResultNo) const {
   Operation *owner = result->getOwner();
   if (owner->getNumResults() == 1)
@@ -1827,7 +1827,7 @@ void OperationPrinter::getResultIDAndNumber(OpResult *result,
   lookupValue = owner->getResult(groupResultNo);
 }
 
-void OperationPrinter::printValueIDImpl(Value *value, bool printResultNo,
+void OperationPrinter::printValueIDImpl(ValuePtr value, bool printResultNo,
                                         raw_ostream &stream) const {
   if (!value) {
     stream << "<<NULL>>";
@@ -1840,7 +1840,7 @@ void OperationPrinter::printValueIDImpl(Value *value, bool printResultNo,
   // If this is a reference to the result of a multi-result operation or
   // operation, print out the # identifier and make sure to map our lookup
   // to the first result of the operation.
-  if (OpResult *result = dyn_cast<OpResult>(value))
+  if (OpResultPtr result = dyn_cast<OpResult>(value))
     getResultIDAndNumber(result, lookupValue, resultNo);
 
   auto it = valueIDs.find(lookupValue);
@@ -1875,11 +1875,11 @@ void OperationPrinter::shadowRegionArgs(Region &region, ValueRange namesToUse) {
 
   SmallVector<char, 16> nameStr;
   for (unsigned i = 0, e = namesToUse.size(); i != e; ++i) {
-    auto *nameToUse = namesToUse[i];
+    auto nameToUse = namesToUse[i];
     if (nameToUse == nullptr)
       continue;
 
-    auto *nameToReplace = region.front().getArgument(i);
+    auto nameToReplace = region.front().getArgument(i);
 
     nameStr.clear();
     llvm::raw_svector_ostream nameStream(nameStr);
@@ -1951,10 +1951,10 @@ void OperationPrinter::printGenericOp(Operation *op) {
   for (unsigned i = 0; i < numSuccessors; ++i)
     totalNumSuccessorOperands += op->getNumSuccessorOperands(i);
   unsigned numProperOperands = op->getNumOperands() - totalNumSuccessorOperands;
-  SmallVector<Value *, 8> properOperands(
+  SmallVector<ValuePtr, 8> properOperands(
       op->operand_begin(), std::next(op->operand_begin(), numProperOperands));
 
-  interleaveComma(properOperands, [&](Value *value) { printValueID(value); });
+  interleaveComma(properOperands, [&](ValuePtr value) { printValueID(value); });
 
   os << ')';
 
@@ -1997,10 +1997,10 @@ void OperationPrinter::printSuccessorAndUseList(Operation *term,
 
   os << '(';
   interleaveComma(succOperands,
-                  [this](Value *operand) { printValueID(operand); });
+                  [this](ValuePtr operand) { printValueID(operand); });
   os << " : ";
   interleaveComma(succOperands,
-                  [this](Value *operand) { printType(operand->getType()); });
+                  [this](ValuePtr operand) { printType(operand->getType()); });
   os << ')';
 }
 
@@ -2072,7 +2072,7 @@ void Value::print(raw_ostream &os) {
   if (auto *op = getDefiningOp())
     return op->print(os);
   // TODO: Improve this.
-  assert(isa<BlockArgument>(*this));
+  assert(isa<BlockArgument>());
   os << "<block argument>\n";
 }
 

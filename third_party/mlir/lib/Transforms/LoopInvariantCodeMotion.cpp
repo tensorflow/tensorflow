@@ -50,7 +50,7 @@ public:
 // - the op has no side-effects. If sideEffecting is Never, sideeffects of this
 //   op and its nested ops are ignored.
 static bool canBeHoisted(Operation *op,
-                         function_ref<bool(Value *)> definedOutside,
+                         function_ref<bool(ValuePtr)> definedOutside,
                          SideEffecting sideEffecting,
                          SideEffectsInterface &interface) {
   // Check that dependencies are defined outside of loop.
@@ -92,7 +92,7 @@ static LogicalResult moveLoopInvariantCode(LoopLikeOpInterface looplike,
   SmallVector<Operation *, 8> opsToMove;
 
   // Helper to check whether an operation is loop invariant wrt. SSA properties.
-  auto isDefinedOutsideOfBody = [&](Value *value) {
+  auto isDefinedOutsideOfBody = [&](ValuePtr value) {
     auto definingOp = value->getDefiningOp();
     return (definingOp && !!willBeMovedSet.count(definingOp)) ||
            looplike.isDefinedOutsideOfLoop(value);

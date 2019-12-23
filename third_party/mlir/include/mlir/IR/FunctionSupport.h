@@ -183,7 +183,7 @@ public:
   }
 
   /// Gets argument.
-  BlockArgument *getArgument(unsigned idx) {
+  BlockArgumentPtr getArgument(unsigned idx) {
     return getBlocks().front().getArgument(idx);
   }
 

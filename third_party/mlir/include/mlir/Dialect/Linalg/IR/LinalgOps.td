@@ -56,8 +56,8 @@ def Linalg_RangeOp :
     ````
   }];
   let builders = [OpBuilder<
-    "Builder *builder, OperationState &result, Value *min, Value *max, "
-    "Value *step",
+    "Builder *builder, OperationState &result, ValuePtr min, ValuePtr max, "
+    "ValuePtr step",
     [{
       auto rangeType = RangeType::get(builder->getContext());
       build(builder, result, rangeType, min, max, step);
@@ -112,7 +112,7 @@ def Linalg_SliceOp : Linalg_Op<"slice", [NoSideEffect]>,
   }];
 
   let builders = [OpBuilder<
-    "Builder *b, OperationState &result, Value *base, "
+    "Builder *b, OperationState &result, ValuePtr base, "
     "ValueRange indexings">];
 
   let extraClassDeclaration = [{
@@ -124,12 +124,12 @@ def Linalg_SliceOp : Linalg_Op<"slice", [NoSideEffect]>,
     MemRefType getBaseViewType() { return view()->getType().cast<MemRefType>(); }
 
     // Get the underlying indexing at a given rank.
-    Value *indexing(unsigned rank) { return *(indexings().begin() + rank); }
+    ValuePtr indexing(unsigned rank) { return *(indexings().begin() + rank); }
 
     // Get the subset of indexings that are of RangeType.
-    SmallVector<Value *, 8> getRanges() {
-      SmallVector<Value *, 8> res;
-      for (auto *operand : indexings())
+    SmallVector<ValuePtr, 8> getRanges() {
+      SmallVector<ValuePtr, 8> res;
+      for (auto operand : indexings())
         if (!operand->getType().isa<IndexType>())
           res.push_back(operand);
       return res;
@@ -154,7 +154,7 @@ def Linalg_TransposeOp : Linalg_Op<"transpose", [NoSideEffect]>,
   }];
 
   let builders = [OpBuilder<
-    "Builder *b, OperationState &result, Value *view, "
+    "Builder *b, OperationState &result, ValuePtr view, "
     "AffineMapAttr permutation, ArrayRef<NamedAttribute> attrs = {}">];
 
   let verifier = [{

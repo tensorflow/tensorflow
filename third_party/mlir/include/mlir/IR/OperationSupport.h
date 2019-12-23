@@ -270,7 +270,7 @@ inline llvm::hash_code hash_value(OperationName arg) {
 struct OperationState {
   Location location;
   OperationName name;
-  SmallVector<Value *, 4> operands;
+  SmallVector<ValuePtr, 4> operands;
   /// Types of the results of this operation.
   SmallVector<Type, 4> types;
   SmallVector<NamedAttribute, 4> attributes;
@@ -534,8 +534,8 @@ private:
 /// This class implements iteration on the types of a given range of values.
 template <typename ValueIteratorT>
 class ValueTypeIterator final
-    : public llvm::mapped_iterator<ValueIteratorT, Type (*)(Value *)> {
-  static Type unwrap(Value *value) { return value->getType(); }
+    : public llvm::mapped_iterator<ValueIteratorT, Type (*)(ValuePtr)> {
+  static Type unwrap(ValuePtr value) { return value->getType(); }
 
 public:
   using reference = Type;
@@ -545,7 +545,8 @@ public:
 
   /// Initializes the type iterator to the specified value iterator.
   ValueTypeIterator(ValueIteratorT it)
-      : llvm::mapped_iterator<ValueIteratorT, Type (*)(Value *)>(it, &unwrap) {}
+      : llvm::mapped_iterator<ValueIteratorT, Type (*)(ValuePtr)>(it, &unwrap) {
+  }
 };
 
 //===----------------------------------------------------------------------===//
@@ -554,7 +555,7 @@ public:
 /// This class implements the operand iterators for the Operation class.
 class OperandRange final
     : public detail::indexed_accessor_range_base<OperandRange, OpOperand *,
-                                                 Value *, Value *, Value *> {
+                                                 ValuePtr, ValuePtr, ValuePtr> {
 public:
   using RangeBaseT::RangeBaseT;
   OperandRange(Operation *op);
@@ -569,7 +570,7 @@ private:
     return object + index;
   }
   /// See `detail::indexed_accessor_range_base` for details.
-  static Value *dereference_iterator(OpOperand *object, ptrdiff_t index) {
+  static ValuePtr dereference_iterator(OpOperand *object, ptrdiff_t index) {
     return object[index].get();
   }
 
@@ -582,8 +583,8 @@ private:
 
 /// This class implements the result iterators for the Operation class.
 class ResultRange final
-    : public detail::indexed_accessor_range_base<ResultRange, OpResult *,
-                                                 Value *, Value *, Value *> {
+    : public detail::indexed_accessor_range_base<ResultRange, OpResultPtr,
+                                                 ValuePtr, ValuePtr, ValuePtr> {
 public:
   using RangeBaseT::RangeBaseT;
   ResultRange(Operation *op);
@@ -594,11 +595,11 @@ public:
 
 private:
   /// See `detail::indexed_accessor_range_base` for details.
-  static OpResult *offset_base(OpResult *object, ptrdiff_t index) {
+  static OpResultPtr offset_base(OpResultPtr object, ptrdiff_t index) {
     return object + index;
   }
   /// See `detail::indexed_accessor_range_base` for details.
-  static Value *dereference_iterator(OpResult *object, ptrdiff_t index) {
+  static ValuePtr dereference_iterator(OpResultPtr object, ptrdiff_t index) {
     return &object[index];
   }
 
@@ -610,31 +611,31 @@ private:
 // ValueRange
 
 /// This class provides an abstraction over the different types of ranges over
-/// Value*s. In many cases, this prevents the need to explicitly materialize a
+/// Values. In many cases, this prevents the need to explicitly materialize a
 /// SmallVector/std::vector. This class should be used in places that are not
 /// suitable for a more derived type (e.g. ArrayRef) or a template range
 /// parameter.
 class ValueRange final
     : public detail::indexed_accessor_range_base<
-          ValueRange, PointerUnion<Value *const *, OpOperand *, OpResult *>,
-          Value *, Value *, Value *> {
+          ValueRange, PointerUnion<ValuePtr const *, OpOperand *, OpResultPtr>,
+          ValuePtr, ValuePtr, ValuePtr> {
 public:
   using RangeBaseT::RangeBaseT;
 
   template <typename Arg,
             typename = typename std::enable_if_t<
-                std::is_constructible<ArrayRef<Value *>, Arg>::value &&
-                !std::is_convertible<Arg, Value *>::value>>
+                std::is_constructible<ArrayRef<ValuePtr>, Arg>::value &&
+                !std::is_convertible<Arg, ValuePtr>::value>>
   ValueRange(Arg &&arg)
-      : ValueRange(ArrayRef<Value *>(std::forward<Arg>(arg))) {}
-  ValueRange(Value *const &value) : ValueRange(&value, /*count=*/1) {}
-  ValueRange(const std::initializer_list<Value *> &values)
-      : ValueRange(ArrayRef<Value *>(values)) {}
+      : ValueRange(ArrayRef<ValuePtr>(std::forward<Arg>(arg))) {}
+  ValueRange(ValuePtr const &value) : ValueRange(&value, /*count=*/1) {}
+  ValueRange(const std::initializer_list<ValuePtr> &values)
+      : ValueRange(ArrayRef<ValuePtr>(values)) {}
   ValueRange(iterator_range<OperandRange::iterator> values)
       : ValueRange(OperandRange(values)) {}
   ValueRange(iterator_range<ResultRange::iterator> values)
       : ValueRange(ResultRange(values)) {}
-  ValueRange(ArrayRef<Value *> values = llvm::None);
+  ValueRange(ArrayRef<ValuePtr> values = llvm::None);
   ValueRange(OperandRange values);
   ValueRange(ResultRange values);
 
@@ -645,12 +646,12 @@ public:
 private:
   /// The type representing the owner of this range. This is either a list of
   /// values, operands, or results.
-  using OwnerT = PointerUnion<Value *const *, OpOperand *, OpResult *>;
+  using OwnerT = PointerUnion<ValuePtr const *, OpOperand *, OpResultPtr>;
 
   /// See `detail::indexed_accessor_range_base` for details.
   static OwnerT offset_base(const OwnerT &owner, ptrdiff_t index);
   /// See `detail::indexed_accessor_range_base` for details.
-  static Value *dereference_iterator(const OwnerT &owner, ptrdiff_t index);
+  static ValuePtr dereference_iterator(const OwnerT &owner, ptrdiff_t index);
 
   /// Allow access to `offset_base` and `dereference_iterator`.
   friend RangeBaseT;

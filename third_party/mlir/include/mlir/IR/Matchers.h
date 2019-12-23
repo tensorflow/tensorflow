@@ -142,7 +142,7 @@ using has_operation_or_value_matcher_t =
 /// Statically switch to a Value matcher.
 template <typename MatcherClass>
 typename std::enable_if_t<is_detected<detail::has_operation_or_value_matcher_t,
-                                      MatcherClass, Value *>::value,
+                                      MatcherClass, ValuePtr>::value,
                           bool>
 matchOperandOrValueAtIndex(Operation *op, unsigned idx, MatcherClass &matcher) {
   return matcher.match(op->getOperand(idx));
@@ -161,14 +161,14 @@ matchOperandOrValueAtIndex(Operation *op, unsigned idx, MatcherClass &matcher) {
 
 /// Terminal matcher, always returns true.
 struct AnyValueMatcher {
-  bool match(Value *op) const { return true; }
+  bool match(ValuePtr op) const { return true; }
 };
 
 /// Binds to a specific value and matches it.
 struct PatternMatcherValue {
-  PatternMatcherValue(Value *val) : value(val) {}
-  bool match(Value *val) const { return val == value; }
-  Value *value;
+  PatternMatcherValue(ValuePtr val) : value(val) {}
+  bool match(ValuePtr val) const { return val == value; }
+  ValuePtr value;
 };
 
 template <typename TupleT, class CallbackT, std::size_t... Is>
@@ -235,7 +235,7 @@ inline detail::constant_int_not_value_matcher<0> m_NonZero() {
 
 /// Entry point for matching a pattern over a Value.
 template <typename Pattern>
-inline bool matchPattern(Value *value, const Pattern &pattern) {
+inline bool matchPattern(ValuePtr value, const Pattern &pattern) {
   // TODO: handle other cases
   if (auto *op = value->getDefiningOp())
     return const_cast<Pattern &>(pattern).match(op);
@@ -262,7 +262,7 @@ auto m_Op(Matchers... matchers) {
 
 namespace matchers {
 inline auto m_Any() { return detail::AnyValueMatcher(); }
-inline auto m_Val(Value *v) { return detail::PatternMatcherValue(v); }
+inline auto m_Val(ValuePtr v) { return detail::PatternMatcherValue(v); }
 } // namespace matchers
 
 } // end namespace mlir

@@ -74,10 +74,10 @@ public:
   }
 
   /// Return true if value A properly dominates operation B.
-  bool properlyDominates(Value *a, Operation *b);
+  bool properlyDominates(ValuePtr a, Operation *b);
 
   /// Return true if operation A dominates operation B.
-  bool dominates(Value *a, Operation *b) {
+  bool dominates(ValuePtr a, Operation *b) {
     return (Operation *)a->getDefiningOp() == b || properlyDominates(a, b);
   }
 

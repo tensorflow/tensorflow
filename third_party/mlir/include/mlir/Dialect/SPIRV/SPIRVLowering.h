@@ -64,8 +64,8 @@ protected:
 namespace spirv {
 /// Returns a value that represents a builtin variable value within the SPIR-V
 /// module.
-Value *getBuiltinVariableValue(Operation *op, spirv::BuiltIn builtin,
-                               OpBuilder &builder);
+ValuePtr getBuiltinVariableValue(Operation *op, spirv::BuiltIn builtin,
+                                 OpBuilder &builder);
 
 /// Attribute name for specifying argument ABI information.
 StringRef getInterfaceVarABIAttrName();

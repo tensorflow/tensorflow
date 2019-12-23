@@ -38,7 +38,7 @@ def LoopLikeOpInterface : OpInterface<"LoopLikeOpInterface"> {
         explicit capture of dependencies, an implementation could check whether
         the value corresponds to a captured dependency.
       }],
-      "bool", "isDefinedOutsideOfLoop", (ins "Value *":$value)
+      "bool", "isDefinedOutsideOfLoop", (ins "ValuePtr ":$value)
     >,
     InterfaceMethod<[{
         Returns the region that makes up the body of the loop and should be

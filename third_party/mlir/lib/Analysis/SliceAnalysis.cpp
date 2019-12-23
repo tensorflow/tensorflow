@@ -104,8 +104,8 @@ static void getBackwardSliceImpl(Operation *op,
   }
 
   for (auto en : llvm::enumerate(op->getOperands())) {
-    auto *operand = en.value();
-    if (auto *blockArg = dyn_cast<BlockArgument>(operand)) {
+    auto operand = en.value();
+    if (auto blockArg = dyn_cast<BlockArgument>(operand)) {
       if (auto affIv = getForInductionVarOwner(operand)) {
         auto *affOp = affIv.getOperation();
         if (backwardSlice->count(affOp) == 0)

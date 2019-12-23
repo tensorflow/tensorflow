@@ -75,7 +75,7 @@ struct ToyInlinerInterface : public DialectInlinerInterface {
   /// previously returned by the call operation with the operands of the
   /// return.
   void handleTerminator(Operation *op,
-                        ArrayRef<Value *> valuesToRepl) const final {
+                        ArrayRef<ValuePtr> valuesToRepl) const final {
     // Only "toy.return" needs to be handled here.
     auto returnOp = cast<ReturnOp>(op);
 
@@ -207,7 +207,7 @@ struct ToyInlinerInterface : public DialectInlinerInterface {
   /// operation that takes 'input' as the only operand, and produces a single
   /// result of 'resultType'. If a conversion can not be generated, nullptr
   /// should be returned.
-  Operation *materializeCallConversion(OpBuilder &builder, Value *input,
+  Operation *materializeCallConversion(OpBuilder &builder, ValuePtr input,
                                        Type resultType,
                                        Location conversionLoc) const final {
     return builder.create<CastOp>(conversionLoc, resultType, input);

@@ -48,14 +48,14 @@ public:
       for (Region &region : op->getRegions()) {
         for (Block &block : region) {
           addDataToHash(hasher, &block);
-          for (BlockArgument *arg : block.getArguments())
+          for (BlockArgumentPtr arg : block.getArguments())
             addDataToHash(hasher, arg);
         }
       }
       //   - Location
       addDataToHash(hasher, op->getLoc().getAsOpaquePointer());
       //   - Operands
-      for (Value *operand : op->getOperands())
+      for (ValuePtr operand : op->getOperands())
         addDataToHash(hasher, operand);
       //   - Successors
       for (unsigned i = 0, e = op->getNumSuccessors(); i != e; ++i)

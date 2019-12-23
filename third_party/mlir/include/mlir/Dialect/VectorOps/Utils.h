@@ -34,6 +34,9 @@ class Operation;
 class Value;
 class VectorType;
 
+// TODO(riverriddle) Remove this after Value is value-typed.
+using ValuePtr = Value *;
+
 /// Computes and returns the multi-dimensional ratio of `superShape` to
 /// `subShape`. This is calculated by performing a traversal from minor to major
 /// dimensions (i.e. in reverse shape order). If integral division is not
@@ -122,7 +125,7 @@ Optional<SmallVector<int64_t, 4>> shapeRatio(VectorType superVectorType,
 /// `%arg0[%c0, %c0]` into vector<128xf32> which needs a 1-D vector broadcast.
 ///
 AffineMap
-makePermutationMap(Operation *op, ArrayRef<Value *> indices,
+makePermutationMap(Operation *op, ArrayRef<ValuePtr> indices,
                    const DenseMap<Operation *, unsigned> &loopToVectorDim);
 
 namespace matcher {

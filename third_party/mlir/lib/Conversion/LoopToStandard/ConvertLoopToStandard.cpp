@@ -182,22 +182,22 @@ ForLowering::matchAndRewrite(ForOp forOp, PatternRewriter &rewriter) const {
       rewriter.splitBlock(conditionBlock, conditionBlock->begin());
   auto *lastBodyBlock = &forOp.region().back();
   rewriter.inlineRegionBefore(forOp.region(), endBlock);
-  auto *iv = conditionBlock->getArgument(0);
+  auto iv = conditionBlock->getArgument(0);
 
   // Append the induction variable stepping logic to the last body block and
   // branch back to the condition block.  Construct an expression f :
   // (x -> x+step) and apply this expression to the induction variable.
   rewriter.setInsertionPointToEnd(lastBodyBlock);
-  auto *step = forOp.step();
-  auto *stepped = rewriter.create<AddIOp>(loc, iv, step).getResult();
+  auto step = forOp.step();
+  auto stepped = rewriter.create<AddIOp>(loc, iv, step).getResult();
   if (!stepped)
     return matchFailure();
   rewriter.create<BranchOp>(loc, conditionBlock, stepped);
 
   // Compute loop bounds before branching to the condition.
   rewriter.setInsertionPointToEnd(initBlock);
-  Value *lowerBound = forOp.lowerBound();
-  Value *upperBound = forOp.upperBound();
+  ValuePtr lowerBound = forOp.lowerBound();
+  ValuePtr upperBound = forOp.upperBound();
   if (!lowerBound || !upperBound)
     return matchFailure();
   rewriter.create<BranchOp>(loc, conditionBlock, lowerBound);
@@ -208,8 +208,8 @@ ForLowering::matchAndRewrite(ForOp forOp, PatternRewriter &rewriter) const {
       rewriter.create<CmpIOp>(loc, CmpIPredicate::slt, iv, upperBound);
 
   rewriter.create<CondBranchOp>(loc, comparison, firstBodyBlock,
-                                ArrayRef<Value *>(), endBlock,
-                                ArrayRef<Value *>());
+                                ArrayRef<ValuePtr>(), endBlock,
+                                ArrayRef<ValuePtr>());
   // Ok, we're done!
   rewriter.eraseOp(forOp);
   return matchSuccess();
@@ -248,8 +248,8 @@ IfLowering::matchAndRewrite(IfOp ifOp, PatternRewriter &rewriter) const {
 
   rewriter.setInsertionPointToEnd(condBlock);
   rewriter.create<CondBranchOp>(loc, ifOp.condition(), thenBlock,
-                                /*trueArgs=*/ArrayRef<Value *>(), elseBlock,
-                                /*falseArgs=*/ArrayRef<Value *>());
+                                /*trueArgs=*/ArrayRef<ValuePtr>(), elseBlock,
+                                /*falseArgs=*/ArrayRef<ValuePtr>());
 
   // Ok, we're done!
   rewriter.eraseOp(ifOp);

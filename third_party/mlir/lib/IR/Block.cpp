@@ -98,7 +98,7 @@ void Block::dropAllReferences() {
 }
 
 void Block::dropAllDefinedValueUses() {
-  for (auto *arg : getArguments())
+  for (auto arg : getArguments())
     arg->dropAllUses();
   for (auto &op : *this)
     op.dropAllDefinedValueUses();
@@ -151,7 +151,7 @@ void Block::recomputeOpOrder() {
 // Argument list management.
 //===----------------------------------------------------------------------===//
 
-BlockArgument *Block::addArgument(Type type) {
+BlockArgumentPtr Block::addArgument(Type type) {
   auto *arg = new BlockArgument(type, this);
   arguments.push_back(arg);
   return arg;

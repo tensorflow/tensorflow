@@ -470,7 +470,7 @@ static void emitDeserializationFunction(const Record *attrClass,
   emitResultDeserialization(op, record->getLoc(), "  ", words, wordIndex,
                             resultTypes, valueID, os);
 
-  os << formatv("  SmallVector<Value *, 4> {0};\n", operands);
+  os << formatv("  SmallVector<ValuePtr, 4> {0};\n", operands);
   os << formatv("  SmallVector<NamedAttribute, 4> {0};\n", attributes);
   // Operand deserialization
   emitOperandDeserialization(op, record->getLoc(), "  ", words, wordIndex,

@@ -114,7 +114,7 @@ template <> unsigned BlockOperand::getOperandNumber() {
 /// Create a new Operation with the specific fields.
 Operation *Operation::create(Location location, OperationName name,
                              ArrayRef<Type> resultTypes,
-                             ArrayRef<Value *> operands,
+                             ArrayRef<ValuePtr> operands,
                              ArrayRef<NamedAttribute> attributes,
                              ArrayRef<Block *> successors, unsigned numRegions,
                              bool resizableOperandList) {
@@ -134,7 +134,7 @@ Operation *Operation::create(const OperationState &state) {
 /// Create a new Operation with the specific fields.
 Operation *Operation::create(Location location, OperationName name,
                              ArrayRef<Type> resultTypes,
-                             ArrayRef<Value *> operands,
+                             ArrayRef<ValuePtr> operands,
                              NamedAttributeList attributes,
                              ArrayRef<Block *> successors, RegionRange regions,
                              bool resizableOperandList) {
@@ -151,7 +151,7 @@ Operation *Operation::create(Location location, OperationName name,
 /// unnecessarily uniquing a list of attributes.
 Operation *Operation::create(Location location, OperationName name,
                              ArrayRef<Type> resultTypes,
-                             ArrayRef<Value *> operands,
+                             ArrayRef<ValuePtr> operands,
                              NamedAttributeList attributes,
                              ArrayRef<Block *> successors, unsigned numRegions,
                              bool resizableOperandList) {
@@ -314,7 +314,7 @@ bool Operation::isProperAncestor(Operation *other) {
 }
 
 /// Replace any uses of 'from' with 'to' within this operation.
-void Operation::replaceUsesOfWith(Value *from, Value *to) {
+void Operation::replaceUsesOfWith(ValuePtr from, ValuePtr to) {
   if (from == to)
     return;
   for (auto &operand : getOpOperands())
@@ -585,7 +585,7 @@ void Operation::dropAllDefinedValueUses() {
 
 /// Return true if there are no users of any results of this operation.
 bool Operation::use_empty() {
-  for (auto *result : getResults())
+  for (auto result : getResults())
     if (!result->use_empty())
       return false;
   return true;
@@ -672,14 +672,14 @@ InFlightDiagnostic Operation::emitOpError(const Twine &message) {
 /// Operands are remapped using `mapper` (if present), and `mapper` is updated
 /// to contain the results.
 Operation *Operation::cloneWithoutRegions(BlockAndValueMapping &mapper) {
-  SmallVector<Value *, 8> operands;
+  SmallVector<ValuePtr, 8> operands;
   SmallVector<Block *, 2> successors;
 
   operands.reserve(getNumOperands() + getNumSuccessors());
 
   if (getNumSuccessors() == 0) {
     // Non-branching operations can just add all the operands.
-    for (auto *opValue : getOperands())
+    for (auto opValue : getOperands())
       operands.push_back(mapper.lookupOrDefault(opValue));
   } else {
     // We add the operands separated by nullptr's for each successor.
@@ -699,7 +699,7 @@ Operation *Operation::cloneWithoutRegions(BlockAndValueMapping &mapper) {
       operands.push_back(nullptr);
 
       // Remap the successors operands.
-      for (auto *operand : getSuccessorOperands(succ))
+      for (auto operand : getSuccessorOperands(succ))
         operands.push_back(mapper.lookupOrDefault(operand));
     }
   }
@@ -1092,8 +1092,8 @@ LogicalResult OpTrait::impl::verifyResultSizeAttr(Operation *op,
 // These functions are out-of-line implementations of the methods in BinaryOp,
 // which avoids them being template instantiated/duplicated.
 
-void impl::buildBinaryOp(Builder *builder, OperationState &result, Value *lhs,
-                         Value *rhs) {
+void impl::buildBinaryOp(Builder *builder, OperationState &result, ValuePtr lhs,
+                         ValuePtr rhs) {
   assert(lhs->getType() == rhs->getType());
   result.addOperands({lhs, rhs});
   result.types.push_back(lhs->getType());
@@ -1133,8 +1133,8 @@ void impl::printOneResultOp(Operation *op, OpAsmPrinter &p) {
 // CastOp implementation
 //===----------------------------------------------------------------------===//
 
-void impl::buildCastOp(Builder *builder, OperationState &result, Value *source,
-                       Type destType) {
+void impl::buildCastOp(Builder *builder, OperationState &result,
+                       ValuePtr source, Type destType) {
   result.addOperands(source);
   result.addTypes(destType);
 }
@@ -1157,7 +1157,7 @@ void impl::printCastOp(Operation *op, OpAsmPrinter &p) {
     << op->getResult(0)->getType();
 }
 
-Value *impl::foldCastOp(Operation *op) {
+ValuePtr impl::foldCastOp(Operation *op) {
   // Identity cast
   if (op->getOperand(0)->getType() == op->getResult(0)->getType())
     return op->getOperand(0);

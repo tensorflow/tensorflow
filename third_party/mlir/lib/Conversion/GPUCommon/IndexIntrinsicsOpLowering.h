@@ -57,11 +57,11 @@ public:
 
   // Convert the kernel arguments to an LLVM type, preserve the rest.
   PatternMatchResult
-  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+  matchAndRewrite(Operation *op, ArrayRef<ValuePtr> operands,
                   ConversionPatternRewriter &rewriter) const override {
     auto loc = op->getLoc();
     auto dialect = lowering.getDialect();
-    Value *newOp;
+    ValuePtr newOp;
     switch (dimensionToIndex(cast<Op>(op))) {
     case X:
       newOp = rewriter.create<XOp>(loc, LLVM::LLVMType::getInt32Ty(dialect));

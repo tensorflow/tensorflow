@@ -109,7 +109,7 @@ Optional<SmallVector<int64_t, 4>> mlir::shapeRatio(VectorType superVectorType,
 /// Examples can be found in the documentation of `makePermutationMap`, in the
 /// header file.
 static AffineMap makePermutationMap(
-    ArrayRef<Value *> indices,
+    ArrayRef<ValuePtr> indices,
     const DenseMap<Operation *, unsigned> &enclosingLoopToVectorDim) {
   if (enclosingLoopToVectorDim.empty())
     return AffineMap();
@@ -167,7 +167,7 @@ static SetVector<Operation *> getEnclosingforOps(Operation *op) {
 }
 
 AffineMap mlir::makePermutationMap(
-    Operation *op, ArrayRef<Value *> indices,
+    Operation *op, ArrayRef<ValuePtr> indices,
     const DenseMap<Operation *, unsigned> &loopToVectorDim) {
   DenseMap<Operation *, unsigned> enclosingLoopToVectorDim;
   auto enclosingLoops = getEnclosingforOps(op);

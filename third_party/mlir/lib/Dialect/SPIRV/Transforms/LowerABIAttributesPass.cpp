@@ -140,7 +140,7 @@ class FuncOpLowering final : public SPIRVOpLowering<FuncOp> {
 public:
   using SPIRVOpLowering<FuncOp>::SPIRVOpLowering;
   PatternMatchResult
-  matchAndRewrite(FuncOp funcOp, ArrayRef<Value *> operands,
+  matchAndRewrite(FuncOp funcOp, ArrayRef<ValuePtr> operands,
                   ConversionPatternRewriter &rewriter) const override;
 };
 
@@ -153,7 +153,7 @@ private:
 } // namespace
 
 PatternMatchResult
-FuncOpLowering::matchAndRewrite(FuncOp funcOp, ArrayRef<Value *> operands,
+FuncOpLowering::matchAndRewrite(FuncOp funcOp, ArrayRef<ValuePtr> operands,
                                 ConversionPatternRewriter &rewriter) const {
   if (!funcOp.getAttrOfType<spirv::EntryPointABIAttr>(
           spirv::getEntryPointABIAttrName())) {
@@ -183,7 +183,7 @@ FuncOpLowering::matchAndRewrite(FuncOp funcOp, ArrayRef<Value *> operands,
     OpBuilder::InsertionGuard funcInsertionGuard(rewriter);
     rewriter.setInsertionPointToStart(&funcOp.front());
     // Insert spirv::AddressOf and spirv::AccessChain operations.
-    Value *replacement =
+    ValuePtr replacement =
         rewriter.create<spirv::AddressOfOp>(funcOp.getLoc(), var);
     // Check if the arg is a scalar or vector type. In that case, the value
     // needs to be loaded into registers.

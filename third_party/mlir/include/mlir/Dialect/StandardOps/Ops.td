@@ -52,7 +52,7 @@ class CastOp<string mnemonic, list<OpTrait> traits = []> :
   let results = (outs AnyType);
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState &result, Value *source, Type destType", [{
+    "Builder *builder, OperationState &result, ValuePtr source, Type destType", [{
        impl::buildCastOp(builder, result, source, destType);
   }]>];
 
@@ -191,7 +191,7 @@ def AllocOp : Std_Op<"alloc"> {
      }]>,
     OpBuilder<
     "Builder *builder, OperationState &result, MemRefType memrefType, " #
-    "ArrayRef<Value*> operands, IntegerAttr alignment = IntegerAttr()", [{
+    "ArrayRef<ValuePtr> operands, IntegerAttr alignment = IntegerAttr()", [{
        result.addOperands(operands);
        result.types.push_back(memrefType);
        if (alignment)
@@ -330,7 +330,7 @@ def CallIndirectOp : Std_Op<"call_indirect", [CallOpInterface]> {
   let results = (outs Variadic<AnyType>);
 
   let builders = [OpBuilder<
-    "Builder *, OperationState &result, Value *callee,"
+    "Builder *, OperationState &result, ValuePtr callee,"
     "ValueRange operands = {}", [{
       result.operands.push_back(callee);
       result.addOperands(operands);
@@ -338,7 +338,7 @@ def CallIndirectOp : Std_Op<"call_indirect", [CallOpInterface]> {
   }]>];
 
   let extraClassDeclaration = [{
-    Value *getCallee() { return getOperand(0); }
+    ValuePtr getCallee() { return getOperand(0); }
 
     /// Get the argument operands to the called function.
     operand_range getArgOperands() {
@@ -395,7 +395,7 @@ def CmpFOp : Std_Op<"cmpf",
 
   let builders = [OpBuilder<
     "Builder *builder, OperationState &result, CmpFPredicate predicate,"
-    "Value *lhs, Value *rhs", [{
+    "ValuePtr lhs, ValuePtr rhs", [{
       ::buildCmpFOp(builder, result, predicate, lhs, rhs);
   }]>];
 
@@ -463,7 +463,7 @@ def CmpIOp : Std_Op<"cmpi",
 
   let builders = [OpBuilder<
     "Builder *builder, OperationState &result, CmpIPredicate predicate,"
-    "Value *lhs, Value *rhs", [{
+    "ValuePtr lhs, ValuePtr rhs", [{
       ::buildCmpIOp(builder, result, predicate, lhs, rhs);
   }]>];
 
@@ -502,7 +502,7 @@ def CondBranchOp : Std_Op<"cond_br", [Terminator]> {
   let arguments = (ins I1:$condition, Variadic<AnyType>:$branchOperands);
 
   let builders = [OpBuilder<
-    "Builder *, OperationState &result, Value *condition,"
+    "Builder *, OperationState &result, ValuePtr condition,"
     "Block *trueDest, ValueRange trueOperands,"
     "Block *falseDest, ValueRange falseOperands", [{
       result.addOperands(condition);
@@ -518,7 +518,7 @@ def CondBranchOp : Std_Op<"cond_br", [Terminator]> {
     enum { trueIndex = 0, falseIndex = 1 };
 
     // The condition operand is the first operand in the list.
-    Value *getCondition() { return getOperand(0); }
+    ValuePtr getCondition() { return getOperand(0); }
 
     /// Return the destination if the condition is true.
     Block *getTrueDest() {
@@ -531,12 +531,12 @@ def CondBranchOp : Std_Op<"cond_br", [Terminator]> {
     }
 
     // Accessors for operands to the 'true' destination.
-    Value *getTrueOperand(unsigned idx) {
+    ValuePtr getTrueOperand(unsigned idx) {
       assert(idx < getNumTrueOperands());
       return getOperand(getTrueDestOperandIndex() + idx);
     }
 
-    void setTrueOperand(unsigned idx, Value *value) {
+    void setTrueOperand(unsigned idx, ValuePtr value) {
       assert(idx < getNumTrueOperands());
       setOperand(getTrueDestOperandIndex() + idx, value);
     }
@@ -561,11 +561,11 @@ def CondBranchOp : Std_Op<"cond_br", [Terminator]> {
     }
 
     // Accessors for operands to the 'false' destination.
-    Value *getFalseOperand(unsigned idx) {
+    ValuePtr getFalseOperand(unsigned idx) {
       assert(idx < getNumFalseOperands());
       return getOperand(getFalseDestOperandIndex() + idx);
     }
-    void setFalseOperand(unsigned idx, Value *value) {
+    void setFalseOperand(unsigned idx, ValuePtr value) {
       assert(idx < getNumFalseOperands());
       setOperand(getFalseDestOperandIndex() + idx, value);
     }
@@ -678,7 +678,7 @@ def DimOp : Std_Op<"dim", [NoSideEffect]> {
   let results = (outs Index);
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState &result, Value *memrefOrTensor,"
+    "Builder *builder, OperationState &result, ValuePtr memrefOrTensor,"
     "unsigned index", [{
       auto indexType = builder->getIndexType();
       auto indexAttr = builder->getIntegerAttr(indexType, index);
@@ -730,7 +730,7 @@ def ExtractElementOp : Std_Op<"extract_element", [NoSideEffect]> {
   let results = (outs AnyType);
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState &result, Value *aggregate,"
+    "Builder *builder, OperationState &result, ValuePtr aggregate,"
     "ValueRange indices = {}", [{
       auto resType = aggregate->getType().cast<ShapedType>()
                                          .getElementType();
@@ -738,7 +738,7 @@ def ExtractElementOp : Std_Op<"extract_element", [NoSideEffect]> {
     }]>];
 
   let extraClassDeclaration = [{
-    Value *getAggregate() { return getOperand(0); }
+    ValuePtr getAggregate() { return getOperand(0); }
 
     operand_range getIndices() {
       return {operand_begin() + 1, operand_end()};
@@ -816,7 +816,7 @@ def LoadOp : Std_Op<"load"> {
   let results = (outs AnyType);
 
   let builders = [OpBuilder<
-    "Builder *, OperationState &result, Value *memref,"
+    "Builder *, OperationState &result, ValuePtr memref,"
     "ValueRange indices = {}", [{
       auto memrefType = memref->getType().cast<MemRefType>();
       result.addOperands(memref);
@@ -825,8 +825,8 @@ def LoadOp : Std_Op<"load"> {
   }]>];
 
   let extraClassDeclaration = [{
-    Value *getMemRef() { return getOperand(0); }
-    void setMemRef(Value *value) { setOperand(0, value); }
+    ValuePtr getMemRef() { return getOperand(0); }
+    void setMemRef(ValuePtr value) { setOperand(0, value); }
     MemRefType getMemRefType() {
       return getMemRef()->getType().cast<MemRefType>();
     }
@@ -952,8 +952,8 @@ def PrefetchOp : Std_Op<"prefetch"> {
                    BoolAttr:$isDataCache);
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState &result, Value *memref,"
-    "ArrayRef<Value *> indices, bool isWrite, unsigned hint, bool isData",
+    "Builder *builder, OperationState &result, ValuePtr memref,"
+    "ArrayRef<ValuePtr> indices, bool isWrite, unsigned hint, bool isData",
     [{
       auto hintAttr = builder->getI32IntegerAttr(hint);
       auto isWriteAttr = builder->getBoolAttr(isWrite);
@@ -990,7 +990,7 @@ def RankOp : Std_Op<"rank", [NoSideEffect]> {
   let verifier = ?;
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState &result, Value *tensor", [{
+    "Builder *builder, OperationState &result, ValuePtr tensor", [{
       auto indexType = builder->getIndexType();
       build(builder, result, indexType, tensor);
     }]>];
@@ -1052,16 +1052,16 @@ def SelectOp : Std_Op<"select", [NoSideEffect, SameOperandsAndResultShape]> {
   let results = (outs AnyType);
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState &result, Value *condition,"
-    "Value *trueValue, Value *falseValue", [{
+    "Builder *builder, OperationState &result, ValuePtr condition,"
+    "ValuePtr trueValue, ValuePtr falseValue", [{
       result.addOperands({condition, trueValue, falseValue});
       result.addTypes(trueValue->getType());
   }]>];
 
   let extraClassDeclaration = [{
-      Value *getCondition() { return condition(); }
-      Value *getTrueValue() { return true_value(); }
-      Value *getFalseValue() { return false_value(); }
+      ValuePtr getCondition() { return condition(); }
+      ValuePtr getTrueValue() { return true_value(); }
+      ValuePtr getFalseValue() { return false_value(); }
   }];
 
   let hasFolder = 1;
@@ -1089,7 +1089,7 @@ def SignExtendIOp : Std_Op<"sexti",
   let results = (outs IntegerLike);
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState &result, Value *value, Type destType", [{
+    "Builder *builder, OperationState &result, ValuePtr value, Type destType", [{
       result.addOperands(value);
       result.addTypes(destType);
   }]>];
@@ -1189,7 +1189,7 @@ def SplatOp : Std_Op<"splat", [NoSideEffect]> {
   let results = (outs AnyTypeOf<[AnyVector, AnyStaticShapeTensor]>:$aggregate);
 
   let builders =
-      [OpBuilder<"Builder *builder, OperationState &result, Value *element, "
+      [OpBuilder<"Builder *builder, OperationState &result, ValuePtr element, "
                   "Type aggregateType",
                   [{ build(builder, result, aggregateType, element); }]>];
 
@@ -1213,16 +1213,16 @@ def StoreOp : Std_Op<"store"> {
                    Variadic<Index>:$indices);
 
   let builders = [OpBuilder<
-    "Builder *, OperationState &result, Value *valueToStore, Value *memref", [{
+    "Builder *, OperationState &result, ValuePtr valueToStore, ValuePtr memref", [{
       result.addOperands(valueToStore);
       result.addOperands(memref);
   }]>];
 
   let extraClassDeclaration = [{
-      Value *getValueToStore() { return getOperand(0); }
+      ValuePtr getValueToStore() { return getOperand(0); }
 
-      Value *getMemRef() { return getOperand(1); }
-      void setMemRef(Value *value) { setOperand(1, value); }
+      ValuePtr getMemRef() { return getOperand(1); }
+      void setMemRef(ValuePtr value) { setOperand(1, value); }
       MemRefType getMemRefType() {
         return getMemRef()->getType().cast<MemRefType>();
       }
@@ -1364,13 +1364,13 @@ def SubViewOp : Std_Op<"subview", [AttrSizedOperandSegments, NoSideEffect]> {
 
   let builders = [
     OpBuilder<
-      "Builder *b, OperationState &result, Value *source, "
+      "Builder *b, OperationState &result, ValuePtr source, "
       "ValueRange offsets, ValueRange sizes, "
       "ValueRange strides, Type resultType = Type(), "
       "ArrayRef<NamedAttribute> attrs = {}">,
     OpBuilder<
       "Builder *builder, OperationState &result, "
-      "Type resultType, Value *source">
+      "Type resultType, ValuePtr source">
   ];
 
   let extraClassDeclaration = [{
@@ -1403,7 +1403,7 @@ def SubViewOp : Std_Op<"subview", [AttrSizedOperandSegments, NoSideEffect]> {
     // offset, size and stride operands of the SubViewOp into a list of triples.
     // Such a list of triple is sometimes more convenient to manipulate.
     struct Range {
-      Value *offset, *size, *stride;
+      ValuePtr offset, size, stride;
     };
     SmallVector<Range, 8> getRanges();
   }];
@@ -1465,7 +1465,7 @@ def TensorLoadOp : Std_Op<"tensor_load",
   let verifier = ?;
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState &result, Value *memref", [{
+    "Builder *builder, OperationState &result, ValuePtr memref", [{
       auto memrefType = memref->getType().cast<MemRefType>();
       auto resultType = RankedTensorType::get(memrefType.getShape(),
                                               memrefType.getElementType());
@@ -1519,7 +1519,7 @@ def TruncateIOp : Std_Op<"trunci", [NoSideEffect, SameOperandsAndResultShape]> {
   let results = (outs IntegerLike);
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState &result, Value *value, Type destType", [{
+    "Builder *builder, OperationState &result, ValuePtr value, Type destType", [{
       result.addOperands(value);
       result.addTypes(destType);
   }]>];
@@ -1578,7 +1578,7 @@ def ViewOp : Std_Op<"view", [NoSideEffect]> {
 
     /// Returns the dynamic offset for this view operation if specified.
     /// Returns nullptr if no dynamic offset was specified.
-    Value *getDynamicOffset();
+    ValuePtr getDynamicOffset();
 
     /// Returns the starting operand list position of the dynamic size operands.
     unsigned getDynamicSizesOperandStart() {
@@ -1619,7 +1619,7 @@ def ZeroExtendIOp : Std_Op<"zexti", [NoSideEffect, SameOperandsAndResultShape]> 
   let results = (outs IntegerLike);
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState &result, Value *value, Type destType", [{
+    "Builder *builder, OperationState &result, ValuePtr value, Type destType", [{
       result.addOperands(value);
       result.addTypes(destType);
   }]>];

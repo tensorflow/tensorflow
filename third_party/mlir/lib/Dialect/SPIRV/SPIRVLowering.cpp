@@ -229,9 +229,9 @@ getOrInsertBuiltinVariable(spirv::ModuleOp &moduleOp, Location loc,
 
 /// Gets the global variable associated with a builtin and add
 /// it if it doesn't exist.
-Value *mlir::spirv::getBuiltinVariableValue(Operation *op,
-                                            spirv::BuiltIn builtin,
-                                            OpBuilder &builder) {
+ValuePtr mlir::spirv::getBuiltinVariableValue(Operation *op,
+                                              spirv::BuiltIn builtin,
+                                              OpBuilder &builder) {
   auto moduleOp = op->getParentOfType<spirv::ModuleOp>();
   if (!moduleOp) {
     op->emitError("expected operation to be within a SPIR-V module");
@@ -239,7 +239,7 @@ Value *mlir::spirv::getBuiltinVariableValue(Operation *op,
   }
   spirv::GlobalVariableOp varOp =
       getOrInsertBuiltinVariable(moduleOp, op->getLoc(), builtin, builder);
-  Value *ptr = builder.create<spirv::AddressOfOp>(op->getLoc(), varOp);
+  ValuePtr ptr = builder.create<spirv::AddressOfOp>(op->getLoc(), varOp);
   return builder.create<spirv::LoadOp>(op->getLoc(), ptr,
                                        /*memory_access =*/nullptr,
                                        /*alignment =*/nullptr);

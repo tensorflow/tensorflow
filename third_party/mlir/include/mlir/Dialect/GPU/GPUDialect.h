@@ -77,9 +77,9 @@ public:
 /// Utility class for the GPU dialect to represent triples of `Value`s
 /// accessible through `.x`, `.y`, and `.z` similarly to CUDA notation.
 struct KernelDim3 {
-  Value *x;
-  Value *y;
-  Value *z;
+  ValuePtr x;
+  ValuePtr y;
+  ValuePtr z;
 };
 
 #define GET_OP_CLASSES

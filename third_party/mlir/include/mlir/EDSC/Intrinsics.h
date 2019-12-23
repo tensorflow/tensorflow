@@ -44,7 +44,7 @@ struct IndexHandle : public ValueHandle {
   explicit IndexHandle()
       : ValueHandle(ScopedContext::getBuilder().getIndexType()) {}
   explicit IndexHandle(index_t v) : ValueHandle(v) {}
-  explicit IndexHandle(Value *v) : ValueHandle(v) {
+  explicit IndexHandle(ValuePtr v) : ValueHandle(v) {
     assert(v->getType() == ScopedContext::getBuilder().getIndexType() &&
            "Expected index type");
   }
@@ -79,9 +79,9 @@ makeHandlePointers(MutableArrayRef<T> ivs) {
   return pivs;
 }
 
-/// Returns a vector of the underlying Value* from `ivs`.
-inline SmallVector<Value *, 8> extractValues(ArrayRef<IndexHandle> ivs) {
-  SmallVector<Value *, 8> vals;
+/// Returns a vector of the underlying Value from `ivs`.
+inline SmallVector<ValuePtr, 8> extractValues(ArrayRef<IndexHandle> ivs) {
+  SmallVector<ValuePtr, 8> vals;
   vals.reserve(ivs.size());
   for (auto &iv : ivs) {
     vals.push_back(iv.getValue());
@@ -96,7 +96,7 @@ namespace intrinsics {
 namespace detail {
 /// Helper structure to be used with ValueBuilder / OperationBuilder.
 /// It serves the purpose of removing boilerplate specialization for the sole
-/// purpose of implicitly converting ArrayRef<ValueHandle> -> ArrayRef<Value*>.
+/// purpose of implicitly converting ArrayRef<ValueHandle> -> ArrayRef<Value>.
 class ValueHandleArray {
 public:
   ValueHandleArray(ArrayRef<ValueHandle> vals) {
@@ -109,11 +109,11 @@ public:
     SmallVector<IndexHandle, 8> tmp(vals.begin(), vals.end());
     values.append(tmp.begin(), tmp.end());
   }
-  operator ArrayRef<Value *>() { return values; }
+  operator ArrayRef<ValuePtr>() { return values; }
 
 private:
   ValueHandleArray() = default;
-  SmallVector<Value *, 8> values;
+  SmallVector<ValuePtr, 8> values;
 };
 
 template <typename T> inline T unpack(T value) { return value; }
@@ -128,8 +128,8 @@ inline detail::ValueHandleArray unpack(ArrayRef<ValueHandle> values) {
 /// boilerplate or Tablegen.
 /// Arguably a builder is not a ValueHandle but in practice it is only used as
 /// an alias to a notional ValueHandle<Op>.
-/// Implementing it as a subclass allows it to compose all the way to Value*.
-/// Without subclassing, implicit conversion to Value* would fail when composing
+/// Implementing it as a subclass allows it to compose all the way to Value.
+/// Without subclassing, implicit conversion to Value would fail when composing
 /// in patterns such as: `select(a, b, select(c, d, e))`.
 template <typename Op> struct ValueBuilder : public ValueHandle {
   // Builder-based
@@ -238,8 +238,8 @@ OperationHandle br(BlockHandle bh, ArrayRef<ValueHandle> operands);
 ///
 /// Prerequisites:
 ///   `b` has not yet captured an mlir::Block*.
-///   No `captures` have captured any mlir::Value*.
-///   All `operands` have already captured an mlir::Value*
+///   No `captures` have captured any mlir::Value.
+///   All `operands` have already captured an mlir::Value
 ///   captures.size() == operands.size()
 ///   captures and operands are pairwise of the same type.
 OperationHandle br(BlockHandle *bh, ArrayRef<ValueHandle *> captures,
@@ -266,8 +266,8 @@ OperationHandle cond_br(ValueHandle cond, BlockHandle trueBranch,
 ///
 /// Prerequisites:
 ///   `trueBranch`/`falseBranch` has not yet captured an mlir::Block*.
-///   No `trueCaptures`/`falseCaptures` have captured any mlir::Value*.
-///   All `trueOperands`/`trueOperands` have already captured an mlir::Value*
+///   No `trueCaptures`/`falseCaptures` have captured any mlir::Value.
+///   All `trueOperands`/`trueOperands` have already captured an mlir::Value
 ///   `trueCaptures`.size() == `trueOperands`.size()
 ///   `falseCaptures`.size() == `falseOperands`.size()
 ///   `trueCaptures` and `trueOperands` are pairwise of the same type

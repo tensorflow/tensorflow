@@ -75,7 +75,7 @@ protected:
 // TODO(ntv): Support MemRefs with layoutMaps.
 class MemRefView : public View {
 public:
-  explicit MemRefView(Value *v);
+  explicit MemRefView(ValuePtr v);
   MemRefView(const MemRefView &) = default;
   MemRefView &operator=(const MemRefView &) = default;
 
@@ -91,7 +91,7 @@ private:
 /// a MemRefView but for vectors. This exists purely for boilerplate avoidance.
 class VectorView : public View {
 public:
-  explicit VectorView(Value *v);
+  explicit VectorView(ValuePtr v);
   VectorView(const VectorView &) = default;
   VectorView &operator=(const VectorView &) = default;
 
@@ -120,7 +120,7 @@ private:
 template <typename Load, typename Store> class TemplatedIndexedValue {
 public:
   explicit TemplatedIndexedValue(Type t) : base(t) {}
-  explicit TemplatedIndexedValue(Value *v)
+  explicit TemplatedIndexedValue(ValuePtr v)
       : TemplatedIndexedValue(ValueHandle(v)) {}
   explicit TemplatedIndexedValue(ValueHandle v) : base(v) {}
 
@@ -161,8 +161,8 @@ public:
     return Load(getBase(), {indices.begin(), indices.end()});
   }
 
-  /// Emits a `load` when converting to a Value*.
-  Value *operator*(void)const {
+  /// Emits a `load` when converting to a Value.
+  ValuePtr operator*(void) const {
     return Load(getBase(), {indices.begin(), indices.end()}).getValue();
   }
 

@@ -185,8 +185,8 @@ def LLVM_ICmpOp : LLVM_OneResultOp<"icmp", [NoSideEffect]>,
     $res = builder.CreateICmp(getLLVMCmpPredicate($predicate), $lhs, $rhs);
   }];
   let builders = [OpBuilder<
-    "Builder *b, OperationState &result, ICmpPredicate predicate, Value *lhs, "
-    "Value *rhs", [{
+    "Builder *b, OperationState &result, ICmpPredicate predicate, ValuePtr lhs, "
+    "ValuePtr rhs", [{
       LLVMDialect *dialect = &lhs->getType().cast<LLVMType>().getDialect();
       build(b, result, LLVMType::getInt1Ty(dialect),
             b->getI64IntegerAttr(static_cast<int64_t>(predicate)), lhs, rhs);
@@ -232,8 +232,8 @@ def LLVM_FCmpOp : LLVM_OneResultOp<"fcmp", [NoSideEffect]>,
     $res = builder.CreateFCmp(getLLVMCmpPredicate($predicate), $lhs, $rhs);
   }];
   let builders = [OpBuilder<
-    "Builder *b, OperationState &result, FCmpPredicate predicate, Value *lhs, "
-    "Value *rhs", [{
+    "Builder *b, OperationState &result, FCmpPredicate predicate, ValuePtr lhs, "
+    "ValuePtr rhs", [{
       LLVMDialect *dialect = &lhs->getType().cast<LLVMType>().getDialect();
       build(b, result, LLVMType::getInt1Ty(dialect),
             b->getI64IntegerAttr(static_cast<int64_t>(predicate)), lhs, rhs);
@@ -265,7 +265,7 @@ def LLVM_AllocaOp :
     $res = alloca;
   }];
   let builders = [OpBuilder<
-    "Builder *b, OperationState &result, Type resultType, Value *arraySize, "
+    "Builder *b, OperationState &result, Type resultType, ValuePtr arraySize, "
     "unsigned alignment",
     [{
       if (alignment == 0)
@@ -292,7 +292,7 @@ def LLVM_GEPOp : LLVM_OneResultOp<"getelementptr", [NoSideEffect]>,
 def LLVM_LoadOp : LLVM_OneResultOp<"load">, Arguments<(ins LLVM_Type:$addr)>,
                   LLVM_Builder<"$res = builder.CreateLoad($addr);"> {
   let builders = [OpBuilder<
-    "Builder *b, OperationState &result, Value *addr",
+    "Builder *b, OperationState &result, ValuePtr addr",
     [{
       auto type = addr->getType().cast<LLVM::LLVMType>().getPointerElementTy();
       build(b, result, type, addr);
@@ -353,7 +353,7 @@ def LLVM_ExtractElementOp : LLVM_OneResultOp<"extractelement", [NoSideEffect]>,
     $res = builder.CreateExtractElement($vector, $position);
   }];
   let builders = [OpBuilder<
-    "Builder *b, OperationState &result, Value *vector, Value *position,"
+    "Builder *b, OperationState &result, ValuePtr vector, ValuePtr position,"
     "ArrayRef<NamedAttribute> attrs = {}">];
   let parser = [{ return parseExtractElementOp(parser, result); }];
   let printer = [{ printExtractElementOp(p, *this); }];
@@ -384,7 +384,7 @@ def LLVM_InsertValueOp : LLVM_OneResultOp<"insertvalue", [NoSideEffect]>,
                                      extractPosition($position));
   }];
   let builders = [OpBuilder<
-    "Builder *b, OperationState &result, Value *container, Value *value, "
+    "Builder *b, OperationState &result, ValuePtr container, ValuePtr value, "
     "ArrayAttr position",
     [{
       build(b, result, container->getType(), container, value, position);
@@ -398,7 +398,7 @@ def LLVM_ShuffleVectorOp
       LLVM_Builder<
       "$res = builder.CreateShuffleVector($v1, $v2, extractPosition($mask));"> {
   let builders = [OpBuilder<
-    "Builder *b, OperationState &result, Value *v1, Value *v2, "
+    "Builder *b, OperationState &result, ValuePtr v1, ValuePtr v2, "
     "ArrayAttr mask, ArrayRef<NamedAttribute> attrs = {}">];
   let verifier = [{
     auto wrappedVectorType1 = v1()->getType().cast<LLVM::LLVMType>();
@@ -422,8 +422,8 @@ def LLVM_SelectOp
       LLVM_Builder<
           "$res = builder.CreateSelect($condition, $trueValue, $falseValue);"> {
   let builders = [OpBuilder<
-    "Builder *b, OperationState &result, Value *condition, Value *lhs, "
-    "Value *rhs", [{
+    "Builder *b, OperationState &result, ValuePtr condition, ValuePtr lhs, "
+    "ValuePtr rhs", [{
       build(b, result, lhs->getType(), condition, lhs, rhs);
     }]>];
   let parser = [{ return parseSelectOp(parser, result); }];

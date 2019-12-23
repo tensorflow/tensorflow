@@ -163,7 +163,7 @@ public:
   }
 
   virtual Operation *getOp() const = 0;
-  virtual Value *getValue() const = 0;
+  virtual ValuePtr getValue() const = 0;
 
   static bool classof(const CAGNode *n) {
     return n->getKind() >= Kind::Anchor && n->getKind() <= Kind::LastAnchor;
@@ -210,7 +210,7 @@ public:
     return n->getKind() == Kind::Anchor || n->getKind() == Kind::OperandAnchor;
   }
 
-  Value *getValue() const final { return op->getOperand(operandIdx); }
+  ValuePtr getValue() const final { return op->getOperand(operandIdx); }
 
   void printLabel(raw_ostream &os) const override;
 
@@ -221,7 +221,7 @@ private:
 
 /// An anchor tied to a specific result.
 /// Since a result is already anchored to its defining op, result anchors refer
-/// directly to the underlying Value*.
+/// directly to the underlying Value.
 class CAGResultAnchor : public CAGAnchorNode {
 public:
   CAGResultAnchor(Operation *op, unsigned resultIdx);
@@ -231,12 +231,12 @@ public:
   }
 
   Operation *getOp() const final { return resultValue->getDefiningOp(); }
-  Value *getValue() const final { return resultValue; }
+  ValuePtr getValue() const final { return resultValue; }
 
   void printLabel(raw_ostream &os) const override;
 
 private:
-  Value *resultValue;
+  ValuePtr resultValue;
 };
 
 /// Base class for constraint nodes.

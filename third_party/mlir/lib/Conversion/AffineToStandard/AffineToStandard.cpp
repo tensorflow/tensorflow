@@ -42,16 +42,16 @@ namespace {
 // that correspond to it.  Visitation functions return an Value of the
 // expression subtree they visited or `nullptr` on error.
 class AffineApplyExpander
-    : public AffineExprVisitor<AffineApplyExpander, Value *> {
+    : public AffineExprVisitor<AffineApplyExpander, ValuePtr> {
 public:
   // This internal class expects arguments to be non-null, checks must be
   // performed at the call site.
-  AffineApplyExpander(OpBuilder &builder, ArrayRef<Value *> dimValues,
-                      ArrayRef<Value *> symbolValues, Location loc)
+  AffineApplyExpander(OpBuilder &builder, ArrayRef<ValuePtr> dimValues,
+                      ArrayRef<ValuePtr> symbolValues, Location loc)
       : builder(builder), dimValues(dimValues), symbolValues(symbolValues),
         loc(loc) {}
 
-  template <typename OpTy> Value *buildBinaryExpr(AffineBinaryOpExpr expr) {
+  template <typename OpTy> ValuePtr buildBinaryExpr(AffineBinaryOpExpr expr) {
     auto lhs = visit(expr.getLHS());
     auto rhs = visit(expr.getRHS());
     if (!lhs || !rhs)
@@ -60,11 +60,11 @@ public:
     return op.getResult();
   }
 
-  Value *visitAddExpr(AffineBinaryOpExpr expr) {
+  ValuePtr visitAddExpr(AffineBinaryOpExpr expr) {
     return buildBinaryExpr<AddIOp>(expr);
   }
 
-  Value *visitMulExpr(AffineBinaryOpExpr expr) {
+  ValuePtr visitMulExpr(AffineBinaryOpExpr expr) {
     return buildBinaryExpr<MulIOp>(expr);
   }
 
@@ -77,7 +77,7 @@ public:
   //         let remainder = srem a, b;
   //             negative = a < 0 in
   //         select negative, remainder + b, remainder.
-  Value *visitModExpr(AffineBinaryOpExpr expr) {
+  ValuePtr visitModExpr(AffineBinaryOpExpr expr) {
     auto rhsConst = expr.getRHS().dyn_cast<AffineConstantExpr>();
     if (!rhsConst) {
       emitError(
@@ -94,13 +94,13 @@ public:
     auto rhs = visit(expr.getRHS());
     assert(lhs && rhs && "unexpected affine expr lowering failure");
 
-    Value *remainder = builder.create<SignedRemIOp>(loc, lhs, rhs);
-    Value *zeroCst = builder.create<ConstantIndexOp>(loc, 0);
-    Value *isRemainderNegative =
+    ValuePtr remainder = builder.create<SignedRemIOp>(loc, lhs, rhs);
+    ValuePtr zeroCst = builder.create<ConstantIndexOp>(loc, 0);
+    ValuePtr isRemainderNegative =
         builder.create<CmpIOp>(loc, CmpIPredicate::slt, remainder, zeroCst);
-    Value *correctedRemainder = builder.create<AddIOp>(loc, remainder, rhs);
-    Value *result = builder.create<SelectOp>(loc, isRemainderNegative,
-                                             correctedRemainder, remainder);
+    ValuePtr correctedRemainder = builder.create<AddIOp>(loc, remainder, rhs);
+    ValuePtr result = builder.create<SelectOp>(loc, isRemainderNegative,
+                                               correctedRemainder, remainder);
     return result;
   }
 
@@ -114,7 +114,7 @@ public:
   //            let absolute = negative ? -a - 1 : a in
   //            let quotient = absolute / b in
   //                negative ? -quotient - 1 : quotient
-  Value *visitFloorDivExpr(AffineBinaryOpExpr expr) {
+  ValuePtr visitFloorDivExpr(AffineBinaryOpExpr expr) {
     auto rhsConst = expr.getRHS().dyn_cast<AffineConstantExpr>();
     if (!rhsConst) {
       emitError(
@@ -131,16 +131,16 @@ public:
     auto rhs = visit(expr.getRHS());
     assert(lhs && rhs && "unexpected affine expr lowering failure");
 
-    Value *zeroCst = builder.create<ConstantIndexOp>(loc, 0);
-    Value *noneCst = builder.create<ConstantIndexOp>(loc, -1);
-    Value *negative =
+    ValuePtr zeroCst = builder.create<ConstantIndexOp>(loc, 0);
+    ValuePtr noneCst = builder.create<ConstantIndexOp>(loc, -1);
+    ValuePtr negative =
         builder.create<CmpIOp>(loc, CmpIPredicate::slt, lhs, zeroCst);
-    Value *negatedDecremented = builder.create<SubIOp>(loc, noneCst, lhs);
-    Value *dividend =
+    ValuePtr negatedDecremented = builder.create<SubIOp>(loc, noneCst, lhs);
+    ValuePtr dividend =
         builder.create<SelectOp>(loc, negative, negatedDecremented, lhs);
-    Value *quotient = builder.create<SignedDivIOp>(loc, dividend, rhs);
-    Value *correctedQuotient = builder.create<SubIOp>(loc, noneCst, quotient);
-    Value *result =
+    ValuePtr quotient = builder.create<SignedDivIOp>(loc, dividend, rhs);
+    ValuePtr correctedQuotient = builder.create<SubIOp>(loc, noneCst, quotient);
+    ValuePtr result =
         builder.create<SelectOp>(loc, negative, correctedQuotient, quotient);
     return result;
   }
@@ -155,7 +155,7 @@ public:
   //         let absolute = negative ? -a : a - 1 in
   //         let quotient = absolute / b in
   //             negative ? -quotient : quotient + 1
-  Value *visitCeilDivExpr(AffineBinaryOpExpr expr) {
+  ValuePtr visitCeilDivExpr(AffineBinaryOpExpr expr) {
     auto rhsConst = expr.getRHS().dyn_cast<AffineConstantExpr>();
     if (!rhsConst) {
       emitError(loc) << "semi-affine expressions (division by non-const) are "
@@ -170,23 +170,24 @@ public:
     auto rhs = visit(expr.getRHS());
     assert(lhs && rhs && "unexpected affine expr lowering failure");
 
-    Value *zeroCst = builder.create<ConstantIndexOp>(loc, 0);
-    Value *oneCst = builder.create<ConstantIndexOp>(loc, 1);
-    Value *nonPositive =
+    ValuePtr zeroCst = builder.create<ConstantIndexOp>(loc, 0);
+    ValuePtr oneCst = builder.create<ConstantIndexOp>(loc, 1);
+    ValuePtr nonPositive =
         builder.create<CmpIOp>(loc, CmpIPredicate::sle, lhs, zeroCst);
-    Value *negated = builder.create<SubIOp>(loc, zeroCst, lhs);
-    Value *decremented = builder.create<SubIOp>(loc, lhs, oneCst);
-    Value *dividend =
+    ValuePtr negated = builder.create<SubIOp>(loc, zeroCst, lhs);
+    ValuePtr decremented = builder.create<SubIOp>(loc, lhs, oneCst);
+    ValuePtr dividend =
         builder.create<SelectOp>(loc, nonPositive, negated, decremented);
-    Value *quotient = builder.create<SignedDivIOp>(loc, dividend, rhs);
-    Value *negatedQuotient = builder.create<SubIOp>(loc, zeroCst, quotient);
-    Value *incrementedQuotient = builder.create<AddIOp>(loc, quotient, oneCst);
-    Value *result = builder.create<SelectOp>(loc, nonPositive, negatedQuotient,
-                                             incrementedQuotient);
+    ValuePtr quotient = builder.create<SignedDivIOp>(loc, dividend, rhs);
+    ValuePtr negatedQuotient = builder.create<SubIOp>(loc, zeroCst, quotient);
+    ValuePtr incrementedQuotient =
+        builder.create<AddIOp>(loc, quotient, oneCst);
+    ValuePtr result = builder.create<SelectOp>(
+        loc, nonPositive, negatedQuotient, incrementedQuotient);
     return result;
   }
 
-  Value *visitConstantExpr(AffineConstantExpr expr) {
+  ValuePtr visitConstantExpr(AffineConstantExpr expr) {
     auto valueAttr =
         builder.getIntegerAttr(builder.getIndexType(), expr.getValue());
     auto op =
@@ -194,13 +195,13 @@ public:
     return op.getResult();
   }
 
-  Value *visitDimExpr(AffineDimExpr expr) {
+  ValuePtr visitDimExpr(AffineDimExpr expr) {
     assert(expr.getPosition() < dimValues.size() &&
            "affine dim position out of range");
     return dimValues[expr.getPosition()];
   }
 
-  Value *visitSymbolExpr(AffineSymbolExpr expr) {
+  ValuePtr visitSymbolExpr(AffineSymbolExpr expr) {
     assert(expr.getPosition() < symbolValues.size() &&
            "symbol dim position out of range");
     return symbolValues[expr.getPosition()];
@@ -208,8 +209,8 @@ public:
 
 private:
   OpBuilder &builder;
-  ArrayRef<Value *> dimValues;
-  ArrayRef<Value *> symbolValues;
+  ArrayRef<ValuePtr> dimValues;
+  ArrayRef<ValuePtr> symbolValues;
 
   Location loc;
 };
@@ -217,18 +218,18 @@ private:
 
 // Create a sequence of operations that implement the `expr` applied to the
 // given dimension and symbol values.
-mlir::Value *mlir::expandAffineExpr(OpBuilder &builder, Location loc,
-                                    AffineExpr expr,
-                                    ArrayRef<Value *> dimValues,
-                                    ArrayRef<Value *> symbolValues) {
+mlir::ValuePtr mlir::expandAffineExpr(OpBuilder &builder, Location loc,
+                                      AffineExpr expr,
+                                      ArrayRef<ValuePtr> dimValues,
+                                      ArrayRef<ValuePtr> symbolValues) {
   return AffineApplyExpander(builder, dimValues, symbolValues, loc).visit(expr);
 }
 
 // Create a sequence of operations that implement the `affineMap` applied to
 // the given `operands` (as it it were an AffineApplyOp).
-Optional<SmallVector<Value *, 8>> static expandAffineMap(
+Optional<SmallVector<ValuePtr, 8>> static expandAffineMap(
     OpBuilder &builder, Location loc, AffineMap affineMap,
-    ArrayRef<Value *> operands) {
+    ArrayRef<ValuePtr> operands) {
   auto numDims = affineMap.getNumDims();
   auto expanded = functional::map(
       [numDims, &builder, loc, operands](AffineExpr expr) {
@@ -237,7 +238,7 @@ Optional<SmallVector<Value *, 8>> static expandAffineMap(
                                 operands.drop_front(numDims));
       },
       affineMap.getResults());
-  if (llvm::all_of(expanded, [](Value *v) { return v; }))
+  if (llvm::all_of(expanded, [](ValuePtr v) { return v; }))
     return expanded;
   return None;
 }
@@ -253,13 +254,13 @@ Optional<SmallVector<Value *, 8>> static expandAffineMap(
 // Multiple values are scanned in a linear sequence.  This creates a data
 // dependences that wouldn't exist in a tree reduction, but is easier to
 // recognize as a reduction by the subsequent passes.
-static Value *buildMinMaxReductionSeq(Location loc, CmpIPredicate predicate,
-                                      ArrayRef<Value *> values,
-                                      OpBuilder &builder) {
+static ValuePtr buildMinMaxReductionSeq(Location loc, CmpIPredicate predicate,
+                                        ArrayRef<ValuePtr> values,
+                                        OpBuilder &builder) {
   assert(!llvm::empty(values) && "empty min/max chain");
 
   auto valueIt = values.begin();
-  Value *value = *valueIt++;
+  ValuePtr value = *valueIt++;
   for (; valueIt != values.end(); ++valueIt) {
     auto cmpOp = builder.create<CmpIOp>(loc, predicate, value, *valueIt);
     value = builder.create<SelectOp>(loc, cmpOp.getResult(), value, *valueIt);
@@ -271,8 +272,8 @@ static Value *buildMinMaxReductionSeq(Location loc, CmpIPredicate predicate,
 // Emit instructions that correspond to the affine map in the lower bound
 // applied to the respective operands, and compute the maximum value across
 // the results.
-Value *mlir::lowerAffineLowerBound(AffineForOp op, OpBuilder &builder) {
-  SmallVector<Value *, 8> boundOperands(op.getLowerBoundOperands());
+ValuePtr mlir::lowerAffineLowerBound(AffineForOp op, OpBuilder &builder) {
+  SmallVector<ValuePtr, 8> boundOperands(op.getLowerBoundOperands());
   auto lbValues = expandAffineMap(builder, op.getLoc(), op.getLowerBoundMap(),
                                   boundOperands);
   if (!lbValues)
@@ -284,8 +285,8 @@ Value *mlir::lowerAffineLowerBound(AffineForOp op, OpBuilder &builder) {
 // Emit instructions that correspond to the affine map in the upper bound
 // applied to the respective operands, and compute the minimum value across
 // the results.
-Value *mlir::lowerAffineUpperBound(AffineForOp op, OpBuilder &builder) {
-  SmallVector<Value *, 8> boundOperands(op.getUpperBoundOperands());
+ValuePtr mlir::lowerAffineUpperBound(AffineForOp op, OpBuilder &builder) {
+  SmallVector<ValuePtr, 8> boundOperands(op.getUpperBoundOperands());
   auto ubValues = expandAffineMap(builder, op.getLoc(), op.getUpperBoundMap(),
                                   boundOperands);
   if (!ubValues)
@@ -314,9 +315,9 @@ public:
   PatternMatchResult matchAndRewrite(AffineForOp op,
                                      PatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
-    Value *lowerBound = lowerAffineLowerBound(op, rewriter);
-    Value *upperBound = lowerAffineUpperBound(op, rewriter);
-    Value *step = rewriter.create<ConstantIndexOp>(loc, op.getStep());
+    ValuePtr lowerBound = lowerAffineLowerBound(op, rewriter);
+    ValuePtr upperBound = lowerAffineUpperBound(op, rewriter);
+    ValuePtr step = rewriter.create<ConstantIndexOp>(loc, op.getStep());
     auto f = rewriter.create<loop::ForOp>(loc, lowerBound, upperBound, step);
     f.region().getBlocks().clear();
     rewriter.inlineRegionBefore(op.region(), f.region(), f.region().end());
@@ -335,25 +336,25 @@ public:
 
     // Now we just have to handle the condition logic.
     auto integerSet = op.getIntegerSet();
-    Value *zeroConstant = rewriter.create<ConstantIndexOp>(loc, 0);
-    SmallVector<Value *, 8> operands(op.getOperands());
+    ValuePtr zeroConstant = rewriter.create<ConstantIndexOp>(loc, 0);
+    SmallVector<ValuePtr, 8> operands(op.getOperands());
     auto operandsRef = llvm::makeArrayRef(operands);
 
     // Calculate cond as a conjunction without short-circuiting.
-    Value *cond = nullptr;
+    ValuePtr cond = nullptr;
     for (unsigned i = 0, e = integerSet.getNumConstraints(); i < e; ++i) {
       AffineExpr constraintExpr = integerSet.getConstraint(i);
       bool isEquality = integerSet.isEq(i);
 
       // Build and apply an affine expression
       auto numDims = integerSet.getNumDims();
-      Value *affResult = expandAffineExpr(rewriter, loc, constraintExpr,
-                                          operandsRef.take_front(numDims),
-                                          operandsRef.drop_front(numDims));
+      ValuePtr affResult = expandAffineExpr(rewriter, loc, constraintExpr,
+                                            operandsRef.take_front(numDims),
+                                            operandsRef.drop_front(numDims));
       if (!affResult)
         return matchFailure();
       auto pred = isEquality ? CmpIPredicate::eq : CmpIPredicate::sge;
-      Value *cmpVal =
+      ValuePtr cmpVal =
           rewriter.create<CmpIOp>(loc, pred, affResult, zeroConstant);
       cond =
           cond ? rewriter.create<AndOp>(loc, cond, cmpVal).getResult() : cmpVal;
@@ -404,7 +405,7 @@ public:
   PatternMatchResult matchAndRewrite(AffineLoadOp op,
                                      PatternRewriter &rewriter) const override {
     // Expand affine map from 'affineLoadOp'.
-    SmallVector<Value *, 8> indices(op.getMapOperands());
+    SmallVector<ValuePtr, 8> indices(op.getMapOperands());
     auto resultOperands =
         expandAffineMap(rewriter, op.getLoc(), op.getAffineMap(), indices);
     if (!resultOperands)
@@ -426,7 +427,7 @@ public:
   PatternMatchResult matchAndRewrite(AffinePrefetchOp op,
                                      PatternRewriter &rewriter) const override {
     // Expand affine map from 'affinePrefetchOp'.
-    SmallVector<Value *, 8> indices(op.getMapOperands());
+    SmallVector<ValuePtr, 8> indices(op.getMapOperands());
     auto resultOperands =
         expandAffineMap(rewriter, op.getLoc(), op.getAffineMap(), indices);
     if (!resultOperands)
@@ -450,7 +451,7 @@ public:
   PatternMatchResult matchAndRewrite(AffineStoreOp op,
                                      PatternRewriter &rewriter) const override {
     // Expand affine map from 'affineStoreOp'.
-    SmallVector<Value *, 8> indices(op.getMapOperands());
+    SmallVector<ValuePtr, 8> indices(op.getMapOperands());
     auto maybeExpandedMap =
         expandAffineMap(rewriter, op.getLoc(), op.getAffineMap(), indices);
     if (!maybeExpandedMap)
@@ -472,7 +473,7 @@ public:
 
   PatternMatchResult matchAndRewrite(AffineDmaStartOp op,
                                      PatternRewriter &rewriter) const override {
-    SmallVector<Value *, 8> operands(op.getOperands());
+    SmallVector<ValuePtr, 8> operands(op.getOperands());
     auto operandsRef = llvm::makeArrayRef(operands);
 
     // Expand affine map for DMA source memref.
@@ -513,7 +514,7 @@ public:
   PatternMatchResult matchAndRewrite(AffineDmaWaitOp op,
                                      PatternRewriter &rewriter) const override {
     // Expand affine map for DMA tag memref.
-    SmallVector<Value *, 8> indices(op.getTagIndices());
+    SmallVector<ValuePtr, 8> indices(op.getTagIndices());
     auto maybeExpandedTagMap =
         expandAffineMap(rewriter, op.getLoc(), op.getTagMap(), indices);
     if (!maybeExpandedTagMap)

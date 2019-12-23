@@ -66,22 +66,22 @@ class OpBuilder;
 //  extra operands, note that 'indexRemap' would just be applied to existing
 //  indices (%i, %j).
 //  TODO(bondhugula): allow extraIndices to be added at any position.
-LogicalResult replaceAllMemRefUsesWith(Value *oldMemRef, Value *newMemRef,
-                                       ArrayRef<Value *> extraIndices = {},
+LogicalResult replaceAllMemRefUsesWith(ValuePtr oldMemRef, ValuePtr newMemRef,
+                                       ArrayRef<ValuePtr> extraIndices = {},
                                        AffineMap indexRemap = AffineMap(),
-                                       ArrayRef<Value *> extraOperands = {},
-                                       ArrayRef<Value *> symbolOperands = {},
+                                       ArrayRef<ValuePtr> extraOperands = {},
+                                       ArrayRef<ValuePtr> symbolOperands = {},
                                        Operation *domInstFilter = nullptr,
                                        Operation *postDomInstFilter = nullptr);
 
 /// Performs the same replacement as the other version above but only for the
 /// dereferencing uses of `oldMemRef` in `op`.
-LogicalResult replaceAllMemRefUsesWith(Value *oldMemRef, Value *newMemRef,
+LogicalResult replaceAllMemRefUsesWith(ValuePtr oldMemRef, ValuePtr newMemRef,
                                        Operation *op,
-                                       ArrayRef<Value *> extraIndices = {},
+                                       ArrayRef<ValuePtr> extraIndices = {},
                                        AffineMap indexRemap = AffineMap(),
-                                       ArrayRef<Value *> extraOperands = {},
-                                       ArrayRef<Value *> symbolOperands = {});
+                                       ArrayRef<ValuePtr> extraOperands = {},
+                                       ArrayRef<ValuePtr> symbolOperands = {});
 
 /// Rewrites the memref defined by this alloc op to have an identity layout map
 /// and updates all its indexing uses. Returns failure if any of its uses
@@ -96,9 +96,9 @@ LogicalResult normalizeMemRef(AllocOp op);
 /// The final results of the composed AffineApplyOp are returned in output
 /// parameter 'results'. Returns the affine apply op created.
 Operation *createComposedAffineApplyOp(OpBuilder &builder, Location loc,
-                                       ArrayRef<Value *> operands,
+                                       ArrayRef<ValuePtr> operands,
                                        ArrayRef<Operation *> affineApplyOps,
-                                       SmallVectorImpl<Value *> *results);
+                                       SmallVectorImpl<ValuePtr> *results);
 
 /// Given an operation, inserts one or more single result affine apply
 /// operations, results of which are exclusively used by this operation.

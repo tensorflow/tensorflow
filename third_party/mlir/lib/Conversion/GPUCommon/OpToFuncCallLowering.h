@@ -44,7 +44,7 @@ public:
         f32Func(f32Func), f64Func(f64Func) {}
 
   PatternMatchResult
-  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+  matchAndRewrite(Operation *op, ArrayRef<ValuePtr> operands,
                   ConversionPatternRewriter &rewriter) const override {
     using LLVM::LLVMFuncOp;
     using LLVM::LLVMType;
@@ -69,10 +69,10 @@ public:
 
 private:
   LLVM::LLVMType getFunctionType(LLVM::LLVMType resultType,
-                                 ArrayRef<Value *> operands) const {
+                                 ArrayRef<ValuePtr> operands) const {
     using LLVM::LLVMType;
     SmallVector<LLVMType, 1> operandTypes;
-    for (Value *operand : operands) {
+    for (ValuePtr operand : operands) {
       operandTypes.push_back(operand->getType().cast<LLVMType>());
     }
     return LLVMType::getFunctionTy(resultType, operandTypes,

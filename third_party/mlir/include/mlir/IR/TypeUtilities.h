@@ -41,8 +41,8 @@ Type getElementTypeOrSelf(Type type);
 
 /// Return the element type or return the type itself.
 Type getElementTypeOrSelf(Attribute attr);
-Type getElementTypeOrSelf(Value *val);
-Type getElementTypeOrSelf(Value &val);
+Type getElementTypeOrSelf(ValuePtr val);
+Type getElementTypeOrSelf(ValueRef val);
 
 /// Get the types within a nested Tuple. A helper for the class method that
 /// handles storage concerns, which is tricky to do in tablegen.
@@ -72,7 +72,7 @@ LogicalResult verifyCompatibleShape(Type type1, Type type2);
 // An iterator for the element types of an op's operands of shaped types.
 class OperandElementTypeIterator final
     : public llvm::mapped_iterator<Operation::operand_iterator,
-                                   Type (*)(Value *)> {
+                                   Type (*)(ValuePtr)> {
 public:
   using reference = Type;
 
@@ -81,7 +81,7 @@ public:
   explicit OperandElementTypeIterator(Operation::operand_iterator it);
 
 private:
-  static Type unwrap(Value *value);
+  static Type unwrap(ValuePtr value);
 };
 
 using OperandElementTypeRange = iterator_range<OperandElementTypeIterator>;
@@ -89,7 +89,7 @@ using OperandElementTypeRange = iterator_range<OperandElementTypeIterator>;
 // An iterator for the tensor element types of an op's results of shaped types.
 class ResultElementTypeIterator final
     : public llvm::mapped_iterator<Operation::result_iterator,
-                                   Type (*)(Value *)> {
+                                   Type (*)(ValuePtr)> {
 public:
   using reference = Type;
 
@@ -98,7 +98,7 @@ public:
   explicit ResultElementTypeIterator(Operation::result_iterator it);
 
 private:
-  static Type unwrap(Value *value);
+  static Type unwrap(ValuePtr value);
 };
 
 using ResultElementTypeRange = iterator_range<ResultElementTypeIterator>;

@@ -44,7 +44,7 @@ public:
   /// Create a new Operation with the specific fields.
   static Operation *create(Location location, OperationName name,
                            ArrayRef<Type> resultTypes,
-                           ArrayRef<Value *> operands,
+                           ArrayRef<ValuePtr> operands,
                            ArrayRef<NamedAttribute> attributes,
                            ArrayRef<Block *> successors, unsigned numRegions,
                            bool resizableOperandList);
@@ -53,7 +53,7 @@ public:
   /// unnecessarily uniquing a list of attributes.
   static Operation *create(Location location, OperationName name,
                            ArrayRef<Type> resultTypes,
-                           ArrayRef<Value *> operands,
+                           ArrayRef<ValuePtr> operands,
                            NamedAttributeList attributes,
                            ArrayRef<Block *> successors, unsigned numRegions,
                            bool resizableOperandList);
@@ -64,7 +64,7 @@ public:
   /// Create a new Operation with the specific fields.
   static Operation *
   create(Location location, OperationName name, ArrayRef<Type> resultTypes,
-         ArrayRef<Value *> operands, NamedAttributeList attributes,
+         ArrayRef<ValuePtr> operands, NamedAttributeList attributes,
          ArrayRef<Block *> successors = {}, RegionRange regions = {},
          bool resizableOperandList = false);
 
@@ -149,7 +149,7 @@ public:
   }
 
   /// Replace any uses of 'from' with 'to' within this operation.
-  void replaceUsesOfWith(Value *from, Value *to);
+  void replaceUsesOfWith(ValuePtr from, ValuePtr to);
 
   /// Replace all uses of results of this operation with the provided 'values'.
   template <typename ValuesT,
@@ -215,8 +215,8 @@ public:
 
   unsigned getNumOperands() { return getOperandStorage().size(); }
 
-  Value *getOperand(unsigned idx) { return getOpOperand(idx).get(); }
-  void setOperand(unsigned idx, Value *value) {
+  ValuePtr getOperand(unsigned idx) { return getOpOperand(idx).get(); }
+  void setOperand(unsigned idx, ValuePtr value) {
     return getOpOperand(idx).set(value);
   }
 
@@ -227,7 +227,7 @@ public:
   operand_iterator operand_begin() { return getOperands().begin(); }
   operand_iterator operand_end() { return getOperands().end(); }
 
-  /// Returns an iterator on the underlying Value's (Value *).
+  /// Returns an iterator on the underlying Value's (ValuePtr ).
   operand_range getOperands() { return operand_range(this); }
 
   /// Erase the operand at position `idx`.
@@ -255,7 +255,7 @@ public:
 
   unsigned getNumResults() { return numResults; }
 
-  Value *getResult(unsigned idx) { return &getOpResult(idx); }
+  ValuePtr getResult(unsigned idx) { return &getOpResult(idx); }
 
   /// Support result iteration.
   using result_range = ResultRange;
@@ -399,7 +399,7 @@ public:
 
   operand_range getSuccessorOperands(unsigned index);
 
-  Value *getSuccessorOperand(unsigned succIndex, unsigned opIndex) {
+  ValuePtr getSuccessorOperand(unsigned succIndex, unsigned opIndex) {
     assert(!isKnownNonTerminator() && "only terminators may have successors");
     assert(opIndex < getNumSuccessorOperands(succIndex));
     return getOperand(getSuccessorOperandIndex(succIndex) + opIndex);
@@ -441,9 +441,9 @@ public:
   Optional<std::pair<unsigned, unsigned>>
   decomposeSuccessorOperandIndex(unsigned operandIndex);
 
-  /// Returns the `BlockArgument*` corresponding to operand `operandIndex` in
+  /// Returns the `BlockArgument` corresponding to operand `operandIndex` in
   /// some successor, or None if `operandIndex` isn't a successor operand index.
-  Optional<BlockArgument *> getSuccessorBlockArgument(unsigned operandIndex) {
+  Optional<BlockArgumentPtr> getSuccessorBlockArgument(unsigned operandIndex) {
     auto decomposed = decomposeSuccessorOperandIndex(operandIndex);
     if (!decomposed.hasValue())
       return None;

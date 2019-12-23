@@ -60,8 +60,8 @@ public:
 
 /// Converts all_reduce op to LLVM/NVVM ops.
 struct GPUAllReduceOpLowering : public LLVMOpLowering {
-  using AccumulatorFactory = std::function<Value *(
-      Location, Value *, Value *, ConversionPatternRewriter &)>;
+  using AccumulatorFactory = std::function<ValuePtr(
+      Location, ValuePtr, ValuePtr, ConversionPatternRewriter &)>;
 
   explicit GPUAllReduceOpLowering(LLVMTypeConverter &lowering_)
       : LLVMOpLowering(gpu::AllReduceOp::getOperationName(),
@@ -69,10 +69,10 @@ struct GPUAllReduceOpLowering : public LLVMOpLowering {
         int32Type(LLVM::LLVMType::getInt32Ty(lowering_.getDialect())) {}
 
   PatternMatchResult
-  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+  matchAndRewrite(Operation *op, ArrayRef<ValuePtr> operands,
                   ConversionPatternRewriter &rewriter) const override {
     Location loc = op->getLoc();
-    Value *operand = operands.front();
+    ValuePtr operand = operands.front();
 
     // TODO(csigg): Generalize to other types of accumulation.
     assert(op->getOperand(0)->getType().isIntOrFloat());
@@ -81,7 +81,7 @@ struct GPUAllReduceOpLowering : public LLVMOpLowering {
     AccumulatorFactory factory =
         getFactory(cast<gpu::AllReduceOp>(op), operand);
     assert(factory && "failed to create accumulator factory");
-    Value *result = createBlockReduce(loc, operand, factory, rewriter);
+    ValuePtr result = createBlockReduce(loc, operand, factory, rewriter);
 
     rewriter.replaceOp(op, {result});
     return matchSuccess();
@@ -91,7 +91,7 @@ private:
   /// Returns an accumulator factory using either the op attribute or the body
   /// region.
   AccumulatorFactory getFactory(gpu::AllReduceOp allReduce,
-                                Value *operand) const {
+                                ValuePtr operand) const {
     if (!allReduce.body().empty()) {
       return getFactory(allReduce.body());
     }
@@ -106,7 +106,7 @@ private:
   /// block is expected to have 2 arguments. The gpu.yield return the
   /// accumulated value of the same type.
   AccumulatorFactory getFactory(Region &body) const {
-    return AccumulatorFactory([&](Location loc, Value *lhs, Value *rhs,
+    return AccumulatorFactory([&](Location loc, ValuePtr lhs, ValuePtr rhs,
                                   ConversionPatternRewriter &rewriter) {
       Block *block = rewriter.getInsertionBlock();
       Block *split = rewriter.splitBlock(block, rewriter.getInsertionPoint());
@@ -120,7 +120,7 @@ private:
 
       // Add branch before inserted body, into body.
       block = block->getNextNode();
-      rewriter.create<LLVM::BrOp>(loc, ArrayRef<Value *>{},
+      rewriter.create<LLVM::BrOp>(loc, ArrayRef<ValuePtr>{},
                                   llvm::makeArrayRef(block), ValueRange());
 
       // Replace all gpu.yield ops with branch out of body.
@@ -130,7 +130,7 @@ private:
           continue;
         rewriter.setInsertionPointToEnd(block);
         rewriter.replaceOpWithNewOp<LLVM::BrOp>(
-            terminator, ArrayRef<Value *>{}, llvm::makeArrayRef(split),
+            terminator, ArrayRef<ValuePtr>{}, llvm::makeArrayRef(split),
             ValueRange(terminator->getOperand(0)));
       }
 
@@ -161,7 +161,7 @@ private:
 
   /// Returns an accumulator factory that creates an op of type T.
   template <typename T> AccumulatorFactory getFactory() const {
-    return [](Location loc, Value *lhs, Value *rhs,
+    return [](Location loc, ValuePtr lhs, ValuePtr rhs,
               ConversionPatternRewriter &rewriter) {
       return rewriter.create<T>(loc, lhs->getType(), lhs, rhs);
     };
@@ -203,60 +203,60 @@ private:
   ///     %result = llvm.load %result_ptr
   ///     return %result
   ///
-  Value *createBlockReduce(Location loc, Value *operand,
-                           AccumulatorFactory &accumFactory,
-                           ConversionPatternRewriter &rewriter) const {
+  ValuePtr createBlockReduce(Location loc, ValuePtr operand,
+                             AccumulatorFactory &accumFactory,
+                             ConversionPatternRewriter &rewriter) const {
     auto type = operand->getType().cast<LLVM::LLVMType>();
 
     // Create shared memory array to store the warp reduction.
     auto module = operand->getDefiningOp()->getParentOfType<ModuleOp>();
     assert(module && "op must belong to a module");
-    Value *sharedMemPtr =
+    ValuePtr sharedMemPtr =
         createSharedMemoryArray(loc, module, type, kWarpSize, rewriter);
 
-    Value *zero = rewriter.create<LLVM::ConstantOp>(
+    ValuePtr zero = rewriter.create<LLVM::ConstantOp>(
         loc, int32Type, rewriter.getI32IntegerAttr(0u));
-    Value *laneId = rewriter.create<NVVM::LaneIdOp>(loc, int32Type);
-    Value *isFirstLane = rewriter.create<LLVM::ICmpOp>(
+    ValuePtr laneId = rewriter.create<NVVM::LaneIdOp>(loc, int32Type);
+    ValuePtr isFirstLane = rewriter.create<LLVM::ICmpOp>(
         loc, LLVM::ICmpPredicate::eq, laneId, zero);
-    Value *threadIdx = getLinearThreadIndex(loc, rewriter);
-    Value *blockSize = getBlockSize(loc, rewriter);
-    Value *activeWidth = getActiveWidth(loc, threadIdx, blockSize, rewriter);
+    ValuePtr threadIdx = getLinearThreadIndex(loc, rewriter);
+    ValuePtr blockSize = getBlockSize(loc, rewriter);
+    ValuePtr activeWidth = getActiveWidth(loc, threadIdx, blockSize, rewriter);
 
     // Reduce elements within each warp to produce the intermediate results.
-    Value *warpReduce = createWarpReduce(loc, activeWidth, laneId, operand,
-                                         accumFactory, rewriter);
+    ValuePtr warpReduce = createWarpReduce(loc, activeWidth, laneId, operand,
+                                           accumFactory, rewriter);
 
     // Write the intermediate results to shared memory, using the first lane of
     // each warp.
     createPredicatedBlock(loc, rewriter, isFirstLane, [&] {
-      Value *warpId = getDivideByWarpSize(threadIdx, rewriter);
-      Value *storeDst = rewriter.create<LLVM::GEPOp>(
-          loc, type, sharedMemPtr, ArrayRef<Value *>({zero, warpId}));
+      ValuePtr warpId = getDivideByWarpSize(threadIdx, rewriter);
+      ValuePtr storeDst = rewriter.create<LLVM::GEPOp>(
+          loc, type, sharedMemPtr, ArrayRef<ValuePtr>({zero, warpId}));
       rewriter.create<LLVM::StoreOp>(loc, warpReduce, storeDst);
     });
     rewriter.create<NVVM::Barrier0Op>(loc);
 
-    Value *numWarps = getNumWarps(loc, blockSize, rewriter);
-    Value *isValidWarp = rewriter.create<LLVM::ICmpOp>(
+    ValuePtr numWarps = getNumWarps(loc, blockSize, rewriter);
+    ValuePtr isValidWarp = rewriter.create<LLVM::ICmpOp>(
         loc, LLVM::ICmpPredicate::slt, threadIdx, numWarps);
-    Value *resultPtr = rewriter.create<LLVM::GEPOp>(
-        loc, type, sharedMemPtr, ArrayRef<Value *>({zero, zero}));
+    ValuePtr resultPtr = rewriter.create<LLVM::GEPOp>(
+        loc, type, sharedMemPtr, ArrayRef<ValuePtr>({zero, zero}));
 
     // Use the first numWarps threads to reduce the intermediate results from
     // shared memory. The final result is written to shared memory again.
     createPredicatedBlock(loc, rewriter, isValidWarp, [&] {
-      Value *loadSrc = rewriter.create<LLVM::GEPOp>(
-          loc, type, sharedMemPtr, ArrayRef<Value *>({zero, threadIdx}));
-      Value *value = rewriter.create<LLVM::LoadOp>(loc, type, loadSrc);
-      Value *result = createWarpReduce(loc, numWarps, laneId, value,
-                                       accumFactory, rewriter);
+      ValuePtr loadSrc = rewriter.create<LLVM::GEPOp>(
+          loc, type, sharedMemPtr, ArrayRef<ValuePtr>({zero, threadIdx}));
+      ValuePtr value = rewriter.create<LLVM::LoadOp>(loc, type, loadSrc);
+      ValuePtr result = createWarpReduce(loc, numWarps, laneId, value,
+                                         accumFactory, rewriter);
       rewriter.create<LLVM::StoreOp>(loc, result, resultPtr);
     });
     rewriter.create<NVVM::Barrier0Op>(loc);
 
     // Load and return result from shared memory.
-    Value *result = rewriter.create<LLVM::LoadOp>(loc, type, resultPtr);
+    ValuePtr result = rewriter.create<LLVM::LoadOp>(loc, type, resultPtr);
     return result;
   }
 
@@ -274,7 +274,7 @@ private:
   ///
   template <typename ThenOpsFactory, typename ElseOpsFactory>
   void createIf(Location loc, ConversionPatternRewriter &rewriter,
-                Value *condition, ThenOpsFactory &&thenOpsFactory,
+                ValuePtr condition, ThenOpsFactory &&thenOpsFactory,
                 ElseOpsFactory &&elseOpsFactory) const {
     Block *currentBlock = rewriter.getInsertionBlock();
     auto currentPoint = rewriter.getInsertionPoint();
@@ -288,7 +288,7 @@ private:
                                     ArrayRef<Block *>{thenBlock, elseBlock});
 
     auto addBranch = [&](ValueRange operands) {
-      rewriter.create<LLVM::BrOp>(loc, ArrayRef<Value *>{},
+      rewriter.create<LLVM::BrOp>(loc, ArrayRef<ValuePtr>{},
                                   llvm::makeArrayRef(continueBlock),
                                   llvm::makeArrayRef(operands));
     };
@@ -303,32 +303,32 @@ private:
 
     assert(thenOperands.size() == elseOperands.size());
     rewriter.setInsertionPointToStart(continueBlock);
-    for (auto *operand : thenOperands)
+    for (auto operand : thenOperands)
       continueBlock->addArgument(operand->getType());
   }
 
   /// Shortcut for createIf with empty else block and no block operands.
   template <typename Factory>
   void createPredicatedBlock(Location loc, ConversionPatternRewriter &rewriter,
-                             Value *condition,
+                             ValuePtr condition,
                              Factory &&predicatedOpsFactory) const {
     createIf(
         loc, rewriter, condition,
         [&] {
           predicatedOpsFactory();
-          return ArrayRef<Value *>();
+          return ArrayRef<ValuePtr>();
         },
-        [&] { return ArrayRef<Value *>(); });
+        [&] { return ArrayRef<ValuePtr>(); });
   }
 
   /// Creates a reduction across the first activeWidth lanes of a warp.
   /// The first lane returns the result, all others return values are undefined.
-  Value *createWarpReduce(Location loc, Value *activeWidth, Value *laneId,
-                          Value *operand, AccumulatorFactory accumFactory,
-                          ConversionPatternRewriter &rewriter) const {
-    Value *warpSize = rewriter.create<LLVM::ConstantOp>(
+  ValuePtr createWarpReduce(Location loc, ValuePtr activeWidth, ValuePtr laneId,
+                            ValuePtr operand, AccumulatorFactory accumFactory,
+                            ConversionPatternRewriter &rewriter) const {
+    ValuePtr warpSize = rewriter.create<LLVM::ConstantOp>(
         loc, int32Type, rewriter.getI32IntegerAttr(kWarpSize));
-    Value *isPartialWarp = rewriter.create<LLVM::ICmpOp>(
+    ValuePtr isPartialWarp = rewriter.create<LLVM::ICmpOp>(
         loc, LLVM::ICmpPredicate::slt, activeWidth, warpSize);
     auto type = operand->getType().cast<LLVM::LLVMType>();
 
@@ -336,16 +336,16 @@ private:
         loc, rewriter, isPartialWarp,
         // Generate reduction over a (potentially) partial warp.
         [&] {
-          Value *value = operand;
-          Value *one = rewriter.create<LLVM::ConstantOp>(
+          ValuePtr value = operand;
+          ValuePtr one = rewriter.create<LLVM::ConstantOp>(
               loc, int32Type, rewriter.getI32IntegerAttr(1));
           // Bit mask of active lanes: `(1 << activeWidth) - 1`.
-          Value *activeMask = rewriter.create<LLVM::SubOp>(
+          ValuePtr activeMask = rewriter.create<LLVM::SubOp>(
               loc, int32Type,
               rewriter.create<LLVM::ShlOp>(loc, int32Type, one, activeWidth),
               one);
           // Clamp lane: `activeWidth - 1`
-          Value *maskAndClamp =
+          ValuePtr maskAndClamp =
               rewriter.create<LLVM::SubOp>(loc, int32Type, activeWidth, one);
           auto dialect = lowering.getDialect();
           auto predTy = LLVM::LLVMType::getInt1Ty(dialect);
@@ -356,53 +356,53 @@ private:
           // lane is within the active range. All lanes contain the final
           // result, but only the first lane's result is used.
           for (int i = 1; i < kWarpSize; i <<= 1) {
-            Value *offset = rewriter.create<LLVM::ConstantOp>(
+            ValuePtr offset = rewriter.create<LLVM::ConstantOp>(
                 loc, int32Type, rewriter.getI32IntegerAttr(i));
-            Value *shfl = rewriter.create<NVVM::ShflBflyOp>(
+            ValuePtr shfl = rewriter.create<NVVM::ShflBflyOp>(
                 loc, shflTy, activeMask, value, offset, maskAndClamp,
                 returnValueAndIsValidAttr);
-            Value *isActiveSrcLane = rewriter.create<LLVM::ExtractValueOp>(
+            ValuePtr isActiveSrcLane = rewriter.create<LLVM::ExtractValueOp>(
                 loc, predTy, shfl, rewriter.getIndexArrayAttr(1));
             // Skip the accumulation if the shuffle op read from a lane outside
             // of the active range.
             createIf(
                 loc, rewriter, isActiveSrcLane,
                 [&] {
-                  Value *shflValue = rewriter.create<LLVM::ExtractValueOp>(
+                  ValuePtr shflValue = rewriter.create<LLVM::ExtractValueOp>(
                       loc, type, shfl, rewriter.getIndexArrayAttr(0));
-                  return SmallVector<Value *, 1>{
+                  return SmallVector<ValuePtr, 1>{
                       accumFactory(loc, value, shflValue, rewriter)};
                 },
                 [&] { return llvm::makeArrayRef(value); });
             value = rewriter.getInsertionBlock()->getArgument(0);
           }
-          return SmallVector<Value *, 1>{value};
+          return SmallVector<ValuePtr, 1>{value};
         },
         // Generate a reduction over the entire warp. This is a specialization
         // of the above reduction with unconditional accumulation.
         [&] {
-          Value *value = operand;
-          Value *activeMask = rewriter.create<LLVM::ConstantOp>(
+          ValuePtr value = operand;
+          ValuePtr activeMask = rewriter.create<LLVM::ConstantOp>(
               loc, int32Type, rewriter.getI32IntegerAttr(~0u));
-          Value *maskAndClamp = rewriter.create<LLVM::ConstantOp>(
+          ValuePtr maskAndClamp = rewriter.create<LLVM::ConstantOp>(
               loc, int32Type, rewriter.getI32IntegerAttr(kWarpSize - 1));
           for (int i = 1; i < kWarpSize; i <<= 1) {
-            Value *offset = rewriter.create<LLVM::ConstantOp>(
+            ValuePtr offset = rewriter.create<LLVM::ConstantOp>(
                 loc, int32Type, rewriter.getI32IntegerAttr(i));
-            Value *shflValue = rewriter.create<NVVM::ShflBflyOp>(
+            ValuePtr shflValue = rewriter.create<NVVM::ShflBflyOp>(
                 loc, type, activeMask, value, offset, maskAndClamp,
                 /*return_value_and_is_valid=*/UnitAttr());
             value = accumFactory(loc, value, shflValue, rewriter);
           }
-          return SmallVector<Value *, 1>{value};
+          return SmallVector<ValuePtr, 1>{value};
         });
     return rewriter.getInsertionBlock()->getArgument(0);
   }
 
   /// Creates a global array stored in shared memory.
-  Value *createSharedMemoryArray(Location loc, ModuleOp module,
-                                 LLVM::LLVMType elementType, int numElements,
-                                 ConversionPatternRewriter &rewriter) const {
+  ValuePtr createSharedMemoryArray(Location loc, ModuleOp module,
+                                   LLVM::LLVMType elementType, int numElements,
+                                   ConversionPatternRewriter &rewriter) const {
     OpBuilder builder(module.getBodyRegion());
 
     auto arrayType = LLVM::LLVMType::getArrayTy(elementType, numElements);
@@ -416,31 +416,32 @@ private:
   }
 
   /// Returns the index of the thread within the block.
-  Value *getLinearThreadIndex(Location loc,
-                              ConversionPatternRewriter &rewriter) const {
-    Value *dimX = rewriter.create<NVVM::BlockDimXOp>(loc, int32Type);
-    Value *dimY = rewriter.create<NVVM::BlockDimYOp>(loc, int32Type);
-    Value *idX = rewriter.create<NVVM::ThreadIdXOp>(loc, int32Type);
-    Value *idY = rewriter.create<NVVM::ThreadIdYOp>(loc, int32Type);
-    Value *idZ = rewriter.create<NVVM::ThreadIdZOp>(loc, int32Type);
-    Value *tmp1 = rewriter.create<LLVM::MulOp>(loc, int32Type, idZ, dimY);
-    Value *tmp2 = rewriter.create<LLVM::AddOp>(loc, int32Type, tmp1, idY);
-    Value *tmp3 = rewriter.create<LLVM::MulOp>(loc, int32Type, tmp2, dimX);
+  ValuePtr getLinearThreadIndex(Location loc,
+                                ConversionPatternRewriter &rewriter) const {
+    ValuePtr dimX = rewriter.create<NVVM::BlockDimXOp>(loc, int32Type);
+    ValuePtr dimY = rewriter.create<NVVM::BlockDimYOp>(loc, int32Type);
+    ValuePtr idX = rewriter.create<NVVM::ThreadIdXOp>(loc, int32Type);
+    ValuePtr idY = rewriter.create<NVVM::ThreadIdYOp>(loc, int32Type);
+    ValuePtr idZ = rewriter.create<NVVM::ThreadIdZOp>(loc, int32Type);
+    ValuePtr tmp1 = rewriter.create<LLVM::MulOp>(loc, int32Type, idZ, dimY);
+    ValuePtr tmp2 = rewriter.create<LLVM::AddOp>(loc, int32Type, tmp1, idY);
+    ValuePtr tmp3 = rewriter.create<LLVM::MulOp>(loc, int32Type, tmp2, dimX);
     return rewriter.create<LLVM::AddOp>(loc, int32Type, tmp3, idX);
   }
 
   /// Returns the number of threads in the block.
-  Value *getBlockSize(Location loc, ConversionPatternRewriter &rewriter) const {
-    Value *dimX = rewriter.create<NVVM::BlockDimXOp>(loc, int32Type);
-    Value *dimY = rewriter.create<NVVM::BlockDimYOp>(loc, int32Type);
-    Value *dimZ = rewriter.create<NVVM::BlockDimZOp>(loc, int32Type);
-    Value *dimXY = rewriter.create<LLVM::MulOp>(loc, int32Type, dimX, dimY);
+  ValuePtr getBlockSize(Location loc,
+                        ConversionPatternRewriter &rewriter) const {
+    ValuePtr dimX = rewriter.create<NVVM::BlockDimXOp>(loc, int32Type);
+    ValuePtr dimY = rewriter.create<NVVM::BlockDimYOp>(loc, int32Type);
+    ValuePtr dimZ = rewriter.create<NVVM::BlockDimZOp>(loc, int32Type);
+    ValuePtr dimXY = rewriter.create<LLVM::MulOp>(loc, int32Type, dimX, dimY);
     return rewriter.create<LLVM::MulOp>(loc, int32Type, dimXY, dimZ);
   }
 
   /// Returns the number of warps in the block.
-  Value *getNumWarps(Location loc, Value *blockSize,
-                     ConversionPatternRewriter &rewriter) const {
+  ValuePtr getNumWarps(Location loc, ValuePtr blockSize,
+                       ConversionPatternRewriter &rewriter) const {
     auto warpSizeMinusOne = rewriter.create<LLVM::ConstantOp>(
         loc, int32Type, rewriter.getI32IntegerAttr(kWarpSize - 1));
     auto biasedBlockSize = rewriter.create<LLVM::AddOp>(
@@ -449,19 +450,19 @@ private:
   }
 
   /// Returns the number of active threads in the warp, not clamped to 32.
-  Value *getActiveWidth(Location loc, Value *threadIdx, Value *blockSize,
-                        ConversionPatternRewriter &rewriter) const {
-    Value *threadIdxMask = rewriter.create<LLVM::ConstantOp>(
+  ValuePtr getActiveWidth(Location loc, ValuePtr threadIdx, ValuePtr blockSize,
+                          ConversionPatternRewriter &rewriter) const {
+    ValuePtr threadIdxMask = rewriter.create<LLVM::ConstantOp>(
         loc, int32Type, rewriter.getI32IntegerAttr(~(kWarpSize - 1)));
-    Value *numThreadsWithSmallerWarpId =
+    ValuePtr numThreadsWithSmallerWarpId =
         rewriter.create<LLVM::AndOp>(loc, threadIdx, threadIdxMask);
     return rewriter.create<LLVM::SubOp>(loc, blockSize,
                                         numThreadsWithSmallerWarpId);
   }
 
   /// Returns value divided by the warp size (i.e. 32).
-  Value *getDivideByWarpSize(Value *value,
-                             ConversionPatternRewriter &rewriter) const {
+  ValuePtr getDivideByWarpSize(ValuePtr value,
+                               ConversionPatternRewriter &rewriter) const {
     auto loc = value->getLoc();
     auto warpSize = rewriter.create<LLVM::ConstantOp>(
         loc, int32Type, rewriter.getI32IntegerAttr(kWarpSize));
@@ -495,7 +496,7 @@ struct GPUShuffleOpLowering : public LLVMOpLowering {
   ///     %shfl_pred = llvm.extractvalue %shfl[1 : index] :
   ///         !llvm<"{ float, i1 }">
   PatternMatchResult
-  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+  matchAndRewrite(Operation *op, ArrayRef<ValuePtr> operands,
                   ConversionPatternRewriter &rewriter) const override {
     Location loc = op->getLoc();
     gpu::ShuffleOpOperandAdaptor adaptor(operands);
@@ -506,24 +507,24 @@ struct GPUShuffleOpLowering : public LLVMOpLowering {
     auto predTy = LLVM::LLVMType::getInt1Ty(dialect);
     auto resultTy = LLVM::LLVMType::getStructTy(dialect, {valueTy, predTy});
 
-    Value *one = rewriter.create<LLVM::ConstantOp>(
+    ValuePtr one = rewriter.create<LLVM::ConstantOp>(
         loc, int32Type, rewriter.getI32IntegerAttr(1));
     // Bit mask of active lanes: `(1 << activeWidth) - 1`.
-    Value *activeMask = rewriter.create<LLVM::SubOp>(
+    ValuePtr activeMask = rewriter.create<LLVM::SubOp>(
         loc, int32Type,
         rewriter.create<LLVM::ShlOp>(loc, int32Type, one, adaptor.width()),
         one);
     // Clamp lane: `activeWidth - 1`
-    Value *maskAndClamp =
+    ValuePtr maskAndClamp =
         rewriter.create<LLVM::SubOp>(loc, int32Type, adaptor.width(), one);
 
     auto returnValueAndIsValidAttr = rewriter.getUnitAttr();
-    Value *shfl = rewriter.create<NVVM::ShflBflyOp>(
+    ValuePtr shfl = rewriter.create<NVVM::ShflBflyOp>(
         loc, resultTy, activeMask, adaptor.value(), adaptor.offset(),
         maskAndClamp, returnValueAndIsValidAttr);
-    Value *shflValue = rewriter.create<LLVM::ExtractValueOp>(
+    ValuePtr shflValue = rewriter.create<LLVM::ExtractValueOp>(
         loc, valueTy, shfl, rewriter.getIndexArrayAttr(0));
-    Value *isActiveSrcLane = rewriter.create<LLVM::ExtractValueOp>(
+    ValuePtr isActiveSrcLane = rewriter.create<LLVM::ExtractValueOp>(
         loc, predTy, shfl, rewriter.getIndexArrayAttr(1));
 
     rewriter.replaceOp(op, {shflValue, isActiveSrcLane});
@@ -538,7 +539,7 @@ struct GPUFuncOpLowering : LLVMOpLowering {
                        typeConverter) {}
 
   PatternMatchResult
-  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+  matchAndRewrite(Operation *op, ArrayRef<ValuePtr> operands,
                   ConversionPatternRewriter &rewriter) const override {
     assert(operands.empty() && "func op is not expected to have operands");
     auto gpuFuncOp = cast<gpu::GPUFuncOp>(op);
@@ -547,7 +548,7 @@ struct GPUFuncOpLowering : LLVMOpLowering {
     SmallVector<LLVM::GlobalOp, 3> workgroupBuffers;
     workgroupBuffers.reserve(gpuFuncOp.getNumWorkgroupAttributions());
     for (auto en : llvm::enumerate(gpuFuncOp.getWorkgroupAttributions())) {
-      Value *attribution = en.value();
+      ValuePtr attribution = en.value();
 
       auto type = attribution->getType().dyn_cast<MemRefType>();
       assert(type && type.hasStaticShape() && "unexpected type in attribution");
@@ -604,23 +605,23 @@ struct GPUFuncOpLowering : LLVMOpLowering {
       unsigned numProperArguments = gpuFuncOp.getNumArguments();
       auto i32Type = LLVM::LLVMType::getInt32Ty(lowering.getDialect());
 
-      Value *zero = nullptr;
+      ValuePtr zero = nullptr;
       if (!workgroupBuffers.empty())
         zero = rewriter.create<LLVM::ConstantOp>(loc, i32Type,
                                                  rewriter.getI32IntegerAttr(0));
       for (auto en : llvm::enumerate(workgroupBuffers)) {
         LLVM::GlobalOp global = en.value();
-        Value *address = rewriter.create<LLVM::AddressOfOp>(loc, global);
+        ValuePtr address = rewriter.create<LLVM::AddressOfOp>(loc, global);
         auto elementType = global.getType().getArrayElementType();
-        Value *memory = rewriter.create<LLVM::GEPOp>(
+        ValuePtr memory = rewriter.create<LLVM::GEPOp>(
             loc, elementType.getPointerTo(global.addr_space().getZExtValue()),
-            address, ArrayRef<Value *>{zero, zero});
+            address, ArrayRef<ValuePtr>{zero, zero});
 
         // Build a memref descriptor pointing to the buffer to plug with the
         // existing memref infrastructure. This may use more registers than
         // otherwise necessary given that memref sizes are fixed, but we can try
         // and canonicalize that away later.
-        Value *attribution = gpuFuncOp.getWorkgroupAttributions()[en.index()];
+        ValuePtr attribution = gpuFuncOp.getWorkgroupAttributions()[en.index()];
         auto type = attribution->getType().cast<MemRefType>();
         auto descr = MemRefDescriptor::fromStaticShape(rewriter, loc, lowering,
                                                        type, memory);
@@ -632,7 +633,7 @@ struct GPUFuncOpLowering : LLVMOpLowering {
           gpuFuncOp.getNumWorkgroupAttributions();
       auto int64Ty = LLVM::LLVMType::getInt64Ty(lowering.getDialect());
       for (auto en : llvm::enumerate(gpuFuncOp.getPrivateAttributions())) {
-        Value *attribution = en.value();
+        ValuePtr attribution = en.value();
         auto type = attribution->getType().cast<MemRefType>();
         assert(type && type.hasStaticShape() &&
                "unexpected type in attribution");
@@ -643,10 +644,10 @@ struct GPUFuncOpLowering : LLVMOpLowering {
         auto ptrType = lowering.convertType(type.getElementType())
                            .cast<LLVM::LLVMType>()
                            .getPointerTo();
-        Value *numElements = rewriter.create<LLVM::ConstantOp>(
+        ValuePtr numElements = rewriter.create<LLVM::ConstantOp>(
             gpuFuncOp.getLoc(), int64Ty,
             rewriter.getI64IntegerAttr(type.getNumElements()));
-        Value *allocated = rewriter.create<LLVM::AllocaOp>(
+        ValuePtr allocated = rewriter.create<LLVM::AllocaOp>(
             gpuFuncOp.getLoc(), ptrType, numElements, /*alignment=*/0);
         auto descr = MemRefDescriptor::fromStaticShape(rewriter, loc, lowering,
                                                        type, allocated);
@@ -674,8 +675,8 @@ struct GPUFuncOpLowering : LLVMOpLowering {
             !en.value().isa<UnrankedMemRefType>())
           continue;
 
-        BlockArgument *arg = block.getArgument(en.index());
-        Value *loaded = rewriter.create<LLVM::LoadOp>(loc, arg);
+        BlockArgumentPtr arg = block.getArgument(en.index());
+        ValuePtr loaded = rewriter.create<LLVM::LoadOp>(loc, arg);
         rewriter.replaceUsesOfBlockArgument(arg, loaded);
       }
     }
@@ -692,7 +693,7 @@ struct GPUReturnOpLowering : public LLVMOpLowering {
                        typeConverter) {}
 
   PatternMatchResult
-  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+  matchAndRewrite(Operation *op, ArrayRef<ValuePtr> operands,
                   ConversionPatternRewriter &rewriter) const override {
     rewriter.replaceOpWithNewOp<LLVM::ReturnOp>(op, operands,
                                                 ArrayRef<Block *>());

@@ -44,7 +44,7 @@ public:
   using SPIRVOpLowering<ConstantOp>::SPIRVOpLowering;
 
   PatternMatchResult
-  matchAndRewrite(ConstantOp constIndexOp, ArrayRef<Value *> operands,
+  matchAndRewrite(ConstantOp constIndexOp, ArrayRef<ValuePtr> operands,
                   ConversionPatternRewriter &rewriter) const override;
 };
 
@@ -54,7 +54,7 @@ public:
   using SPIRVOpLowering<CmpIOp>::SPIRVOpLowering;
 
   PatternMatchResult
-  matchAndRewrite(CmpIOp cmpIOp, ArrayRef<Value *> operands,
+  matchAndRewrite(CmpIOp cmpIOp, ArrayRef<ValuePtr> operands,
                   ConversionPatternRewriter &rewriter) const override;
 };
 
@@ -70,7 +70,7 @@ public:
   using SPIRVOpLowering<StdOp>::SPIRVOpLowering;
 
   PatternMatchResult
-  matchAndRewrite(StdOp operation, ArrayRef<Value *> operands,
+  matchAndRewrite(StdOp operation, ArrayRef<ValuePtr> operands,
                   ConversionPatternRewriter &rewriter) const override {
     auto resultType =
         this->typeConverter.convertType(operation.getResult()->getType());
@@ -89,7 +89,7 @@ public:
   using SPIRVOpLowering<LoadOp>::SPIRVOpLowering;
 
   PatternMatchResult
-  matchAndRewrite(LoadOp loadOp, ArrayRef<Value *> operands,
+  matchAndRewrite(LoadOp loadOp, ArrayRef<ValuePtr> operands,
                   ConversionPatternRewriter &rewriter) const override;
 };
 
@@ -100,7 +100,7 @@ public:
   using SPIRVOpLowering<ReturnOp>::SPIRVOpLowering;
 
   PatternMatchResult
-  matchAndRewrite(ReturnOp returnOp, ArrayRef<Value *> operands,
+  matchAndRewrite(ReturnOp returnOp, ArrayRef<ValuePtr> operands,
                   ConversionPatternRewriter &rewriter) const override;
 };
 
@@ -110,7 +110,7 @@ class SelectOpConversion final : public SPIRVOpLowering<SelectOp> {
 public:
   using SPIRVOpLowering<SelectOp>::SPIRVOpLowering;
   PatternMatchResult
-  matchAndRewrite(SelectOp op, ArrayRef<Value *> operands,
+  matchAndRewrite(SelectOp op, ArrayRef<ValuePtr> operands,
                   ConversionPatternRewriter &rewriter) const override;
 };
 
@@ -123,7 +123,7 @@ public:
   using SPIRVOpLowering<StoreOp>::SPIRVOpLowering;
 
   PatternMatchResult
-  matchAndRewrite(StoreOp storeOp, ArrayRef<Value *> operands,
+  matchAndRewrite(StoreOp storeOp, ArrayRef<ValuePtr> operands,
                   ConversionPatternRewriter &rewriter) const override;
 };
 
@@ -141,7 +141,8 @@ public:
 spirv::AccessChainOp getElementPtr(OpBuilder &builder,
                                    SPIRVTypeConverter &typeConverter,
                                    Location loc, MemRefType origBaseType,
-                                   Value *basePtr, ArrayRef<Value *> indices) {
+                                   ValuePtr basePtr,
+                                   ArrayRef<ValuePtr> indices) {
   // Get base and offset of the MemRefType and verify they are static.
   int64_t offset;
   SmallVector<int64_t, 4> strides;
@@ -152,18 +153,18 @@ spirv::AccessChainOp getElementPtr(OpBuilder &builder,
 
   auto indexType = typeConverter.getIndexType(builder.getContext());
 
-  Value *ptrLoc = nullptr;
+  ValuePtr ptrLoc = nullptr;
   assert(indices.size() == strides.size());
   for (auto index : enumerate(indices)) {
-    Value *strideVal = builder.create<spirv::ConstantOp>(
+    ValuePtr strideVal = builder.create<spirv::ConstantOp>(
         loc, indexType, IntegerAttr::get(indexType, strides[index.index()]));
-    Value *update =
+    ValuePtr update =
         builder.create<spirv::IMulOp>(loc, strideVal, index.value());
     ptrLoc =
         (ptrLoc ? builder.create<spirv::IAddOp>(loc, ptrLoc, update).getResult()
                 : update);
   }
-  SmallVector<Value *, 2> linearizedIndices;
+  SmallVector<ValuePtr, 2> linearizedIndices;
   // Add a '0' at the start to index into the struct.
   linearizedIndices.push_back(builder.create<spirv::ConstantOp>(
       loc, indexType, IntegerAttr::get(indexType, 0)));
@@ -176,7 +177,7 @@ spirv::AccessChainOp getElementPtr(OpBuilder &builder,
 //===----------------------------------------------------------------------===//
 
 PatternMatchResult ConstantIndexOpConversion::matchAndRewrite(
-    ConstantOp constIndexOp, ArrayRef<Value *> operands,
+    ConstantOp constIndexOp, ArrayRef<ValuePtr> operands,
     ConversionPatternRewriter &rewriter) const {
   if (!constIndexOp.getResult()->getType().isa<IndexType>()) {
     return matchFailure();
@@ -210,7 +211,7 @@ PatternMatchResult ConstantIndexOpConversion::matchAndRewrite(
 //===----------------------------------------------------------------------===//
 
 PatternMatchResult
-CmpIOpConversion::matchAndRewrite(CmpIOp cmpIOp, ArrayRef<Value *> operands,
+CmpIOpConversion::matchAndRewrite(CmpIOp cmpIOp, ArrayRef<ValuePtr> operands,
                                   ConversionPatternRewriter &rewriter) const {
   CmpIOpOperandAdaptor cmpIOpOperands(operands);
 
@@ -242,7 +243,7 @@ CmpIOpConversion::matchAndRewrite(CmpIOp cmpIOp, ArrayRef<Value *> operands,
 //===----------------------------------------------------------------------===//
 
 PatternMatchResult
-LoadOpConversion::matchAndRewrite(LoadOp loadOp, ArrayRef<Value *> operands,
+LoadOpConversion::matchAndRewrite(LoadOp loadOp, ArrayRef<ValuePtr> operands,
                                   ConversionPatternRewriter &rewriter) const {
   LoadOpOperandAdaptor loadOperands(operands);
   auto loadPtr = getElementPtr(rewriter, typeConverter, loadOp.getLoc(),
@@ -260,7 +261,7 @@ LoadOpConversion::matchAndRewrite(LoadOp loadOp, ArrayRef<Value *> operands,
 
 PatternMatchResult
 ReturnOpConversion::matchAndRewrite(ReturnOp returnOp,
-                                    ArrayRef<Value *> operands,
+                                    ArrayRef<ValuePtr> operands,
                                     ConversionPatternRewriter &rewriter) const {
   if (returnOp.getNumOperands()) {
     return matchFailure();
@@ -274,7 +275,7 @@ ReturnOpConversion::matchAndRewrite(ReturnOp returnOp,
 //===----------------------------------------------------------------------===//
 
 PatternMatchResult
-SelectOpConversion::matchAndRewrite(SelectOp op, ArrayRef<Value *> operands,
+SelectOpConversion::matchAndRewrite(SelectOp op, ArrayRef<ValuePtr> operands,
                                     ConversionPatternRewriter &rewriter) const {
   SelectOpOperandAdaptor selectOperands(operands);
   rewriter.replaceOpWithNewOp<spirv::SelectOp>(op, selectOperands.condition(),
@@ -288,7 +289,7 @@ SelectOpConversion::matchAndRewrite(SelectOp op, ArrayRef<Value *> operands,
 //===----------------------------------------------------------------------===//
 
 PatternMatchResult
-StoreOpConversion::matchAndRewrite(StoreOp storeOp, ArrayRef<Value *> operands,
+StoreOpConversion::matchAndRewrite(StoreOp storeOp, ArrayRef<ValuePtr> operands,
                                    ConversionPatternRewriter &rewriter) const {
   StoreOpOperandAdaptor storeOperands(operands);
   auto storePtr =

@@ -128,8 +128,8 @@ def : Pat<(TF_LeakyReluOp:$old_value, $arg, F32Attr:$a),
 ```
 
 ```c++
-static Value* createTFLLeakyRelu(PatternRewriter &rewriter, Operation *op,
-                                 Value* operand, Attribute attr) {
+static Value createTFLLeakyRelu(PatternRewriter &rewriter, Operation *op,
+                                Value operand, Attribute attr) {
   return rewriter.create<mlir::TFL::LeakyReluOp>(
       op->getLoc(), operands[0]->getType(), /*arg=*/operands[0],
       /*alpha=*/attrs[0].cast<FloatAttr>());

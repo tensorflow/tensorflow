@@ -88,9 +88,8 @@ ValueHandle &mlir::edsc::ValueHandle::operator=(const ValueHandle &other) {
   return *this;
 }
 
-ValueHandle
-mlir::edsc::ValueHandle::createComposedAffineApply(AffineMap map,
-                                                   ArrayRef<Value *> operands) {
+ValueHandle mlir::edsc::ValueHandle::createComposedAffineApply(
+    AffineMap map, ArrayRef<ValuePtr> operands) {
   Operation *op =
       makeComposedAffineApply(ScopedContext::getBuilder(),
                               ScopedContext::getLocation(), map, operands)
@@ -118,7 +117,7 @@ OperationHandle OperationHandle::create(StringRef name,
                                         ArrayRef<Type> resultTypes,
                                         ArrayRef<NamedAttribute> attributes) {
   OperationState state(ScopedContext::getLocation(), name);
-  SmallVector<Value *, 4> ops(operands.begin(), operands.end());
+  SmallVector<ValuePtr, 4> ops(operands.begin(), operands.end());
   state.addOperands(ops);
   state.addTypes(resultTypes);
   for (const auto &attr : attributes) {
@@ -169,8 +168,8 @@ mlir::edsc::LoopBuilder mlir::edsc::LoopBuilder::makeAffine(
   if (auto staticFor = emitStaticFor(lbHandles, ubHandles, step)) {
     *iv = staticFor.getValue();
   } else {
-    SmallVector<Value *, 4> lbs(lbHandles.begin(), lbHandles.end());
-    SmallVector<Value *, 4> ubs(ubHandles.begin(), ubHandles.end());
+    SmallVector<ValuePtr, 4> lbs(lbHandles.begin(), lbHandles.end());
+    SmallVector<ValuePtr, 4> ubs(ubHandles.begin(), ubHandles.end());
     *iv = ValueHandle::create<AffineForOp>(
         lbs, ScopedContext::getBuilder().getMultiDimIdentityMap(lbs.size()),
         ubs, ScopedContext::getBuilder().getMultiDimIdentityMap(ubs.size()),
@@ -309,11 +308,11 @@ static ValueHandle createBinaryHandle(ValueHandle lhs, ValueHandle rhs) {
   return ValueHandle::create<Op>(lhs.getValue(), rhs.getValue());
 }
 
-static std::pair<AffineExpr, Value *>
-categorizeValueByAffineType(MLIRContext *context, Value *val, unsigned &numDims,
-                            unsigned &numSymbols) {
+static std::pair<AffineExpr, ValuePtr>
+categorizeValueByAffineType(MLIRContext *context, ValuePtr val,
+                            unsigned &numDims, unsigned &numSymbols) {
   AffineExpr d;
-  Value *resultVal = nullptr;
+  ValuePtr resultVal = nullptr;
   if (auto constant = dyn_cast_or_null<ConstantIndexOp>(val->getDefiningOp())) {
     d = getAffineConstantExpr(constant.getValue(), context);
   } else if (isValidSymbol(val) && !isValidDim(val)) {
@@ -332,12 +331,12 @@ static ValueHandle createBinaryIndexHandle(
   MLIRContext *context = ScopedContext::getContext();
   unsigned numDims = 0, numSymbols = 0;
   AffineExpr d0, d1;
-  Value *v0, *v1;
+  ValuePtr v0, v1;
   std::tie(d0, v0) =
       categorizeValueByAffineType(context, lhs.getValue(), numDims, numSymbols);
   std::tie(d1, v1) =
       categorizeValueByAffineType(context, rhs.getValue(), numDims, numSymbols);
-  SmallVector<Value *, 2> operands;
+  SmallVector<ValuePtr, 2> operands;
   if (v0) {
     operands.push_back(v0);
   }

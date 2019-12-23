@@ -55,34 +55,34 @@ inline StringRef toString(IterType t) {
 ///      makeLinalgGenericOp({A({m, n}), B({k, n})}, {C({m, n})}, ... );
 /// ```
 struct StructuredIndexed {
-  StructuredIndexed(Value *v) : value(v) {}
+  StructuredIndexed(ValuePtr v) : value(v) {}
   StructuredIndexed operator()(ArrayRef<AffineExpr> indexings) {
     return StructuredIndexed(value, indexings);
   }
 
-  operator Value *() const /* implicit */ { return value; }
+  operator ValuePtr() const /* implicit */ { return value; }
   ArrayRef<AffineExpr> getExprs() { return exprs; }
 
 private:
-  StructuredIndexed(Value *v, ArrayRef<AffineExpr> indexings)
+  StructuredIndexed(ValuePtr v, ArrayRef<AffineExpr> indexings)
       : value(v), exprs(indexings.begin(), indexings.end()) {
     assert(v->getType().isa<MemRefType>() && "MemRefType expected");
   }
   StructuredIndexed(ValueHandle v, ArrayRef<AffineExpr> indexings)
       : StructuredIndexed(v.getValue(), indexings) {}
 
-  Value *value;
+  ValuePtr value;
   SmallVector<AffineExpr, 4> exprs;
 };
 
-inline void defaultRegionBuilder(ArrayRef<BlockArgument *> args) {}
+inline void defaultRegionBuilder(ArrayRef<BlockArgumentPtr> args) {}
 
 Operation *makeLinalgGenericOp(ArrayRef<IterType> iteratorTypes,
                                ArrayRef<StructuredIndexed> inputs,
                                ArrayRef<StructuredIndexed> outputs,
-                               function_ref<void(ArrayRef<BlockArgument *>)>
+                               function_ref<void(ArrayRef<BlockArgumentPtr>)>
                                    regionBuilder = defaultRegionBuilder,
-                               ArrayRef<Value *> otherValues = {},
+                               ArrayRef<ValuePtr> otherValues = {},
                                ArrayRef<Attribute> otherAttributes = {});
 
 namespace ops {
@@ -96,7 +96,7 @@ using edsc::intrinsics::linalg_yield;
 
 /// Build the body of a region to compute a multiply-accumulate, under the
 /// current ScopedContext, at the current insert point.
-void macRegionBuilder(ArrayRef<BlockArgument *> args);
+void macRegionBuilder(ArrayRef<BlockArgumentPtr> args);
 
 /// TODO(ntv): In the future we should tie these implementations to something in
 /// Tablegen that generates the proper interfaces and the proper sugared named
@@ -120,7 +120,7 @@ void macRegionBuilder(ArrayRef<BlockArgument *> args);
 /// with in-place semantics and parallelism.
 
 /// Unary pointwise operation (with broadcast) entry point.
-using UnaryPointwiseOpBuilder = function_ref<Value *(ValueHandle)>;
+using UnaryPointwiseOpBuilder = function_ref<ValuePtr(ValueHandle)>;
 Operation *linalg_pointwise(UnaryPointwiseOpBuilder unaryOp,
                             StructuredIndexed I, StructuredIndexed O);
 
@@ -131,7 +131,7 @@ Operation *linalg_pointwise_tanh(StructuredIndexed I, StructuredIndexed O);
 
 /// Binary pointwise operation (with broadcast) entry point.
 using BinaryPointwiseOpBuilder =
-    function_ref<Value *(ValueHandle, ValueHandle)>;
+    function_ref<ValuePtr(ValueHandle, ValueHandle)>;
 Operation *linalg_pointwise(BinaryPointwiseOpBuilder binaryOp,
                             StructuredIndexed I1, StructuredIndexed I2,
                             StructuredIndexed O);

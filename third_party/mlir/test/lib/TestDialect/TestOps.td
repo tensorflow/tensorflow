@@ -644,7 +644,7 @@ def OpSymbolBindingB : TEST_Op<"symbol_binding_b", []> {
 
   let builders = [
     OpBuilder<
-      "Builder *builder, OperationState &state, Value *operand",
+      "Builder *builder, OperationState &state, ValuePtr operand",
       [{
         state.types.assign({builder->getIntegerType(32)});
         state.addOperands({operand});

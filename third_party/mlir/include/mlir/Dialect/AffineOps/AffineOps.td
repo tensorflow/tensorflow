@@ -101,7 +101,7 @@ def AffineForOp : Affine_Op<"for",
     static StringRef getUpperBoundAttrName() { return "upper_bound"; }
 
     Block *getBody() { return &region().front(); }
-    Value *getInductionVar() { return getBody()->getArgument(0); }
+    ValuePtr getInductionVar() { return getBody()->getArgument(0); }
     OpBuilder getBodyBuilder() {
       return OpBuilder(getBody(), std::prev(getBody()->end()));
     }
@@ -286,8 +286,8 @@ def AffinePrefetchOp : Affine_Op<"prefetch"> {
                    BoolAttr:$isDataCache);
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState &result, Value *memref,"
-    "AffineMap map, ArrayRef<Value *> mapOperands, bool isWrite,"
+    "Builder *builder, OperationState &result, ValuePtr memref,"
+    "AffineMap map, ArrayRef<ValuePtr> mapOperands, bool isWrite,"
     "unsigned localityHint, bool isDataCache",
     [{
       assert(map.getNumInputs() == mapOperands.size()
@@ -315,7 +315,7 @@ def AffinePrefetchOp : Affine_Op<"prefetch"> {
     }
 
     /// Returns the AffineMapAttr associated with 'memref'.
-    NamedAttribute getAffineMapAttrForMemRef(Value *mref) {
+    NamedAttribute getAffineMapAttrForMemRef(ValuePtr mref) {
       assert(mref == memref());
       return {Identifier::get(getMapAttrName(), getContext()),
         getAffineMapAttr()};

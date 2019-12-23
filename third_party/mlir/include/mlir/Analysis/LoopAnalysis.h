@@ -36,6 +36,9 @@ class NestedPattern;
 class Operation;
 class Value;
 
+// TODO(riverriddle) Remove this after Value is value-typed.
+using ValuePtr = Value *;
+
 /// Returns the trip count of the loop as an affine map with its corresponding
 /// operands if the latter is expressible as an affine expression, and nullptr
 /// otherwise. This method always succeeds as long as the lower bound is not a
@@ -45,7 +48,7 @@ class Value;
 // TODO(mlir-team): this should be moved into 'Transforms/' and be replaced by a
 // pure analysis method relying on FlatAffineConstraints
 void buildTripCountMapAndOperands(AffineForOp forOp, AffineMap *map,
-                                  SmallVectorImpl<Value *> *operands);
+                                  SmallVectorImpl<ValuePtr> *operands);
 
 /// Returns the trip count of the loop if it's a constant, None otherwise. This
 /// uses affine expression analysis and is able to determine constant trip count
@@ -66,8 +69,8 @@ uint64_t getLargestDivisorOfTripCount(AffineForOp forOp);
 ///
 /// Emits a note if it encounters a chain of affine.apply and conservatively
 ///  those cases.
-DenseSet<Value *, DenseMapInfo<Value *>>
-getInvariantAccesses(Value *iv, ArrayRef<Value *> indices);
+DenseSet<ValuePtr, DenseMapInfo<ValuePtr>>
+getInvariantAccesses(ValuePtr iv, ArrayRef<ValuePtr> indices);
 
 using VectorizableLoopFun = std::function<bool(AffineForOp)>;
 

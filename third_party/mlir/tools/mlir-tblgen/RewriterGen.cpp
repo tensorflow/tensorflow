@@ -576,14 +576,14 @@ void PatternEmitter::emitRewriteLogic() {
     os.indent(4) << "rewriter.eraseOp(op0);\n";
   } else {
     // Process replacement result patterns.
-    os.indent(4) << "SmallVector<Value *, 4> tblgen_repl_values;\n";
+    os.indent(4) << "SmallVector<ValuePtr, 4> tblgen_repl_values;\n";
     for (int i = replStartIndex; i < numResultPatterns; ++i) {
       DagNode resultTree = pattern.getResultPattern(i);
       auto val = handleResultPattern(resultTree, offsets[i], 0);
       os.indent(4) << "\n";
       // Resolve each symbol for all range use so that we can loop over them.
       os << symbolInfoMap.getAllRangeUse(
-          val, "    for (auto *v : {0}) {{ tblgen_repl_values.push_back(v); }",
+          val, "    for (auto v : {0}) {{ tblgen_repl_values.push_back(v); }",
           "\n");
     }
     os.indent(4) << "\n";
@@ -819,7 +819,7 @@ std::string PatternEmitter::handleOpCreation(DagNode tree, int resultIndex,
   int numResults = resultOp.getNumResults();
   if (numResults != 0) {
     for (int i = 0; i < numResults; ++i)
-      os.indent(6) << formatv("for (auto *v : castedOp0.getODSResults({0})) {{"
+      os.indent(6) << formatv("for (auto v : castedOp0.getODSResults({0})) {{"
                               "tblgen_types.push_back(v->getType()); }\n",
                               resultIndex + i);
   }
@@ -835,8 +835,8 @@ void PatternEmitter::createSeparateLocalVarsForOpArgs(
   Operator &resultOp = node.getDialectOp(opMap);
 
   // Now prepare operands used for building this op:
-  // * If the operand is non-variadic, we create a `Value*` local variable.
-  // * If the operand is variadic, we create a `SmallVector<Value*>` local
+  // * If the operand is non-variadic, we create a `Value` local variable.
+  // * If the operand is variadic, we create a `SmallVector<Value>` local
   //   variable.
 
   int valueIndex = 0; // An index for uniquing local variable names.
@@ -851,7 +851,7 @@ void PatternEmitter::createSeparateLocalVarsForOpArgs(
     std::string varName;
     if (operand->isVariadic()) {
       varName = formatv("tblgen_values_{0}", valueIndex++);
-      os.indent(6) << formatv("SmallVector<Value *, 4> {0};\n", varName);
+      os.indent(6) << formatv("SmallVector<ValuePtr, 4> {0};\n", varName);
       std::string range;
       if (node.isNestedDagArg(argIndex)) {
         range = childNodeNames[argIndex];
@@ -861,11 +861,11 @@ void PatternEmitter::createSeparateLocalVarsForOpArgs(
       // Resolve the symbol for all range use so that we have a uniform way of
       // capturing the values.
       range = symbolInfoMap.getValueAndRangeUse(range);
-      os.indent(6) << formatv("for (auto *v : {0}) {1}.push_back(v);\n", range,
+      os.indent(6) << formatv("for (auto v : {0}) {1}.push_back(v);\n", range,
                               varName);
     } else {
       varName = formatv("tblgen_value_{0}", valueIndex++);
-      os.indent(6) << formatv("Value *{0} = ", varName);
+      os.indent(6) << formatv("ValuePtr {0} = ", varName);
       if (node.isNestedDagArg(argIndex)) {
         os << symbolInfoMap.getValueAndRangeUse(childNodeNames[argIndex]);
       } else {
@@ -934,7 +934,7 @@ void PatternEmitter::createAggregateLocalVarsForOpArgs(
   Operator &resultOp = node.getDialectOp(opMap);
 
   os.indent(6) << formatv(
-      "SmallVector<Value *, 4> tblgen_values; (void)tblgen_values;\n");
+      "SmallVector<ValuePtr, 4> tblgen_values; (void)tblgen_values;\n");
   os.indent(6) << formatv(
       "SmallVector<NamedAttribute, 4> tblgen_attrs; (void)tblgen_attrs;\n");
 
@@ -975,7 +975,7 @@ void PatternEmitter::createAggregateLocalVarsForOpArgs(
       // capturing the values.
       range = symbolInfoMap.getValueAndRangeUse(range);
       os.indent(6) << formatv(
-          "for (auto *v : {0}) tblgen_values.push_back(v);\n", range);
+          "for (auto v : {0}) tblgen_values.push_back(v);\n", range);
     } else {
       os.indent(6) << formatv("tblgen_values.push_back(", varName);
       if (node.isNestedDagArg(argIndex)) {

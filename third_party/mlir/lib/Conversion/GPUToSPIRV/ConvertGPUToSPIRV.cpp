@@ -36,7 +36,7 @@ public:
   using SPIRVOpLowering<loop::ForOp>::SPIRVOpLowering;
 
   PatternMatchResult
-  matchAndRewrite(loop::ForOp forOp, ArrayRef<Value *> operands,
+  matchAndRewrite(loop::ForOp forOp, ArrayRef<ValuePtr> operands,
                   ConversionPatternRewriter &rewriter) const override;
 };
 
@@ -48,7 +48,7 @@ public:
   using SPIRVOpLowering<SourceOp>::SPIRVOpLowering;
 
   PatternMatchResult
-  matchAndRewrite(SourceOp op, ArrayRef<Value *> operands,
+  matchAndRewrite(SourceOp op, ArrayRef<ValuePtr> operands,
                   ConversionPatternRewriter &rewriter) const override;
 };
 
@@ -65,7 +65,7 @@ public:
   }
 
   PatternMatchResult
-  matchAndRewrite(gpu::GPUFuncOp funcOp, ArrayRef<Value *> operands,
+  matchAndRewrite(gpu::GPUFuncOp funcOp, ArrayRef<ValuePtr> operands,
                   ConversionPatternRewriter &rewriter) const override;
 
 private:
@@ -79,7 +79,7 @@ public:
   using SPIRVOpLowering<ModuleOp>::SPIRVOpLowering;
 
   PatternMatchResult
-  matchAndRewrite(ModuleOp moduleOp, ArrayRef<Value *> operands,
+  matchAndRewrite(ModuleOp moduleOp, ArrayRef<ValuePtr> operands,
                   ConversionPatternRewriter &rewriter) const override;
 };
 
@@ -92,7 +92,7 @@ public:
   using SPIRVOpLowering<ModuleTerminatorOp>::SPIRVOpLowering;
 
   PatternMatchResult
-  matchAndRewrite(ModuleTerminatorOp terminatorOp, ArrayRef<Value *> operands,
+  matchAndRewrite(ModuleTerminatorOp terminatorOp, ArrayRef<ValuePtr> operands,
                   ConversionPatternRewriter &rewriter) const override;
 };
 
@@ -103,7 +103,7 @@ public:
   using SPIRVOpLowering<gpu::ReturnOp>::SPIRVOpLowering;
 
   PatternMatchResult
-  matchAndRewrite(gpu::ReturnOp returnOp, ArrayRef<Value *> operands,
+  matchAndRewrite(gpu::ReturnOp returnOp, ArrayRef<ValuePtr> operands,
                   ConversionPatternRewriter &rewriter) const override;
 };
 
@@ -114,7 +114,7 @@ public:
 //===----------------------------------------------------------------------===//
 
 PatternMatchResult
-ForOpConversion::matchAndRewrite(loop::ForOp forOp, ArrayRef<Value *> operands,
+ForOpConversion::matchAndRewrite(loop::ForOp forOp, ArrayRef<ValuePtr> operands,
                                  ConversionPatternRewriter &rewriter) const {
   // loop::ForOp can be lowered to the structured control flow represented by
   // spirv::LoopOp by making the continue block of the spirv::LoopOp the loop
@@ -135,7 +135,7 @@ ForOpConversion::matchAndRewrite(loop::ForOp forOp, ArrayRef<Value *> operands,
   loopOp.body().getBlocks().insert(std::next(loopOp.body().begin(), 1), header);
 
   // Create the new induction variable to use.
-  BlockArgument *newIndVar =
+  BlockArgumentPtr newIndVar =
       header->addArgument(forOperands.lowerBound()->getType());
   Block *body = forOp.getBody();
 
@@ -166,7 +166,7 @@ ForOpConversion::matchAndRewrite(loop::ForOp forOp, ArrayRef<Value *> operands,
   auto cmpOp = rewriter.create<spirv::SLessThanOp>(
       loc, rewriter.getI1Type(), newIndVar, forOperands.upperBound());
   rewriter.create<spirv::BranchConditionalOp>(
-      loc, cmpOp, body, ArrayRef<Value *>(), mergeBlock, ArrayRef<Value *>());
+      loc, cmpOp, body, ArrayRef<ValuePtr>(), mergeBlock, ArrayRef<ValuePtr>());
 
   // Generate instructions to increment the step of the induction variable and
   // branch to the header.
@@ -174,7 +174,7 @@ ForOpConversion::matchAndRewrite(loop::ForOp forOp, ArrayRef<Value *> operands,
   rewriter.setInsertionPointToEnd(continueBlock);
 
   // Add the step to the induction variable and branch to the header.
-  Value *updatedIndVar = rewriter.create<spirv::IAddOp>(
+  ValuePtr updatedIndVar = rewriter.create<spirv::IAddOp>(
       loc, newIndVar->getType(), newIndVar, forOperands.step());
   rewriter.create<spirv::BranchOp>(loc, header, updatedIndVar);
 
@@ -188,7 +188,7 @@ ForOpConversion::matchAndRewrite(loop::ForOp forOp, ArrayRef<Value *> operands,
 
 template <typename SourceOp, spirv::BuiltIn builtin>
 PatternMatchResult LaunchConfigConversion<SourceOp, builtin>::matchAndRewrite(
-    SourceOp op, ArrayRef<Value *> operands,
+    SourceOp op, ArrayRef<ValuePtr> operands,
     ConversionPatternRewriter &rewriter) const {
   auto dimAttr =
       op.getOperation()->template getAttrOfType<StringAttr>("dimension");
@@ -267,7 +267,7 @@ lowerAsEntryFunction(gpu::GPUFuncOp funcOp, SPIRVTypeConverter &typeConverter,
 
 PatternMatchResult
 KernelFnConversion::matchAndRewrite(gpu::GPUFuncOp funcOp,
-                                    ArrayRef<Value *> operands,
+                                    ArrayRef<ValuePtr> operands,
                                     ConversionPatternRewriter &rewriter) const {
   if (!gpu::GPUDialect::isKernel(funcOp)) {
     return matchFailure();
@@ -297,7 +297,7 @@ KernelFnConversion::matchAndRewrite(gpu::GPUFuncOp funcOp,
 //===----------------------------------------------------------------------===//
 
 PatternMatchResult KernelModuleConversion::matchAndRewrite(
-    ModuleOp moduleOp, ArrayRef<Value *> operands,
+    ModuleOp moduleOp, ArrayRef<ValuePtr> operands,
     ConversionPatternRewriter &rewriter) const {
   if (!moduleOp.getAttrOfType<UnitAttr>(
           gpu::GPUDialect::getKernelModuleAttrName())) {
@@ -327,7 +327,7 @@ PatternMatchResult KernelModuleConversion::matchAndRewrite(
 //===----------------------------------------------------------------------===//
 
 PatternMatchResult KernelModuleTerminatorConversion::matchAndRewrite(
-    ModuleTerminatorOp terminatorOp, ArrayRef<Value *> operands,
+    ModuleTerminatorOp terminatorOp, ArrayRef<ValuePtr> operands,
     ConversionPatternRewriter &rewriter) const {
   rewriter.replaceOpWithNewOp<spirv::ModuleEndOp>(terminatorOp);
   return matchSuccess();
@@ -338,7 +338,7 @@ PatternMatchResult KernelModuleTerminatorConversion::matchAndRewrite(
 //===----------------------------------------------------------------------===//
 
 PatternMatchResult GPUReturnOpConversion::matchAndRewrite(
-    gpu::ReturnOp returnOp, ArrayRef<Value *> operands,
+    gpu::ReturnOp returnOp, ArrayRef<ValuePtr> operands,
     ConversionPatternRewriter &rewriter) const {
   if (!operands.empty())
     return matchFailure();

@@ -45,7 +45,7 @@ public:
   virtual raw_ostream &getStream() const = 0;
 
   /// Print implementations for various things an operation contains.
-  virtual void printOperand(Value *value) = 0;
+  virtual void printOperand(ValuePtr value) = 0;
 
   /// Print a comma separated list of operands.
   template <typename ContainerType>
@@ -121,7 +121,7 @@ public:
   void printFunctionalType(Operation *op) {
     auto &os = getStream();
     os << "(";
-    interleaveComma(op->getNonSuccessorOperands(), os, [&](Value *operand) {
+    interleaveComma(op->getNonSuccessorOperands(), os, [&](ValuePtr operand) {
       if (operand)
         printType(operand->getType());
       else
@@ -150,18 +150,18 @@ private:
 };
 
 // Make the implementations convenient to use.
-inline OpAsmPrinter &operator<<(OpAsmPrinter &p, Value &value) {
+inline OpAsmPrinter &operator<<(OpAsmPrinter &p, ValueRef value) {
   p.printOperand(&value);
   return p;
 }
-inline OpAsmPrinter &operator<<(OpAsmPrinter &p, Value *value) {
+inline OpAsmPrinter &operator<<(OpAsmPrinter &p, ValuePtr value) {
   return p << *value;
 }
 
-template <typename T,
-          typename std::enable_if<std::is_convertible<T &, ValueRange>::value &&
-                                      !std::is_convertible<T &, Value *>::value,
-                                  T>::type * = nullptr>
+template <typename T, typename std::enable_if<
+                          std::is_convertible<T &, ValueRange>::value &&
+                              !std::is_convertible<T &, ValuePtr>::value,
+                          T>::type * = nullptr>
 inline OpAsmPrinter &operator<<(OpAsmPrinter &p, const T &values) {
   p.printOperands(values);
   return p;
@@ -181,8 +181,8 @@ inline OpAsmPrinter &operator<<(OpAsmPrinter &p, Attribute attr) {
 // even if it isn't exactly one of them.  For example, we want to print
 // FunctionType with the Type version above, not have it match this.
 template <typename T, typename std::enable_if<
-                          !std::is_convertible<T &, Value &>::value &&
-                              !std::is_convertible<T &, Value *>::value &&
+                          !std::is_convertible<T &, ValueRef>::value &&
+                              !std::is_convertible<T &, ValuePtr>::value &&
                               !std::is_convertible<T &, Type &>::value &&
                               !std::is_convertible<T &, Attribute &>::value &&
                               !std::is_convertible<T &, ValueRange>::value &&
@@ -467,13 +467,13 @@ public:
 
   /// Resolve an operand to an SSA value, emitting an error on failure.
   virtual ParseResult resolveOperand(const OperandType &operand, Type type,
-                                     SmallVectorImpl<Value *> &result) = 0;
+                                     SmallVectorImpl<ValuePtr> &result) = 0;
 
   /// Resolve a list of operands to SSA values, emitting an error on failure, or
   /// appending the results to the list on success. This method should be used
   /// when all operands have the same type.
   ParseResult resolveOperands(ArrayRef<OperandType> operands, Type type,
-                              SmallVectorImpl<Value *> &result) {
+                              SmallVectorImpl<ValuePtr> &result) {
     for (auto elt : operands)
       if (resolveOperand(elt, type, result))
         return failure();
@@ -485,7 +485,7 @@ public:
   /// to the list on success.
   ParseResult resolveOperands(ArrayRef<OperandType> operands,
                               ArrayRef<Type> types, llvm::SMLoc loc,
-                              SmallVectorImpl<Value *> &result) {
+                              SmallVectorImpl<ValuePtr> &result) {
     if (operands.size() != types.size())
       return emitError(loc)
              << operands.size() << " operands present, but expected "
@@ -556,7 +556,7 @@ public:
   /// Parse a single operation successor and its operand list.
   virtual ParseResult
   parseSuccessorAndUseList(Block *&dest,
-                           SmallVectorImpl<Value *> &operands) = 0;
+                           SmallVectorImpl<ValuePtr> &operands) = 0;
 
   //===--------------------------------------------------------------------===//
   // Type Parsing
@@ -634,7 +634,7 @@ private:
 
 /// A functor used to set the name of the start of a result group of an
 /// operation. See 'getAsmResultNames' below for more details.
-using OpAsmSetValueNameFn = function_ref<void(Value *, StringRef)>;
+using OpAsmSetValueNameFn = function_ref<void(ValuePtr, StringRef)>;
 
 class OpAsmDialectInterface
     : public DialectInterface::Base<OpAsmDialectInterface> {

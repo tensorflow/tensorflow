@@ -130,7 +130,7 @@ struct AffineDataCopyGeneration
   bool skipNonUnitStrideLoops;
 
   // Constant zero index to avoid too many duplicates.
-  Value *zeroIndex = nullptr;
+  ValuePtr zeroIndex = nullptr;
 };
 
 } // end anonymous namespace
