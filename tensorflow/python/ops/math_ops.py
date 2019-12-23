@@ -1313,7 +1313,20 @@ def not_equal(x, y, name=None):
 
   **NOTE**: `NotEqual` supports broadcasting. More about broadcasting [here](
   https://docs.scipy.org/doc/numpy-1.13.0/user/basics.broadcasting.html)
-
+  
+  For Example:
+  
+  ```python
+  num1 = 1
+  num2 = 2
+  
+  tf.math.not_equal(num1, num2) #True
+  
+  num1 = 1
+  num2 = 1
+  
+  tf.math.not_equal(num1, num2) #False
+  ```
   Args:
     x: A `Tensor` or `SparseTensor` or `IndexedSlices`.
     y: A `Tensor` or `SparseTensor` or `IndexedSlices`.
