@@ -643,8 +643,15 @@ def transpose(image, name=None):
 
   Usage Example:
   
-  >>> image = tf.random.normal(shape=(100, 200, 3))  
+  >>> image = tf.random.normal(shape=(3, 2, 3))  
   >>> tf.image.transpose(image)
+<tf.Tensor: shape=(2, 3, 3), dtype=float32, numpy=array([[[-0.5979504 ,  0.58769995,  1.0222683 ],
+        [-1.1916928 ,  0.50581825, -0.7790882 ],
+        [-0.84846294, -0.9869267 ,  0.9191761 ]],
+
+       [[ 0.04296689,  0.26231873, -0.49350074],
+        [ 0.21475416,  2.2342353 ,  1.5782021 ],
+        [-0.20432681,  1.0594877 ,  1.2666614 ]]], dtype=float32)>
   """
   with ops.name_scope(name, 'transpose', [image]):
     image = ops.convert_to_tensor(image, name='image')
@@ -1982,8 +1989,13 @@ def adjust_hue(image, delta, name=None):
 
   Usage Example:
     
-  >>> x = tf.random.normal(shape=(256, 256, 3))
+  >>> x = tf.random.normal(shape=(2, 2, 3))
   >>> tf.image.adjust_hue(x, 0.2)
+  <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=array([[[ 1.0314198 , -0.95627433, -1.0052917 ],
+        [-2.0954823 ,  1.3211322 , -2.467138  ]],
+
+       [[-1.4385169 , -2.3536482 ,  0.6350468 ],
+        [-1.9136866 , -0.8640311 ,  1.4060372 ]]], dtype=float32)>
   
   """
   with ops.name_scope(name, 'adjust_hue', [image]) as name:
@@ -2927,8 +2939,13 @@ def rgb_to_yiq(images):
 
     Usage Example:
     
-    >>> x = tf.random.normal(shape=(200, 210, 3))
-    >>> tf.image.rgb_to_yiq(x)#output(200, 210, 3)
+    >>> x = tf.random.normal(shape=(2, 2, 3))
+    >>> tf.image.rgb_to_yiq(x)
+    <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=array([[[-1.111651  ,  0.56995934,  0.7726167 ],
+        [-1.3273743 ,  0.39745185,  0.009871  ]],
+
+       [[ 0.54414237,  0.6385595 ,  1.2411424 ],
+        [ 0.80139303,  0.56809187, -1.1597993 ]]], dtype=float32)>
     
   """
   images = ops.convert_to_tensor(images, name='images')
@@ -2960,8 +2977,14 @@ def yiq_to_rgb(images):
 
     Usage Example:
     
-    >>> x = tf.random.normal(shape=(256, 256, 3))
+    >>> x = tf.random.normal(shape=(2, 2, 3))
     >>> tf.image.yiq_to_rgb(x)
+    <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=array([[[ 0.41329476, -1.7634469 ,  1.5586053 ],
+        [-0.76615506,  0.6225947 , -3.7441077 ]],
+
+       [[-1.1720771 , -2.0915804 , -1.1594081 ],
+        [-0.5653576 , -1.3266228 , -0.8366786 ]]], dtype=float32)>
+    
   """
   images = ops.convert_to_tensor(images, name='images')
   kernel = ops.convert_to_tensor(
@@ -2992,8 +3015,13 @@ def rgb_to_yuv(images):
     
   Usage Example:
   
-  >>> x = tf.random.normal(shape=(256, 256, 3))
+  >>> x = tf.random.normal(shape=(2, 2, 3))
   >>> tf.image.rgb_to_yuv(x)
+  <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=array([[[-0.883184  ,  0.65053046,  0.8119327 ],
+        [-0.78265387,  1.0938457 ,  0.5088532 ]],
+
+       [[ 0.40211868, -0.27961618,  0.10775507],
+        [-0.06063745,  0.23642813,  0.6975118 ]]], dtype=float32)>
   
   """
   images = ops.convert_to_tensor(images, name='images')
@@ -3025,8 +3053,14 @@ def yuv_to_rgb(images):
 
   Usage Example:
   
-  >>> x = tf.random.normal(shape=(256, 256, 3))
+  >>> x = tf.random.normal(shape=(2, 2, 3))
   >>> tf.image.yuv_to_rgb(x)
+  <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=array([[[-1.6093235 , -0.4222831 ,  1.9160069 ],
+        [ 0.21481253, -2.4121153 , -0.605045  ]],
+
+       [[-3.886966  , -1.6379613 , -2.8027775 ],
+        [-0.56795126, -0.3893984 ,  2.267145  ]]], dtype=float32)>
+  
   """
   images = ops.convert_to_tensor(images, name='images')
   kernel = ops.convert_to_tensor(
