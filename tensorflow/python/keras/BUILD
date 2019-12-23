@@ -801,7 +801,6 @@ tf_py_test(
     srcs = ["layers/convolutional_recurrent_test.py"],
     python_version = "PY3",
     shard_count = 4,
-    tags = ["no_rocm"],
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
@@ -883,7 +882,6 @@ cuda_py_test(
     python_version = "PY3",
     shard_count = 4,
     tags = [
-        "no_rocm",
         "no_windows_gpu",
     ],
     deps = [
@@ -1026,7 +1024,6 @@ cuda_py_test(
     python_version = "PY3",
     shard_count = 4,
     tags = [
-        "no_rocm",
         "notsan",
     ],
     deps = [
@@ -1634,7 +1631,6 @@ tf_py_test(
     srcs = ["engine/training_arrays_test.py"],
     python_version = "PY3",
     tags = [
-        "no_rocm",
         "nomac",  # TODO(mihaimaruseac): b/127695564
     ],
     deps = [
@@ -1709,7 +1705,6 @@ tf_py_test(
     srcs = ["engine/training_eager_test.py"],
     python_version = "PY3",
     tags = [
-        "no_rocm",
         "nomac",  # TODO(mihaimaruseac): b/127695564
         "notsan",
     ],
@@ -1859,7 +1854,6 @@ tf_py_test(
     srcs = ["engine/base_layer_utils_test.py"],
     python_version = "PY3",
     tags = [
-        "no_rocm",
         "nomac",  # TODO(mihaimaruseac): b/127695564
     ],
     deps = [
