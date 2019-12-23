@@ -133,7 +133,7 @@ cc_library(
     name = "proto_parsing",
     copts = tf_copts(),
     deps = [
-        "//tensorflow/core:protos_cc",
+        "//tensorflow/core:protos_all_cc",
     ],
 )
 
@@ -182,7 +182,7 @@ cc_library(
     deps = [
         ":gif",
         ":jpeg",
-        "//tensorflow/core:protos_cc",
+        "//tensorflow/core:protos_all_cc",
         "@com_googlesource_code_re2//:re2",
         "@farmhash_archive//:farmhash",
         "@fft2d",
@@ -218,22 +218,6 @@ cc_library(
     deps = [
         "@png",
         "@zlib_archive//:zlib",
-    ],
-)
-
-cc_library(
-    name = "protos_cc_impl",
-    copts = tf_copts(),
-    deps = [
-        "//tensorflow/core:protos_all_cc_impl",
-    ],
-)
-
-cc_library(
-    name = "protos_cc",
-    copts = tf_copts(),
-    deps = [
-        "//tensorflow/core:protos_all_cc",
     ],
 )
 

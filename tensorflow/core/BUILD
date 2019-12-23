@@ -2602,13 +2602,6 @@ alias(
     visibility = ["//visibility:public"],
 )
 
-# TODO(josh11b): Is this needed, or can we just use ":protos_all_cc"?
-cc_library(
-    name = "protos_cc",
-    visibility = ["//visibility:public"],
-    deps = ["//tensorflow/core/platform/default/build_config:protos_cc"],
-)
-
 # Library containing all of the graph construction code that is
 # independent of the runtime.
 #
