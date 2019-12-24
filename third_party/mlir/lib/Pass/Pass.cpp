@@ -1,19 +1,10 @@
 //===- Pass.cpp - Pass infrastructure implementation ----------------------===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 //
 // This file implements common pass infrastructure.
 //
@@ -45,6 +36,17 @@ using namespace mlir::detail;
 /// single .o file.
 void Pass::anchor() {}
 
+/// Attempt to initialize the options of this pass from the given string.
+LogicalResult Pass::initializeOptions(StringRef options) {
+  return passOptions.parseFromString(options);
+}
+
+/// Copy the option values from 'other', which is another instance of this
+/// pass.
+void Pass::copyOptionValuesFrom(const Pass *other) {
+  passOptions.copyOptionValuesFrom(other->passOptions);
+}
+
 /// Prints out the pass in the textual representation of pipelines. If this is
 /// an adaptor pass, print with the op_name(sub_pass,...) format.
 void Pass::printAsTextualPipeline(raw_ostream &os) {
@@ -55,11 +57,14 @@ void Pass::printAsTextualPipeline(raw_ostream &os) {
       pm.printAsTextualPipeline(os);
       os << ")";
     });
-  } else if (const PassInfo *info = lookupPassInfo()) {
-    os << info->getPassArgument();
-  } else {
-    os << getName();
+    return;
   }
+  // Otherwise, print the pass argument followed by its options.
+  if (const PassInfo *info = lookupPassInfo())
+    os << info->getPassArgument();
+  else
+    os << getName();
+  passOptions.print(os);
 }
 
 /// Forwarding function to execute this pass.

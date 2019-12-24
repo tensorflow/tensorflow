@@ -1,19 +1,10 @@
 //===- LoopTiling.cpp --- Loop tiling pass ------------------------------*-===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 //
 // This file implements a pass to tile loop nests.
 //
@@ -120,8 +111,8 @@ constructTiledIndexSetHyperRect(MutableArrayRef<AffineForOp> origLoops,
   for (unsigned i = 0; i < width; i++) {
     auto lbOperands = origLoops[i].getLowerBoundOperands();
     auto ubOperands = origLoops[i].getUpperBoundOperands();
-    SmallVector<Value *, 4> newLbOperands(lbOperands);
-    SmallVector<Value *, 4> newUbOperands(ubOperands);
+    SmallVector<Value, 4> newLbOperands(lbOperands);
+    SmallVector<Value, 4> newUbOperands(ubOperands);
     newLoops[i].setLowerBound(newLbOperands, origLoops[i].getLowerBoundMap());
     newLoops[i].setUpperBound(newUbOperands, origLoops[i].getUpperBoundMap());
     newLoops[i].setStep(tileSizes[i]);
@@ -147,7 +138,7 @@ constructTiledIndexSetHyperRect(MutableArrayRef<AffineForOp> origLoops,
       // with 'i' (tile-space loop) appended to it. The new upper bound map is
       // the original one with an additional expression i + tileSize appended.
       auto ub = origLoops[i].getUpperBound();
-      SmallVector<Value *, 4> ubOperands;
+      SmallVector<Value, 4> ubOperands;
       ubOperands.reserve(ub.getNumOperands() + 1);
       auto origUbMap = ub.getMap();
       // Add dim operands from original upper bound.
@@ -235,9 +226,9 @@ LogicalResult mlir::tileCodeGen(MutableArrayRef<AffineForOp> band,
   // Move the loop body of the original nest to the new one.
   moveLoopBody(origLoops[origLoops.size() - 1], innermostPointLoop);
 
-  SmallVector<Value *, 8> origLoopIVs;
+  SmallVector<Value, 8> origLoopIVs;
   extractForInductionVars(band, &origLoopIVs);
-  SmallVector<Optional<Value *>, 6> ids(origLoopIVs.begin(), origLoopIVs.end());
+  SmallVector<Optional<Value>, 6> ids(origLoopIVs.begin(), origLoopIVs.end());
   FlatAffineConstraints cst;
   getIndexSet(band, &cst);
 

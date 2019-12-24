@@ -1,19 +1,10 @@
 //===- Ops.td - Loop operation definitions ---------------*- tablegen -*-===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 //
 // Defines MLIR loop operations.
 //
@@ -74,18 +65,18 @@ def ForOp : Loop_Op<"for",
   let skipDefaultBuilders = 1;
   let builders = [
     OpBuilder<"Builder *builder, OperationState &result, "
-              "Value *lowerBound, Value *upperBound, Value *step">
+              "Value lowerBound, Value upperBound, Value step">
   ];
 
   let extraClassDeclaration = [{
     Block *getBody() { return &region().front(); }
-    Value *getInductionVar() { return getBody()->getArgument(0); }
+    Value getInductionVar() { return getBody()->getArgument(0); }
     OpBuilder getBodyBuilder() {
       return OpBuilder(getBody(), std::prev(getBody()->end()));
     }
-    void setLowerBound(Value *bound) { getOperation()->setOperand(0, bound); }
-    void setUpperBound(Value *bound) { getOperation()->setOperand(1, bound); }
-    void setStep(Value *step) { getOperation()->setOperand(2, step); }
+    void setLowerBound(Value bound) { getOperation()->setOperand(0, bound); }
+    void setUpperBound(Value bound) { getOperation()->setOperand(1, bound); }
+    void setStep(Value step) { getOperation()->setOperand(2, step); }
   }];
 }
 
@@ -116,7 +107,7 @@ def IfOp : Loop_Op<"if",
   let skipDefaultBuilders = 1;
   let builders = [
     OpBuilder<"Builder *builder, OperationState &result, "
-              "Value *cond, bool withElseRegion">
+              "Value cond, bool withElseRegion">
   ];
 
   let extraClassDeclaration = [{

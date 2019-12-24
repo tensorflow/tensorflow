@@ -71,23 +71,46 @@ class SerializationContext;
 
 // Interface for reading values from a key-value store.
 // Used for restoring iterator state.
+// Please see comment on IteratorStateWriter for guidance around using the
+// Read*(key, val) vs Read*(name, key, val).
 class IteratorStateReader {
  public:
   virtual Status ReadScalar(StringPiece key, int64* val) = 0;
   virtual Status ReadScalar(StringPiece key, tstring* val) = 0;
   virtual Status ReadTensor(StringPiece key, Tensor* val) = 0;
+
+  virtual Status ReadScalar(StringPiece name, StringPiece key, int64* val) = 0;
+  virtual Status ReadScalar(StringPiece name, StringPiece key,
+                            tstring* val) = 0;
+  virtual Status ReadTensor(StringPiece name, StringPiece key, Tensor* val) = 0;
+
   virtual bool Contains(StringPiece key) = 0;
+  virtual bool Contains(StringPiece name, StringPiece key) = 0;
 
   virtual ~IteratorStateReader() {}
 };
 
 // Interface for writing values to a key-value store.
 // Used for saving iterator state.
+// The IteratorStateWriter creates a tensor for each unique iterator name it
+// sees. For the Write*(key, val) API's the key is expected to encode this
+// name as keys are required to be produced using the full_name() method.
+// Each tensor has an upper limit of 2 GB and so if the state for an iterator
+// might exceed the 2 GB limit, you can pass an explicit name in via the
+// Write*(name, key, val) APIs allowing you to further split up the state
+// into more manageable chunks.
 class IteratorStateWriter {
  public:
   virtual Status WriteScalar(StringPiece key, const int64 val) = 0;
   virtual Status WriteScalar(StringPiece key, const tstring& val) = 0;
   virtual Status WriteTensor(StringPiece key, const Tensor& val) = 0;
+
+  virtual Status WriteScalar(StringPiece name, StringPiece key,
+                             const int64 val) = 0;
+  virtual Status WriteScalar(StringPiece name, StringPiece key,
+                             const tstring& val) = 0;
+  virtual Status WriteTensor(StringPiece name, StringPiece key,
+                             const Tensor& val) = 0;
 
   virtual ~IteratorStateWriter() {}
 };
@@ -475,6 +498,14 @@ class SerializationContext {
     // latter makes sense to do when performing data agnostic graph rewrites to
     // reduce the memory usage.
     bool serialize_data_tensors = true;
+
+    // Indicates whether datasets that use random seeds should have the values
+    // of random seeds serialized or not. If the values of random seeds are
+    // serialized, the deserialized dataset will have the same seeds as the
+    // original dataset. Otherwise, the deserialized dataset will use different
+    // seeds. This param does not affect datasets that use fixed seeds; fixed
+    // seeds will always be preserved.
+    bool preserve_random_seeds = true;
   };
 
   explicit SerializationContext(Params params) : params_(params) {}
@@ -490,6 +521,8 @@ class SerializationContext {
   bool fail_if_unimplemented() const { return params_.fail_if_unimplemented; }
 
   bool serialize_data_tensors() const { return params_.serialize_data_tensors; }
+
+  bool preserve_random_seeds() const { return params_.preserve_random_seeds; }
 
  private:
   Params params_;

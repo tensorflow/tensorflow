@@ -92,15 +92,15 @@ LogicalResult BuildUnidirectionalSequenceRnnOp(FuncOp composite_func_op,
   if (call_op.getNumResults() != 1) return failure();
 
   // Inputs is indexed at 0.
-  Value* input = call_op.getOperand(0);
+  Value input = call_op.getOperand(0);
   // Input_weight is indexed at 1.
-  Value* weight = call_op.getOperand(1);
+  Value weight = call_op.getOperand(1);
   // Recurrent_weight is indexed at 2.
-  Value* recurrent_weight = call_op.getOperand(2);
+  Value recurrent_weight = call_op.getOperand(2);
   // Bias is indexed at 3.
-  Value* bias = call_op.getOperand(3);
+  Value bias = call_op.getOperand(3);
   // Hidden_state is indexed at 4.
-  Value* hidden_state = call_op.getOperand(4);
+  Value hidden_state = call_op.getOperand(4);
 
   // Build Output.
   auto output_type = call_op.getResult(0)->getType();
@@ -127,7 +127,7 @@ LogicalResult BuildUnidirectionalSequenceLSTMOp(FuncOp composite_func_op,
   auto input_index_attr = composite_func_op.getAttr(kTfLiteFunctionInputIndex)
                               .cast<ArrayAttr>()
                               .getValue();
-  llvm::DenseMap<int, Value*> fused_ops_index_to_call_op_args;
+  llvm::DenseMap<int, Value> fused_ops_index_to_call_op_args;
 
   for (int i = 0; i < call_op.getNumOperands(); ++i) {
     int input_index = input_index_attr[i].cast<IntegerAttr>().getInt();
@@ -139,7 +139,7 @@ LogicalResult BuildUnidirectionalSequenceLSTMOp(FuncOp composite_func_op,
 
   // We encounter some optional arguments not filled, so we need to create an
   // empty Value.
-  Value* none_value;
+  Value none_value;
   if (call_op.getNumOperands() <
       kUnidirectionalSequenceLSTMOpTotalIArgumentNum) {
     builder->setInsertionPoint(call_op.getOperation());
@@ -148,7 +148,7 @@ LogicalResult BuildUnidirectionalSequenceLSTMOp(FuncOp composite_func_op,
   }
 
   // Prepare all operands for the UnidirectionalSequenceLSTMOp.
-  SmallVector<Value*, kUnidirectionalSequenceLSTMOpTotalIArgumentNum> operands;
+  SmallVector<Value, kUnidirectionalSequenceLSTMOpTotalIArgumentNum> operands;
   for (int i = 0; i < kUnidirectionalSequenceLSTMOpTotalIArgumentNum; ++i) {
     auto operand_it = fused_ops_index_to_call_op_args.find(i);
     if (operand_it == fused_ops_index_to_call_op_args.end()) {
@@ -169,7 +169,7 @@ LogicalResult BuildUnidirectionalSequenceLSTMOp(FuncOp composite_func_op,
   if (call_op.getNumResults() > 1) {
     for (int i = 0; i < call_op.getNumResults() - 1; ++i) {
       // This one should not be used.
-      Value* unused_output = call_op.getResult(i);
+      Value unused_output = call_op.getResult(i);
       if (!unused_output->use_empty()) return failure();
     }
   }
@@ -206,7 +206,7 @@ LogicalResult ConvertTfLiteFusedOpIfAvailable(StringRef func_name,
     LogicalResult build_fused_op_result = BuildUnidirectionalSequenceLSTMOp(
         composite_func_op, call_op, builder, &fused_op);
     if (failed(build_fused_op_result)) return build_fused_op_result;
-    Value* call_output = call_op.getResult(call_op.getNumResults() - 1);
+    Value call_output = call_op.getResult(call_op.getNumResults() - 1);
     if (call_output->getType() != fused_op->getResult(0)->getType()) {
       return failure();
     }

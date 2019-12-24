@@ -49,7 +49,7 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
   using OpConversionPattern::OpConversionPattern;
 
   PatternMatchResult matchAndRewrite(
-      ReduceOp reduce_op, ArrayRef<Value*> args,
+      ReduceOp reduce_op, ArrayRef<Value> args,
       ConversionPatternRewriter& rewriter) const final {
     auto loc = reduce_op.getLoc();
     // Only support 1d reductions for now.
@@ -105,7 +105,7 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
             loc, mapping.lookup(std::get<0>(pair)));
         rewriter.create<mlir::StoreOp>(loc, init_value,
                                        mapping.lookup(std::get<1>(pair)),
-                                       ArrayRef<Value*>{index});
+                                       ArrayRef<Value>{index});
       }
 
       // Insert a loop into the body to compute the reduction. The loop ranges
@@ -133,8 +133,8 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
                                      MemRefType::getDynamicStrideOrOffset(),
                                      rewriter.getContext()));
       auto accumulator = rewriter.create<mlir::linalg::SliceOp>(
-          loc, resType, output, ArrayRef<Value*>{launch_op.getThreadIds().x});
-      llvm::SmallVector<Value*, 4> indexings;
+          loc, resType, output, ArrayRef<Value>{launch_op.getThreadIds().x});
+      llvm::SmallVector<Value, 4> indexings;
       auto input_buffer = *reduce_op.operands().begin();
       auto input_type = input_buffer->getType().cast<MemRefType>();
       for (int64_t dim = 0; dim < input_type.getRank(); ++dim) {

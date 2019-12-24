@@ -1,19 +1,10 @@
 //===- Intrinsics.cpp - MLIR Operations for Declarative Builders ----------===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 
 #include "mlir/EDSC/Intrinsics.h"
 #include "mlir/EDSC/Builders.h"
@@ -29,7 +20,7 @@ OperationHandle mlir::edsc::intrinsics::br(BlockHandle bh,
     (void)o;
     assert(o && "Expected already captured ValueHandle");
   }
-  SmallVector<Value *, 4> ops(operands.begin(), operands.end());
+  SmallVector<Value, 4> ops(operands.begin(), operands.end());
   return OperationHandle::create<BranchOp>(bh.getBlock(), ops);
 }
 static void enforceEmptyCapturesMatchOperands(ArrayRef<ValueHandle *> captures,
@@ -52,7 +43,7 @@ OperationHandle mlir::edsc::intrinsics::br(BlockHandle *bh,
   assert(!*bh && "Unexpected already captured BlockHandle");
   enforceEmptyCapturesMatchOperands(captures, operands);
   BlockBuilder(bh, captures)(/* no body */);
-  SmallVector<Value *, 4> ops(operands.begin(), operands.end());
+  SmallVector<Value, 4> ops(operands.begin(), operands.end());
   return OperationHandle::create<BranchOp>(bh->getBlock(), ops);
 }
 
@@ -61,8 +52,8 @@ mlir::edsc::intrinsics::cond_br(ValueHandle cond, BlockHandle trueBranch,
                                 ArrayRef<ValueHandle> trueOperands,
                                 BlockHandle falseBranch,
                                 ArrayRef<ValueHandle> falseOperands) {
-  SmallVector<Value *, 4> trueOps(trueOperands.begin(), trueOperands.end());
-  SmallVector<Value *, 4> falseOps(falseOperands.begin(), falseOperands.end());
+  SmallVector<Value, 4> trueOps(trueOperands.begin(), trueOperands.end());
+  SmallVector<Value, 4> falseOps(falseOperands.begin(), falseOperands.end());
   return OperationHandle::create<CondBranchOp>(
       cond, trueBranch.getBlock(), trueOps, falseBranch.getBlock(), falseOps);
 }
@@ -78,8 +69,8 @@ OperationHandle mlir::edsc::intrinsics::cond_br(
   enforceEmptyCapturesMatchOperands(falseCaptures, falseOperands);
   BlockBuilder(trueBranch, trueCaptures)(/* no body */);
   BlockBuilder(falseBranch, falseCaptures)(/* no body */);
-  SmallVector<Value *, 4> trueOps(trueOperands.begin(), trueOperands.end());
-  SmallVector<Value *, 4> falseOps(falseOperands.begin(), falseOperands.end());
+  SmallVector<Value, 4> trueOps(trueOperands.begin(), trueOperands.end());
+  SmallVector<Value, 4> falseOps(falseOperands.begin(), falseOperands.end());
   return OperationHandle::create<CondBranchOp>(
       cond, trueBranch->getBlock(), trueOps, falseBranch->getBlock(), falseOps);
 }

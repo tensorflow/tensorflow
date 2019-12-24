@@ -1,19 +1,10 @@
 //===- LoopUnrollAndJam.cpp - Code to perform loop unroll and jam ---------===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 //
 // This file implements loop unroll and jam. Unroll and jam is a transformation
 // that improves locality, in particular, register reuse, while also improving
@@ -191,7 +182,7 @@ LogicalResult mlir::loopUnrollJamByFactor(AffineForOp forOp,
     // Adjust the lower bound of the cleanup loop; its upper bound is the same
     // as the original loop's upper bound.
     AffineMap cleanupMap;
-    SmallVector<Value *, 4> cleanupOperands;
+    SmallVector<Value, 4> cleanupOperands;
     getCleanupLoopLowerBound(forOp, unrollJamFactor, &cleanupMap,
                              &cleanupOperands, builder);
     cleanupAffineForOp.setLowerBound(cleanupOperands, cleanupMap);
@@ -208,7 +199,7 @@ LogicalResult mlir::loopUnrollJamByFactor(AffineForOp forOp,
   int64_t step = forOp.getStep();
   forOp.setStep(step * unrollJamFactor);
 
-  auto *forOpIV = forOp.getInductionVar();
+  auto forOpIV = forOp.getInductionVar();
   // Unroll and jam (appends unrollJamFactor - 1 additional copies).
   for (unsigned i = unrollJamFactor - 1; i >= 1; --i) {
     // Operand map persists across all sub-blocks.

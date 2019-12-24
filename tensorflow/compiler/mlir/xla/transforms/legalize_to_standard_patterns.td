@@ -74,9 +74,9 @@ def : Pat<(HLO_MulOp HLO_IntTensor:$l, HLO_IntTensor:$r,
           [(IsSameSizeConstraint $l, $r)]>;
 def : Pat<(HLO_DivOp HLO_IntTensor:$l, HLO_IntTensor:$r,
                      IsNullAttr:$broadcast_dimensions),
-          (DivISOp $l, $r),
+          (SignedDivIOp $l, $r),
           [(IsSameSizeConstraint $l, $r)]>;
 def : Pat<(HLO_RemOp HLO_IntTensor:$l, HLO_IntTensor:$r,
                      IsNullAttr:$broadcast_dimensions),
-          (RemISOp $l, $r),
+          (SignedRemIOp $l, $r),
           [(IsSameSizeConstraint $l, $r)]>;

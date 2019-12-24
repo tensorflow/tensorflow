@@ -44,7 +44,11 @@ from tensorflow.python.ops.losses import losses_impl
 VAR_MAP_V1 = {
     "GradientDescent": ("dense/kernel", "dense/bias"),
     "Adagrad": ("dense/kernel/Adagrad", "dense/kernel", "dense/bias/Adagrad",
-                "dense/bias")
+                "dense/bias"),
+    "Ftrl": ("dense/kernel/Ftrl", "dense/kernel", "dense/bias/Ftrl",
+             "dense/bias", "dense/kernel/Ftrl_1", "dense/bias/Ftrl_1"),
+    "RMSProp": ("dense/kernel", "dense/bias/RMSProp", "dense/bias/RMSProp_1",
+                "dense/bias", "dense/kernel/RMSProp_1", "dense/kernel/RMSProp")
 }
 
 VAR_MAP_V2 = {

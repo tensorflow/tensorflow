@@ -101,8 +101,7 @@ class WideDeepModel(keras_training.Model):
       dnn_output = self.dnn_model(dnn_inputs, training=training)
     else:
       dnn_output = self.dnn_model(dnn_inputs)
-    output = nest.map_structure(lambda x, y: 0.5 * (x + y), linear_output,
-                                dnn_output)
+    output = nest.map_structure(lambda x, y: (x + y), linear_output, dnn_output)
     if self.activation:
       return nest.map_structure(self.activation, output)
     return output

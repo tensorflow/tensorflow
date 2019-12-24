@@ -1,19 +1,10 @@
 //===- LinalgOps.td - Linalg dialect ops -------------------*- tablegen -*-===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 //
 // This is the operation definition file for linear algebra operations.
 //
@@ -56,8 +47,8 @@ def Linalg_RangeOp :
     ````
   }];
   let builders = [OpBuilder<
-    "Builder *builder, OperationState &result, Value *min, Value *max, "
-    "Value *step",
+    "Builder *builder, OperationState &result, Value min, Value max, "
+    "Value step",
     [{
       auto rangeType = RangeType::get(builder->getContext());
       build(builder, result, rangeType, min, max, step);
@@ -112,7 +103,7 @@ def Linalg_SliceOp : Linalg_Op<"slice", [NoSideEffect]>,
   }];
 
   let builders = [OpBuilder<
-    "Builder *b, OperationState &result, Value *base, "
+    "Builder *b, OperationState &result, Value base, "
     "ValueRange indexings">];
 
   let extraClassDeclaration = [{
@@ -124,12 +115,12 @@ def Linalg_SliceOp : Linalg_Op<"slice", [NoSideEffect]>,
     MemRefType getBaseViewType() { return view()->getType().cast<MemRefType>(); }
 
     // Get the underlying indexing at a given rank.
-    Value *indexing(unsigned rank) { return *(indexings().begin() + rank); }
+    Value indexing(unsigned rank) { return *(indexings().begin() + rank); }
 
     // Get the subset of indexings that are of RangeType.
-    SmallVector<Value *, 8> getRanges() {
-      SmallVector<Value *, 8> res;
-      for (auto *operand : indexings())
+    SmallVector<Value, 8> getRanges() {
+      SmallVector<Value, 8> res;
+      for (auto operand : indexings())
         if (!operand->getType().isa<IndexType>())
           res.push_back(operand);
       return res;
@@ -154,7 +145,7 @@ def Linalg_TransposeOp : Linalg_Op<"transpose", [NoSideEffect]>,
   }];
 
   let builders = [OpBuilder<
-    "Builder *b, OperationState &result, Value *view, "
+    "Builder *b, OperationState &result, Value view, "
     "AffineMapAttr permutation, ArrayRef<NamedAttribute> attrs = {}">];
 
   let verifier = [{

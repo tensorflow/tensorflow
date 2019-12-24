@@ -88,7 +88,7 @@ class DebugIdentityV2OpTest(dumping_callback_test_lib.DumpingCallbackTestBase):
       metadata_iter = reader.metadata_iterator()
       # Check that the .metadata DebugEvents data file has been created, even
       # before FlushExecutionFiles() is called.
-      debug_event = next(metadata_iter)
+      debug_event = next(metadata_iter).debug_event
       self.assertGreater(debug_event.wall_time, 0)
       self.assertTrue(debug_event.debug_metadata.tensorflow_version)
       self.assertTrue(
@@ -107,7 +107,7 @@ class DebugIdentityV2OpTest(dumping_callback_test_lib.DumpingCallbackTestBase):
       # The circular buffer has a size of 4. So only the data from the
       # last two iterations should have been written to self.dump_root.
       for _ in range(2):
-        debug_event = next(graph_trace_iter)
+        debug_event = next(graph_trace_iter).debug_event
         self.assertGreater(debug_event.wall_time, 0)
         trace = debug_event.graph_execution_trace
         self.assertEqual(trace.tfdbg_context_id, "deadbeaf")
@@ -118,7 +118,7 @@ class DebugIdentityV2OpTest(dumping_callback_test_lib.DumpingCallbackTestBase):
         tensor_value = tensor_util.MakeNdarray(trace.tensor_proto)
         self.assertAllClose(tensor_value, [9.0, 16.0])
 
-        debug_event = next(graph_trace_iter)
+        debug_event = next(graph_trace_iter).debug_event
         self.assertGreater(debug_event.wall_time, 0)
         trace = debug_event.graph_execution_trace
         self.assertEqual(trace.tfdbg_context_id, "beafdead")
@@ -165,7 +165,7 @@ class DebugIdentityV2OpTest(dumping_callback_test_lib.DumpingCallbackTestBase):
         x_values = []
         timestamp = 0
         while True:
-          debug_event = next(graph_trace_iter)
+          debug_event = next(graph_trace_iter).debug_event
           self.assertGreater(debug_event.wall_time, timestamp)
           timestamp = debug_event.wall_time
           trace = debug_event.graph_execution_trace
@@ -210,7 +210,7 @@ class DebugIdentityV2OpTest(dumping_callback_test_lib.DumpingCallbackTestBase):
       with debug_events_reader.DebugEventsReader(debug_root) as reader:
         graph_trace_iter = reader.graph_execution_traces_iterator()
 
-        debug_event = next(graph_trace_iter)
+        debug_event = next(graph_trace_iter).debug_event
         trace = debug_event.graph_execution_trace
         self.assertEqual(trace.tfdbg_context_id, "deadbeaf")
         self.assertEqual(trace.op_name, "")

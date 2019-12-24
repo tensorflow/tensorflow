@@ -171,6 +171,8 @@ def TF_FpOrI32OrI64Tensor : TensorOf<[AnyFloat, TF_I32Or64]>;
 // Any integer or floating-point tensor types
 def TF_IntOrFpTensor : TensorOf<[TF_Int, AnyFloat]>;
 
+def TF_SintOrFpTensor : TensorOf<[TF_SInt, AnyFloat]>;
+
 def TF_FpOrComplexTensor : TensorOf<[AnyFloat, TF_AnyComplex]>;
 
 def TF_AnyNumber : AnyTypeOf<[TF_Int, AnyFloat, TF_AnyQuantized, TF_AnyComplex],
@@ -297,7 +299,7 @@ def TF_IntTypeAttr : TypeAttrBase<"IntegerType", "integer type"> {
 // behavior. The result type has the same element type as both operands.
 class WithBroadcastableBinOpBuilder {
   list<OpBuilder> builders = [OpBuilder<
-"Builder *builder, OperationState &result, Value* x, Value* y",
+"Builder *builder, OperationState &result, Value  x, Value  y",
 [{
   auto resultType =
       OpTrait::util::getBroadcastedType(x->getType(), y->getType());
@@ -312,7 +314,7 @@ class WithBroadcastableBinOpBuilder {
 // behavior. The result type has bool element type.
 class WithBroadcastableCmpOpBuilder {
   list<OpBuilder> builders = [OpBuilder<
-"Builder *builder, OperationState &result, Value* x, Value* y",
+"Builder *builder, OperationState &result, Value  x, Value  y",
 [{
   Type resultType;
   if (x->getType().isa<UnrankedTensorType>() ||

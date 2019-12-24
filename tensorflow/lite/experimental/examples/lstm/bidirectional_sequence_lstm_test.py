@@ -237,8 +237,8 @@ class BidirectionalSequenceLstmTest(test_util.TensorFlowTestCase):
     """
     converter = tf.lite.TFLiteConverter.from_session(sess, [input_tensor],
                                                      [output_tensor])
-    tflite = converter.convert()
     converter.experimental_new_converter = use_mlir_converter
+    tflite = converter.convert()
 
     interpreter = tf.lite.Interpreter(model_content=tflite)
 

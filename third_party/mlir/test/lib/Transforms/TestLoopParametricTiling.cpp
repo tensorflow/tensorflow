@@ -1,19 +1,10 @@
 //===- TestLoopParametricTiling.cpp --- Parametric loop tiling pass -------===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 //
 // This file implements a pass to parametrically tile nests of standard loops.
 //
@@ -34,18 +25,10 @@ namespace {
 class SimpleParametricLoopTilingPass
     : public FunctionPass<SimpleParametricLoopTilingPass> {
 public:
-  struct Options : public PassOptions<Options> {
-    List<int> clOuterLoopSizes{
-        *this, "test-outer-loop-sizes", llvm::cl::MiscFlags::CommaSeparated,
-        llvm::cl::desc(
-            "fixed number of iterations that the outer loops should have")};
-  };
-
-  explicit SimpleParametricLoopTilingPass(ArrayRef<int64_t> outerLoopSizes)
-      : sizes(outerLoopSizes.begin(), outerLoopSizes.end()) {}
-  explicit SimpleParametricLoopTilingPass(const Options &options) {
-    sizes.assign(options.clOuterLoopSizes.begin(),
-                 options.clOuterLoopSizes.end());
+  SimpleParametricLoopTilingPass() = default;
+  SimpleParametricLoopTilingPass(const SimpleParametricLoopTilingPass &) {}
+  explicit SimpleParametricLoopTilingPass(ArrayRef<int64_t> outerLoopSizes) {
+    sizes = outerLoopSizes;
   }
 
   void runOnFunction() override {
@@ -58,7 +41,10 @@ public:
     });
   }
 
-  SmallVector<int64_t, 4> sizes;
+  ListOption<int64_t> sizes{
+      *this, "test-outer-loop-sizes", llvm::cl::MiscFlags::CommaSeparated,
+      llvm::cl::desc(
+          "fixed number of iterations that the outer loops should have")};
 };
 } // end namespace
 
@@ -67,8 +53,7 @@ mlir::createSimpleParametricTilingPass(ArrayRef<int64_t> outerLoopSizes) {
   return std::make_unique<SimpleParametricLoopTilingPass>(outerLoopSizes);
 }
 
-static PassRegistration<SimpleParametricLoopTilingPass,
-                        SimpleParametricLoopTilingPass::Options>
+static PassRegistration<SimpleParametricLoopTilingPass>
     reg("test-extract-fixed-outer-loops",
         "test application of parametric tiling to the outer loops so that the "
         "ranges of outer loops become static");

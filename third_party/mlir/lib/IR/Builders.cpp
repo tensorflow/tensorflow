@@ -1,19 +1,10 @@
 //===- Builders.cpp - Helpers for constructing MLIR Classes ---------------===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/AffineExpr.h"
@@ -343,7 +334,7 @@ Operation *OpBuilder::createOperation(const OperationState &state) {
 /// 'results'. Returns success if the operation was folded, failure otherwise.
 /// Note: This function does not erase the operation on a successful fold.
 LogicalResult OpBuilder::tryFold(Operation *op,
-                                 SmallVectorImpl<Value *> &results) {
+                                 SmallVectorImpl<Value> &results) {
   results.reserve(op->getNumResults());
   auto cleanupFailure = [&] {
     results.assign(op->result_begin(), op->result_end());
@@ -374,7 +365,7 @@ LogicalResult OpBuilder::tryFold(Operation *op,
   Dialect *dialect = op->getDialect();
   for (auto &it : llvm::enumerate(foldResults)) {
     // Normal values get pushed back directly.
-    if (auto *value = it.value().dyn_cast<Value *>()) {
+    if (auto value = it.value().dyn_cast<Value>()) {
       results.push_back(value);
       continue;
     }

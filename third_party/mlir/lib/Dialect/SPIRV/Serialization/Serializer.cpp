@@ -1,19 +1,10 @@
 //===- Serializer.cpp - MLIR SPIR-V Serialization -------------------------===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 //
 // This file defines the MLIR SPIR-V module to SPIR-V binary serialization.
 //
@@ -323,7 +314,7 @@ private:
                                            uint32_t opcode,
                                            ArrayRef<uint32_t> operands);
 
-  uint32_t getValueID(Value *val) const { return valueIDMap.lookup(val); }
+  uint32_t getValueID(Value val) const { return valueIDMap.lookup(val); }
 
   LogicalResult processAddressOfOp(spirv::AddressOfOp addressOfOp);
 
@@ -414,7 +405,7 @@ private:
   DenseMap<Type, uint32_t> undefValIDMap;
 
   /// Map from results of normal operations to their <id>s.
-  DenseMap<Value *, uint32_t> valueIDMap;
+  DenseMap<Value, uint32_t> valueIDMap;
 
   /// Map from extended instruction set name to <id>s.
   llvm::StringMap<uint32_t> extendedInstSetIDMap;
@@ -457,7 +448,7 @@ private:
   /// placed inside `functions`) here. And then after emitting all blocks, we
   /// replace the dummy <id> 0 with the real result <id> by overwriting
   /// `functions[offset]`.
-  DenseMap<Value *, SmallVector<size_t, 1>> deferredPhiValues;
+  DenseMap<Value, SmallVector<size_t, 1>> deferredPhiValues;
 };
 } // namespace
 
@@ -513,12 +504,12 @@ void Serializer::collect(SmallVectorImpl<uint32_t> &binary) {
 void Serializer::printValueIDMap(raw_ostream &os) {
   os << "\n= Value <id> Map =\n\n";
   for (auto valueIDPair : valueIDMap) {
-    Value *val = valueIDPair.first;
+    Value val = valueIDPair.first;
     os << "  " << val << " "
        << "id = " << valueIDPair.second << ' ';
     if (auto *op = val->getDefiningOp()) {
       os << "from op '" << op->getName() << "'";
-    } else if (auto *arg = dyn_cast<BlockArgument>(val)) {
+    } else if (auto arg = val.dyn_cast<BlockArgument>()) {
       Block *block = arg->getOwner();
       os << "from argument of block " << block << ' ';
       os << " in op '" << block->getParentOp()->getName() << "'";
@@ -752,7 +743,7 @@ LogicalResult Serializer::processFuncOp(FuncOp op) {
 
   // There might be OpPhi instructions who have value references needing to fix.
   for (auto deferredValue : deferredPhiValues) {
-    Value *value = deferredValue.first;
+    Value value = deferredValue.first;
     uint32_t id = getValueID(value);
     LLVM_DEBUG(llvm::dbgs() << "[phi] fix reference of value " << value
                             << " to id = " << id << '\n');
@@ -1402,7 +1393,7 @@ LogicalResult Serializer::emitPhiForBlockArguments(Block *block) {
 
   // Then create OpPhi instruction for each of the block argument.
   for (auto argIndex : llvm::seq<unsigned>(0, block->getNumArguments())) {
-    BlockArgument *arg = block->getArgument(argIndex);
+    BlockArgument arg = block->getArgument(argIndex);
 
     // Get the type <id> and result <id> for this OpPhi instruction.
     uint32_t phiTypeID = 0;
@@ -1418,7 +1409,7 @@ LogicalResult Serializer::emitPhiForBlockArguments(Block *block) {
     phiArgs.push_back(phiID);
 
     for (auto predIndex : llvm::seq<unsigned>(0, predecessors.size())) {
-      Value *value = *(predecessors[predIndex].second + argIndex);
+      Value value = *(predecessors[predIndex].second + argIndex);
       uint32_t predBlockId = getOrCreateBlockID(predecessors[predIndex].first);
       LLVM_DEBUG(llvm::dbgs() << "[phi] use predecessor (id = " << predBlockId
                               << ") value " << value << ' ');
@@ -1784,7 +1775,7 @@ Serializer::processOp<spirv::FunctionCallOp>(spirv::FunctionCallOp op) {
   auto funcCallID = getNextID();
   SmallVector<uint32_t, 8> operands{resTypeID, funcCallID, funcID};
 
-  for (auto *value : op.arguments()) {
+  for (auto value : op.arguments()) {
     auto valueID = getValueID(value);
     assert(valueID && "cannot find a value for spv.FunctionCall");
     operands.push_back(valueID);

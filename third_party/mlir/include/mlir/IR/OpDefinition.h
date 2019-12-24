@@ -1,19 +1,10 @@
 //===- OpDefinition.h - Classes for defining concrete Op types --*- C++ -*-===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 //
 // This file implements helper classes for implementing the "Op" types.  This
 // includes the Op type, which is the base class for Op class definitions,
@@ -257,8 +248,8 @@ inline bool operator!=(OpState lhs, OpState rhs) {
 }
 
 /// This class represents a single result from folding an operation.
-class OpFoldResult : public PointerUnion<Attribute, Value *> {
-  using PointerUnion<Attribute, Value *>::PointerUnion;
+class OpFoldResult : public PointerUnion<Attribute, Value> {
+  using PointerUnion<Attribute, Value>::PointerUnion;
 };
 
 /// This template defines the foldHook as used by AbstractOperation.
@@ -311,8 +302,8 @@ class FoldingHook<ConcreteType, isSingleResult,
                   typename std::enable_if<isSingleResult>::type> {
 public:
   /// If the operation returns a single value, then the Op can be implicitly
-  /// converted to an Value*.  This yields the value of the only result.
-  operator Value *() {
+  /// converted to an Value.  This yields the value of the only result.
+  operator Value() {
     return static_cast<ConcreteType *>(this)->getOperation()->getResult(0);
   }
 
@@ -326,7 +317,7 @@ public:
 
     // Check if the operation was folded in place. In this case, the operation
     // returns itself.
-    if (result.template dyn_cast<Value *>() != op->getResult(0))
+    if (result.template dyn_cast<Value>() != op->getResult(0))
       results.push_back(result);
     return success();
   }
@@ -428,10 +419,10 @@ struct MultiOperandTraitBase : public TraitBase<ConcreteType, TraitType> {
   unsigned getNumOperands() { return this->getOperation()->getNumOperands(); }
 
   /// Return the operand at index 'i'.
-  Value *getOperand(unsigned i) { return this->getOperation()->getOperand(i); }
+  Value getOperand(unsigned i) { return this->getOperation()->getOperand(i); }
 
   /// Set the operand at index 'i' to 'value'.
-  void setOperand(unsigned i, Value *value) {
+  void setOperand(unsigned i, Value value) {
     this->getOperation()->setOperand(i, value);
   }
 
@@ -475,9 +466,9 @@ private:
 template <typename ConcreteType>
 class OneOperand : public TraitBase<ConcreteType, OneOperand> {
 public:
-  Value *getOperand() { return this->getOperation()->getOperand(0); }
+  Value getOperand() { return this->getOperation()->getOperand(0); }
 
-  void setOperand(Value *value) { this->getOperation()->setOperand(0, value); }
+  void setOperand(Value value) { this->getOperation()->setOperand(0, value); }
 
   static LogicalResult verifyTrait(Operation *op) {
     return impl::verifyOneOperand(op);
@@ -550,7 +541,7 @@ struct MultiResultTraitBase : public TraitBase<ConcreteType, TraitType> {
   unsigned getNumResults() { return this->getOperation()->getNumResults(); }
 
   /// Return the result at index 'i'.
-  Value *getResult(unsigned i) { return this->getOperation()->getResult(i); }
+  Value getResult(unsigned i) { return this->getOperation()->getResult(i); }
 
   /// Replace all uses of results of this operation with the provided 'values'.
   /// 'values' may correspond to an existing operation, or a range of 'Value'.
@@ -586,13 +577,13 @@ struct MultiResultTraitBase : public TraitBase<ConcreteType, TraitType> {
 template <typename ConcreteType>
 class OneResult : public TraitBase<ConcreteType, OneResult> {
 public:
-  Value *getResult() { return this->getOperation()->getResult(0); }
+  Value getResult() { return this->getOperation()->getResult(0); }
   Type getType() { return getResult()->getType(); }
 
   /// Replace all uses of 'this' value with the new value, updating anything in
   /// the IR that uses 'this' to use the other value instead.  When this returns
   /// there are zero uses of 'this'.
-  void replaceAllUsesWith(Value *newValue) {
+  void replaceAllUsesWith(Value newValue) {
     getResult()->replaceAllUsesWith(newValue);
   }
 
@@ -820,10 +811,10 @@ public:
     return this->getOperation()->setSuccessor(block, index);
   }
 
-  void addSuccessorOperand(unsigned index, Value *value) {
+  void addSuccessorOperand(unsigned index, Value value) {
     return this->getOperation()->addSuccessorOperand(index, value);
   }
-  void addSuccessorOperands(unsigned index, ArrayRef<Value *> values) {
+  void addSuccessorOperands(unsigned index, ArrayRef<Value> values) {
     return this->getOperation()->addSuccessorOperand(index, values);
   }
 };
@@ -1209,8 +1200,8 @@ namespace impl {
 ParseResult parseOneResultOneOperandTypeOp(OpAsmParser &parser,
                                            OperationState &result);
 
-void buildBinaryOp(Builder *builder, OperationState &result, Value *lhs,
-                   Value *rhs);
+void buildBinaryOp(Builder *builder, OperationState &result, Value lhs,
+                   Value rhs);
 ParseResult parseOneResultSameOperandTypeOp(OpAsmParser &parser,
                                             OperationState &result);
 
@@ -1223,11 +1214,11 @@ void printOneResultOp(Operation *op, OpAsmPrinter &p);
 // These functions are out-of-line implementations of the methods in CastOp,
 // which avoids them being template instantiated/duplicated.
 namespace impl {
-void buildCastOp(Builder *builder, OperationState &result, Value *source,
+void buildCastOp(Builder *builder, OperationState &result, Value source,
                  Type destType);
 ParseResult parseCastOp(OpAsmParser &parser, OperationState &result);
 void printCastOp(Operation *op, OpAsmPrinter &p);
-Value *foldCastOp(Operation *op);
+Value foldCastOp(Operation *op);
 } // namespace impl
 } // end namespace mlir
 

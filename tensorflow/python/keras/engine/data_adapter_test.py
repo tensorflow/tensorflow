@@ -1035,6 +1035,90 @@ class DataHandlerTest(keras_parameterized.TestCase):
           })
 
 
+class TestValidationSplit(keras_parameterized.TestCase):
+
+  @parameterized.named_parameters(('numpy_arrays', True), ('tensors', False))
+  def test_validation_split_shuffled(self, use_numpy):
+    if use_numpy:
+      x = np.array([0, 1, 2, 3, 4])
+      y = np.array([0, 2, 4, 6, 8])
+      sw = np.array([0, 4, 8, 12, 16])
+    else:
+      x = ops.convert_to_tensor([0, 1, 2, 3, 4])
+      y = ops.convert_to_tensor([0, 2, 4, 6, 8])
+      sw = ops.convert_to_tensor([0, 4, 8, 12, 16])
+
+    (train_x, train_y, train_sw), (val_x, val_y, val_sw) = (
+        data_adapter.train_validation_split((x, y, sw), validation_split=0.2))
+
+    self.assertEqual(int(train_x.shape[0]), 4)
+    self.assertEqual(int(train_y.shape[0]), 4)
+    self.assertEqual(int(train_sw.shape[0]), 4)
+    for i in range(4):
+      # Check that all arrays were shuffled in identical order.
+      self.assertEqual(2 * train_x[i].numpy(), train_y[i].numpy())
+      self.assertEqual(2 * train_y[i].numpy(), train_sw[i].numpy())
+
+    self.assertEqual(int(val_x.shape[0]), 1)
+    self.assertEqual(int(val_y.shape[0]), 1)
+    self.assertEqual(int(val_sw.shape[0]), 1)
+    for i in range(1):
+      # Check that all arrays were shuffled in identical order.
+      self.assertEqual(2 * train_x[i].numpy(), train_y[i].numpy())
+      self.assertEqual(2 * train_y[i].numpy(), train_sw[i].numpy())
+
+    # Check that arrays contain expected values.
+    self.assertEqual(
+        sorted(array_ops.concat([train_x, val_x], axis=0).numpy().tolist()),
+        sorted(ops.convert_to_tensor(x).numpy().tolist()))
+    self.assertEqual(
+        sorted(array_ops.concat([train_y, val_y], axis=0).numpy().tolist()),
+        sorted(ops.convert_to_tensor(y).numpy().tolist()))
+    self.assertEqual(
+        sorted(array_ops.concat([train_sw, val_sw], axis=0).numpy().tolist()),
+        sorted(ops.convert_to_tensor(sw).numpy().tolist()))
+
+  @parameterized.named_parameters(('numpy_arrays', True), ('tensors', False))
+  def test_validation_split_unshuffled(self, use_numpy):
+    if use_numpy:
+      x = np.array([0, 1, 2, 3, 4])
+      y = np.array([0, 2, 4, 6, 8])
+      sw = np.array([0, 4, 8, 12, 16])
+    else:
+      x = ops.convert_to_tensor([0, 1, 2, 3, 4])
+      y = ops.convert_to_tensor([0, 2, 4, 6, 8])
+      sw = ops.convert_to_tensor([0, 4, 8, 12, 16])
+
+    (train_x, train_y, train_sw), (val_x, val_y, val_sw) = (
+        data_adapter.train_validation_split((x, y, sw),
+                                            validation_split=0.2,
+                                            shuffle=False))
+
+    self.assertEqual(train_x.numpy().tolist(), [0, 1, 2, 3])
+    self.assertEqual(train_y.numpy().tolist(), [0, 2, 4, 6])
+    self.assertEqual(train_sw.numpy().tolist(), [0, 4, 8, 12])
+
+    self.assertEqual(val_x.numpy().tolist(), [4])
+    self.assertEqual(val_y.numpy().tolist(), [8])
+    self.assertEqual(val_sw.numpy().tolist(), [16])
+
+  def test_validation_split_user_error(self):
+    with self.assertRaisesRegexp(ValueError, 'is only supported for Tensors'):
+      data_adapter.train_validation_split(
+          lambda: np.ones((10, 1)), validation_split=0.2)
+
+  def test_validation_split_none(self):
+    train_sw, val_sw = data_adapter.train_validation_split(
+        None, validation_split=0.2)
+    self.assertIsNone(train_sw)
+    self.assertIsNone(val_sw)
+
+    (_, train_sw), (_, val_sw) = data_adapter.train_validation_split(
+        (np.ones((10, 1)), None), validation_split=0.2)
+    self.assertIsNone(train_sw)
+    self.assertIsNone(val_sw)
+
+
 if __name__ == '__main__':
   ops.enable_eager_execution()
   test.main()

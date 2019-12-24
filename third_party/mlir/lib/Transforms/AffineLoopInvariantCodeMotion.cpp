@@ -1,19 +1,10 @@
 //===- AffineLoopInvariantCodeMotion.cpp - Code to perform loop fusion-----===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 //
 // This file implements loop invariant code motion.
 //
@@ -58,15 +49,15 @@ struct LoopInvariantCodeMotion : public FunctionPass<LoopInvariantCodeMotion> {
 } // end anonymous namespace
 
 static bool
-checkInvarianceOfNestedIfOps(Operation *op, Value *indVar,
+checkInvarianceOfNestedIfOps(Operation *op, Value indVar,
                              SmallPtrSetImpl<Operation *> &definedOps,
                              SmallPtrSetImpl<Operation *> &opsToHoist);
-static bool isOpLoopInvariant(Operation &op, Value *indVar,
+static bool isOpLoopInvariant(Operation &op, Value indVar,
                               SmallPtrSetImpl<Operation *> &definedOps,
                               SmallPtrSetImpl<Operation *> &opsToHoist);
 
 static bool
-areAllOpsInTheBlockListInvariant(Region &blockList, Value *indVar,
+areAllOpsInTheBlockListInvariant(Region &blockList, Value indVar,
                                  SmallPtrSetImpl<Operation *> &definedOps,
                                  SmallPtrSetImpl<Operation *> &opsToHoist);
 
@@ -79,7 +70,7 @@ static bool isMemRefDereferencingOp(Operation &op) {
 }
 
 // Returns true if the individual op is loop invariant.
-bool isOpLoopInvariant(Operation &op, Value *indVar,
+bool isOpLoopInvariant(Operation &op, Value indVar,
                        SmallPtrSetImpl<Operation *> &definedOps,
                        SmallPtrSetImpl<Operation *> &opsToHoist) {
   LLVM_DEBUG(llvm::dbgs() << "iterating on op: " << op;);
@@ -97,9 +88,9 @@ bool isOpLoopInvariant(Operation &op, Value *indVar,
     return false;
   } else if (!isa<ConstantOp>(op)) {
     if (isMemRefDereferencingOp(op)) {
-      Value *memref = isa<AffineLoadOp>(op)
-                          ? cast<AffineLoadOp>(op).getMemRef()
-                          : cast<AffineStoreOp>(op).getMemRef();
+      Value memref = isa<AffineLoadOp>(op)
+                         ? cast<AffineLoadOp>(op).getMemRef()
+                         : cast<AffineStoreOp>(op).getMemRef();
       for (auto *user : memref->getUsers()) {
         // If this memref has a user that is a DMA, give up because these
         // operations write to this memref.
@@ -163,7 +154,7 @@ bool isOpLoopInvariant(Operation &op, Value *indVar,
 
 // Checks if all ops in a region (i.e. list of blocks) are loop invariant.
 bool areAllOpsInTheBlockListInvariant(
-    Region &blockList, Value *indVar, SmallPtrSetImpl<Operation *> &definedOps,
+    Region &blockList, Value indVar, SmallPtrSetImpl<Operation *> &definedOps,
     SmallPtrSetImpl<Operation *> &opsToHoist) {
 
   for (auto &b : blockList) {
@@ -178,7 +169,7 @@ bool areAllOpsInTheBlockListInvariant(
 }
 
 // Returns true if the affine.if op can be hoisted.
-bool checkInvarianceOfNestedIfOps(Operation *op, Value *indVar,
+bool checkInvarianceOfNestedIfOps(Operation *op, Value indVar,
                                   SmallPtrSetImpl<Operation *> &definedOps,
                                   SmallPtrSetImpl<Operation *> &opsToHoist) {
   assert(isa<AffineIfOp>(op));
@@ -199,7 +190,7 @@ bool checkInvarianceOfNestedIfOps(Operation *op, Value *indVar,
 
 void LoopInvariantCodeMotion::runOnAffineForOp(AffineForOp forOp) {
   auto *loopBody = forOp.getBody();
-  auto *indVar = forOp.getInductionVar();
+  auto indVar = forOp.getInductionVar();
 
   SmallPtrSet<Operation *, 8> definedOps;
   // This is the place where hoisted instructions would reside.

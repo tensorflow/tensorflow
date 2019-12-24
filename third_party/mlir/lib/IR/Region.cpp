@@ -1,19 +1,10 @@
 //===- Region.cpp - MLIR Region Class -------------------------------------===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 
 #include "mlir/IR/Region.h"
 #include "mlir/IR/BlockAndValueMapping.h"
@@ -91,7 +82,7 @@ void Region::cloneInto(Region *dest, Region::iterator destPos,
     // Clone the block arguments. The user might be deleting arguments to the
     // block by specifying them in the mapper. If so, we don't add the
     // argument to the cloned block.
-    for (auto *arg : block.getArguments())
+    for (auto arg : block.getArguments())
       if (!mapper.contains(arg))
         mapper.map(arg, newBlock->addArgument(arg->getType()));
 
@@ -106,7 +97,7 @@ void Region::cloneInto(Region *dest, Region::iterator destPos,
   // operands of each of the operations.
   auto remapOperands = [&](Operation *op) {
     for (auto &operand : op->getOpOperands())
-      if (auto *mappedOp = mapper.lookupOrNull(operand.get()))
+      if (auto mappedOp = mapper.lookupOrNull(operand.get()))
         operand.set(mappedOp);
     for (auto &succOp : op->getBlockOperands())
       if (auto *mappedOp = mapper.lookupOrNull(succOp.get()))
@@ -143,7 +134,7 @@ static bool isIsolatedAbove(Region &region, Region &limit,
   while (!pendingRegions.empty()) {
     for (Block &block : *pendingRegions.pop_back_val()) {
       for (Operation &op : block) {
-        for (Value *operand : op.getOperands()) {
+        for (Value operand : op.getOperands()) {
           // operand should be non-null here if the IR is well-formed. But
           // we don't assert here as this function is called from the verifier
           // and so could be called on invalid IR.

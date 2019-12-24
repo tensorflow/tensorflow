@@ -1,19 +1,10 @@
 //===- Helpers.h - MLIR Declarative Helper Functionality --------*- C++ -*-===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 //
 // Provides helper classes and syntactic sugar for declarative builders.
 //
@@ -75,7 +66,7 @@ protected:
 // TODO(ntv): Support MemRefs with layoutMaps.
 class MemRefView : public View {
 public:
-  explicit MemRefView(Value *v);
+  explicit MemRefView(Value v);
   MemRefView(const MemRefView &) = default;
   MemRefView &operator=(const MemRefView &) = default;
 
@@ -91,7 +82,7 @@ private:
 /// a MemRefView but for vectors. This exists purely for boilerplate avoidance.
 class VectorView : public View {
 public:
-  explicit VectorView(Value *v);
+  explicit VectorView(Value v);
   VectorView(const VectorView &) = default;
   VectorView &operator=(const VectorView &) = default;
 
@@ -120,7 +111,7 @@ private:
 template <typename Load, typename Store> class TemplatedIndexedValue {
 public:
   explicit TemplatedIndexedValue(Type t) : base(t) {}
-  explicit TemplatedIndexedValue(Value *v)
+  explicit TemplatedIndexedValue(Value v)
       : TemplatedIndexedValue(ValueHandle(v)) {}
   explicit TemplatedIndexedValue(ValueHandle v) : base(v) {}
 
@@ -161,8 +152,8 @@ public:
     return Load(getBase(), {indices.begin(), indices.end()});
   }
 
-  /// Emits a `load` when converting to a Value*.
-  Value *operator*(void)const {
+  /// Emits a `load` when converting to a Value.
+  Value operator*(void) const {
     return Load(getBase(), {indices.begin(), indices.end()}).getValue();
   }
 

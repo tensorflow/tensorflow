@@ -70,14 +70,14 @@ class ImportQuantStatsPass : public FunctionPass<ImportQuantStatsPass> {
   void ImportAsStatsOps(OpBuilder b, Operation *op, int index,
                         const QuantParamsEntry &info);
 
-  void InsertStatsOpAtResult(OpBuilder b, Value *res, ElementsAttr layer_stats,
+  void InsertStatsOpAtResult(OpBuilder b, Value res, ElementsAttr layer_stats,
                              ElementsAttr axis_stats, IntegerAttr axis);
 
   // If the index is out of range, this method returns false. Otherwise it
   // returns true if the value is a float tensor.
   bool IsQuantizableResult(Operation *op, int index) {
     if (index < 0 || index >= op->getNumResults()) return false;
-    Value *res = op->getResult(index);
+    Value res = op->getResult(index);
     return res->getType().isa<ShapedType>() &&
            res->getType().cast<ShapedType>().getElementType().isa<FloatType>();
   }
@@ -117,7 +117,7 @@ bool ImportQuantStatsPass::ParseQuantStats(const std::string &stats_str) {
   return false;
 }
 
-void ImportQuantStatsPass::InsertStatsOpAtResult(OpBuilder b, Value *res,
+void ImportQuantStatsPass::InsertStatsOpAtResult(OpBuilder b, Value res,
                                                  ElementsAttr layer_stats,
                                                  ElementsAttr axis_stats,
                                                  IntegerAttr axis) {

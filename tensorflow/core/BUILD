@@ -88,15 +88,29 @@ load(
     "tf_opts_nortti_if_emscripten",
     "transitive_hdrs",
 )
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "if_nccl")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tensorflow_opensource_extra_deps")
 
+# buildifier: disable=same-origin-load
 # load("//tensorflow:tensorflow.bzl", "tf_android_full_lite_protos")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_cc_tests_gpu")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 
+# buildifier: disable=same-origin-load
 # Placeholder: load("//tensorflow:tensorflow.bzl", "tf_portable_proto_lib")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_portable_proto_library")
 
 # For platform specific build config
@@ -310,7 +324,6 @@ cc_library(
         "//tensorflow/core/platform:threadpool_interface",
         "//tensorflow/core/platform:threadpool_options",
         "//tensorflow/core/platform:types",
-        "//tensorflow/core/platform/default/build_config:base",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings",
     ],
@@ -1743,7 +1756,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":android_tensorflow_lib",
-        ":protos_cc",
+        ":protos_all_cc",
         "//tensorflow/core/platform/default/build_config:gtest",
         "//third_party/eigen3",
     ],
@@ -2519,6 +2532,7 @@ tf_cuda_library(
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/util:port",
         "//tensorflow/core/util:stats_calculator_portable",
+        "//tensorflow/compiler/jit:common",
     ] + if_static(
         extra_deps = ["@com_google_protobuf//:protobuf"],
         otherwise = ["@com_google_protobuf//:protobuf_headers"],
@@ -2586,13 +2600,6 @@ alias(
     name = "cuda_device_functions",
     actual = "//tensorflow/core/util:gpu_device_functions",
     visibility = ["//visibility:public"],
-)
-
-# TODO(josh11b): Is this needed, or can we just use ":protos_all_cc"?
-cc_library(
-    name = "protos_cc",
-    visibility = ["//visibility:public"],
-    deps = ["//tensorflow/core/platform/default/build_config:protos_cc"],
 )
 
 # Library containing all of the graph construction code that is

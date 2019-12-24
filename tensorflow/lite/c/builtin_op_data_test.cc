@@ -75,6 +75,7 @@ TEST(IntArray, CanCompileStructs) {
   TfLiteRankParams rank_params;
   TfLiteFakeQuantParams fake_quant_params;
   TfLitePackParams pack_params;
+  TfLiteUnpackParams unpack_params;
   TfLiteOneHotParams one_hot_params;
   TfLiteBidirectionalSequenceRNNParams bidi_sequence_rnn_params;
   TfLiteBidirectionalSequenceLSTMParams bidi_sequence_lstm_params;

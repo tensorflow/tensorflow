@@ -330,8 +330,6 @@ class Network(base_layer.Layer):
       self._layer_call_argspecs[layer] = tf_inspect.getfullargspec(layer.call)
       layer._attribute_sentinel.add_parent(self._attribute_sentinel)
 
-    self._track_layers(layers)
-
     # Create the node linking internal inputs to internal outputs.
     node_module.Node(
         outbound_layer=self,
@@ -397,18 +395,25 @@ class Network(base_layer.Layer):
       return any(layer.dynamic for layer in self.layers)
     return self._dynamic or any(layer.dynamic for layer in self.layers)
 
-  def _track_layers(self, layers):
-    """Add Trackable dependencies on a list of Layers."""
+  @property
+  def _layer_checkpoint_dependencies(self):
+    """Dictionary of layer dependencies to be included in the checkpoint."""
+    # Use getattr becuase this function can be called from __setattr__, at which
+    # point the _is_graph_network attribute has not been created.
+    if (not getattr(self, '_is_graph_network', False) and
+        base_layer_utils.is_subclassed(self)):
+      return {}  # Only add layer dependencies for graph networks
+
     weight_layer_index = 0
-    for layer_index, layer in enumerate(layers):
+
+    dependencies = {}
+    for layer_index, layer in enumerate(self.layers):
       try:
         if layer.weights:
           # Keep a separate index for layers which have weights. This allows
           # users to insert Layers without weights anywhere in the network
           # without breaking checkpoints.
-          self._track_trackable(
-              layer, name='layer_with_weights-%d' % weight_layer_index,
-              overwrite=True)
+          dependencies['layer_with_weights-%d' % weight_layer_index] = layer
           weight_layer_index += 1
       except ValueError:
         # The layer might have weights, but may not be built yet. We just treat
@@ -417,8 +422,31 @@ class Network(base_layer.Layer):
 
       # Even if it doesn't have weights, we should still track everything in
       # case it has/will have Trackable dependencies.
-      self._track_trackable(
-          layer, name='layer-%d' % layer_index, overwrite=True)
+      dependencies['layer-%d' % layer_index] = layer
+    return dependencies
+
+  @property
+  def _checkpoint_dependencies(self):
+    dependencies = [
+        trackable.TrackableReference(name=name, ref=layer)
+        for name, layer in self._layer_checkpoint_dependencies.items()]
+    dependencies.extend(super(Network, self)._checkpoint_dependencies)
+    return dependencies
+
+  def _lookup_dependency(self, name):
+    layer_dependencies = self._layer_checkpoint_dependencies
+    if name in layer_dependencies:
+      return layer_dependencies[name]
+    return super(Network, self)._lookup_dependency(name)
+
+  def _handle_deferred_layer_dependencies(self, layers):
+    """Handles layer checkpoint dependencies that are added after init."""
+    layer_checkpoint_dependencies = self._layer_checkpoint_dependencies
+    layer_to_name = {v: k for k, v in layer_checkpoint_dependencies.items()}
+    for layer in layers:
+      if layer in layer_to_name:
+        self._handle_deferred_dependencies(name=layer_to_name[layer],
+                                           trackable=layer)
 
   def __setattr__(self, name, value):
     if not getattr(self, '_self_setattr_tracking', True):
@@ -686,8 +714,7 @@ class Network(base_layer.Layer):
                            'Instead, in order to instantiate and build your '
                            'model, `call` your model on real tensor data (of '
                            'the correct dtype).')
-    if self._layers:
-      self._track_layers(self._layers)
+
     self.built = True
 
   def call(self, inputs, training=None, mask=None):
@@ -1437,15 +1464,18 @@ class Network(base_layer.Layer):
 
     # Insert layers and update other layer attrs.
     layer_set = set(self._layers)
+    deferred_layers = []
     for layer in layers:
       if layer not in layer_set:
         self._layers.append(layer)
+        deferred_layers.append(layer)
         self._layer_call_argspecs[layer] = tf_inspect.getfullargspec(layer.call)
 
         # This allows the added layer to broadcast mutations to the current
         # layer, which is necessary to ensure cache correctness.
         layer._attribute_sentinel.add_parent(self._attribute_sentinel)
         layer_set.add(layer)
+    self._handle_deferred_layer_dependencies(deferred_layers)
 
   def _assert_weights_created(self):
     """Asserts that all the weights for the network have been created.

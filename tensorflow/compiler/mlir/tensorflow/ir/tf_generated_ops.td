@@ -1544,8 +1544,8 @@ tf.math.equal(x, y) ==> array([True,  True])
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilder<"Builder* builder, OperationState& result, Value* x, "
-              "Value* y, BoolAttr incompatible_shape_error">
+    OpBuilder<"Builder* builder, OperationState& result, Value  x, "
+              "Value  y, BoolAttr incompatible_shape_error">
   ];
 
   let verifier = [{
@@ -1647,8 +1647,8 @@ size 1.
   TF_DerivedOperandTypeAttr Tdim = TF_DerivedOperandTypeAttr<1>;
 
   let builders = [
-    OpBuilder<"Builder* builder, OperationState& result, Value* condition, "
-              "Value* dim">
+    OpBuilder<"Builder* builder, OperationState& result, Value  condition, "
+              "Value  dim">
   ];
 }
 
@@ -2640,6 +2640,31 @@ tf.math.log(x) ==> [-inf, -0.6931472,  0. ,  1.609438]
   let hasCanonicalizer = 1;
 }
 
+def TF_Log1pOp : TF_Op<"Log1p", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = "Computes natural logarithm of (1 + x) element-wise.";
+
+  let description = [{
+I.e., \\(y = \log_e (1 + x)\\).
+
+Example:
+
+```python
+x = tf.constant([0, 0.5, 1, 5])
+tf.math.log1p(x) ==> [0., 0.4054651, 0.6931472, 1.7917595]
+```
+  }];
+
+  let arguments = (ins
+    TF_FpOrComplexTensor:$x
+  );
+
+  let results = (outs
+    TF_FpOrComplexTensor:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_LogSoftmaxOp : TF_Op<"LogSoftmax", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Computes log softmax activations.";
 
@@ -3257,8 +3282,8 @@ retained with length 1.
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState &result, Value *input, "
-    "Value *reduction_indices, BoolAttr keep_dims"
+    "Builder *builder, OperationState &result, Value input, "
+    "Value reduction_indices, BoolAttr keep_dims"
   >];
 }
 
@@ -3669,8 +3694,8 @@ def TF_NotEqualOp : TF_Op<"NotEqual", [Commutative, NoSideEffect]> {
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilder<"Builder* builder, OperationState& result, Value* x, "
-              "Value* y, BoolAttr incompatible_shape_error">
+    OpBuilder<"Builder* builder, OperationState& result, Value  x, "
+              "Value  y, BoolAttr incompatible_shape_error">
   ];
 
   let verifier = [{
@@ -3788,8 +3813,8 @@ output =
   TF_DerivedOperandTypeAttr TI = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilder<"Builder* builder, OperationState& result, Value* indices, "
-              "Value* depth, Value* on_value, Value* off_value, "
+    OpBuilder<"Builder* builder, OperationState& result, Value  indices, "
+              "Value  depth, Value  on_value, Value  off_value, "
               "IntegerAttr axis">
   ];
 
@@ -4223,8 +4248,8 @@ tf.range(start, limit, delta) ==> [3, 6, 9, 12, 15]
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilder<"Builder* builder, OperationState& result, Value* start, "
-              "Value* limit, Value* delta">
+    OpBuilder<"Builder* builder, OperationState& result, Value  start, "
+              "Value  limit, Value  delta">
   ];
 }
 
@@ -4258,7 +4283,7 @@ of the tensor. Rank is also known as "order", "degree", or "ndims."
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilder<"Builder* builder, OperationState& result, Value* input">
+    OpBuilder<"Builder* builder, OperationState& result, Value  input">
   ];
 }
 
@@ -4494,7 +4519,7 @@ reshape(t, []) ==> 7
 
   let builders = [
     OpBuilder<
-      "Builder* builder, OperationState& result, Value* tensor, Value* shape">
+      "Builder* builder, OperationState& result, Value  tensor, Value  shape">
   ];
 
   let verifier = [{
@@ -4951,7 +4976,7 @@ def TF_SelectV2Op : TF_Op<"SelectV2", [NoSideEffect]> {
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
 
   let builders = [
-    OpBuilder<"Builder* builder, OperationState& result, Value* condition, Value* e, Value* t">
+    OpBuilder<"Builder* builder, OperationState& result, Value  condition, Value  e, Value  t">
   ];
 }
 
@@ -4985,7 +5010,7 @@ shape(t) ==> [2, 2, 3]
   }];
 
   let builders = [
-    OpBuilder<"Builder* builder, OperationState& result, Value* input, BoolAttr use32Bit">
+    OpBuilder<"Builder* builder, OperationState& result, Value  input, BoolAttr use32Bit">
   ];
 
   let hasFolder = 1;
@@ -5836,8 +5861,8 @@ retained with length 1.
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState &result, Value *input, "
-    "Value *reduction_indices, BoolAttr keep_dims"
+    "Builder *builder, OperationState &result, Value input, "
+    "Value reduction_indices, BoolAttr keep_dims"
   >];
 }
 
@@ -6270,7 +6295,7 @@ The output `y` has the same rank as `x`. The shapes of `x` and `y` satisfy:
 
   let builders = [
     OpBuilder<
-      "Builder* builder, OperationState& result, Value* x, Value* perm">
+      "Builder* builder, OperationState& result, Value  x, Value  perm">
   ];
 
   let verifier = [{

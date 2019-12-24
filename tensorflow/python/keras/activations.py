@@ -182,6 +182,19 @@ def softsign(x):
   return nn.softsign(x)
 
 
+@keras_export('keras.activations.swish')
+def swish(x):
+  """Swish activation function.
+
+  Arguments:
+      x: Input tensor.
+
+  Returns:
+      The swish activation applied to `x`.
+  """
+  return nn.swish(x)
+
+
 @keras_export('keras.activations.relu')
 def relu(x, alpha=0., max_value=None, threshold=0):
   """Applies the rectified linear unit activation function.

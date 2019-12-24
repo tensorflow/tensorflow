@@ -329,18 +329,12 @@ def divide(x, y, name=None):
     # override names. Use a dummy class to track the runtime division behavior
     return DivideDelegateWithName(x, name) / y
   else:
-    # We could short-circuit when y is 1, but we'd still have to cast to float,
-    # hence it doesn't seem to be worth optimizing.
     return x / y
 
 
 @tf_export("math.multiply", "multiply")
 @dispatch.add_dispatch_support
-def multiply(x, y, name=None):  # pylint: disable=missing-docstring
-  # Do an is comparison here since this is cheaper than isinstance or __eq__
-  if y is 1:  # pylint: disable=literal-comparison
-    return x
-
+def multiply(x, y, name=None):
   return gen_math_ops.mul(x, y, name)
 
 
@@ -352,28 +346,16 @@ multiply.__doc__ = gen_math_ops.mul.__doc__.replace("Multiply", "tf.multiply")
     "2016-12-30",
     "`tf.mul(x, y)` is deprecated, please use `tf.multiply(x, y)` or `x * y`")
 def _mul(x, y, name=None):
-  return multiply(x, y, name=name)
+  return gen_math_ops.mul(x, y, name)
 
 
 _mul.__doc__ = (
     gen_math_ops.mul.__doc__ + ("" if _mul.__doc__ is None else _mul.__doc__))
 
 
-def add_v2(x, y, name=None):
-  # Do an is comparison here since this is cheaper than isinstance or __eq__
-  if y is 0:  # pylint: disable=literal-comparison
-    return x
-
-  return gen_math_ops.add_v2(x, y, name=name)
-
-
 @tf_export("math.subtract", "subtract")
 @dispatch.add_dispatch_support
 def subtract(x, y, name=None):
-  # Do an is comparison here since this is cheaper than isinstance or __eq__
-  if y is 0:  # pylint: disable=literal-comparison
-    return x
-
   return gen_math_ops.sub(x, y, name)
 
 
@@ -385,7 +367,7 @@ subtract.__doc__ = gen_math_ops.sub.__doc__.replace("`Sub`", "`tf.subtract`")
     "2016-12-30",
     "`tf.sub(x, y)` is deprecated, please use `tf.subtract(x, y)` or `x - y`")
 def _sub(x, y, name=None):
-  return subtract(x, y, name)
+  return gen_math_ops.sub(x, y, name)
 
 
 _sub.__doc__ = (
@@ -1213,7 +1195,7 @@ def _add_dispatch(x, y, name=None):
   if x.dtype == dtypes.string:
     return gen_math_ops.add(x, y, name=name)
   else:
-    return add_v2(x, y, name=name)
+    return gen_math_ops.add_v2(x, y, name=name)
 
 
 def _mul_dispatch(x, y, name=None):
@@ -1239,7 +1221,7 @@ _OverrideBinaryOperatorHelper(gen_sparse_ops.sparse_dense_cwise_mul, "mul",
                               sparse_tensor.SparseTensor)
 
 _OverrideBinaryOperatorHelper(_add_dispatch, "add")
-_OverrideBinaryOperatorHelper(subtract, "sub")
+_OverrideBinaryOperatorHelper(gen_math_ops.sub, "sub")
 _OverrideBinaryOperatorHelper(_mul_dispatch, "mul")
 _OverrideBinaryOperatorHelper(_div_python2, "div")
 _OverrideBinaryOperatorHelper(_truediv_python3, "truediv")
@@ -1360,6 +1342,7 @@ def equal(x, y, name=None):
   boolean values.
 
   For example:
+
   >>> x = tf.constant([2, 4])
   >>> y = tf.constant(2)
   >>> tf.math.equal(x, y)
@@ -1395,6 +1378,7 @@ def not_equal(x, y, name=None):
   of boolean values.
 
   For example:
+
   >>> x = tf.constant([2, 4])
   >>> y = tf.constant(2)
   >>> tf.math.not_equal(x, y)
@@ -1462,7 +1446,6 @@ def range(start, limit=None, delta=1, dtype=None, name="range"):  # pylint: disa
 
   For example:
 
-  ```python
   >>> start = 3
   >>> limit = 18
   >>> delta = 3
@@ -1481,8 +1464,6 @@ def range(start, limit=None, delta=1, dtype=None, name="range"):  # pylint: disa
   >>> tf.range(limit)
   <tf.Tensor: shape=(5,), dtype=int32,
   numpy=array([0, 1, 2, 3, 4], dtype=int32)>
-
-  ```
 
   Args:
     start: A 0-D `Tensor` (scalar). Acts as first entry in the range if `limit`
@@ -2729,6 +2710,7 @@ def matmul(a,
   datatypes `bfloat16` or `float32`.
 
   A simple 2-D tensor matrix multiplication:
+
   >>> a = tf.constant([1, 2, 3, 4, 5, 6], shape=[2, 3])
   >>> a  # 2-D tensor
   <tf.Tensor: shape=(2, 3), dtype=int32, numpy=
@@ -2746,7 +2728,8 @@ def matmul(a,
   array([[ 58,  64],
          [139, 154]], dtype=int32)>
 
-  A batch matrix multiplication with batch shape [2]
+  A batch matrix multiplication with batch shape [2]:
+
   >>> a = tf.constant(np.arange(1, 13, dtype=np.int32), shape=[2, 2, 3])
   >>> a  # 3-D tensor
   <tf.Tensor: shape=(2, 2, 3), dtype=int32, numpy=
@@ -2775,6 +2758,7 @@ def matmul(a,
   (see [PEP 465](https://www.python.org/dev/peps/pep-0465/)). In TensorFlow,
   it simply calls the `tf.matmul()` function, so the following lines are
   equivalent:
+
   >>> d = a @ b @ [[10], [11]]
   >>> d = tf.matmul(tf.matmul(a, b), [[10], [11]])
 
@@ -3375,28 +3359,27 @@ def cumsum(x, axis=0, exclusive=False, reverse=False, name=None):
   element of the input is identical to the first element of the output:
   For example:
 
-  # tf.cumsum([a, b, c])   # [a, a + b, a + b + c]
+  >>> # tf.cumsum([a, b, c])   # [a, a + b, a + b + c]
   >>> x = tf.constant([2, 4, 6, 8])
   >>> tf.cumsum(x)
   <tf.Tensor: shape=(4,), dtype=int32,
   numpy=array([ 2,  6, 12, 20], dtype=int32)>
-  
-  # using varying `axis` values
+
+  >>> # using varying `axis` values
   >>> y = tf.constant([[2, 4, 6, 8], [1,3,5,7]])
   >>> tf.cumsum(y, axis=0)
   <tf.Tensor: shape=(2, 4), dtype=int32, numpy=
   array([[ 2,  4,  6,  8],
          [ 3,  7, 11, 15]], dtype=int32)>
-         
   >>> tf.cumsum(y, axis=1)
   <tf.Tensor: shape=(2, 4), dtype=int32, numpy=
   array([[ 2,  6, 12, 20],
          [ 1,  4,  9, 16]], dtype=int32)>
- 
+
   By setting the `exclusive` kwarg to `True`, an exclusive cumsum is performed
   instead:
-  
-  # tf.cumsum([a, b, c], exclusive=True)  => [0, a, a + b]
+
+  >>> # tf.cumsum([a, b, c], exclusive=True)  => [0, a, a + b]
   >>> x = tf.constant([2, 4, 6, 8])
   >>> tf.cumsum(x, exclusive=True)
   <tf.Tensor: shape=(4,), dtype=int32,
@@ -3404,17 +3387,17 @@ def cumsum(x, axis=0, exclusive=False, reverse=False, name=None):
 
   By setting the `reverse` kwarg to `True`, the cumsum is performed in the
   opposite direction:
-  
-  # tf.cumsum([a, b, c], reverse=True)  # [a + b + c, b + c, c]
+
+  >>> # tf.cumsum([a, b, c], reverse=True)  # [a + b + c, b + c, c]
   >>> x = tf.constant([2, 4, 6, 8])
-  >>> tf.cumsum(x, reverse=True) 
+  >>> tf.cumsum(x, reverse=True)
   <tf.Tensor: shape=(4,), dtype=int32,
   numpy=array([20, 18, 14,  8], dtype=int32)>
 
   This is more efficient than using separate `tf.reverse` ops.
   The `reverse` and `exclusive` kwargs can also be combined:
-  
-  # tf.cumsum([a, b, c], exclusive=True, reverse=True)  # [b + c, c, 0]
+
+  >>> # tf.cumsum([a, b, c], exclusive=True, reverse=True)  # [b + c, c, 0]
   >>> x = tf.constant([2, 4, 6, 8])
   >>> tf.cumsum(x, exclusive=True, reverse=True)
   <tf.Tensor: shape=(4,), dtype=int32,

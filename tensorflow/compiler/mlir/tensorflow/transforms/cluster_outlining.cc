@@ -51,12 +51,12 @@ void ReplaceLaunchReturnWithReturn(tf_device::ReturnOp launch_return_op,
 
 // Builds a function that outlines region attached to launch_op and inserts
 // built function into given module.
-FuncOp BuildFunction(StringRef device, llvm::ArrayRef<Value*> live_ins,
+FuncOp BuildFunction(StringRef device, llvm::ArrayRef<Value> live_ins,
                      tf_device::LaunchOp launch_op, SymbolTable* symbol_table,
                      OpBuilder* builder) {
   llvm::SmallVector<Type, 4> operand_types;
   operand_types.reserve(live_ins.size());
-  for (Value* v : live_ins) operand_types.emplace_back(v->getType());
+  for (Value v : live_ins) operand_types.emplace_back(v->getType());
 
   llvm::SmallVector<Type, 4> result_types(launch_op.getResultTypes());
 
@@ -101,7 +101,7 @@ FuncOp BuildFunction(StringRef device, llvm::ArrayRef<Value*> live_ins,
 // removed afterwards.`
 void OutlineLaunch(tf_device::LaunchOp launch_op, SymbolTable* symbol_table,
                    OpBuilder* builder) {
-  llvm::SetVector<Value*> live_ins;
+  llvm::SetVector<Value> live_ins;
   getUsedValuesDefinedAbove(launch_op.body(), launch_op.body(), live_ins);
 
   StringRef device =

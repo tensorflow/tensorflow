@@ -1,19 +1,10 @@
 //===- Fusion.cpp - Implementation of linalg Fusion -----------------------===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 //
 // This file implements the linalg dialect Fusion pass.
 //
@@ -77,16 +68,16 @@ static llvm::cl::list<unsigned> clTileSizes(
 static LinalgOp cloneWithLoopRanges(OpBuilder &b, Location loc, LinalgOp op,
                                     ArrayRef<SubViewOp::Range> loopRanges) {
   auto maps = loopToOperandRangesMaps(op);
-  SmallVector<Value *, 8> clonedViews;
+  SmallVector<Value, 8> clonedViews;
   clonedViews.reserve(op.getNumInputsAndOutputs());
   // Iterate over the inputs and outputs in order.
   // Extract the subranges from the linearized ranges.
-  SmallVector<Value *, 8> ios(op.getInputsAndOutputs());
+  SmallVector<Value, 8> ios(op.getInputsAndOutputs());
   for (auto en : llvm::enumerate(ios)) {
     unsigned idx = en.index();
     auto map = maps[idx];
     LLVM_DEBUG(dbgs() << "map: " << map << "\n");
-    Value *view = en.value();
+    Value view = en.value();
     SmallVector<SubViewOp::Range, 4> viewRanges(map.getNumResults());
     for (auto en2 : llvm::enumerate(map.getResults())) {
       unsigned d = en2.index();
@@ -99,7 +90,7 @@ static LinalgOp cloneWithLoopRanges(OpBuilder &b, Location loc, LinalgOp op,
     }
     // Construct a new subview for the tile.
     unsigned rank = viewRanges.size();
-    SmallVector<Value *, 4> offsets, sizes, strides;
+    SmallVector<Value, 4> offsets, sizes, strides;
     offsets.reserve(rank);
     sizes.reserve(rank);
     strides.reserve(rank);
@@ -117,7 +108,7 @@ static LinalgOp cloneWithLoopRanges(OpBuilder &b, Location loc, LinalgOp op,
 }
 
 struct ViewDimension {
-  Value *view;
+  Value view;
   unsigned dimension;
 };
 
@@ -130,14 +121,14 @@ static ViewDimension getViewDefiningLoopRange(LinalgOp op, unsigned loopDepth) {
   auto maps = loopToOperandRangesMaps(op);
   // Iterate over the inputs and outputs in order.
   // Extract the subranges from the linearized ranges.
-  SmallVector<Value *, 8> ios(op.getInputsAndOutputs());
+  SmallVector<Value, 8> ios(op.getInputsAndOutputs());
   for (auto en : llvm::enumerate(ios)) {
     unsigned idx = en.index();
     auto map = maps[idx];
     LLVM_DEBUG(dbgs() << "getViewDefiningLoopRange I/O idx: " << idx << "\n");
     LLVM_DEBUG(dbgs() << "getViewDefiningLoopRange map: " << map << "\n");
-    Value *view = en.value();
-    SmallVector<Value *, 8> viewRanges(map.getNumResults(), nullptr);
+    Value view = en.value();
+    SmallVector<Value, 8> viewRanges(map.getNumResults(), nullptr);
     for (auto en2 : llvm::enumerate(map.getResults())) {
       if (loopDepth == en2.value().cast<AffineDimExpr>().getPosition()) {
         LLVM_DEBUG(dbgs() << "getViewDefiningLoopRange loopDepth: " << loopDepth
@@ -151,7 +142,7 @@ static ViewDimension getViewDefiningLoopRange(LinalgOp op, unsigned loopDepth) {
   llvm_unreachable("Expect to be able to extract a view defining loop range");
 }
 
-static LinalgOp fuse(Value *producedView, LinalgOp producer, LinalgOp consumer,
+static LinalgOp fuse(Value producedView, LinalgOp producer, LinalgOp consumer,
                      unsigned consumerIdx, unsigned producerIdx,
                      OperationFolder *folder) {
   auto subView = dyn_cast_or_null<SubViewOp>(
@@ -205,8 +196,7 @@ static LinalgOp fuse(Value *producedView, LinalgOp producer, LinalgOp consumer,
 
 // Encode structural fusion safety preconditions.
 // Some of these will be lifted in the future with better analysis.
-static bool isStructurallyFusableProducer(LinalgOp producer,
-                                          Value *consumedView,
+static bool isStructurallyFusableProducer(LinalgOp producer, Value consumedView,
                                           LinalgOp consumer) {
   if (producer.getNumOutputs() != 1) {
     LLVM_DEBUG(dbgs() << "\nNot structurally fusable (multi-output)");
@@ -226,7 +216,7 @@ static bool isStructurallyFusableProducer(LinalgOp producer,
 
 bool mlir::linalg::isProducerLastWriteOfView(const LinalgDependenceGraph &graph,
                                              LinalgOp consumer,
-                                             Value *consumedView,
+                                             Value consumedView,
                                              LinalgOp producer) {
   // Make some simple structural checks that alleviate the need for more
   // complex analyses.
@@ -245,7 +235,7 @@ bool mlir::linalg::isProducerLastWriteOfView(const LinalgDependenceGraph &graph,
 }
 
 bool mlir::linalg::isFusableInto(const LinalgDependenceGraph &graph,
-                                 LinalgOp consumer, Value *consumedView,
+                                 LinalgOp consumer, Value consumedView,
                                  LinalgOp producer) {
   if (!isProducerLastWriteOfView(graph, consumer, consumedView, producer))
     return false;
@@ -272,13 +262,13 @@ Optional<FusionInfo> mlir::linalg::fuseProducerOf(
     auto producer = cast<LinalgOp>(dependence.dependentOpView.op);
 
     // Check that the dependence is indeed on the input `consumerIdx` view.
-    auto *consumedView = dependence.indexingView;
+    auto consumedView = dependence.indexingView;
     if (consumer.getInput(consumerIdx) != consumedView)
       continue;
 
     // Consumer consumes this view, `isStructurallyFusableProducer` also checks
     // whether it is a strict subview of the producer view.
-    auto *producedView = dependence.dependentOpView.view;
+    auto producedView = dependence.dependentOpView.view;
     auto producerIdx = producer.getIndexOfOutput(producedView).getValue();
     // `consumerIdx` and `producerIdx` exist by construction.
     LLVM_DEBUG(dbgs() << "\nRAW producer: " << *producer.getOperation()

@@ -1,19 +1,10 @@
 //===- LinalgToLLVM.cpp - conversion from Linalg to LLVM dialect ----------===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 
 #include "mlir/Conversion/LinalgToLLVM/LinalgToLLVM.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
@@ -120,21 +111,21 @@ public:
   BaseViewConversionHelper(Type type)
       : d(MemRefDescriptor::undef(rewriter(), loc(), type)) {}
 
-  BaseViewConversionHelper(Value *v) : d(v) {}
+  BaseViewConversionHelper(Value v) : d(v) {}
 
   /// Wrappers around MemRefDescriptor that use EDSC builder and location.
-  Value *allocatedPtr() { return d.allocatedPtr(rewriter(), loc()); }
-  void setAllocatedPtr(Value *v) { d.setAllocatedPtr(rewriter(), loc(), v); }
-  Value *alignedPtr() { return d.alignedPtr(rewriter(), loc()); }
-  void setAlignedPtr(Value *v) { d.setAlignedPtr(rewriter(), loc(), v); }
-  Value *offset() { return d.offset(rewriter(), loc()); }
-  void setOffset(Value *v) { d.setOffset(rewriter(), loc(), v); }
-  Value *size(unsigned i) { return d.size(rewriter(), loc(), i); }
-  void setSize(unsigned i, Value *v) { d.setSize(rewriter(), loc(), i, v); }
-  Value *stride(unsigned i) { return d.stride(rewriter(), loc(), i); }
-  void setStride(unsigned i, Value *v) { d.setStride(rewriter(), loc(), i, v); }
+  Value allocatedPtr() { return d.allocatedPtr(rewriter(), loc()); }
+  void setAllocatedPtr(Value v) { d.setAllocatedPtr(rewriter(), loc(), v); }
+  Value alignedPtr() { return d.alignedPtr(rewriter(), loc()); }
+  void setAlignedPtr(Value v) { d.setAlignedPtr(rewriter(), loc(), v); }
+  Value offset() { return d.offset(rewriter(), loc()); }
+  void setOffset(Value v) { d.setOffset(rewriter(), loc(), v); }
+  Value size(unsigned i) { return d.size(rewriter(), loc(), i); }
+  void setSize(unsigned i, Value v) { d.setSize(rewriter(), loc(), i, v); }
+  Value stride(unsigned i) { return d.stride(rewriter(), loc(), i); }
+  void setStride(unsigned i, Value v) { d.setStride(rewriter(), loc(), i, v); }
 
-  operator Value *() { return d; }
+  operator Value() { return d; }
 
 private:
   OpBuilder &rewriter() { return ScopedContext::getBuilder(); }
@@ -151,7 +142,7 @@ public:
       : LLVMOpLowering(RangeOp::getOperationName(), context, lowering_) {}
 
   PatternMatchResult
-  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+  matchAndRewrite(Operation *op, ArrayRef<Value> operands,
                   ConversionPatternRewriter &rewriter) const override {
     auto rangeOp = cast<RangeOp>(op);
     auto rangeDescriptorTy =
@@ -161,7 +152,7 @@ public:
 
     // Fill in an aggregate value of the descriptor.
     RangeOpOperandAdaptor adaptor(operands);
-    Value *desc = llvm_undef(rangeDescriptorTy);
+    Value desc = llvm_undef(rangeDescriptorTy);
     desc = insertvalue(desc, adaptor.min(), rewriter.getI64ArrayAttr(0));
     desc = insertvalue(desc, adaptor.max(), rewriter.getI64ArrayAttr(1));
     desc = insertvalue(desc, adaptor.step(), rewriter.getI64ArrayAttr(2));
@@ -184,7 +175,7 @@ public:
       : LLVMOpLowering(SliceOp::getOperationName(), context, lowering_) {}
 
   PatternMatchResult
-  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+  matchAndRewrite(Operation *op, ArrayRef<Value> operands,
                   ConversionPatternRewriter &rewriter) const override {
     edsc::ScopedContext context(rewriter, op->getLoc());
     SliceOpOperandAdaptor adaptor(operands);
@@ -198,7 +189,7 @@ public:
     BaseViewConversionHelper desc(lowering.convertType(sliceOp.getViewType()));
 
     // TODO(ntv): extract sizes and emit asserts.
-    SmallVector<Value *, 4> strides(memRefType.getRank());
+    SmallVector<Value, 4> strides(memRefType.getRank());
     for (int i = 0, e = memRefType.getRank(); i < e; ++i)
       strides[i] = baseDesc.stride(i);
 
@@ -207,10 +198,10 @@ public:
     };
 
     // Compute base offset.
-    Value *baseOffset = baseDesc.offset();
+    Value baseOffset = baseDesc.offset();
     for (int i = 0, e = memRefType.getRank(); i < e; ++i) {
-      Value *indexing = adaptor.indexings()[i];
-      Value *min = indexing;
+      Value indexing = adaptor.indexings()[i];
+      Value min = indexing;
       if (sliceOp.indexing(i)->getType().isa<RangeType>())
         min = extractvalue(int64Ty, indexing, pos(0));
       baseOffset = add(baseOffset, mul(min, strides[i]));
@@ -227,29 +218,29 @@ public:
     if (sliceOp.getViewType().getRank() == 0)
       return rewriter.replaceOp(op, {desc}), matchSuccess();
 
-    Value *zero =
+    Value zero =
         constant(int64Ty, rewriter.getIntegerAttr(rewriter.getIndexType(), 0));
     // Compute and insert view sizes (max - min along the range) and strides.
     // Skip the non-range operands as they will be projected away from the view.
     int numNewDims = 0;
     for (auto en : llvm::enumerate(sliceOp.indexings())) {
-      Value *indexing = en.value();
+      Value indexing = en.value();
       if (indexing->getType().isa<RangeType>()) {
         int rank = en.index();
-        Value *rangeDescriptor = adaptor.indexings()[rank];
-        Value *min = extractvalue(int64Ty, rangeDescriptor, pos(0));
-        Value *max = extractvalue(int64Ty, rangeDescriptor, pos(1));
-        Value *step = extractvalue(int64Ty, rangeDescriptor, pos(2));
-        Value *baseSize = baseDesc.size(rank);
+        Value rangeDescriptor = adaptor.indexings()[rank];
+        Value min = extractvalue(int64Ty, rangeDescriptor, pos(0));
+        Value max = extractvalue(int64Ty, rangeDescriptor, pos(1));
+        Value step = extractvalue(int64Ty, rangeDescriptor, pos(2));
+        Value baseSize = baseDesc.size(rank);
 
         // Bound upper by base view upper bound.
         max = llvm_select(llvm_icmp(ICmpPredicate::slt, max, baseSize), max,
                           baseSize);
-        Value *size = sub(max, min);
+        Value size = sub(max, min);
         // Bound lower by zero.
         size =
             llvm_select(llvm_icmp(ICmpPredicate::slt, size, zero), zero, size);
-        Value *stride = mul(strides[rank], step);
+        Value stride = mul(strides[rank], step);
         desc.setSize(numNewDims, size);
         desc.setStride(numNewDims, stride);
         ++numNewDims;
@@ -275,7 +266,7 @@ public:
       : LLVMOpLowering(TransposeOp::getOperationName(), context, lowering_) {}
 
   PatternMatchResult
-  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+  matchAndRewrite(Operation *op, ArrayRef<Value> operands,
                   ConversionPatternRewriter &rewriter) const override {
     // Initialize the common boilerplate and alloca at the top of the FuncOp.
     edsc::ScopedContext context(rewriter, op->getLoc());
@@ -318,7 +309,7 @@ public:
       : LLVMOpLowering(YieldOp::getOperationName(), context, lowering_) {}
 
   PatternMatchResult
-  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+  matchAndRewrite(Operation *op, ArrayRef<Value> operands,
                   ConversionPatternRewriter &rewriter) const override {
     rewriter.replaceOpWithNewOp<LLVM::ReturnOp>(op, operands);
     return matchSuccess();
@@ -453,7 +444,7 @@ public:
         op.getLoc(), rewriter.getIntegerAttr(rewriter.getIndexType(), 0));
     auto indexedGenericOp = cast<IndexedGenericOp>(op);
     auto numLoops = indexedGenericOp.getNumLoops();
-    SmallVector<Value *, 4> operands;
+    SmallVector<Value, 4> operands;
     operands.reserve(numLoops + op.getNumOperands());
     for (unsigned i = 0; i < numLoops; ++i) {
       operands.push_back(zero);
@@ -477,7 +468,7 @@ public:
 
   PatternMatchResult matchAndRewrite(CopyOp op,
                                      PatternRewriter &rewriter) const override {
-    Value *in = op.input(), *out = op.output();
+    Value in = op.input(), out = op.output();
 
     // If either inputPerm or outputPerm are non-identities, insert transposes.
     auto inputPerm = op.inputPermutation();

@@ -70,7 +70,6 @@ cuda_py_test(
     srcs = ["xla_test.py"],
     tags = [
         "no_mac",
-        "no_rocm",  # XLA support is not enabled on the ROCm platform
         "no_windows",
     ],
     xla_enabled = True,
@@ -90,4 +89,21 @@ cuda_py_test(
         "//tensorflow/python/tpu:tpu_lib",
         "@absl_py//absl/testing:parameterized",
     ],
+)
+
+cuda_py_test(
+    name = "experimental_compile_test",
+    srcs = ["experimental_compile_test.py"],
+    additional_deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:resource_variable_ops",
+    ],
+    python_version = "PY3",
+    tags = [
+        "no_mac",
+        "no_windows",
+    ],
+    xla_enabled = True,
 )

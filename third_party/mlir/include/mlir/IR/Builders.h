@@ -1,19 +1,10 @@
 //===- Builders.h - Helpers for constructing MLIR Classes -------*- C++ -*-===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 
 #ifndef MLIR_IR_BUILDERS_H
 #define MLIR_IR_BUILDERS_H
@@ -313,7 +304,7 @@ public:
   /// and immediately try to fold it. This functions populates 'results' with
   /// the results after folding the operation.
   template <typename OpTy, typename... Args>
-  void createOrFold(SmallVectorImpl<Value *> &results, Location location,
+  void createOrFold(SmallVectorImpl<Value> &results, Location location,
                     Args &&... args) {
     // Create the operation without using 'createOperation' as we don't want to
     // insert it yet.
@@ -331,9 +322,9 @@ public:
   /// Overload to create or fold a single result operation.
   template <typename OpTy, typename... Args>
   typename std::enable_if<OpTy::template hasTrait<OpTrait::OneResult>(),
-                          Value *>::type
+                          Value>::type
   createOrFold(Location location, Args &&... args) {
-    SmallVector<Value *, 1> results;
+    SmallVector<Value, 1> results;
     createOrFold<OpTy>(results, location, std::forward<Args>(args)...);
     return results.front();
   }
@@ -344,7 +335,7 @@ public:
                           OpTy>::type
   createOrFold(Location location, Args &&... args) {
     auto op = create<OpTy>(location, std::forward<Args>(args)...);
-    SmallVector<Value *, 0> unused;
+    SmallVector<Value, 0> unused;
     tryFold(op.getOperation(), unused);
 
     // Folding cannot remove a zero-result operation, so for convenience we
@@ -355,7 +346,7 @@ public:
   /// Attempts to fold the given operation and places new results within
   /// 'results'. Returns success if the operation was folded, failure otherwise.
   /// Note: This function does not erase the operation on a successful fold.
-  LogicalResult tryFold(Operation *op, SmallVectorImpl<Value *> &results);
+  LogicalResult tryFold(Operation *op, SmallVectorImpl<Value> &results);
 
   /// Creates a deep copy of the specified operation, remapping any operands
   /// that use values outside of the operation using the map that is provided

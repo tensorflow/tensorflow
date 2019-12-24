@@ -1,19 +1,10 @@
 //===- Attributes.h - MLIR Attribute Classes --------------------*- C++ -*-===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 
 #ifndef MLIR_IR_ATTRIBUTES_H
 #define MLIR_IR_ATTRIBUTES_H
@@ -82,11 +73,8 @@ public:
   /* implicit */ Attribute(const ImplType *impl)
       : impl(const_cast<ImplType *>(impl)) {}
 
-  Attribute(const Attribute &other) : impl(other.impl) {}
-  Attribute &operator=(Attribute other) {
-    impl = other.impl;
-    return *this;
-  }
+  Attribute(const Attribute &other) = default;
+  Attribute &operator=(const Attribute &other) = default;
 
   bool operator==(Attribute other) const { return impl == other.impl; }
   bool operator!=(Attribute other) const { return !(*this == other); }

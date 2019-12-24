@@ -1,19 +1,10 @@
 //===- Promotion.cpp - Implementation of linalg Promotion -----------------===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 //
 // This file implements the linalg dialect Promotion pass.
 //
@@ -55,14 +46,14 @@ static llvm::cl::opt<bool> clPromoteDynamic(
     llvm::cl::desc("Test generation of dynamic promoted buffers"),
     llvm::cl::cat(clOptionsCategory), llvm::cl::init(false));
 
-static Value *allocBuffer(Type elementType, Value *size, bool dynamicBuffers) {
+static Value allocBuffer(Type elementType, Value size, bool dynamicBuffers) {
   auto *ctx = size->getContext();
   auto width = llvm::divideCeil(elementType.getIntOrFloatBitWidth(), 8);
   if (!dynamicBuffers)
     if (auto cst = dyn_cast_or_null<ConstantIndexOp>(size->getDefiningOp()))
       return alloc(
           MemRefType::get(width * cst.getValue(), IntegerType::get(8, ctx)));
-  Value *mul = muli(constant_index(width), size);
+  Value mul = muli(constant_index(width), size);
   return alloc(MemRefType::get(-1, IntegerType::get(8, ctx)), mul);
 }
 
@@ -92,20 +83,20 @@ static PromotionInfo promoteFullTileBuffer(OpBuilder &b, Location loc,
 
   auto viewType = subView.getType();
   auto rank = viewType.getRank();
-  Value *allocSize = one;
-  SmallVector<Value *, 8> fullRanges, partialRanges;
+  Value allocSize = one;
+  SmallVector<Value, 8> fullRanges, partialRanges;
   fullRanges.reserve(rank);
   partialRanges.reserve(rank);
   for (auto en : llvm::enumerate(subView.getRanges())) {
     auto rank = en.index();
     auto rangeValue = en.value();
-    Value *d = rangeValue.size;
+    Value d = rangeValue.size;
     allocSize = muli(folder, allocSize, d).getValue();
     fullRanges.push_back(d);
     partialRanges.push_back(range(folder, zero, dim(subView, rank), one));
   }
   SmallVector<int64_t, 4> dynSizes(fullRanges.size(), -1);
-  auto *buffer =
+  auto buffer =
       allocBuffer(viewType.getElementType(), allocSize, dynamicBuffers);
   auto fullLocalView = view(
       MemRefType::get(dynSizes, viewType.getElementType()), buffer, fullRanges);
@@ -115,7 +106,7 @@ static PromotionInfo promoteFullTileBuffer(OpBuilder &b, Location loc,
 
 SmallVector<PromotionInfo, 8>
 mlir::linalg::promoteSubViews(OpBuilder &b, Location loc,
-                              ArrayRef<Value *> subViews, bool dynamicBuffers,
+                              ArrayRef<Value> subViews, bool dynamicBuffers,
                               OperationFolder *folder) {
   if (subViews.empty())
     return {};
@@ -123,8 +114,8 @@ mlir::linalg::promoteSubViews(OpBuilder &b, Location loc,
   ScopedContext scope(b, loc);
   SmallVector<PromotionInfo, 8> res;
   res.reserve(subViews.size());
-  DenseMap<Value *, PromotionInfo> promotionInfoMap;
-  for (auto *v : subViews) {
+  DenseMap<Value, PromotionInfo> promotionInfoMap;
+  for (auto v : subViews) {
     SubViewOp subView = cast<SubViewOp>(v->getDefiningOp());
     auto viewType = subView.getType();
     // TODO(ntv): support more cases than just float.
@@ -136,7 +127,7 @@ mlir::linalg::promoteSubViews(OpBuilder &b, Location loc,
     res.push_back(promotionInfo);
   }
 
-  for (auto *v : subViews) {
+  for (auto v : subViews) {
     SubViewOp subView = cast<SubViewOp>(v->getDefiningOp());
     auto info = promotionInfoMap.find(v);
     if (info == promotionInfoMap.end())
@@ -144,14 +135,14 @@ mlir::linalg::promoteSubViews(OpBuilder &b, Location loc,
     // TODO(ntv): value to fill with should be related to the operation.
     // For now, just use APFloat(0.0f).
     auto t = subView.getType().getElementType().cast<FloatType>();
-    Value *fillVal = constant_float(folder, APFloat(0.0f), t);
+    Value fillVal = constant_float(folder, APFloat(0.0f), t);
     // TODO(ntv): fill is only necessary if `promotionInfo` has a full local
     // view that is different from the partial local view and we are on the
     // boundary.
     fill(info->second.fullLocalView, fillVal);
   }
 
-  for (auto *v : subViews) {
+  for (auto v : subViews) {
     auto info = promotionInfoMap.find(v);
     if (info == promotionInfoMap.end())
       continue;
@@ -161,19 +152,19 @@ mlir::linalg::promoteSubViews(OpBuilder &b, Location loc,
 }
 
 LinalgOp mlir::linalg::promoteSubViewOperands(OpBuilder &b, LinalgOp op,
-                                              SetVector<Value *> subViews,
+                                              SetVector<Value> subViews,
                                               bool dynamicBuffers,
                                               OperationFolder *folder) {
   // 1. Promote the specified views and use them in the new op.
   ScopedContext scope(b, op.getLoc());
   auto promotedBufferAndViews = promoteSubViews(
       b, op.getLoc(), subViews.getArrayRef(), dynamicBuffers, folder);
-  SmallVector<Value *, 8> opViews;
+  SmallVector<Value, 8> opViews;
   opViews.reserve(op.getNumInputsAndOutputs());
-  SmallVector<std::pair<Value *, Value *>, 8> writebackViews;
+  SmallVector<std::pair<Value, Value>, 8> writebackViews;
   writebackViews.reserve(subViews.size());
   unsigned promotedIdx = 0;
-  for (auto *view : op.getInputsAndOutputs()) {
+  for (auto view : op.getInputsAndOutputs()) {
     if (subViews.count(view) != 0) {
       opViews.push_back(promotedBufferAndViews[promotedIdx].fullLocalView);
       writebackViews.emplace_back(std::make_pair(
@@ -214,7 +205,7 @@ static void promoteSubViews(FuncOp f, bool dynamicBuffers) {
   f.walk([dynamicBuffers, &folder, &toErase](LinalgOp op) {
     // TODO(ntv) some heuristic here to decide what to promote. Atm it is all or
     // nothing.
-    SetVector<Value *> subViews;
+    SetVector<Value> subViews;
     OpBuilder b(op);
     for (auto it : op.getInputsAndOutputs())
       if (auto sv = dyn_cast_or_null<SubViewOp>(it->getDefiningOp()))

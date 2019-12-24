@@ -21,6 +21,7 @@ from __future__ import print_function
 import abc
 import collections
 import contextlib
+import functools
 import itertools
 import math
 import random
@@ -1306,3 +1307,64 @@ def _make_class_weight_map_fn(class_weight):
     return x, y, sw
 
   return _class_weights_map_fn
+
+
+def train_validation_split(arrays, validation_split, shuffle=True):
+  """Split arrays into random train and validation subsets.
+
+  Arguments:
+    arrays: Tensors to split. Allowed inputs are arbitrarily nested structures
+      of Tensors and NumPy arrays.
+    validation_split: Float between 0 and 1. The proportion of the dataset to
+      include in the validation split. The rest of the dataset will be included
+      in the training split.
+    shuffle: Bool. Whether to shuffle the data before performing a split. If
+      `False`, the last `validation_split` fraction of that training data will
+      become the validation split.
+
+  Returns:
+    `(train_arrays, validation_arrays)`
+  """
+
+  def _can_split(t):
+    tensor_types = (ops.Tensor, np.ndarray)
+    if pd:
+      tensor_types = (ops.Tensor, np.ndarray, pd.Series, pd.DataFrame)
+    return isinstance(t, tensor_types) or t is None
+
+  flat_arrays = nest.flatten(arrays)
+  if not all(_can_split(t) for t in flat_arrays):
+    raise ValueError(
+        "`validation_split` is only supported for Tensors or NumPy "
+        "arrays, found: {}".format(arrays))
+
+  if all(t is None for t in flat_arrays):
+    return arrays, arrays
+
+  first_non_none = None
+  for t in flat_arrays:
+    if t is not None:
+      first_non_none = t
+      break
+
+  # Assumes all arrays have the same batch shape or are `None`.
+  batch_dim = int(first_non_none.shape[0])
+  indices = ops.convert_to_tensor(range(batch_dim))
+  if shuffle:
+    indices = random_ops.random_shuffle(indices)
+  split_at = int(math.floor(batch_dim * (1. - validation_split)))
+  train_indices = indices[:split_at]
+  val_indices = indices[split_at:]
+
+  def _split(t, indices):
+    if t is None:
+      return t
+    t = ops.convert_to_tensor(t)
+    return array_ops.gather_v2(t, indices)
+
+  train_arrays = nest.map_structure(
+      functools.partial(_split, indices=train_indices), arrays)
+  val_arrays = nest.map_structure(
+      functools.partial(_split, indices=val_indices), arrays)
+
+  return train_arrays, val_arrays

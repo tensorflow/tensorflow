@@ -1,19 +1,10 @@
 //===- Utils.h - General transformation utilities ---------------*- C++ -*-===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 //
 // This header file defines prototypes for various transformation utilities for
 // memref's and non-loop IR structures. These are not passes by themselves but
@@ -66,22 +57,22 @@ class OpBuilder;
 //  extra operands, note that 'indexRemap' would just be applied to existing
 //  indices (%i, %j).
 //  TODO(bondhugula): allow extraIndices to be added at any position.
-LogicalResult replaceAllMemRefUsesWith(Value *oldMemRef, Value *newMemRef,
-                                       ArrayRef<Value *> extraIndices = {},
+LogicalResult replaceAllMemRefUsesWith(Value oldMemRef, Value newMemRef,
+                                       ArrayRef<Value> extraIndices = {},
                                        AffineMap indexRemap = AffineMap(),
-                                       ArrayRef<Value *> extraOperands = {},
-                                       ArrayRef<Value *> symbolOperands = {},
+                                       ArrayRef<Value> extraOperands = {},
+                                       ArrayRef<Value> symbolOperands = {},
                                        Operation *domInstFilter = nullptr,
                                        Operation *postDomInstFilter = nullptr);
 
 /// Performs the same replacement as the other version above but only for the
 /// dereferencing uses of `oldMemRef` in `op`.
-LogicalResult replaceAllMemRefUsesWith(Value *oldMemRef, Value *newMemRef,
+LogicalResult replaceAllMemRefUsesWith(Value oldMemRef, Value newMemRef,
                                        Operation *op,
-                                       ArrayRef<Value *> extraIndices = {},
+                                       ArrayRef<Value> extraIndices = {},
                                        AffineMap indexRemap = AffineMap(),
-                                       ArrayRef<Value *> extraOperands = {},
-                                       ArrayRef<Value *> symbolOperands = {});
+                                       ArrayRef<Value> extraOperands = {},
+                                       ArrayRef<Value> symbolOperands = {});
 
 /// Rewrites the memref defined by this alloc op to have an identity layout map
 /// and updates all its indexing uses. Returns failure if any of its uses
@@ -96,9 +87,9 @@ LogicalResult normalizeMemRef(AllocOp op);
 /// The final results of the composed AffineApplyOp are returned in output
 /// parameter 'results'. Returns the affine apply op created.
 Operation *createComposedAffineApplyOp(OpBuilder &builder, Location loc,
-                                       ArrayRef<Value *> operands,
+                                       ArrayRef<Value> operands,
                                        ArrayRef<Operation *> affineApplyOps,
-                                       SmallVectorImpl<Value *> *results);
+                                       SmallVectorImpl<Value> *results);
 
 /// Given an operation, inserts one or more single result affine apply
 /// operations, results of which are exclusively used by this operation.

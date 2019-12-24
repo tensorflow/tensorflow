@@ -1,19 +1,10 @@
 //===- DependenceAnalysis.h - Dependence analysis on SSA views --*- C++ -*-===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 
 #ifndef MLIR_DIALECT_LINALG_ANALYSIS_DEPENDENCEANALYSIS_H_
 #define MLIR_DIALECT_LINALG_ANALYSIS_DEPENDENCEANALYSIS_H_
@@ -37,15 +28,15 @@ class LinalgOp;
 class Aliases {
 public:
   /// Returns true if v1 and v2 alias.
-  bool alias(Value *v1, Value *v2) { return find(v1) == find(v2); }
+  bool alias(Value v1, Value v2) { return find(v1) == find(v2); }
 
 private:
   /// Returns the base buffer or block argument into which the view `v` aliases.
   /// This lazily records the new aliases discovered while walking back the
   /// use-def chain.
-  Value *find(Value *v);
+  Value find(Value v);
 
-  DenseMap<Value *, Value *> aliases;
+  DenseMap<Value, Value> aliases;
 };
 
 /// Data structure for holding a dependence graph that operates on LinalgOp and
@@ -54,7 +45,7 @@ class LinalgDependenceGraph {
 public:
   struct LinalgOpView {
     Operation *op;
-    Value *view;
+    Value view;
   };
   struct LinalgDependenceGraphElem {
     // dependentOpView may be either:
@@ -64,7 +55,7 @@ public:
     // View in the op that is used to index in the graph:
     //   1. src in the case of dependencesFromDstGraphs.
     //   2. dst in the case of dependencesIntoGraphs.
-    Value *indexingView;
+    Value indexingView;
   };
   using LinalgDependences = SmallVector<LinalgDependenceGraphElem, 8>;
   using DependenceGraph = DenseMap<Operation *, LinalgDependences>;
@@ -97,14 +88,14 @@ public:
   /// Dependences are restricted to views aliasing `view`.
   SmallVector<Operation *, 8> findCoveringReads(LinalgOp srcLinalgOp,
                                                 LinalgOp dstLinalgOp,
-                                                Value *view) const;
+                                                Value view) const;
 
   /// Returns the operations that are interleaved between `srcLinalgOp` and
   /// `dstLinalgOp` and that are involved in a WAR or WAW with `srcLinalgOp`.
   /// Dependences are restricted to views aliasing `view`.
   SmallVector<Operation *, 8> findCoveringWrites(LinalgOp srcLinalgOp,
                                                  LinalgOp dstLinalgOp,
-                                                 Value *view) const;
+                                                 Value view) const;
 
 private:
   // Keep dependences in both directions, this is not just a performance gain
@@ -130,7 +121,7 @@ private:
   /// Implementation detail for findCoveringxxx.
   SmallVector<Operation *, 8>
   findOperationsWithCoveringDependences(LinalgOp srcLinalgOp,
-                                        LinalgOp dstLinalgOp, Value *view,
+                                        LinalgOp dstLinalgOp, Value view,
                                         ArrayRef<DependenceType> types) const;
 
   Aliases &aliases;

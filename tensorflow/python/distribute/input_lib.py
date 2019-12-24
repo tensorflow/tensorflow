@@ -339,6 +339,11 @@ class DistributedIterator(object):
       init_ops.extend(it.initialize())
     return control_flow_ops.group(init_ops)
 
+  @property
+  def element_spec(self):
+    """The type specification of an element of this iterator."""
+    return self._element_spec
+
 
 class DistributedIteratorV1(DistributedIterator):
   """Input Iterator for tf.data.DatasetV1."""
@@ -524,10 +529,9 @@ class DistributedDataset(_IterableInput):
           self._cloned_datasets.append(cloned_dataset)
 
     self._input_workers = input_workers
-    # TODO(anjalisridhar): Identify if we need to set this property on the
-    # iterator.
-    self.element_spec = dataset.element_spec
     self._strategy = strategy
+    self._element_spec = _create_distributed_tensor_spec(self._strategy,
+                                                         dataset.element_spec)  # pylint: disable=protected-access
 
   def __iter__(self):
     if not (context.executing_eagerly() or
@@ -539,8 +543,13 @@ class DistributedDataset(_IterableInput):
                                                     self._input_workers)
     iterator = DistributedIterator(self._input_workers, worker_iterators,
                                    self._strategy)
-    iterator.element_spec = self.element_spec  # pylint: disable=protected-access
+    iterator._element_spec = self.element_spec  # pylint: disable=protected-access
     return iterator
+
+  @property
+  def element_spec(self):
+    """The type specification of an element of this dataset."""
+    return self._element_spec
 
 
 class DistributedDatasetV1(DistributedDataset):
@@ -607,7 +616,7 @@ class DistributedDatasetV1(DistributedDataset):
                                                     self._input_workers)
     iterator = DistributedIteratorV1(self._input_workers, worker_iterators,
                                      self._strategy)
-    iterator.element_spec = self.element_spec  # pylint: disable=protected-access
+    iterator._element_spec = self.element_spec  # pylint: disable=protected-access
     return iterator
 
 
@@ -640,6 +649,7 @@ class DistributedDatasetsFromFunction(_IterableInput):
     self._input_workers = input_workers
     self._input_contexts = input_contexts
     self._strategy = strategy
+    self._element_spec = None
 
   def __iter__(self):
     if not (context.executing_eagerly() or
@@ -647,9 +657,25 @@ class DistributedDatasetsFromFunction(_IterableInput):
       raise RuntimeError("__iter__() is only supported inside of tf.function "
                          "or when eager execution is enabled.")
 
-    iterators = _create_iterators_per_worker_with_input_context(
+    iterators, element_spec = _create_iterators_per_worker_with_input_context(
         self._input_contexts, self._input_workers, self._dataset_fn)
-    return DistributedIterator(self._input_workers, iterators, self._strategy)
+    iterator = DistributedIterator(self._input_workers, iterators,
+                                   self._strategy)
+    self._element_spec = _create_distributed_tensor_spec(self._strategy,
+                                                         element_spec)
+    iterator._element_spec = self._element_spec  # pylint: disable=protected-access
+    return iterator
+
+  @property
+  def element_spec(self):
+    """The type specification of an element of this dataset."""
+    if self._element_spec is None:
+      raise ValueError("You must create an iterator before calling "
+                       "`element_spec` on the distributed dataset or iterator. "
+                       "This is because the dataset function is not called "
+                       "before an iterator is created.")
+
+    return self._element_spec
 
 
 class DistributedDatasetsFromFunctionV1(DistributedDatasetsFromFunction):
@@ -676,9 +702,14 @@ class DistributedDatasetsFromFunctionV1(DistributedDatasetsFromFunction):
     return self._get_iterator()
 
   def _get_iterator(self):
-    iterators = _create_iterators_per_worker_with_input_context(
+    iterators, element_spec = _create_iterators_per_worker_with_input_context(
         self._input_contexts, self._input_workers, self._dataset_fn)
-    return DistributedIteratorV1(self._input_workers, iterators, self._strategy)
+    iterator = DistributedIteratorV1(self._input_workers, iterators,
+                                     self._strategy)
+    self._element_spec = _create_distributed_tensor_spec(self._strategy,
+                                                         element_spec)
+    iterator._element_spec = self._element_spec  # pylint: disable=protected-access
+    return iterator
 
 
 # TODO(anjalisridhar): This class will be soon be removed in favor of newer
@@ -769,7 +800,7 @@ class DatasetIterator(DistributedIteratorV1):
         input_workers,
         worker_iterators,  # pylint: disable=protected-access
         strategy)
-    self.element_spec = dist_dataset.element_spec  # pylint: disable=protected-access
+    self._element_spec = dist_dataset.element_spec
 
 
 def _dummy_tensor_fn(value_structure):
@@ -1003,7 +1034,7 @@ def _create_iterators_per_worker_with_input_context(input_contexts,
       devices = input_workers.compute_devices_for_worker(i)
       iterator = _SingleWorkerDatasetIterator(dataset, worker, devices)
       iterators.append(iterator)
-  return iterators
+  return iterators, dataset.element_spec
 
 
 # TODO(sourabhbajaj): Remove this in lieu of distributed datasets
@@ -1169,3 +1200,32 @@ class MultiStepContext(object):
             distribution.experimental_local_results(value))
       distribution_strategy_context.get_replica_context().merge_call(
           merge_fn, args=(output,))
+
+
+def _create_distributed_tensor_spec(strategy, tensor_spec):
+  """Create a `tf.TypeSpec` for a given strategy and input `tensor_spec`.
+
+  Args:
+    strategy: The given `tf.distribute` strategy.
+    tensor_spec: `tf.TensorSpec` of a given value. The batch dimension of the
+      shape should be None if you have partial batches.
+
+  Returns:
+    A `tf.TypeSpec` that matches the values produced by a given strategy. This
+    can be a `tf.TensorSpec` or a `PerRelicaSpec`.
+  """
+  num_replicas = len(strategy.extended.worker_devices)
+
+  # If the number of devices used in the strategy is just 1 then we return
+  # the tensor_spec as is.
+  if num_replicas == 1:
+    return tensor_spec
+
+  # If the number of devices is greater than 1 then we assume the input to
+  # tf.function is a per replica type.
+  def _get_value_per_replica(tensor_spec_per_input):
+    value_specs = [tensor_spec_per_input for _ in range(num_replicas)]
+    return values.PerReplicaSpec(*value_specs)
+
+  return nest.map_structure(_get_value_per_replica, tensor_spec)
+

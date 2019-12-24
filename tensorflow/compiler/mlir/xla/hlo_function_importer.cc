@@ -284,7 +284,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
       return func_builder
           ->create<mlir::xla_hlo::DynamicUpdateSliceOp>(
               loc, result_type, operands[0], operands[1],
-              llvm::ArrayRef<Value*>(operands.begin() + 2, operands.end()))
+              llvm::ArrayRef<Value>(operands.begin() + 2, operands.end()))
           .getOperation();
     }
     case HloOpcode::kInfeed: {
@@ -370,6 +370,28 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
               loc, result_type, operands[0],
               ConvertDimensions(instruction->dimensions()))
           .getOperation();
+    }
+    case HloOpcode::kRng: {
+      auto shape = func_builder->create<mlir::ConstantOp>(
+          loc, Convert(result_type.cast<RankedTensorType>().getShape()));
+      switch (instruction->random_distribution()) {
+        case xla::RNG_UNIFORM:
+          return func_builder
+              ->create<mlir::xla_hlo::RngUniformOp>(
+                  loc, result_type, operands[0], operands[1], shape)
+              .getOperation();
+
+        case xla::RNG_NORMAL:
+          return func_builder
+              ->create<mlir::xla_hlo::RngNormalOp>(
+                  loc, result_type, operands[0], operands[1], shape)
+              .getOperation();
+
+        default:
+          return tensorflow::errors::InvalidArgument(absl::StrCat(
+              "Unsupported distribution: ",
+              RandomDistributionToString(instruction->random_distribution())));
+      }
     }
     case HloOpcode::kWhile: {
       auto op = func_builder->create<mlir::xla_hlo::WhileOp>(
@@ -473,10 +495,12 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
       NoAttributeCase(kPower, PowOp);
       NoAttributeCase(kReal, RealOp);
       NoAttributeCase(kRemainder, RemOp);
+      NoAttributeCase(kReplicaId, ReplicaIdOp);
       // The dimensions attribute is not present on the HLO Reshape instruction.
       // If dimensions are non-default, the XLA builder implements it as a
       // separate transpose.
       NoAttributeCase(kReshape, ReshapeOp);
+      NoAttributeCase(kRoundNearestAfz, RoundOp);
       NoAttributeCase(kRsqrt, RsqrtOp);
       NoAttributeCase(kSelect, SelectOp);
       NoAttributeCase(kShiftLeft, ShiftLeftOp);
@@ -512,9 +536,9 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
   }
 }
 
-StatusOr<llvm::SmallVector<mlir::Value*, 4>> HloFunctionImporter::GetOperands(
+StatusOr<llvm::SmallVector<mlir::Value, 4>> HloFunctionImporter::GetOperands(
     HloInstruction* instruction) {
-  llvm::SmallVector<mlir::Value*, 4> operands;
+  llvm::SmallVector<mlir::Value, 4> operands;
   for (const auto& operand : instruction->operands()) {
     auto input_it = instruction_value_map_.find(operand);
     if (input_it == instruction_value_map_.end()) {
@@ -602,8 +626,7 @@ tensorflow::Status HloFunctionImporter::GetMlirTypes(
   return tensorflow::Status::OK();
 }
 
-StatusOr<Value*> HloFunctionImporter::GetMlirValue(
-    HloInstruction* instruction) {
+StatusOr<Value> HloFunctionImporter::GetMlirValue(HloInstruction* instruction) {
   auto lookup = instruction_value_map_.find(instruction);
   if (lookup != instruction_value_map_.end()) {
     return lookup->second;

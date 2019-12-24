@@ -78,7 +78,8 @@ class CalibrationWrapper {
       std::unique_ptr<tflite::interpreter_wrapper::PythonErrorReporter>
           error_reporter,
       std::unique_ptr<tflite::FlatBufferModel> model,
-      std::unique_ptr<tflite::optimize::calibration::CalibrationReader> reader);
+      std::unique_ptr<tflite::optimize::calibration::CalibrationReader> reader,
+      std::unique_ptr<std::string> model_str_);
 
   CalibrationWrapper(const CalibrationWrapper& rhs);
 
@@ -90,6 +91,7 @@ class CalibrationWrapper {
   std::unique_ptr<tflite::ops::builtin::BuiltinOpResolver> resolver_;
   std::unique_ptr<tflite::FlatBufferModel> model_;
   std::unique_ptr<tflite::optimize::calibration::CalibrationReader> reader_;
+  std::unique_ptr<std::string> model_str_;
 };
 
 }  // namespace calibration_wrapper

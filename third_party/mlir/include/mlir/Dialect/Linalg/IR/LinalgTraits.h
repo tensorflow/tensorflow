@@ -1,19 +1,10 @@
 //===- LinalgTraits.h - Linalg Traits ---------------------------*- C++ -*-===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 
 #ifndef MLIR_DIALECT_LINALG_LINALGTRAITS_H_
 #define MLIR_DIALECT_LINALG_LINALGTRAITS_H_
@@ -77,13 +68,13 @@ private:
 
 public:
   /// Return the `i`-th input view.
-  Value *getInput(unsigned i) {
+  Value getInput(unsigned i) {
     assert(i < nInputs());
     return this->getOperation()->getOperand(i);
   }
   /// Return the index of `view` in the list of input views if found, llvm::None
   /// otherwise.
-  Optional<unsigned> getIndexOfInput(Value *view) {
+  Optional<unsigned> getIndexOfInput(Value view) {
     auto it = llvm::find(getInputs(), view);
     if (it != getInputs().end())
       return it - getInputs().begin();
@@ -99,12 +90,12 @@ public:
     return {range.begin(), range.begin() + nInputs()};
   }
   /// Return the `i`-th output view.
-  Value *getOutput(unsigned i) {
+  Value getOutput(unsigned i) {
     return this->getOperation()->getOperand(nInputs() + i);
   }
   /// Return the index of `view` in the list of output views if found,
   /// llvm::None otherwise.
-  Optional<unsigned> getIndexOfOutput(Value *view) {
+  Optional<unsigned> getIndexOfOutput(Value view) {
     auto it = llvm::find(getOutputs(), view);
     if (it != getOutputs().end())
       return it - getOutputs().begin();

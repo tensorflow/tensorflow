@@ -231,7 +231,7 @@ static bool IsConst(Operation* op) {
 }
 
 template <typename T>
-static bool HasValidTFLiteType(Value* value, T& error_handler) {
+static bool HasValidTFLiteType(Value value, T& error_handler) {
   // None type is allowed to represent unspecified operands.
   if (value->getType().isa<NoneType>()) return true;
 
@@ -280,7 +280,7 @@ static bool IsValidTFLiteMlirModule(ModuleOp module) {
     }
     auto& bb = fn.getBlocks().front();
 
-    for (auto* arg : bb.getArguments()) {
+    for (auto arg : bb.getArguments()) {
       if (!HasValidTFLiteType(arg, fn))
         return fn.emitError("invalid TFLite type: ") << arg->getType(), false;
     }
@@ -290,7 +290,7 @@ static bool IsValidTFLiteMlirModule(ModuleOp module) {
     for (auto& inst : bb) {
       if (inst.isKnownTerminator()) break;
 
-      for (auto* result : inst.getResults()) {
+      for (auto result : inst.getResults()) {
         if (!HasValidTFLiteType(result, inst))
           return fn.emitError("invalid TFLite type: ") << result->getType(),
                  false;
@@ -362,7 +362,7 @@ class Translator {
 
   // Builds TFLite tensor from the given value. `buffer_idx` is index of the
   // corresponding buffer. Emits error and returns llvm::None on failure.
-  Optional<BufferOffset<tflite::Tensor>> BuildTensor(Value* value,
+  Optional<BufferOffset<tflite::Tensor>> BuildTensor(Value value,
                                                      const std::string& name,
                                                      unsigned buffer_idx);
 
@@ -420,7 +420,7 @@ class Translator {
   bool IsStatefulOperand(mlir::Operation* op, int operand_index);
 
   // Returns a unique name for `val`.
-  std::string UniqueName(mlir::Value* val);
+  std::string UniqueName(mlir::Value val);
 
   ModuleOp module_;
 
@@ -450,7 +450,7 @@ class Translator {
   std::vector<std::string> failed_custom_ops_;
 };
 
-std::string Translator::UniqueName(mlir::Value* val) {
+std::string Translator::UniqueName(mlir::Value val) {
   return name_mapper_.GetUniqueName(val);
 }
 
@@ -503,7 +503,7 @@ Optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
 }
 
 Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
-    Value* value, const std::string& name, unsigned buffer_idx) {
+    Value value, const std::string& name, unsigned buffer_idx) {
   auto type = value->getType().cast<TensorType>();
 
   // TFLite requires tensor shape only for the inputs and constants.
@@ -917,11 +917,11 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(FuncOp fn) {
   bool has_input_attr = false;
   InitializeNamesFromAttribute(fn, &has_input_attr);
   std::vector<BufferOffset<tflite::Tensor>> tensors;
-  llvm::DenseMap<Value*, int> tensor_index_map;
+  llvm::DenseMap<Value, int> tensor_index_map;
 
   // Builds tensor and buffer for argument or operation result. Returns false
   // on failure.
-  auto build_tensor_and_buffer = [&](Value* value, const std::string& name) {
+  auto build_tensor_and_buffer = [&](Value value, const std::string& name) {
     // NoneType represents optional and may be skipped here.
     if (value->getType().isa<NoneType>()) {
       return true;
@@ -953,7 +953,7 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(FuncOp fn) {
   // have associated tensor and buffer. Build FlatBuffer tensor and buffer for
   // other functions.
   for (unsigned i = 0, e = bb.getNumArguments(); i < e; ++i) {
-    mlir::BlockArgument* arg = bb.getArgument(i);
+    mlir::BlockArgument arg = bb.getArgument(i);
     std::string name;
     if (has_input_attr) name = name_mapper_.GetUniqueName(arg);
     if (name.empty()) name = absl::StrCat("arg", i);
@@ -975,7 +975,7 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(FuncOp fn) {
     // Fetch operand and result tensor indices.
     std::vector<int32_t> operands;
     operands.reserve(inst.getNumOperands());
-    for (auto* operand : inst.getOperands()) {
+    for (auto operand : inst.getOperands()) {
       if (operand->getType().isa<NoneType>())
         operands.push_back(kTfLiteOptionalTensor);
       else
@@ -983,7 +983,7 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(FuncOp fn) {
     }
     std::vector<int32_t> results;
     results.reserve(inst.getNumOperands());
-    for (auto* result : inst.getResults()) {
+    for (auto result : inst.getResults()) {
       results.push_back(tensor_index_map.lookup(result));
     }
 
@@ -997,10 +997,10 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(FuncOp fn) {
 
   // Get input and output tensor indices for the subgraph.
   std::vector<int32_t> inputs, outputs;
-  for (auto* arg : bb.getArguments()) {
+  for (auto arg : bb.getArguments()) {
     inputs.push_back(tensor_index_map[arg]);
   }
-  for (auto* result : bb.getTerminator()->getOperands()) {
+  for (auto result : bb.getTerminator()->getOperands()) {
     outputs.push_back(tensor_index_map[result]);
   }
 

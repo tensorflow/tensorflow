@@ -1,19 +1,10 @@
 //===- AffineStructures.h - MLIR Affine Structures Class --------*- C++ -*-===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 //
 // Structures for affine/polyhedral analysis of ML functions.
 //
@@ -123,8 +114,8 @@ public:
   // Creates an empty AffineValueMap (users should call 'reset' to reset map
   // and operands).
   AffineValueMap() {}
-  AffineValueMap(AffineMap map, ArrayRef<Value *> operands,
-                 ArrayRef<Value *> results = llvm::None);
+  AffineValueMap(AffineMap map, ArrayRef<Value> operands,
+                 ArrayRef<Value> results = llvm::None);
 
   explicit AffineValueMap(AffineApplyOp applyOp);
   explicit AffineValueMap(AffineBound bound);
@@ -132,8 +123,8 @@ public:
   ~AffineValueMap();
 
   // Resets this AffineValueMap with 'map', 'operands', and 'results'.
-  void reset(AffineMap map, ArrayRef<Value *> operands,
-             ArrayRef<Value *> results = llvm::None);
+  void reset(AffineMap map, ArrayRef<Value> operands,
+             ArrayRef<Value> results = llvm::None);
 
   /// Return the value map that is the difference of value maps 'a' and 'b',
   /// represented as an affine map and its operands. The output map + operands
@@ -146,7 +137,7 @@ public:
   inline bool isMultipleOf(unsigned idx, int64_t factor) const;
 
   /// Return true if the idx^th result depends on 'value', false otherwise.
-  bool isFunctionOf(unsigned idx, Value *value) const;
+  bool isFunctionOf(unsigned idx, Value value) const;
 
   /// Return true if the result at 'idx' is a constant, false
   /// otherwise.
@@ -162,8 +153,8 @@ public:
   inline unsigned getNumSymbols() const { return map.getNumSymbols(); }
   inline unsigned getNumResults() const { return map.getNumResults(); }
 
-  Value *getOperand(unsigned i) const;
-  ArrayRef<Value *> getOperands() const;
+  Value getOperand(unsigned i) const;
+  ArrayRef<Value> getOperands() const;
   AffineMap getAffineMap() const;
 
 private:
@@ -172,9 +163,9 @@ private:
 
   // TODO: make these trailing objects?
   /// The SSA operands binding to the dim's and symbols of 'map'.
-  SmallVector<Value *, 4> operands;
+  SmallVector<Value, 4> operands;
   /// The SSA results binding to the results of 'map'.
-  SmallVector<Value *, 4> results;
+  SmallVector<Value, 4> results;
 };
 
 /// An IntegerValueSet is an integer set plus its operands.
@@ -207,7 +198,7 @@ private:
   // 'AffineCondition'.
   MutableIntegerSet set;
   /// The SSA operands binding to the dim's and symbols of 'set'.
-  SmallVector<Value *, 4> operands;
+  SmallVector<Value, 4> operands;
 };
 
 /// A flat list of affine equalities and inequalities in the form.
@@ -245,7 +236,7 @@ public:
                         unsigned numReservedEqualities,
                         unsigned numReservedCols, unsigned numDims = 0,
                         unsigned numSymbols = 0, unsigned numLocals = 0,
-                        ArrayRef<Optional<Value *>> idArgs = {})
+                        ArrayRef<Optional<Value>> idArgs = {})
       : numReservedCols(numReservedCols), numDims(numDims),
         numSymbols(numSymbols) {
     assert(numReservedCols >= numDims + numSymbols + 1);
@@ -264,7 +255,7 @@ public:
   /// dimensions and symbols.
   FlatAffineConstraints(unsigned numDims = 0, unsigned numSymbols = 0,
                         unsigned numLocals = 0,
-                        ArrayRef<Optional<Value *>> idArgs = {})
+                        ArrayRef<Optional<Value>> idArgs = {})
       : numReservedCols(numDims + numSymbols + numLocals + 1), numDims(numDims),
         numSymbols(numSymbols) {
     assert(numReservedCols >= numDims + numSymbols + 1);
@@ -304,10 +295,10 @@ public:
   // Clears any existing data and reserves memory for the specified constraints.
   void reset(unsigned numReservedInequalities, unsigned numReservedEqualities,
              unsigned numReservedCols, unsigned numDims, unsigned numSymbols,
-             unsigned numLocals = 0, ArrayRef<Value *> idArgs = {});
+             unsigned numLocals = 0, ArrayRef<Value> idArgs = {});
 
   void reset(unsigned numDims = 0, unsigned numSymbols = 0,
-             unsigned numLocals = 0, ArrayRef<Value *> idArgs = {});
+             unsigned numLocals = 0, ArrayRef<Value> idArgs = {});
 
   /// Appends constraints from 'other' into this. This is equivalent to an
   /// intersection with no simplification of any sort attempted.
@@ -396,7 +387,7 @@ public:
   /// operands. If `eq` is true, add a single equality equal to the bound map's
   /// first result expr.
   LogicalResult addLowerOrUpperBound(unsigned pos, AffineMap boundMap,
-                                     ArrayRef<Value *> operands, bool eq,
+                                     ArrayRef<Value> operands, bool eq,
                                      bool lower = true);
 
   /// Computes the lower and upper bounds of the first 'num' dimensional
@@ -415,10 +406,10 @@ public:
   /// operand list 'operands'.
   /// This function assumes 'values.size' == 'lbMaps.size' == 'ubMaps.size'.
   /// Note that both lower/upper bounds use operands from 'operands'.
-  LogicalResult addSliceBounds(ArrayRef<Value *> values,
+  LogicalResult addSliceBounds(ArrayRef<Value> values,
                                ArrayRef<AffineMap> lbMaps,
                                ArrayRef<AffineMap> ubMaps,
-                               ArrayRef<Value *> operands);
+                               ArrayRef<Value> operands);
 
   // Adds an inequality (>= 0) from the coefficients specified in inEq.
   void addInequality(ArrayRef<int64_t> inEq);
@@ -447,25 +438,25 @@ public:
 
   /// Sets the identifier corresponding to the specified Value id to a
   /// constant. Asserts if the 'id' is not found.
-  void setIdToConstant(Value &id, int64_t val);
+  void setIdToConstant(Value id, int64_t val);
 
   /// Looks up the position of the identifier with the specified Value. Returns
   /// true if found (false otherwise). `pos' is set to the (column) position of
   /// the identifier.
-  bool findId(Value &id, unsigned *pos) const;
+  bool findId(Value id, unsigned *pos) const;
 
   /// Returns true if an identifier with the specified Value exists, false
   /// otherwise.
-  bool containsId(Value &id) const;
+  bool containsId(Value id) const;
 
   // Add identifiers of the specified kind - specified positions are relative to
   // the kind of identifier. The coefficient column corresponding to the added
   // identifier is initialized to zero. 'id' is the Value corresponding to the
   // identifier that can optionally be provided.
-  void addDimId(unsigned pos, Value *id = nullptr);
-  void addSymbolId(unsigned pos, Value *id = nullptr);
+  void addDimId(unsigned pos, Value id = nullptr);
+  void addSymbolId(unsigned pos, Value id = nullptr);
   void addLocalId(unsigned pos);
-  void addId(IdKind kind, unsigned pos, Value *id = nullptr);
+  void addId(IdKind kind, unsigned pos, Value id = nullptr);
 
   /// Add the specified values as a dim or symbol id depending on its nature, if
   /// it already doesn't exist in the system. `id' has to be either a terminal
@@ -473,7 +464,7 @@ public:
   /// symbols or loop IVs. The identifier is added to the end of the existing
   /// dims or symbols. Additional information on the identifier is extracted
   /// from the IR and added to the constraint system.
-  void addInductionVarOrTerminalSymbol(Value *id);
+  void addInductionVarOrTerminalSymbol(Value id);
 
   /// Composes the affine value map with this FlatAffineConstrains, adding the
   /// results of the map as dimensions at the front [0, vMap->getNumResults())
@@ -500,8 +491,8 @@ public:
   void projectOut(unsigned pos, unsigned num);
   inline void projectOut(unsigned pos) { return projectOut(pos, 1); }
 
-  /// Projects out the identifier that is associate with Value *.
-  void projectOut(Value *id);
+  /// Projects out the identifier that is associate with Value .
+  void projectOut(Value id);
 
   void removeId(IdKind idKind, unsigned pos);
   void removeId(unsigned pos);
@@ -577,20 +568,20 @@ public:
     return numIds - numDims - numSymbols;
   }
 
-  inline ArrayRef<Optional<Value *>> getIds() const {
+  inline ArrayRef<Optional<Value>> getIds() const {
     return {ids.data(), ids.size()};
   }
-  inline MutableArrayRef<Optional<Value *>> getIds() {
+  inline MutableArrayRef<Optional<Value>> getIds() {
     return {ids.data(), ids.size()};
   }
 
   /// Returns the optional Value corresponding to the pos^th identifier.
-  inline Optional<Value *> getId(unsigned pos) const { return ids[pos]; }
-  inline Optional<Value *> &getId(unsigned pos) { return ids[pos]; }
+  inline Optional<Value> getId(unsigned pos) const { return ids[pos]; }
+  inline Optional<Value> &getId(unsigned pos) { return ids[pos]; }
 
   /// Returns the Value associated with the pos^th identifier. Asserts if
   /// no Value identifier was associated.
-  inline Value *getIdValue(unsigned pos) const {
+  inline Value getIdValue(unsigned pos) const {
     assert(ids[pos].hasValue() && "identifier's Value not set");
     return ids[pos].getValue();
   }
@@ -598,7 +589,7 @@ public:
   /// Returns the Values associated with identifiers in range [start, end).
   /// Asserts if no Value was associated with one of these identifiers.
   void getIdValues(unsigned start, unsigned end,
-                   SmallVectorImpl<Value *> *values) const {
+                   SmallVectorImpl<Value> *values) const {
     assert((start < numIds || start == end) && "invalid start position");
     assert(end <= numIds && "invalid end position");
     values->clear();
@@ -607,17 +598,17 @@ public:
       values->push_back(getIdValue(i));
     }
   }
-  inline void getAllIdValues(SmallVectorImpl<Value *> *values) const {
+  inline void getAllIdValues(SmallVectorImpl<Value> *values) const {
     getIdValues(0, numIds, values);
   }
 
   /// Sets Value associated with the pos^th identifier.
-  inline void setIdValue(unsigned pos, Value *val) {
+  inline void setIdValue(unsigned pos, Value val) {
     assert(pos < numIds && "invalid id position");
     ids[pos] = val;
   }
   /// Sets Values associated with identifiers in the range [start, end).
-  void setIdValues(unsigned start, unsigned end, ArrayRef<Value *> values) {
+  void setIdValues(unsigned start, unsigned end, ArrayRef<Value> values) {
     assert((start < numIds || end == start) && "invalid start position");
     assert(end <= numIds && "invalid end position");
     assert(values.size() == end - start);
@@ -766,7 +757,7 @@ private:
   /// system appearing in the order the identifiers correspond to columns.
   /// Temporary ones or those that aren't associated to any Value are set to
   /// None.
-  SmallVector<Optional<Value *>, 8> ids;
+  SmallVector<Optional<Value>, 8> ids;
 
   /// A parameter that controls detection of an unrealistic number of
   /// constraints. If the number of constraints is this many times the number of
