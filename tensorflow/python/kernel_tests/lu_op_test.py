@@ -130,14 +130,12 @@ class LuOpTest(test.TestCase):
       for output_idx_type in (dtypes.int32, dtypes.int64):
         self._verifyLu(data.astype(dtype), output_idx_type=output_idx_type)
 
-    if not test.is_built_with_rocm():
-      # ROCm does not support BLAS operations for complex types
-      for dtype in (np.complex64, np.complex128):
-        for output_idx_type in (dtypes.int32, dtypes.int64):
-          complex_data = np.tril(1j * data, -1).astype(dtype)
-          complex_data += np.triu(-1j * data, 1).astype(dtype)
-          complex_data += data
-          self._verifyLu(complex_data, output_idx_type=output_idx_type)
+    for dtype in (np.complex64, np.complex128):
+      for output_idx_type in (dtypes.int32, dtypes.int64):
+        complex_data = np.tril(1j * data, -1).astype(dtype)
+        complex_data += np.triu(-1j * data, 1).astype(dtype)
+        complex_data += data
+        self._verifyLu(complex_data, output_idx_type=output_idx_type)
 
   def testPivoting(self):
     # This matrix triggers partial pivoting because the first diagonal entry
@@ -152,17 +150,15 @@ class LuOpTest(test.TestCase):
       # Make sure p_val is not the identity permutation.
       self.assertNotAllClose(np.arange(3), p_val)
 
-    if not test.is_built_with_rocm():
-      # ROCm does not support BLAS operations for complex types
-      for dtype in (np.complex64, np.complex128):
-        complex_data = np.tril(1j * data, -1).astype(dtype)
-        complex_data += np.triu(-1j * data, 1).astype(dtype)
-        complex_data += data
-        self._verifyLu(complex_data)
-        _, p = linalg_ops.lu(data)
-        p_val = self.evaluate([p])
-        # Make sure p_val is not the identity permutation.
-        self.assertNotAllClose(np.arange(3), p_val)
+    for dtype in (np.complex64, np.complex128):
+      complex_data = np.tril(1j * data, -1).astype(dtype)
+      complex_data += np.triu(-1j * data, 1).astype(dtype)
+      complex_data += data
+      self._verifyLu(complex_data)
+      _, p = linalg_ops.lu(data)
+      p_val = self.evaluate([p])
+      # Make sure p_val is not the identity permutation.
+      self.assertNotAllClose(np.arange(3), p_val)
 
   def testInvalidMatrix(self):
     # LU factorization gives an error when the input is singular.
@@ -195,13 +191,11 @@ class LuOpTest(test.TestCase):
     matrices = np.random.rand(batch_size, 5, 5)
     self._verifyLu(matrices)
 
-    if not test.is_built_with_rocm():
-      # ROCm does not support BLAS operations for complex types
-      # Generate random complex valued matrices.
-      np.random.seed(52)
-      matrices = np.random.rand(batch_size, 5,
-                                5) + 1j * np.random.rand(batch_size, 5, 5)
-      self._verifyLu(matrices)
+    # Generate random complex valued matrices.
+    np.random.seed(52)
+    matrices = np.random.rand(batch_size, 5,
+                              5) + 1j * np.random.rand(batch_size, 5, 5)
+    self._verifyLu(matrices)
 
   def testLargeMatrix(self):
     # Generate random matrices.
@@ -210,12 +204,10 @@ class LuOpTest(test.TestCase):
     data = np.random.rand(n, n)
     self._verifyLu(data)
 
-    if not test.is_built_with_rocm():
-      # ROCm does not support BLAS operations for complex types
-      # Generate random complex valued matrices.
-      np.random.seed(129)
-      data = np.random.rand(n, n) + 1j * np.random.rand(n, n)
-      self._verifyLu(data)
+    # Generate random complex valued matrices.
+    np.random.seed(129)
+    data = np.random.rand(n, n) + 1j * np.random.rand(n, n)
+    self._verifyLu(data)
 
   @test_util.run_v1_only("b/120545219")
   def testEmpty(self):

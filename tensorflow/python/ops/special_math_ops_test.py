@@ -338,13 +338,7 @@ class EinsumTest(test.TestCase):
     self._check('ab...,b->ab...', (2, 3, 1, 1, 5), (3,))
 
   def test_dtypes(self):
-    dtypes = []
-    if test.is_built_with_rocm():
-      # This test triggers the BLAS op calls on the GPU
-      # ROCm does not support BLAS operations for complex types
-      dtypes = [np.float64, np.float32]
-    else:
-      dtypes = [np.float64, np.float32, np.complex64, np.complex128]
+    dtypes = [np.float64, np.float32, np.complex64, np.complex128]
     for dtype in dtypes:
       self._check('ij,jk->ik', (2, 2), (2, 2), dtype=dtype)
       self._check('ji,jk->ik', (2, 2), (2, 2), dtype=dtype)
