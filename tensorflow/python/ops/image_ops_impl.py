@@ -637,6 +637,10 @@ def transpose(image, name=None):
    `[batch, width, height, channels]`
     If `image` was 3-D, a 3-D float Tensor of shape
    `[width, height, channels]`
+   
+   Usage Example: ```python >> import tensorflow as tf >> x =
+    tf.random.normal(shape=(100, 200, 3)) >> tf.image.transpose(x) `
+ 
 
   Raises:
     ValueError: if the shape of `image` not supported.
