@@ -766,9 +766,9 @@ inline Status ConvertMklToTF(OpKernelContext* context,
     }
     return Status::OK();
   } catch (mkldnn::error& e) {
-    string error_msg = "Status: " + std::to_string(e.status) +
-                       ", message: " + string(e.message) + ", in file " +
-                       string(__FILE__) + ":" + std::to_string(__LINE__);
+    string error_msg = "Status: " + std::to_string(e.status) + ", message: " +
+                       string(e.message) + ", in file " + string(__FILE__) +
+                       ":" + std::to_string(__LINE__);
     LOG(FATAL) << "Operation received an exception: " << error_msg;
   }
 }
@@ -2044,21 +2044,6 @@ class FactoryKeyCreator {
     key_.append(1, delimiter);
   }
 };
-
-static inline MEMORY_FORMAT get_desired_format(int channel, bool is_2d = true) {
-  MEMORY_FORMAT fmt_desired = MEMORY_FORMAT::any;
-
-  if (port::TestCPUFeature(port::CPUFeature::AVX512F)) {
-    fmt_desired = is_2d ? MEMORY_FORMAT::nChw16c : MEMORY_FORMAT::nCdhw16c;
-  } else if (port::TestCPUFeature(port::CPUFeature::AVX2) &&
-             (channel % 8) == 0) {
-    fmt_desired = is_2d ? MEMORY_FORMAT::nChw8c
-                        : MEMORY_FORMAT::ncdhw;  // no avx2 support for 3d yet.
-  } else {
-    fmt_desired = is_2d ? MEMORY_FORMAT::nchw : MEMORY_FORMAT::ncdhw;
-  }
-  return fmt_desired;
-}
 
 class MklReorderPrimitive : public MklPrimitive {
  public:

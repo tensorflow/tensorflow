@@ -14,13 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #ifdef INTEL_MKL
 #include "mkldnn.hpp"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/tensor_format.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 using mkldnn::batch_normalization_backward;
 using mkldnn::batch_normalization_forward;
@@ -37,10 +37,15 @@ struct MklBatchNormFwdParams {
   int depth;
   float eps;
   bool training;
+  memory::format src_format;
 
   MklBatchNormFwdParams(const memory::dims& src_dims, int depth, float eps,
-                        bool training)
-      : src_dims(src_dims), depth(depth), eps(eps), training(training) {}
+                        bool training, memory::format src_format)
+      : src_dims(src_dims),
+        depth(depth),
+        eps(eps),
+        training(training),
+        src_format(src_format) {}
 };
 
 template <typename T, typename U>
@@ -145,7 +150,7 @@ class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
 
     // memory desc
     auto src_md = memory::desc({fwdParams.src_dims}, MklDnnType<T>(),
-                               get_desired_format(fwdParams.src_dims[1]));
+                               fwdParams.src_format);
 
     // fwd desc & primitive desc
     auto fwd_desc = batch_normalization_forward::desc(
@@ -276,14 +281,17 @@ struct MklBatchNormBwdParams {
   int depth;
   float eps;
   bool training;
+  memory::format src_format;
 
   MklBatchNormBwdParams(memory::dims src_dims, memory::dims diff_dst_dims,
-                        int depth, float eps, bool training)
+                        int depth, float eps, bool training,
+                        memory::format src_format)
       : src_dims(src_dims),
         diff_dst_dims(diff_dst_dims),
         depth(depth),
         eps(eps),
-        training(training) {}
+        training(training),
+        src_format(src_format) {}
 };
 
 template <typename T, typename U>
@@ -393,10 +401,9 @@ class MklFusedBatchNormBwdPrimitive : public MklPrimitive {
 
     // memory desc
     auto src_md = memory::desc({bwdParams.src_dims}, MklDnnType<T>(),
-                               get_desired_format(bwdParams.src_dims[1]));
-    auto diff_dst_md =
-        memory::desc({bwdParams.diff_dst_dims}, MklDnnType<T>(),
-                     get_desired_format(bwdParams.diff_dst_dims[1]));
+                               bwdParams.src_format);
+    auto diff_dst_md = memory::desc({bwdParams.diff_dst_dims}, MklDnnType<T>(),
+                                    bwdParams.src_format);
     auto variance_desc =
         memory::desc({1, bwdParams.depth}, MklDnnType<U>(), memory::nc);
     auto mean_desc =
@@ -653,23 +660,13 @@ class MklFusedBatchNormOp : public OpKernel {
                   depth_ * sizeof(U));
 
       // get batchnorm op from the pool
-      MklBatchNormFwdParams fwdParams(src_dims, depth_, epsilon_, is_training_);
+      MklBatchNormFwdParams fwdParams(
+          src_dims, depth_, epsilon_, is_training_,
+          static_cast<memory::format>(src_md.data.format));
       MklFusedBatchNormFwdPrimitive<T, U>* bn_fwd =
           MklFusedBatchNormFwdPrimitiveFactory<T, U>::Get(fwdParams);
 
-      // check if reorder is needed for src, weights, mean, variance
       const T* src_data = src_tensor.flat<T>().data();
-      if (src_md.data.format != bn_fwd->GetSrcFmt()) {
-        src.SetUsrMem(src_md, &src_tensor);
-        auto src_target = memory::primitive_desc(
-            {{src_dims},
-             MklDnnType<T>(),
-             static_cast<memory::format>(bn_fwd->GetSrcFmt())},
-            cpu_engine);
-        src.CheckReorderToOpMem(src_target);
-        src_data = const_cast<T*>(
-            reinterpret_cast<T*>(src.GetOpMem().get_data_handle()));
-      }
 
       // allocate output (dst) tensor; always set it as MKL-DNN layout
       MklDnnShape dnn_shape_dst;
@@ -721,9 +718,9 @@ class MklFusedBatchNormOp : public OpKernel {
         std::memcpy(batch_variance_data, variance_data, depth_ * sizeof(U));
       }
     } catch (mkldnn::error& e) {
-      string error_msg = "Status: " + std::to_string(e.status) +
-                         ", message: " + string(e.message) + ", in file " +
-                         string(__FILE__) + ":" + std::to_string(__LINE__);
+      string error_msg = "Status: " + std::to_string(e.status) + ", message: " +
+                         string(e.message) + ", in file " + string(__FILE__) +
+                         ":" + std::to_string(__LINE__);
       OP_REQUIRES_OK(
           context,
           errors::Aborted("Operation received an exception:", error_msg));
@@ -996,26 +993,15 @@ class MklFusedBatchNormGradOp : public OpKernel {
 
       diff_weights.AllocateBuffer(2 * depth_ * sizeof(U));
 
-      MklBatchNormBwdParams bwdParams(src_dims, diff_dst_dims, depth_, epsilon_,
-                                      is_training_);
+      MklBatchNormBwdParams bwdParams(
+          src_dims, diff_dst_dims, depth_, epsilon_, is_training_,
+          static_cast<memory::format>(src_md.data.format));
       MklFusedBatchNormBwdPrimitive<T, U>* bn_bwd =
           MklFusedBatchNormBwdPrimitiveFactory<T, U>::Get(bwdParams);
 
-      // check if src/diff_dst need to be reordered
       const T* src_data = src_tensor.flat<T>().data();
-      if (src_md.data.format != bn_bwd->GetSrcFmt()) {
-        src.SetUsrMem(src_md, &src_tensor);
-        auto src_target = memory::primitive_desc(
-            {{src_dims},
-             MklDnnType<T>(),
-             static_cast<memory::format>(bn_bwd->GetSrcFmt())},
-            cpu_engine);
-        src.CheckReorderToOpMem(src_target);
-        src_data = const_cast<T*>(
-            reinterpret_cast<T*>(src.GetOpMem().get_data_handle()));
-      }
-
       const T* diff_dst_data = diff_dst_tensor.flat<T>().data();
+      // Check if diff_dst input needs to be reordered
       if (diff_dst_md.data.format != bn_bwd->GetDiffDstFmt()) {
         diff_dst.SetUsrMem(diff_dst_md, &diff_dst_tensor);
         auto diff_dst_target = memory::primitive_desc(
@@ -1078,9 +1064,9 @@ class MklFusedBatchNormGradOp : public OpKernel {
                   reinterpret_cast<char*>(diff_weights_data + depth_),
                   depth_ * sizeof(U));
     } catch (mkldnn::error& e) {
-      string error_msg = "Status: " + std::to_string(e.status) +
-                         ", message: " + string(e.message) + ", in file " +
-                         string(__FILE__) + ":" + std::to_string(__LINE__);
+      string error_msg = "Status: " + std::to_string(e.status) + ", message: " +
+                         string(e.message) + ", in file " + string(__FILE__) +
+                         ":" + std::to_string(__LINE__);
       OP_REQUIRES_OK(
           context,
           errors::Aborted("Operation received an exception:", error_msg));
