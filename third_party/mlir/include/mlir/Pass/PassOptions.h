@@ -83,22 +83,19 @@ private:
 
   /// Utility methods for printing option values.
   template <typename DataT>
-  static void printOptionValue(raw_ostream &os,
-                               GenericOptionParser<DataT> &parser,
-                               const DataT &value) {
+  static void printValue(raw_ostream &os, GenericOptionParser<DataT> &parser,
+                         const DataT &value) {
     if (Optional<StringRef> argStr = parser.findArgStrForValue(value))
       os << argStr;
     else
       llvm_unreachable("unknown data value for option");
   }
   template <typename DataT, typename ParserT>
-  static void printOptionValue(raw_ostream &os, ParserT &parser,
-                               const DataT &value) {
+  static void printValue(raw_ostream &os, ParserT &parser, const DataT &value) {
     os << value;
   }
   template <typename ParserT>
-  static void printOptionValue(raw_ostream &os, ParserT &parser,
-                               const bool &value) {
+  static void printValue(raw_ostream &os, ParserT &parser, const bool &value) {
     os << (value ? StringRef("true") : StringRef("false"));
   }
 
@@ -129,7 +126,7 @@ public:
     /// Print the name and value of this option to the given stream.
     void print(raw_ostream &os) final {
       os << this->ArgStr << '=';
-      printOptionValue(os, this->getParser(), this->getValue());
+      printValue(os, this->getParser(), this->getValue());
     }
 
     /// Copy the value from the given option into this one.
@@ -172,7 +169,7 @@ public:
     void print(raw_ostream &os) final {
       os << this->ArgStr << '=';
       auto printElementFn = [&](const DataType &value) {
-        printOptionValue(os, this->getParser(), value);
+        printValue(os, this->getParser(), value);
       };
       interleave(*this, os, printElementFn, ",");
     }
