@@ -480,9 +480,6 @@ def tf_proto_library_py(
 def tf_jspb_proto_library(**kwargs):
     pass
 
-def tf_nano_proto_library(**kwargs):
-    pass
-
 def tf_proto_library(
         name,
         srcs = [],
@@ -534,23 +531,6 @@ def tf_proto_library(
         use_grpc_plugin = has_services,
         visibility = visibility,
     )
-
-# A list of all files under platform matching the pattern in 'files'. In
-# contrast with 'tf_platform_srcs' below, which seletive collects files that
-# must be compiled in the 'default' platform, this is a list of all headers
-# mentioned in the platform/* files.
-def tf_platform_hdrs(files):
-    return native.glob(["*/" + f for f in files])
-
-def tf_platform_srcs(files):
-    base_set = ["default/" + f for f in files]
-    windows_set = base_set + ["windows/" + f for f in files]
-    posix_set = base_set + ["posix/" + f for f in files]
-
-    return select({
-        clean_dep("//tensorflow:windows"): native.glob(windows_set),
-        "//conditions:default": native.glob(posix_set),
-    })
 
 def tf_additional_lib_hdrs():
     return [
