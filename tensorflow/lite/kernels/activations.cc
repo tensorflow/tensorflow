@@ -550,7 +550,7 @@ TfLiteStatus TanhPrepare(TfLiteContext* context, TfLiteNode* node) {
     } else if (input->type == kTfLiteInt8) {
       PopulateLookupTable<int8_t>(data, input, output,
                                   [](float value) { return std::tanh(value); });
-    } else if (input->type == kTfLiteInt16 && kernel_type == kReference) {
+    } else if (input->type == kTfLiteInt16) {
       PopulateLookupTableSigmoid(data);
     }
   }
@@ -936,12 +936,12 @@ TfLiteStatus TanhEval(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteInt16: {
       TanhParams params;
       params.input_left_shift = data->input_left_shift;
-      if (kernel_type == kReference) {
-        EvalUsingLookupTableTanh16Bit(data, input, output);
-      } else {
+      if (kernel_type == kFixedPointOptimized) {
         optimized_ops::Tanh(
             params, GetTensorShape(input), GetTensorData<int16_t>(input),
             GetTensorShape(output), GetTensorData<int16_t>(output));
+      } else {
+        EvalUsingLookupTableTanh16Bit(data, input, output);
       }
       return kTfLiteOk;
     } break;
@@ -1006,12 +1006,12 @@ TfLiteStatus SigmoidEval(TfLiteContext* context, TfLiteNode* node) {
     }
     case kTfLiteInt16: {
       LogisticParams params;
-      if (kernel_type == kReference) {
-        EvalUsingLookupTableSigmoid16Bit(data, input, output);
-      } else {
+      if (kernel_type == kFixedPointOptimized) {
         optimized_ops::Logistic(
             params, GetTensorShape(input), GetTensorData<int16_t>(input),
             GetTensorShape(output), GetTensorData<int16_t>(output));
+      } else {
+        EvalUsingLookupTableSigmoid16Bit(data, input, output);
       }
       break;
     }
