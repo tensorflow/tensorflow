@@ -114,10 +114,10 @@ namespace wrap {
     __macro(rocblas_zdotc)                 */ \
   __macro(rocblas_sscal)                    \
   __macro(rocblas_dscal)                    \
-  /*__macro(rocblas_cscal)                    \
+  __macro(rocblas_cscal)                    \
     __macro(rocblas_csscal)                   \
     __macro(rocblas_zscal)                    \
-    __macro(rocblas_zdscal)                */ \
+    __macro(rocblas_zdscal)                 \
   __macro(rocblas_saxpy)                    \
   __macro(rocblas_daxpy)                    \
   /*__macro(rocblas_caxpy)                    \
@@ -158,9 +158,9 @@ namespace wrap {
     __macro(rocblas_drotmg)                */ \
   __macro(rocblas_sgemv)                    \
   __macro(rocblas_dgemv)                    \
-  /*__macro(rocblas_cgemv)                    \
+  __macro(rocblas_cgemv)                    \
     __macro(rocblas_zgemv)                    \
-    __macro(rocblas_sgbmv)                    \
+  /*  __macro(rocblas_sgbmv)                    \
     __macro(rocblas_dgbmv)                    \
     __macro(rocblas_cgbmv)                    \
     __macro(rocblas_zgbmv)                    \
@@ -231,9 +231,9 @@ namespace wrap {
   __macro(rocblas_sgemm)                    \
   __macro(rocblas_dgemm)                    \
   __macro(rocblas_hgemm)                    \
-  /*__macro(rocblas_cgemm)                    \
+  __macro(rocblas_cgemm)                    \
     __macro(rocblas_zgemm)                    \
-    __macro(rocblas_ssyrk)                    \
+  /*  __macro(rocblas_ssyrk)                    \
     __macro(rocblas_dsyrk)                    \
     __macro(rocblas_csyrk)                    \
     __macro(rocblas_zsyrk)                    \
@@ -285,11 +285,34 @@ STREAM_EXECUTOR_ROCBLAS_WRAP(rocblas_hgemm_strided_batched)
 STREAM_EXECUTOR_ROCBLAS_WRAP(rocblas_sgemm_strided_batched)
 // STREAM_EXECUTOR_ROCBLAS_WRAP(rocblas_dgemm_batched)
 STREAM_EXECUTOR_ROCBLAS_WRAP(rocblas_dgemm_strided_batched)
+STREAM_EXECUTOR_ROCBLAS_WRAP(rocblas_cgemm_strided_batched)
+STREAM_EXECUTOR_ROCBLAS_WRAP(rocblas_zgemm_strided_batched)
 // STREAM_EXECUTOR_ROCBLAS_WRAP(rocblas_cgemm_batched)
 // STREAM_EXECUTOR_ROCBLAS_WRAP(rocblas_zgemm_batched)
 ROCBLAS_BLAS_ROUTINE_EACH(STREAM_EXECUTOR_ROCBLAS_V2_WRAP)
 
 }  // namespace wrap
+
+
+template <class T>
+const typename RocBlasTypeConversionHelper<T>::mapped_type* complex_cast(const DeviceMemory<T> &a)
+{
+  return reinterpret_cast<const typename RocBlasTypeConversionHelper<T>::mapped_type*>(GpuMemory(a));
+}
+template <class T>
+const typename RocBlasTypeConversionHelper<T>::mapped_type* complex_cast(const T &a)
+{
+  return reinterpret_cast<const typename RocBlasTypeConversionHelper<T>::mapped_type*>(&a);
+}
+template <class T>
+typename RocBlasTypeConversionHelper<T>::mapped_type* complex_cast(DeviceMemory<T> *a)
+{
+  return reinterpret_cast<typename RocBlasTypeConversionHelper<T>::mapped_type*>(GpuMemoryMutable(a));
+}
+
+static void blas_log(const char* c) 
+{
+}
 
 static string ToString(rocblas_status status) {
   switch (status) {
@@ -436,7 +459,7 @@ bool ROCMBlas::DoBlasAsum(Stream *stream, uint64 elem_count,
                           const DeviceMemory<std::complex<float>> &x, int incx,
                           DeviceMemory<float> *result) {
   LOG(ERROR) << "rocBLAS does not currently support the ASUM operation "
-             << "for the \"complex<float>\" dataype";
+             << "for the \"complex<float>\" datatype";
   return false;
 }
 
@@ -444,13 +467,14 @@ bool ROCMBlas::DoBlasAsum(Stream *stream, uint64 elem_count,
                           const DeviceMemory<std::complex<double>> &x, int incx,
                           DeviceMemory<double> *result) {
   LOG(ERROR) << "rocBLAS does not currently support the ASUM operation "
-             << "for the \"complex<double>\" dataype";
+             << "for the \"complex<double>\" datatype";
   return false;
 }
 
 bool ROCMBlas::DoBlasAxpy(Stream *stream, uint64 elem_count, float alpha,
                           const DeviceMemory<float> &x, int incx,
                           DeviceMemory<float> *y, int incy) {
+  blas_log("DoBlasAxpy");
   return DoBlasInternal(wrap::rocblas_saxpy, stream,
                         true /* = pointer_mode_host */, elem_count, &alpha,
                         GpuMemory(x), incx, GpuMemoryMutable(y), incy);
@@ -459,6 +483,7 @@ bool ROCMBlas::DoBlasAxpy(Stream *stream, uint64 elem_count, float alpha,
 bool ROCMBlas::DoBlasAxpy(Stream *stream, uint64 elem_count, double alpha,
                           const DeviceMemory<double> &x, int incx,
                           DeviceMemory<double> *y, int incy) {
+  blas_log("DoBlasAxpy");
   return DoBlasInternal(wrap::rocblas_daxpy, stream,
                         true /* = pointer_mode_host */, elem_count, &alpha,
                         GpuMemory(x), incx, GpuMemoryMutable(y), incy);
@@ -469,7 +494,7 @@ bool ROCMBlas::DoBlasAxpy(Stream *stream, uint64 elem_count,
                           const DeviceMemory<std::complex<float>> &x, int incx,
                           DeviceMemory<std::complex<float>> *y, int incy) {
   LOG(ERROR) << "rocBLAS does not currently support the AXPY operation "
-             << "for the \"complex<float>\" dataype";
+             << "for the \"complex<float>\" datatype";
   return false;
 }
 
@@ -478,7 +503,7 @@ bool ROCMBlas::DoBlasAxpy(Stream *stream, uint64 elem_count,
                           const DeviceMemory<std::complex<double>> &x, int incx,
                           DeviceMemory<std::complex<double>> *y, int incy) {
   LOG(ERROR) << "rocBLAS does not currently support the AXPY operation "
-             << "for the \"complex<double>\" dataype";
+             << "for the \"complex<double>\" datatype";
   return false;
 }
 
@@ -502,7 +527,7 @@ bool ROCMBlas::DoBlasCopy(Stream *stream, uint64 elem_count,
                           const DeviceMemory<std::complex<float>> &x, int incx,
                           DeviceMemory<std::complex<float>> *y, int incy) {
   LOG(ERROR) << "rocBLAS does not currently support the COPY operation "
-             << "for the \"complex<float>\" dataype";
+             << "for the \"complex<float>\" datatype";
   return false;
 }
 
@@ -510,7 +535,7 @@ bool ROCMBlas::DoBlasCopy(Stream *stream, uint64 elem_count,
                           const DeviceMemory<std::complex<double>> &x, int incx,
                           DeviceMemory<std::complex<double>> *y, int incy) {
   LOG(ERROR) << "rocBLAS does not currently support the COPY operation "
-             << "for the \"complex<double>\" dataype";
+             << "for the \"complex<double>\" datatype";
   return false;
 }
 
@@ -518,6 +543,7 @@ bool ROCMBlas::DoBlasDot(Stream *stream, uint64 elem_count,
                          const DeviceMemory<float> &x, int incx,
                          const DeviceMemory<float> &y, int incy,
                          DeviceMemory<float> *result) {
+  blas_log("DoBlasDot");
   return DoBlasInternal(
       wrap::rocblas_sdot, stream, false /* = pointer_mode_host */, elem_count,
       GpuMemory(x), incx, GpuMemory(y), incy, GpuMemoryMutable(result));
@@ -527,6 +553,7 @@ bool ROCMBlas::DoBlasDot(Stream *stream, uint64 elem_count,
                          const DeviceMemory<double> &x, int incx,
                          const DeviceMemory<double> &y, int incy,
                          DeviceMemory<double> *result) {
+  blas_log("DoBlasDot");
   return DoBlasInternal(
       wrap::rocblas_ddot, stream, false /* = pointer_mode_host */, elem_count,
       GpuMemory(x), incx, GpuMemory(y), incy, GpuMemoryMutable(result));
@@ -537,7 +564,7 @@ bool ROCMBlas::DoBlasDotc(Stream *stream, uint64 elem_count,
                           const DeviceMemory<std::complex<float>> &y, int incy,
                           DeviceMemory<std::complex<float>> *result) {
   LOG(ERROR) << "rocBLAS does not currently support the DOT operation "
-             << "for the \"complex<float>\" dataype";
+             << "for the \"complex<float>\" datatype";
   return false;
 }
 
@@ -546,7 +573,7 @@ bool ROCMBlas::DoBlasDotc(Stream *stream, uint64 elem_count,
                           const DeviceMemory<std::complex<double>> &y, int incy,
                           DeviceMemory<std::complex<double>> *result) {
   LOG(ERROR) << "rocBLAS does not currently support the DOT operation "
-             << "for the \"complex<double>\" dataype";
+             << "for the \"complex<double>\" datatype";
   return false;
 }
 
@@ -555,7 +582,7 @@ bool ROCMBlas::DoBlasDotu(Stream *stream, uint64 elem_count,
                           const DeviceMemory<std::complex<float>> &y, int incy,
                           DeviceMemory<std::complex<float>> *result) {
   LOG(ERROR) << "rocBLAS does not currently support the DOT operation "
-             << "for the \"complex<float>\" dataype";
+             << "for the \"complex<float>\" datatype";
   return false;
 }
 
@@ -564,7 +591,7 @@ bool ROCMBlas::DoBlasDotu(Stream *stream, uint64 elem_count,
                           const DeviceMemory<std::complex<double>> &y, int incy,
                           DeviceMemory<std::complex<double>> *result) {
   LOG(ERROR) << "rocBLAS does not currently support the DOT operation "
-             << "for the \"complex<double>\" dataype";
+             << "for the \"complex<double>\" datatype";
   return false;
 }
 
@@ -588,7 +615,7 @@ bool ROCMBlas::DoBlasNrm2(Stream *stream, uint64 elem_count,
                           const DeviceMemory<std::complex<float>> &x, int incx,
                           DeviceMemory<float> *result) {
   LOG(ERROR) << "rocBLAS does not currently support the NRM2 operation "
-             << "for the \"complex<float>\" dataype";
+             << "for the \"complex<float>\" datatype";
   return false;
 }
 
@@ -596,7 +623,7 @@ bool ROCMBlas::DoBlasNrm2(Stream *stream, uint64 elem_count,
                           const DeviceMemory<std::complex<double>> &x, int incx,
                           DeviceMemory<double> *result) {
   LOG(ERROR) << "rocBLAS does not currently support the NRM2 operation "
-             << "for the \"complex<double>\" dataype";
+             << "for the \"complex<double>\" datatype";
   return false;
 }
 
@@ -604,7 +631,7 @@ bool ROCMBlas::DoBlasRot(Stream *stream, uint64 elem_count,
                          DeviceMemory<float> *x, int incx,
                          DeviceMemory<float> *y, int incy, float c, float s) {
   LOG(ERROR) << "rocBLAS does not currently support the ROT operation "
-             << "for the \"float\" dataype";
+             << "for the \"float\" datatype";
   return false;
 }
 
@@ -613,7 +640,7 @@ bool ROCMBlas::DoBlasRot(Stream *stream, uint64 elem_count,
                          DeviceMemory<double> *y, int incy, double c,
                          double s) {
   LOG(ERROR) << "rocBLAS does not currently support the ROT operation "
-             << "for the \"double\" dataype";
+             << "for the \"double\" datatype";
   return false;
 }
 
@@ -622,7 +649,7 @@ bool ROCMBlas::DoBlasRot(Stream *stream, uint64 elem_count,
                          DeviceMemory<std::complex<float>> *y, int incy,
                          float c, float s) {
   LOG(ERROR) << "rocBLAS does not currently support the ROT operation "
-             << "for the \"complex<float>\" dataype";
+             << "for the \"complex<float>\" datatype";
   return false;
 }
 
@@ -631,7 +658,7 @@ bool ROCMBlas::DoBlasRot(Stream *stream, uint64 elem_count,
                          DeviceMemory<std::complex<double>> *y, int incy,
                          double c, double s) {
   LOG(ERROR) << "rocBLAS does not currently support the ROT operation "
-             << "for the \"complex<double>\" dataype";
+             << "for the \"complex<double>\" datatype";
   return false;
 }
 
@@ -639,7 +666,7 @@ bool ROCMBlas::DoBlasRotg(Stream *stream, DeviceMemory<float> *a,
                           DeviceMemory<float> *b, DeviceMemory<float> *c,
                           DeviceMemory<float> *s) {
   LOG(ERROR) << "rocBLAS does not currently support the ROTG operation "
-             << "for the \"float\" dataype";
+             << "for the \"float\" datatype";
   return false;
 }
 
@@ -647,7 +674,7 @@ bool ROCMBlas::DoBlasRotg(Stream *stream, DeviceMemory<double> *a,
                           DeviceMemory<double> *b, DeviceMemory<double> *c,
                           DeviceMemory<double> *s) {
   LOG(ERROR) << "rocBLAS does not currently support the ROTG operation "
-             << "for the \"double\" dataype";
+             << "for the \"double\" datatype";
   return false;
 }
 
@@ -656,7 +683,7 @@ bool ROCMBlas::DoBlasRotg(Stream *stream, DeviceMemory<std::complex<float>> *a,
                           DeviceMemory<float> *c,
                           DeviceMemory<std::complex<float>> *s) {
   LOG(ERROR) << "rocBLAS does not currently support the ROTG operation "
-             << "for the \"complex<float>\" dataype";
+             << "for the \"complex<float>\" datatype";
   return false;
 }
 
@@ -665,7 +692,7 @@ bool ROCMBlas::DoBlasRotg(Stream *stream, DeviceMemory<std::complex<double>> *a,
                           DeviceMemory<double> *c,
                           DeviceMemory<std::complex<double>> *s) {
   LOG(ERROR) << "rocBLAS does not currently support the ROTG operation "
-             << "for the \"complex<double>\" dataype";
+             << "for the \"complex<double>\" datatype";
   return false;
 }
 
@@ -674,7 +701,7 @@ bool ROCMBlas::DoBlasRotm(Stream *stream, uint64 elem_count,
                           DeviceMemory<float> *y, int incy,
                           const DeviceMemory<float> &param) {
   LOG(ERROR) << "rocBLAS does not currently support the ROTM operation "
-             << "for the \"float\" dataype";
+             << "for the \"float\" datatype";
   return false;
 }
 
@@ -683,7 +710,7 @@ bool ROCMBlas::DoBlasRotm(Stream *stream, uint64 elem_count,
                           DeviceMemory<double> *y, int incy,
                           const DeviceMemory<double> &param) {
   LOG(ERROR) << "rocBLAS does not currently support the ROTM operation "
-             << "for the \"double\" dataype";
+             << "for the \"double\" datatype";
   return false;
 }
 
@@ -692,7 +719,7 @@ bool ROCMBlas::DoBlasRotmg(Stream *stream, DeviceMemory<float> *d1,
                            const DeviceMemory<float> &y1,
                            DeviceMemory<float> *param) {
   LOG(ERROR) << "rocBLAS does not currently support the ROTMG operation "
-             << "for the \"float\" dataype";
+             << "for the \"float\" datatype";
   return false;
 }
 
@@ -701,12 +728,13 @@ bool ROCMBlas::DoBlasRotmg(Stream *stream, DeviceMemory<double> *d1,
                            const DeviceMemory<double> &y1,
                            DeviceMemory<double> *param) {
   LOG(ERROR) << "rocBLAS does not currently support the ROTMG operation "
-             << "for the \"double\" dataype";
+             << "for the \"double\" datatype";
   return false;
 }
 
 bool ROCMBlas::DoBlasScal(Stream *stream, uint64 elem_count, float alpha,
                           DeviceMemory<float> *x, int incx) {
+  blas_log("DoBlasScal<float>");
   return DoBlasInternal(wrap::rocblas_sscal, stream,
                         true /* = pointer_mode_host */, elem_count, &alpha,
                         GpuMemoryMutable(x), incx);
@@ -721,32 +749,32 @@ bool ROCMBlas::DoBlasScal(Stream *stream, uint64 elem_count, double alpha,
 
 bool ROCMBlas::DoBlasScal(Stream *stream, uint64 elem_count, float alpha,
                           DeviceMemory<std::complex<float>> *x, int incx) {
-  LOG(ERROR) << "rocBLAS does not currently support the SCAL operation "
-             << "for the \"complex<float>\" dataype";
-  return false;
+  return DoBlasInternal(wrap::rocblas_csscal, stream,
+                        true /* = pointer_mode_host */, elem_count, &alpha,
+                        complex_cast(x), incx);
 }
 
 bool ROCMBlas::DoBlasScal(Stream *stream, uint64 elem_count, double alpha,
                           DeviceMemory<std::complex<double>> *x, int incx) {
-  LOG(ERROR) << "rocBLAS does not currently support the SCAL operation "
-             << "for the \"complex<double>\" dataype";
-  return false;
+  return DoBlasInternal(wrap::rocblas_zdscal, stream,
+                        true /* = pointer_mode_host */, elem_count, &alpha,
+                        complex_cast(x), incx);
 }
 
 bool ROCMBlas::DoBlasScal(Stream *stream, uint64 elem_count,
                           std::complex<float> alpha,
                           DeviceMemory<std::complex<float>> *x, int incx) {
-  LOG(ERROR) << "rocBLAS does not currently support the SCAL operation "
-             << "for the \"complex<float>\" dataype";
-  return false;
+  return DoBlasInternal(wrap::rocblas_cscal, stream,
+                        true /* = pointer_mode_host */, elem_count, complex_cast(alpha),
+                        complex_cast(x), incx);
 }
 
 bool ROCMBlas::DoBlasScal(Stream *stream, uint64 elem_count,
                           std::complex<double> alpha,
                           DeviceMemory<std::complex<double>> *x, int incx) {
-  LOG(ERROR) << "rocBLAS does not currently support the SCAL operation "
-             << "for the \"complex<double>\" dataype";
-  return false;
+  return DoBlasInternal(wrap::rocblas_zscal, stream,
+                        true /* = pointer_mode_host */, elem_count, complex_cast(alpha),
+                        complex_cast(x), incx);
 }
 
 bool ROCMBlas::DoBlasSwap(Stream *stream, uint64 elem_count,
@@ -769,7 +797,7 @@ bool ROCMBlas::DoBlasSwap(Stream *stream, uint64 elem_count,
                           DeviceMemory<std::complex<float>> *x, int incx,
                           DeviceMemory<std::complex<float>> *y, int incy) {
   LOG(ERROR) << "rocBLAS does not currently support the SWAP operation "
-             << "for the \"complex<float>\" dataype";
+             << "for the \"complex<float>\" datatype";
   return false;
 }
 
@@ -777,7 +805,7 @@ bool ROCMBlas::DoBlasSwap(Stream *stream, uint64 elem_count,
                           DeviceMemory<std::complex<double>> *x, int incx,
                           DeviceMemory<std::complex<double>> *y, int incy) {
   LOG(ERROR) << "rocBLAS does not currently support the SWAP operation "
-             << "for the \"complex<double>\" dataype";
+             << "for the \"complex<double>\" datatype";
   return false;
 }
 
@@ -801,7 +829,7 @@ bool ROCMBlas::DoBlasIamax(Stream *stream, uint64 elem_count,
                            const DeviceMemory<std::complex<float>> &x, int incx,
                            DeviceMemory<int> *result) {
   LOG(ERROR) << "rocBLAS does not currently support the AMAX operation "
-             << "for the \"complex<float>\" dataype";
+             << "for the \"complex<float>\" datatype";
   return false;
 }
 
@@ -809,7 +837,7 @@ bool ROCMBlas::DoBlasIamax(Stream *stream, uint64 elem_count,
                            const DeviceMemory<std::complex<double>> &x,
                            int incx, DeviceMemory<int> *result) {
   LOG(ERROR) << "rocBLAS does not currently support the AMAX operation "
-             << "for the \"complex<double>\" dataype";
+             << "for the \"complex<double>\" datatype";
   return false;
 }
 
@@ -833,7 +861,7 @@ bool ROCMBlas::DoBlasIamin(Stream *stream, uint64 elem_count,
                            const DeviceMemory<std::complex<float>> &x, int incx,
                            DeviceMemory<int> *result) {
   LOG(ERROR) << "rocBLAS does not currently support the AMIN operation "
-             << "for the \"complex<float>\" dataype";
+             << "for the \"complex<float>\" datatype";
   return false;
 }
 
@@ -841,7 +869,7 @@ bool ROCMBlas::DoBlasIamin(Stream *stream, uint64 elem_count,
                            const DeviceMemory<std::complex<double>> &x,
                            int incx, DeviceMemory<int> *result) {
   LOG(ERROR) << "rocBLAS does not currently support the AMIN operation "
-             << "for the \"complex<double>\" dataype";
+             << "for the \"complex<double>\" datatype";
   return false;
 }
 
@@ -851,7 +879,7 @@ bool ROCMBlas::DoBlasGbmv(Stream *stream, blas::Transpose trans, uint64 m,
                           const DeviceMemory<float> &x, int incx, float beta,
                           DeviceMemory<float> *y, int incy) {
   LOG(ERROR) << "rocBLAS does not currently support the GBMV operation "
-             << "for the \"float\" dataype";
+             << "for the \"float\" datatype";
   return false;
 }
 
@@ -861,7 +889,7 @@ bool ROCMBlas::DoBlasGbmv(Stream *stream, blas::Transpose trans, uint64 m,
                           const DeviceMemory<double> &x, int incx, double beta,
                           DeviceMemory<double> *y, int incy) {
   LOG(ERROR) << "rocBLAS does not currently support the GBMV operation "
-             << "for the \"double\" dataype";
+             << "for the \"double\" datatype";
   return false;
 }
 
@@ -873,7 +901,7 @@ bool ROCMBlas::DoBlasGbmv(Stream *stream, blas::Transpose trans, uint64 m,
                           std::complex<float> beta,
                           DeviceMemory<std::complex<float>> *y, int incy) {
   LOG(ERROR) << "rocBLAS does not currently support the GBMV operation "
-             << "for the \"complex<float>\" dataype";
+             << "for the \"complex<float>\" datatype";
   return false;
 }
 
@@ -885,7 +913,7 @@ bool ROCMBlas::DoBlasGbmv(Stream *stream, blas::Transpose trans, uint64 m,
                           std::complex<double> beta,
                           DeviceMemory<std::complex<double>> *y, int incy) {
   LOG(ERROR) << "rocBLAS does not currently support the GBMV operation "
-             << "for the \"complex<double>\" dataype";
+             << "for the \"complex<double>\" datatype";
   return false;
 }
 
@@ -893,6 +921,7 @@ bool ROCMBlas::DoBlasGemv(Stream *stream, blas::Transpose trans, uint64 m,
                           uint64 n, float alpha, const DeviceMemory<float> &a,
                           int lda, const DeviceMemory<float> &x, int incx,
                           float beta, DeviceMemory<float> *y, int incy) {
+  blas_log("DoBlasGemv");
   return DoBlasInternal(
       wrap::rocblas_sgemv, stream, true /* = pointer_mode_host */,
       ROCMBlasTranspose(trans), m, n, &alpha, GpuMemory(a), lda, GpuMemory(x),
@@ -903,6 +932,7 @@ bool ROCMBlas::DoBlasGemv(Stream *stream, blas::Transpose trans, uint64 m,
                           uint64 n, double alpha, const DeviceMemory<double> &a,
                           int lda, const DeviceMemory<double> &x, int incx,
                           double beta, DeviceMemory<double> *y, int incy) {
+  blas_log("DoBlasGemv");
   return DoBlasInternal(
       wrap::rocblas_dgemv, stream, true /* = pointer_mode_host */,
       ROCMBlasTranspose(trans), m, n, &alpha, GpuMemory(a), lda, GpuMemory(x),
@@ -915,9 +945,13 @@ bool ROCMBlas::DoBlasGemv(Stream *stream, blas::Transpose trans, uint64 m,
                           const DeviceMemory<std::complex<float>> &x, int incx,
                           std::complex<float> beta,
                           DeviceMemory<std::complex<float>> *y, int incy) {
-  LOG(ERROR) << "rocBLAS does not currently support the GEMV operation "
-             << "for the \"complex<float>\" dataype";
-  return false;
+  blas_log("DoBlasGemv");
+  return DoBlasInternal(
+      wrap::rocblas_cgemv, stream, true /* = pointer_mode_host */,
+      ROCMBlasTranspose(trans), m, n, complex_cast(alpha), 
+      complex_cast(a), lda, 
+      complex_cast(x), incx,
+      complex_cast(beta), complex_cast(y), incy);
 }
 
 bool ROCMBlas::DoBlasGemv(Stream *stream, blas::Transpose trans, uint64 m,
@@ -926,9 +960,13 @@ bool ROCMBlas::DoBlasGemv(Stream *stream, blas::Transpose trans, uint64 m,
                           const DeviceMemory<std::complex<double>> &x, int incx,
                           std::complex<double> beta,
                           DeviceMemory<std::complex<double>> *y, int incy) {
-  LOG(ERROR) << "rocBLAS does not currently support the GEMV operation "
-             << "for the \"complex<double>\" dataype";
-  return false;
+  blas_log("DoBlasGemv\n");
+  return DoBlasInternal(
+      wrap::rocblas_zgemv, stream, true /* = pointer_mode_host */,
+      ROCMBlasTranspose(trans), m, n, complex_cast(alpha), 
+      complex_cast(a), lda, 
+      complex_cast(x), incx,
+      complex_cast(beta), complex_cast(y), incy);
 }
 
 bool ROCMBlas::DoBlasGer(Stream *stream, uint64 m, uint64 n, float alpha,
@@ -955,7 +993,7 @@ bool ROCMBlas::DoBlasGerc(Stream *stream, uint64 m, uint64 n,
                           const DeviceMemory<std::complex<float>> &y, int incy,
                           DeviceMemory<std::complex<float>> *a, int lda) {
   LOG(ERROR) << "rocBLAS does not currently support the GER operation "
-             << "for the \"complex<float>\" dataype";
+             << "for the \"complex<float>\" datatype";
   return false;
 }
 
@@ -965,7 +1003,7 @@ bool ROCMBlas::DoBlasGerc(Stream *stream, uint64 m, uint64 n,
                           const DeviceMemory<std::complex<double>> &y, int incy,
                           DeviceMemory<std::complex<double>> *a, int lda) {
   LOG(ERROR) << "rocBLAS does not currently support the GER operation "
-             << "for the \"complex<double>\" dataype";
+             << "for the \"complex<double>\" datatype";
   return false;
 }
 
@@ -975,7 +1013,7 @@ bool ROCMBlas::DoBlasGeru(Stream *stream, uint64 m, uint64 n,
                           const DeviceMemory<std::complex<float>> &y, int incy,
                           DeviceMemory<std::complex<float>> *a, int lda) {
   LOG(ERROR) << "rocBLAS does not currently support the GERU operation "
-             << "for the \"complex<float>\" dataype";
+             << "for the \"complex<float>\" datatype";
   return false;
 }
 
@@ -985,7 +1023,7 @@ bool ROCMBlas::DoBlasGeru(Stream *stream, uint64 m, uint64 n,
                           const DeviceMemory<std::complex<double>> &y, int incy,
                           DeviceMemory<std::complex<double>> *a, int lda) {
   LOG(ERROR) << "rocBLAS does not currently support the GERU operation "
-             << "for the \"complex<double>\" dataype";
+             << "for the \"complex<double>\" datatype";
   return false;
 }
 
@@ -996,7 +1034,7 @@ bool ROCMBlas::DoBlasHbmv(Stream *stream, blas::UpperLower uplo, uint64 n,
                           std::complex<float> beta,
                           DeviceMemory<std::complex<float>> *y, int incy) {
   LOG(ERROR) << "rocBLAS does not currently support the HBMV operation "
-             << "for the \"complex<float>\" dataype";
+             << "for the \"complex<float>\" datatype";
   return false;
 }
 
@@ -1007,7 +1045,7 @@ bool ROCMBlas::DoBlasHbmv(Stream *stream, blas::UpperLower uplo, uint64 n,
                           std::complex<double> beta,
                           DeviceMemory<std::complex<double>> *y, int incy) {
   LOG(ERROR) << "rocBLAS does not currently support the HBMV operation "
-             << "for the \"complex<double>\" dataype";
+             << "for the \"complex<double>\" datatype";
   return false;
 }
 
@@ -1018,7 +1056,7 @@ bool ROCMBlas::DoBlasHemv(Stream *stream, blas::UpperLower uplo, uint64 n,
                           std::complex<float> beta,
                           DeviceMemory<std::complex<float>> *y, int incy) {
   LOG(ERROR) << "rocBLAS does not currently support the HEMV operation "
-             << "for the \"complex<float>\" dataype";
+             << "for the \"complex<float>\" datatype";
   return false;
 }
 
@@ -1029,7 +1067,7 @@ bool ROCMBlas::DoBlasHemv(Stream *stream, blas::UpperLower uplo, uint64 n,
                           std::complex<double> beta,
                           DeviceMemory<std::complex<double>> *y, int incy) {
   LOG(ERROR) << "rocBLAS does not currently support the HEMV operation "
-             << "for the \"complex<double>\" dataype";
+             << "for the \"complex<double>\" datatype";
   return false;
 }
 
@@ -1038,7 +1076,7 @@ bool ROCMBlas::DoBlasHer(Stream *stream, blas::UpperLower uplo, uint64 n,
                          const DeviceMemory<std::complex<float>> &x, int incx,
                          DeviceMemory<std::complex<float>> *a, int lda) {
   LOG(ERROR) << "rocBLAS does not currently support the HER operation "
-             << "for the \"complex<float>\" dataype";
+             << "for the \"complex<float>\" datatype";
   return false;
 }
 
@@ -1047,7 +1085,7 @@ bool ROCMBlas::DoBlasHer(Stream *stream, blas::UpperLower uplo, uint64 n,
                          const DeviceMemory<std::complex<double>> &x, int incx,
                          DeviceMemory<std::complex<double>> *a, int lda) {
   LOG(ERROR) << "rocBLAS does not currently support the HER operation "
-             << "for the \"complex<double>\" dataype";
+             << "for the \"complex<double>\" datatype";
   return false;
 }
 
@@ -1057,7 +1095,7 @@ bool ROCMBlas::DoBlasHer2(Stream *stream, blas::UpperLower uplo, uint64 n,
                           const DeviceMemory<std::complex<float>> &y, int incy,
                           DeviceMemory<std::complex<float>> *a, int lda) {
   LOG(ERROR) << "rocBLAS does not currently support the HER2 operation "
-             << "for the \"complex<float>\" dataype";
+             << "for the \"complex<float>\" datatype";
   return false;
 }
 
@@ -1067,7 +1105,7 @@ bool ROCMBlas::DoBlasHer2(Stream *stream, blas::UpperLower uplo, uint64 n,
                           const DeviceMemory<std::complex<double>> &y, int incy,
                           DeviceMemory<std::complex<double>> *a, int lda) {
   LOG(ERROR) << "rocBLAS does not currently support the HER2 operation "
-             << "for the \"complex<double>\" dataype";
+             << "for the \"complex<double>\" datatype";
   return false;
 }
 
@@ -1078,7 +1116,7 @@ bool ROCMBlas::DoBlasHpmv(Stream *stream, blas::UpperLower uplo, uint64 n,
                           std::complex<float> beta,
                           DeviceMemory<std::complex<float>> *y, int incy) {
   LOG(ERROR) << "rocBLAS does not currently support the HPMV operation "
-             << "for the \"complex<float>\" dataype";
+             << "for the \"complex<float>\" datatype";
   return false;
 }
 
@@ -1089,7 +1127,7 @@ bool ROCMBlas::DoBlasHpmv(Stream *stream, blas::UpperLower uplo, uint64 n,
                           std::complex<double> beta,
                           DeviceMemory<std::complex<double>> *y, int incy) {
   LOG(ERROR) << "rocBLAS does not currently support the HPMV operation "
-             << "for the \"complex<double>\" dataype";
+             << "for the \"complex<double>\" datatype";
   return false;
 }
 
@@ -1098,7 +1136,7 @@ bool ROCMBlas::DoBlasHpr(Stream *stream, blas::UpperLower uplo, uint64 n,
                          const DeviceMemory<std::complex<float>> &x, int incx,
                          DeviceMemory<std::complex<float>> *ap) {
   LOG(ERROR) << "rocBLAS does not currently support the HPR operation "
-             << "for the \"complex<float>\" dataype";
+             << "for the \"complex<float>\" datatype";
   return false;
 }
 
@@ -1107,7 +1145,7 @@ bool ROCMBlas::DoBlasHpr(Stream *stream, blas::UpperLower uplo, uint64 n,
                          const DeviceMemory<std::complex<double>> &x, int incx,
                          DeviceMemory<std::complex<double>> *ap) {
   LOG(ERROR) << "rocBLAS does not currently support the HPR operation "
-             << "for the \"complex<double>\" dataype";
+             << "for the \"complex<double>\" datatype";
   return false;
 }
 
@@ -1117,7 +1155,7 @@ bool ROCMBlas::DoBlasHpr2(Stream *stream, blas::UpperLower uplo, uint64 n,
                           const DeviceMemory<std::complex<float>> &y, int incy,
                           DeviceMemory<std::complex<float>> *ap) {
   LOG(ERROR) << "rocBLAS does not currently support the HPR2 operation "
-             << "for the \"complex<float>\" dataype";
+             << "for the \"complex<float>\" datatype";
   return false;
 }
 
@@ -1127,7 +1165,7 @@ bool ROCMBlas::DoBlasHpr2(Stream *stream, blas::UpperLower uplo, uint64 n,
                           const DeviceMemory<std::complex<double>> &y, int incy,
                           DeviceMemory<std::complex<double>> *ap) {
   LOG(ERROR) << "rocBLAS does not currently support the HPR2 operation "
-             << "for the \"complex<double>\" dataype";
+             << "for the \"complex<double>\" datatype";
   return false;
 }
 
@@ -1136,7 +1174,7 @@ bool ROCMBlas::DoBlasSbmv(Stream *stream, blas::UpperLower uplo, uint64 n,
                           int lda, const DeviceMemory<float> &x, int incx,
                           float beta, DeviceMemory<float> *y, int incy) {
   LOG(ERROR) << "rocBLAS does not currently support the SBMV operation "
-             << "for the \"complex<float>\" dataype";
+             << "for the \"complex<float>\" datatype";
 
   return false;
 }
@@ -1146,7 +1184,7 @@ bool ROCMBlas::DoBlasSbmv(Stream *stream, blas::UpperLower uplo, uint64 n,
                           int lda, const DeviceMemory<double> &x, int incx,
                           double beta, DeviceMemory<double> *y, int incy) {
   LOG(ERROR) << "rocBLAS does not currently support the SBMV operation "
-             << "for the \"complex<double>\" dataype";
+             << "for the \"complex<double>\" datatype";
   return false;
 }
 
@@ -1155,7 +1193,7 @@ bool ROCMBlas::DoBlasSpmv(Stream *stream, blas::UpperLower uplo, uint64 n,
                           const DeviceMemory<float> &x, int incx, float beta,
                           DeviceMemory<float> *y, int incy) {
   LOG(ERROR) << "rocBLAS does not currently support the SPMV operation "
-             << "for the \"float\" dataype";
+             << "for the \"float\" datatype";
   return false;
 }
 
@@ -1164,7 +1202,7 @@ bool ROCMBlas::DoBlasSpmv(Stream *stream, blas::UpperLower uplo, uint64 n,
                           const DeviceMemory<double> &x, int incx, double beta,
                           DeviceMemory<double> *y, int incy) {
   LOG(ERROR) << "rocBLAS does not currently support the SPMV operation "
-             << "for the \"double\" dataype";
+             << "for the \"double\" datatype";
   return false;
 }
 
@@ -1172,7 +1210,7 @@ bool ROCMBlas::DoBlasSpr(Stream *stream, blas::UpperLower uplo, uint64 n,
                          float alpha, const DeviceMemory<float> &x, int incx,
                          DeviceMemory<float> *ap) {
   LOG(ERROR) << "rocBLAS does not currently support the SPR operation "
-             << "for the \"float\" dataype";
+             << "for the \"float\" datatype";
   return false;
 }
 
@@ -1180,7 +1218,7 @@ bool ROCMBlas::DoBlasSpr(Stream *stream, blas::UpperLower uplo, uint64 n,
                          double alpha, const DeviceMemory<double> &x, int incx,
                          DeviceMemory<double> *ap) {
   LOG(ERROR) << "rocBLAS does not currently support the SPR operation "
-             << "for the \"double\" dataype";
+             << "for the \"double\" datatype";
   return false;
 }
 
@@ -1189,7 +1227,7 @@ bool ROCMBlas::DoBlasSpr2(Stream *stream, blas::UpperLower uplo, uint64 n,
                           const DeviceMemory<float> &y, int incy,
                           DeviceMemory<float> *ap) {
   LOG(ERROR) << "rocBLAS does not currently support the SPR2 operation "
-             << "for the \"float\" dataype";
+             << "for the \"float\" datatype";
   return false;
 }
 
@@ -1198,7 +1236,7 @@ bool ROCMBlas::DoBlasSpr2(Stream *stream, blas::UpperLower uplo, uint64 n,
                           const DeviceMemory<double> &y, int incy,
                           DeviceMemory<double> *ap) {
   LOG(ERROR) << "rocBLAS does not currently support the SPR2 operation "
-             << "for the \"double\" dataype";
+             << "for the \"double\" datatype";
   return false;
 }
 
@@ -1207,7 +1245,7 @@ bool ROCMBlas::DoBlasSymv(Stream *stream, blas::UpperLower uplo, uint64 n,
                           const DeviceMemory<float> &x, int incx, float beta,
                           DeviceMemory<float> *y, int incy) {
   LOG(ERROR) << "rocBLAS does not currently support the SYMV operation "
-             << "for the \"float\" dataype";
+             << "for the \"float\" datatype";
   return false;
 }
 
@@ -1216,7 +1254,7 @@ bool ROCMBlas::DoBlasSymv(Stream *stream, blas::UpperLower uplo, uint64 n,
                           const DeviceMemory<double> &x, int incx, double beta,
                           DeviceMemory<double> *y, int incy) {
   LOG(ERROR) << "rocBLAS does not currently support the SYMV operation "
-             << "for the \"double\" dataype";
+             << "for the \"double\" datatype";
   return false;
 }
 
@@ -1243,7 +1281,7 @@ bool ROCMBlas::DoBlasSyr2(Stream *stream, blas::UpperLower uplo, uint64 n,
                           const DeviceMemory<float> &y, int incy,
                           DeviceMemory<float> *a, int lda) {
   LOG(ERROR) << "rocBLAS does not currently support the SYR2 operation "
-             << "for the \"float\" dataype";
+             << "for the \"float\" datatype";
   return false;
 }
 
@@ -1252,7 +1290,7 @@ bool ROCMBlas::DoBlasSyr2(Stream *stream, blas::UpperLower uplo, uint64 n,
                           const DeviceMemory<double> &y, int incy,
                           DeviceMemory<double> *a, int lda) {
   LOG(ERROR) << "rocBLAS does not currently support the SYR2 operation "
-             << "for the \"double\" dataype";
+             << "for the \"double\" datatype";
   return false;
 }
 
@@ -1261,7 +1299,7 @@ bool ROCMBlas::DoBlasTbmv(Stream *stream, blas::UpperLower uplo,
                           uint64 k, const DeviceMemory<float> &a, int lda,
                           DeviceMemory<float> *x, int incx) {
   LOG(ERROR) << "rocBLAS does not currently support the TBMV operation "
-             << "for the \"float\" dataype";
+             << "for the \"float\" datatype";
   return false;
 }
 
@@ -1270,7 +1308,7 @@ bool ROCMBlas::DoBlasTbmv(Stream *stream, blas::UpperLower uplo,
                           uint64 k, const DeviceMemory<double> &a, int lda,
                           DeviceMemory<double> *x, int incx) {
   LOG(ERROR) << "rocBLAS does not currently support the TBMV operation "
-             << "for the \"double\" dataype";
+             << "for the \"double\" datatype";
   return false;
 }
 
@@ -1280,7 +1318,7 @@ bool ROCMBlas::DoBlasTbmv(Stream *stream, blas::UpperLower uplo,
                           int lda, DeviceMemory<std::complex<float>> *x,
                           int incx) {
   LOG(ERROR) << "rocBLAS does not currently support the TBMV operation "
-             << "for the \"complex<float>\" dataype";
+             << "for the \"complex<float>\" datatype";
   return false;
 }
 
@@ -1290,7 +1328,7 @@ bool ROCMBlas::DoBlasTbmv(Stream *stream, blas::UpperLower uplo,
                           int lda, DeviceMemory<std::complex<double>> *x,
                           int incx) {
   LOG(ERROR) << "rocBLAS does not currently support the TBMV operation "
-             << "for the \"complex<double>\" dataype";
+             << "for the \"complex<double>\" datatype";
   return false;
 }
 
@@ -1299,7 +1337,7 @@ bool ROCMBlas::DoBlasTbsv(Stream *stream, blas::UpperLower uplo,
                           uint64 k, const DeviceMemory<float> &a, int lda,
                           DeviceMemory<float> *x, int incx) {
   LOG(ERROR) << "rocBLAS does not currently support the TBSV operation "
-             << "for the \"float\" dataype";
+             << "for the \"float\" datatype";
   return false;
 }
 
@@ -1308,7 +1346,7 @@ bool ROCMBlas::DoBlasTbsv(Stream *stream, blas::UpperLower uplo,
                           uint64 k, const DeviceMemory<double> &a, int lda,
                           DeviceMemory<double> *x, int incx) {
   LOG(ERROR) << "rocBLAS does not currently support the TBSV operation "
-             << "for the \"double\" dataype";
+             << "for the \"double\" datatype";
   return false;
 }
 
@@ -1318,7 +1356,7 @@ bool ROCMBlas::DoBlasTbsv(Stream *stream, blas::UpperLower uplo,
                           int lda, DeviceMemory<std::complex<float>> *x,
                           int incx) {
   LOG(ERROR) << "rocBLAS does not currently support the TBSV operation "
-             << "for the \"complex<float>\" dataype";
+             << "for the \"complex<float>\" datatype";
   return false;
 }
 
@@ -1328,7 +1366,7 @@ bool ROCMBlas::DoBlasTbsv(Stream *stream, blas::UpperLower uplo,
                           int lda, DeviceMemory<std::complex<double>> *x,
                           int incx) {
   LOG(ERROR) << "rocBLAS does not currently support the TBSV operation "
-             << "for the \"complex<double>\" dataype";
+             << "for the \"complex<double>\" datatype";
   return false;
 }
 
@@ -1337,7 +1375,7 @@ bool ROCMBlas::DoBlasTpmv(Stream *stream, blas::UpperLower uplo,
                           const DeviceMemory<float> &ap, DeviceMemory<float> *x,
                           int incx) {
   LOG(ERROR) << "rocBLAS does not currently support the TPMV operation "
-             << "for the \"float\" dataype";
+             << "for the \"float\" datatype";
   return false;
 }
 
@@ -1346,7 +1384,7 @@ bool ROCMBlas::DoBlasTpmv(Stream *stream, blas::UpperLower uplo,
                           const DeviceMemory<double> &ap,
                           DeviceMemory<double> *x, int incx) {
   LOG(ERROR) << "rocBLAS does not currently support the TPMV operation "
-             << "for the \"double\" dataype";
+             << "for the \"double\" datatype";
   return false;
 }
 
@@ -1355,7 +1393,7 @@ bool ROCMBlas::DoBlasTpmv(Stream *stream, blas::UpperLower uplo,
                           const DeviceMemory<std::complex<float>> &ap,
                           DeviceMemory<std::complex<float>> *x, int incx) {
   LOG(ERROR) << "rocBLAS does not currently support the TPMV operation "
-             << "for the \"complex<float>\" dataype";
+             << "for the \"complex<float>\" datatype";
   return false;
 }
 
@@ -1364,7 +1402,7 @@ bool ROCMBlas::DoBlasTpmv(Stream *stream, blas::UpperLower uplo,
                           const DeviceMemory<std::complex<double>> &ap,
                           DeviceMemory<std::complex<double>> *x, int incx) {
   LOG(ERROR) << "rocBLAS does not currently support the TPMV operation "
-             << "for the \"complex<double>\" dataype";
+             << "for the \"complex<double>\" datatype";
   return false;
 }
 
@@ -1373,7 +1411,7 @@ bool ROCMBlas::DoBlasTpsv(Stream *stream, blas::UpperLower uplo,
                           const DeviceMemory<float> &ap, DeviceMemory<float> *x,
                           int incx) {
   LOG(ERROR) << "rocBLAS does not currently support the TPSV operation "
-             << "for the \"float\" dataype";
+             << "for the \"float\" datatype";
   return false;
 }
 
@@ -1382,7 +1420,7 @@ bool ROCMBlas::DoBlasTpsv(Stream *stream, blas::UpperLower uplo,
                           const DeviceMemory<double> &ap,
                           DeviceMemory<double> *x, int incx) {
   LOG(ERROR) << "rocBLAS does not currently support the TPSV operation "
-             << "for the \"double\" dataype";
+             << "for the \"double\" datatype";
   return false;
 }
 
@@ -1391,7 +1429,7 @@ bool ROCMBlas::DoBlasTpsv(Stream *stream, blas::UpperLower uplo,
                           const DeviceMemory<std::complex<float>> &ap,
                           DeviceMemory<std::complex<float>> *x, int incx) {
   LOG(ERROR) << "rocBLAS does not currently support the TPSV operation "
-             << "for the \"complex<float>\" dataype";
+             << "for the \"complex<float>\" datatype";
   return false;
 }
 
@@ -1400,7 +1438,7 @@ bool ROCMBlas::DoBlasTpsv(Stream *stream, blas::UpperLower uplo,
                           const DeviceMemory<std::complex<double>> &ap,
                           DeviceMemory<std::complex<double>> *x, int incx) {
   LOG(ERROR) << "rocBLAS does not currently support the TPSV operation "
-             << "for the \"complex<double>\" dataype";
+             << "for the \"complex<double>\" datatype";
   return false;
 }
 
@@ -1409,7 +1447,7 @@ bool ROCMBlas::DoBlasTrmv(Stream *stream, blas::UpperLower uplo,
                           const DeviceMemory<float> &a, int lda,
                           DeviceMemory<float> *x, int incx) {
   LOG(ERROR) << "rocBLAS does not currently support the TRMV operation "
-             << "for the \"float\" dataype";
+             << "for the \"float\" datatype";
   return false;
 }
 
@@ -1418,7 +1456,7 @@ bool ROCMBlas::DoBlasTrmv(Stream *stream, blas::UpperLower uplo,
                           const DeviceMemory<double> &a, int lda,
                           DeviceMemory<double> *x, int incx) {
   LOG(ERROR) << "rocBLAS does not currently support the TRMV operation "
-             << "for the \"double\" dataype";
+             << "for the \"double\" datatype";
   return false;
 }
 
@@ -1427,7 +1465,7 @@ bool ROCMBlas::DoBlasTrmv(Stream *stream, blas::UpperLower uplo,
                           const DeviceMemory<std::complex<float>> &a, int lda,
                           DeviceMemory<std::complex<float>> *x, int incx) {
   LOG(ERROR) << "rocBLAS does not currently support the TRMV operation "
-             << "for the \"complex<float>\" dataype";
+             << "for the \"complex<float>\" datatype";
   return false;
 }
 
@@ -1436,7 +1474,7 @@ bool ROCMBlas::DoBlasTrmv(Stream *stream, blas::UpperLower uplo,
                           const DeviceMemory<std::complex<double>> &a, int lda,
                           DeviceMemory<std::complex<double>> *x, int incx) {
   LOG(ERROR) << "rocBLAS does not currently support the TRMV operation "
-             << "for the \"complex<double>\" dataype";
+             << "for the \"complex<double>\" datatype";
   return false;
 }
 
@@ -1445,7 +1483,7 @@ bool ROCMBlas::DoBlasTrsv(Stream *stream, blas::UpperLower uplo,
                           const DeviceMemory<float> &a, int lda,
                           DeviceMemory<float> *x, int incx) {
   LOG(ERROR) << "rocBLAS does not currently support the TRSV operation "
-             << "for the \"float\" dataype";
+             << "for the \"float\" datatype";
   return false;
 }
 
@@ -1454,7 +1492,7 @@ bool ROCMBlas::DoBlasTrsv(Stream *stream, blas::UpperLower uplo,
                           const DeviceMemory<double> &a, int lda,
                           DeviceMemory<double> *x, int incx) {
   LOG(ERROR) << "rocBLAS does not currently support the TRSV operation "
-             << "for the \"double\" dataype";
+             << "for the \"double\" datatype";
   return false;
 }
 
@@ -1463,7 +1501,7 @@ bool ROCMBlas::DoBlasTrsv(Stream *stream, blas::UpperLower uplo,
                           const DeviceMemory<std::complex<float>> &a, int lda,
                           DeviceMemory<std::complex<float>> *x, int incx) {
   LOG(ERROR) << "rocBLAS does not currently support the TRSV operation "
-             << "for the \"complex<float>\" dataype";
+             << "for the \"complex<float>\" datatype";
   return false;
 }
 
@@ -1472,7 +1510,7 @@ bool ROCMBlas::DoBlasTrsv(Stream *stream, blas::UpperLower uplo,
                           const DeviceMemory<std::complex<double>> &a, int lda,
                           DeviceMemory<std::complex<double>> *x, int incx) {
   LOG(ERROR) << "rocBLAS does not currently support the TRSV operation "
-             << "for the \"complex<double>\" dataype";
+             << "for the \"complex<double>\" datatype";
   return false;
 }
 
@@ -1481,6 +1519,7 @@ bool ROCMBlas::DoBlasGemm(Stream *stream, blas::Transpose transa,
                           float alpha, const DeviceMemory<Eigen::half> &a,
                           int lda, const DeviceMemory<Eigen::half> &b, int ldb,
                           float beta, DeviceMemory<Eigen::half> *c, int ldc) {
+  blas_log("DoBlasGemm");
   VLOG(1) << absl::StreamFormat(
       "doing rocBLAS SGEMM: at=%d bt=%d m=%u n=%u "
       "k=%llu alpha=%f a=%p lda=%d b=%p ldb=%d beta=%f "
@@ -1526,6 +1565,7 @@ bool ROCMBlas::DoBlasGemm(Stream *stream, blas::Transpose transa,
                           float alpha, const DeviceMemory<float> &a, int lda,
                           const DeviceMemory<float> &b, int ldb, float beta,
                           DeviceMemory<float> *c, int ldc) {
+  blas_log("DoBlasGemm");
   VLOG(1) << absl::StreamFormat(
       "doing rocBLAS SGEMM: at=%d bt=%d m=%u n=%u "
       "k=%llu alpha=%f a=%p lda=%d b=%p ldb=%d beta=%f "
@@ -1565,6 +1605,7 @@ bool ROCMBlas::DoBlasGemm(Stream *stream, blas::Transpose transa,
                           double alpha, const DeviceMemory<double> &a, int lda,
                           const DeviceMemory<double> &b, int ldb, double beta,
                           DeviceMemory<double> *c, int ldc) {
+  blas_log("DoBlasGemm");
   return DoBlasInternal(
       wrap::rocblas_dgemm, stream, true /* = pointer_mode_host */,
       ROCMBlasTranspose(transa), ROCMBlasTranspose(transb), m, n, k, &alpha,
@@ -1578,9 +1619,11 @@ bool ROCMBlas::DoBlasGemm(Stream *stream, blas::Transpose transa,
                           const DeviceMemory<std::complex<float>> &b, int ldb,
                           std::complex<float> beta,
                           DeviceMemory<std::complex<float>> *c, int ldc) {
-  LOG(ERROR) << "rocBLAS does not currently support the GEMM operation "
-             << "for the \"complex<float>\" dataype";
-  return false;
+  blas_log("DoBlasGemm");
+  return DoBlasInternal(
+      wrap::rocblas_cgemm, stream, true /* = pointer_mode_host */,
+      ROCMBlasTranspose(transa), ROCMBlasTranspose(transb), m, n, k, complex_cast(alpha),
+      complex_cast(a), lda, complex_cast(b), ldb, complex_cast(beta), complex_cast(c), ldc);
 }
 
 bool ROCMBlas::DoBlasGemm(Stream *stream, blas::Transpose transa,
@@ -1590,9 +1633,11 @@ bool ROCMBlas::DoBlasGemm(Stream *stream, blas::Transpose transa,
                           const DeviceMemory<std::complex<double>> &b, int ldb,
                           std::complex<double> beta,
                           DeviceMemory<std::complex<double>> *c, int ldc) {
-  LOG(ERROR) << "rocBLAS does not currently support the GEMM operation "
-             << "for the \"complex<double>\" dataype";
-  return false;
+  blas_log("DoBlasGemm");
+  return DoBlasInternal(
+      wrap::rocblas_zgemm, stream, true /* = pointer_mode_host */,
+      ROCMBlasTranspose(transa), ROCMBlasTranspose(transb), m, n, k, complex_cast(alpha),
+      complex_cast(a), lda, complex_cast(b), ldb, complex_cast(beta), complex_cast(c), ldc);
 }
 
 bool ROCMBlas::DoBlasGemvWithProfiling(
@@ -1739,7 +1784,7 @@ bool ROCMBlas::DoBlasGemmWithAlgorithm(
     blas::ProfileResult *output_profile_result) {
   LOG(ERROR)
       << "rocBLAS does not currently support the GEMMwithAlgorithm operation "
-      << "for the \"int8\" dataype";
+      << "for the \"int8\" datatype";
   return false;
 }
 
@@ -1753,7 +1798,7 @@ bool ROCMBlas::DoBlasGemmWithAlgorithm(
     blas::AlgorithmType algorithm, blas::ProfileResult *output_profile_result) {
   LOG(ERROR)
       << "rocBLAS does not currently support the GEMMwithAlgorithm operation "
-      << "for the \"half\" dataype";
+      << "for the \"half\" datatype";
   return false;
 }
 
@@ -1766,7 +1811,7 @@ bool ROCMBlas::DoBlasGemmWithAlgorithm(
     blas::AlgorithmType algorithm, blas::ProfileResult *output_profile_result) {
   LOG(ERROR)
       << "rocBLAS does not currently support the GEMMwithAlgorithm operation "
-      << "for the \"float\" dataype";
+      << "for the \"float\" datatype";
   return false;
 }
 
@@ -1779,7 +1824,7 @@ bool ROCMBlas::DoBlasGemmWithAlgorithm(
     blas::AlgorithmType algorithm, blas::ProfileResult *output_profile_result) {
   LOG(ERROR)
       << "rocBLAS does not currently support the GEMMwithAlgorithm operation "
-      << "for the \"double\" dataype";
+      << "for the \"double\" datatype";
   return false;
 }
 
@@ -1794,7 +1839,7 @@ bool ROCMBlas::DoBlasGemmWithAlgorithm(
     blas::ProfileResult *output_profile_result) {
   LOG(ERROR)
       << "rocBLAS does not currently support the GEMMwithAlgorithm operation "
-      << "for the \"complex<float>\" dataype";
+      << "for the \"complex<float>\" datatype";
   return false;
 }
 
@@ -1809,8 +1854,61 @@ bool ROCMBlas::DoBlasGemmWithAlgorithm(
     blas::ProfileResult *output_profile_result) {
   LOG(ERROR)
       << "rocBLAS does not currently support the GEMMwithAlgorithm operation "
-      << "for the \"complex<double>\" dataype";
+      << "for the \"complex<double>\" datatype";
   return false;
+}
+
+
+// This copies from source memory: raw_ptrs[i] to target memory:
+// device_memory_ptr at the interval of matrix_byte_size, or vice versa. 
+// The below algorithm tries to minimize the number of memcpy by consolidating neighboring
+// memcpy into a single request
+template <typename MAPPED_T>
+port::Status ReorganizeMemory(Stream* stream,
+      DeviceMemory<MAPPED_T> *device_memory,
+        const std::vector<MAPPED_T*>  &raw_ptrs,
+    int batch_count, uint64_t batch_stride,
+    bool gather)
+{
+  assert(batch_count > 0);
+  char *device_memory_ptr = static_cast<char *>(device_memory->opaque());
+  char* src_ptr = reinterpret_cast<char*>(raw_ptrs[0]);
+  char* dst_ptr = device_memory_ptr;
+  size_t matrix_byte_size = batch_stride * sizeof(MAPPED_T);  
+  uint64_t cur_stride_size = matrix_byte_size;
+
+  for (int i = 1; i < batch_count; ++i) {
+    if (reinterpret_cast<char*>(raw_ptrs[i]) == src_ptr + cur_stride_size) {
+      cur_stride_size += matrix_byte_size;
+    } else {
+      DeviceMemoryBase src_mem = DeviceMemoryBase(src_ptr, cur_stride_size);
+      DeviceMemoryBase target_mem = DeviceMemoryBase(dst_ptr, cur_stride_size);
+      bool a_status =
+        gather 
+          ? stream->ThenMemcpy(&target_mem, src_mem, cur_stride_size).ok()
+          : stream->ThenMemcpy(&src_mem, target_mem, cur_stride_size).ok();
+      if (!a_status) {
+        return port::Status(
+            port::error::INTERNAL,
+            "failed to copy device memory in ROCMBlas::DoBlasGemmBatched");
+      }
+      src_ptr = reinterpret_cast<char*>(raw_ptrs[i]);
+      dst_ptr = device_memory_ptr + i * matrix_byte_size;
+      cur_stride_size = matrix_byte_size;
+    }
+  }
+
+  DeviceMemoryBase src_mem = DeviceMemoryBase(src_ptr, cur_stride_size);
+  DeviceMemoryBase target_mem = DeviceMemoryBase(dst_ptr, cur_stride_size);
+  bool a_status =
+      gather 
+        ? stream->ThenMemcpy(&target_mem, src_mem, cur_stride_size).ok()
+        : stream->ThenMemcpy(&src_mem, target_mem, cur_stride_size).ok();
+  if (!a_status)
+    return port::Status(
+        port::error::INTERNAL,
+        "failed to copy device memory in ROCMBlas::DoBlasGemmBatched");
+  return port::Status::OK();
 }
 
 template <typename T>
@@ -1822,7 +1920,9 @@ port::Status ROCMBlas::AllocateStridedBuffer(
     std::unique_ptr<TemporaryDeviceMemory<
         typename RocBlasTypeConversionHelper<T>::mapped_type>> *temp_memory,
     DeviceMemory<typename RocBlasTypeConversionHelper<T>::mapped_type>
-        *device_memory) {
+        *device_memory,
+        bool copy_data,
+        bool& reallocated) {
   assert(device_memory != nullptr);
 
   using MAPPED_T = typename RocBlasTypeConversionHelper<T>::mapped_type;
@@ -1843,6 +1943,7 @@ port::Status ROCMBlas::AllocateStridedBuffer(
   if (!needs_allocate_strided) {
     *device_memory = DeviceMemory<MAPPED_T>(
         DeviceMemoryBase(raw_ptrs[0], matrix_batch_byte_size));
+    reallocated = false;
     return port::Status::OK();
   }
 
@@ -1859,21 +1960,13 @@ port::Status ROCMBlas::AllocateStridedBuffer(
         DeviceMemory<MAPPED_T>(*(*temp_memory)->mutable_device_memory());
   }
 
-  for (int i = 0; i < batch_count; ++i) {
-    char *device_memory_ptr = static_cast<char *>(device_memory->opaque());
-    DeviceMemoryBase src_mem = DeviceMemoryBase(raw_ptrs[i], matrix_byte_size);
-    DeviceMemoryBase target_mem = DeviceMemoryBase(
-        device_memory_ptr + i * matrix_byte_size, matrix_byte_size);
-    bool a_status =
-        stream->ThenMemcpy(&target_mem, src_mem, matrix_byte_size).ok();
-    if (!a_status) {
-      return port::Status(
-          port::error::INTERNAL,
-          "failed to copy device memory in ROCMBlas::DoBlasGemmBatched");
-    }
-  }
-  return port::Status::OK();
+  reallocated = true;
+
+  if(copy_data)
+      return ReorganizeMemory(stream, device_memory, raw_ptrs, batch_count, batch_stride, true);
+    return port::Status::OK();
 }
+
 
 template <typename T, typename FuncT>
 port::Status ROCMBlas::DoBlasGemmBatchedInternal(
@@ -1896,8 +1989,7 @@ port::Status ROCMBlas::DoBlasGemmBatchedInternal(
   if (ROCMBlasTranspose(transa) == rocblas_operation_none) {
     assert(lda >= m);
     batch_stride_a = lda * k;
-  } else {
-    assert(lda >= k);
+  } else {    assert(lda >= k);
     batch_stride_a = lda * m;
   }
 
@@ -1925,9 +2017,10 @@ port::Status ROCMBlas::DoBlasGemmBatchedInternal(
   DeviceMemory<MAPPED_T> a;
   // Make sure the temporary memory are in-scope before the function returns
   std::unique_ptr<TemporaryDeviceMemory<MAPPED_T>> a_temp;
+  bool reallocated_a, reallocated_b, reallocated_c;
   port::Status a_allocation_status =
       AllocateStridedBuffer<T>(a_raw_ptrs, batch_count, batch_stride_a,
-                               scratch_allocator, stream, &a_temp, &a);
+                               scratch_allocator, stream, &a_temp, &a, true, reallocated_a);
   if (a_allocation_status != port::Status::OK()) {
     return a_allocation_status;
   }
@@ -1936,7 +2029,7 @@ port::Status ROCMBlas::DoBlasGemmBatchedInternal(
   std::unique_ptr<TemporaryDeviceMemory<MAPPED_T>> b_temp;
   port::Status b_allocation_status =
       AllocateStridedBuffer<T>(b_raw_ptrs, batch_count, batch_stride_b,
-                               scratch_allocator, stream, &b_temp, &b);
+                               scratch_allocator, stream, &b_temp, &b, true, reallocated_b);
   if (b_allocation_status != port::Status::OK()) {
     return b_allocation_status;
   }
@@ -1945,7 +2038,7 @@ port::Status ROCMBlas::DoBlasGemmBatchedInternal(
   std::unique_ptr<TemporaryDeviceMemory<MAPPED_T>> c_temp;
   port::Status c_allocation_status =
       AllocateStridedBuffer<T>(c_raw_ptrs, batch_count, batch_stride_c,
-                               scratch_allocator, stream, &c_temp, &c);
+                               scratch_allocator, stream, &c_temp, &c, true, reallocated_c); // can disable copy if beta=0
   if (c_allocation_status != port::Status::OK()) {
     return c_allocation_status;
   }
@@ -1953,19 +2046,19 @@ port::Status ROCMBlas::DoBlasGemmBatchedInternal(
   MAPPED_T *alpha_ptr = reinterpret_cast<MAPPED_T *>(&alpha);
   MAPPED_T *beta_ptr = reinterpret_cast<MAPPED_T *>(&beta);
 
-  bool ok = DoBlasInternal(rocblas_func, stream, true /* = pointer_mode_host */,
-                           ROCMBlasTranspose(transa), ROCMBlasTranspose(transb),
-                           m, n, k, GpuComplex(alpha_ptr), GpuMemory(a), lda,
-                           batch_stride_a, GpuMemory(b), ldb, batch_stride_b,
-                           GpuComplex(beta_ptr), GpuMemoryMutable(&c), ldc,
-                           batch_stride_c, batch_count);
-
-  if (ok) {
-    return port::Status::OK();
-  } else {
+  bool ok;
+  ok = DoBlasInternal(rocblas_func, stream, true /* = pointer_mode_host */,
+                         ROCMBlasTranspose(transa), ROCMBlasTranspose(transb),
+                         m, n, k, GpuComplex(alpha_ptr), GpuMemory(a), lda,
+                         batch_stride_a, GpuMemory(b), ldb, batch_stride_b,
+                         GpuComplex(beta_ptr), GpuMemoryMutable(&c), ldc,
+                         batch_stride_c, batch_count);
+  if(!ok)
     return port::Status(port::error::INTERNAL,
-                        "failed BLAS call, see log for details");
-  }
+                      "failed BLAS call, see log for details");
+  if(reallocated_c)
+      return ReorganizeMemory(stream, &c, c_raw_ptrs, batch_count, batch_stride_c, false);
+  return port::Status::OK();
 }
 
 bool ROCMBlas::DoBlasGemmBatched(
@@ -1974,7 +2067,8 @@ bool ROCMBlas::DoBlasGemmBatched(
     const port::ArraySlice<DeviceMemory<Eigen::half> *> &a, int lda,
     const port::ArraySlice<DeviceMemory<Eigen::half> *> &b, int ldb, float beta,
     const port::ArraySlice<DeviceMemory<Eigen::half> *> &c, int ldc,
-    int batch_count, ScratchAllocator *scratch_allocator) {
+    int batch_count, ScratchAllocator *scratch_allocator) {  
+  blas_log("DoBlasGemmBatched");
   const Eigen::half alpha_half(alpha);
   const Eigen::half beta_half(beta);
 
@@ -1996,6 +2090,7 @@ bool ROCMBlas::DoBlasGemmBatched(
     const port::ArraySlice<DeviceMemory<float> *> &b_array, int ldb, float beta,
     const port::ArraySlice<DeviceMemory<float> *> &c_array, int ldc,
     int batch_count, ScratchAllocator *scratch_allocator) {
+  blas_log("DoBlasGemmBatched");
   port::Status status = DoBlasGemmBatchedInternal(
       wrap::rocblas_sgemm_strided_batched, stream, transa, transb, m, n, k,
       alpha, a_array, lda, b_array, ldb, beta, c_array, ldc, batch_count,
@@ -2013,6 +2108,7 @@ bool ROCMBlas::DoBlasGemmBatched(
     const port::ArraySlice<DeviceMemory<double> *> &b_array, int ldb,
     double beta, const port::ArraySlice<DeviceMemory<double> *> &c_array,
     int ldc, int batch_count, ScratchAllocator *scratch_allocator) {
+  blas_log("DoBlasGemmBatched");
   port::Status status = DoBlasGemmBatchedInternal(
       wrap::rocblas_dgemm_strided_batched, stream, transa, transb, m, n, k,
       alpha, a_array, lda, b_array, ldb, beta, c_array, ldc, batch_count,
@@ -2032,10 +2128,17 @@ bool ROCMBlas::DoBlasGemmBatched(
     int ldb, std::complex<float> beta,
     const port::ArraySlice<DeviceMemory<std::complex<float>> *> &c_array,
     int ldc, int batch_count, ScratchAllocator *scratch_allocator) {
-  LOG(ERROR) << "rocBLAS does not currently support the GEMMBatched operation "
-             << "for the \"complex<float>\" dataype";
-  return false;
+  blas_log("DoBlasGemmBatched");
+  port::Status status = DoBlasGemmBatchedInternal(
+      wrap::rocblas_cgemm_strided_batched, stream, transa, transb, m, n, k,
+      alpha, a_array, lda, b_array, ldb, beta, c_array, ldc, batch_count,
+      scratch_allocator);
+  if (!status.ok()) {
+    LOG(ERROR) << status;
+  }
+  return status.ok();
 }
+
 
 bool ROCMBlas::DoBlasGemmBatched(
     Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
@@ -2046,9 +2149,15 @@ bool ROCMBlas::DoBlasGemmBatched(
     int ldb, std::complex<double> beta,
     const port::ArraySlice<DeviceMemory<std::complex<double>> *> &c_array,
     int ldc, int batch_count, ScratchAllocator *scratch_allocator) {
-  LOG(ERROR) << "rocBLAS does not currently support the GEMMBatched operation "
-             << "for the \"complex<double>\" dataype";
-  return false;
+  blas_log("DoBlasGemmBatched");
+  port::Status status = DoBlasGemmBatchedInternal(
+      wrap::rocblas_zgemm_strided_batched, stream, transa, transb, m, n, k,
+      alpha, a_array, lda, b_array, ldb, beta, c_array, ldc, batch_count,
+      scratch_allocator);
+  if (!status.ok()) {
+    LOG(ERROR) << status;
+  }
+  return status.ok();
 }
 
 bool ROCMBlas::DoBlasHemm(Stream *stream, blas::Side side,
@@ -2059,7 +2168,7 @@ bool ROCMBlas::DoBlasHemm(Stream *stream, blas::Side side,
                           std::complex<float> beta,
                           DeviceMemory<std::complex<float>> *c, int ldc) {
   LOG(ERROR) << "rocBLAS does not currently support the HEMM operation "
-             << "for the \"complex<float>\" dataype";
+             << "for the \"complex<float>\" datatype";
   return false;
 }
 
@@ -2071,7 +2180,7 @@ bool ROCMBlas::DoBlasHemm(Stream *stream, blas::Side side,
                           std::complex<double> beta,
                           DeviceMemory<std::complex<double>> *c, int ldc) {
   LOG(ERROR) << "rocBLAS does not currently support the HEMM operation "
-             << "for the \"complex<double>\" dataype";
+             << "for the \"complex<double>\" datatype";
   return false;
 }
 
@@ -2082,7 +2191,7 @@ bool ROCMBlas::DoBlasHerk(Stream *stream, blas::UpperLower uplo,
                           float beta, DeviceMemory<std::complex<float>> *c,
                           int ldc) {
   LOG(ERROR) << "rocBLAS does not currently support the HERK operation "
-             << "for the \"complex<float>\" dataype";
+             << "for the \"complex<float>\" datatype";
   return false;
 }
 
@@ -2093,7 +2202,7 @@ bool ROCMBlas::DoBlasHerk(Stream *stream, blas::UpperLower uplo,
                           double beta, DeviceMemory<std::complex<double>> *c,
                           int ldc) {
   LOG(ERROR) << "rocBLAS does not currently support the HERK operation "
-             << "for the \"complex<double>\" dataype";
+             << "for the \"complex<double>\" datatype";
   return false;
 }
 
@@ -2105,7 +2214,7 @@ bool ROCMBlas::DoBlasHer2k(Stream *stream, blas::UpperLower uplo,
                            float beta, DeviceMemory<std::complex<float>> *c,
                            int ldc) {
   LOG(ERROR) << "rocBLAS does not currently support the HER2K operation "
-             << "for the \"complex<float>\" dataype";
+             << "for the \"complex<float>\" datatype";
   return false;
 }
 
@@ -2117,7 +2226,7 @@ bool ROCMBlas::DoBlasHer2k(Stream *stream, blas::UpperLower uplo,
                            double beta, DeviceMemory<std::complex<double>> *c,
                            int ldc) {
   LOG(ERROR) << "rocBLAS does not currently support the HER2K operation "
-             << "for the \"complex<double>\" dataype";
+             << "for the \"complex<double>\" datatype";
   return false;
 }
 
@@ -2127,7 +2236,7 @@ bool ROCMBlas::DoBlasSymm(Stream *stream, blas::Side side,
                           const DeviceMemory<float> &b, int ldb, float beta,
                           DeviceMemory<float> *c, int ldc) {
   LOG(ERROR) << "rocBLAS does not currently support the SYMM operation "
-             << "for the \"float\" dataype";
+             << "for the \"float\" datatype";
   return false;
 }
 
@@ -2137,7 +2246,7 @@ bool ROCMBlas::DoBlasSymm(Stream *stream, blas::Side side,
                           const DeviceMemory<double> &b, int ldb, double beta,
                           DeviceMemory<double> *c, int ldc) {
   LOG(ERROR) << "rocBLAS does not currently support the SYMM operation "
-             << "for the \"double\" dataype";
+             << "for the \"double\" datatype";
   return false;
 }
 
@@ -2149,7 +2258,7 @@ bool ROCMBlas::DoBlasSymm(Stream *stream, blas::Side side,
                           std::complex<float> beta,
                           DeviceMemory<std::complex<float>> *c, int ldc) {
   LOG(ERROR) << "rocBLAS does not currently support the SYMM operation "
-             << "for the \"complex<float>\" dataype";
+             << "for the \"complex<float>\" datatype";
   return false;
 }
 
@@ -2161,7 +2270,7 @@ bool ROCMBlas::DoBlasSymm(Stream *stream, blas::Side side,
                           std::complex<double> beta,
                           DeviceMemory<std::complex<double>> *c, int ldc) {
   LOG(ERROR) << "rocBLAS does not currently support the SYMM operation "
-             << "for the \"complex<double>\" dataype";
+             << "for the \"complex<double>\" datatype";
   return false;
 }
 
@@ -2170,7 +2279,7 @@ bool ROCMBlas::DoBlasSyrk(Stream *stream, blas::UpperLower uplo,
                           float alpha, const DeviceMemory<float> &a, int lda,
                           float beta, DeviceMemory<float> *c, int ldc) {
   LOG(ERROR) << "rocBLAS does not currently support the SYRK operation "
-             << "for the \"float\" dataype";
+             << "for the \"float\" datatype";
   return false;
 }
 
@@ -2179,7 +2288,7 @@ bool ROCMBlas::DoBlasSyrk(Stream *stream, blas::UpperLower uplo,
                           double alpha, const DeviceMemory<double> &a, int lda,
                           double beta, DeviceMemory<double> *c, int ldc) {
   LOG(ERROR) << "rocBLAS does not currently support the SYRK operation "
-             << "for the \"double\" dataype";
+             << "for the \"double\" datatype";
   return false;
 }
 
@@ -2190,7 +2299,7 @@ bool ROCMBlas::DoBlasSyrk(Stream *stream, blas::UpperLower uplo,
                           std::complex<float> beta,
                           DeviceMemory<std::complex<float>> *c, int ldc) {
   LOG(ERROR) << "rocBLAS does not currently support the SYRK operation "
-             << "for the \"complex<float>\" dataype";
+             << "for the \"complex<float>\" datatype";
   return false;
 }
 
@@ -2201,7 +2310,7 @@ bool ROCMBlas::DoBlasSyrk(Stream *stream, blas::UpperLower uplo,
                           std::complex<double> beta,
                           DeviceMemory<std::complex<double>> *c, int ldc) {
   LOG(ERROR) << "rocBLAS does not currently support the SYRK operation "
-             << "for the \"complex<double>\" dataype";
+             << "for the \"complex<double>\" datatype";
   return false;
 }
 
@@ -2211,7 +2320,7 @@ bool ROCMBlas::DoBlasSyr2k(Stream *stream, blas::UpperLower uplo,
                            const DeviceMemory<float> &b, int ldb, float beta,
                            DeviceMemory<float> *c, int ldc) {
   LOG(ERROR) << "rocBLAS does not currently support the SYR2K operation "
-             << "for the \"float\" dataype";
+             << "for the \"float\" datatype";
   return false;
 }
 
@@ -2221,7 +2330,7 @@ bool ROCMBlas::DoBlasSyr2k(Stream *stream, blas::UpperLower uplo,
                            const DeviceMemory<double> &b, int ldb, double beta,
                            DeviceMemory<double> *c, int ldc) {
   LOG(ERROR) << "rocBLAS does not currently support the SYR2K operation "
-             << "for the \"double\" dataype";
+             << "for the \"double\" datatype";
   return false;
 }
 
@@ -2233,7 +2342,7 @@ bool ROCMBlas::DoBlasSyr2k(Stream *stream, blas::UpperLower uplo,
                            std::complex<float> beta,
                            DeviceMemory<std::complex<float>> *c, int ldc) {
   LOG(ERROR) << "rocBLAS does not currently support the SYR2K operation "
-             << "for the \"complex<float>\" dataype";
+             << "for the \"complex<float>\" datatype";
   return false;
 }
 
@@ -2245,7 +2354,7 @@ bool ROCMBlas::DoBlasSyr2k(Stream *stream, blas::UpperLower uplo,
                            std::complex<double> beta,
                            DeviceMemory<std::complex<double>> *c, int ldc) {
   LOG(ERROR) << "rocBLAS does not currently support the SYR2K operation "
-             << "for the \"complex<double>\" dataype";
+             << "for the \"complex<double>\" datatype";
   return false;
 }
 
@@ -2255,7 +2364,7 @@ bool ROCMBlas::DoBlasTrmm(Stream *stream, blas::Side side,
                           const DeviceMemory<float> &a, int lda,
                           DeviceMemory<float> *b, int ldb) {
   LOG(ERROR) << "rocBLAS does not currently support the TRMM operation "
-             << "for the \"float\" dataype";
+             << "for the \"float\" datatype";
   return false;
 }
 
@@ -2265,7 +2374,7 @@ bool ROCMBlas::DoBlasTrmm(Stream *stream, blas::Side side,
                           const DeviceMemory<double> &a, int lda,
                           DeviceMemory<double> *b, int ldb) {
   LOG(ERROR) << "rocBLAS does not currently support the TRMM operation "
-             << "for the \"double\" dataype";
+             << "for the \"double\" datatype";
   return false;
 }
 
@@ -2276,7 +2385,7 @@ bool ROCMBlas::DoBlasTrmm(Stream *stream, blas::Side side,
                           const DeviceMemory<std::complex<float>> &a, int lda,
                           DeviceMemory<std::complex<float>> *b, int ldb) {
   LOG(ERROR) << "rocBLAS does not currently support the TRMM operation "
-             << "for the \"complex<float>\" dataype";
+             << "for the \"complex<float>\" datatype";
   return false;
 }
 
@@ -2287,7 +2396,7 @@ bool ROCMBlas::DoBlasTrmm(Stream *stream, blas::Side side,
                           const DeviceMemory<std::complex<double>> &a, int lda,
                           DeviceMemory<std::complex<double>> *b, int ldb) {
   LOG(ERROR) << "rocBLAS does not currently support the TRMM operation "
-             << "for the \"complex<double>\" dataype";
+             << "for the \"complex<double>\" datatype";
   return false;
 }
 
@@ -2296,6 +2405,7 @@ bool ROCMBlas::DoBlasTrsm(Stream *stream, blas::Side side,
                           blas::Diagonal diag, uint64 m, uint64 n, float alpha,
                           const DeviceMemory<float> &a, int lda,
                           DeviceMemory<float> *b, int ldb) {
+  blas_log("DoBlasTrsm");
   return DoBlasInternal(
       wrap::rocblas_strsm, stream, true /* = pointer_mode_host */,
       ROCMBlasSide(side), ROCMBlasUpperLower(uplo), ROCMBlasTranspose(transa),
@@ -2308,6 +2418,7 @@ bool ROCMBlas::DoBlasTrsm(Stream *stream, blas::Side side,
                           blas::Diagonal diag, uint64 m, uint64 n, double alpha,
                           const DeviceMemory<double> &a, int lda,
                           DeviceMemory<double> *b, int ldb) {
+  blas_log("DoBlasTrsm");
   return DoBlasInternal(
       wrap::rocblas_dtrsm, stream, true /* = pointer_mode_host */,
       ROCMBlasSide(side), ROCMBlasUpperLower(uplo), ROCMBlasTranspose(transa),
@@ -2322,7 +2433,7 @@ bool ROCMBlas::DoBlasTrsm(Stream *stream, blas::Side side,
                           const DeviceMemory<std::complex<float>> &a, int lda,
                           DeviceMemory<std::complex<float>> *b, int ldb) {
   LOG(ERROR) << "rocBLAS does not currently support the TRSM operation "
-             << "for the \"complex<float>\" dataype";
+             << "for the \"complex<float>\" datatype";
   return false;
 }
 
@@ -2333,15 +2444,17 @@ bool ROCMBlas::DoBlasTrsm(Stream *stream, blas::Side side,
                           const DeviceMemory<std::complex<double>> &a, int lda,
                           DeviceMemory<std::complex<double>> *b, int ldb) {
   LOG(ERROR) << "rocBLAS does not currently support the TRSM operation "
-             << "for the \"complex<double>\" dataype";
+             << "for the \"complex<double>\" datatype";
   return false;
 }
+
 bool ROCMBlas::DoBlasGemmStridedBatched(
     Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
     uint64 n, uint64 k, float alpha, const DeviceMemory<Eigen::half> &a,
     int lda, int64 stride_a, const DeviceMemory<Eigen::half> &b, int ldb,
     int64 stride_b, float beta, DeviceMemory<Eigen::half> *c, int ldc,
     int64 stride_c, int batch_count) {
+  blas_log("DoBlasGemmStridedBatched");
   const Eigen::half alpha_half(alpha);
   const Eigen::half beta_half(beta);
 
@@ -2363,6 +2476,7 @@ bool ROCMBlas::DoBlasGemmStridedBatched(
     int64 stride_a, const DeviceMemory<float> &b, int ldb, int64 stride_b,
     float beta, DeviceMemory<float> *c, int ldc, int64 stride_c,
     int batch_count) {
+  blas_log("DoBlasGemmStridedBatched");
   return DoBlasInternal(wrap::rocblas_sgemm_strided_batched, stream,
                         false, /* pointer_mode_host */
                         ROCMBlasTranspose(transa), ROCMBlasTranspose(transb), m,
@@ -2376,6 +2490,7 @@ bool ROCMBlas::DoBlasGemmStridedBatched(
     int64 stride_a, const DeviceMemory<double> &b, int ldb, int64 stride_b,
     double beta, DeviceMemory<double> *c, int ldc, int64 stride_c,
     int batch_count) {
+  blas_log("DoBlasGemmStridedBatched");
   return DoBlasInternal(wrap::rocblas_dgemm_strided_batched, stream,
                         false, /* pointer_mode_host */
                         ROCMBlasTranspose(transa), ROCMBlasTranspose(transb), m,
@@ -2392,7 +2507,7 @@ bool ROCMBlas::DoBlasGemmStridedBatched(
     int64 stride_c, int batch_count) {
   LOG(ERROR) << "rocBLAS does not currently support the "
                 "DoBlasGemmStridedBatched operation "
-             << "for the \"complex<float>\" dataype";
+             << "for the \"complex<float>\" datatype";
   return false;
 }
 bool ROCMBlas::DoBlasGemmStridedBatched(
@@ -2404,7 +2519,7 @@ bool ROCMBlas::DoBlasGemmStridedBatched(
     int64 stride_c, int batch_count) {
   LOG(ERROR) << "rocBLAS does not currently support the "
                 "DoBlasGemmStridedBatched operation "
-             << "for the \"complex<double>\" dataype";
+             << "for the \"complex<double>\" datatype";
   return false;
 }
 
