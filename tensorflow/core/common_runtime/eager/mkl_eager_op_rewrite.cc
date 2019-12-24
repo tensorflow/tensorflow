@@ -88,6 +88,7 @@ REGISTER_REWRITE(EagerOpRewriteRegistry::PRE_EXECUTION, MklEagerOpRewrite);
 // Constructor
 MklEagerOpRewrite::MklEagerOpRewrite(string name, string file, string line)
     : EagerOpRewrite(name, file, line) {
+  registered_kernels_map_ = std::unordered_map<std::string, bool>();
   InsertMKLEagerOps({"BatchMatMul", AlwaysRewrite, CreateGenericMklOp});
   InsertMKLEagerOps({"BatchMatMulV2", AlwaysRewrite, CreateGenericMklOp});
   InsertMKLEagerOps({"Conv2D", RewriteConv2D, CreateMklConv2DOp});
