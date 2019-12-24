@@ -2366,6 +2366,35 @@ static LogicalResult Verify(TensorListStackOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// TensorScatterUpdateOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(TensorScatterUpdateOp op) {
+  if (!HasRankAtLeast(op.tensor(), 1))
+    return op.emitOpError(
+        "requires tensor operand to have at least 1 dimension");
+  if (!HasRankAtLeast(op.indices(), 1))
+    return op.emitOpError(
+        "requires indices operand to have at least 1 dimension");
+  if (!HasRankAtLeast(op.updates(), 1))
+    return op.emitOpError(
+        "requires updates operand to have at least 1 dimension");
+
+  auto tensor_ty = op.tensor()->getType().dyn_cast<RankedTensorType>();
+  auto indices_ty = op.indices()->getType().dyn_cast<RankedTensorType>();
+  if (!tensor_ty || !indices_ty) return success();
+
+  int64_t num_index_dims = indices_ty.getShape().back();
+  if (ShapedType::isDynamic(num_index_dims)) return success();
+
+  if (num_index_dims > tensor_ty.getRank())
+    return op.emitOpError(
+        "requires tensor operand with rank greater than or equal to the "
+        "indices operand's last dimensions");
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // TopKV2Op
 //===----------------------------------------------------------------------===//
 

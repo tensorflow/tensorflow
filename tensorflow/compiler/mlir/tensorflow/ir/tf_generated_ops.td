@@ -6282,6 +6282,8 @@ On GPU, if an out of bound index is found, the index is ignored.
 
   TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<1>;
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let verifier = [{ return Verify(*this); }];
 }
 
 def TF_TileOp : TF_Op<"Tile", [NoSideEffect]> {

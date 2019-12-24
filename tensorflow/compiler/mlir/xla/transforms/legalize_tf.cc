@@ -219,6 +219,12 @@ static void BuildReduceBody(Type element_type, Region *body,
   builder->create<ReturnOp>(loc, reducer.getResult());
 }
 
+// Builds region taking two arguments and returning second argument as the
+// result. Corresponds to the function f(x, y) = y.
+// Used in Scatter op's computation to update specific elements.
+static void BuildBinaryAssignmentRegion(Type element_type, Region *region,
+                                        OpBuilder *builder) {}
+
 //===----------------------------------------------------------------------===//
 // BatchNorm op utilities.
 //===----------------------------------------------------------------------===//
@@ -1800,6 +1806,62 @@ class ConvertArgMaxOp
   static StringRef GetDirection() { return "GT"; }
 };
 
+// Converts TF TensorScatterUpdate op into Scatter Op with assignment:
+//
+//   %result = "xla_hlo.scatter"(%tensor, %indices, %updates)
+//     { dimensions = ... }
+//
+class ConvertTensorScatterUpdateOp
+    : public OpRewritePattern<TF::TensorScatterUpdateOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(TF::TensorScatterUpdateOp op,
+                                     PatternRewriter &rewriter) const override {
+    auto tensor_ty = op.tensor()->getType().dyn_cast<RankedTensorType>();
+    auto indices_ty = op.indices()->getType().dyn_cast<RankedTensorType>();
+    auto updates_ty = op.updates()->getType().dyn_cast<RankedTensorType>();
+
+    if (!tensor_ty || !indices_ty || !updates_ty) return matchFailure();
+    // Last dimension of the indices needs to known at compile time for
+    // computation of the 'update_window_dims' attribute in the dimensions
+    // struct.
+    int64_t num_index_dims = indices_ty.getShape().back();
+    if (ShapedType::isDynamic(num_index_dims)) return matchFailure();
+
+    int64_t tensor_rank = tensor_ty.getRank();
+    int64_t indices_rank = indices_ty.getRank();
+    int64_t updates_rank = updates_ty.getRank();
+
+    int64_t window_dims = tensor_rank - num_index_dims;
+    auto dims_attr = ScatterDimensionNumbers::get(
+        GetI64ElementsAttrForSeq(updates_rank - window_dims, updates_rank,
+                                 &rewriter),
+        GetI64ElementsAttrForSeq(0, num_index_dims, &rewriter),
+        GetI64ElementsAttrForSeq(0, num_index_dims, &rewriter),
+        rewriter.getI64IntegerAttr(indices_rank - 1), rewriter.getContext());
+
+    Location loc = op.getLoc();
+    auto scatter = rewriter.create<ScatterOp>(
+        loc, op.getType(), op.tensor(), op.indices(), op.updates(), dims_attr);
+
+    // Build region to assign the new value.
+    [&](Region *region) {
+      OpBuilder::InsertionGuard guard(rewriter);
+      Block *block = rewriter.createBlock(region);
+
+      // Block arguments are scalars of the given element type.
+      Type type =
+          RankedTensorType::get(/*shape=*/{}, tensor_ty.getElementType());
+      block->addArguments({type, type});
+      rewriter.create<ReturnOp>(loc, block->getArgument(1));
+    }(&scatter.update_computation());
+
+    rewriter.replaceOp(op, scatter.getResult());
+    return matchSuccess();
+  }
+};
+
 // Converts Tile op to HLO BroadcastInDim and Reshape ops.
 //   For shape [S1, S2] and multiples [M1, M2],
 //     MS1 = M1 * S1; MS2 = M2 * S2
@@ -2514,15 +2576,13 @@ class GenericConvertUnsortedSegmentReductionOp : public OpRewritePattern<OpTy> {
         GetI64ElementsAttr(output_shape, &rewriter));
 
     // Parameters for the generated scatter op.
-    auto range = llvm::seq<int64_t>(segment_ids_rank, data_rank);
-    SmallVector<int64_t, 4> update_window_dims(range.begin(), range.end());
     SmallVector<int64_t, 1> inserted_window_dims(1, 0);
     SmallVector<int64_t, 1> scatter_dims_to_operand_dims(1, 0);
     int64_t index_vector_dim = segment_ids_rank;
 
     // Put all parameters in a StructAttr.
     auto dims_attr = ScatterDimensionNumbers::get(
-        GetI64ElementsAttr(update_window_dims, &rewriter),
+        GetI64ElementsAttrForSeq(segment_ids_rank, data_rank, &rewriter),
         GetI64ElementsAttr(inserted_window_dims, &rewriter),
         GetI64ElementsAttr(scatter_dims_to_operand_dims, &rewriter),
         rewriter.getI64IntegerAttr(index_vector_dim), rewriter.getContext());
@@ -2612,8 +2672,8 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
       ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
       ConvertSoftmaxOp<TF::SoftmaxOp, false>, ConvertSplitOp, ConvertSplitVOp,
       ConvertStridedSliceOp, ConvertStridedSliceGradOp, ConvertSumOp,
-      ConvertTileOp, ConvertTopKV2Op, ConvertUnpackOp,
-      ConvertUnsortedSegmentMaxOp, ConvertUnsortedSegmentMinOp,
+      ConvertTensorScatterUpdateOp, ConvertTileOp, ConvertTopKV2Op,
+      ConvertUnpackOp, ConvertUnsortedSegmentMaxOp, ConvertUnsortedSegmentMinOp,
       ConvertUnsortedSegmentProdOp, ConvertUnsortedSegmentSumOp>(
       op->getContext());
 
