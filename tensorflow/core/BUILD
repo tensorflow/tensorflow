@@ -1931,6 +1931,8 @@ cc_library(
         "//tensorflow/core/lib/histogram",
         "//tensorflow/core/lib/io:block",
         "//tensorflow/core/lib/io:buffered_inputstream",
+        "//tensorflow/core/lib/io:prefetched_inputstream",
+        "//tensorflow/core/lib/io:buffered_random_access_file",
         "//tensorflow/core/lib/io:compression",
         "//tensorflow/core/lib/io:inputbuffer",
         "//tensorflow/core/lib/io:inputstream_interface",

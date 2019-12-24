@@ -60,8 +60,9 @@ class GFile(_FileIO):
   minimize RPC invocations in network filesystems.
   """
 
-  def __init__(self, name, mode='r'):
-    super(GFile, self).__init__(name=name, mode=mode)
+  def __init__(self, name, mode='r', prefetch_threads=0, buffer_size=0):
+    super(GFile, self).__init__(name = name, mode = mode, 
+      prefetch_threads=prefetch_threads, buffer_size=buffer_size)
 
 
 @tf_export(v1=['gfile.FastGFile'])
@@ -76,8 +77,9 @@ class FastGFile(_FileIO):
   """
 
   @deprecated(None, 'Use tf.gfile.GFile.')
-  def __init__(self, name, mode='r'):
-    super(FastGFile, self).__init__(name=name, mode=mode)
+  def __init__(self, name, mode = 'r', prefetch_threads=0, buffer_size=0):
+    super(FastGFile, self).__init__(name = name, mode = mode,
+      prefetch_threads=prefetch_threads, buffer_size=buffer_size)
 
 
 # Does not alias to Open so that we use our version of GFile to strip

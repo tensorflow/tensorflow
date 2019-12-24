@@ -13,7 +13,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'name\', \'mode\'], varargs=None, keywords=None, defaults=[\'r\'], "
+    argspec: "args=[\'self\', \'name\', \'mode\', \'prefetch_threads\', \'buffer_size\'], varargs=None, keywords=None, defaults=[\'r\', \'0\', \'0\'], "
   }
   member_method {
     name: "close"

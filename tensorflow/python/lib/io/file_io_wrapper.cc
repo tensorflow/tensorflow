@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/io/buffered_inputstream.h"
+#include "tensorflow/core/lib/io/prefetched_inputstream.h"
 #include "tensorflow/core/lib/io/random_inputstream.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/file_statistics.h"
@@ -212,5 +213,35 @@ PYBIND11_MODULE(_pywrap_file_io, m) {
              tensorflow::MaybeRaiseRegisteredFromStatus(self->Seek(pos));
            })
       .def("tell", [](BufferedInputStream* self) { return self->Tell(); });
+
+  using tensorflow::io::PrefetchedInputStream;
+  py::class_<PrefetchedInputStream>(m, "PrefetchedInputStream")
+      .def(py::init(
+          [](const std::string& filename, size_t threads, size_t buffer_size) {
+            std::unique_ptr<tensorflow::io::PrefetchedInputStream> stream;
+            tensorflow::Status s = tensorflow::io::PrefetchedInputStream::New(
+                filename, threads, buffer_size, &stream);
+            tensorflow::MaybeRaiseRegisteredFromStatus(s);
+            return stream.release();
+          }))
+      .def("read",
+           [](PrefetchedInputStream* self, tensorflow::int64 bytes_to_read) {
+             tensorflow::tstring result;
+             const auto status = self->ReadNBytes(bytes_to_read, &result);
+             if (!status.ok() && !tensorflow::errors::IsOutOfRange(status)) {
+               result.clear();
+               tensorflow::MaybeRaiseRegisteredFromStatus(status);
+             }
+             return py::bytes(result);
+           })
+      .def("readline",
+           [](PrefetchedInputStream* self) {
+             return py::bytes(self->ReadLineAsString());
+           })
+      .def("seek",
+           [](PrefetchedInputStream* self, tensorflow::int64 pos) {
+             tensorflow::MaybeRaiseRegisteredFromStatus(self->Seek(pos));
+           })
+      .def("tell", [](PrefetchedInputStream* self) { return self->Tell(); });
 }
 }  // namespace

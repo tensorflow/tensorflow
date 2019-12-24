@@ -58,6 +58,28 @@ cc_library(
 )
 
 cc_library(
+    name = "buffered_random_access_file",
+    srcs = ["buffered_random_access_file.cc"],
+    hdrs = ["buffered_random_access_file.h"],
+    deps = [
+        "//tensorflow/core/platform:env",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
+    name = "prefetched_inputstream",
+    srcs = ["prefetched_inputstream.cc"],
+    hdrs = ["prefetched_inputstream.h"],
+    deps = [
+        ":inputstream_interface",
+        "//tensorflow/core/lib/core:notification",
+        "//tensorflow/core/lib/core:threadpool",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
     name = "compression",
     srcs = ["compression.cc"],
     hdrs = ["compression.h"],
@@ -343,6 +365,8 @@ filegroup(
         "block.h",
         "block_builder.h",
         "buffered_inputstream.h",
+        "buffered_random_access_file.h",
+        "prefetched_inputstream.h",
         "compression.h",
         "format.h",
         "inputbuffer.h",
@@ -371,6 +395,8 @@ filegroup(
     srcs = [
         "buffered_inputstream_test.cc",
         "cache_test.cc",
+        "buffered_random_access_file_test.cc",
+        "prefetched_inputstream_test.cc",
         "inputbuffer_test.cc",
         "inputstream_interface_test.cc",
         "path_test.cc",
@@ -389,6 +415,8 @@ filegroup(
     srcs = [
         "buffered_inputstream.h",
         "cache.h",
+        "buffered_random_access_file.h",
+        "prefetched_inputstream.h",
         "compression.h",
         "inputstream_interface.h",
         "path.h",

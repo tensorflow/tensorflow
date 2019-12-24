@@ -40,16 +40,22 @@ class FileIO(object):
   The constructor takes the following arguments:
   name: name of the file
   mode: one of `r`, `w`, `a`, `r+`, `w+`, `a+`. Append `b` for bytes mode.
-
+  prefetch_threads: number of prefetch threads.
+  buffer_size: total buffer size in bytes for prefetching.
   Can be used as an iterator to iterate over lines in the file.
 
   The default buffer size used for the BufferedInputStream used for reading
   the file line by line is 1024 * 512 bytes.
   """
 
-  def __init__(self, name, mode):
+  def __init__(self, name, mode, prefetch_threads=0, buffer_size=0):
     self.__name = name
     self.__mode = mode
+    self.__prefetch_threads = prefetch_threads
+    if buffer_size <= 0:
+      self.__buffer_size = prefetch_threads * 1024 * 1024 * 8
+    else:
+      self.__buffer_size = buffer_size
     self._read_buf = None
     self._writable_file = None
     self._binary_mode = "b" in mode
@@ -75,8 +81,12 @@ class FileIO(object):
       if not self._read_check_passed:
         raise errors.PermissionDeniedError(None, None,
                                            "File isn't open for reading")
-      self._read_buf = _pywrap_file_io.BufferedInputStream(
-          self.__name, 1024 * 512)
+      if self.__prefetch_threads <= 0:
+        self._read_buf = _pywrap_file_io.BufferedInputStream(
+            self.__name, 1024 * 512)
+      else:
+        self._read_buf = _pywrap_file_io.PrefetchedInputStream(
+            self.__name, self.__prefetch_threads, self.__buffer_size)
 
   def _prewrite_check(self):
     if not self._writable_file:

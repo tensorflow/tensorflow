@@ -31,6 +31,16 @@ from tensorflow.python.platform import test
 
 class FileIoTest(test.TestCase):
 
+  def __init__(self, methodName="runTest"):
+    super(FileIoTest, self).__init__(methodName)
+    self._prefetch_threads = 0
+
+  def set_prefetch_threads(self, n):
+    self._prefetch_threads = n
+
+  def new_file_io(self, name, mode):
+    return file_io.FileIO(name, mode, self._prefetch_threads)
+
   def setUp(self):
     self._base_dir = os.path.join(self.get_temp_dir(), "base_dir")
     file_io.create_dir(self._base_dir)
@@ -39,7 +49,7 @@ class FileIoTest(test.TestCase):
     file_io.delete_recursively(self._base_dir)
 
   def testEmptyFilename(self):
-    f = file_io.FileIO("", mode="r")
+    f = self.new_file_io("", mode="r")
     with self.assertRaises(errors.NotFoundError):
       _ = f.read()
 
@@ -78,31 +88,31 @@ class FileIoTest(test.TestCase):
   def testReadBinaryMode(self):
     file_path = os.path.join(self._base_dir, "temp_file")
     file_io.write_string_to_file(file_path, "testing")
-    with file_io.FileIO(file_path, mode="rb") as f:
+    with self.new_file_io(file_path, mode="rb") as f:
       self.assertEqual(b"testing", f.read())
 
   def testWriteBinaryMode(self):
     file_path = os.path.join(self._base_dir, "temp_file")
-    file_io.FileIO(file_path, "wb").write("testing")
-    with file_io.FileIO(file_path, mode="r") as f:
+    self.new_file_io(file_path, "wb").write("testing")
+    with self.new_file_io(file_path, mode="r") as f:
       self.assertEqual("testing", f.read())
 
   def testAppend(self):
     file_path = os.path.join(self._base_dir, "temp_file")
-    with file_io.FileIO(file_path, mode="w") as f:
+    with self.new_file_io(file_path, mode="w") as f:
       f.write("begin\n")
-    with file_io.FileIO(file_path, mode="a") as f:
+    with self.new_file_io(file_path, mode="a") as f:
       f.write("a1\n")
-    with file_io.FileIO(file_path, mode="a") as f:
+    with self.new_file_io(file_path, mode="a") as f:
       f.write("a2\n")
-    with file_io.FileIO(file_path, mode="r") as f:
+    with self.new_file_io(file_path, mode="r") as f:
       file_contents = f.read()
       self.assertEqual("begin\na1\na2\n", file_contents)
 
   def testMultipleFiles(self):
     file_prefix = os.path.join(self._base_dir, "temp_file")
     for i in range(5000):
-      f = file_io.FileIO(file_prefix + str(i), mode="w+")
+      f = self.new_file_io(file_prefix + str(i), mode="w+")
       f.write("testing")
       f.flush()
       self.assertEqual("testing", f.read())
@@ -110,7 +120,7 @@ class FileIoTest(test.TestCase):
 
   def testMultipleWrites(self):
     file_path = os.path.join(self._base_dir, "temp_file")
-    with file_io.FileIO(file_path, mode="w") as f:
+    with self.new_file_io(file_path, mode="w") as f:
       f.write("line1\n")
       f.write("line2")
     file_contents = file_io.read_file_to_string(file_path)
@@ -119,18 +129,18 @@ class FileIoTest(test.TestCase):
   def testFileWriteBadMode(self):
     file_path = os.path.join(self._base_dir, "temp_file")
     with self.assertRaises(errors.PermissionDeniedError):
-      file_io.FileIO(file_path, mode="r").write("testing")
+      self.new_file_io(file_path, mode="r").write("testing")
 
   def testFileReadBadMode(self):
     file_path = os.path.join(self._base_dir, "temp_file")
-    file_io.FileIO(file_path, mode="w").write("testing")
+    self.new_file_io(file_path, mode="w").write("testing")
     self.assertTrue(file_io.file_exists(file_path))
     with self.assertRaises(errors.PermissionDeniedError):
-      file_io.FileIO(file_path, mode="w").read()
+      self.new_file_io(file_path, mode="w").read()
 
   def testFileDelete(self):
     file_path = os.path.join(self._base_dir, "temp_file")
-    file_io.FileIO(file_path, mode="w").write("testing")
+    self.new_file_io(file_path, mode="w").write("testing")
     file_io.delete_file(file_path)
     self.assertFalse(file_io.file_exists(file_path))
 
@@ -145,7 +155,7 @@ class FileIoTest(test.TestCase):
     files = ["file1.txt", "file2.txt", "file3.txt", "file*.txt"]
     for name in files:
       file_path = os.path.join(dir_path, name)
-      file_io.FileIO(file_path, mode="w").write("testing")
+      self.new_file_io(file_path, mode="w").write("testing")
     expected_match = [os.path.join(dir_path, name) for name in files]
     self.assertItemsEqual(
         file_io.get_matching_files(os.path.join(dir_path, "file*.txt")),
@@ -164,41 +174,41 @@ class FileIoTest(test.TestCase):
     file_io.recursive_create_dir(dir_path)
     file_io.recursive_create_dir(dir_path)  # repeat creation
     file_path = os.path.join(dir_path, "temp_file")
-    file_io.FileIO(file_path, mode="w").write("testing")
+    self.new_file_io(file_path, mode="w").write("testing")
     self.assertTrue(file_io.file_exists(file_path))
     file_io.delete_recursively(os.path.join(self._base_dir, "temp_dir"))
     self.assertFalse(file_io.file_exists(file_path))
 
   def testCopy(self):
     file_path = os.path.join(self._base_dir, "temp_file")
-    file_io.FileIO(file_path, mode="w").write("testing")
+    self.new_file_io(file_path, mode="w").write("testing")
     copy_path = os.path.join(self._base_dir, "copy_file")
     file_io.copy(file_path, copy_path)
     self.assertTrue(file_io.file_exists(copy_path))
-    f = file_io.FileIO(file_path, mode="r")
+    f = self.new_file_io(file_path, mode="r")
     self.assertEqual("testing", f.read())
     self.assertEqual(7, f.tell())
 
   def testCopyOverwrite(self):
     file_path = os.path.join(self._base_dir, "temp_file")
-    file_io.FileIO(file_path, mode="w").write("testing")
+    self.new_file_io(file_path, mode="w").write("testing")
     copy_path = os.path.join(self._base_dir, "copy_file")
-    file_io.FileIO(copy_path, mode="w").write("copy")
+    self.new_file_io(copy_path, mode="w").write("copy")
     file_io.copy(file_path, copy_path, overwrite=True)
     self.assertTrue(file_io.file_exists(copy_path))
-    self.assertEqual("testing", file_io.FileIO(file_path, mode="r").read())
+    self.assertEqual("testing", self.new_file_io(file_path, mode="r").read())
 
   def testCopyOverwriteFalse(self):
     file_path = os.path.join(self._base_dir, "temp_file")
-    file_io.FileIO(file_path, mode="w").write("testing")
+    self.new_file_io(file_path, mode="w").write("testing")
     copy_path = os.path.join(self._base_dir, "copy_file")
-    file_io.FileIO(copy_path, mode="w").write("copy")
+    self.new_file_io(copy_path, mode="w").write("copy")
     with self.assertRaises(errors.AlreadyExistsError):
       file_io.copy(file_path, copy_path, overwrite=False)
 
   def testRename(self):
     file_path = os.path.join(self._base_dir, "temp_file")
-    file_io.FileIO(file_path, mode="w").write("testing")
+    self.new_file_io(file_path, mode="w").write("testing")
     rename_path = os.path.join(self._base_dir, "rename_file")
     file_io.rename(file_path, rename_path)
     self.assertTrue(file_io.file_exists(rename_path))
@@ -206,18 +216,18 @@ class FileIoTest(test.TestCase):
 
   def testRenameOverwrite(self):
     file_path = os.path.join(self._base_dir, "temp_file")
-    file_io.FileIO(file_path, mode="w").write("testing")
+    self.new_file_io(file_path, mode="w").write("testing")
     rename_path = os.path.join(self._base_dir, "rename_file")
-    file_io.FileIO(rename_path, mode="w").write("rename")
+    self.new_file_io(rename_path, mode="w").write("rename")
     file_io.rename(file_path, rename_path, overwrite=True)
     self.assertTrue(file_io.file_exists(rename_path))
     self.assertFalse(file_io.file_exists(file_path))
 
   def testRenameOverwriteFalse(self):
     file_path = os.path.join(self._base_dir, "temp_file")
-    file_io.FileIO(file_path, mode="w").write("testing")
+    self.new_file_io(file_path, mode="w").write("testing")
     rename_path = os.path.join(self._base_dir, "rename_file")
-    file_io.FileIO(rename_path, mode="w").write("rename")
+    self.new_file_io(rename_path, mode="w").write("rename")
     with self.assertRaises(errors.AlreadyExistsError):
       file_io.rename(file_path, rename_path, overwrite=False)
     self.assertTrue(file_io.file_exists(rename_path))
@@ -235,7 +245,7 @@ class FileIoTest(test.TestCase):
     file_io.create_dir(dir_path)
     self.assertTrue(file_io.is_directory(dir_path))
     file_path = os.path.join(dir_path, "test_file")
-    file_io.FileIO(file_path, mode="w").write("test")
+    self.new_file_io(file_path, mode="w").write("test")
     # False for a file.
     self.assertFalse(file_io.is_directory(file_path))
     # Test that the value returned from `stat()` has `is_directory` set.
@@ -248,11 +258,11 @@ class FileIoTest(test.TestCase):
     files = ["file1.txt", "file2.txt", "file3.txt"]
     for name in files:
       file_path = os.path.join(dir_path, name)
-      file_io.FileIO(file_path, mode="w").write("testing")
+      self.new_file_io(file_path, mode="w").write("testing")
     subdir_path = os.path.join(dir_path, "sub_dir")
     file_io.create_dir(subdir_path)
     subdir_file_path = os.path.join(subdir_path, "file4.txt")
-    file_io.FileIO(subdir_file_path, mode="w").write("testing")
+    self.new_file_io(subdir_file_path, mode="w").write("testing")
     dir_list = file_io.list_directory(dir_path)
     self.assertItemsEqual(files + ["sub_dir"], dir_list)
 
@@ -267,12 +277,12 @@ class FileIoTest(test.TestCase):
     # subdir1_1 -> file: file3.txt
     # subdir1_2 -> dir: subdir2
     file_io.create_dir(dir_path)
-    file_io.FileIO(
+    self.new_file_io(
         os.path.join(dir_path, "file1.txt"), mode="w").write("testing")
     sub_dirs1 = ["subdir1_1", "subdir1_2", "subdir1_3"]
     for name in sub_dirs1:
       file_io.create_dir(os.path.join(dir_path, name))
-    file_io.FileIO(
+    self.new_file_io(
         os.path.join(dir_path, "subdir1_1/file2.txt"),
         mode="w").write("testing")
     file_io.create_dir(os.path.join(dir_path, "subdir1_2/subdir2"))
@@ -347,7 +357,7 @@ class FileIoTest(test.TestCase):
 
   def testStat(self):
     file_path = os.path.join(self._base_dir, "temp_file")
-    file_io.FileIO(file_path, mode="w").write("testing")
+    self.new_file_io(file_path, mode="w").write("testing")
     file_statistics = file_io.stat(file_path)
     os_statistics = os.stat(file_path)
     self.assertEqual(7, file_statistics.length)
@@ -357,7 +367,7 @@ class FileIoTest(test.TestCase):
 
   def testReadLine(self):
     file_path = os.path.join(self._base_dir, "temp_file")
-    with file_io.FileIO(file_path, mode="r+") as f:
+    with self.new_file_io(file_path, mode="r+") as f:
       f.write("testing1\ntesting2\ntesting3\n\ntesting5")
     self.assertEqual(36, f.size())
     self.assertEqual("testing1\n", f.readline())
@@ -369,7 +379,7 @@ class FileIoTest(test.TestCase):
 
   def testRead(self):
     file_path = os.path.join(self._base_dir, "temp_file")
-    with file_io.FileIO(file_path, mode="r+") as f:
+    with self.new_file_io(file_path, mode="r+") as f:
       f.write("testing1\ntesting2\ntesting3\n\ntesting5")
     self.assertEqual(36, f.size())
     self.assertEqual("testing1\n", f.read(9))
@@ -379,7 +389,7 @@ class FileIoTest(test.TestCase):
 
   def testTell(self):
     file_path = os.path.join(self._base_dir, "temp_file")
-    with file_io.FileIO(file_path, mode="r+") as f:
+    with self.new_file_io(file_path, mode="r+") as f:
       f.write("testing1\ntesting2\ntesting3\n\ntesting5")
     self.assertEqual(0, f.tell())
     self.assertEqual("testing1\n", f.readline())
@@ -397,7 +407,7 @@ class FileIoTest(test.TestCase):
 
   def testSeek(self):
     file_path = os.path.join(self._base_dir, "temp_file")
-    with file_io.FileIO(file_path, mode="r+") as f:
+    with self.new_file_io(file_path, mode="r+") as f:
       f.write("testing1\ntesting2\ntesting3\n\ntesting5")
     self.assertEqual("testing1\n", f.readline())
     self.assertEqual(9, f.tell())
@@ -431,7 +441,7 @@ class FileIoTest(test.TestCase):
 
   def testSeekFromWhat(self):
     file_path = os.path.join(self._base_dir, "temp_file")
-    with file_io.FileIO(file_path, mode="r+") as f:
+    with self.new_file_io(file_path, mode="r+") as f:
       f.write("testing1\ntesting2\ntesting3\n\ntesting5")
     self.assertEqual("testing1\n", f.readline())
     self.assertEqual(9, f.tell())
@@ -456,7 +466,7 @@ class FileIoTest(test.TestCase):
   def testReadingIterator(self):
     file_path = os.path.join(self._base_dir, "temp_file")
     data = ["testing1\n", "testing2\n", "testing3\n", "\n", "testing5"]
-    with file_io.FileIO(file_path, mode="r+") as f:
+    with self.new_file_io(file_path, mode="r+") as f:
       f.write("".join(data))
     actual_data = []
     for line in f:
@@ -466,7 +476,7 @@ class FileIoTest(test.TestCase):
   def testReadlines(self):
     file_path = os.path.join(self._base_dir, "temp_file")
     data = ["testing1\n", "testing2\n", "testing3\n", "\n", "testing5"]
-    f = file_io.FileIO(file_path, mode="r+")
+    f = self.new_file_io(file_path, mode="r+")
     f.write("".join(data))
     f.flush()
     lines = f.readlines()
@@ -475,14 +485,14 @@ class FileIoTest(test.TestCase):
   def testUTF8StringPath(self):
     file_path = os.path.join(self._base_dir, "UTF8测试_file")
     file_io.write_string_to_file(file_path, "testing")
-    with file_io.FileIO(file_path, mode="rb") as f:
+    with self.new_file_io(file_path, mode="rb") as f:
       self.assertEqual(b"testing", f.read())
 
   def testEof(self):
     """Test that reading past EOF does not raise an exception."""
 
     file_path = os.path.join(self._base_dir, "temp_file")
-    f = file_io.FileIO(file_path, mode="r+")
+    f = self.new_file_io(file_path, mode="r+")
     content = "testing"
     f.write(content)
     f.flush()
@@ -522,16 +532,16 @@ class FileIoTest(test.TestCase):
 
   def testFilecmpBinary(self):
     file1 = os.path.join(self._base_dir, "file1")
-    file_io.FileIO(file1, "wb").write("testing\n\na")
+    self.new_file_io(file1, "wb").write("testing\n\na")
 
     file2 = os.path.join(self._base_dir, "file2")
-    file_io.FileIO(file2, "wb").write("testing\n\nb")
+    self.new_file_io(file2, "wb").write("testing\n\nb")
 
     file3 = os.path.join(self._base_dir, "file3")
-    file_io.FileIO(file3, "wb").write("testing\n\nb")
+    self.new_file_io(file3, "wb").write("testing\n\nb")
 
     file4 = os.path.join(self._base_dir, "file4")
-    file_io.FileIO(file4, "wb").write("testing\n\ntesting")
+    self.new_file_io(file4, "wb").write("testing\n\ntesting")
 
     self.assertFalse(file_io.filecmp(file1, file2))
     self.assertFalse(file_io.filecmp(file1, file4))
@@ -571,15 +581,15 @@ class FileIoTest(test.TestCase):
 
   def testFileCrc32Binary(self):
     file1 = os.path.join(self._base_dir, "file1")
-    file_io.FileIO(file1, "wb").write("testing\n\n")
+    self.new_file_io(file1, "wb").write("testing\n\n")
     crc1 = file_io.file_crc32(file1)
 
     file2 = os.path.join(self._base_dir, "file2")
-    file_io.FileIO(file2, "wb").write("testing\n\n\n")
+    self.new_file_io(file2, "wb").write("testing\n\n\n")
     crc2 = file_io.file_crc32(file2)
 
     file3 = os.path.join(self._base_dir, "file3")
-    file_io.FileIO(file3, "wb").write("testing\n\n\n")
+    self.new_file_io(file3, "wb").write("testing\n\n\n")
     crc3 = file_io.file_crc32(file3)
 
     self.assertTrue(crc1 != crc2)
@@ -597,9 +607,9 @@ class FileIoTest(test.TestCase):
     files = ["file1.txt", "file2.txt", "file3.txt"]
     for name in files:
       file_path = os.path.join(any_path, name)
-      file_io.FileIO(file_path, mode="w").write("testing")
+      self.new_file_io(file_path, mode="w").write("testing")
     file_path = os.path.join(noread_path, "file4.txt")
-    file_io.FileIO(file_path, mode="w").write("testing")
+    self.new_file_io(file_path, mode="w").write("testing")
     # Change noread to noread access.
     os.chmod(noread_path, 0)
     expected_match = [os.path.join(any_path, name) for name in files]
@@ -617,9 +627,16 @@ class FileIoTest(test.TestCase):
       info = np.load(f, allow_pickle=True)
     _ = [i for i in info.items()]
 
+<<<<<<< HEAD
   def testHasAtomicMove(self):
     self.assertTrue(file_io.has_atomic_move("/a/b/c"))
 
+=======
+class FileIoPrefetchedTest(FileIoTest):
+  def __init__(self, methodName="runTest"):
+    super(FileIoPrefetchedTest, self).__init__( methodName=methodName)
+    super(FileIoPrefetchedTest, self).set_prefetch_threads(4)
+>>>>>>> Add PrefetchedInputStream and BufferedRandomAccessFile.
 
 if __name__ == "__main__":
   test.main()
