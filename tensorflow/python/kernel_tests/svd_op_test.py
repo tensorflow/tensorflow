@@ -370,10 +370,7 @@ class SVDBenchmark(test.Benchmark):
 
 
 if __name__ == "__main__":
-  dtypes_to_test = [np.float32, np.float64]
-  if not test.is_built_with_rocm():
-    # ROCm does not support BLAS operations for complex types
-    dtypes_to_test += [np.complex64, np.complex128]
+  dtypes_to_test = [np.float32, np.float64, np.complex64, np.complex128]
   for compute_uv in False, True:
     for full_matrices in False, True:
       for dtype in dtypes_to_test:
@@ -392,7 +389,7 @@ if __name__ == "__main__":
   for compute_uv in False, True:
     for full_matrices in False, True:
       dtypes = ([np.float32, np.float64] + [np.complex64, np.complex128] *
-                (not compute_uv) * (not test.is_built_with_rocm()))
+                (not compute_uv))
       for dtype in dtypes:
         mat_shapes = [(10, 11), (11, 10), (11, 11), (2, 2, 2, 3)]
         if not full_matrices or not compute_uv:
