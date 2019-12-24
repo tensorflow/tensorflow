@@ -3122,6 +3122,13 @@ def sigmoid(x, name=None):
 
   Returns:
     A Tensor with the same type as `x`.
+    
+  Usage Example:
+    ```python
+    
+    x = tf.constant([125.92, -76.32, 44.12, -87.3, -82.72, 0.0, 112.23], dtype=tf.float32)
+    x = tf.sigmoid(x) # x = [1.0, 0.0, 1.0, 0.0, 0.0, 0.5, 1.0,]
+    ```
 
   @compatibility(scipy)
   Equivalent to scipy.special.expit
