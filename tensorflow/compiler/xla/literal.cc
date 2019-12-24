@@ -738,14 +738,14 @@ Literal LiteralBase::SliceInternal(
     const Shape& result_shape, absl::Span<const int64> start_indices) const {
   Literal result_literal(result_shape);
   DimensionVector new_indices(result_shape.rank());
-  result_literal.EachCell<NativeT>(
-      [&](absl::Span<const int64> indices, NativeT /*value*/) {
-        for (int64 i = 0; i < result_shape.rank(); ++i) {
-          new_indices[i] = indices[i] + start_indices[i];
-        }
-        NativeT value = Get<NativeT>(new_indices);
-        result_literal.Set<NativeT>(indices, value);
-      });
+  CHECK(result_literal
+            .Populate<NativeT>([&](absl::Span<const int64> indices) {
+              for (int64 i = 0; i < result_shape.rank(); ++i) {
+                new_indices[i] = indices[i] + start_indices[i];
+              }
+              return Get<NativeT>(new_indices);
+            })
+            .ok());
   return result_literal;
 }
 
