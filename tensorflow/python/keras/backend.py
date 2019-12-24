@@ -1300,7 +1300,6 @@ def zeros(shape, dtype=None, name=None):
     v = array_ops.zeros(shape=shape, dtype=tf_dtype, name=name)
     if py_all(v.shape.as_list()):
       return variable(v, dtype=dtype, name=name)
-    track_variable(v)
     return v
 
 
@@ -1335,7 +1334,6 @@ def ones(shape, dtype=None, name=None):
     v = array_ops.ones(shape=shape, dtype=tf_dtype, name=name)
     if py_all(v.shape.as_list()):
       return variable(v, dtype=dtype, name=name)
-    track_variable(v)
     return v
 
 

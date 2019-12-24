@@ -1,19 +1,10 @@
 //===- PipelineDataTransfer.cpp --- Pass for pipelining data movement ---*-===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 //
 // This file implements a pass to pipeline data transfers.
 //
@@ -70,7 +61,7 @@ static unsigned getTagMemRefPos(Operation &dmaInst) {
 /// Replaces all uses of the old memref by the new one while indexing the newly
 /// added dimension by the loop IV of the specified 'affine.for' operation
 /// modulo 2. Returns false if such a replacement cannot be performed.
-static bool doubleBuffer(Value *oldMemRef, AffineForOp forOp) {
+static bool doubleBuffer(Value oldMemRef, AffineForOp forOp) {
   auto *forBody = forOp.getBody();
   OpBuilder bInner(forBody, forBody->begin());
 
@@ -94,7 +85,7 @@ static bool doubleBuffer(Value *oldMemRef, AffineForOp forOp) {
   auto *forInst = forOp.getOperation();
   OpBuilder bOuter(forInst);
   // Put together alloc operands for any dynamic dimensions of the memref.
-  SmallVector<Value *, 4> allocOperands;
+  SmallVector<Value, 4> allocOperands;
   unsigned dynamicDimCount = 0;
   for (auto dimSize : oldMemRefType.getShape()) {
     if (dimSize == -1)
@@ -103,7 +94,7 @@ static bool doubleBuffer(Value *oldMemRef, AffineForOp forOp) {
   }
 
   // Create and place the alloc right before the 'affine.for' operation.
-  Value *newMemRef =
+  Value newMemRef =
       bOuter.create<AllocOp>(forInst->getLoc(), newMemRefType, allocOperands);
 
   // Create 'iv mod 2' value to index the leading dimension.
@@ -212,7 +203,7 @@ static void findMatchingStartFinishInsts(
       continue;
 
     // We only double buffer if the buffer is not live out of loop.
-    auto *memref = dmaStartOp.getOperand(dmaStartOp.getFasterMemPos());
+    auto memref = dmaStartOp.getOperand(dmaStartOp.getFasterMemPos());
     bool escapingUses = false;
     for (auto *user : memref->getUsers()) {
       // We can double buffer regardless of dealloc's outside the loop.
@@ -270,7 +261,7 @@ void PipelineDataTransfer::runOnAffineForOp(AffineForOp forOp) {
   // dimension.
   for (auto &pair : startWaitPairs) {
     auto *dmaStartInst = pair.first;
-    Value *oldMemRef = dmaStartInst->getOperand(
+    Value oldMemRef = dmaStartInst->getOperand(
         cast<AffineDmaStartOp>(dmaStartInst).getFasterMemPos());
     if (!doubleBuffer(oldMemRef, forOp)) {
       // Normally, double buffering should not fail because we already checked
@@ -301,7 +292,7 @@ void PipelineDataTransfer::runOnAffineForOp(AffineForOp forOp) {
   // Double the buffers for tag memrefs.
   for (auto &pair : startWaitPairs) {
     auto *dmaFinishInst = pair.second;
-    Value *oldTagMemRef =
+    Value oldTagMemRef =
         dmaFinishInst->getOperand(getTagMemRefPos(*dmaFinishInst));
     if (!doubleBuffer(oldTagMemRef, forOp)) {
       LLVM_DEBUG(llvm::dbgs() << "tag double buffering failed\n";);
@@ -342,7 +333,7 @@ void PipelineDataTransfer::runOnAffineForOp(AffineForOp forOp) {
       // If a slice wasn't created, the reachable affine.apply op's from its
       // operands are the ones that go with it.
       SmallVector<Operation *, 4> affineApplyInsts;
-      SmallVector<Value *, 4> operands(dmaStartInst->getOperands());
+      SmallVector<Value, 4> operands(dmaStartInst->getOperands());
       getReachableAffineApplyOps(operands, affineApplyInsts);
       for (auto *op : affineApplyInsts) {
         instShiftMap[op] = 0;

@@ -1,5 +1,6 @@
 load("//tensorflow/lite:special_rules.bzl", "tflite_extra_gles_deps")
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_static_framework")
+load("@build_bazel_rules_apple//apple:macos.bzl", "macos_dylib")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -101,6 +102,7 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/metal:inference_context",
         "@com_google_absl//absl/types:span",
     ],
+    alwayslink = 1,
 )
 
 objc_library(
@@ -110,6 +112,7 @@ objc_library(
     deps = [
         "//tensorflow/lite/delegates/gpu:metal_delegate",
     ],
+    alwayslink = 1,
 )
 
 # build -c opt --config android_arm64 --copt -Os --copt -DTFLITE_GPU_BINARY_RELEASE --copt --linkopt -s --strip always :libtensorflowlite_gpu_gl.so
@@ -171,6 +174,22 @@ ios_static_framework(
     ],
     minimum_os_version = "10.0",
     deps = [":metal_delegate"],
+)
+
+# Note: Support for MacOS is best-effort at the moment.
+# bazel build -c opt --copt -Os --copt -DTFLITE_GPU_BINARY_RELEASE --copt -fvisibility=hidden --linkopt -s --strip always --cxxopt=-std=c++14 :tensorflow_lite_gpu_dylib --apple_platform_type=macos
+macos_dylib(
+    name = "tensorflow_lite_gpu_dylib",
+    minimum_os_version = "10.13",
+    tags = [
+        "manual",
+        "nobuilder",
+        "notap",
+    ],
+    deps = [
+        ":metal_delegate",
+        ":metal_delegate_internal",
+    ],
 )
 
 cc_library(

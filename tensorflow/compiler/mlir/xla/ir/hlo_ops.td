@@ -131,7 +131,7 @@ class HLO_UnaryElementwiseOp<string mnemonic, list<OpTrait> traits,
 def HLO_AbsOp: HLO_UnaryElementwiseOp<"abs",
     [NoSideEffect, SameOperandsAndResultShape], HLO_Tensor>, BASE_HLO_AbsOp {
   let builders = [OpBuilder<
-    "Builder *builder, OperationState &result, Value *operand"
+    "Builder *builder, OperationState &result, Value operand"
   >];
 }
 
@@ -143,7 +143,7 @@ def HLO_ConvertOp : HLO_UnaryElementwiseOp<
     BASE_HLO_ConvertOp {
 
   let builders = [OpBuilder<
-    "Builder *, OperationState &tblgen_state, Value *operand, "
+    "Builder *, OperationState &tblgen_state, Value operand, "
     "Type result_element_ty"
   >];
 
@@ -226,7 +226,7 @@ def HLO_ComplexOp: HLO_Op<"complex",
     [NoSideEffect, SameOperandsElementType, SameOperandsAndResultShape]>,
     BASE_HLO_ComplexOp {
   let builders = [OpBuilder<
-    "Builder *, OperationState &tblgen_state, Value *lhs, Value *rhs">];
+    "Builder *, OperationState &tblgen_state, Value lhs, Value rhs">];
 
   let arguments = (ins HLO_FpTensor:$lhs, HLO_FpTensor:$rhs);
   let results = (outs HLO_ComplexTensor);
@@ -236,7 +236,7 @@ def HLO_ComplexOp: HLO_Op<"complex",
 def HLO_ImagOp: HLO_Op<
     "imag", [NoSideEffect, SameOperandsAndResultShape]>, BASE_HLO_ImagOp {
   let builders = [OpBuilder<
-    "Builder *, OperationState &tblgen_state, Value *val">];
+    "Builder *, OperationState &tblgen_state, Value val">];
 
   let arguments = (ins HLO_ComplexTensor);
   let results = (outs HLO_FpTensor);
@@ -246,7 +246,7 @@ def HLO_ImagOp: HLO_Op<
 def HLO_RealOp: HLO_Op<
     "real", [NoSideEffect, SameOperandsAndResultShape]>, BASE_HLO_RealOp {
   let builders = [OpBuilder<
-    "Builder *, OperationState &tblgen_state, Value *val">];
+    "Builder *, OperationState &tblgen_state, Value val">];
 
   let arguments = (ins HLO_ComplexTensor);
   let results = (outs HLO_FpTensor);
@@ -267,7 +267,7 @@ class HLO_BinaryElementwiseOp<string mnemonic, list<OpTrait> traits> :
   );
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState &result, Value *left, Value* right, "
+    "Builder *builder, OperationState &result, Value left, Value  right, "
     "DenseIntElementsAttr broadcast_dimensions"
   >];
 
@@ -525,7 +525,7 @@ def HLO_GetTupleElementOp: HLO_Op<"get_tuple_element", [NoSideEffect]>, BASE_HLO
 
   let builders = [OpBuilder<
                   "Builder *builder, OperationState &results, "
-                  "Value* value, int32_t index">];
+                  "Value  value, int32_t index">];
 }
 
 def HLO_TupleOp : HLO_Op<"tuple", [NoSideEffect]>, BASE_HLO_TupleOp {
@@ -547,14 +547,14 @@ def HLO_CompareOp: HLO_Op<"compare",
     HLO_ComparisonDirectionAttr:$comparison_direction
   );
   let builders = [OpBuilder<
-    "Builder *builder, OperationState &result, Value *left, Value* right, "
+    "Builder *builder, OperationState &result, Value left, Value  right, "
     "DenseIntElementsAttr broadcast_dimensions, "
     "StringAttr comparison_direction"
   >];
   let results = (outs HLO_PredTensor);
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState &result, Value *lhs, Value *rhs, "
+    "Builder *builder, OperationState &result, Value lhs, Value rhs, "
     "DenseIntElementsAttr broadcast_dimensions, StringAttr comparison_direction"
   >];
 }
@@ -577,7 +577,7 @@ def HLO_SliceOp: HLO_Op<
   let results = (outs HLO_Tensor);
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState &result, Value *operand, "
+    "Builder *builder, OperationState &result, Value operand, "
     "DenseIntElementsAttr start_indices, DenseIntElementsAttr limit_indices, "
     "DenseIntElementsAttr strides"
   >];
@@ -585,7 +585,7 @@ def HLO_SliceOp: HLO_Op<
   let extraClassDeclaration = [{
     // Infers output type for given operand and attributes. Result type is
     // unranked if any of the attributes is illegal.
-    static Type InferOutputTypes(Builder *builder, Value *operand,
+    static Type InferOutputTypes(Builder *builder, Value operand,
                                  DenseIntElementsAttr start_indices,
                                  DenseIntElementsAttr limit_indices,
                                  DenseIntElementsAttr strides);
@@ -722,8 +722,6 @@ def HLO_ConcatenateOp : HLO_Op<"concatenate",
 
   let hasFolder = 1;
 
-  // TODO(b/129422361) ConcatOp has special conversion logic to HLO.
-  let hasCustomHLOConverter = 1;
 }
 
 def HLO_CrossReplicaSumOp : HLO_Op<"cross-replica-sum",
@@ -883,8 +881,6 @@ def HLO_GatherOp: HLO_Op<"gather", [NoSideEffect]>, BASE_HLO_GatherOp {
   );
 
   let results = (outs HLO_Tensor);
-
-  let hasCustomHLOConverter = 1;
 }
 
 def HLO_GetDimensionSizeOp: HLO_Op<"get_dimension_size", [NoSideEffect]>,
@@ -990,9 +986,6 @@ def HLO_ReverseOp: HLO_Op<"reverse",
   let results = (outs HLO_Tensor);
 
   let hasFolder = 1;
-
-  // TODO(b/129422361): ReverseOp has a custom constructor for HLO.
-  let hasCustomHLOConverter = 1;
 }
 
 def HLO_PadOp: HLO_Op<"pad",

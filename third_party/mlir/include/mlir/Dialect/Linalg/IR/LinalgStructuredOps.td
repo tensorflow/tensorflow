@@ -1,19 +1,10 @@
 //===- LinalgStructuredOps.td - Linalg dialect library ops -*- tablegen -*-===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 //
 // This is the operation definition file for structured operations on buffers
 // that correspond to underlying library calls (e.g. BLAS).
@@ -92,22 +83,22 @@ def LinalgStructuredInterface : OpInterface<"LinalgOp"> {
       "Query the number of loops within the current operation.",
       "unsigned", "getNumLoops">,
     InterfaceMethod<"Query the input view at the given index.",
-      "Value *", "getInput", (ins "unsigned":$i)
+      "Value ", "getInput", (ins "unsigned":$i)
     >,
     InterfaceMethod<"Query the output view at the given index.",
-      "Value *", "getOutput", (ins "unsigned":$i)
+      "Value ", "getOutput", (ins "unsigned":$i)
     >,
     InterfaceMethod<[{
         Query the index of the given input value, or `None` if the value is not
         an input.
       }],
-      "llvm::Optional<unsigned>", "getIndexOfInput", (ins "Value *":$view)
+      "llvm::Optional<unsigned>", "getIndexOfInput", (ins "Value ":$view)
     >,
     InterfaceMethod<[{
         Query the index of the given view value, or `None` if the value is not
         an view.
       }],
-      "llvm::Optional<unsigned>", "getIndexOfOutput", (ins "Value *":$view)
+      "llvm::Optional<unsigned>", "getIndexOfOutput", (ins "Value ":$view)
     >,
     InterfaceMethod<[{
         Query the type of the input view at the given index.
@@ -228,7 +219,7 @@ def CopyOp : LinalgStructured_Op<"copy", [NInputs<1>, NOutputs<1>]> {
   // TODO(ntv) this should go away once the usage of OptionalAttr triggers
   // emission of builders with default arguments left unspecified.
   let builders = [OpBuilder<
-    "Builder *builder, OperationState &result, Value *input, Value *output", [{
+    "Builder *builder, OperationState &result, Value input, Value output", [{
     return build(
       builder, result, input, output, AffineMapAttr(), AffineMapAttr());
   }]>];

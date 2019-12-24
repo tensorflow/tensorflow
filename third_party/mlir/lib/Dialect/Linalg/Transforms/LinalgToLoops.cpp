@@ -1,19 +1,10 @@
 //===- LowerToLoops.cpp - conversion from Linalg library ops to loops------===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 
 #include "mlir/Dialect/AffineOps/AffineOps.h"
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"
@@ -49,7 +40,7 @@ using edsc::op::operator==;
 
 static SmallVector<ValueHandle, 8>
 makeCanonicalAffineApplies(OpBuilder &b, Location loc, AffineMap map,
-                           ArrayRef<Value *> vals) {
+                           ArrayRef<Value> vals) {
   assert(map.getNumSymbols() == 0);
   assert(map.getNumInputs() == vals.size());
   SmallVector<ValueHandle, 8> res;
@@ -57,35 +48,34 @@ makeCanonicalAffineApplies(OpBuilder &b, Location loc, AffineMap map,
   auto dims = map.getNumDims();
   for (auto e : map.getResults()) {
     auto exprMap = AffineMap::get(dims, 0, e);
-    SmallVector<Value *, 4> operands(vals.begin(), vals.end());
+    SmallVector<Value, 4> operands(vals.begin(), vals.end());
     canonicalizeMapAndOperands(&exprMap, &operands);
     res.push_back(affine_apply(exprMap, operands));
   }
   return res;
 }
 
-static SmallVector<Value *, 4> permuteIvs(ArrayRef<Value *> ivs,
-                                          Optional<AffineMap> permutation) {
+static SmallVector<Value, 4> permuteIvs(ArrayRef<Value> ivs,
+                                        Optional<AffineMap> permutation) {
   return permutation ? applyMapToValues(ScopedContext::getBuilder(),
                                         ScopedContext::getLocation(),
                                         permutation.getValue(), ivs)
-                     : SmallVector<Value *, 4>(ivs.begin(), ivs.end());
+                     : SmallVector<Value, 4>(ivs.begin(), ivs.end());
 }
 
 // Creates a number of ranges equal to the number of results in `map`.
 // The returned ranges correspond to the loop ranges, in the proper order, for
 // which new loops will be created.
-static SmallVector<Value *, 4> emitLoopRanges(OpBuilder &b, Location loc,
-                                              AffineMap map,
-                                              ArrayRef<Value *> allViewSizes);
-SmallVector<Value *, 4> emitLoopRanges(OpBuilder &b, Location loc,
-                                       AffineMap map,
-                                       ArrayRef<Value *> allViewSizes) {
+static SmallVector<Value, 4> emitLoopRanges(OpBuilder &b, Location loc,
+                                            AffineMap map,
+                                            ArrayRef<Value> allViewSizes);
+SmallVector<Value, 4> emitLoopRanges(OpBuilder &b, Location loc, AffineMap map,
+                                     ArrayRef<Value> allViewSizes) {
   // Apply `map` to get view sizes in loop order.
   auto sizes = applyMapToValues(b, loc, map, allViewSizes);
   // Create a new range with the applied tile sizes.
   ScopedContext scope(b, loc);
-  SmallVector<Value *, 4> res;
+  SmallVector<Value, 4> res;
   for (unsigned idx = 0, e = map.getNumResults(); idx < e; ++idx) {
     res.push_back(range(constant_index(0), sizes[idx], constant_index(1)));
   }
@@ -98,8 +88,7 @@ class LinalgScopedEmitter {};
 template <typename IndexedValueType>
 class LinalgScopedEmitter<IndexedValueType, CopyOp> {
 public:
-  static void emitScalarImplementation(ArrayRef<Value *> allIvs,
-                                       CopyOp copyOp) {
+  static void emitScalarImplementation(ArrayRef<Value> allIvs, CopyOp copyOp) {
     auto nPar = copyOp.getNumParallelLoops();
     assert(nPar == allIvs.size());
     auto inputIvs =
@@ -121,8 +110,7 @@ public:
 template <typename IndexedValueType>
 class LinalgScopedEmitter<IndexedValueType, FillOp> {
 public:
-  static void emitScalarImplementation(ArrayRef<Value *> allIvs,
-                                       FillOp fillOp) {
+  static void emitScalarImplementation(ArrayRef<Value> allIvs, FillOp fillOp) {
     auto nPar = fillOp.getNumParallelLoops();
     assert(nPar == allIvs.size());
     auto ivs =
@@ -138,7 +126,7 @@ public:
 template <typename IndexedValueType>
 class LinalgScopedEmitter<IndexedValueType, DotOp> {
 public:
-  static void emitScalarImplementation(ArrayRef<Value *> allIvs, DotOp dotOp) {
+  static void emitScalarImplementation(ArrayRef<Value> allIvs, DotOp dotOp) {
     assert(allIvs.size() == 1);
     IndexHandle r_i(allIvs[0]);
     IndexedValueType A(dotOp.getInput(0)), B(dotOp.getInput(1)),
@@ -151,7 +139,7 @@ public:
 template <typename IndexedValueType>
 class LinalgScopedEmitter<IndexedValueType, MatvecOp> {
 public:
-  static void emitScalarImplementation(ArrayRef<Value *> allIvs,
+  static void emitScalarImplementation(ArrayRef<Value> allIvs,
                                        MatvecOp matvecOp) {
     assert(allIvs.size() == 2);
     IndexHandle i(allIvs[0]), r_j(allIvs[1]);
@@ -165,7 +153,7 @@ public:
 template <typename IndexedValueType>
 class LinalgScopedEmitter<IndexedValueType, MatmulOp> {
 public:
-  static void emitScalarImplementation(ArrayRef<Value *> allIvs,
+  static void emitScalarImplementation(ArrayRef<Value> allIvs,
                                        MatmulOp matmulOp) {
     assert(allIvs.size() == 3);
     IndexHandle i(allIvs[0]), j(allIvs[1]), r_k(allIvs[2]);
@@ -179,8 +167,7 @@ public:
 template <typename IndexedValueType>
 class LinalgScopedEmitter<IndexedValueType, ConvOp> {
 public:
-  static void emitScalarImplementation(ArrayRef<Value *> allIvs,
-                                       ConvOp convOp) {
+  static void emitScalarImplementation(ArrayRef<Value> allIvs, ConvOp convOp) {
     auto b = ScopedContext::getBuilder();
     auto loc = ScopedContext::getLocation();
     auto maps = loopToOperandRangesMaps(convOp);
@@ -229,14 +216,14 @@ public:
 template <typename IndexedValueType>
 class LinalgScopedEmitter<IndexedValueType, GenericOp> {
 public:
-  static void emitScalarImplementation(ArrayRef<Value *> allIvs,
+  static void emitScalarImplementation(ArrayRef<Value> allIvs,
                                        GenericOp genericOp) {
     auto b = ScopedContext::getBuilder();
     auto loc = ScopedContext::getLocation();
     using edsc::intrinsics::detail::ValueHandleArray;
     unsigned nInputs = genericOp.getNumInputs();
     unsigned nOutputs = genericOp.getNumOutputs();
-    SmallVector<Value *, 4> indexedValues(nInputs + nOutputs);
+    SmallVector<Value, 4> indexedValues(nInputs + nOutputs);
 
     // 1.a. Emit std_load from input views.
     for (unsigned i = 0; i < nInputs; ++i) {
@@ -324,7 +311,7 @@ public:
 template <typename IndexedValueType>
 class LinalgScopedEmitter<IndexedValueType, IndexedGenericOp> {
 public:
-  static void emitScalarImplementation(ArrayRef<Value *> allIvs,
+  static void emitScalarImplementation(ArrayRef<Value> allIvs,
                                        IndexedGenericOp indexedGenericOp) {
     auto b = ScopedContext::getBuilder();
     auto loc = ScopedContext::getLocation();
@@ -332,7 +319,7 @@ public:
     unsigned nInputs = indexedGenericOp.getNumInputs();
     unsigned nOutputs = indexedGenericOp.getNumOutputs();
     unsigned nLoops = allIvs.size();
-    SmallVector<Value *, 4> indexedValues(nLoops + nInputs + nOutputs);
+    SmallVector<Value, 4> indexedValues(nLoops + nInputs + nOutputs);
 
     for (unsigned i = 0; i < nLoops; ++i) {
       indexedValues[i] = allIvs[i];

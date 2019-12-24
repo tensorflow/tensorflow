@@ -1,19 +1,10 @@
 //===- GPUDialect.cpp - MLIR Dialect for GPU Kernels implementation -------===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 //
 // This file implements the GPU kernel-related dialect and its operations.
 //
@@ -145,7 +136,7 @@ static LogicalResult verifyAllReduce(gpu::AllReduceOp allReduce) {
   if (!allReduce.body().empty()) {
     if (allReduce.body().front().getNumArguments() != 2)
       return allReduce.emitError("expected two region arguments");
-    for (auto *argument : allReduce.body().front().getArguments()) {
+    for (auto argument : allReduce.body().front().getArguments()) {
       if (argument->getType() != allReduce.getType())
         return allReduce.emitError("incorrect region argument type");
     }
@@ -213,15 +204,14 @@ static ParseResult parseShuffleOp(OpAsmParser &parser, OperationState &state) {
 static SmallVector<Type, 4> getValueTypes(ValueRange values) {
   SmallVector<Type, 4> types;
   types.reserve(values.size());
-  for (Value *v : values)
+  for (Value v : values)
     types.push_back(v->getType());
   return types;
 }
 
-void LaunchOp::build(Builder *builder, OperationState &result, Value *gridSizeX,
-                     Value *gridSizeY, Value *gridSizeZ, Value *blockSizeX,
-                     Value *blockSizeY, Value *blockSizeZ,
-                     ValueRange operands) {
+void LaunchOp::build(Builder *builder, OperationState &result, Value gridSizeX,
+                     Value gridSizeY, Value gridSizeZ, Value blockSizeX,
+                     Value blockSizeY, Value blockSizeZ, ValueRange operands) {
   // Add grid and block sizes as op operands, followed by the data operands.
   result.addOperands(
       {gridSizeX, gridSizeY, gridSizeZ, blockSizeX, blockSizeY, blockSizeZ});
@@ -481,7 +471,8 @@ class PropagateConstantBounds : public OpRewritePattern<LaunchOp> {
 
   PatternMatchResult matchAndRewrite(LaunchOp launchOp,
                                      PatternRewriter &rewriter) const override {
-    auto origInsertionPoint = rewriter.saveInsertionPoint();
+    rewriter.startRootUpdate(launchOp);
+    PatternRewriter::InsertionGuard guard(rewriter);
     rewriter.setInsertionPointToStart(&launchOp.body().front());
 
     // Traverse operands passed to kernel and check if some of them are known
@@ -489,31 +480,29 @@ class PropagateConstantBounds : public OpRewritePattern<LaunchOp> {
     // and use it instead of passing the value from the parent region.  Perform
     // the traversal in the inverse order to simplify index arithmetics when
     // dropping arguments.
-    SmallVector<Value *, 8> operands(launchOp.getKernelOperandValues().begin(),
-                                     launchOp.getKernelOperandValues().end());
-    SmallVector<Value *, 8> kernelArgs(launchOp.getKernelArguments().begin(),
-                                       launchOp.getKernelArguments().end());
+    auto operands = launchOp.getKernelOperandValues();
+    auto kernelArgs = launchOp.getKernelArguments();
     bool found = false;
     for (unsigned i = operands.size(); i > 0; --i) {
       unsigned index = i - 1;
-      Value *operand = operands[index];
-      if (!isa_and_nonnull<ConstantOp>(operand->getDefiningOp())) {
+      Value operand = operands[index];
+      if (!isa_and_nonnull<ConstantOp>(operand->getDefiningOp()))
         continue;
-      }
 
       found = true;
-      Value *internalConstant =
+      Value internalConstant =
           rewriter.clone(*operand->getDefiningOp())->getResult(0);
-      Value *kernelArg = kernelArgs[index];
+      Value kernelArg = *std::next(kernelArgs.begin(), index);
       kernelArg->replaceAllUsesWith(internalConstant);
       launchOp.eraseKernelArgument(index);
     }
-    rewriter.restoreInsertionPoint(origInsertionPoint);
 
-    if (!found)
+    if (!found) {
+      rewriter.cancelRootUpdate(launchOp);
       return matchFailure();
+    }
 
-    rewriter.updatedRootInPlace(launchOp);
+    rewriter.finalizeRootUpdate(launchOp);
     return matchSuccess();
   }
 };
@@ -529,10 +518,9 @@ void LaunchOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 //===----------------------------------------------------------------------===//
 
 void LaunchFuncOp::build(Builder *builder, OperationState &result,
-                         GPUFuncOp kernelFunc, Value *gridSizeX,
-                         Value *gridSizeY, Value *gridSizeZ, Value *blockSizeX,
-                         Value *blockSizeY, Value *blockSizeZ,
-                         ValueRange kernelOperands) {
+                         GPUFuncOp kernelFunc, Value gridSizeX, Value gridSizeY,
+                         Value gridSizeZ, Value blockSizeX, Value blockSizeY,
+                         Value blockSizeZ, ValueRange kernelOperands) {
   // Add grid and block sizes as op operands, followed by the data operands.
   result.addOperands(
       {gridSizeX, gridSizeY, gridSizeZ, blockSizeX, blockSizeY, blockSizeZ});
@@ -565,7 +553,7 @@ StringRef LaunchFuncOp::getKernelModuleName() {
       .getRootReference();
 }
 
-Value *LaunchFuncOp::getKernelOperand(unsigned i) {
+Value LaunchFuncOp::getKernelOperand(unsigned i) {
   return getOperation()->getOperand(i + kNumConfigOperands);
 }
 
@@ -728,13 +716,13 @@ static ParseResult parseGPUFuncOp(OpAsmParser &parser, OperationState &result) {
 }
 
 static void printAttributions(OpAsmPrinter &p, StringRef keyword,
-                              ArrayRef<BlockArgument *> values) {
+                              ArrayRef<BlockArgument> values) {
   if (values.empty())
     return;
 
   p << ' ' << keyword << '(';
   interleaveComma(values, p,
-                  [&p](BlockArgument *v) { p << *v << " : " << v->getType(); });
+                  [&p](BlockArgument v) { p << *v << " : " << v->getType(); });
   p << ')';
 }
 
@@ -781,9 +769,9 @@ LogicalResult GPUFuncOp::verifyType() {
 }
 
 static LogicalResult verifyAttributions(Operation *op,
-                                        ArrayRef<BlockArgument *> attributions,
+                                        ArrayRef<BlockArgument> attributions,
                                         unsigned memorySpace) {
-  for (Value *v : attributions) {
+  for (Value v : attributions) {
     auto type = v->getType().dyn_cast<MemRefType>();
     if (!type)
       return op->emitOpError() << "expected memref type in attribution";

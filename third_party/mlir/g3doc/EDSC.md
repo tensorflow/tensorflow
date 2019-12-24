@@ -15,10 +15,10 @@ declarative builders are available within the lifetime of a `ScopedContext`.
 ## ValueHandle and IndexHandle
 
 `mlir::edsc::ValueHandle` and `mlir::edsc::IndexHandle` provide typed
-abstractions around an `mlir::Value*`. These abstractions are "delayed", in the
-sense that they allow separating declaration from definition. They may
-capture IR snippets, as they are built, for programmatic manipulation.
-Intuitive operators are provided to allow concise and idiomatic expressions.
+abstractions around an `mlir::Value`. These abstractions are "delayed", in the
+sense that they allow separating declaration from definition. They may capture
+IR snippets, as they are built, for programmatic manipulation. Intuitive
+operators are provided to allow concise and idiomatic expressions.
 
 ```c++
 ValueHandle zero = constant_index(0);

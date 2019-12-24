@@ -1,19 +1,10 @@
 //===- Value.cpp - MLIR Value Classes -------------------------------------===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 
 #include "mlir/IR/Value.h"
 #include "mlir/IR/Block.h"
@@ -22,8 +13,8 @@ using namespace mlir;
 
 /// If this value is the result of an Operation, return the operation that
 /// defines it.
-Operation *Value::getDefiningOp() {
-  if (auto *result = dyn_cast<OpResult>(this))
+Operation *Value::getDefiningOp() const {
+  if (auto result = dyn_cast<OpResult>())
     return result->getOwner();
   return nullptr;
 }
@@ -38,7 +29,7 @@ Location Value::getLoc() {
 Region *Value::getParentRegion() {
   if (auto *op = getDefiningOp())
     return op->getParentRegion();
-  return cast<BlockArgument>(this)->getOwner()->getParent();
+  return cast<BlockArgument>()->getOwner()->getParent();
 }
 
 //===----------------------------------------------------------------------===//

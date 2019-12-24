@@ -1,19 +1,10 @@
 //===- FoldUtils.h - Operation Fold Utilities -------------------*- C++ -*-===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 //
 // This header file declares various operation folding utilities. These
 // utilities are intended to be used by passes to unify and simply their logic.
@@ -82,7 +73,7 @@ public:
   /// and immediately try to fold it. This function populates 'results' with
   /// the results after folding the operation.
   template <typename OpTy, typename... Args>
-  void create(OpBuilder &builder, SmallVectorImpl<Value *> &results,
+  void create(OpBuilder &builder, SmallVectorImpl<Value> &results,
               Location location, Args &&... args) {
     Operation *op = builder.create<OpTy>(location, std::forward<Args>(args)...);
     if (failed(tryToFold(op, results)))
@@ -94,9 +85,9 @@ public:
   /// Overload to create or fold a single result operation.
   template <typename OpTy, typename... Args>
   typename std::enable_if<OpTy::template hasTrait<OpTrait::OneResult>(),
-                          Value *>::type
+                          Value>::type
   create(OpBuilder &builder, Location location, Args &&... args) {
-    SmallVector<Value *, 1> results;
+    SmallVector<Value, 1> results;
     create<OpTy>(builder, results, location, std::forward<Args>(args)...);
     return results.front();
   }
@@ -107,7 +98,7 @@ public:
                           OpTy>::type
   create(OpBuilder &builder, Location location, Args &&... args) {
     auto op = builder.create<OpTy>(location, std::forward<Args>(args)...);
-    SmallVector<Value *, 0> unused;
+    SmallVector<Value, 0> unused;
     (void)tryToFold(op.getOperation(), unused);
 
     // Folding cannot remove a zero-result operation, so for convenience we
@@ -126,7 +117,7 @@ private:
   /// Tries to perform folding on the given `op`. If successful, populates
   /// `results` with the results of the folding.
   LogicalResult tryToFold(
-      Operation *op, SmallVectorImpl<Value *> &results,
+      Operation *op, SmallVectorImpl<Value> &results,
       function_ref<void(Operation *)> processGeneratedConstants = nullptr);
 
   /// Try to get or create a new constant entry. On success this returns the

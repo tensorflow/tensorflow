@@ -1,19 +1,10 @@
 //===- VectorOps.td - Vector op definitions ---------------*- tablegen -*-====//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 //
 // Defines MLIR vector operations.
 //
@@ -128,8 +119,8 @@ def Vector_ContractionOp :
          : vector<7x8x16x15xf32>, vector<8x16x7x5xf32> into vector<8x15x8x5xf32>
   }];
   let builders = [OpBuilder<
-    "Builder *builder, OperationState &result, Value *lhs, Value *rhs, "
-    "Value *acc, ArrayAttr indexingMaps, ArrayAttr iteratorTypes">];
+    "Builder *builder, OperationState &result, Value lhs, Value rhs, "
+    "Value acc, ArrayAttr indexingMaps, ArrayAttr iteratorTypes">];
   let extraClassDeclaration = [{
     VectorType getLhsType() {
       return lhs()->getType().cast<VectorType>();
@@ -252,7 +243,8 @@ def Vector_ShuffleOp :
 
     ```
   }];
-  let builders = [OpBuilder<"Builder *builder, OperationState &result, Value *v1, Value *v2, ArrayRef<int64_t>">];
+  let builders = [OpBuilder<"Builder *builder, OperationState &result,"
+                            "Value v1, Value v2, ArrayRef<int64_t>">];
   let extraClassDeclaration = [{
     static StringRef getMaskAttrName() { return "mask"; }
     VectorType getV1VectorType() {
@@ -312,7 +304,8 @@ def Vector_ExtractOp :
     ```
   }];
   let builders = [OpBuilder<
-    "Builder *builder, OperationState &result, Value *source, ArrayRef<int64_t>">];
+    "Builder *builder, OperationState &result, Value source,"
+    "ArrayRef<int64_t>">];
   let extraClassDeclaration = [{
     static StringRef getPositionAttrName() { return "position"; }
     VectorType getVectorType() {
@@ -357,7 +350,7 @@ def Vector_ExtractSlicesOp :
   }];
   let builders = [OpBuilder<
     "Builder *builder, OperationState &result, TupleType tupleType, " #
-    "Value *vector, ArrayRef<int64_t> sizes, " #
+    "Value vector, ArrayRef<int64_t> sizes, " #
     "ArrayRef<int64_t> strides">];
   let extraClassDeclaration = [{
     VectorType getSourceVectorType() {
@@ -428,8 +421,8 @@ def Vector_InsertOp :
     ```
   }];
   let builders = [OpBuilder<
-    "Builder *builder, OperationState &result, Value *source, " #
-    "Value *dest, ArrayRef<int64_t>">];
+    "Builder *builder, OperationState &result, Value source, " #
+    "Value dest, ArrayRef<int64_t>">];
   let extraClassDeclaration = [{
     static StringRef getPositionAttrName() { return "position"; }
     Type getSourceType() { return source()->getType(); }
@@ -521,7 +514,7 @@ def Vector_InsertStridedSliceOp :
     ```
   }];
   let builders = [OpBuilder<
-    "Builder *builder, OperationState &result, Value *source, Value *dest, " #
+    "Builder *builder, OperationState &result, Value source, Value dest, " #
     "ArrayRef<int64_t> offsets, ArrayRef<int64_t> strides">];
   let extraClassDeclaration = [{
     static StringRef getOffsetsAttrName() { return "offsets"; }
@@ -723,7 +716,7 @@ def Vector_StridedSliceOp :
       vector<4x8x16xf32> to vector<2x4x16xf32>
   }];
   let builders = [OpBuilder<
-    "Builder *builder, OperationState &result, Value *source, " #
+    "Builder *builder, OperationState &result, Value source, " #
     "ArrayRef<int64_t> offsets, ArrayRef<int64_t> sizes, " #
     "ArrayRef<int64_t> strides">];
   let extraClassDeclaration = [{
@@ -975,7 +968,7 @@ def Vector_TypeCastOp :
   }];
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState &result, Value *source">];
+    "Builder *builder, OperationState &result, Value source">];
 
   let parser = [{
     return impl::parseCastOp(parser, result);

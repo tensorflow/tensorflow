@@ -1,19 +1,10 @@
 //===- Block.cpp - MLIR Block Class ---------------------------------------===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 
 #include "mlir/IR/Block.h"
 #include "mlir/IR/Builders.h"
@@ -25,10 +16,10 @@ using namespace mlir;
 //===----------------------------------------------------------------------===//
 
 /// Returns the number of this argument.
-unsigned BlockArgument::getArgNumber() {
+unsigned BlockArgument::getArgNumber() const {
   // Arguments are not stored in place, so we have to find it within the list.
   auto argList = getOwner()->getArguments();
-  return std::distance(argList.begin(), llvm::find(argList, this));
+  return std::distance(argList.begin(), llvm::find(argList, *this));
 }
 
 //===----------------------------------------------------------------------===//
@@ -38,7 +29,8 @@ unsigned BlockArgument::getArgNumber() {
 Block::~Block() {
   assert(!verifyOpOrder() && "Expected valid operation ordering.");
   clear();
-  llvm::DeleteContainerPointers(arguments);
+  for (BlockArgument arg : arguments)
+    arg.destroy();
 }
 
 Region *Block::getParent() const { return parentValidOpOrderPair.getPointer(); }
@@ -98,7 +90,7 @@ void Block::dropAllReferences() {
 }
 
 void Block::dropAllDefinedValueUses() {
-  for (auto *arg : getArguments())
+  for (auto arg : getArguments())
     arg->dropAllUses();
   for (auto &op : *this)
     op.dropAllDefinedValueUses();
@@ -151,8 +143,8 @@ void Block::recomputeOpOrder() {
 // Argument list management.
 //===----------------------------------------------------------------------===//
 
-BlockArgument *Block::addArgument(Type type) {
-  auto *arg = new BlockArgument(type, this);
+BlockArgument Block::addArgument(Type type) {
+  BlockArgument arg = BlockArgument::create(type, this);
   arguments.push_back(arg);
   return arg;
 }
@@ -172,7 +164,7 @@ void Block::eraseArgument(unsigned index, bool updatePredTerms) {
   assert(index < arguments.size());
 
   // Delete the argument.
-  delete arguments[index];
+  arguments[index].destroy();
   arguments.erase(arguments.begin() + index);
 
   // If we aren't updating predecessors, there is nothing left to do.
@@ -274,4 +266,9 @@ SuccessorRange::SuccessorRange(Block *block) : SuccessorRange(nullptr, 0) {
   if (Operation *term = block->getTerminator())
     if ((count = term->getNumSuccessors()))
       base = term->getBlockOperands().data();
+}
+
+SuccessorRange::SuccessorRange(Operation *term) : SuccessorRange(nullptr, 0) {
+  if ((count = term->getNumSuccessors()))
+    base = term->getBlockOperands().data();
 }

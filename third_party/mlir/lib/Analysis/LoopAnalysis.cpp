@@ -1,19 +1,10 @@
 //===- LoopAnalysis.cpp - Misc loop analysis routines //-------------------===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 //
 // This file implements miscellaneous loop analysis routines.
 //
@@ -43,7 +34,7 @@ using namespace mlir;
 // be more powerful (since both inequalities and equalities will be considered).
 void mlir::buildTripCountMapAndOperands(
     AffineForOp forOp, AffineMap *tripCountMap,
-    SmallVectorImpl<Value *> *tripCountOperands) {
+    SmallVectorImpl<Value> *tripCountOperands) {
   int64_t loopSpan;
 
   int64_t step = forOp.getStep();
@@ -65,8 +56,8 @@ void mlir::buildTripCountMapAndOperands(
     *tripCountMap = AffineMap();
     return;
   }
-  SmallVector<Value *, 4> lbOperands(forOp.getLowerBoundOperands());
-  SmallVector<Value *, 4> ubOperands(forOp.getUpperBoundOperands());
+  SmallVector<Value, 4> lbOperands(forOp.getLowerBoundOperands());
+  SmallVector<Value, 4> ubOperands(forOp.getUpperBoundOperands());
 
   // Difference of each upper bound expression from the single lower bound
   // expression (divided by the step) provides the expressions for the trip
@@ -98,7 +89,7 @@ void mlir::buildTripCountMapAndOperands(
 // works with analysis structures (FlatAffineConstraints) and thus doesn't
 // update the IR.
 Optional<uint64_t> mlir::getConstantTripCount(AffineForOp forOp) {
-  SmallVector<Value *, 4> operands;
+  SmallVector<Value, 4> operands;
   AffineMap map;
   buildTripCountMapAndOperands(forOp, &map, &operands);
 
@@ -124,7 +115,7 @@ Optional<uint64_t> mlir::getConstantTripCount(AffineForOp forOp) {
 /// expression analysis is used (indirectly through getTripCount), and
 /// this method is thus able to determine non-trivial divisors.
 uint64_t mlir::getLargestDivisorOfTripCount(AffineForOp forOp) {
-  SmallVector<Value *, 4> operands;
+  SmallVector<Value, 4> operands;
   AffineMap map;
   buildTripCountMapAndOperands(forOp, &map, &operands);
 
@@ -173,7 +164,7 @@ uint64_t mlir::getLargestDivisorOfTripCount(AffineForOp forOp) {
 ///
 /// Returns false in cases with more than one AffineApplyOp, this is
 /// conservative.
-static bool isAccessIndexInvariant(Value *iv, Value *index) {
+static bool isAccessIndexInvariant(Value iv, Value index) {
   assert(isForInductionVar(iv) && "iv must be a AffineForOp");
   assert(index->getType().isa<IndexType>() && "index must be of IndexType");
   SmallVector<Operation *, 4> affineApplyOps;
@@ -197,11 +188,10 @@ static bool isAccessIndexInvariant(Value *iv, Value *index) {
   return !(AffineValueMap(composeOp).isFunctionOf(0, iv));
 }
 
-DenseSet<Value *> mlir::getInvariantAccesses(Value *iv,
-                                             ArrayRef<Value *> indices) {
-  DenseSet<Value *> res;
+DenseSet<Value> mlir::getInvariantAccesses(Value iv, ArrayRef<Value> indices) {
+  DenseSet<Value> res;
   for (unsigned idx = 0, n = indices.size(); idx < n; ++idx) {
-    auto *val = indices[idx];
+    auto val = indices[idx];
     if (isAccessIndexInvariant(iv, val)) {
       res.insert(val);
     }
@@ -229,7 +219,7 @@ DenseSet<Value *> mlir::getInvariantAccesses(Value *iv,
 ///
 // TODO(ntv): check strides.
 template <typename LoadOrStoreOp>
-static bool isContiguousAccess(Value *iv, LoadOrStoreOp memoryOp,
+static bool isContiguousAccess(Value iv, LoadOrStoreOp memoryOp,
                                int *memRefDim) {
   static_assert(std::is_same<LoadOrStoreOp, AffineLoadOp>::value ||
                     std::is_same<LoadOrStoreOp, AffineStoreOp>::value,
@@ -250,11 +240,11 @@ static bool isContiguousAccess(Value *iv, LoadOrStoreOp memoryOp,
 
   int uniqueVaryingIndexAlongIv = -1;
   auto accessMap = memoryOp.getAffineMap();
-  SmallVector<Value *, 4> mapOperands(memoryOp.getMapOperands());
+  SmallVector<Value, 4> mapOperands(memoryOp.getMapOperands());
   unsigned numDims = accessMap.getNumDims();
   for (unsigned i = 0, e = memRefType.getRank(); i < e; ++i) {
     // Gather map operands used result expr 'i' in 'exprOperands'.
-    SmallVector<Value *, 4> exprOperands;
+    SmallVector<Value, 4> exprOperands;
     auto resultExpr = accessMap.getResult(i);
     resultExpr.walk([&](AffineExpr expr) {
       if (auto dimExpr = expr.dyn_cast<AffineDimExpr>())
@@ -263,7 +253,7 @@ static bool isContiguousAccess(Value *iv, LoadOrStoreOp memoryOp,
         exprOperands.push_back(mapOperands[numDims + symExpr.getPosition()]);
     });
     // Check access invariance of each operand in 'exprOperands'.
-    for (auto *exprOperand : exprOperands) {
+    for (auto exprOperand : exprOperands) {
       if (!isAccessIndexInvariant(iv, exprOperand)) {
         if (uniqueVaryingIndexAlongIv != -1) {
           // 2+ varying indices -> do not vectorize along iv.
@@ -382,7 +372,7 @@ bool mlir::isInstwiseShiftValid(AffineForOp forOp, ArrayRef<uint64_t> shifts) {
 
     // Validate the results of this operation if it were to be shifted.
     for (unsigned i = 0, e = op.getNumResults(); i < e; ++i) {
-      Value *result = op.getResult(i);
+      Value result = op.getResult(i);
       for (auto *user : result->getUsers()) {
         // If an ancestor operation doesn't lie in the block of forOp,
         // there is no shift to check.

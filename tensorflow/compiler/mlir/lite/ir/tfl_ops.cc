@@ -301,8 +301,8 @@ Attribute ConstFoldUnaryOp(Type result_type, Attribute operand,
   return {};
 }
 
-void buildComparisonBinOp(Builder *builder, OperationState &result, Value *lhs,
-                          Value *rhs) {
+void buildComparisonBinOp(Builder *builder, OperationState &result, Value lhs,
+                          Value rhs) {
   auto result_type =
       OpTrait::util::getBroadcastedType(lhs->getType(), rhs->getType());
   if (!result_type)
@@ -321,7 +321,7 @@ void buildComparisonBinOp(Builder *builder, OperationState &result, Value *lhs,
 }
 
 void buildFusedBroadcastableBinOp(Builder *builder, OperationState &result,
-                                  Value *lhs, Value *rhs,
+                                  Value lhs, Value rhs,
                                   StringAttr fused_activation_function) {
   auto result_type =
       OpTrait::util::getBroadcastedType(lhs->getType(), rhs->getType());
@@ -462,7 +462,7 @@ LogicalResult Verify(ConcatenationOp op) {
     return op.emitOpError("concatenation dimension must be in [-rank, rank)");
 
   SmallVector<TensorType, 4> operand_types;
-  for (Value *operand : op.values())
+  for (Value operand : op.values())
     operand_types.push_back(operand->getType().cast<TensorType>());
 
   return VerifyConcatenationOpTypes(op.getOperation(), output_type,
@@ -528,8 +528,8 @@ OpFoldResult ConcatenationOp::fold(ArrayRef<Attribute> operands) {
   }
 
   // Remove all empty values.
-  SmallVector<Value *, 4> non_empty_values;
-  for (Value *value : this->values()) {
+  SmallVector<Value, 4> non_empty_values;
+  for (Value value : this->values()) {
     const auto shaped_type = value->getType().cast<ShapedType>();
     if (shaped_type.hasStaticShape() && shaped_type.getNumElements() == 0) {
       continue;
@@ -609,7 +609,7 @@ LogicalResult Verify(FullyConnectedOp op) {
 //===----------------------------------------------------------------------===//
 
 static void BuildGatherOp(Builder *builder, OperationState &result,
-                          Value *params, Value *indices, IntegerAttr axis) {
+                          Value params, Value indices, IntegerAttr axis) {
   auto params_type = params->getType().cast<TensorType>();
   auto indices_type = indices->getType().cast<TensorType>();
 
@@ -704,7 +704,7 @@ static LogicalResult Verify(PackOp op) {
   if (op.getOperation()->getNumOperands() != op.values_count())
     return op.emitOpError("input count should match 'values_count' attribute");
 
-  Value *operand0 = op.getOperand(0);
+  Value operand0 = op.getOperand(0);
   auto input_type = operand0->getType().cast<ShapedType>();
 
   // Check axis bounds.
@@ -717,7 +717,7 @@ static LogicalResult Verify(PackOp op) {
 
   // Make sure all inputs have the same shape and element type.
   // TODO(rahulsp): Simplify once b/135032064 is fixed.
-  for (Value *operand : op.getOperands()) {
+  for (Value operand : op.getOperands()) {
     auto other_type = operand->getType().cast<ShapedType>();
     if (input_type != other_type)
       return op.emitOpError("operands should be of the same type. got ")
@@ -880,8 +880,8 @@ struct RemoveRedundantUnpackPack : public RewritePattern {
       return matchFailure();
     for (auto input_output :
          llvm::zip(pack_op.getOperands(), input_unpack_op.getResults())) {
-      Value *pack_input = std::get<0>(input_output);
-      Value *unpack_output = std::get<1>(input_output);
+      Value pack_input = std::get<0>(input_output);
+      Value unpack_output = std::get<1>(input_output);
       // Make sure the ordering is the same for the pack op & unpack op.
       if (pack_input != unpack_output) return matchFailure();
     }
@@ -984,8 +984,8 @@ OpFoldResult SubOp::fold(ArrayRef<Attribute> operands) {
 // TopKOp
 //===----------------------------------------------------------------------===//
 
-static void BuildTopKOp(Builder *builder, OperationState &result, Value *input,
-                        Value *k) {
+static void BuildTopKOp(Builder *builder, OperationState &result, Value input,
+                        Value k) {
   // Output size is only known if k is constant value. A negative dimension is
   // considered dynamic so use -1 here if k is not a constant value.
   int const_k = -1;
@@ -1075,7 +1075,7 @@ static LogicalResult Verify(UnpackOp op) {
 
 // Extracts and returns the signed integer constant in a 0-rank integer tensor
 // or 1-element 1-rank integer tensor if 'value' is a constant.
-static llvm::Optional<int64_t> ExtractConstantIntFromTensor(Value *value) {
+static llvm::Optional<int64_t> ExtractConstantIntFromTensor(Value value) {
   ElementsAttr attr;
   if (!matchPattern(value, m_Constant(&attr))) return {};
   if (attr.getNumElements() != 1) return {};
@@ -1101,7 +1101,7 @@ static LogicalResult VerifySplitOpOutputTypes(
     ExpectedOutputTypeGetter get_expected_output_type) {
   for (int64_t i = 0; i < num_splits; ++i) {
     auto expected_output_type = get_expected_output_type(i);
-    Value *output = op->getResult(i);
+    Value output = op->getResult(i);
     auto output_type = output->getType().dyn_cast<RankedTensorType>();
     if (!output_type || output_type != expected_output_type)
       return op->emitOpError()
@@ -1443,7 +1443,7 @@ OpFoldResult ConstOp::fold(ArrayRef<Attribute> operands) {
 //===----------------------------------------------------------------------===//
 
 static void BuildSelectV2Op(Builder *builder, OperationState &result,
-                            Value *cond, Value *x, Value *y) {
+                            Value cond, Value x, Value y) {
   auto operand_type =
       OpTrait::util::getBroadcastedType(x->getType(), y->getType());
 

@@ -1,19 +1,10 @@
 //===- Utils.cpp ---- Misc utilities for code and data transformation -----===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 //
 // This file implements miscellaneous transformation routines for non-loop IR
 // structures.
@@ -47,7 +38,7 @@ static bool isMemRefDereferencingOp(Operation &op) {
 }
 
 /// Return the AffineMapAttr associated with memory 'op' on 'memref'.
-static NamedAttribute getAffineMapAttrForMemRef(Operation *op, Value *memref) {
+static NamedAttribute getAffineMapAttrForMemRef(Operation *op, Value memref) {
   return TypeSwitch<Operation *, NamedAttribute>(op)
       .Case<AffineDmaStartOp, AffineLoadOp, AffinePrefetchOp, AffineStoreOp,
             AffineDmaWaitOp>(
@@ -55,12 +46,12 @@ static NamedAttribute getAffineMapAttrForMemRef(Operation *op, Value *memref) {
 }
 
 // Perform the replacement in `op`.
-LogicalResult mlir::replaceAllMemRefUsesWith(Value *oldMemRef, Value *newMemRef,
+LogicalResult mlir::replaceAllMemRefUsesWith(Value oldMemRef, Value newMemRef,
                                              Operation *op,
-                                             ArrayRef<Value *> extraIndices,
+                                             ArrayRef<Value> extraIndices,
                                              AffineMap indexRemap,
-                                             ArrayRef<Value *> extraOperands,
-                                             ArrayRef<Value *> symbolOperands) {
+                                             ArrayRef<Value> extraOperands,
+                                             ArrayRef<Value> symbolOperands) {
   unsigned newMemRefRank = newMemRef->getType().cast<MemRefType>().getRank();
   (void)newMemRefRank; // unused in opt mode
   unsigned oldMemRefRank = oldMemRef->getType().cast<MemRefType>().getRank();
@@ -106,13 +97,13 @@ LogicalResult mlir::replaceAllMemRefUsesWith(Value *oldMemRef, Value *newMemRef,
   NamedAttribute oldMapAttrPair = getAffineMapAttrForMemRef(op, oldMemRef);
   AffineMap oldMap = oldMapAttrPair.second.cast<AffineMapAttr>().getValue();
   unsigned oldMapNumInputs = oldMap.getNumInputs();
-  SmallVector<Value *, 4> oldMapOperands(
+  SmallVector<Value, 4> oldMapOperands(
       op->operand_begin() + memRefOperandPos + 1,
       op->operand_begin() + memRefOperandPos + 1 + oldMapNumInputs);
 
   // Apply 'oldMemRefOperands = oldMap(oldMapOperands)'.
-  SmallVector<Value *, 4> oldMemRefOperands;
-  SmallVector<Value *, 4> affineApplyOps;
+  SmallVector<Value, 4> oldMemRefOperands;
+  SmallVector<Value, 4> affineApplyOps;
   oldMemRefOperands.reserve(oldMemRefRank);
   if (oldMap != builder.getMultiDimIdentityMap(oldMap.getNumDims())) {
     for (auto resultExpr : oldMap.getResults()) {
@@ -130,14 +121,14 @@ LogicalResult mlir::replaceAllMemRefUsesWith(Value *oldMemRef, Value *newMemRef,
   // Construct new indices as a remap of the old ones if a remapping has been
   // provided. The indices of a memref come right after it, i.e.,
   // at position memRefOperandPos + 1.
-  SmallVector<Value *, 4> remapOperands;
+  SmallVector<Value, 4> remapOperands;
   remapOperands.reserve(extraOperands.size() + oldMemRefRank +
                         symbolOperands.size());
   remapOperands.append(extraOperands.begin(), extraOperands.end());
   remapOperands.append(oldMemRefOperands.begin(), oldMemRefOperands.end());
   remapOperands.append(symbolOperands.begin(), symbolOperands.end());
 
-  SmallVector<Value *, 4> remapOutputs;
+  SmallVector<Value, 4> remapOutputs;
   remapOutputs.reserve(oldMemRefRank);
 
   if (indexRemap &&
@@ -156,11 +147,11 @@ LogicalResult mlir::replaceAllMemRefUsesWith(Value *oldMemRef, Value *newMemRef,
     remapOutputs.append(remapOperands.begin(), remapOperands.end());
   }
 
-  SmallVector<Value *, 4> newMapOperands;
+  SmallVector<Value, 4> newMapOperands;
   newMapOperands.reserve(newMemRefRank);
 
   // Prepend 'extraIndices' in 'newMapOperands'.
-  for (auto *extraIndex : extraIndices) {
+  for (auto extraIndex : extraIndices) {
     assert(extraIndex->getDefiningOp()->getNumResults() == 1 &&
            "single result op's expected to generate these indices");
     assert((isValidDim(extraIndex) || isValidSymbol(extraIndex)) &&
@@ -179,7 +170,7 @@ LogicalResult mlir::replaceAllMemRefUsesWith(Value *oldMemRef, Value *newMemRef,
   newMap = simplifyAffineMap(newMap);
   canonicalizeMapAndOperands(&newMap, &newMapOperands);
   // Remove any affine.apply's that became dead as a result of composition.
-  for (auto *value : affineApplyOps)
+  for (auto value : affineApplyOps)
     if (value->use_empty())
       value->getDefiningOp()->erase();
 
@@ -203,7 +194,7 @@ LogicalResult mlir::replaceAllMemRefUsesWith(Value *oldMemRef, Value *newMemRef,
 
   // Result types don't change. Both memref's are of the same elemental type.
   state.types.reserve(op->getNumResults());
-  for (auto *result : op->getResults())
+  for (auto result : op->getResults())
     state.types.push_back(result->getType());
 
   // Add attribute for 'newMap', other Attributes do not change.
@@ -224,11 +215,11 @@ LogicalResult mlir::replaceAllMemRefUsesWith(Value *oldMemRef, Value *newMemRef,
   return success();
 }
 
-LogicalResult mlir::replaceAllMemRefUsesWith(Value *oldMemRef, Value *newMemRef,
-                                             ArrayRef<Value *> extraIndices,
+LogicalResult mlir::replaceAllMemRefUsesWith(Value oldMemRef, Value newMemRef,
+                                             ArrayRef<Value> extraIndices,
                                              AffineMap indexRemap,
-                                             ArrayRef<Value *> extraOperands,
-                                             ArrayRef<Value *> symbolOperands,
+                                             ArrayRef<Value> extraOperands,
+                                             ArrayRef<Value> symbolOperands,
                                              Operation *domInstFilter,
                                              Operation *postDomInstFilter) {
   unsigned newMemRefRank = newMemRef->getType().cast<MemRefType>().getRank();
@@ -331,9 +322,9 @@ LogicalResult mlir::replaceAllMemRefUsesWith(Value *oldMemRef, Value *newMemRef,
 void mlir::createAffineComputationSlice(
     Operation *opInst, SmallVectorImpl<AffineApplyOp> *sliceOps) {
   // Collect all operands that are results of affine apply ops.
-  SmallVector<Value *, 4> subOperands;
+  SmallVector<Value, 4> subOperands;
   subOperands.reserve(opInst->getNumOperands());
-  for (auto *operand : opInst->getOperands())
+  for (auto operand : opInst->getOperands())
     if (isa_and_nonnull<AffineApplyOp>(operand->getDefiningOp()))
       subOperands.push_back(operand);
 
@@ -348,7 +339,7 @@ void mlir::createAffineComputationSlice(
   // which case there would be nothing to do.
   bool localized = true;
   for (auto *op : affineApplyOps) {
-    for (auto *result : op->getResults()) {
+    for (auto result : op->getResults()) {
       for (auto *user : result->getUsers()) {
         if (user != opInst) {
           localized = false;
@@ -361,7 +352,7 @@ void mlir::createAffineComputationSlice(
     return;
 
   OpBuilder builder(opInst);
-  SmallVector<Value *, 4> composedOpOperands(subOperands);
+  SmallVector<Value, 4> composedOpOperands(subOperands);
   auto composedMap = builder.getMultiDimIdentityMap(composedOpOperands.size());
   fullyComposeAffineMapAndOperands(&composedMap, &composedOpOperands);
 
@@ -378,7 +369,7 @@ void mlir::createAffineComputationSlice(
   // affine apply op above instead of existing ones (subOperands). So, they
   // differ from opInst's operands only for those operands in 'subOperands', for
   // which they will be replaced by the corresponding one from 'sliceOps'.
-  SmallVector<Value *, 4> newOperands(opInst->getOperands());
+  SmallVector<Value, 4> newOperands(opInst->getOperands());
   for (unsigned i = 0, e = newOperands.size(); i < e; i++) {
     // Replace the subOperands from among the new operands.
     unsigned j, f;
@@ -451,8 +442,8 @@ LogicalResult mlir::normalizeMemRef(AllocOp allocOp) {
     newShape[d] = ubConst.getValue() + 1;
   }
 
-  auto *oldMemRef = allocOp.getResult();
-  SmallVector<Value *, 4> symbolOperands(allocOp.getSymbolicOperands());
+  auto oldMemRef = allocOp.getResult();
+  SmallVector<Value, 4> symbolOperands(allocOp.getSymbolicOperands());
 
   auto newMemRefType = MemRefType::get(newShape, memrefType.getElementType(),
                                        b.getMultiDimIdentityMap(newRank));

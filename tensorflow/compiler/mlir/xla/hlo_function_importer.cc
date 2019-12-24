@@ -284,7 +284,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
       return func_builder
           ->create<mlir::xla_hlo::DynamicUpdateSliceOp>(
               loc, result_type, operands[0], operands[1],
-              llvm::ArrayRef<Value*>(operands.begin() + 2, operands.end()))
+              llvm::ArrayRef<Value>(operands.begin() + 2, operands.end()))
           .getOperation();
     }
     case HloOpcode::kInfeed: {
@@ -536,9 +536,9 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
   }
 }
 
-StatusOr<llvm::SmallVector<mlir::Value*, 4>> HloFunctionImporter::GetOperands(
+StatusOr<llvm::SmallVector<mlir::Value, 4>> HloFunctionImporter::GetOperands(
     HloInstruction* instruction) {
-  llvm::SmallVector<mlir::Value*, 4> operands;
+  llvm::SmallVector<mlir::Value, 4> operands;
   for (const auto& operand : instruction->operands()) {
     auto input_it = instruction_value_map_.find(operand);
     if (input_it == instruction_value_map_.end()) {
@@ -626,8 +626,7 @@ tensorflow::Status HloFunctionImporter::GetMlirTypes(
   return tensorflow::Status::OK();
 }
 
-StatusOr<Value*> HloFunctionImporter::GetMlirValue(
-    HloInstruction* instruction) {
+StatusOr<Value> HloFunctionImporter::GetMlirValue(HloInstruction* instruction) {
   auto lookup = instruction_value_map_.find(instruction);
   if (lookup != instruction_value_map_.end()) {
     return lookup->second;

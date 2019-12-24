@@ -1,19 +1,10 @@
 //===- Operation.cpp - Operation support code -----------------------------===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/BlockAndValueMapping.h"
@@ -77,23 +68,29 @@ OperationName OperationName::getFromOpaquePointer(void *pointer) {
 //===----------------------------------------------------------------------===//
 
 /// Return the result number of this result.
-unsigned OpResult::getResultNumber() {
-  // Results are always stored consecutively, so use pointer subtraction to
-  // figure out what number this is.
-  return this - &getOwner()->getOpResults()[0];
+unsigned OpResult::getResultNumber() const {
+  // Results are not stored in place, so we have to find it within the list.
+  auto resList = getOwner()->getOpResults();
+  return std::distance(resList.begin(), llvm::find(resList, *this));
 }
 
 //===----------------------------------------------------------------------===//
 // OpOperand
 //===----------------------------------------------------------------------===//
 
-// TODO: This namespace is only required because of a bug in GCC<7.0.
-namespace mlir {
+OpOperand::OpOperand(Operation *owner, Value value)
+    : IROperand(owner, value.impl) {}
+
+/// Return the current value being used by this operand.
+Value OpOperand::get() { return (detail::ValueImpl *)IROperand::get(); }
+
+/// Set the current value being used by this operand.
+void OpOperand::set(Value newValue) { IROperand::set(newValue.impl); }
+
 /// Return which operand this is in the operand list.
-template <> unsigned OpOperand::getOperandNumber() {
+unsigned OpOperand::getOperandNumber() {
   return this - &getOwner()->getOpOperands()[0];
 }
-} // end namespace mlir
 
 //===----------------------------------------------------------------------===//
 // BlockOperand
@@ -114,7 +111,7 @@ template <> unsigned BlockOperand::getOperandNumber() {
 /// Create a new Operation with the specific fields.
 Operation *Operation::create(Location location, OperationName name,
                              ArrayRef<Type> resultTypes,
-                             ArrayRef<Value *> operands,
+                             ArrayRef<Value> operands,
                              ArrayRef<NamedAttribute> attributes,
                              ArrayRef<Block *> successors, unsigned numRegions,
                              bool resizableOperandList) {
@@ -134,7 +131,7 @@ Operation *Operation::create(const OperationState &state) {
 /// Create a new Operation with the specific fields.
 Operation *Operation::create(Location location, OperationName name,
                              ArrayRef<Type> resultTypes,
-                             ArrayRef<Value *> operands,
+                             ArrayRef<Value> operands,
                              NamedAttributeList attributes,
                              ArrayRef<Block *> successors, RegionRange regions,
                              bool resizableOperandList) {
@@ -151,7 +148,7 @@ Operation *Operation::create(Location location, OperationName name,
 /// unnecessarily uniquing a list of attributes.
 Operation *Operation::create(Location location, OperationName name,
                              ArrayRef<Type> resultTypes,
-                             ArrayRef<Value *> operands,
+                             ArrayRef<Value> operands,
                              NamedAttributeList attributes,
                              ArrayRef<Block *> successors, unsigned numRegions,
                              bool resizableOperandList) {
@@ -188,7 +185,7 @@ Operation *Operation::create(Location location, OperationName name,
 
   auto instResults = op->getOpResults();
   for (unsigned i = 0, e = resultTypes.size(); i != e; ++i)
-    new (&instResults[i]) OpResult(resultTypes[i], op);
+    new (&instResults[i]) OpResult(OpResult::create(resultTypes[i], op));
 
   auto opOperands = op->getOpOperands();
 
@@ -265,7 +262,7 @@ Operation::~Operation() {
   getOperandStorage().~OperandStorage();
 
   for (auto &result : getOpResults())
-    result.~OpResult();
+    result.destroy();
 
   // Explicitly run the destructors for the successors.
   for (auto &successor : getBlockOperands())
@@ -314,7 +311,7 @@ bool Operation::isProperAncestor(Operation *other) {
 }
 
 /// Replace any uses of 'from' with 'to' within this operation.
-void Operation::replaceUsesOfWith(Value *from, Value *to) {
+void Operation::replaceUsesOfWith(Value from, Value to) {
   if (from == to)
     return;
   for (auto &operand : getOpOperands())
@@ -585,7 +582,7 @@ void Operation::dropAllDefinedValueUses() {
 
 /// Return true if there are no users of any results of this operation.
 bool Operation::use_empty() {
-  for (auto *result : getResults())
+  for (auto result : getResults())
     if (!result->use_empty())
       return false;
   return true;
@@ -672,14 +669,14 @@ InFlightDiagnostic Operation::emitOpError(const Twine &message) {
 /// Operands are remapped using `mapper` (if present), and `mapper` is updated
 /// to contain the results.
 Operation *Operation::cloneWithoutRegions(BlockAndValueMapping &mapper) {
-  SmallVector<Value *, 8> operands;
+  SmallVector<Value, 8> operands;
   SmallVector<Block *, 2> successors;
 
   operands.reserve(getNumOperands() + getNumSuccessors());
 
   if (getNumSuccessors() == 0) {
     // Non-branching operations can just add all the operands.
-    for (auto *opValue : getOperands())
+    for (auto opValue : getOperands())
       operands.push_back(mapper.lookupOrDefault(opValue));
   } else {
     // We add the operands separated by nullptr's for each successor.
@@ -699,7 +696,7 @@ Operation *Operation::cloneWithoutRegions(BlockAndValueMapping &mapper) {
       operands.push_back(nullptr);
 
       // Remap the successors operands.
-      for (auto *operand : getSuccessorOperands(succ))
+      for (auto operand : getSuccessorOperands(succ))
         operands.push_back(mapper.lookupOrDefault(operand));
     }
   }
@@ -1092,8 +1089,8 @@ LogicalResult OpTrait::impl::verifyResultSizeAttr(Operation *op,
 // These functions are out-of-line implementations of the methods in BinaryOp,
 // which avoids them being template instantiated/duplicated.
 
-void impl::buildBinaryOp(Builder *builder, OperationState &result, Value *lhs,
-                         Value *rhs) {
+void impl::buildBinaryOp(Builder *builder, OperationState &result, Value lhs,
+                         Value rhs) {
   assert(lhs->getType() == rhs->getType());
   result.addOperands({lhs, rhs});
   result.types.push_back(lhs->getType());
@@ -1133,7 +1130,7 @@ void impl::printOneResultOp(Operation *op, OpAsmPrinter &p) {
 // CastOp implementation
 //===----------------------------------------------------------------------===//
 
-void impl::buildCastOp(Builder *builder, OperationState &result, Value *source,
+void impl::buildCastOp(Builder *builder, OperationState &result, Value source,
                        Type destType) {
   result.addOperands(source);
   result.addTypes(destType);
@@ -1157,7 +1154,7 @@ void impl::printCastOp(Operation *op, OpAsmPrinter &p) {
     << op->getResult(0)->getType();
 }
 
-Value *impl::foldCastOp(Operation *op) {
+Value impl::foldCastOp(Operation *op) {
   // Identity cast
   if (op->getOperand(0)->getType() == op->getResult(0)->getType())
     return op->getOperand(0);

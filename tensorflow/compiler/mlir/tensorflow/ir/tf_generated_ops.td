@@ -1544,8 +1544,8 @@ tf.math.equal(x, y) ==> array([True,  True])
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilder<"Builder* builder, OperationState& result, Value* x, "
-              "Value* y, BoolAttr incompatible_shape_error">
+    OpBuilder<"Builder* builder, OperationState& result, Value  x, "
+              "Value  y, BoolAttr incompatible_shape_error">
   ];
 
   let verifier = [{
@@ -1647,8 +1647,8 @@ size 1.
   TF_DerivedOperandTypeAttr Tdim = TF_DerivedOperandTypeAttr<1>;
 
   let builders = [
-    OpBuilder<"Builder* builder, OperationState& result, Value* condition, "
-              "Value* dim">
+    OpBuilder<"Builder* builder, OperationState& result, Value  condition, "
+              "Value  dim">
   ];
 }
 
@@ -3282,8 +3282,8 @@ retained with length 1.
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState &result, Value *input, "
-    "Value *reduction_indices, BoolAttr keep_dims"
+    "Builder *builder, OperationState &result, Value input, "
+    "Value reduction_indices, BoolAttr keep_dims"
   >];
 }
 
@@ -3694,8 +3694,8 @@ def TF_NotEqualOp : TF_Op<"NotEqual", [Commutative, NoSideEffect]> {
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilder<"Builder* builder, OperationState& result, Value* x, "
-              "Value* y, BoolAttr incompatible_shape_error">
+    OpBuilder<"Builder* builder, OperationState& result, Value  x, "
+              "Value  y, BoolAttr incompatible_shape_error">
   ];
 
   let verifier = [{
@@ -3813,8 +3813,8 @@ output =
   TF_DerivedOperandTypeAttr TI = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilder<"Builder* builder, OperationState& result, Value* indices, "
-              "Value* depth, Value* on_value, Value* off_value, "
+    OpBuilder<"Builder* builder, OperationState& result, Value  indices, "
+              "Value  depth, Value  on_value, Value  off_value, "
               "IntegerAttr axis">
   ];
 
@@ -4248,8 +4248,8 @@ tf.range(start, limit, delta) ==> [3, 6, 9, 12, 15]
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilder<"Builder* builder, OperationState& result, Value* start, "
-              "Value* limit, Value* delta">
+    OpBuilder<"Builder* builder, OperationState& result, Value  start, "
+              "Value  limit, Value  delta">
   ];
 }
 
@@ -4283,7 +4283,7 @@ of the tensor. Rank is also known as "order", "degree", or "ndims."
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilder<"Builder* builder, OperationState& result, Value* input">
+    OpBuilder<"Builder* builder, OperationState& result, Value  input">
   ];
 }
 
@@ -4519,7 +4519,7 @@ reshape(t, []) ==> 7
 
   let builders = [
     OpBuilder<
-      "Builder* builder, OperationState& result, Value* tensor, Value* shape">
+      "Builder* builder, OperationState& result, Value  tensor, Value  shape">
   ];
 
   let verifier = [{
@@ -4976,7 +4976,7 @@ def TF_SelectV2Op : TF_Op<"SelectV2", [NoSideEffect]> {
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
 
   let builders = [
-    OpBuilder<"Builder* builder, OperationState& result, Value* condition, Value* e, Value* t">
+    OpBuilder<"Builder* builder, OperationState& result, Value  condition, Value  e, Value  t">
   ];
 }
 
@@ -5010,7 +5010,7 @@ shape(t) ==> [2, 2, 3]
   }];
 
   let builders = [
-    OpBuilder<"Builder* builder, OperationState& result, Value* input, BoolAttr use32Bit">
+    OpBuilder<"Builder* builder, OperationState& result, Value  input, BoolAttr use32Bit">
   ];
 
   let hasFolder = 1;
@@ -5861,8 +5861,8 @@ retained with length 1.
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState &result, Value *input, "
-    "Value *reduction_indices, BoolAttr keep_dims"
+    "Builder *builder, OperationState &result, Value input, "
+    "Value reduction_indices, BoolAttr keep_dims"
   >];
 }
 
@@ -6189,6 +6189,103 @@ num_elements: optional. If not -1, the number of elements in the list.
   }];
 }
 
+def TF_TensorScatterUpdateOp : TF_Op<"TensorScatterUpdate", [NoSideEffect]> {
+  let summary = [{
+Scatter `updates` into an existing tensor according to `indices`.
+  }];
+
+  let description = [{
+This operation creates a new tensor by applying sparse `updates` to the passed
+in `tensor`.
+This operation is very similar to `tf.scatter_nd`, except that the updates are
+scattered onto an existing tensor (as opposed to a zero-tensor). If the memory
+for the existing tensor cannot be re-used, a copy is made and updated.
+
+If `indices` contains duplicates, then their updates are accumulated (summed).
+
+**WARNING**: The order in which updates are applied is nondeterministic, so the
+output will be nondeterministic if `indices` contains duplicates -- because
+of some numerical approximation issues, numbers summed in different order
+may yield different results.
+
+`indices` is an integer tensor containing indices into a new tensor of shape
+`shape`.  The last dimension of `indices` can be at most the rank of `shape`:
+
+    indices.shape[-1] <= shape.rank
+
+The last dimension of `indices` corresponds to indices into elements
+(if `indices.shape[-1] = shape.rank`) or slices
+(if `indices.shape[-1] < shape.rank`) along dimension `indices.shape[-1]` of
+`shape`.  `updates` is a tensor with shape
+
+    indices.shape[:-1] + shape[indices.shape[-1]:]
+
+The simplest form of scatter is to insert individual elements in a tensor by
+index. For example, say we want to insert 4 scattered elements in a rank-1
+tensor with 8 elements.
+
+<div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+<img style="width:100%" src="https://www.tensorflow.org/images/ScatterNd1.png" alt>
+</div>
+
+In Python, this scatter operation would look like this:
+
+    >>> indices = tf.constant([[4], [3], [1], [7]])
+    >>> updates = tf.constant([9, 10, 11, 12])
+    >>> tensor = tf.ones([8], dtype=tf.int32)
+    >>> print(tf.tensor_scatter_nd_update(tensor, indices, updates))
+    tf.Tensor([ 1 11  1 10  9  1  1 12], shape=(8,), dtype=int32)
+
+We can also, insert entire slices of a higher rank tensor all at once. For
+example, if we wanted to insert two slices in the first dimension of a
+rank-3 tensor with two matrices of new values.
+
+In Python, this scatter operation would look like this:
+
+    >>> indices = tf.constant([[0], [2]])
+    >>> updates = tf.constant([[[5, 5, 5, 5], [6, 6, 6, 6],
+    ...                         [7, 7, 7, 7], [8, 8, 8, 8]],
+    ...                        [[5, 5, 5, 5], [6, 6, 6, 6],
+    ...                         [7, 7, 7, 7], [8, 8, 8, 8]]])
+    >>> tensor = tf.ones([4, 4, 4], dtype=tf.int32)
+    >>> print(tf.tensor_scatter_nd_update(tensor, indices, updates).numpy())
+    [[[5 5 5 5]
+      [6 6 6 6]
+      [7 7 7 7]
+      [8 8 8 8]]
+     [[1 1 1 1]
+      [1 1 1 1]
+      [1 1 1 1]
+      [1 1 1 1]]
+     [[5 5 5 5]
+      [6 6 6 6]
+      [7 7 7 7]
+      [8 8 8 8]]
+     [[1 1 1 1]
+      [1 1 1 1]
+      [1 1 1 1]
+      [1 1 1 1]]]
+
+Note that on CPU, if an out of bound index is found, an error is returned.
+On GPU, if an out of bound index is found, the index is ignored.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$tensor,
+    TF_I32OrI64Tensor:$indices,
+    TF_Tensor:$updates
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let verifier = [{ return Verify(*this); }];
+}
+
 def TF_TileOp : TF_Op<"Tile", [NoSideEffect]> {
   let summary = "Constructs a tensor by tiling a given tensor.";
 
@@ -6295,7 +6392,7 @@ The output `y` has the same rank as `x`. The shapes of `x` and `y` satisfy:
 
   let builders = [
     OpBuilder<
-      "Builder* builder, OperationState& result, Value* x, Value* perm">
+      "Builder* builder, OperationState& result, Value  x, Value  perm">
   ];
 
   let verifier = [{

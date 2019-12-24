@@ -1,19 +1,10 @@
 //===- OpImplementation.h - Classes for implementing Op types ---*- C++ -*-===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 //
 // This classes used by the implementation details of Op types.
 //
@@ -45,7 +36,7 @@ public:
   virtual raw_ostream &getStream() const = 0;
 
   /// Print implementations for various things an operation contains.
-  virtual void printOperand(Value *value) = 0;
+  virtual void printOperand(Value value) = 0;
 
   /// Print a comma separated list of operands.
   template <typename ContainerType>
@@ -121,7 +112,7 @@ public:
   void printFunctionalType(Operation *op) {
     auto &os = getStream();
     os << "(";
-    interleaveComma(op->getNonSuccessorOperands(), os, [&](Value *operand) {
+    interleaveComma(op->getNonSuccessorOperands(), os, [&](Value operand) {
       if (operand)
         printType(operand->getType());
       else
@@ -150,17 +141,14 @@ private:
 };
 
 // Make the implementations convenient to use.
-inline OpAsmPrinter &operator<<(OpAsmPrinter &p, Value &value) {
-  p.printOperand(&value);
+inline OpAsmPrinter &operator<<(OpAsmPrinter &p, Value value) {
+  p.printOperand(value);
   return p;
-}
-inline OpAsmPrinter &operator<<(OpAsmPrinter &p, Value *value) {
-  return p << *value;
 }
 
 template <typename T,
           typename std::enable_if<std::is_convertible<T &, ValueRange>::value &&
-                                      !std::is_convertible<T &, Value *>::value,
+                                      !std::is_convertible<T &, Value &>::value,
                                   T>::type * = nullptr>
 inline OpAsmPrinter &operator<<(OpAsmPrinter &p, const T &values) {
   p.printOperands(values);
@@ -182,7 +170,6 @@ inline OpAsmPrinter &operator<<(OpAsmPrinter &p, Attribute attr) {
 // FunctionType with the Type version above, not have it match this.
 template <typename T, typename std::enable_if<
                           !std::is_convertible<T &, Value &>::value &&
-                              !std::is_convertible<T &, Value *>::value &&
                               !std::is_convertible<T &, Type &>::value &&
                               !std::is_convertible<T &, Attribute &>::value &&
                               !std::is_convertible<T &, ValueRange>::value &&
@@ -467,13 +454,13 @@ public:
 
   /// Resolve an operand to an SSA value, emitting an error on failure.
   virtual ParseResult resolveOperand(const OperandType &operand, Type type,
-                                     SmallVectorImpl<Value *> &result) = 0;
+                                     SmallVectorImpl<Value> &result) = 0;
 
   /// Resolve a list of operands to SSA values, emitting an error on failure, or
   /// appending the results to the list on success. This method should be used
   /// when all operands have the same type.
   ParseResult resolveOperands(ArrayRef<OperandType> operands, Type type,
-                              SmallVectorImpl<Value *> &result) {
+                              SmallVectorImpl<Value> &result) {
     for (auto elt : operands)
       if (resolveOperand(elt, type, result))
         return failure();
@@ -485,7 +472,7 @@ public:
   /// to the list on success.
   ParseResult resolveOperands(ArrayRef<OperandType> operands,
                               ArrayRef<Type> types, llvm::SMLoc loc,
-                              SmallVectorImpl<Value *> &result) {
+                              SmallVectorImpl<Value> &result) {
     if (operands.size() != types.size())
       return emitError(loc)
              << operands.size() << " operands present, but expected "
@@ -555,8 +542,7 @@ public:
 
   /// Parse a single operation successor and its operand list.
   virtual ParseResult
-  parseSuccessorAndUseList(Block *&dest,
-                           SmallVectorImpl<Value *> &operands) = 0;
+  parseSuccessorAndUseList(Block *&dest, SmallVectorImpl<Value> &operands) = 0;
 
   //===--------------------------------------------------------------------===//
   // Type Parsing
@@ -634,7 +620,7 @@ private:
 
 /// A functor used to set the name of the start of a result group of an
 /// operation. See 'getAsmResultNames' below for more details.
-using OpAsmSetValueNameFn = function_ref<void(Value *, StringRef)>;
+using OpAsmSetValueNameFn = function_ref<void(Value, StringRef)>;
 
 class OpAsmDialectInterface
     : public DialectInterface::Base<OpAsmDialectInterface> {

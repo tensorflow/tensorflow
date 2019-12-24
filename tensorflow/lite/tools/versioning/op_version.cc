@@ -219,6 +219,10 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
           op_sig.input_types.at(0) == TensorType_UINT8) {
         return 2;
       }
+      // If the op take bool input, it is version 3.
+      if (op_sig.input_types.at(0) == TensorType_BOOL) {
+        return 3;
+      }
       return 1;
 
     case BuiltinOperator_DEQUANTIZE:

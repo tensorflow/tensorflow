@@ -1,19 +1,10 @@
 //===- LowerUniformRealMath.cpp  ------------------------------------------===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 
 #include "UniformKernelUtils.h"
 
@@ -46,9 +37,9 @@ struct LowerUniformCastsPass : public FunctionPass<LowerUniformCastsPass> {
 // Dequantize
 //===----------------------------------------------------------------------===//
 
-static Value *emitUniformPerLayerDequantize(Location loc, Value *input,
-                                            UniformQuantizedType elementType,
-                                            PatternRewriter &rewriter) {
+static Value emitUniformPerLayerDequantize(Location loc, Value input,
+                                           UniformQuantizedType elementType,
+                                           PatternRewriter &rewriter) {
   // Pre-conditions.
   if (!elementType.isSigned()) {
     // TODO: Support unsigned storage type.
@@ -71,7 +62,7 @@ static Value *emitUniformPerLayerDequantize(Location loc, Value *input,
 
   // Apply zero-point offset.
   if (elementType.getZeroPoint() != 0) {
-    Value *negZeroPointConst = rewriter.create<ConstantOp>(
+    Value negZeroPointConst = rewriter.create<ConstantOp>(
         loc, broadcastScalarConstIntValue(intermediateType,
                                           -elementType.getZeroPoint()));
     input = rewriter.create<AddIOp>(loc, input, negZeroPointConst);
@@ -81,14 +72,14 @@ static Value *emitUniformPerLayerDequantize(Location loc, Value *input,
   input = rewriter.create<ConvertISToFOp>(loc, realType, input);
 
   // Mul by scale.
-  Value *scaleConst = rewriter.create<ConstantOp>(
+  Value scaleConst = rewriter.create<ConstantOp>(
       loc, broadcastScalarConstFloatValue(realType,
                                           APFloat(elementType.getScale())));
   return rewriter.create<MulFOp>(loc, input, scaleConst);
 }
 
-static Value *
-emitUniformPerAxisDequantize(Location loc, Value *input,
+static Value
+emitUniformPerAxisDequantize(Location loc, Value input,
                              UniformQuantizedPerAxisType elementType,
                              PatternRewriter &rewriter) {
   // TODO: Support per-axis dequantize.
@@ -97,8 +88,8 @@ emitUniformPerAxisDequantize(Location loc, Value *input,
   return nullptr;
 }
 
-static Value *emitDequantize(Location loc, Value *input,
-                             PatternRewriter &rewriter) {
+static Value emitDequantize(Location loc, Value input,
+                            PatternRewriter &rewriter) {
   Type inputType = input->getType();
   QuantizedType qElementType =
       QuantizedType::getQuantizedElementType(inputType);
@@ -133,7 +124,7 @@ struct UniformDequantizePattern : public OpRewritePattern<DequantizeCastOp> {
       return matchFailure();
     }
 
-    Value *dequantizedValue = emitDequantize(op.getLoc(), op.arg(), rewriter);
+    Value dequantizedValue = emitDequantize(op.getLoc(), op.arg(), rewriter);
     if (!dequantizedValue) {
       return matchFailure();
     }
@@ -170,14 +161,14 @@ tryRewriteAffineAddEwIsomorphicSigned(const UniformBinaryOpInfo &info,
       castElementType(info.resultStorageType, intermediateElementType);
 
   // Cast operands to storage type.
-  Value *lhsValue = rewriter
-                        .create<StorageCastOp>(info.op->getLoc(),
-                                               info.lhsStorageType, info.lhs)
-                        .getResult();
-  Value *rhsValue = rewriter
-                        .create<StorageCastOp>(info.op->getLoc(),
-                                               info.rhsStorageType, info.rhs)
-                        .getResult();
+  Value lhsValue = rewriter
+                       .create<StorageCastOp>(info.op->getLoc(),
+                                              info.lhsStorageType, info.lhs)
+                       .getResult();
+  Value rhsValue = rewriter
+                       .create<StorageCastOp>(info.op->getLoc(),
+                                              info.rhsStorageType, info.rhs)
+                       .getResult();
 
   // Cast to the intermediate sized type.
   lhsValue = rewriter.create<ConvertISOp>(info.op->getLoc(), intermediateType,
@@ -186,7 +177,7 @@ tryRewriteAffineAddEwIsomorphicSigned(const UniformBinaryOpInfo &info,
                                           rhsValue);
 
   // Add.
-  Value *resultValue =
+  Value resultValue =
       rewriter.create<AddIOp>(info.op->getLoc(), lhsValue, rhsValue);
 
   // Zero point offset adjustment.
@@ -194,7 +185,7 @@ tryRewriteAffineAddEwIsomorphicSigned(const UniformBinaryOpInfo &info,
   // zpOffset = -zp
   int zpOffset = -1 * info.resultType.getZeroPoint();
   if (zpOffset != 0) {
-    Value *zpOffsetConst = rewriter.create<ConstantOp>(
+    Value zpOffsetConst = rewriter.create<ConstantOp>(
         info.op->getLoc(),
         broadcastScalarConstIntValue(intermediateType, zpOffset));
     resultValue =
@@ -246,14 +237,14 @@ tryRewriteAffineMulEwSigned(const UniformBinaryOpInfo &info,
       castElementType(info.resultStorageType, intermediateElementType);
 
   // Cast operands to storage type.
-  Value *lhsValue = rewriter
-                        .create<StorageCastOp>(info.op->getLoc(),
-                                               info.lhsStorageType, info.lhs)
-                        .getResult();
-  Value *rhsValue = rewriter
-                        .create<StorageCastOp>(info.op->getLoc(),
-                                               info.rhsStorageType, info.rhs)
-                        .getResult();
+  Value lhsValue = rewriter
+                       .create<StorageCastOp>(info.op->getLoc(),
+                                              info.lhsStorageType, info.lhs)
+                       .getResult();
+  Value rhsValue = rewriter
+                       .create<StorageCastOp>(info.op->getLoc(),
+                                              info.rhsStorageType, info.rhs)
+                       .getResult();
 
   // Cast to the intermediate sized type.
   lhsValue = rewriter.create<ConvertISOp>(info.op->getLoc(), intermediateType,
@@ -263,7 +254,7 @@ tryRewriteAffineMulEwSigned(const UniformBinaryOpInfo &info,
 
   // Apply argument zeroPoints.
   if (info.lhsType.getZeroPoint() != 0) {
-    Value *zpOffsetConst = rewriter.create<ConstantOp>(
+    Value zpOffsetConst = rewriter.create<ConstantOp>(
         info.op->getLoc(), broadcastScalarConstIntValue(
                                intermediateType, -info.lhsType.getZeroPoint()));
     lhsValue =
@@ -271,7 +262,7 @@ tryRewriteAffineMulEwSigned(const UniformBinaryOpInfo &info,
   }
 
   if (info.rhsType.getZeroPoint() != 0) {
-    Value *zpOffsetConst = rewriter.create<ConstantOp>(
+    Value zpOffsetConst = rewriter.create<ConstantOp>(
         info.op->getLoc(), broadcastScalarConstIntValue(
                                intermediateType, -info.rhsType.getZeroPoint()));
     rhsValue =
@@ -279,7 +270,7 @@ tryRewriteAffineMulEwSigned(const UniformBinaryOpInfo &info,
   }
 
   // Mul.
-  Value *resultValue =
+  Value resultValue =
       rewriter.create<MulIOp>(info.op->getLoc(), lhsValue, rhsValue);
 
   // Scale output.
@@ -293,7 +284,7 @@ tryRewriteAffineMulEwSigned(const UniformBinaryOpInfo &info,
 
   // Zero point offset adjustment.
   if (info.resultType.getZeroPoint() != 0) {
-    Value *zpOffsetConst = rewriter.create<ConstantOp>(
+    Value zpOffsetConst = rewriter.create<ConstantOp>(
         info.op->getLoc(),
         broadcastScalarConstIntValue(intermediateType,
                                      info.resultType.getZeroPoint()));

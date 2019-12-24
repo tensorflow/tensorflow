@@ -173,10 +173,19 @@ class VariantTensorDataReader : public IteratorStateReader {
   Status ReadTensor(StringPiece key, Tensor* val) override;
   bool Contains(StringPiece key) override;
 
+  Status ReadScalar(StringPiece name, StringPiece key, int64* val) override;
+  Status ReadScalar(StringPiece name, StringPiece key, tstring* val) override;
+  Status ReadTensor(StringPiece name, StringPiece key, Tensor* val) override;
+  bool Contains(StringPiece name, StringPiece key) override;
+
  private:
   template <typename T>
   Status ReadScalarInternal(StringPiece key, T* val);
   Status ReadTensorInternal(StringPiece key, Tensor* val);
+
+  template <typename T>
+  Status ReadScalarInternal(StringPiece name, StringPiece key, T* val);
+  Status ReadTensorInternal(StringPiece name, StringPiece key, Tensor* val);
 
   std::map<string, std::map<string, size_t>> map_;
   std::map<string, const VariantTensorData*> data_;  // Not owned.
@@ -198,6 +207,13 @@ class VariantTensorDataWriter : public IteratorStateWriter {
   Status WriteScalar(StringPiece key, const tstring& val) override;
   Status WriteTensor(StringPiece key, const Tensor& val) override;
 
+  Status WriteScalar(StringPiece name, StringPiece key,
+                     const int64 val) override;
+  Status WriteScalar(StringPiece name, StringPiece key,
+                     const tstring& val) override;
+  Status WriteTensor(StringPiece name, StringPiece key,
+                     const Tensor& val) override;
+
   // Releases the built VariantTensorData's to `variants`. Clears out all
   // class state.
   void ReleaseData(std::vector<std::unique_ptr<VariantTensorData>>* variants);
@@ -212,6 +228,11 @@ class VariantTensorDataWriter : public IteratorStateWriter {
   template <typename T>
   Status WriteScalarInternal(StringPiece key, const T& val);
   Status WriteTensorInternal(StringPiece key, const Tensor& val);
+
+  template <typename T>
+  Status WriteScalarInternal(StringPiece name, StringPiece key, const T& val);
+  Status WriteTensorInternal(StringPiece name, StringPiece key,
+                             const Tensor& val);
 
   bool is_flushed_ = false;
   std::map<string, std::unique_ptr<VariantTensorData>> data_;

@@ -3659,9 +3659,6 @@ cuda_py_test(
     size = "small",
     srcs = ["training/experimental/mixed_precision_test.py"],
     python_version = "PY3",
-    tags = [
-        "no_rocm",
-    ],
     deps = [
         ":mixed_precision",
         "//tensorflow/python:client_testlib",
@@ -4772,7 +4769,6 @@ cuda_py_test(
     srcs = ["ops/nn_fused_batchnorm_test.py"],
     python_version = "PY3",
     shard_count = 16,
-    tags = ["no_rocm"],
     deps = [
         ":array_ops",
         ":client_testlib",

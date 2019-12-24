@@ -1,19 +1,10 @@
 //===- AffineOps.td - Affine operation definitions ---------*- tablegen -*-===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 //
 // Defines MLIR affine operations.
 //
@@ -101,7 +92,7 @@ def AffineForOp : Affine_Op<"for",
     static StringRef getUpperBoundAttrName() { return "upper_bound"; }
 
     Block *getBody() { return &region().front(); }
-    Value *getInductionVar() { return getBody()->getArgument(0); }
+    Value getInductionVar() { return getBody()->getArgument(0); }
     OpBuilder getBodyBuilder() {
       return OpBuilder(getBody(), std::prev(getBody()->end()));
     }
@@ -286,8 +277,8 @@ def AffinePrefetchOp : Affine_Op<"prefetch"> {
                    BoolAttr:$isDataCache);
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState &result, Value *memref,"
-    "AffineMap map, ArrayRef<Value *> mapOperands, bool isWrite,"
+    "Builder *builder, OperationState &result, Value memref,"
+    "AffineMap map, ArrayRef<Value> mapOperands, bool isWrite,"
     "unsigned localityHint, bool isDataCache",
     [{
       assert(map.getNumInputs() == mapOperands.size()
@@ -315,7 +306,7 @@ def AffinePrefetchOp : Affine_Op<"prefetch"> {
     }
 
     /// Returns the AffineMapAttr associated with 'memref'.
-    NamedAttribute getAffineMapAttrForMemRef(Value *mref) {
+    NamedAttribute getAffineMapAttrForMemRef(Value mref) {
       assert(mref == memref());
       return {Identifier::get(getMapAttrName(), getContext()),
         getAffineMapAttr()};

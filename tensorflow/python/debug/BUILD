@@ -120,6 +120,7 @@ py_library(
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework",
+        "@six_archive//:six",
     ],
 )
 
@@ -715,7 +716,6 @@ cuda_py_test(
     tags = [
         "guitar",
         "multi_and_single_gpu",
-        "no_rocm",
         "no_windows",  # TODO(b/142475891): Enable this test on Windows.
         "no_windows_gpu",  # TODO(b/130551176)
     ],

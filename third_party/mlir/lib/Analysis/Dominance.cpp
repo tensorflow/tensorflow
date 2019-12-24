@@ -1,19 +1,10 @@
 //===- Dominance.cpp - Dominator analysis for CFGs ------------------------===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 //
 // Implementation of dominance related classes and instantiations of extern
 // templates.
@@ -127,7 +118,7 @@ bool DominanceInfo::properlyDominates(Operation *a, Operation *b) {
 }
 
 /// Return true if value A properly dominates operation B.
-bool DominanceInfo::properlyDominates(Value *a, Operation *b) {
+bool DominanceInfo::properlyDominates(Value a, Operation *b) {
   if (auto *aOp = a->getDefiningOp()) {
     // The values defined by an operation do *not* dominate any nested
     // operations.
@@ -138,7 +129,7 @@ bool DominanceInfo::properlyDominates(Value *a, Operation *b) {
 
   // block arguments properly dominate all operations in their own block, so
   // we use a dominates check here, not a properlyDominates check.
-  return dominates(cast<BlockArgument>(a)->getOwner(), b->getBlock());
+  return dominates(a.cast<BlockArgument>()->getOwner(), b->getBlock());
 }
 
 DominanceInfoNode *DominanceInfo::getNode(Block *a) {

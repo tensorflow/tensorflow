@@ -1,19 +1,10 @@
 //===- ConstraintAnalysisGraph.h - Graphs type for constraints --*- C++ -*-===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 //
 // This file provides graph-based data structures for representing anchors
 // and constraints between them.
@@ -163,7 +154,7 @@ public:
   }
 
   virtual Operation *getOp() const = 0;
-  virtual Value *getValue() const = 0;
+  virtual Value getValue() const = 0;
 
   static bool classof(const CAGNode *n) {
     return n->getKind() >= Kind::Anchor && n->getKind() <= Kind::LastAnchor;
@@ -210,7 +201,7 @@ public:
     return n->getKind() == Kind::Anchor || n->getKind() == Kind::OperandAnchor;
   }
 
-  Value *getValue() const final { return op->getOperand(operandIdx); }
+  Value getValue() const final { return op->getOperand(operandIdx); }
 
   void printLabel(raw_ostream &os) const override;
 
@@ -221,7 +212,7 @@ private:
 
 /// An anchor tied to a specific result.
 /// Since a result is already anchored to its defining op, result anchors refer
-/// directly to the underlying Value*.
+/// directly to the underlying Value.
 class CAGResultAnchor : public CAGAnchorNode {
 public:
   CAGResultAnchor(Operation *op, unsigned resultIdx);
@@ -231,12 +222,12 @@ public:
   }
 
   Operation *getOp() const final { return resultValue->getDefiningOp(); }
-  Value *getValue() const final { return resultValue; }
+  Value getValue() const final { return resultValue; }
 
   void printLabel(raw_ostream &os) const override;
 
 private:
-  Value *resultValue;
+  Value resultValue;
 };
 
 /// Base class for constraint nodes.

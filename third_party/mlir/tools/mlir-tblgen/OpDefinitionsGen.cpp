@@ -1,19 +1,10 @@
 //===- OpDefinitionsGen.cpp - MLIR op definitions generator ---------------===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 //
 // OpDefinitionsGen uses the description of operations to generate C++
 // definitions for ops.
@@ -713,11 +704,12 @@ void OpEmitter::genAttrGetters() {
 
 // Generates the named operand getter methods for the given Operator `op` and
 // puts them in `opClass`.  Uses `rangeType` as the return type of getters that
-// return a range of operands (individual operands are `Value *` and each
-// element in the range must also be `Value *`); use `rangeBeginCall` to get an
-// iterator to the beginning of the operand range; use `rangeSizeCall` to obtain
-// the number of operands. `getOperandCallPattern` contains the code necessary
-// to obtain a single operand whose position will be substituted instead of
+// return a range of operands (individual operands are `Value ` and each
+// element in the range must also be `Value `); use `rangeBeginCall` to get
+// an iterator to the beginning of the operand range; use `rangeSizeCall` to
+// obtain the number of operands. `getOperandCallPattern` contains the code
+// necessary to obtain a single operand whose position will be substituted
+// instead of
 // "{0}" marker in the pattern.  Note that the pattern should work for any kind
 // of ops, in particular for one-operand ops that may not have the
 // `getOperand(unsigned)` method.
@@ -790,7 +782,7 @@ static void generateNamedOperandGetters(const Operator &op, Class &opClass,
       auto &m = opClass.newMethod(rangeType, operand.name);
       m.body() << "  return getODSOperands(" << i << ");";
     } else {
-      auto &m = opClass.newMethod("Value *", operand.name);
+      auto &m = opClass.newMethod("Value ", operand.name);
       m.body() << "  return *getODSOperands(" << i << ").begin();";
     }
   }
@@ -868,7 +860,7 @@ void OpEmitter::genNamedResultGetters() {
       auto &m = opClass.newMethod("Operation::result_range", result.name);
       m.body() << "  return getODSResults(" << i << ");";
     } else {
-      auto &m = opClass.newMethod("Value *", result.name);
+      auto &m = opClass.newMethod("Value ", result.name);
       m.body() << "  return *getODSResults(" << i << ").begin();";
     }
   }
@@ -1246,7 +1238,7 @@ void OpEmitter::buildParamList(std::string &paramList,
     auto argument = op.getArg(i);
     if (argument.is<tblgen::NamedTypeConstraint *>()) {
       const auto &operand = op.getOperand(numOperands);
-      paramList.append(operand.isVariadic() ? ", ValueRange " : ", Value *");
+      paramList.append(operand.isVariadic() ? ", ValueRange " : ", Value ");
       paramList.append(getArgumentName(op, numOperands));
       ++numOperands;
     } else {
@@ -1535,7 +1527,7 @@ void OpEmitter::genOperandResultVerifier(OpMethodBody &body,
       continue;
 
     // Emit a loop to check all the dynamic values in the pack.
-    body << formatv("    for (Value *v : getODS{0}{1}s({2})) {{\n",
+    body << formatv("    for (Value v : getODS{0}{1}s({2})) {{\n",
                     // Capitalize the first letter to match the function name
                     valueKind.substr(0, 1).upper(), valueKind.substr(1),
                     staticValue.index());
@@ -1690,7 +1682,7 @@ void OpEmitter::genOpAsmInterface() {
 
 namespace {
 // Helper class to emit Op operand adaptors to an output stream.  Operand
-// adaptors are wrappers around ArrayRef<Value *> that provide named operand
+// adaptors are wrappers around ArrayRef<Value> that provide named operand
 // getters identical to those defined in the Op.
 class OpOperandAdaptorEmitter {
 public:
@@ -1706,12 +1698,12 @@ private:
 
 OpOperandAdaptorEmitter::OpOperandAdaptorEmitter(const Operator &op)
     : adapterClass(op.getCppClassName().str() + "OperandAdaptor") {
-  adapterClass.newField("ArrayRef<Value *>", "tblgen_operands");
-  auto &constructor = adapterClass.newConstructor("ArrayRef<Value *> values");
+  adapterClass.newField("ArrayRef<Value>", "tblgen_operands");
+  auto &constructor = adapterClass.newConstructor("ArrayRef<Value> values");
   constructor.body() << "  tblgen_operands = values;\n";
 
   generateNamedOperandGetters(op, adapterClass,
-                              /*rangeType=*/"ArrayRef<Value *>",
+                              /*rangeType=*/"ArrayRef<Value>",
                               /*rangeBeginCall=*/"tblgen_operands.begin()",
                               /*rangeSizeCall=*/"tblgen_operands.size()",
                               /*getOperandCallPattern=*/"tblgen_operands[{0}]");

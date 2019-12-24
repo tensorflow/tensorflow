@@ -1,19 +1,10 @@
 //===- Ops.cpp - Loop MLIR Operations -------------------------------------===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 
 #include "mlir/Dialect/LoopOps/LoopOps.h"
 #include "mlir/Dialect/StandardOps/Ops.h"
@@ -69,8 +60,8 @@ LoopOpsDialect::LoopOpsDialect(MLIRContext *context)
 // ForOp
 //===----------------------------------------------------------------------===//
 
-void ForOp::build(Builder *builder, OperationState &result, Value *lb,
-                  Value *ub, Value *step) {
+void ForOp::build(Builder *builder, OperationState &result, Value lb, Value ub,
+                  Value step) {
   result.addOperands({lb, ub, step});
   Region *bodyRegion = result.addRegion();
   ForOp::ensureTerminator(*bodyRegion, *builder, result.location);
@@ -134,7 +125,7 @@ static ParseResult parseForOp(OpAsmParser &parser, OperationState &result) {
 
 Region &ForOp::getLoopBody() { return region(); }
 
-bool ForOp::isDefinedOutsideOfLoop(Value *value) {
+bool ForOp::isDefinedOutsideOfLoop(Value value) {
   return !region().isAncestor(value->getParentRegion());
 }
 
@@ -144,8 +135,8 @@ LogicalResult ForOp::moveOutOfLoop(ArrayRef<Operation *> ops) {
   return success();
 }
 
-ForOp mlir::loop::getForInductionVarOwner(Value *val) {
-  auto *ivArg = dyn_cast<BlockArgument>(val);
+ForOp mlir::loop::getForInductionVarOwner(Value val) {
+  auto ivArg = val.dyn_cast<BlockArgument>();
   if (!ivArg)
     return ForOp();
   assert(ivArg->getOwner() && "unlinked block argument");
@@ -157,7 +148,7 @@ ForOp mlir::loop::getForInductionVarOwner(Value *val) {
 // IfOp
 //===----------------------------------------------------------------------===//
 
-void IfOp::build(Builder *builder, OperationState &result, Value *cond,
+void IfOp::build(Builder *builder, OperationState &result, Value cond,
                  bool withElseRegion) {
   result.addOperands(cond);
   Region *thenRegion = result.addRegion();

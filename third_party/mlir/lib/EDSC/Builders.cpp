@@ -1,19 +1,10 @@
 //===- Builders.cpp - MLIR Declarative Builder Classes --------------------===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 
 #include "mlir/EDSC/Builders.h"
 #include "mlir/Dialect/StandardOps/Ops.h"
@@ -90,7 +81,7 @@ ValueHandle &mlir::edsc::ValueHandle::operator=(const ValueHandle &other) {
 
 ValueHandle
 mlir::edsc::ValueHandle::createComposedAffineApply(AffineMap map,
-                                                   ArrayRef<Value *> operands) {
+                                                   ArrayRef<Value> operands) {
   Operation *op =
       makeComposedAffineApply(ScopedContext::getBuilder(),
                               ScopedContext::getLocation(), map, operands)
@@ -118,7 +109,7 @@ OperationHandle OperationHandle::create(StringRef name,
                                         ArrayRef<Type> resultTypes,
                                         ArrayRef<NamedAttribute> attributes) {
   OperationState state(ScopedContext::getLocation(), name);
-  SmallVector<Value *, 4> ops(operands.begin(), operands.end());
+  SmallVector<Value, 4> ops(operands.begin(), operands.end());
   state.addOperands(ops);
   state.addTypes(resultTypes);
   for (const auto &attr : attributes) {
@@ -169,8 +160,8 @@ mlir::edsc::LoopBuilder mlir::edsc::LoopBuilder::makeAffine(
   if (auto staticFor = emitStaticFor(lbHandles, ubHandles, step)) {
     *iv = staticFor.getValue();
   } else {
-    SmallVector<Value *, 4> lbs(lbHandles.begin(), lbHandles.end());
-    SmallVector<Value *, 4> ubs(ubHandles.begin(), ubHandles.end());
+    SmallVector<Value, 4> lbs(lbHandles.begin(), lbHandles.end());
+    SmallVector<Value, 4> ubs(ubHandles.begin(), ubHandles.end());
     *iv = ValueHandle::create<AffineForOp>(
         lbs, ScopedContext::getBuilder().getMultiDimIdentityMap(lbs.size()),
         ubs, ScopedContext::getBuilder().getMultiDimIdentityMap(ubs.size()),
@@ -309,11 +300,11 @@ static ValueHandle createBinaryHandle(ValueHandle lhs, ValueHandle rhs) {
   return ValueHandle::create<Op>(lhs.getValue(), rhs.getValue());
 }
 
-static std::pair<AffineExpr, Value *>
-categorizeValueByAffineType(MLIRContext *context, Value *val, unsigned &numDims,
+static std::pair<AffineExpr, Value>
+categorizeValueByAffineType(MLIRContext *context, Value val, unsigned &numDims,
                             unsigned &numSymbols) {
   AffineExpr d;
-  Value *resultVal = nullptr;
+  Value resultVal = nullptr;
   if (auto constant = dyn_cast_or_null<ConstantIndexOp>(val->getDefiningOp())) {
     d = getAffineConstantExpr(constant.getValue(), context);
   } else if (isValidSymbol(val) && !isValidDim(val)) {
@@ -332,12 +323,12 @@ static ValueHandle createBinaryIndexHandle(
   MLIRContext *context = ScopedContext::getContext();
   unsigned numDims = 0, numSymbols = 0;
   AffineExpr d0, d1;
-  Value *v0, *v1;
+  Value v0, v1;
   std::tie(d0, v0) =
       categorizeValueByAffineType(context, lhs.getValue(), numDims, numSymbols);
   std::tie(d1, v1) =
       categorizeValueByAffineType(context, rhs.getValue(), numDims, numSymbols);
-  SmallVector<Value *, 2> operands;
+  SmallVector<Value, 2> operands;
   if (v0) {
     operands.push_back(v0);
   }

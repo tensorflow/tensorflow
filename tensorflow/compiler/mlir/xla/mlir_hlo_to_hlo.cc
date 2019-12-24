@@ -91,6 +91,8 @@ static double ConvertAPFloat(llvm::APFloat value) {
   return value.convertToDouble();
 }
 
+static inline bool Convertbool(bool value) { return value; }
+
 static absl::string_view ConvertStringRef(mlir::StringRef value) {
   return {value.data(), value.size()};
 }
@@ -173,6 +175,7 @@ I64_ELEMENTS_ATTR_TO_VECTOR(limit_indices);
 I64_ELEMENTS_ATTR_TO_VECTOR(strides);
 I64_ELEMENTS_ATTR_TO_VECTOR(slice_sizes);
 I64_ELEMENTS_ATTR_TO_VECTOR(fft_length);
+I64_ELEMENTS_ATTR_TO_VECTOR(dimensions);
 
 #undef I64_ELEMENTS_ATTR_TO_VECTOR
 
@@ -291,7 +294,7 @@ static xla::ComparisonDirection Convert_comparison_direction(
       .ValueOrDie();
 }
 
-static xla::GatherDimensionNumbers Convert_gather_dimension_numbers(
+static xla::GatherDimensionNumbers Convert_dimension_numbers(
     mlir::xla_hlo::GatherDimensionNumbers input) {
   xla::GatherDimensionNumbers output;
 
@@ -345,7 +348,7 @@ namespace mlir {
 namespace {
 class ConvertToHloModule {
  public:
-  using ValueLoweringMap = llvm::DenseMap<Value*, xla::XlaOp>;
+  using ValueLoweringMap = llvm::DenseMap<Value, xla::XlaOp>;
   using FunctionLoweringMap = llvm::DenseMap<mlir::FuncOp, xla::XlaComputation>;
 
   // If use_tuple_args is true, then the entry function's arguments are
@@ -427,7 +430,7 @@ class ConvertToHloModule {
 namespace {
 
 struct OpLoweringContext {
-  llvm::DenseMap<mlir::Value*, xla::XlaOp>* values;
+  llvm::DenseMap<mlir::Value, xla::XlaOp>* values;
   mlir::ConvertToHloModule* converter;
   xla::XlaBuilder* builder;
 };
@@ -435,7 +438,7 @@ struct OpLoweringContext {
 llvm::SmallVector<xla::XlaOp, 4> GetTuple(mlir::Operation::operand_range values,
                                           OpLoweringContext ctx) {
   llvm::SmallVector<xla::XlaOp, 4> ops;
-  for (mlir::Value* value : values) {
+  for (mlir::Value value : values) {
     ops.push_back((*ctx.values)[value]);
   }
   return ops;
@@ -485,13 +488,6 @@ LogicalResult ExportXlaOp(BroadcastInDimOp op, OpLoweringContext ctx) {
   return success();
 }
 
-LogicalResult ExportXlaOp(ConcatenateOp op, OpLoweringContext ctx) {
-  auto& value_map = *ctx.values;
-  value_map[op] = xla::ConcatInDim(ctx.builder, GetTuple(op.val(), ctx),
-                                   op.dimension().getSExtValue());
-  return success();
-}
-
 LogicalResult ExportXlaOp(ConditionalOp op, OpLoweringContext ctx) {
   xla::XlaComputation true_branch;
   xla::XlaComputation false_branch;
@@ -534,16 +530,6 @@ LogicalResult ExportXlaOp(ConvertOp op, OpLoweringContext ctx) {
   value_map[op] = xla::ConvertElementType(
       value_map[op.operand()],
       xla::TypeToPrimitiveType(getElementTypeOrSelf(op.getType())));
-  return success();
-}
-
-LogicalResult ExportXlaOp(GatherOp op, OpLoweringContext ctx) {
-  auto& value_map = *ctx.values;
-  xla::GatherDimensionNumbers dimension_numbers =
-      Convert_gather_dimension_numbers(op.dimension_numbers());
-  value_map[op] = xla::Gather(
-      value_map[op.operand()], value_map[op.start_indices()], dimension_numbers,
-      Convert_slice_sizes(op.slice_sizes()), op.indices_are_sorted());
   return success();
 }
 
@@ -637,13 +623,6 @@ LogicalResult ExportXlaOp(ReturnOp op, OpLoweringContext ctx) {
   // Failure on purpose because `xla_hlo::ReturnOp` will be handled by
   // special purpose logic in `ConvertToHloModule::Lower`.
   return failure();
-}
-
-LogicalResult ExportXlaOp(ReverseOp op, OpLoweringContext ctx) {
-  auto& value_map = *ctx.values;
-  value_map[op] = xla::Rev(value_map[op.operand()],
-                           Convert_broadcast_dimensions(op.dimensions()));
-  return success();
 }
 
 LogicalResult ExportXlaOp(RngNormalOp op, OpLoweringContext ctx) {
@@ -909,7 +888,7 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
     }
   } else {
     for (auto& it : llvm::enumerate(bb.getArguments())) {
-      auto* arg = it.value();
+      auto arg = it.value();
       auto num = it.index();
       xla::Shape shape = xla::TypeToShape(arg->getType());
       lowering[arg] =

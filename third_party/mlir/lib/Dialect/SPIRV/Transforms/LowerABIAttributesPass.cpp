@@ -1,19 +1,10 @@
 //===- LowerABIAttributesPass.cpp - Decorate composite type ---------------===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 //
 // This file implements a pass to lower attributes that specify the shader ABI
 // for the functions in the generated SPIR-V module.
@@ -140,7 +131,7 @@ class FuncOpLowering final : public SPIRVOpLowering<FuncOp> {
 public:
   using SPIRVOpLowering<FuncOp>::SPIRVOpLowering;
   PatternMatchResult
-  matchAndRewrite(FuncOp funcOp, ArrayRef<Value *> operands,
+  matchAndRewrite(FuncOp funcOp, ArrayRef<Value> operands,
                   ConversionPatternRewriter &rewriter) const override;
 };
 
@@ -153,7 +144,7 @@ private:
 } // namespace
 
 PatternMatchResult
-FuncOpLowering::matchAndRewrite(FuncOp funcOp, ArrayRef<Value *> operands,
+FuncOpLowering::matchAndRewrite(FuncOp funcOp, ArrayRef<Value> operands,
                                 ConversionPatternRewriter &rewriter) const {
   if (!funcOp.getAttrOfType<spirv::EntryPointABIAttr>(
           spirv::getEntryPointABIAttrName())) {
@@ -183,7 +174,7 @@ FuncOpLowering::matchAndRewrite(FuncOp funcOp, ArrayRef<Value *> operands,
     OpBuilder::InsertionGuard funcInsertionGuard(rewriter);
     rewriter.setInsertionPointToStart(&funcOp.front());
     // Insert spirv::AddressOf and spirv::AccessChain operations.
-    Value *replacement =
+    Value replacement =
         rewriter.create<spirv::AddressOfOp>(funcOp.getLoc(), var);
     // Check if the arg is a scalar or vector type. In that case, the value
     // needs to be loaded into registers.
@@ -206,13 +197,11 @@ FuncOpLowering::matchAndRewrite(FuncOp funcOp, ArrayRef<Value *> operands,
   }
 
   // Creates a new function with the update signature.
-  auto newFuncOp = rewriter.cloneWithoutRegions(funcOp);
-  rewriter.inlineRegionBefore(funcOp.getBody(), newFuncOp.getBody(),
-                              newFuncOp.end());
-  newFuncOp.setType(rewriter.getFunctionType(
-      signatureConverter.getConvertedTypes(), llvm::None));
-  rewriter.applySignatureConversion(&newFuncOp.getBody(), signatureConverter);
-  rewriter.eraseOp(funcOp.getOperation());
+  rewriter.updateRootInPlace(funcOp, [&] {
+    funcOp.setType(rewriter.getFunctionType(
+        signatureConverter.getConvertedTypes(), llvm::None));
+    rewriter.applySignatureConversion(&funcOp.getBody(), signatureConverter);
+  });
   return matchSuccess();
 }
 

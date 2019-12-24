@@ -52,7 +52,7 @@ class DumpingCallbackTestBase(test_util.TensorFlowTestCase):
     """Read and check the .metadata debug-events file."""
     with debug_events_reader.DebugEventsReader(self.dump_root) as reader:
       metadata_iter = reader.metadata_iterator()
-      metadata = next(metadata_iter).debug_metadata
+      metadata = next(metadata_iter).debug_event.debug_metadata
       self.assertEqual(metadata.tensorflow_version, versions.__version__)
       self.assertTrue(metadata.file_version.startswith("debug.Event"))
 
@@ -67,7 +67,7 @@ class DumpingCallbackTestBase(test_util.TensorFlowTestCase):
       source_files_iter = reader.source_files_iterator()
       source_file_paths = []
       prev_wall_time = 1
-      for debug_event in source_files_iter:
+      for debug_event, _ in source_files_iter:
         self.assertGreaterEqual(debug_event.wall_time, prev_wall_time)
         prev_wall_time = debug_event.wall_time
         source_file = debug_event.source_file
@@ -84,7 +84,7 @@ class DumpingCallbackTestBase(test_util.TensorFlowTestCase):
       stack_frame_by_id = collections.OrderedDict()
       stack_frames_iter = reader.stack_frames_iterator()
       prev_wall_time = 0
-      for debug_event in stack_frames_iter:
+      for debug_event, _ in stack_frames_iter:
         self.assertGreaterEqual(debug_event.wall_time, prev_wall_time)
         prev_wall_time = debug_event.wall_time
         stack_frame_with_id = debug_event.stack_frame_with_id
@@ -133,7 +133,7 @@ class DumpingCallbackTestBase(test_util.TensorFlowTestCase):
       # outermost contexts).
       context_id_to_outer_id = dict()
 
-      for debug_event in graphs_iter:
+      for debug_event, _ in graphs_iter:
         self.assertGreaterEqual(debug_event.wall_time, prev_wall_time)
         prev_wall_time = debug_event.wall_time
         # A DebugEvent in the .graphs file contains either of the two fields:
@@ -219,7 +219,7 @@ class DumpingCallbackTestBase(test_util.TensorFlowTestCase):
       output_tensor_ids = []
       tensor_debug_modes = []
       tensor_values = []
-      for debug_event in execution_iter:
+      for debug_event, _ in execution_iter:
         self.assertGreaterEqual(debug_event.wall_time, prev_wall_time)
         prev_wall_time = debug_event.wall_time
         execution = debug_event.execution
@@ -260,7 +260,7 @@ class DumpingCallbackTestBase(test_util.TensorFlowTestCase):
       device_names = []
       output_slots = []
       tensor_values = []
-      for debug_event in graph_execution_traces_iter:
+      for debug_event, _ in graph_execution_traces_iter:
         self.assertGreaterEqual(debug_event.wall_time, 0)
         graph_execution_trace = debug_event.graph_execution_trace
         op_names.append(graph_execution_trace.op_name)

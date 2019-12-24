@@ -54,14 +54,6 @@ mlir::OwningModuleRef SavedModelToMlirImport(
     absl::string_view saved_model_dir,
     const std::unordered_set<std::string>& tags,
     absl::Span<std::string> exported_names, mlir::MLIRContext* context);
-
-// Converts a TensorFlow V1 SavedModel stored in the directory with the given
-// `saved_model_dir` into a MLIR module. Creates MLIR entities into the
-// given MLIR `context`.
-mlir::OwningModuleRef SavedModelV1ToMlirImport(
-    absl::string_view saved_model_dir,
-    const std::unordered_set<std::string>& tags, mlir::MLIRContext* context);
-
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSLATE_TF_MLIR_TRANSLATE_H_

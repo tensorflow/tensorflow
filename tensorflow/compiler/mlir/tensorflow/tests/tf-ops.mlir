@@ -2181,3 +2181,35 @@ func @testConcatOffest(%concat_dim: tensor<i32>, %shape0: tensor<3xi32>, %shape1
   %0:2 = "tf.ConcatOffset"(%concat_dim, %shape0, %shape1) : (tensor<i32>, tensor<3xi32>, tensor<8xi32>) -> (tensor<3xi32>, tensor<8xi32>)
   return
 }
+
+// -----
+
+func @tensor_scatter_update(%tensor: tensor<f32>, %indices: tensor<4x2xi32>, %updates: tensor<4x4xf32>) -> tensor<f32> {
+  // expected-error @+1 {{op requires tensor operand to have at least 1 dimension}}
+  %0 = "tf.TensorScatterUpdate"(%tensor, %indices, %updates) : (tensor<f32>, tensor<4x2xi32>, tensor<4x4xf32>) -> tensor<f32>
+  return %0 : tensor<f32>
+}
+
+// -----
+
+func @tensor_scatter_update(%tensor: tensor<4x4x4xf32>, %indices: tensor<i32>, %updates: tensor<4x4xf32>) -> tensor<4x4x4xf32> {
+  // expected-error @+1 {{op requires indices operand to have at least 1 dimension}}
+  %0 = "tf.TensorScatterUpdate"(%tensor, %indices, %updates) : (tensor<4x4x4xf32>, tensor<i32>, tensor<4x4xf32>) -> tensor<4x4x4xf32>
+  return %0 : tensor<4x4x4xf32>
+}
+
+// -----
+
+func @tensor_scatter_update(%tensor: tensor<4x4x4xf32>, %indices: tensor<4x2xi32>, %updates: tensor<f32>) -> tensor<4x4x4xf32> {
+  // expected-error @+1 {{op requires updates operand to have at least 1 dimension}}
+  %0 = "tf.TensorScatterUpdate"(%tensor, %indices, %updates) : (tensor<4x4x4xf32>, tensor<4x2xi32>, tensor<f32>) -> tensor<4x4x4xf32>
+  return %0 : tensor<4x4x4xf32>
+}
+
+// -----
+
+func @tensor_scatter_update(%tensor: tensor<4xf32>, %indices: tensor<4x2xi32>, %updates: tensor<4x4xf32>) -> tensor<4x4x4xf32> {
+  // expected-error @+1 {{op requires tensor operand with rank greater than or equal to the indices operand's last dimensions}}
+  %0 = "tf.TensorScatterUpdate"(%tensor, %indices, %updates) : (tensor<4xf32>, tensor<4x2xi32>, tensor<4x4xf32>) -> tensor<4x4x4xf32>
+  return %0 : tensor<4x4x4xf32>
+}
