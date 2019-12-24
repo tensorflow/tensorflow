@@ -112,6 +112,8 @@ TEST_F(MirrorPadOpTest, TestMirrorPadReflectLargeInput) {
       return i - kPad;
     else if (kInput + kPad <= i && i < kOutput)
       return 2 * kInput + kPad - 2 - i;
+    else
+      return -1;
   });
 
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
@@ -144,6 +146,8 @@ TEST_F(MirrorPadOpTest, TestMirrorPadSymmetricLargeInput) {
       return i - kPad;
     else if (kInput + kPad <= i && i < kOutput)
       return 2 * kInput + kPad - 1 - i;
+    else
+      return -1;
   });
 
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
