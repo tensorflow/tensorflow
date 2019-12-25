@@ -4111,7 +4111,7 @@ def polyval(coeffs, x, name=None):
     for element-wise addition and multiplication applied.
 
   Usage Example:
-  '''python
+  ```python
     import tensorflow as tf
     coefficients = [1.0, 2.5, -4.2]
     x = 5.0
