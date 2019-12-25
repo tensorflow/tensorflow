@@ -233,18 +233,26 @@ class ExecutionDigest(BaseDigest):
       In the case of the execution of a tf.function (FuncGraph), this is the
       internally-generated name of the function (e.g.,
       "__inference_my_func_123").
+    output_tensor_device_ids: IDs of the devices on which the output tensors of
+      the execution reside. For no-output execution, this is `None`.
   """
 
   def __init__(self,
                wall_time,
                offset,
-               op_type):
+               op_type,
+               output_tensor_device_ids=None):
     super(ExecutionDigest, self).__init__(wall_time, offset)
     self._op_type = op_type
+    self._output_tensor_device_ids = output_tensor_device_ids
 
   @property
   def op_type(self):
     return self._op_type
+
+  @property
+  def output_tensor_device_ids(self):
+    return self._output_tensor_device_ids
 
   # TODO(cais): Implement to_json().
 
@@ -284,7 +292,8 @@ class Execution(ExecutionDigest):
     super(Execution, self).__init__(
         execution_digest.wall_time,
         execution_digest.offset,
-        execution_digest.op_type)
+        execution_digest.op_type,
+        output_tensor_device_ids=execution_digest.output_tensor_device_ids)
     self._stack_frame_ids = stack_frame_ids
     self._tensor_debug_mode = tensor_debug_mode
     self._graph_id = graph_id
@@ -390,6 +399,32 @@ class DebuggedGraph(object):
   def get_tensor_id(self, op_name, output_slot):
     """Get the ID of a symbolic tensor in this graph."""
     return self._op_by_name[op_name].output_tensor_ids[output_slot]
+
+  # TODO(cais): Implement to_json().
+
+
+class DebuggedDevice(object):
+  """Debugger data regarding a device involved in the debugged program.
+
+  Properties:
+    device_name: Name of the device, as a str.
+    device_id: An integer ID for the device, unique for each device within
+      the scope of the debugged TensorFlow program.
+  """
+
+  def __init__(self,
+               device_name,
+               device_id):
+    self._device_name = device_name
+    self._device_id = device_id
+
+  @property
+  def device_name(self):
+    return self._device_name
+
+  @property
+  def device_id(self):
+    return self._device_id
 
   # TODO(cais): Implement to_json().
 
@@ -614,6 +649,8 @@ class DebugDataReader(object):
     # case in which reading of the .stack_frames file gets ahead of the reading
     # of the .source_files file.
     self._unprocessed_stack_frames = dict()
+    # A dict mapping id to DebuggedDevice objects.
+    self._device_by_id = dict()
     # A dict mapping id to DebuggedGraph objects.
     self._graph_by_id = dict()
     self._graph_op_digests = []
@@ -695,6 +732,10 @@ class DebugDataReader(object):
         if graph_proto.outer_context_id:
           self._graph_by_id[
               graph_proto.outer_context_id].add_inner_graph_id(graph.graph_id)
+      elif debug_event.debugged_device.ByteSize():
+        device_proto = debug_event.debugged_device
+        self._device_by_id[device_proto.device_id] = DebuggedDevice(
+            device_proto.device_name, device_proto.device_id)
 
   def _load_graph_execution_traces(self):
     """Incrementally load the .graph_execution_traces file."""
@@ -730,7 +771,9 @@ class DebugDataReader(object):
       self._execution_digests.append(ExecutionDigest(
           debug_event.wall_time,
           offset,
-          debug_event.execution.op_type))
+          debug_event.execution.op_type,
+          output_tensor_device_ids=(
+              debug_event.execution.output_tensor_device_ids or None)))
 
   def update(self):
     """Perform incremental read of the file set."""
@@ -748,6 +791,14 @@ class DebugDataReader(object):
   def graph_by_id(self, graph_id):
     """Get a DebuggedGraph object by its ID."""
     return self._graph_by_id[graph_id]
+
+  def device_name_by_id(self, device_id):
+    """Get the name of a device by the debugger-generated ID of the device."""
+    return self._device_by_id[device_id].device_name
+
+  def device_names(self):
+    """Get a set of all device names known to the debugger."""
+    return set(device.device_name for device in self._device_by_id.values())
 
   def graph_op_digests(self, op_type=None):
     """Get the list of the digests for graph-op creation so far.

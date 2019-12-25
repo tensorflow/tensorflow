@@ -100,6 +100,9 @@ message DebugEvent {
     // The ID of the graph (i.e., FuncGraph) executed here: applicable only
     // to the execution of a FuncGraph.
     string graph_id = 11;
+
+    // A device on which debugger-instrumented ops and/or tensors reside.
+    DebuggedDevice debugged_device = 12;
   }
 }
 
@@ -205,6 +208,18 @@ message DebuggedGraph {
   string outer_context_id = 6;
 }
 
+// A device on which ops and/or tensors are instrumented by the debugger.
+message DebuggedDevice {
+  // Name of the device.
+  string device_name = 1;
+
+  // A debugger-generated ID for the device. Guaranteed to be unique within
+  // the scope of the debugged TensorFlow program, including single-host and
+  // multi-host settings.
+  // TODO(cais): Test the uniqueness guarantee in multi-host settings.
+  int32 device_id = 2;
+}
+
 // Data relating to the eager execution of an op or a Graph.
 // For a op that generates N output tensors (N >= 0), only one
 // Execution proto will be used to describe the execution event.
@@ -236,6 +251,11 @@ message Execution {
 
   // Stack trace of the eager execution.
   CodeLocation code_location = 8;
+
+  // Debugged-generated IDs of the devices on which the output tensors reside.
+  // To look up details about the device (e.g., name), cross-reference this
+  // field with the DebuggedDevice messages.
+  repeated int32 output_tensor_device_ids = 9;
 
   // TODO(cais): When backporting to V1 Session.run() support, add more fields
   // such as fetches and feeds.
