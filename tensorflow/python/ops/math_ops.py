@@ -4112,7 +4112,7 @@ def polyval(coeffs, x, name=None):
 
   Usage Example:
   ```python
-    import tensorflow as tf
+   
     coefficients = [1.0, 2.5, -4.2]
     x = 5.0
     y = tf.math.polyval(coefficients, x)
