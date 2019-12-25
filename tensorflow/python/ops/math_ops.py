@@ -4110,6 +4110,15 @@ def polyval(coeffs, x, name=None):
     A `tensor` of the shape as the expression p(x) with usual broadcasting rules
     for element-wise addition and multiplication applied.
 
+  Usage Example:
+  '''python
+    import tensorflow as tf
+    coefficients = [1.0, 2.5, -4.2]
+    x = 5.0
+    y = tf.math.polyval(coefficients, x)
+    # y = 33.3
+  '''
+
   @compatibility(numpy)
   Equivalent to numpy.polyval.
   @end_compatibility
