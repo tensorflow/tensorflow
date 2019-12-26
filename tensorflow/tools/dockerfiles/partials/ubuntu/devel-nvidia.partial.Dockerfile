@@ -18,6 +18,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         cuda-command-line-tools-${CUDA/./-} \
         libcublas10 \
         libcublas-dev \
+        cuda-nvrtc-${CUDA/./-} \
+        cuda-nvrtc-dev-${CUDA/./-} \
         cuda-cudart-dev-${CUDA/./-} \
         cuda-cufft-dev-${CUDA/./-} \
         cuda-curand-dev-${CUDA/./-} \
