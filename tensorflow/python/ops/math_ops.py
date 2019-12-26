@@ -1161,8 +1161,8 @@ def multiply_no_nan(x, y, name=None):
   """Computes the product of x and y and returns 0 if the y is zero, even if x is NaN or infinite.
   
   For example:
-  >>> x = 0.0
-  >>> y = 34.0
+  >>> x = tf.constant(float('nan'))
+  >>> y = 0.0
   >>> tf.math.multiply_no_nan(x, y)
   <tf.Tensor: shape=(), dtype=float32, numpy=0.0>
 
