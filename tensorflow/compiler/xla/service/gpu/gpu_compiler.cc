@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/conditional_simplifier.h"
+#include "tensorflow/compiler/xla/service/convolution_group_converter.h"
 #include "tensorflow/compiler/xla/service/depthwise_convolution_converter.h"
 #include "tensorflow/compiler/xla/service/dot_decomposer.h"
 #include "tensorflow/compiler/xla/service/dump.h"
@@ -138,11 +139,28 @@ Status GpuCompiler::OptimizeHloModule(
 
     // TODO(b/64094172): make Call work on GPU instead of inlining.
     pipeline.AddPass<CallInliner>();
+
+    pipeline.AddPass<DotDecomposer>();
+
+    // We use the ConvolutionGroupConverter to convert backprops of filter
+    // grouped convolutions into non-grouped equivalents.
+    auto batch_group_cost_model = [](HloInstruction* conv) {
+      auto dim_numbers = conv->convolution_dimension_numbers();
+      const int64 input_batch_size = conv->operand(0)->shape().dimensions(
+          dim_numbers.input_batch_dimension());
+      return conv->batch_group_count() != input_batch_size;
+    };
+
+    pipeline.AddPass<ConvolutionGroupConverter>(
+        batch_group_cost_model,
+        /*convert_batch_groups_only=*/true,
+        /*canonicalize_depthwise_filter=*/false);
+
     auto cost_model = [](HloInstruction* conv) {
       // We need a cost model for GPUs. Currently, do nothing.
       return false;
     };
-    pipeline.AddPass<DotDecomposer>();
+
     pipeline.AddPass<DepthwiseConvolutionConverter>(cost_model);
     // Expand the sort op to support stable sorting if required.
     pipeline.AddPass<StableSortExpander>();

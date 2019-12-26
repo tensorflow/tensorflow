@@ -218,14 +218,127 @@ Status ConvolutionVisitor::HandleBatchGroupCount(HloInstruction* convolution) {
 
   int64 input_batch_dimension = dim_numbers.input_batch_dimension();
   int64 output_batch_dimension = dim_numbers.output_batch_dimension();
+  const int64 kernel_output_feature_dimension =
+      dim_numbers.kernel_output_feature_dimension();
   int64 output_feature_dimension = dim_numbers.output_feature_dimension();
 
   int64 input_batch = activation->shape().dimensions(input_batch_dimension);
 
+  const int64 output_feature =
+      filter->shape().dimensions(kernel_output_feature_dimension);
+
+  VLOG(2) << "is_cost_viable_ " << is_cost_viable_(convolution);
+  const bool cost_too_high = !is_cost_viable_(convolution);
+
+  if (output_feature != batch_group_count) {
+    const int64 group_size = output_feature / batch_group_count;
+
+    VLOG(2) << "Need to insert a spatial dimension in activations and in the "
+               "kernel to deal with backprop of grouped convolutions "
+            << " group size " << group_size;
+
+    // Add spatial dimension to the activation, and reshape.
+    Shape reshaped_activation_shape = activation->shape();
+    ShapeUtil::AppendMajorDimension(1, &reshaped_activation_shape);
+    const int64 new_spatial_dim =
+        reshaped_activation_shape.dimensions().size() - 1;
+
+    activation = add(
+        HloInstruction::CreateReshape(reshaped_activation_shape, activation));
+
+    // Insert new spatial dimension after the output feature dimension on the
+    // kernel.
+    auto dims = filter->shape().dimensions();
+    std::vector<int64> new_dims;
+    for (int i = 0; i < dims.size(); i++) {
+      if (i == kernel_output_feature_dimension) {
+        new_dims.push_back(batch_group_count);
+        new_dims.push_back(group_size);
+      } else {
+        new_dims.push_back(dims[i]);
+      }
+    }
+
+    Shape reshaped_filter_shape = ShapeUtil::MakeShapeWithDescendingLayout(
+        filter->shape().element_type(), new_dims);
+
+    filter = add(HloInstruction::CreateReshape(reshaped_filter_shape, filter));
+
+    Shape new_output_shape = convolution->shape();
+    ShapeUtil::AppendMajorDimension(1, &new_output_shape);
+
+    // Edit convolution dimension numbers. Note that kernel_input_feature_dim
+    // now becomes a spatial dimension, and the newly added dimension of size
+    // 1 is the new kernel_input_feature_dim.
+    dim_numbers.add_input_spatial_dimensions(new_spatial_dim);
+
+    // Update spatial dimension numbers if they show up after the newly added
+    // spatial dimension.
+    for (auto& d : *dim_numbers.mutable_kernel_spatial_dimensions()) {
+      if (d > kernel_output_feature_dimension) {
+        ++d;
+      }
+    }
+
+    // Same for input feature dimension.
+    if (dim_numbers.kernel_input_feature_dimension() >
+        kernel_output_feature_dimension) {
+      dim_numbers.set_kernel_input_feature_dimension(
+          dim_numbers.kernel_input_feature_dimension() + 1);
+    }
+
+    dim_numbers.add_kernel_spatial_dimensions(kernel_output_feature_dimension +
+                                              1);
+
+    dim_numbers.add_output_spatial_dimensions(output_batch_dimension);
+
+    dim_numbers.set_output_batch_dimension(new_spatial_dim);
+
+    // Add window for the new spatial dimension.
+    Window new_window = convolution->window();
+    auto* dim = new_window.add_dimensions();
+    dim->set_window_dilation(1);
+    dim->set_base_dilation(1);
+    dim->set_stride(1);
+    dim->set_size(group_size);
+    dim->set_padding_high(group_size - 1);
+    dim->set_padding_low(group_size - 1);
+    dim->set_window_reversal(false);
+
+    auto new_convolution = add(HloInstruction::CreateConvolve(
+        new_output_shape, activation, filter, /*feature_group_count=*/1,
+        batch_group_count, new_window, dim_numbers,
+        convolution->precision_config()));
+
+    VLOG(2) << "New convolution " << new_convolution->ToString();
+
+    // This reversal is not done via set_window_reversal because GPUs don't
+    // support it.
+    auto rev = add(HloInstruction::CreateReverse(
+        new_output_shape, new_convolution, {output_batch_dimension}));
+
+    // Delete the extra spatial dimension, and reshape.
+    Shape reshaped_convolution_shape =
+        ShapeUtil::DeleteDimension(new_spatial_dim, rev->shape());
+    auto reshaped_convolution =
+        HloInstruction::CreateReshape(reshaped_convolution_shape, rev);
+
+    VLOG(2) << "Reshaped convolution " << reshaped_convolution->ToString();
+
+    TF_RETURN_IF_ERROR(computation_->ReplaceWithNewInstruction(
+        convolution, std::move(reshaped_convolution)));
+
+    changed_ = true;
+
+    convolution = new_convolution;
+    dim_numbers = convolution->convolution_dimension_numbers();
+    output_batch_dimension = new_spatial_dim;
+  }
+
   // We are not yet supporting batch_group of sizes greater than 1.
   TF_RET_CHECK(input_batch == batch_group_count);
 
-  if (!is_cost_viable_(convolution) || filter_expansion_) {
+  if (cost_too_high || filter_expansion_) {
     // We first obtain the expanded the filter (which is the convolution
     // output). The batch dimension is the expanded one (which originally
     // represents kernel input feature dimension). We mask the filter to zero
@@ -238,10 +351,16 @@ Status ConvolutionVisitor::HandleBatchGroupCount(HloInstruction* convolution) {
     auto expanded_filter_shape = ExpandedFilterShape(
         convolution->shape(), batch_group_count, output_batch_dimension);
 
+    VLOG(2) << "output_batch_dimension " << output_batch_dimension;
+    VLOG(2) << "New output shape of convolution "
+            << expanded_filter_shape.ToString();
+
     auto new_convolution = add(HloInstruction::CreateConvolve(
         expanded_filter_shape, activation, filter,
         /*feature_group_count=*/1, /*batch_group_count=*/1,
         convolution->window(), dim_numbers, convolution->precision_config()));
+
+    VLOG(2) << "Expanded convolution " << new_convolution->ToString();
 
     auto zero = add(HloInstruction::CreateConstant(
         LiteralUtil::Zero(expanded_filter_shape.element_type())));
@@ -354,6 +473,7 @@ Status ConvolutionVisitor::HandleConvolution(HloInstruction* convolution) {
       changed_ = false;
       return Status::OK();
     }
+    VLOG(2) << "is_cost_viable_ " << is_cost_viable_(convolution);
     // We want to repeat 'filter' in the 'input_feature_dim' dimension
     // 'group_count' times.
     if (!is_cost_viable_(convolution) || filter_expansion_) {
