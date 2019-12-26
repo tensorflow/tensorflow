@@ -341,9 +341,7 @@ def multiply(x, y, name=None):  # pylint: disable=missing-docstring
   
   For example:
   
-  >>> x = 32
-  >>> y = 34
-  >>> tf.multiply(x, y)
+  >>> tf.math.multiply(34, 32) 
   <tf.Tensor: shape=(), dtype=int32, numpy=1088>
   
   
