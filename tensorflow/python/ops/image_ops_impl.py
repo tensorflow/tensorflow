@@ -360,20 +360,13 @@ def random_flip_up_down(image, seed=None):
   Usage Example:
     ```python
     >> x = tf.random.normal(shape=(2, 2, 3))
-    >> tf.image.random_flip_up_down(x)
-    ```
-
-  Example Output: 
-    ```python
-    Before: 
     tf.Tensor(
       [[[-1.0708947  -0.844542   -2.5661693 ]
         [ 1.4669225   0.81015277 -0.7296188 ]]
 
       [[ 0.35540557 -1.1513313   0.37631378]
         [-0.48893246 -1.3950981  -0.50700873]]], shape=(2, 2, 3), dtype=float32)
-
-    After:
+    >> tf.image.random_flip_up_down(x)
     tf.Tensor(
       [[[ 0.35540557 -1.1513313   0.37631378]
         [-0.48893246 -1.3950981  -0.50700873]]
@@ -426,20 +419,13 @@ def random_flip_left_right(image, seed=None):
   Usage Example:
     ```python
     >> x = tf.random.normal(shape=(2, 2, 3))
-    >> tf.image.random_flip_left_right(x)
-    ```
-
-  Example Output: 
-    ```python
-    Before: 
     tf.Tensor(
       [[[-1.0708947  -0.844542   -2.5661693 ]
         [ 1.4669225   0.81015277 -0.7296188 ]]
 
       [[ 0.35540557 -1.1513313   0.37631378]
         [-0.48893246 -1.3950981  -0.50700873]]], shape=(2, 2, 3), dtype=float32)
-
-    After:
+    >> tf.image.random_flip_left_right(x)
     tf.Tensor(
       [[[ 1.4669225   0.81015277 -0.7296188 ]
         [-1.0708947  -0.844542   -2.5661693 ]]
@@ -518,20 +504,13 @@ def flip_left_right(image):
   Usage Example:
     ```python
     >> x = tf.random.normal(shape=(2, 2, 3))
-    >> tf.image.flip_left_right(x)
-    ```
-
-  Example Output: 
-    ```python
-    Before: 
     tf.Tensor(
       [[[-1.0708947  -0.844542   -2.5661693 ]
         [ 1.4669225   0.81015277 -0.7296188 ]]
 
       [[ 0.35540557 -1.1513313   0.37631378]
         [-0.48893246 -1.3950981  -0.50700873]]], shape=(2, 2, 3), dtype=float32)
-
-    After:
+    >> tf.image.flip_left_right(x)
     tf.Tensor(
       [[[ 1.4669225   0.81015277 -0.7296188 ]
         [-1.0708947  -0.844542   -2.5661693 ]]
@@ -564,20 +543,13 @@ def flip_up_down(image):
   Usage Example:
     ```python
     >> x = tf.random.normal(shape=(2, 2, 3))
-    >> tf.image.flip_up_down(x)
-    ```
-
-  Example Output: 
-    ```python
-    Before: 
     tf.Tensor(
       [[[-1.0708947  -0.844542   -2.5661693 ]
         [ 1.4669225   0.81015277 -0.7296188 ]]
 
       [[ 0.35540557 -1.1513313   0.37631378]
         [-0.48893246 -1.3950981  -0.50700873]]], shape=(2, 2, 3), dtype=float32)
-
-    After:
+    >> tf.image.flip_up_down(x)
     tf.Tensor(
       [[[ 0.35540557 -1.1513313   0.37631378]
         [-0.48893246 -1.3950981  -0.50700873]]
@@ -744,20 +716,13 @@ def transpose(image, name=None):
   Usage Example:
     ```python
     >> x = tf.random.normal(shape=(2, 2, 3))
-    >> tf.image.transpose(x)
-    ```
-
-  Example Output: 
-    ```python
-    Before: 
     tf.Tensor(
       [[[-1.0708947  -0.844542   -2.5661693 ]
         [ 1.4669225   0.81015277 -0.7296188 ]]
 
       [[ 0.35540557 -1.1513313   0.37631378]
         [-0.48893246 -1.3950981  -0.50700873]]], shape=(2, 2, 3), dtype=float32)
-
-    After:
+    >> tf.image.transpose(x)
     tf.Tensor(
       [[[-1.0708947  -0.844542   -2.5661693 ]
         [ 0.35540557 -1.1513313   0.37631378]]
@@ -804,12 +769,6 @@ def central_crop(image, central_fraction):
   Usage Example: 
     ```python
     >> x = tf.random.normal(shape=(4, 4, 3))
-    >> tf.image.central_crop(x, 0.5)
-    ```
-
-  Example Output: 
-    ```python
-    Before: 
     tf.Tensor(
       [[[-0.6682588   0.35640183 -0.88037974]
         [ 0.04880775 -0.5843813  -0.49302867]
@@ -830,8 +789,7 @@ def central_crop(image, central_fraction):
         [ 1.3422866   0.63320595  1.2023633 ]
         [-1.0208743  -1.4508061  -0.50165915]
         [ 0.95847785 -0.55736446  0.0131228 ]]], shape=(4, 4, 3), dtype=float32)
-
-    After:
+    >> tf.image.central_crop(x, 0.5)
     tf.Tensor(
       [[[-0.33207983  0.6707441   0.19866277]
         [-0.29431066  0.31667632  1.677086  ]]
@@ -1742,20 +1700,13 @@ def random_brightness(image, max_delta, seed=None):
   Usage Example:
     ```python
     >> x = tf.random.normal(shape=(2, 2, 3))
-    >> tf.image.random_brightness(x, 0.2)
-    ```
-
-  Example Output: 
-    ```python
-    Before: 
     tf.Tensor(
       [[[-1.0708947  -0.844542   -2.5661693 ]
         [ 1.4669225   0.81015277 -0.7296188 ]]
 
       [[ 0.35540557 -1.1513313   0.37631378]
         [-0.48893246 -1.3950981  -0.50700873]]], shape=(2, 2, 3), dtype=float32)
-
-    After:
+    >> tf.image.random_brightness(x, 0.2)
     tf.Tensor(
       [[[-1.1320205  -0.9056678  -2.627295  ]
         [ 1.4057968   0.749027   -0.79074454]]
@@ -1794,20 +1745,13 @@ def random_contrast(image, lower, upper, seed=None):
   Usage Example:
     ```python
     >> x = tf.random.normal(shape=(2, 2, 3))
-    >> tf.image.random_contrast(x, 0.2, 0.5)
-    ```
-
-  Example Output: 
-    ```python
-    Before: 
     tf.Tensor(
       [[[-1.0708947  -0.844542   -2.5661693 ]
         [ 1.4669225   0.81015277 -0.7296188 ]]
 
       [[ 0.35540557 -1.1513313   0.37631378]
         [-0.48893246 -1.3950981  -0.50700873]]], shape=(2, 2, 3), dtype=float32)
-
-    After:
+    >> tf.image.random_contrast(x, 0.2, 0.5)
     tf.Tensor(
       [[[-0.49338517 -0.743251   -1.6974819 ]
         [ 0.75486946  0.07062966 -0.7941534 ]]
@@ -1852,20 +1796,13 @@ def adjust_brightness(image, delta):
   Usage Example:
     ```python
     >> x = tf.random.normal(shape=(2, 2, 3))
-    >> tf.image.adjust_brightness(x, delta=0.1)
-    ```
-
-  Example Output: 
-    ```python
-    Before: 
     tf.Tensor(
       [[[-1.0708947  -0.844542   -2.5661693 ]
         [ 1.4669225   0.81015277 -0.7296188 ]]
 
       [[ 0.35540557 -1.1513313   0.37631378]
         [-0.48893246 -1.3950981  -0.50700873]]], shape=(2, 2, 3), dtype=float32)
-
-    After:
+    >> tf.image.adjust_brightness(x, delta=0.1)
     tf.Tensor(
       [[[-0.9708947  -0.744542   -2.4661694 ]
         [ 1.5669225   0.9101528  -0.62961876]]
@@ -1918,22 +1855,14 @@ def adjust_contrast(images, contrast_factor):
 
   Usage Example:
     ```python
-    import tensorflow as tf
     x = tf.random.normal(shape=(2, 2, 3))
-    tf.image.adjust_contrast(x, 2)
-    ```
-
-  Example Output: 
-    ```python
-    Before: 
     tf.Tensor(
       [[[-1.0708947  -0.844542   -2.5661693 ]
         [ 1.4669225   0.81015277 -0.7296188 ]]
 
       [[ 0.35540557 -1.1513313   0.37631378]
         [-0.48893246 -1.3950981  -0.50700873]]], shape=(2, 2, 3), dtype=float32)
-
-    After:
+    tf.image.adjust_contrast(x, 2)
     tf.Tensor(
       [[[-2.2074146  -1.0438794  -4.2757177 ]
         [ 2.8682199   2.26551    -0.6026168 ]]
@@ -1981,20 +1910,13 @@ def adjust_gamma(image, gamma=1, gain=1):
   Usage Example:
     ```python
     >> x = tf.random.normal(shape=(2, 2, 3))
-    >> tf.image.adjust_gamma(x, 0.2)
-    ```
-
-  Example Output: 
-    ```python
-    Before: 
     tf.Tensor(
       [[[-1.0708947  -0.844542   -2.5661693 ]
         [ 1.4669225   0.81015277 -0.7296188 ]]
 
       [[ 0.35540557 -1.1513313   0.37631378]
         [-0.48893246 -1.3950981  -0.50700873]]], shape=(2, 2, 3), dtype=float32)
-
-    After:
+    >> tf.image.adjust_gamma(x, 0.2)
     tf.Tensor(
       [[[1.1468155  0.71325123 6.5852246 ]
         [2.1518617  0.6563475  0.53234357]]
@@ -2067,20 +1989,13 @@ def convert_image_dtype(image, dtype, saturate=False, name=None):
   Usage Example:
     ```python
     >> x = tf.random.normal(shape=(2, 2, 3))
-    >> tf.image.convert_image_dtype(x, dtype=tf.float16, saturate=False)
-    ```
-
-  Example Output: 
-    ```python
-    Before: 
     tf.Tensor(
       [[[-1.0708947  -0.844542   -2.5661693 ]
         [ 1.4669225   0.81015277 -0.7296188 ]]
 
       [[ 0.35540557 -1.1513313   0.37631378]
         [-0.48893246 -1.3950981  -0.50700873]]], shape=(2, 2, 3), dtype=float32)
-
-    After:
+    >> tf.image.convert_image_dtype(x, dtype=tf.float16, saturate=False)
     tf.Tensor(
       [[[-1.071  -0.8447 -2.566 ]
         [ 1.467   0.81   -0.7295]]
@@ -2249,20 +2164,13 @@ def random_hue(image, max_delta, seed=None):
   Usage Example:
     ```python
     >> x = tf.random.normal(shape=(2, 2, 3))
-    >> tf.image.random_hue(x, 0.2)
-    ```
-
-  Example Output: 
-    ```python
-    Before: 
     tf.Tensor(
       [[[-1.0708947  -0.844542   -2.5661693 ]
         [ 1.4669225   0.81015277 -0.7296188 ]]
 
       [[ 0.35540557 -1.1513313   0.37631378]
         [-0.48893246 -1.3950981  -0.50700873]]], shape=(2, 2, 3), dtype=float32)
-
-    After:
+    >> tf.image.random_hue(x, 0.2)
     tf.Tensor(
       [[[-2.2803972  -0.844542   -2.5661693 ]
         [ 0.58054614  1.4669225  -0.7296188 ]]
@@ -2308,20 +2216,13 @@ def adjust_hue(image, delta, name=None):
   Usage Example:
     ```python
     >> x = tf.random.normal(shape=(2, 2, 3))
-    >> tf.image.adjust_hue(x, 0.2)
-    ```
-
-  Example Output: 
-    ```python
-    Before: 
     tf.Tensor(
       [[[-1.0708947  -0.844542   -2.5661693 ]
         [ 1.4669225   0.81015277 -0.7296188 ]]
 
       [[ 0.35540557 -1.1513313   0.37631378]
         [-0.48893246 -1.3950981  -0.50700873]]], shape=(2, 2, 3), dtype=float32)
-
-    After:
+    >> tf.image.adjust_hue(x, 0.2)
     tf.Tensor(
       [[[-2.5661693  -0.844542   -1.9954908 ]
         [-0.51215756  1.4669225  -0.7296188 ]]
@@ -2371,20 +2272,13 @@ def random_jpeg_quality(image, min_jpeg_quality, max_jpeg_quality, seed=None):
   Usage Example:
     ```python
     >> x = tf.random.normal(shape=(2, 2, 3))
-    >> tf.image.random_jpeg_quality(x, 75, 95)
-    ```
-
-  Example Output: 
-    ```python
-    Before: 
     tf.Tensor(
       [[[-1.0708947  -0.844542   -2.5661693 ]
         [ 1.4669225   0.81015277 -0.7296188 ]]
 
       [[ 0.35540557 -1.1513313   0.37631378]
         [-0.48893246 -1.3950981  -0.50700873]]], shape=(2, 2, 3), dtype=float32)
-
-    After:
+    >> tf.image.random_jpeg_quality(x, 75, 95)
     tf.Tensor(
       [[[0.43137258 0.47450984 0.24705884]
         [0.6156863  0.65882355 0.43137258]]
@@ -2429,20 +2323,13 @@ def adjust_jpeg_quality(image, jpeg_quality, name=None):
   Usage Example:
     ```python
     >> x = tf.random.normal(shape=(2, 2, 3))
-    >> tf.image.adjust_jpeg_quality(x, 75)
-    ```
-
-  Example Output: 
-    ```python
-    Before: 
     tf.Tensor(
       [[[-1.0708947  -0.844542   -2.5661693 ]
         [ 1.4669225   0.81015277 -0.7296188 ]]
 
       [[ 0.35540557 -1.1513313   0.37631378]
         [-0.48893246 -1.3950981  -0.50700873]]], shape=(2, 2, 3), dtype=float32)
-
-    After:
+    >> tf.image.adjust_jpeg_quality(x, 75)
     tf.Tensor(
       [[[0.44705886 0.5411765  0.29803923]
         [0.5372549  0.6313726  0.38823533]]
@@ -2495,20 +2382,13 @@ def random_saturation(image, lower, upper, seed=None):
   Usage Example:
     ```python
     >> x = tf.random.normal(shape=(2, 2, 3))
-    >> tf.image.random_saturation(x, 5, 10)
-    ```
-
-  Example Output: 
-    ```python
-    Before: 
     tf.Tensor(
       [[[-1.0708947  -0.844542   -2.5661693 ]
         [ 1.4669225   0.81015277 -0.7296188 ]]
 
       [[ 0.35540557 -1.1513313   0.37631378]
         [-0.48893246 -1.3950981  -0.50700873]]], shape=(2, 2, 3), dtype=float32)
-
-    After:
+    >> tf.image.random_saturation(x, 5, 10)
     tf.Tensor(
       [[[-0.844542   -0.844542   -0.844542  ]
         [ 1.4669225   1.0283101   0.        ]]
@@ -2553,20 +2433,13 @@ def adjust_saturation(image, saturation_factor, name=None):
   Usage Example:
     ```python
     >> x = tf.random.normal(shape=(2, 2, 3))
-    >> tf.image.adjust_saturation(x, 0.5)
-    ```
-
-  Example Output: 
-    ```python
-    Before: 
     tf.Tensor(
       [[[-1.0708947  -0.844542   -2.5661693 ]
         [ 1.4669225   0.81015277 -0.7296188 ]]
 
       [[ 0.35540557 -1.1513313   0.37631378]
         [-0.48893246 -1.3950981  -0.50700873]]], shape=(2, 2, 3), dtype=float32)
-
-    After:
+    >> tf.image.adjust_saturation(x, 0.5)
     tf.Tensor(
       [[[-0.844542   -0.844542   -0.844542  ]
         [ 1.4669225   1.1385376   0.36865187]]
@@ -3413,27 +3286,20 @@ def rgb_to_yuv(images):
   Usage Example:
   ```python
   >> x = tf.random.normal(shape=(2, 2, 3))
-  >> tf.image.rgb_to_yuv(x)
-  ```
-
-  Example Output: 
-    ```python
-    Before: 
-    tf.Tensor(
+  tf.Tensor(
       [[[-1.0708947  -0.844542   -2.5661693 ]
         [ 1.4669225   0.81015277 -0.7296188 ]]
 
       [[ 0.35540557 -1.1513313   0.37631378]
         [-0.48893246 -1.3950981  -0.50700873]]], shape=(2, 2, 3), dtype=float32)
-
-    After:
-    tf.Tensor(
+  >> tf.image.rgb_to_yuv(x)
+  tf.Tensor(
       [[[-1.108487   -0.7173415   0.03297902]
         [ 0.830993   -0.7679942   0.5578902 ]]
 
       [[-0.52666545  0.44436604  0.7738259 ]
         [-1.0229124   0.25388187  0.4684515 ]]], shape=(2, 2, 3), dtype=float32)
-    ```
+  ```
     
   """
   images = ops.convert_to_tensor(images, name='images')
