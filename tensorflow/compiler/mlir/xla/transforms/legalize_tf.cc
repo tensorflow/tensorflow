@@ -225,6 +225,16 @@ static void BuildReduceBody(Type element_type, Region *body,
 static void BuildBinaryAssignmentRegion(Type element_type, Region *region,
                                         OpBuilder *builder) {}
 
+// Builds a set of operations for applying reduction on the input value. A
+// tf.sum op is created and will be legalized to tfl ops automatically.
+static Value ApplyReduction(Location loc, Value input,
+                            DenseIntElementsAttr reduce_dims,
+                            OpBuilder *builder) {
+  auto reduce_dims_op = builder->create<ConstOp>(loc, reduce_dims);
+  return builder->create<TF::SumOp>(loc, input, reduce_dims_op,
+                                    builder->getBoolAttr(false));
+}
+
 //===----------------------------------------------------------------------===//
 // BatchNorm op utilities.
 //===----------------------------------------------------------------------===//
@@ -732,6 +742,120 @@ class ConvertEinsumOp : public OpRewritePattern<TF::EinsumOp> {
     return Pattern::matchSuccess();
   }
 };
+
+// The base class to convert TensorFlow FusedBatchNormGrad*Op to HLO
+// BatchNormGradOp for training and a sequence of binary ops for inference.
+// TODO(b/145536565): move to legalize_tf_patterns.td if it applies.
+template <typename FusedBatchNormGradOpT>
+class ConvertFusedBatchNormGradBase
+    : public OpRewritePattern<FusedBatchNormGradOpT> {
+ public:
+  using OpRewritePattern<FusedBatchNormGradOpT>::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(FusedBatchNormGradOpT op,
+                                     PatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    Value grad = op.y_backprop();
+    Value act = op.x();
+    Value scale = op.scale();
+    Value mean = op.reserve_space_1();
+    Value var = op.reserve_space_2();
+
+    // TODO(b/141785544): Update this to not require static shapes.
+    // activation shape needs to be static to convert negative indices in
+    // TensorFlow to absolute indices required by HLO.
+    RankedTensorType act_type =
+        act->getType().template dyn_cast<RankedTensorType>();
+    if (!act_type) return Pattern::matchFailure();
+    Type act_ele_type = act_type.getElementType();
+    // To support mixed precision, the statistics type, which maybe more
+    // precise than the input types, are used for this op.
+    Type kernel_type =
+        scale->getType().template cast<TensorType>().getElementType();
+    grad = rewriter.create<ConvertOp>(loc, grad, kernel_type);
+    act = rewriter.create<ConvertOp>(loc, act, kernel_type);
+
+    auto feature_dim_attr =
+        getFeatureDimensionAttr(rewriter, op.data_formatAttr(), act);
+    auto feature_dim = feature_dim_attr.getValue().getSExtValue();
+
+    // Gets the result values.
+    Value x_backprop, scale_backprop, offset_backprop;
+    if (op.is_training()) {  // training
+      // TODO(b/145536565): handle GPU logic seperately.
+      // Infers the output type with the converted `act`.
+      Type feature_type = RankedTensorType::get(
+          {GetDimSize(act_type, feature_dim)}, kernel_type);
+      Type result_type = TupleType::get(
+          {act->getType(), feature_type, feature_type}, rewriter.getContext());
+
+      auto training_op = rewriter.create<BatchNormGradOp>(
+          loc, result_type, act, scale, mean, var, grad, op.epsilon(),
+          feature_dim_attr.getValue());
+
+      x_backprop =
+          rewriter.create<GetTupleElementOp>(loc, training_op.getResult(), 0);
+
+      scale_backprop =
+          rewriter.create<GetTupleElementOp>(loc, training_op.getResult(), 1);
+
+      offset_backprop =
+          rewriter.create<GetTupleElementOp>(loc, training_op.getResult(), 2);
+    } else {  // inference
+      SmallVector<int64_t, 4> non_feature_dims;
+      for (int64_t i = 0; i < act_type.getRank(); ++i) {
+        if (i == feature_dim) continue;
+        non_feature_dims.push_back(i);
+      }
+      auto reduce_dims = GetI64ElementsAttr(non_feature_dims, &rewriter);
+      auto broadcast_dims = GetI64ElementsAttr({feature_dim}, &rewriter);
+      auto no_broadcast_dims = GetI64ElementsAttr({}, &rewriter);
+
+      // scratch1 = rsqrt(var + epsilon)
+      RankedTensorType scalar_float = RankedTensorType::get({}, kernel_type);
+      auto epsilon = rewriter.create<ConstOp>(
+          loc, DenseFPElementsAttr::get(scalar_float, {op.epsilon()}));
+      auto add_op = rewriter.create<AddOp>(loc, var, epsilon.getResult(),
+                                           no_broadcast_dims);
+      Value scratch1 = rewriter.create<RsqrtOp>(loc, add_op);
+
+      // scratch2 = sum(y_backprop * (x - mean))
+      auto sub_op = rewriter.create<SubOp>(loc, act, mean, broadcast_dims);
+      auto weighted_grad =
+          rewriter.create<MulOp>(loc, grad, sub_op, no_broadcast_dims);
+      Value scratch2 =
+          ApplyReduction(loc, weighted_grad, reduce_dims, &rewriter);
+
+      // x_backprop = y_backprop * (scale * scratch1)
+      auto scaled_grad =
+          rewriter.create<MulOp>(loc, op.scale(), scratch1, no_broadcast_dims);
+      x_backprop =
+          rewriter.create<MulOp>(loc, grad, scaled_grad, broadcast_dims);
+
+      // scale_backprop = scratch2 * scratch1
+      scale_backprop =
+          rewriter.create<MulOp>(loc, scratch1, scratch2, no_broadcast_dims);
+
+      // offset_backprop = sum(y_backprop)
+      offset_backprop = ApplyReduction(loc, grad, reduce_dims, &rewriter);
+    }
+
+    x_backprop = rewriter.create<ConvertOp>(loc, x_backprop, act_ele_type);
+    // It doesn't matter what values we provide for the last 2 results.
+    rewriter.replaceOp(op,
+                       {/*x_backprop=*/x_backprop,
+                        /*scale_backprop=*/scale_backprop,
+                        /*offset_backprop=*/offset_backprop, op.x(), op.x()});
+    return Pattern::matchSuccess();
+  }
+};
+
+using ConvertFusedBatchNormGradOp =
+    ConvertFusedBatchNormGradBase<TF::FusedBatchNormGradOp>;
+using ConvertFusedBatchNormGradV2Op =
+    ConvertFusedBatchNormGradBase<TF::FusedBatchNormGradV2Op>;
+using ConvertFusedBatchNormGradV3Op =
+    ConvertFusedBatchNormGradBase<TF::FusedBatchNormGradV3Op>;
 
 // Converts TensorFlow FusedBatchNormV3Op to either HLO BatchNormTrainingOp or
 // HLO BatchNormInferenceOp, depending on the value of the 'is_training'
@@ -2666,9 +2790,11 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
   patterns.insert<
       ConvertAllOp, ConvertAnyOp, ConvertArgMaxOp, ConvertBF16FloorDivOp,
       ConvertConv2D, ConvertConv2DBackpropFilterOp,
-      ConvertConv2DBackpropInputOp, ConvertEinsumOp, ConvertFusedBatchNormV3Op,
-      ConvertMaxOp, ConvertMaxPoolOp, ConvertMaxPoolGradOp, ConvertMeanOp,
-      ConvertOneHotOp, ConvertRangeOp, ConvertSigmoidOp, ConvertSizeOp,
+      ConvertConv2DBackpropInputOp, ConvertEinsumOp,
+      ConvertFusedBatchNormGradOp, ConvertFusedBatchNormGradV2Op,
+      ConvertFusedBatchNormGradV3Op, ConvertFusedBatchNormV3Op, ConvertMaxOp,
+      ConvertMaxPoolOp, ConvertMaxPoolGradOp, ConvertMeanOp, ConvertOneHotOp,
+      ConvertRangeOp, ConvertSigmoidOp, ConvertSizeOp,
       ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
       ConvertSoftmaxOp<TF::SoftmaxOp, false>, ConvertSplitOp, ConvertSplitVOp,
       ConvertStridedSliceOp, ConvertStridedSliceGradOp, ConvertSumOp,
