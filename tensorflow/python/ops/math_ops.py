@@ -4228,6 +4228,11 @@ def polyval(coeffs, x, name=None):
 
      p(x) = coeffs[n-1] + x * (coeffs[n-2] + ... + x * (coeffs[1] +
             x * coeffs[0]))
+            
+Usage Example:
+  >>> coefficients = [1.0, 2.5, -4.2]
+  >>> x = 5.0
+  >>> y = tf.math.polyval(coefficients, x)
 
   Args:
     coeffs: A list of `Tensor` representing the coefficients of the polynomial.
