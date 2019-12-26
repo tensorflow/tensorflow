@@ -1318,15 +1318,21 @@ mlir::Location ImporterBase::GetLocation(const NodeDef& node_def) {
     return create_location(node_def.name(), function_name_for_debug_info_);
   } else {
     // If the original nodes are defined, then we use them to get a list of
-    // call sites, and then fuse them to a single fused location.
-    llvm::SmallVector<mlir::Location, 4> node_call_sites;
-    node_call_sites.reserve(original_nodes.size());
+    // call sites, and then fuse them to a single fused location, with the name
+    // of the node_def.
+    llvm::SmallVector<mlir::Location, 4> node_locations;
+    node_locations.reserve(original_nodes.size() + 1);
+
+    // store the names in the experimental_debug_info
     for (int i = 0, e = original_nodes.size(); i != e; ++i) {
       auto node_name = original_nodes[i];
       auto func_name = (i < original_funcs.size()) ? original_funcs[i] : "";
-      node_call_sites.push_back(create_location(node_name, func_name));
+      node_locations.push_back(create_location(node_name, func_name));
     }
-    return mlir::FusedLoc::get(node_call_sites, context_);
+    // store the name of the node_def
+    node_locations.push_back(
+        create_location(node_def.name(), function_name_for_debug_info_));
+    return mlir::FusedLoc::get(node_locations, context_);
   }
 }
 
@@ -1566,8 +1572,6 @@ Status ImporterBase::ConvertNode(const Node& node) {
                                                     &result.attributes));
   }
 
-  result.attributes.push_back(builder_.getNamedAttr(
-      "name", builder_.getStringAttr(std::string(node.name()))));
   result.attributes.push_back(builder_.getNamedAttr(
       "device", builder_.getStringAttr(std::string(node_def.device()))));
 

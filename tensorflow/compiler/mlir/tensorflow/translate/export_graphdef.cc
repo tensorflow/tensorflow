@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
 #include "mlir/IR/Function.h"  // TF:local_config_mlir
 #include "mlir/IR/Identifier.h"  // TF:local_config_mlir
+#include "mlir/IR/Location.h"  // TF:local_config_mlir
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "mlir/IR/Operation.h"  // TF:local_config_mlir
 #include "mlir/IR/Types.h"  // TF:local_config_mlir
@@ -110,25 +111,28 @@ std::string LegalizeNodeName(llvm::StringRef name) {
   return legalized_name;
 }
 
-// TODO(jpienaar): unify and move from here to be able to reuse with tflite
-std::string GetName(Operation* inst) {
-  // TODO(prakalps): b/137006652 prevents us from using location info (derived
-  // from experimental_debug_info) to generate node names. Until it is fixed,
-  // first check for "name" attribute to get node name.
-
-  // Default name is Operation type.
-  auto name = inst->getName().getStringRef();
-  if (auto attr = inst->getAttrOfType<mlir::StringAttr>("name")) {
-    name = attr.getValue();
-  } else if (auto name_loc = inst->getLoc().dyn_cast<mlir::NameLoc>()) {
-    name = name_loc.getName().strref();
-  } else if (auto call_loc = inst->getLoc().dyn_cast<mlir::CallSiteLoc>()) {
+llvm::StringRef GetNameFromLoc(mlir::Location loc,
+                               llvm::StringRef default_name) {
+  if (auto name_loc = loc.dyn_cast<mlir::NameLoc>()) {
+    return name_loc.getName().strref().split('@').first;
+  } else if (auto call_loc = loc.dyn_cast<mlir::CallSiteLoc>()) {
     // Return name if CallSiteLoc's callee has a NameLoc (as should be the case
     // if imported with DebugInfo), else use the fallback naming scheme below.
     if (auto name_loc = call_loc.getCallee().dyn_cast<mlir::NameLoc>())
-      name = name_loc.getName().strref();
+      return name_loc.getName().strref().split('@').first;
+  } else if (auto fused_loc = loc.dyn_cast<mlir::FusedLoc>()) {
+    // According to the importer, the last location of a fused location is
+    // the name from the node_def and the rests are from the experimental debug
+    // info.
+    return GetNameFromLoc(fused_loc.getLocations().back(), default_name);
   }
+  return default_name;
+}
 
+// TODO(jpienaar): unify and move from here to be able to reuse with tflite
+std::string GetName(Operation* inst) {
+  // Default name is Operation type.
+  auto name = GetNameFromLoc(inst->getLoc(), inst->getName().getStringRef());
   return LegalizeNodeName(name);
 }
 

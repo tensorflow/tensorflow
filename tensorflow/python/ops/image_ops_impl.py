@@ -705,8 +705,45 @@ def central_crop(image, central_fraction):
     image: Either a 3-D float Tensor of shape [height, width, depth], or a 4-D
       Tensor of shape [batch_size, height, width, depth].
     central_fraction: float (0, 1], fraction of size to crop
-  Usage Example: ```python >> import tensorflow as tf >> x =
-    tf.random.normal(shape=(256, 256, 3)) >> tf.image.central_crop(x, 0.5) ```
+
+  Usage Example: 
+    ```python
+    >> x = tf.random.normal(shape=(4, 4, 3))
+    >> tf.image.central_crop(x, 0.5)
+    ```
+
+  Example Output: 
+    ```python
+    Before: 
+    tf.Tensor(
+      [[[-0.6682588   0.35640183 -0.88037974]
+        [ 0.04880775 -0.5843813  -0.49302867]
+        [-0.58970237  0.91434914 -0.921113  ]
+        [-0.51034933  0.6047605  -0.84194916]]
+
+      [[-1.4319804   1.4628823   0.9651065 ]
+        [-0.33207983  0.6707441   0.19866277]
+        [-0.29431066  0.31667632  1.677086  ]
+        [ 0.5595179  -0.9987738  -0.3224255 ]]
+
+      [[-0.38895702  0.7895308   0.7366105 ]
+        [-1.103489    1.4331307   0.28476503]
+        [ 1.0820007   0.4008006   0.8450584 ]
+        [ 0.29255167 -1.0872906   2.608122  ]]
+
+      [[ 1.533141   -0.89879364  1.3328071 ]
+        [ 1.3422866   0.63320595  1.2023633 ]
+        [-1.0208743  -1.4508061  -0.50165915]
+        [ 0.95847785 -0.55736446  0.0131228 ]]], shape=(4, 4, 3), dtype=float32)
+
+    After:
+    tf.Tensor(
+      [[[-0.33207983  0.6707441   0.19866277]
+        [-0.29431066  0.31667632  1.677086  ]]
+
+      [[-1.103489    1.4331307   0.28476503]
+        [ 1.0820007   0.4008006   0.8450584 ]]], shape=(2, 2, 3), dtype=float32)
+    ```
 
   Raises:
     ValueError: if central_crop_fraction is not within (0, 1].
@@ -1681,9 +1718,27 @@ def adjust_brightness(image, delta):
 
   Usage Example:
     ```python
-    import tensorflow as tf
-    x = tf.random.normal(shape=(256, 256, 3))
-    tf.image.adjust_brightness(x, delta=0.1)
+    >> x = tf.random.normal(shape=(2, 2, 3))
+    >> tf.image.adjust_brightness(x, delta=0.1)
+    ```
+
+  Example Output: 
+    ```python
+    Before: 
+    tf.Tensor(
+      [[[-1.0708947  -0.844542   -2.5661693 ]
+        [ 1.4669225   0.81015277 -0.7296188 ]]
+
+      [[ 0.35540557 -1.1513313   0.37631378]
+        [-0.48893246 -1.3950981  -0.50700873]]], shape=(2, 2, 3), dtype=float32)
+
+    After:
+    tf.Tensor(
+      [[[-0.9708947  -0.744542   -2.4661694 ]
+        [ 1.5669225   0.9101528  -0.62961876]]
+
+      [[ 0.45540556 -1.0513313   0.47631377]
+        [-0.38893247 -1.2950981  -0.40700874]]], shape=(2, 2, 3), dtype=float32)
     ```
   """
   with ops.name_scope(None, 'adjust_brightness', [image, delta]) as name:
@@ -1731,8 +1786,27 @@ def adjust_contrast(images, contrast_factor):
   Usage Example:
     ```python
     import tensorflow as tf
-    x = tf.random.normal(shape=(256, 256, 3))
-    tf.image.adjust_contrast(x,2)
+    x = tf.random.normal(shape=(2, 2, 3))
+    tf.image.adjust_contrast(x, 2)
+    ```
+
+  Example Output: 
+    ```python
+    Before: 
+    tf.Tensor(
+      [[[-1.0708947  -0.844542   -2.5661693 ]
+        [ 1.4669225   0.81015277 -0.7296188 ]]
+
+      [[ 0.35540557 -1.1513313   0.37631378]
+        [-0.48893246 -1.3950981  -0.50700873]]], shape=(2, 2, 3), dtype=float32)
+
+    After:
+    tf.Tensor(
+      [[[-2.2074146  -1.0438794  -4.2757177 ]
+        [ 2.8682199   2.26551    -0.6026168 ]]
+
+      [[ 0.64518595 -1.657458    1.6092484 ]
+        [-1.0434902  -2.1449914  -0.15739667]]], shape=(2, 2, 3), dtype=float32)
     ```
   """
   with ops.name_scope(None, 'adjust_contrast',
@@ -1770,12 +1844,32 @@ def adjust_gamma(image, gamma=1, gain=1):
 
   Returns:
     A Tensor. A Gamma-adjusted tensor of the same shape and type as `image`.
+
   Usage Example:
     ```python
-    >> import tensorflow as tf
-    >> x = tf.random.normal(shape=(256, 256, 3))
+    >> x = tf.random.normal(shape=(2, 2, 3))
     >> tf.image.adjust_gamma(x, 0.2)
     ```
+
+  Example Output: 
+    ```python
+    Before: 
+    tf.Tensor(
+      [[[-1.0708947  -0.844542   -2.5661693 ]
+        [ 1.4669225   0.81015277 -0.7296188 ]]
+
+      [[ 0.35540557 -1.1513313   0.37631378]
+        [-0.48893246 -1.3950981  -0.50700873]]], shape=(2, 2, 3), dtype=float32)
+
+    After:
+    tf.Tensor(
+      [[[1.1468155  0.71325123 6.5852246 ]
+        [2.1518617  0.6563475  0.53234357]]
+
+      [[0.12631312 1.3255638  0.14161205]
+        [0.23905495 1.9462987  0.25705785]]], shape=(2, 2, 3), dtype=float32)
+    ```
+
   Raises:
     ValueError: If gamma is negative.
   Notes:
@@ -1839,9 +1933,27 @@ def convert_image_dtype(image, dtype, saturate=False, name=None):
 
   Usage Example:
     ```python
-    >> import tensorflow as tf
-    >> x = tf.random.normal(shape=(256, 256, 3), dtype=tf.float32)
+    >> x = tf.random.normal(shape=(2, 2, 3))
     >> tf.image.convert_image_dtype(x, dtype=tf.float16, saturate=False)
+    ```
+
+  Example Output: 
+    ```python
+    Before: 
+    tf.Tensor(
+      [[[-1.0708947  -0.844542   -2.5661693 ]
+        [ 1.4669225   0.81015277 -0.7296188 ]]
+
+      [[ 0.35540557 -1.1513313   0.37631378]
+        [-0.48893246 -1.3950981  -0.50700873]]], shape=(2, 2, 3), dtype=float32)
+
+    After:
+    tf.Tensor(
+      [[[-1.071  -0.8447 -2.566 ]
+        [ 1.467   0.81   -0.7295]]
+
+      [[ 0.3555 -1.151   0.3762]
+        [-0.489  -1.3955 -0.507 ]]], shape=(2, 2, 3), dtype=float16)
     ```
 
   Raises:
@@ -2043,9 +2155,27 @@ def adjust_hue(image, delta, name=None):
 
   Usage Example:
     ```python
-    >> import tensorflow as tf
-    >> x = tf.random.normal(shape=(256, 256, 3))
+    >> x = tf.random.normal(shape=(2, 2, 3))
     >> tf.image.adjust_hue(x, 0.2)
+    ```
+
+  Example Output: 
+    ```python
+    Before: 
+    tf.Tensor(
+      [[[-1.0708947  -0.844542   -2.5661693 ]
+        [ 1.4669225   0.81015277 -0.7296188 ]]
+
+      [[ 0.35540557 -1.1513313   0.37631378]
+        [-0.48893246 -1.3950981  -0.50700873]]], shape=(2, 2, 3), dtype=float32)
+
+    After:
+    tf.Tensor(
+      [[[-2.5661693  -0.844542   -1.9954908 ]
+        [-0.51215756  1.4669225  -0.7296188 ]]
+
+      [[ 0.37631378 -0.8667102  -1.1513313 ]
+        [-0.48893246 -1.195789   -1.3950981 ]]], shape=(2, 2, 3), dtype=float32)
     ```
   """
   with ops.name_scope(name, 'adjust_hue', [image]) as name:
@@ -2127,10 +2257,29 @@ def adjust_jpeg_quality(image, jpeg_quality, name=None):
 
   Usage Example:
     ```python
-    >> import tensorflow as tf
-    >> x = tf.random.normal(shape=(256, 256, 3))
+    >> x = tf.random.normal(shape=(2, 2, 3))
     >> tf.image.adjust_jpeg_quality(x, 75)
     ```
+
+  Example Output: 
+    ```python
+    Before: 
+    tf.Tensor(
+      [[[-1.0708947  -0.844542   -2.5661693 ]
+        [ 1.4669225   0.81015277 -0.7296188 ]]
+
+      [[ 0.35540557 -1.1513313   0.37631378]
+        [-0.48893246 -1.3950981  -0.50700873]]], shape=(2, 2, 3), dtype=float32)
+
+    After:
+    tf.Tensor(
+      [[[0.44705886 0.5411765  0.29803923]
+        [0.5372549  0.6313726  0.38823533]]
+
+      [[0.5529412  0.64705884 0.4039216 ]
+        [0.5686275  0.6627451  0.41960788]]], shape=(2, 2, 3), dtype=float32)
+    ```
+
   Raises:
     InvalidArgumentError: quality must be in [0,100]
     InvalidArgumentError: image must have 1 or 3 channels
@@ -2213,9 +2362,27 @@ def adjust_saturation(image, saturation_factor, name=None):
 
   Usage Example:
     ```python
-    >> import tensorflow as tf
-    >> x = tf.random.normal(shape=(256, 256, 3))
+    >> x = tf.random.normal(shape=(2, 2, 3))
     >> tf.image.adjust_saturation(x, 0.5)
+    ```
+
+  Example Output: 
+    ```python
+    Before: 
+    tf.Tensor(
+      [[[-1.0708947  -0.844542   -2.5661693 ]
+        [ 1.4669225   0.81015277 -0.7296188 ]]
+
+      [[ 0.35540557 -1.1513313   0.37631378]
+        [-0.48893246 -1.3950981  -0.50700873]]], shape=(2, 2, 3), dtype=float32)
+
+    After:
+    tf.Tensor(
+      [[[-0.844542   -0.844542   -0.844542  ]
+        [ 1.4669225   1.1385376   0.36865187]]
+
+      [[ 0.3711633   0.          0.37631378]
+        [-0.48893246 -0.48893246 -0.48893246]]], shape=(2, 2, 3), dtype=float32)
     ```
 
   Raises:
@@ -3055,10 +3222,28 @@ def rgb_to_yuv(images):
     
   Usage Example:
   ```python
-  >> import tensorflow as tf
-  >> x = tf.random.normal(shape=(256, 256, 3))
+  >> x = tf.random.normal(shape=(2, 2, 3))
   >> tf.image.rgb_to_yuv(x)
   ```
+
+  Example Output: 
+    ```python
+    Before: 
+    tf.Tensor(
+      [[[-1.0708947  -0.844542   -2.5661693 ]
+        [ 1.4669225   0.81015277 -0.7296188 ]]
+
+      [[ 0.35540557 -1.1513313   0.37631378]
+        [-0.48893246 -1.3950981  -0.50700873]]], shape=(2, 2, 3), dtype=float32)
+
+    After:
+    tf.Tensor(
+      [[[-1.108487   -0.7173415   0.03297902]
+        [ 0.830993   -0.7679942   0.5578902 ]]
+
+      [[-0.52666545  0.44436604  0.7738259 ]
+        [-1.0229124   0.25388187  0.4684515 ]]], shape=(2, 2, 3), dtype=float32)
+    ```
     
   """
   images = ops.convert_to_tensor(images, name='images')
