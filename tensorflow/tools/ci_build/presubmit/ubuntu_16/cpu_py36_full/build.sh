@@ -52,6 +52,7 @@ function run_build () {
   # //tensorflow/core:platform_setround_test is not supported. See b/64264700
   "${BAZEL_WRAPPER_PATH}" \
     test \
+    --incompatible_list_based_execution_strategy_selection \
     --config=rbe \
     --python_path="${PYTHON_BIN_PATH}" \
     --action_env=PATH="${ACTION_PATH}" \
