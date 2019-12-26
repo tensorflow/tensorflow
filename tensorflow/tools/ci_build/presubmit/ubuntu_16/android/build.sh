@@ -65,8 +65,8 @@ EOF
   # //tensorflow/core:platform_setround_test is not supported. See b/64264700
   "${BAZEL_WRAPPER_PATH}" \
     --host_jvm_args=-Dbazel.DigestFunction=SHA256 \
-    --incompatible_list_based_execution_strategy_selection \
     test \
+    --incompatible_list_based_execution_strategy_selection \
     --test_output=all \
     tensorflow/tools/ci_build/builds:${ANDROID_OUT_TARGET}
 
