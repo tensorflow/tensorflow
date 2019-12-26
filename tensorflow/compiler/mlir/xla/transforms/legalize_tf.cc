@@ -876,30 +876,13 @@ class ConvertFusedBatchNormV3Op
     auto scale_type_tensor = op.scale()->getType().dyn_cast<TensorType>();
     auto scale_element_type = scale_type_tensor.getElementType();
 
-    // The TF FusedBatchNormV3 op supports mixed precision. If the input type
-    // differs, convert it to have the precision of the other types for the
-    // HLO op.
-    bool is_mixed_precision = false;
-    Value bn_train_input;
-    TensorType bn_train_input_type_tensor;
-    Type bn_train_input_element_type;
-    if (input_element_type != scale_element_type) {
-      // TODO(b/69928690): Support mixed precision in the XLA batch
-      // normalization operators. As a workaround, create a new x with the same
-      // element type as scale (which may be more precise than the input type).
-      is_mixed_precision = true;
-      bn_train_input = rewriter.create<xla_hlo::ConvertOp>(op.getLoc(), op.x(),
-                                                           scale_element_type);
-      bn_train_input_type_tensor =
-          ChangeTensorElementType(&rewriter, input_type_tensor,
-                                  scale_element_type)
-              .dyn_cast<TensorType>();
-      bn_train_input_element_type = scale_element_type;
-    } else {
-      bn_train_input = op.x();
-      bn_train_input_type_tensor = input_type_tensor;
-      bn_train_input_element_type = input_element_type;
-    }
+    // TODO(b/69928690): Support mixed precision in the XLA batch
+    // normalization operators. As a workaround, create a new x with the same
+    // element type as scale (which may be more precise than the input type).
+    Value bn_train_input = rewriter.create<xla_hlo::ConvertOp>(
+        op.getLoc(), op.x(), scale_element_type);
+    TensorType bn_train_input_type_tensor =
+        bn_train_input.getType().cast<TensorType>();
 
     if (op.is_training()) {
       // Training case.
@@ -909,7 +892,7 @@ class ConvertFusedBatchNormV3Op
       // This shape must be constructed manually because the mean and variance
       // inputs are empty in the training case.
       Type mean_var_type = RankedTensorType::get(
-          {operand_shape[feature_dim.getInt()]}, bn_train_input_element_type);
+          {operand_shape[feature_dim.getInt()]}, scale_element_type);
       // Op result type is a tuple of 3 values: output with same shape as input;
       // batch_mean, and batch_var.
       SmallVector<Type, 3> operand_types = {bn_train_input_type_tensor,
@@ -942,12 +925,10 @@ class ConvertFusedBatchNormV3Op
           op.getLoc(), batch_variance->getType(), batch_variance,
           factor_const_op, /*DenseIntElementsAttr=*/DenseIntElementsAttr());
 
-      if (is_mixed_precision) {
-        // Convert back to input type to stay aligned with expected output type
-        // for TF op.
-        y_out = rewriter.create<xla_hlo::ConvertOp>(op.getLoc(), y_out,
-                                                    input_element_type);
-      }
+      // Convert back to input type to stay aligned with expected output type
+      // for TF op.
+      y_out = rewriter.create<xla_hlo::ConvertOp>(op.getLoc(), y_out,
+                                                  input_element_type);
 
       // TF FusedBatchNormV3 op expects 5 outputs. Outputs 3 and 4 are
       // currently marked as "reserved spaces 1 and 2". They are used to
@@ -967,15 +948,10 @@ class ConvertFusedBatchNormV3Op
           op.scale(), op.offset(), op.mean(), op.variance(), op.epsilon(),
           feature_dim.getValue());
 
-      Value y_out;
-      if (is_mixed_precision) {
-        // Convert back to input type to stay aligned with expected output type
-        // for TF op.
-        y_out = rewriter.create<xla_hlo::ConvertOp>(op.getLoc(), bn_train_op,
-                                                    input_element_type);
-      } else {
-        y_out = bn_train_op;
-      }
+      // Convert back to input type to stay aligned with expected output type
+      // for TF op.
+      auto y_out = rewriter.create<xla_hlo::ConvertOp>(op.getLoc(), bn_train_op,
+                                                       input_element_type);
 
       // The mean, variance, and reserved space outputs of the batch norm op are
       // not used for inference. It doesn't matter what values we provide for
