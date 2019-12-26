@@ -3266,7 +3266,7 @@ def sigmoid(x, name=None):
   Specifically, `y = 1 / (1 + exp(-x))`.
   
   For example:
-  >>>  x = 32
+  >>> x = 32
   >>> tf.math.sigmoid(x)
   <tf.Tensor: shape=(), dtype=float32, numpy=1.0>
 
