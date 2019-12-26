@@ -54,17 +54,25 @@ typedef struct TpuLoadedProgramHandle {
 } TpuLoadedProgramHandle;
 
 typedef struct HloProto {
-  // TODO(b/146662059): this is a temp plug for xla::HloProto
+  void* bytes;
+  int32_t size;
 } HloProto;
 
 typedef struct DeviceAssignmentProto {
-  // TODO(b/146662059): this is a temp plug for xla::DeviceAssignmentProto
+  void* bytes;
+  int32_t size;
 } DeviceAssignmentProto;
 
 typedef struct TpuStatus {
   int32_t code;
   char* msg;
 } TpuStatus;
+
+typedef struct CompiledProgramShape {
+  struct TpuStatus* status;
+  void* bytes;
+  int32_t size;
+} CompiledProgramShape;
 
 typedef void(PrototypeTpuDriver_Initialize)(struct TpuDriverFn* driver_fn);
 typedef struct TpuDriver*(PrototypeTpuDriver_Open)(const char* worker);
@@ -79,19 +87,19 @@ typedef struct TpuCompiledProgramHandle*(PrototypeTpuDriver_CompileProgram)(
 
 typedef struct TpuLoadedProgramHandle*(PrototypeTpuDriver_LoadProgram)(
     struct TpuDriver* driver, int32_t core_id,
-    const struct TpuCompiledProgramHandle* handle, int32_t eventc,
+    const struct TpuCompiledProgramHandle* compiled_program_handle,
+    int32_t eventc, struct TpuEvent** eventv);
+
+typedef struct TpuEvent*(PrototypeTpuDriver_UnloadProgram)(
+    struct TpuDriver* driver,
+    struct TpuLoadedProgramHandle* loaded_program_handle, int32_t eventc,
     struct TpuEvent** eventv);
 
-typedef struct TpuLoadedProgramHandle*(PrototypeTpuDriver_UnloadProgram)(
-    struct TpuDriver* driver, int32_t core_id,
-    struct TpuLoadedProgramHandle* handle, int32_t eventc,
-    struct TpuEvent** eventv);
-
-typedef struct TpuLoadedProgramHandle*(PrototypeTpuDriver_ExecuteProgram)(
+typedef struct TpuEvent*(PrototypeTpuDriver_ExecuteProgram)(
     struct TpuDriver* driver, struct TpuLoadedProgramHandle* handle,
     int32_t inputc, struct TpuBufferHandle** input_buffer_handle,
     int32_t outputc, struct TpuBufferHandle** output_buffer_handle,
-    const DeviceAssignmentProto& device_assignment, int32_t eventc,
+    const struct DeviceAssignmentProto& device_assignment, int32_t eventc,
     struct TpuEvent** eventv);
 
 typedef struct TpuBufferHandle*(PrototypeTpuDriver_AllocateTuple)(
@@ -118,6 +126,13 @@ typedef struct TpuEvent*(PrototypeTpuDriver_TransferFromDevice)(
 typedef struct TpuEvent*(PrototypeTpuDriver_TransferFromDeviceToDevice)(
     struct TpuDriver* driver, struct TpuBufferHandle* src,
     struct TpuBufferHandle* dst, int32_t eventc, struct TpuEvent** eventv);
+
+typedef struct CompiledProgramShape*(
+    PrototypeTpuDriver_GetCompiledProgramShape)(
+    struct TpuCompiledProgramHandle* handle);
+
+typedef void(PrototypeTpuDriver_FreeCompiledProgramShape)(
+    struct CompiledProgramShape* shape);
 
 typedef void(PrototypeTpuDriver_EventAddCallback)(
     struct TpuEvent* event,
@@ -154,6 +169,10 @@ TPUDRIVER_CAPI_EXPORT extern PrototypeTpuDriver_TransferFromDevice
     TpuDriver_TransferFromDevice;
 TPUDRIVER_CAPI_EXPORT extern PrototypeTpuDriver_TransferFromDeviceToDevice
     TpuDriver_TransferFromDeviceToDevice;
+TPUDRIVER_CAPI_EXPORT extern PrototypeTpuDriver_GetCompiledProgramShape
+    TpuDriver_GetCompiledProgramShape;
+TPUDRIVER_CAPI_EXPORT extern PrototypeTpuDriver_FreeCompiledProgramShape
+    TpuDriver_FreeCompiledProgramShape;
 TPUDRIVER_CAPI_EXPORT extern PrototypeTpuDriver_EventAddCallback
     TpuDriver_EventAddCallback;
 TPUDRIVER_CAPI_EXPORT extern PrototypeTpuDriver_EventAwait TpuDriver_EventAwait;
@@ -180,6 +199,10 @@ struct TpuDriverFn {
       TpuDriver_TransferFromDevice;  // NOLINT
   PrototypeTpuDriver_TransferFromDeviceToDevice*
       TpuDriver_TransferFromDeviceToDevice;                         // NOLINT
+  PrototypeTpuDriver_GetCompiledProgramShape*
+      TpuDriver_GetCompiledProgramShape;  // NOLINT
+  PrototypeTpuDriver_FreeCompiledProgramShape*
+      TpuDriver_FreeCompiledProgramShape;                           // NOLINT
   PrototypeTpuDriver_EventAddCallback* TpuDriver_EventAddCallback;  // NOLINT
   PrototypeTpuDriver_EventAwait* TpuDriver_EventAwait;              // NOLINT
   PrototypeTpuDriver_FreeEvent* TpuDriver_FreeEvent;                // NOLINT

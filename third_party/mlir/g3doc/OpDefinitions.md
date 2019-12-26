@@ -360,7 +360,7 @@ def MyInterface : OpInterface<"MyInterface"> {
 
     // A new non-static method accepting an input argument.
     InterfaceMethod<"/*insert doc here*/",
-      "Value *", "bar", (ins "unsigned":$i)
+      "Value ", "bar", (ins "unsigned":$i)
     >,
 
     // Query a static property of the derived operation.
@@ -438,7 +438,7 @@ static void build(Builder *tblgen_builder, OperationState &tblgen_state,
 // for attributes are of mlir::Attribute types.
 static void build(Builder *tblgen_builder, OperationState &tblgen_state,
                   Type i32_result, Type f32_result, ...,
-                  Value *i32_operand, Value *f32_operand, ...,
+                  Value i32_operand, Value f32_operand, ...,
                   IntegerAttr i32_attr, FloatAttr f32_attr, ...);
 
 // Each result-type/operand/attribute has a separate parameter. The parameters
@@ -447,13 +447,13 @@ static void build(Builder *tblgen_builder, OperationState &tblgen_state,
 // explanation for more details.)
 static void build(Builder *tblgen_builder, OperationState &tblgen_state,
                   Type i32_result, Type f32_result, ...,
-                  Value *i32_operand, Value *f32_operand, ...,
+                  Value i32_operand, Value f32_operand, ...,
                   APInt i32_attr, StringRef f32_attr, ...);
 
 // Each operand/attribute has a separate parameter but result type is aggregate.
 static void build(Builder *tblgen_builder, OperationState &tblgen_state,
                   ArrayRef<Type> resultTypes,
-                  Value *i32_operand, Value *f32_operand, ...,
+                  Value i32_operand, Value f32_operand, ...,
                   IntegerAttr i32_attr, FloatAttr f32_attr, ...);
 
 // All operands/attributes have aggregate parameters.
@@ -615,10 +615,9 @@ coding style requirements.
 For each operation, we automatically generate an _operand adaptor_. This class
 solves the problem of accessing operands provided as a list of `Value`s without
 using "magic" constants. The operand adaptor takes a reference to an array of
-`Value *` and provides methods with the same names as those in the operation
-class to access them. For example, for a binary arithmetic operation, it may
-provide `.lhs()` to access the first operand and `.rhs()` to access the second
-operand.
+`Value` and provides methods with the same names as those in the operation class
+to access them. For example, for a binary arithmetic operation, it may provide
+`.lhs()` to access the first operand and `.rhs()` to access the second operand.
 
 The operand adaptor class lives in the same namespace as the operation class,
 and has the name of the operation followed by `OperandAdaptor`. A template
@@ -629,11 +628,11 @@ Operand adaptors can be used in function templates that also process operations:
 
 ```c++
 template <typename BinaryOpTy>
-std::pair<Value *, Value *> zip(BinaryOpTy &&op) {
+std::pair<Value, Value> zip(BinaryOpTy &&op) {
   return std::make_pair(op.lhs(), op.rhs());;
 }
 
-void process(AddOp op, ArrayRef<Value *> newOperands) {
+void process(AddOp op, ArrayRef<Value> newOperands) {
   zip(op);
   zip(OperandAdaptor<AddOp>(newOperands));
   /*...*/

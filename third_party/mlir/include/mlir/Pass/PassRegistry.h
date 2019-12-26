@@ -1,19 +1,10 @@
 //===- PassRegistry.h - Pass Registration Utilities -------------*- C++ -*-===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 //
 // This file contains utilities for registering information about compiler
 // passes.
@@ -34,6 +25,7 @@ class Pass;
 /// also parse options and return success() if parsing succeeded.
 using PassRegistryFunction =
     std::function<LogicalResult(OpPassManager &, StringRef options)>;
+using PassAllocatorFunction = std::function<std::unique_ptr<Pass>()>;
 
 /// A special type used by transformation passes to provide an address that can
 /// act as a unique identifier during pass registration.
@@ -65,7 +57,7 @@ public:
 
 protected:
   PassRegistryEntry(StringRef arg, StringRef description,
-                    PassRegistryFunction builder)
+                    const PassRegistryFunction &builder)
       : arg(arg), description(description), builder(builder) {}
 
 private:
@@ -83,7 +75,7 @@ private:
 class PassPipelineInfo : public PassRegistryEntry {
 public:
   PassPipelineInfo(StringRef arg, StringRef description,
-                   PassRegistryFunction builder)
+                   const PassRegistryFunction &builder)
       : PassRegistryEntry(arg, description, builder) {}
 };
 
@@ -93,8 +85,7 @@ public:
   /// PassInfo constructor should not be invoked directly, instead use
   /// PassRegistration or registerPass.
   PassInfo(StringRef arg, StringRef description, const PassID *passID,
-           PassRegistryFunction allocator)
-      : PassRegistryEntry(arg, description, allocator) {}
+           const PassAllocatorFunction &allocator);
 };
 
 //===----------------------------------------------------------------------===//
@@ -109,80 +100,28 @@ void registerPassPipeline(StringRef arg, StringRef description,
 /// Register a specific dialect pass allocator function with the system,
 /// typically used through the PassRegistration template.
 void registerPass(StringRef arg, StringRef description, const PassID *passID,
-                  const PassRegistryFunction &function);
-
-namespace detail {
-
-// Calls `pm.addPass(std::move(pass))` to avoid including the PassManager
-// header. Only used in `makePassRegistryFunction`.
-void addPassToPassManager(OpPassManager &pm, std::unique_ptr<Pass> pass);
-
-// Helper function which constructs a PassRegistryFunction that parses options
-// into a struct of type `Options` and then calls constructor(options) to
-// build the pass.
-template <typename Options, typename PassConstructor>
-PassRegistryFunction makePassRegistryFunction(PassConstructor constructor) {
-  return [=](OpPassManager &pm, StringRef optionsStr) {
-    Options options;
-    if (failed(options.parseFromString(optionsStr)))
-      return failure();
-    addPassToPassManager(pm, constructor(options));
-    return success();
-  };
-}
-
-} // end namespace detail
+                  const PassAllocatorFunction &function);
 
 /// PassRegistration provides a global initializer that registers a Pass
-/// allocation routine for a concrete pass instance.  The third argument is
+/// allocation routine for a concrete pass instance. The third argument is
 /// optional and provides a callback to construct a pass that does not have
 /// a default constructor.
 ///
 /// Usage:
 ///
-///   // At namespace scope.
+///   /// At namespace scope.
 ///   static PassRegistration<MyPass> reg("my-pass", "My Pass Description.");
 ///
-///   // Same, but also providing an Options struct.
-///   static PassRegistration<MyPass, MyPassOptions> reg("my-pass", "Docs...");
-template <typename ConcretePass, typename Options = EmptyPassOptions>
-struct PassRegistration {
+template <typename ConcretePass> struct PassRegistration {
 
   PassRegistration(StringRef arg, StringRef description,
-                   const std::function<std::unique_ptr<Pass>(const Options &)>
-                       &constructor) {
-    registerPass(arg, description, PassID::getID<ConcretePass>(),
-                 detail::makePassRegistryFunction<Options>(constructor));
+                   const PassAllocatorFunction &constructor) {
+    registerPass(arg, description, PassID::getID<ConcretePass>(), constructor);
   }
 
-  PassRegistration(StringRef arg, StringRef description) {
-    registerPass(
-        arg, description, PassID::getID<ConcretePass>(),
-        detail::makePassRegistryFunction<Options>([](const Options &options) {
-          return std::make_unique<ConcretePass>(options);
-        }));
-  }
-};
-
-/// Convenience specialization of PassRegistration for EmptyPassOptions that
-/// does not pass an empty options struct to the pass constructor.
-template <typename ConcretePass>
-struct PassRegistration<ConcretePass, EmptyPassOptions> {
-  PassRegistration(StringRef arg, StringRef description,
-                   const std::function<std::unique_ptr<Pass>()> &constructor) {
-    registerPass(
-        arg, description, PassID::getID<ConcretePass>(),
-        detail::makePassRegistryFunction<EmptyPassOptions>(
-            [=](const EmptyPassOptions &options) { return constructor(); }));
-  }
-
-  PassRegistration(StringRef arg, StringRef description) {
-    registerPass(arg, description, PassID::getID<ConcretePass>(),
-                 detail::makePassRegistryFunction<EmptyPassOptions>(
-                     [](const EmptyPassOptions &options) {
-                       return std::make_unique<ConcretePass>();
-                     }));
-  }
+  PassRegistration(StringRef arg, StringRef description)
+      : PassRegistration(arg, description,
+                         [] { return std::make_unique<ConcretePass>(); }) {}
 };
 
 /// PassPipelineRegistration provides a global initializer that registers a Pass
@@ -198,7 +137,8 @@ struct PassRegistration<ConcretePass, EmptyPassOptions> {
 ///
 ///   static PassPipelineRegistration Unused("unused", "Unused pass",
 ///                                          pipelineBuilder);
-template <typename Options = EmptyPassOptions> struct PassPipelineRegistration {
+template <typename Options = EmptyPipelineOptions>
+struct PassPipelineRegistration {
   PassPipelineRegistration(
       StringRef arg, StringRef description,
       std::function<void(OpPassManager &, const Options &options)> builder) {
@@ -215,7 +155,7 @@ template <typename Options = EmptyPassOptions> struct PassPipelineRegistration {
 
 /// Convenience specialization of PassPipelineRegistration for EmptyPassOptions
 /// that does not pass an empty options struct to the pass builder function.
-template <> struct PassPipelineRegistration<EmptyPassOptions> {
+template <> struct PassPipelineRegistration<EmptyPipelineOptions> {
   PassPipelineRegistration(StringRef arg, StringRef description,
                            std::function<void(OpPassManager &)> builder) {
     registerPassPipeline(arg, description,

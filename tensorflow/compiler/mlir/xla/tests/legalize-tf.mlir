@@ -2533,3 +2533,20 @@ func @strided_slice_grad(%grad: tensor<4x16x1022xf32>) -> tensor<4x128x1024xf32>
   // CHECK: return [[PAD]]
   return %0: tensor<4x128x1024xf32>
 }
+
+// CHECK-LABEL: @tensor_scatter_update
+func @tensor_scatter_update(%tensor: tensor<?x?x?xf32>, %indices: tensor<?x2xi32>, %updates: tensor<?x?xf32>) -> tensor<?x?x?xf32> {
+  // CHECK: "xla_hlo.scatter"(%arg0, %arg1, %arg2) ( {
+  // CHECK:  ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):
+  // CHECK:    "xla_hlo.return"(%arg4) : (tensor<f32>) -> ()
+  // CHECK:  })
+  // CHECK-SAME: indices_are_sorted = false
+  // CHECK-SAME: scatter_dimension_numbers
+  // CHECK-SAME:   index_vector_dim = 1 : i64
+  // CHECK-SAME:   inserted_window_dims = dense<[0, 1]> : tensor<2xi64>
+  // CHECK-SAME:   scatter_dims_to_operand_dims = dense<[0, 1]> : tensor<2xi64>
+  // CHECK-SAME:   update_window_dims = dense<1> : tensor<1xi64>
+  // CHECK-SAME: unique_indices = false
+  %0 = "tf.TensorScatterUpdate"(%tensor, %indices, %updates) : (tensor<?x?x?xf32>, tensor<?x2xi32>, tensor<?x?xf32>) -> tensor<?x?x?xf32>
+  return %0 : tensor<?x?x?xf32>
+}

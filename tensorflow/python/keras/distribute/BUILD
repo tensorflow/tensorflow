@@ -199,7 +199,6 @@ distribute_py_test(
     shard_count = 4,
     tags = [
         "multi_and_single_gpu",
-        "no_rocm",  # times out on ROCm
         "no_windows_gpu",
         "notsan",
     ],

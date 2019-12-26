@@ -1,19 +1,10 @@
 //===- MemRefDataFlowOpt.cpp - MemRef DataFlow Optimization pass ------ -*-===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 //
 // This file implements a pass to forward memref stores to loads, thereby
 // potentially getting rid of intermediate memref's entirely.
@@ -76,7 +67,7 @@ struct MemRefDataFlowOpt : public FunctionPass<MemRefDataFlowOpt> {
   void forwardStoreToLoad(AffineLoadOp loadOp);
 
   // A list of memref's that are potentially dead / could be eliminated.
-  SmallPtrSet<Value *, 4> memrefsToErase;
+  SmallPtrSet<Value, 4> memrefsToErase;
   // Load op's whose results were replaced by those forwarded from stores.
   SmallVector<Operation *, 8> loadOpsToErase;
 
@@ -180,7 +171,7 @@ void MemRefDataFlowOpt::forwardStoreToLoad(AffineLoadOp loadOp) {
     return;
 
   // Perform the actual store to load forwarding.
-  Value *storeVal = cast<AffineStoreOp>(lastWriteStoreOp).getValueToStore();
+  Value storeVal = cast<AffineStoreOp>(lastWriteStoreOp).getValueToStore();
   loadOp.replaceAllUsesWith(storeVal);
   // Record the memref for a later sweep to optimize away.
   memrefsToErase.insert(loadOp.getMemRef());
@@ -213,7 +204,7 @@ void MemRefDataFlowOpt::runOnFunction() {
   // Check if the store fwd'ed memrefs are now left with only stores and can
   // thus be completely deleted. Note: the canonicalize pass should be able
   // to do this as well, but we'll do it here since we collected these anyway.
-  for (auto *memref : memrefsToErase) {
+  for (auto memref : memrefsToErase) {
     // If the memref hasn't been alloc'ed in this function, skip.
     Operation *defInst = memref->getDefiningOp();
     if (!defInst || !isa<AllocOp>(defInst))

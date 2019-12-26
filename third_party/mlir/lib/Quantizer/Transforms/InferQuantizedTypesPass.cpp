@@ -1,19 +1,10 @@
 //===- InferQuantizedTypesPass.cpp - Infers quantized types ---------------===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 //
 // This file defines the primary pass for instantiating a CAG, running it to
 // convergence on a module to determine eligible quantized type transforms, and
@@ -181,17 +172,17 @@ void InferQuantizedTypesPass::runWithConfig(SolverContext &solverContext,
 
 void InferQuantizedTypesPass::transformOperandType(CAGOperandAnchor *anchor,
                                                    Type newType) {
-  Value *inputValue = anchor->getValue();
+  Value inputValue = anchor->getValue();
   Operation *op = anchor->getOp();
   OpBuilder b(op->getBlock(), Block::iterator(op));
 
-  SmallVector<Value *, 1> removeValuesIfDead;
+  SmallVector<Value, 1> removeValuesIfDead;
 
   // Because we've already run the result transforms at this phase, it is
   // very likely that inputValue points to a dcast op whose input matches
   // our type. We detect that situation and route around just to save some
   // bulk in the IR.
-  Value *newTypedInputValue = inputValue;
+  Value newTypedInputValue = inputValue;
   auto inputDcastOp =
       dyn_cast_or_null<DequantizeCastOp>(inputValue->getDefiningOp());
   if (inputDcastOp && inputDcastOp.arg()->getType() == newType) {
@@ -228,7 +219,7 @@ void InferQuantizedTypesPass::transformOperandType(CAGOperandAnchor *anchor,
     break;
   }
 
-  for (Value *removeValueIfDead : removeValuesIfDead) {
+  for (Value removeValueIfDead : removeValuesIfDead) {
     if (removeValueIfDead->use_empty()) {
       removeValueIfDead->getDefiningOp()->erase();
     }
@@ -237,12 +228,12 @@ void InferQuantizedTypesPass::transformOperandType(CAGOperandAnchor *anchor,
 
 void InferQuantizedTypesPass::transformResultType(CAGResultAnchor *anchor,
                                                   Type newType) {
-  Value *origResultValue = anchor->getValue();
+  Value origResultValue = anchor->getValue();
   Operation *op = origResultValue->getDefiningOp();
   OpBuilder b(op->getBlock(), ++Block::iterator(op));
 
-  Value *replacedResultValue = nullptr;
-  Value *newResultValue = nullptr;
+  Value replacedResultValue = nullptr;
+  Value newResultValue = nullptr;
   switch (anchor->getTypeTransformRule()) {
   case CAGAnchorNode::TypeTransformRule::Direct:
     origResultValue->setType(newType);

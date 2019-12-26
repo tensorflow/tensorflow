@@ -1,19 +1,10 @@
 //===- Utils.h - General analysis utilities ---------------------*- C++ -*-===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 //
 // This header file defines prototypes for various transformation utilities for
 // memref's and non-loop IR structures. These are not passes by themselves but
@@ -55,7 +46,7 @@ unsigned getNestingDepth(Operation &op);
 /// Returns in 'sequentialLoops' all sequential loops in loop nest rooted
 /// at 'forOp'.
 void getSequentialLoops(AffineForOp forOp,
-                        llvm::SmallDenseSet<Value *, 8> *sequentialLoops);
+                        llvm::SmallDenseSet<Value, 8> *sequentialLoops);
 
 /// ComputationSliceState aggregates loop IVs, loop bound AffineMaps and their
 /// associated operands for a set of loops within a loop nest (typically the
@@ -64,15 +55,15 @@ void getSequentialLoops(AffineForOp forOp,
 struct ComputationSliceState {
   // List of sliced loop IVs (ordered from outermost to innermost).
   // EX: 'ivs[i]' has lower bound 'lbs[i]' and upper bound 'ubs[i]'.
-  SmallVector<Value *, 4> ivs;
+  SmallVector<Value, 4> ivs;
   // List of lower bound AffineMaps.
   SmallVector<AffineMap, 4> lbs;
   // List of upper bound AffineMaps.
   SmallVector<AffineMap, 4> ubs;
   // List of lower bound operands (lbOperands[i] are used by 'lbs[i]').
-  std::vector<SmallVector<Value *, 4>> lbOperands;
+  std::vector<SmallVector<Value, 4>> lbOperands;
   // List of upper bound operands (ubOperands[i] are used by 'ubs[i]').
-  std::vector<SmallVector<Value *, 4>> ubOperands;
+  std::vector<SmallVector<Value, 4>> ubOperands;
   // Slice loop nest insertion point in target loop nest.
   Block::iterator insertPoint;
   // Adds to 'cst' with constraints which represent the slice bounds on 'ivs'
@@ -257,7 +248,7 @@ struct MemRefRegion {
   unsigned getRank() const;
 
   /// Memref that this region corresponds to.
-  Value *memref;
+  Value memref;
 
   /// Read or write.
   bool write;

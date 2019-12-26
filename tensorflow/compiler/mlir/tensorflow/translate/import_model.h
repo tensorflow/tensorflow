@@ -21,7 +21,6 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "tensorflow/cc/saved_model/bundle_v2.h"
-#include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -50,12 +49,6 @@ stream_executor::port::StatusOr<mlir::OwningModuleRef> ConvertGraphToMlir(
 stream_executor::port::StatusOr<mlir::OwningModuleRef> ConvertSavedModelToMlir(
     SavedModelV2Bundle* saved_model, mlir::MLIRContext* context,
     absl::Span<std::string> exported_names, bool add_default_attributes = true);
-
-// Given a V1 SavedModel, returns a MLIR module containing the functions,
-// expressed with tf_executor dialect.
-stream_executor::port::StatusOr<mlir::OwningModuleRef>
-ConvertSavedModelV1ToMlir(const SavedModelBundle& saved_model,
-                          mlir::MLIRContext* context);
 
 // Serialize a MLIR module to a string.
 std::string MlirModuleToString(mlir::ModuleOp m, bool show_debug_info = false);

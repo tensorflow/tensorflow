@@ -1,19 +1,10 @@
 //===- Liveness.h - Liveness analysis for MLIR ------------------*- C++ -*-===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 //
 // This file contains an analysis for computing liveness information from a
 // given top-level operation. The current version of the analysis uses a
@@ -57,7 +48,7 @@ class Liveness {
 public:
   using OperationListT = std::vector<Operation *>;
   using BlockMapT = DenseMap<Block *, LivenessBlockInfo>;
-  using ValueSetT = SmallPtrSet<Value *, 16>;
+  using ValueSetT = SmallPtrSet<Value, 16>;
 
 public:
   /// Creates a new Liveness analysis that computes liveness
@@ -72,7 +63,7 @@ public:
   /// Note that the operations in this list are not ordered and the current
   /// implementation is computationally expensive (as it iterates over all
   /// blocks in which the given value is live).
-  OperationListT resolveLiveness(Value *value) const;
+  OperationListT resolveLiveness(Value value) const;
 
   /// Gets liveness info (if any) for the block.
   const LivenessBlockInfo *getLiveness(Block *block) const;
@@ -85,7 +76,7 @@ public:
 
   /// Returns true if the given operation represent the last use of the
   /// given value.
-  bool isLastUse(Value *value, Operation *operation) const;
+  bool isLastUse(Value value, Operation *operation) const;
 
   /// Dumps the liveness information in a human readable format.
   void dump() const;
@@ -124,20 +115,20 @@ public:
   const ValueSetT &out() const { return outValues; }
 
   /// Returns true if the given value is in the live-in set.
-  bool isLiveIn(Value *value) const;
+  bool isLiveIn(Value value) const;
 
   /// Returns true if the given value is in the live-out set.
-  bool isLiveOut(Value *value) const;
+  bool isLiveOut(Value value) const;
 
   /// Gets the start operation for the given value. This is the first operation
   /// the given value is considered to be live. This could either be the start
   /// operation of the current block (in case the value is live-in) or the
   /// operation that defines the given value (must be referenced in this block).
-  Operation *getStartOperation(Value *value) const;
+  Operation *getStartOperation(Value value) const;
 
   /// Gets the end operation for the given value using the start operation
   /// provided (must be referenced in this block).
-  Operation *getEndOperation(Value *value, Operation *startOperation) const;
+  Operation *getEndOperation(Value value, Operation *startOperation) const;
 
 private:
   /// The underlying block.

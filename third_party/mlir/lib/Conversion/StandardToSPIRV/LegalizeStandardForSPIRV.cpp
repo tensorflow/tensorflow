@@ -1,19 +1,10 @@
 //===- LegalizeStandardForSPIRV.cpp - Legalize ops for SPIR-V lowering ----===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 //
 // This transformation pass legalizes operations before the conversion to SPIR-V
 // dialect to handle ops that cannot be lowered directly.
@@ -69,7 +60,7 @@ public:
 static LogicalResult
 resolveSourceIndices(Location loc, PatternRewriter &rewriter,
                      SubViewOp subViewOp, ValueRange indices,
-                     SmallVectorImpl<Value *> &sourceIndices) {
+                     SmallVectorImpl<Value> &sourceIndices) {
   // TODO: Aborting when the offsets are static. There might be a way to fold
   // the subview op with load even if the offsets have been canonicalized
   // away.
@@ -77,7 +68,7 @@ resolveSourceIndices(Location loc, PatternRewriter &rewriter,
     return failure();
 
   ValueRange opOffsets = subViewOp.offsets();
-  SmallVector<Value *, 2> opStrides;
+  SmallVector<Value, 2> opStrides;
   if (subViewOp.getNumStrides()) {
     // If the strides are dynamic, get the stride operands.
     opStrides = llvm::to_vector<2>(subViewOp.strides());
@@ -124,7 +115,7 @@ LoadOpOfSubViewFolder::matchAndRewrite(LoadOp loadOp,
   if (!subViewOp) {
     return matchFailure();
   }
-  SmallVector<Value *, 4> sourceIndices;
+  SmallVector<Value, 4> sourceIndices;
   if (failed(resolveSourceIndices(loadOp.getLoc(), rewriter, subViewOp,
                                   loadOp.indices(), sourceIndices)))
     return matchFailure();
@@ -146,7 +137,7 @@ StoreOpOfSubViewFolder::matchAndRewrite(StoreOp storeOp,
   if (!subViewOp) {
     return matchFailure();
   }
-  SmallVector<Value *, 4> sourceIndices;
+  SmallVector<Value, 4> sourceIndices;
   if (failed(resolveSourceIndices(storeOp.getLoc(), rewriter, subViewOp,
                                   storeOp.indices(), sourceIndices)))
     return matchFailure();

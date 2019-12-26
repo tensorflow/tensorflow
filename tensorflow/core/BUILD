@@ -324,7 +324,6 @@ cc_library(
         "//tensorflow/core/platform:threadpool_interface",
         "//tensorflow/core/platform:threadpool_options",
         "//tensorflow/core/platform:types",
-        "//tensorflow/core/platform/default/build_config:base",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings",
     ],
@@ -1446,7 +1445,7 @@ filegroup(
         "//tensorflow/core/lib/random:legacy_lib_random_all_srcs",
         "//tensorflow/core/lib/strings:legacy_lib_strings_all_headers",
         "//tensorflow/core/lib/strings:legacy_lib_strings_all_srcs",
-        "//tensorflow/core/platform/default/build_config:android_srcs",
+        "//tensorflow/core/platform:legacy_mobile_srcs",
         "//tensorflow/core/profiler:mobile_srcs",
         "//tensorflow/core/public:mobile_srcs_no_runtime",
         "//tensorflow/core/util/ctc:android_srcs",
@@ -1757,7 +1756,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":android_tensorflow_lib",
-        ":protos_cc",
+        ":protos_all_cc",
         "//tensorflow/core/platform/default/build_config:gtest",
         "//third_party/eigen3",
     ],
@@ -2601,13 +2600,6 @@ alias(
     name = "cuda_device_functions",
     actual = "//tensorflow/core/util:gpu_device_functions",
     visibility = ["//visibility:public"],
-)
-
-# TODO(josh11b): Is this needed, or can we just use ":protos_all_cc"?
-cc_library(
-    name = "protos_cc",
-    visibility = ["//visibility:public"],
-    deps = ["//tensorflow/core/platform/default/build_config:protos_cc"],
 )
 
 # Library containing all of the graph construction code that is

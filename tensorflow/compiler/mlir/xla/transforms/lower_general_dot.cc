@@ -44,11 +44,11 @@ using mlir::Value;
 
 namespace {
 
-Value *TransposeReshape(Value *arg, mlir::Location loc,
-                        llvm::ArrayRef<int64_t> left_dims,
-                        llvm::ArrayRef<int64_t> right_dims,
-                        llvm::ArrayRef<int64_t> arg_shape,
-                        PatternRewriter *rewriter) {
+Value TransposeReshape(Value arg, mlir::Location loc,
+                       llvm::ArrayRef<int64_t> left_dims,
+                       llvm::ArrayRef<int64_t> right_dims,
+                       llvm::ArrayRef<int64_t> arg_shape,
+                       PatternRewriter *rewriter) {
   auto element_type = mlir::getElementTypeOrSelf(arg->getType());
 
   int64_t left_size = 1;
@@ -91,9 +91,9 @@ Value *TransposeReshape(Value *arg, mlir::Location loc,
                                                     transpose_result);
 }
 
-Value *ProcessDotArg(Value *arg, mlir::Location loc,
-                     ElementsAttr contract_dims_attr, bool outer_dims_first,
-                     PatternRewriter *rewriter) {
+Value ProcessDotArg(Value arg, mlir::Location loc,
+                    ElementsAttr contract_dims_attr, bool outer_dims_first,
+                    PatternRewriter *rewriter) {
   auto shape = arg->getType().cast<mlir::ShapedType>().getShape();
 
   llvm::SmallVector<bool, 5> is_outer_dim;

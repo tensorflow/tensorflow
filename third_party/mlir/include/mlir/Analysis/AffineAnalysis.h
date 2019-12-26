@@ -1,19 +1,10 @@
 //===- AffineAnalysis.h - analyses for affine structures --------*- C++ -*-===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 //
 // This header file defines prototypes for methods that perform analysis
 // involving affine structures (AffineExprStorage, AffineMap, IntegerSet, etc.)
@@ -24,9 +15,7 @@
 #ifndef MLIR_ANALYSIS_AFFINE_ANALYSIS_H
 #define MLIR_ANALYSIS_AFFINE_ANALYSIS_H
 
-#include "mlir/Support/LLVM.h"
-#include "mlir/Support/LogicalResult.h"
-#include "llvm/ADT/ArrayRef.h"
+#include "mlir/IR/Value.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SmallVector.h"
 
@@ -37,12 +26,11 @@ class AffineForOp;
 class AffineValueMap;
 class FlatAffineConstraints;
 class Operation;
-class Value;
 
 /// Returns in `affineApplyOps`, the sequence of those AffineApplyOp
 /// Operations that are reachable via a search starting from `operands` and
 /// ending at those operands that are not the result of an AffineApplyOp.
-void getReachableAffineApplyOps(ArrayRef<Value *> operands,
+void getReachableAffineApplyOps(ArrayRef<Value> operands,
                                 SmallVectorImpl<Operation *> &affineApplyOps);
 
 /// Builds a system of constraints with dimensional identifiers corresponding to
@@ -56,9 +44,9 @@ LogicalResult getIndexSet(MutableArrayRef<AffineForOp> forOps,
 
 /// Encapsulates a memref load or store access information.
 struct MemRefAccess {
-  Value *memref;
+  Value memref;
   Operation *opInst;
-  SmallVector<Value *, 4> indices;
+  SmallVector<Value, 4> indices;
 
   /// Constructs a MemRefAccess from a load or store operation.
   // TODO(b/119949820): add accessors to standard op's load, store, DMA op's to

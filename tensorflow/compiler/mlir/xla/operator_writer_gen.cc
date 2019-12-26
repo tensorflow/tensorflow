@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/StringExtras.h"
+#include "llvm/ADT/StringMap.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/InitLLVM.h"
@@ -42,12 +43,27 @@ static std::string GetDefaultAttrExport(
   Attribute attr = named_attr.attr;
   StringRef storage_type = attr.getStorageType();
   // For some attribute types we have a general conversion, so use that.
-  if (!attr.isEnumAttr() && (storage_type.endswith("IntegerAttr") ||
+  if (!attr.isEnumAttr() && (storage_type.endswith("BoolAttr") ||
                              storage_type.endswith("FloatAttr") ||
+                             storage_type.endswith("IntegerAttr") ||
                              storage_type.endswith("StringAttr"))) {
     return "Convert" + attr.getReturnType().str();
   }
   return "Convert_" + named_attr.name.str();
+}
+
+static std::string GetClientBuilder(const Operator& op) {
+  static const auto* kOpToXLABuilderMap = new llvm::StringMap<StringRef>{
+      {"ReverseOp", "Rev"}, {"ConcatenateOp", "ConcatInDim"}};
+
+  StringRef op_name = op.getCppClassName();
+
+  // Default case where the client builder method names closely follow the op
+  // names in the dialect. For e.g., AddOp -> xla::Add method.
+  if (!kOpToXLABuilderMap->count(op_name)) return op_name.drop_back(2);
+
+  // Otherwise, if the op to client builder method mapping is provided.
+  return kOpToXLABuilderMap->lookup(op_name);
 }
 
 static void BuildOperator(const Operator& op, raw_ostream* output) {
@@ -85,10 +101,8 @@ static void BuildOperator(const Operator& op, raw_ostream* output) {
        << op.getArgName(index) << "());\n";
   }
 
-  // Assumes that the client builder method names closely follow the op names
-  // in the dialect. For e.g., AddOp -> xla::Add method.
-  StringRef op_name = op.getCppClassName();
-  os << "    auto xla_result = xla::" << op_name.drop_back(2) << "(";
+  // Emit call to client API
+  os << "    auto xla_result = xla::" << GetClientBuilder(op) << "(";
 
   // If all operands are variadic, then pass the builder explicitly to xla
   // client API call

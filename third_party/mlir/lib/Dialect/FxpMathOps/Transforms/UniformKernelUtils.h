@@ -1,19 +1,10 @@
 //===- UniformKernelUtils.h - Utilities for lowering uniform math - C++ -*-===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 
 #ifndef MLIR_FXPMATH_UNIFORM_KERNEL_UTILS_H_
 #define MLIR_FXPMATH_UNIFORM_KERNEL_UTILS_H_
@@ -59,7 +50,7 @@ template <typename F> bool integralLog2(F x, int &log2Result) {
 /// Helper class for operating on binary operations where all operands
 /// and the result are a UniformQuantizedType.
 struct UniformBinaryOpInfo {
-  UniformBinaryOpInfo(Operation *op, Value *lhs, Value *rhs,
+  UniformBinaryOpInfo(Operation *op, Value lhs, Value rhs,
                       Optional<APFloat> clampMin, Optional<APFloat> clampMax)
       : op(op), lhs(lhs), rhs(rhs), clampMin(clampMin), clampMax(clampMax),
         lhsType(getUniformElementType(lhs->getType())),
@@ -128,8 +119,8 @@ struct UniformBinaryOpInfo {
   }
 
   Operation *op;
-  Value *lhs;
-  Value *rhs;
+  Value lhs;
+  Value rhs;
   Optional<APFloat> clampMin;
   Optional<APFloat> clampMax;
 

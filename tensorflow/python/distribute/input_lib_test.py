@@ -956,5 +956,68 @@ class DistributedIteratorMultiWorkerTest(
           sess=sess)
 
 
+class InputTypeSpecTest(test.TestCase, parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.combine(
+          mode=["eager"],
+          distribution=[
+              strategy_combinations.one_device_strategy,
+              strategy_combinations.mirrored_strategy_with_one_cpu,
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations.tpu_strategy,
+              strategy_combinations.central_storage_strategy_with_two_gpus,
+          ],
+          input_type=["dataset", "dataset_fn"],
+      ))
+  def testInputSignatureForPerReplicaValues(self, distribution, input_type):
+    def dataset_fn(ctx):
+      del ctx  # unused
+      return dataset_ops.DatasetV2.from_tensor_slices(
+          np.ones([10, 12]).astype(np.float32)).batch(4)
+
+    if input_type == "dataset":
+      ds = distribution.experimental_distribute_dataset(
+          dataset_fn(distribute_lib.InputContext()))
+      type_spec = ds.element_spec
+    else:
+      ds = distribution.experimental_distribute_datasets_from_function(
+          dataset_fn)
+      iterator = iter(ds)
+      type_spec = iterator.element_spec
+
+    @def_function.function(input_signature=[type_spec])
+    def process_inputs(inputs):
+      distribution.experimental_run_v2(lambda inputs: inputs, args=(inputs,))
+
+    for x in ds:
+      process_inputs(x)
+
+  @combinations.generate(
+      combinations.combine(
+          mode=["eager"],
+          distribution=[
+              strategy_combinations.one_device_strategy,
+              strategy_combinations.mirrored_strategy_with_one_cpu,
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations.tpu_strategy,
+              strategy_combinations.central_storage_strategy_with_two_gpus,
+          ],
+      ))
+  def testInputSignatureForNestedPerReplicaValues(self, distribution):
+    a = np.ones((10, 2)) * 5
+    b = np.ones((10, 3)) * 6
+    dataset = dataset_ops.DatasetV2.from_tensor_slices((a, b)).batch(2)
+
+    dist_dataset = distribution.experimental_distribute_dataset(dataset)
+
+    @def_function.function(input_signature=[dist_dataset.element_spec])
+    def process_inputs(inputs):
+      distribution.experimental_run_v2(lambda inputs: inputs, args=(inputs,))
+
+    for x in dist_dataset:
+      process_inputs(x)
+
+
 if __name__ == "__main__":
   test.main()

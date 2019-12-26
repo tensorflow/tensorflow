@@ -120,7 +120,6 @@ cuda_py_test(
     size = "small",
     srcs = ["list_ops_test.py"],
     grpc_enabled = True,
-    tags = ["no_rocm"],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -1287,7 +1286,6 @@ cuda_py_test(
     shard_count = 10,
     tags = [
         "no_oss",  # TODO(b/142818120): Re-enable.
-        "no_rocm",
     ],
     deps = [
         "//tensorflow/python:client_testlib",
@@ -2717,7 +2715,6 @@ cuda_py_test(
     srcs = ["tensor_array_ops_test.py"],
     flaky = 1,  # create_local_cluster sometimes times out.
     shard_count = 10,
-    tags = ["no_rocm"],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -3448,9 +3445,6 @@ cuda_py_test(
     size = "medium",
     srcs = ["qr_op_test.py"],
     shard_count = 20,
-    tags = [
-        "no_rocm",  # TODO(rocm): feature not supported on ROCm platform
-    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

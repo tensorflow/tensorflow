@@ -46,4 +46,3 @@ If you want to contribute, start working through the MLIR codebase, navigate to 
 Include a license at the top of new files.
 
 * [C/C++ license example](https://github.com/tensorflow/mlir/blob/master/examples/toy/Ch1/toyc.cpp)
-* [Python license example](https://github.com/tensorflow/mlir/blob/master/bindings/python/test/test_py2and3.py)

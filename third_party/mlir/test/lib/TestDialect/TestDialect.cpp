@@ -1,19 +1,10 @@
 //===- TestDialect.cpp - MLIR Dialect for Testing -------------------------===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 
 #include "TestDialect.h"
 #include "mlir/IR/Function.h"
@@ -100,7 +91,7 @@ struct TestInlinerInterface : public DialectInlinerInterface {
   /// Handle the given inlined terminator by replacing it with a new operation
   /// as necessary.
   void handleTerminator(Operation *op,
-                        ArrayRef<Value *> valuesToRepl) const final {
+                        ArrayRef<Value> valuesToRepl) const final {
     // Only handle "test.return" here.
     auto returnOp = dyn_cast<TestReturnOp>(op);
     if (!returnOp)
@@ -117,7 +108,7 @@ struct TestInlinerInterface : public DialectInlinerInterface {
   /// operation that takes 'input' as the only operand, and produces a single
   /// result of 'resultType'. If a conversion can not be generated, nullptr
   /// should be returned.
-  Operation *materializeCallConversion(OpBuilder &builder, Value *input,
+  Operation *materializeCallConversion(OpBuilder &builder, Value input,
                                        Type resultType,
                                        Location conversionLoc) const final {
     // Only allow conversion for i16/i32 types.
@@ -231,7 +222,7 @@ static ParseResult parseWrappingRegionOp(OpAsmParser &parser,
 
   // Create a return terminator in the inner region, pass as operand to the
   // terminator the returned values from the wrapped operation.
-  SmallVector<Value *, 8> return_operands(wrapped_op->getResults());
+  SmallVector<Value, 8> return_operands(wrapped_op->getResults());
   OpBuilder builder(parser.getBuilder().getContext());
   builder.setInsertionPointToEnd(&block);
   builder.create<TestReturnOp>(wrapped_op->getLoc(), return_operands);
@@ -297,7 +288,7 @@ OpFoldResult TestOpWithRegionFold::fold(ArrayRef<Attribute> operands) {
 
 LogicalResult TestOpWithVariadicResultsAndFolder::fold(
     ArrayRef<Attribute> operands, SmallVectorImpl<OpFoldResult> &results) {
-  for (Value *input : this->operands()) {
+  for (Value input : this->operands()) {
     results.push_back(input);
   }
   return success();

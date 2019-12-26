@@ -1,19 +1,10 @@
 //===-- GPUOps.td - GPU dialect operation definitions ------*- tablegen -*-===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 //
 // Defines some operations of the GPU dialect.
 //
@@ -157,7 +148,7 @@ def GPU_GPUFuncOp : GPU_Op<"func", [FunctionLike, IsolatedFromAbove, Symbol]> {
 
     /// Returns a list of block arguments that correspond to buffers located in
     /// the workgroup memory
-    ArrayRef<BlockArgument *> getWorkgroupAttributions() {
+    ArrayRef<BlockArgument> getWorkgroupAttributions() {
       auto begin =
           std::next(getBody().front().args_begin(), getType().getNumInputs());
       auto end = std::next(begin, getNumWorkgroupAttributions());
@@ -166,7 +157,7 @@ def GPU_GPUFuncOp : GPU_Op<"func", [FunctionLike, IsolatedFromAbove, Symbol]> {
 
     /// Returns a list of block arguments that correspond to buffers located in
     /// the private memory.
-    ArrayRef<BlockArgument *> getPrivateAttributions() {
+    ArrayRef<BlockArgument> getPrivateAttributions() {
       auto begin =
           std::next(getBody().front().args_begin(),
                     getType().getNumInputs() + getNumWorkgroupAttributions());
@@ -282,8 +273,8 @@ def GPU_LaunchFuncOp : GPU_Op<"launch_func">,
 
   let builders = [
     OpBuilder<"Builder *builder, OperationState &result, GPUFuncOp kernelFunc, "
-              "Value *gridSizeX, Value *gridSizeY, Value *gridSizeZ, "
-              "Value *blockSizeX, Value *blockSizeY, Value *blockSizeZ, "
+              "Value gridSizeX, Value gridSizeY, Value gridSizeZ, "
+              "Value blockSizeX, Value blockSizeY, Value blockSizeZ, "
               "ValueRange kernelOperands">,
     OpBuilder<"Builder *builder, OperationState &result, GPUFuncOp kernelFunc, "
               "KernelDim3 gridSize, KernelDim3 blockSize, "
@@ -302,7 +293,7 @@ def GPU_LaunchFuncOp : GPU_Op<"launch_func">,
     StringRef getKernelModuleName();
 
     /// The i-th operand passed to the kernel function.
-    Value *getKernelOperand(unsigned i);
+    Value getKernelOperand(unsigned i);
 
     /// Get the SSA values passed as operands to specify the grid size.
     KernelDim3 getGridSizeOperandValues();
@@ -415,9 +406,9 @@ def GPU_LaunchOp : GPU_Op<"launch", [IsolatedFromAbove]>,
   let skipDefaultBuilders = 1;
 
   let builders = [
-    OpBuilder<"Builder *builder, OperationState &result, Value *gridSizeX,"
-              "Value *gridSizeY, Value *gridSizeZ, Value *blockSizeX,"
-              "Value *blockSizeY, Value *blockSizeZ,"
+    OpBuilder<"Builder *builder, OperationState &result, Value gridSizeX,"
+              "Value gridSizeY, Value gridSizeZ, Value blockSizeX,"
+              "Value blockSizeY, Value blockSizeZ,"
               "ValueRange operands">
   ];
 

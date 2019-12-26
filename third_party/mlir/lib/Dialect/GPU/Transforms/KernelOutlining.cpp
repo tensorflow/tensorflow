@@ -1,19 +1,10 @@
 //===- KernelOutlining.cpp - Implementation of GPU kernel outlining -------===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 //
 // This file implements the GPU dialect kernel outlining pass.
 //
@@ -31,10 +22,10 @@ using namespace mlir;
 
 template <typename OpTy>
 static void createForAllDimensions(OpBuilder &builder, Location loc,
-                                   SmallVectorImpl<Value *> &values) {
+                                   SmallVectorImpl<Value> &values) {
   for (StringRef dim : {"x", "y", "z"}) {
-    Value *v = builder.create<OpTy>(loc, builder.getIndexType(),
-                                    builder.getStringAttr(dim));
+    Value v = builder.create<OpTy>(loc, builder.getIndexType(),
+                                   builder.getStringAttr(dim));
     values.push_back(v);
   }
 }
@@ -46,7 +37,7 @@ static void injectGpuIndexOperations(Location loc, Region &body) {
   OpBuilder builder(loc->getContext());
   Block &firstBlock = body.front();
   builder.setInsertionPointToStart(&firstBlock);
-  SmallVector<Value *, 12> indexOps;
+  SmallVector<Value, 12> indexOps;
   createForAllDimensions<gpu::BlockIdOp>(builder, loc, indexOps);
   createForAllDimensions<gpu::ThreadIdOp>(builder, loc, indexOps);
   createForAllDimensions<gpu::GridDimOp>(builder, loc, indexOps);
@@ -69,7 +60,7 @@ static gpu::LaunchFuncOp inlineBeneficiaryOps(gpu::GPUFuncOp kernelFunc,
                                               gpu::LaunchFuncOp launch) {
   OpBuilder kernelBuilder(kernelFunc.getBody());
   auto &firstBlock = kernelFunc.getBody().front();
-  SmallVector<Value *, 8> newLaunchArgs;
+  SmallVector<Value, 8> newLaunchArgs;
   BlockAndValueMapping map;
   for (int i = 0, e = launch.getNumKernelOperands(); i < e; ++i) {
     map.map(launch.getKernelOperand(i), kernelFunc.getArgument(i));
@@ -82,7 +73,7 @@ static gpu::LaunchFuncOp inlineBeneficiaryOps(gpu::GPUFuncOp kernelFunc,
     }
     // Only inline operations that do not create new arguments.
     if (!llvm::all_of(operandOp->getOperands(),
-                      [map](Value *value) { return map.contains(value); })) {
+                      [map](Value value) { return map.contains(value); })) {
       continue;
     }
     auto clone = kernelBuilder.clone(*operandOp, map);

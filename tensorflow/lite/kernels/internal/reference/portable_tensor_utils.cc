@@ -504,14 +504,6 @@ void PortableCwiseClipping(int8_t* input, const int8_t clipping_value,
   }
 }
 
-void PortableVectorVectorCwiseProduct(const float* vector1,
-                                      const float* vector2, int v_size,
-                                      float* result) {
-  for (int v = 0; v < v_size; v++) {
-    result[v] = vector1[v] * vector2[v];
-  }
-}
-
 float PortableVectorVectorDotProduct(const float* vector1, const float* vector2,
                                      int v_size) {
   float result = 0.0;
@@ -542,14 +534,6 @@ void PortableBatchVectorBatchVectorDotProduct(const int16_t* vector1,
     vector1 += v_size;
     vector2 += v_size;
     result += result_stride;
-  }
-}
-
-void PortableVectorVectorCwiseProductAccumulate(const float* vector1,
-                                                const float* vector2,
-                                                int v_size, float* result) {
-  for (int v = 0; v < v_size; v++) {
-    result[v] += vector1[v] * vector2[v];
   }
 }
 

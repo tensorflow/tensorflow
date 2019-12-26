@@ -70,7 +70,6 @@ cuda_py_test(
     srcs = ["xla_test.py"],
     tags = [
         "no_mac",
-        "no_rocm",  # XLA support is not enabled on the ROCm platform
         "no_windows",
     ],
     xla_enabled = True,

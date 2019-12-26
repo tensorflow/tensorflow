@@ -1,19 +1,10 @@
 //===- GreedyPatternRewriteDriver.cpp - A greedy rewriter -----------------===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 //
 // This file implements mlir::applyPatternsGreedily.
 //
@@ -107,7 +98,7 @@ protected:
   // simplifications to its users - make sure to add them to the worklist
   // before the root is changed.
   void notifyRootReplaced(Operation *op) override {
-    for (auto *result : op->getResults())
+    for (auto result : op->getResults())
       for (auto *user : result->getUsers())
         addToWorklist(user);
   }
@@ -118,7 +109,7 @@ private:
   // operation is modified or removed, as it may trigger further
   // simplifications.
   template <typename Operands> void addToWorklist(Operands &&operands) {
-    for (Value *operand : operands) {
+    for (Value operand : operands) {
       // If the use count of this operand is now < 2, we re-add the defining
       // operation to the worklist.
       // TODO(riverriddle) This is based on the fact that zero use operations
@@ -160,7 +151,7 @@ bool GreedyPatternRewriteDriver::simplify(MutableArrayRef<Region> regions,
       region.walk(collectOps);
 
     // These are scratch vectors used in the folding loop below.
-    SmallVector<Value *, 8> originalOperands, resultValues;
+    SmallVector<Value, 8> originalOperands, resultValues;
 
     changed = false;
     while (!worklist.empty()) {
@@ -189,7 +180,7 @@ bool GreedyPatternRewriteDriver::simplify(MutableArrayRef<Region> regions,
 
         // Add all the users of the result to the worklist so we make sure
         // to revisit them.
-        for (auto *result : op->getResults())
+        for (auto result : op->getResults())
           for (auto *operand : result->getUsers())
             addToWorklist(operand);
 

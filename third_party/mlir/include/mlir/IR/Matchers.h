@@ -1,19 +1,10 @@
 //===- Matchers.h - Various common matchers ---------------------*- C++ -*-===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 //
 // This file provides a simple and efficient mechanism for performing general
 // tree-based pattern matching over MLIR. This mechanism is inspired by LLVM's
@@ -142,7 +133,7 @@ using has_operation_or_value_matcher_t =
 /// Statically switch to a Value matcher.
 template <typename MatcherClass>
 typename std::enable_if_t<is_detected<detail::has_operation_or_value_matcher_t,
-                                      MatcherClass, Value *>::value,
+                                      MatcherClass, Value>::value,
                           bool>
 matchOperandOrValueAtIndex(Operation *op, unsigned idx, MatcherClass &matcher) {
   return matcher.match(op->getOperand(idx));
@@ -161,14 +152,14 @@ matchOperandOrValueAtIndex(Operation *op, unsigned idx, MatcherClass &matcher) {
 
 /// Terminal matcher, always returns true.
 struct AnyValueMatcher {
-  bool match(Value *op) const { return true; }
+  bool match(Value op) const { return true; }
 };
 
 /// Binds to a specific value and matches it.
 struct PatternMatcherValue {
-  PatternMatcherValue(Value *val) : value(val) {}
-  bool match(Value *val) const { return val == value; }
-  Value *value;
+  PatternMatcherValue(Value val) : value(val) {}
+  bool match(Value val) const { return val == value; }
+  Value value;
 };
 
 template <typename TupleT, class CallbackT, std::size_t... Is>
@@ -235,7 +226,7 @@ inline detail::constant_int_not_value_matcher<0> m_NonZero() {
 
 /// Entry point for matching a pattern over a Value.
 template <typename Pattern>
-inline bool matchPattern(Value *value, const Pattern &pattern) {
+inline bool matchPattern(Value value, const Pattern &pattern) {
   // TODO: handle other cases
   if (auto *op = value->getDefiningOp())
     return const_cast<Pattern &>(pattern).match(op);
@@ -262,7 +253,7 @@ auto m_Op(Matchers... matchers) {
 
 namespace matchers {
 inline auto m_Any() { return detail::AnyValueMatcher(); }
-inline auto m_Val(Value *v) { return detail::PatternMatcherValue(v); }
+inline auto m_Val(Value v) { return detail::PatternMatcherValue(v); }
 } // namespace matchers
 
 } // end namespace mlir

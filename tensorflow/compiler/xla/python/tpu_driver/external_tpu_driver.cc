@@ -109,10 +109,13 @@ class ExternalBufferHandle : public BufferHandle {
 
 class ExternalCompiledProgramHandle : public CompiledProgramHandle {
  public:
-  std::shared_ptr<Event> OnReady() override {
-    LOG(FATAL) << "Unimplemented";
-    return std::shared_ptr<Event>();
-  }
+  explicit ExternalCompiledProgramHandle(::TpuDriverFn* driver_fn,
+                                         ::TpuCompiledProgramHandle* handle)
+      : handle_(handle),
+        driver_fn_(driver_fn),
+        event_(new ExternalEvent(driver_fn, handle->event)) {}
+
+  std::shared_ptr<Event> OnReady() override { return event_; }
 
   int64_t size_in_bytes() override {
     LOG(FATAL) << "Unimplemented.";
@@ -120,22 +123,42 @@ class ExternalCompiledProgramHandle : public CompiledProgramHandle {
   }
 
   xla::Status program_shape(xla::ProgramShapeProto* program_shape) override {
-    LOG(FATAL) << "Unimplemented.";
-    return xla::Unimplemented("%s", "Unimplemented.");
+    struct CompiledProgramShape* shape =
+        driver_fn_->TpuDriver_GetCompiledProgramShape(handle_);
+    program_shape->ParseFromArray(shape->bytes, shape->size);
+
+    auto status = xla::Status(tensorflow::error::Code(shape->status->code),
+                              absl::StrFormat("%s", shape->status->msg));
+    driver_fn_->TpuDriver_FreeCompiledProgramShape(shape);
+
+    return status;
   }
+
+ private:
+  ::TpuCompiledProgramHandle* handle_;
+  ::TpuDriverFn* driver_fn_;
+  std::shared_ptr<ExternalEvent> event_;
+
+  friend ExternalTpuDriver;
 };
 
 class ExternalLoadedProgramHandle : public LoadedProgramHandle {
  public:
-  std::shared_ptr<Event> OnReady() override {
-    LOG(FATAL) << "Unimplemented";
-    return std::shared_ptr<Event>();
-  }
+  explicit ExternalLoadedProgramHandle(::TpuDriverFn* driver_fn,
+                                       ::TpuLoadedProgramHandle* handle)
+      : handle_(handle), event_(new ExternalEvent(driver_fn, handle->event)) {}
+  std::shared_ptr<Event> OnReady() override { return event_; }
 
   int64_t size_in_bytes() override {
     LOG(FATAL) << "Unimplemented.";
     return 0;
   }
+
+ private:
+  ::TpuLoadedProgramHandle* handle_;
+  std::shared_ptr<ExternalEvent> event_;
+
+  friend ExternalTpuDriver;
 };
 
 class ExternalTpuDriver : public TpuDriver {
@@ -246,28 +269,93 @@ class ExternalTpuDriver : public TpuDriver {
   std::unique_ptr<CompiledProgramHandle> CompileProgram(
       const xla::HloProto& source, int32_t num_replicas,
       absl::Span<Event* const> wait_for) override {
-    LOG(FATAL) << "Unimplemented.";
-    return nullptr;
+    auto tpu_events = MakeEventArray(wait_for);
+
+    struct HloProto hlo;
+    hlo.size = source.ByteSizeLong();
+    hlo.bytes = malloc(hlo.size);
+    if (!source.SerializeToArray(hlo.bytes, hlo.size)) {
+      LOG(ERROR) << "Unable to serialize HLO to array.";
+      return nullptr;
+    }
+
+    auto handle = absl::make_unique<ExternalCompiledProgramHandle>(
+        &driver_fn_,
+        driver_fn_.TpuDriver_CompileProgram(driver_, hlo, num_replicas,
+                                            wait_for.size(), tpu_events));
+
+    free(hlo.bytes);
+    delete tpu_events;
+    return handle;
   }
   std::unique_ptr<LoadedProgramHandle> LoadProgram(
       int32_t core_id, const CompiledProgramHandle* handle,
       absl::Span<Event* const> wait_for) override {
-    LOG(FATAL) << "Unimplemented.";
-    return nullptr;
+    auto tpu_events = MakeEventArray(wait_for);
+
+    auto loaded_handle = absl::make_unique<ExternalLoadedProgramHandle>(
+        &driver_fn_,
+        driver_fn_.TpuDriver_LoadProgram(
+            driver_, core_id,
+            static_cast<const ExternalCompiledProgramHandle*>(handle)->handle_,
+            wait_for.size(), tpu_events));
+
+    delete tpu_events;
+    return loaded_handle;
   }
+
   std::shared_ptr<Event> UnloadProgram(
       std::unique_ptr<LoadedProgramHandle> handle,
       absl::Span<Event* const> wait_for) override {
-    LOG(FATAL) << "Unimplemented.";
-    return nullptr;
+    auto tpu_events = MakeEventArray(wait_for);
+    auto event = std::make_shared<ExternalEvent>(
+        &driver_fn_,
+        driver_fn_.TpuDriver_UnloadProgram(
+            driver_,
+            static_cast<ExternalLoadedProgramHandle*>(handle.get())->handle_,
+            wait_for.size(), tpu_events));
+    delete tpu_events;
+    return event;
   }
+
   std::shared_ptr<Event> ExecuteProgram(
       LoadedProgramHandle* program, absl::Span<BufferHandle* const> inputs,
       absl::Span<BufferHandle* const> outputs,
       const xla::DeviceAssignmentProto& device_assignment,
       absl::Span<Event* const> wait_for) override {
-    LOG(FATAL) << "Unimplemented.";
-    return nullptr;
+    auto tpu_events = MakeEventArray(wait_for);
+
+    struct DeviceAssignmentProto da_proto;
+    da_proto.size = device_assignment.ByteSizeLong();
+    da_proto.bytes = malloc(da_proto.size);
+    if (!device_assignment.SerializeToArray(da_proto.bytes, da_proto.size)) {
+      LOG(ERROR) << "Unable to serialize device assignment to array.";
+      return nullptr;
+    }
+
+    std::vector<::TpuBufferHandle*> inputv;
+    inputv.reserve(inputs.size());
+    for (int i = 0; i < inputs.size(); i++) {
+      inputv.push_back(
+          static_cast<ExternalBufferHandle* const>(inputs[i])->handle_);
+    }
+    std::vector<::TpuBufferHandle*> outputv;
+    outputv.reserve(outputs.size());
+    for (int i = 0; i < outputs.size(); i++) {
+      outputv.push_back(
+          static_cast<ExternalBufferHandle* const>(outputs[i])->handle_);
+    }
+
+    auto event = std::make_shared<ExternalEvent>(
+        &driver_fn_,
+        driver_fn_.TpuDriver_ExecuteProgram(
+            driver_,
+            static_cast<ExternalLoadedProgramHandle*>(program)->handle_,
+            inputs.size(), inputv.data(), outputs.size(), outputv.data(),
+            da_proto, wait_for.size(), tpu_events));
+
+    free(da_proto.bytes);
+    return event;
   }
 
   std::unique_ptr<TpuLinearizer> GetLinearizer() override { return nullptr; }

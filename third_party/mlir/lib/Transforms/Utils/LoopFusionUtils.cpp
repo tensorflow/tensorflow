@@ -1,19 +1,10 @@
 //===- LoopFusionUtils.cpp ---- Utilities for loop fusion ----------===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 //
 // This file implements loop fusion transformation utility functions.
 //
@@ -45,7 +36,7 @@ using namespace mlir;
 // Gathers all load and store memref accesses in 'opA' into 'values', where
 // 'values[memref] == true' for each store operation.
 static void getLoadAndStoreMemRefAccesses(Operation *opA,
-                                          DenseMap<Value *, bool> &values) {
+                                          DenseMap<Value, bool> &values) {
   opA->walk([&](Operation *op) {
     if (auto loadOp = dyn_cast<AffineLoadOp>(op)) {
       if (values.count(loadOp.getMemRef()) == 0)
@@ -60,7 +51,7 @@ static void getLoadAndStoreMemRefAccesses(Operation *opA,
 // accessed 'values' and at least one of the access is a store operation.
 // Returns false otherwise.
 static bool isDependentLoadOrStoreOp(Operation *op,
-                                     DenseMap<Value *, bool> &values) {
+                                     DenseMap<Value, bool> &values) {
   if (auto loadOp = dyn_cast<AffineLoadOp>(op)) {
     return values.count(loadOp.getMemRef()) > 0 &&
            values[loadOp.getMemRef()] == true;
@@ -75,7 +66,7 @@ static bool isDependentLoadOrStoreOp(Operation *op,
 static Operation *getFirstDependentOpInRange(Operation *opA, Operation *opB) {
   // Record memref values from all loads/store in loop nest rooted at 'opA'.
   // Map from memref value to bool which is true if store, false otherwise.
-  DenseMap<Value *, bool> values;
+  DenseMap<Value, bool> values;
   getLoadAndStoreMemRefAccesses(opA, values);
 
   // For each 'opX' in block in range ('opA', 'opB'), check if there is a data
@@ -101,7 +92,7 @@ static Operation *getFirstDependentOpInRange(Operation *opA, Operation *opB) {
 static Operation *getLastDependentOpInRange(Operation *opA, Operation *opB) {
   // Record memref values from all loads/store in loop nest rooted at 'opB'.
   // Map from memref value to bool which is true if store, false otherwise.
-  DenseMap<Value *, bool> values;
+  DenseMap<Value, bool> values;
   getLoadAndStoreMemRefAccesses(opB, values);
 
   // For each 'opX' in block in range ('opA', 'opB') in reverse order,
@@ -121,8 +112,8 @@ static Operation *getLastDependentOpInRange(Operation *opA, Operation *opB) {
         }
         return WalkResult::advance();
       }
-      for (auto *value : op->getResults()) {
-        for (auto *user : value->getUsers()) {
+      for (auto value : op->getResults()) {
+        for (auto user : value->getUsers()) {
           SmallVector<AffineForOp, 4> loops;
           // Check if any loop in loop nest surrounding 'user' is 'opB'.
           getLoopIVs(*user, &loops);
@@ -443,7 +434,7 @@ bool mlir::getFusionComputeCost(AffineForOp srcForOp, LoopNestStats &srcStats,
     // Subtract from operation count the loads/store we expect load/store
     // forwarding to remove.
     unsigned storeCount = 0;
-    llvm::SmallDenseSet<Value *, 4> storeMemrefs;
+    llvm::SmallDenseSet<Value, 4> storeMemrefs;
     srcForOp.walk([&](Operation *op) {
       if (auto storeOp = dyn_cast<AffineStoreOp>(op)) {
         storeMemrefs.insert(storeOp.getMemRef());
@@ -455,7 +446,7 @@ bool mlir::getFusionComputeCost(AffineForOp srcForOp, LoopNestStats &srcStats,
       computeCostMap[insertPointParent] = -storeCount;
     // Subtract out any load users of 'storeMemrefs' nested below
     // 'insertPointParent'.
-    for (auto *value : storeMemrefs) {
+    for (auto value : storeMemrefs) {
       for (auto *user : value->getUsers()) {
         if (auto loadOp = dyn_cast<AffineLoadOp>(user)) {
           SmallVector<AffineForOp, 4> loops;

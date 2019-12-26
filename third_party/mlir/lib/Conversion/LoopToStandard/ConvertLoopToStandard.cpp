@@ -1,19 +1,10 @@
 //===- ConvertLoopToStandard.cpp - ControlFlow to CFG conversion ----------===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 //
 // This file implements a pass to convert loop.for, loop.if and loop.terminator
 // ops into standard CFG ops.
@@ -182,22 +173,22 @@ ForLowering::matchAndRewrite(ForOp forOp, PatternRewriter &rewriter) const {
       rewriter.splitBlock(conditionBlock, conditionBlock->begin());
   auto *lastBodyBlock = &forOp.region().back();
   rewriter.inlineRegionBefore(forOp.region(), endBlock);
-  auto *iv = conditionBlock->getArgument(0);
+  auto iv = conditionBlock->getArgument(0);
 
   // Append the induction variable stepping logic to the last body block and
   // branch back to the condition block.  Construct an expression f :
   // (x -> x+step) and apply this expression to the induction variable.
   rewriter.setInsertionPointToEnd(lastBodyBlock);
-  auto *step = forOp.step();
-  auto *stepped = rewriter.create<AddIOp>(loc, iv, step).getResult();
+  auto step = forOp.step();
+  auto stepped = rewriter.create<AddIOp>(loc, iv, step).getResult();
   if (!stepped)
     return matchFailure();
   rewriter.create<BranchOp>(loc, conditionBlock, stepped);
 
   // Compute loop bounds before branching to the condition.
   rewriter.setInsertionPointToEnd(initBlock);
-  Value *lowerBound = forOp.lowerBound();
-  Value *upperBound = forOp.upperBound();
+  Value lowerBound = forOp.lowerBound();
+  Value upperBound = forOp.upperBound();
   if (!lowerBound || !upperBound)
     return matchFailure();
   rewriter.create<BranchOp>(loc, conditionBlock, lowerBound);
@@ -208,8 +199,7 @@ ForLowering::matchAndRewrite(ForOp forOp, PatternRewriter &rewriter) const {
       rewriter.create<CmpIOp>(loc, CmpIPredicate::slt, iv, upperBound);
 
   rewriter.create<CondBranchOp>(loc, comparison, firstBodyBlock,
-                                ArrayRef<Value *>(), endBlock,
-                                ArrayRef<Value *>());
+                                ArrayRef<Value>(), endBlock, ArrayRef<Value>());
   // Ok, we're done!
   rewriter.eraseOp(forOp);
   return matchSuccess();
@@ -248,8 +238,8 @@ IfLowering::matchAndRewrite(IfOp ifOp, PatternRewriter &rewriter) const {
 
   rewriter.setInsertionPointToEnd(condBlock);
   rewriter.create<CondBranchOp>(loc, ifOp.condition(), thenBlock,
-                                /*trueArgs=*/ArrayRef<Value *>(), elseBlock,
-                                /*falseArgs=*/ArrayRef<Value *>());
+                                /*trueArgs=*/ArrayRef<Value>(), elseBlock,
+                                /*falseArgs=*/ArrayRef<Value>());
 
   // Ok, we're done!
   rewriter.eraseOp(ifOp);

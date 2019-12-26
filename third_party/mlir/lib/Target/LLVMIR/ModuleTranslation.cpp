@@ -1,19 +1,10 @@
 //===- ModuleTranslation.cpp - MLIR to LLVM conversion --------------------===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 //
 // This file implements the translation between an MLIR LLVM dialect module and
 // the corresponding LLVMIR module. It only handles core LLVM IR operations.
@@ -248,7 +239,7 @@ LogicalResult ModuleTranslation::convertBlock(Block &bb, bool ignoreArguments) {
     auto predecessors = bb.getPredecessors();
     unsigned numPredecessors =
         std::distance(predecessors.begin(), predecessors.end());
-    for (auto *arg : bb.getArguments()) {
+    for (auto arg : bb.getArguments()) {
       auto wrappedType = arg->getType().dyn_cast<LLVM::LLVMType>();
       if (!wrappedType)
         return emitError(bb.front().getLoc(),
@@ -342,8 +333,8 @@ void ModuleTranslation::convertGlobals() {
 
 /// Get the SSA value passed to the current block from the terminator operation
 /// of its predecessor.
-static Value *getPHISourceValue(Block *current, Block *pred,
-                                unsigned numArguments, unsigned index) {
+static Value getPHISourceValue(Block *current, Block *pred,
+                               unsigned numArguments, unsigned index) {
   auto &terminator = *pred->getTerminator();
   if (isa<LLVM::BrOp>(terminator)) {
     return terminator.getOperand(index);
@@ -420,7 +411,7 @@ LogicalResult ModuleTranslation::convertOneFunction(LLVMFuncOp func) {
   unsigned int argIdx = 0;
   for (const auto &kvp : llvm::zip(func.getArguments(), llvmFunc->args())) {
     llvm::Argument &llvmArg = std::get<1>(kvp);
-    BlockArgument *mlirArg = std::get<0>(kvp);
+    BlockArgument mlirArg = std::get<0>(kvp);
 
     if (auto attr = func.getArgAttrOfType<BoolAttr>(argIdx, "llvm.noalias")) {
       // NB: Attribute already verified to be boolean, so check if we can indeed
@@ -497,7 +488,7 @@ SmallVector<llvm::Value *, 8>
 ModuleTranslation::lookupValues(ValueRange values) {
   SmallVector<llvm::Value *, 8> remapped;
   remapped.reserve(values.size());
-  for (Value *v : values)
+  for (Value v : values)
     remapped.push_back(valueMapping.lookup(v));
   return remapped;
 }

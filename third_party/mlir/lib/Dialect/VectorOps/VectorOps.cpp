@@ -1,19 +1,10 @@
 //===- VectorOps.cpp - MLIR Super Vectorizer Operations -------------------===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 //
 // This file implements convenience types for working with super-vectorization
 // operations, in particular super-vector loads and stores.
@@ -72,7 +63,7 @@ ArrayAttr vector::getVectorSubscriptAttr(Builder &builder,
 //===----------------------------------------------------------------------===//
 
 void vector::ContractionOp::build(Builder *builder, OperationState &result,
-                                  Value *lhs, Value *rhs, Value *acc,
+                                  Value lhs, Value rhs, Value acc,
                                   ArrayAttr indexingMaps,
                                   ArrayAttr iteratorTypes) {
   result.addOperands({lhs, rhs, acc});
@@ -404,7 +395,7 @@ static Type inferExtractOpResultType(VectorType vectorType,
 }
 
 void vector::ExtractOp::build(Builder *builder, OperationState &result,
-                              Value *source, ArrayRef<int64_t> position) {
+                              Value source, ArrayRef<int64_t> position) {
   result.addOperands(source);
   auto positionAttr = getVectorSubscriptAttr(*builder, position);
   result.addTypes(inferExtractOpResultType(source->getType().cast<VectorType>(),
@@ -471,7 +462,7 @@ static LogicalResult verify(vector::ExtractOp op) {
 //===----------------------------------------------------------------------===//
 
 void ExtractSlicesOp::build(Builder *builder, OperationState &result,
-                            TupleType tupleType, Value *vector,
+                            TupleType tupleType, Value vector,
                             ArrayRef<int64_t> sizes,
                             ArrayRef<int64_t> strides) {
   result.addOperands(vector);
@@ -647,8 +638,8 @@ static ParseResult parseBroadcastOp(OpAsmParser &parser,
 // ShuffleOp
 //===----------------------------------------------------------------------===//
 
-void ShuffleOp::build(Builder *builder, OperationState &result, Value *v1,
-                      Value *v2, ArrayRef<int64_t> mask) {
+void ShuffleOp::build(Builder *builder, OperationState &result, Value v1,
+                      Value v2, ArrayRef<int64_t> mask) {
   result.addOperands({v1, v2});
   auto maskAttr = getVectorSubscriptAttr(*builder, mask);
   result.addTypes(v1->getType());
@@ -771,8 +762,8 @@ static LogicalResult verify(InsertElementOp op) {
 // InsertOp
 //===----------------------------------------------------------------------===//
 
-void InsertOp::build(Builder *builder, OperationState &result, Value *source,
-                     Value *dest, ArrayRef<int64_t> position) {
+void InsertOp::build(Builder *builder, OperationState &result, Value source,
+                     Value dest, ArrayRef<int64_t> position) {
   result.addOperands({source, dest});
   auto positionAttr = getVectorSubscriptAttr(*builder, position);
   result.addTypes(dest->getType());
@@ -893,7 +884,7 @@ void InsertSlicesOp::getStrides(SmallVectorImpl<int64_t> &results) {
 //===----------------------------------------------------------------------===//
 
 void InsertStridedSliceOp::build(Builder *builder, OperationState &result,
-                                 Value *source, Value *dest,
+                                 Value source, Value dest,
                                  ArrayRef<int64_t> offsets,
                                  ArrayRef<int64_t> strides) {
   result.addOperands({source, dest});
@@ -1201,17 +1192,17 @@ static LogicalResult verify(ReshapeOp op) {
 
   // If all shape operands are produced by constant ops, verify that product
   // of dimensions for input/output shape match.
-  auto isDefByConstant = [](Value *operand) {
+  auto isDefByConstant = [](Value operand) {
     return isa_and_nonnull<ConstantIndexOp>(operand->getDefiningOp());
   };
   if (llvm::all_of(op.input_shape(), isDefByConstant) &&
       llvm::all_of(op.output_shape(), isDefByConstant)) {
     int64_t numInputElements = 1;
-    for (auto *operand : op.input_shape())
+    for (auto operand : op.input_shape())
       numInputElements *=
           cast<ConstantIndexOp>(operand->getDefiningOp()).getValue();
     int64_t numOutputElements = 1;
-    for (auto *operand : op.output_shape())
+    for (auto operand : op.output_shape())
       numOutputElements *=
           cast<ConstantIndexOp>(operand->getDefiningOp()).getValue();
     if (numInputElements != numOutputElements)
@@ -1247,7 +1238,7 @@ static Type inferStridedSliceOpResultType(VectorType vectorType,
 }
 
 void StridedSliceOp::build(Builder *builder, OperationState &result,
-                           Value *source, ArrayRef<int64_t> offsets,
+                           Value source, ArrayRef<int64_t> offsets,
                            ArrayRef<int64_t> sizes, ArrayRef<int64_t> strides) {
   result.addOperands(source);
   auto offsetsAttr = getVectorSubscriptAttr(*builder, offsets);
@@ -1602,8 +1593,7 @@ static MemRefType inferVectorTypeCastResultType(MemRefType t) {
   return MemRefType::get({}, VectorType::get(t.getShape(), t.getElementType()));
 }
 
-void TypeCastOp::build(Builder *builder, OperationState &result,
-                       Value *source) {
+void TypeCastOp::build(Builder *builder, OperationState &result, Value source) {
   result.addOperands(source);
   result.addTypes(
       inferVectorTypeCastResultType(source->getType().cast<MemRefType>()));
@@ -1793,14 +1783,14 @@ public:
   PatternMatchResult matchAndRewrite(CreateMaskOp createMaskOp,
                                      PatternRewriter &rewriter) const override {
     // Return if any of 'createMaskOp' operands are not defined by a constant.
-    auto is_not_def_by_constant = [](Value *operand) {
+    auto is_not_def_by_constant = [](Value operand) {
       return !isa_and_nonnull<ConstantIndexOp>(operand->getDefiningOp());
     };
     if (llvm::any_of(createMaskOp.operands(), is_not_def_by_constant))
       return matchFailure();
     // Gather constant mask dimension sizes.
     SmallVector<int64_t, 4> maskDimSizes;
-    for (auto *operand : createMaskOp.operands()) {
+    for (auto operand : createMaskOp.operands()) {
       auto defOp = operand->getDefiningOp();
       maskDimSizes.push_back(cast<ConstantIndexOp>(defOp).getValue());
     }

@@ -1,19 +1,10 @@
 //===- InliningUtils.h - Inliner utilities ----------------------*- C++ -*-===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 //
 // This header file defines interfaces for various inlining utility methods.
 //
@@ -105,7 +96,7 @@ public:
   /// operation). The given 'op' will be removed by the caller, after this
   /// function has been called.
   virtual void handleTerminator(Operation *op,
-                                ArrayRef<Value *> valuesToReplace) const {
+                                ArrayRef<Value> valuesToReplace) const {
     llvm_unreachable(
         "must implement handleTerminator in the case of one inlined block");
   }
@@ -125,7 +116,7 @@ public:
   ///   ... = foo.call @foo(%input : i32) -> i16
   ///
   /// NOTE: This hook may be invoked before the 'isLegal' checks above.
-  virtual Operation *materializeCallConversion(OpBuilder &builder, Value *input,
+  virtual Operation *materializeCallConversion(OpBuilder &builder, Value input,
                                                Type resultType,
                                                Location conversionLoc) const {
     return nullptr;
@@ -165,7 +156,7 @@ public:
 
   virtual void handleTerminator(Operation *op, Block *newDest) const;
   virtual void handleTerminator(Operation *op,
-                                ArrayRef<Value *> valuesToRepl) const;
+                                ArrayRef<Value> valuesToRepl) const;
 };
 
 //===----------------------------------------------------------------------===//
@@ -187,7 +178,7 @@ public:
 /// be cloned into the 'inlinePoint' or spliced directly.
 LogicalResult inlineRegion(InlinerInterface &interface, Region *src,
                            Operation *inlinePoint, BlockAndValueMapping &mapper,
-                           ArrayRef<Value *> resultsToReplace,
+                           ArrayRef<Value> resultsToReplace,
                            Optional<Location> inlineLoc = llvm::None,
                            bool shouldCloneInlinedRegion = true);
 
@@ -196,8 +187,8 @@ LogicalResult inlineRegion(InlinerInterface &interface, Region *src,
 /// in-favor of the region arguments when inlining.
 LogicalResult inlineRegion(InlinerInterface &interface, Region *src,
                            Operation *inlinePoint,
-                           ArrayRef<Value *> inlinedOperands,
-                           ArrayRef<Value *> resultsToReplace,
+                           ArrayRef<Value> inlinedOperands,
+                           ArrayRef<Value> resultsToReplace,
                            Optional<Location> inlineLoc = llvm::None,
                            bool shouldCloneInlinedRegion = true);
 

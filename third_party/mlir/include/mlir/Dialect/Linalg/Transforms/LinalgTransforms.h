@@ -1,19 +1,10 @@
 //===- LinalgTransforms.h - Linalg transformations as patterns --*- C++ -*-===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 
 #ifndef DIALECT_LINALG_TRANSFORMS_LINALGTRANSFORMS_H_
 #define DIALECT_LINALG_TRANSFORMS_LINALGTRANSFORMS_H_
@@ -38,7 +29,7 @@ struct LinalgTransforms {
 namespace detail {
 // Implementation detail of isProducedByOpOfType avoids the need for explicit
 // template instantiations.
-bool isProducedByOpOfTypeImpl(Operation *consumerOp, Value *consumedView,
+bool isProducedByOpOfTypeImpl(Operation *consumerOp, Value consumedView,
                               function_ref<bool(Operation *)> isaOpType);
 } // namespace detail
 
@@ -46,7 +37,7 @@ bool isProducedByOpOfTypeImpl(Operation *consumerOp, Value *consumedView,
 // an op of type `OpTy`. This is used to implement use-def type information on
 // buffers.
 template <typename OpTy>
-bool isProducedByOpOfType(Operation *consumerOp, Value *consumedView) {
+bool isProducedByOpOfType(Operation *consumerOp, Value consumedView) {
   return detail::isProducedByOpOfTypeImpl(
       consumerOp, consumedView, [](Operation *op) { return isa<OpTy>(op); });
 }

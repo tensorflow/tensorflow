@@ -1,19 +1,10 @@
 //===- Builders.h - MLIR Declarative Linalg Builders ------------*- C++ -*-===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 //
 // Provides intuitive composable interfaces for building structured MLIR
 // snippets in a declarative fashion.
@@ -55,35 +46,34 @@ inline StringRef toString(IterType t) {
 ///      makeLinalgGenericOp({A({m, n}), B({k, n})}, {C({m, n})}, ... );
 /// ```
 struct StructuredIndexed {
-  StructuredIndexed(Value *v) : value(v) {}
+  StructuredIndexed(Value v) : value(v) {}
   StructuredIndexed operator()(ArrayRef<AffineExpr> indexings) {
     return StructuredIndexed(value, indexings);
   }
 
-  operator Value *() const /* implicit */ { return value; }
+  operator Value() const /* implicit */ { return value; }
   ArrayRef<AffineExpr> getExprs() { return exprs; }
 
 private:
-  StructuredIndexed(Value *v, ArrayRef<AffineExpr> indexings)
+  StructuredIndexed(Value v, ArrayRef<AffineExpr> indexings)
       : value(v), exprs(indexings.begin(), indexings.end()) {
     assert(v->getType().isa<MemRefType>() && "MemRefType expected");
   }
   StructuredIndexed(ValueHandle v, ArrayRef<AffineExpr> indexings)
       : StructuredIndexed(v.getValue(), indexings) {}
 
-  Value *value;
+  Value value;
   SmallVector<AffineExpr, 4> exprs;
 };
 
-inline void defaultRegionBuilder(ArrayRef<BlockArgument *> args) {}
+inline void defaultRegionBuilder(ArrayRef<BlockArgument> args) {}
 
-Operation *makeLinalgGenericOp(ArrayRef<IterType> iteratorTypes,
-                               ArrayRef<StructuredIndexed> inputs,
-                               ArrayRef<StructuredIndexed> outputs,
-                               function_ref<void(ArrayRef<BlockArgument *>)>
-                                   regionBuilder = defaultRegionBuilder,
-                               ArrayRef<Value *> otherValues = {},
-                               ArrayRef<Attribute> otherAttributes = {});
+Operation *makeLinalgGenericOp(
+    ArrayRef<IterType> iteratorTypes, ArrayRef<StructuredIndexed> inputs,
+    ArrayRef<StructuredIndexed> outputs,
+    function_ref<void(ArrayRef<BlockArgument>)> regionBuilder =
+        defaultRegionBuilder,
+    ArrayRef<Value> otherValues = {}, ArrayRef<Attribute> otherAttributes = {});
 
 namespace ops {
 using edsc::StructuredIndexed;
@@ -96,7 +86,7 @@ using edsc::intrinsics::linalg_yield;
 
 /// Build the body of a region to compute a multiply-accumulate, under the
 /// current ScopedContext, at the current insert point.
-void macRegionBuilder(ArrayRef<BlockArgument *> args);
+void macRegionBuilder(ArrayRef<BlockArgument> args);
 
 /// TODO(ntv): In the future we should tie these implementations to something in
 /// Tablegen that generates the proper interfaces and the proper sugared named
@@ -120,7 +110,7 @@ void macRegionBuilder(ArrayRef<BlockArgument *> args);
 /// with in-place semantics and parallelism.
 
 /// Unary pointwise operation (with broadcast) entry point.
-using UnaryPointwiseOpBuilder = function_ref<Value *(ValueHandle)>;
+using UnaryPointwiseOpBuilder = function_ref<Value(ValueHandle)>;
 Operation *linalg_pointwise(UnaryPointwiseOpBuilder unaryOp,
                             StructuredIndexed I, StructuredIndexed O);
 
@@ -130,8 +120,7 @@ Operation *linalg_pointwise(UnaryPointwiseOpBuilder unaryOp,
 Operation *linalg_pointwise_tanh(StructuredIndexed I, StructuredIndexed O);
 
 /// Binary pointwise operation (with broadcast) entry point.
-using BinaryPointwiseOpBuilder =
-    function_ref<Value *(ValueHandle, ValueHandle)>;
+using BinaryPointwiseOpBuilder = function_ref<Value(ValueHandle, ValueHandle)>;
 Operation *linalg_pointwise(BinaryPointwiseOpBuilder binaryOp,
                             StructuredIndexed I1, StructuredIndexed I2,
                             StructuredIndexed O);
