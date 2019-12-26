@@ -1163,7 +1163,7 @@ def multiply_no_nan(x, y, name=None):
   For example:
   >>> x = 0.0
   >>> y = 34.0
-  >>> tf.math.multiply(x, y)
+  >>> tf.math.multiply_no_nan(0.0, 34.0)
   <tf.Tensor: shape=(), dtype=float32, numpy=0.0>
 
   Args:
@@ -1211,7 +1211,7 @@ def floordiv(x, y, name=None):
   For example:
   >>> x = 32.0
   >>> y = 31.0
-  >>> tf.floordiv(x, y)
+  >>> tf.math.floordiv(x, y)
   <tf.Tensor: shape=(), dtype=float32, numpy=1.0>
 
   Args:
