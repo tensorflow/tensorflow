@@ -1163,7 +1163,7 @@ def multiply_no_nan(x, y, name=None):
   For example:
   >>> x = 0.0
   >>> y = 34.0
-  >>> tf.math.multiply_no_nan(0.0, 34.0)
+  >>> tf.math.multiply_no_nan(x, y)
   <tf.Tensor: shape=(), dtype=float32, numpy=0.0>
 
   Args:
