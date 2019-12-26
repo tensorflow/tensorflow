@@ -3298,7 +3298,7 @@ def log_sigmoid(x, name=None):
   
   For example:
   >>> tf.math.log_sigmoid(tf.constant(1.0, tf.float32))
-  <tf.Tensor: shape=(), dtype=float32, numpy=-0.31326166>
+  <tf.Tensor: shape=(), dtype=float32, numpy=-0.31>
 
   Args:
     x: A Tensor with type `float32` or `float64`.
