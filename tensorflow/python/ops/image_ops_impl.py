@@ -359,8 +359,27 @@ def random_flip_up_down(image, seed=None):
     
   Usage Example:
     ```python
-    >> x = tf.random.normal(shape=(256, 256, 3))
+    >> x = tf.random.normal(shape=(2, 2, 3))
     >> tf.image.random_flip_up_down(x)
+    ```
+
+  Example Output: 
+    ```python
+    Before: 
+    tf.Tensor(
+      [[[-1.0708947  -0.844542   -2.5661693 ]
+        [ 1.4669225   0.81015277 -0.7296188 ]]
+
+      [[ 0.35540557 -1.1513313   0.37631378]
+        [-0.48893246 -1.3950981  -0.50700873]]], shape=(2, 2, 3), dtype=float32)
+
+    After:
+    tf.Tensor(
+      [[[ 0.35540557 -1.1513313   0.37631378]
+        [-0.48893246 -1.3950981  -0.50700873]]
+
+      [[-1.0708947  -0.844542   -2.5661693 ]
+        [ 1.4669225   0.81015277 -0.7296188 ]]], shape=(2, 2, 3), dtype=float32)
     ```
   """
   return _random_flip(image, 0, seed, 'random_flip_up_down')
@@ -406,8 +425,27 @@ def random_flip_left_right(image, seed=None):
     
   Usage Example:
     ```python
-    >> x = tf.random.normal(shape=(256, 256, 3))
+    >> x = tf.random.normal(shape=(2, 2, 3))
     >> tf.image.random_flip_left_right(x)
+    ```
+
+  Example Output: 
+    ```python
+    Before: 
+    tf.Tensor(
+      [[[-1.0708947  -0.844542   -2.5661693 ]
+        [ 1.4669225   0.81015277 -0.7296188 ]]
+
+      [[ 0.35540557 -1.1513313   0.37631378]
+        [-0.48893246 -1.3950981  -0.50700873]]], shape=(2, 2, 3), dtype=float32)
+
+    After:
+    tf.Tensor(
+      [[[ 1.4669225   0.81015277 -0.7296188 ]
+        [-1.0708947  -0.844542   -2.5661693 ]]
+
+      [[-0.48893246 -1.3950981  -0.50700873]
+        [ 0.35540557 -1.1513313   0.37631378]]], shape=(2, 2, 3), dtype=float32)
     ```
   """
   return _random_flip(image, 1, seed, 'random_flip_left_right')
@@ -479,8 +517,27 @@ def flip_left_right(image):
     
   Usage Example:
     ```python
-    >> x = tf.random.normal(shape=(256, 256, 3))
+    >> x = tf.random.normal(shape=(2, 2, 3))
     >> tf.image.flip_left_right(x)
+    ```
+
+  Example Output: 
+    ```python
+    Before: 
+    tf.Tensor(
+      [[[-1.0708947  -0.844542   -2.5661693 ]
+        [ 1.4669225   0.81015277 -0.7296188 ]]
+
+      [[ 0.35540557 -1.1513313   0.37631378]
+        [-0.48893246 -1.3950981  -0.50700873]]], shape=(2, 2, 3), dtype=float32)
+
+    After:
+    tf.Tensor(
+      [[[ 1.4669225   0.81015277 -0.7296188 ]
+        [-1.0708947  -0.844542   -2.5661693 ]]
+
+      [[-0.48893246 -1.3950981  -0.50700873]
+        [ 0.35540557 -1.1513313   0.37631378]]], shape=(2, 2, 3), dtype=float32)
     ```
   """
   return _flip(image, 1, 'flip_left_right')
@@ -506,8 +563,27 @@ def flip_up_down(image):
     
   Usage Example:
     ```python
-    >> x = tf.random.normal(shape=(256, 256, 3))
+    >> x = tf.random.normal(shape=(2, 2, 3))
     >> tf.image.flip_up_down(x)
+    ```
+
+  Example Output: 
+    ```python
+    Before: 
+    tf.Tensor(
+      [[[-1.0708947  -0.844542   -2.5661693 ]
+        [ 1.4669225   0.81015277 -0.7296188 ]]
+
+      [[ 0.35540557 -1.1513313   0.37631378]
+        [-0.48893246 -1.3950981  -0.50700873]]], shape=(2, 2, 3), dtype=float32)
+
+    After:
+    tf.Tensor(
+      [[[ 0.35540557 -1.1513313   0.37631378]
+        [-0.48893246 -1.3950981  -0.50700873]]
+
+      [[-1.0708947  -0.844542   -2.5661693 ]
+        [ 1.4669225   0.81015277 -0.7296188 ]]], shape=(2, 2, 3), dtype=float32)
     ```
   """
   return _flip(image, 0, 'flip_up_down')
@@ -667,8 +743,27 @@ def transpose(image, name=None):
     
   Usage Example:
     ```python
-    >> x = tf.random.normal(shape=(256, 256, 3))
+    >> x = tf.random.normal(shape=(2, 2, 3))
     >> tf.image.transpose(x)
+    ```
+
+  Example Output: 
+    ```python
+    Before: 
+    tf.Tensor(
+      [[[-1.0708947  -0.844542   -2.5661693 ]
+        [ 1.4669225   0.81015277 -0.7296188 ]]
+
+      [[ 0.35540557 -1.1513313   0.37631378]
+        [-0.48893246 -1.3950981  -0.50700873]]], shape=(2, 2, 3), dtype=float32)
+
+    After:
+    tf.Tensor(
+      [[[-1.0708947  -0.844542   -2.5661693 ]
+        [ 0.35540557 -1.1513313   0.37631378]]
+
+      [[ 1.4669225   0.81015277 -0.7296188 ]
+        [-0.48893246 -1.3950981  -0.50700873]]], shape=(2, 2, 3), dtype=float32)
     ```
   """
   with ops.name_scope(name, 'transpose', [image]):
@@ -1646,8 +1741,27 @@ def random_brightness(image, max_delta, seed=None):
     
   Usage Example:
     ```python
-    >> x = tf.random.normal(shape=(256, 256, 3))
+    >> x = tf.random.normal(shape=(2, 2, 3))
     >> tf.image.random_brightness(x, 0.2)
+    ```
+
+  Example Output: 
+    ```python
+    Before: 
+    tf.Tensor(
+      [[[-1.0708947  -0.844542   -2.5661693 ]
+        [ 1.4669225   0.81015277 -0.7296188 ]]
+
+      [[ 0.35540557 -1.1513313   0.37631378]
+        [-0.48893246 -1.3950981  -0.50700873]]], shape=(2, 2, 3), dtype=float32)
+
+    After:
+    tf.Tensor(
+      [[[-1.1320205  -0.9056678  -2.627295  ]
+        [ 1.4057968   0.749027   -0.79074454]]
+
+      [[ 0.2942798  -1.2124571   0.31518802]
+        [-0.55005825 -1.4562238  -0.5681345 ]]], shape=(2, 2, 3), dtype=float32)
     ```
   """
   if max_delta < 0:
@@ -1679,8 +1793,27 @@ def random_contrast(image, lower, upper, seed=None):
     
   Usage Example:
     ```python
-    >> x = tf.random.normal(shape=(256, 256, 3))
+    >> x = tf.random.normal(shape=(2, 2, 3))
     >> tf.image.random_contrast(x, 0.2, 0.5)
+    ```
+
+  Example Output: 
+    ```python
+    Before: 
+    tf.Tensor(
+      [[[-1.0708947  -0.844542   -2.5661693 ]
+        [ 1.4669225   0.81015277 -0.7296188 ]]
+
+      [[ 0.35540557 -1.1513313   0.37631378]
+        [-0.48893246 -1.3950981  -0.50700873]]], shape=(2, 2, 3), dtype=float32)
+
+    After:
+    tf.Tensor(
+      [[[-0.49338517 -0.743251   -1.6974819 ]
+        [ 0.75486946  0.07062966 -0.7941534 ]]
+
+      [[ 0.20815702 -0.8941489  -0.2501877 ]
+        [-0.20714036 -1.0140483  -0.6846601 ]]], shape=(2, 2, 3), dtype=float32)
     ```
   """
   if upper <= lower:
@@ -2115,8 +2248,27 @@ def random_hue(image, max_delta, seed=None):
     
   Usage Example:
     ```python
-    >> x = tf.random.normal(shape=(256, 256, 3))
+    >> x = tf.random.normal(shape=(2, 2, 3))
     >> tf.image.random_hue(x, 0.2)
+    ```
+
+  Example Output: 
+    ```python
+    Before: 
+    tf.Tensor(
+      [[[-1.0708947  -0.844542   -2.5661693 ]
+        [ 1.4669225   0.81015277 -0.7296188 ]]
+
+      [[ 0.35540557 -1.1513313   0.37631378]
+        [-0.48893246 -1.3950981  -0.50700873]]], shape=(2, 2, 3), dtype=float32)
+
+    After:
+    tf.Tensor(
+      [[[-2.2803972  -0.844542   -2.5661693 ]
+        [ 0.58054614  1.4669225  -0.7296188 ]]
+
+      [[ 0.37631378 -1.1513313  -0.6760008 ]
+        [-0.48893246 -1.3950981  -1.1436214 ]]], shape=(2, 2, 3), dtype=float32)
     ```
   """
   if max_delta > 0.5:
@@ -2218,8 +2370,27 @@ def random_jpeg_quality(image, min_jpeg_quality, max_jpeg_quality, seed=None):
     
   Usage Example:
     ```python
-    >> x = tf.random.normal(shape=(256, 256, 3))
+    >> x = tf.random.normal(shape=(2, 2, 3))
     >> tf.image.random_jpeg_quality(x, 75, 95)
+    ```
+
+  Example Output: 
+    ```python
+    Before: 
+    tf.Tensor(
+      [[[-1.0708947  -0.844542   -2.5661693 ]
+        [ 1.4669225   0.81015277 -0.7296188 ]]
+
+      [[ 0.35540557 -1.1513313   0.37631378]
+        [-0.48893246 -1.3950981  -0.50700873]]], shape=(2, 2, 3), dtype=float32)
+
+    After:
+    tf.Tensor(
+      [[[0.43137258 0.47450984 0.24705884]
+        [0.6156863  0.65882355 0.43137258]]
+
+      [[0.627451   0.67058825 0.4431373 ]
+        [0.59607846 0.6392157  0.41176474]]], shape=(2, 2, 3), dtype=float32)
     ```
   """
   if (min_jpeg_quality < 0 or max_jpeg_quality < 0 or min_jpeg_quality > 100 or
@@ -2323,8 +2494,27 @@ def random_saturation(image, lower, upper, seed=None):
     
   Usage Example:
     ```python
-    >> x = tf.random.normal(shape=(256, 256, 3))
+    >> x = tf.random.normal(shape=(2, 2, 3))
     >> tf.image.random_saturation(x, 5, 10)
+    ```
+
+  Example Output: 
+    ```python
+    Before: 
+    tf.Tensor(
+      [[[-1.0708947  -0.844542   -2.5661693 ]
+        [ 1.4669225   0.81015277 -0.7296188 ]]
+
+      [[ 0.35540557 -1.1513313   0.37631378]
+        [-0.48893246 -1.3950981  -0.50700873]]], shape=(2, 2, 3), dtype=float32)
+
+    After:
+    tf.Tensor(
+      [[[-0.844542   -0.844542   -0.844542  ]
+        [ 1.4669225   1.0283101   0.        ]]
+
+      [[ 0.3711633   0.          0.37631378]
+        [-0.48893246 -0.48893246 -0.48893246]]], shape=(2, 2, 3), dtype=float32)
     ```
   """
   if upper <= lower:
