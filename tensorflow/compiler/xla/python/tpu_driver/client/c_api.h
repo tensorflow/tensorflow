@@ -68,6 +68,12 @@ typedef struct TpuStatus {
   char* msg;
 } TpuStatus;
 
+typedef struct CompiledProgramShape {
+  struct TpuStatus* status;
+  void* bytes;
+  int32_t size;
+} CompiledProgramShape;
+
 typedef void(PrototypeTpuDriver_Initialize)(struct TpuDriverFn* driver_fn);
 typedef struct TpuDriver*(PrototypeTpuDriver_Open)(const char* worker);
 typedef void(PrototypeTpuDriver_Close)(struct TpuDriver* driver);
@@ -85,7 +91,7 @@ typedef struct TpuLoadedProgramHandle*(PrototypeTpuDriver_LoadProgram)(
     int32_t eventc, struct TpuEvent** eventv);
 
 typedef struct TpuEvent*(PrototypeTpuDriver_UnloadProgram)(
-    struct TpuDriver* driver, int32_t core_id,
+    struct TpuDriver* driver,
     struct TpuLoadedProgramHandle* loaded_program_handle, int32_t eventc,
     struct TpuEvent** eventv);
 
@@ -120,6 +126,13 @@ typedef struct TpuEvent*(PrototypeTpuDriver_TransferFromDevice)(
 typedef struct TpuEvent*(PrototypeTpuDriver_TransferFromDeviceToDevice)(
     struct TpuDriver* driver, struct TpuBufferHandle* src,
     struct TpuBufferHandle* dst, int32_t eventc, struct TpuEvent** eventv);
+
+typedef struct CompiledProgramShape*(
+    PrototypeTpuDriver_GetCompiledProgramShape)(
+    struct TpuCompiledProgramHandle* handle);
+
+typedef void(PrototypeTpuDriver_FreeCompiledProgramShape)(
+    struct CompiledProgramShape* shape);
 
 typedef void(PrototypeTpuDriver_EventAddCallback)(
     struct TpuEvent* event,
@@ -156,6 +169,10 @@ TPUDRIVER_CAPI_EXPORT extern PrototypeTpuDriver_TransferFromDevice
     TpuDriver_TransferFromDevice;
 TPUDRIVER_CAPI_EXPORT extern PrototypeTpuDriver_TransferFromDeviceToDevice
     TpuDriver_TransferFromDeviceToDevice;
+TPUDRIVER_CAPI_EXPORT extern PrototypeTpuDriver_GetCompiledProgramShape
+    TpuDriver_GetCompiledProgramShape;
+TPUDRIVER_CAPI_EXPORT extern PrototypeTpuDriver_FreeCompiledProgramShape
+    TpuDriver_FreeCompiledProgramShape;
 TPUDRIVER_CAPI_EXPORT extern PrototypeTpuDriver_EventAddCallback
     TpuDriver_EventAddCallback;
 TPUDRIVER_CAPI_EXPORT extern PrototypeTpuDriver_EventAwait TpuDriver_EventAwait;
@@ -182,6 +199,10 @@ struct TpuDriverFn {
       TpuDriver_TransferFromDevice;  // NOLINT
   PrototypeTpuDriver_TransferFromDeviceToDevice*
       TpuDriver_TransferFromDeviceToDevice;                         // NOLINT
+  PrototypeTpuDriver_GetCompiledProgramShape*
+      TpuDriver_GetCompiledProgramShape;  // NOLINT
+  PrototypeTpuDriver_FreeCompiledProgramShape*
+      TpuDriver_FreeCompiledProgramShape;                           // NOLINT
   PrototypeTpuDriver_EventAddCallback* TpuDriver_EventAddCallback;  // NOLINT
   PrototypeTpuDriver_EventAwait* TpuDriver_EventAwait;              // NOLINT
   PrototypeTpuDriver_FreeEvent* TpuDriver_FreeEvent;                // NOLINT
