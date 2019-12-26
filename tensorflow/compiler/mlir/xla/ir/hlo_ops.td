@@ -152,6 +152,10 @@ def HLO_ConvertOp : HLO_UnaryElementwiseOp<
   let hasCustomHLOConverter = 1;
 }
 
+def HLO_ClzOp: HLO_UnaryElementwiseOp<"count_leading_zeros",
+    [NoSideEffect, SameOperandsAndResultType], HLO_IntTensor>,
+    BASE_HLO_ClzOp;
+
 def HLO_CosOp: HLO_UnaryElementwiseOp<"cos",
     [NoSideEffect, SameOperandsAndResultType], HLO_FpOrComplexTensor>,
     BASE_HLO_CosOp;

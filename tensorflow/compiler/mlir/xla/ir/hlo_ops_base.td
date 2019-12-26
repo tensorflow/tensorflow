@@ -68,6 +68,17 @@ class BASE_HLO_CeilOp {
   }];
 }
 
+class BASE_HLO_ClzOp {
+  string summary = "Count-leading-zeros (Clz) operator";
+
+  string description = [{
+    Returns the number of leading zeros in each operand element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+  }];
+}
+
 class BASE_HLO_ComplexOp {
   string summary = "Complex operator";
 
