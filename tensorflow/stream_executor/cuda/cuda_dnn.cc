@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/cuda/cuda_diagnostics.h"
 #include "tensorflow/stream_executor/cuda/cuda_driver.h"
 #include "tensorflow/stream_executor/cuda/cuda_gpu_executor.h"
-#include "tensorflow/stream_executor/cuda/cuda_helpers.h"
 #include "tensorflow/stream_executor/cuda/cuda_platform_id.h"
 #include "tensorflow/stream_executor/cuda/cuda_stream.h"
 #include "tensorflow/stream_executor/cuda/cuda_timer.h"
@@ -631,6 +630,22 @@ bool BatchnormSpatialPersistentEnabled() {
   return is_enabled;
 }
 
+// A helper function to decide whether to enable deterministic functionality.
+bool RequireDeterminism() {
+  static bool require_determinism = [] {
+    bool deterministic_ops = false;
+    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_DETERMINISTIC_OPS",
+                                               /*default_val=*/false,
+                                               &deterministic_ops));
+    bool cudnn_deterministic = false;
+    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_CUDNN_DETERMINISTIC",
+                                               /*default_val=*/false,
+                                               &cudnn_deterministic));
+    return deterministic_ops || cudnn_deterministic;
+  }();
+  return require_determinism;
+}
+
 std::tuple<int, int> GetCcMajorMinor(Stream* stream) {
   int cc_major, cc_minor;
   stream->parent()->GetDeviceDescription().cuda_compute_capability(&cc_major,
@@ -729,10 +744,9 @@ class CudnnPoolingDescriptor {
     std::transform(shape64.cbegin(), shape64.cend(), shape.begin(),
                    &CheckedNarrowing<int64, int>);
     bool propagate_nans = pooling_descriptor.propagate_nans();
-    const auto cudnn_max_pooling_mode =
-                   stream_executor::cuda::RequireCuDNNDeterminism()
-                       ? CUDNN_POOLING_MAX_DETERMINISTIC
-                       : CUDNN_POOLING_MAX;
+    const auto cudnn_max_pooling_mode = RequireDeterminism()
+                                            ? CUDNN_POOLING_MAX_DETERMINISTIC
+                                            : CUDNN_POOLING_MAX;
     CHECK_CUDNN_OK(cudnnSetPoolingNdDescriptor(
         handle_.get(),
         (pooling_descriptor.mode() == dnn::PoolingMode::kMaximum
@@ -3300,7 +3314,7 @@ bool CudnnSupport::GetConvolveBackwardDataAlgorithms(
   if (CudnnEnvVar<WinogradNonfused>::IsEnabled() && with_winograd_nonfused) {
     algo_types.push_back(CUDNN_CONVOLUTION_BWD_DATA_ALGO_WINOGRAD_NONFUSED);
   }
-  if (!stream_executor::cuda::RequireCuDNNDeterminism()) {
+  if (!RequireDeterminism()) {
     algo_types.push_back(CUDNN_CONVOLUTION_BWD_DATA_ALGO_0);
   }
 
@@ -3336,7 +3350,7 @@ bool CudnnSupport::GetConvolveBackwardFilterAlgorithms(
   if (CudnnEnvVar<WinogradNonfused>::IsEnabled() && with_winograd_nonfused) {
     algo_types.push_back(CUDNN_CONVOLUTION_BWD_FILTER_ALGO_WINOGRAD_NONFUSED);
   }
-  if (!stream_executor::cuda::RequireCuDNNDeterminism()) {
+  if (!RequireDeterminism()) {
     algo_types.push_back(CUDNN_CONVOLUTION_BWD_FILTER_ALGO_0);
     algo_types.push_back(CUDNN_CONVOLUTION_BWD_FILTER_ALGO_3);
   }

@@ -343,7 +343,6 @@ cc_library(
         ":cuda_platform_id",
         ":cuda_stream",
         ":cuda_timer",
-        ":cuda_helpers",
         ":cudnn_version",
         ":cudnn_lib",
         "@com_google_absl//absl/strings",
@@ -481,8 +480,7 @@ cc_library(
 # TODO(leary) we likely need to canonicalize/eliminate this.
 cc_library(
     name = "cuda_helpers",
-    srcs = if_cuda_is_configured(["cuda_helpers.cc"]),
-    hdrs = if_cuda_is_configured(["cuda_helpers.h"]),
+    textual_hdrs = if_cuda_is_configured(["cuda_helpers.h"]),
     deps = if_cuda_is_configured([
         "//tensorflow/stream_executor/gpu:gpu_helpers_header",
     ]),
