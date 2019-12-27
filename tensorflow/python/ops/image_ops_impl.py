@@ -1948,9 +1948,8 @@ def random_hue(image, max_delta, seed=None):
 
   Usage Example:
   ```python
-  >> import tensorflow as tf
-  >> x = tf.random.normal(shape=(256, 256, 3))
-  >> y = tf.image.random_hue(x, max_delta=0.1)
+  >> x = tf.constant([[[2.0, 3.0, 2.0]]])
+  >> y = tf.image.random_hue(x, max_delta=0.1, seed=1)
   ```
   
   Args:
@@ -2942,8 +2941,7 @@ def rgb_to_yiq(images):
   
   Usage Example:
     ```python
-    >> import tensorflow as tf
-    >> x = tf.random.normal(shape=(256, 256, 3))
+    >> x = tf.constant([[[1.0, 2.0, 3.0]]])
     >> y = tf.image.rgb_to_yiq(x)
     ```
 
