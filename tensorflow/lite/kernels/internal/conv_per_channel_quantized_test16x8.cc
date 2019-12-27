@@ -316,10 +316,10 @@ void TryTestOneConvFilter(int test_num) {
           int e = (ref_res - int16_res);
           if (e < 0) e = -e;
           if (e > 2) {
-            printf(
-                "(%d,%d,%d,%d) scale=%08x shift=%d res=%d float=%f (%f,%f)\n",
-                n, h, w, c, output_mul, shift, int16_res,
-                float_res * scale + (float)output_offset, float_res, scale);
+            ADD_FAILURE() << "(" << n << ", " << h << ", " <<  w << ", " << c << ")"
+              << " scale=" << output_mul << " shift=" << shift << " res=" << int16_res
+              << " float=" << float_res * scale + (float)output_offset
+              << " (" << float_res << ", " << scale << ")";
             EXPECT_TRUE(false);
           }
         }

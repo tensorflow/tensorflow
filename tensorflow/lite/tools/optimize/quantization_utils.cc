@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/tools/optimize/model_utils.h"
-#include "third_party/eigen3/Eigen/Core"
 
 namespace tflite {
 namespace optimize {
