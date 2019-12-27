@@ -334,7 +334,6 @@ def divide(x, y, name=None):
 
 @tf_export("math.multiply", "multiply")
 @dispatch.add_dispatch_support
-
 def multiply(x, y, name=None):  # pylint: disable=missing-docstring
   # Do an is comparison here since this is cheaper than isinstance or __eq__
   """Returns 'x' * 'y' element wise.
@@ -354,8 +353,6 @@ def multiply(x, y, name=None):  # pylint: disable=missing-docstring
   Returns:
     A 'Tensor'. Has the same type as 'x'
   """
-  if y is 1:  # pylint: disable=literal-comparison
-    return x
   
   return gen_math_ops.mul(x, y, name)
 
