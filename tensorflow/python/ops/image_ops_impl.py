@@ -2934,11 +2934,9 @@ def rgb_to_yiq(images):
   The output is only well defined if the value in images are in [0,1].
   
   Usage Example:
-    ```python
     >>> x = tf.constant([[[1.0, 2.0, 3.0]]])
     >>> tf.image.rgb_to_yiq(x)
-    <tf.Tensor: shape=(1, 1, 3), dtype=float32, numpy=array([[[ 1.815     , -0.9...,  0.09...]]], dtype=float32)>
-    ```
+    <tf.Tensor: shape=(1, 1, 3), dtype=float32, numpy=array([[[ 1.815     , -0.91724455,  0.09962624]]], dtype=float32)>
 
   Args:
     images: 2-D or higher rank. Image data to convert. Last dimension must be
