@@ -1635,11 +1635,11 @@ def random_brightness(image, max_delta, seed=None):
     ...     [[7.0, 8.0, 9.0],      
     ...       [10.0, 11.0, 12.0]]]
     >>> tf.image.random_brightness(x, 0.2)
-    array([[[ 0.91842633,  1.9184263 ,  2.9184263 ],
-        [ 3.9184263 ,  4.9184265 ,  5.9184265 ]],
+    array([[[ 0.91..,  1.91.. ,  2.91.. ],
+        [ 3.91.. ,  4.91.. ,  5.91.. ]],
 
-       [[ 6.9184265 ,  7.9184265 ,  8.9184265 ],
-        [ 9.9184265 , 10.9184265 , 11.9184265 ]]], dtype=float32)>
+       [[ 6.91.. ,  7.91.. ,  8.91.. ],
+        [ 9.91.. , 10.91.. , 11.91.. ]]], dtype=float32)>
 
   Returns:
     The brightness-adjusted image(s).
@@ -1674,11 +1674,11 @@ def random_contrast(image, lower, upper, seed=None):
     ...     [[7.0, 8.0, 9.0],      
     ...       [10.0, 11.0, 12.0]]]
     >>> tf.image.random_contrast(x, 0.2, 0.5)
-    array([[[4.164155 , 5.164155 , 6.164155 ],
-        [5.0547185, 6.0547185, 7.0547185]],
+    array([[[4.16.. , 5.16.. , 6.16.. ],
+        [5.05.., 6.05.., 7.05..]],
 
-       [[5.9452815, 6.9452815, 7.9452815],
-        [6.835845 , 7.835845 , 8.835845 ]]], dtype=float32)>
+       [[5.94.., 6.94.., 7.94..],
+        [6.83.. , 7.83.. , 8.83.. ]]], dtype=float32)>
 
   Returns:
     The contrast-adjusted image(s).
@@ -1819,11 +1819,11 @@ def adjust_gamma(image, gamma=1, gain=1):
     ...     [[7.0, 8.0, 9.0],      
     ...       [10.0, 11.0, 12.0]]]
     >>> tf.image.adjust_gamma(x, 0.2)
-    array([[[1.       , 1.1486983, 1.245731 ],
-        [1.319508 , 1.3797296, 1.4309691]],
+    array([[[1.       , 1.14.., 1.24.. ],
+        [1.31.. , 1.37.., 1.43..]],
 
-       [[1.4757732, 1.5157166, 1.5518456],
-        [1.5848932, 1.6153942, 1.6437519]]], dtype=float32)>
+       [[1.47.., 1.51.., 1.55..],
+        [1.58.., 1.61.., 1.64..]]], dtype=float32)>
 
   Args:
     image : RGB image or images to adjust.
@@ -2055,11 +2055,11 @@ def random_hue(image, max_delta, seed=None):
     ...     [[7.0, 8.0, 9.0],      
     ...       [10.0, 11.0, 12.0]]]
     >>> tf.image.random_hue(x, 0.2)
-    array([[[ 1.      ,  2.120366,  3.      ],
-        [ 4.      ,  5.120366,  6.      ]],
+    array([[[ 1.      ,  2.12..,  3.      ],
+        [ 4.      ,  5.12..,  6.      ]],
 
-       [[ 7.      ,  8.120366,  9.      ],
-        [10.      , 11.120366, 12.      ]]], dtype=float32)>
+       [[ 7.      ,  8.12..,  9.      ],
+        [10.      , 11.12.., 12.      ]]], dtype=float32)>
 
   Args:
     image: RGB image or images. The size of the last dimension must be 3.
@@ -2107,8 +2107,8 @@ def adjust_hue(image, delta, name=None):
     ...     [[7.0, 8.0, 9.0],      
     ...       [10.0, 11.0, 12.0]]]
     >>> tf.image.adjust_hue(x, 0.2)
-    array([[[ 2.3999996,  1.       ,  3.       ],
-        [ 5.3999996,  4.       ,  6.       ]],
+    array([[[ 2.39..,  1.       ,  3.       ],
+        [ 5.39..,  4.       ,  6.       ]],
 
        [[ 8.4      ,  7.       ,  9.       ],
         [11.4      , 10.       , 12.       ]]], dtype=float32)>
@@ -2151,10 +2151,10 @@ def random_jpeg_quality(image, min_jpeg_quality, max_jpeg_quality, seed=None):
     ...       [10.0, 11.0, 12.0]]]
     >>> tf.image.random_jpeg_quality(x, 75, 95)
     array([[[1.        , 1.        , 1.        ],
-        [0.9960785 , 0.9960785 , 0.9960785 ]],
+        [0.99.. , 0.99.. , 0.99.. ]],
 
-       [[0.98823535, 0.98823535, 0.98823535],
-        [0.98823535, 0.98823535, 0.98823535]]], dtype=float32)>
+       [[0.98.., 0.98.., 0.98..],
+        [0.98.., 0.98.., 0.98..]]], dtype=float32)>
 
   Args:
     image: 3D image. Size of the last dimension must be 1 or 3.
@@ -2203,10 +2203,10 @@ def adjust_jpeg_quality(image, jpeg_quality, name=None):
     ...       [10.0, 11.0, 12.0]]]
     >>> tf.image.adjust_jpeg_quality(x, 75)
     array([[[1.        , 1.        , 1.        ],
-        [0.9960785 , 0.9960785 , 0.9960785 ]],
+        [0.99.. , 0.99.. , 0.99.. ]],
 
-       [[0.98823535, 0.98823535, 0.98823535],
-        [0.98823535, 0.98823535, 0.98823535]]], dtype=float32)>
+       [[0.98.., 0.98.., 0.98..],
+        [0.98.., 0.98.., 0.98..]]], dtype=float32)>
 
   Args:
     image: 3D image. The size of the last dimension must be None, 1 or 3.
@@ -2252,7 +2252,7 @@ def random_saturation(image, lower, upper, seed=None):
         [ 0.       ,  3.       ,  6.       ]],
 
        [[ 0.       ,  4.5      ,  9.       ],
-        [ 1.5523891,  6.7761946, 12.       ]]], dtype=float32)>
+        [ 1.55..,  6.77.., 12.       ]]], dtype=float32)>
 
   Args:
     image: RGB image or images. The size of the last dimension must be 3.
@@ -3148,11 +3148,11 @@ def rgb_to_yuv(images):
     ...     [[7.0, 8.0, 9.0],      
     ...       [10.0, 11.0, 12.0]]]
     >>> tf.image.rgb_to_yuv(x)
-    array([[[ 1.815     ,  0.5831516 , -0.7149856 ],
-        [ 4.815     ,  0.5831516 , -0.7149856 ]],
+    array([[[ 1.81..     ,  0.58.. , -0.71.. ],
+        [ 4.81..     ,  0.58.. , -0.71.. ]],
 
-       [[ 7.815     ,  0.5831516 , -0.7149856 ],
-        [10.815001  ,  0.58315134, -0.7149854 ]]], dtype=float32)>
+       [[ 7.81..     ,  0.58.. , -0.71.. ],
+        [10.81..  ,  0.58.., -0.71.. ]]], dtype=float32)>
 
   Args:
     images: 2-D or higher rank. Image data to convert. Last dimension must be
