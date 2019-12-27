@@ -65,6 +65,7 @@ from tensorflow.python.training import gradient_descent
 
 CPU = "/device:CPU:0"
 GPU = "/device:GPU:0"
+GLOBAL_TEST_VALUE = None
 
 
 def c_tfe_py_fastpath_execute(a,
@@ -200,9 +201,19 @@ class MicroBenchmarks(test.Benchmark):
 
     self._run(func, 30000)
 
-  def _benchmark_create_constant(self, value, dtype):
-    def func():
+  def _benchmark_create_constant(self, value, dtype, cached=True):
+    global GLOBAL_TEST_VALUE
+    GLOBAL_TEST_VALUE = value
+
+    def cached_func():
       constant_op.constant(value, dtype=dtype)
+
+    def uncached_func():
+      global GLOBAL_TEST_VALUE
+      GLOBAL_TEST_VALUE += 1
+      constant_op.constant(GLOBAL_TEST_VALUE, dtype=dtype)
+
+    func = cached_func if cached else uncached_func
 
     with ops.device("GPU:0" if context.num_gpus() else "CPU:0"):
       for _ in range(1000):
@@ -212,11 +223,20 @@ class MicroBenchmarks(test.Benchmark):
   def benchmark_create_float_constant(self):
     self._benchmark_create_constant(42.0, dtype=None)
 
+  def benchmark_create_float_constant_uncached(self):
+    self._benchmark_create_constant(42.0, dtype=None, cached=False)
+
   def benchmark_create_int32_constant(self):
     if context.num_gpus():
       return  # int32 constants are always allocated on CPU.
 
     self._benchmark_create_constant(42, dtype=dtypes.int32)
+
+  def benchmark_create_int32_constant_uncached(self):
+    if context.num_gpus():
+      return  # int32 constants are always allocated on CPU.
+
+    self._benchmark_create_constant(42, dtype=dtypes.int32, cached=False)
 
   def _benchmark_add_scalars(self, a, b):
     def func():
