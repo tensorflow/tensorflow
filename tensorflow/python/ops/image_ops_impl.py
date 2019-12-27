@@ -4005,17 +4005,21 @@ def extract_glimpse(
     numbers of pixels.
 
   Usage Example:
-    ```python
-    BATCH_SIZE = 1
-    IMAGE_HEIGHT = 3
-    IMAGE_WIDTH = 3
-    CHANNELS = 1
-    GLIMPSE_SIZE = (2, 2)
-    image = tf.reshape(tf.range(9, delta=1, dtype=tf.float32),
-      shape=(BATCH_SIZE, IMAGE_HEIGHT, IMAGE_WIDTH, CHANNELS))
-    output = tf.image.extract_glimpse(image, size=GLIMPSE_SIZE,
-      offsets=[[1, 1]], centered=False, normalized=False)
-     ```
+    >>> x = [[[[0.0], 
+    ...           [1.0],
+    ...           [2.0]],
+    ...          [[3.0],
+    ...           [4.0],
+    ...           [5.0]],
+    ...          [[6.0],
+    ...           [7.0],
+    ...           [8.0]]]]
+    >>> tf.image.extract_glimpse(x, size=(2, 2), offsets=[[1, 1]], centered=False, normalized=False)
+    array([[[[0.],
+         [1.]],
+
+        [[3.],
+         [4.]]]], dtype=float32)>
 
   Args:
     input: A `Tensor` of type `float32`. A 4-D float tensor of shape
@@ -4084,17 +4088,21 @@ def extract_glimpse_v2(
     numbers of pixels.
 
   Usage Example:
-    ```python
-    BATCH_SIZE = 1
-    IMAGE_HEIGHT = 3
-    IMAGE_WIDTH = 3
-    CHANNELS = 1
-    GLIMPSE_SIZE = (2, 2)
-    image = tf.reshape(tf.range(9, delta=1, dtype=tf.float32),
-      shape=(BATCH_SIZE, IMAGE_HEIGHT, IMAGE_WIDTH, CHANNELS))
-    output = tf.image.extract_glimpse(image, size=GLIMPSE_SIZE,
-      offsets=[[1, 1]], centered=False, normalized=False)
-     ```
+    >>> x = [[[[0.0], 
+    ...           [1.0],
+    ...           [2.0]],
+    ...          [[3.0],
+    ...           [4.0],
+    ...           [5.0]],
+    ...          [[6.0],
+    ...           [7.0],
+    ...           [8.0]]]]
+    >>> tf.image.extract_glimpse(x, size=(2, 2), offsets=[[1, 1]], centered=False, normalized=False)
+    array([[[[0.],
+         [1.]],
+
+        [[3.],
+         [4.]]]], dtype=float32)>
 
   Args:
     input: A `Tensor` of type `float32`. A 4-D float tensor of shape
