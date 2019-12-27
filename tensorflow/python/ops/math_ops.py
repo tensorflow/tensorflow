@@ -352,6 +352,9 @@ def multiply(x, y, name=None):
   Returns:
     A 'Tensor'. Has the same type as 'x'
   """
+  return gen_math_ops.mul(x, y, name)
+
+multiply.__doc__ = gen_math_ops.mul.__doc__.replace("Multiply", "tf.multiply")
   
 
 # TODO(aselle): put deprecation in after another round of global code changes
