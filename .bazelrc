@@ -1,3 +1,80 @@
+# TensorFlow Bazel configuration file.
+# This file tries to group and simplify build options for TensorFlow
+#
+# ----CONFIG OPTIONS----
+# Android options:
+#    android:
+#    android_arm:
+#    android_x86:
+#    android_x86_64:
+#
+# iOS options:
+#     ios:
+#     ios_armv7:
+#     ios_arm64:
+#     ios_x86_64:
+#     ios_fat:
+#
+# Compiler options:
+#     cuda_clang:             Use clang when building CUDA code.
+#     c++17:                  Build with C++17 options
+#     C++1z:                  Build with C++17 options
+#     avx_linux:              Build with avx instruction set on linux.
+#     avx2_linux:             Build with avx2 instruction set on linux.
+#     arch_native_linux:      Build with instruction sets available to the host machine on linux
+#     avx_win:                Build with avx instruction set on windows
+#     avx2_win:               Build with avx2 instruction set on windows
+#
+# Other build options:
+#     short_logs:       Only log errors during build, skip warnings.
+#     monolithic:       Build all TF C++ code into a single shared object.
+#     dynamic_kernels:  Try to link all kernels dynamically (experimental).
+#
+#
+# TF version options;
+#     v1: Build TF V1 (without contrib)
+#     v2: Build TF v2
+#
+# Feature and Third party library support options:
+#     xla:          Build TF with XLA
+#     using_cuda:   CUDA is available to build system.
+#     cuda:         Build with full cuda support.
+#     rocm:         Build with AMD GPU support (rocm).
+#     sycl:         Build with SYCL support.
+#     sycl_nodouble:
+#     sycl_asan:
+#     sycl_trisycl:
+#     mkl:          Enable full mkl support.
+#     mkl_open_source_only: Enable MKL support only using open source MKL libraries.
+#     tensorrt:     Enable Tensorrt support.
+#     ngraph:       Enable ngraph support.
+#     numa:         Enable numa using hwloc.
+#     noaws:        Disable AWS S3 storage support
+#     nogcp:        Disable GCS support.
+#     nohdfs:       Disable hadoop hdfs support.
+#     nonccl:       Disable nccl support.
+#
+#
+# Remote build execution options (only configured to work with TF team projects for now.)
+#     rbe:        General RBE options shared by all flavors.
+#     rbe_linux:  General RBE options used on all linux builds.
+#     rbe_win:    General RBE options used on all windows builds.
+#
+#     rbe_cpu_linux:        RBE options to build with only CPU support.
+#     rbe_linux_cuda_nvcc:  RBE options to build with GPU support using nvcc.
+#     rbe_gpu_linux:        An alias for rbe_linux_cuda_nvcc
+#
+#     rbe_linux_py2: Linux Python 2 RBE config.
+#     rbe_linux_py3: Linux Python 3 RBE config
+#
+#     rbe_win_py37: Windows Python 3.7 RBE config
+#
+#     tensorflow_testing_rbe_linux: RBE options to use RBE with tensorflow-testing project on linux
+#     tensorflow_testing_rbe_win:   RBE options to use RBE with tensorflow-testing project on windows
+#
+
+
+
 # Android configs. Bazel needs to have --cpu and --fat_apk_cpu both set to the
 # target CPU to build transient dependencies correctly. See
 # https://docs.bazel.build/versions/master/user-manual.html#flag--fat_apk_cpu
@@ -47,15 +124,6 @@ build:mkl_open_source_only --define=build_with_mkl_dnn_only=true
 build:mkl_open_source_only --define=build_with_mkl_dnn_v1_only=true
 build:mkl_open_source_only --define=build_with_mkl=true --define=enable_mkl=true
 build:mkl_open_source_only --define=tensorflow_mkldnn_contraction_kernel=0
-
-build:download_clang --crosstool_top=@local_config_download_clang//:toolchain
-build:download_clang --define=using_clang=true
-build:download_clang --action_env TF_DOWNLOAD_CLANG=1
-# Instruct clang to use LLD for linking.
-# This only works with GPU builds currently, since Bazel sets -B/usr/bin in
-# auto-generated CPU crosstool, forcing /usr/bin/ld.lld to be preferred over
-# the downloaded one.
-build:download_clang_use_lld --linkopt='-fuse-ld=lld'
 
 # This config refers to building with CUDA available. It does not necessarily
 # mean that we build CUDA op kernels.
@@ -109,7 +177,6 @@ build --define=use_fast_cpp_protos=true
 build --define=allow_oversize_protos=true
 
 build --spawn_strategy=standalone
-build --strategy=Genrule=standalone
 build -c opt
 
 # Make Bazel print out all options from rc files.
@@ -132,28 +199,146 @@ build --define=PREFIX=/usr
 build --define=LIBDIR=$(PREFIX)/lib
 build --define=INCLUDEDIR=$(PREFIX)/include
 
+# Suppress C++ compiler warnings, otherwise build logs become 10s of MBs.
+build --copt=-w
+
 # Suppress all warning messages.
 build:short_logs --output_filter=DONT_MATCH_ANYTHING
 
+# Instruction set optimizations
+# TODO(gunan): Create a feature in toolchains for avx/avx2 to
+#   avoid having to define linux/win separately.
+build:avx_linux --copt=-mavx
+build:avx2_linux --copt=-mavx2
+build:native_arch_linux --copt=-march=native
+build:avx_win --copt=/arch=AVX
+build:avx2_win --copt=/arch=AVX2
+
+# Options to build TensorFlow 1.x or 2.x.
+build:v1 --define=tf_api_version=1
+build:v2 --define=tf_api_version=2
+build:v1 --action_env=TF2_BEHAVIOR=0
+build:v2 --action_env=TF2_BEHAVIOR=1
+build --config=v2
+test --config=v2
+
+# Enable XLA
+build:xla --action_env=TF_ENABLE_XLA=1
+build:xla --define=with_xla_support=true
+
+# BEGIN TF REMOTE BUILD EXECUTION OPTIONS
 # Options when using remote execution
+# WARNING: THESE OPTIONS WONT WORK IF YOU DO NOT HAVE PROPER AUTHENTICATION AND PERMISSIONS
 build:rbe --action_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=1
 build:rbe --auth_enabled=true
 build:rbe --auth_scope=https://www.googleapis.com/auth/cloud-source-tools
+build:rbe --bes_backend=buildeventservice.googleapis.com
+build:rbe --bes_best_effort=false
+build:rbe --bes_results_url=https://source.cloud.google.com/results/invocations
+build:rbe --bes_timeout=600s
 build:rbe --define=EXECUTOR=remote
 build:rbe --flaky_test_attempts=3
 build:rbe --jobs=200
-build:rbe --remote_accept_cached=true
-build:rbe --remote_cache=remotebuildexecution.googleapis.com
-build:rbe --remote_executor=remotebuildexecution.googleapis.com
-build:rbe --remote_local_fallback=false
-build:rbe --remote_timeout=600
+build:rbe --remote_executor=grpcs://remotebuildexecution.googleapis.com
+build:rbe --remote_timeout=3600
 build:rbe --spawn_strategy=remote
-build:rbe --strategy=Genrule=remote
-build:rbe --strategy=Closure=remote
-build:rbe --strategy=Javac=remote
-build:rbe --strategy=TestRunner=remote
-build:rbe --tls_enabled
 test:rbe --test_env=USER=anon
+
+build:rbe --distinct_host_configuration=false
+
+build:rbe_linux --config=rbe
+build:rbe_linux --action_env=PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/go/bin"
+build:rbe_linux --host_javabase=@bazel_toolchains//configs/ubuntu16_04_clang/1.1:jdk8
+build:rbe_linux --javabase=@bazel_toolchains//configs/ubuntu16_04_clang/1.1:jdk8
+build:rbe_linux --host_java_toolchain=@bazel_tools//tools/jdk:toolchain_hostjdk8
+build:rbe_linux --java_toolchain=@bazel_tools//tools/jdk:toolchain_hostjdk8
+
+# Non-rbe settings we should include because we do not run configure
+build:rbe_linux --config=xla
+build:rbe_linux --config=avx_linux
+build:rbe_linux --config=short_logs
+# TODO(gunan): Check why we need this specified in rbe, but not in other builds.
+build:rbe_linux --linkopt=-lrt
+
+build:rbe_cpu_linux --config=rbe_linux
+build:rbe_cpu_linux --crosstool_top="//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010:toolchain"
+build:rbe_cpu_linux --extra_toolchains="//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010:cc-toolchain-k8"
+build:rbe_cpu_linux --extra_execution_platforms"=@org_tensorflow//third_party/toolchains:rbe_ubuntu16.04-manylinux2010"
+build:rbe_cpu_linux --host_platform="@org_tensorflow//third_party/toolchains:rbe_ubuntu16.04-manylinux2010"
+build:rbe_cpu_linux --platforms="@org_tensorflow//third_party/toolchains:rbe_ubuntu16.04-manylinux2010"
+
+build:rbe_linux_cuda_nvcc --config=rbe_linux
+build:rbe_linux_cuda_nvcc --crosstool_top="//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.1:toolchain"
+build:rbe_linux_cuda_nvcc --extra_toolchains="//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.1:toolchain-linux-x86_64"
+build:rbe_linux_cuda_nvcc --extra_execution_platforms="@org_tensorflow//third_party/toolchains:rbe_cuda10.1-cudnn7-ubuntu16.04-manylinux2010,@org_tensorflow//third_party/toolchains:rbe_cuda10.1-cudnn7-ubuntu16.04-manylinux2010-gpu"
+build:rbe_linux_cuda_nvcc --host_platform="@org_tensorflow//third_party/toolchains:rbe_cuda10.1-cudnn7-ubuntu16.04-manylinux2010"
+build:rbe_linux_cuda_nvcc --platforms="@org_tensorflow//third_party/toolchains:rbe_cuda10.1-cudnn7-ubuntu16.04-manylinux2010"
+build:rbe_linux_cuda_nvcc --repo_env=TF_CUDA_CONFIG_REPO="@org_tensorflow//third_party/toolchains/preconfig/ubuntu16.04/cuda10.1-cudnn7"
+build:rbe_linux_cuda_nvccrepoo_env=TF_TENSORRT_CONFIG_REPO="@org_tensorflow//third_party/toolchains/preconfig/ubuntu16.04/tensorrt6.0"
+build:rbe_linux_cuda_nvcc --repo_env=TF_NEED_TENSORRT=1
+build:rbe_linux_cuda_nvcc --repo_env=TF_CUDA_VERSION=10
+build:rbe_linux_cuda_nvcc --repo_env=TF_CUDNN_VERSION=7
+build:rbe_linux_cuda_nvcc --repo_env=REMOTE_GPU_TESTING=1
+build:rbe_linux_cuda_nvcc --repo_env=TF_NEED_CUDA=1
+build:rbe_linux_cuda_nvcc --define=using_cuda_nvcc=true
+test:rbe_linux_cuda_nvcc --test_env=LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64"
+
+common:rbe_gpu_linux --config=rbe_linux_cuda_nvcc
+
+build:rbe_linux_py2 --config=rbe_linux
+build:rbe_linux_py2 --repo_env=PYTHON_BIN_PATH="/usr/bin/python2"
+build:rbe_linux_py2 --python_path="/usr/bin/python2"
+build:rbe_linux_py2 --repo_env=TF_PYTHON_CONFIG_REPO="@org_tensorflow//third_party/toolchains/preconfig/ubuntu16.04/py"
+
+build:rbe_linux_py3 --config=rbe_linux
+build:rbe_linux_py3 --repo_env=PYTHON_BIN_PATH="/usr/bin/python3"
+build:rbe_linux_py3 --python_path="/usr/bin/python3"
+build:rbe_linux_py3 --repo_env=TF_PYTHON_CONFIG_REPO="@org_tensorflow//third_party/toolchains/preconfig/ubuntu16.04/py3"
+
+build:rbe_win --config=rbe
+build:rbe_win --crosstool_top="@org_tensorflow//third_party/toolchains/preconfig/win_1803/bazel_026:toolchain"
+build:rbe_win --extra_execution_platforms="@org_tensorflow//third_party/toolchains/preconfig/win_1803:rbe_windows_1803"
+build:rbe_win --extra_toolchains="@org_tensorflow//third_party/toolchains/preconfig/win_1803/bazel_026:cc-toolchain-x64_windows"
+build:rbe_win --host_javabase="@org_tensorflow//third_party/toolchains/preconfig/win_1803:windows_jdk8"
+build:rbe_win --host_platform="@org_tensorflow//third_party/toolchains/preconfig/win_1803:rbe_windows_1803"
+build:rbe_win --javabase="@org_tensorflow//third_party/toolchains/preconfig/win_1803:windows_jdk8"
+build:rbe_win --platforms="@org_tensorflow//third_party/toolchains/preconfig/win_1803:rbe_windows_1803"
+build:rbe_win --shell_executable=C:\\tools\\msys64\\usr\\bin\\bash.exe
+
+# Misc build options we need for windows
+build:rbe_win --copt=-DWIN32_LEAN_AND_MEAN
+build:rbe_win --host_copt=-DWIN32_LEAN_AND_MEAN
+build:rbe_win --copt=-DNOGDI
+build:rbe_win --host_copt=-DNOGDI
+build:rbe_win --linkopt=/DEBUG
+build:rbe_win --host_linkopt=/DEBUG
+build:rbe_win --linkopt=/OPT:REF
+build:rbe_win --host_linkopt=/OPT:REF
+build:rbe_win --linkopt=/OPT:ICF
+build:rbe_win --host_linkopt=/OPT:ICF
+build:rbe_win --config=monolithic
+build:rbe_win --experimental_strict_action_env=true
+build:rbe_win --incompatible_windows_native_test_wrapper
+# TODO(gunan): Remove once we use MSVC 2019 with latest patches.
+build:rbe_win --define=override_eigen_strong_inline=true
+
+build:rbe_win_py37 --config=rbe
+build:rbe_win_py37 --repo_env=PYTHON_BIN_PATH=C:\\Python37\\python.exe
+build:rbe_win_py37 --repo_env=PYTHON_LIB_PATH=C:\\Python37\\lib\\site-packages
+build:rbe_win_py37 --repo_env=TF_PYTHON_CONFIG_REPO=@org_tensorflow//third_party/toolchains/preconfig/win_1803/py37
+build:rbe_win_py37 --python_path=C:\\Python37\\python.exe
+
+# These you may need to change for your own GCP project.
+build:tensorflow_testing_rbe --project_id=tensorflow-testing
+common:tensorflow_testing_rbe_linux --remote_instance_name=tensorflow-testing/instances/default_instance
+build:tensorflow_testing_rbe_linux --config=tensorflow_testing_rbe
+build:tensorflow_testing_rbe_linux --config=rbe
+build:tensorflow_testing_rbe_linux --config=rbe_linux
+
+common:tensorflow_testing_rbe_win --remote_instance_name=projects/tensorflow-testing/instances/windows
+build:tensorflow_testing_rbe_win --config=tensorflow_testing_rbe
+build:tensorflow_testing_rbe_win --config=rbe_win
+# END TF REMOTE BUILD EXECUTION OPTIONS
 
 # Default options should come above this line
 
