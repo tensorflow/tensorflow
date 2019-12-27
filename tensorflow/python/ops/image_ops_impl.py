@@ -1630,10 +1630,10 @@ def random_brightness(image, max_delta, seed=None):
       `tf.compat.v1.set_random_seed` for behavior.
     
   Usage Example:
-    >>> x = tf.constant([[[1, 2, 3],
-    ...                     [4, 5, 6]],
-    ...                   [[7, 8, 9],      
-    ...                     [10, 11, 12]]], dtype=tf.int32)
+    >>> x = [[[1, 2, 3],
+    ...       [4, 5, 6]],
+    ...      [[7, 8, 9],      
+    ...       [10, 11, 12]]]
     >>> tf.image.random_brightness(x, 0.2)
     array([[[ 0.91...,  1.91... ,  2.91... ],
         [ 3.91... ,  4.91... ,  5.91... ]],
