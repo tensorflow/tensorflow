@@ -514,8 +514,8 @@ xla::StatusOr<xla::XlaOp> MakeXlaBackpropFilterConvOp(
 
   // In the case of depthwise convolutions, the computation can be done by the
   // batch_group_count parameter.
-  bool use_batch_group_count = in_depth > 1 && in_depth == filter_in_depth &&
-                               (feature_group_count != 1 || attrs.depthwise);
+  bool use_batch_group_count =
+      in_depth > 1 && (feature_group_count != 1 || attrs.depthwise);
 
   if (use_batch_group_count) {
     feature_group_count = 1;
