@@ -1630,10 +1630,10 @@ def random_brightness(image, max_delta, seed=None):
       `tf.compat.v1.set_random_seed` for behavior.
     
   Usage Example:
-    >>> x = [[[1.0, 2.0, 3.0],
-    ...       [4.0, 5.0, 6.0]],      
-    ...     [[7.0, 8.0, 9.0],      
-    ...       [10.0, 11.0, 12.0]]]
+    >>> x = tf.constant([[[1, 2, 3],
+    ...                     [4, 5, 6]],
+    ...                   [[7, 8, 9],      
+    ...                     [10, 11, 12]]], dtype=tf.int32)
     >>> tf.image.random_brightness(x, 0.2)
     array([[[ 0.91...,  1.91... ,  2.91... ],
         [ 3.91... ,  4.91... ,  5.91... ]],
@@ -3990,7 +3990,8 @@ def extract_glimpse(
     ...          [[6.0],
     ...           [7.0],
     ...           [8.0]]]]
-    >>> tf.image.extract_glimpse(x, size=(2, 2), offsets=[[1, 1]], centered=False, normalized=False)
+    >>> tf.image.extract_glimpse(x, size=(2, 2), offsets=[[1, 1]],
+                                centered=False, normalized=False)
     array([[[[0.],
          [1.]],
 
@@ -4073,7 +4074,8 @@ def extract_glimpse_v2(
     ...          [[6.0],
     ...           [7.0],
     ...           [8.0]]]]
-    >>> tf.image.extract_glimpse(x, size=(2, 2), offsets=[[1, 1]], centered=False, normalized=False)
+    >>> tf.image.extract_glimpse(x, size=(2, 2), offsets=[[1, 1]],
+                                centered=False, normalized=False)
     array([[[[0.],
          [1.]],
 
