@@ -4233,6 +4233,7 @@ Usage Example:
   >>> coefficients = [1.0, 2.5, -4.2]
   >>> x = 5.0
   >>> y = tf.math.polyval(coefficients, x)
+  <y = 33.3>
 
   Args:
     coeffs: A list of `Tensor` representing the coefficients of the polynomial.
