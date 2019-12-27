@@ -629,6 +629,7 @@ class Strategy(object):
 
     # Distribute that dataset
     dist_dataset = strategy.experimental_distribute_dataset(dataset)
+
     # Iterate over the distributed dataset
     for x in dist_dataset:
       # process dataset elements
@@ -664,6 +665,32 @@ class Strategy(object):
     If the above batch splitting and dataset sharding logic is undesirable,
     please use `experimental_distribute_datasets_from_function` instead, which
     does not do any automatic splitting or sharding.
+
+    You can also use the `element_spec` property of the distributed dataset
+    returned by this API to query the `tf.TypeSpec` of the elements returned
+    by the iterator. This can be used to set the `input_signature` property
+    of a `tf.function`.
+
+     ```python
+    strategy = tf.distribute.MirroredStrategy()
+
+    # Create a dataset
+    dataset = dataset_ops.Dataset.TFRecordDataset([
+      "/a/1.tfr", "/a/2.tfr", "/a/3.tfr", "/a/4.tfr"])
+
+    # Distribute that dataset
+    dist_dataset = strategy.experimental_distribute_dataset(dataset)
+
+    @tf.function(input_signature=[dist_dataset.element_spec])
+    def train_step(inputs):
+      # train model with inputs
+      return
+
+    # Iterate over the distributed dataset
+    for x in dist_dataset:
+      # process dataset elements
+      strategy.experimental_run_v2(train_step, args=(x,))
+    ```
 
     Args:
       dataset: `tf.data.Dataset` that will be sharded across all replicas using
@@ -713,6 +740,26 @@ class Strategy(object):
     per-replica batch size, unlike `experimental_distribute_dataset`, which uses
     the global batch size.  This may be computed using
     `input_context.get_per_replica_batch_size`.
+
+    To query the `tf.TypeSpec` of the elements in the distributed dataset
+    returned by this API, you need to use the `element_spec` property of the
+    distributed iterator. This `tf.TypeSpec` can be used to set the
+    `input_signature` property of a `tf.function`.
+
+    ```python
+    # If you want to specify `input_signature` for a `tf.function` you must
+    # first create the iterator.
+    iterator = iter(inputs)
+
+    @tf.function(input_signature=[iterator.element_spec])
+    def replica_fn_with_signature(inputs):
+      # train the model with inputs
+      return
+
+    for _ in range(steps):
+      strategy.experimental_run_v2(replica_fn_with_signature,
+          args=(next(iterator),))
+    ```
 
     Args:
       dataset_fn: A function taking a `tf.distribute.InputContext` instance and
