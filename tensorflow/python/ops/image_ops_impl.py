@@ -791,7 +791,7 @@ def pad_to_bounding_box(image, offset_height, offset_width, target_height,
 Usage Example:
 >>> x = tf.random.normal(shape=(256, 256, 3))
 >>> x = tf.image.pad_to_bounding_box(x, 2, 2, 260, 260)
-<x.shape = TensorShape([Dimension(260), Dimension(260), Dimension(3)])>
+<x.shape = TensorShape([260, 260, 3])>
 
   Raises:
     ValueError: If the shape of `image` is incompatible with the `offset_*` or
