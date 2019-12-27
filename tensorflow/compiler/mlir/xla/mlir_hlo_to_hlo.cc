@@ -162,10 +162,10 @@ static std::vector<xla::ReplicaGroup> Convert_replica_groups(
   return result;
 }
 
-#define I64_ELEMENTS_ATTR_TO_VECTOR(attribute)   \
-  static std::vector<int64> Convert_##attribute( \
-      mlir::DenseIntElementsAttr attribute) {    \
-    return ConvertDenseIntAttr(attribute);       \
+#define I64_ELEMENTS_ATTR_TO_VECTOR(attribute)                \
+  static std::vector<int64> Convert_##attribute(              \
+      llvm::Optional<mlir::DenseIntElementsAttr> attribute) { \
+    return ConvertDenseIntAttr(attribute);                    \
   }
 
 I64_ELEMENTS_ATTR_TO_VECTOR(broadcast_sizes);
@@ -176,6 +176,9 @@ I64_ELEMENTS_ATTR_TO_VECTOR(strides);
 I64_ELEMENTS_ATTR_TO_VECTOR(slice_sizes);
 I64_ELEMENTS_ATTR_TO_VECTOR(fft_length);
 I64_ELEMENTS_ATTR_TO_VECTOR(dimensions);
+I64_ELEMENTS_ATTR_TO_VECTOR(window_strides);
+I64_ELEMENTS_ATTR_TO_VECTOR(lhs_dilation);
+I64_ELEMENTS_ATTR_TO_VECTOR(rhs_dilation);
 
 #undef I64_ELEMENTS_ATTR_TO_VECTOR
 
@@ -243,7 +246,7 @@ static xla::DotDimensionNumbers Convert_dot_dimension_numbers(
   return dot_dimension_numbers;
 }
 
-static xla::ConvolutionDimensionNumbers Convert_convolution_dimension_numbers(
+static xla::ConvolutionDimensionNumbers Convert_dimension_numbers(
     mlir::xla_hlo::ConvDimensionNumbers input) {
   xla::ConvolutionDimensionNumbers output;
 
@@ -508,21 +511,6 @@ LogicalResult ExportXlaOp(ConditionalOp op, OpLoweringContext ctx) {
 
 LogicalResult ExportXlaOp(ConstOp op, OpLoweringContext ctx) {
   return failure();
-}
-
-LogicalResult ExportXlaOp(ConvOp op, OpLoweringContext ctx) {
-  auto& value_map = *ctx.values;
-  value_map[op] = xla::ConvGeneralDilated(
-      value_map[op.lhs()], value_map[op.rhs()],
-      Convert_broadcast_dimensions(op.window_strides()),
-      Convert_padding(op.padding()),
-      Convert_broadcast_dimensions(op.lhs_dilation()),
-      Convert_broadcast_dimensions(op.rhs_dilation()),
-      Convert_convolution_dimension_numbers(op.dimension_numbers()),
-      op.feature_group_count().getSExtValue(),
-      op.batch_group_count().getSExtValue(),
-      Convert_precision_config(op.precision_config()).get());
-  return success();
 }
 
 LogicalResult ExportXlaOp(ConvertOp op, OpLoweringContext ctx) {

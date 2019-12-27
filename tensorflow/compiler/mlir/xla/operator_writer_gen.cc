@@ -53,8 +53,10 @@ static std::string GetDefaultAttrExport(
 }
 
 static std::string GetClientBuilder(const Operator& op) {
-  static const auto* kOpToXLABuilderMap = new llvm::StringMap<StringRef>{
-      {"ReverseOp", "Rev"}, {"ConcatenateOp", "ConcatInDim"}};
+  static const auto* kOpToXLABuilderMap =
+      new llvm::StringMap<StringRef>{{"ReverseOp", "Rev"},
+                                     {"ConcatenateOp", "ConcatInDim"},
+                                     {"ConvOp", "ConvGeneralDilated"}};
 
   StringRef op_name = op.getCppClassName();
 
