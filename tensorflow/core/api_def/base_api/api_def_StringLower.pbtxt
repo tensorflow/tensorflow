@@ -1,3 +1,13 @@
 op {
   graph_op_name: "StringLower"
+  summary: "Lowercases strings in `input`"
+  description: <<END
+Converts each uppercase character of each string in the input Tensor to
+lowercase.
+
+>>> strings = ['Hello', 'TensorFlow']
+>>> tf.strings.lower(strings).numpy()
+array([b'hello', b'tensorflow'], dtype=object)
+
+END
 }
