@@ -95,6 +95,15 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   ROOT %call.2 = s64[] call(%arg0.1), to_apply=%call
 }
 
+// CHECK-LABEL:  func @test_cholesky
+// CHECK-SAME:  ([[ARG:%.*]]: tensor<1x291x291xf32>) -> tensor<1x291x291xf32>
+%test_cholesky (a: f32[1,291,291]) -> f32[1,291,291] {
+  %a = f32[1,291,291] parameter(0)
+  // CHECK-NEXT:  "xla_hlo.cholesky"([[ARG]]) {lower = true, name = {{.*}}} : (tensor<1x291x291xf32>) -> tensor<1x291x291xf32>
+  ROOT %out = f32[1,291,291] cholesky(f32[1,291,291] %a), lower=true
+}
+
+
 // CHECK-LABEL:  func @test_clamp(
 %test_clamp (Arg_0.1: f32[], Arg_1.2: f32[4], Arg_1.3: f32[]) -> f32[4] {
   %Arg_0.1 = f32[] parameter(0)

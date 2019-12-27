@@ -264,6 +264,12 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
       attributes.push_back(ConvertComparisonDirection(instruction));
       MakeAndReturn(CompareOp);
     }
+    case HloOpcode::kCholesky: {
+      attributes.push_back(builder_->getNamedAttr(
+          "lower",
+          builder_->getBoolAttr(instruction->cholesky_options().lower())));
+      MakeAndReturn(CholeskyOp);
+    }
     case HloOpcode::kGather: {
       auto gather_instruction = static_cast<HloGatherInstruction*>(instruction);
       attributes.push_back(ConvertGatherDimensionNumbers(

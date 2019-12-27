@@ -727,6 +727,16 @@ def HLO_BroadcastInDimOp : HLO_Op<"broadcast_in_dim",
   let hasCustomHLOConverter = 1;
 }
 
+def HLO_CholeskyOp : HLO_Op<"cholesky",
+      [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_CholeskyOp {
+  let arguments = (ins
+    HLO_FpOrComplexTensor:$a,
+    DefaultValuedAttr<BoolAttr, "false">:$lower
+  );
+
+  let results = (outs HLO_FpOrComplexTensor);
+}
+
 def HLO_ClampOp : HLO_Op<"clamp",
       [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_ClampOp {
   let arguments = (ins
