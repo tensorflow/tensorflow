@@ -1943,16 +1943,7 @@ def random_hue(image, max_delta, seed=None):
 
   Equivalent to `adjust_hue()` but uses a `delta` randomly
   picked in the interval `[-max_delta, max_delta]`.
-
   `max_delta` must be in the interval `[0, 0.5]`.
-
-  Usage Example:
-  ```python
-  >>> tf.random.set_seed(1)
-  >>> x = tf.constant([[[2.0, 3.0, 2.0]]])
-  >>> y = tf.image.random_hue(x, max_delta=0.1, seed=1)
-  [[[2.5... 3.        2.       ]]]
-  ```
   
   Args:
     image: RGB image or images. The size of the last dimension must be 3.
