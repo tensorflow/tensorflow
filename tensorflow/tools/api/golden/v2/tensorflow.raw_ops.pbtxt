@@ -493,6 +493,10 @@ tf_module {
     argspec: "args=[\'node_id_range\', \'stats_summary\', \'l1\', \'l2\', \'tree_complexity\', \'min_node_weight\', \'logits_dimension\', \'split_type\', \'name\'], varargs=None, keywords=None, defaults=[\'inequality\', \'None\'], "
   }
   member_method {
+    name: "BoostedTreesCalculateBestFeatureSplitV2"
+    argspec: "args=[\'node_id_range\', \'stats_summaries_list\', \'split_types\', \'candidate_feature_ids\', \'l1\', \'l2\', \'tree_complexity\', \'min_node_weight\', \'logits_dimension\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "BoostedTreesCalculateBestGainsPerFeature"
     argspec: "args=[\'node_id_range\', \'stats_summary_list\', \'l1\', \'l2\', \'tree_complexity\', \'min_node_weight\', \'max_splits\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
