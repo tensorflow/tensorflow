@@ -17,7 +17,10 @@ SHELL ["/bin/bash", "-c"]
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
         cuda-command-line-tools-${CUDA/./-} \
-        libcublas10 \
+        # There appears to be a regression in libcublas10=10.2.2.89-1 which
+        # prevents cublas from initializing in TF. See
+        # https://github.com/tensorflow/tensorflow/issues/9489#issuecomment-562394257
+        libcublas10=10.2.1.243-1 \ 
         cuda-nvrtc-${CUDA/./-} \
         cuda-cufft-${CUDA/./-} \
         cuda-curand-${CUDA/./-} \
