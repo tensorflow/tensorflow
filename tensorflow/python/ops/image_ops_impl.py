@@ -345,18 +345,6 @@ def random_flip_up_down(image, seed=None):
     ... ])
     >>> tf.image.random_flip_up_down(images, 4).numpy().tolist()
     [[[[3], [4]], [[1], [2]]], [[[5], [6]], [[7], [8]]]]
-    
-  Usage Example:
-    >>> x = [[[1.0, 2.0, 3.0],
-    ...       [4.0, 5.0, 6.0]],      
-    ...     [[7.0, 8.0, 9.0],      
-    ...       [10.0, 11.0, 12.0]]]
-    >>> tf.image.random_flip_up_down(x)
-    array([[[ 1.,  2.,  3.],
-        [ 4.,  5.,  6.]],
-
-       [[ 7.,  8.,  9.],
-        [10., 11., 12.]]], dtype=float32)>
 
   Args:
     image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
@@ -397,18 +385,6 @@ def random_flip_left_right(image, seed=None):
     ... ])
     >>> tf.image.random_flip_left_right(images, 6).numpy().tolist()
     [[[[2], [1]], [[4], [3]]], [[[5], [6]], [[7], [8]]]]
-    
-  Usage Example:
-    >>> x = [[[1.0, 2.0, 3.0],
-    ...       [4.0, 5.0, 6.0]],      
-    ...     [[7.0, 8.0, 9.0],      
-    ...       [10.0, 11.0, 12.0]]]
-    >>> tf.image.random_flip_left_right(x)
-    array([[[ 4.,  5.,  6.],
-        [ 1.,  2.,  3.]],
-
-       [[10., 11., 12.],
-        [ 7.,  8.,  9.]]], dtype=float32)>
 
   Args:
     image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
