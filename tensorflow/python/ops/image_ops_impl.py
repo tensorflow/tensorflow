@@ -639,7 +639,7 @@ def transpose(image, name=None):
    `[width, height, channels]`
    
    Usage Example: ```python 
-    >>> import tensorflow as tf >> 
+    
     >>> x = tf.random.normal(shape=(100, 200, 3)) >> 
     >>> tf.image.transpose(x) `
  
