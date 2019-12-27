@@ -11,6 +11,7 @@ package_group(
     includes = ["@local_config_mlir//:subpackages"],
     packages = [
         "//tensorflow/compiler/...",
+        "//tensorflow/lite/experimental/tf_runtime/...",
         "//tensorflow/python/...",
     ],
 )

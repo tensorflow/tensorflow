@@ -8,6 +8,7 @@ package(
     default_visibility = [
         # TODO(jpienaar): Make the visibility more restrictive.
         ":friends",
+        "//tensorflow/lite/experimental/tf_runtime:__subpackages__",
     ],
     licenses = ["notice"],  # Apache 2.0
 )
