@@ -6,8 +6,8 @@ Converts each uppercase character of each string in the input Tensor to
 lowercase.
 
 >>> strings = ['Hello', 'TensorFlow']
->>> tf.strings.lower(strings).numpy()
-array([b'hello', b'tensorflow'], dtype=object)
+>>> tf.strings.lower(strings)
+<tf.Tensor: shape=(2,), dtype=string, numpy=array([b'hello', b'tensorflow'], dtype=object)>
 
 END
 }
