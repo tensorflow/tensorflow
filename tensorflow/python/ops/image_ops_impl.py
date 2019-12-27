@@ -1943,8 +1943,9 @@ def random_hue(image, max_delta, seed=None):
 
   Equivalent to `adjust_hue()` but uses a `delta` randomly
   picked in the interval `[-max_delta, max_delta]`.
+
   `max_delta` must be in the interval `[0, 0.5]`.
-  
+
   Args:
     image: RGB image or images. The size of the last dimension must be 3.
     max_delta: float. The maximum value for the random delta.
@@ -2935,8 +2936,8 @@ def rgb_to_yiq(images):
   Usage Example:
     ```python
     >>> x = tf.constant([[[1.0, 2.0, 3.0]]])
-    >>> y = tf.image.rgb_to_yiq(x)
-    [[[ 1.815      -0.9...  0.09...]]]
+    >>> tf.image.rgb_to_yiq(x)
+    <tf.Tensor: shape=(1, 1, 3), dtype=float32, numpy=array([[[ 1.815     , -0.9...,  0.09...]]], dtype=float32)>
     ```
 
   Args:
