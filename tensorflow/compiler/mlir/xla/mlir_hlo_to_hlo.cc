@@ -660,6 +660,21 @@ LogicalResult ExportXlaOp(SelectAndScatterOp op, OpLoweringContext ctx) {
   return success();
 }
 
+LogicalResult ExportXlaOp(SendOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  if (op.is_host_transfer()) {
+    value_map[op] =
+        xla::SendToHost(value_map[op.operand()], value_map[op.token()],
+                        xla::TypeToShape(op.operand().getType()),
+                        Convert_channel_handle(op.channel_id()));
+    return success();
+  }
+  value_map[op] =
+      xla::SendWithToken(value_map[op.operand()], value_map[op.token()],
+                         Convert_channel_handle(op.channel_id()));
+  return success();
+}
+
 LogicalResult ExportXlaOp(SliceOp op, OpLoweringContext ctx) {
   return failure();
 }
