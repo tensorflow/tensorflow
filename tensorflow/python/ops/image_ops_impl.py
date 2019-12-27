@@ -640,7 +640,7 @@ def transpose(image, name=None):
    
    Usage Example: ```python 
     
-    >>> x = tf.random.normal(shape=(100, 200, 3)) >> 
+    >>> x = tf.random.normal(shape=(100, 200, 3))
     >>> tf.image.transpose(x) `
  
 
