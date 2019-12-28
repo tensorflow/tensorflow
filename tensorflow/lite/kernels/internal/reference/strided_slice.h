@@ -18,6 +18,8 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/strided_slice_logic.h"
 #include "tensorflow/lite/kernels/internal/types.h"
+#include <functional>
+
 namespace tflite {
 
 namespace reference_ops {
