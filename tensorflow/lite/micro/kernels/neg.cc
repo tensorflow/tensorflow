@@ -31,15 +31,21 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
   switch (input->type) {
-    // TODO(wangtz): handle for kTfLiteInt8
+    case kTfLiteInt8:
+      reference_ops::Negate(GetTensorShape(input), GetTensorData<int8_t>(input),
+                            GetTensorShape(output),
+                            GetTensorData<int8_t>(output));
+
     case kTfLiteFloat32:
       reference_ops::Negate(GetTensorShape(input), GetTensorData<float>(input),
                             GetTensorShape(output),
                             GetTensorData<float>(output));
       break;
+      
     default:
       context->ReportError(
-          context, "Neg only currently supports float32, got %d.", input->type);
+          context, "Neg only currently supports float32 and int8, got %d.",
+          input->type);
       return kTfLiteError;
   }
   return kTfLiteOk;
