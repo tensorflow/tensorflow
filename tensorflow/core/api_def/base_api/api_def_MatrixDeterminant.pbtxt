@@ -25,6 +25,6 @@ x = tf.constant([[99, 5, 1],
                  [100, 437, 3]], dtype=tf.float64)
 
 tf.linalg.det(x) # -154310.00000000026
-
+```
 END
 }
