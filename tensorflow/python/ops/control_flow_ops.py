@@ -2409,7 +2409,7 @@ def while_loop_v2(cond,
   Example:
 
   ```python
-  i = tf.constant(0)
+  i = tf.constant(10)
   c = lambda i: tf.less(i, 10)
   b = lambda i: (tf.add(i, 1), )
   r = tf.while_loop(c, b, [i])
