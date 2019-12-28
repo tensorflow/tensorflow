@@ -24,5 +24,11 @@ each code point. Script codes correspond to International Components for
 Unicode (ICU) UScriptCode values. See http://icu-project.org/apiref/icu4c/uscript_8h.html.
 Returns -1 (USCRIPT_INVALID_CODE) for invalid codepoints. Output shape will
 match input shape.
+
+Examples:
+```python
+>>> tf.strings.unicode_script([1, 31, 38])
+<tf.Tensor: id=357, shape=(3,), dtype=int32, numpy=array([0, 0, 0])>
+```
 END
 }

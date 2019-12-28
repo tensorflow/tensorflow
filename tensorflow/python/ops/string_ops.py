@@ -78,6 +78,13 @@ regex_full_match.__doc__ = gen_string_ops.regex_full_match.__doc__
 def regex_replace(input, pattern, rewrite, replace_global=True, name=None):
   r"""Replace elements of `input` matching regex `pattern` with `rewrite`.
 
+  Examples:
+  ```python
+  >>> tf.strings.regex_replace(["python library", "python", "Python language"], "python", "TensorFlow")
+  <tf.Tensor: id=328, shape=(3,), dtype=string, numpy=
+  array([b'TensorFlow library', b'TensorFlow', b'Python language'], dtype=object)>
+  ```
+
   Args:
     input: string `Tensor`, the source strings to process.
     pattern: string or scalar string `Tensor`, regular expression to use,
@@ -470,6 +477,14 @@ def string_to_number(input, out_type=dtypes.float32, name=None):
   (Note that int32 overflow results in an error while float overflow
   results in a rounded value.)
 
+  Examples:
+  ```python
+  >>> tf.strings.to_number("1.55")
+  <tf.Tensor: id=345, shape=(), dtype=float32, numpy=1.55>
+  >>> tf.strings.to_number("3", tf.int32)
+  <tf.Tensor: id=347, shape=(), dtype=int32, numpy=3>
+  ```
+
   Args:
     input: A `Tensor` of type `string`.
     out_type: An optional `tf.DType` from: `tf.float32, tf.float64, tf.int32,
@@ -508,6 +523,12 @@ def string_to_hash_bucket(input, num_buckets, name=None):
   Note that the hash function may change from time to time.
   This functionality will be deprecated and it's recommended to use
   `tf.strings.to_hash_bucket_fast()` or `tf.strings.to_hash_bucket_strong()`.
+
+  Examples:
+  ```python
+  >>> tf.strings.to_hash_bucket(["Hello", "TensorFlow", "2.x"], 3)
+  <tf.Tensor: id=332, shape=(3,), dtype=int64, numpy=array([2, 0, 1], dtype=int64)>
+  ```
 
   Args:
     input: A `Tensor` of type `string`.

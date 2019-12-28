@@ -10,6 +10,12 @@ END
     name: "output"
     description: <<END
 A string `Tensor` of the same shape as the input.
+
+Examples:
+```python
+>>> tf.strings.strip(["\nTensorFlow", "     The python library    "])
+<tf.Tensor: id=330, shape=(2,), dtype=string, numpy=array([b'TensorFlow', b'The python library'], dtype=object)>
+```
 END
   }
   summary: "Strip leading and trailing whitespaces from the Tensor."
