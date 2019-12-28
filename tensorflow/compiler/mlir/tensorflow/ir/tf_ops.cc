@@ -1471,6 +1471,59 @@ static LogicalResult Verify(PackOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// ParseExampleV2Op
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(ParseExampleV2Op op) {
+  // NOTE(mrry): This validates properties of an op that would previously be
+  // validated by the TensorFlow OpDef type checker. In addition to these
+  // checks, the shape inference function for ParseExampleV2 validates the
+  // consistency of the argument and result types.
+
+  // Validate dense variadic input and output lengths.
+  // NOTE(mrry): The Tdense attr is derived from dense_defaults, so we
+  // do not need to validate dense_defaults.
+  auto dense_types_count =
+      std::distance(op.Tdense().begin(), op.Tdense().end());
+  auto dense_values_count =
+      std::distance(op.dense_values().begin(), op.dense_values().end());
+  if (dense_values_count != dense_types_count) {
+    return op.emitError() << "output 'dense_values' should have same length "
+                          << "as attribute 'Tdense'";
+  }
+
+  // Validate sparse variadic output lengths.
+  // NOTE(mrry): The sparse_types attr is derived from sparse_values, so we
+  // do not need to validate sparse_values.
+  auto sparse_types_count =
+      std::distance(op.sparse_types().begin(), op.sparse_types().end());
+  if (op.num_sparse() != sparse_types_count) {
+    return op.emitError() << "attribute 'num_sparse' should be the same as "
+                          << "the length of attribute 'sparse_types'";
+  }
+  if (op.sparse_indices().size() != sparse_types_count) {
+    return op.emitError() << "output 'sparse_indices' should have same length "
+                          << "as attribute 'sparse_types'";
+  }
+  if (op.sparse_shapes().size() != sparse_types_count) {
+    return op.emitError() << "output 'sparse_shapes' should have same length "
+                          << "as attribute 'sparse_types'";
+  }
+
+  // Validate ragged variadic output lengths.
+  auto ragged_value_types_count = std::distance(op.ragged_value_types().begin(),
+                                                op.ragged_value_types().end());
+  auto ragged_split_types_count = std::distance(op.ragged_split_types().begin(),
+                                                op.ragged_split_types().end());
+  if (ragged_value_types_count != ragged_split_types_count) {
+    return op.emitError() << "attribute 'ragged_value_types' should have same "
+                          << "length as attribute 'ragged_split_types'";
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // ReciprocalOp
 //===----------------------------------------------------------------------===//
 

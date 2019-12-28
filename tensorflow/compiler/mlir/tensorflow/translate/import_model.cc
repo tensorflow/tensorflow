@@ -48,6 +48,7 @@ limitations under the License.
 #include "mlir/IR/Location.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
+#include "mlir/IR/OpDefinition.h"  // TF:local_config_mlir
 #include "mlir/IR/Types.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/jit/shape_inference_helpers.h"
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
@@ -1436,6 +1437,32 @@ mlir::Operation* ImporterBase::createOperation(
         island_builder.getSymbolRefAttr(node_type_name), attribute);
   } else {
     inner_op = island_builder.createOperation(result);
+  }
+
+  if (inner_op->hasTrait<mlir::OpTrait::AttrSizedResultSegments>()) {
+    // The op has multiple variadic outputs.
+    // Calculate result segment sizes using the OpDef.
+    NameRangeMap output_ranges;
+    // This will fail only if the OpDef is syntactically invalid.
+    // TODO(jpienaar): Convert this CHECK into a properly propagated error.
+    TF_CHECK_OK(
+        NameRangesForNode(node, node.op_def(), nullptr, &output_ranges));
+    std::vector<mlir::Attribute> values;
+    values.reserve(node.op_def().output_arg_size());
+    for (const auto& output_arg : node.op_def().output_arg()) {
+      auto range = output_ranges[output_arg.name()];
+      values.push_back(
+          island_builder.getI32IntegerAttr(range.second - range.first));
+    }
+
+    // Add derived "result_segment_sizes" attr to the created operation.
+    // TODO(b/146937733): Don't use <void> here.
+    llvm::StringRef attr_name = mlir::OpTrait::AttrSizedResultSegments<
+        void>::getResultSegmentSizeAttr();
+    auto attr_type = mlir::VectorType::get(node.op_def().output_arg_size(),
+                                           builder_.getIntegerType(32));
+    auto attr_value = mlir::DenseElementsAttr::get(attr_type, values);
+    inner_op->setAttr(attr_name, attr_value);
   }
 
   // Add the terminator for the island
