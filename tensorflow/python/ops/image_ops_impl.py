@@ -643,19 +643,19 @@ def transpose(image, name=None):
 
   Usage Example:
   
-  >>> image = [[[1.0, 2.0, 3.0],[4.0, 5.0, 6.0]],...
-              [[7.0, 8.0, 9.0],[10.0, 11.0, 12.0]],...
-              [[13.0, 14.0, 15.0],[16.0, 17.0, 18.0]]]
+  >>> image = [[[1, 2],[3, 4]],...
+              [[5, 6],[7, 8]],...
+              [[9, 10],[11, 12]]]
   >>> image = tf.constant(image)
   >>> tf.image.transpose(image)
-tf.Tensor: shape=(2, 3, 3), dtype=float32, numpy=
-array([[[ 1.,  2.,  3.],
-        [ 7.,  8.,  9.],
-        [13., 14., 15.]],
+<tf.Tensor: shape=(2, 3, 2), dtype=int32, numpy=
+array([[[ 1,  2],
+        [ 5,  6],
+        [ 9, 10]],
 
-       [[ 4.,  5.,  6.],
-        [10., 11., 12.],
-        [16., 17., 18.]]], dtype=float32)>
+       [[ 3,  4],
+        [ 7,  8],
+        [11, 12]]], dtype=int32)>
   """
   with ops.name_scope(name, 'transpose', [image]):
     image = ops.convert_to_tensor(image, name='image')
