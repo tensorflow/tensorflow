@@ -35,13 +35,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       reference_ops::Negate(GetTensorShape(input), GetTensorData<int8_t>(input),
                             GetTensorShape(output),
                             GetTensorData<int8_t>(output));
+      break;
 
     case kTfLiteFloat32:
       reference_ops::Negate(GetTensorShape(input), GetTensorData<float>(input),
                             GetTensorShape(output),
                             GetTensorData<float>(output));
       break;
-      
+
     default:
       context->ReportError(
           context, "Neg only currently supports float32 and int8, got %d.",
