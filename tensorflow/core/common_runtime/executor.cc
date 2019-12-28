@@ -2532,7 +2532,7 @@ void ExecutorState::Finish() {
       }
     }
     delete this;
-    runner([=]() {
+    runner([step_id, status, done_cb = std::move(done_cb)]() {
       profiler::TraceMe traceme(
           [&] {
             return absl::StrCat("ExecutorDoneCallback#id=", step_id, "#");
@@ -2548,10 +2548,10 @@ void ExecutorState::Finish() {
     // devices like GPUs that continue to execute Ops after their Compute
     // methods have completed, this ensures that control is not returned to
     // the user until the step (and its side-effects) has actually completed.
-    device->Sync([=](Status new_status) mutable {
-      status.Update(new_status);
+    device->Sync([this, step_id, runner = std::move(runner),
+                  done_cb = std::move(done_cb)](const Status& status) mutable {
       delete this;
-      runner([=]() {
+      runner([step_id, status, done_cb = std::move(done_cb)]() {
         profiler::TraceMe traceme(
             [&] {
               return absl::StrCat("ExecutorDoneCallback#id=", step_id, "#");
@@ -2562,7 +2562,7 @@ void ExecutorState::Finish() {
     });
   } else {
     delete this;
-    runner([=]() {
+    runner([step_id, status, done_cb = std::move(done_cb)]() {
       profiler::TraceMe traceme(
           [&] {
             return absl::StrCat("ExecutorDoneCallback#id=", step_id, "#");
