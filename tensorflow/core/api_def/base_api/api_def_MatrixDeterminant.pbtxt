@@ -17,5 +17,12 @@ END
 The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
 form square matrices. The output is a tensor containing the determinants
 for all input submatrices `[..., :, :]`.
+
+For example,
+
+>>> import tensorflow as tf
+>>> x = tf.constant([[1, 2, 3], [11, 5, 7], [12, 15, 9]], tf.float64) 
+>>> tf.linalg.det(x) # 255.00...
+
 END
 }
