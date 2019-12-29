@@ -680,13 +680,12 @@ def ngrams(data,
   to always generate at least one ngram per non-empty sequence.
 
   Examples:
-  ```python
+
   >>> tf.strings.ngrams(["TensorFlow", "and", "keras"], 2)
   <tf.Tensor: id=285, shape=(2,), dtype=string, numpy=array([b'TensorFlow and', b'and keras'], dtype=object)>
   >>> tf.strings.ngrams(["TensorFlow", "is", "a", "python", "library"], 3)
   <tf.Tensor: id=320, shape=(3,), dtype=string, numpy=
   array([b'TensorFlow is a', b'is a python', b'a python library'], dtype=object)>
-  ```
 
   Args:
     data: A Tensor or RaggedTensor containing the source data for the ngrams.
