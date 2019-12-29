@@ -114,7 +114,6 @@ class ParseExampleTest(test.TestCase):
           self.assertEqual(out[k].values.shape.as_list(), [None])
           self.assertEqual(out[k].dense_shape.shape.as_list(), [2])
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testEmptySerializedWithAllDefaults(self):
     sparse_name = "st_a"
     a_name = "a"
@@ -154,7 +153,6 @@ class ParseExampleTest(test.TestCase):
         }
     }, expected_output)
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testEmptySerializedWithoutDefaultsShouldFail(self):
     input_features = {
         "st_a":
@@ -195,7 +193,6 @@ class ParseExampleTest(test.TestCase):
             errors_impl.OpError,
             "Name: in1, Feature: c \\(data type: float\\) is required"))
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testDenseNotMatchingShapeShouldFail(self):
     original = [
         example(features=features({
@@ -220,7 +217,6 @@ class ParseExampleTest(test.TestCase):
         expected_err=(errors_impl.OpError,
                       "Name: failing, Key: a, Index: 1.  Number of float val"))
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testDenseDefaultNoShapeShouldFail(self):
     original = [
         example(features=features({
@@ -240,7 +236,6 @@ class ParseExampleTest(test.TestCase):
         },
         expected_err=(ValueError, "Missing shape for feature a"))
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSerializedContainingSparse(self):
     original = [
         example(features=features({
@@ -285,7 +280,6 @@ class ParseExampleTest(test.TestCase):
         }
     }, expected_output)
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSerializedContainingSparseFeature(self):
     original = [
         example(
@@ -330,7 +324,6 @@ class ParseExampleTest(test.TestCase):
         }
     }, expected_output)
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSerializedContainingSparseFeatureReuse(self):
     original = [
         example(
@@ -374,7 +367,6 @@ class ParseExampleTest(test.TestCase):
         }
     }, expected_output)
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSerializedContaining3DSparseFeature(self):
     original = [
         example(
@@ -427,7 +419,6 @@ class ParseExampleTest(test.TestCase):
         }
     }, expected_output)
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSerializedContainingDense(self):
     aname = "a"
     bname = "b*has+a:tricky_name"
@@ -466,7 +457,6 @@ class ParseExampleTest(test.TestCase):
 
   # This test is identical as the previous one except
   # for the creation of 'serialized'.
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSerializedContainingDenseWithConcat(self):
     aname = "a"
     bname = "b*has+a:tricky_name"
@@ -514,7 +504,6 @@ class ParseExampleTest(test.TestCase):
         }
     }, expected_output)
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSerializedContainingDenseScalar(self):
     original = [
         example(features=features({
@@ -539,7 +528,6 @@ class ParseExampleTest(test.TestCase):
         }
     }, expected_output)
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSerializedContainingDenseWithDefaults(self):
     original = [
         example(features=features({
@@ -576,7 +564,6 @@ class ParseExampleTest(test.TestCase):
         }
     }, expected_output)
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSerializedContainingSparseAndSparseFeatureAndDenseWithNoDefault(self):
     expected_st_a = (  # indices, values, shape
         np.empty((0, 2), dtype=np.int64),  # indices
@@ -637,7 +624,6 @@ class ParseExampleTest(test.TestCase):
         },
         expected_output)
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSerializedContainingSparseAndSparseFeatureWithReuse(self):
     expected_idx = (  # indices, values, shape
         np.array([[0, 0], [0, 1], [1, 0], [1, 1]], dtype=np.int64),
@@ -743,13 +729,11 @@ class ParseExampleTest(test.TestCase):
         }
     }, expected_output)
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSerializedContainingVarLenDenseLargerBatch(self):
     np.random.seed(3456)
     for batch_size in (1, 10, 20, 100, 256):
       self._testSerializedContainingVarLenDenseLargerBatch(batch_size)
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSerializedContainingVarLenDense(self):
     aname = "a"
     bname = "b"
@@ -943,7 +927,6 @@ class ParseExampleTest(test.TestCase):
                       "Unsupported: FixedLenSequenceFeature requires "
                       "allow_missing to be True."))
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSerializedContainingRaggedFeatureWithNoPartitions(self):
     original = [
         example(features=features({"rt_c": float_feature([3, 4])})),
@@ -1002,7 +985,6 @@ class ParseExampleTest(test.TestCase):
             "features": test_features
         }, batch_expected_out)
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSerializedContainingRaggedFeature(self):
     original = [
         example(
@@ -1121,7 +1103,6 @@ class ParseExampleTest(test.TestCase):
         "features": test_features
     }, expected_output)
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSerializedContainingNestedRaggedFeature(self):
     """Test RaggedFeature with 3 partitions."""
     original = [
@@ -1203,7 +1184,6 @@ class ParseSingleExampleTest(test.TestCase):
           self.assertEqual(tuple(out[k].values.shape.as_list()), (None,))
           self.assertEqual(tuple(out[k].dense_shape.shape.as_list()), (1,))
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSingleExampleWithSparseAndSparseFeatureAndDense(self):
     original = example(
         features=features({
@@ -1272,7 +1252,6 @@ class ParseSingleExampleTest(test.TestCase):
             "features": test_features,
         }, expected_output)
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSingleExampleWithAllFeatureTypes(self):
     original = example(
         features=features({
@@ -1562,7 +1541,6 @@ class ParseSequenceExampleTest(test.TestCase):
         expected_err=expected_err,
         batch=True)
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSequenceExampleWithSparseAndDenseContext(self):
     original = sequence_example(
         context=features({
@@ -1606,7 +1584,6 @@ class ParseSequenceExampleTest(test.TestCase):
         },
         expected_context_values=expected_context_output)
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSequenceExampleWithMultipleSizeFeatureLists(self):
     original = sequence_example(
         feature_lists=feature_lists({
@@ -1670,7 +1647,6 @@ class ParseSequenceExampleTest(test.TestCase):
         },
         expected_feat_list_values=expected_feature_list_output)
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSequenceExampleWithoutDebugName(self):
     original = sequence_example(
         feature_lists=feature_lists({
@@ -1728,7 +1704,6 @@ class ParseSequenceExampleTest(test.TestCase):
         },
         expected_feat_list_values=expected_feature_list_output)
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSequenceExampleWithSparseAndDenseFeatureLists(self):
     original = sequence_example(
         feature_lists=feature_lists({
@@ -1787,7 +1762,6 @@ class ParseSequenceExampleTest(test.TestCase):
         },
         expected_feat_list_values=expected_feature_list_output)
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSequenceExampleWithEmptyFeatureInFeatureLists(self):
     original = sequence_example(
         feature_lists=feature_lists({
@@ -1820,7 +1794,6 @@ class ParseSequenceExampleTest(test.TestCase):
         },
         expected_feat_list_values=expected_feature_list_output)
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSequenceExampleListWithInconsistentDataFails(self):
     original = sequence_example(
         feature_lists=feature_lists({
@@ -1841,7 +1814,6 @@ class ParseSequenceExampleTest(test.TestCase):
         expected_err=(errors_impl.OpError, "Feature list: a, Index: 1."
                       "  Data types don't match. Expected type: int64"))
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSequenceExampleListWithWrongDataTypeFails(self):
     original = sequence_example(
         feature_lists=feature_lists({
@@ -1862,7 +1834,6 @@ class ParseSequenceExampleTest(test.TestCase):
                       "Feature list: a, Index: 0.  Data types don't match."
                       " Expected type: int64"))
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSequenceExampleListWithWrongSparseDataTypeFails(self):
     original = sequence_example(
         feature_lists=feature_lists({
@@ -1888,7 +1859,6 @@ class ParseSequenceExampleTest(test.TestCase):
                       "Name: in1, Feature list: a, Index: 2."
                       "  Data types don't match. Expected type: int64"))
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSequenceExampleListWithWrongShapeFails(self):
     original = sequence_example(
         feature_lists=feature_lists({
@@ -1918,7 +1888,6 @@ class ParseSequenceExampleTest(test.TestCase):
             r"Total values size: 5 is not consistent with output "
             r"shape: \[\?,2\]"))
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSequenceExampleListWithWrongShapeFails2(self):
     # This exercises a different code path for FastParseSequenceExample than
     # testSequenceExampleListWithWrongShapeFails (in that test, we can tell that
@@ -1944,7 +1913,6 @@ class ParseSequenceExampleTest(test.TestCase):
                       r"  Number of (int64 )?values != expected."
                       r"  values size: 1 but output shape: \[2\]"))
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSequenceExampleWithMissingFeatureListFails(self):
     original = sequence_example(feature_lists=feature_lists({}))
 
@@ -1965,7 +1933,6 @@ class ParseSequenceExampleTest(test.TestCase):
             " feature_list_dense_missing_assumed_empty or"
             " feature_list_dense_defaults?"))
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSequenceExampleBatch(self):
     first = sequence_example(
         feature_lists=feature_lists({
@@ -2046,7 +2013,6 @@ class ParseSequenceExampleTest(test.TestCase):
         },
         batch=True)
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSerializedContainingRaggedFeatureWithNoPartitions(self):
     original = [
         sequence_example(
@@ -2147,7 +2113,6 @@ class ParseSequenceExampleTest(test.TestCase):
         batch_feature_list_expected_out,
         batch=True)
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSerializedContainingNestedRaggedFeature(self):
     """Test RaggedFeatures with nested partitions."""
     original = [
@@ -2271,7 +2236,6 @@ class ParseSequenceExampleTest(test.TestCase):
         },
         batch=False)
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSerializedContainingMisalignedNestedRaggedFeature(self):
     """FeatureList with 2 value tensors but only one splits tensor."""
     original = sequence_example(
