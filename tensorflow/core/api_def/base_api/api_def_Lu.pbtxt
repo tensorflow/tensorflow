@@ -47,5 +47,13 @@ entries correspond to the upper triangular part, including the diagonal, of LU.
 P represents a permutation matrix encoded as a list of indices each between `0`
 and `M-1`, inclusive. If P_mat denotes the permutation matrix corresponding to
 P, then the L, U and P satisfies P_mat * input = L * U.
+
+For example, 
+
+>>> import tensorflow as tf
+>>> x = tf.constant([[1, 2, 3], [11, 12, 13], [8, 6, 7]], tf.float64)
+>>> tf.linalg.lu(x)   # lu = [[11. , 12. , 13.], [0.727... , -2.727... , -2.4545...], [0.0909... , -0.333... , 1.]]
+                      # p = [1, 2, 0]
+
 END
 }
