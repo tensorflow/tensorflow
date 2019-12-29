@@ -44,11 +44,9 @@ For Unicode, see the
 tutorial.
 
 Examples:
-```python
 >>> tf.strings.as_string([3.1415926, 2.71828])
 <tf.Tensor: id=1, shape=(2,), dtype=string, numpy=array([b'3.141593', b'2.718280'], dtype=object)>
 >>> tf.strings.as_string([3.1415926, 2.71828], precision=2)
 <tf.Tensor: id=3, shape=(2,), dtype=string, numpy=array([b'3.14', b'2.72'], dtype=object)>
-```
 END
 }

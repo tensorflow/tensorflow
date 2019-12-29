@@ -28,11 +28,9 @@ if the input matches the regex pattern provided.
 The pattern follows the re2 syntax (https://github.com/google/re2/wiki/Syntax)
 
 Examples:
-```python
 >>> tf.strings.regex_full_match(["TensorFlow library", "Hello world"], ".*library$")
 <tf.Tensor: id=322, shape=(2,), dtype=bool, numpy=array([ True, False])>
 >>> tf.strings.regex_full_match(["TensorFlow library", "The library is called TensorFlow"], ".*library$")
 <tf.Tensor: id=324, shape=(2,), dtype=bool, numpy=array([ True, False])>
-```
 END
 }
