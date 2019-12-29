@@ -20,7 +20,6 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 
-from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
@@ -85,16 +84,15 @@ class RegexFullMatchOpTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testStaticRegexFullMatchDelegation(self):
-    with compat.forward_compatibility_horizon(2018, 11, 20):
-      with self.cached_session():
-        input_tensor = constant_op.constant("foo", dtypes.string)
-        pattern = "[a-z]*"
-        op = string_ops.regex_full_match(input_tensor, pattern)
-        self.assertTrue(op.name.startswith("StaticRegexFullMatch"), op.name)
+    with self.cached_session():
+      input_tensor = constant_op.constant("foo", dtypes.string)
+      pattern = "[a-z]*"
+      op = string_ops.regex_full_match(input_tensor, pattern)
+      self.assertTrue(op.name.startswith("StaticRegexFullMatch"), op.name)
 
-        pattern_tensor = constant_op.constant("[a-z]*", dtypes.string)
-        op_vec = string_ops.regex_full_match(input_tensor, pattern_tensor)
-        self.assertTrue(op_vec.name.startswith("RegexFullMatch"), op.name)
+      pattern_tensor = constant_op.constant("[a-z]*", dtypes.string)
+      op_vec = string_ops.regex_full_match(input_tensor, pattern_tensor)
+      self.assertTrue(op_vec.name.startswith("RegexFullMatch"), op.name)
 
 if __name__ == "__main__":
   test.main()
