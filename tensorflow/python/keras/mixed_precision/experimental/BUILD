@@ -228,7 +228,6 @@ cuda_py_test(
     size = "medium",
     srcs = ["layer_correctness_test.py"],
     python_version = "PY3",
-    tags = ["no_rocm"],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/distribute:mirrored_strategy",
