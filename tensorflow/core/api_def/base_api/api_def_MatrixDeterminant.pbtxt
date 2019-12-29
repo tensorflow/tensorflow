@@ -20,9 +20,9 @@ for all input submatrices `[..., :, :]`.
 
 For example,
 
->>>x = tf.constant([[99, 5, 1], [55, 36, 6], [100, 437, 3]], dtype=tf.float64)
+>>> x = tf.constant([[1, 2, 3], [11, 5, 7], [12, 15, 9]], dtype=tf.float64)
 
->>>tf.linalg.det(x) # -154310.00000000026
+>>> tf.linalg.det(x) # -154310.00000000026
 
 END
 }
