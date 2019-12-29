@@ -22,7 +22,7 @@ For example,
 
 >>> x = tf.constant([[1, 2, 3], [11, 5, 7], [12, 15, 9]], dtype=tf.float64)
 
->>> tf.linalg.det(x) # -154310.00000000026
+>>> tf.linalg.det(x) # 225
 
 END
 }
