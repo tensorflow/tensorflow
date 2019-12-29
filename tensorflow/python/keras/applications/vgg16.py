@@ -90,12 +90,10 @@ def VGG16(include_top=True,
           
           
   Usage Example:
- 
-      >> from tensorflow.keras.applications.vgg16 import VGG16
-      >> # Including the top layer (the last dense layer responsible for classification)
-      >> vgg16_model = VGG16(input_shape = (224,224,3) , include_top = True)
-      >> vgg16_model.summary()
-  
+     >>> from tensorflow.keras.applications.vgg16 import VGG16
+     >>> # Including the top layer (the last dense layer responsible for classification)
+     >>> vgg16_model = VGG16(input_shape = (224,224,3) , include_top = True)
+     >>> vgg16_model.summary()
   """
   if not (weights in {'imagenet', None} or os.path.exists(weights)):
     raise ValueError('The `weights` argument should be either '
