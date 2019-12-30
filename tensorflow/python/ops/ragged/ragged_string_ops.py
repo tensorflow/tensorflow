@@ -681,11 +681,10 @@ def ngrams(data,
 
   Examples:
 
-  >>> tf.strings.ngrams(["TensorFlow", "and", "keras"], 2)
-  <tf.Tensor: id=285, shape=(2,), dtype=string, numpy=array([b'TensorFlow and', b'and keras'], dtype=object)>
-  >>> tf.strings.ngrams(["TensorFlow", "is", "a", "python", "library"], 3)
-  <tf.Tensor: id=320, shape=(3,), dtype=string, numpy=
-  array([b'TensorFlow is a', b'is a python', b'a python library'], dtype=object)>
+  >>> tf.strings.ngrams(["A", "B", "C", "D"], 2).numpy()
+  array([b'A B', b'B C', b'C D'], dtype=object)
+  >>> tf.strings.ngrams(["TF", "and", "keras"], 1).numpy()
+  array([b'TF', b'and', b'keras'], dtype=object)
 
   Args:
     data: A Tensor or RaggedTensor containing the source data for the ngrams.

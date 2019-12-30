@@ -79,9 +79,8 @@ def regex_replace(input, pattern, rewrite, replace_global=True, name=None):
   r"""Replace elements of `input` matching regex `pattern` with `rewrite`.
 
   Examples:
-  >>> tf.strings.regex_replace(["python library", "python", "Python language"], "python", "TensorFlow")
-  <tf.Tensor: id=328, shape=(3,), dtype=string, numpy=
-  array([b'TensorFlow library', b'TensorFlow', b'Python language'], dtype=object)>
+  >>> tf.strings.regex_replace(["py", "py lib"], "py", "TF").numpy()
+  array([b'TF', b'TF lib'], dtype=object)
 
   Args:
     input: string `Tensor`, the source strings to process.

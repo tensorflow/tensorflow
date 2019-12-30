@@ -42,7 +42,7 @@ The additional robustness comes at a cost of roughly 4x higher compute
 time than `tf.string_to_hash_bucket_fast`.
 
 Examples:
->>> tf.strings.to_hash_bucket_strong(["Hello", "TensorFlow", "2.x"], 3, [1, 2])
-<tf.Tensor: id=337, shape=(3,), dtype=int64, numpy=array([2, 2, 1], dtype=int64)>
+>>> tf.strings.to_hash_bucket_strong(["Hello", "TF"], 3, [1, 2]).numpy()
+array([2, 0])
 END
 }

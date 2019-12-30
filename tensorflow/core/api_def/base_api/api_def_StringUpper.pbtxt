@@ -3,7 +3,7 @@ op {
   description: <<END
 
 Examples:
->>> tf.strings.upper(["hello", "TensorFlow"])
-<tf.Tensor: id=365, shape=(2,), dtype=string, numpy=array([b'HELLO', b'TENSORFLOW'], dtype=object)>
+>>> tf.strings.upper(["hello", "TensorFlow"]).numpy()
+array([b'HELLO', b'TENSORFLOW'], dtype=object)
 END
 }
