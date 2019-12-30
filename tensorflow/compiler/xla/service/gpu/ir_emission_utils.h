@@ -22,6 +22,7 @@ limitations under the License.
 #include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
+#include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
 // TODO(jlebar): Move functions related to cublas/cudnn to a separate file; they
 // don't belong in "ir_emission_utils".
@@ -52,6 +53,12 @@ enum class CudnnConvKind {
 };
 
 StatusOr<CudnnConvKind> GetCudnnConvKind(const HloCustomCallInstruction* instr);
+
+StatusOr<se::dnn::ConvolutionKind> GetDnnConvolutionKind(
+    const HloCustomCallInstruction* instr);
+
+StatusOr<se::dnn::DataType> GetDnnDataType(
+    const HloCustomCallInstruction* instr);
 
 // Converts a CudnnConvKind value to a string.
 string CudnnConvKindToString(CudnnConvKind kind);
