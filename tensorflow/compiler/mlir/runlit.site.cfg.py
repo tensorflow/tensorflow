@@ -27,7 +27,7 @@ import lit.llvm
 config.llvm_tools_dir = os.path.join(os.environ['TEST_SRCDIR'], 'llvm-project',
                                      'llvm')
 config.mlir_obj_root = os.path.join(os.environ['TEST_SRCDIR'])
-config.mlir_tools_dir = os.path.join(os.environ['TEST_SRCDIR'], 'lllvm-project',
+config.mlir_tools_dir = os.path.join(os.environ['TEST_SRCDIR'], 'llvm-project',
                                      'mlir')
 # TODO(jpienaar): Replace with suffices in build rule.
 config.suffixes = ['.td', '.mlir', '.pbtxt']

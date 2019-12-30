@@ -9,7 +9,7 @@ package(default_visibility = [":friends"])
 
 package_group(
     name = "subpackages",
-    packages = ["//..."],
+    packages = ["//third_party/llvm/llvm/projects/google_mlir/..."],
 )
 
 # In particular the OWNERS file of the dependent project should be updated.
@@ -18,16 +18,7 @@ package_group(
 package_group(
     name = "friends",
     includes = ["@org_tensorflow//tensorflow/compiler/mlir:subpackages"],
-    packages = [
-        "//...",
-        "//learning/brain/research/sair/...",
-        "//learning/brain/swift/swift_mlir/...",
-        "//learning/glassbox/evaluation/compiler/...",
-        "//tensorflow/compiler/mlir/tfrt/...",
-        "//tensorflow/core/tfrt_delegate/...",
-        "//tensorflow/lite/experimental/tf_runtime/...",
-        "//third_party/tf_runtime_google/...",
-    ],
+    packages = ["//..."],
 )
 
 exports_files([
