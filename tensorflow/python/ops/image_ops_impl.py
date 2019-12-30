@@ -456,6 +456,7 @@ def flip_left_right(image):
   See also `reverse()`.
     
   Usage Example:
+
     >>> x = [[[1.0, 2.0, 3.0],
     ...       [4.0, 5.0, 6.0]],      
     ...     [[7.0, 8.0, 9.0],      
@@ -489,6 +490,7 @@ def flip_up_down(image):
   See also `reverse()`.
     
   Usage Example:
+
     >>> x = [[[1.0, 2.0, 3.0],
     ...       [4.0, 5.0, 6.0]],      
     ...     [[7.0, 8.0, 9.0],      
@@ -652,6 +654,7 @@ def transpose(image, name=None):
   """Transpose image(s) by swapping the height and width dimension.
     
   Usage Example:
+
     >>> x = [[[1.0, 2.0, 3.0],
     ...       [4.0, 5.0, 6.0]],      
     ...     [[7.0, 8.0, 9.0],      
@@ -708,6 +711,7 @@ def central_crop(image, central_fraction):
   batch of images (`image` is a 4-D Tensor).
 
   Usage Example:
+
     >>> x = [[[1.0, 2.0, 3.0],
     ...       [4.0, 5.0, 6.0],
     ...       [7.0, 8.0, 9.0],
@@ -1630,6 +1634,7 @@ def random_brightness(image, max_delta, seed=None):
       `tf.compat.v1.set_random_seed` for behavior.
     
   Usage Example:
+
     >>> x = [[[1.0, 2.0, 3.0],
     ...       [4.0, 5.0, 6.0]],      
     ...      [[7.0, 8.0, 9.0],      
@@ -1665,6 +1670,7 @@ def random_contrast(image, lower, upper, seed=None):
       `tf.compat.v1.set_random_seed` for behavior.
     
   Usage Example:
+
     >>> x = [[[1.0, 2.0, 3.0],
     ...       [4.0, 5.0, 6.0]],      
     ...     [[7.0, 8.0, 9.0],      
@@ -1705,6 +1711,7 @@ def adjust_brightness(image, delta):
   floating point representation, where pixel values are in the `[0,1)` range.
 
   Usage Example:
+
     >>> x = [[[1.0, 2.0, 3.0],
     ...       [4.0, 5.0, 6.0]],      
     ...     [[7.0, 8.0, 9.0],      
@@ -1759,6 +1766,7 @@ def adjust_contrast(images, contrast_factor):
   `(x - mean) * contrast_factor + mean`.
 
   Usage Example:
+
     >>> x = [[[1.0, 2.0, 3.0],
     ...       [4.0, 5.0, 6.0]],      
     ...     [[7.0, 8.0, 9.0],      
@@ -1806,6 +1814,7 @@ def adjust_gamma(image, gamma=1, gain=1):
   and then converts the back to the original data type.
 
   Usage Example:
+
     >>> x = [[[1.0, 2.0, 3.0],
     ...       [4.0, 5.0, 6.0]],      
     ...     [[7.0, 8.0, 9.0],      
@@ -1878,6 +1887,7 @@ def convert_image_dtype(image, dtype, saturate=False, name=None):
   effect on casts between floats, or on casts that increase the type's range).
 
   Usage Example:
+
     >>> x = [[[1.0, 2.0, 3.0],
     ...       [4.0, 5.0, 6.0]],      
     ...     [[7.0, 8.0, 9.0],      
@@ -2042,6 +2052,7 @@ def random_hue(image, max_delta, seed=None):
   `max_delta` must be in the interval `[0, 0.5]`.
     
   Usage Example:
+
     >>> x = [[[1.0, 2.0, 3.0],
     ...       [4.0, 5.0, 6.0]],      
     ...     [[7.0, 8.0, 9.0],      
@@ -2090,6 +2101,7 @@ def adjust_hue(image, delta, name=None):
   `delta` must be in the interval `[-1, 1]`.
 
   Usage Example:
+
     >>> x = [[[1.0, 2.0, 3.0],
     ...       [4.0, 5.0, 6.0]],      
     ...     [[7.0, 8.0, 9.0],      
@@ -2133,6 +2145,7 @@ def random_jpeg_quality(image, min_jpeg_quality, max_jpeg_quality, seed=None):
   `max_jpeg_quality` must be in the interval `[0, 100]`.
     
   Usage Example:
+
     >>> x = [[[1.0, 2.0, 3.0],
     ...       [4.0, 5.0, 6.0]],      
     ...     [[7.0, 8.0, 9.0],      
@@ -2181,6 +2194,7 @@ def adjust_jpeg_quality(image, jpeg_quality, name=None):
   `jpeg_quality` must be in the interval `[0, 100]`.
 
   Usage Example:
+
     >>> x = [[[1.0, 2.0, 3.0],
     ...       [4.0, 5.0, 6.0]],      
     ...     [[7.0, 8.0, 9.0],      
@@ -2227,6 +2241,7 @@ def random_saturation(image, lower, upper, seed=None):
   picked in the interval `[lower, upper]`.
     
   Usage Example:
+
     >>> x = [[[1.0, 2.0, 3.0],
     ...       [4.0, 5.0, 6.0]],      
     ...     [[7.0, 8.0, 9.0],      
@@ -2279,6 +2294,7 @@ def adjust_saturation(image, saturation_factor, name=None):
   `saturation_factor` and clipping. The images are then converted back to RGB.
 
   Usage Example:
+
     >>> x = [[[1.0, 2.0, 3.0],
     ...       [4.0, 5.0, 6.0]],      
     ...     [[7.0, 8.0, 9.0],      
@@ -3127,6 +3143,7 @@ def rgb_to_yuv(images):
   The output is only well defined if the value in images are in [0,1].
     
   Usage Example:
+
     >>> x = [[[1.0, 2.0, 3.0],
     ...       [4.0, 5.0, 6.0]],      
     ...     [[7.0, 8.0, 9.0],      
@@ -3965,6 +3982,7 @@ def extract_glimpse(
     numbers of pixels.
 
   Usage Example:
+
     >>> x = [[[[0.0], 
     ...           [1.0],
     ...           [2.0]],
@@ -4049,6 +4067,7 @@ def extract_glimpse_v2(
     numbers of pixels.
 
   Usage Example:
+
     >>> x = [[[[0.0], 
     ...           [1.0],
     ...           [2.0]],
