@@ -50,7 +50,7 @@ using ::testing::ElementsAre;
 class TRTEngineOpTestBase : public OpsTestBase {
  public:
   void AddSimpleTrtOp(DataType dtype, int max_cached_engines_count = 1,
-                      allow_build_at_runtime = true) {
+                      bool allow_build_at_runtime = true) {
     // Create the GPU device.
     std::unique_ptr<Device> device(
         DeviceFactory::NewDevice("GPU", {}, "/job:worker/replica:0/task:0"));
