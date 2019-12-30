@@ -464,7 +464,6 @@ def flip_left_right(image):
     <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
     array([[[ 4.,  5.,  6.],
             [ 1.,  2.,  3.]],
-
            [[10., 11., 12.],
             [ 7.,  8.,  9.]]], dtype=float32)>
 
@@ -498,7 +497,6 @@ def flip_up_down(image):
     <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
     array([[[ 7.,  8.,  9.],
             [10., 11., 12.]],
-
            [[ 1.,  2.,  3.],
             [ 4.,  5.,  6.]]], dtype=float32)>
 
@@ -662,7 +660,6 @@ def transpose(image, name=None):
     <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
     array([[[ 1.,  2.,  3.],
             [ 7.,  8.,  9.]],
-
            [[ 4.,  5.,  6.],
             [10., 11., 12.]]], dtype=float32)>
 
@@ -731,7 +728,6 @@ def central_crop(image, central_fraction):
     <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
     array([[[16., 17., 18.],
             [19., 20., 21.]],
-
            [[28., 29., 30.],
             [31., 32., 33.]]], dtype=float32)>
 
@@ -1642,7 +1638,6 @@ def random_brightness(image, max_delta, seed=None):
     <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
     array([[[ 0.80...,  1.80... ,  2.80... ],
             [ 3.80... ,  4.80...  ,  5.80...  ]],
-
            [[ 6.80...  ,  7.80...  ,  8.80...  ],
             [ 9.80...  , 10.80...  , 11.80...  ]]], dtype=float32)>
 
@@ -1682,7 +1677,6 @@ def random_contrast(image, lower, upper, seed=None):
     <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
     array([[[3.81..., 4.81..., 5.81...],
             [4.93... , 5.93... , 6.93... ]],
-
            [[6.06... , 7.06... , 8.06... ],
             [7.18..., 8.18... , 9.18... ]]], dtype=float32)>
 
@@ -1727,7 +1721,6 @@ def adjust_brightness(image, delta):
     <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
     array([[[ 1.1,  2.1,  3.1],
             [ 4.1,  5.1,  6.1]],
-
            [[ 7.1,  8.1,  9.1],
             [10.1, 11.1, 12.1]]], dtype=float32)>
 
@@ -1782,7 +1775,6 @@ def adjust_contrast(images, contrast_factor):
     <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
     array([[[-3.5, -2.5, -1.5],
             [ 2.5,  3.5,  4.5]],
-
            [[ 8.5,  9.5, 10.5],
             [14.5, 15.5, 16.5]]], dtype=float32)>
 
@@ -1830,7 +1822,6 @@ def adjust_gamma(image, gamma=1, gain=1):
     <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
     array([[[1.       , 1.14..., 1.24...],
             [1.31... , 1.37..., 1.43...]],
-
            [[1.47..., 1.51..., 1.55...],
             [1.58..., 1.61..., 1.64...]]], dtype=float32)>
 
@@ -1903,7 +1894,6 @@ def convert_image_dtype(image, dtype, saturate=False, name=None):
     <tf.Tensor: shape=(2, 2, 3), dtype=float16, numpy=
     array([[[ 1.,  2.,  3.],
             [ 4.,  5.,  6.]],
-
            [[ 7.,  8.,  9.],
             [10., 11., 12.]]], dtype=float16)>
 
@@ -2068,7 +2058,6 @@ def random_hue(image, max_delta, seed=None):
     <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
     array([[[ 1.       ,  1.59...,  3.       ],
             [ 4.       ,  4.59...,  6.       ]],
-
            [[ 7.       ,  7.59...,  9.       ],
             [10.       , 10.59...  , 12.       ]]], dtype=float32)>
 
@@ -2121,7 +2110,6 @@ def adjust_hue(image, delta, name=None):
     <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
     array([[[ 2.39...,  1.       ,  3.       ],
             [ 5.39...,  4.       ,  6.       ]],
-
            [[ 8.4      ,  7.       ,  9.       ],
             [11.4      , 10.       , 12.       ]]], dtype=float32)>
 
@@ -2165,7 +2153,6 @@ def random_jpeg_quality(image, min_jpeg_quality, max_jpeg_quality, seed=None):
     <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
     array([[[1.        , 1.        , 1.        ],
             [0.99... , 0.99... , 0.99... ]],
-
            [[0.99... , 0.99... , 0.99... ],
             [0.98..., 0.98..., 0.98...]]], dtype=float32)>
 
@@ -2218,7 +2205,6 @@ def adjust_jpeg_quality(image, jpeg_quality, name=None):
     <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
     array([[[1.        , 1.        , 1.        ],
             [0.99... , 0.99... , 0.99... ]],
-
            [[0.98..., 0.98..., 0.98...],
             [0.98..., 0.98..., 0.98...]]], dtype=float32)>
 
@@ -2265,7 +2251,6 @@ def random_saturation(image, lower, upper, seed=None):
     <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
     array([[[ 0. ,  1.5,  3. ],
             [ 0. ,  3. ,  6. ]],
-
            [[ 0. ,  4.5,  9. ],
             [ 0. ,  6. , 12. ]]], dtype=float32)>
 
@@ -2318,7 +2303,6 @@ def adjust_saturation(image, saturation_factor, name=None):
     <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
     array([[[ 2. ,  2.5,  3. ],
             [ 5. ,  5.5,  6. ]],
-
            [[ 8. ,  8.5,  9. ],
             [11. , 11.5, 12. ]]], dtype=float32)>
 
@@ -3167,7 +3151,6 @@ def rgb_to_yuv(images):
     <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
     array([[[ 1.815    ,  0.58..., -0.71...],
             [ 4.815    ,  0.58..., -0.71...]],
-
            [[ 7.815    ,  0.58..., -0.71...],
             [10.81... ,  0.58..., -0.71...]]], dtype=float32)>
 
@@ -4011,10 +3994,9 @@ def extract_glimpse(
     ...                         centered=False, normalized=False)
     <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
     array([[[[0.],
-            [1.]],
-
+             [1.]],
             [[3.],
-            [4.]]]], dtype=float32)>
+             [4.]]]], dtype=float32)>
 
   Args:
     input: A `Tensor` of type `float32`. A 4-D float tensor of shape
@@ -4096,10 +4078,9 @@ def extract_glimpse_v2(
     ...                         centered=False, normalized=False)
     <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
     array([[[[0.],
-            [1.]],
-
+             [1.]],
             [[3.],
-            [4.]]]], dtype=float32)>
+             [4.]]]], dtype=float32)>
 
   Args:
     input: A `Tensor` of type `float32`. A 4-D float tensor of shape
