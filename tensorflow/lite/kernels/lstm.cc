@@ -54,14 +54,14 @@ struct OpData {
 
   // These fields are only used by full kernel.
   int scratch_tensor_index;
-  lstm_eval::QuantizedLstmParameter quantized_lstm_param;
+  lstm_eval::IntegerLstmParameter integer_lstm_param;
 };
 
 namespace full {
 namespace {
 TfLiteStatus PopulateQuantizedLstmParams(
     TfLiteContext* context, TfLiteNode* node,
-    lstm_eval::QuantizedLstmParameter* quantized_lstm_param) {
+    lstm_eval::IntegerLstmParameter* integer_lstm_param) {
   // Calculate quantized clip for projection and cell.
   const auto* params = static_cast<TfLiteLSTMParams*>(node->builtin_data);
   const float cell_clip = params->cell_clip;
@@ -77,17 +77,17 @@ TfLiteStatus PopulateQuantizedLstmParams(
   auto* proj_params = static_cast<TfLiteAffineQuantization*>(
       output_tensor->quantization.params);
   if (cell_clip > 0.0) {
-    quantized_lstm_param->quantized_cell_clip = static_cast<int32_t>(
+    integer_lstm_param->quantized_cell_clip = static_cast<int32_t>(
         std::min(std::max(cell_clip / cell_params->scale->data[0], -32768.0f),
                  32767.0f));
   } else {
-    quantized_lstm_param->quantized_cell_clip = 0;
+    integer_lstm_param->quantized_cell_clip = 0;
   }
   if (proj_clip > 0.0) {
-    quantized_lstm_param->quantized_proj_clip = static_cast<int32_t>(std::min(
+    integer_lstm_param->quantized_proj_clip = static_cast<int32_t>(std::min(
         std::max(proj_clip / proj_params->scale->data[0], -128.0f), 127.0f));
   } else {
-    quantized_lstm_param->quantized_proj_clip = 0;
+    integer_lstm_param->quantized_proj_clip = 0;
   }
 
   // Calculate effective scales.
@@ -246,7 +246,7 @@ TfLiteStatus PopulateQuantizedLstmParams(
   TF_LITE_ENSURE(context, CheckedLog2(cell_state->params.scale, &cell_scale));
 
   TF_LITE_ENSURE(context, cell_scale <= -9);
-  quantized_lstm_param->cell_scale = cell_scale;
+  integer_lstm_param->cell_scale = cell_scale;
   input_scale = input->params.scale;
 
   // Calculate effective scales.
@@ -296,73 +296,71 @@ TfLiteStatus PopulateQuantizedLstmParams(
 
   // Decompose scales.
   QuantizeMultiplier(effective_input_to_input_scale,
-                     &quantized_lstm_param->effective_input_to_input_scale_a,
-                     &quantized_lstm_param->effective_input_to_input_scale_b);
-  QuantizeMultiplier(
-      effective_recurrent_to_input_scale,
-      &quantized_lstm_param->effective_recurrent_to_input_scale_a,
-      &quantized_lstm_param->effective_recurrent_to_input_scale_b);
+                     &integer_lstm_param->effective_input_to_input_scale_a,
+                     &integer_lstm_param->effective_input_to_input_scale_b);
+  QuantizeMultiplier(effective_recurrent_to_input_scale,
+                     &integer_lstm_param->effective_recurrent_to_input_scale_a,
+                     &integer_lstm_param->effective_recurrent_to_input_scale_b);
   QuantizeMultiplier(effective_cell_to_input_scale,
-                     &quantized_lstm_param->effective_cell_to_input_scale_a,
-                     &quantized_lstm_param->effective_cell_to_input_scale_b);
+                     &integer_lstm_param->effective_cell_to_input_scale_a,
+                     &integer_lstm_param->effective_cell_to_input_scale_b);
   QuantizeMultiplier(effective_input_to_forget_scale,
-                     &quantized_lstm_param->effective_input_to_forget_scale_a,
-                     &quantized_lstm_param->effective_input_to_forget_scale_b);
+                     &integer_lstm_param->effective_input_to_forget_scale_a,
+                     &integer_lstm_param->effective_input_to_forget_scale_b);
   QuantizeMultiplier(
       effective_recurrent_to_forget_scale,
-      &quantized_lstm_param->effective_recurrent_to_forget_scale_a,
-      &quantized_lstm_param->effective_recurrent_to_forget_scale_b);
+      &integer_lstm_param->effective_recurrent_to_forget_scale_a,
+      &integer_lstm_param->effective_recurrent_to_forget_scale_b);
   QuantizeMultiplier(effective_cell_to_forget_scale,
-                     &quantized_lstm_param->effective_cell_to_forget_scale_a,
-                     &quantized_lstm_param->effective_cell_to_forget_scale_b);
+                     &integer_lstm_param->effective_cell_to_forget_scale_a,
+                     &integer_lstm_param->effective_cell_to_forget_scale_b);
   QuantizeMultiplier(effective_input_to_cell_scale,
-                     &quantized_lstm_param->effective_input_to_cell_scale_a,
-                     &quantized_lstm_param->effective_input_to_cell_scale_b);
-  QuantizeMultiplier(
-      effective_recurrent_to_cell_scale,
-      &quantized_lstm_param->effective_recurrent_to_cell_scale_a,
-      &quantized_lstm_param->effective_recurrent_to_cell_scale_b);
+                     &integer_lstm_param->effective_input_to_cell_scale_a,
+                     &integer_lstm_param->effective_input_to_cell_scale_b);
+  QuantizeMultiplier(effective_recurrent_to_cell_scale,
+                     &integer_lstm_param->effective_recurrent_to_cell_scale_a,
+                     &integer_lstm_param->effective_recurrent_to_cell_scale_b);
   QuantizeMultiplier(effective_input_to_output_scale,
-                     &quantized_lstm_param->effective_input_to_output_scale_a,
-                     &quantized_lstm_param->effective_input_to_output_scale_b);
+                     &integer_lstm_param->effective_input_to_output_scale_a,
+                     &integer_lstm_param->effective_input_to_output_scale_b);
   QuantizeMultiplier(
       effective_recurrent_to_output_scale,
-      &quantized_lstm_param->effective_recurrent_to_output_scale_a,
-      &quantized_lstm_param->effective_recurrent_to_output_scale_b);
+      &integer_lstm_param->effective_recurrent_to_output_scale_a,
+      &integer_lstm_param->effective_recurrent_to_output_scale_b);
   QuantizeMultiplier(effective_cell_to_output_scale,
-                     &quantized_lstm_param->effective_cell_to_output_scale_a,
-                     &quantized_lstm_param->effective_cell_to_output_scale_b);
+                     &integer_lstm_param->effective_cell_to_output_scale_a,
+                     &integer_lstm_param->effective_cell_to_output_scale_b);
   QuantizeMultiplier(effective_proj_scale,
-                     &quantized_lstm_param->effective_proj_scale_a,
-                     &quantized_lstm_param->effective_proj_scale_b);
+                     &integer_lstm_param->effective_proj_scale_a,
+                     &integer_lstm_param->effective_proj_scale_b);
   QuantizeMultiplier(effective_hidden_scale,
-                     &quantized_lstm_param->effective_hidden_scale_a,
-                     &quantized_lstm_param->effective_hidden_scale_b);
+                     &integer_lstm_param->effective_hidden_scale_a,
+                     &integer_lstm_param->effective_hidden_scale_b);
   QuantizeMultiplier(layer_norm_input_scale,
-                     &quantized_lstm_param->layer_norm_input_scale_a,
-                     &quantized_lstm_param->layer_norm_input_scale_b);
+                     &integer_lstm_param->layer_norm_input_scale_a,
+                     &integer_lstm_param->layer_norm_input_scale_b);
   QuantizeMultiplier(layer_norm_forget_scale,
-                     &quantized_lstm_param->layer_norm_forget_scale_a,
-                     &quantized_lstm_param->layer_norm_forget_scale_b);
+                     &integer_lstm_param->layer_norm_forget_scale_a,
+                     &integer_lstm_param->layer_norm_forget_scale_b);
   QuantizeMultiplier(layer_norm_cell_scale,
-                     &quantized_lstm_param->layer_norm_cell_scale_a,
-                     &quantized_lstm_param->layer_norm_cell_scale_b);
+                     &integer_lstm_param->layer_norm_cell_scale_a,
+                     &integer_lstm_param->layer_norm_cell_scale_b);
   QuantizeMultiplier(layer_norm_output_scale,
-                     &quantized_lstm_param->layer_norm_output_scale_a,
-                     &quantized_lstm_param->layer_norm_output_scale_b);
+                     &integer_lstm_param->layer_norm_output_scale_a,
+                     &integer_lstm_param->layer_norm_output_scale_b);
 
-  quantized_lstm_param->hidden_zp = intermediate_zp[4];
+  integer_lstm_param->hidden_zp = intermediate_zp[4];
 
   // 10000 is used to make sure the kernel logic does not overflow.
   if (!use_cifg) {
-    quantized_lstm_param->inv_large_value[0] =
+    integer_lstm_param->inv_large_value[0] =
         std::min(1, static_cast<int32_t>(10000 * layer_norm_input_scale));
   }
-  quantized_lstm_param->inv_large_value[1] =
+  integer_lstm_param->inv_large_value[1] =
       std::min(1, static_cast<int32_t>(10000 * layer_norm_forget_scale));
-  quantized_lstm_param->inv_large_value[2] =
+  integer_lstm_param->inv_large_value[2] =
       std::min(1, static_cast<int32_t>(10000 * layer_norm_cell_scale));
-  quantized_lstm_param->inv_large_value[3] =
+  integer_lstm_param->inv_large_value[3] =
       std::min(1, static_cast<int32_t>(10000 * layer_norm_output_scale));
 
   return kTfLiteOk;
@@ -701,8 +699,8 @@ TfLiteStatus PopulatePrecomputedZPTimesWeightsWithBias(TfLiteContext* context,
   const TfLiteTensor* projection_bias =
       GetOptionalInputTensor(context, node, kProjectionBiasTensor);
 
-  lstm_eval::QuantizedLstmParameter* quantized_lstm_params =
-      &op_data->quantized_lstm_param;
+  lstm_eval::IntegerLstmParameter* integer_lstm_params =
+      &op_data->integer_lstm_param;
 
   const TfLiteTensor* intermediate =
       &context->tensors[node->intermediates->data[4]];
@@ -723,13 +721,13 @@ TfLiteStatus PopulatePrecomputedZPTimesWeightsWithBias(TfLiteContext* context,
       context,
       PrecomputeZeroPointTimesWeightWithBias(
           context, input_zero_point, input_to_forget_weights, forget_gate_bias,
-          &(quantized_lstm_params->input_to_forget_effective_bias)));
+          &(integer_lstm_params->input_to_forget_effective_bias)));
 
   TF_LITE_ENSURE_OK(
       context,
       PrecomputeZeroPointTimesWeightWithBias(
           context, activation_zero_point, recurrent_to_forget_weights, nullptr,
-          &(quantized_lstm_params->recurrent_to_forget_effective_bias)));
+          &(integer_lstm_params->recurrent_to_forget_effective_bias)));
 
   // Modulation gate.
   const TfLiteTensor* cell_gate_bias =
@@ -738,12 +736,12 @@ TfLiteStatus PopulatePrecomputedZPTimesWeightsWithBias(TfLiteContext* context,
       context,
       PrecomputeZeroPointTimesWeightWithBias(
           context, input_zero_point, input_to_cell_weights, cell_gate_bias,
-          &(quantized_lstm_params->input_to_cell_effective_bias)));
+          &(integer_lstm_params->input_to_cell_effective_bias)));
   TF_LITE_ENSURE_OK(
       context,
       PrecomputeZeroPointTimesWeightWithBias(
           context, activation_zero_point, recurrent_to_cell_weights, nullptr,
-          &(quantized_lstm_params->recurrent_to_cell_effective_bias)));
+          &(integer_lstm_params->recurrent_to_cell_effective_bias)));
 
   // Output gate.
   const TfLiteTensor* output_gate_bias =
@@ -752,13 +750,13 @@ TfLiteStatus PopulatePrecomputedZPTimesWeightsWithBias(TfLiteContext* context,
       context,
       PrecomputeZeroPointTimesWeightWithBias(
           context, input_zero_point, input_to_output_weights, output_gate_bias,
-          &(quantized_lstm_params->input_to_output_effective_bias)));
+          &(integer_lstm_params->input_to_output_effective_bias)));
 
   TF_LITE_ENSURE_OK(
       context,
       PrecomputeZeroPointTimesWeightWithBias(
           context, activation_zero_point, recurrent_to_output_weights, nullptr,
-          &(quantized_lstm_params->recurrent_to_output_effective_bias)));
+          &(integer_lstm_params->recurrent_to_output_effective_bias)));
 
   // Input gate. The calculation is only meaningful for non-cifg case.
   const TfLiteTensor* input_gate_bias =
@@ -767,18 +765,18 @@ TfLiteStatus PopulatePrecomputedZPTimesWeightsWithBias(TfLiteContext* context,
       context,
       PrecomputeZeroPointTimesWeightWithBias(
           context, input_zero_point, input_to_input_weights, input_gate_bias,
-          &(quantized_lstm_params->input_to_input_effective_bias)));
+          &(integer_lstm_params->input_to_input_effective_bias)));
   TF_LITE_ENSURE_OK(
       context,
       PrecomputeZeroPointTimesWeightWithBias(
           context, activation_zero_point, recurrent_to_input_weights, nullptr,
-          &(quantized_lstm_params->recurrent_to_input_effective_bias)));
+          &(integer_lstm_params->recurrent_to_input_effective_bias)));
 
   // Projection bias. The calculation is only meaningful for with projection.
   TF_LITE_ENSURE_OK(context,
                     PrecomputeZeroPointTimesWeightWithBias(
                         context, hidden_zp, projection_weights, projection_bias,
-                        &(quantized_lstm_params->projection_effective_bias)));
+                        &(integer_lstm_params->projection_effective_bias)));
   return kTfLiteOk;
 }
 
@@ -990,7 +988,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   if (is_fully_quantized) {
     // Populate quantization parameters.
-    PopulateQuantizedLstmParams(context, node, &op_data->quantized_lstm_param);
+    PopulateQuantizedLstmParams(context, node, &op_data->integer_lstm_param);
 
     // Allocate scratch buffer. Need 6 16bit buffer with size n_batch * n_cell
     // and 1 8bit buffer with size n_batch * n_cell. We also need 1 32 bit
@@ -1170,9 +1168,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
             forget_layer_norm_coefficients, cell_layer_norm_coefficients,
             output_layer_norm_coefficients, input_gate_bias, forget_gate_bias,
             cell_bias, output_gate_bias, projection_weights, projection_bias,
-            params, &op_data->quantized_lstm_param, activation_state,
-            cell_state, output, scratch0, scratch1, scratch2, scratch3,
-            scratch4, scratch5, CpuBackendContext::GetFromContext(context));
+            params, &op_data->integer_lstm_param, activation_state, cell_state,
+            output, scratch0, scratch1, scratch2, scratch3, scratch4, scratch5,
+            CpuBackendContext::GetFromContext(context));
         return kTfLiteOk;
       }
     }
