@@ -28,7 +28,7 @@ wasserstein_gradient_penalty
 All losses must be able to accept 1D or 2D Tensors, so as to be compatible with
 patchGAN style losses (https://arxiv.org/abs/1611.07004).
 
-To make these losses usable in the TFGAN framework, please create a tuple
+To make these losses usable in the TF-GAN framework, please create a tuple
 version of the losses with `losses_utils.py`.
 """
 
@@ -320,7 +320,7 @@ def wasserstein_gradient_penalty(
     generated_data: Output of the generator.
     generator_inputs: Exact argument to pass to the generator, which is used
       as optional conditioning to the discriminator.
-    discriminator_fn: A discriminator function that conforms to TFGAN API.
+    discriminator_fn: A discriminator function that conforms to TF-GAN API.
     discriminator_scope: If not `None`, reuse discriminators from this scope.
     epsilon: A small positive number added for numerical stability when
       computing the gradient norm.
