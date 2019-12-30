@@ -59,6 +59,9 @@ const char* kModelWithMaximumOp = "maximum.bin";
 const char* kLstmCalibrated2 = "lstm_calibrated2.bin";
 const char* kLstmQuantized2 = "lstm_quantized2.bin";
 
+const char* kSvdfCalibrated = "svdf_calibrated.bin";
+const char* kSvdfQuantized = "svdf_quantized.bin";
+
 const char* kModelWithUnpack = "unpack.bin";
 
 int FailOnErrorReporter::Report(const char* format, va_list args) {

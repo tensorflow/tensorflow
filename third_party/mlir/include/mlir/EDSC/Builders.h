@@ -1,19 +1,10 @@
 //===- Builders.h - MLIR Declarative Builder Classes ------------*- C++ -*-===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 //
 // Provides intuitive composable interfaces for building structured MLIR
 // snippets in a declarative fashion.
@@ -312,7 +303,7 @@ public:
   /// Value. An eager Value represents both the declaration and the definition
   /// (in the PL sense) of a placeholder for an mlir::Value that has already
   /// been constructed in the past and that is captured "now" in the program.
-  explicit ValueHandle(ValuePtr v) : t(v->getType()), v(v) {}
+  explicit ValueHandle(Value v) : t(v->getType()), v(v) {}
 
   /// Builds a ConstantIndexOp of value `cst`. The constant is created at the
   /// current insertion point.
@@ -337,7 +328,8 @@ public:
   }
 
   /// Implicit conversion useful for automatic conversion to Container<Value>.
-  operator ValuePtr() const { return getValue(); }
+  operator Value() const { return getValue(); }
+  operator bool() const { return hasValue(); }
 
   /// Generic mlir::Op create. This is the key to being extensible to the whole
   /// of MLIR without duplicating the type system or the op definitions.
@@ -355,7 +347,7 @@ public:
   /// Special case to build composed AffineApply operations.
   // TODO: createOrFold when available and move inside of the `create` method.
   static ValueHandle createComposedAffineApply(AffineMap map,
-                                               ArrayRef<ValuePtr> operands);
+                                               ArrayRef<Value> operands);
 
   /// Generic create for a named operation producing a single value.
   static ValueHandle create(StringRef name, ArrayRef<ValueHandle> operands,
@@ -363,7 +355,7 @@ public:
                             ArrayRef<NamedAttribute> attributes = {});
 
   bool hasValue() const { return v != nullptr; }
-  ValuePtr getValue() const {
+  Value getValue() const {
     assert(hasValue() && "Unexpected null value;");
     return v;
   }
@@ -380,7 +372,7 @@ protected:
   ValueHandle() : t(), v(nullptr) {}
 
   Type t;
-  ValuePtr v;
+  Value v;
 };
 
 /// An OperationHandle can be used in lieu of ValueHandle to capture the

@@ -25,7 +25,7 @@ import threading
 import weakref
 
 from tensorflow.python import pywrap_tfe
-from tensorflow.python.autograph.core import ag_ctx
+from tensorflow.python.autograph.core import ag_ctx as autograph_ctx
 from tensorflow.python.autograph.impl import api as autograph
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import device_util
@@ -756,7 +756,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
       # _call_for_each_replica itself (TF library functions are whitelisted).
       # This makes suresure that the Python function that originally passed to
       # the tf.function is still converted.
-      fn = autograph.tf_convert(fn, ag_ctx.control_status_ctx())
+      fn = autograph.tf_convert(fn, autograph_ctx.control_status_ctx())
 
     return _call_for_each_replica(self._container_strategy(), self._devices,
                                   fn, args, kwargs)

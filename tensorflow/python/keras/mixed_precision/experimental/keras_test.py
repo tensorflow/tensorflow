@@ -39,6 +39,7 @@ from tensorflow.python.keras import optimizers
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import base_layer_utils
+from tensorflow.python.keras.engine import input_spec
 from tensorflow.python.keras.layers import core
 from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer
 from tensorflow.python.keras.mixed_precision.experimental import policy
@@ -456,6 +457,12 @@ class KerasModelTest(keras_parameterized.TestCase):
           'save_format': 'tf',
           'use_regularizer': True,
       }, {
+          'testcase_name': 'saved_model_input_spec',
+          'strategy_fn': default_strategy_fn,
+          'save_format': 'tf',
+          'use_regularizer': True,
+          'use_input_spec': True,
+      }, {
           'testcase_name': 'h5',
           'strategy_fn': default_strategy_fn,
           'save_format': 'h5',
@@ -465,6 +472,12 @@ class KerasModelTest(keras_parameterized.TestCase):
           'strategy_fn': create_mirrored_strategy,
           'save_format': 'tf',
           'use_regularizer': True,
+      }, {
+          'testcase_name': 'saved_model_input_spec_distribute',
+          'strategy_fn': create_mirrored_strategy,
+          'save_format': 'tf',
+          'use_regularizer': True,
+          'use_input_spec': True,
       }, {
           'testcase_name': 'h5_distribute',
           'strategy_fn': create_mirrored_strategy,
@@ -482,6 +495,7 @@ class KerasModelTest(keras_parameterized.TestCase):
                  policy_name='mixed_float16',
                  get_config=False,
                  save_format=None,
+                 use_input_spec=False,
                  experimental_run_tf_function=True):
     self._skip_if_strategy_unsupported(strategy_fn, check_model_type=True)
     self._skip_if_save_format_unsupported(save_format)
@@ -496,6 +510,8 @@ class KerasModelTest(keras_parameterized.TestCase):
             use_operator=use_operator,
             regularizer=regularizer,
             input_shape=(1,))
+        if use_input_spec:
+          layer.input_spec = input_spec.InputSpec(shape=(2, 1))
         cast_f32_layer = layers.Lambda(lambda x: math_ops.cast(x, 'float32'))
         model = testing_utils.get_model_from_layers(
             [layer, cast_f32_layer], input_shape=(1,),

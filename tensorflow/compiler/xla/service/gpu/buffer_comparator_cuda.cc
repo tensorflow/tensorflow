@@ -577,10 +577,24 @@ static StatusOr<bool> DeviceCompare(se::Stream* stream,
   se::DeviceMemory<ElementT> rhs_typed(rhs);
   uint64 buffer_size = lhs_typed.ElementCount();
 
-  TF_ASSIGN_OR_RETURN(absl::Span<const uint8> compiled_ptx,
-                      se::CompileGpuAsmOrGetCached(executor->device_ordinal(),
-                                                   buffer_compare_ptx,
-                                                   PtxOptsFromConfig(config)));
+  absl::Span<const uint8> compiled_ptx = {};
+  StatusOr<absl::Span<const uint8>> compiled_ptx_or =
+      se::CompileGpuAsmOrGetCached(executor->device_ordinal(),
+                                   buffer_compare_ptx,
+                                   PtxOptsFromConfig(config));
+  if (compiled_ptx_or.ok()) {
+    compiled_ptx = compiled_ptx_or.ConsumeValueOrDie();
+  } else {
+    static std::once_flag ptxas_not_found_logged;
+    std::call_once(ptxas_not_found_logged, [&]() {
+      LOG(WARNING)
+          << compiled_ptx_or.status().ToString()
+          << "\nRelying on driver to perform ptx compilation. "
+          << "\nSetting XLA_FLAGS=--xla_gpu_cuda_data_dir=/path/to/cuda "
+          << " or modifying $PATH can be used to set the location of ptxas"
+          << "\nThis message will only be logged once.";
+    });
+  }
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<ComparisonKernelT<ElementT>> comparison_kernel,

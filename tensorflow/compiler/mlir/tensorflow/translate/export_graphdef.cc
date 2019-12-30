@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
 #include "mlir/IR/Function.h"  // TF:local_config_mlir
 #include "mlir/IR/Identifier.h"  // TF:local_config_mlir
+#include "mlir/IR/Location.h"  // TF:local_config_mlir
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "mlir/IR/Operation.h"  // TF:local_config_mlir
 #include "mlir/IR/Types.h"  // TF:local_config_mlir
@@ -110,25 +111,28 @@ std::string LegalizeNodeName(llvm::StringRef name) {
   return legalized_name;
 }
 
-// TODO(jpienaar): unify and move from here to be able to reuse with tflite
-std::string GetName(Operation* inst) {
-  // TODO(prakalps): b/137006652 prevents us from using location info (derived
-  // from experimental_debug_info) to generate node names. Until it is fixed,
-  // first check for "name" attribute to get node name.
-
-  // Default name is Operation type.
-  auto name = inst->getName().getStringRef();
-  if (auto attr = inst->getAttrOfType<mlir::StringAttr>("name")) {
-    name = attr.getValue();
-  } else if (auto name_loc = inst->getLoc().dyn_cast<mlir::NameLoc>()) {
-    name = name_loc.getName().strref();
-  } else if (auto call_loc = inst->getLoc().dyn_cast<mlir::CallSiteLoc>()) {
+llvm::StringRef GetNameFromLoc(mlir::Location loc,
+                               llvm::StringRef default_name) {
+  if (auto name_loc = loc.dyn_cast<mlir::NameLoc>()) {
+    return name_loc.getName().strref().split('@').first;
+  } else if (auto call_loc = loc.dyn_cast<mlir::CallSiteLoc>()) {
     // Return name if CallSiteLoc's callee has a NameLoc (as should be the case
     // if imported with DebugInfo), else use the fallback naming scheme below.
     if (auto name_loc = call_loc.getCallee().dyn_cast<mlir::NameLoc>())
-      name = name_loc.getName().strref();
+      return name_loc.getName().strref().split('@').first;
+  } else if (auto fused_loc = loc.dyn_cast<mlir::FusedLoc>()) {
+    // According to the importer, the last location of a fused location is
+    // the name from the node_def and the rests are from the experimental debug
+    // info.
+    return GetNameFromLoc(fused_loc.getLocations().back(), default_name);
   }
+  return default_name;
+}
 
+// TODO(jpienaar): unify and move from here to be able to reuse with tflite
+std::string GetName(Operation* inst) {
+  // Default name is Operation type.
+  auto name = GetNameFromLoc(inst->getLoc(), inst->getName().getStringRef());
   return LegalizeNodeName(name);
 }
 
@@ -161,7 +165,7 @@ class Exporter {
   explicit Exporter(Graph* graph, const Dialect* tf_dialect)
       : graph_(graph), tf_dialect_(tf_dialect) {}
 
-  Status AddArgumentNode(BlockArgument* arg, unsigned index,
+  Status AddArgumentNode(BlockArgument arg, unsigned index,
                          llvm::StringRef name);
   Status AddReturnNode(mlir::ReturnOp op,
                        llvm::ArrayRef<llvm::StringRef> names);
@@ -169,7 +173,7 @@ class Exporter {
   Status AddNextIterationNode(Operation* inst);
   Status AddEdge(Operation* inst);
 
-  StatusOr<std::unique_ptr<NodeDef>> GetArgumentNode(BlockArgument* arg,
+  StatusOr<std::unique_ptr<NodeDef>> GetArgumentNode(BlockArgument arg,
                                                      unsigned index,
                                                      llvm::StringRef name);
   StatusOr<std::unique_ptr<NodeDef>> GetReturnNode(Operation* inst,
@@ -177,7 +181,7 @@ class Exporter {
                                                    llvm::StringRef name);
   // Adds one edge between src_node and dst_node. If it is not a control edge,
   // an index is used to find out the right operand of the dst_node.
-  Status AddEdgeBetweenNodes(Value* src, Node* dst_node, unsigned dst_index);
+  Status AddEdgeBetweenNodes(Value src, Node* dst_node, unsigned dst_index);
 
   // Returns a unique name for `op`.
   std::string UniqueName(Operation* op);
@@ -189,7 +193,7 @@ class Exporter {
   absl::flat_hash_map<Operation*, string> op_to_name_;
   absl::flat_hash_map<string, int64> name_to_count_;
   absl::flat_hash_map<Operation*, Node*> nodes_;
-  absl::flat_hash_map<const BlockArgument*, Node*> args_;
+  llvm::DenseMap<BlockArgument, Node*> args_;
   // One single return operation can return multiple results, and each of them
   // will be converted to one node in the graph.
   typedef absl::InlinedVector<Node*, 4> NodeVector;
@@ -231,7 +235,7 @@ std::string Exporter::UniqueName(Operation* op) {
 }
 
 StatusOr<std::unique_ptr<NodeDef>> Exporter::GetArgumentNode(
-    BlockArgument* arg, unsigned index, llvm::StringRef name) {
+    BlockArgument arg, unsigned index, llvm::StringRef name) {
   auto func = arg->getParentRegion()->getParentOfType<mlir::FuncOp>();
 
   auto node_def = absl::make_unique<NodeDef>();
@@ -279,7 +283,7 @@ StatusOr<std::unique_ptr<NodeDef>> Exporter::GetReturnNode(
         UniqueName(inst->getParentOfType<mlir::FuncOp>().getName().str()));
 
   node_def->set_op(FunctionLibraryDefinition::kRetOp);
-  auto* inst_op = inst->getOperand(index);
+  auto inst_op = inst->getOperand(index);
   DataType dtype;
   TF_RETURN_IF_ERROR(ConvertToDataType(
       inst_op->getType().cast<mlir::TensorType>().getElementType(), &dtype));
@@ -292,9 +296,9 @@ StatusOr<std::unique_ptr<NodeDef>> Exporter::GetReturnNode(
   return node_def;
 }
 
-Status Exporter::AddEdgeBetweenNodes(Value* src, Node* dst_node,
+Status Exporter::AddEdgeBetweenNodes(Value src, Node* dst_node,
                                      unsigned dst_index) {
-  if (auto* input_result = dyn_cast<mlir::OpResult>(src)) {
+  if (auto input_result = src->dyn_cast<mlir::OpResult>()) {
     auto* input_inst = input_result->getOwner();
     // replaces the input node by the sink one if it is an NextIteration source:
     auto it = source_to_sink_.find(input_inst);
@@ -313,7 +317,7 @@ Status Exporter::AddEdgeBetweenNodes(Value* src, Node* dst_node,
     return Status::OK();
   }
 
-  auto* input_arg = cast<BlockArgument>(src);
+  auto input_arg = src->cast<BlockArgument>();
   auto input_node_it = args_.find(input_arg);
   TF_RET_CHECK(input_node_it != args_.end())
       << "Use of BlockArgument encounted before def!";
@@ -326,7 +330,7 @@ Status Exporter::AddEdge(Operation* inst) {
   auto* dst_node = nodes_[inst];
   bool is_return_op = isa<mlir::ReturnOp>(inst);
   for (int index = 0, e = inst->getNumOperands(); index < e; index++) {
-    auto* src = inst->getOperand(index);
+    auto src = inst->getOperand(index);
     // For return operation, the edge is from the operand owner to one of the
     // faked return nodes. The input index is always 0 for the return node.
     if (is_return_op) {
@@ -361,14 +365,14 @@ Status Exporter::AddInstructionNode(Operation* inst) {
   return Status::OK();
 }
 
-bool IsEntryFunctionArg(BlockArgument* arg) {
+bool IsEntryFunctionArg(BlockArgument arg) {
   return arg->getParentRegion()->getParentOfType<mlir::FuncOp>().getName() ==
          "main";
 }
 
 // Creates argument nodes from Block argument. If a name is supplied, that
 // name will be used instead of generating a unique name.
-Status Exporter::AddArgumentNode(BlockArgument* arg, unsigned index,
+Status Exporter::AddArgumentNode(BlockArgument arg, unsigned index,
                                  llvm::StringRef name) {
   if (!IsEntryFunctionArg(arg) || !name.empty()) {
     TF_ASSIGN_OR_RETURN(auto node_def, GetArgumentNode(arg, index, name));
@@ -395,9 +399,9 @@ Status Exporter::AddArgumentNode(BlockArgument* arg, unsigned index,
                                 builder.getContext());
   OperationState state(loc, input_name.str());
   state.attributes.append(input->getAttrs().begin(), input->getAttrs().end());
-  for (auto* op : input->getOperands()) {
+  for (auto op : input->getOperands()) {
     // Skip the argument in the new operation.
-    if (llvm::isa<BlockArgument>(op)) continue;
+    if (op->isa<BlockArgument>()) continue;
     state.operands.push_back(op);
   }
   state.types.append(input->getResultTypes().begin(),
@@ -551,7 +555,7 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
   // Adds nodes for basic block (function) arguments.
   for (auto it : llvm::enumerate(block.getArguments())) {
     int index = it.index();
-    auto* arg = it.value();
+    auto arg = it.value();
     mlir::Type type = arg->getType();
     if (!type.isa<mlir::TensorType>()) {
       return errors::InvalidArgument(

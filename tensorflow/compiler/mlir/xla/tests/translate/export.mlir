@@ -651,6 +651,48 @@ func @main(%arg0: tensor<10x24x24x64xf32>, %arg1: tensor<10x12x12x64xf32>) -> te
 // -----
 
 // CHECK:  HloModule
+func @main(%arg: tensor<3x4xi32>, %token: !xla_hlo.token) -> !xla_hlo.token {
+  %0 = "xla_hlo.send"(%arg, %token) {
+    channel_id = {
+      handle = 5 : i64,
+      type = 2 : i64  // Device to host channel
+    },
+    is_host_transfer = true
+  } : (tensor<3x4xi32>, !xla_hlo.token) -> !xla_hlo.token
+  return %0 : !xla_hlo.token
+}
+
+// CHECK:  ENTRY
+// CHECK:  [[ARG:%.*]] = s32[3,4] parameter(0)
+// CHECK:  [[TOKEN:%.*]] = token[] parameter(1)
+// CHECK:  [[SEND:%.*]] = (s32[3,4], u32[], token[]) send(s32[3,4] [[ARG]], token[] [[TOKEN]]), channel_id=5, is_host_transfer=true
+// CHECK:  ROOT
+// CHECK-SAME:  token[] send-done((s32[3,4], u32[], token[]) [[SEND]]), channel_id=5, is_host_transfer=true
+
+// -----
+
+// CHECK:  HloModule
+func @main(%arg: tensor<3x4xi32>, %token: !xla_hlo.token) -> !xla_hlo.token {
+  %0 = "xla_hlo.send"(%arg, %token) {
+    channel_id = {
+      handle = 5 : i64,
+      type = 1 : i64  // Device to device channel
+    },
+    is_host_transfer = false
+  } : (tensor<3x4xi32>, !xla_hlo.token) -> !xla_hlo.token
+  return %0 : !xla_hlo.token
+}
+
+// CHECK:  ENTRY
+// CHECK:  [[ARG:%.*]] = s32[3,4] parameter(0)
+// CHECK:  [[TOKEN:%.*]] = token[] parameter(1)
+// CHECK:  [[SEND:%.*]] = (s32[3,4], u32[], token[]) send(s32[3,4] [[ARG]], token[] [[TOKEN]]), channel_id=5
+// CHECK:  ROOT
+// CHECK-SAME:  token[] send-done((s32[3,4], u32[], token[]) [[SEND]]), channel_id=5
+
+// -----
+
+// CHECK:  HloModule
 func @main(%arg: tensor<3x4xi32>) -> tensor<1x2xi32> {
   %0 = "xla_hlo.slice"(%arg) {start_indices = dense<[1, 0]> : tensor<2xi64>, limit_indices = dense<[2, 4]> : tensor<2xi64>, strides = dense<[1, 2]> : tensor<2xi64>} : (tensor<3x4xi32>) -> tensor<1x2xi32>
   return %0 : tensor<1x2xi32>

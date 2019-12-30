@@ -121,7 +121,7 @@ struct InsertTFLQuantOpsAfterTFFakeQuantOp
     // Extract the min/max constant values from the operands. We also consider
     // a special case that there are tf.Identity ops between the min/max
     // constants and the tf.FakeQuantWithMinMaxVarsOp.
-    Value *min = tf_op.min(), *max = tf_op.max();
+    Value min = tf_op.min(), max = tf_op.max();
     DenseFPElementsAttr min_value, max_value;
     if (auto id1 = dyn_cast_or_null<TF::IdentityOp>(min->getDefiningOp()))
       min = id1.input();
@@ -150,7 +150,7 @@ struct InsertTFLQuantOpsAfterTFFakeQuantOp
     // Finally, use the quantization parameter to create the quantize and
     // dequantize ops, and insert them between the tf.FakeQuantWithMinMaxVarsOp
     // and its users.
-    Value *value = tf_op.outputs();
+    Value value = tf_op.outputs();
     auto quantize = rewriter.create<TFL::QuantizeOp>(
         tf_op.getLoc(), qtype.getValue(), value, qtype);
     auto dequantize = rewriter.create<TFL::DequantizeOp>(
@@ -177,8 +177,8 @@ using PreparePerChannelFakeQuant =
 //
 //   TFL::[op] createTFLOp(ConvertTFConvOpMatchState *state,
 //                         PatternRewriter &rewriter, Location loc,
-//                         Type result_type, Value *input,
-//                         Value *filter, Value *bias) const;
+//                         Type result_type, Value input,
+//                         Value filter, Value bias) const;
 //
 // And also the following method for getting the dimension for bias tensor:
 //
@@ -294,8 +294,8 @@ class ConvertTFConv2D : public ConvertTFConvOp<ConvertTFConv2D, TF::Conv2DOp> {
 
   TFL::Conv2DOp createTFLOp(ConvertTFConvOpMatchState *state,
                             PatternRewriter &rewriter, Location loc,
-                            Type result_type, Value *input, Value *filter,
-                            Value *bias) const {
+                            Type result_type, Value input, Value filter,
+                            Value bias) const {
     filter = legalizeFilter(rewriter, loc, filter);
     return rewriter.create<TFL::Conv2DOp>(
         loc, result_type, input, filter, bias,
@@ -312,8 +312,8 @@ class ConvertTFConv2D : public ConvertTFConvOp<ConvertTFConv2D, TF::Conv2DOp> {
   // format HWIO to TFLite Conv2D op filter data format OHWI and return Value
   // for the converted filter.  Requires that filter is verified by the match
   // method that it is a 4-D RankedTensorType.
-  Value *legalizeFilter(PatternRewriter &rewriter, Location loc,
-                        Value *filter) const {
+  Value legalizeFilter(PatternRewriter &rewriter, Location loc,
+                       Value filter) const {
     // Create a constant op for HWIO to OHWI transpose permutation.
     SmallVector<int, 4> perm = {3, 0, 1, 2};
     auto perm_type = RankedTensorType::get({static_cast<int>(perm.size())},
@@ -349,8 +349,8 @@ class ConvertTFDepthwiseConv2dNative
 
   TFL::DepthwiseConv2DOp createTFLOp(ConvertTFConvOpMatchState *state,
                                      PatternRewriter &rewriter, Location loc,
-                                     Type result_type, Value *input,
-                                     Value *filter, Value *bias) const {
+                                     Type result_type, Value input,
+                                     Value filter, Value bias) const {
     // Compared to tfl.conv_2d, tfl.depthwise_conv_2d has an additional
     // 'depth_multiplier' attribute. However, tf.DepthwiseConv2dNative does not
     // have a corresponding 'depth_multiplier' attribute; the multiplier is the
@@ -378,8 +378,8 @@ class ConvertTFDepthwiseConv2dNative
   /// filter data format is [1, filter_height, filter_width, out_channels].
   /// Requires that filter is verified by the match method that it is a 4-D
   /// RankedTensorType.
-  Value *legalizeFilter(PatternRewriter &rewriter, Location loc,
-                        Value *filter) const {
+  Value legalizeFilter(PatternRewriter &rewriter, Location loc,
+                       Value filter) const {
     auto filter_type = filter->getType().cast<RankedTensorType>();
     auto filterShape = filter_type.getShape();
     SmallVector<int64_t, 4> result_shape = {1, filterShape[0], filterShape[1],
@@ -430,7 +430,7 @@ struct ConvertTFStridedSlice : public RewritePattern {
     if (new_axis_mask == 0) return matchFailure();
 
     // Insert a new reshape op.
-    Value *original_input = strided_slice_op.input();
+    Value original_input = strided_slice_op.input();
     RankedTensorType original_input_type =
         original_input->getType().cast<RankedTensorType>();
     const ArrayRef<int64_t> &original_input_shape =

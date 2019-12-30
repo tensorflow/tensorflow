@@ -20,16 +20,17 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/types.h"
-#if !defined(IS_MOBILE_PLATFORM)
-#include "tensorflow/core/profiler/convert/run_metadata_to_trace_events.h"
-#include "tensorflow/core/profiler/internal/profiler_factory.h"
-#include "tensorflow/core/profiler/lib/profiler_utils.h"
-#endif
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/protobuf/trace_events.pb.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/ptr_util.h"
+
+#if !defined(IS_MOBILE_PLATFORM)
+#include "tensorflow/core/profiler/convert/run_metadata_to_trace_events.h"
+#include "tensorflow/core/profiler/internal/profiler_factory.h"
+#include "tensorflow/core/profiler/lib/profiler_utils.h"
+#endif
 
 namespace tensorflow {
 

@@ -95,6 +95,10 @@ extern const char* kModelWithMaximumOp;
 extern const char* kLstmCalibrated2;
 extern const char* kLstmQuantized2;
 
+// Test model with SVDF op.
+extern const char* kSvdfCalibrated;
+extern const char* kSvdfQuantized;
+
 // Test model with an unpack op.
 extern const char* kModelWithUnpack;
 

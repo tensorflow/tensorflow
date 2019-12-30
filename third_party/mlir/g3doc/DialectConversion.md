@@ -209,7 +209,7 @@ class TypeConverter {
   /// the conversion has finished.
   virtual Operation *materializeConversion(PatternRewriter &rewriter,
                                            Type resultType,
-                                           ArrayRef<ValuePtr> inputs,
+                                           ArrayRef<Value> inputs,
                                            Location loc);
 };
 ```
@@ -232,7 +232,7 @@ struct MyConversionPattern : public ConversionPattern {
   /// `operands` parameter, containing the remapped operands of the original
   /// operation.
   virtual PatternMatchResult
-  matchAndRewrite(Operation *op, ArrayRef<ValuePtr> operands,
+  matchAndRewrite(Operation *op, ArrayRef<Value> operands,
                   ConversionPatternRewriter &rewriter) const;
 };
 ```
@@ -269,7 +269,7 @@ public:
 
     /// Remap an input of the original signature to another `replacement`
     /// value. This drops the original argument.
-    void remapInput(unsigned origInputNo, ValuePtr replacement);
+    void remapInput(unsigned origInputNo, Value replacement);
 };
 ```
 

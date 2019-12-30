@@ -1905,16 +1905,19 @@ def set_execution_mode(mode):
 @tf_contextlib.contextmanager
 def execution_mode(mode):
   """Context manager for setting execution mode for current thread."""
-  ctx = context()
-  executor_new = executor.new_executor(mode == ASYNC)
-  executor_old = ctx.executor
-  try:
-    executor_old.wait()
-    ctx.executor = executor_new
+  if mode is None:
     yield
-  finally:
-    ctx.executor = executor_old
-    executor_new.wait()
+  else:
+    ctx = context()
+    executor_new = executor.new_executor(mode == ASYNC)
+    executor_old = ctx.executor
+    try:
+      executor_old.wait()
+      ctx.executor = executor_new
+      yield
+    finally:
+      ctx.executor = executor_old
+      executor_new.wait()
 
 
 @tf_contextlib.contextmanager

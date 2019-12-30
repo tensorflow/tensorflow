@@ -10,8 +10,8 @@ understood (even though the LLVM implementation is flawed in many ways).
 
 The design team since decided to change to a different module, which eschews
 `const` entirely for the core IR types: you should never see a `const` method on
-`Operation`, should never see the type `const ValuePtr`, and you shouldn't feel
-bad about this. That said, you *should* use `const` for non-IR types, like
+`Operation`, should never see the type `const Value`, and you shouldn't feel bad
+about this. That said, you *should* use `const` for non-IR types, like
 `SmallVector`'s and many other things.
 
 The document below explains this design point from the viewpoint of "why make a
@@ -130,7 +130,7 @@ const.
   operand_iterator operand_begin();
   operand_iterator operand_end();
 
-  /// Returns an iterator on the underlying Value's (ValuePtr ).
+  /// Returns an iterator on the underlying Value's (Value ).
   operand_range getOperands();
 
   // Support const operand iteration.
@@ -141,7 +141,7 @@ const.
   const_operand_iterator operand_begin() const;
   const_operand_iterator operand_end() const;
 
-  /// Returns a const iterator on the underlying Value's (ValuePtr ).
+  /// Returns a const iterator on the underlying Value's (Value ).
   llvm::iterator_range<const_operand_iterator> getOperands() const;
 
   ArrayRef<OpOperand> getOpOperands() const {

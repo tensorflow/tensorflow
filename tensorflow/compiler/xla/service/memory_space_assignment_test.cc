@@ -67,9 +67,9 @@ class MemorySpaceAssignmentTest : public HloTestBase,
 
   std::unique_ptr<PresetAssignments> AssignMemorySpace(
       HloModule* module, int64 max_outstanding_async_copies = -1,
-      int64 max_prefetch_interval = 10) {
+      int64 max_prefetch_interval = 10, int64 min_prefetch_interval = 2) {
     InstructionCountPrefetchIntervalPicker prefetch_interval_picker(
-        /*min_overlap_count=*/2, max_prefetch_interval);
+        min_prefetch_interval, max_prefetch_interval);
     return AssignMemorySpace(module, max_outstanding_async_copies,
                              /*buffer_interval_compare=*/{},
                              &prefetch_interval_picker);
@@ -757,6 +757,77 @@ TEST_P(MemorySpaceAssignmentTest, BitcastTuple) {
   TF_CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get());
+}
+
+TEST_P(MemorySpaceAssignmentTest, BitcastScheduleBug) {
+  // Bitcasts can force asynchronous copies to be scheduled too early, possibly
+  // leading to memory corruption.
+  //  Bug:
+  //    p0------------------>neg-->neg-->neg ... -->neg-->neg-->neg->add
+  //                                                                 /
+  //    p1->cs->cd->bitcast-----------------------------------------+
+  //
+  //  Expected:
+  //    p0-->neg-->neg-->neg ... -->neg-->neg-->neg------------->add
+  //                                                             /
+  //    p1--------------------->cs----------------->cd->bitcast-+
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  Shape param_shape = ShapeUtil::MakeShape(F32, {6});
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* p1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, param_shape, "p1"));
+  HloInstruction* bitcast =
+      builder.AddInstruction(HloInstruction::CreateBitcast(shape, p1));
+  HloInstruction* negate0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, p0));
+  HloInstruction* negate1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate0));
+  HloInstruction* negate2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate1));
+  HloInstruction* negate3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate2));
+  HloInstruction* negate4 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate3));
+  HloInstruction* negate5 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate4));
+  HloInstruction* negate6 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate5));
+  HloInstruction* negate7 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate6));
+  HloInstruction* negate8 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate7));
+  HloInstruction* negate9 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate8));
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, bitcast, negate9));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(
+      computation, {p0, p1, bitcast, negate0, negate1, negate2, negate3,
+                    negate4, negate5, negate6, negate7, negate8, negate9, add});
+  TF_CHECK_OK(module->set_schedule(schedule));
+
+  AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/-1,
+                    /*max_prefetch_interval=*/5, /*min_prefetch_interval=*/4);
+
+  EXPECT_EQ(bitcast->shape().layout().memory_space(), kAlternateMemorySpace);
+  const auto& instructions =
+      module->schedule().sequence(module->entry_computation()).instructions();
+  for (int i = 0; i < instructions.size(); ++i) {
+    // Expect that there is a negate before and after the CopyStart and there is
+    // a negate before CopyDone.
+    if (instructions.at(i)->opcode() == HloOpcode::kCopyStart) {
+      EXPECT_EQ(instructions.at(i - 1)->opcode(), HloOpcode::kNegate);
+      EXPECT_EQ(instructions.at(i + 1)->opcode(), HloOpcode::kNegate);
+    } else if (instructions.at(i)->opcode() == HloOpcode::kCopyDone) {
+      EXPECT_EQ(instructions.at(i - 1)->opcode(), HloOpcode::kNegate);
+    }
+  }
 }
 
 TEST_P(MemorySpaceAssignmentTest, LastUseOpt) {

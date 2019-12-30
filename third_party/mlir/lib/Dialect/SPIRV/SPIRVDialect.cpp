@@ -94,7 +94,7 @@ struct SPIRVInlinerInterface : public DialectInlinerInterface {
   /// Handle the given inlined terminator by replacing it with a new operation
   /// as necessary.
   void handleTerminator(Operation *op,
-                        ArrayRef<ValuePtr> valuesToRepl) const final {
+                        ArrayRef<Value> valuesToRepl) const final {
     // Only spv.ReturnValue needs to be handled here.
     auto retValOp = dyn_cast<spirv::ReturnValueOp>(op);
     if (!retValOp)

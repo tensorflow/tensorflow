@@ -42,7 +42,7 @@ struct LhloFuseLinalg : public FunctionPass<LhloFuseLinalg> {
     // tiled. In order to greedily fuse the ops, we have to start from the tiled
     // root linalg ops, i.e. linalg ops that write to output buffers of the
     // function.
-    llvm::SmallDenseSet<Value*> func_args;
+    llvm::SmallDenseSet<Value> func_args;
     for (auto func_arg : func.getArguments()) {
       func_args.insert(func_arg);
     }
@@ -52,7 +52,7 @@ struct LhloFuseLinalg : public FunctionPass<LhloFuseLinalg> {
       const SmallVector<int64_t, 2> tile_sizes(
           generic_op.getNumInputsAndOutputs(), 1);
       auto op = cast<LinalgOp>(generic_op.getOperation());
-      for (const Value* result : op.getOutputs()) {
+      for (const Value result : op.getOutputs()) {
         if (!func_args.count(result)) continue;
         if (linalg::tileLinalgOp(b, op, tile_sizes, /*permutation=*/{},
                                  &folder)) {

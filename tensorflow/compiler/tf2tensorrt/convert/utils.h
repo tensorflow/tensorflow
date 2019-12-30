@@ -94,6 +94,15 @@ inline nvinfer1::Dims TensorShapeToTrtDims(const TensorShapeType& shape,
   trt_dims.nbDims = shape.dims() - offset;
   return trt_dims;
 }
+
+// Return a string that includes compile time
+// TensorRT library version information {Maj, Min, Patch}.
+string GetLinkedTensorRTVersion();
+
+// Return a string that includes runtime time
+// TensorRT library version information {Maj, Min, Patch}.
+string GetLoadedTensorRTVersion();
+
 #endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
 
 }  // namespace tensorrt

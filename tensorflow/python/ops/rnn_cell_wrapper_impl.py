@@ -210,7 +210,7 @@ class DropoutWrapperBase(object):
 
     # 0. if [keep_prob, 1.0) and 1. if [1.0, 1.0 + keep_prob)
     binary_tensor = math_ops.floor(random_tensor)
-    ret = math_ops.div(value, keep_prob) * binary_tensor
+    ret = math_ops.divide(value, keep_prob) * binary_tensor
     ret.set_shape(value.get_shape())
     return ret
 

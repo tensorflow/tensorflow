@@ -1,20 +1,16 @@
 # Description:
 # Platform-specific build configurations.
 
+load("//tensorflow:tensorflow.bzl", "tf_copts", "tf_cuda_library")
+load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
+load("@local_config_sycl//sycl:platform.bzl", "sycl_library_path")
+load("@local_config_sycl//sycl:build_defs.bzl", "if_ccpp")
+
 package(default_visibility = ["//tensorflow:internal"])
 
 licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
-
-load("//tensorflow:tensorflow.bzl", "check_deps")
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
-load("//tensorflow:tensorflow.bzl", "tf_copts")
-load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
-load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
-load("@local_config_sycl//sycl:platform.bzl", "sycl_library_path")
-load("@local_config_sycl//sycl:build_defs.bzl", "if_ccpp")
 
 cc_library(
     name = "gtest",
@@ -236,16 +232,4 @@ cc_library(
         ["@local_config_sycl//sycl:syclrt"],
         ["@local_config_sycl//sycl:sycl_headers"],
     ),
-)
-
-filegroup(
-    name = "mobile_srcs",
-    srcs = glob(["*.h"]),
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "android_srcs",
-    actual = ":mobile_srcs",
-    visibility = ["//visibility:public"],
 )

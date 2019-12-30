@@ -46,7 +46,8 @@ std::unique_ptr<OpPassBase<ModuleOp>> CreateTFShapeInferencePass();
 // Optimizes Tensorflow graph.
 std::unique_ptr<OpPassBase<FuncOp>> CreateTFOptimizePass();
 
-struct StandardPipelineOptions : public PassOptions<StandardPipelineOptions> {
+struct StandardPipelineOptions
+    : public PassPipelineOptions<StandardPipelineOptions> {
   Option<bool> enable_inliner{*this, "enable-inliner",
                               llvm::cl::desc("Enable inliner."),
                               llvm::cl::init(false)};

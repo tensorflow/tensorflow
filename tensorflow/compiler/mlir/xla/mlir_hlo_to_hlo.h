@@ -37,7 +37,7 @@ Status ConvertMlirHloToHlo(mlir::ModuleOp module, xla::HloProto* hlo_proto,
 // from `value_lowering` map.
 llvm::Optional<xla::XlaOp> CreateXlaOperator(
     mlir::Operation* op,
-    llvm::DenseMap<mlir::Value*, xla::XlaOp>* value_lowering);
+    llvm::DenseMap<mlir::Value, xla::XlaOp>* value_lowering);
 
 }  // namespace mlir
 

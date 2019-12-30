@@ -118,6 +118,10 @@ def _tf_http_archive(ctx):
         for internal_src, external_dest in ctx.attr.system_link_files.items():
             ctx.symlink(Label(internal_src), ctx.path(external_dest))
 
+    if ctx.attr.additional_build_files:
+        for internal_src, external_dest in ctx.attr.additional_build_files.items():
+            ctx.symlink(Label(internal_src), ctx.path(external_dest))
+
 tf_http_archive = repository_rule(
     implementation = _tf_http_archive,
     attrs = {
@@ -130,6 +134,7 @@ tf_http_archive = repository_rule(
         "build_file": attr.label(),
         "system_build_file": attr.label(),
         "system_link_files": attr.string_dict(),
+        "additional_build_files": attr.string_dict(),
     },
     environ = [
         "TF_SYSTEM_LIBS",
