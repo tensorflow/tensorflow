@@ -1,4 +1,4 @@
-load("@local_config_mlir//:tblgen.bzl", "gentbl")
+load("@org_tensorflow//third_party/mlir:tblgen.bzl", "gentbl")
 
 licenses(["notice"])
 
@@ -25,10 +25,10 @@ gentbl(
             "lib/DeclarativeTransforms/TestLinalgTransformPatterns.h.inc",
         ),
     ],
-    tblgen = "@local_config_mlir//:mlir-tblgen",
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "lib/DeclarativeTransforms/TestLinalgTransformPatterns.td",
     td_srcs = [
-        "@local_config_mlir//:LinalgTransformPatternsTdFiles",
+        "@llvm-project//mlir:LinalgTransformPatternsTdFiles",
     ],
 )
 
@@ -40,10 +40,10 @@ gentbl(
             "lib/DeclarativeTransforms/TestVectorTransformPatterns.h.inc",
         ),
     ],
-    tblgen = "@local_config_mlir//:mlir-tblgen",
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "lib/DeclarativeTransforms/TestVectorTransformPatterns.td",
     td_srcs = [
-        "@local_config_mlir//:VectorTransformPatternsTdFiles",
+        "@llvm-project//mlir:VectorTransformPatternsTdFiles",
     ],
 )
 
@@ -72,13 +72,13 @@ gentbl(
             "lib/TestDialect/TestPatterns.inc",
         ),
     ],
-    tblgen = "@local_config_mlir//:mlir-tblgen",
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "lib/TestDialect/TestOps.td",
     td_srcs = [
-        "@local_config_mlir//:OpBaseTdFiles",
-        "@local_config_mlir//:include/mlir/IR/OpAsmInterface.td",
-        "@local_config_mlir//:include/mlir/Analysis/CallInterfaces.td",
-        "@local_config_mlir//:include/mlir/Analysis/InferTypeOpInterface.td",
+        "@llvm-project//mlir:OpBaseTdFiles",
+        "@llvm-project//mlir:include/mlir/IR/OpAsmInterface.td",
+        "@llvm-project//mlir:include/mlir/Analysis/CallInterfaces.td",
+        "@llvm-project//mlir:include/mlir/Analysis/InferTypeOpInterface.td",
     ],
     test = True,
 )
@@ -98,13 +98,13 @@ cc_library(
     ],
     deps = [
         ":TestOpsIncGen",
-        "@llvm//:support",
-        "@local_config_mlir//:Analysis",
-        "@local_config_mlir//:Dialect",
-        "@local_config_mlir//:IR",
-        "@local_config_mlir//:Pass",
-        "@local_config_mlir//:TransformUtils",
-        "@local_config_mlir//:Transforms",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:Analysis",
+        "@llvm-project//mlir:Dialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:TransformUtils",
+        "@llvm-project//mlir:Transforms",
     ],
     alwayslink = 1,
 )
@@ -118,11 +118,11 @@ cc_library(
     ],
     deps = [
         ":TestDialect",
-        "@llvm//:support",
-        "@local_config_mlir//:IR",
-        "@local_config_mlir//:Pass",
-        "@local_config_mlir//:StandardOps",
-        "@local_config_mlir//:Support",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
     ],
     alwayslink = 1,
 )
@@ -133,10 +133,10 @@ cc_library(
         "lib/Pass/TestPassManager.cpp",
     ],
     deps = [
-        "@llvm//:support",
-        "@local_config_mlir//:IR",
-        "@local_config_mlir//:Pass",
-        "@local_config_mlir//:Support",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
     ],
     alwayslink = 1,
 )
@@ -163,21 +163,21 @@ cc_library(
         ":TestDialect",
         ":TestLinalgTransformPatternsIncGen",
         ":TestVectorTransformPatternsIncGen",
-        "@llvm//:support",
-        "@local_config_mlir//:AffineOps",
-        "@local_config_mlir//:Analysis",
-        "@local_config_mlir//:EDSC",
-        "@local_config_mlir//:IR",
-        "@local_config_mlir//:Linalg",
-        "@local_config_mlir//:LoopOps",
-        "@local_config_mlir//:Pass",
-        "@local_config_mlir//:StandardOps",
-        "@local_config_mlir//:Support",
-        "@local_config_mlir//:TransformUtils",
-        "@local_config_mlir//:Transforms",
-        "@local_config_mlir//:VectorOps",
-        "@local_config_mlir//:VectorToLLVM",
-        "@local_config_mlir//:VectorToLoops",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:AffineOps",
+        "@llvm-project//mlir:Analysis",
+        "@llvm-project//mlir:EDSC",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Linalg",
+        "@llvm-project//mlir:LoopOps",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@llvm-project//mlir:Transforms",
+        "@llvm-project//mlir:VectorOps",
+        "@llvm-project//mlir:VectorToLLVM",
+        "@llvm-project//mlir:VectorToLoops",
     ],
     alwayslink = 1,
 )

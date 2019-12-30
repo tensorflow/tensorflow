@@ -30,13 +30,13 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/AffineOps/AffineOps.h"  // TF:local_config_mlir
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
-#include "mlir/IR/AffineExpr.h"  // TF:local_config_mlir
-#include "mlir/IR/AffineMap.h"  // TF:local_config_mlir
-#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
-#include "mlir/Transforms/LoopUtils.h"  // TF:local_config_mlir
-#include "mlir/Transforms/RegionUtils.h"  // TF:local_config_mlir
+#include "mlir/Dialect/AffineOps/AffineOps.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/IR/AffineExpr.h"  // TF:llvm-project
+#include "mlir/IR/AffineMap.h"  // TF:llvm-project
+#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/Transforms/LoopUtils.h"  // TF:llvm-project
+#include "mlir/Transforms/RegionUtils.h"  // TF:llvm-project
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/window_util.h"
 

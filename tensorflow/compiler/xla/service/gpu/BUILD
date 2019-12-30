@@ -184,7 +184,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@llvm//:core",
+        "@llvm-project//llvm:core",
     ],
 )
 
@@ -198,8 +198,8 @@ cc_library(
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@llvm//:core",
-        "@llvm//:support",
+        "@llvm-project//llvm:core",
+        "@llvm-project//llvm:support",
     ],
 )
 
@@ -287,8 +287,8 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
-        "@llvm//:core",
-        "@llvm//:support",
+        "@llvm-project//llvm:core",
+        "@llvm-project//llvm:support",
     ],
 )
 
@@ -306,7 +306,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/compiler/xla/service/llvm_ir:loop_emitter",
         "//tensorflow/core:lib",
-        "@llvm//:core",
+        "@llvm-project//llvm:core",
     ],
 )
 
@@ -335,8 +335,8 @@ cc_library(
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@llvm//:core",
-        "@llvm//:support",
+        "@llvm-project//llvm:core",
+        "@llvm-project//llvm:support",
     ],
 )
 
@@ -594,7 +594,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/algorithm:container",
-        "@llvm//:core",
+        "@llvm-project//llvm:core",
     ],
 )
 
@@ -1068,7 +1068,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
         "@com_google_absl//absl/memory",
-        "@llvm//:core",
+        "@llvm-project//llvm:core",
     ],
     alwayslink = True,  # Contains per-platform transfer manager registration
 )
@@ -1162,7 +1162,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
-        "@llvm//:core",
+        "@llvm-project//llvm:core",
     ],
 )
 

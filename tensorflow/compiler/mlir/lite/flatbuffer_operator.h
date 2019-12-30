@@ -26,9 +26,9 @@ limitations under the License.
 #include "flatbuffers/flatbuffers.h"  // TF:flatbuffers
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/Operation.h"  // TF:local_config_mlir
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/Builders.h"  // TF:llvm-project
+#include "mlir/IR/Operation.h"  // TF:llvm-project
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace mlir {

@@ -1,14 +1,14 @@
 # Packaging for TensorFlow artifacts other than the Python API (pip whl).
 # This includes the C API, Java API, and protocol buffer files.
 
-package(default_visibility = ["//visibility:private"])
-
 load("@bazel_tools//tools/build_defs/pkg:pkg.bzl", "pkg_tar")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_syslibs//:build_defs.bzl", "if_not_system_lib")
 load("//tensorflow:tensorflow.bzl", "VERSION", "VERSION_MAJOR", "if_macos")
 load("//tensorflow/core/platform:build_config_root.bzl", "tf_additional_license_deps")
 load("//third_party/mkl:build_defs.bzl", "if_mkl")
+
+package(default_visibility = ["//visibility:private"])
 
 genrule(
     name = "libtensorflow_proto",
@@ -154,6 +154,8 @@ genrule(
         "@icu//:icu4c/LICENSE",
         "@libjpeg_turbo//:LICENSE.md",
         "@lmdb//:LICENSE",
+        "@llvm-project//llvm:LICENSE.TXT",
+        "@llvm-project//mlir:LICENSE.TXT",
         "@local_config_sycl//sycl:LICENSE.text",
         "@local_config_tensorrt//:LICENSE",
         "@nasm//:LICENSE",
@@ -225,6 +227,8 @@ genrule(
         "@hwloc//:COPYING",
         "@icu//:icu4j/main/shared/licenses/LICENSE",
         "@libjpeg_turbo//:LICENSE.md",
+        "@llvm-project//llvm:LICENSE.TXT",
+        "@llvm-project//mlir:LICENSE.TXT",
         "@lmdb//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
         "@local_config_tensorrt//:LICENSE",

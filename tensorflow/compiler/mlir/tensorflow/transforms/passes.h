@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <memory>
 
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
 
 namespace mlir {
 

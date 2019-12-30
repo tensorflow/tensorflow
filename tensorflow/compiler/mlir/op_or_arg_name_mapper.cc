@@ -25,9 +25,9 @@ limitations under the License.
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/IR/Location.h"  // TF:local_config_mlir
-#include "mlir/IR/Operation.h"  // TF:local_config_mlir
-#include "mlir/IR/Value.h"  // TF:local_config_mlir
+#include "mlir/IR/Location.h"  // TF:llvm-project
+#include "mlir/IR/Operation.h"  // TF:llvm-project
+#include "mlir/IR/Value.h"  // TF:llvm-project
 
 static inline absl::string_view StringRefToView(llvm::StringRef ref) {
   return absl::string_view(ref.data(), ref.size());

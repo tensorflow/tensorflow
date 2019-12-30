@@ -17,8 +17,8 @@ limitations under the License.
 
 #include <memory>
 
-#include "mlir/Pass/PassManager.h"  // TF:local_config_mlir
-#include "mlir/Transforms/Passes.h"  // TF:local_config_mlir
+#include "mlir/Pass/PassManager.h"  // TF:llvm-project
+#include "mlir/Transforms/Passes.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/bridge_logger.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"

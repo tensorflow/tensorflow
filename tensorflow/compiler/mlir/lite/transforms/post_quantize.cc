@@ -16,8 +16,8 @@ limitations under the License.
 // This transformation pass applies some clean up steps after quantization.
 
 #include "llvm/Support/Casting.h"
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
+#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"

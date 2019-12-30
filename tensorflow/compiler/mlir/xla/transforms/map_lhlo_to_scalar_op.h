@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.h"
 
 namespace mlir {
