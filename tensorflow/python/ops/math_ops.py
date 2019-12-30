@@ -358,7 +358,8 @@ def multiply(x, y, name=None):
 
 
 multiply.__doc__ = gen_math_ops.mul.__doc__.replace("Multiply", "tf.multiply")
-  
+
+
 # TODO(aselle): put deprecation in after another round of global code changes
 @deprecation.deprecated(
     "2016-12-30",
