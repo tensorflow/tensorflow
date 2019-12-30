@@ -107,6 +107,7 @@ class MemorySpaceAssignmentTest : public HloTestBase,
     options.is_allowed_in_alternate_mem_fn = is_allowed_in_alternate_mem;
     options.max_outstanding_async_copies = max_outstanding_async_copies;
     options.allocate_across_sequential_calls = GetParam();
+    options.verify = true;
     std::unique_ptr<PresetAssignments> preset_assignments =
         MemorySpaceAssignment::Run(module, options).ValueOrDie();
     CheckPresetAssignments(preset_assignments.get());

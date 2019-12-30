@@ -1095,6 +1095,10 @@ MemorySpaceAssignment::Run(HloModule* module, const Options& options) {
   VLOG(1) << "Maximum number of outstanding async copies: "
           << CountMaximumOutstandingAsyncCopies(*module);
 
+  if (options.verify || VLOG_IS_ON(1)) {
+    TF_RETURN_IF_ERROR(memory_space_assignment.Verify());
+  }
+
   return std::move(memory_space_assignment.preset_assignments_);
 }
 
@@ -1504,6 +1508,62 @@ Status MemorySpaceAssignment::FixSchedule() {
         << new_sequence.size() << " instructions, expects "
         << computation->instruction_count() << ".";
     schedule.set_sequence(computation, new_sequence);
+  }
+
+  return Status::OK();
+}
+
+Status MemorySpaceAssignment::Verify() const {
+  VLOG(3) << "Verifying:";
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+                      HloAliasAnalysis::Run(module_));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloLiveRange> hlo_live_range,
+                      HloLiveRange::Run(module_->schedule(), *alias_analysis,
+                                        module_->entry_computation()));
+
+  BufferIntervalTree interval_tree;
+  absl::flat_hash_set<int64> seen_buffers;
+
+  for (const auto& position_and_chunk : preset_assignments_->chunks()) {
+    const HloPosition& position = position_and_chunk.first;
+    const Chunk& chunk = position_and_chunk.second;
+    const HloBuffer& buffer =
+        alias_analysis->GetUniqueBufferAt(position.instruction, position.index);
+    if (seen_buffers.contains(buffer.id())) {
+      continue;
+    }
+    seen_buffers.insert(buffer.id());
+
+    int64 start_time = INT64_MAX;
+    int64 end_time = -1;
+    for (const HloValue* value : buffer.values()) {
+      const HloLiveRange::TimeBound& time_bound =
+          hlo_live_range->buffer_live_ranges().at(value);
+      start_time = std::min(start_time, time_bound.start);
+      end_time = std::max(end_time, time_bound.end);
+    }
+    CHECK_GE(start_time, 0);
+    CHECK_GT(end_time, 0);
+    // Get the chunks overlapping in time and search if they overlap in space as
+    // well.
+    // TODO(berkin): For now checking against end_time - 1 (exclusive), but we
+    // really should check against end_time (inclusive) for cases where the
+    // operand can't share buffer with user (see
+    // HloDataflowAnalysis::CanShareOperandBufferWithUser).
+    for (const Chunk& overlapping_chunk :
+         interval_tree.ChunksOverlappingInTime(start_time, end_time - 1)) {
+      if (chunk.OverlapsWith(overlapping_chunk)) {
+        return InternalError(
+            ("Buffer %s (%d, %d) off: %d size: %d overlaps with another chunk"
+             " off: %d size: %d"),
+            buffer.ToString(), start_time, end_time, chunk.offset, chunk.size,
+            overlapping_chunk.offset, overlapping_chunk.size);
+      }
+    }
+    interval_tree.Add(start_time, end_time - 1, chunk);
+    VLOG(3) << " buffer: " << buffer.ToString() << ": (" << start_time << ", "
+            << end_time << ") off: " << position_and_chunk.second.offset
+            << ", size: " << position_and_chunk.second.size;
   }
 
   return Status::OK();
