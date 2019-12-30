@@ -1636,10 +1636,10 @@ def random_brightness(image, max_delta, seed=None):
     ...       [10.0, 11.0, 12.0]]]
     >>> tf.image.random_brightness(x, 0.2)
     <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
-    array([[[ 0.80...,  1.80... ,  2.80... ],
-            [ 3.80... ,  4.80...  ,  5.80...  ]],
-           [[ 6.80...  ,  7.80...  ,  8.80...  ],
-            [ 9.80...  , 10.80...  , 11.80...  ]]], dtype=float32)>
+    array([[[ 1.033455,  2.033455,  3.033455],
+            [ 4.033455,  5.033455,  6.033455]],
+           [[ 7.033455,  8.033455,  9.033455],
+            [10.033455, 11.033455, 12.033455]]], dtype=float32)>
 
   Returns:
     The brightness-adjusted image(s).
@@ -1820,10 +1820,10 @@ def adjust_gamma(image, gamma=1, gain=1):
     ...       [10.0, 11.0, 12.0]]]
     >>> tf.image.adjust_gamma(x, 0.2)
     <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
-    array([[[1.       , 1.14..., 1.24...],
-            [1.31... , 1.37..., 1.43...]],
-           [[1.47..., 1.51..., 1.55...],
-            [1.58..., 1.61..., 1.64...]]], dtype=float32)>
+    array([[[1.       , 1.1486983, 1.2457309],
+            [1.319508 , 1.3797297, 1.4309691]],
+           [[1.4757731, 1.5157166, 1.5518456],
+            [1.5848932, 1.6153942, 1.6437519]]], dtype=float32)>
 
   Args:
     image : RGB image or images to adjust.
@@ -2056,10 +2056,10 @@ def random_hue(image, max_delta, seed=None):
     ...       [10.0, 11.0, 12.0]]]
     >>> tf.image.random_hue(x, 0.2)
     <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
-    array([[[ 1.       ,  1.59...,  3.       ],
-            [ 4.       ,  4.59...,  6.       ]],
-           [[ 7.       ,  7.59...,  9.       ],
-            [10.       , 10.59...  , 12.       ]]], dtype=float32)>
+    array([[[ 1.       ,  1.5985403,  3.       ],
+            [ 4.       ,  4.5985403,  6.       ]],
+           [[ 7.       ,  7.5985403,  9.       ],
+            [10.       , 10.59854  , 12.       ]]], dtype=float32)>
 
   Args:
     image: RGB image or images. The size of the last dimension must be 3.
@@ -2152,9 +2152,9 @@ def random_jpeg_quality(image, min_jpeg_quality, max_jpeg_quality, seed=None):
     >>> tf.image.random_jpeg_quality(x, 75, 95)
     <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
     array([[[1.        , 1.        , 1.        ],
-            [0.99... , 0.99... , 0.99... ]],
-           [[0.99... , 0.99... , 0.99... ],
-            [0.98..., 0.98..., 0.98...]]], dtype=float32)>
+            [0.9960785 , 0.9960785 , 0.9960785 ]],
+           [[0.9921569 , 0.9921569 , 0.9921569 ],
+            [0.98823535, 0.98823535, 0.98823535]]], dtype=float32)>
 
   Args:
     image: 3D image. Size of the last dimension must be 1 or 3.
@@ -2204,9 +2204,9 @@ def adjust_jpeg_quality(image, jpeg_quality, name=None):
     >>> tf.image.adjust_jpeg_quality(x, 75)
     <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
     array([[[1.        , 1.        , 1.        ],
-            [0.99... , 0.99... , 0.99... ]],
-           [[0.98..., 0.98..., 0.98...],
-            [0.98..., 0.98..., 0.98...]]], dtype=float32)>
+            [0.9960785 , 0.9960785 , 0.9960785 ]],
+           [[0.98823535, 0.98823535, 0.98823535],
+            [0.98823535, 0.98823535, 0.98823535]]], dtype=float32)>
 
   Args:
     image: 3D image. The size of the last dimension must be None, 1 or 3.
@@ -3149,10 +3149,10 @@ def rgb_to_yuv(images):
     ...       [10.0, 11.0, 12.0]]]
     >>> tf.image.rgb_to_yuv(x)
     <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
-    array([[[ 1.815    ,  0.58..., -0.71...],
-            [ 4.815    ,  0.58..., -0.71...]],
-           [[ 7.815    ,  0.58..., -0.71...],
-            [10.81... ,  0.58..., -0.71...]]], dtype=float32)>
+    array([[[ 1.815    ,  0.5831516, -0.7149856],
+            [ 4.815    ,  0.5831516, -0.7149855]],
+           [[ 7.815    ,  0.5831516, -0.7149856],
+            [10.815001 ,  0.5831518, -0.7149852]]], dtype=float32)>
 
   Args:
     images: 2-D or higher rank. Image data to convert. Last dimension must be
@@ -3992,7 +3992,7 @@ def extract_glimpse(
     ...           [8.0]]]]
     >>> tf.image.extract_glimpse(x, size=(2, 2), offsets=[[1, 1]],
     ...                         centered=False, normalized=False)
-    <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
+    <tf.Tensor: shape=(1, 2, 2, 1), dtype=float32, numpy=
     array([[[[0.],
              [1.]],
             [[3.],
@@ -4076,7 +4076,7 @@ def extract_glimpse_v2(
     ...           [8.0]]]]
     >>> tf.image.extract_glimpse(x, size=(2, 2), offsets=[[1, 1]],
     ...                         centered=False, normalized=False)
-    <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
+    <tf.Tensor: shape=(1, 2, 2, 1), dtype=float32, numpy=
     array([[[[0.],
              [1.]],
             [[3.],
