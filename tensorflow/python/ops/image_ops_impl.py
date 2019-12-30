@@ -1811,7 +1811,11 @@ def adjust_gamma(image, gamma=1, gain=1):
     ...     [[7.0, 8.0, 9.0],      
     ...       [10.0, 11.0, 12.0]]]
     >>> tf.image.adjust_gamma(x, 0.2)
-    <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=...>
+    <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
+    array([[[1.       , 1.1486983, 1.2457309],
+            [1.319508 , 1.3797297, 1.4309691]],
+           [[1.4757731, 1.5157166, 1.5518456],
+            [1.5848932, 1.6153942, 1.6437519]]], dtype=float32)>
 
   Args:
     image : RGB image or images to adjust.
@@ -2091,7 +2095,11 @@ def adjust_hue(image, delta, name=None):
     ...     [[7.0, 8.0, 9.0],      
     ...       [10.0, 11.0, 12.0]]]
     >>> tf.image.adjust_hue(x, 0.2)
-    <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=...>
+    <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
+    array([[[ 2.3999996,  1.       ,  3.       ],
+            [ 5.3999996,  4.       ,  6.       ]],
+          [[ 8.4      ,  7.       ,  9.       ],
+            [11.4      , 10.       , 12.       ]]], dtype=float32)>
 
   Args:
     image: RGB image or images. The size of the last dimension must be 3.
@@ -2178,7 +2186,11 @@ def adjust_jpeg_quality(image, jpeg_quality, name=None):
     ...     [[7.0, 8.0, 9.0],      
     ...       [10.0, 11.0, 12.0]]]
     >>> tf.image.adjust_jpeg_quality(x, 75)
-    <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=...>
+    <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
+    array([[[1.        , 1.        , 1.        ],
+            [0.9960785 , 0.9960785 , 0.9960785 ]],
+           [[0.98823535, 0.98823535, 0.98823535],
+            [0.98823535, 0.98823535, 0.98823535]]], dtype=float32)>
 
   Args:
     image: 3D image. The size of the last dimension must be None, 1 or 3.
@@ -3120,7 +3132,11 @@ def rgb_to_yuv(images):
     ...     [[7.0, 8.0, 9.0],      
     ...       [10.0, 11.0, 12.0]]]
     >>> tf.image.rgb_to_yuv(x)
-    <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=...>
+    <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
+    array([[[ 1.815    ,  0.5831516, -0.7149856],
+            [ 4.815    ,  0.5831516, -0.7149855]],
+           [[ 7.815    ,  0.5831516, -0.7149856],
+            [10.815001 ,  0.5831518, -0.7149852]]], dtype=float32)>
 
   Args:
     images: 2-D or higher rank. Image data to convert. Last dimension must be
