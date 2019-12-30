@@ -652,6 +652,15 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   ROOT %select.4 = s32[2,3] select(pred[2,3] %Arg_0.1, s32[2,3] %Arg_1.2, s32[2,3] %Arg_2.3)
 }
 
+// CHECK-LABEL:  func @test_set_dimension_size
+// CHECK-SAME:  ([[ARG:%.*]]: tensor<4x4xf32>, [[SIZE:%.*]]: tensor<i32>)
+%test_set_dimension_size (Arg_0.1: f32[4,4], Arg_1.2: s32[]) -> f32[4,<=4] {
+  %Arg_0.1 = f32[4,4] parameter(0)
+  %Arg_1.2 = s32[] parameter(1)
+  // CHECK-NEXT:  "xla_hlo.set_dimension_size"([[ARG]], [[SIZE]]) {dimension = 1 : i32, name = "{{.*}}"} : (tensor<4x4xf32>, tensor<i32>) -> tensor<4x4xf32>
+  ROOT %set-dimension-size.2 = f32[4,<=4] set-dimension-size(f32[4,4] %Arg_0.1, s32[] %Arg_1.2), dimensions={1}
+}
+
 // CHECK-LABEL:  func @test_sine(%arg0: tensor<1x16x16x3xf32>) -> tensor<1x16x16x3xf32> {
 %test_sine (arg0.1: f32[1,16,16,3]) -> f32[1,16,16,3] {
   %arg0.1 = f32[1,16,16,3]{3,2,1,0} parameter(0), metadata={op_name="HLO_Args"}

@@ -327,6 +327,12 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
                                          Convert(interior_padding))
           .getOperation();
     }
+    case HloOpcode::kSetDimensionSize: {
+      attributes.push_back(builder_->getNamedAttr(
+          "dimension", builder_->getIntegerAttr(builder_->getIntegerType(32),
+                                                instruction->dimension())));
+      MakeAndReturn(SetDimensionSizeOp);
+    }
     case HloOpcode::kSlice: {
       return func_builder
           ->create<mlir::xla_hlo::SliceOp>(

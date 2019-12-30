@@ -992,6 +992,16 @@ def HLO_SelectAndScatterOp: HLO_Op<"select_and_scatter",
   let hasCustomHLOConverter = 1;
 }
 
+def HLO_SetDimensionSizeOp: HLO_Op<"set_dimension_size", [NoSideEffect]>,
+      BASE_HLO_SetDimensionSizeOp {
+  let arguments = (ins
+    HLO_Tensor:$operand,
+    I32Tensor:$size,
+    I32Attr:$dimension
+  );
+  let results = (outs HLO_Tensor);
+}
+
 def HLO_SortOp : HLO_Op<"sort", [NoSideEffect]>, BASE_HLO_SortOp {
   let arguments = (ins
     Variadic<HLO_Tensor>:$operands,

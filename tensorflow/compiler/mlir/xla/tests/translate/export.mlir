@@ -693,6 +693,20 @@ func @main(%arg: tensor<3x4xi32>, %token: !xla_hlo.token) -> !xla_hlo.token {
 // -----
 
 // CHECK:  HloModule
+func @main(%arg: tensor<4x4xf32>, %size: tensor<i32>) -> tensor<4x4xf32> {
+  %0 = "xla_hlo.set_dimension_size"(%arg, %size) {dimension = 1 : i32} : (tensor<4x4xf32>, tensor<i32>) -> tensor<4x4xf32>
+  return %0 : tensor<4x4xf32>
+}
+
+// CHECK:  ENTRY
+// CHECK:  [[ARG:%.*]] = f32[4,4] parameter(0)
+// CHECK:  [[SIZE:%.*]] = s32[] parameter(1)
+// CHECK:  ROOT
+// CHECK-SAME:  f32[4,<=4] set-dimension-size(f32[4,4] [[ARG]], s32[] [[SIZE]]), dimensions={1}
+
+// -----
+
+// CHECK:  HloModule
 func @main(%arg: tensor<3x4xi32>) -> tensor<1x2xi32> {
   %0 = "xla_hlo.slice"(%arg) {start_indices = dense<[1, 0]> : tensor<2xi64>, limit_indices = dense<[2, 4]> : tensor<2xi64>, strides = dense<[1, 2]> : tensor<2xi64>} : (tensor<3x4xi32>) -> tensor<1x2xi32>
   return %0 : tensor<1x2xi32>

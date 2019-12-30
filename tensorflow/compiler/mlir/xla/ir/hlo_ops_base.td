@@ -915,6 +915,18 @@ class BASE_HLO_SelectAndScatterOp {
   }];
 }
 
+class BASE_HLO_SetDimensionSizeOp {
+  string summary = "SetDimensionSize operator";
+
+  string description = [{
+    Sets the dynamic size of operand's given dimension. Pass through the operand
+    as result, with dynamic dimension tracked by the compiler. Padded values
+    will be ignored by downstream reduction ops.
+
+    See https://www.tensorflow.org/xla/operation_semantics#setdimensionsize.
+  }];
+}
+
 class BASE_HLO_SortOp {
   string summary = "Sort operator";
 
