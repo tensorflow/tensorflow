@@ -661,25 +661,9 @@ bool AlternateMemoryBestFitHeap::FindAllocation(
     }
   }
 
-  // Since copies couldn't be removed, create an allocation in the default
-  // memory space.
-  if (prev_allocation_in_default_mem != nullptr) {
-    if (prev_allocation == prev_allocation_in_default_mem) {
-      // The latest allocation is also in the default memory, simply extend
-      // that.
-      prev_allocation->Extend(end_time);
-    } else {
-      // The latest allocation is different. Create a new allocation in default
-      // memory.
-      allocations->push_back(
-          absl::make_unique<MemorySpaceAssignment::Allocation>(
-              non_bitcast_operand, defining_position, MemorySpace::kDefault,
-              kDummyChunk, prev_allocation_in_default_mem->end_time(),
-              end_time));
-    }
-  } else if (prev_allocation != nullptr &&
-             prev_allocation->memory_space() == MemorySpace::kAlternate &&
-             prev_allocation->defining_position() == defining_position) {
+  if (prev_allocation_in_default_mem == nullptr && prev_allocation != nullptr &&
+      prev_allocation->memory_space() == MemorySpace::kAlternate &&
+      prev_allocation->defining_position() == defining_position) {
     // If there was an allocation for this HloValue that was in the alternate
     // memory space, we also need to perform an eviction.
     int64 eviction_start_time = prev_allocation->start_time();
@@ -763,18 +747,24 @@ bool AlternateMemoryBestFitHeap::FindAllocation(
         return false;
       }
     }
-  } else {
+    prev_allocation_in_default_mem = allocations->back().get();
+  } else if (prev_allocation_in_default_mem == nullptr) {
     allocations->push_back(absl::make_unique<MemorySpaceAssignment::Allocation>(
         non_bitcast_operand, defining_position, MemorySpace::kDefault,
         kDummyChunk, start_time, end_time));
+    prev_allocation_in_default_mem = allocations->back().get();
   }
+
+  CHECK_NE(prev_allocation_in_default_mem, nullptr);
+  CHECK(prev_allocation_in_default_mem->memory_space() ==
+        MemorySpace::kDefault);
 
   // If the use requires the buffer to be in default memory, don't try to
   // prefetch.
   if (use_requires_buffer_in_default_mem) {
     VLOG(4)
         << "Not trying to prefetch because use requires buffer in default mem.";
-    allocations->back()->AddUse(use);
+    prev_allocation_in_default_mem->AddUse(use);
     return true;
   }
 
@@ -824,7 +814,7 @@ bool AlternateMemoryBestFitHeap::FindAllocation(
               << options_.prefetch_interval_picker->ToDebugString();
       AddToPendingChunks(alternate_mem_interval, chunk_candidate);
 
-      AddAsyncCopy(*allocations->back().get(), MemorySpace::kAlternate,
+      AddAsyncCopy(*prev_allocation_in_default_mem, MemorySpace::kAlternate,
                    chunk_candidate.chunk, alternate_mem_interval.start,
                    end_time, latest_prefetch_time, allocations);
 
@@ -833,8 +823,9 @@ bool AlternateMemoryBestFitHeap::FindAllocation(
     }
   }
 
-  // If a copy wasn't inserted, then add this use to the latest allocation.
-  allocations->back()->AddUse(use);
+  // If a copy wasn't inserted, then add this use to the latest allocation in
+  // default memory.
+  prev_allocation_in_default_mem->AddUse(use);
   return true;
 }
 
@@ -907,7 +898,7 @@ bool AlternateMemoryBestFitHeap::TryAllocatingInAlternateMemoryNoCopy(
   }
 
   if (!options_.prefetch_interval_picker->CanAllocateInAlternateMemoryNoCopy(
-          non_bitcast_operand->shape(), start_time, end_time)) {
+          non_bitcast_operand->shape(), start_time + 1, end_time)) {
     return false;
   }
 
@@ -1539,6 +1530,8 @@ Status MemorySpaceAssignment::Verify() const {
     for (const HloValue* value : buffer.values()) {
       const HloLiveRange::TimeBound& time_bound =
           hlo_live_range->buffer_live_ranges().at(value);
+      VLOG(3) << "  value: " << value->ToShortString() << " ("
+              << time_bound.start << ", " << time_bound.end << ")";
       start_time = std::min(start_time, time_bound.start);
       end_time = std::max(end_time, time_bound.end);
     }
