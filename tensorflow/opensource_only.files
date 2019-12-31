@@ -265,6 +265,7 @@ tensorflow/third_party/toolchains/preconfig/ubuntu16.04/tensorrt6.0/build_defs.b
 tensorflow/third_party/toolchains/preconfig/win_1803/BUILD
 tensorflow/third_party/toolchains/preconfig/win_1803/bazel_025/BUILD
 tensorflow/third_party/toolchains/preconfig/win_1803/bazel_026/BUILD
+tensorflow/third_party/toolchains/preconfig/win_1803/bazel_121/BUILD
 tensorflow/third_party/toolchains/preconfig/win_1803/py36/BUILD
 tensorflow/third_party/toolchains/preconfig/win_1803/py37/BUILD
 tensorflow/third_party/toolchains/remote/BUILD
