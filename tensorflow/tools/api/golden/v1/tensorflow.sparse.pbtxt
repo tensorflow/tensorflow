@@ -46,7 +46,7 @@ tf_module {
   }
   member_method {
     name: "matmul"
-    argspec: "args=[\'sp_a\', \'b\', \'adjoint_a\', \'adjoint_b\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'None\'], "
+    argspec: "args=[\'mat_a\', \'mat_b\', \'adjoint_a\', \'adjoint_b\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'None\'], "
   }
   member_method {
     name: "maximum"
@@ -118,7 +118,7 @@ tf_module {
   }
   member_method {
     name: "sparse_dense_matmul"
-    argspec: "args=[\'sp_a\', \'b\', \'adjoint_a\', \'adjoint_b\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'None\'], "
+    argspec: "args=[\'mat_a\', \'mat_b\', \'adjoint_a\', \'adjoint_b\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'None\'], "
   }
   member_method {
     name: "split"
