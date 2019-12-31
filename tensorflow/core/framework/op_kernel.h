@@ -258,10 +258,10 @@ class AsyncOpKernel : public OpKernel {
   typedef std::function<void()> DoneCallback;
   virtual void ComputeAsync(OpKernelContext* context, DoneCallback done) = 0;
 
-  AsyncOpKernel* AsAsync() final { return this; }
-  const AsyncOpKernel* AsAsync() const final { return this; }
+  AsyncOpKernel* AsAsync() override { return this; }
+  const AsyncOpKernel* AsAsync() const override { return this; }
 
-  void Compute(OpKernelContext* context) final;
+  void Compute(OpKernelContext* context) override;
 };
 
 // Wraps a tensor that is held by an Op across calls to Compute(). For memory

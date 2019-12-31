@@ -1144,7 +1144,7 @@ class BinaryDatasetOpKernel : public DatasetOpKernel {
 // overhead is tolerable.
 class BackgroundWorker {
  public:
-  BackgroundWorker(Env* env, const string& name);
+  BackgroundWorker(Env* env, const char* name);
 
   ~BackgroundWorker();
 
@@ -1152,6 +1152,9 @@ class BackgroundWorker {
 
  private:
   void WorkerLoop();
+
+  Env* const env_;
+  const char* const name_;
 
   std::unique_ptr<Thread> thread_;
   mutex mu_;
