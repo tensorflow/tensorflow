@@ -177,6 +177,7 @@ py_test(
     srcs = ["distribute_lib_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
+    tags = ["no_rocm"],
     deps = [
         ":combinations",
         ":distribute_lib",

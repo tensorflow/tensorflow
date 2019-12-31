@@ -5,6 +5,11 @@ package(licenses = ["notice"])
 glob_lit_tests(
     data = [":test_utilities"],
     driver = "@llvm-project//mlir:run_lit.sh",
+    tags_override = {
+        "legalize-tf.mlir": ["no_rocm"],
+        "optimize.mlir": ["no_rocm"],
+        "prepare-tf.mlir": ["no_rocm"],
+    },
     test_file_exts = ["mlir"],
 )
 

@@ -934,7 +934,6 @@ cc_library(
 tf_cc_test(
     name = "error_util_test",
     srcs = ["utils/error_util_test.cc"],
-    tags = ["no_rocm"],
     deps = [
         ":error_util",
         "//tensorflow/compiler/xla:test",

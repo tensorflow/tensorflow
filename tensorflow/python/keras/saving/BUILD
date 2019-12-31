@@ -136,6 +136,7 @@ tf_py_test(
     python_version = "PY3",
     shard_count = 4,
     tags = [
+        "no_rocm",
         "no_windows",
     ],
     deps = [
