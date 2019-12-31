@@ -476,9 +476,9 @@ def string_to_number(input, out_type=dtypes.float32, name=None):
 
   Examples:
   >>> tf.strings.to_number("1.55")
-  <tf.Tensor: id=345, shape=(), dtype=float32, numpy=1.55>
+  <tf.Tensor: shape=(), dtype=float32, numpy=1.55>
   >>> tf.strings.to_number("3", tf.int32)
-  <tf.Tensor: id=347, shape=(), dtype=int32, numpy=3>
+  <tf.Tensor: shape=(), dtype=int32, numpy=3>
 
   Args:
     input: A `Tensor` of type `string`.
@@ -521,7 +521,7 @@ def string_to_hash_bucket(input, num_buckets, name=None):
 
   Examples:
   >>> tf.strings.to_hash_bucket(["Hello", "TensorFlow", "2.x"], 3)
-  <tf.Tensor: shape=(3,), dtype=int64, numpy=array([2, 0, 1], dtype=int64)>
+  <tf.Tensor: shape=(3,), dtype=int64, numpy=array([2, 0, 1])>
 
   Args:
     input: A `Tensor` of type `string`.
