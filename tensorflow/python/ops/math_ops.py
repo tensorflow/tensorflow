@@ -4230,6 +4230,7 @@ def polyval(coeffs, x, name=None):
             x * coeffs[0]))
             
   Usage Example:
+  
   >>> coefficients = [1.0, 2.5, -4.2]
   >>> x = 5.0
   >>> y = tf.math.polyval(coefficients, x)
