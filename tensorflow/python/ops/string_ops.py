@@ -521,7 +521,7 @@ def string_to_hash_bucket(input, num_buckets, name=None):
 
   Examples:
   >>> tf.strings.to_hash_bucket(["Hello", "TensorFlow", "2.x"], 3)
-  <tf.Tensor: id=332, shape=(3,), dtype=int64, numpy=array([2, 0, 1], dtype=int64)>
+  <tf.Tensor: shape=(3,), dtype=int64, numpy=array([2, 0, 1], dtype=int64)>
 
   Args:
     input: A `Tensor` of type `string`.
