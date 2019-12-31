@@ -9,7 +9,7 @@ package(default_visibility = [":friends"])
 
 package_group(
     name = "subpackages",
-    packages = ["//third_party/llvm/llvm/projects/google_mlir/..."],
+    packages = ["//..."],
 )
 
 # In particular the OWNERS file of the dependent project should be updated.
