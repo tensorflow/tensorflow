@@ -17,7 +17,7 @@ END
 (Note that int32 overflow results in an error while float overflow
 results in a rounded value.)
 
-Usage Example:
+Example:
 
 >>> strings = ["5.0", "3.0", "7.0"]
 >>> tf.strings.to_number(strings)
