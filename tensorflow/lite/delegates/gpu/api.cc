@@ -21,31 +21,35 @@ namespace {
 
 struct ObjectTypeGetter {
   ObjectType operator()(absl::monostate) const { return ObjectType::UNKNOWN; }
+#if defined(__ANDROID__) || defined(TFLITE_CONFIG_GPU_GL)
   ObjectType operator()(OpenGlBuffer) const { return ObjectType::OPENGL_SSBO; }
   ObjectType operator()(OpenGlTexture) const {
     return ObjectType::OPENGL_TEXTURE;
   }
-#if defined(TFLITE_CONFIG_GPU_CL)
+#endif // defined(__ANDROID__) || defined(TFLITE_CONFIG_GPU_GL)
+#if defined(__ANDROID__) || defined(TFLITE_CONFIG_GPU_CL)
   ObjectType operator()(OpenClBuffer) const {
     return ObjectType::OPENCL_BUFFER;
   }
   ObjectType operator()(OpenClTexture) const {
     return ObjectType::OPENCL_TEXTURE;
   }
-#endif
+#endif // defined(__ANDROID__) || defined(TFLITE_CONFIG_GPU_CL)
   ObjectType operator()(CpuMemory) const { return ObjectType::CPU_MEMORY; }
 };
 
 struct ObjectValidityChecker {
   bool operator()(absl::monostate) const { return false; }
+#if defined(__ANDROID__) || defined(TFLITE_CONFIG_GPU_GL)
   bool operator()(OpenGlBuffer obj) const { return obj.id != GL_INVALID_INDEX; }
   bool operator()(OpenGlTexture obj) const {
     return obj.id != GL_INVALID_INDEX && obj.format != GL_INVALID_ENUM;
   }
-#if defined(TFLITE_CONFIG_GPU_CL)
+#endif // defined(__ANDROID__) || defined(TFLITE_CONFIG_GPU_GL)
+#if defined(__ANDROID__) || defined(TFLITE_CONFIG_GPU_CL)
   bool operator()(OpenClBuffer obj) const { return obj.memobj; }
   bool operator()(OpenClTexture obj) const { return obj.memobj; }
-#endif
+#endif // defined(__ANDROID__) || defined(TFLITE_CONFIG_GPU_CL)
   bool operator()(CpuMemory obj) const {
     return obj.data != nullptr && obj.size_bytes > 0 &&
            (data_type == DataType::UNKNOWN ||
@@ -77,16 +81,18 @@ bool IsObjectPresent(ObjectType type, const TensorObject& obj) {
   switch (type) {
     case ObjectType::CPU_MEMORY:
       return absl::get_if<CpuMemory>(&obj);
+#if defined(__ANDROID__) || defined(TFLITE_CONFIG_GPU_GL)
     case ObjectType::OPENGL_SSBO:
       return absl::get_if<OpenGlBuffer>(&obj);
     case ObjectType::OPENGL_TEXTURE:
       return absl::get_if<OpenGlTexture>(&obj);
-#if defined(TFLITE_CONFIG_GPU_CL)
+#endif // defined(__ANDROID__) || defined(TFLITE_CONFIG_GPU_GL)
+#if defined(__ANDROID__) || defined(TFLITE_CONFIG_GPU_CL)
     case ObjectType::OPENCL_BUFFER:
       return absl::get_if<OpenClBuffer>(&obj);
     case ObjectType::OPENCL_TEXTURE:
       return absl::get_if<OpenClTexture>(&obj);
-#endif
+#endif // defined(__ANDROID__) || defined(TFLITE_CONFIG_GPU_CL)
     case ObjectType::UNKNOWN:
       return false;
   }

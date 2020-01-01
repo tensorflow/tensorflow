@@ -18,13 +18,17 @@ limitations under the License.
 #include <algorithm>
 #include <cstring>
 
+#ifndef TFLITE_CONFIG_GPU_NO_EGL
 #include <EGL/eglext.h>
+#endif
 #include "absl/memory/memory.h"
 #include "absl/types/span.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_command_queue.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_errors.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_event.h"
+#ifndef TFLITE_CONFIG_GPU_NO_EGL
 #include "tensorflow/lite/delegates/gpu/cl/egl_sync.h"
+#endif
 #include "tensorflow/lite/delegates/gpu/cl/environment.h"
 #include "tensorflow/lite/delegates/gpu/cl/gl_interop.h"
 #include "tensorflow/lite/delegates/gpu/cl/inference_context.h"
@@ -528,10 +532,12 @@ class InferenceBuilderImpl : public InferenceBuilder {
     }
     RETURN_IF_ERROR(context_->InitFromGraph(create_info, graph, environment_));
 
+#ifndef TFLITE_CONFIG_GPU_NO_EGL
     if (env_options.IsGlAware()) {
       gl_interop_fabric_ = absl::make_unique<GlInteropFabric>(
           env_options.egl_display, environment_);
     }
+#endif
     tie_factory_ = absl::make_unique<TensorTieFactory>(
         environment_, context_.get(), gl_interop_fabric_.get());
 
@@ -726,6 +732,7 @@ class InferenceEnvironmentImpl : public InferenceEnvironment {
     }
 
     CLContext context;
+#ifndef TFLITE_CONFIG_GPU_NO_EGL
     if (options_.context) {
       if (options_.IsGlAware()) {
         return InvalidArgumentError(
@@ -743,6 +750,10 @@ class InferenceEnvironmentImpl : public InferenceEnvironment {
         RETURN_IF_ERROR(CreateCLContext(device, &context));
       }
     }
+#else
+    RETURN_IF_ERROR(CreateEnvironment(&environment_));
+    return OkStatus();
+#endif
 
     CLCommandQueue queue;
     if (options_.command_queue) {

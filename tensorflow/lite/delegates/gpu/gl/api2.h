@@ -23,7 +23,9 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/api.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#if defined(__ANDROID__) || defined(TFLITE_CONFIG_GPU_GL)
 #include "tensorflow/lite/delegates/gpu/gl/command_queue.h"
+#endif // defined(__ANDROID__) || defined(TFLITE_CONFIG_GPU_GL)
 
 namespace tflite {
 namespace gpu {
@@ -47,7 +49,9 @@ class InferenceEnvironment {
 };
 
 struct InferenceEnvironmentOptions {
+#if defined(__ANDROID__) || defined(TFLITE_CONFIG_GPU_GL)
   CommandQueue* queue = nullptr;
+#endif // defined(__ANDROID__) || defined(TFLITE_CONFIG_GPU_GL)
 };
 
 // Creates a new OpenGL environment that needs to stay around until all

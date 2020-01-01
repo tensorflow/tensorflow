@@ -19,7 +19,9 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
+#ifndef TFLITE_CONFIG_GPU_NO_EGL
 #include <EGL/egl.h>
+#endif // TFLITE_CONFIG_GPU_NO_EGL
 #include "absl/types/span.h"
 #include "tensorflow/lite/delegates/gpu/api.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
@@ -90,6 +92,7 @@ struct InferenceEnvironmentOptions {
   cl_context context = nullptr;
   cl_command_queue command_queue = nullptr;
 
+#ifndef TFLITE_CONFIG_GPU_NO_EGL´
   // Whenever input and/or output is GL object, EGL display and context must be
   // set to create GL aware OpenCL context. Do not set these variables whenever
   // GL interoperability is not needed.
@@ -98,6 +101,7 @@ struct InferenceEnvironmentOptions {
   // GL-aware CL context.
   EGLDisplay egl_display = EGL_NO_DISPLAY;
   EGLContext egl_context = EGL_NO_CONTEXT;
+#endif
 
   // Should contain data returned from
   // InferenceEnvironment::GetSerializedBinaryCache method.
@@ -105,9 +109,11 @@ struct InferenceEnvironmentOptions {
   // incompatible when GPU driver is updated.
   absl::Span<const uint8_t> serialized_binary_cache;
 
+#ifndef TFLITE_CONFIG_GPU_NO_EGL
   bool IsGlAware() const {
     return egl_context != EGL_NO_CONTEXT && egl_display != EGL_NO_DISPLAY;
   }
+#endif
 };
 
 // Creates new OpenCL environment that needs to stay around until all inference

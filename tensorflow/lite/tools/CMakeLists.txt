@@ -168,6 +168,7 @@ add_library(tensorflow-lite
 target_include_directories(tensorflow-lite PUBLIC
   ${TENSORFLOW_LITE_DIR}/../..
   ${TENSORFLOW_LITE_DIR}/tools/make/downloads/flatbuffers/include
+  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl
 )
 target_include_directories(tensorflow-lite PRIVATE
   ${TENSORFLOW_LITE_DIR}/tools/make/downloads/
@@ -180,118 +181,214 @@ target_link_libraries(tensorflow-lite PUBLIC
   stdc++ m z
 )
 
-add_custom_command(
-  OUTPUT  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/common_generated.h
-  OUTPUT  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/compiled_model_generated.h
-          ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/metadata_generated.h
-          ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/workgroups_generated.h
-  DEPENDS ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/common.fbs
-          ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/compiled_model.fbs
-          ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/metadata.fbs
-          ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/workgroups.fbs
-  COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/host/flatc
-          --cpp --scoped-enums -o ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/
-          ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/common.fbs
-          ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/compiled_model.fbs
-          ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/metadata.fbs
-          ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/workgroups.fbs
-)
+include(CheckIncludeFile)
+CHECK_INCLUDE_FILE('GLES3/gl31.h' ENABLE_GLES_DELEGATE)
+find_package(OpenCL)
 
-add_library(gl_delegate
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/api.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/delegate.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl_delegate.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/gl_program.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/request_gpu_info.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/converter.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/custom_registry.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/lstm.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/max_unpooling.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/conv.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/depthwise_conv.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/softmax.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/prelu.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/transpose_conv.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/fully_connected.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/pad.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/mul.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/relu.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/reshape.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/registry.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/elementwise.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/pooling.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/slice.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/concat.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/upsampling_bilinear.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/add.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/gl_texture.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/egl_context.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/command_queue.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/serialization.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/gl_shader.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/api.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/api2.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/converters/phwc4_to_bhwc.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/converters/bhwc_to_phwc4.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/egl_surface.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/workgroups/default_calculator.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/workgroups/best_effort_calculator.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/workgroups/calculator.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/workgroups/ideal_workgroup_picker.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/workgroups/calculator_from_metadata.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/object_manager.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/runtime.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/gl_errors.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/egl_environment.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/float16_conversions.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/gl_buffer.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/gl_sync.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/compiler/compiled_node.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/compiler/fuse_inline.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/compiler/fuse_inplace.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/compiler/fuse_auto_input.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/compiler/variable_accessor.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/compiler/shader_codegen.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/compiler/preprocessor.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/compiler/rename.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/compiler/object_accessor.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/compiler.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/convert.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/data_type.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/gpu_info.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/memory_management.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/memory_management/greedy_by_breadth_assignment.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/memory_management/greedy_by_size_assignment.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/memory_management/internal.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/memory_management/min_cost_flow_assignment.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/memory_management/types.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/model_builder.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/model_transformer.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/operations.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/shape.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/transformations/general_transformations.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/transformations/remove_noop.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/transformations/fuse_mul_to_conv.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/transformations/add_bias.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/transformations/match_dilated_convolution.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/transformations/make_fully_connected.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/transformations/merge_padding_with.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/transformations/make_padding.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/transformations/general_transformations.cc
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/transformations/fuse_add_to_conv.cc
-  # headers
-  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/metadata_generated.h
-)
-target_include_directories(gl_delegate PRIVATE
-  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl
-  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/fp16/include
-)
-target_link_libraries(gl_delegate
-  tensorflow-lite
-)
+#### OpenGLES delegate
+if(${ENABLE_GLES_DELEGATE})
+  add_custom_command(
+    OUTPUT  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/common_generated.h
+    OUTPUT  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/compiled_model_generated.h
+            ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/metadata_generated.h
+            ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/workgroups_generated.h
+    DEPENDS ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/common.fbs
+            ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/compiled_model.fbs
+            ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/metadata.fbs
+            ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/workgroups.fbs
+    COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/host/flatc
+            --cpp --scoped-enums -o ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/
+            ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/common.fbs
+            ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/compiled_model.fbs
+            ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/metadata.fbs
+            ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/workgroups.fbs
+  )
+  
+  add_library(gl_delegate
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl_delegate.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/gl_program.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/request_gpu_info.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/converter.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/custom_registry.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/lstm.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/max_unpooling.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/conv.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/depthwise_conv.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/softmax.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/prelu.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/transpose_conv.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/fully_connected.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/pad.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/mul.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/relu.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/reshape.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/registry.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/elementwise.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/pooling.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/slice.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/concat.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/upsampling_bilinear.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/add.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/gl_texture.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/egl_context.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/command_queue.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/serialization.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/gl_shader.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/api.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/api2.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/converters/phwc4_to_bhwc.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/converters/bhwc_to_phwc4.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/egl_surface.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/workgroups/default_calculator.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/workgroups/best_effort_calculator.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/workgroups/calculator.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/workgroups/ideal_workgroup_picker.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/workgroups/calculator_from_metadata.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/object_manager.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/runtime.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/gl_errors.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/egl_environment.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/float16_conversions.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/gl_buffer.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/gl_sync.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/compiler/compiled_node.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/compiler/fuse_inline.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/compiler/fuse_inplace.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/compiler/fuse_auto_input.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/compiler/variable_accessor.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/compiler/shader_codegen.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/compiler/preprocessor.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/compiler/rename.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/compiler/object_accessor.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/compiler.cc
+    # headers
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/metadata_generated.h
+  )
+  target_link_libraries(gl_delegate
+    gpu_delegate
+  )
+endif()
+
+#### OpenCL delegate
+if(OpenCL_FOUND)
+  add_library(cl_delegate
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/kernels/lstm.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/kernels/sigmoid.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/kernels/max_unpooling.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/kernels/softmax.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/kernels/padding.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/kernels/strided_slice.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/kernels/prelu.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/kernels/convolution_transposed.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/kernels/transpose.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/kernels/depth_wise_conv_3x3.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/kernels/conv_texture.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/kernels/conv_buffer.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/kernels/convolution_transposed_thin.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/kernels/fully_connected_texture.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/kernels/convolution_transposed_3x3_thin.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/kernels/relu.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/kernels/gpu_operation.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/kernels/reshape.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/kernels/depth_wise_conv.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/kernels/softmax1x1.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/kernels/util.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/kernels/upsample.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/kernels/abs.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/kernels/concat_z.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/kernels/converter.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/kernels/multiply_add.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/kernels/pooling.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/kernels/conv_powervr.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/kernels/flt_type.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/kernels/concat_xy.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/kernels/conv_buffer_1x1.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/kernels/apply_mask.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/kernels/conv_constants.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/kernels/reshapex4.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/kernels/work_group_picking.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/kernels/add.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/texture2d.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/linear_storage.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/cl_event.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/gl_interop.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/inference_context.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/tensor.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/cl_command_queue.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/precision.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/api.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/environment.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/buffer.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/cl_program.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/testing/performance_profiling.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/util.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/cl_context.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/cl_device.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/opencl_wrapper.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/tensor_type.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/program_cache.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/egl_sync.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/cl_kernel.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/cl_image_format.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/cl_memory.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/gpu_api_delegate.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/tensor_type_util.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/selectors/fully_connected_selector.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/selectors/dw_convolution_selector.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/selectors/operation_selector.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/selectors/convolution_transposed_selector.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/selectors/convolution_selector.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/cl/selectors/simple_selectors.cc
+  )
+  target_link_libraries(cl_delegate
+    gpu_delegate
+  )
+endif()
+
+if((OpenCL_FOUND) OR (${ENABLE_GLES_DELEGATE}))
+  add_library(gpu_delegate
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/api.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/delegate.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/convert.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/data_type.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/gpu_info.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/memory_management.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/memory_management/greedy_by_breadth_assignment.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/memory_management/greedy_by_size_assignment.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/memory_management/internal.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/memory_management/min_cost_flow_assignment.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/memory_management/types.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/model_builder.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/model_transformer.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/operations.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/shape.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/transformations/general_transformations.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/transformations/remove_noop.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/transformations/fuse_mul_to_conv.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/transformations/add_bias.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/transformations/match_dilated_convolution.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/transformations/make_fully_connected.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/transformations/merge_padding_with.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/transformations/make_padding.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/transformations/general_transformations.cc
+    ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/transformations/fuse_add_to_conv.cc
+  )
+  target_link_libraries(gpu_delegate
+    tensorflow-lite
+  )
+  target_include_directories(gpu_delegate PUBLIC
+    ${TENSORFLOW_LITE_DIR}/tools/make/downloads/fp16/include
+  )
+  if(OpenCL_FOUND)
+    target_compile_options(gpu_delegate PUBLIC -DTFLITE_CONFIG_GPU_CL -DTFLITE_CONFIG_GPU_NO_EGL -framework OpenCL)
+  endif()
+  if(${ENABLE_GLES_DELEGATE})
+    target_compile_options(gpu_delegate PUBLIC -DTFLITE_CONFIG_GPU_GLES)
+  endif()
+endif()
 
 ## global compile option
-target_compile_options(tensorflow-lite PUBLIC -O3 -DNDEBUG -fPIC -DTFLITE_CONFIG_GPU_GLES)
+target_compile_options(tensorflow-lite PUBLIC -O3 -DNDEBUG -fPIC)
 
 add_subdirectory(${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl)
 
@@ -309,7 +406,7 @@ add_executable(tflite-benchmark
   ${TENSORFLOW_LITE_DIR}/../core/util/stats_calculator.cc
 )
 target_link_libraries(tflite-benchmark
-  tensorflow-lite gl_delegate
-  EGL GLESv2
+  tensorflow-lite
+#  gl_delegate EGL GLESv2
   absl::strings absl::container absl::hash absl::any absl::str_format absl::flat_hash_set
 )

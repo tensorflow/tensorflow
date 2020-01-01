@@ -23,10 +23,10 @@ limitations under the License.
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/delegates/gpu/api.h"
 #include "tensorflow/lite/delegates/gpu/cl/api.h"
-#if defined(TFLITE_CONFIG_GPU_CL)
+#if defined(__ANDROID__) || defined(TFLITE_CONFIG_GPU_CL)
 # include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
 # include "tensorflow/lite/delegates/gpu/cl/tensor_type_util.h"
-#endif
+#endif // defined(__ANDROID__) || defined(TFLITE_CONFIG_GPU_CL)
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/model_builder.h"
 #include "tensorflow/lite/delegates/gpu/common/model_transformer.h"

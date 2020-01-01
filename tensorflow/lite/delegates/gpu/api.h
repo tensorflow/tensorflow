@@ -39,14 +39,18 @@ limitations under the License.
 
 #include "absl/types/span.h"
 #include "absl/types/variant.h"
-#if defined(TFLITE_CONFIG_GPU_CL)
+#if defined(__ANDROID__) || defined(TFLITE_CONFIG_GPU_CL)
 #include <CL/cl.h>
 #endif
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
+#if defined(__ANDROID__) || defined(TFLITE_CONFIG_GPU_GL)
 #include "tensorflow/lite/delegates/gpu/gl/portable_gl31.h"
+#endif
+#if defined(__ANDROID__)
 #include <vulkan/vulkan.h>
+#endif
 
 namespace tflite {
 namespace gpu {
@@ -68,15 +72,19 @@ enum class DataLayout {
 
 enum class ObjectType {
   UNKNOWN,
+#if defined(__ANDROID__) || defined(TFLITE_CONFIG_GPU_GL)
   OPENGL_SSBO,
   OPENGL_TEXTURE,
+#endif
   CPU_MEMORY,
-#if defined(TFLITE_CONFIG_GPU_CL)
+#if defined(__ANDROID__) || defined(TFLITE_CONFIG_GPU_CL)
   OPENCL_TEXTURE,
   OPENCL_BUFFER,
 #endif
 };
 
+
+#if defined(__ANDROID__) || defined(TFLITE_CONFIG_GPU_GL)
 struct OpenGlBuffer {
   OpenGlBuffer() = default;
   explicit OpenGlBuffer(GLuint new_id) : id(new_id) {}
@@ -92,8 +100,9 @@ struct OpenGlTexture {
   GLuint id = GL_INVALID_INDEX;
   GLenum format = GL_INVALID_ENUM;
 };
+#endif // defined(__ANDROID__) || defined(TFLITE_CONFIG_GPU_GL)
 
-#if defined(TFLITE_CONFIG_GPU_CL)
+#if defined(__ANDROID__) || defined(TFLITE_CONFIG_GPU_CL)
 struct OpenClBuffer {
   OpenClBuffer() = default;
   explicit OpenClBuffer(cl_mem new_memobj) : memobj(new_memobj) {}
@@ -108,7 +117,7 @@ struct OpenClTexture {
   cl_mem memobj = nullptr;
   // TODO(akulik): should it specify texture format?
 };
-#endif
+#endif // defined(__ANDROID__) || defined(TFLITE_CONFIG_GPU_CL)
 
 struct VulkanMemory {
   VulkanMemory() = default;
@@ -201,11 +210,14 @@ bool IsValid(const TensorObjectDef& def);
 // @return the number of elements in a tensor object.
 uint32_t NumElements(const TensorObjectDef& def);
 
-using TensorObject = absl::variant<absl::monostate, OpenGlBuffer, OpenGlTexture,
-                                   CpuMemory
-#if defined(TFLITE_CONFIG_GPU_CL)
+using TensorObject = absl::variant<absl::monostate
+#if defined(__ANDROID__) || defined(TFLITE_CONFIG_GPU_GL)
+                                   , OpenGlBuffer, OpenGlTexture,
+#endif // defined(__ANDROID__) || defined(TFLITE_CONFIG_GPU_GL)
+                                   , CpuMemory
+#if defined(__ANDROID__) || defined(TFLITE_CONFIG_GPU_CL)
                                    ,OpenClBuffer, OpenClTexture
-#endif
+#endif // defined(__ANDROID__) || defined(TFLITE_CONFIG_GPU_CL)
                                    >;
 
 // @return true if object is set and corresponding values are defined.
