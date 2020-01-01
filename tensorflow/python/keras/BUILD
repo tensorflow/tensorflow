@@ -1418,7 +1418,7 @@ cuda_py_test(
         "guitar",
         "multi_gpu",
     ],
-    xla_enable_strict_auto_jit = False,  # b/142744009
+    xla_enable_strict_auto_jit = True,
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
