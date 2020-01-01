@@ -104,6 +104,18 @@ bool IsFusionSupported(const HloInstruction& instr) {
     return false;
   }
 
+  // Do not support fusion who has multiple output types, because the
+  // concatenate inserted for horizontal fusion requires the same type
+  // for all of its operands.
+  auto outputs = GetOutputsOfFusion(instr);
+  const HloInstruction* first_output = outputs[0];
+  for (size_t i = 1; i < outputs.size(); ++i) {
+    if (first_output->shape().element_type() !=
+        outputs[i]->shape().element_type()) {
+      return false;
+    }
+  }
+
   return true;
 }
 
@@ -215,17 +227,25 @@ void HorizontalFusionImpl::FusionCandidates::Initialize(
     }
   }
 
-  // Sort according to the number of outputs and instruction counts, because
-  // we fuse only instructions with the same number of outputs and whose
-  // computations have the same instruction counts.
-  std::sort(fusion_instrs_.begin(), fusion_instrs_.end(),
-            [&](const HloInstruction* a, const HloInstruction* b) {
-              if (GetOutputSizeOfFusion(*a) == GetOutputSizeOfFusion(*b)) {
-                return a->fused_instruction_count() <
-                       b->fused_instruction_count();
-              }
-              return GetOutputSizeOfFusion(*a) < GetOutputSizeOfFusion(*b);
-            });
+  // Sort `fusion_instrs` according to output types, the number of outputs,
+  // and instruction counts, because we only fuse instructions with the same
+  // number/type of outputs and whose computations have the same instruction
+  // count.
+  std::sort(
+      fusion_instrs_.begin(), fusion_instrs_.end(),
+      [&](const HloInstruction* a, const HloInstruction* b) {
+        PrimitiveType output_type_a =
+            GetOutputsOfFusion(*a)[0]->shape().element_type();
+        PrimitiveType output_type_b =
+            GetOutputsOfFusion(*b)[0]->shape().element_type();
+        if (output_type_a != output_type_b) {
+          return output_type_a < output_type_b;
+        } else if (GetOutputSizeOfFusion(*a) != GetOutputSizeOfFusion(*b)) {
+          return GetOutputSizeOfFusion(*a) < GetOutputSizeOfFusion(*b);
+        } else {
+          return a->fused_instruction_count() < b->fused_instruction_count();
+        }
+      });
 }
 
 // Gets a next span of fusion instructions to be fused.
@@ -259,8 +279,14 @@ HorizontalFusionImpl::FusionCandidates::GetNextSpanOfFusions() {
   size_t left = pos_;
   size_t right = pos_ + 1;
   size_t first_output_size = GetOutputSizeOfFusion(*fusion_instrs_[left]);
+  PrimitiveType first_output_type =
+      GetOutputsOfFusion(*fusion_instrs_[left])[0]->shape().element_type();
   for (; right < fusion_instrs_.size(); ++right) {
-    if (first_output_size != GetOutputSizeOfFusion(*fusion_instrs_[right])) {
+    PrimitiveType cur_output_type =
+        GetOutputsOfFusion(*fusion_instrs_[right])[0]->shape().element_type();
+    if (first_output_type != cur_output_type) {
+      break;
+    } else if (first_output_size != GetOutputSizeOfFusion(*fusion_instrs_[right])) {
       // Cannot fuse computations who have different numbers of outputs.
       break;
     } else if (fusion_instrs_[left]->fused_instruction_count() !=

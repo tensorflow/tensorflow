@@ -88,9 +88,9 @@ TEST_F(HorizontalFusionTest, BasicTest) {
 }
 
 // Horizontal fusion should not be triggered as fusion will create cycles.
-TEST_F(HorizontalFusionTest, NegativeTest) {
+TEST_F(HorizontalFusionTest, NegativeTestForCycle) {
   auto module = ParseAndReturnVerifiedModule(R"(
- HloModule NegativeTest
+ HloModule NegativeTestForCycle
 
  fused_computation.1 {
    arg.1 = f16[123]{0} parameter(0)
@@ -118,6 +118,41 @@ TEST_F(HorizontalFusionTest, NegativeTest) {
        fusion(add.2, arg.3), kind=kLoop, calls=fused_computation.2
    ROOT tuple.1 = (f16[123]{0}, f16[123]{0}, f16[123]{0})
        tuple(fusion.1, fusion.2, add.2)
+ }
+)").ValueOrDie();
+
+  EXPECT_FALSE(GpuHorizontalFusion().Run(module.get()).ValueOrDie());
+}
+
+TEST_F(HorizontalFusionTest, NegativeTestForIncompatibleTypes) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+ HloModule NegativeTestForIncompatibleTypes
+
+ fused_computation.1 {
+   arg.1 = f16[1024]{0} parameter(0)
+   arg.2 = f16[1024]{0} parameter(1)
+   ROOT mul.1 = f16[1024]{0} multiply(arg.1, arg.2)
+ }
+
+ fused_computation.2 {
+   arg.1 = s32[123]{0} parameter(0)
+   arg.2 = s32[123]{0} parameter(1)
+   ROOT add.1 = s32[123]{0} add(arg.1, arg.2)
+ }
+
+ ENTRY entry_computation {
+   arg.1 = f16[1024]{0} parameter(0)
+   arg.2 = f16[1024]{0} parameter(1)
+   arg.3 = s32[123]{0} parameter(2)
+   arg.4 = s32[123]{0} parameter(3)
+   // fusion.1 and fusion.2 will not be horizontally fused because their output
+   // types are different.
+   fusion.1 = f16[1024]{0}
+       fusion(arg.1, arg.2), kind=kLoop, calls=fused_computation.1
+   fusion.2 = s32[123]{0}
+       fusion(arg.3, arg.4), kind=kLoop, calls=fused_computation.2
+   ROOT tuple.1 = (f16[1024]{0}, s32[123]{0})
+       tuple(fusion.1, fusion.2)
  }
 )").ValueOrDie();
 
