@@ -4240,21 +4240,21 @@ def polyval(coeffs, x, name=None):
     
   Usage Example:
 
-    >>> y = tf.math.polyval([2, 1, 0], 3) # evaluates 2 * (3**2) + 1 * (3**1) + 0 * (3**0)
-    >>> print(y)
-    tf.Tensor(21, shape=(), dtype=int32)
+  >>> y = tf.math.polyval([2, 1, 0], 3) # evaluates 2 * (3**2) + 1 * (3**1) + 0 * (3**0)
+  >>> print(y)
+  tf.Tensor(21, shape=(), dtype=int32)
 
-    `tf.math.polyval` can also be used in polynomial regression. Taking advantage of this 
-    function can facilitate writing a polynomial equation as compared to explicitly writing 
-    it out, especially for higher degree polynomials.
+  `tf.math.polyval` can also be used in polynomial regression. Taking advantage of this 
+  function can facilitate writing a polynomial equation as compared to explicitly writing 
+  it out, especially for higher degree polynomials.
 
-    >>> x = tf.constant(3)
-    >>> theta1 = tf.Variable(2)
-    >>> theta2 = tf.Variable(1)
-    >>> theta3 = tf.Variable(0)
-    >>> y = tf.math.polyval([theta1, theta2, theta3], x)
-    >>> print(y)
-    tf.Tensor(21, shape=(), dtype=int32)
+  >>> x = tf.constant(3)
+  >>> theta1 = tf.Variable(2)
+  >>> theta2 = tf.Variable(1)
+  >>> theta3 = tf.Variable(0)
+  >>> y = tf.math.polyval([theta1, theta2, theta3], x)
+  >>> print(y)
+  tf.Tensor(21, shape=(), dtype=int32)
 
   @compatibility(numpy)
   Equivalent to numpy.polyval.
