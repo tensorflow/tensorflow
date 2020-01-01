@@ -99,13 +99,13 @@ class HorizontalFusionImpl {
 };  // HorizontalFusionImpl
 
 bool IsFusionSupported(const HloInstruction& instr) {
-  // Supports only kLoop fusion now.
+  // Support only kLoop fusion now.
   if (!instr.IsLoopFusion()) {
     return false;
   }
 
-  // Do not support fusion who has multiple output types, because the
-  // concatenate inserted for horizontal fusion requires the same type
+  // Cannot support fusion who has multiple output types, because the
+  // concatenate (inserted for horizontal fusion) requires the same type
   // for all of its operands.
   auto outputs = GetOutputsOfFusion(instr);
   const HloInstruction* first_output = outputs[0];
@@ -193,7 +193,7 @@ bool HasOnlyRowMajorLayout(const HloInstruction& fusion_instr) {
     }
   }
   return true;
-};
+}
 
 void HorizontalFusionImpl::FusionCandidates::Initialize(
     HloInstruction* consumer) {
@@ -285,6 +285,7 @@ HorizontalFusionImpl::FusionCandidates::GetNextSpanOfFusions() {
     PrimitiveType cur_output_type =
         GetOutputsOfFusion(*fusion_instrs_[right])[0]->shape().element_type();
     if (first_output_type != cur_output_type) {
+      // Cannot fuse computations who have multiple output types.
       break;
     } else if (first_output_size != GetOutputSizeOfFusion(*fusion_instrs_[right])) {
       // Cannot fuse computations who have different numbers of outputs.
@@ -320,7 +321,7 @@ Status HorizontalFusionImpl::CreateFusedComputation(
       // in a form of param_i_j
       auto new_param = b.AddInstruction(HloInstruction::CreateParameter(
           fused_comp_param_id++, bound_opnd->shape(),
-          absl::StrCat("param_", i, ".", j)));
+          absl::StrCat("param_", i, "_", j)));
       bound_operands->push_back(bound_opnd);
     }
   }
@@ -362,7 +363,7 @@ Status HorizontalFusionImpl::CreateFusedComputation(
 
   std::vector<HloInstruction*> concated_outputs;
   // Since we require each fusion to have the same number of outputs, we can
-  // simply use the first fusion as the representative.
+  // simply use the first fusion as the representative for output size.
   size_t fused_instr_output_size =
       GetOutputSizeOfFusion(*fused_fusion_instrs[0]);
   for (size_t i = 0; i < fused_instr_output_size; ++i) {

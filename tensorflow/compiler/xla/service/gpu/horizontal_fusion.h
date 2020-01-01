@@ -33,9 +33,9 @@ namespace gpu {
 // training parameters (or variables in Tensorflow). Fusing these small
 // kernels, hence, provides performance gain.
 //
-// Theoretically speaking, we can (horizontally) fuse kernels as long as no
-// cycles are created after the fusion. However, it requires somewhat cumbersome
-// cycle detection check; also, we observe that naive horizontal fusion of
+// Theoretically speaking, we may implement a cycle detection algorithm to make
+// sure no cycles are created after fusion. However, cycle detection check is
+// somewhat cumbersome; also, we observe that naive horizontal fusion of
 // arbitrary kernels may not be profitable due to control divergence and
 // possible increase of memory bandwidth pressure due to uncoalesced memory
 // accesses (note that horizontal fusion does not change the amount of memory
