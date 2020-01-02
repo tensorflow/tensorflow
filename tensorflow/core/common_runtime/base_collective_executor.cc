@@ -214,7 +214,7 @@ CollectiveAdapter* MakeCollectiveAdapter(Tensor* output, int num_chunks,
 BaseCollectiveExecutor::~BaseCollectiveExecutor() {}
 
 void BaseCollectiveExecutor::StartAbort(const Status& s) {
-  LOG(WARNING) << "BaseCollectiveExecutor::StartAbort " << s;
+  VLOG(1) << "BaseCollectiveExecutor::StartAbort " << s;
   remote_access_->StartAbort(s);
 }
 
