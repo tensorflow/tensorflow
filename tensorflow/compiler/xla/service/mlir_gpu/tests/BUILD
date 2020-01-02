@@ -21,7 +21,7 @@ package_group(
 tf_cc_test(
     name = "mlir_gpu_lhlo_gen_test",
     srcs = ["mlir_gpu_lhlo_gen_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    tags = tf_cuda_tests_tags() + ["no_rocm"],
     deps = [
         "//tensorflow/compiler/xla/service:mlir_gpu_plugin",
         "//tensorflow/compiler/xla/service/mlir_gpu:mlir_irgen_test_base",
