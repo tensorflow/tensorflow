@@ -723,11 +723,17 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
   // nvinfer1::IExecutionContext::enqueue is not thread safe and we need a mutex
   // for it.
   mutex_lock lock(engine_context->mu);
-  // TODO(jie): trt enqueue does not return error
+  bool ret;
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
-  auto ret = execution_context->enqueueV2(&buffers[0], *stream, nullptr);
+  if (use_implicit_batch_) {
+    ret = execution_context->enqueue(num_batch, &buffers[0], *stream,
+                                          nullptr);
+  }
+  else {
+    ret = execution_context->enqueueV2(&buffers[0], *stream, nullptr);
+  }
 #else
-  auto ret = execution_context->enqueue(num_batch, &buffers[0], *stream,
+  ret = execution_context->enqueue(num_batch, &buffers[0], *stream,
                                         nullptr);
 #endif
   if (!ret) {
