@@ -3684,6 +3684,7 @@ cuda_py_test(
     name = "loss_scaling_gradient_tape_test",
     size = "medium",
     srcs = ["training/experimental/loss_scaling_gradient_tape_test.py"],
+    shard_count = 2,
     deps = [
         ":client_testlib",
         ":constant_op",
