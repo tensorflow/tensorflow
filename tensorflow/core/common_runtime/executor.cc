@@ -1867,7 +1867,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
           profiler::TraceMe activity(
               [&] {
                 return strings::StrCat(op_kernel->name(), ":",
-                                       op_kernel->type_string());
+                                       op_kernel->type_string_view());
               },
               profiler::GetTFTraceMeLevel(op_kernel->IsExpensive()));
           device->ComputeAsync(async, &state->ctx, done);
@@ -1880,15 +1880,16 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
         if (TF_PREDICT_FALSE(MightTrace(item, event_collector_))) {
           const string& op_name = op_kernel->name();
           const string kernel_label =
-              strings::StrCat(op_name, ":", op_kernel->type_string());
+              strings::StrCat(op_name, ":", op_kernel->type_string_view());
           tracing::ScopedRegion region(tracing::EventCategory::kCompute,
                                        op_name);
+          absl::string_view kernel_label_view(kernel_label);
           // 'TraceMe' will trace the OpKernel scheduling time.
           profiler::TraceMe activity(
-              absl::string_view(kernel_label),
+              kernel_label_view,
               profiler::GetTFTraceMeLevel(op_kernel->IsExpensive()));
           // 'ScopedAnnotation' will trace the OpKernel execution time.
-          profiler::ScopedAnnotation annotation(kernel_label);
+          profiler::ScopedAnnotation annotation(kernel_label_view);
           device->Compute(op_kernel, &ctx);
         } else {
           // In the common case, avoid creating any tracing objects.

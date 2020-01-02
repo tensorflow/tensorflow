@@ -282,11 +282,12 @@ Status KernelAndDeviceOp::Run(
     const string& op_name = kernel_->name();
     // 'ScopedActivity' will trace the OpKernel scheduling time on host.
     profiler::TraceMe activity(
-        [&] { return absl::StrCat(op_name, ":", kernel_->type_string()); },
+        [&] { return absl::StrCat(op_name, ":", kernel_->type_string_view()); },
         profiler::TraceMeLevel::kInfo);
     // 'ScopedAnnotation' will trace the OpKernel execution time on device.
-    profiler::ScopedAnnotation annotation(
-        [&]() { return absl::StrCat(op_name, ":", kernel_->type_string()); });
+    profiler::ScopedAnnotation annotation([&]() {
+      return absl::StrCat(op_name, ":", kernel_->type_string_view());
+    });
     device_->Compute(kernel_.get(), &context);
   }
 
