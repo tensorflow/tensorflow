@@ -42,54 +42,6 @@ struct ExecutorToControlDialectConversion
     : public FunctionPass<ExecutorToControlDialectConversion> {
   void runOnFunction() override;
 };
-
-// Replace all uses of value `v` with a list of new values. Because number of
-// new values might be greater than 1, users of `v` might be replaced with their
-// clones in case of non-resizable operands list.
-void ReplaceAllUsesOfValueWithValues(Value v,
-                                     Operation::operand_range new_values) {
-  int new_values_size = std::distance(new_values.begin(), new_values.end());
-  if (new_values_size == 1) {
-    v->replaceAllUsesWith(*new_values.begin());
-    return;
-  }
-
-  OpBuilder builder(v->getContext());
-  for (Operation *user : llvm::make_early_inc_range(v->getUsers())) {
-    builder.setInsertionPoint(user);
-
-    llvm::SmallVector<Value, 4> new_operands;
-    new_operands.reserve(user->getNumOperands() - 1 + new_values_size);
-    for (Value operand : user->getOperands()) {
-      if (operand == v) {
-        new_operands.append(new_values.begin(), new_values.end());
-      } else {
-        new_operands.push_back(operand);
-      }
-    }
-
-    if (user->hasResizableOperandsList()) {
-      user->setOperands(new_operands);
-      continue;
-    }
-
-    OperationState state(user->getLoc(), user->getName().getStringRef());
-    state.addOperands(new_operands);
-
-    llvm::SmallVector<Type, 4> result_types(user->getResultTypes());
-    state.addTypes(result_types);
-
-    state.addAttributes(user->getAttrs());
-    for (auto &old_region : user->getRegions()) {
-      Region *r = state.addRegion();
-      r->takeBody(old_region);
-    }
-    Operation *replacement = builder.createOperation(state);
-    user->replaceAllUsesWith(replacement);
-    user->erase();
-  }
-}
-
 }  // end anonymous namespace
 
 static bool HasSingleGraph(FuncOp function) {
@@ -136,6 +88,17 @@ void ExecutorToControlDialectConversion::runOnFunction() {
 
     if (auto island = dyn_cast<tf_executor::IslandOp>(op)) {
       Value ctl_sequence = nullptr;
+      if (island.GetBody().without_terminator().empty() &&
+          island.getNumOperands() > 1) {
+        // For an empty island with multiple control inputs, we create a no-op
+        // inside it which will group all the inputs into one control output.
+        // This helps reducing the number of edges when there are multiple
+        // islands depending on this one.
+        builder.setInsertionPointToStart(&island.GetBody());
+        builder.create<TF::NoOp>(op.getLoc(), ArrayRef<Type>{},
+                                 ArrayRef<Value>{}, ArrayRef<NamedAttribute>{});
+        builder.setInsertionPoint(&op);
+      }
       for (Operation &wrapped_op : island.GetBody()) {
         LLVM_DEBUG(llvm::dbgs()
                    << " In island: " << wrapped_op.getName() << "\n");
@@ -189,11 +152,12 @@ void ExecutorToControlDialectConversion::runOnFunction() {
         // carry // all the island control inputs, we can simply use it to
         // replace all uses of island's control output.
         island.control()->replaceAllUsesWith(ctl_sequence);
-      } else {
-        // Getting here means island had an effectively empty body. In this
-        // case, island's control output should be replaced with all the control
-        // inputs of island.
-        ReplaceAllUsesOfValueWithValues(island.control(), island.getOperands());
+      } else if (island.getNumOperands() > 0) {
+        // Getting here means island had an effectively empty body and there is
+        // just one control input. In this case, island's control output should
+        // be replaced with the control input.
+        assert(island.getNumOperands() == 1);
+        island.control()->replaceAllUsesWith(island.getOperand(0));
       }
 
       op.erase();
