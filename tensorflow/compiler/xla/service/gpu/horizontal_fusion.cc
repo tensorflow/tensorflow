@@ -58,8 +58,8 @@ PrimitiveType GetUniqueOutputTypeOfFusion(const HloInstruction& instr) {
   for (size_t i = 1; i < outputs.size(); ++i) {
     PrimitiveType cur_output_type = outputs[i]->shape().element_type();
     CHECK(first_output_type == cur_output_type)
-        << "Output types are not unique, "
-        << PrimitiveType_Name(first_output_type) << " vs. "
+        << "Output types are expected to be unique, but see "
+        << PrimitiveType_Name(first_output_type) << " and "
         << PrimitiveType_Name(cur_output_type);
   }
 
