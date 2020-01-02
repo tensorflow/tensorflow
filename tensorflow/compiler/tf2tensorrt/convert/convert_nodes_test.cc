@@ -1179,13 +1179,14 @@ class ConvertGraphDefToEngineTest : public ::testing::Test {
         }
       }
     }
+    TrtShapeOptimizationProfile profile;
     // TODO(laigd): execute the engine and get outputs.
     return ConvertGraphDefToEngine(
         gdef, TrtPrecisionMode::FP32, /*max_batch_size=*/1,
         /*max_workspace_size_bytes=*/64 << 20, input_shapes, &logger_,
         /*allocator=*/nullptr, /*calibrator=*/nullptr, &engine_,
         /*use_calibration=*/false, /*use_implicit_batch=*/true,
-        /*convert_successfully=*/nullptr);
+        /*convert_successfully=*/nullptr, profile);
   }
 
  protected:
@@ -1295,12 +1296,13 @@ class OpConverterTest : public ::testing::Test {
 
     // Build the TRT engine.
     ASSERT_EQ(nullptr, engine_.get());
+    TrtShapeOptimizationProfile profile;
     TF_ASSERT_OK(
         converter_->BuildCudaEngine(&engine_,
                                     /*max_batch_size=*/batch_size,
                                     /*max_workspace_size_bytes=*/1 << 26,
                                     /*allocator=*/nullptr,
-                                    /*calibrator=*/nullptr));
+                                    /*calibrator=*/nullptr, profile));
     CHECK_NOTNULL(engine_.get());
     CheckDataTypeMatches(input_data);
     CheckDataTypeMatches(*output_data);
