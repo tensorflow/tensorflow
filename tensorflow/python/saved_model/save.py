@@ -271,6 +271,11 @@ class _SaveableView(object):
         _process_asset(obj, asset_info, resource_map)
         self.captured_tensor_node_ids[obj.asset_path] = node_id
 
+    # Note: some concrete functions can have been realized when tracing other
+    # functions, and might closure-capture tensors from their parent functions.
+    # This is normal, but it means those concrete functions can't be serialized
+    # as their own independent endpoints, so we filter them out here.
+    bad_functions = []
     for concrete_function in self.concrete_functions:
       if not concrete_function.graph.saveable:
         raise ValueError(
@@ -283,10 +288,8 @@ class _SaveableView(object):
             and capture not in self.captured_tensor_node_ids):
           capture_constant_value = tensor_util.constant_value(capture)
           if capture_constant_value is None:
-            raise ValueError(
-                ("Attempted to save a function {} which references a symbolic "
-                 "Tensor {} that is not a simple constant. This is not "
-                 "supported.").format(concrete_function.name, capture))
+            bad_functions.append(concrete_function)
+            continue
           copied_tensor = constant_op.constant(capture_constant_value)
           node_id = len(self.nodes)
           node = _CapturedConstant(
@@ -297,6 +300,9 @@ class _SaveableView(object):
           self.captured_tensor_node_ids[capture] = node_id
           resource_map[capture] = copied_tensor
 
+    self.concrete_functions = [
+        x for x in self.concrete_functions if x not in bad_functions
+    ]
     return object_map, resource_map, asset_info
 
 
