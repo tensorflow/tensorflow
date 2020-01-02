@@ -246,6 +246,13 @@ Status EagerServiceImpl::UpdateContext(const UpdateContextRequest* request,
   }
   auto session_name =
       tensorflow::strings::StrCat("eager_", request->context_id());
+
+  // Hold `context_update_mu_` exclusively update the context state. This lock
+  // prevents other threads from processing an enqueued request at the same
+  // time. Each enqueue request will be processed either with context state
+  // before or after the update, but the exact ordering needs to be enforced
+  // by the client if desired.
+  mutex_lock l(context_update_mu_);
   TF_RETURN_IF_ERROR(env_->session_mgr->UpdateSession(
       session_name, request->server_def(), request->cluster_device_attributes(),
       true));
@@ -276,23 +283,14 @@ Status EagerServiceImpl::UpdateContext(const UpdateContextRequest* request,
   DistributedFunctionLibraryRuntime* cluster_flr =
       eager::CreateClusterFLR(request->context_id(), ctx, worker_session.get());
 
-  {
-    // Hold `context_update_mu_` exclusively update the context state. This lock
-    // prevents other threads from processing an enqueued request at the same
-    // time. Each enqueue request will be processed either with context state
-    // before or after the update, but the exact ordering needs to be enforced
-    // by the client if desired.
-    mutex_lock l(context_update_mu_);
-    ctx->ClearCaches();
-    Status s = ctx->UpdateRemoteWorker(
-        device_mgr, std::move(remote_eager_workers),
-        worker_session->remote_device_mgr(), remote_workers,
-        request->context_id(), cluster_flr);
-    if (!s.ok()) {
-      VLOG(1) << "EagerContext::UpdateRemoteWorker failed with "
-              << s.ToString();
-      return s;
-    }
+  ctx->ClearCachesAndThreadExecutors();
+  Status s = ctx->UpdateRemoteWorker(
+      device_mgr, std::move(remote_eager_workers),
+      worker_session->remote_device_mgr(), remote_workers,
+      request->context_id(), cluster_flr);
+  if (!s.ok()) {
+    VLOG(1) << "EagerContext::UpdateRemoteWorker failed with " << s.ToString();
+    return s;
   }
 
   std::vector<DeviceAttributes> device_attributes;
