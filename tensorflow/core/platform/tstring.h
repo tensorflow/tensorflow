@@ -287,16 +287,6 @@ inline std::ostream& operator<<(std::ostream& o, const tstring& str) {
 
 }  // namespace tensorflow
 
-namespace std {
-template <>
-struct hash<tensorflow::tstring> {
-  size_t operator()(const tensorflow::tstring& o) const {
-    std::hash<std::string> fn;
-    return fn(o.str_);
-  }
-};
-}  // namespace std
-
 #else  // USE_TSTRING
 
 namespace tensorflow {
