@@ -546,7 +546,7 @@ void LogSparseFeatureDataLoss(StringPiece feature_name) {
 }
 
 Status FastParseSerializedExample(
-    const string& serialized_example, const string& example_name,
+    const tstring& serialized_example, const tstring& example_name,
     const size_t example_index, const Config& config,
     const PresizedCuckooMap<std::pair<size_t, Type>>& config_index,
     SeededHasher hasher, std::vector<Tensor>* output_dense,
