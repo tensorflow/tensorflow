@@ -279,7 +279,7 @@ Status KernelAndDeviceOp::Run(
   OpKernelContext context(&params);
 
   {
-    const string& op_name = kernel_->name();
+    absl::string_view op_name = kernel_->name_view();
     // 'ScopedActivity' will trace the OpKernel scheduling time on host.
     profiler::TraceMe activity(
         [&] { return absl::StrCat(op_name, ":", kernel_->type_string_view()); },

@@ -169,6 +169,7 @@ class OpKernel {
   // Accessors.
   const NodeDef& def() const { return *def_; }
   const string& name() const;              // Same as def().name()
+  absl::string_view name_view() const { return name_view_; }
   const string& type_string() const;       // Same as def().op()
   absl::string_view type_string_view() const { return type_string_view_; }
   const string& requested_device() const;  // Same as def().device()
@@ -229,7 +230,8 @@ class OpKernel {
   const MemoryTypeVector output_memory_types_;
   NameRangeMap input_name_map_;
   NameRangeMap output_name_map_;
-  absl::string_view type_string_view_;
+  const absl::string_view name_view_;
+  const absl::string_view type_string_view_;
   const int graph_def_version_;
   const bool is_deferred_;
   bool expensive_;

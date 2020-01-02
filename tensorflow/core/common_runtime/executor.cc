@@ -1866,7 +1866,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
         {
           profiler::TraceMe activity(
               [&] {
-                return strings::StrCat(op_kernel->name(), ":",
+                return strings::StrCat(op_kernel->name_view(), ":",
                                        op_kernel->type_string_view());
               },
               profiler::GetTFTraceMeLevel(op_kernel->IsExpensive()));
@@ -1878,7 +1878,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
         nodestats::SetOpStart(stats);
 
         if (TF_PREDICT_FALSE(MightTrace(item, event_collector_))) {
-          const string& op_name = op_kernel->name();
+          absl::string_view op_name = op_kernel->name_view();
           const string kernel_label =
               strings::StrCat(op_name, ":", op_kernel->type_string_view());
           tracing::ScopedRegion region(tracing::EventCategory::kCompute,
@@ -2140,8 +2140,9 @@ void ExecutorState::PropagateOutputs(const TaggedNode& tagged_node,
                                      TaggedNodeSeq* ready) {
   auto activity_handle = absl::make_unique<profiler::TraceMe>(
       [&]() {
-        return strings::StrCat("ExecutorPropagateOutputs:",
-                               item->kernel->name(), "#id=", step_id_, "#");
+        return strings::StrCat(
+            "ExecutorPropagateOutputs:", item->kernel->name_view(),
+            "#id=", step_id_, "#");
       },
       profiler::GetTFTraceMeLevel(/*is_expensive=*/false));
 
