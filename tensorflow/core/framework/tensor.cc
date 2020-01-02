@@ -851,7 +851,6 @@ class SubBuffer : public TensorBuffer {
 
  private:
   TensorBuffer* root_;
-  T* data_;
   int64 elem_;
 
   ~SubBuffer() override { root_->Unref(); }
