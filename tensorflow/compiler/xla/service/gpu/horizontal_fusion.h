@@ -92,7 +92,8 @@ namespace gpu {
 // No extra copies are introduced by the horizontal fusion. Besides Reshape2
 // and Reshape3, the other instructions are fused into an input fusion; the
 // output dims of the concatenate will be used as the kernel launch dims.
-// Reshape2 and Reshape3 are converted into bitcasts.
+// Instruction bitcasts can be used for Reshape2 and Reshape3 as long as the
+// outputs of Mul and Add are row-major.
 class GpuHorizontalFusion : public HloModulePass {
  public:
   GpuHorizontalFusion() {}
