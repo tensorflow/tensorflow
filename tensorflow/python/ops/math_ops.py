@@ -4244,9 +4244,10 @@ def polyval(coeffs, x, name=None):
   >>> print(y)
   tf.Tensor(21, shape=(), dtype=int32)
 
-  `tf.math.polyval` can also be used in polynomial regression. Taking advantage of this 
-  function can facilitate writing a polynomial equation as compared to explicitly writing 
-  it out, especially for higher degree polynomials.
+  `tf.math.polyval` can also be used in polynomial regression. Taking 
+  advantage of this function can facilitate writing a polynomial equation 
+  as compared to explicitly writing it out, especially for higher degree 
+  polynomials.
 
   >>> x = tf.constant(3)
   >>> theta1 = tf.Variable(2)
