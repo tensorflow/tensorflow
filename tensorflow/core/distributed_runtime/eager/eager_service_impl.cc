@@ -115,12 +115,6 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
     return tensorflow::errors::Internal(
         "invalid eager env_ or env_->rendezvous_mgr.");
   }
-  std::vector<DeviceAttributes> cluster_device_attributes;
-  cluster_device_attributes.reserve(
-      request->cluster_device_attributes().size());
-  for (const auto& cluster_device : request->cluster_device_attributes()) {
-    cluster_device_attributes.push_back(cluster_device);
-  }
 
   auto* r = env_->rendezvous_mgr->Find(request->context_id());
   auto session_name =
@@ -238,12 +232,6 @@ Status EagerServiceImpl::UpdateContext(const UpdateContextRequest* request,
   // TODO(b/143914772): Potential memory leak if rendezvous has pending
   // tensors for removed / replaced workers.
 
-  std::vector<DeviceAttributes> cluster_device_attributes;
-  cluster_device_attributes.reserve(
-      request->cluster_device_attributes().size());
-  for (const auto& cluster_device : request->cluster_device_attributes()) {
-    cluster_device_attributes.push_back(cluster_device);
-  }
   auto session_name =
       tensorflow::strings::StrCat("eager_", request->context_id());
 
