@@ -39,7 +39,7 @@ void PruneGraph(GraphOp graph) {
   // Visit an op's operands if it is output of an Operation in same graph.
   auto visit_op = [&](Operation* op) {
     for (Value operand : op->getOperands()) {
-      Operation* def = operand->getDefiningOp();
+      Operation* def = operand.getDefiningOp();
       if (def && def->getParentOp() == graph &&
           reachable_ops.insert(def).second) {
         // Op has not been visited, add to queue to visit later.

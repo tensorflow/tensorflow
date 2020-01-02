@@ -1192,9 +1192,9 @@ Status ImporterBase::ConvertFunctionArgAndRets(
 
     // Collect mapping of OutputTensor to associated block arg.
     arg_nodes_to_values.try_emplace({arg_node.node, arg_node.index}, arg_def);
-    island->getResult(0)->replaceAllUsesWith(arg_def);
+    island->getResult(0).replaceAllUsesWith(arg_def);
     // Erase control outputs from feed.
-    auto control_uses = island->getResult(1)->getUses();
+    auto control_uses = island->getResult(1).getUses();
     for (auto& control_use : llvm::make_early_inc_range(control_uses))
       control_use.getOwner()->eraseOperand(control_use.getOperandNumber());
 
@@ -1389,7 +1389,7 @@ mlir::Operation* ImporterBase::createOperation(
                                      builder_.getBlock()->begin());
     auto source_op =
         builder_at_begin.create<mlir::tf_executor::NextIterationSourceOp>(
-            loc, operands[0]->getType(), result.attributes);
+            loc, operands[0].getType(), result.attributes);
     return builder_.create<mlir::tf_executor::NextIterationSinkOp>(
         loc, source_op.token(), operands, result.attributes);
   }
@@ -1654,7 +1654,7 @@ Status ImporterBase::AddBackedges() {
 Status ImporterBase::AddBackedge(mlir::Operation* sink, mlir::Operation* dst,
                                  int dst_input) {
   // Get the NextIteration.Source operation from the token operand of the sink.
-  mlir::Operation* source = sink->getOperand(0)->getDefiningOp();
+  mlir::Operation* source = sink->getOperand(0).getDefiningOp();
 
   // Adds the "source" to the operands of the dst by creating a new dst
   // operation.
@@ -1680,7 +1680,7 @@ Status ImporterBase::AddBackedge(mlir::Operation* sink, mlir::Operation* dst,
   // result of the new operation, and deletes the old operation.
   for (unsigned i = 0, e = dst->getNumResults(); i != e; ++i) {
     auto new_output = new_dst->getResult(i);
-    dst->getResult(i)->replaceAllUsesWith(new_output);
+    dst->getResult(i).replaceAllUsesWith(new_output);
   }
   dst->dropAllReferences();
   dst->erase();

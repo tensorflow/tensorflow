@@ -367,7 +367,7 @@ ElementsAttr Quantize(Attribute real_value, Type tensor_type) {
 static bool PreferResultScale(Operation* op) {
   int float_operands = 0;
   for (auto operand : op->getOperands()) {
-    if (auto operand_type = operand->getType().dyn_cast<ShapedType>()) {
+    if (auto operand_type = operand.getType().dyn_cast<ShapedType>()) {
       if (operand_type.getElementType().isa<FloatType>()) {
         if (float_operands++ > 1) return true;
       }
@@ -400,22 +400,22 @@ bool RemoveRedundantStatsOps(mlir::FuncOp func,
     quant::StatisticsOp stats_op = all_stats_ops.back();
     all_stats_ops.pop_back();
 
-    if (auto def = stats_op.arg()->getDefiningOp()) {
+    if (auto def = stats_op.arg().getDefiningOp()) {
       if (IsStatsRedundant(def, op_quant_spec_getter)) {
         redundant_stats_ops.insert(stats_op);
       }
     }
 
-    for (auto user : stats_op.getResult()->getUsers()) {
+    for (auto user : stats_op.getResult().getUsers()) {
       // We don't propagate this parameter down if it has multiple operands.
       // We want to use the result parameter scales instead.
 
       if (user->hasTrait<OpTrait::quant::SameOperandsAndResultsScale>() &&
           !PreferResultScale(user)) {
         for (Value res : user->getResults()) {
-          if (res->hasOneUse()) {
+          if (res.hasOneUse()) {
             if (auto next_stats = llvm::dyn_cast<quant::StatisticsOp>(
-                    *res->getUsers().begin())) {
+                    *res.getUsers().begin())) {
               // quantization parameters can be propagated to next_stats
               redundant_stats_ops.insert(next_stats);
               // add next_stats to the work list so propagation can
@@ -440,12 +440,12 @@ bool RemoveRedundantStatsOps(mlir::FuncOp func,
     quant::StatisticsOp stats_op = all_stats_ops.back();
     all_stats_ops.pop_back();
 
-    if (auto def = stats_op.arg()->getDefiningOp()) {
+    if (auto def = stats_op.arg().getDefiningOp()) {
       if (def->hasTrait<OpTrait::quant::SameOperandsAndResultsScale>() &&
           PreferResultScale(def)) {
         for (auto input : def->getOperands()) {
           if (auto next_stats = llvm::dyn_cast_or_null<quant::StatisticsOp>(
-                  input->getDefiningOp())) {
+                  input.getDefiningOp())) {
             redundant_stats_ops.insert(next_stats);
             all_stats_ops.push_back(next_stats);
           }
@@ -458,7 +458,7 @@ bool RemoveRedundantStatsOps(mlir::FuncOp func,
   for (auto it : redundant_stats_ops) {
     if (!llvm::isa<quant::StatisticsOp>(it)) return true;
     auto stats_op = llvm::cast<quant::StatisticsOp>(it);
-    stats_op.getResult()->replaceAllUsesWith(stats_op.arg());
+    stats_op.getResult().replaceAllUsesWith(stats_op.arg());
     stats_op.erase();
   }
 

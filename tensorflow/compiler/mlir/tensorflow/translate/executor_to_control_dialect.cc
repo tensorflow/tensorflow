@@ -79,7 +79,7 @@ void ExecutorToControlDialectConversion::runOnFunction() {
       for (auto ops_and_ret_vals :
            llvm::zip(graph.getResults(), fetch.getOperands()))
         std::get<0>(ops_and_ret_vals)
-            ->replaceAllUsesWith(std::get<1>(ops_and_ret_vals));
+            .replaceAllUsesWith(std::get<1>(ops_and_ret_vals));
       op.erase();
       continue;
     }
@@ -106,7 +106,7 @@ void ExecutorToControlDialectConversion::runOnFunction() {
           for (auto ops_and_ret_vals :
                llvm::zip(island.getResults(), wrapped_op.getOperands()))
             std::get<0>(ops_and_ret_vals)
-                ->replaceAllUsesWith(std::get<1>(ops_and_ret_vals));
+                .replaceAllUsesWith(std::get<1>(ops_and_ret_vals));
           break;
         }
         // Add a leading _ off the name.
@@ -141,7 +141,7 @@ void ExecutorToControlDialectConversion::runOnFunction() {
         for (auto ops_and_ret_vals :
              llvm::zip(wrapped_op.getResults(), replacement->getResults()))
           std::get<0>(ops_and_ret_vals)
-              ->replaceAllUsesWith(std::get<1>(ops_and_ret_vals));
+              .replaceAllUsesWith(std::get<1>(ops_and_ret_vals));
 
         ctl_sequence = replacement->getResult(replacement->getNumResults() - 1);
       }
@@ -151,13 +151,13 @@ void ExecutorToControlDialectConversion::runOnFunction() {
         // been rewritten from ops in island. Last op rewritten must logically
         // carry // all the island control inputs, we can simply use it to
         // replace all uses of island's control output.
-        island.control()->replaceAllUsesWith(ctl_sequence);
+        island.control().replaceAllUsesWith(ctl_sequence);
       } else if (island.getNumOperands() > 0) {
         // Getting here means island had an effectively empty body and there is
         // just one control input. In this case, island's control output should
         // be replaced with the control input.
         assert(island.getNumOperands() == 1);
-        island.control()->replaceAllUsesWith(island.getOperand(0));
+        island.control().replaceAllUsesWith(island.getOperand(0));
       }
 
       op.erase();
@@ -192,7 +192,7 @@ void ExecutorToControlDialectConversion::runOnFunction() {
     // dialect.
     auto non_null_operands = llvm::make_filter_range(
         op.getOperands(),
-        [](Value v) { return !v->getType().isa<tf_executor::TokenType>(); });
+        [](Value v) { return !v.getType().isa<tf_executor::TokenType>(); });
     state.operands.append(non_null_operands.begin(), non_null_operands.end());
     for (Type result_type : op.getResultTypes()) {
       // Filter out TokenType, they don't exist in the control dialect.
@@ -212,14 +212,14 @@ void ExecutorToControlDialectConversion::runOnFunction() {
 
     if (auto next_iteration =
             dyn_cast<tf_executor::NextIterationSourceOp>(op)) {
-      next_iteration.output()->replaceAllUsesWith(replacement->getResult(0));
-      next_iteration.token()->dropAllUses();
-      next_iteration.control()->replaceAllUsesWith(replacement->getResult(1));
+      next_iteration.output().replaceAllUsesWith(replacement->getResult(0));
+      next_iteration.token().dropAllUses();
+      next_iteration.control().replaceAllUsesWith(replacement->getResult(1));
     } else {
       for (auto ops_and_ret_vals :
            llvm::zip(op.getResults(), replacement->getResults()))
         std::get<0>(ops_and_ret_vals)
-            ->replaceAllUsesWith(std::get<1>(ops_and_ret_vals));
+            .replaceAllUsesWith(std::get<1>(ops_and_ret_vals));
     }
     op.erase();
   }

@@ -40,7 +40,7 @@ namespace {
 constexpr StringRef kTempBufferAttr = "temp";
 
 Value GetTensorStoreOrReturnMemRef(Value value) {
-  for (const auto& user : value->getUsers()) {
+  for (const auto& user : value.getUsers()) {
     if (auto tensor_store = dyn_cast<TensorStoreOp>(user)) {
       if (tensor_store.getOperand(0) == value) {
         return tensor_store.getOperand(1);
@@ -57,8 +57,8 @@ Value GetTensorStoreOrReturnMemRef(Value value) {
 }
 
 Operation* GetLastUse(Value value) {
-  Operation* last = value->getDefiningOp();
-  for (auto& user : value->getUses()) {
+  Operation* last = value.getDefiningOp();
+  for (auto& user : value.getUses()) {
     Operation* user_op = user.getOwner();
     if (!user_op->isBeforeInBlock(last)) {
       last = user_op;
@@ -69,7 +69,7 @@ Operation* GetLastUse(Value value) {
 
 Value InsertAllocAndDealloc(Location loc, Value result,
                             ConversionPatternRewriter* rewriter) {
-  auto result_type = result->getType().dyn_cast<ShapedType>();
+  auto result_type = result.getType().dyn_cast<ShapedType>();
   if (!result_type || !result_type.hasStaticShape()) {
     emitError(loc,
               "tensor to buffer conversion expects statically shaped results");
@@ -79,7 +79,7 @@ Value InsertAllocAndDealloc(Location loc, Value result,
 
   Operation* last = GetLastUse(result);
 
-  Operation* op = result->getDefiningOp();
+  Operation* op = result.getDefiningOp();
   OpBuilder allocBuilder(op);
   auto alloc = allocBuilder.create<AllocOp>(loc, memref_type);
   alloc.setAttr(kTempBufferAttr, rewriter->getBoolAttr(true));
@@ -161,7 +161,7 @@ struct HloToLHloReduceConverter
     int original_arg_count = entry_block.getNumArguments();
     for (int i = 0; i < original_arg_count; ++i) {
       auto old_arg = entry_block.getArgument(i);
-      auto old_type = old_arg->getType().cast<TensorType>();
+      auto old_type = old_arg.getType().cast<TensorType>();
       auto new_type =
           MemRefType::get(old_type.getShape(), old_type.getElementType());
       auto new_arg = entry_block.addArgument(new_type);
@@ -169,7 +169,7 @@ struct HloToLHloReduceConverter
     }
     // Add an argument for the result.
     entry_block.addArgument(
-        entry_block.getArgument(original_arg_count)->getType());
+        entry_block.getArgument(original_arg_count).getType());
     // Remove the old arguments.
     for (int i = original_arg_count - 1; i >= 0; --i) {
       entry_block.eraseArgument(i);

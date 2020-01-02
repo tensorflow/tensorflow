@@ -100,7 +100,7 @@ void ForwardStoreToLoad(tf_device::LaunchOp launch_op) {
 
       // Use stored value in last_store to replace all uses of current resource
       // load's result, then erase this resource load.
-      read_variable_op.value()->replaceAllUsesWith(last_store.value());
+      read_variable_op.value().replaceAllUsesWith(last_store.value());
       read_variable_op.erase();
       continue;
     }
@@ -130,7 +130,7 @@ void HoistResourceLoads(tf_device::LaunchOp launch_op) {
     Value resource = read_variable_op.resource();
 
     // Skip resources created inside of launch_op.
-    if (resource->getParentRegion() == &launch_op.body()) continue;
+    if (resource.getParentRegion() == &launch_op.body()) continue;
 
     auto p = resource_to_read_ops.insert({resource, read_variable_op});
     if (p.second) {
@@ -167,7 +167,7 @@ bool AppendResourceStoreValueToReturn(tf_device::LaunchOp launch_op) {
     if (!resource) continue;
 
     // Skip resources created inside of launch_op.
-    if (resource->getParentRegion() == &launch_op.body()) continue;
+    if (resource.getParentRegion() == &launch_op.body()) continue;
 
     // TODO(ycao): Prevent same value from being returned multiple times.
     // TODO(ycao): Do not return resource store value if it is defined outside
@@ -207,7 +207,7 @@ void SinkResourceStores(tf_device::LaunchOp launch_op, OpBuilder* builder) {
 
   // Replace uses of old launch_op results with those of new_launch_op.
   for (auto p : llvm::zip(launch_op.getResults(), new_launch_op.getResults())) {
-    std::get<0>(p)->replaceAllUsesWith(std::get<1>(p));
+    std::get<0>(p).replaceAllUsesWith(std::get<1>(p));
   }
 
   // Create a mapping from operands of new_return_op operands to new_launch_op

@@ -68,8 +68,8 @@ void Detuple(Value tuple, Operation::result_range replace, OpBuilder* builder) {
   // De-tuple the results of the xla hlo conditional result.
   for (auto result_it : llvm::enumerate(replace)) {
     auto get_tuple_value = builder->create<xla_hlo::GetTupleElementOp>(
-        result_it.value()->getLoc(), tuple, result_it.index());
-    result_it.value()->replaceAllUsesWith(get_tuple_value);
+        result_it.value().getLoc(), tuple, result_it.index());
+    result_it.value().replaceAllUsesWith(get_tuple_value);
   }
 }
 

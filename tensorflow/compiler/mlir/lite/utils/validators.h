@@ -52,7 +52,7 @@ bool TFIntListIsAllOnes(const ArrayAttr &attr);
 // Returns true iff the given value is a float tensor.
 // is "DT_FLOAT".
 inline bool TFTypeIsFloatTensor(Value value) {
-  auto tensorType = value->getType().dyn_cast<TensorType>();
+  auto tensorType = value.getType().dyn_cast<TensorType>();
   if (!tensorType) return false;
   return tensorType.getElementType().isa<FloatType>();
 }

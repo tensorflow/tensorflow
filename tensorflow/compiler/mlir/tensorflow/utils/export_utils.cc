@@ -222,12 +222,12 @@ static bool IsRefTypeControlOp(mlir::Operation* op) {
 
   auto op_name = op_name_or_status.ConsumeValueOrDie();
   if (op_name.equals("NextIteration"))
-    return mlir::getElementTypeOrSelf(op->getOperand(0)->getType())
+    return mlir::getElementTypeOrSelf(op->getOperand(0).getType())
         .isa<mlir::TF::TensorFlowRefType>();
 
   if (op_name.equals("Enter") || op_name.equals("Exit") ||
       op_name.equals("Switch") || op_name.equals("Merge")) {
-    return getElementTypeOrSelf(op->getResult(0)->getType())
+    return getElementTypeOrSelf(op->getResult(0).getType())
         .isa<mlir::TF::TensorFlowRefType>();
   }
   return false;

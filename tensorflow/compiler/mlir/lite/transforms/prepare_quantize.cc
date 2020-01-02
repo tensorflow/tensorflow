@@ -153,7 +153,7 @@ bool PrepareQuantizePass::SetInputNodesQuantizationParams(FuncOp func) {
                                                     params);
         auto dq_op =
             builder.create<TFL::DequantizeOp>(loc, input_type, q_op.output());
-        arg->replaceAllUsesWith(dq_op.output());
+        arg.replaceAllUsesWith(dq_op.output());
         q_op.setOperand(arg);
       }
     }
@@ -161,8 +161,8 @@ bool PrepareQuantizePass::SetInputNodesQuantizationParams(FuncOp func) {
 
   for (int i = 0, e = func.getNumArguments(); i != e; ++i) {
     BlockArgument arg = func.getArgument(i);
-    auto* arg_block = arg->getOwner();
-    add_quantize_op(arg->getLoc(), arg->getType(), arg_block,
+    auto* arg_block = arg.getOwner();
+    add_quantize_op(arg.getLoc(), arg.getType(), arg_block,
                     std::next(arg_block->begin(), i), arg, i);
   }
 

@@ -132,7 +132,7 @@ StatusOr<std::unique_ptr<NodeDef>> ConvertTFDialectOpToNodeDef(
     mlir::OperationState result(inst->getLoc(),
                                 inst->getName().getStringRef().drop_front());
     for (mlir::Value operand : inst->getOperands())
-      if (!operand->getType().isa<mlir::TFControlFlow::TFControlType>())
+      if (!operand.getType().isa<mlir::TFControlFlow::TFControlType>())
         result.operands.push_back(operand);
 
     // Add a result type for each non-control result we find

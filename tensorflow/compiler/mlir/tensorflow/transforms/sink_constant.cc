@@ -52,8 +52,7 @@ class ExecutorConstantSinking
       Region &body = launch.body();
       visitUsedValuesDefinedAbove(body, [&](OpOperand *use) {
         Value constant = use->get();
-        auto const_op =
-            dyn_cast_or_null<TF::ConstOp>(constant->getDefiningOp());
+        auto const_op = dyn_cast_or_null<TF::ConstOp>(constant.getDefiningOp());
         if (!const_op) return;
 
         // We found a constant, try to insert it in the map and re-use its
@@ -62,13 +61,13 @@ class ExecutorConstantSinking
         if (!map_entry.second) {
           // This constant has already been cloned into the region, reuse it.
           use->set(map_entry.first->getSecond().getResult());
-          LLVM_DEBUG(llvm::dbgs() << "Re-use sunk constant " << *use->get()
-                                  << "\n     in " << *use->get() << "\n");
-          if (constant->use_empty()) const_op.erase();
+          LLVM_DEBUG(llvm::dbgs() << "Re-use sunk constant " << use->get()
+                                  << "\n     in " << use->get() << "\n");
+          if (constant.use_empty()) const_op.erase();
           return;
         }
-        if (constant->hasOneUse()) {
-          LLVM_DEBUG(llvm::dbgs() << "Moved constant " << *constant << "\n");
+        if (constant.hasOneUse()) {
+          LLVM_DEBUG(llvm::dbgs() << "Moved constant " << constant << "\n");
           const_op.getOperation()->moveBefore(&body.begin()->front());
           return;
         }
@@ -76,8 +75,8 @@ class ExecutorConstantSinking
         body.begin()->getOperations().insert(body.begin()->begin(),
                                              map_entry.first->getSecond());
         use->set(map_entry.first->getSecond().getResult());
-        LLVM_DEBUG(llvm::dbgs() << "Sunk cloned constant " << *use->get()
-                                << "\n     in " << *use->get() << "\n");
+        LLVM_DEBUG(llvm::dbgs() << "Sunk cloned constant " << use->get()
+                                << "\n     in " << use->get() << "\n");
       });
     });
   }

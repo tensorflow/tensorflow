@@ -55,7 +55,7 @@ foreach actFnPair = [[TFL_ReluOp, TFL_AF_Relu],
   defm : FuseActFnIntoConvOpPat<actFnPair[0], actFnPair[1]>;
 
 // Checks if the value has only one user.
-def HasOneUse : Constraint<CPred<"$0->hasOneUse()">>;
+def HasOneUse : Constraint<CPred<"$0.hasOneUse()">>;
 
 // If we see a binary op (add, sub) op adding a constant value to a convolution
 // op with constant bias, we can fuse the binary op into the convolution op by
@@ -161,7 +161,7 @@ def EqualOperands : Constraint<CPred<"$0 == $1">>;
 
 // Checks if the operand has rank == n
 class OperandHasRank<int n> : Constraint<
-  CPred<"$0->getType().cast<ShapedType>().getRank() == " # n>>;
+  CPred<"$0.getType().cast<ShapedType>().getRank() == " # n>>;
 
 // Matching HardSwish
 def : Pat<
@@ -256,7 +256,7 @@ foreach L2NormalizePairs = [[TFL_MulOp, TFL_RsqrtOp], [TFL_DivOp, TFL_SqrtOp]]
   in defm : L2NormalizePatterns<L2NormalizePairs[0], L2NormalizePairs[1]>;
 
 def AreBroadcastableTypes : Constraint<CPred<
-  "TFL::IsBroadcastableElementsAttrAndType($0->getType(), $1->getType())">>;
+  "TFL::IsBroadcastableElementsAttrAndType($0.getType(), $1.getType())">>;
 
 // Pattern for skipping Tile if it is mainly for broadcasting and the
 // Op is already supporting broadcasting.

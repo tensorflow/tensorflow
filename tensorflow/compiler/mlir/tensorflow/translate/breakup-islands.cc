@@ -97,11 +97,11 @@ void BreakUpIslands::runOnOperation() {
     dups.clear();
 
     for (Value input : edges) {
-      dups.insert(input->getDefiningOp());
+      dups.insert(input.getDefiningOp());
     }
     // Insert new control edges removing duplicates.
     for (Value value : llvm::reverse(edge.second)) {
-      if (dups.insert(value->getDefiningOp()).second) edges.push_back(value);
+      if (dups.insert(value.getDefiningOp()).second) edges.push_back(value);
     }
     state.addOperands(edges);
     Operation* new_op = builder.createOperation(state);
@@ -160,7 +160,7 @@ IslandSourcesAndSinks FindSourcesAndSinksInIsland(
     for (auto predecessor : predecessors) result.sinks.erase(predecessor);
     bool has_in_island_operands = false;
     for (auto operand : sub_op.getOperands()) {
-      auto defining_op = operand->getDefiningOp();
+      auto defining_op = operand.getDefiningOp();
       if (!defining_op || defining_op->getParentOp() != island) continue;
       // Remove operands from sinks.
       result.sinks.erase(defining_op);
@@ -190,16 +190,16 @@ void BreakUpIslands::BreakUpIsland(
   // the island that defines that fetched value.
   for (auto fetch : op.GetYield().fetches()) {
     // Ok, because there is no op to add control to (eg: function args).
-    if (!fetch->getDefiningOp()) continue;
-    if (fetch->getDefiningOp()->getParentOp() == op) {
+    if (!fetch.getDefiningOp()) continue;
+    if (fetch.getDefiningOp()->getParentOp() == op) {
       // OK, because it is the same island.
     } else if (auto island_op = llvm::dyn_cast<tf_executor::IslandOp>(
-                   fetch->getDefiningOp())) {
+                   fetch.getDefiningOp())) {
       island_control_inputs.push_back(island_op.control());
     } else {
       // TODO(parkers): Any defining op that has a control output can be handled
       // just like an island.
-      fetch->getDefiningOp()->emitError("Fetching non-island as dependency.");
+      fetch.getDefiningOp()->emitError("Fetching non-island as dependency.");
       return signalPassFailure();
     }
   }
@@ -255,11 +255,11 @@ void BreakUpIslands::BreakUpIsland(
     sink_island_controls.push_back(island.control());
   }
   assert(sink_island_controls.size() == 1);
-  op.control()->replaceAllUsesWith(sink_island_controls[0]);
+  op.control().replaceAllUsesWith(sink_island_controls[0]);
   // All existing outputs need to add a control flow edge from
   // sink_island_controls[0].
   for (Value out : op.outputs()) {
-    for (auto& use : out->getUses()) {
+    for (auto& use : out.getUses()) {
       Operation* owner = use.getOwner();
       if (auto island_op =
               llvm::dyn_cast<tf_executor::IslandOp>(owner->getParentOp())) {
@@ -275,7 +275,7 @@ void BreakUpIslands::BreakUpIsland(
     }
   }
   for (auto item : llvm::zip(op.outputs(), op.GetYield().fetches()))
-    std::get<0>(item)->replaceAllUsesWith(std::get<1>(item));
+    std::get<0>(item).replaceAllUsesWith(std::get<1>(item));
   op.erase();
 }
 

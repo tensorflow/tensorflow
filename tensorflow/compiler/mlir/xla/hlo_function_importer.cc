@@ -407,7 +407,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
     }
     case HloOpcode::kWhile: {
       auto op = func_builder->create<mlir::xla_hlo::WhileOp>(
-          loc, operands[0]->getType(), operands[0]);
+          loc, operands[0].getType(), operands[0]);
       TF_RETURN_IF_ERROR(
           ImportComputation(instruction->while_condition(), &op.cond()));
       TF_RETURN_IF_ERROR(

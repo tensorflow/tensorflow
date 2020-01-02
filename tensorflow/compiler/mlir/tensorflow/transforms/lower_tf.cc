@@ -196,7 +196,7 @@ class LowerDynamicStitchOp : public OpRewritePattern<TF::DynamicStitchOp> {
       if (!matchPattern(index, m_Constant(&index_attr))) return matchFailure();
       indices.push_back(index_attr);
 
-      RankedTensorType data_ty = data->getType().dyn_cast<RankedTensorType>();
+      RankedTensorType data_ty = data.getType().dyn_cast<RankedTensorType>();
       if (!data_ty || !data_ty.hasStaticShape()) return matchFailure();
     }
 
@@ -270,7 +270,7 @@ class LowerPackOp : public OpRewritePattern<TF::PackOp> {
       // If input type is different than the previous input type, infer the
       // output type. Otherwise, use the already inferred output type from the
       // previous iteration.
-      Type input_ty = input->getType();
+      Type input_ty = input.getType();
       if (input_ty != prev_input_ty) {
         inferred_ty = InferExpandDimsType(input_ty, axis, &rewriter);
         prev_input_ty = input_ty;

@@ -542,7 +542,7 @@ LogicalResult ExportXlaOp(OutfeedOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   value_map[op] = xla::OutfeedWithToken(
       value_map[op.operand()], value_map[op.token()],
-      xla::TypeToShape(op.operand()->getType()), op.outfeed_config());
+      xla::TypeToShape(op.operand().getType()), op.outfeed_config());
   return success();
 }
 
@@ -883,7 +883,7 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
     std::vector<xla::Shape> arg_shapes;
     arg_shapes.reserve(bb.getNumArguments());
     for (auto& arg : bb.getArguments())
-      arg_shapes.push_back(xla::TypeToShape(arg->getType()));
+      arg_shapes.push_back(xla::TypeToShape(arg.getType()));
     xla::Shape input_shape = xla::ShapeUtil::MakeTupleShape(arg_shapes);
     auto tuple = xla::Parameter(builder, 0, input_shape, "arg_tuple");
     for (auto& it : llvm::enumerate(bb.getArguments())) {
@@ -893,7 +893,7 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
     for (auto& it : llvm::enumerate(bb.getArguments())) {
       auto arg = it.value();
       auto num = it.index();
-      xla::Shape shape = xla::TypeToShape(arg->getType());
+      xla::Shape shape = xla::TypeToShape(arg.getType());
       lowering[arg] =
           xla::Parameter(builder, num, shape, absl::StrCat("Arg_", num));
     }
@@ -1024,7 +1024,7 @@ LogicalResult AddDynamicParameterBindings(mlir::ModuleOp module,
 
     llvm::SmallDenseSet<int32_t, 4> used_shape_indices;
     auto arg_type =
-        entry_func.getArgument(i)->getType().dyn_cast<RankedTensorType>();
+        entry_func.getArgument(i).getType().dyn_cast<RankedTensorType>();
     for (auto shape_and_padding : llvm::enumerate(llvm::zip(
              shape_indices.getValue(), padding_arg_indices.getValue()))) {
       const int element_index = shape_and_padding.index();
@@ -1059,7 +1059,7 @@ LogicalResult AddDynamicParameterBindings(mlir::ModuleOp module,
             kPaddingArgIndicesAttr, i, element_index, e, padding_arg_index));
 
       Type padding_arg_type =
-          entry_func.getArgument(padding_arg_index)->getType();
+          entry_func.getArgument(padding_arg_index).getType();
       if (auto tensor_type = padding_arg_type.dyn_cast<RankedTensorType>())
         if (tensor_type.getRank() != 0)
           return entry_func.emitError()

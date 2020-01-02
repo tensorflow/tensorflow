@@ -71,7 +71,7 @@ struct LoadQuantizationRecipe : public FunctionPass<LoadQuantizationRecipe> {
 
 void LoadQuantizationRecipe::Initialize(LSTMOp lstm, OpBuilder* builder) {
   Type expressed_type =
-      lstm.input()->getType().cast<ShapedType>().getElementType();
+      lstm.input().getType().cast<ShapedType>().getElementType();
   Type int8_storage_type = builder->getIntegerType(8);
   Type int16_storage_type = builder->getIntegerType(16);
   auto flag = quant::QuantizationFlags::FlagValue::Signed;
@@ -88,8 +88,8 @@ void LoadQuantizationRecipe::Initialize(LSTMOp lstm, OpBuilder* builder) {
   auto any_int16 = quant::AnyQuantizedType::get(
       flag, int16_storage_type, expressed_type, int16_min, int16_max);
 
-  int8 = any_int8.castFromExpressedType(lstm.input()->getType());
-  int16 = any_int16.castFromExpressedType(lstm.input()->getType());
+  int8 = any_int8.castFromExpressedType(lstm.input().getType());
+  int16 = any_int16.castFromExpressedType(lstm.input().getType());
 }
 
 Operation* LoadQuantizationRecipe::CreateLayerNorm(Location loc, Value in,

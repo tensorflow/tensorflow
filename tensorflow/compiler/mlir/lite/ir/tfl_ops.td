@@ -135,7 +135,7 @@ def TFL_FpOrI32OrI64Tensor : TensorOf<[AnyFloat, TFL_Int32Or64]>;
 //===----------------------------------------------------------------------===//
 
 class TFL_OperandIsUnrankedPred<int n> :
-  CPred<"$_op.getOperand(" # n # ")->getType().isa<UnrankedTensorType>()">;
+  CPred<"$_op.getOperand(" # n # ").getType().isa<UnrankedTensorType>()">;
 
 // TODO: Some of these could be generalized and/or moved to more general
 // location.
@@ -144,38 +144,38 @@ class TFL_OperandHasRank<int n, int m> :
   PredOpTrait<"operand " # n # " is " # m # "-D",
     Or<[TFL_OperandIsUnrankedPred<n>,
       CPred<"$_op.getOperand(" # n #
-      ")->getType().cast<ShapedType>().getRank() == " # m>]>>;
+      ").getType().cast<ShapedType>().getRank() == " # m>]>>;
 
 // Returns true if the n-th operand is ranked and has rank dim.
 class TFL_OperandHasKnownRank<int n, int dim> : And<[
-  CPred<"$_op.getOperand(" # n # ")->getType().isa<RankedTensorType>()">,
-  CPred<"$_op.getOperand(" # n # ")->getType().cast<ShapedType>().getRank() == "
+  CPred<"$_op.getOperand(" # n # ").getType().isa<RankedTensorType>()">,
+  CPred<"$_op.getOperand(" # n # ").getType().cast<ShapedType>().getRank() == "
     # dim>]>;
 
 // True if operand n is ranked and has a rank > dim.
 class TFL_OperandIsRankedAndHasDimPred<int n, int dim> : And<[
-  CPred<"$_op.getOperand(" # n # ")->getType().isa<RankedTensorType>()">,
-  CPred<"$_op.getOperand(" # n # ")->getType().cast<ShapedType>().getRank() > "
+  CPred<"$_op.getOperand(" # n # ").getType().isa<RankedTensorType>()">,
+  CPred<"$_op.getOperand(" # n # ").getType().cast<ShapedType>().getRank() > "
   # dim>]>;
 
 class TFL_OperandDimEquals<int n, int dim, int size> : And<[
   TFL_OperandIsRankedAndHasDimPred<n, dim>,
-  CPred<"$_op.getOperand(" # n # ")->getType().cast<ShapedType>()"
+  CPred<"$_op.getOperand(" # n # ").getType().cast<ShapedType>()"
       ".getShape()[" # dim # " ] == " # size>]>;
 
 // Returns true if the n-th operand has unknown rank or at least rank m.
 class TFL_OperandHasAtleastRank<int n, int m> :
   PredOpTrait<"operand " # n # " is " # m # "-D",
-    Or<[CPred<"$_op.getOperand(" # n # ")->getType().isa<UnrankedTensorType>()">,
+    Or<[CPred<"$_op.getOperand(" # n # ").getType().isa<UnrankedTensorType>()">,
       CPred<"$_op.getOperand(" # n #
-        ")->getType().cast<ShapedType>().getRank() >= " # m>]>>;
+        ").getType().cast<ShapedType>().getRank() >= " # m>]>>;
 
 class TFL_OperandRankEquals1DimOfOperand<int x, int y> :
   PredOpTrait<"operand " # x # "'s rank equals operand " # y # "'s size",
     CPred<"$_op.getOperand(" # x #
-      ")->getType().cast<ShapedType>().getRank() == "
+      ").getType().cast<ShapedType>().getRank() == "
       "$_op.getOperand(" # y #
-      ")->getType().cast<ShapedType>().getShape()[0]">>;
+      ").getType().cast<ShapedType>().getShape()[0]">>;
 
 class TFL_Operand0DOr1ElementTensor<int x> :
   PredOpTrait<"operand #" # x # " is an 0-d tensor or 1-d tensor w/ 1 element",
@@ -195,7 +195,7 @@ class TFL_OperandHasRankLessThan<int n, int m> :
   PredOpTrait<"operand " # n # " is maximum " # m # "-D",
     Or<[TFL_OperandIsUnrankedPred<n>,
       CPred<"$_op.getOperand(" # n #
-      ")->getType().cast<ShapedType>().getRank() <= " # m>]>>;
+      ").getType().cast<ShapedType>().getRank() <= " # m>]>>;
 
 // This is a quantization-aware version of TCresVTEtIsSameAsOp
 class TFL_TCresVTEtIsSameAsOp<int i, int j> : And<[
@@ -227,7 +227,7 @@ def TFL_BroadcastableBinaryBuilder : OpBuilder<
   "Builder *builder, OperationState &result, Value lhs, Value rhs",
   [{
     auto resultType =
-      OpTrait::util::getBroadcastedType(lhs->getType(), rhs->getType());
+      OpTrait::util::getBroadcastedType(lhs.getType(), rhs.getType());
     if (!resultType)
       mlir::emitError(result.location, "non-broadcastable operands");
     result.addOperands({lhs, rhs});
@@ -471,7 +471,7 @@ def TFL_ArgMaxOp : TFL_Op<"arg_max", [NoSideEffect]> {
   let hasOptions = 1;
 
   DerivedTFLiteTypeAttr output_type = DerivedTFLiteTypeAttr<[{
-    return getResult()->getType().cast<TensorType>().getElementType().
+    return getResult().getType().cast<TensorType>().getElementType().
         cast<IntegerType>().getWidth() > 32 ? tflite::TensorType_INT64 :
             tflite::TensorType_INT32;
     }]>;
@@ -500,7 +500,7 @@ def TFL_ArgMinOp : TFL_Op<"arg_min", [NoSideEffect]> {
   let hasOptions = 1;
 
   DerivedTFLiteTypeAttr output_type = DerivedTFLiteTypeAttr<[{
-    return getResult()->getType().cast<TensorType>().getElementType().
+    return getResult().getType().cast<TensorType>().getElementType().
         cast<IntegerType>().getWidth() > 32 ? tflite::TensorType_INT64 :
             tflite::TensorType_INT32;
     }]>;
@@ -1996,7 +1996,7 @@ def TFL_ShapeOp: TFL_Op<"shape", [NoSideEffect]> {
   let results = (outs AnyTensor:$output);
 
   DerivedTypeAttr out_type = DerivedTypeAttr<[{
-    return getResult()->getType().cast<TensorType>().getElementType();
+    return getResult().getType().cast<TensorType>().getElementType();
   }]>;
 
   let hasOptions = 1;
@@ -2083,7 +2083,7 @@ def TFL_SelectOp : TFL_Op<"select", [NoSideEffect,
   let builders = [OpBuilder<"Builder *builder, OperationState &result, "
                             "Value condition, Value x, Value y",
   [{
-    auto resultType = x->getType();
+    auto resultType = x.getType();
     result.addOperands({condition, x, y});
     result.types.push_back(resultType);
   }]>];
@@ -2733,7 +2733,7 @@ in the unique output `y`. In other words:
   );
 
   DerivedTFLiteTypeAttr idx_out_type = DerivedTFLiteTypeAttr<[{
-    return getResult(1)->getType().cast<TensorType>().getElementType().
+    return getResult(1).getType().cast<TensorType>().getElementType().
         cast<IntegerType>().getWidth() > 32 ? tflite::TensorType_INT64 :
             tflite::TensorType_INT32;
     }]>;

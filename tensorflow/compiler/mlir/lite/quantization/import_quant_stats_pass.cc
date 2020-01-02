@@ -78,8 +78,8 @@ class ImportQuantStatsPass : public FunctionPass<ImportQuantStatsPass> {
   bool IsQuantizableResult(Operation *op, int index) {
     if (index < 0 || index >= op->getNumResults()) return false;
     Value res = op->getResult(index);
-    return res->getType().isa<ShapedType>() &&
-           res->getType().cast<ShapedType>().getElementType().isa<FloatType>();
+    return res.getType().isa<ShapedType>() &&
+           res.getType().cast<ShapedType>().getElementType().isa<FloatType>();
   }
 
   // A method to retrieve the name for the given op.
@@ -123,7 +123,7 @@ void ImportQuantStatsPass::InsertStatsOpAtResult(OpBuilder b, Value res,
                                                  IntegerAttr axis) {
   auto stats_op = b.create<quant::StatisticsOp>(b.getUnknownLoc(), res,
                                                 layer_stats, axis_stats, axis);
-  res->replaceAllUsesWith(stats_op);
+  res.replaceAllUsesWith(stats_op);
   stats_op.getOperation()->replaceUsesOfWith(stats_op, res);
 }
 

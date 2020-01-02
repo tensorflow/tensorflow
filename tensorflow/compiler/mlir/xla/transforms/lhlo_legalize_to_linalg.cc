@@ -57,7 +57,7 @@ class PointwiseToLinalgConverter : public OpConversionPattern<LhloOp> {
       ConversionPatternRewriter& rewriter) const final {
     auto loc = lhlo_op.getLoc();
     auto argType =
-        lhlo_op.getOperand(0)->getType().template dyn_cast<ShapedType>();
+        lhlo_op.getOperand(0).getType().template dyn_cast<ShapedType>();
     if (!argType || !argType.hasStaticShape()) {
       emitError(loc,
                 "lhlo to linalg conversion expects statically shaped args");
@@ -73,7 +73,7 @@ class PointwiseToLinalgConverter : public OpConversionPattern<LhloOp> {
     unsigned nloops = 0;
     int operandCount = args.size() - 1;
     for (const auto& arg : llvm::enumerate(args)) {
-      auto memrefType = arg.value()->getType().dyn_cast<MemRefType>();
+      auto memrefType = arg.value().getType().dyn_cast<MemRefType>();
       if (!memrefType) return ConversionPattern::matchFailure();
       unsigned rank = memrefType.getRank();
       if (!rank || (nloops && nloops != rank)) {
@@ -125,7 +125,7 @@ class ScalarPointwiseToStandardConverter : public OpConversionPattern<LhloOp> {
       ConversionPatternRewriter& rewriter) const final {
     auto loc = lhlo_op.getLoc();
     auto argType =
-        lhlo_op.getOperand(0)->getType().template dyn_cast<ShapedType>();
+        lhlo_op.getOperand(0).getType().template dyn_cast<ShapedType>();
     if (!argType || !argType.getElementType().isIntOrFloat() ||
         (argType.getRank() != 0)) {
       return ConversionPattern::matchFailure();
@@ -151,9 +151,9 @@ class BroadcastInDimConverter : public OpConversionPattern<BroadcastInDimOp> {
       BroadcastInDimOp broadcastOp, ArrayRef<Value> args,
       ConversionPatternRewriter& rewriter) const final {
     auto operandMemrefType =
-        broadcastOp.operand()->getType().dyn_cast<MemRefType>();
+        broadcastOp.operand().getType().dyn_cast<MemRefType>();
     auto resultMemrefType =
-        broadcastOp.output()->getType().dyn_cast<MemRefType>();
+        broadcastOp.output().getType().dyn_cast<MemRefType>();
     if (!operandMemrefType || !resultMemrefType) return matchFailure();
     auto broadcastDims = broadcastOp.broadcast_dimensions();
     if (!broadcastDims.hasValue()) return matchFailure();
@@ -253,7 +253,7 @@ class IotaConverter : public OpConversionPattern<IotaOp> {
       IotaOp iotaOp, ArrayRef<Value> args,
       ConversionPatternRewriter& rewriter) const final {
     auto resultMemrefType =
-        iotaOp.getOperand()->getType().dyn_cast<MemRefType>();
+        iotaOp.getOperand().getType().dyn_cast<MemRefType>();
     if (!resultMemrefType) return matchFailure();
 
     auto resultElementType = resultMemrefType.getElementType();

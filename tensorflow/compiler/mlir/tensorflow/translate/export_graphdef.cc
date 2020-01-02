@@ -236,7 +236,7 @@ std::string Exporter::UniqueName(Operation* op) {
 
 StatusOr<std::unique_ptr<NodeDef>> Exporter::GetArgumentNode(
     BlockArgument arg, unsigned index, llvm::StringRef name) {
-  auto func = arg->getParentRegion()->getParentOfType<mlir::FuncOp>();
+  auto func = arg.getParentRegion()->getParentOfType<mlir::FuncOp>();
 
   auto node_def = absl::make_unique<NodeDef>();
   if (!name.empty())
@@ -248,7 +248,7 @@ StatusOr<std::unique_ptr<NodeDef>> Exporter::GetArgumentNode(
 
   DataType dtype;
   TF_RETURN_IF_ERROR(ConvertToDataType(
-      arg->getType().cast<mlir::TensorType>().getElementType(), &dtype));
+      arg.getType().cast<mlir::TensorType>().getElementType(), &dtype));
   AttrValue type_attr;
   type_attr.set_type(dtype);
   (*node_def->mutable_attr())["T"] = type_attr;
@@ -286,7 +286,7 @@ StatusOr<std::unique_ptr<NodeDef>> Exporter::GetReturnNode(
   auto inst_op = inst->getOperand(index);
   DataType dtype;
   TF_RETURN_IF_ERROR(ConvertToDataType(
-      inst_op->getType().cast<mlir::TensorType>().getElementType(), &dtype));
+      inst_op.getType().cast<mlir::TensorType>().getElementType(), &dtype));
   AttrValue type_attr;
   type_attr.set_type(dtype);
   (*node_def->mutable_attr())["T"] = type_attr;
@@ -298,8 +298,8 @@ StatusOr<std::unique_ptr<NodeDef>> Exporter::GetReturnNode(
 
 Status Exporter::AddEdgeBetweenNodes(Value src, Node* dst_node,
                                      unsigned dst_index) {
-  if (auto input_result = src->dyn_cast<mlir::OpResult>()) {
-    auto* input_inst = input_result->getOwner();
+  if (auto input_result = src.dyn_cast<mlir::OpResult>()) {
+    auto* input_inst = input_result.getOwner();
     // replaces the input node by the sink one if it is an NextIteration source:
     auto it = source_to_sink_.find(input_inst);
     if (it != source_to_sink_.end()) {
@@ -308,16 +308,16 @@ Status Exporter::AddEdgeBetweenNodes(Value src, Node* dst_node,
     auto node_it = nodes_.find(input_inst);
     TF_RET_CHECK(node_it != nodes_.end())
         << "Use of OpResult encountered before def!";
-    if (input_result->getType().isa<mlir::TFControlFlow::TFControlType>()) {
+    if (input_result.getType().isa<mlir::TFControlFlow::TFControlType>()) {
       graph_->AddControlEdge(node_it->second, dst_node);
     } else {
-      graph_->AddEdge(node_it->second, input_result->getResultNumber(),
-                      dst_node, dst_index);
+      graph_->AddEdge(node_it->second, input_result.getResultNumber(), dst_node,
+                      dst_index);
     }
     return Status::OK();
   }
 
-  auto input_arg = src->cast<BlockArgument>();
+  auto input_arg = src.cast<BlockArgument>();
   auto input_node_it = args_.find(input_arg);
   TF_RET_CHECK(input_node_it != args_.end())
       << "Use of BlockArgument encounted before def!";
@@ -366,7 +366,7 @@ Status Exporter::AddInstructionNode(Operation* inst) {
 }
 
 bool IsEntryFunctionArg(BlockArgument arg) {
-  return arg->getParentRegion()->getParentOfType<mlir::FuncOp>().getName() ==
+  return arg.getParentRegion()->getParentOfType<mlir::FuncOp>().getName() ==
          "main";
 }
 
@@ -387,21 +387,21 @@ Status Exporter::AddArgumentNode(BlockArgument arg, unsigned index,
   // is an input node. We recover the original input node and skip adding the
   // argument node. The new input node will be handled as normal in the
   // following steps.
-  if (!arg->hasOneUse()) {
+  if (!arg.hasOneUse()) {
     return errors::FailedPrecondition(
         "Arg in 'main' should only have one user.");
   }
-  auto* input = *arg->user_begin();
+  auto* input = *arg.user_begin();
   auto input_name = input->getName().getStringRef();
   input_name.consume_back(".input");
-  mlir::OpBuilder builder(arg->getOwner());
+  mlir::OpBuilder builder(arg.getOwner());
   auto loc = mlir::NameLoc::get(builder.getIdentifier(UniqueName(input)),
                                 builder.getContext());
   OperationState state(loc, input_name.str());
   state.attributes.append(input->getAttrs().begin(), input->getAttrs().end());
   for (auto op : input->getOperands()) {
     // Skip the argument in the new operation.
-    if (op->isa<BlockArgument>()) continue;
+    if (op.isa<BlockArgument>()) continue;
     state.operands.push_back(op);
   }
   state.types.append(input->getResultTypes().begin(),
@@ -419,7 +419,7 @@ Status Exporter::AddArgumentNode(BlockArgument arg, unsigned index,
       << inst << " to an empty string.";
   mapped_name.assign(input_mapped_name);
   for (int index : llvm::seq<int>(0, input->getNumResults())) {
-    input->getResult(index)->replaceAllUsesWith(inst->getResult(index));
+    input->getResult(index).replaceAllUsesWith(inst->getResult(index));
   }
   input->dropAllReferences();
   input->erase();
@@ -524,7 +524,7 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
       // the main graph did not have its _Retval nodes lifted into the functions
       // returns.
       if (!graph_as_function) {
-        auto defining_op = it.value()->getDefiningOp();
+        auto defining_op = it.value().getDefiningOp();
         auto& mapped_name = exporter.op_to_name_[defining_op];
         DCHECK(mapped_name.empty())
             << "Convert() attempted to change the op_to_name_ mapping for "
@@ -541,7 +541,7 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
       // Only assign user of argument the input name if the main graph did not
       // have its _Arg nodes lifted into the functions arguments.
       if (!graph_as_function) {
-        auto first_user = *it.value()->user_begin();
+        auto first_user = *it.value().user_begin();
         auto& mapped_name = exporter.op_to_name_[first_user];
         DCHECK(mapped_name.empty())
             << "Convert() attempted to change the op_to_name_ mapping for "
@@ -556,7 +556,7 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
   for (auto it : llvm::enumerate(block.getArguments())) {
     int index = it.index();
     auto arg = it.value();
-    mlir::Type type = arg->getType();
+    mlir::Type type = arg.getType();
     if (!type.isa<mlir::TensorType>()) {
       return errors::InvalidArgument(
           "FuncOps arguments must have tensor types. Found ",

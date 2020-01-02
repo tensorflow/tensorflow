@@ -149,17 +149,17 @@ std::string OpOrArgLocNameMapper::GetName(OpOrVal op_or_val) {
     return op->getName().getStringRef();
   }
   auto val = op_or_val.dyn_cast<mlir::Value>();
-  auto name_from_loc = GetNameFromLoc(val->getLoc());
+  auto name_from_loc = GetNameFromLoc(val.getLoc());
   if (!name_from_loc.empty()) return name_from_loc;
   // If the location is none of the expected types, then simply use name
   // generated using the op type. Follow TF convention and append the result
   // index unless 0.
-  if (auto result = val->dyn_cast<mlir::OpResult>()) {
-    if (result->getResultNumber() > 0)
+  if (auto result = val.dyn_cast<mlir::OpResult>()) {
+    if (result.getResultNumber() > 0)
       return llvm::formatv("{0}:{1}",
-                           result->getOwner()->getName().getStringRef(),
-                           result->getResultNumber());
-    return result->getOwner()->getName().getStringRef();
+                           result.getOwner()->getName().getStringRef(),
+                           result.getResultNumber());
+    return result.getOwner()->getName().getStringRef();
   }
   return "";
 }

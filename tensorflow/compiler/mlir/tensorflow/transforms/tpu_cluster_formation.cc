@@ -141,7 +141,7 @@ bool ShouldMoveOpAfterCluster(
     const llvm::SmallSetVector<Operation*, 8>& preceding_users) {
   auto result = op->walk([&](Operation* op) {
     for (Value operand : op->getOperands()) {
-      Operation* def = operand->getDefiningOp();
+      Operation* def = operand.getDefiningOp();
       // Operands may not have a defining op (BlockArgument) or is from a
       // different block.
       if (!def || def->getBlock() != block) continue;
@@ -185,7 +185,7 @@ llvm::SmallVector<Value, 8> CollectClusterResults(
 
   for (Operation* op : cluster_ops) {
     for (Value result : op->getResults()) {
-      for (Operation* user : result->getUsers()) {
+      for (Operation* user : result.getUsers()) {
         // Check if user is not an op in the cluster.
         if (cluster_ops.count(block->findAncestorOpInBlock(*user)) == 0) {
           results.push_back(result);
@@ -206,7 +206,7 @@ tf_device::LaunchOp CreateLaunchOpForCluster(Operation* last_cluster_op,
   OpBuilder builder(last_cluster_op);
 
   llvm::SmallVector<Type, 8> result_types;
-  for (Value result : results) result_types.push_back(result->getType());
+  for (Value result : results) result_types.push_back(result.getType());
 
   // An empty string placeholder is used for the device as that will be later
   // populated with the device of the associated TPUReplicateMetadata op.
@@ -246,7 +246,7 @@ void UpdateLaunchOpResultExternalUses(tf_device::LaunchOp launch_op,
   for (auto ret_vals : llvm::zip(results, launch_op.getResults())) {
     Value old_ret = std::get<0>(ret_vals);
     Value new_ret = std::get<1>(ret_vals);
-    for (auto& use : old_ret->getUses())
+    for (auto& use : old_ret.getUses())
       if (!launch_op_block.findAncestorOpInBlock(*use.getOwner()))
         use.set(new_ret);
   }
@@ -307,7 +307,7 @@ LogicalResult ReplicateCluster(tf_device::LaunchOp launch_op,
   llvm::SmallSetVector<Operation*, 8> unique_replicated_input_ops;
   mlir::visitUsedValuesDefinedAbove(
       launch_op.body(), launch_op.body(), [&](mlir::OpOperand* operand) {
-        Operation* def = operand->get()->getDefiningOp();
+        Operation* def = operand->get().getDefiningOp();
         if (def && llvm::isa<TF::TPUReplicatedInputOp>(def))
           unique_replicated_input_ops.insert(def);
       });
@@ -339,7 +339,7 @@ LogicalResult ReplicateCluster(tf_device::LaunchOp launch_op,
   for (auto result_and_idx : llvm::enumerate(launch_op.getResults())) {
     Value result = result_and_idx.value();
     int idx = result_and_idx.index();
-    for (auto& use : result->getUses()) {
+    for (auto& use : result.getUses()) {
       Operation* def = use.getOwner();
       if (!def || !llvm::isa<TF::TPUReplicatedOutputOp>(def))
         return launch_op.emitError()
@@ -470,7 +470,7 @@ void TPUClusterFormation::runOnFunction() {
     // `tf_device.replicate` is created and replicated (1) operands/results are
     // untouched.
     if (op->getNumOperands() == 1 && op->getNumResults() == 1)
-      op->getResult(0)->replaceAllUsesWith(op->getOperand(0));
+      op->getResult(0).replaceAllUsesWith(op->getOperand(0));
 
     // Leftover TPUReplicatedInput/TPUReplicatedOutput that are not of
     // `num_replicas` to 1.

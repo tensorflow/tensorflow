@@ -60,9 +60,9 @@ llvm::SmallDenseMap<int32_t, int32_t> GetRemappedReplicatedInputIndices(
 
   llvm::SmallDenseMap<int32_t, int32_t> remapped_indices;
   for (auto operand_and_idx : llvm::enumerate(launch_func.getOperands()))
-    if (auto block_arg = operand_and_idx.value()->dyn_cast<BlockArgument>())
-      if (block_arg->getOwner() == replicate_block)
-        remapped_indices[block_arg->getArgNumber()] = operand_and_idx.index();
+    if (auto block_arg = operand_and_idx.value().dyn_cast<BlockArgument>())
+      if (block_arg.getOwner() == replicate_block)
+        remapped_indices[block_arg.getArgNumber()] = operand_and_idx.index();
 
   return remapped_indices;
 }

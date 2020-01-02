@@ -39,8 +39,8 @@ struct BinaryOpConverter : public OpRewritePattern<LhloOp> {
                                      PatternRewriter& rewriter) const override {
     const auto& lhs = op.lhs();
     const auto& rhs = op.rhs();
-    const auto& lhs_type = lhs->getType().template cast<MemRefType>();
-    const auto& rhs_type = rhs->getType().template cast<MemRefType>();
+    const auto& lhs_type = lhs.getType().template cast<MemRefType>();
+    const auto& rhs_type = rhs.getType().template cast<MemRefType>();
     const auto& element_type = lhs_type.getElementType();
 
     if (lhs_type.getShape() != rhs_type.getShape()) {

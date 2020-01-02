@@ -233,17 +233,17 @@ static bool IsConst(Operation* op) {
 template <typename T>
 static bool HasValidTFLiteType(Value value, T& error_handler) {
   // None type is allowed to represent unspecified operands.
-  if (value->getType().isa<NoneType>()) return true;
+  if (value.getType().isa<NoneType>()) return true;
 
-  auto type = value->getType().dyn_cast<TensorType>();
+  auto type = value.getType().dyn_cast<TensorType>();
   if (!type) {
-    if (auto op = value->getDefiningOp()) {
+    if (auto op = value.getDefiningOp()) {
       error_handler.emitError()
           << '\'' << op << "' should produce value of tensor type instead of "
-          << value->getType();
+          << value.getType();
       return false;
     }
-    error_handler.emitError("expected tensor type, got ") << value->getType();
+    error_handler.emitError("expected tensor type, got ") << value.getType();
     return false;
   }
 
@@ -282,7 +282,7 @@ static bool IsValidTFLiteMlirModule(ModuleOp module) {
 
     for (auto arg : bb.getArguments()) {
       if (!HasValidTFLiteType(arg, fn))
-        return fn.emitError("invalid TFLite type: ") << arg->getType(), false;
+        return fn.emitError("invalid TFLite type: ") << arg.getType(), false;
     }
 
     // Verify that all operations except the terminator have exactly one
@@ -292,7 +292,7 @@ static bool IsValidTFLiteMlirModule(ModuleOp module) {
 
       for (auto result : inst.getResults()) {
         if (!HasValidTFLiteType(result, inst))
-          return fn.emitError("invalid TFLite type: ") << result->getType(),
+          return fn.emitError("invalid TFLite type: ") << result.getType(),
                  false;
       }
     }
@@ -504,7 +504,7 @@ Optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
 
 Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
     Value value, const std::string& name, unsigned buffer_idx) {
-  auto type = value->getType().cast<TensorType>();
+  auto type = value.getType().cast<TensorType>();
 
   // TFLite requires tensor shape only for the inputs and constants.
   // However, we output all known shapes for better round-tripping
@@ -516,7 +516,7 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
 
     if (std::any_of(shape_ref.begin(), shape_ref.end(), is_out_of_range))
       return mlir::emitError(
-          value->getLoc(),
+          value.getLoc(),
           "result shape dimensions out of 32 bit int type range");
 
     return mlir::success();
@@ -528,7 +528,7 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
     if (mlir::failed(check_shape(shape_ref))) return llvm::None;
 
     shape = std::vector<int32_t>(shape_ref.begin(), shape_ref.end());
-  } else if (auto* inst = value->getDefiningOp()) {
+  } else if (auto* inst = value.getDefiningOp()) {
     if (IsConst(inst)) {
       // Const op can have a result of dynamic shaped type (e.g. due to constant
       // folding), but we can still derive the shape of a constant tensor for
@@ -571,7 +571,7 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
   // marked as a stateful. If so, set the tensor's is_variable as true
   // This is v1 ref variable semantics in the TFLite runtime.
   bool is_variable = false;
-  for (auto& use : value->getUses()) {
+  for (auto& use : value.getUses()) {
     is_variable = IsStatefulOperand(use.getOwner(), use.getOperandNumber());
     if (is_variable) {
       break;
@@ -923,7 +923,7 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(FuncOp fn) {
   // on failure.
   auto build_tensor_and_buffer = [&](Value value, const std::string& name) {
     // NoneType represents optional and may be skipped here.
-    if (value->getType().isa<NoneType>()) {
+    if (value.getType().isa<NoneType>()) {
       return true;
     }
 
@@ -936,7 +936,7 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(FuncOp fn) {
     // make the Buffer empty apart from setting the buffer_idx=0 in the Tensor.
     // This does not seem to affect runtime behavior for RNN/LSTM, but would be
     // good for reducing memory footprint.
-    if (auto* inst = value->getDefiningOp()) {
+    if (auto* inst = value.getDefiningOp()) {
       auto buffer_or = BuildBuffer(inst);
       if (!buffer_or) return false;
       buffers_.push_back(*buffer_or);
@@ -976,7 +976,7 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(FuncOp fn) {
     std::vector<int32_t> operands;
     operands.reserve(inst.getNumOperands());
     for (auto operand : inst.getOperands()) {
-      if (operand->getType().isa<NoneType>())
+      if (operand.getType().isa<NoneType>())
         operands.push_back(kTfLiteOptionalTensor);
       else
         operands.push_back(tensor_index_map.lookup(operand));

@@ -56,7 +56,7 @@ FuncOp BuildFunction(StringRef device, llvm::ArrayRef<Value> live_ins,
                      OpBuilder* builder) {
   llvm::SmallVector<Type, 4> operand_types;
   operand_types.reserve(live_ins.size());
-  for (Value v : live_ins) operand_types.emplace_back(v->getType());
+  for (Value v : live_ins) operand_types.emplace_back(v.getType());
 
   llvm::SmallVector<Type, 4> result_types(launch_op.getResultTypes());
 

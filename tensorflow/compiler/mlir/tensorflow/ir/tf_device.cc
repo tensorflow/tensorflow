@@ -184,11 +184,11 @@ void Print(ReplicateOp op, OpAsmPrinter* p) {
     *p << '(';
     Block& block = op.body().front();
     interleaveComma(block.getArguments(), *p, [&](BlockArgument arg) {
-      const int block_arg_num = arg->getArgNumber();
+      const int block_arg_num = arg.getArgNumber();
       *p << '[';
       p->printOperands(std::next(op.operand_begin(), block_arg_num * n),
                        std::next(op.operand_begin(), (block_arg_num + 1) * n));
-      *p << "] as " << *arg << ": " << arg->getType();
+      *p << "] as " << arg << ": " << arg.getType();
     });
     *p << ')';
   }
@@ -229,13 +229,13 @@ LogicalResult Verify(ReplicateOp op) {
 
   // Check replicated input types match block argument types.
   for (auto block_arg : block.getArguments()) {
-    Type block_arg_type = block_arg->getType();
-    for (int i = n * block_arg->getArgNumber(), e = i + n; i < e; ++i)
+    Type block_arg_type = block_arg.getType();
+    for (int i = n * block_arg.getArgNumber(), e = i + n; i < e; ++i)
       if (failed(VerifyCompatibleTypes(block_arg_type,
-                                       op.getOperand(i)->getType())))
+                                       op.getOperand(i).getType())))
         return op.emitOpError()
                << "incompatible types for operand " << i
-               << " and block argument " << block_arg->getArgNumber();
+               << " and block argument " << block_arg.getArgNumber();
   }
 
   Operation& terminator = block.back();
@@ -282,7 +282,7 @@ void BuildReplicateOp(
     DCHECK_EQ(llvm::size(replicated_input.first), n);
     for (auto input : replicated_input.first) {
       DCHECK(succeeded(
-          VerifyCompatibleTypes(input->getType(), replicated_input.second)));
+          VerifyCompatibleTypes(input.getType(), replicated_input.second)));
       state->addOperands(input);
     }
     block.addArgument(replicated_input.second);

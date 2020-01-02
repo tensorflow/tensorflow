@@ -79,7 +79,7 @@ void MaterializePassthroughOpPass::runOnFunction() {
     Block &block = body.front();
     for (const auto &arg_mapping :
          llvm::zip(block.getArguments(), op->getOperands())) {
-      std::get<0>(arg_mapping)->replaceAllUsesWith(std::get<1>(arg_mapping));
+      std::get<0>(arg_mapping).replaceAllUsesWith(std::get<1>(arg_mapping));
     }
     op->getBlock()->getOperations().splice(op->getIterator(),
                                            block.getOperations(), block.begin(),
@@ -87,7 +87,7 @@ void MaterializePassthroughOpPass::runOnFunction() {
     Operation &return_op = block.front();
     for (auto ret_mapping :
          llvm::zip(op->getResults(), return_op.getOperands())) {
-      std::get<0>(ret_mapping)->replaceAllUsesWith(std::get<1>(ret_mapping));
+      std::get<0>(ret_mapping).replaceAllUsesWith(std::get<1>(ret_mapping));
     }
     op->erase();
   });

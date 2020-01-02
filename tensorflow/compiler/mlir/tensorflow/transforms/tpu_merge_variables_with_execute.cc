@@ -135,23 +135,23 @@ VariableAccessesForTPUExecute BuildVariableAccessInfo(Operation* execute,
   // Find inputs that are variable reads.
   for (auto operand : llvm::enumerate(execute->getOpOperands())) {
     infos.new_operand_values.push_back(operand.value().get());
-    if (!operand.value().get()->getDefiningOp()) continue;
+    if (!operand.value().get().getDefiningOp()) continue;
     auto read_op = llvm::dyn_cast<TF::ReadVariableOp>(
-        operand.value().get()->getDefiningOp());
+        operand.value().get().getDefiningOp());
     if (!read_op) continue;
     auto resource = read_op.resource();
 
     if (check_device) {
-      if (auto resource_op = resource->getDefiningOp()) {
+      if (auto resource_op = resource.getDefiningOp()) {
         auto resource_attr = resource_op->getAttr(kDeviceAttr);
         // Check device matching for the node defining the resource.
         if (!resource_attr || resource_attr != device_attr) continue;
       } else {
-        auto resource_arg = resource->dyn_cast<BlockArgument>();
+        auto resource_arg = resource.dyn_cast<BlockArgument>();
         assert(resource_arg);
         // Check device matching for the argument defining the resource.
         auto resource_attr = func.getArgAttrOfType<mlir::StringAttr>(
-            resource_arg->getArgNumber(), kFuncDeviceAttr);
+            resource_arg.getArgNumber(), kFuncDeviceAttr);
         if (!resource_attr || resource_attr != device_attr) continue;
       }
     }
@@ -222,9 +222,8 @@ VariableAccessesForTPUExecute BuildVariableAccessInfo(Operation* execute,
   llvm::SmallVector<bool, 8> output_fused(execute->getNumResults(), false);
   for (int i = 0; i < execute->getNumResults(); ++i) {
     auto result = execute->getResult(i);
-    if (!result->hasOneUse()) continue;
-    auto assign_op =
-        llvm::dyn_cast<TF::AssignVariableOp>(*result->user_begin());
+    if (!result.hasOneUse()) continue;
+    auto assign_op = llvm::dyn_cast<TF::AssignVariableOp>(*result.user_begin());
     if (!assign_op) continue;
     auto resource = assign_op.resource();
     auto it = infos.per_resource_info.find(resource);
@@ -330,7 +329,7 @@ void MergeForOneTPUExecute(Operation* execute, bool check_device,
   // Replace the uses.
   for (int i = 0; i < infos.old_to_new_output_mapping.size(); ++i) {
     if (infos.old_to_new_output_mapping[i] < 0) continue;
-    execute->getResult(i)->replaceAllUsesWith(
+    execute->getResult(i).replaceAllUsesWith(
         merged_execute.getResult(infos.old_to_new_output_mapping[i]));
   }
   // Remove the assign ops.

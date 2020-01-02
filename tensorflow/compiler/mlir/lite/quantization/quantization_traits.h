@@ -70,7 +70,7 @@ class FixedResultUniformScale {
     QuantizedType GetResultQuantizedType(int index) {
       auto op = this->getOperation();
       auto result_type =
-          op->getResult(index)->getType().template cast<TensorType>();
+          op->getResult(index).getType().template cast<TensorType>();
       Builder builder(op->getContext());
       IntegerType storage_type = builder.getIntegerType(BitWidth);
       const double scale = static_cast<double>(ScaleMantissa) *

@@ -127,16 +127,16 @@ LogicalResult ComputeResourceDevicesInComputation(FuncOp func_op,
   OpBuilder builder(func_op);
   // Function arguments.
   for (auto arg : func_op.getArguments()) {
-    if (!mlir::getElementTypeOrSelf(arg->getType()).isa<TF::ResourceType>()) {
+    if (!mlir::getElementTypeOrSelf(arg.getType()).isa<TF::ResourceType>()) {
       continue;
     }
     auto device_attr = func_op.getArgAttrOfType<mlir::StringAttr>(
-        arg->getArgNumber(), kFuncDeviceAttr);
+        arg.getArgNumber(), kFuncDeviceAttr);
     if (!device_attr || device_attr.getValue() == "") {
       // If device_attr does not exist, try to construct it from any recorded
       // assignment.
       if (auto device = result->DeviceForResource(arg)) {
-        func_op.setArgAttr(arg->getArgNumber(), kFuncDeviceAttr,
+        func_op.setArgAttr(arg.getArgNumber(), kFuncDeviceAttr,
                            builder.getStringAttr(*device));
       }
       continue;
@@ -160,7 +160,7 @@ LogicalResult ComputeResourceDevicesInComputation(FuncOp func_op,
     }
     if (auto identity = llvm::dyn_cast<TF::IdentityOp>(op)) {
       // Try to construct IdentityOp's attribute from recorded assignment.
-      if (!mlir::getElementTypeOrSelf(identity.output()->getType())
+      if (!mlir::getElementTypeOrSelf(identity.output().getType())
                .isa<TF::ResourceType>()) {
         return WalkResult::advance();
       }
@@ -176,7 +176,7 @@ LogicalResult ComputeResourceDevicesInComputation(FuncOp func_op,
     // Propagate and record output device assignment for other ops based on
     // existing recording. E.g., IdentityN.
     for (auto output : op->getResults()) {
-      if (!mlir::getElementTypeOrSelf(output->getType())
+      if (!mlir::getElementTypeOrSelf(output.getType())
                .isa<TF::ResourceType>()) {
         continue;
       }
@@ -212,7 +212,7 @@ void ResourceDeviceInference::runOnModule() {
         for (auto operand_and_argument :
              llvm::zip(caller_operands, callee.getArguments())) {
           if (!mlir::getElementTypeOrSelf(
-                   std::get<0>(operand_and_argument)->getType())
+                   std::get<0>(operand_and_argument).getType())
                    .isa<TF::ResourceType>()) {
             continue;
           }

@@ -457,7 +457,7 @@ LogicalResult Rewrite(
   // the other ops that are intended to consume the compile result.
   Block* block = launch_func.getOperation()->getBlock();
   for (auto compile_result_op : block->getOps<TF::TPUCompilationResultOp>())
-    compile_result_op.output()->replaceAllUsesWith(compile_op->getResult(0));
+    compile_result_op.output().replaceAllUsesWith(compile_op->getResult(0));
 
   BuildTPUCompileSucceededAssertOp(compile_op, builder);
 

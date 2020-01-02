@@ -68,24 +68,24 @@ Optional<llvm::SmallVector<mlir::Type, 4>> InferShapeForFunctionReturnType(
   // Manually fold tf.Cast that precedes the return instruction and only differs
   // in shape refinement level.
   for (OpOperand& arg_op : return_op.getOperation()->getOpOperands()) {
-    Operation* arg_defining_op = arg_op.get()->getDefiningOp();
+    Operation* arg_defining_op = arg_op.get().getDefiningOp();
     if (auto cast_op = dyn_cast_or_null<CastOp>(arg_defining_op)) {
       // Shape inference should not change the element type.
       if (cast_op.SrcT() != cast_op.DstT()) continue;
       // We only refine the result shape if the result a dynamic shape, the
       // input has static shape, and the two shapes are compatible.
       auto has_static_shape = [](const Value value) {
-        auto shaped_type = value->getType().dyn_cast<ShapedType>();
+        auto shaped_type = value.getType().dyn_cast<ShapedType>();
         return shaped_type && shaped_type.hasStaticShape();
       };
       Value input = cast_op.x();
       Value result = cast_op.y();
       if (!has_static_shape(input) || has_static_shape(result) ||
-          failed(verifyCompatibleShape(input->getType(), result->getType())))
+          failed(verifyCompatibleShape(input.getType(), result.getType())))
         continue;
 
       arg_op.set(cast_op.x());
-      if (cast_op.y()->use_empty()) cast_op.erase();
+      if (cast_op.y().use_empty()) cast_op.erase();
     }
   }
 
@@ -111,7 +111,7 @@ bool InferShapeForSingleOperation(Operation* op, Dialect* tf_dialect,
   // This is necessary to avoid reprocessing the tf.Cast that are inserted at
   // the end of this function.
   if (isa<CastOp>(op) &&
-      llvm::all_of(op->getResult(0)->getUsers(), [&](Operation* user) {
+      llvm::all_of(op->getResult(0).getUsers(), [&](Operation* user) {
         return user->getDialect() != tf_dialect;
       })) {
     LLVM_DEBUG(llvm::dbgs() << "Skipping inference for tf.Cast with no TF "
@@ -178,7 +178,7 @@ bool InferShapeForSingleOperation(Operation* op, Dialect* tf_dialect,
       }
     }
 
-    Type operand_type = operand->getType();
+    Type operand_type = operand.getType();
     if (auto ranked_type = operand_type.dyn_cast<RankedTensorType>()) {
       // Convert the MLIR shape indices (int64_t) to TensorFlow indices (int64).
       ArrayRef<int64_t> shape = ranked_type.getShape();
@@ -215,7 +215,7 @@ bool InferShapeForSingleOperation(Operation* op, Dialect* tf_dialect,
   for (int output : llvm::seq<int>(0, c.num_outputs())) {
     // Skip already statically shaped results.
     Value result = op->getResult(output);
-    auto shaped_type = result->getType().dyn_cast<ShapedType>();
+    auto shaped_type = result.getType().dyn_cast<ShapedType>();
     if (!shaped_type || shaped_type.hasStaticShape()) continue;
 
     tensorflow::shape_inference::ShapeHandle shape_handle = c.output(output);
@@ -235,18 +235,18 @@ bool InferShapeForSingleOperation(Operation* op, Dialect* tf_dialect,
     auto get_cast_op = [&]() {
       if (!cast_op)
         cast_op =
-            builder.create<TF::CastOp>(op->getLoc(), result->getType(), result,
+            builder.create<TF::CastOp>(op->getLoc(), result.getType(), result,
                                        /*truncate=*/builder.getBoolAttr(false));
       return cast_op;
     };
-    for (OpOperand& use : llvm::make_early_inc_range(result->getUses())) {
+    for (OpOperand& use : llvm::make_early_inc_range(result.getUses())) {
       if (use.getOwner()->getDialect() != tf_dialect) use.set(get_cast_op());
     }
 
-    if (result->getType() == new_type) continue;
+    if (result.getType() == new_type) continue;
 
     // Finally we inferred the shape and replace the type for this result.
-    result->setType(new_type);
+    result.setType(new_type);
     changed = true;
   }
   if (changed)
@@ -284,7 +284,7 @@ LogicalResult RefineShapeForControlFlowFunc(FuncOp func,
                                  func.getContext()));
 
   for (auto arg_and_idx : llvm::enumerate(func.getArguments())) {
-    arg_and_idx.value()->setType(input_types[arg_and_idx.index()]);
+    arg_and_idx.value().setType(input_types[arg_and_idx.index()]);
   }
 
   auto res =
@@ -307,7 +307,7 @@ LogicalResult PropagateShapeToIfWhileOpFunctions(
   llvm::SmallVector<Type, 4> input_types;
   input_types.reserve(std::distance(op.input().begin(), op.input().end()));
   for (Value v : op.input()) {
-    input_types.push_back(v->getType());
+    input_types.push_back(v.getType());
   }
 
   ModuleOp module = op.template getParentOfType<ModuleOp>();
@@ -414,7 +414,7 @@ LogicalResult InferShapeForFunction(FuncOp func,
     auto new_arg_type = mlir::RankedTensorType::get(shape, element_type);
     if (new_arg_type != func_type.getInput(i)) {
       // If the new type is more detailed, trigger shape inference.
-      func.getArgument(i)->setType(new_arg_type);
+      func.getArgument(i).setType(new_arg_type);
       needs_refinement = true;
     }
     new_arg_types.push_back(new_arg_type);

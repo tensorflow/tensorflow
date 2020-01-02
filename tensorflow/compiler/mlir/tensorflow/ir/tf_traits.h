@@ -47,7 +47,7 @@ class OperandsSameAsResultsTypeOrRef
     LogicalResult shapeMatch = impl::verifySameOperandsAndResultShape(op);
     if (failed(shapeMatch)) return shapeMatch;
 
-    auto type = getElementTypeOrSelf(op->getResult(0)->getType());
+    auto type = getElementTypeOrSelf(op->getResult(0).getType());
 
     // Verify that the first result type is same as the rest of the results.
     // We skip the comparison against itself.

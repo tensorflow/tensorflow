@@ -70,9 +70,9 @@ StringRef GetDevice(Operation* op) {
 bool CanMergeIntoCluster(const Cluster& c, Operation* to_merge) {
   return llvm::all_of(to_merge->getOperands(), [&](Value operand) {
     // Block arguments.
-    if (operand->isa<BlockArgument>()) return true;
+    if (operand.isa<BlockArgument>()) return true;
 
-    Operation* defining_op = operand->getDefiningOp();
+    Operation* defining_op = operand.getDefiningOp();
 
     // Operand produced by other islands.
     if (defining_op->getBlock() != c.ops.front()->getBlock()) return true;
@@ -100,7 +100,7 @@ void ReplaceLiveOutExternalUses(llvm::ArrayRef<Value> live_outs,
   Region* launch_op_region = &launch_op.body();
   for (const auto& p : llvm::zip(live_outs, launch_op.getResults())) {
     Value from = std::get<0>(p);
-    for (auto& use : from->getUses()) {
+    for (auto& use : from.getUses()) {
       if (launch_op_region->isAncestor(use.getOwner()->getParentRegion()))
         continue;
       use.set(std::get<1>(p));
@@ -116,7 +116,7 @@ void GetLiveOuts(Region* region, llvm::SmallVectorImpl<Value>* live_outs) {
     for (Value v : op.getResults()) {
       // A value is live-out if any of its users are not inside value producer's
       // region.
-      bool is_live_out = llvm::any_of(v->getUsers(), [&](Operation* user) {
+      bool is_live_out = llvm::any_of(v.getUsers(), [&](Operation* user) {
         return !region->isAncestor(user->getParentRegion());
       });
 
@@ -158,7 +158,7 @@ void BuildLaunchForCluster(const Cluster& c, OpBuilder* builder) {
   llvm::SmallVector<Type, 4> live_out_types;
   live_out_types.reserve(live_outs.size());
   for (Value v : live_outs) {
-    live_out_types.emplace_back(v->getType());
+    live_out_types.emplace_back(v.getType());
   }
 
   tf_device::LaunchOp launch_op = builder->create<tf_device::LaunchOp>(
