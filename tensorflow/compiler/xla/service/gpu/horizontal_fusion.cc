@@ -50,6 +50,22 @@ size_t GetOutputSizeOfFusion(const HloInstruction& instr) {
   }
 }
 
+PrimitiveType GetUniqueOutputTypeOfFusion(const HloInstruction& instr) {
+  auto outputs = GetOutputsOfFusion(instr);
+  CHECK(!outputs.empty());
+  const HloInstruction* first_output = outputs[0];
+  PrimitiveType first_output_type = outputs[0]->shape().element_type();
+  for (size_t i = 1; i < outputs.size(); ++i) {
+    PrimitiveType cur_output_type = outputs[i]->shape().element_type();
+    CHECK(first_output_type == cur_output_type)
+        << "Output types are not unique, "
+        << PrimitiveType_Name(first_output_type) << " vs. "
+        << PrimitiveType_Name(cur_output_type);
+  }
+
+  return first_output_type;
+}
+
 class HorizontalFusionImpl {
  public:
   HorizontalFusionImpl(HloComputation* computation)
@@ -108,6 +124,7 @@ bool IsFusionSupported(const HloInstruction& instr) {
   // concatenate (inserted for horizontal fusion) requires the same type
   // for all of its operands.
   auto outputs = GetOutputsOfFusion(instr);
+  CHECK(!outputs.empty());
   const HloInstruction* first_output = outputs[0];
   for (size_t i = 1; i < outputs.size(); ++i) {
     if (first_output->shape().element_type() !=
@@ -234,12 +251,10 @@ void HorizontalFusionImpl::FusionCandidates::Initialize(
   std::sort(
       fusion_instrs_.begin(), fusion_instrs_.end(),
       [&](const HloInstruction* a, const HloInstruction* b) {
-        PrimitiveType output_type_a =
-            GetOutputsOfFusion(*a)[0]->shape().element_type();
-        PrimitiveType output_type_b =
-            GetOutputsOfFusion(*b)[0]->shape().element_type();
-        if (output_type_a != output_type_b) {
-          return output_type_a < output_type_b;
+        if (GetUniqueOutputTypeOfFusion(*a) !=
+            GetUniqueOutputTypeOfFusion(*b)) {
+          return GetUniqueOutputTypeOfFusion(*a) <
+                 GetUniqueOutputTypeOfFusion(*b);
         } else if (GetOutputSizeOfFusion(*a) != GetOutputSizeOfFusion(*b)) {
           return GetOutputSizeOfFusion(*a) < GetOutputSizeOfFusion(*b);
         } else {
@@ -280,10 +295,10 @@ HorizontalFusionImpl::FusionCandidates::GetNextSpanOfFusions() {
   size_t right = pos_ + 1;
   size_t first_output_size = GetOutputSizeOfFusion(*fusion_instrs_[left]);
   PrimitiveType first_output_type =
-      GetOutputsOfFusion(*fusion_instrs_[left])[0]->shape().element_type();
+      GetUniqueOutputTypeOfFusion(*fusion_instrs_[left]);
   for (; right < fusion_instrs_.size(); ++right) {
     PrimitiveType cur_output_type =
-        GetOutputsOfFusion(*fusion_instrs_[right])[0]->shape().element_type();
+        GetUniqueOutputTypeOfFusion(*fusion_instrs_[right]);
     if (first_output_type != cur_output_type) {
       // Cannot fuse computations who have multiple output types.
       break;
