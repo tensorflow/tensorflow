@@ -2189,13 +2189,15 @@ def deserialize_many_sparse(serialized_sparse, dtype, rank=None, name=None):
            v1=["sparse.sparse_dense_matmul", "sparse.matmul",
                "sparse_tensor_dense_matmul"])
 @deprecation.deprecated_endpoints("sparse_tensor_dense_matmul")
-def sparse_tensor_dense_matmul(mat_a,
-                               mat_b,
+def sparse_tensor_dense_matmul(sp_a,
+                               b,
                                adjoint_a=False,
                                adjoint_b=False,
                                name=None):
   # pylint: disable=line-too-long
-  """Multiply SparseTensor (of rank 2) "A" by dense matrix "B".
+  """Multiply SparseTensor (or dense Matrix) (of rank 2) "A" by dense matrix
+  (or SparseTensor) "B". Please note that one and only one of the inputs MUST
+  be a SparseTensor and the other MUST be a dense matrix.
 
   No validity checking is performed on the indices of `A`.  However, the
   following input format is recommended for optimal behavior:
@@ -2377,8 +2379,8 @@ def sparse_tensor_dense_matmul(mat_a,
   ```
 
   Args:
-    sp_a: SparseTensor A, of rank 2.
-    b: A dense Matrix with the same dtype as sp_a.
+    sp_a: SparseTensor (or dense Matrix) A, of rank 2.
+    b: dense Matrix (or SparseTensor) B, with the same dtype as sp_a.
     adjoint_a: Use the adjoint of A in the matrix multiply.  If A is complex,
       this is transpose(conj(A)).  Otherwise it's transpose(A).
     adjoint_b: Use the adjoint of B in the matrix multiply.  If B is complex,
@@ -2393,36 +2395,36 @@ def sparse_tensor_dense_matmul(mat_a,
   """
   # pylint: enable=line-too-long
 
-  if isinstance(mat_b, sparse_tensor.SparseTensor) \
-          or isinstance(mat_b, sparse_tensor.SparseTensorValue):
+  if isinstance(b, sparse_tensor.SparseTensor) \
+          or isinstance(b, sparse_tensor.SparseTensorValue):
 
     if adjoint_a == True and adjoint_b == False:
-      return array_ops.transpose(sparse_tensor_dense_matmul(mat_b, mat_a,
+      return array_ops.transpose(sparse_tensor_dense_matmul(b, sp_a,
                                                             adjoint_a=True,
                                                             adjoint_b=False))
     elif adjoint_a == False and adjoint_b == True:
-      return array_ops.transpose(sparse_tensor_dense_matmul(mat_b, mat_a,
+      return array_ops.transpose(sparse_tensor_dense_matmul(b, sp_a,
                                                             adjoint_a=False,
                                                             adjoint_b=True))
     elif adjoint_a == False and adjoint_b == False:
-      return array_ops.transpose(sparse_tensor_dense_matmul(mat_b, mat_a,
+      return array_ops.transpose(sparse_tensor_dense_matmul(b, sp_a,
                                                             adjoint_a=True,
                                                             adjoint_b=True))
     elif adjoint_a == True and adjoint_b == True:
-      return array_ops.transpose(sparse_tensor_dense_matmul(mat_b, mat_a,
+      return array_ops.transpose(sparse_tensor_dense_matmul(b, sp_a,
                                                             adjoint_a=False,
                                                             adjoint_b=False))
 
   else:
-    mat_a = _convert_to_sparse_tensor(mat_a)
+    sp_a = _convert_to_sparse_tensor(sp_a)
     with ops.name_scope(name, "SparseTensorDenseMatMul",
-                        [mat_a.indices, mat_a.values, mat_b]) as name:
-      mat_b = ops.convert_to_tensor(mat_b, name="b")
+                        [sp_a.indices, sp_a.values, b]) as name:
+      b = ops.convert_to_tensor(b, name="b")
       return gen_sparse_ops.sparse_tensor_dense_mat_mul(
-          a_indices=mat_a.indices,
-          a_values=mat_a.values,
-          a_shape=mat_a.dense_shape,
-          b=mat_b,
+          a_indices=sp_a.indices,
+          a_values=sp_a.values,
+          a_shape=sp_a.dense_shape,
+          b=b,
           adjoint_a=adjoint_a,
           adjoint_b=adjoint_b)
 
