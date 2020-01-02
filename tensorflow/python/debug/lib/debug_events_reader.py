@@ -26,9 +26,9 @@ import threading
 import six
 
 from tensorflow.core.protobuf import debug_event_pb2
-from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.lib.io import tf_record
 from tensorflow.python.util import compat
 
 
@@ -61,6 +61,8 @@ class DebugEventsReader(object):
     self._graph_execution_traces_path = compat.as_bytes(
         "%s.graph_execution_traces" % prefix)
     self._readers = dict()  # A map from file path to reader.
+    # A map from file path to current reading offset.
+    self._reader_offsets = dict()
     self._readers_lock = threading.Lock()
 
     self._offsets = dict()
@@ -85,36 +87,32 @@ class DebugEventsReader(object):
     Yields:
       A tuple of (offset, debug_event_proto) on each `next()` call.
     """
+    reader = self._get_reader(file_path)
+    while True:
+      current_offset = self._reader_offsets[file_path]
+      try:
+        record, self._reader_offsets[file_path] = reader.read(current_offset)
+      except (errors.DataLossError, IndexError):
+        # We ignore partial read exceptions, because a record may be truncated.
+        # The PyRandomRecordReader throws an `IndexError` when offset goes out
+        # of bound.
+        break
+      yield DebugEventWithOffset(
+          debug_event=debug_event_pb2.DebugEvent.FromString(record),
+          offset=current_offset)
+
+  def _get_reader(self, file_path):
+    """Get a random-access reader for TFRecords file at file_path."""
+    file_path = compat.as_bytes(file_path)
     # The following code uses the double-checked locking pattern to optimize
     # the common case (where the reader is already initialized).
     if file_path not in self._readers:  # 1st check, without lock.
       with self._readers_lock:
         if file_path not in self._readers:  # 2nd check, with lock.
-          with errors.raise_exception_on_not_ok_status() as status:
-            # TODO(b/136474806): Use tf_record.tf_record_iterator() once it
-            # supports offset.
-            self._readers[file_path] = pywrap_tensorflow.PyRecordReader_New(
-                compat.as_bytes(file_path), 0, b"", status)
-    reader = self._readers[file_path]
-    while True:
-      offset = reader.offset()
-      try:
-        reader.GetNext()
-      except (errors.DataLossError, errors.OutOfRangeError):
-        # We ignore partial read exceptions, because a record may be truncated.
-        # PyRecordReader holds the offset prior to the failed read, so retrying
-        # will succeed.
-        break
-      yield DebugEventWithOffset(
-          debug_event=debug_event_pb2.DebugEvent.FromString(reader.record()),
-          offset=offset)
-
-  def _create_offset_reader(self, file_path, offset):
-    with errors.raise_exception_on_not_ok_status() as status:
-      # TODO(b/136474806): Use tf_record.tf_record_iterator() once it
-      # supports ofset.
-      return pywrap_tensorflow.PyRecordReader_New(
-          file_path, offset, b"", status)
+          self._readers[file_path] = tf_record.tf_record_random_reader(
+              file_path)
+          self._reader_offsets[file_path] = 0
+    return self._readers[file_path]
 
   def metadata_iterator(self):
     return self._generic_iterator(self._metadata_path)
@@ -139,14 +137,10 @@ class DebugEventsReader(object):
 
     Raises:
       `errors.DataLossError` if offset is at a wrong location.
-      `errors.OutOfRangeError` if offset is out of range of the file.
+      `IndexError` if offset is out of range of the file.
     """
-    # TODO(cais): After switching to new Python wrapper of tfrecord reader,
-    # use seeking instead of repeated file opening. Same below.
-    reader = self._create_offset_reader(self._graphs_path, offset)
-    reader.GetNext()
-    debug_event = debug_event_pb2.DebugEvent.FromString(reader.record())
-    reader.Close()
+    debug_event = debug_event_pb2.DebugEvent.FromString(
+        self._get_reader(self._graphs_path).read(offset)[0])
     return debug_event
 
   def execution_iterator(self):
@@ -163,12 +157,10 @@ class DebugEventsReader(object):
 
     Raises:
       `errors.DataLossError` if offset is at a wrong location.
-      `errors.OutOfRangeError` if offset is out of range of the file.
+      `IndexError` if offset is out of range of the file.
     """
-    reader = self._create_offset_reader(self._execution_path, offset)
-    reader.GetNext()
-    debug_event = debug_event_pb2.DebugEvent.FromString(reader.record())
-    reader.Close()
+    debug_event = debug_event_pb2.DebugEvent.FromString(
+        self._get_reader(self._execution_path).read(offset)[0])
     return debug_event
 
   def graph_execution_traces_iterator(self):
@@ -185,18 +177,18 @@ class DebugEventsReader(object):
 
     Raises:
       `errors.DataLossError` if offset is at a wrong location.
-      `errors.OutOfRangeError` if offset is out of range of the file.
+      `IndexError` if offset is out of range of the file.
     """
-    reader = self._create_offset_reader(
-        self._graph_execution_traces_path, offset)
-    reader.GetNext()
-    debug_event = debug_event_pb2.DebugEvent.FromString(reader.record())
-    reader.Close()
+    debug_event = debug_event_pb2.DebugEvent.FromString(
+        self._get_reader(self._graph_execution_traces_path).read(offset)[0])
     return debug_event
 
   def close(self):
-    for reader in self._readers.values():
-      reader.Close()
+    with self._readers_lock:
+      file_paths = list(self._readers.keys())
+      for file_path in file_paths:
+        self._readers[file_path].close()
+        del self._readers[file_path]
 
 
 class BaseDigest(object):

@@ -120,6 +120,7 @@ py_library(
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework",
+        "//tensorflow/python:lib",
         "@six_archive//:six",
     ],
 )
