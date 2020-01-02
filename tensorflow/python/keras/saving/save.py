@@ -27,6 +27,7 @@ from tensorflow.python import tf2
 from tensorflow.python.keras.saving import hdf5_format
 from tensorflow.python.keras.saving.saved_model import load as saved_model_load
 from tensorflow.python.keras.saving.saved_model import save as saved_model_save
+from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.util.tf_export import keras_export
 
@@ -147,15 +148,16 @@ def load_model(filepath, custom_objects=None, compile=True):  # pylint: disable=
       ImportError: if loading from an hdf5 file and h5py is not available.
       IOError: In case of an invalid savefile.
   """
-  if (h5py is not None and (
-      isinstance(filepath, h5py.File) or h5py.is_hdf5(filepath))):
-    return hdf5_format.load_model_from_hdf5(filepath, custom_objects, compile)
+  with generic_utils.CustomObjectScope(custom_objects or {}):
+    if (h5py is not None and (
+        isinstance(filepath, h5py.File) or h5py.is_hdf5(filepath))):
+      return hdf5_format.load_model_from_hdf5(filepath, custom_objects, compile)
 
-  if sys.version >= '3.4' and isinstance(filepath, pathlib.Path):
-    filepath = str(filepath)
-  if isinstance(filepath, six.string_types):
-    loader_impl.parse_saved_model(filepath)
-    return saved_model_load.load(filepath, compile)
+    if sys.version >= '3.4' and isinstance(filepath, pathlib.Path):
+      filepath = str(filepath)
+    if isinstance(filepath, six.string_types):
+      loader_impl.parse_saved_model(filepath)
+      return saved_model_load.load(filepath, compile)
 
   raise IOError(
       'Unable to load model. Filepath is not an hdf5 file (or h5py is not '

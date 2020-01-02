@@ -2036,6 +2036,18 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "revive_test",
+    size = "medium",
+    srcs = ["saving/saved_model/revive_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+tf_py_test(
     name = "metrics_utils_test",
     size = "small",
     srcs = ["utils/metrics_utils_test.py"],
