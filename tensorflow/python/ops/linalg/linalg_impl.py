@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -537,10 +536,7 @@ def _tridiagonal_solve_compact_format(diagonals, rhs, transpose_rhs,
     rhs = math_ops.conj(rhs)
 
   check_num_lhs_matches_num_rhs()
-  result = linalg_ops.tridiagonal_solve(diagonals, rhs, partial_pivoting, name)
-  if transpose_rhs and not compat.forward_compatible(2019, 10, 18):
-    return array_ops.matrix_transpose(result)
-  return result
+  return linalg_ops.tridiagonal_solve(diagonals, rhs, partial_pivoting, name)
 
 
 @tf_export('linalg.tridiagonal_matmul')
