@@ -56,9 +56,6 @@ class ResultsWriter : public ImagenetModelEvaluator::Observer {
       shard_id_accuracy_metrics_map_;
   std::unordered_map<uint64_t, int> shard_id_done_image_count_map_;
 
-  // TODO(b/146988222): Refactor CSVWriter to take the memory ownership of
-  // 'output_stream_'.
-  std::unique_ptr<std::ofstream> output_stream_;
   std::unique_ptr<CSVWriter> writer_;
 
   // For logging to stdout.
