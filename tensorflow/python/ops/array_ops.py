@@ -43,6 +43,7 @@ from tensorflow.python.ops.gen_array_ops import reverse_v2 as reverse  # pylint:
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_decorator
 from tensorflow.python.util.tf_export import tf_export
 # pylint: enable=wildcard-import
 
@@ -2691,7 +2692,7 @@ def _tag_zeros_tensor(fun):
     tensor = fun(*args, **kwargs)
     tensor._is_zeros_tensor = True
     return tensor
-  return wrapped
+  return tf_decorator.make_decorator(fun, wrapped)
 
 
 @tf_export("zeros")
