@@ -5339,8 +5339,7 @@ inline void Slice(tflite::SliceParams& op_params,
           for (int in_x = op_params.begin[axis]; in_x < op_params.size[axis];
                in_x++) {
             int index = (in_x + curr_indices) * dim_mul + start_fin;
-            if (copy_len > 0)
-              writer->WriteN(index, copy_len);
+            if (copy_len > 0) writer->WriteN(index, copy_len);
           }
         } else {
           for (int in_x = op_params.begin[axis]; in_x < op_params.size[axis];
