@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/cl_command_queue.h"
 
+#include <map>
+#include <string>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
@@ -208,7 +210,8 @@ ProfilingInfo ProfilingCommandQueue::GetProfilingInfo() const {
   result.dispatches.resize(events_.size());
   for (int i = 0; i < events_.size(); ++i) {
     result.dispatches[i].label = events_[i].GetName();
-    result.dispatches[i].time_ns = events_[i].GetEventTimeNs();
+    result.dispatches[i].duration =
+        absl::Nanoseconds(events_[i].GetEventTimeNs());
   }
   return result;
 }
@@ -319,6 +322,42 @@ Status CreateProfilingCommandQueue(const CLDevice& device,
 
   *result = ProfilingCommandQueue(queue);
   return OkStatus();
+}
+
+absl::Duration ProfilingInfo::GetTotalTime() const {
+  absl::Duration total_time;
+  for (auto dispatch : dispatches) {
+    total_time += dispatch.duration;
+  }
+  return total_time;
+}
+
+std::string ProfilingInfo::GetDetailedReport() const {
+  std::string result;
+  std::map<std::string, double> timing;
+  result +=
+      "Per kernel timing(" + std::to_string(dispatches.size()) + " kernels):\n";
+  for (auto dispatch : dispatches) {
+    result += "  " + dispatch.label + " - " +
+              std::to_string(absl::ToDoubleMilliseconds(dispatch.duration)) +
+              "ms\n";
+    auto name = dispatch.label.substr(0, dispatch.label.find(" "));
+    if (timing.find(name) != timing.end()) {
+      timing[name] += absl::ToDoubleMilliseconds(dispatch.duration);
+    } else {
+      timing[name] = absl::ToDoubleMilliseconds(dispatch.duration);
+    }
+  }
+  result += "--------------------\n";
+  result += "Accumulated time per operation type:\n";
+  for (auto& t : timing) {
+    result += "  " + t.first + " - " + std::to_string(t.second) + "ms\n";
+  }
+  result += "--------------------\n";
+  result += "Ideal total time: " +
+            std::to_string(absl::ToDoubleMilliseconds(GetTotalTime())) + "\n";
+  result += "--------------------\n";
+  return result;
 }
 
 }  // namespace cl
