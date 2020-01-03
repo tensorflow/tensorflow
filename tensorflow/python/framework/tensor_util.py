@@ -790,6 +790,8 @@ def _ConstantValue(tensor, partial):
     return np.not_equal(value1, value2)
   elif tensor.op.type == "StopGradient":
     return constant_value(tensor.op.inputs[0], partial)
+  elif tensor.op.type == "Identity":
+    return constant_value(tensor.op.inputs[0], partial)
   else:
     return None
 

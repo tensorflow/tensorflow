@@ -979,6 +979,12 @@ class ConstantValueTest(test.TestCase):
     c_val = tensor_util.constant_value(tf_val)
     self.assertAllEqual(input_, c_val)
 
+  def testIdentity(self):
+    input_ = np.random.rand(4, 7)
+    tf_val = array_ops.identity(input_)
+    c_val = tensor_util.constant_value(tf_val)
+    self.assertAllEqual(input_, c_val)
+
   def testLiteral(self):
     x = "hi"
     self.assertIs(x, tensor_util.constant_value(x))
