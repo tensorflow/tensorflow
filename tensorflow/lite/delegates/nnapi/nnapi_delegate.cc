@@ -2185,27 +2185,18 @@ TfLiteStatus NNAPIDelegateKernel::Map(
     case kTfLiteBuiltinConv2d: {
       auto builtin =
           reinterpret_cast<TfLiteConvParams*>(mapping_args.node->builtin_data);
+      mapping_args.builder->AddScalarInt32Operand(builtin->padding);
+      mapping_args.builder->AddScalarInt32Operand(builtin->stride_width);
+      mapping_args.builder->AddScalarInt32Operand(builtin->stride_height);
+      mapping_args.builder->AddScalarInt32Operand(builtin->activation);
       // NNAPI supports dilated Conv2D since NNAPI 1.2.
       if (builtin->dilation_width_factor != 1 ||
           builtin->dilation_height_factor != 1) {
-        auto builtin = reinterpret_cast<TfLiteConvParams*>(
-            mapping_args.node->builtin_data);
-        mapping_args.builder->AddScalarInt32Operand(builtin->padding);
-        mapping_args.builder->AddScalarInt32Operand(builtin->stride_width);
-        mapping_args.builder->AddScalarInt32Operand(builtin->stride_height);
-        mapping_args.builder->AddScalarInt32Operand(builtin->activation);
         mapping_args.builder->AddScalarBoolOperand(false);  // Use NHWC format
         mapping_args.builder->AddScalarInt32Operand(
             builtin->dilation_width_factor);
         mapping_args.builder->AddScalarInt32Operand(
             builtin->dilation_height_factor);
-      } else {
-        auto builtin = reinterpret_cast<TfLiteConvParams*>(
-            mapping_args.node->builtin_data);
-        mapping_args.builder->AddScalarInt32Operand(builtin->padding);
-        mapping_args.builder->AddScalarInt32Operand(builtin->stride_width);
-        mapping_args.builder->AddScalarInt32Operand(builtin->stride_height);
-        mapping_args.builder->AddScalarInt32Operand(builtin->activation);
       }
       *nn_op_type = ANEURALNETWORKS_CONV_2D;
     } break;
