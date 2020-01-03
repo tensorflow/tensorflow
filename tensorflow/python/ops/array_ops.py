@@ -19,8 +19,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numbers
 import numpy as np
-import six
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import common_shapes
@@ -817,7 +817,7 @@ _SUPPORTED_SLICE_DTYPES = (dtypes.int32, dtypes.int32_ref, dtypes.int64,
 
 def _check_index(idx):
   """Check if a given value is a valid index into a tensor."""
-  if isinstance(idx, (six.integer_types, tensor_shape.Dimension)):
+  if isinstance(idx, (numbers.Integral, tensor_shape.Dimension)):
     return
 
   # Optimistic check. Assumptions:
@@ -1933,7 +1933,7 @@ def split(value, num_or_size_splits, axis=0, num=None, name="split"):
   """
   size_splits = ops.convert_to_tensor(num_or_size_splits)
   if isinstance(num_or_size_splits,
-                six.integer_types + (tensor_shape.Dimension,)):
+                (numbers.Integral, tensor_shape.Dimension)):
     return gen_array_ops.split(
         axis=axis, num_split=num_or_size_splits, value=value, name=name)
 
