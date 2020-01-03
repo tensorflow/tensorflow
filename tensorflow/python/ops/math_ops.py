@@ -338,10 +338,8 @@ def multiply(x, y, name=None):
   """Returns 'x' * 'y' element wise.
   
   For example:
-  
   >>> tf.math.multiply(34, 32) 
   <tf.Tensor: shape=(), dtype=int32, numpy=1088>
-  
   
   Args:
     'x': A 'Tensor'. Must be one of the following types: 
