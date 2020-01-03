@@ -291,6 +291,25 @@ static LogicalResult Verify(TupleOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// AllToAllOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(AllToAllOp op) {
+  // If operand is ranked, size of split dimension should be a multiple of split
+  // count.
+  auto type = op.getOperand().getType().dyn_cast<RankedTensorType>();
+  if (!type) return success();
+  auto split_dim_size = type.getDimSize(op.split_dimension().getSExtValue());
+  auto split_count = op.split_count().getSExtValue();
+  if (split_dim_size % split_count != 0) {
+    return op.emitError() << "split dimension has size " << split_dim_size
+                          << ", expected to be a multiple of split_count "
+                          << split_count;
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // BroadcastOp
 //===----------------------------------------------------------------------===//
 

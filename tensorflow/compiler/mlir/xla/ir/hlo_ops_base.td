@@ -669,6 +669,39 @@ class BASE_HLO_DynamicUpdateSliceOp {
 // XLA Other op definitions.
 //===----------------------------------------------------------------------===//
 
+class BASE_HLO_AllToAllOp {
+  string summary = "AllToAll";
+
+  string description = [{
+    AllToAll is a collective operation that sends data from all cores to all
+    cores. It has two phases:
+    - The scatter phase. On each core, the operand is split into `split_count`
+      number of blocks along the `split_dimensions`, and the blocks are
+      scattered to all cores, e.g., the i-th block is send to the i-th core.
+    - The gather phase. Each core concatenates the received blocks along the
+      `concat_dimension`.
+
+    The participating cores can be configured by:
+    - replica_groups: each ReplicaGroup contains a list of replica id
+      participating in the computation (replica id for the current replica can
+      be retrieved using ReplicaId op). AllToAll will be applied within
+      subgroups in the specified order. For example,
+      `replica_groups` = {{1,2,3}, {4,5,0}} means that an AllToAll will be applied
+      within replicas {1, 2, 3}, and in the gather phase, the received blocks
+      will be concatenated in the same order of 1, 2, 3. Then, another AllToAll
+      will be applied within replicas 4, 5, 0, and the concatenation order is
+      also 4, 5, 0. If `replica_groups` is empty, all replicas belong to one
+      group, in the concatenation order of their appearance.
+
+    Prerequisites:
+    - The dimension size of the operand on the split_dimension is divisible by
+      `split_count`.
+    - The operand's shape is not tuple.
+
+    See https://www.tensorflow.org/xla/operation_semantics#alltoall
+  }];
+}
+
 class BASE_HLO_BatchNormGradOp {
   string summary = "Batch Normalization Gradient";
 

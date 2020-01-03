@@ -508,6 +508,19 @@ def HLO_AllReduceOp : HLO_Op<"all_reduce",
   let hasCustomHLOConverter = 1;
 }
 
+def HLO_AllToAllOp : HLO_Op<"all_to_all",
+    [NoSideEffect, SameOperandsElementType, SameOperandsShape]>, BASE_HLO_AllToAllOp {
+
+  let arguments = (ins
+    HLO_Tensor:$operand,
+    I64Attr:$split_dimension,
+    I64Attr:$concat_dimension,
+    I64Attr:$split_count,
+    I64ElementsAttr:$replica_groups
+  );
+  let results = (outs HLO_Tensor);
+}
+
 def HLO_ReduceOp: HLO_Op<"reduce", [
       NoSideEffect,
       SameVariadicOperandSize,
