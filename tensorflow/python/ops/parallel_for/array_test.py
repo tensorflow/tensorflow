@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.compat import compat
 from tensorflow.python.eager import backprop
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -31,15 +30,6 @@ from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-im
 from tensorflow.python.ops.parallel_for import control_flow_ops as pfor_control_flow_ops
 from tensorflow.python.ops.parallel_for.test_util import PForTestCase
 from tensorflow.python.platform import test
-
-
-# LINT.IfChange
-matrix_diag_v3_forward_compat_date = (2019, 12, 6)
-# LINT.ThenChange(
-#   //tensorflow/compiler/tests/matrix_diag_ops_test.py,
-#   //tensorflow/python/kernel_tests/diag_op_test.py,
-#   //tensorflow/python/ops/array_ops.py
-# )
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -345,10 +335,8 @@ class ArrayTest(PForTestCase):
 
     def loop_fn(i):
       diagonal = array_ops.gather(x, i)
-      if compat.forward_compatible(*matrix_diag_v3_forward_compat_date):
-        return array_ops.matrix_diag(
-            diagonal, k=(0, 1), num_rows=4, num_cols=5, align="RIGHT_LEFT")
-      return array_ops.matrix_diag(diagonal)
+      return array_ops.matrix_diag(
+          diagonal, k=(0, 1), num_rows=4, num_cols=5, align="RIGHT_LEFT")
 
     self._test_loop_fn(loop_fn, 3)
 
@@ -357,10 +345,8 @@ class ArrayTest(PForTestCase):
 
     def loop_fn(i):
       input = array_ops.gather(x, i)  # pylint: disable=redefined-builtin
-      if compat.forward_compatible(*matrix_diag_v3_forward_compat_date):
-        return array_ops.matrix_diag_part(
-            input, k=(-2, 0), padding_value=3, align="RIGHT_LEFT")
-      return array_ops.matrix_diag_part(input)
+      return array_ops.matrix_diag_part(
+          input, k=(-2, 0), padding_value=3, align="RIGHT_LEFT")
 
     self._test_loop_fn(loop_fn, 3)
 
@@ -378,17 +364,16 @@ class ArrayTest(PForTestCase):
           array_ops.matrix_set_diag(matrix_i, diags[0, ...]),
       ]
 
-      if compat.forward_compatible(*matrix_diag_v3_forward_compat_date):
-        k = (-1, 1)
-        band_i = array_ops.gather(bands, i)
-        for align in ["RIGHT_LEFT", "LEFT_RIGHT"]:
-          results.extend([
-              array_ops.matrix_set_diag(matrix_i, band_i, k=k, align=align),
-              array_ops.matrix_set_diag(
-                  matrices[0, ...], band_i, k=k, align=align),
-              array_ops.matrix_set_diag(
-                  matrix_i, bands[0, ...], k=k, align=align)
-          ])
+      k = (-1, 1)
+      band_i = array_ops.gather(bands, i)
+      for align in ["RIGHT_LEFT", "LEFT_RIGHT"]:
+        results.extend([
+            array_ops.matrix_set_diag(matrix_i, band_i, k=k, align=align),
+            array_ops.matrix_set_diag(
+                matrices[0, ...], band_i, k=k, align=align),
+            array_ops.matrix_set_diag(
+                matrix_i, bands[0, ...], k=k, align=align)
+        ])
       return results
 
     self._test_loop_fn(loop_fn, 3)
