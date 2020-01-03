@@ -427,6 +427,33 @@ def TFL_TransposeConvOp:
   let verifier = [{ return Verify(*this); }];
 }
 
+def TFL_Convolution2DTransposeBiasOp :
+  Op<TFL_Dialect, "convolution_2d_transpose_bias", [NoSideEffect]> {
+  let summary = " Transpose convolution with bias operator";
+
+  let description = [{
+Performs transpose convolution operation on inputs,
+with the option of adding a bias.
+Note this is a custom op that is not supported in the standard runtime.
+
+    Inputs:
+      `inputs[0]`: required: the input activation tensor
+      `inputs[1]`: required: the filter weight tensor
+      `inputs[2]`: optional: the bias tensor
+  }];
+
+  let arguments = (
+    ins AnyTensor:$input,
+    AnyTensor:$filter,
+    TFL_TensorOfOrNone<[AnyType]>:$bias,
+    TFL_PaddingAttr:$padding,
+    I32Attr:$stride_h,
+    I32Attr:$stride_w
+  );
+
+  let results = (outs AnyTensor:$output);
+}
+
 def TFL_AveragePool2DOp:
     TFL_Op<"average_pool_2d", [NoSideEffect, SameOperandsAndResultsScale]> {
   let summary = "Average_pool_2d operator";
@@ -1425,6 +1452,63 @@ def TFL_MaxPool2DOp : TFL_Op<"max_pool_2d", [
   let hasOptions = 1;
 
   let customOption = "Pool2DOptions";
+}
+
+def TFL_MaxPoolingWithArgMax2DOp :
+    Op<TFL_Dialect, "max_pooling_with_argmax_2d", [NoSideEffect]> {
+  let summary = "Max Pool 2D with argmax op";
+
+  let description = [{
+    Performs max pooling on the input and outputs both max values and indices.
+    Each index is a flatten index in a sub-array of "filter_w" x "filter_h" size
+    Note this is a custom op that is not supported in the standard runtime.
+
+    Inputs:
+      `inputs[0]`: required: the input activation tensor
+  }];
+
+  let arguments = (
+    ins AnyTensor:$input,
+    TFL_PaddingAttr:$padding,
+    I32Attr:$stride_w,
+    I32Attr:$stride_h,
+    I32Attr:$filter_w,
+    I32Attr:$filter_h
+  );
+
+  let results = (outs
+    AnyTensor:$value,
+    AnyTensor:$indices
+  );
+}
+
+def TFL_MaxUnpooling2DOp :
+    Op<TFL_Dialect, "max_unpooling_2d", [NoSideEffect]> {
+  let summary = "Max Unpool 2D";
+
+  let description = [{
+    Performs max unpool operation.
+    To some extent this is the reverse operation of max pooling:
+    the elements in the input activation tensor is stored into the position
+    specified by the input indices.
+    Note this is a custom op that is not supported in the standard runtime.
+
+    Inputs:
+      `inputs[0]`: required: the input activation tensor
+      `inputs[1]`: required: the input indices
+  }];
+
+  let arguments = (
+    ins AnyTensor:$input,
+    AnyTensor:$indices,
+    TFL_PaddingAttr:$padding,
+    I32Attr:$stride_w,
+    I32Attr:$stride_h,
+    I32Attr:$filter_w,
+    I32Attr:$filter_h
+  );
+
+  let results = (outs AnyTensor:$outputs);
 }
 
 def TFL_MaximumOp : TFL_Op<"maximum", [
