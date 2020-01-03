@@ -448,6 +448,7 @@ cc_library(
     deps = [
         ":gpu_operation",
         ":util",
+        ":work_group_picking",
         "//tensorflow/lite/delegates/gpu/cl:buffer",
         "//tensorflow/lite/delegates/gpu/cl:linear_storage",
         "//tensorflow/lite/delegates/gpu/cl:precision",
