@@ -26,6 +26,7 @@ py_library(
         "conditional_expressions.py",
         "continue_statements.py",
         "control_flow.py",
+        "control_flow_deprecated_py2.py",
         "directives.py",
         "function_scopes.py",
         "list_comprehensions.py",

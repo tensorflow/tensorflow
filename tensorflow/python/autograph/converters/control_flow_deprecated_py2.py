@@ -12,7 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Handles control flow statements: while, for, if."""
+"""Handles control flow statements: while, for, if.
+
+Python 2 compatibility version. Not maintained.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -27,7 +30,6 @@ from tensorflow.python.autograph.pyct import ast_util
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.pyct import templates
 from tensorflow.python.autograph.pyct.static_analysis import annos
-from tensorflow.python.autograph.utils import compat_util
 
 
 # TODO(mdan): Refactor functions to make them smaller.
@@ -605,6 +607,3 @@ class ControlFlowTransformer(converter.Base):
 def transform(node, ctx):
   node = ControlFlowTransformer(ctx).visit(node)
   return node
-
-
-compat_util.deprecated_py2_support(__name__)

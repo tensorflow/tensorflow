@@ -14,6 +14,8 @@
 # ==============================================================================
 """Control flow statements: loops, conditionals, etc.
 
+Python 2 compatibility version. Not maintained.
+
 Note: most of these operators accept pairs of get_state/set_state functions, to
 capture mutations that the corresponding code blocks might make. These
 mutations only need to be captured when staging the control flow, and they just
@@ -66,7 +68,6 @@ import numpy as np
 from tensorflow.python.autograph.operators import py_builtins
 from tensorflow.python.autograph.operators import special_values
 from tensorflow.python.autograph.utils import ag_logging
-from tensorflow.python.autograph.utils import compat_util
 from tensorflow.python.autograph.utils import misc
 from tensorflow.python.autograph.utils import tensors
 from tensorflow.python.data.experimental.ops import scan_ops
@@ -1134,6 +1135,3 @@ def _wrap_disallow_undefs_from_cond(func, branch_name):
 def _py_if_stmt(cond, body, orelse):
   """Overload of if_stmt that executes a Python if statement."""
   return body() if cond else orelse()
-
-
-compat_util.deprecated_py2_support(__name__)
