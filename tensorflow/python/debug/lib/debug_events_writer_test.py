@@ -21,12 +21,14 @@ from __future__ import print_function
 import glob
 import os
 import threading
+import time
 
 from tensorflow.core.protobuf import debug_event_pb2
 from tensorflow.python.debug.lib import debug_events_reader
 from tensorflow.python.debug.lib import debug_events_writer
 from tensorflow.python.debug.lib import dumping_callback_test_lib
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import versions
 from tensorflow.python.platform import googletest
 
 
@@ -191,6 +193,15 @@ class DebugEventsWriterTest(dumping_callback_test_lib.DumpingCallbackTestBase):
                    for item in reader.graphs_iterator())
     graph_op_names = sorted([actual.op_name for actual in actuals])
     self.assertEqual(graph_op_names, ["Op0", "Op1", "Op2"])
+
+  def testWriteAndReadMetadata(self):
+    t0 = time.time()
+    writer = debug_events_writer.DebugEventsWriter(self.dump_root)
+    writer.Close()
+    with debug_events_reader.DebugDataReader(self.dump_root) as reader:
+      self.assertIsInstance(reader.starting_wall_time(), float)
+      self.assertGreaterEqual(reader.starting_wall_time(), t0)
+      self.assertEqual(reader.tensorflow_version(), versions.__version__)
 
   def testWriteExecutionEventsWithCircularBuffer(self):
     writer = debug_events_writer.DebugEventsWriter(self.dump_root)

@@ -632,6 +632,8 @@ class DebugDataReader(object):
 
   def __init__(self, dump_root):
     self._reader = DebugEventsReader(dump_root)
+    self._load_metadata()
+
     # TODO(cais): Implement pagination for memory constraints.
     self._execution_digests = []
 
@@ -651,15 +653,12 @@ class DebugDataReader(object):
     # TODO(cais): Implement pagination for memory constraints.
     self._graph_execution_trace_digests = []
 
-    # The following timestamps keep track where we've reached in each
-    # file of the DebugEvent source file, so that we don't run into race
-    # conditions with the writer.
-    self._source_files_timestamp = 0
-    # Temporary object used to hold DebugEvent protos with stack_frames
-    # field that has been read beyond max_wall_time.
-    # self._last_successful_stack_frames_offset = -1  # TODO(cais): Fix.
+  def _load_metadata(self):
+    metadata_iter = self._reader.metadata_iterator()
+    debug_event = next(metadata_iter).debug_event
+    self._starting_wall_time = debug_event.wall_time
+    self._tensorflow_version = debug_event.debug_metadata.tensorflow_version
 
-  # TODO(cais): Read metadata.
   def _load_source_files(self):
     """Incrementally read the .source_files DebugEvent file."""
     source_files_iter = self._reader.source_files_iterator()
@@ -667,7 +666,6 @@ class DebugDataReader(object):
       source_file = debug_event.source_file
       self._host_name_file_path_to_offset[
           (source_file.host_name, source_file.file_path)] = offset
-      self._source_file_timestamp = debug_event.wall_time
 
   def _load_stack_frames(self):
     """Incrementally read the .stack_frames file.
@@ -788,6 +786,25 @@ class DebugDataReader(object):
     """
     offset = self._host_name_file_path_to_offset[(host_name, file_path)]
     return list(self._reader.read_source_files_event(offset).source_file.lines)
+
+  def starting_wall_time(self):
+    """Wall timestamp for when the debugged TensorFlow program started.
+
+    Returns:
+      Stating wall time as seconds since the epoch, as a `float`.
+    """
+    return self._starting_wall_time
+
+  def tensorflow_version(self):
+    """TensorFlow version used in the debugged TensorFlow program.
+
+    Note: this is not necessarily the same as the version of TensorFlow used to
+    load the DebugEvent file set.
+
+    Returns:
+      TensorFlow version used by the debugged program, as a `str`.
+    """
+    return self._tensorflow_version
 
   def outermost_graphs(self):
     """Get the number of outer most graphs read so far."""
