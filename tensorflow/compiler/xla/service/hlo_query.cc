@@ -133,5 +133,17 @@ bool ContainsLayoutConstrainedAllReduce(const HloModule& module) {
   return false;
 }
 
+int64 NextChannelId(const HloModule& module) {
+  int64 next_channel_id = 1;
+  for (const HloComputation* comp : module.computations()) {
+    for (const HloInstruction* hlo : comp->instructions()) {
+      if (DynCast<HloChannelInstruction>(hlo)) {
+        next_channel_id = std::max(next_channel_id, *hlo->channel_id() + 1);
+      }
+    }
+  }
+  return next_channel_id;
+}
+
 }  // namespace hlo_query
 }  // namespace xla

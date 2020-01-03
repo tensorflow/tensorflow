@@ -1317,37 +1317,24 @@ Status VerifyLayoutConstrainedAllReduce(const HloModule& module) {
   return Status::OK();
 }
 
-// Checks various invariants of send and recv instructions.
-Status VerifySendsAndRecvs(const HloModule& module) {
-  absl::flat_hash_map<int64, const HloInstruction*> host_channels;
-  // Host send/recv instructions must have their own unique channel.
-  auto check_unique_host_channel = [&](const HloInstruction* instruction) {
-    const HloSendRecvInstruction* sendrecv =
-        DynCast<const HloSendRecvInstruction>(instruction);
-    if (sendrecv->is_host_transfer()) {
-      auto it_inserted =
-          host_channels.insert({*sendrecv->channel_id(), sendrecv});
-      if (!it_inserted.second) {
-        return FailedPrecondition(
-            "Channel %d is used for multiple host send/recv instructions: "
-            "%s "
-            "and "
-            "%s",
-            *sendrecv->channel_id(), sendrecv->ToString(),
-            it_inserted.first->second->ToString());
-      }
-    }
-
-    return Status::OK();
-  };
+// Checks various invariants of channel instructions (send/recv and
+// collectives).
+Status VerifyChannels(const HloModule& module) {
+  absl::flat_hash_map<int64, std::vector<const HloInstruction*>>
+      channel_instructions;
 
   // Send/Recv instruction must have a single user: the corresponding
   // SendDone/RecvDone. with matching channel.
   for (const HloComputation* computation : module.computations()) {
     for (const HloInstruction* instruction : computation->instructions()) {
+      auto channel_instr = DynCast<HloChannelInstruction>(instruction);
+      if (!channel_instr || !channel_instr->channel_id()) {
+        continue;
+      }
+      channel_instructions[*channel_instr->channel_id()].push_back(instruction);
+
       switch (instruction->opcode()) {
         case HloOpcode::kSend: {
-          TF_RETURN_IF_ERROR(check_unique_host_channel(instruction));
           TF_RET_CHECK(instruction->users().size() == 1);
           const HloInstruction* send_done = instruction->users().front();
           TF_RET_CHECK(send_done->opcode() == HloOpcode::kSendDone);
@@ -1356,7 +1343,6 @@ Status VerifySendsAndRecvs(const HloModule& module) {
           break;
         }
         case HloOpcode::kRecv: {
-          TF_RETURN_IF_ERROR(check_unique_host_channel(instruction));
           TF_RET_CHECK(instruction->users().size() == 1);
           const HloInstruction* recv_done = instruction->users().front();
           TF_RET_CHECK(recv_done->opcode() == HloOpcode::kRecvDone);
@@ -1377,6 +1363,39 @@ Status VerifySendsAndRecvs(const HloModule& module) {
       }
     }
   }
+
+  // Iterate over each channel to check invariants.
+  for (auto& pair : channel_instructions) {
+    auto& instructions = pair.second;
+    const HloInstruction* first = instructions[0];
+    auto sendrecv = DynCast<HloSendRecvInstruction>(first);
+    if (sendrecv) {
+      absl::flat_hash_set<HloOpcode> opcodes;
+      for (const HloInstruction* instr : instructions) {
+        opcodes.insert(instr->opcode());
+        auto cast = DynCast<HloSendRecvInstruction>(instr);
+        TF_RET_CHECK(cast != nullptr)
+            << "channel " << pair.first
+            << " is used for different types of channel instructions";
+      }
+      if (sendrecv->is_host_transfer()) {
+        TF_RET_CHECK(instructions.size() == 2)
+            << "channel " << pair.first
+            << " is used for multiple host send/recv instructions";
+      } else {
+        TF_RET_CHECK(instructions.size() == opcodes.size())
+            << "channel " << pair.first
+            << " is used for multiple send/recv instructions";
+      }
+    } else {
+      for (const HloInstruction* instr : instructions) {
+        TF_RET_CHECK(first->opcode() == instr->opcode())
+            << "channel " << pair.first
+            << " is used for different types of channel instructions";
+      }
+    }
+  }
+
   return Status::OK();
 }
 
@@ -1680,7 +1699,7 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
 
   TF_RETURN_IF_ERROR(VerifyHloStructure(module));
   TF_RETURN_IF_ERROR(VerifyAsynchronousCopies(*module));
-  TF_RETURN_IF_ERROR(VerifySendsAndRecvs(*module));
+  TF_RETURN_IF_ERROR(VerifyChannels(*module));
 
   std::unique_ptr<ShapeVerifier> shape_verifier =
       target_metadata_->GetVerifier();
