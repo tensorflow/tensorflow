@@ -37,18 +37,19 @@ class FlatMapDatasetParams : public DatasetParams {
         func_lib_(std::move(func_lib)),
         type_arguments_(std::move(type_arguments)) {
     input_dataset_params_.push_back(absl::make_unique<T>(input_dataset_params));
-    iterator_prefix_ = name_utils::IteratorPrefix(
-        input_dataset_params.op_name(), input_dataset_params.iterator_prefix());
+    iterator_prefix_ =
+        name_utils::IteratorPrefix(input_dataset_params.dataset_type(),
+                                   input_dataset_params.iterator_prefix());
   }
 
   std::vector<Tensor> GetInputTensors() const override {
     return other_arguments_;
   }
 
-  Status GetInputNames(std::vector<string>* input_placeholder) const override {
-    input_placeholder->emplace_back(FlatMapDatasetOp::kInputDataset);
+  Status GetInputNames(std::vector<string>* input_names) const override {
+    input_names->emplace_back(FlatMapDatasetOp::kInputDataset);
     for (int i = 0; i < other_arguments_.size(); ++i) {
-      input_placeholder->emplace_back(
+      input_names->emplace_back(
           absl::StrCat(FlatMapDatasetOp::kOtherArguments, "_", i));
     }
     return Status::OK();
@@ -62,7 +63,9 @@ class FlatMapDatasetParams : public DatasetParams {
     return Status::OK();
   }
 
-  string op_name() const override { return FlatMapDatasetOp::kDatasetType; }
+  string dataset_type() const override {
+    return FlatMapDatasetOp::kDatasetType;
+  }
 
   std::vector<FunctionDef> func_lib() const override { return func_lib_; }
 
@@ -73,7 +76,7 @@ class FlatMapDatasetParams : public DatasetParams {
   DataTypeVector type_arguments_;
 };
 
-class FlatMapDatasetOpTest : public DatasetOpsTestBaseV2 {};
+class FlatMapDatasetOpTest : public DatasetOpsTestBase {};
 
 // Test case 1: normal case.
 FlatMapDatasetParams FlatMapDatasetParams1() {

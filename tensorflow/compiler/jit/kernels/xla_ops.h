@@ -175,6 +175,13 @@ class XlaRunOp : public OpKernel {
   const XlaPlatformInfo platform_info_;
 };
 
+class XlaMergeOp : public OpKernel {
+ public:
+  explicit XlaMergeOp(OpKernelConstruction* ctx);
+
+  void Compute(OpKernelContext* ctx) override;
+};
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_JIT_KERNELS_XLA_LAUNCH_OP_H_

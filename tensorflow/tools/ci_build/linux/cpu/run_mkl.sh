@@ -17,7 +17,14 @@
 
 set -e
 set -x
-MODE=${1:-"mkl"}
+MODE=${MODE:-"mkl"}
+OMP_NUM_THREADS=${OMP_NUM_THREADS:-""}
+
+echo ""
+echo "MODE:${MODE}"
+echo "OMP_NUM_THREADS:${OMP_NUM_THREADS}"
+echo ""
+
 
 N_JOBS=$(grep -c ^processor /proc/cpuinfo)
 
@@ -39,10 +46,10 @@ else
 #   Optimal thread count is case specific. 
 #   An argument can be passed to script, the value of which is used if given.
 #   Otherwise OMP_NUM_THREADS is set to 10
-    if [[ -z $1 ]]; then
+    if [[ -z $OMP_NUM_THREADS ]]; then
         OMPTHREADS="--action_env=OMP_NUM_THREADS=10"
     else 
-        OMPTHREADS="--action_env=OMP_NUM_THREADS=$1"
+        OMPTHREADS="--action_env=OMP_NUM_THREADS=$OMP_NUM_THREADS"
     fi
 fi
 

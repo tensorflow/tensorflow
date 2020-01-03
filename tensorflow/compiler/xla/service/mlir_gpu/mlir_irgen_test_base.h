@@ -71,6 +71,8 @@ class MlirIrGenTestBase : public CodegenTestBase {
   void PatternMatch(const string& str, const string& pattern);
   string CompileIr(std::unique_ptr<HloModule> hlo_module,
                    LoweringStage printing_stage);
+  MlirCompiler::IRHook getIRHookBreakingLoweringStage(
+      LoweringStage breaking_stage);
   MlirCompiler* GetMLIRCompiler();
 };
 

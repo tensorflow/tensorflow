@@ -408,7 +408,18 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
   for (size_t i = 1; i < arg_shapes.size(); ++i) {
     new_dimensions[dimension] += arg_shapes[i]->dimensions(dimension);
   }
-  return ShapeUtil::MakeShape(element_type, new_dimensions);
+
+  Shape result = ShapeUtil::MakeShape(element_type, new_dimensions);
+
+  // Set dynamic dimensions if any input has dynamic dimension.
+  for (const Shape* shape : arg_shapes) {
+    for (int64 i = 0; i < shape->dimensions_size(); ++i) {
+      if (shape->is_dynamic_dimension(i)) {
+        result.set_dynamic_dimension(i, true);
+      }
+    }
+  }
+  return result;
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferConvertShape(
@@ -928,8 +939,10 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     absl::Span<const int64> broadcast_dimensions) {
   VLOG(2) << StrFormat(
       "inferring shape for <%s>(%s, %s) with broadcast_dimensions={%s}",
-      HloOpcodeString(opcode), ShapeUtil::HumanString(lhs),
-      ShapeUtil::HumanString(rhs), StrJoin(broadcast_dimensions, ", "));
+      HloOpcodeString(opcode), ShapeUtil::HumanStringWithLayout(lhs),
+      ShapeUtil::HumanStringWithLayout(rhs),
+      StrJoin(broadcast_dimensions, ", "));
+
   TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(lhs));
   TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(rhs));
 
@@ -1718,7 +1731,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   const int64 kernel_output_features =
       rhs.dimensions(dnums.kernel_output_feature_dimension());
 
-  if (batch_group_count > 1 && kernel_output_features != batch_group_count) {
+  if (batch_group_count > 1 &&
+      kernel_output_features % batch_group_count != 0) {
     return InvalidArgument(
         "Expected output feature dimension size (value %d) to be equal to "
         "batch group count %d; got <conv>(%s, %s)\n"
@@ -1757,7 +1771,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
         dnums.DebugString());
   }
 
-  if (input_batch % batch_group_count > 0) {
+  if (input_batch % batch_group_count != 0) {
     return InvalidArgument(
         "Expected input batch dimension (value %d) to be divisible by "
         "batch_group_count (value %d); "
@@ -1791,6 +1805,13 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   std::vector<int64> dimensions(num_dims);
   dimensions[dnums.output_batch_dimension()] = input_batch / batch_group_count;
   dimensions[dnums.output_feature_dimension()] = kernel_output_features;
+
+  if (batch_group_count > 1) {
+    dimensions[dnums.output_batch_dimension()] =
+        kernel_output_features / batch_group_count;
+    dimensions[dnums.output_feature_dimension()] = batch_group_count;
+  }
+
   for (int i = 0; i < num_spatial_dims; ++i) {
     dimensions[dnums.output_spatial_dimensions(i)] =
         window_output_shape.dimensions(i);
@@ -2354,6 +2375,10 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 
   std::vector<bool> is_dynamic(arg.rank());
   for (int64 i = 0; i < arg.dimensions_size(); ++i) {
+    // Slicing 1 out of a dynamic dimension eliminates the dynamic dimension.
+    if (sizes[i] == 1) {
+      continue;
+    }
     is_dynamic[i] = arg.is_dynamic_dimension(i);
   }
 
@@ -2876,7 +2901,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     // Calculate output dynamic reshape dimension.
     int64 output_dynamic_dimension = -1;
 
-    if (operand.dimensions(input_dim) == 1) {
+    if (operand.dimensions(input_dim) == 1 && !new_sizes.empty()) {
       // If dynamic dimension is size 1, it can only be most-major or
       // most-minor.
       if (input_dim == 0) {

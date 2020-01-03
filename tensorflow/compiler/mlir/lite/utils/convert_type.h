@@ -16,11 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_UTILS_CONVERT_TYPE_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_UTILS_CONVERT_TYPE_H_
 
-#include "mlir/IR/Types.h"  // TF:local_config_mlir
+#include "mlir/IR/Types.h"  // TF:llvm-project
+#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace mlir {
+
 class Builder;
 }
 
@@ -31,6 +33,9 @@ mlir::Type ConvertElementType(tflite::TensorType type, mlir::Builder builder);
 // Convert the scalar type of a TFLite tensor to the corresponding
 // Tensorflow type
 tensorflow::DataType TflTypeToTfType(tflite::TensorType type);
+
+// Convert the Tensorflow scalar type to the corresponding TFLite type
+xla::StatusOr<tflite::TensorType> TfTypeToTflType(tensorflow::DataType type);
 
 }  // namespace tflite
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_UTILS_CONVERT_TYPE_H_

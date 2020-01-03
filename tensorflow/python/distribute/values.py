@@ -21,7 +21,6 @@ from __future__ import print_function
 import collections
 import contextlib
 import weakref
-import six
 
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
@@ -44,301 +43,54 @@ from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
 
 
-def _devices_match(d1, d2):
-  return device_util.canonicalize(d1) == device_util.canonicalize(d2)
-
-
-class DeviceMap(object):
-  """A mapping of replicas & logical device ids to devices."""
-
-  @property
-  def all_devices(self):
-    """Returns a tuple of strings with all devices in this DeviceMap."""
-    raise NotImplementedError("Required for DeviceMap implementations.")
-
-  @property
-  def devices_by_replica(self):
-    """Returns a tuple `t` where `t[replica]` is the devices for `replica`."""
-    raise NotImplementedError("Required for DeviceMap implementations.")
-
-  @property
-  def num_logical_devices(self):
-    """Count of the number of devices each replica may be defined across."""
-    raise NotImplementedError("Required for DeviceMap implementations.")
-
-  @property
-  def num_replicas_in_graph(self):
-    """Number of replicas defined in this graph."""
-    raise NotImplementedError("Required for DeviceMap implementations.")
-
-  def logical_device_from_values(self, values):
-    """Returns the logical device index `values` is on."""
-    raise NotImplementedError("Required for DeviceMap implementations.")
-
-  def logical_to_actual_devices(self, logical_device_id):
-    """Returns sequence of `num_replicas_in_graph` devices."""
-    raise NotImplementedError("Required for DeviceMap implementations.")
-
-  def select_for_current_replica(self, values, replica_context):
-    """Select the element of `values` for the current replica."""
-    raise NotImplementedError("Required for DeviceMap implementations.")
-
-  def replica_for_device(self, device):
-    """Return the replica id containing `device`."""
-    raise NotImplementedError("Required for DeviceMap implementations.")
-
-  def select_for_device(self, values, device):
-    """Select the element of `values` to access from `device`."""
-    raise NotImplementedError("Required for DeviceMap implementations.")
-
-  def is_device_in_replica(self, device, replica_id):
-    """Returns whether `device` is a member of replica `replica_id`."""
-    raise NotImplementedError("Required for DeviceMap implementations.")
-
-
-class SingleDeviceMap(DeviceMap):
-  """A device map for 1 non-computation device.
-
-  Use `SingleDeviceMap` when the device does not correspond to some replica of
-  the computation. For computation devices, use `ReplicaDeviceMap` below (even
-  if there is only a single device in the map).
-  """
-
-  def __init__(self, device):
-    """Initialize a `SingleDeviceMap`.
-
-    Args:
-      device: A string device.
-    """
-    assert isinstance(device, six.string_types)
-    self._device = device_util.canonicalize(device)
-    self._devices = (self._device,)
-
-  @property
-  def all_devices(self):
-    return self._devices
-
-  @property
-  def devices_by_replica(self):
-    raise ValueError("SingleDeviceMap not indexed by replicas")
-
-  @property
-  def num_logical_devices(self):
-    return 1
-
-  @property
-  def num_replicas_in_graph(self):
-    return 1
-
-  def logical_device_from_values(self, values):
-    del values
-    return 0
-
-  def logical_to_actual_devices(self, logical_device_id):
-    assert logical_device_id == 0
-    return self._devices
-
-  def select_for_current_replica(self, values, replica_context):
-    assert len(values) == 1
-    del replica_context
-    return values[0]
-
-  def replica_for_device(self, device):
-    raise ValueError("SingleDeviceMap not indexed by replicas")
-
-  def select_for_device(self, values, device):
-    assert len(values) == 1
-    if self._device != device:
-      raise ValueError("Device %s not found in %s (current device %s)" %
-                       (device, self._devices, device_util.current()))
-    return values[0]
-
-  def is_device_in_replica(self, device, replica_id):
-    raise ValueError("SingleDeviceMap not indexed by replicas")
-
-  def __repr__(self):
-    return "%s(%r)" % (self.__class__.__name__, self._device)
-
-
-class ReplicaDeviceMap(DeviceMap):
-  """A device map for 1 device per replica."""
-
-  def __init__(self, devices):
-    """Initialize a `ReplicaDeviceMap`.
-
-    Args:
-      devices: `devices[i]` is the string device for replica `i`.
-    """
-    self._devices = tuple(device_util.canonicalize(d) for d in devices)
-    if len(set(self._devices)) != len(self._devices):
-      raise ValueError("Duplicate devices in %s, after canonicalization: %s" %
-                       (devices, self._devices))
-    self._device_to_replica = {d: r for r, d in enumerate(self._devices)}
-
-  @property
-  def all_devices(self):
-    return self._devices
-
-  @property
-  def devices_by_replica(self):
-    return ((d,) for d in self._devices)
-
-  @property
-  def num_logical_devices(self):
-    return 1
-
-  @property
-  def num_replicas_in_graph(self):
-    return len(self._devices)
-
-  def logical_device_from_values(self, values):
-    del values
-    return 0
-
-  def logical_to_actual_devices(self, logical_device_id):
-    assert logical_device_id == 0
-    return self._devices
-
-  def select_for_current_replica(self, values, replica_context):
-    assert len(values) == len(self._devices)
+def _get_current_replica_id_as_int():
+  """Returns the current replica ID as an integer, or `None`."""
+  replica_context = distribution_strategy_context.get_replica_context()
+  if replica_context:
     replica_id = replica_context.replica_id_in_sync_group
     if not isinstance(replica_id, int):
       replica_id = tensor_util.constant_value(replica_id)
-    if replica_id is None:
-      replica_id = 0
-    return values[replica_id]
-
-  def replica_for_device(self, device):
-    return self._device_to_replica.get(device)
-
-  def select_for_device(self, values, device):
-    assert len(values) == len(self._devices)
-    replica_id = self._device_to_replica.get(device)
-    if replica_id is None:
-      raise ValueError("Device %s not found in %s (current device %s)" %
-                       (device, self._devices, device_util.current()))
-    return values[replica_id]
-
-  def is_device_in_replica(self, device, replica_id):
-    return _devices_match(device, self._devices[replica_id])
-
-  def __str__(self):
-    return "[%s]" % (", ".join(self._devices))
-
-  def __repr__(self):
-    return "%s([%s])" % (self.__class__.__name__,
-                         ", ".join(repr(d) for d in self._devices))
-
-
-LogicalDeviceSpec = collections.namedtuple(
-    "LogicalDeviceSpec", ("device_map", "logical_device"))
-
-
-class WorkerDeviceMap(DeviceMap):
-  """A device map for one value per worker."""
-
-  def __init__(self, devices, num_replicas_per_worker):
-    """Initialize a `WorkerDeviceMap`.
-
-    Args:
-      devices: `devices[i]` is the string device for worker `i` in in-graph
-        relication case; devices is single-element list for its corresponding
-        worker in between-graph case.
-      num_replicas_per_worker: number of replicas per worker, useful in in-graph
-        replication case.
-    """
-    self._devices = tuple(device_util.canonicalize(d) for d in devices)
-    if len(set(self._devices)) != len(self._devices):
-      raise ValueError("Duplicate devices in %s, after canonicalization: %s" %
-                       (devices, self._devices))
-    self._num_replicas_per_worker = num_replicas_per_worker
-
-  @property
-  def all_devices(self):
-    return self._devices
-
-  @property
-  def devices_by_replica(self):
-    raise ValueError("`WorkerDeviceMap` is not indexed by replicas")
-
-  @property
-  def num_logical_devices(self):
-    return 1
-
-  @property
-  def num_replicas_in_graph(self):
-    return len(self._devices)
-
-  def logical_device_from_values(self, values):
-    del values
-    return 0
-
-  def logical_to_actual_devices(self, logical_device_id):
-    assert logical_device_id == 0
-    return self._devices
-
-  def select_for_current_replica(self, values, replica_context):
-    return values[replica_context.replica_id_in_sync_group //
-                  self._num_replicas_per_worker]
-
-  def replica_for_device(self, device):
-    raise ValueError("`WorkerDeviceMap` not indexed by replicas")
-
-  def select_for_device(self, values, device):
-    # TODO(yuefengz): this should map from any device to the value on its
-    # corresponding worker.
-    return values[self._devices.index(device_util.canonicalize(device))]
-
-  def is_device_in_replica(self, device, replica_id):
-    raise ValueError("WorkerDeviceMap not indexed by replicas")
-
-  def __repr__(self):
-    return "%s(%r, num_replicas_per_worker=%d)" % (
-        self.__class__.__name__, self._devices, self._num_replicas_per_worker)
+  else:
+    replica_id = distribute_lib.get_update_replica_id()
+  return replica_id
 
 
 class DistributedValues(object):
   """Holds a map from replica to values. Either PerReplica or Mirrored."""
 
-  def __init__(self, device_map, values, logical_device=None):
-    assert isinstance(device_map, DeviceMap)
-    self._device_map = device_map
+  def __init__(self, values):
     self._values = tuple(values)
-    if logical_device is None:
-      logical_device = device_map.logical_device_from_values(self._values)
-    self._logical_device = logical_device
 
-  # TODO(josh11b): Split this into two functions, one with device, one without.
-  def get(self, device=None):
+  def get(self):
     """Returns the value for the current device or raises a ValueError."""
-    if device is None:
-      replica_context = distribution_strategy_context.get_replica_context()
-      if replica_context:
-        return self._device_map.select_for_current_replica(
-            self._values, replica_context)
-      else:
-        device = distribute_lib.get_update_device()
-        if device is None:
-          return self._get_cross_replica()
-    device = device_util.canonicalize(device)
-    return self._device_map.select_for_device(self._values, device)
+    replica_id = _get_current_replica_id_as_int()
+    if replica_id is None:
+      return self._get_cross_replica()
+    else:
+      return self._values[replica_id]
+
+  def _get_cross_replica(self):
+    raise NotImplementedError(
+        "This method should be overridden by sub-classes which support cross-"
+        "replica accesses.")
+
+  def _get_closest(self):
+    """Returns value in same replica or device if possible, else the primary."""
+    replica_id = _get_current_replica_id_as_int()
+    if replica_id is None:
+      # Try to find a value on the current device.
+      current_device = device_util.canonicalize(device_util.current())
+      for value in self._values:
+        if device_util.canonicalize(value.device) == current_device:
+          return value
+      return self.primary
+    else:
+      return self._values[replica_id]
 
   @property
   def primary(self):
     """Returns a representative component."""
     return self._values[0]
-
-  @property
-  def devices(self):
-    return self._device_map.logical_to_actual_devices(self._logical_device)
-
-  @property
-  def logical_device(self):
-    return self._logical_device
-
-  @property
-  def device_map(self):
-    return self._device_map
 
   # TODO(josh11b): Replace experimental_local_results with this?
   @property
@@ -346,21 +98,21 @@ class DistributedValues(object):
     return self._values
 
   @property
+  def devices(self):
+    return tuple(v.device for v in self._values)
+
+  @property
   def is_tensor_like(self):
     return all(tensor_util.is_tensor(v) for v in self._values)
 
   def __str__(self):
-    devices = self.devices
-    assert len(self._values) == len(devices)
-    debug_str = ",\n".join("  %d %s: %s" % (i, devices[i], self._values[i])
-                           for i in range(len(devices)))
+    debug_str = ",\n".join(
+        "  %d: %s" % (i, v) for i, v in enumerate(self._values))
     return "%s:{\n%s\n}" % (self.__class__.__name__, debug_str)
 
   def __repr__(self):
-    devices = self.devices
-    assert len(self._values) == len(devices)
-    debug_repr = ",\n".join("  %d %s: %r" % (i, devices[i], self._values[i])
-                            for i in range(len(devices)))
+    debug_repr = ",\n".join(
+        "  %d: %r" % (i, v) for i, v in enumerate(self._values))
     return "%s:{\n%s\n}" % (self.__class__.__name__, debug_repr)
 
 
@@ -382,9 +134,9 @@ class DistributedDelegate(DistributedValues):
     # Layer tracking. At the point these attrs are queried, the variable has not
     # been initialized. Thus it should not query those of the underlying
     # components.
-    if name.startswith("_self_") or name in (
-        "_use_resource_variables", "_attribute_sentinel",
-        "_distributed_container"):
+    if name.startswith("_self_") or name in ("_use_resource_variables",
+                                             "_attribute_sentinel",
+                                             "_distributed_container"):
       return super(DistributedDelegate, self).__getattr__(name)
 
     # TODO(priyag): This needs to be made robust against pitfalls from mix use
@@ -401,38 +153,89 @@ class DistributedDelegate(DistributedValues):
     return self.get()
 
   # pylint: disable=multiple-statements
-  def __add__(self, o): return self._get_as_operand() + o
-  def __radd__(self, o): return o + self._get_as_operand()
-  def __sub__(self, o): return self._get_as_operand() - o
-  def __rsub__(self, o): return o - self._get_as_operand()
-  def __mul__(self, o): return self._get_as_operand() * o
-  def __rmul__(self, o): return o * self._get_as_operand()
-  def __truediv__(self, o): return self._get_as_operand() / o
-  def __rtruediv__(self, o): return o / self._get_as_operand()
+  def __add__(self, o):
+    return self._get_as_operand() + o
+
+  def __radd__(self, o):
+    return o + self._get_as_operand()
+
+  def __sub__(self, o):
+    return self._get_as_operand() - o
+
+  def __rsub__(self, o):
+    return o - self._get_as_operand()
+
+  def __mul__(self, o):
+    return self._get_as_operand() * o
+
+  def __rmul__(self, o):
+    return o * self._get_as_operand()
+
+  def __truediv__(self, o):
+    return self._get_as_operand() / o
+
+  def __rtruediv__(self, o):
+    return o / self._get_as_operand()
 
   def __floordiv__(self, o):
     return self._get_as_operand() // o
 
-  def __rfloordiv__(self, o): return o // self._get_as_operand()
-  def __mod__(self, o): return self._get_as_operand() % o
-  def __rmod__(self, o): return o % self._get_as_operand()
-  def __lt__(self, o): return self._get_as_operand() < o
-  def __le__(self, o): return self._get_as_operand() <= o
-  def __gt__(self, o): return self._get_as_operand() > o
-  def __ge__(self, o): return self._get_as_operand() >= o
-  def __and__(self, o): return self._get_as_operand() & o
-  def __rand__(self, o): return o & self._get_as_operand()
-  def __or__(self, o): return self._get_as_operand() | o
-  def __ror__(self, o): return o | self._get_as_operand()
-  def __xor__(self, o): return self._get_as_operand() ^ o
-  def __rxor__(self, o): return o ^ self._get_as_operand()
-  def __getitem__(self, o): return self._get_as_operand()[o]
+  def __rfloordiv__(self, o):
+    return o // self._get_as_operand()
+
+  def __mod__(self, o):
+    return self._get_as_operand() % o
+
+  def __rmod__(self, o):
+    return o % self._get_as_operand()
+
+  def __lt__(self, o):
+    return self._get_as_operand() < o
+
+  def __le__(self, o):
+    return self._get_as_operand() <= o
+
+  def __gt__(self, o):
+    return self._get_as_operand() > o
+
+  def __ge__(self, o):
+    return self._get_as_operand() >= o
+
+  def __and__(self, o):
+    return self._get_as_operand() & o
+
+  def __rand__(self, o):
+    return o & self._get_as_operand()
+
+  def __or__(self, o):
+    return self._get_as_operand() | o
+
+  def __ror__(self, o):
+    return o | self._get_as_operand()
+
+  def __xor__(self, o):
+    return self._get_as_operand() ^ o
+
+  def __rxor__(self, o):
+    return o ^ self._get_as_operand()
+
+  def __getitem__(self, o):
+    return self._get_as_operand()[o]
+
   def __pow__(self, o, modulo=None):
     return pow(self._get_as_operand(), o, modulo)
-  def __rpow__(self, o): return pow(o, self._get_as_operand())
-  def __invert__(self): return ~self._get_as_operand()
-  def __neg__(self): return -self._get_as_operand()
-  def __abs__(self): return abs(self._get_as_operand())
+
+  def __rpow__(self, o):
+    return pow(o, self._get_as_operand())
+
+  def __invert__(self):
+    return ~self._get_as_operand()
+
+  def __neg__(self):
+    return -self._get_as_operand()
+
+  def __abs__(self):
+    return abs(self._get_as_operand())
 
   def __div__(self, o):
     try:
@@ -470,28 +273,22 @@ class PerReplica(DistributedValues, composite_tensor.CompositeTensor):
 
   @property
   def _type_spec(self):
-    value_specs = nest.map_structure(type_spec.type_spec_from_value,
-                                     self._values)
-    return PerReplicaSpec(value_specs, self._device_map, self._logical_device)
+    return PerReplicaSpec(
+        *(type_spec.type_spec_from_value(v) for v in self._values))
 
 
 class PerReplicaSpec(type_spec.TypeSpec):
   """Type specification for a `PerReplica`."""
 
-  __slots__ = ["_value_specs", "_device_map", "_logical_device"]
+  __slots__ = ["_value_specs"]
 
   value_type = property(lambda self: PerReplica)
 
-  def __init__(self, value_specs, device_map, logical_device):
-    if isinstance(device_map, tuple):
-      device_map = self._deserialize_device_map(device_map)
+  def __init__(self, *value_specs):
     self._value_specs = tuple(value_specs)
-    self._device_map = device_map
-    self._logical_device = logical_device
 
   def _serialize(self):
-    device_map = self._serialize_device_map(self._device_map)
-    return (self._value_specs, device_map, self._logical_device)
+    return self._value_specs
 
   @property
   def _component_specs(self):
@@ -506,34 +303,7 @@ class PerReplicaSpec(type_spec.TypeSpec):
     return value._values  # pylint: disable=protected-access
 
   def _from_components(self, tensor_list):
-    return PerReplica(self._device_map, tensor_list,
-                      logical_device=self._logical_device)
-
-  @staticmethod
-  def _serialize_device_map(device_map):
-    if isinstance(device_map, SingleDeviceMap):
-      return ("single", device_map.all_devices[0])
-    elif isinstance(device_map, ReplicaDeviceMap):
-      return ("replica", device_map.all_devices)
-    elif isinstance(device_map, WorkerDeviceMap):
-      return ("worker", device_map.all_devices,
-              device_map.num_replicas_per_worker)
-    else:
-      raise ValueError("PerReplicaSpec does not support device_map type %s"
-                       % type(device_map).__name__)
-
-  @staticmethod
-  def _deserialize_device_map(device_map_info):
-    device_map_type = device_map_info[0]
-    device_map_args = device_map_info[1:]
-    if device_map_type == "single":
-      return SingleDeviceMap(*device_map_args)
-    elif device_map_type == "replica":
-      return ReplicaDeviceMap(*device_map_args)
-    elif device_map_type == "worker":
-      return WorkerDeviceMap(*device_map_args)
-    else:
-      raise ValueError("Unexpected value in state tuple")
+    return PerReplica(tensor_list)
 
 
 # Note that unlike PerReplica, Mirrored values inherit from
@@ -543,11 +313,7 @@ class Mirrored(DistributedDelegate):
   """Holds a map from replica to values which are kept in sync."""
 
   def _get_cross_replica(self):
-    device = device_util.canonicalize(device_util.current())
-    replica_id = self._device_map.replica_for_device(device)
-    if replica_id is None:
-      return self.primary
-    return self._values[replica_id]
+    return self._get_closest()
 
   def _as_graph_element(self):
     obj = self.get()
@@ -574,9 +340,8 @@ def _assign_sub_on_device(device, variable, tensor):
 
 def _assert_strategy(strategy):
   if not distribution_strategy_context.has_strategy():
-    raise RuntimeError(
-        'Need to be inside "with strategy.scope()" for %s' %
-        (strategy,))
+    raise RuntimeError('Need to be inside "with strategy.scope()" for %s' %
+                       (strategy,))
   current_strategy = distribution_strategy_context.get_strategy()
   if current_strategy is not strategy:
     raise RuntimeError(
@@ -600,13 +365,13 @@ DistributedVarOp = collections.namedtuple(
 
 class DistributedVariable(DistributedDelegate, variables_lib.Variable):
   """Holds a map from replica to variables."""
+
   # TODO(josh11b): Support changing the set of variables if e.g. if new
   # devices are joining or a device is to leave.
 
-  def __init__(self, strategy, device_map, values, logical_device=None):
+  def __init__(self, strategy, values):
     self._distribute_strategy = strategy
-    super(DistributedVariable, self).__init__(
-        device_map, values, logical_device=logical_device)
+    super(DistributedVariable, self).__init__(values)
     self._common_name = self.primary.name.split(":")[0]
     # Use a weakref to make it easy to map from the contained values
     # to the container without introducing a reference cycle.
@@ -641,8 +406,8 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable):
     # `is_initialized` op is a `logical_and` op.
     for v in self._values[1:-1]:
       result = math_ops.logical_and(result, v.is_initialized())
-    result = math_ops.logical_and(result, self._values[-1].is_initialized(),
-                                  name=name)
+    result = math_ops.logical_and(
+        result, self._values[-1].is_initialized(), name=name)
     return result
 
   @property
@@ -652,23 +417,9 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable):
     else:
       # return grouped ops of all the var initializations of component values of
       # the mirrored variable
-      init_op = control_flow_ops.group(tuple(
-          v.initializer for v in self._values))
+      init_op = control_flow_ops.group(
+          tuple(v.initializer for v in self._values))
     return init_op
-
-  def _get_closest(self):
-    """Return member in the same replica if possible, else the primary."""
-    replica_context = distribution_strategy_context.get_replica_context()
-    if replica_context:
-      return self._device_map.select_for_current_replica(
-          self._values, replica_context)
-    device = distribute_lib.get_update_device()
-    if device is None:
-      device = device_util.canonicalize(device_util.current())
-    replica_id = self._device_map.replica_for_device(device)
-    if replica_id is None:
-      return self.primary
-    return self._values[replica_id]
 
   def initialized_value(self):
     return self._get_closest().initialized_value()
@@ -687,7 +438,7 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable):
 
   @property
   def _unique_id(self):
-    return self.primary._unique_id   # pylint: disable=protected-access
+    return self.primary._unique_id  # pylint: disable=protected-access
 
   @property
   def _graph_key(self):
@@ -712,14 +463,12 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable):
 
   @property
   def handle(self):
-    device = None
-    replica_context = distribution_strategy_context.get_replica_context()
-    if replica_context is None:
-      device = distribute_lib.get_update_device()
-      if device is None:
-        raise ValueError("`handle` is not available outside the replica context"
-                         " or a `tf.distribute.Strategy.update()` call.")
-    return self.get(device=device).handle
+    replica_id = _get_current_replica_id_as_int()
+    if replica_id is None:
+      raise ValueError("`handle` is not available outside the replica context"
+                       " or a `tf.distribute.Strategy.update()` call.")
+    else:
+      return self._values[replica_id].handle
 
   def eval(self, session=None):
     return self._get_closest().eval(session)
@@ -759,15 +508,13 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable):
     # to work (even if the current device isn't in self.devices), but
     # other uses of var.op in a cross-replica context to fail.
     if distribution_strategy_context.in_cross_replica_context():
-      return DistributedVarOp(self.primary.op.name,
-                              self.primary.op.graph,
-                              self.primary.op.traceback,
-                              self.primary.op.type)
+      return DistributedVarOp(self.primary.op.name, self.primary.op.graph,
+                              self.primary.op.traceback, self.primary.op.type)
     return self.get().op
 
   @property
   def _in_graph_mode(self):
-    return self.primary._in_graph_mode   # pylint: disable=protected-access
+    return self.primary._in_graph_mode  # pylint: disable=protected-access
 
   def read_value(self):
     with _enter_or_assert_strategy(self._distribute_strategy):
@@ -780,9 +527,6 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable):
     """Pass resource_variable_ops.is_resource_variable check."""
     pass
 
-  def _clone_with_new_values(self, new_values):
-    raise NotImplementedError("Must be implemented in descendents.")
-
 
 ops.register_dense_tensor_like_type(DistributedVariable)
 
@@ -791,8 +535,8 @@ ops.register_dense_tensor_like_type(DistributedVariable)
 def _maybe_enter_graph(tensor):
   # Note: might have an eager tensor but not be executing eagerly when
   # building functions.
-  if (context.executing_eagerly() or isinstance(tensor, ops.EagerTensor)
-      or ops.has_default_graph()):
+  if (context.executing_eagerly() or isinstance(tensor, ops.EagerTensor) or
+      ops.has_default_graph()):
     yield
   else:
     with tensor.graph.as_default():
@@ -800,6 +544,7 @@ def _maybe_enter_graph(tensor):
 
 
 def _make_raw_assign_fn(raw_assign_fn):  # pylint: disable=missing-docstring
+
   def assign_fn(var, value, use_locking=False, name=None, read_value=True):  # pylint: disable=missing-docstring
     del use_locking  # Unused.
 
@@ -809,6 +554,7 @@ def _make_raw_assign_fn(raw_assign_fn):  # pylint: disable=missing-docstring
 
       with ops.control_dependencies([op]):
         return var._read_variable_op() if read_value else op  # pylint: disable=protected-access
+
   return assign_fn
 
 
@@ -832,9 +578,9 @@ class TPUVariableMixin(object):
       raise AttributeError(
           "'{}' not accessible within a TPU context.".format(name))
 
-  def get(self, device=None):
-    if (_enclosing_tpu_context() is None) or (device is not None):
-      return super(TPUVariableMixin, self).get(device=device)
+  def get(self):
+    if _enclosing_tpu_context() is None:
+      return super(TPUVariableMixin, self).get()
     else:
       raise NotImplementedError(
           "`TPUVariableMixin.get()` is not supported within a TPU context.")
@@ -866,10 +612,8 @@ class TPUVariableMixin(object):
     if tpu_context is None:
       return self._get_closest().handle
     else:
-      return tpu_context.get_replicated_var_handle(self._handle_id,
-                                                   self._values,
-                                                   self._device_map,
-                                                   self._is_mirrored())
+      return tpu_context.get_replicated_var_handle(
+          self._handle_id, self._values, self._is_mirrored())
 
   @property
   def device(self):
@@ -898,9 +642,8 @@ class TPUVariableMixin(object):
 
   @property
   def op(self):
-    return DistributedVarOp(
-        self.primary.op.name, self.primary.op.graph, self.primary.op.traceback,
-        self.primary.op.type)
+    return DistributedVarOp(self.primary.op.name, self.primary.op.graph,
+                            self.primary.op.traceback, self.primary.op.type)
 
   def _dense_var_to_tensor(self, dtype=None, name=None, as_ref=False):
     """Converts a variable to a tensor."""
@@ -948,6 +691,7 @@ def _apply_aggregation(strategy, value, aggregation, destinations):
   reduce_op = reduce_util.ReduceOp.from_variable_aggregation(aggregation)
   return strategy.extended.reduce_to(reduce_op, value, destinations)
 
+
 _aggregation_error_msg = (
     "You must specify an aggregation method to update a "
     "{variable_type} in Replica Context. You can do so by passing "
@@ -977,14 +721,15 @@ class _MirroredSaveable(saver.BaseSaverBuilder.ResourceVariableSaveable):
   def restore(self, restored_tensors, restored_shapes):
     """Restore the same value into all variables."""
     tensor, = restored_tensors
-    return control_flow_ops.group(tuple(
-        _assign_on_device(v.device, v, tensor)
-        for v in self._mirrored_variable.values))
+    return control_flow_ops.group(
+        tuple(
+            _assign_on_device(v.device, v, tensor)
+            for v in self._mirrored_variable.values))
 
 
 def create_mirrored_variable(  # pylint: disable=missing-docstring
-    strategy, device_map, logical_device, real_mirrored_creator, mirrored_cls,
-    sync_on_read_cls, *args, **kwargs):
+    strategy, real_mirrored_creator, mirrored_cls, sync_on_read_cls,
+    *args, **kwargs):
   # Figure out what collections this variable should be added to.
   # We'll add the MirroredVariable to those collections instead.
   var_collections = kwargs.pop("collections", None)
@@ -992,8 +737,8 @@ def create_mirrored_variable(  # pylint: disable=missing-docstring
     var_collections = [ops.GraphKeys.GLOBAL_VARIABLES]
   kwargs["collections"] = []
 
-  synchronization = kwargs.get(
-      "synchronization", vs.VariableSynchronization.ON_WRITE)
+  synchronization = kwargs.get("synchronization",
+                               vs.VariableSynchronization.ON_WRITE)
 
   if synchronization == vs.VariableSynchronization.NONE:
     raise ValueError(
@@ -1002,9 +747,8 @@ def create_mirrored_variable(  # pylint: disable=missing-docstring
         "variable: " + str(kwargs["name"]))
   elif synchronization == vs.VariableSynchronization.ON_READ:
     is_sync_on_read = True
-  elif synchronization in (
-      vs.VariableSynchronization.ON_WRITE,
-      vs.VariableSynchronization.AUTO):
+  elif synchronization in (vs.VariableSynchronization.ON_WRITE,
+                           vs.VariableSynchronization.AUTO):
     # `AUTO` synchronization defaults to `ON_WRITE`.
     is_sync_on_read = False
   else:
@@ -1014,14 +758,12 @@ def create_mirrored_variable(  # pylint: disable=missing-docstring
 
   aggregation = kwargs.pop("aggregation", vs.VariableAggregation.NONE)
 
-  if aggregation not in (
-      vs.VariableAggregation.NONE,
-      vs.VariableAggregation.SUM,
-      vs.VariableAggregation.MEAN,
-      vs.VariableAggregation.ONLY_FIRST_REPLICA):
-    raise ValueError(
-        "Invalid variable aggregation mode: %s for variable: %s" %
-        (aggregation, kwargs["name"]))
+  if aggregation not in (vs.VariableAggregation.NONE,
+                         vs.VariableAggregation.SUM,
+                         vs.VariableAggregation.MEAN,
+                         vs.VariableAggregation.ONLY_FIRST_REPLICA):
+    raise ValueError("Invalid variable aggregation mode: %s for variable: %s" %
+                     (aggregation, kwargs["name"]))
 
   # Ignore user-specified caching device, not needed for mirrored variables.
   kwargs.pop("caching_device", None)
@@ -1030,14 +772,9 @@ def create_mirrored_variable(  # pylint: disable=missing-docstring
   # was never recorded on the tape instead of having to do this manually
   # here.
   with tape.stop_recording():
-    devices = device_map.logical_to_actual_devices(logical_device)
-    value_list = real_mirrored_creator(devices, *args, **kwargs)
-
+    value_list = real_mirrored_creator(*args, **kwargs)
     var_cls = sync_on_read_cls if is_sync_on_read else mirrored_cls
-
-    result = var_cls(
-        strategy, device_map, value_list, aggregation,
-        logical_device=logical_device)
+    result = var_cls(strategy, value_list, aggregation)
 
   # Add the wrapped variable to the requested collections.
   # The handling of eager mode and the global step matches
@@ -1068,10 +805,8 @@ def create_mirrored_variable(  # pylint: disable=missing-docstring
 class MirroredVariable(DistributedVariable, Mirrored):
   """Holds a map from replica to variables whose values are kept in sync."""
 
-  def __init__(
-      self, strategy, device_map, values, aggregation, logical_device=None):
-    super(MirroredVariable, self).__init__(
-        strategy, device_map, values, logical_device=logical_device)
+  def __init__(self, strategy, values, aggregation):
+    super(MirroredVariable, self).__init__(strategy, values)
     self._aggregation = aggregation
 
   # The arguments to update() are automatically unwrapped so the update()
@@ -1084,12 +819,11 @@ class MirroredVariable(DistributedVariable, Mirrored):
     with _enter_or_assert_strategy(self._distribute_strategy):
       f = kwargs.pop("f")
       if distribution_strategy_context.in_cross_replica_context():
-        update_device = distribute_lib.get_update_device()
-        if update_device is not None:
+        update_replica_id = distribute_lib.get_update_replica_id()
+        if update_replica_id is not None:
           # We are calling an assign function on the mirrored variable in an
           # update context.
-          v = self.get(device=update_device)
-          return f(v, *args, **kwargs)
+          return f(self.values[update_replica_id], *args, **kwargs)
 
         # We are calling assign on the mirrored variable in cross replica
         # context, use `strategy.extended.update()` to update the variable.
@@ -1104,8 +838,8 @@ class MirroredVariable(DistributedVariable, Mirrored):
         # We call the function on each of the mirrored variables with the
         # reduced value.
         if self._aggregation == vs.VariableAggregation.NONE:
-          raise ValueError(_aggregation_error_msg.format(
-              variable_type="MirroredVariable"))
+          raise ValueError(
+              _aggregation_error_msg.format(variable_type="MirroredVariable"))
 
         def merge_fn(strategy, value, *other_args, **other_kwargs):
           v = _apply_aggregation(strategy, value, self._aggregation, self)
@@ -1132,17 +866,12 @@ class MirroredVariable(DistributedVariable, Mirrored):
     return self._aggregation
 
   def _get_cross_replica(self):
-    device = device_util.canonicalize(device_util.current())
-    replica_id = self._device_map.replica_for_device(device)
-    if replica_id is None:
-      return array_ops.identity(self.primary)
-    return array_ops.identity(self._values[replica_id])
+    # Return identity, to avoid directly exposing the variable to the user and
+    # allowing it to be modified by mistake.
+    return array_ops.identity(Mirrored._get_cross_replica(self))
 
   def _as_graph_element(self):
-    # pylint: disable=protected-access
-    if distribution_strategy_context.in_cross_replica_context():
-      return self.primary._as_graph_element()
-    return self.get()._as_graph_element()
+    return self._get_closest()._as_graph_element()  # pylint: disable=protected-access
 
   def _gather_saveables_for_checkpoint(self):
     """Overrides Trackable method.
@@ -1153,8 +882,10 @@ class MirroredVariable(DistributedVariable, Mirrored):
     Returns:
       A dictionary mapping attribute names to `SaveableObject` factories.
     """
+
     def _saveable_factory(name=self._common_name):
       return _MirroredSaveable(self, self.primary, name)
+
     return {trackable.VARIABLE_VALUE_KEY: _saveable_factory}
 
   def _dense_var_to_tensor(self, dtype=None, name=None, as_ref=False):
@@ -1162,12 +893,8 @@ class MirroredVariable(DistributedVariable, Mirrored):
     # Try to avoid assignments to and other mutations of MirroredVariable
     # state except through a DistributionStrategy.extended.update() call.
     assert not as_ref
-    return ops.internal_convert_to_tensor(
+    return ops.convert_to_tensor(
         self.get(), dtype=dtype, name=name, as_ref=as_ref)
-
-  def _clone_with_new_values(self, new_values):
-    return type(self)(self._distribute_strategy, self._device_map, new_values,
-                      self._aggregation, logical_device=self._logical_device)
 
 
 # Register a conversion function which reads the value of the variable,
@@ -1179,12 +906,15 @@ def _tensor_conversion_mirrored(var, dtype=None, name=None, as_ref=False):
 ops.register_tensor_conversion_function(MirroredVariable,
                                         _tensor_conversion_mirrored)
 
+
 def _tensor_conversion_mirrored_val(value, dtype=None, name=None, as_ref=False):
-  return ops.internal_convert_to_tensor(
+  return ops.convert_to_tensor(
       value.get(), dtype=dtype, name=name, as_ref=as_ref)
+
 
 ops.register_tensor_conversion_function(Mirrored,
                                         _tensor_conversion_mirrored_val)
+
 
 def _enclosing_tpu_context():
   """Returns the XLAControlFlowContext, which exists inside a tpu.rewrite()."""
@@ -1213,8 +943,8 @@ class TPUMirroredVariable(TPUVariableMixin, MirroredVariable):
 
   def _assign_func(self, *args, **kwargs):
     with _enter_or_assert_strategy(self._distribute_strategy):
-      if (distribution_strategy_context.in_cross_replica_context()
-          and (_enclosing_tpu_context() is not None)):
+      if (distribution_strategy_context.in_cross_replica_context() and
+          (_enclosing_tpu_context() is not None)):
         f = kwargs.pop("f")
         return self._distribute_strategy.extended.update(
             self, f, args=args, kwargs=kwargs)
@@ -1237,10 +967,6 @@ class TPUMirroredVariable(TPUVariableMixin, MirroredVariable):
     return self._assign_func(f=assign_fn, *args, **kwargs)
 
   def _is_mirrored(self):
-    if self.aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
-      # TODO(b/142440743): Remove this check once ONLY_FIRST_REPLICA aggregation
-      # works as expected.
-      return False
     return True
 
 
@@ -1249,6 +975,7 @@ class _SyncOnReadSaveable(saver.BaseSaverBuilder.SaveableObject):
 
   def __init__(self, sync_on_read_variable, name):
     self._sync_on_read_variable = sync_on_read_variable
+
     # We use a callable so that we don't have to evaluate this expression
     # in the case where we are trying to restore instead of save.
     def tensor():
@@ -1265,8 +992,17 @@ class _SyncOnReadSaveable(saver.BaseSaverBuilder.SaveableObject):
 
   def restore(self, restored_tensors, restored_shapes):
     """Restore the same value into all variables."""
+    # To preserve the sum across save and restore, we have to divide the
+    # total across all devices when restoring a variable that was summed
+    # when saving.
     tensor, = restored_tensors
-    return self._sync_on_read_variable.assign(tensor)
+    if self._sync_on_read_variable.aggregation == vs.VariableAggregation.SUM:
+      tensor = math_ops.cast(tensor / len(self._sync_on_read_variable.devices),
+                             self._sync_on_read_variable.dtype)
+    return control_flow_ops.group(
+        tuple(
+            _assign_on_device(v.device, v, tensor)
+            for v in self._sync_on_read_variable.values))
 
 
 def _assert_replica_context(strategy):
@@ -1282,11 +1018,9 @@ def _assert_replica_context(strategy):
 class SyncOnReadVariable(DistributedVariable):
   """Holds a map from replica to variables whose values are reduced on save."""
 
-  def __init__(
-      self, strategy, device_map, values, aggregation, logical_device=None):
+  def __init__(self, strategy, values, aggregation):
+    super(SyncOnReadVariable, self).__init__(strategy, values)
     self._aggregation = aggregation
-    super(SyncOnReadVariable, self).__init__(
-        strategy, device_map, values, logical_device=logical_device)
 
   def assign_sub(self, *args, **kwargs):
     with _enter_or_assert_strategy(self._distribute_strategy):
@@ -1296,8 +1030,10 @@ class SyncOnReadVariable(DistributedVariable):
               "SyncOnReadVariable does not support `assign_sub` in "
               "cross-replica context when aggregation is set to "
               "`tf.VariableAggregation.SUM`.")
-        return control_flow_ops.group(tuple(
-            _assign_sub_on_device(v.device, v, args[0]) for v in self._values))
+        return control_flow_ops.group(
+            tuple(
+                _assign_sub_on_device(v.device, v, args[0])
+                for v in self._values))
       else:
         return self.get().assign_sub(*args, **kwargs)
 
@@ -1309,8 +1045,10 @@ class SyncOnReadVariable(DistributedVariable):
               "SyncOnReadVariable does not support `assign_add` in "
               "cross-replica context when aggregation is set to "
               "`tf.VariableAggregation.SUM`.")
-        return control_flow_ops.group(tuple(
-            _assign_add_on_device(v.device, v, args[0]) for v in self._values))
+        return control_flow_ops.group(
+            tuple(
+                _assign_add_on_device(v.device, v, args[0])
+                for v in self._values))
       else:
         return self.get().assign_add(*args, **kwargs)
 
@@ -1322,9 +1060,9 @@ class SyncOnReadVariable(DistributedVariable):
         # when saving.
         tensor = args[0]
         if self._aggregation == vs.VariableAggregation.SUM:
-          tensor = math_ops.cast(tensor / len(self.devices), self.dtype)
-        return control_flow_ops.group(tuple(
-            _assign_on_device(v.device, v, tensor) for v in self._values))
+          tensor = math_ops.cast(tensor / len(self._values), self.dtype)
+        return control_flow_ops.group(
+            tuple(_assign_on_device(v.device, v, tensor) for v in self._values))
       else:
         return self.get().assign(*args, **kwargs)
 
@@ -1339,7 +1077,8 @@ class SyncOnReadVariable(DistributedVariable):
     with _enter_or_assert_strategy(self._distribute_strategy):
       return self._distribute_strategy.reduce(
           reduce_util.ReduceOp.from_variable_aggregation(self.aggregation),
-          self, axis=None)
+          self,
+          axis=None)
 
   def _as_graph_element(self):
     # pylint: disable=protected-access
@@ -1356,18 +1095,16 @@ class SyncOnReadVariable(DistributedVariable):
     Returns:
       A dictionary mapping attribute names to `SaveableObject` factories.
     """
+
     def _saveable_factory(name=self._common_name):
       return _SyncOnReadSaveable(self, name)
+
     return {trackable.VARIABLE_VALUE_KEY: _saveable_factory}
 
   def _dense_var_to_tensor(self, dtype=None, name=None, as_ref=False):
     """Converts a variable to a tensor."""
-    return ops.internal_convert_to_tensor(
+    return ops.convert_to_tensor(
         self.get(), dtype=dtype, name=name, as_ref=as_ref)
-
-  def _clone_with_new_values(self, new_values):
-    return type(self)(self._distribute_strategy, self._device_map, new_values,
-                      self._aggregation, logical_device=self._logical_device)
 
 
 # Register a conversion function for SyncOnReadVariable which allows as_ref to
@@ -1388,32 +1125,30 @@ class TPUSyncOnReadVariable(TPUVariableMixin, SyncOnReadVariable):
       return SyncOnReadVariable.assign_sub(self, *args, **kwargs)
     else:
       return _make_raw_assign_fn(
-          gen_resource_variable_ops.assign_sub_variable_op)(
-              self, *args, **kwargs)
+          gen_resource_variable_ops.assign_sub_variable_op)(self, *args,
+                                                            **kwargs)
 
   def assign_add(self, *args, **kwargs):
     if _enclosing_tpu_context() is None:
       return SyncOnReadVariable.assign_add(self, *args, **kwargs)
     else:
       return _make_raw_assign_fn(
-          gen_resource_variable_ops.assign_add_variable_op)(
-              self, *args, **kwargs)
+          gen_resource_variable_ops.assign_add_variable_op)(self, *args,
+                                                            **kwargs)
 
   def assign(self, *args, **kwargs):
     if _enclosing_tpu_context() is None:
       return SyncOnReadVariable.assign(self, *args, **kwargs)
     else:
-      return _make_raw_assign_fn(
-          gen_resource_variable_ops.assign_variable_op)(self, *args, **kwargs)
+      return _make_raw_assign_fn(gen_resource_variable_ops.assign_variable_op)(
+          self, *args, **kwargs)
 
   def _is_mirrored(self):
     return False
 
 
-def regroup(device_map, values, wrap_class=PerReplica):
+def regroup(values, wrap_class=PerReplica):
   """Makes a nest per-replica into a nest of PerReplica/Mirrored values."""
-  assert isinstance(device_map, DeviceMap)
-  assert len(values) == device_map.num_replicas_in_graph
   v0 = values[0]
 
   if isinstance(v0, list):
@@ -1421,15 +1156,17 @@ def regroup(device_map, values, wrap_class=PerReplica):
       assert isinstance(v, list)
       assert len(v) == len(v0), ("len(v) == %d, len(v0) == %d, v: %s, v0: %s" %
                                  (len(v), len(v0), v, v0))
-    return [regroup(device_map, tuple(v[i] for v in values), wrap_class)
-            for i in range(len(v0))]
+    return [
+        regroup(tuple(v[i] for v in values), wrap_class)
+        for i in range(len(v0))
+    ]
 
   if isinstance(v0, tuple):
     for v in values[1:]:
       assert isinstance(v, tuple)
       assert len(v) == len(v0)
     regrouped_tuple = tuple(
-        regroup(device_map, tuple(v[i] for v in values), wrap_class)
+        regroup(tuple(v[i] for v in values), wrap_class)
         for i in range(len(v0)))
     if hasattr(v0, "_fields"):
       # This tuple is in fact a namedtuple! Create a new namedtuple instance
@@ -1445,8 +1182,10 @@ def regroup(device_map, values, wrap_class=PerReplica):
       assert isinstance(v, dict), ("v[0]: %r  v[i]: %r" % (v0, v))
       assert set(v.keys()) == v0keys, ("v[0].keys: %s  v[i].keys: %s" %
                                        (v0keys, set(v.keys())))
-    return {key: regroup(device_map, tuple(v[key] for v in values), wrap_class)
-            for key in v0keys}
+    return {
+        key: regroup(tuple(v[key] for v in values), wrap_class)
+        for key in v0keys
+    }
 
   # If exactly the same object across all devices, return it unwrapped.
   same_id = True
@@ -1480,23 +1219,19 @@ def regroup(device_map, values, wrap_class=PerReplica):
     # pylint: disable=protected-access
     assert not isinstance(v0, MirroredVariable), (
         "ids = %s, values = %s" % ([id(v) for v in values], values))
-    assert device_map.is_device_in_replica(v0.device, 0), (
-        "v0.device = %s, device_map = %s" % (v0.device, device_map))
     distributed_container = v0._distributed_container()
     assert distributed_container is not None
-    for r, v in enumerate(values[1:]):
-      assert device_map.is_device_in_replica(v.device, r + 1), (
-          "v.device = %s, r = %d, device_map = %s" %
-          (v.device, r + 1, device_map))
+    for v in values[1:]:
       assert distributed_container is v._distributed_container()
     return distributed_container
   # pylint: enable=protected-access
 
-  return wrap_class(device_map, values)
+  return wrap_class(values)
 
 
 def select_replica(replica_id, structured):
   """Specialize a nest of regular & per-replica values for one replica."""
+
   def _get(x):
     # `DistributedValues` would be sliced according to replica unless it is a
     # `DistributedVariable` because `DistributedVariable` can be handled
@@ -1510,31 +1245,32 @@ def select_replica(replica_id, structured):
   return nest.map_structure(_get, structured)
 
 
-def select_device_mirrored(device, structured):
-  """Specialize a nest of regular & mirrored values for one device."""
+def select_replica_mirrored(replica_id, structured):
+  """Specialize a nest of regular & mirrored values for one replica."""
+
   def _get_mirrored(x):
     if isinstance(x, DistributedValues):
       if not isinstance(x, Mirrored):
         raise TypeError(
             "Expected value to be mirrored across replicas: %s in %s." %
             (x, structured))
-      return x.get(device)
+      return x.values[replica_id]
     else:
       return x
 
   return nest.map_structure(_get_mirrored, structured)
 
 
-def update_regroup(extended, device_map, updates, group):
+def update_regroup(extended, updates, group):
   """Regroup for an update, with dependencies to ensure all updates execute."""
   if not group:
-    regrouped = regroup(device_map, updates, Mirrored)
+    regrouped = regroup(updates, Mirrored)
     return nest.map_structure(extended._local_results, regrouped)  # pylint: disable=protected-access
 
-  def _make_grouped_mirrored(device_map, values):
+  def _make_grouped_mirrored(values):
     """Convert per-replica list `values` into Mirrored type with grouping."""
     if len(values) == 1:
-      return Mirrored(device_map, values)
+      return Mirrored(values)
 
     # Make sure we run all updates. Without this, something like
     # session.run(extended.update(...)) may only update one replica.
@@ -1548,25 +1284,22 @@ def update_regroup(extended, device_map, updates, group):
 
     # Otherwise we need tensors with the same values as `values`, but
     # that have a dependency on `g`.
-    devices = device_map.logical_to_actual_devices(
-        device_map.logical_device_from_values(values))
-    assert len(values) == len(devices)
     with_dep = []
-    for v, d in zip(values, devices):
-      with ops.device(d), ops.control_dependencies([g]):
+    for v in values:
+      with ops.device(v.device), ops.control_dependencies([g]):
         with_dep.append(array_ops.identity(v))
 
-    return Mirrored(device_map, with_dep)
+    return Mirrored(with_dep)
 
-  return regroup(device_map, updates, _make_grouped_mirrored)
+  return regroup(updates, _make_grouped_mirrored)
 
 
 def value_container(val):
   """Returns the container that this per-replica `value` belongs to.
 
   Args:
-    val: A value returned by `call_for_each_replica()` or a variable
-      created in `scope()`.
+    val: A value returned by `call_for_each_replica()` or a variable created in
+      `scope()`.
 
   Returns:
     A container that `value` belongs to.
@@ -1608,8 +1341,7 @@ class AggregatingVariable(variables_lib.Variable):
     with _enter_or_assert_strategy(self._distribute_strategy):
       f = kwargs.pop("f")
       if distribution_strategy_context.in_cross_replica_context():
-        update_device = distribute_lib.get_update_device()
-        if update_device is not None:
+        if distribute_lib.get_update_replica_id() is not None:
           # We are calling an assign function in an update context.
           return f(self._v, *args, **kwargs)
 
@@ -1625,8 +1357,9 @@ class AggregatingVariable(variables_lib.Variable):
         # we handle the different use cases can be found in the _reduce method.
         # We call the function with the reduced value.
         if self._aggregation == vs.VariableAggregation.NONE:
-          raise ValueError(_aggregation_error_msg.format(
-              variable_type="AggregatingVariable"))
+          raise ValueError(
+              _aggregation_error_msg.format(
+                  variable_type="AggregatingVariable"))
 
         def merge_fn(strategy, value, *other_args, **other_kwargs):
           v = _apply_aggregation(strategy, value, self._aggregation, self)
@@ -1697,34 +1430,89 @@ class AggregatingVariable(variables_lib.Variable):
     return {trackable.VARIABLE_VALUE_KEY: self._v}
 
   # pylint: disable=multiple-statements
-  def __add__(self, o): return self._v + o
-  def __radd__(self, o): return o + self._v
-  def __sub__(self, o): return self._v - o
-  def __rsub__(self, o): return o - self._v
-  def __mul__(self, o): return self._v * o
-  def __rmul__(self, o): return o * self._v
-  def __truediv__(self, o): return self._v / o
-  def __rtruediv__(self, o): return o / self._v
-  def __floordiv__(self, o): return self._v // o
-  def __rfloordiv__(self, o): return o // self._v
-  def __mod__(self, o): return self._v % o
-  def __rmod__(self, o): return o % self._v
-  def __lt__(self, o): return self._v < o
-  def __le__(self, o): return self._v <= o
-  def __gt__(self, o): return self._v > o
-  def __ge__(self, o): return self._v >= o
-  def __and__(self, o): return self._v & o
-  def __rand__(self, o): return o & self._v
-  def __or__(self, o): return self._v | o
-  def __ror__(self, o): return o | self._v
-  def __xor__(self, o): return self._v ^ o
-  def __rxor__(self, o): return o ^ self._v
-  def __getitem__(self, o): return self._v[o]
-  def __pow__(self, o, modulo=None): return pow(self._v, o, modulo)
-  def __rpow__(self, o): return pow(o, self._v)
-  def __invert__(self): return ~self._v
-  def __neg__(self): return -self._v
-  def __abs__(self): return abs(self._v)
+  def __add__(self, o):
+    return self._v + o
+
+  def __radd__(self, o):
+    return o + self._v
+
+  def __sub__(self, o):
+    return self._v - o
+
+  def __rsub__(self, o):
+    return o - self._v
+
+  def __mul__(self, o):
+    return self._v * o
+
+  def __rmul__(self, o):
+    return o * self._v
+
+  def __truediv__(self, o):
+    return self._v / o
+
+  def __rtruediv__(self, o):
+    return o / self._v
+
+  def __floordiv__(self, o):
+    return self._v // o
+
+  def __rfloordiv__(self, o):
+    return o // self._v
+
+  def __mod__(self, o):
+    return self._v % o
+
+  def __rmod__(self, o):
+    return o % self._v
+
+  def __lt__(self, o):
+    return self._v < o
+
+  def __le__(self, o):
+    return self._v <= o
+
+  def __gt__(self, o):
+    return self._v > o
+
+  def __ge__(self, o):
+    return self._v >= o
+
+  def __and__(self, o):
+    return self._v & o
+
+  def __rand__(self, o):
+    return o & self._v
+
+  def __or__(self, o):
+    return self._v | o
+
+  def __ror__(self, o):
+    return o | self._v
+
+  def __xor__(self, o):
+    return self._v ^ o
+
+  def __rxor__(self, o):
+    return o ^ self._v
+
+  def __getitem__(self, o):
+    return self._v[o]
+
+  def __pow__(self, o, modulo=None):
+    return pow(self._v, o, modulo)
+
+  def __rpow__(self, o):
+    return pow(o, self._v)
+
+  def __invert__(self):
+    return ~self._v
+
+  def __neg__(self):
+    return -self._v
+
+  def __abs__(self):
+    return abs(self._v)
 
   def __div__(self, o):
     try:
@@ -1768,10 +1556,9 @@ class AggregatingVariable(variables_lib.Variable):
 # Register a conversion function which reads the value of the variable,
 # allowing instances of the class to be used as tensors.
 def _tensor_conversion_aggregate(var, dtype=None, name=None, as_ref=False):
-  return ops.internal_convert_to_tensor(
-      var.get(), dtype=dtype, name=name, as_ref=as_ref)
+  return ops.convert_to_tensor(var.get(), dtype=dtype, name=name, as_ref=as_ref)
 
 
-ops.register_tensor_conversion_function(
-    AggregatingVariable, _tensor_conversion_aggregate)
+ops.register_tensor_conversion_function(AggregatingVariable,
+                                        _tensor_conversion_aggregate)
 ops.register_dense_tensor_like_type(AggregatingVariable)

@@ -19,7 +19,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_LITE_IR_TFL_TRAITS_H_
 
 #include "mlir/IR/OpDefinition.h"
-#include "mlir/Support/LLVM.h"  // TF:local_config_mlir
+#include "mlir/Support/LLVM.h"  // TF:llvm-project
 
 namespace mlir {
 namespace OpTrait {
@@ -41,6 +41,22 @@ class StatefulOperands {
     static std::vector<int> GetStatefulOperands() {
       return std::vector<int>({Operands...});
     }
+  };
+};
+
+// The trait to specify the channel dimension index of the input (first operand)
+// of an affine TFL op (Conv2D, DepthwiseConv2D, FullyConnected).
+//
+//   class Conv2DOp
+//       : public Op<Conv2DOp, OpTrait::TFL::ChannelDimIndex<0>::Impl> {
+//
+template <int Index>
+class ChannelDimIndex {
+ public:
+  template <typename ConcreteType>
+  class Impl : public TraitBase<ConcreteType, ChannelDimIndex<Index>::Impl> {
+   public:
+    static int GetChannelDimIndex() { return Index; }
   };
 };
 

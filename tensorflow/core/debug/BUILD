@@ -15,15 +15,15 @@
 load(
     "//tensorflow:tensorflow.bzl",
     "check_deps",
+    "tf_cc_binary",
     "tf_cc_test",
     "tf_copts",
     "tf_cuda_library",
-    "tf_cc_binary",
 )
 
 # For platform specific build config
 load(
-    "//tensorflow/core/platform:default/build_config.bzl",
+    "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_all_protos",
     "tf_kernel_tests_linkstatic",
     "tf_proto_library",
@@ -285,6 +285,7 @@ tf_cc_binary(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:regexp",
     ],
 )
 

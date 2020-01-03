@@ -59,7 +59,7 @@ constexpr char kLoadAttemptFail[] = "fail";
 constexpr char kLoadAttemptSuccess[] = "success";
 
 uint64 GetLatencyMicroseconds(const uint64 start_microseconds) {
-  const uint64 end_microseconds = Env::Default()->NowMicros();
+  const uint64 end_microseconds = EnvTime::NowMicros();
   // Avoid clock skew.
   if (end_microseconds < start_microseconds) return 0;
   return end_microseconds - start_microseconds;
@@ -331,7 +331,7 @@ Status LoadSavedModel(const SessionOptions& session_options,
                                                export_dir, tags, bundle);
   auto log_and_count = [&](const string& status_str) {
     LOG(INFO) << "SavedModel load for tags { " << absl::StrJoin(tags, " ")
-              << " }; Status: " << status_str << ". Took "
+              << " }; Status: " << status_str << ": " << status << ". Took "
               << GetLatencyMicroseconds(start_microseconds) << " microseconds.";
     load_attempt_count->GetCell(export_dir, status_str)->IncrementBy(1);
   };

@@ -15,18 +15,18 @@ limitations under the License.
 
 #include "tensorflow/core/platform/net.h"
 
-#include <cerrno>
-#include <cstdlib>
-#include <cstring>
-#include <unordered_set>
-
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
 
-#include "tensorflow/core/lib/strings/strcat.h"
+#include <cerrno>
+#include <cstdlib>
+#include <cstring>
+#include <unordered_set>
+
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/strcat.h"
 
 namespace tensorflow {
 namespace internal {

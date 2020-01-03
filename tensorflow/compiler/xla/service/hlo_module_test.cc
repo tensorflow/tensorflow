@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
-#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
@@ -214,11 +213,10 @@ ENTRY %axpy.v5 (alpha: f32[], x: f32[2,4], y: f32[2,4]) -> f32[2,4] {
   ROOT %add = f32[2,4]{1,0} add(f32[2,4]{1,0} %multiply, f32[2,4]{1,0} %y)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(text));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(text));
   ASSERT_FALSE(module->has_schedule());
   TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<HloModule> module_copy,
+      auto module_copy,
       HloModule::CreateFromProto(module->ToProto(), module->config()));
   ASSERT_FALSE(module_copy->has_schedule());
 }
@@ -236,11 +234,10 @@ ENTRY %axpy.v5 (alpha: f32[], x: f32[2,4], y: f32[2,4]) -> f32[2,4] {
   ROOT %add = f32[2,4]{1,0} add(f32[2,4]{1,0} %multiply, f32[2,4]{1,0} %y)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(text));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(text));
   ASSERT_TRUE(module->has_schedule());
   TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<HloModule> module_copy,
+      auto module_copy,
       HloModule::CreateFromProto(module->ToProto(), module->config()));
   ASSERT_TRUE(module_copy->has_schedule());
   TF_ASSERT_OK(module_copy->schedule().Verify());
@@ -273,8 +270,7 @@ ENTRY ReduceR3ToR2.v3 {
   ROOT reduce = f32[8,16]{1,0} reduce(input, constant), dimensions={2}, to_apply=add_F32.v3
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(text));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(text));
 
   // Perform various transformations on the graph:
   //
@@ -307,7 +303,7 @@ ENTRY ReduceR3ToR2.v3 {
   // Serialize and deserialize and verify that the instruction and computations
   // unique ids are the same.
   TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<HloModule> module_copy,
+      auto module_copy,
       HloModule::CreateFromProto(module->ToProto(), module->config()));
 
   // The module IDs should *not* be the same because module ids must be globally
@@ -367,8 +363,7 @@ TEST_F(HloModuleTest, VerifyReplaceComputationsWithSortOp) {
   }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(text));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(text));
 
   // Create a replacement computation
   HloComputation* new_comp;

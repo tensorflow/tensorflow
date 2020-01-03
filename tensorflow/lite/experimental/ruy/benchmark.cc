@@ -67,6 +67,11 @@ void Benchmark() {
                         GetBoolEnvVarOrFalse("SYMM_RHS");
   const bool benchmark_cubic = GetBoolEnvVarOrFalse("RUY_BENCHMARK_CUBIC");
   std::vector<BenchmarkShape> shapes;
+
+  // Often 8 is used for this multiplier, but to check teeny sizes one can
+  // use 1.
+  static constexpr int cubic_size_multiplier = 8;
+
   if (benchmark_cubic) {
 #ifdef _WIN32
     _putenv_s("QUICK_BENCHMARK", "1");
@@ -74,9 +79,10 @@ void Benchmark() {
     setenv("QUICK_BENCHMARK", "1", 0);
 #endif
     std::vector<int> sizes;
-    for (int i = 16; i <= 4096; i *= 2) {
+    for (int i = 2 * cubic_size_multiplier; i <= (512 * cubic_size_multiplier);
+         i *= 2) {
       sizes.push_back(i);
-      if (i < 4096) {
+      if (i < (512 * cubic_size_multiplier)) {
         sizes.push_back(i * 3 / 2);
       }
     }

@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/map_util.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_schedule.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -222,7 +223,13 @@ string HloModule::ToString(const HloPrintOptions& options) const {
     s << ", is_scheduled=true";
   }
   s << "\n\n";
-  for (const HloComputation* computation : MakeComputationPostOrder()) {
+  const auto& computations = options.canonicalize_computations()
+                                 ? MakeComputationSortedByContent()
+                                 : MakeComputationPostOrder();
+  for (const HloComputation* computation : computations) {
+    if (!options.print_computation(computation)) {
+      continue;
+    }
     if (computation == entry_computation()) {
       s << "ENTRY ";
     }
@@ -288,7 +295,8 @@ Status HloModule::CheckUniqueNamesAndIdsForComputationsAndInstructions() const {
 
 /* static */
 StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
-    const HloModuleProto& proto, const HloModuleConfig& module_config) {
+    const HloModuleProto& proto, const HloModuleConfig& module_config,
+    bool prohibit_empty_literal) {
   VLOG(2) << "CreateFromProto()";
   XLA_VLOG_LINES(3, proto.DebugString());
 
@@ -326,7 +334,8 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
   for (const HloComputationProto& computation_proto : proto.computations()) {
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<HloComputation> computation,
-        HloComputation::CreateFromProto(computation_proto, computation_map));
+        HloComputation::CreateFromProto(computation_proto, computation_map,
+                                        prohibit_empty_literal));
     CHECK_NE(computation.get(), nullptr);
     int64 computation_id = computation_proto.id();
     TF_RET_CHECK(computation_id != -1);
@@ -590,6 +599,19 @@ std::vector<HloComputation*> HloModule::MakeComputationPostOrder() const {
                << " computation_count=" << computations_.size();
   }
   return post_order;
+}
+
+std::vector<HloComputation*> HloModule::MakeComputationSortedByContent() const {
+  auto result = MakeComputationPostOrder();
+  std::sort(result.begin(), result.end(),
+            [](HloComputation* a, HloComputation* b) {
+              if (a->instruction_count() != b->instruction_count()) {
+                return a->instruction_count() < b->instruction_count();
+              }
+              return a->ToString(HloPrintOptions::Fingerprint()) <
+                     b->ToString(HloPrintOptions::Fingerprint());
+            });
+  return result;
 }
 
 std::vector<HloComputation*> HloModule::MakeNonfusionComputations() const {

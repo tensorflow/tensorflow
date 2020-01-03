@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "absl/types/optional.h"
 #include "tensorflow/cc/client/client_session.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
@@ -143,9 +144,10 @@ void BM_KernelAndDeviceRun(int iters) {
   KernelAndDeviceOp k(nullptr, false, env.function_library_runtime(), nullptr,
                       nullptr, env.cpu_device());
   TF_CHECK_OK(k.Init(ndef, nullptr));
+  const EagerKernelArgs args(std::move(inputs));
   tensorflow::testing::StartTiming();
   for (int i = 0; i < iters; ++i) {
-    TF_CHECK_OK(k.Run(inputs, &outputs, nullptr));
+    TF_CHECK_OK(k.Run(args, &outputs, nullptr, absl::nullopt));
   }
 }
 BENCHMARK(BM_KernelAndDeviceRun);

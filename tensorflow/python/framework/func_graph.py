@@ -29,6 +29,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import tape
 from tensorflow.python.eager.graph_only_ops import graph_placeholder
+from tensorflow.python.framework import auto_control_deps
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -36,7 +37,6 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
-from tensorflow.python.framework.auto_control_deps import AutomaticControlDependencies
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import resource_variable_ops
@@ -94,11 +94,14 @@ def convert_structure_to_signature(structure, arg_names=None):
         # of the function argument.
         name = user_specified_name
       else:
-        name = "/".join([str(p) for p in path])
+        name = "/".join(str(p) for p in path)
       return tensor_spec.TensorSpec(arg.shape, arg.dtype, name)
     if isinstance(arg, composite_tensor.CompositeTensor):
       # TODO(b/133606651) Do we need to inject arg_name?
       return arg._type_spec  # pylint: disable=protected-access
+    if isinstance(arg, resource_variable_ops.BaseResourceVariable):
+      name = "/".join(str(p) for p in path)
+      return resource_variable_ops.VariableSpec(arg.shape, arg.dtype, name)
     if isinstance(arg, (
         int,
         float,
@@ -253,6 +256,9 @@ class FuncGraph(ops.Graph):
     self._saveable = True
     self._saving_errors = set()
 
+    # Keep track of callbacks to run when this graph exits default scope
+    self._scope_exit_callbacks = None
+
   def __str__(self):
     return "FuncGraph(name=%s, id=%s)" % (self.name, id(self))
 
@@ -289,7 +295,7 @@ class FuncGraph(ops.Graph):
     if key not in self._deferred_captures:
 
       def convert_to_placeholder(s):
-        if not isinstance(s, tensor_spec.TensorSpec):
+        if not isinstance(s, tensor_spec.DenseSpec):
           raise TypeError(
               "Expected a nest of `TypeSpec` objects, found %s of type %s." %
               (s, type(s)))
@@ -368,6 +374,10 @@ class FuncGraph(ops.Graph):
       old_strategy_stack = self._distribution_strategy_stack
       self._distribution_strategy_stack = list(
           graph._distribution_strategy_stack)
+      uses_distribution_strategy = (
+          self._distribution_strategy_stack and
+          self._distribution_strategy_stack[-1].strategy.extended
+          ._retrace_functions_for_each_device)
       # We ignore device placements from any outer scopes while tracing the
       # function when possible, to avoid hard-coding them in the function
       # graph. "Default" placements come from the PartitionedCallOp's placement,
@@ -376,12 +386,12 @@ class FuncGraph(ops.Graph):
       # restored.
       old_device_stack = self._device_function_stack
       if context.executing_eagerly():
-        if self._distribution_strategy_stack:
+        if uses_distribution_strategy:
           self._device_function_stack = self._device_function_stack.copy()
           self._add_device_to_stack(context.context().device_name)
       else:
-        if (self._distribution_strategy_stack
-            or device_stack_has_callable(graph._device_function_stack)):
+        if (uses_distribution_strategy or
+            device_stack_has_callable(graph._device_function_stack)):
           # Hard-code devices from device functions in the function body
           self._device_function_stack = graph._device_function_stack.copy()
 
@@ -397,15 +407,23 @@ class FuncGraph(ops.Graph):
       self._auto_cast_variable_read_dtype = graph._auto_cast_variable_read_dtype
       # pylint: enable=protected-access
 
+      old_scope_exit_callbacks = self._scope_exit_callbacks
+      self._scope_exit_callbacks = []
+
       with outer_cm as g:
         try:
           yield g
         finally:
-          self._distribution_strategy_stack = old_strategy_stack
-          self._device_function_stack = old_device_stack
-          self._variable_creator_stack = old_creator_stack
-          self._graph_key = old_graph_key
-          self._auto_cast_variable_read_dtype = old_auto_cast_var_read_dtype
+          try:
+            for fn in self._scope_exit_callbacks:
+              fn()
+          finally:
+            self._scope_exit_callbacks = old_scope_exit_callbacks
+            self._distribution_strategy_stack = old_strategy_stack
+            self._device_function_stack = old_device_stack
+            self._variable_creator_stack = old_creator_stack
+            self._graph_key = old_graph_key
+            self._auto_cast_variable_read_dtype = old_auto_cast_var_read_dtype
     return inner_cm()
 
   @property
@@ -438,16 +456,28 @@ class FuncGraph(ops.Graph):
     return [t.shape for t in self.outputs]
 
   @property
-  def variables(self):
-    """A list of variables accessed by this FuncGraph.
+  def trainable_variables(self):
+    """A sequence of trainable variables accessed by this FuncGraph.
 
     Note that functions keep only weak references to variables. Calling the
     function after a variable it accesses has been deleted is an error.
 
-    Yields:
-      Strong references to variables accessed by this FuncGraph.
+    Returns:
+      Sequence of trainable variables for this func graph.
     """
-    for weak_v in self._weak_variables:
+    return tuple(v for v in self.variables if v.trainable)
+
+  @property
+  def variables(self):
+    """A sequence of variables accessed by this FuncGraph.
+
+    Note that functions keep only weak references to variables. Calling the
+    function after a variable it accesses has been deleted is an error.
+
+    Returns:
+      Sequence of variables for this func graph.
+    """
+    def deref(weak_v):
       v = weak_v()
       if v is None:
         raise AssertionError(
@@ -456,7 +486,9 @@ class FuncGraph(ops.Graph):
             "not referenced elsewhere in the program. This is generally a "
             "mistake; consider storing variables in an object attribute on "
             "first call.")
-      yield v
+      return v
+
+    return tuple(deref(v) for v in self._weak_variables)
 
   @variables.setter
   def variables(self, var_list):
@@ -584,16 +616,6 @@ class FuncGraph(ops.Graph):
       bypasses the mechanisms required for the data dependencies to be correctly
       wired.
     """
-    # Note: _forward_func_graph is currently only set when building the gradient
-    # graph graph of a defun call. If the backwards graph tries to capture
-    # tensors those will be captured first in the forward graph. This
-    # makes sure that any tensor needed by a custom_gradient is correctly
-    # captured.
-
-    if (getattr(tensor, "graph", None) is not self and
-        hasattr(self, "_forward_func_graph") and
-        isinstance(self._forward_func_graph, FuncGraph)):
-      tensor = self._forward_func_graph.capture(tensor)
     if isinstance(tensor, ops.EagerTensor):
       if name is None:
         name = str(ops.uid())
@@ -759,6 +781,17 @@ class FuncGraph(ops.Graph):
     """Returns set of errors preventing this FuncGraph from being saved."""
     return self._saving_errors
 
+  def _add_scope_exit_callback(self, fn):
+    """Add a function to call when this graph exits the default scope."""
+    if not callable(fn):
+      raise TypeError("fn is not callable: {}".format(fn))
+    if self._scope_exit_callbacks is None:
+      raise RuntimeError(
+          "Attempting to add a scope exit callback, but the default graph is "
+          "not the context scope graph.  Did you forget to call "
+          "'with graph.as_default(): ...'?")
+    self._scope_exit_callbacks.append(fn)
+
 
 def func_graph_from_py_func(name,
                             python_func,
@@ -835,10 +868,11 @@ def func_graph_from_py_func(name,
                            capture_by_value=capture_by_value)
   assert isinstance(func_graph, FuncGraph)
   if add_control_dependencies:
-    control_manager = AutomaticControlDependencies()
+    deps_control_manager = auto_control_deps.AutomaticControlDependencies()
   else:
-    control_manager = ops.NullContextmanager()
-  with func_graph.as_default(), control_manager as a:
+    deps_control_manager = ops.NullContextmanager()
+
+  with func_graph.as_default(), deps_control_manager as deps_ctx:
     current_scope = variable_scope.get_variable_scope()
     default_use_recource = current_scope.use_resource
     current_scope.set_use_resource(True)
@@ -908,7 +942,7 @@ def func_graph_from_py_func(name,
               "return value of type %s, which is not a Tensor." %
               (str(python_func), type(x)))
       if add_control_dependencies:
-        x = a.mark_as_return(x)
+        x = deps_ctx.mark_as_return(x)
       return x
 
     try:
@@ -941,6 +975,9 @@ def func_graph_from_py_func(name,
         python_func = tf_decorator.rewrap(python_func, original_func,
                                           converted_func)
 
+      else:
+        _, original_func = tf_decorator.unwrap(python_func)
+
       func_outputs = python_func(*func_args, **func_kwargs)
 
       # invariant: `func_outputs` contains only Tensors, CompositeTensors,
@@ -948,8 +985,8 @@ def func_graph_from_py_func(name,
       func_outputs = nest.map_structure(convert, func_outputs,
                                         expand_composites=True)
 
-      check_mutation(func_args_before, func_args)
-      check_mutation(func_kwargs_before, func_kwargs)
+      check_mutation(func_args_before, func_args, original_func)
+      check_mutation(func_kwargs_before, func_kwargs, original_func)
     finally:
       current_scope.set_use_resource(default_use_recource)
 
@@ -985,7 +1022,7 @@ def func_graph_from_py_func(name,
     func_graph.variables = variables
 
   if add_control_dependencies:
-    func_graph.control_outputs.extend(control_manager.ops_which_must_run)
+    func_graph.control_outputs.extend(deps_control_manager.ops_which_must_run)
 
   return func_graph
 
@@ -1014,13 +1051,15 @@ def device_stack_has_callable(device_stack):
              for spec in device_stack.peek_objs())
 
 
-def check_mutation(n1, n2):
+def check_mutation(n1, n2, func):
   """Check if two list of arguments are exactly the same."""
-  errmsg = ("Function to be traced should not modify structure of input "
-            "arguments. Check if your function has list and dictionary "
-            "operations that alter input arguments, "
-            "such as `list.pop`, `list.append`")
+  func_name = getattr(func, "__name__", func)
+
+  errmsg = ("{}() should not modify its Python input arguments."
+            " Check if it modifies any lists or dicts passed as"
+            " arguments. Modifying a copy is allowed.".format(func_name))
   try:
+    # TODO(mdan): Compare more robustly so that argument names can be reported.
     nest.assert_same_structure(n1, n2, expand_composites=True)
   except ValueError:
     raise ValueError(errmsg)
@@ -1150,7 +1189,7 @@ def _get_defun_inputs(args, names, structure, flat_shapes=None):
 
     flattened = nest.flatten(arg_value, expand_composites=True)
     tensor_specs = [
-        arg for arg in flattened if isinstance(arg, tensor_spec.TensorSpec)
+        arg for arg in flattened if isinstance(arg, tensor_spec.DenseSpec)
     ]
     specified_names = [arg.name for arg in tensor_specs if arg.name]
     if specified_names and len(specified_names) < len(tensor_specs):
@@ -1182,7 +1221,20 @@ def _get_defun_inputs(args, names, structure, flat_shapes=None):
               "_user_specified_name",
               attr_value_pb2.AttrValue(s=compat.as_bytes(requested_name)))
         function_inputs.append(placeholder)
-      elif isinstance(arg, resource_variable_ops.BaseResourceVariable):
+      elif isinstance(arg, (resource_variable_ops.BaseResourceVariable,
+                            resource_variable_ops.VariableSpec)):
+        if isinstance(arg, resource_variable_ops.VariableSpec):
+          name = arg.name or name
+          with func_graph.outer_graph.as_default():
+            placeholder = graph_placeholder(dtypes.resource, arg.shape,
+                                            name=name)
+
+            arg = resource_variable_ops.BaseResourceVariable(
+                name=name,
+                shape=arg.shape,
+                dtype=arg.dtype,
+                handle=placeholder,
+                handle_name=name)
         # Capture arg variables to create placeholders for them. These will be
         # removed as captures after the function is traced (since otherwise we'd
         # just add it back with a new placeholder when the variable was

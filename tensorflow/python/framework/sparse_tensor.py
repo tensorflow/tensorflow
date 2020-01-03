@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+
 import numpy as np
 
 from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
@@ -126,7 +127,7 @@ class SparseTensor(_TensorLike, composite_tensor.CompositeTensor):
           indices, name="indices", dtype=dtypes.int64)
       # TODO(touts): Consider adding mutable_values() when 'values'
       # is a VariableOp and updating users of SparseTensor.
-      values = ops.internal_convert_to_tensor(values, name="values")
+      values = ops.convert_to_tensor(values, name="values")
       dense_shape = ops.convert_to_tensor(
           dense_shape, name="dense_shape", dtype=dtypes.int64)
     self._indices = indices
@@ -429,7 +430,7 @@ def convert_to_tensor_or_sparse_tensor(value, dtype=None, name=None):
       raise RuntimeError("Sparse dtype: requested = %s, actual = %s" %
                          (dtype.name, value.dtype.name))
     return value
-  return ops.internal_convert_to_tensor(value, dtype=dtype, name=name)
+  return ops.convert_to_tensor(value, dtype=dtype, name=name)
 
 
 def is_sparse(x):

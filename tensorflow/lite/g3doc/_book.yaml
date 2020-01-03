@@ -42,8 +42,6 @@ upper_tabs:
         path: /lite/convert/quantization
       - title: "Convert RNN models"
         path: /lite/convert/rnn
-      - title: "Generate a concrete function"
-        path: /lite/convert/concrete_function
 
       - heading: "Inference"
       - title: "Overview"
@@ -93,13 +91,14 @@ upper_tabs:
 
       - heading: "Microcontrollers"
       - title: "Overview"
-        path: /lite/microcontrollers/overview
+        path: /lite/microcontrollers
       - title: "Get started with microcontrollers"
         path: /lite/microcontrollers/get_started
-      - title: "Build and convert models"
-        path: /lite/microcontrollers/build_convert
       - title: "Understand the C++ library"
         path: /lite/microcontrollers/library
+      - title: "Build and convert models"
+        path: /lite/microcontrollers/build_convert
+
 
     - name: "Examples"
       contents:
@@ -110,14 +109,9 @@ upper_tabs:
       contents:
       - title: "Overview"
         path: /lite/models/
-      - heading: "Image classification"
-      - title: "Overview"
+      - heading: "Vision"
+      - title: "Image classification"
         path: /lite/models/image_classification/overview
-      - title: "Android"
-        path: /lite/models/image_classification/android
-      - title: "iOS"
-        path: /lite/models/image_classification/ios
-      - heading: "Other techniques"
       - title: "Object detection"
         path: /lite/models/object_detection/overview
       - title: "Pose estimation"
@@ -126,8 +120,13 @@ upper_tabs:
         path: /lite/models/segmentation/overview
       - title: "Style transfer"
         path: /lite/models/style_transfer/overview
+      - heading: "Text"
+      - title: "Question and answer"
+        path: /lite/models/bert_qa/overview
       - title: "Smart reply"
         path: /lite/models/smart_reply/overview
+      - title: "Text classification"
+        path: /lite/models/text_classification/overview
 
     - name: "Python API"
       skip_translation: true

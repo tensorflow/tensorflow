@@ -50,7 +50,7 @@ class LinearOperatorPermutationTest(
   @staticmethod
   def skip_these_tests():
     # This linear operator is almost never positive definite.
-    return ["cholesky"]
+    return ["cholesky", "eigvalsh"]
 
   def operator_and_matrix(
       self, build_info, dtype, use_placeholder,

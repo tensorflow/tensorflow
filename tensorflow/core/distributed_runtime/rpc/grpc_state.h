@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/notification.h"
+#include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
 
@@ -45,15 +46,24 @@ class RPCState : public GrpcClientCQTag {
            Response* response, StatusCallback done, CallOptions* call_opts,
            thread::ThreadPool* threadpool, int32 max_retries = 0,
            bool fail_fast = true)
-      : RPCState(stub, cq, method, request, response, std::move(done),
-                 call_opts, threadpool,
+      : RPCState(
+            stub, cq, method, request, response, std::move(done), call_opts,
+            threadpool,
+            // 1) If GRPC_FAIL_FAST is specified, fail_fast=$GRPC_FAIL_FAST.
+            // See b/141948186.
+            // 2) Otherwise, if the platform is Google, use the fail_fast from
+            // the caller. See b/140260119.
+            // 3) Otherwise, use fail_fast=false.
+            [fail_fast]() -> bool {
+              bool x;
 #if defined(PLATFORM_GOOGLE)
-                 // TODO(b/140260119): Always set fail_fast to false.
-                 fail_fast,
+              TF_CHECK_OK(ReadBoolFromEnvVar("GRPC_FAIL_FAST", fail_fast, &x));
 #else
-                 /*fail_fast=*/false,
+              TF_CHECK_OK(ReadBoolFromEnvVar("GRPC_FAIL_FAST", false, &x));
 #endif  // PLATFORM_GOOGLE
-                 /*timeout_in_ms=*/0, max_retries) {
+              return x;
+            }(),
+            /*timeout_in_ms=*/0, max_retries) {
   }
 
   template <typename Request>
@@ -97,8 +107,7 @@ class RPCState : public GrpcClientCQTag {
 
     VLOG(2) << "Starting call: " << method_;
 
-    call_ = std::move(
-        stub_->PrepareUnaryCall(context_.get(), method_, request_buf_, cq_));
+    call_ = stub_->PrepareUnaryCall(context_.get(), method_, request_buf_, cq_);
     call_->StartCall();
     call_->Finish(&response_buf_, &status_, this);
   }
@@ -665,7 +674,7 @@ class StreamingRPCDispatcher {
     context_->set_wait_for_ready(true);
 
     std::unique_ptr<grpc::GenericClientAsyncReaderWriter> call =
-        std::move(stub_->PrepareCall(context_.get(), method_, cq_));
+        stub_->PrepareCall(context_.get(), method_, cq_);
 
     state_.reset(new StreamingRPCState<Response>(std::move(call), context_));
   }

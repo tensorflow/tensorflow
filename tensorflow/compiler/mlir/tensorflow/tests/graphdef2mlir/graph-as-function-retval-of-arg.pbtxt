@@ -1,0 +1,44 @@
+# RUN: tf-mlir-translate -graphdef-to-mlir %s -tf-graph-as-function -o - | FileCheck %s --dump-input=fail
+
+node {
+  name: "arg"
+  op: "_Arg"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "index"
+    value {
+      i: 0
+    }
+  }
+}
+node {
+  name: "ret"
+  op: "_Retval"
+  input: "arg"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "index"
+    value {
+      i: 0
+    }
+  }
+}
+versions {
+  producer: 27
+}
+
+# CHECK: func @main(%[[ARG_0:[a-z0-9]+]]: tensor<*xi32>) -> tensor<*xi32>
+# CHECK: attributes {tf.entry_function = {inputs = "arg", outputs = "ret"}} {
+# CHECK:   %[[GRAPH:[0-9]+]] = tf_executor.graph
+# CHECK:     tf_executor.fetch %[[ARG_0]]
+# CHECK:   return %[[GRAPH]]

@@ -102,7 +102,7 @@ import weakref
 
 import six
 
-from tensorflow.python.autograph.core import ag_ctx
+from tensorflow.python.autograph.core import ag_ctx as autograph_ctx
 from tensorflow.python.autograph.impl import api as autograph
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import device_util
@@ -136,13 +136,13 @@ from tensorflow.tools.docs import doc_controls
 # Context tracking whether in a strategy.update() or .update_non_slot() call.
 
 
-_update_device = threading.local()
+_update_replica_id = threading.local()
 
 
-def get_update_device():
+def get_update_replica_id():
   """Get the current device if in a `tf.distribute.Strategy.update()` call."""
   try:
-    return _update_device.current
+    return _update_replica_id.current
   except AttributeError:
     return None
 
@@ -150,17 +150,17 @@ def get_update_device():
 class UpdateContext(object):
   """Context manager when you are in `update()` or `update_non_slot()`."""
 
-  def __init__(self, device):
-    self._device = device
-    self._old_device = None
+  def __init__(self, replica_id):
+    self._replica_id = replica_id
+    self._old_replica_id = None
 
   def __enter__(self):
-    self._old_device = get_update_device()
-    _update_device.current = self._device
+    self._old_replica_id = get_update_replica_id()
+    _update_replica_id.current = self._replica_id
 
   def __exit__(self, exception_type, exception_value, traceback):
     del exception_type, exception_value, traceback
-    _update_device.current = self._old_device
+    _update_replica_id.current = self._old_replica_id
 
 
 # ------------------------------------------------------------------------------
@@ -629,6 +629,7 @@ class Strategy(object):
 
     # Distribute that dataset
     dist_dataset = strategy.experimental_distribute_dataset(dataset)
+
     # Iterate over the distributed dataset
     for x in dist_dataset:
       # process dataset elements
@@ -652,8 +653,7 @@ class Strategy(object):
     `.shard` operation to the end of the processing pipeline. This will cause
     the entire preprocessing pipeline for all the data to be run on every
     worker, and each worker will do redundant work. We will print a warning
-    if this method of sharding is selected. In this case, consider using
-    `experimental_distribute_datasets_from_function` instead.
+    if this method of sharding is selected.
 
     You can disable dataset sharding across workers using the `auto_shard`
     option in `tf.data.experimental.DistributeOptions`.
@@ -665,6 +665,32 @@ class Strategy(object):
     If the above batch splitting and dataset sharding logic is undesirable,
     please use `experimental_distribute_datasets_from_function` instead, which
     does not do any automatic splitting or sharding.
+
+    You can also use the `element_spec` property of the distributed dataset
+    returned by this API to query the `tf.TypeSpec` of the elements returned
+    by the iterator. This can be used to set the `input_signature` property
+    of a `tf.function`.
+
+     ```python
+    strategy = tf.distribute.MirroredStrategy()
+
+    # Create a dataset
+    dataset = dataset_ops.Dataset.TFRecordDataset([
+      "/a/1.tfr", "/a/2.tfr", "/a/3.tfr", "/a/4.tfr"])
+
+    # Distribute that dataset
+    dist_dataset = strategy.experimental_distribute_dataset(dataset)
+
+    @tf.function(input_signature=[dist_dataset.element_spec])
+    def train_step(inputs):
+      # train model with inputs
+      return
+
+    # Iterate over the distributed dataset
+    for x in dist_dataset:
+      # process dataset elements
+      strategy.experimental_run_v2(train_step, args=(x,))
+    ```
 
     Args:
       dataset: `tf.data.Dataset` that will be sharded across all replicas using
@@ -715,6 +741,26 @@ class Strategy(object):
     the global batch size.  This may be computed using
     `input_context.get_per_replica_batch_size`.
 
+    To query the `tf.TypeSpec` of the elements in the distributed dataset
+    returned by this API, you need to use the `element_spec` property of the
+    distributed iterator. This `tf.TypeSpec` can be used to set the
+    `input_signature` property of a `tf.function`.
+
+    ```python
+    # If you want to specify `input_signature` for a `tf.function` you must
+    # first create the iterator.
+    iterator = iter(inputs)
+
+    @tf.function(input_signature=[iterator.element_spec])
+    def replica_fn_with_signature(inputs):
+      # train the model with inputs
+      return
+
+    for _ in range(steps):
+      strategy.experimental_run_v2(replica_fn_with_signature,
+          args=(next(iterator),))
+    ```
+
     Args:
       dataset_fn: A function taking a `tf.distribute.InputContext` instance and
         returning a `tf.data.Dataset`.
@@ -755,11 +801,15 @@ class Strategy(object):
       structure can either be "per-replica" `Tensor` objects or `Tensor`s
       (for example, if running on a single replica).
     """
+    if not isinstance(args, (list, tuple)):
+      raise ValueError(
+          "positional args must be a list or tuple, got {}".format(type(args)))
+
     with self.scope():
       # tf.distribute supports Eager functions, so AutoGraph should not be
       # applied when when the caller is also in Eager mode.
-      fn = autograph.tf_convert(fn, ag_ctx.control_status_ctx(),
-                                convert_by_default=False)
+      fn = autograph.tf_convert(
+          fn, autograph_ctx.control_status_ctx(), convert_by_default=False)
       return self._extended.call_for_each_replica(fn, args=args, kwargs=kwargs)
 
   def reduce(self, reduce_op, value, axis):
@@ -841,7 +891,7 @@ class Strategy(object):
         if dim is not None:
           # By returning a python value in the static shape case, we can
           # maybe get a fast path for reducing the denominator.
-          return numer, dim
+          return numer, array_ops.constant(dim, dtype=dtypes.int64)
       elif axis < 0:
         axis = axis + array_ops.rank(v)
       if v.shape.rank == 1:
@@ -1164,8 +1214,8 @@ class StrategyExtendedV2(object):
 
   *Replica context vs. Cross-replica context*
 
-  _replica context_ is when we are in some function that is being called once
-  for each replica.  Otherwise we are in cross-replica context, which is
+  A _replica context_ applies when we are in some function that is being called
+  once for each replica.  Otherwise we are in cross-replica context, which is
   useful for calling `tf.distribute.Strategy` methods which operate across the
   replicas (like `reduce_to()`). By default you start in a replica context
   (the "default single replica context") and then some methods can switch you
@@ -1539,6 +1589,8 @@ class StrategyExtendedV2(object):
     _require_cross_replica_or_default_context_extended(self)
     if kwargs is None:
       kwargs = {}
+    fn = autograph.tf_convert(
+        fn, autograph_ctx.control_status_ctx(), convert_by_default=False)
     with self._container_strategy().scope():
       return self._update(var, fn, args, kwargs, group)
 
@@ -1563,6 +1615,8 @@ class StrategyExtendedV2(object):
     _require_cross_replica_or_default_context_extended(self)
     if kwargs is None:
       kwargs = {}
+    fn = autograph.tf_convert(
+        fn, autograph_ctx.control_status_ctx(), convert_by_default=False)
     with self._container_strategy().scope():
       return self._update_non_slot(colocate_with, fn, args, kwargs, group)
 
@@ -1946,6 +2000,8 @@ class ReplicaContext(object):
     require_replica_context(self)
     if kwargs is None:
       kwargs = {}
+    merge_fn = autograph.tf_convert(
+        merge_fn, autograph_ctx.control_status_ctx(), convert_by_default=False)
     return self._merge_call(merge_fn, args, kwargs)
 
   def _merge_call(self, merge_fn, args, kwargs):

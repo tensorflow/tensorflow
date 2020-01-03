@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/substitute.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/tensor_util.h"
@@ -100,6 +101,7 @@ FunctionDefLibrary GetFunctionDefLibraryStub(
     *(fn_stub->mutable_signature()) = fn.signature();
     *(fn_stub->mutable_attr()) = fn.attr();
     *(fn_stub->mutable_arg_attr()) = fn.arg_attr();
+    *(fn_stub->mutable_resource_arg_unique_id()) = fn.resource_arg_unique_id();
   }
   *stub.mutable_gradient() = fdef_lib.gradient();
   return stub;
@@ -220,7 +222,7 @@ Status MetaOptimizer::InitializeOptimizers(
   if (cfg_.function_optimization() != RewriterConfig::OFF) {
     optimizers->push_back(MakeUnique<FunctionOptimizer>(
         cfg_.function_optimization(),
-        /*lower_contorl_flow=*/!IsSingleThreadedExecutor()));
+        /*lower_control_flow=*/!IsSingleThreadedExecutor()));
   }
   if (cfg_.debug_stripper() == RewriterConfig::ON) {
     optimizers->push_back(MakeUnique<DebugStripper>());
@@ -539,6 +541,7 @@ Status MetaOptimizer::RunOptimizer(
       optimizer->Optimize(cluster, *optimized_item, optimized_graph);
   const uint64 end_us = Env::Default()->NowMicros();
   const float duration_ms = (end_us - start_us) / 1000.0f;
+  metrics::UpdateGrapplerPassTime(optimizer->name(), end_us - start_us);
 
   string message;
   if (!status.ok()) {

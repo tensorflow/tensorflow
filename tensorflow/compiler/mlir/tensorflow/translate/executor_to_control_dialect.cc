@@ -21,13 +21,13 @@ limitations under the License.
 #include "llvm/ADT/SmallString.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/Operation.h"  // TF:local_config_mlir
-#include "mlir/IR/Value.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
-#include "mlir/Pass/PassRegistry.h"  // TF:local_config_mlir
-#include "mlir/Support/LLVM.h"  // TF:local_config_mlir
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/IR/Builders.h"  // TF:llvm-project
+#include "mlir/IR/Operation.h"  // TF:llvm-project
+#include "mlir/IR/Value.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/Pass/PassRegistry.h"  // TF:llvm-project
+#include "mlir/Support/LLVM.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/control_flow_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -67,23 +67,38 @@ void ExecutorToControlDialectConversion::runOnFunction() {
   Type control_type = TFControlFlow::TFControlType::get(&getContext());
 
   Block &body = getFunction().front();
-  OpBuilder builder(&body, body.begin());
   auto graph = cast<tf_executor::GraphOp>(body.front());
+  OpBuilder builder(&body);
   SmallString<64> new_op_name;
-  for (auto &op : llvm::make_early_inc_range(graph.GetBody())) {
+  for (auto &op : llvm::make_early_inc_range(llvm::reverse(graph.GetBody()))) {
     LLVM_DEBUG(llvm::dbgs() << "Process: " << op.getName() << "\n");
+
     if (auto fetch = dyn_cast<tf_executor::FetchOp>(op)) {
       // Replace all the operands of the fetch op with the uses of the graph
-      // results, the graph op will then be removed.
+      // results, remove the fetch op afterwards.
       for (auto ops_and_ret_vals :
            llvm::zip(graph.getResults(), fetch.getOperands()))
         std::get<0>(ops_and_ret_vals)
-            ->replaceAllUsesWith(std::get<1>(ops_and_ret_vals));
+            .replaceAllUsesWith(std::get<1>(ops_and_ret_vals));
+      op.erase();
       continue;
     }
+
+    builder.setInsertionPoint(&op);
+
     if (auto island = dyn_cast<tf_executor::IslandOp>(op)) {
-      Value *ctl_sequence = nullptr;
-      Operation *last_replaced_op = nullptr;
+      Value ctl_sequence = nullptr;
+      if (island.GetBody().without_terminator().empty() &&
+          island.getNumOperands() > 1) {
+        // For an empty island with multiple control inputs, we create a no-op
+        // inside it which will group all the inputs into one control output.
+        // This helps reducing the number of edges when there are multiple
+        // islands depending on this one.
+        builder.setInsertionPointToStart(&island.GetBody());
+        builder.create<TF::NoOp>(op.getLoc(), ArrayRef<Type>{},
+                                 ArrayRef<Value>{}, ArrayRef<NamedAttribute>{});
+        builder.setInsertionPoint(&op);
+      }
       for (Operation &wrapped_op : island.GetBody()) {
         LLVM_DEBUG(llvm::dbgs()
                    << " In island: " << wrapped_op.getName() << "\n");
@@ -91,7 +106,7 @@ void ExecutorToControlDialectConversion::runOnFunction() {
           for (auto ops_and_ret_vals :
                llvm::zip(island.getResults(), wrapped_op.getOperands()))
             std::get<0>(ops_and_ret_vals)
-                ->replaceAllUsesWith(std::get<1>(ops_and_ret_vals));
+                .replaceAllUsesWith(std::get<1>(ops_and_ret_vals));
           break;
         }
         // Add a leading _ off the name.
@@ -110,7 +125,7 @@ void ExecutorToControlDialectConversion::runOnFunction() {
         if (ctl_sequence) {
           state.operands.push_back(ctl_sequence);
         } else {
-          for (Value *ctl_operand : island.getOperands())
+          for (Value ctl_operand : island.getOperands())
             state.operands.push_back(ctl_operand);
         }
 
@@ -126,14 +141,25 @@ void ExecutorToControlDialectConversion::runOnFunction() {
         for (auto ops_and_ret_vals :
              llvm::zip(wrapped_op.getResults(), replacement->getResults()))
           std::get<0>(ops_and_ret_vals)
-              ->replaceAllUsesWith(std::get<1>(ops_and_ret_vals));
+              .replaceAllUsesWith(std::get<1>(ops_and_ret_vals));
 
         ctl_sequence = replacement->getResult(replacement->getNumResults() - 1);
-        last_replaced_op = replacement;
       }
-      for (Value *island_ctl : island.getResults())
-        island_ctl->replaceAllUsesWith(
-            last_replaced_op->getResult(last_replaced_op->getNumResults() - 1));
+
+      if (ctl_sequence) {
+        // If ctl_sequence is non-null, this means at least one operation has
+        // been rewritten from ops in island. Last op rewritten must logically
+        // carry // all the island control inputs, we can simply use it to
+        // replace all uses of island's control output.
+        island.control().replaceAllUsesWith(ctl_sequence);
+      } else if (island.getNumOperands() > 0) {
+        // Getting here means island had an effectively empty body and there is
+        // just one control input. In this case, island's control output should
+        // be replaced with the control input.
+        assert(island.getNumOperands() == 1);
+        island.control().replaceAllUsesWith(island.getOperand(0));
+      }
+
       op.erase();
       continue;
     }
@@ -162,10 +188,11 @@ void ExecutorToControlDialectConversion::runOnFunction() {
       return signalPassFailure();
     }
     OperationState state(op.getLoc(), new_op_name);
-    // Token results are dropped when we process the source op, the operand
-    // becomes nullptr by the time we process the sink op, filter it out here.
-    auto non_null_operands =
-        llvm::make_filter_range(op.getOperands(), [](Value *v) { return v; });
+    // Drop all TokenType operands since they don't exist in the control
+    // dialect.
+    auto non_null_operands = llvm::make_filter_range(
+        op.getOperands(),
+        [](Value v) { return !v.getType().isa<tf_executor::TokenType>(); });
     state.operands.append(non_null_operands.begin(), non_null_operands.end());
     for (Type result_type : op.getResultTypes()) {
       // Filter out TokenType, they don't exist in the control dialect.
@@ -185,17 +212,21 @@ void ExecutorToControlDialectConversion::runOnFunction() {
 
     if (auto next_iteration =
             dyn_cast<tf_executor::NextIterationSourceOp>(op)) {
-      next_iteration.output()->replaceAllUsesWith(replacement->getResult(0));
-      next_iteration.token()->dropAllUses();
-      next_iteration.control()->replaceAllUsesWith(replacement->getResult(1));
+      next_iteration.output().replaceAllUsesWith(replacement->getResult(0));
+      next_iteration.token().dropAllUses();
+      next_iteration.control().replaceAllUsesWith(replacement->getResult(1));
     } else {
       for (auto ops_and_ret_vals :
            llvm::zip(op.getResults(), replacement->getResults()))
         std::get<0>(ops_and_ret_vals)
-            ->replaceAllUsesWith(std::get<1>(ops_and_ret_vals));
+            .replaceAllUsesWith(std::get<1>(ops_and_ret_vals));
     }
     op.erase();
   }
+
+  // Now we have rewritten all ops inside GraphOp to TF Control dialect. We need
+  // to move all operations outside of GraphOp and remove it.
+  body.getOperations().splice(body.begin(), graph.GetBody().getOperations());
   graph.erase();
 }
 

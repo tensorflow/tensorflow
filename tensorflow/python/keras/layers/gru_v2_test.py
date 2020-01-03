@@ -343,6 +343,7 @@ class GRUV2Test(keras_parameterized.TestCase):
                 'return_sequences': True},
         input_shape=(num_samples, timesteps, embedding_dim))
 
+  @test_util.run_v2_only
   def test_float64_GRU(self):
     num_samples = 2
     timesteps = 3

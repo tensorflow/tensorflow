@@ -25,7 +25,6 @@ import weakref
 import six
 
 from tensorflow.core.protobuf import trackable_object_graph_pb2
-from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -43,6 +42,7 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_management
+from tensorflow.python.training import py_checkpoint_reader
 from tensorflow.python.training import saver as v1_saver_lib
 from tensorflow.python.training.saving import functional_saver
 from tensorflow.python.training.saving import saveable_object_util
@@ -200,7 +200,7 @@ class _CheckpointRestoreCoordinator(object):
     self.all_python_objects = object_identity.ObjectIdentityWeakSet()
     self.save_path_tensor = save_path_tensor
     self.save_path_string = save_path
-    self.dtype_map = pywrap_tensorflow.NewCheckpointReader(
+    self.dtype_map = py_checkpoint_reader.NewCheckpointReader(
         save_path).get_variable_to_dtype_map()
     # A NewCheckpointReader for the most recent checkpoint, for streaming Python
     # state restoration.
@@ -272,7 +272,7 @@ class _CheckpointRestoreCoordinator(object):
       if reader is None:
         # Lazily create the NewCheckpointReader, since this requires file access
         # and we may not have any Python saveables.
-        reader = pywrap_tensorflow.NewCheckpointReader(self.save_path_string)
+        reader = py_checkpoint_reader.NewCheckpointReader(self.save_path_string)
       spec_names = [spec.name for spec in saveable.specs]
       saveable.python_restore([reader.get_tensor(name) for name in spec_names])
 
@@ -462,7 +462,7 @@ def object_metadata(save_path):
   Raises:
     ValueError: If an object graph was not found in the checkpoint.
   """
-  reader = pywrap_tensorflow.NewCheckpointReader(save_path)
+  reader = py_checkpoint_reader.NewCheckpointReader(save_path)
   try:
     object_graph_string = reader.get_tensor(base.OBJECT_GRAPH_PROTO_KEY)
   except errors_impl.NotFoundError:
@@ -666,6 +666,11 @@ def streaming_restore(status, session=None):
   # pylint: enable=protected-access
 
 
+def _objects_with_attributes(full_list):
+  """Filters out objects with no direct variable dependencies for assertions."""
+  return [o for o in full_list if o._gather_saveables_for_checkpoint()]  # pylint: disable=protected-access
+
+
 class CheckpointLoadStatus(_LoadStatus):
   """Checks the status of checkpoint loading and manages restore ops.
 
@@ -706,6 +711,11 @@ class CheckpointLoadStatus(_LoadStatus):
         self._checkpoint.object_graph_proto)
     self.assert_existing_objects_matched()
     for node_id, node in enumerate(self._checkpoint.object_graph_proto.nodes):
+      if not node.attributes:
+        # Only raise exceptions for the nodes with attributes themselves. Either
+        # they're ultimately not important, or they have a child with an
+        # attribute.
+        continue
       trackable = self._checkpoint.object_by_proto_id.get(node_id, None)
       if trackable is None:
         raise AssertionError("Unresolved object in checkpoint {}: {}"
@@ -761,7 +771,9 @@ class CheckpointLoadStatus(_LoadStatus):
         continue
       self._checkpoint.all_python_objects.add(trackable_object)
     unused_python_objects = (
-        object_identity.ObjectIdentitySet(self._checkpoint.all_python_objects) -
+        object_identity.ObjectIdentitySet(
+            _objects_with_attributes(
+                self._checkpoint.all_python_objects)) -
         object_identity.ObjectIdentitySet(
             self._checkpoint.object_by_proto_id.values()))
     if unused_python_objects:
@@ -777,7 +789,8 @@ class CheckpointLoadStatus(_LoadStatus):
       self._checkpoint.all_python_objects.add(trackable_object)
     if len(self._checkpoint.object_by_proto_id) <= 1:
       unused_python_objects = (
-          object_identity.ObjectIdentitySet(self._checkpoint.all_python_objects)
+          object_identity.ObjectIdentitySet(
+              _objects_with_attributes(self._checkpoint.all_python_objects))
           - object_identity.ObjectIdentitySet(
               self._checkpoint.object_by_proto_id.values()))
       if unused_python_objects:
@@ -932,7 +945,7 @@ class NameBasedSaverStatus(_LoadStatus):
 
 
   def assert_consumed(self):
-    """Raises an exception if any variables/objects are unmatched."""
+    """Raises an exception if any variables are unmatched."""
     unused_attributes = list(self._checkpoint.unused_attributes.items())
     if unused_attributes:
       unused_attribute_strings = [
@@ -1225,7 +1238,7 @@ class TrackableSaver(object):
     """
     if save_path is None:
       return InitializationOnlyStatus(self._graph_view, ops.uid())
-    reader = pywrap_tensorflow.NewCheckpointReader(save_path)
+    reader = py_checkpoint_reader.NewCheckpointReader(save_path)
     graph_building = not context.executing_eagerly()
     if graph_building:
       dtype_map = None
@@ -1433,14 +1446,15 @@ class CheckpointV1(tracking.AutoTrackable):
     """
     super(CheckpointV1, self).__init__()
     for k, v in sorted(kwargs.items(), key=lambda item: item[0]):
-      if not isinstance(v, (base.Trackable, def_function.Function)):
+      setattr(self, k, v)
+      if not isinstance(
+          getattr(self, k), (base.Trackable, def_function.Function)):
         raise ValueError(
             ("`Checkpoint` was expecting a trackable object (an object "
              "derived from `TrackableBase`), got %s. If you believe this "
              "object should be trackable (i.e. it is part of the "
              "TensorFlow Python API and manages state), please open an issue.")
             % (v,))
-      setattr(self, k, v)
     self._save_counter = None  # Created lazily for restore-on-create.
     self._save_assign_op = None
     self._saver = saver_with_op_caching(self)
@@ -1517,7 +1531,7 @@ class CheckpointV1(tracking.AutoTrackable):
     metadata used by `tf.train.latest_checkpoint`. More advanced checkpoint
     management, for example garbage collection and custom numbering, may be
     provided by other utilities which also wrap `write`
-    (`tf.contrib.checkpoint.CheckpointManager` for example).
+    (`tf.train.CheckpointManager` for example).
 
     Args:
       file_prefix: A prefix to use for the checkpoint filenames
@@ -1625,7 +1639,7 @@ class CheckpointV1(tracking.AutoTrackable):
       The returned status object has the following methods:
 
       * `assert_consumed()`:
-          Raises an exception if any variables/objects are unmatched: either
+          Raises an exception if any variables are unmatched: either
           checkpointed values which don't have a matching Python object or
           Python objects in the dependency graph with no values in the
           checkpoint. This method returns the status object, and so may be
@@ -1770,14 +1784,15 @@ class Checkpoint(tracking.AutoTrackable):
     """
     super(Checkpoint, self).__init__()
     for k, v in sorted(kwargs.items(), key=lambda item: item[0]):
-      if not isinstance(v, (base.Trackable, def_function.Function)):
+      setattr(self, k, v)
+      if not isinstance(
+          getattr(self, k), (base.Trackable, def_function.Function)):
         raise ValueError(
             ("`Checkpoint` was expecting a trackable object (an object "
              "derived from `TrackableBase`), got %s. If you believe this "
              "object should be trackable (i.e. it is part of the "
              "TensorFlow Python API and manages state), please open an issue.")
             % (v,))
-      setattr(self, k, v)
     self._save_counter = None  # Created lazily for restore-on-create.
     self._save_assign_op = None
     self._saver = saver_with_op_caching(self)
@@ -1851,7 +1866,7 @@ class Checkpoint(tracking.AutoTrackable):
     metadata used by `tf.train.latest_checkpoint`. More advanced checkpoint
     management, for example garbage collection and custom numbering, may be
     provided by other utilities which also wrap `write`
-    (`tf.contrib.checkpoint.CheckpointManager` for example).
+    (`tf.train.CheckpointManager` for example).
 
     Args:
       file_prefix: A prefix to use for the checkpoint filenames
@@ -1938,7 +1953,7 @@ class Checkpoint(tracking.AutoTrackable):
       The returned status object has the following methods:
 
       * `assert_consumed()`:
-          Raises an exception if any variables/objects are unmatched: either
+          Raises an exception if any variables are unmatched: either
           checkpointed values which don't have a matching Python object or
           Python objects in the dependency graph with no values in the
           checkpoint. This method returns the status object, and so may be

@@ -23,10 +23,10 @@ limitations under the License.
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
-#include "mlir/IR/Types.h"  // TF:local_config_mlir
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/Builders.h"  // TF:llvm-project
+#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/IR/Types.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
@@ -47,30 +47,10 @@ using mlir::DenseFPElementsAttr;
 using mlir::DenseIntElementsAttr;
 using mlir::ElementsAttr;
 using mlir::OpaqueElementsAttr;
+using mlir::RankedTensorType;
 using mlir::ShapedType;
 using mlir::Type;
 using tensorflow::errors::InvalidArgument;
-
-void ConvertToMlirShape(const TensorShape& input_shape,
-                        llvm::SmallVectorImpl<int64_t>* shape) {
-  shape->reserve(input_shape.dims());
-  for (const auto& d : input_shape) {
-    shape->push_back(d.size);
-  }
-}
-
-Status ConvertToMlirShape(const TensorShapeProto& input_shape,
-                          llvm::SmallVectorImpl<int64_t>* shape) {
-  shape->reserve(input_shape.dim_size());
-  auto& dims = input_shape.dim();
-  for (auto& d : dims) {
-    if (d.size() > std::numeric_limits<int64_t>::max()) {
-      return InvalidArgument("Shape element overflows");
-    }
-    shape->push_back(d.size());
-  }
-  return Status::OK();
-}
 
 static TensorProto ConvertToProto(const Tensor& input_tensor,
                                   bool use_tensor_content = true) {
@@ -109,7 +89,7 @@ StatusOr<ElementsAttr> ConvertTensor(const Tensor& input_tensor,
   TF_RETURN_IF_ERROR(ConvertDataType(input_dtype, *builder, &elt_type));
   SmallVector<int64_t, 4> shape;
   ConvertToMlirShape(input_shape, &shape);
-  auto type = builder->getTensorType(shape, elt_type);
+  auto type = RankedTensorType::get(shape, elt_type);
 
 #define CONVERT_FLAT(DTYPE, CTYPE) \
   case DTYPE:                      \
@@ -119,14 +99,14 @@ StatusOr<ElementsAttr> ConvertTensor(const Tensor& input_tensor,
   switch (input_dtype) {
     CONVERT_FLAT(DT_BOOL, bool)
     CONVERT_FLAT(DT_FLOAT, float)
+    CONVERT_FLAT(DT_DOUBLE, double)
     CONVERT_FLAT(DT_INT32, int32)
     CONVERT_FLAT(DT_INT64, int64)
     default:
       // TODO(shpeisman): restructure code to reuse dialect pointer across
       // calls.
       auto* dialect = builder->getContext()->getRegisteredDialect("tf");
-      return builder->getOpaqueElementsAttr(dialect, type,
-                                            MangleTensor(input_tensor));
+      return OpaqueElementsAttr::get(dialect, type, MangleTensor(input_tensor));
   }
 
 #undef CONVERT_FLAT
@@ -173,6 +153,22 @@ Status ConvertOpaqueElementsAttr(const ElementsAttr attr,
     return mangling_util::DemangleTensor(tensor_view, output_tensor);
   }
   return InvalidArgument("Unexpected elements attribute type from MLIR.");
+}
+
+// Converts an MLIR elements attribute to a TensorFlow tensor proto
+// with the double_val field updated.
+Status ConvertDoubleElementsAttr(const ElementsAttr attr,
+                                 TensorProto* output_tensor) {
+  if (auto elts = attr.dyn_cast<DenseFPElementsAttr>()) {
+    if (elts.isSplat()) {
+      output_tensor->add_double_val(elts.getSplatValue<double>());
+    } else {
+      for (auto value : elts.getValues<double>())
+        output_tensor->add_double_val(value);
+    }
+    return Status::OK();
+  }
+  return ConvertOpaqueElementsAttr(attr, output_tensor);
 }
 
 // Converts an MLIR elements attribute to a TensorFlow tensor proto
@@ -266,6 +262,8 @@ Status ConvertToTensorProto(const ElementsAttr attr,
     case DT_HALF:
       // Handles both DenseFPElementsAttr and OpaqueElementsAttr.
       return ConvertHalfElementsAttr(attr, output_tensor);
+    case DT_DOUBLE:
+      return ConvertDoubleElementsAttr(attr, output_tensor);
     case DT_QUINT8:
     case DT_UINT8:
     case DT_INT8:

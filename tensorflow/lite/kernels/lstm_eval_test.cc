@@ -20,7 +20,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/test_util.h"
@@ -146,81 +146,85 @@ class QuantizedLstmParam {
   }
 
   // Set up quantization parameters.
-  ops::builtin::lstm_eval::QuantizedLstmParameter* GetQuantParam() {
-    quant_lstm_parm_.effective_input_to_input_scale_a = 1808677632;
-    quant_lstm_parm_.effective_input_to_input_scale_b = -1;
-    quant_lstm_parm_.effective_recurrent_to_input_scale_a = 1078887680;
-    quant_lstm_parm_.effective_recurrent_to_input_scale_b = -1;
-    quant_lstm_parm_.effective_cell_to_input_scale_a = 1073741824;
-    quant_lstm_parm_.effective_cell_to_input_scale_b = 1;
-    quant_lstm_parm_.effective_input_to_forget_scale_a = 1845996800;
-    quant_lstm_parm_.effective_input_to_forget_scale_b = -3;
-    quant_lstm_parm_.effective_recurrent_to_forget_scale_a = 1477412736;
-    quant_lstm_parm_.effective_recurrent_to_forget_scale_b = -2;
-    quant_lstm_parm_.effective_cell_to_forget_scale_a = 1073741824;
-    quant_lstm_parm_.effective_cell_to_forget_scale_b = 1;
-    quant_lstm_parm_.effective_input_to_cell_scale_a = 1648385408;
-    quant_lstm_parm_.effective_input_to_cell_scale_b = -2;
-    quant_lstm_parm_.effective_recurrent_to_cell_scale_a = 1185544192,
-    quant_lstm_parm_.effective_recurrent_to_cell_scale_b = -1;
-    quant_lstm_parm_.effective_input_to_output_scale_a = 1328153600;
-    quant_lstm_parm_.effective_input_to_output_scale_b = -1;
-    quant_lstm_parm_.effective_recurrent_to_output_scale_a = 1479582592;
-    quant_lstm_parm_.effective_recurrent_to_output_scale_b = -1;
-    quant_lstm_parm_.effective_cell_to_output_scale_a = 1073741824,
-    quant_lstm_parm_.effective_cell_to_output_scale_b = 1;
-    quant_lstm_parm_.effective_proj_scale_a = 1105682560;
-    quant_lstm_parm_.effective_proj_scale_b = -8;
-    quant_lstm_parm_.effective_hidden_scale_a = 0;
-    quant_lstm_parm_.effective_hidden_scale_b = 0;
-    quant_lstm_parm_.layer_norm_input_scale_a = 2011617664;
-    quant_lstm_parm_.layer_norm_input_scale_b = -11;
-    quant_lstm_parm_.layer_norm_forget_scale_a = 1968024960;
-    quant_lstm_parm_.layer_norm_forget_scale_b = -13;
-    quant_lstm_parm_.layer_norm_cell_scale_a = 1097334528,
-    quant_lstm_parm_.layer_norm_cell_scale_b = -12;
-    quant_lstm_parm_.layer_norm_output_scale_a = 1837163008;
-    quant_lstm_parm_.layer_norm_output_scale_b = -12;
-    quant_lstm_parm_.quantized_cell_clip = 20480;
-    quant_lstm_parm_.quantized_proj_clip = 0;
-    quant_lstm_parm_.cell_scale = -11;
-    quant_lstm_parm_.inv_large_value[0] = 1;
-    quant_lstm_parm_.inv_large_value[1] = 2;
-    quant_lstm_parm_.inv_large_value[2] = 2;
-    quant_lstm_parm_.inv_large_value[3] = 1;
-    quant_lstm_parm_.hidden_zp = 0;
-    quant_lstm_parm_.input_to_forget_effective_bias.reset(new int32_t[n_cell_]);
-    quant_lstm_parm_.recurrent_to_forget_effective_bias.reset(
+  ops::builtin::lstm_eval::IntegerLstmParameter* GetQuantParam() {
+    integer_lstm_param_.effective_input_to_input_scale_a = 1808677632;
+    integer_lstm_param_.effective_input_to_input_scale_b = -1;
+    integer_lstm_param_.effective_recurrent_to_input_scale_a = 1078887680;
+    integer_lstm_param_.effective_recurrent_to_input_scale_b = -1;
+    integer_lstm_param_.effective_cell_to_input_scale_a = 1073741824;
+    integer_lstm_param_.effective_cell_to_input_scale_b = 1;
+    integer_lstm_param_.effective_input_to_forget_scale_a = 1845996800;
+    integer_lstm_param_.effective_input_to_forget_scale_b = -3;
+    integer_lstm_param_.effective_recurrent_to_forget_scale_a = 1477412736;
+    integer_lstm_param_.effective_recurrent_to_forget_scale_b = -2;
+    integer_lstm_param_.effective_cell_to_forget_scale_a = 1073741824;
+    integer_lstm_param_.effective_cell_to_forget_scale_b = 1;
+    integer_lstm_param_.effective_input_to_cell_scale_a = 1648385408;
+    integer_lstm_param_.effective_input_to_cell_scale_b = -2;
+    integer_lstm_param_.effective_recurrent_to_cell_scale_a = 1185544192,
+    integer_lstm_param_.effective_recurrent_to_cell_scale_b = -1;
+    integer_lstm_param_.effective_input_to_output_scale_a = 1328153600;
+    integer_lstm_param_.effective_input_to_output_scale_b = -1;
+    integer_lstm_param_.effective_recurrent_to_output_scale_a = 1479582592;
+    integer_lstm_param_.effective_recurrent_to_output_scale_b = -1;
+    integer_lstm_param_.effective_cell_to_output_scale_a = 1073741824,
+    integer_lstm_param_.effective_cell_to_output_scale_b = 1;
+    integer_lstm_param_.effective_proj_scale_a = 1105682560;
+    integer_lstm_param_.effective_proj_scale_b = -8;
+    integer_lstm_param_.effective_hidden_scale_a = 0;
+    integer_lstm_param_.effective_hidden_scale_b = 0;
+    integer_lstm_param_.layer_norm_input_scale_a = 2011617664;
+    integer_lstm_param_.layer_norm_input_scale_b = -11;
+    integer_lstm_param_.layer_norm_forget_scale_a = 1968024960;
+    integer_lstm_param_.layer_norm_forget_scale_b = -13;
+    integer_lstm_param_.layer_norm_cell_scale_a = 1097334528,
+    integer_lstm_param_.layer_norm_cell_scale_b = -12;
+    integer_lstm_param_.layer_norm_output_scale_a = 1837163008;
+    integer_lstm_param_.layer_norm_output_scale_b = -12;
+    integer_lstm_param_.quantized_cell_clip = 20480;
+    integer_lstm_param_.quantized_proj_clip = 0;
+    integer_lstm_param_.cell_scale = -11;
+    integer_lstm_param_.inv_large_value[0] = 1;
+    integer_lstm_param_.inv_large_value[1] = 2;
+    integer_lstm_param_.inv_large_value[2] = 2;
+    integer_lstm_param_.inv_large_value[3] = 1;
+    integer_lstm_param_.hidden_zp = 0;
+    integer_lstm_param_.input_to_forget_effective_bias.reset(
         new int32_t[n_cell_]);
-    quant_lstm_parm_.input_to_cell_effective_bias.reset(new int32_t[n_cell_]);
-    quant_lstm_parm_.recurrent_to_cell_effective_bias.reset(
+    integer_lstm_param_.recurrent_to_forget_effective_bias.reset(
         new int32_t[n_cell_]);
-    quant_lstm_parm_.input_to_output_effective_bias.reset(new int32_t[n_cell_]);
-    quant_lstm_parm_.recurrent_to_output_effective_bias.reset(
+    integer_lstm_param_.input_to_cell_effective_bias.reset(
         new int32_t[n_cell_]);
-    quant_lstm_parm_.input_to_input_effective_bias.reset(new int32_t[n_cell_]);
-    quant_lstm_parm_.recurrent_to_input_effective_bias.reset(
+    integer_lstm_param_.recurrent_to_cell_effective_bias.reset(
         new int32_t[n_cell_]);
-    quant_lstm_parm_.projection_effective_bias.reset(new int32_t[n_output_]);
-    std::fill_n(quant_lstm_parm_.input_to_forget_effective_bias.get(), n_cell_,
-                152);
-    std::fill_n(quant_lstm_parm_.recurrent_to_forget_effective_bias.get(),
+    integer_lstm_param_.input_to_output_effective_bias.reset(
+        new int32_t[n_cell_]);
+    integer_lstm_param_.recurrent_to_output_effective_bias.reset(
+        new int32_t[n_cell_]);
+    integer_lstm_param_.input_to_input_effective_bias.reset(
+        new int32_t[n_cell_]);
+    integer_lstm_param_.recurrent_to_input_effective_bias.reset(
+        new int32_t[n_cell_]);
+    integer_lstm_param_.projection_effective_bias.reset(new int32_t[n_output_]);
+    std::fill_n(integer_lstm_param_.input_to_forget_effective_bias.get(),
+                n_cell_, 152);
+    std::fill_n(integer_lstm_param_.recurrent_to_forget_effective_bias.get(),
                 n_cell_, 315);
-    std::fill_n(quant_lstm_parm_.input_to_cell_effective_bias.get(), n_cell_,
+    std::fill_n(integer_lstm_param_.input_to_cell_effective_bias.get(), n_cell_,
                 165);
-    std::fill_n(quant_lstm_parm_.recurrent_to_cell_effective_bias.get(),
+    std::fill_n(integer_lstm_param_.recurrent_to_cell_effective_bias.get(),
                 n_cell_, 1165);
-    std::fill_n(quant_lstm_parm_.input_to_output_effective_bias.get(), n_cell_,
-                159);
-    std::fill_n(quant_lstm_parm_.recurrent_to_output_effective_bias.get(),
+    std::fill_n(integer_lstm_param_.input_to_output_effective_bias.get(),
+                n_cell_, 159);
+    std::fill_n(integer_lstm_param_.recurrent_to_output_effective_bias.get(),
                 n_cell_, 915);
-    std::fill_n(quant_lstm_parm_.input_to_input_effective_bias.get(), n_cell_,
-                -15);
-    std::fill_n(quant_lstm_parm_.recurrent_to_input_effective_bias.get(),
+    std::fill_n(integer_lstm_param_.input_to_input_effective_bias.get(),
+                n_cell_, -15);
+    std::fill_n(integer_lstm_param_.recurrent_to_input_effective_bias.get(),
                 n_cell_, 315);
-    std::fill_n(quant_lstm_parm_.projection_effective_bias.get(), n_output_,
+    std::fill_n(integer_lstm_param_.projection_effective_bias.get(), n_output_,
                 115);
-    return &quant_lstm_parm_;
+    return &integer_lstm_param_;
   }
 
   // Create scratch buffers.
@@ -540,7 +544,7 @@ class QuantizedLstmParam {
   TfLiteTensor output_tensor_;
 
   // quantized_lstm_param
-  ops::builtin::lstm_eval::QuantizedLstmParameter quant_lstm_parm_;
+  ops::builtin::lstm_eval::IntegerLstmParameter integer_lstm_param_;
 
   // 5 scratch buffers.
   std::vector<int16_t> scratch0_;
@@ -564,12 +568,13 @@ class QuantizedLstmParam {
 };
 
 void TestOneFullyQuantizedLSTM() {
+  CpuBackendContext context;
   QuantizedLstmParam one_parameter;
   auto activation = one_parameter.GetActivation();
   auto output = one_parameter.GetOutput();
   auto cell = one_parameter.GetCell();
   auto param = one_parameter.GetQuantParam();
-  ops::builtin::lstm_eval::EvalQuantized(
+  ops::builtin::lstm_eval::EvalInteger(
       one_parameter.GetInput(), one_parameter.Geti2i(), one_parameter.Geti2f(),
       one_parameter.Geti2c(), one_parameter.Geti2o(), one_parameter.Getr2i(),
       one_parameter.Getr2f(), one_parameter.Getr2c(), one_parameter.Getr2o(),
@@ -581,7 +586,7 @@ void TestOneFullyQuantizedLSTM() {
       one_parameter.GetProjectionBias(), nullptr, param, activation, cell,
       output, one_parameter.GetScratch0(), one_parameter.GetScratch1(),
       one_parameter.GetScratch2(), one_parameter.GetScratch3(),
-      one_parameter.GetScratch4(), one_parameter.GetScratch5());
+      one_parameter.GetScratch4(), one_parameter.GetScratch5(), &context);
 
   // Verify results.
   const std::vector<int16_t> expected_cell = {

@@ -16,10 +16,10 @@ limitations under the License.
 // This file implements logic for lowering XLA dialect to Standard dialect.
 
 #include "llvm/ADT/StringSwitch.h"
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
-#include "mlir/IR/Function.h"  // TF:local_config_mlir
-#include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/IR/Function.h"  // TF:llvm-project
+#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/transforms/rewriters.h"
@@ -31,9 +31,11 @@ using mlir::OwningRewritePatternList;
 using mlir::PassRegistration;
 
 namespace mlir {
-namespace xla_hlo {
 namespace {
 #include "tensorflow/compiler/mlir/xla/transforms/generated_legalize_to_standard.inc"
+}  // end anonymous namespace
+namespace xla_hlo {
+namespace {
 
 struct CompareIConvert : public RewritePattern {
   explicit CompareIConvert(MLIRContext *context)
@@ -45,8 +47,8 @@ struct CompareIConvert : public RewritePattern {
 
     auto lhs = compare_op.lhs();
     auto rhs = compare_op.rhs();
-    auto lhs_type = lhs->getType().cast<TensorType>();
-    auto rhs_type = rhs->getType().cast<TensorType>();
+    auto lhs_type = lhs.getType().cast<TensorType>();
+    auto rhs_type = rhs.getType().cast<TensorType>();
 
     // Broadcasting not supported by this rewrite.
     if (lhs_type.getShape() != rhs_type.getShape()) return matchFailure();
@@ -56,20 +58,20 @@ struct CompareIConvert : public RewritePattern {
       return matchFailure();
 
     auto comparison_direction = compare_op.comparison_direction();
-    CmpIPredicate compare_predicate =
-        llvm::StringSwitch<CmpIPredicate>(comparison_direction)
-            .Case("EQ", CmpIPredicate::EQ)
-            .Case("NE", CmpIPredicate::NE)
-            .Case("LT", CmpIPredicate::SLT)
-            .Case("LE", CmpIPredicate::SLE)
-            .Case("GT", CmpIPredicate::SGT)
-            .Case("GE", CmpIPredicate::SGE)
-            .Default(CmpIPredicate::NumPredicates);
+    auto compare_predicate =
+        llvm::StringSwitch<Optional<CmpIPredicate>>(comparison_direction)
+            .Case("EQ", CmpIPredicate::eq)
+            .Case("NE", CmpIPredicate::ne)
+            .Case("LT", CmpIPredicate::slt)
+            .Case("LE", CmpIPredicate::sle)
+            .Case("GT", CmpIPredicate::sgt)
+            .Case("GE", CmpIPredicate::sge)
+            .Default(llvm::None);
 
-    if (compare_predicate == CmpIPredicate::NumPredicates)
-      return matchFailure();
+    if (!compare_predicate.hasValue()) return matchFailure();
 
-    rewriter.replaceOpWithNewOp<CmpIOp>(op, compare_predicate, lhs, rhs);
+    rewriter.replaceOpWithNewOp<CmpIOp>(op, compare_predicate.getValue(), lhs,
+                                        rhs);
     return matchSuccess();
   }
 };
@@ -84,8 +86,8 @@ struct CompareFConvert : public RewritePattern {
 
     auto lhs = compare_op.lhs();
     auto rhs = compare_op.rhs();
-    auto lhs_type = lhs->getType().cast<TensorType>();
-    auto rhs_type = rhs->getType().cast<TensorType>();
+    auto lhs_type = lhs.getType().cast<TensorType>();
+    auto rhs_type = rhs.getType().cast<TensorType>();
 
     // Broadcasting not supported by this rewrite.
     if (lhs_type.getShape() != rhs_type.getShape()) return matchFailure();
@@ -131,7 +133,7 @@ mlir::xla_hlo::createLegalizeToStdPass() {
 
 void mlir::xla_hlo::PopulateXlaToStdPatterns(OwningRewritePatternList *patterns,
                                              mlir::MLIRContext *ctx) {
-  mlir::xla_hlo::populateWithGenerated(ctx, patterns);
+  mlir::populateWithGenerated(ctx, patterns);
   patterns
       ->insert<mlir::xla_hlo::CompareFConvert, mlir::xla_hlo::CompareIConvert>(
           ctx);

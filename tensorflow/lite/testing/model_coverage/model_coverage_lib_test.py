@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import os
 import tempfile
+
 import numpy as np
 
 from tensorflow.lite.python import lite
@@ -54,6 +55,18 @@ class EvaluateFrozenGraph(test.TestCase):
 
     filename = self._saveFrozenGraph(sess)
     model_coverage.test_frozen_graph(filename, ['Placeholder'], ['add'])
+
+  def testInputWithRange(self):
+    with ops.Graph().as_default():
+      with session.Session().as_default() as sess:
+        in_tensor = array_ops.placeholder(
+            shape=[1, 16, 16, 3], dtype=dtypes.float32)
+        _ = in_tensor + in_tensor
+
+    filename = self._saveFrozenGraph(sess)
+    model_coverage.test_frozen_graph(
+        filename, ['Placeholder'], ['add'],
+        input_data_range={'Placeholder': (0, 10)})
 
   def testMultipleOutputs(self):
     with ops.Graph().as_default():

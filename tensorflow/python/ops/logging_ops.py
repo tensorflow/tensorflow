@@ -26,8 +26,7 @@ import sys
 from absl import logging
 import six
 
-from tensorflow.python import pywrap_tensorflow
-from tensorflow.python.compat import compat
+from tensorflow.python import pywrap_tfe
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -46,7 +45,7 @@ from tensorflow.python.util.tf_export import tf_export
 # Register printing to the cell output if we are in a Colab or Jupyter Notebook.
 try:
   get_ipython()  # Exists in an ipython env like Jupyter or Colab
-  pywrap_tensorflow.TFE_Py_EnableInteractivePythonLogging()
+  pywrap_tfe.TFE_Py_EnableInteractivePythonLogging()
 except NameError:
   pass
 
@@ -373,15 +372,8 @@ def print_v2(*inputs, **kwargs):
         summarize=summarize,
         name=format_name)
 
-  if compat.forward_compatible(2019, 5, 27):
-    return gen_logging_ops.print_v2(
-        formatted_string, output_stream=output_stream_string, name=name,
-        end=end)
-  else:
-    if end == os.linesep:
-      end = ""
-    return gen_logging_ops.print_v2(
-        formatted_string + end, output_stream=output_stream_string, name=name)
+  return gen_logging_ops.print_v2(
+      formatted_string, output_stream=output_stream_string, name=name, end=end)
 
 # pylint: enable=g-doc-args
 

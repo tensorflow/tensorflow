@@ -671,6 +671,81 @@ class TwoDeviceDistributionTestBase(test.TestCase):
                 strategy.experimental_run(step, inputs))))
 
 
+class RemoteSingleWorkerMirroredStrategyBase(DistributionTestBase):
+  """Tests for a Remote single worker."""
+
+  def _get_num_gpus(self):
+    pass
+
+  def _testNumReplicasInSync(self, distribution):
+    self.assertEqual(self._get_num_gpus(), distribution.num_replicas_in_sync)
+
+  def _testMinimizeLoss(self, distribution):
+    if context.executing_eagerly():
+      self._test_minimize_loss_eager(distribution)
+    else:
+      self._test_minimize_loss_graph(distribution, learning_rate=0.05)
+
+  def _testDeviceScope(self, distribution):
+    with distribution.scope():
+      a = constant_op.constant(1.)
+      with ops.device("/cpu:0"):
+        b = constant_op.constant(1.)
+      if context.executing_eagerly():
+        device = "/job:worker/replica:0/task:0/device:CPU:0"
+      else:
+        device = "/job:worker/replica:0/task:0"
+      self.assertEqual(a.device, device)
+      self.assertEqual(b.device, "/job:worker/replica:0/task:0/device:CPU:0")
+
+  def _testMakeInputFnIteratorWithDataset(self, distribution):
+    dataset_fn = lambda: dataset_ops.Dataset.range(100)
+    num_gpus = self._get_num_gpus()
+    num_workers = 1
+
+    expected_values = [[i+j for j in range(num_gpus)] * num_workers
+                       for i in range(0, 100, num_gpus)]
+
+    # Dummy cached_session is used in Eager
+    with self.cached_session() as sess:
+      # `expected_input_pipeline_id` is None because the input_fn will be called
+      # multiple times, each with a different input_pipeline_id.
+      input_fn = self._input_fn_to_test_input_context(
+          dataset_fn,
+          expected_num_replicas_in_sync=num_workers*num_gpus,
+          expected_num_input_pipelines=num_workers,
+          expected_input_pipeline_id=None)
+      iterator = distribution.make_input_fn_iterator(input_fn)
+      self._test_input_fn_iterator(
+          iterator, distribution.extended.worker_devices, expected_values, sess)
+
+  def _testMakeInputFnIteratorWithCallable(self, distribution):
+    def fn():
+      dataset = dataset_ops.Dataset.range(100)
+      it = dataset_ops.make_one_shot_iterator(dataset)
+      return it.get_next
+    num_gpus = self._get_num_gpus()
+    num_workers = 1
+
+    expected_values = []
+    for i in range(0, 100, num_gpus):
+      expected_values.append([i+j for j in range(num_gpus)] * num_workers)
+
+    # Dummy cached_session is used in Eager
+    with self.cached_session() as sess:
+      # `expected_input_pipeline_id` is None because the input_fn will be called
+      # multiple times, each with a different input_pipeline_id.
+      input_fn = self._input_fn_to_test_input_context(
+          fn,
+          expected_num_replicas_in_sync=num_workers*num_gpus,
+          expected_num_input_pipelines=num_workers,
+          expected_input_pipeline_id=None)
+      iterator = distribution.make_input_fn_iterator(input_fn)
+      self._test_input_fn_iterator(
+          iterator, distribution.extended.worker_devices, expected_values, sess,
+          test_reinitialize=False, ignore_order=True)
+
+
 def _all_sum(value):
   ctx = ds_context.get_replica_context()
   return ctx.all_reduce(reduce_util.ReduceOp.SUM, value)

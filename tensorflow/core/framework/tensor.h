@@ -50,7 +50,6 @@ class Var;
 
 namespace batch_util {
 Status CopyElementToSlice(Tensor element, Tensor* parent, int64 index);
-Status MaybeMoveSliceToElement(Tensor* parent, Tensor* element, int64 index);
 }  // namespace batch_util
 
 /// @ingroup core
@@ -341,7 +340,7 @@ class Tensor {
   /// methods that have alignment requirement (e.g., `flat()`, `tensor()`).
   ///
   /// REQUIRES: `dims()` >= 1
-  /// REQUIRES: `0 <= dim0_start < dim_size(0)`
+  /// REQUIRES: `0 <= index < dim_size(0)`
   Tensor SubSlice(int64 index) const;
 
   /// \brief Parse `other` and construct the tensor.
@@ -633,10 +632,11 @@ class Tensor {
     TF_CHECK_OK(BitcastFrom(other, dtype, shape));
   }
 
- private:
   // Returns true if the refcount on buf_ and any possible underlying root
   // buffer is one.
   bool RefCountIsOne() const;
+
+ private:
   void CheckType(DataType expected_dtype) const;
   void CheckTypeAndIsAligned(DataType expected_dtype) const;
   void CheckIsAlignedAndSingleElement() const;
@@ -653,29 +653,16 @@ class Tensor {
 
   friend class DMAHelper;             // For access to buf_.
   friend class TensorCApi;            // For access to buf_.
+  friend class TensorCord;            // For access to buf_.
   friend class TensorReference;       // For access to buf_.
   friend class VariableOp;            // For access to set_shape.
   friend class AutoReloadVariableOp;  // For access to set_shape.
   friend class TensorTestHelper;      // For access to set_shape.
   friend class CastOpBase;            // For access to set_dtype.
-  friend class OpKernelContext;       // For access to RefCountIsOne().
   friend class ScopedAllocator;       // For access to buf_.
-  friend class XlaTensor;             // For access to RefCountIsOne().
-  template <typename Device, typename T>
-  friend class AssignVariableOp;  // For access to RefCountIsOne().
-  template <typename Device, typename T>
-  friend Status PrepareToUpdateVariable(
-      OpKernelContext* ctx, Tensor* tensor,
-      bool copy_on_read_mode);  // For access to RefCountIsOne().
-  template <typename Device, typename T>
-  friend Status EnsureSparseVariableAccess(
-      OpKernelContext* ctx, Var* var);  // For access to RefCountIsOne().
   friend Status batch_util::CopyElementToSlice(
       Tensor element, Tensor* parent,
-      int64 index);  // For access to RefCountIsOne().
-  friend Status batch_util::MaybeMoveSliceToElement(
-      Tensor* parent, Tensor* element,
-      int64 index);  // For access to RefCountIsOne().
+      int64 index);  // For access to base<T>().
 
   bool CanUseDMA() const;
 

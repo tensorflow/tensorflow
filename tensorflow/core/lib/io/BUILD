@@ -1,26 +1,78 @@
 package(
     default_visibility = [
-        "//tensorflow/core/lib/core:__pkg__",
-        "//tensorflow/core/lib/gtl:__pkg__",
-        "//tensorflow/core/lib/hash:__pkg__",
-        "//tensorflow/core/lib/io:__pkg__",
-        "//tensorflow/core/lib/random:__pkg__",
-        "//tensorflow/core/lib/strings:__pkg__",
-        "//tensorflow/core/platform:__pkg__",
+        "//tensorflow/c/experimental/filesystem:__pkg__",
+        "//tensorflow/c/experimental/filesystem/plugins/posix:__pkg__",
+        # tensorflow/core:lib effectively exposes all targets under tensorflow/core/lib/**
+        "//tensorflow/core:__pkg__",
     ],
     licenses = ["notice"],  # Apache 2.0
 )
 
-# Todo(bmzhao): Remaining targets to add to this BUILD file are:
-# block, block_builder, buffered_inputstream, format, inputbuffer,
-# random_inputstream, record_reader, record_writer, snappy/snappy_inputbuffer
-# snappy/snappy_outputbuffer, table, table_builder, two_level_iterator,
-# zlib_inputstream, zlib_outputbuffer, zlib_compression_options, and all tests.
+# TODO(bmzhao): Remaining targets to add to this BUILD file are: all tests.
+
+cc_library(
+    name = "block",
+    srcs = [
+        "block.cc",
+        "block_builder.cc",
+        "format.cc",
+        "table_builder.cc",
+    ],
+    hdrs = [
+        "block.h",
+        "block_builder.h",
+        "format.h",
+        "table_builder.h",
+    ],
+    deps = [
+        ":iterator",
+        ":table_options",
+        "//tensorflow/core/lib/core:coding",
+        "//tensorflow/core/lib/core:errors",
+        "//tensorflow/core/lib/core:status",
+        "//tensorflow/core/lib/core:stringpiece",
+        "//tensorflow/core/lib/hash:crc32c",
+        "//tensorflow/core/platform:env",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:platform_port",
+        "//tensorflow/core/platform:types",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
+    name = "buffered_inputstream",
+    srcs = ["buffered_inputstream.cc"],
+    hdrs = ["buffered_inputstream.h"],
+    deps = [
+        ":inputstream_interface",
+        ":random_inputstream",
+        "//tensorflow/core/platform:env",
+    ],
+    alwayslink = True,
+)
 
 cc_library(
     name = "compression",
     srcs = ["compression.cc"],
     hdrs = ["compression.h"],
+    alwayslink = True,
+)
+
+cc_library(
+    name = "inputbuffer",
+    srcs = ["inputbuffer.cc"],
+    hdrs = ["inputbuffer.h"],
+    deps = [
+        "//tensorflow/core/lib/core:coding",
+        "//tensorflow/core/lib/core:errors",
+        "//tensorflow/core/lib/core:status",
+        "//tensorflow/core/platform:env",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:macros",
+        "//tensorflow/core/platform:types",
+    ],
+    alwayslink = True,
 )
 
 cc_library(
@@ -33,6 +85,7 @@ cc_library(
         "//tensorflow/core/platform:cord",
         "//tensorflow/core/platform:types",
     ],
+    alwayslink = True,
 )
 
 cc_library(
@@ -41,22 +94,18 @@ cc_library(
     hdrs = ["iterator.h"],
     deps = [
         "//tensorflow/core/lib/core:status",
-        "//tensorflow/core/lib/core:stringpiece",
+        "//tensorflow/core/platform:stringpiece",
     ],
+    alwayslink = True,
 )
 
 cc_library(
     name = "path",
-    srcs = ["path.cc"],
     hdrs = ["path.h"],
     deps = [
-        "//tensorflow/core/lib/core:stringpiece",
-        "//tensorflow/core/lib/strings:scanner",
-        "//tensorflow/core/lib/strings:string_utils",
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:mutex",
-        "//tensorflow/core/platform:types",
+        "//tensorflow/core/platform:path",
     ],
+    alwayslink = True,
 )
 
 cc_library(
@@ -64,14 +113,166 @@ cc_library(
     hdrs = ["proto_encode_helper.h"],
     deps = [
         "//tensorflow/core/lib/core:coding",
-        "//tensorflow/core/lib/core:stringpiece",
+        "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:protobuf",
+        "//tensorflow/core/platform:stringpiece",
     ],
+)
+
+cc_library(
+    name = "random_inputstream",
+    srcs = ["random_inputstream.cc"],
+    hdrs = ["random_inputstream.h"],
+    deps = [
+        ":inputstream_interface",
+        "//tensorflow/core/platform:cord",
+        "//tensorflow/core/platform:env",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
+    name = "record_reader",
+    srcs = ["record_reader.cc"],
+    hdrs = ["record_reader.h"],
+    deps = [
+        ":buffered_inputstream",
+        ":compression",
+        ":inputstream_interface",
+        ":random_inputstream",
+        ":zlib_compression_options",
+        ":zlib_inputstream",
+        "//tensorflow/core/lib/core:coding",
+        "//tensorflow/core/lib/core:errors",
+        "//tensorflow/core/lib/core:stringpiece",
+        "//tensorflow/core/lib/hash:crc32c",
+        "//tensorflow/core/platform:env",
+        "//tensorflow/core/platform:macros",
+        "//tensorflow/core/platform:types",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
+    name = "record_writer",
+    srcs = ["record_writer.cc"],
+    hdrs = ["record_writer.h"],
+    deps = [
+        ":compression",
+        ":zlib_compression_options",
+        ":zlib_outputbuffer",
+        "//tensorflow/core/lib/core:coding",
+        "//tensorflow/core/lib/core:status",
+        "//tensorflow/core/lib/core:stringpiece",
+        "//tensorflow/core/lib/hash:crc32c",
+        "//tensorflow/core/platform:cord",
+        "//tensorflow/core/platform:env",
+        "//tensorflow/core/platform:macros",
+        "//tensorflow/core/platform:types",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
+    name = "snappy_inputbuffer",
+    srcs = ["snappy/snappy_inputbuffer.cc"],
+    hdrs = ["snappy/snappy_inputbuffer.h"],
+    deps = [
+        ":inputstream_interface",
+        "//tensorflow/core/lib/core:status",
+        "//tensorflow/core/platform:env",
+        "//tensorflow/core/platform:macros",
+        "//tensorflow/core/platform:platform_port",
+        "//tensorflow/core/platform:types",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
+    name = "snappy_outputbuffer",
+    srcs = ["snappy/snappy_outputbuffer.cc"],
+    hdrs = ["snappy/snappy_outputbuffer.h"],
+    deps = [
+        "//tensorflow/core/lib/core:status",
+        "//tensorflow/core/platform",
+        "//tensorflow/core/platform:env",
+        "//tensorflow/core/platform:macros",
+        "//tensorflow/core/platform:platform_port",
+        "//tensorflow/core/platform:types",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
+    name = "table",
+    srcs = [
+        "table.cc",
+        "two_level_iterator.cc",
+    ],
+    hdrs = [
+        "table.h",
+        "two_level_iterator.h",
+    ],
+    deps = [
+        ":block",
+        ":iterator",
+        ":table_options",
+        "//tensorflow/core/lib/core:coding",
+        "//tensorflow/core/lib/core:errors",
+        "//tensorflow/core/platform:env",
+    ],
+    alwayslink = True,
 )
 
 cc_library(
     name = "table_options",
     hdrs = ["table_options.h"],
+)
+
+cc_library(
+    name = "zlib_compression_options",
+    srcs = ["zlib_compression_options.cc"],
+    hdrs = ["zlib_compression_options.h"],
+    deps = [
+        "//tensorflow/core/platform:types",
+        "@zlib_archive//:zlib",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
+    name = "zlib_inputstream",
+    srcs = ["zlib_inputstream.cc"],
+    hdrs = ["zlib_inputstream.h"],
+    deps = [
+        ":inputstream_interface",
+        ":zlib_compression_options",
+        "//tensorflow/core/lib/core:status",
+        "//tensorflow/core/platform:env",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:macros",
+        "//tensorflow/core/platform:strcat",
+        "//tensorflow/core/platform:types",
+        "@zlib_archive//:zlib",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
+    name = "zlib_outputbuffer",
+    srcs = ["zlib_outputbuffer.cc"],
+    hdrs = ["zlib_outputbuffer.h"],
+    deps = [
+        ":zlib_compression_options",
+        "//tensorflow/core/lib/core:errors",
+        "//tensorflow/core/lib/core:status",
+        "//tensorflow/core/lib/core:stringpiece",
+        "//tensorflow/core/platform:env",
+        "//tensorflow/core/platform:macros",
+        "//tensorflow/core/platform:types",
+        "@zlib_archive//:zlib",
+    ],
+    alwayslink = True,
 )
 
 filegroup(
@@ -114,7 +315,6 @@ filegroup(
         "inputbuffer.cc",
         "inputstream_interface.cc",
         "iterator.cc",
-        "path.cc",
         "random_inputstream.cc",
         "record_reader.cc",
         "record_writer.cc",

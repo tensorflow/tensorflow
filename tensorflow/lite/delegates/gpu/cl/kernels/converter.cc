@@ -45,8 +45,9 @@ class OpenClConverterImpl : public TensorObjectConverter {
     RETURN_IF_ERROR(kernel_.SetMemoryAuto(input));
     RETURN_IF_ERROR(kernel_.SetMemoryAuto(output));
     int3 grid = int3(dims_.w, dims_.h, dims_.d());
-    int4 size = int4(dims_.w, dims_.h, dims_.c, dims_.d());
+    int4 size = int4(dims_.w, dims_.h, dims_.d(), dims_.b);
     RETURN_IF_ERROR(kernel_.SetBytesAuto(size));
+    RETURN_IF_ERROR(kernel_.SetBytesAuto(dims_.c));
     return queue_->DispatchImplicit(kernel_, grid, {16, 8, 1});
   }
 
@@ -104,16 +105,16 @@ class FromTensorConverter : public OpenClConverterImpl {
         "__global " + ToCLDataType(output_def.object_def.data_type) + "* dst",
         R"(
   int c = d * 4;
-  int index = (y * size.x + x) * size.z + c;
+  int index = (y * size.x + x) * channels + c;
 
   dst[index] = input.x;
-  if (c + 1 < size.z) {
+  if (c + 1 < channels) {
     dst[index + 1] = input.y;
   }
-  if (c + 2 < size.z) {
+  if (c + 2 < channels) {
     dst[index + 2] = input.z;
   }
-  if (c + 3 < size.z) {
+  if (c + 3 < channels) {
     dst[index + 3] = input.w;
   })");
   }
@@ -130,7 +131,8 @@ class FromTensorConverter : public OpenClConverterImpl {
     TensorDescriptor src_descr;
     src_descr.storage_type = src_tensor_type;
     src_descr.data_type = input_def.object_def.data_type;
-    TensorCodeGenerator src_tensor("src", "size", src_descr);
+    TensorCodeGenerator src_tensor(
+        "src", {"size.x", "size.y", "size.z", "size.w"}, src_descr);
 
     std::string shader_src =
         R"(
@@ -140,11 +142,11 @@ const sampler_t smp_none = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_NONE | CLK_
 
 __kernel void from_tensor()" +
         src_tensor.GetDeclaration(AccessType::READ) + ", " +
-        params_kernel.first + R"(, int4 size) {
+        params_kernel.first + R"(, int4 size, int channels) {
   int x = get_global_id(0);
   int y = get_global_id(1);
   int d = get_global_id(2);
-  if (x >= size.x || y >= size.y || d >= size.w) return;
+  if (x >= size.x || y >= size.y || d >= size.z) return;
   )" + ToCLDataType(input_def.object_def.data_type, 4) +
         " input = " + src_tensor.Read3D("x", "y", "d") + ";\n" +
         params_kernel.second + "\n}";
@@ -215,11 +217,11 @@ class ToTensorConverter : public OpenClConverterImpl {
     return std::make_pair(
         "__global " + ToCLDataType(input_def.object_def.data_type) + "* src",
         R"(int c = d * 4;
-  int index = (y * size.x + x) * size.z + c;
+  int index = (y * size.x + x) * channels + c;
   result.x = src[index];
-  result.y = c + 1 < size.z ? src[index + 1] : 1;
-  result.z = c + 2 < size.z ? src[index + 2] : 2;
-  result.w = c + 3 < size.z ? src[index + 3] : 3;
+  result.y = c + 1 < channels ? src[index + 1] : 1;
+  result.z = c + 2 < channels ? src[index + 2] : 2;
+  result.w = c + 3 < channels ? src[index + 3] : 3;
 )");
   }
 
@@ -234,7 +236,8 @@ class ToTensorConverter : public OpenClConverterImpl {
     TensorDescriptor dst_descr;
     dst_descr.storage_type = dst_tensor_type;
     dst_descr.data_type = output_def.object_def.data_type;
-    TensorCodeGenerator dst_tensor("dst", "size", dst_descr);
+    TensorCodeGenerator dst_tensor(
+        "dst", {"size.x", "size.y", "size.z", "size.w"}, dst_descr);
     std::string shader_src =
         R"(
 #pragma OPENCL EXTENSION cl_khr_fp16 : enable
@@ -242,12 +245,12 @@ class ToTensorConverter : public OpenClConverterImpl {
 __kernel void to_tensor()" +
         params_kernel.first + ", " +
         dst_tensor.GetDeclaration(AccessType::WRITE) +
-        R"(, int4 size) {
+        R"(, int4 size, int channels) {
   int x = get_global_id(0);
   int y = get_global_id(1);
   int d = get_global_id(2);
 
-  if (x >= size.x || y >= size.y || d >= size.w) return;
+  if (x >= size.x || y >= size.y || d >= size.z) return;
   )" + ToCLDataType(output_def.object_def.data_type, 4) +
         " result;\n" + params_kernel.second + "\n  " +
         dst_tensor.Write3D("result", "x", "y", "d") + ";\n}";
@@ -282,15 +285,15 @@ std::array<size_t, 3> CalculateTextureRegion(const TensorObjectDef& def) {
   switch (ToTensorStorageType(def.object_def.object_type,
                               def.object_def.data_layout)) {
     case TensorStorageType::SINGLE_TEXTURE_2D:
-      region[0] = static_cast<size_t>(dims.w);
+      region[0] = static_cast<size_t>(dims.w * dims.b);
       region[1] = static_cast<size_t>(dims.h);
       break;
     case TensorStorageType::TEXTURE_2D:
-      region[0] = static_cast<size_t>(dims.w);
+      region[0] = static_cast<size_t>(dims.w * dims.b);
       region[1] = static_cast<size_t>(dims.h * dims.d());
       break;
     case TensorStorageType::TEXTURE_ARRAY:
-      region[0] = static_cast<size_t>(dims.w);
+      region[0] = static_cast<size_t>(dims.w * dims.b);
       region[1] = static_cast<size_t>(dims.h);
       region[2] = static_cast<size_t>(dims.d());
       break;

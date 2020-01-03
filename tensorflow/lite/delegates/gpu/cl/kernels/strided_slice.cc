@@ -35,7 +35,7 @@ std::string GetStridedSliceCode(
   TensorCodeGenerator src_tensor("src_data", src_size, op_def.src_tensors[0]);
   TensorCodeGenerator dst_tensor("dst_data", dst_size, op_def.dst_tensors[0]);
 
-  const std::string batch_id = op_def.batch_support ? "B" : "";
+  const std::string dst_batch = op_def.batch_support ? "B" : "";
   std::string c = GetCommonDefines(op_def.precision);
   c += "__kernel void main_function(\n";
   c += src_tensor.GetDeclaration(AccessType::READ);
@@ -60,10 +60,15 @@ std::string GetStridedSliceCode(
   c += "  } \n";
   c += "  int s_x = X * stride.x + offset.x;\n";
   c += "  int s_y = Y * stride.y + offset.y;\n";
+  if (op_def.batch_support) {
+    c += "  int s_b = B * stride.w + offset.w;\n";
+  }
+  const std::string src_batch = op_def.batch_support ? "s_b" : "";
   if (alignedx4) {
     c += "  int s_z = Z + offset.z;\n";
-    c += "  FLT4 result = " + src_tensor.Read4D("s_x", "s_y", "s_z", batch_id) +
-         ";\n";
+    c +=
+        "  FLT4 result = " + src_tensor.Read4D("s_x", "s_y", "s_z", src_batch) +
+        ";\n";
   } else {
     c += "  FLT4 result;\n";
     const std::string postfixes[] = {"x", "y", "z", "w"};
@@ -73,7 +78,7 @@ std::string GetStridedSliceCode(
       c += "    int s_ch = " + channel + " * stride.z + offset.z;\n";
       c += "    int s_z = s_ch >> 2;\n";
       c += "    int s_z_rem = s_ch & 3;\n";
-      c += "    FLT4 t = " + src_tensor.Read4D("s_x", "s_y", "s_z", batch_id) +
+      c += "    FLT4 t = " + src_tensor.Read4D("s_x", "s_y", "s_z", src_batch) +
            ";\n";
       c += "    FLT t_ar[4] = {t.x, t.y, t.z, t.w};\n";
       c += "    result." + postfixes[i] + " = t_ar[s_z_rem];\n";
@@ -83,7 +88,7 @@ std::string GetStridedSliceCode(
   std::string x_3dcoord = op_def.batch_support ? "X * dst_size.w + B" : "X";
   const LinkingContext context{"result", x_3dcoord, "Y", "Z"};
   c += PostProcess(linked_operations, context);
-  c += "  " + dst_tensor.Write4D("result", "X", "Y", "Z", batch_id);
+  c += "  " + dst_tensor.Write4D("result", "X", "Y", "Z", dst_batch);
   c += "}\n";
   return c;
 }
@@ -92,9 +97,9 @@ bool Is4Alighed(const SliceAttributes& attr) {
   return attr.strides.c == 1 && attr.starts.c % 4 == 0;
 }
 
-int3 GetOffset(const SliceAttributes& attr, int src_width, int src_height,
-               int src_channels) {
-  int3 offset;
+int4 GetOffset(const SliceAttributes& attr, int src_width, int src_height,
+               int src_channels, int src_batch) {
+  int4 offset;
   if (attr.strides.w > 0) {
     offset.x = attr.starts.w;
   } else {
@@ -124,6 +129,15 @@ int3 GetOffset(const SliceAttributes& attr, int src_width, int src_height,
   }
   if (Is4Alighed(attr)) {
     offset.z /= 4;
+  }
+  if (attr.strides.b > 0) {
+    offset.w = attr.starts.b;
+  } else {
+    if (attr.ends.b > 0) {
+      offset.w = attr.ends.b;
+    } else {
+      offset.w = src_batch + attr.ends.b;
+    }
   }
   return offset;
 }
@@ -163,11 +177,12 @@ Status StridedSlice::BindArguments() {
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
-  int3 offset = GetOffset(attributes_, src_[0]->Width(), src_[0]->Height(),
-                          src_[0]->Channels());
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(int4(offset.x, offset.y, offset.z, 1)));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(int4(
-      attributes_.strides.w, attributes_.strides.h, attributes_.strides.c, 1)));
+  int4 offset = GetOffset(attributes_, src_[0]->Width(), src_[0]->Height(),
+                          src_[0]->Channels(), src_[0]->Batch());
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(offset));
+  RETURN_IF_ERROR(
+      kernel_.SetBytesAuto(int4(attributes_.strides.w, attributes_.strides.h,
+                                attributes_.strides.c, attributes_.strides.b)));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWHDB()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWHDB()));
   return OkStatus();

@@ -20,7 +20,6 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 
-from tensorflow.python.compat import compat
 from tensorflow.python.eager import backprop
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -66,7 +65,7 @@ class MathTest(PForTestCase, parameterized.TestCase):
           if grad is not None:
             outputs.append(grad)
         del output_dtypes[:]
-        output_dtypes.extend([t.dtype for t in outputs])
+        output_dtypes.extend(t.dtype for t in outputs)
         return outputs
 
       # pylint: enable=cell-var-from-loop
@@ -216,7 +215,7 @@ class MathTest(PForTestCase, parameterized.TestCase):
         y1 = array_ops.gather(y, i)
         outputs = [op(x, y), op(x1, y), op(x, y1), op(x1, y1), op(x1, x1)]
         del output_dtypes[:]
-        output_dtypes.extend([t.dtype for t in outputs])
+        output_dtypes.extend(t.dtype for t in outputs)
         return outputs
       # pylint: enable=cell-var-from-loop
 
@@ -307,8 +306,6 @@ class MathTest(PForTestCase, parameterized.TestCase):
             self._test_loop_fn(loop_fn, 2)
 
   def test_batch_matmul_broadcast(self):
-    if not compat.forward_compatible(2019, 4, 25):
-      self.skipTest("Skipping test for future functionality.")
     for broadcast_a in (True, False):
       for broadcast_b in (True, False):
         for stack_a in (True, False):
@@ -624,12 +621,15 @@ class LinalgTest(PForTestCase):
     self._test_loop_fn(loop_fn, 2)
 
   def test_log_matrix_determinant(self):
-    x = random_ops.random_normal([3, 4, 2, 2])
+    for x_shape in ([3, 4, 2, 2], [3, 2, 2]):
+      x = random_ops.random_normal(x_shape)
 
-    def loop_fn(i):
-      return linalg_ops.log_matrix_determinant(array_ops.gather(x, i))
+      # pylint: disable=cell-var-from-loop
+      def loop_fn(i):
+        return linalg_ops.log_matrix_determinant(array_ops.gather(x, i))
+      # pylint: enable=cell-var-from-loop
 
-    self._test_loop_fn(loop_fn, 3)
+      self._test_loop_fn(loop_fn, 3)
 
   def test_matrix_triangular_solve(self):
     for lower in (True, False):
@@ -661,7 +661,8 @@ class LinalgTest(PForTestCase):
     x = z + array_ops.matrix_transpose(z)  # Ensure self-adjoint.
 
     def loop_fn(i):
-      return linalg_ops.self_adjoint_eig(array_ops.gather(x, i))
+      return (linalg_ops.self_adjoint_eig(array_ops.gather(x, i)),
+              linalg_ops.self_adjoint_eigvals(array_ops.gather(x, i)))
 
     self._test_loop_fn(loop_fn, 2)
 

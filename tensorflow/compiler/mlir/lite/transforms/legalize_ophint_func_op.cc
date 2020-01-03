@@ -15,23 +15,23 @@ limitations under the License.
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/StringMap.h"
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/Block.h"  // TF:local_config_mlir
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/Function.h"  // TF:local_config_mlir
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/IR/Module.h"  // TF:local_config_mlir
-#include "mlir/IR/Operation.h"  // TF:local_config_mlir
-#include "mlir/IR/OperationSupport.h"  // TF:local_config_mlir
-#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
-#include "mlir/IR/SymbolTable.h"  // TF:local_config_mlir
-#include "mlir/IR/Types.h"  // TF:local_config_mlir
-#include "mlir/IR/Value.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
-#include "mlir/Pass/PassRegistry.h"  // TF:local_config_mlir
-#include "mlir/Support/LLVM.h"  // TF:local_config_mlir
-#include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/Block.h"  // TF:llvm-project
+#include "mlir/IR/Builders.h"  // TF:llvm-project
+#include "mlir/IR/Function.h"  // TF:llvm-project
+#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
+#include "mlir/IR/Module.h"  // TF:llvm-project
+#include "mlir/IR/Operation.h"  // TF:llvm-project
+#include "mlir/IR/OperationSupport.h"  // TF:llvm-project
+#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/IR/SymbolTable.h"  // TF:llvm-project
+#include "mlir/IR/Types.h"  // TF:llvm-project
+#include "mlir/IR/Value.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/Pass/PassRegistry.h"  // TF:llvm-project
+#include "mlir/Support/LLVM.h"  // TF:llvm-project
+#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 
 namespace mlir {
@@ -92,18 +92,18 @@ LogicalResult BuildUnidirectionalSequenceRnnOp(FuncOp composite_func_op,
   if (call_op.getNumResults() != 1) return failure();
 
   // Inputs is indexed at 0.
-  Value* input = call_op.getOperand(0);
+  Value input = call_op.getOperand(0);
   // Input_weight is indexed at 1.
-  Value* weight = call_op.getOperand(1);
+  Value weight = call_op.getOperand(1);
   // Recurrent_weight is indexed at 2.
-  Value* recurrent_weight = call_op.getOperand(2);
+  Value recurrent_weight = call_op.getOperand(2);
   // Bias is indexed at 3.
-  Value* bias = call_op.getOperand(3);
+  Value bias = call_op.getOperand(3);
   // Hidden_state is indexed at 4.
-  Value* hidden_state = call_op.getOperand(4);
+  Value hidden_state = call_op.getOperand(4);
 
   // Build Output.
-  auto output_type = call_op.getResult(0)->getType();
+  auto output_type = call_op.getResult(0).getType();
 
   // Currently, ophinted RNN only supports time_major = True.
   const bool time_major = true;
@@ -127,7 +127,7 @@ LogicalResult BuildUnidirectionalSequenceLSTMOp(FuncOp composite_func_op,
   auto input_index_attr = composite_func_op.getAttr(kTfLiteFunctionInputIndex)
                               .cast<ArrayAttr>()
                               .getValue();
-  llvm::DenseMap<int, Value*> fused_ops_index_to_call_op_args;
+  llvm::DenseMap<int, Value> fused_ops_index_to_call_op_args;
 
   for (int i = 0; i < call_op.getNumOperands(); ++i) {
     int input_index = input_index_attr[i].cast<IntegerAttr>().getInt();
@@ -139,7 +139,7 @@ LogicalResult BuildUnidirectionalSequenceLSTMOp(FuncOp composite_func_op,
 
   // We encounter some optional arguments not filled, so we need to create an
   // empty Value.
-  Value* none_value;
+  Value none_value;
   if (call_op.getNumOperands() <
       kUnidirectionalSequenceLSTMOpTotalIArgumentNum) {
     builder->setInsertionPoint(call_op.getOperation());
@@ -148,7 +148,7 @@ LogicalResult BuildUnidirectionalSequenceLSTMOp(FuncOp composite_func_op,
   }
 
   // Prepare all operands for the UnidirectionalSequenceLSTMOp.
-  SmallVector<Value*, kUnidirectionalSequenceLSTMOpTotalIArgumentNum> operands;
+  SmallVector<Value, kUnidirectionalSequenceLSTMOpTotalIArgumentNum> operands;
   for (int i = 0; i < kUnidirectionalSequenceLSTMOpTotalIArgumentNum; ++i) {
     auto operand_it = fused_ops_index_to_call_op_args.find(i);
     if (operand_it == fused_ops_index_to_call_op_args.end()) {
@@ -169,12 +169,12 @@ LogicalResult BuildUnidirectionalSequenceLSTMOp(FuncOp composite_func_op,
   if (call_op.getNumResults() > 1) {
     for (int i = 0; i < call_op.getNumResults() - 1; ++i) {
       // This one should not be used.
-      Value* unused_output = call_op.getResult(i);
-      if (!unused_output->use_empty()) return failure();
+      Value unused_output = call_op.getResult(i);
+      if (!unused_output.use_empty()) return failure();
     }
   }
   output_types.push_back(
-      call_op.getResult(call_op.getNumResults() - 1)->getType());
+      call_op.getResult(call_op.getNumResults() - 1).getType());
 
   // Prepare attributes.
   SmallVector<NamedAttribute, 4> attributes;
@@ -191,10 +191,10 @@ LogicalResult BuildUnidirectionalSequenceLSTMOp(FuncOp composite_func_op,
   return success();
 }
 
-LogicalResult ConvertTfLiteFusedOpIfAvaiable(StringRef func_name,
-                                             FuncOp composite_func_op,
-                                             CallOp call_op,
-                                             OpBuilder* builder) {
+LogicalResult ConvertTfLiteFusedOpIfAvailable(StringRef func_name,
+                                              FuncOp composite_func_op,
+                                              CallOp call_op,
+                                              OpBuilder* builder) {
   Operation* fused_op = nullptr;
   if (func_name == kUnidirectionalSequenceRnn) {
     // TODO(renjieliu): Validate the func op inputs.
@@ -206,11 +206,11 @@ LogicalResult ConvertTfLiteFusedOpIfAvaiable(StringRef func_name,
     LogicalResult build_fused_op_result = BuildUnidirectionalSequenceLSTMOp(
         composite_func_op, call_op, builder, &fused_op);
     if (failed(build_fused_op_result)) return build_fused_op_result;
-    Value* call_output = call_op.getResult(call_op.getNumResults() - 1);
-    if (call_output->getType() != fused_op->getResult(0)->getType()) {
+    Value call_output = call_op.getResult(call_op.getNumResults() - 1);
+    if (call_output.getType() != fused_op->getResult(0).getType()) {
       return failure();
     }
-    call_output->replaceAllUsesWith(fused_op->getResult(0));
+    call_output.replaceAllUsesWith(fused_op->getResult(0));
   } else {  // If we support more fused op, we should add the conversion here.
     return failure();
   }
@@ -243,8 +243,8 @@ LogicalResult ConvertCallOps(llvm::StringMap<FuncOp>* composite_func_ops,
       StringRef func_name = composite_func_op.getAttr(kTfLiteFunctionName)
                                 .cast<StringAttr>()
                                 .getValue();
-      if (failed(ConvertTfLiteFusedOpIfAvaiable(func_name, composite_func_op,
-                                                call_op, &builder)))
+      if (failed(ConvertTfLiteFusedOpIfAvailable(func_name, composite_func_op,
+                                                 call_op, &builder)))
         return failure();
 
       composite_func_ops->erase(it);

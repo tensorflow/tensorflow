@@ -26,21 +26,6 @@ namespace tensorflow {
 namespace eager {
 
 #if !defined(IS_MOBILE_PLATFORM)
-Status EagerFunctionArgs::GetLocalArg(const int index, Tensor* val) const {
-  const absl::optional<Tensor>& arg = tensor_args_->at(index);
-  if (arg.has_value()) {
-    *val = arg.value();
-    return Status::OK();
-  } else {
-    return errors::NotFound("Argument ", index, " has no local tensor.");
-  }
-}
-
-Status EagerFunctionArgs::GetRemoteArg(const int index,
-                                       RemoteTensorHandle* val) const {
-  return serialize_remote_handle_(index, val);
-}
-
 void EagerProcessFunctionLibraryRuntime::RunRemoteDevice(
     const FunctionLibraryRuntime::Options& opts,
     FunctionLibraryRuntime::Handle local_handle, const InternalArgsView& args,
@@ -72,6 +57,10 @@ void EagerProcessFunctionLibraryRuntime::Run(
     FunctionLibraryRuntime::Handle handle, const FunctionArgsInterface& args,
     std::vector<Tensor>* rets,
     FunctionLibraryRuntime::DoneCallback done) const {
+  if (!args.HasRemoteInputs()) {
+    return ProcessFunctionLibraryRuntime::Run(opts, handle, args, rets,
+                                              std::move(done));
+  }
   auto* cleanup_items = new std::vector<std::unique_ptr<CleanUpItem>>;
   done = ApplyCleanUpToDoneCallback(cleanup_items, done);
 

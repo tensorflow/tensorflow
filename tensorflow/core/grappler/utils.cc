@@ -99,6 +99,7 @@ NodeDef* NodeMap::GetNode(const string& name) const {
   const string node_name = NodeName(name);
   auto it = nodes_.find(node_name);
   if (it == nodes_.end()) {
+    VLOG(1) << "Node could not be found: " << name;
     return nullptr;
   }
   return it->second;
@@ -276,10 +277,22 @@ bool HasRegularInputs(const NodeDef& node) {
 }
 
 int NumNonControlInputs(const NodeDef& node) {
-  int num_inputs = node.input_size();
-  for (const string& input : node.input()) {
+  int num_inputs = 0;
+  for (; num_inputs < node.input_size(); ++num_inputs) {
+    const string& input = node.input(num_inputs);
     if (IsControlInput(input)) {
-      --num_inputs;
+      return num_inputs;
+    }
+  }
+  return num_inputs;
+}
+
+int NumControlInputs(const NodeDef& node) {
+  int num_inputs = 0;
+  for (; num_inputs < node.input_size(); ++num_inputs) {
+    const string& input = node.input(node.input_size() - num_inputs - 1);
+    if (!IsControlInput(input)) {
+      return num_inputs;
     }
   }
   return num_inputs;
@@ -288,7 +301,7 @@ int NumNonControlInputs(const NodeDef& node) {
 bool HasRegularOutputs(const NodeDef& node, const NodeMap& node_map) {
   for (const NodeDef* output : node_map.GetOutputs(node.name())) {
     for (const string& node_as_input : output->input()) {
-      if (IsControlInput(node_as_input)) continue;
+      if (IsControlInput(node_as_input)) break;
 
       TensorId tensor = ParseTensorName(node_as_input);
       if (tensor.node() == node.name()) {
@@ -301,8 +314,9 @@ bool HasRegularOutputs(const NodeDef& node, const NodeMap& node_map) {
 
 bool HasControlOutputs(const NodeDef& node, const NodeMap& node_map) {
   for (const NodeDef* output : node_map.GetOutputs(node.name())) {
-    for (const string& node_as_input : output->input()) {
-      if (!IsControlInput(node_as_input)) continue;
+    for (int idx = output->input_size() - 1; idx >= 0; --idx) {
+      const string& node_as_input = output->input(idx);
+      if (!IsControlInput(node_as_input)) break;
 
       TensorId tensor = ParseTensorName(node_as_input);
       if (tensor.node() == node.name()) {
@@ -316,8 +330,9 @@ bool HasControlOutputs(const NodeDef& node, const NodeMap& node_map) {
 int NumControlOutputs(const NodeDef& node, const NodeMap& node_map) {
   int num_outputs = 0;
   for (const NodeDef* output : node_map.GetOutputs(node.name())) {
-    for (const string& node_as_input : output->input()) {
-      if (!IsControlInput(node_as_input)) continue;
+    for (int idx = output->input_size() - 1; idx >= 0; --idx) {
+      const string& node_as_input = output->input(idx);
+      if (!IsControlInput(node_as_input)) break;
 
       TensorId tensor = ParseTensorName(node_as_input);
       if (tensor.node() == node.name()) {

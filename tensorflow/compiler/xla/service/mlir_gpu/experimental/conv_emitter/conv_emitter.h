@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_MLIR_GPU_EXPERIMENTAL_CONV_EMITTER_CONV_EMITTER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_MLIR_GPU_EXPERIMENTAL_CONV_EMITTER_CONV_EMITTER_H_
 
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
+#include "mlir/IR/Function.h"  // TF:llvm-project
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 
 namespace xla {
@@ -24,19 +24,23 @@ namespace mlir_gpu {
 
 // Builds MLIR using custom_call that represents a foward convolution.
 //
+// The generated function has the following signature:
+// func @<function_name>(%output: memref<physical_layout...>,
+//                       %input: memref<physical_layout...>,
+//                       %filter: memref<physical_layout...>) { ... }
+//
 // Note that the custom_call is XLA/GPU-specific, as it calls into cuDNN's
 // forward convolution. However, here we are building a MLIR custom emitter, and
 // we are not calling into cuDNN. We just want to borrow the HLO representation
 // that already exists in XLA/GPU backend.
 //
 // `input`, `filter`, `output` are convolution inputs.
-Status EmitConvolutionForwardAsMlir(HloInstruction* custom_call,
-                                    mlir::Value* input, mlir::Value* filter,
-                                    mlir::Value* output,
-                                    mlir::OpBuilder builder);
+StatusOr<mlir::FuncOp> EmitConvolutionForwardAsMlir(
+    HloInstruction* conv, absl::string_view function_name,
+    mlir::MLIRContext* context);
 
 // Returns Status::OK() if convolution can be implemented by this emitter.
-Status ConvIsImplemented(const HloInstruction* custom_call);
+Status ConvIsImplemented(const HloInstruction* conv);
 
 }  // namespace mlir_gpu
 }  // namespace xla

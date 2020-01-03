@@ -20,13 +20,14 @@ limitations under the License.
 
 #include "absl/types/span.h"
 #include "llvm/ADT/ArrayRef.h"
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/Function.h"  // TF:local_config_mlir
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/IR/Module.h"  // TF:local_config_mlir
+#include "mlir/IR/Builders.h"  // TF:llvm-project
+#include "mlir/IR/Function.h"  // TF:llvm-project
+#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
+#include "mlir/IR/Module.h"  // TF:llvm-project
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/mlir_gpu/emission_context.h"
 #include "tensorflow/compiler/xla/status.h"
 
 namespace xla {
@@ -34,25 +35,37 @@ namespace mlir_gpu {
 
 class HloDialectEmitter : public DfsHloVisitorWithDefault {
  public:
-  HloDialectEmitter(::mlir::Region* region,
-                    llvm::ArrayRef<::mlir::Value*> arguments)
-      : builder_(region), arguments_(arguments) {}
+  HloDialectEmitter(xla::mlir_gpu::EmissionContext* emission_context,
+                    ::mlir::Region* region,
+                    llvm::ArrayRef<::mlir::Value> arguments)
+      : emission_context_(emission_context),
+        builder_(region),
+        arguments_(arguments) {}
 
-  HloDialectEmitter(::mlir::OpBuilder builder,
-                    llvm::ArrayRef<::mlir::Value*> arguments)
-      : builder_(builder), arguments_(arguments) {}
+  HloDialectEmitter(xla::mlir_gpu::EmissionContext* emission_context,
+                    ::mlir::OpBuilder builder,
+                    llvm::ArrayRef<::mlir::Value> arguments)
+      : emission_context_(emission_context),
+        builder_(builder),
+        arguments_(arguments) {}
 
-  StatusOr<mlir::Value*> EmitComputation(const HloComputation& computation);
+  StatusOr<mlir::Value> EmitComputation(const HloComputation& computation);
 
   Status DefaultAction(HloInstruction* instr) override;
+  Status HandleBroadcast(HloInstruction* broadcast) override;
+  Status HandleCompare(HloInstruction* compare) override;
   Status HandleConstant(HloInstruction* constant) override;
+  Status HandleIota(HloInstruction* iota) override;
   Status HandleParameter(HloInstruction* param) override;
   Status HandleReduce(HloInstruction* reduce) override;
 
  private:
+  mlir::Location getLocation(const HloInstruction* instr) const;
+
+  xla::mlir_gpu::EmissionContext* emission_context_;
   ::mlir::OpBuilder builder_;
-  llvm::ArrayRef<::mlir::Value*> arguments_;
-  absl::flat_hash_map<const xla::HloInstruction*, ::mlir::Value*>
+  llvm::ArrayRef<::mlir::Value> arguments_;
+  absl::flat_hash_map<const xla::HloInstruction*, ::mlir::Value>
       instruction_to_values_;
 };
 

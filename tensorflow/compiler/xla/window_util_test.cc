@@ -30,5 +30,14 @@ TEST(WindowUtilTest, HasOverlappingWindowTest) {
       window_util::HasOverlappingWindow(window_util::MakeWindow({2, 2, 2, 2})));
 }
 
+TEST(WindowUtilTest, MakeWindowStrideTest) {
+  // MakeWindow() set a stride of 1 by default.
+  Window w = window_util::MakeWindow({1, 2}, {3, 4});
+  EXPECT_EQ(w.dimensions()[0].size(), 1);
+  EXPECT_EQ(w.dimensions()[1].size(), 2);
+  EXPECT_EQ(w.dimensions()[0].stride(), 3);
+  EXPECT_EQ(w.dimensions()[1].stride(), 4);
+}
+
 }  // namespace
 }  // namespace xla

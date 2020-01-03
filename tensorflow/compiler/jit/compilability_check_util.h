@@ -80,29 +80,29 @@ class RecursiveCompilabilityChecker {
     // not allow resource variable ops in called functions (either as direct TF
     // calls or as higher order control flow ops) because we do not yet model
     // their memory effects in jit/resource_operation_safety_analysis.
-    bool allow_resource_ops_in_called_functions;
+    bool allow_resource_ops_in_called_functions = false;
 
     // Whether Stack operations are allowed.  We avoid auto-clustering Stack
     // operations in general because we do not support snapshotting them.
     //
     // TODO(b/112837194): This restriction can be lifted with some work.
-    bool allow_stack_ops;
+    bool allow_stack_ops = false;
 
     // Whether TensorArray operations are allowed.  We avoid auto-clustering
     // TensorArray operations in general because we do not support snapshotting
     // them.
     //
     // TODO(b/112837194): This restriction can be lifted with some work.
-    bool allow_tensor_array_ops;
+    bool allow_tensor_array_ops = false;
 
     // Whether stateful RNG ops are allowed.  XLA's RNG does not have the same
     // seeding behavior as TensorFlow's RNG (b/34749654).  So we avoid
     // auto-clustering stateful RNG ops.
-    bool allow_stateful_rng_ops;
+    bool allow_stateful_rng_ops = false;
 
     // TODO(b/118970344): Whether ControlTrigger ops are allowed.  It is unsound
     // to cluster ControlTrigger because of how we use deadness analysis.
-    bool allow_control_trigger;
+    bool allow_control_trigger = false;
 
     // Whether it is okay to "cluster" Assert and CheckNumerics by simply
     // removing them (they're not removed during clustering, but their
@@ -111,19 +111,19 @@ class RecursiveCompilabilityChecker {
     // user explicitly specifies to use XLA, it is fine to resort to a dummy
     // implementation. Currently Assert and CheckNumerics ops have dummy XLA
     // implementations.
-    bool allow_eliding_assert_and_checknumerics_ops;
+    bool allow_eliding_assert_and_checknumerics_ops = false;
 
     // Whether ops that produce or consume DT_VARIANT values are allowed.  We
     // don't auto-cluster these ops because we don't yet support live-in or
     // live-out DT_VARIANT values.
-    bool allow_ops_producing_or_consuming_variant;
+    bool allow_ops_producing_or_consuming_variant = false;
 
     // Whether ops known to be slow on XLA-GPU should be considered compilable.
-    bool allow_slow_ops;
+    bool allow_slow_ops = false;
 
     // Whether ops known to have numerical accuracy issues should be considered
     // compilable..
-    bool allow_inaccurate_ops;
+    bool allow_inaccurate_ops = false;
   };
 
   RecursiveCompilabilityChecker(const OperationFilter* op_filter,

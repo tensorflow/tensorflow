@@ -30,7 +30,7 @@ opt<std::string> output_file_name("o", llvm::cl::desc("<output file>"),
 opt<bool> use_splatted_constant(
     "use-splatted-constant",
     llvm::cl::desc(
-        "Replace constants with randonmly generated splatted tensors"),
+        "Replace constants with randomly generated splatted tensors"),
     llvm::cl::init(false), llvm::cl::Hidden);
 // NOLINTNEXTLINE
 opt<bool> input_mlir(
@@ -55,8 +55,8 @@ opt<bool> output_mlir(
 // going forward.
 // NOLINTNEXTLINE
 llvm::cl::list<std::string> custom_opdefs(
-    "tf-custom-opdefs", llvm::cl::desc("List of extra opdefs when importing "
-                                       "graphdef (testing purposes only)"));
+    "tf-custom-opdefs", llvm::cl::desc("List of custom opdefs when importing "
+                                       "graphdef"));
 
 // Quantize and Dequantize ops pair can be optionally emitted before and after
 // the quantized model as the adaptors to receive and produce floating point
@@ -76,3 +76,8 @@ opt<std::string> quant_stats_file_name("quant-stats",
                                        llvm::cl::desc("<stats file>"),
                                        llvm::cl::value_desc("filename"),
                                        llvm::cl::init(""));
+
+// NOLINTNEXTLINE
+opt<bool> inline_functions(
+    "inline", llvm::cl::desc("Inline function calls within the main function "
+                             "before legalization to TFLite."));

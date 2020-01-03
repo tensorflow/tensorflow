@@ -13,38 +13,45 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
-# TODO(dkovalev): b/140445440 -- Implement test coverage for this script.
 set -e
+set -x
 
-PYTHON="${PYTHON:-python3}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-export TENSORFLOW_SRC_ROOT="${SCRIPT_DIR}/../../../.."
-export TENSORFLOW_VERSION=$(grep "_VERSION = " "${TENSORFLOW_SRC_ROOT}/tensorflow/tools/pip_package/setup.py" | cut -d'=' -f 2 | sed "s/[ '-]//g");
-TFLITE_ROOT="${TENSORFLOW_SRC_ROOT}/tensorflow/lite"
-BUILD_ROOT="/tmp/tflite_pip/${PYTHON}"
+PYTHON="${PYTHON:-python3}"
+VERSION_SUFFIX=${VERSION_SUFFIX:-}
+export TENSORFLOW_DIR="${SCRIPT_DIR}/../../../.."
+TENSORFLOW_LITE_DIR="${TENSORFLOW_DIR}/tensorflow/lite"
+TENSORFLOW_VERSION=$(grep "_VERSION = " "${TENSORFLOW_DIR}/tensorflow/tools/pip_package/setup.py" | cut -d= -f2 | sed "s/[ '-]//g")
+export PACKAGE_VERSION="${TENSORFLOW_VERSION}${VERSION_SUFFIX}"
+BUILD_DIR="/tmp/tflite_pip/${PYTHON}"
 
 # Build source tree.
-rm -rf "${BUILD_ROOT}"
-mkdir -p "${BUILD_ROOT}/tflite_runtime"
-cp -r "${TFLITE_ROOT}/tools/pip_package/debian" \
-      "${TFLITE_ROOT}/python/interpreter_wrapper" \
-      "${TFLITE_ROOT}/tools/pip_package/setup.py" \
-      "${TFLITE_ROOT}/tools/pip_package/MANIFEST.in" \
-      "${BUILD_ROOT}"
-cp "${TFLITE_ROOT}/python/interpreter.py" \
-   "${BUILD_ROOT}/tflite_runtime"
-echo "__version__ = '${TENSORFLOW_VERSION}'" > "${BUILD_ROOT}/tflite_runtime/__init__.py"
+rm -rf "${BUILD_DIR}" && mkdir -p "${BUILD_DIR}/tflite_runtime"
+cp -r "${TENSORFLOW_LITE_DIR}/tools/pip_package/debian" \
+      "${TENSORFLOW_LITE_DIR}/tools/pip_package/setup.py" \
+      "${TENSORFLOW_LITE_DIR}/tools/pip_package/MANIFEST.in" \
+      "${TENSORFLOW_LITE_DIR}/python/interpreter_wrapper" \
+      "${BUILD_DIR}"
+cp "${TENSORFLOW_LITE_DIR}/python/interpreter.py" \
+   "${BUILD_DIR}/tflite_runtime"
+echo "__version__ = '${PACKAGE_VERSION}'" >> "${BUILD_DIR}/tflite_runtime/__init__.py"
+echo "__git_version__ = '$(git -C "${TENSORFLOW_DIR}" describe)'" >> "${BUILD_DIR}/tflite_runtime/__init__.py"
 
 # Build python wheel.
-cd "${BUILD_ROOT}"
-if [[ "${TENSORFLOW_TARGET}" == "rpi" ]]; then
-  ${PYTHON} setup.py bdist_wheel --plat-name=linux-armv7l
-elif [[ "${TENSORFLOW_TARGET}" == "aarch64" ]]; then
-  ${PYTHON} setup.py bdist_wheel --plat-name=linux-aarch64
-else
-  ${PYTHON} setup.py bdist_wheel
-fi
+cd "${BUILD_DIR}"
+case "${TENSORFLOW_TARGET}" in
+  rpi)
+    ${PYTHON} setup.py bdist --plat-name=linux-armv7l \
+                       bdist_wheel --plat-name=linux-armv7l
+    ;;
+  aarch64)
+    ${PYTHON} setup.py bdist --plat-name=linux-aarch64 \
+                       bdist_wheel --plat-name=linux-aarch64
+    ;;
+  *)
+    ${PYTHON} setup.py bdist bdist_wheel
+    ;;
+esac
 
 # Build debian package.
 if [[ "${BUILD_DEB}" != "y" ]]; then
@@ -58,15 +65,28 @@ if [[ ${PYTHON_VERSION} != 3 ]]; then
 fi
 
 DEB_VERSION=$(dpkg-parsechangelog --show-field Version | cut -d- -f1)
-if [[ "${DEB_VERSION}" != "${TENSORFLOW_VERSION}" ]]; then
-  echo "Debian package version (${DEB_VERSION}) doesn't match TensorFlow version (${TENSORFLOW_VERSION})" >&2
-  exit 1
+if [[ "${DEB_VERSION}" != "${PACKAGE_VERSION}" ]]; then
+  cat << EOF > "${BUILD_DIR}/debian/changelog"
+tflite-runtime (${PACKAGE_VERSION}-1) unstable; urgency=low
+
+  * Bump version to ${PACKAGE_VERSION}.
+
+ -- TensorFlow team <packages@tensorflow.org>  $(date -R)
+
+$(<"${BUILD_DIR}/debian/changelog")
+EOF
 fi
 
-if [[ "${TENSORFLOW_TARGET}" == "rpi" ]]; then
-  dpkg-buildpackage -b -rfakeroot -us -uc -tc -d -a armhf
-elif [[ "${TENSORFLOW_TARGET}" == "aarch64" ]]; then
-  dpkg-buildpackage -b -rfakeroot -us -uc -tc -d -a arm64
-else
-  dpkg-buildpackage -b -rfakeroot -us -uc -tc
-fi
+case "${TENSORFLOW_TARGET}" in
+  rpi)
+    dpkg-buildpackage -b -rfakeroot -us -uc -tc -d -a armhf
+    ;;
+  aarch64)
+    dpkg-buildpackage -b -rfakeroot -us -uc -tc -d -a arm64
+    ;;
+  *)
+    dpkg-buildpackage -b -rfakeroot -us -uc -tc -d
+    ;;
+esac
+
+cat "${BUILD_DIR}/debian/changelog"

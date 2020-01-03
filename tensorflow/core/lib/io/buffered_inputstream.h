@@ -41,9 +41,9 @@ class BufferedInputStream : public InputStreamInterface {
 
   ~BufferedInputStream() override;
 
-  Status ReadNBytes(int64 bytes_to_read, tstring* result) override;
+  tensorflow::Status ReadNBytes(int64 bytes_to_read, tstring* result) override;
 
-  Status SkipNBytes(int64 bytes_to_skip) override;
+  tensorflow::Status SkipNBytes(int64 bytes_to_skip) override;
 
   int64 Tell() const override;
 
@@ -56,7 +56,7 @@ class BufferedInputStream : public InputStreamInterface {
   // Note: When seeking backwards in a stream, this implementation uses
   // Reset() + SkipNBytes(), so its performance will be dependent
   // largely on the performance of SkipNBytes().
-  Status Seek(int64 position);
+  tensorflow::Status Seek(int64 position);
 
   // Read one text line of data into "*result" until end-of-file or a
   // \n is read.  (The \n is not included in the result.)  Overwrites
@@ -65,7 +65,7 @@ class BufferedInputStream : public InputStreamInterface {
   // If successful, returns OK.  If we are already at the end of the
   // file, we return an OUT_OF_RANGE error.  Otherwise, we return
   // some other non-OK status.
-  Status ReadLine(string* result);
+  tensorflow::Status ReadLine(string* result);
 
   // Returns one text line of data until end-of-file or a '\n' is read. The '\n'
   // is included in the result.
@@ -80,13 +80,13 @@ class BufferedInputStream : public InputStreamInterface {
   // Note: the amount of memory used by this function call is unbounded, so only
   // use in ops that expect that behavior.
   template <typename T>
-  Status ReadAll(T* result);
+  tensorflow::Status ReadAll(T* result);
 
-  Status Reset() override;
+  tensorflow::Status Reset() override;
 
  private:
-  Status FillBuffer();
-  Status ReadLineHelper(string* result, bool include_eol);
+  tensorflow::Status FillBuffer();
+  tensorflow::Status ReadLineHelper(string* result, bool include_eol);
 
   InputStreamInterface* input_stream_;  // not owned.
   size_t size_;                         // buffer size.
@@ -97,16 +97,18 @@ class BufferedInputStream : public InputStreamInterface {
   bool owns_input_stream_ = false;
   // When EoF is reached, file_status_ contains the status to skip unnecessary
   // buffer allocations.
-  Status file_status_ = Status::OK();
+  tensorflow::Status file_status_ = Status::OK();
 
   TF_DISALLOW_COPY_AND_ASSIGN(BufferedInputStream);
 };
 
 // Explicit instantiations defined in buffered_inputstream.cc.
 #ifndef SWIG
-extern template Status BufferedInputStream::ReadAll<string>(string* result);
+extern template tensorflow::Status BufferedInputStream::ReadAll<string>(
+    string* result);
 #ifdef USE_TSTRING
-extern template Status BufferedInputStream::ReadAll<tstring>(tstring* result);
+extern template tensorflow::Status BufferedInputStream::ReadAll<tstring>(
+    tstring* result);
 #endif  // USE_TSTRING
 #endif  // SWIG
 

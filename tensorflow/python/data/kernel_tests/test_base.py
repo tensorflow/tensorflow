@@ -29,6 +29,8 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.ops import gen_experimental_dataset_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
@@ -58,7 +60,11 @@ class DatasetTestBase(test.TestCase):
 
   def assertValuesEqual(self, expected, actual):
     """Asserts that two values are equal."""
-    if sparse_tensor.is_sparse(expected):
+    if isinstance(expected, dict):
+      self.assertItemsEqual(list(expected.keys()), list(actual.keys()))
+      for k in expected.keys():
+        self.assertValuesEqual(expected[k], actual[k])
+    elif sparse_tensor.is_sparse(expected):
       self.assertAllEqual(expected.indices, actual.indices)
       self.assertAllEqual(expected.values, actual.values)
       self.assertAllEqual(expected.dense_shape, actual.dense_shape)
@@ -124,6 +130,17 @@ class DatasetTestBase(test.TestCase):
       for result_value, expected_value in zip(
           nest.flatten(result_values[i]), nest.flatten(expected_values[i])):
         self.assertValuesEqual(expected_value, result_value)
+
+  def getDatasetOutput(self, dataset, requires_initialization=False):
+    get_next = self.getNext(
+        dataset, requires_initialization=requires_initialization)
+    results = []
+    while True:
+      try:
+        results.append(self.evaluate(get_next()))
+      except errors.OutOfRangeError:
+        break
+    return results
 
   def assertDatasetProduces(self,
                             dataset,
@@ -260,6 +277,14 @@ class DatasetTestBase(test.TestCase):
               self.structuredDataset(substructure, shape, dtype)
               for substructure in dataset_structure
           ]))
+
+  def graphRoundTrip(self, dataset, allow_stateful=False):
+    """Converts a dataset to a graph and back."""
+    graph = gen_dataset_ops.dataset_to_graph(
+        dataset._variant_tensor, allow_stateful=allow_stateful)  # pylint: disable=protected-access
+    return dataset_ops.from_variant(
+        gen_experimental_dataset_ops.dataset_from_graph(graph),
+        dataset.element_spec)
 
   def structuredElement(self, element_structure, shape=None,
                         dtype=dtypes.int64):

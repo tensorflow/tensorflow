@@ -127,6 +127,7 @@ int3 Tensor::GetFullTensorRegion() const {
   switch (descriptor_.storage_type) {
     case TensorStorageType::BUFFER:
     case TensorStorageType::TEXTURE_ARRAY:
+    case TensorStorageType::TEXTURE_3D:
     case TensorStorageType::IMAGE_BUFFER:
       return {shape_.w * shape_.b, shape_.h, Depth()};
     case TensorStorageType::TEXTURE_2D:
@@ -175,6 +176,7 @@ uint64_t Tensor::GetMemorySizeInBytes() const {
     case TensorStorageType::IMAGE_BUFFER:
     case TensorStorageType::TEXTURE_ARRAY:
     case TensorStorageType::TEXTURE_2D:
+    case TensorStorageType::TEXTURE_3D:
       return flt4_size * shape_.b * shape_.w * shape_.h * Depth();
     case TensorStorageType::SINGLE_TEXTURE_2D:
       return flt_size * shape_.w * shape_.h * shape_.c * shape_.b;
@@ -217,6 +219,7 @@ Status Tensor::WriteDataBHWC(absl::Span<const float> in,
       break;
     case TensorStorageType::TEXTURE_ARRAY:
     case TensorStorageType::TEXTURE_2D:
+    case TensorStorageType::TEXTURE_3D:
     case TensorStorageType::SINGLE_TEXTURE_2D:
       RETURN_IF_ERROR(
           queue->EnqueueWriteImage(memory_, GetFullTensorRegion(), data_ptr));
@@ -256,6 +259,7 @@ Status Tensor::ReadDataBHWC(absl::Span<float> out,
       break;
     case TensorStorageType::TEXTURE_ARRAY:
     case TensorStorageType::TEXTURE_2D:
+    case TensorStorageType::TEXTURE_3D:
     case TensorStorageType::SINGLE_TEXTURE_2D:
       RETURN_IF_ERROR(
           queue->EnqueueReadImage(memory_, GetFullTensorRegion(), data_ptr));
@@ -292,17 +296,19 @@ bool CanCreateTensorWithShape(const CLContext& context, const CLDevice& device,
     case TensorStorageType::IMAGE_BUFFER:
       return shape.b * shape.w * shape.h * depth <=
              device.GetInfo().image_buffer_max_size;
+    case TensorStorageType::TEXTURE_3D:
+      return shape.w * shape.b <= device.GetInfo().image3d_max_width &&
+             shape.h <= device.GetInfo().image3d_max_height &&
+             depth <= device.GetInfo().image3d_max_depth;
     case TensorStorageType::TEXTURE_ARRAY:
-      return shape.b == 1 &&
-             shape.w * shape.b <= device.GetInfo().image2d_max_width &&
+      return shape.w * shape.b <= device.GetInfo().image2d_max_width &&
              shape.h <= device.GetInfo().image2d_max_height &&
              depth <= device.GetInfo().image_array_max_layers;
     case TensorStorageType::TEXTURE_2D:
-      return shape.b == 1 &&
-             shape.w * shape.b <= device.GetInfo().image2d_max_width &&
+      return shape.w * shape.b <= device.GetInfo().image2d_max_width &&
              shape.h * depth <= device.GetInfo().image2d_max_height;
     case TensorStorageType::SINGLE_TEXTURE_2D:
-      return shape.b == 1 && shape.c <= 4 &&
+      return shape.c <= 4 &&
              context.IsFloatTexture2DSupported(shape.c, descriptor.data_type) &&
              shape.w * shape.b <= device.GetInfo().image2d_max_width &&
              shape.h <= device.GetInfo().image2d_max_height;
@@ -366,6 +372,34 @@ Status AllocateTensorMemory(const CLContext& context, const CLDevice& device,
       if (error_code != CL_SUCCESS) {
         return UnknownError(
             absl::StrCat("Failed to create Texture2D (clCreateImage)",
+                         CLErrorCodeToString(error_code)));
+      }
+
+      *result = CLMemory(memory, true);
+      return OkStatus();
+    }
+    case TensorStorageType::TEXTURE_3D: {
+      cl_image_desc desc;
+      desc.image_type = CL_MEM_OBJECT_IMAGE3D;
+      desc.image_width = shape.w * shape.b;
+      desc.image_height = shape.h;
+      desc.image_depth = depth;
+      desc.image_row_pitch = 0;
+      desc.image_slice_pitch = 0;
+      desc.num_mip_levels = 0;
+      desc.num_samples = 0;
+      desc.buffer = nullptr;
+
+      cl_image_format format;
+      format.image_channel_order = CL_RGBA;
+      format.image_channel_data_type = ToImageChannelType(descriptor.data_type);
+
+      cl_int error_code;
+      cl_mem memory = CreateImage3DLegacy(context.context(), CL_MEM_READ_WRITE,
+                                          &format, &desc, nullptr, &error_code);
+      if (error_code != CL_SUCCESS) {
+        return UnknownError(
+            absl::StrCat("Failed to create Texture3D (clCreateImage)",
                          CLErrorCodeToString(error_code)));
       }
 

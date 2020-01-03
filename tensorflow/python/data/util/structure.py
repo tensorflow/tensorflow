@@ -21,6 +21,7 @@ import collections
 import functools
 
 import six
+import wrapt
 
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import composite_tensor
@@ -439,8 +440,12 @@ def type_spec_from_value(element, use_fallback=True):
     if hasattr(element, "_fields") and isinstance(
         element._fields, collections.Sequence) and all(
             isinstance(f, six.string_types) for f in element._fields):
+      if isinstance(element, wrapt.ObjectProxy):
+        element_type = type(element.__wrapped__)
+      else:
+        element_type = type(element)
       # `element` is a namedtuple
-      return type(element)(*[type_spec_from_value(v) for v in element])
+      return element_type(*[type_spec_from_value(v) for v in element])
     # `element` is not a namedtuple
     return tuple([type_spec_from_value(v) for v in element])
 

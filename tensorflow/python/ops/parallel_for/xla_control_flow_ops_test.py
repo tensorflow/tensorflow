@@ -100,6 +100,23 @@ class PForTest(PForTestCase):
     expected = array_ops.ones([5, 1]) * 10
     self.run_and_assert_equal(expected, result)
 
+  def test_reduce_mean(self):
+    x = random_ops.random_uniform([8, 3])
+
+    @def_function.function(experimental_compile=True)
+    def f():
+
+      def loop_fn(i, pfor_config):
+        x_i = array_ops.gather(x, i)
+        return x_i - pfor_config.reduce_mean(x_i)
+
+      return pfor_control_flow_ops.pfor(loop_fn, 8)
+
+    output = f()
+    ans = x - math_ops.reduce_mean(x, axis=0)
+    output_val, ans_val = self.evaluate([output, ans])
+    self.assertAllClose(ans_val, output_val)
+
 
 if __name__ == '__main__':
   test.main()

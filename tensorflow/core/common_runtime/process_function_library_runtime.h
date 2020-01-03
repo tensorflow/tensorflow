@@ -39,11 +39,20 @@ class FunctionArgsInterface {
  public:
   virtual ~FunctionArgsInterface() {}
 
+  virtual bool HasRemoteInputs() const = 0;
+
   virtual Status GetLocalArg(const int index, Tensor* val) const = 0;
+
+  virtual std::vector<Tensor> GetLocalTensors() const = 0;
+
+  virtual const gtl::InlinedVector<TensorValue, 4>* GetTensorValues() const = 0;
 
 #if !defined(IS_MOBILE_PLATFORM)
   virtual Status GetRemoteArg(const int index,
-                              eager::RemoteTensorHandle* val) const = 0;
+                              eager::RemoteTensorHandle* val) const {
+    return errors::Unimplemented(
+        "Serializing a remote argument is not implemented.");
+  }
 #endif  // IS_MOBILE_PLATFORM
 };
 
@@ -83,7 +92,7 @@ class ProcessFunctionLibraryRuntime {
                             gtl::ArraySlice<Tensor> tensors_to_send,
                             DeviceContext* device_context,
                             const std::vector<AllocatorAttributes>& alloc_attrs,
-                            Rendezvous* rendezvous);
+                            RendezvousInterface* rendezvous);
 
   // Receives `received_tensors` from `target_device` (originally sent from
   // `source_device`) using `rendezvous`. Uses `key_prefix` to construct the
@@ -96,7 +105,7 @@ class ProcessFunctionLibraryRuntime {
       const string& key_prefix, int64 src_incarnation, int64 num_tensors,
       DeviceContext* device_context,
       const std::vector<AllocatorAttributes>& alloc_attrs,
-      Rendezvous* rendezvous, std::vector<Tensor>* received_tensors,
+      RendezvousInterface* rendezvous, std::vector<Tensor>* received_tensors,
       StatusCallback done);
 
   static const char kDefaultFLRDevice[];
@@ -149,6 +158,11 @@ class ProcessFunctionLibraryRuntime {
                      const FunctionLibraryRuntime::InstantiateOptions& options,
                      FunctionLibraryRuntime::Handle* handle);
 
+  // Returns whether the function represented by the given handle needs to
+  // execute cross process.
+  Status IsCrossProcess(FunctionLibraryRuntime::Handle handle,
+                        bool* is_cross_process) const;
+
   // Delegates to the local FLR that owns state corresponding to `handle` and
   // tells it to release it. If the `handle` isnt' needed at all, the local FLR
   // might call RemoveHandle on this to get rid of the state owned by the Proc
@@ -171,9 +185,7 @@ class ProcessFunctionLibraryRuntime {
   virtual void Run(const FunctionLibraryRuntime::Options& opts,
                    FunctionLibraryRuntime::Handle handle,
                    const FunctionArgsInterface& args, std::vector<Tensor>* rets,
-                   FunctionLibraryRuntime::DoneCallback done) const {
-    done(errors::Unimplemented("Unimplemented."));
-  }
+                   FunctionLibraryRuntime::DoneCallback done) const;
 
   const DeviceMgr* device_mgr() { return device_mgr_; }
 
@@ -248,7 +260,8 @@ class ProcessFunctionLibraryRuntime {
           instantiation_counter_(1),
           lib_def_(std::move(lib_def)),
           num_outputs_(num_outputs),
-          ret_types_(std::move(ret_types)) {}
+          ret_types_(std::move(ret_types)),
+          is_cross_process_(false) {}
 
     const string function_name_;
     const string function_key_;
@@ -259,6 +272,9 @@ class ProcessFunctionLibraryRuntime {
     // Stored here to resize the output tensor vector when function is run.
     const int num_outputs_;
     DataTypeVector ret_types_;
+
+    // Indicates whether this function needs to execute cross process.
+    bool is_cross_process_;
 
     // Maps the device name to the information about the component function
     // be run on this device.
@@ -271,16 +287,16 @@ class ProcessFunctionLibraryRuntime {
     FunctionLibraryRuntime::Handle local_handle;
   };
 
-  // If handle represents a multi-device function, returns the multi-device
-  // data associated with handle. Else, nullptr.
-  MultiDeviceFunctionData* IsMultiDevice(
-      FunctionLibraryRuntime::Handle handle) const;
-
   virtual void RunRemoteDevice(const FunctionLibraryRuntime::Options& opts,
                                FunctionLibraryRuntime::Handle local_handle,
                                const InternalArgsView& args,
                                std::vector<Tensor>* rets,
                                FunctionLibraryRuntime::DoneCallback done) const;
+
+  // If `handle` represents a multi-device function, returns the multi-device
+  // data associated with `handle`. Else, nullptr.
+  MultiDeviceFunctionData* IsMultiDevice(
+      FunctionLibraryRuntime::Handle handle) const;
 
   void RunMultiDevice(
       const FunctionLibraryRuntime::Options& opts,
@@ -341,6 +357,12 @@ class ProcessFunctionLibraryRuntime {
       const FunctionLibraryRuntime::InstantiateOptions& options,
       FunctionLibraryRuntime::Handle* handle);
 
+  void InstantiateRemote(
+      const string& function_name, AttrSlice attrs,
+      const FunctionLibraryRuntime::InstantiateOptions& options,
+      FunctionLibraryRuntime::Handle* handle,
+      FunctionLibraryRuntime::DoneCallback done);
+
   FunctionLibraryRuntime::Handle AddMultiDeviceHandle(
       const std::unique_ptr<MultiDeviceFunctionData> data,
       const string& function_key);
@@ -386,10 +408,16 @@ class ProcessFunctionLibraryRuntime {
 
     // Initializes the FunctionData object by potentially making an Initialize
     // call to the DistributedFunctionLibraryRuntime.
-    Status DistributedInit(
+    void DistributedInit(
         DistributedFunctionLibraryRuntime* parent, const string& function_name,
         const FunctionLibraryDefinition& lib_def, AttrSlice attrs,
-        const FunctionLibraryRuntime::InstantiateOptions& options);
+        const FunctionLibraryRuntime::InstantiateOptions& options,
+        FunctionLibraryRuntime::DoneCallback done);
+
+    bool is_cross_process() {
+      mutex_lock l(mu_);
+      return is_cross_process_;
+    }
 
    private:
     mutex mu_;
@@ -397,6 +425,7 @@ class ProcessFunctionLibraryRuntime {
     const string target_device_;
     FunctionLibraryRuntime::LocalHandle local_handle_ GUARDED_BY(mu_);
     const string function_key_;
+    bool is_cross_process_ GUARDED_BY(mu_) = false;
     bool init_started_ GUARDED_BY(mu_) = false;
     Status init_result_ GUARDED_BY(mu_);
     Notification init_done_;

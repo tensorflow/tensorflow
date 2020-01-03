@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
+
 import numpy as np
 
 from tensorflow.python.framework import dtypes
@@ -55,7 +56,9 @@ class ArgMaxTest(test.TestCase):
                    expected_values,
                    expected_err_re=None):
     self._testArg(method, x, axis, expected_values, True, expected_err_re)
-    self._testArg(method, x, axis, expected_values, False, expected_err_re)
+    # Compilation time is too large with XLA/CPU autojit.
+    if not test_util.is_xla_enabled():
+      self._testArg(method, x, axis, expected_values, False, expected_err_re)
 
   def _testBasic(self, dtype):
     x = np.arange(200, dtype=dtype)
@@ -66,13 +69,13 @@ class ArgMaxTest(test.TestCase):
     self._testBothArg(math_ops.argmin, x, 0, x.argmin())
 
   def _testDim(self, dtype):
-    shape = (3, 2, 4, 5, 6)
+    shape = (3, 2, 4, 5, 6, 3, 7)
     x = np.arange(functools.reduce(lambda x, y: x * y, shape), dtype=dtype)
     np.random.shuffle(x)
     x = x.reshape(shape)
 
     # Check that argmin and argmax match numpy along all axes
-    for axis in range(-5, 5):
+    for axis in range(-7, 7):
       self._testBothArg(math_ops.argmax, x, axis, x.argmax(axis))
       self._testBothArg(math_ops.argmin, x, axis, x.argmin(axis))
 

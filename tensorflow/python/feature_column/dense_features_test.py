@@ -33,6 +33,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import lookup_ops
+from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 
@@ -97,6 +98,58 @@ class DenseFeaturesTest(test.TestCase):
       _ = dense_features(features)
       self.assertEqual(1, len(variables))
       self.assertIs(variables[0], dense_features.variables[0])
+
+  def test_dense_feature_with_partitioner(self):
+    with context.eager_mode():
+      sparse_input = sparse_tensor.SparseTensor(
+          indices=((0, 0), (1, 0), (2, 0), (3, 0)),
+          values=(0, 1, 3, 2),
+          dense_shape=(4, 4))
+
+      # Create feature columns (categorical and embedding).
+      categorical_column = fc.categorical_column_with_identity(
+          key='a', num_buckets=4)
+      embedding_dimension = 2
+
+      def _embedding_column_initializer(shape, dtype, partition_info=None):
+        offset = partition_info._var_offset[0]
+        del shape  # unused
+        del dtype  # unused
+        if offset == 0:
+          embedding_values = (
+              (1, 0),  # id 0
+              (0, 1))  # id 1
+        else:
+          embedding_values = (
+              (1, 1),  # id 2
+              (2, 2))  # id 3
+        return embedding_values
+
+      embedding_column = fc.embedding_column(
+          categorical_column,
+          dimension=embedding_dimension,
+          initializer=_embedding_column_initializer)
+
+      dense_features = df.DenseFeatures(
+          [embedding_column],
+          partitioner=partitioned_variables.fixed_size_partitioner(2))
+      features = {'a': sparse_input}
+
+      inputs = dense_features(features)
+      variables = dense_features.variables
+
+      # Sanity check: test that the inputs are correct.
+      self.assertAllEqual([[1, 0], [0, 1], [2, 2], [1, 1]], inputs)
+
+      # Check that only one variable was created.
+      self.assertEqual(2, len(variables))
+
+      # Check that invoking dense_features on the same features does not create
+      # additional variables
+      _ = dense_features(features)
+      self.assertEqual(2, len(variables))
+      self.assertIs(variables[0], dense_features.variables[0])
+      self.assertIs(variables[1], dense_features.variables[1])
 
   def test_feature_column_dense_features_gradient(self):
     with context.eager_mode():

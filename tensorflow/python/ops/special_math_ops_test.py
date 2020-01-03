@@ -19,9 +19,11 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+import opt_einsum
+import six
 
 from tensorflow.python.client import session
-from tensorflow.python.compat import compat
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -240,20 +242,19 @@ class EinsumTest(test.TestCase):
     self._check('abc->ca', (3, 4, 5))
     self._check('abc->cab', (3, 4, 5))
 
-    with compat.forward_compatibility_horizon(2019, 10, 19):
-      # Empty cases.
-      self._check('', ())
-      self._check('->', ())
+    # Empty cases.
+    self._check('', ())
+    self._check('->', ())
 
-      # Repeated indices cases.
-      self._check('aa->', (3, 3))
-      self._check('aa->a', (3, 3))
-      self._check('aaa->', (3, 3, 3))
-      self._check('aaa->a', (3, 3, 3))
-      self._check('aab->a', (3, 3, 4))
-      self._check('aabcc->a', (3, 3, 5, 4, 4))
-      self._check('aabcc->ac', (3, 3, 5, 4, 4))
-      self._check('aabcd->ad', (3, 3, 5, 4, 4))
+    # Repeated indices cases.
+    self._check('aa->', (3, 3))
+    self._check('aa->a', (3, 3))
+    self._check('aaa->', (3, 3, 3))
+    self._check('aaa->a', (3, 3, 3))
+    self._check('aab->a', (3, 3, 4))
+    self._check('aabcc->a', (3, 3, 5, 4, 4))
+    self._check('aabcc->ac', (3, 3, 5, 4, 4))
+    self._check('aabcd->ad', (3, 3, 5, 4, 4))
 
   def test_unary_ellipsis(self):
     self._check('...->', ())
@@ -263,17 +264,16 @@ class EinsumTest(test.TestCase):
     self._check('...ij->...ji', (5, 2, 3))  # batch matrix transpose
     self._check('...ij->...', (5, 2, 3))  # batch sum
 
-    with compat.forward_compatibility_horizon(2019, 10, 19):
-      self._check('...->...', ())
-      self._check('->...', ())
+    self._check('...->...', ())
+    self._check('->...', ())
 
-      # Repeated indices.
-      self._check('i...ii->...i', (3, 2, 3, 3))
-      self._check('i...i->i...', (2, 2))
-      self._check('i...i->', (2, 2))
-      self._check('i...i->...', (2, 5, 1, 2))
-      self._check('i...i->i...', (2, 1, 2))
-      self._check('i...i->i...', (2, 3, 4, 5, 2))
+    # Repeated indices.
+    self._check('i...ii->...i', (3, 2, 3, 3))
+    self._check('i...i->i...', (2, 2))
+    self._check('i...i->', (2, 2))
+    self._check('i...i->...', (2, 5, 1, 2))
+    self._check('i...i->i...', (2, 1, 2))
+    self._check('i...i->i...', (2, 3, 4, 5, 2))
 
   def test_binary_simple(self):
     # Binary cases in XLA mode must have either (a) each index appearing exactly
@@ -298,13 +298,12 @@ class EinsumTest(test.TestCase):
     self._check('ab,ab->', (3, 4), (3, 4))
 
   def test_repeated_indices(self):
-    with compat.forward_compatibility_horizon(2019, 10, 19):
-      # Repeated indices.
-      self._check('ijj,k->ik', (2, 3, 3), (4,))
-      self._check('aba,a->b', (3, 4, 3), (3,))
-      # From https://github.com/dask/dask/pull/3412#discussion_r182413444
-      self._check('aab,bc->ac', (2, 2, 3), (3, 4))
-      self._check('aab,bcc->ac', (2, 2, 3), (3, 4, 4))
+    # Repeated indices.
+    self._check('ijj,k->ik', (2, 3, 3), (4,))
+    self._check('aba,a->b', (3, 4, 3), (3,))
+    # From https://github.com/dask/dask/pull/3412#discussion_r182413444
+    self._check('aab,bc->ac', (2, 2, 3), (3, 4))
+    self._check('aab,bcc->ac', (2, 2, 3), (3, 4, 4))
 
   def test_binary_ellipsis(self):
     # Batch matmul with ellipsis but without broadcasting.
@@ -321,26 +320,32 @@ class EinsumTest(test.TestCase):
     self._check('...i,...j->...ij', (5, 2), (5, 3))  # outer product
 
   def test_broadcasting(self):
-    with compat.forward_compatibility_horizon(2019, 10, 19):
-      # Batch matmul with broadcasting.
-      self._check('...ij,...jk->...ik', (1, 2, 3), (3, 5))
-      self._check('...ij,...jk->...ik', (2, 3), (1, 3, 5))
-      self._check('...ij,...jk->...ik', (5, 2, 3), (3, 5))
-      self._check('...ij,...jk->...ik', (2, 3), (5, 3, 5))
-      self._check('...ij,...jk->...ik', (3, 1, 2, 3), (1, 1, 7, 3, 5))
-      self._check('i...j,j...k->...ik', (2, 1, 3, 1, 3), (3, 1, 7, 5))
+    # Batch matmul with broadcasting.
+    self._check('...ij,...jk->...ik', (1, 2, 3), (3, 5))
+    self._check('...ij,...jk->...ik', (2, 3), (1, 3, 5))
+    self._check('...ij,...jk->...ik', (5, 2, 3), (3, 5))
+    self._check('...ij,...jk->...ik', (2, 3), (5, 3, 5))
+    self._check('...ij,...jk->...ik', (3, 1, 2, 3), (1, 1, 7, 3, 5))
+    self._check('i...j,j...k->...ik', (2, 1, 3, 1, 3), (3, 1, 7, 5))
 
-      # Broadcasting with repeated indices.
-      self._check('ij,jk...k->i...', (3, 2), (2, 4, 1, 4))
-      self._check('ij,jk...k->...i', (3, 2), (2, 4, 5, 4))
-      self._check('ijj,jk...k->i...', (3, 2, 2), (2, 4, 1, 4))
-      self._check('i...jj,jk...k->i...', (3, 3, 1, 2, 2), (2, 4, 1, 5, 4))
-      # Following 2 from https://stackoverflow.com/a/19203475/1611416
-      self._check('...abc,...abcd->...d', (1, 1, 2, 3, 4), (5, 2, 3, 4, 6))
-      self._check('ab...,b->ab...', (2, 3, 1, 1, 5), (3,))
+    # Broadcasting with repeated indices.
+    self._check('ij,jk...k->i...', (3, 2), (2, 4, 1, 4))
+    self._check('ij,jk...k->...i', (3, 2), (2, 4, 5, 4))
+    self._check('ijj,jk...k->i...', (3, 2, 2), (2, 4, 1, 4))
+    self._check('i...jj,jk...k->i...', (3, 3, 1, 2, 2), (2, 4, 1, 5, 4))
+    # Following 2 from https://stackoverflow.com/a/19203475/1611416
+    self._check('...abc,...abcd->...d', (1, 1, 2, 3, 4), (5, 2, 3, 4, 6))
+    self._check('ab...,b->ab...', (2, 3, 1, 1, 5), (3,))
 
   def test_dtypes(self):
-    for dtype in [np.float64, np.float32, np.complex64, np.complex128]:
+    dtypes = []
+    if test.is_built_with_rocm():
+      # This test triggers the BLAS op calls on the GPU
+      # ROCm does not support BLAS operations for complex types
+      dtypes = [np.float64, np.float32]
+    else:
+      dtypes = [np.float64, np.float32, np.complex64, np.complex128]
+    for dtype in dtypes:
       self._check('ij,jk->ik', (2, 2), (2, 2), dtype=dtype)
       self._check('ji,jk->ik', (2, 2), (2, 2), dtype=dtype)
       self._check('ji,kj->ik', (2, 2), (2, 2), dtype=dtype)
@@ -378,22 +383,20 @@ class EinsumTest(test.TestCase):
           ((4, 3), (None, 3)))
 
     # Ellipsis with unknown rank.
-    with compat.forward_compatibility_horizon(2019, 10, 19):
-      check('bijl,bjkm->bik', ((9, 2, 3, 5), None), ((9, 3, 4, 7), None))
-      check('...ij,...jk->...ik', ((3, 1, 2, 3), None), ((1, 7, 3, 4), None))
+    check('bijl,bjkm->bik', ((9, 2, 3, 5), None), ((9, 3, 4, 7), None))
+    check('...ij,...jk->...ik', ((3, 1, 2, 3), None), ((1, 7, 3, 4), None))
 
   def test_numpy_input(self):
-    with compat.forward_compatibility_horizon(2019, 10, 19):
-      # In addition to Tensors, we also support raw numpy arrays as inputs.
-      r = np.random.RandomState(0)
-      s = 'ijk,ijl,ikl->i'
-      x = r.randn(1, 2, 3)
-      y = r.randn(1, 2, 4)
-      z = r.randn(1, 3, 4)
+    # In addition to Tensors, we also support raw numpy arrays as inputs.
+    r = np.random.RandomState(0)
+    s = 'ijk,ijl,ikl->i'
+    x = r.randn(1, 2, 3)
+    y = r.randn(1, 2, 4)
+    z = r.randn(1, 3, 4)
 
-      a = np.einsum(s, x, y, z)
-      b = self.evaluate(special_math_ops.einsum(s, x, y, z))
-      self.assertAllClose(a, b, atol=1e-4, rtol=1e-4)
+    a = np.einsum(s, x, y, z)
+    b = self.evaluate(special_math_ops.einsum(s, x, y, z))
+    self.assertAllClose(a, b, atol=1e-4, rtol=1e-4)
 
   def test_long_cases(self):
     cases = [
@@ -415,60 +418,95 @@ class EinsumTest(test.TestCase):
         input_shapes.append(tuple([dimension_map[c] for c in input_str]))
       self._check(equation, *input_shapes)
 
+  def test_opt_einsum_cached(self):
+    # Checks call_count to opt_einsum which are only reflected in eager mode.
+    if not context.executing_eagerly():
+      return
+
+    input_1 = ('ijk,ijl,ikl->i', (1, 2, 3), (1, 2, 4), (1, 3, 4))
+    input_2 = ('ij,ij,jk,kl->il', (1, 2), (1, 2), (2, 3), (3, 4))
+
+    with test.mock.patch.object(
+        opt_einsum, 'contract_path',
+        wraps=opt_einsum.contract_path) as mock_contract_path:
+
+      # explicitly clear the lru_cache contents for the method
+      #   special_math_ops.get_opt_einsum_contract_path
+      # We need to do this because other tests in this file invoke that method
+      # with the same input args (as input_1 and input_2 above), and if
+      # those tests run before this test, then the call_count for the method
+      # mock_contract_path will not increment.
+      if six.PY3:
+        special_math_ops._get_opt_einsum_contract_path.cache_clear()
+
+      self.assertEqual(mock_contract_path.call_count, 0)
+      self._check(*input_1)
+      self.assertEqual(mock_contract_path.call_count, 1)
+      # The same input results in no extra call if we're caching the
+      # opt_einsum.contract_path call. We only cache in Python3.
+      self._check(*input_1)
+      self.assertEqual(mock_contract_path.call_count, 1 if six.PY3 else 2)
+      # New input results in another call to opt_einsum.
+      self._check(*input_2)
+      self.assertEqual(mock_contract_path.call_count, 2 if six.PY3 else 3)
+      # No more extra calls as the inputs should be cached.
+      self._check(*input_1)
+      self._check(*input_2)
+      self._check(*input_1)
+      self.assertEqual(mock_contract_path.call_count, 2 if six.PY3 else 6)
+
   @test_util.disable_xla('b/131919749')
   def test_long_cases_with_repeated_labels(self):
-    with compat.forward_compatibility_horizon(2019, 10, 19):
-      cases = [
-          # Tests from dask.
-          'fdf,cdd,ccd,afe->ae',
-          'fff,fae,bef,def->abd',
-      ]
-      dimension_map = dict((c, ord(c) - ord('a') + 1) for c in 'abcdefghij')
-      for equation in cases:
-        inputs = equation.split('->')[0].replace(' ', '')
-        input_shapes = []
-        for input_str in inputs.split(','):
-          input_shapes.append(tuple([dimension_map[c] for c in input_str]))
-        self._check(equation, *input_shapes)
+    cases = [
+        # Tests from dask.
+        'fdf,cdd,ccd,afe->ae',
+        'fff,fae,bef,def->abd',
+    ]
+    dimension_map = dict((c, ord(c) - ord('a') + 1) for c in 'abcdefghij')
+    for equation in cases:
+      inputs = equation.split('->')[0].replace(' ', '')
+      input_shapes = []
+      for input_str in inputs.split(','):
+        input_shapes.append(tuple([dimension_map[c] for c in input_str]))
+      self._check(equation, *input_shapes)
 
   @test_util.disable_xla('b/131919749')
   @test_util.run_in_graph_and_eager_modes
   def test_invalid_equation(self):
-    with compat.forward_compatibility_horizon(2019, 10, 19):
-      r = np.random.RandomState(0)
-      cases = [
-          # invalid equation format.
-          ('a0->a', r.randn(5, 3)),
-          ('a->a,a', r.randn(5)),
-          ('a->a->a', r.randn(5)),
-          ('ijk ijk', r.randn(1, 2, 3), r.randn(1, 2, 3)),
-          ('ij.jk->ik', r.randn(2, 3), r.randn(3, 4)),
-          # output label not present in input.
-          ('a->b', r.randn(5)),
-          ('ij,jk->im', r.randn(2, 3), r.randn(3, 4)),
-          # wrong shape.
-          ('ij,jk->ik', r.randn(1, 2, 3), r.randn(3, 4)),
-          # inconsistent dimensions.
-          ('ij,jk->ik', r.randn(2, 3), r.randn(4, 4)),
-          # output has repeated subscripts.
-          ('ij,jk->iik', r.randn(2, 3), r.randn(3, 4)),
-          # too many ellipses
-          ('...ij...,jk...->ik...', r.randn(2, 3), r.randn(3, 4)),
-          ('...ij,jk...->...ik...', r.randn(2, 3), r.randn(3, 4)),
-          # invalid broadcast dimensions.
-          ('...ij,...jk->...ik', r.randn(5, 2, 3), r.randn(7, 3, 4)),
-          # output should have ellipsis when broadcasting shape is non-empty.
-          ('...ij,...jk->ik', r.randn(2, 2, 3), r.randn(3, 4)),
-      ]
-      for args in cases:
-        with self.assertRaises((ValueError, errors.InvalidArgumentError)):
-          _ = special_math_ops.einsum(*args)
+    r = np.random.RandomState(0)
+    cases = [
+        # invalid equation format.
+        ('a0->a', r.randn(5, 3)),
+        ('a->a,a', r.randn(5)),
+        ('a->a->a', r.randn(5)),
+        ('ijk ijk', r.randn(1, 2, 3), r.randn(1, 2, 3)),
+        ('ij.jk->ik', r.randn(2, 3), r.randn(3, 4)),
+        # output label not present in input.
+        ('a->b', r.randn(5)),
+        ('ij,jk->im', r.randn(2, 3), r.randn(3, 4)),
+        # wrong shape.
+        ('ij,jk->ik', r.randn(1, 2, 3), r.randn(3, 4)),
+        # inconsistent dimensions.
+        ('ij,jk->ik', r.randn(2, 3), r.randn(4, 4)),
+        # output has repeated subscripts.
+        ('ij,jk->iik', r.randn(2, 3), r.randn(3, 4)),
+        # too many ellipses
+        ('...ij...,jk...->ik...', r.randn(2, 3), r.randn(3, 4)),
+        ('...ij,jk...->...ik...', r.randn(2, 3), r.randn(3, 4)),
+        # invalid broadcast dimensions.
+        ('...ij,...jk->...ik', r.randn(5, 2, 3), r.randn(7, 3, 4)),
+        # output should have ellipsis when broadcasting shape is non-empty.
+        ('...ij,...jk->ik', r.randn(2, 2, 3), r.randn(3, 4)),
+    ]
+    for args in cases:
+      with self.assertRaises((ValueError, errors.InvalidArgumentError)):
+        _ = special_math_ops.einsum(*args)
 
-        placeholders = [
-            array_ops.placeholder_with_default(x, shape=None) for x in args[1:]
-        ]
-        with self.assertRaises((ValueError, errors.InvalidArgumentError)):
-          _ = self.evaluate(special_math_ops.einsum(args[0], *placeholders))
+      placeholders = [
+          array_ops.placeholder_with_default(x, shape=None) for x in args[1:]
+      ]
+      with self.assertRaises((ValueError, errors.InvalidArgumentError)):
+        _ = self.evaluate(special_math_ops.einsum(args[0], *placeholders))
 
   @test_util.disable_xla('b/131919749')
   def test_empty(self):
@@ -488,10 +526,9 @@ class EinsumTest(test.TestCase):
     # From transformer xl.
     check('ibnd,ijbn->jnd', [(1, 0, 5, 10), (1, 1, 0, 5)], (1, 5, 10))
 
-    with compat.forward_compatibility_horizon(2019, 10, 19):
-      # Generalized traces with zero-sized dimensions.
-      check('aab,bc->ac', [(0, 0, 10), (10, 10)], (0, 10))
-      check('aaab,bc->c', [(0, 0, 0, 3), (3, 4)], (4,))
+    # Generalized traces with zero-sized dimensions.
+    check('aab,bc->ac', [(0, 0, 10), (10, 10)], (0, 10))
+    check('aaab,bc->c', [(0, 0, 0, 3), (3, 4)], (4,))
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -509,122 +546,112 @@ class EinsumGradTest(test.TestCase):
 
   @test_util.disable_xla('b/131919749')
   def test_unary(self):
-    with compat.forward_compatibility_horizon(2019, 10, 19):
-      self._check_gradient('->', ())
-      self._check_gradient('aaa->a', (3, 3, 3))
-      self._check_gradient('aabcd->ad', (3, 3, 5, 4, 4))
-      self._check_gradient('abcd->da', (3, 5, 4, 2))
+    self._check_gradient('->', ())
+    self._check_gradient('aaa->a', (3, 3, 3))
+    self._check_gradient('aabcd->ad', (3, 3, 5, 4, 4))
+    self._check_gradient('abcd->da', (3, 5, 4, 2))
 
   @test_util.disable_xla('b/131919749')
   def test_unary_ellipsis(self):
-    with compat.forward_compatibility_horizon(2019, 10, 19):
-      self._check_gradient('...->...', ())
-      self._check_gradient('...->', ())
-      self._check_gradient('->...', ())
+    self._check_gradient('...->...', ())
+    self._check_gradient('...->', ())
+    self._check_gradient('->...', ())
 
-      # Tests from dask
-      self._check_gradient('a...a->a...', (2, 2))
-      self._check_gradient('a...a->', (2, 2))
-      self._check_gradient('a...a->...', (2, 5, 1, 2))
-      self._check_gradient('a...a->a...', (2, 1, 2))
-      self._check_gradient('a...a->a...', (2, 3, 4, 5, 2))
+    # Tests from dask
+    self._check_gradient('a...a->a...', (2, 2))
+    self._check_gradient('a...a->', (2, 2))
+    self._check_gradient('a...a->...', (2, 5, 1, 2))
+    self._check_gradient('a...a->a...', (2, 1, 2))
+    self._check_gradient('a...a->a...', (2, 3, 4, 5, 2))
 
-      self._check_gradient('...ijk->...ki', (3, 4, 5))
-      self._check_gradient('...ijk->...ki', (1, 3, 4, 5))
-      self._check_gradient('...ijk->...ki', (2, 2, 3, 4, 5))
-      self._check_gradient('ab...cd->da...', (3, 5, 2, 3, 4, 2))
+    self._check_gradient('...ijk->...ki', (3, 4, 5))
+    self._check_gradient('...ijk->...ki', (1, 3, 4, 5))
+    self._check_gradient('...ijk->...ki', (2, 2, 3, 4, 5))
+    self._check_gradient('ab...cd->da...', (3, 5, 2, 3, 4, 2))
 
   def test_binary_simple(self):
-    with compat.forward_compatibility_horizon(2019, 10, 19):
-      # Binary cases in XLA mode must have either (a) each index appearing
-      # exactly once in both the inputs (batch or contraction index), or
-      # (b) appearing exactly once in an input and in the output (free index).
-      self._check_gradient(',->', (), ())
-      self._check_gradient('a,a->', (3,), (3,))
-      self._check_gradient('a,a->a', (3,), (3,))
-      self._check_gradient('ab,b->a', (3, 4), (4,))
-      self._check_gradient('ab,ab->', (3, 4), (3, 4))
-      self._check_gradient('ab,bc->ac', (3, 4), (4, 5))
-      self._check_gradient('nij,jk->nik', (5, 2, 3), (3, 4))
-      self._check_gradient('abc,bad->abcd', (1, 2, 3), (2, 1, 4))
-      # Based on https://github.com/google/jax/issues/37#issuecomment-448572187
-      self._check_gradient('sa,shb->shab', (2, 1), (2, 3, 4))
+    # Binary cases in XLA mode must have either (a) each index appearing
+    # exactly once in both the inputs (batch or contraction index), or
+    # (b) appearing exactly once in an input and in the output (free index).
+    self._check_gradient(',->', (), ())
+    self._check_gradient('a,a->', (3,), (3,))
+    self._check_gradient('a,a->a', (3,), (3,))
+    self._check_gradient('ab,b->a', (3, 4), (4,))
+    self._check_gradient('ab,ab->', (3, 4), (3, 4))
+    self._check_gradient('ab,bc->ac', (3, 4), (4, 5))
+    self._check_gradient('nij,jk->nik', (5, 2, 3), (3, 4))
+    self._check_gradient('abc,bad->abcd', (1, 2, 3), (2, 1, 4))
+    # Based on https://github.com/google/jax/issues/37#issuecomment-448572187
+    self._check_gradient('sa,shb->shab', (2, 1), (2, 3, 4))
 
   def test_empty(self):
-    with compat.forward_compatibility_horizon(2019, 10, 19):
-      # From Transformer XL.
-      self._check_gradient('ibnd,ijbn->jnd', (1, 0, 5, 10), (1, 1, 0, 5))
+    # From Transformer XL.
+    self._check_gradient('ibnd,ijbn->jnd', (1, 0, 5, 10), (1, 1, 0, 5))
 
   @test_util.disable_xla('b/131919749')
   def test_reduced_indices(self):
-    with compat.forward_compatibility_horizon(2019, 10, 19):
-      self._check_gradient('ba,b->', (3, 2), (3,))
-      self._check_gradient('ab,ab->', (3, 4), (3, 4))
-      self._check_gradient('abce,badf->abcd', (1, 2, 3, 4), (2, 1, 4, 3))
+    self._check_gradient('ba,b->', (3, 2), (3,))
+    self._check_gradient('ab,ab->', (3, 4), (3, 4))
+    self._check_gradient('abce,badf->abcd', (1, 2, 3, 4), (2, 1, 4, 3))
 
   @test_util.disable_xla('b/131919749')
   def test_repeated_indices(self):
-    with compat.forward_compatibility_horizon(2019, 10, 19):
-      # Repeated indices.
-      self._check_gradient('aba,a->b', (3, 4, 3), (3,))
-      self._check_gradient('ijj,k->ik', (2, 3, 3), (4,))
-      self._check_gradient('ill,k->ik', (2, 3, 3), (4,))
-      # From https://github.com/dask/dask/pull/3412#discussion_r182413444
-      self._check_gradient('aab,bc->ac', (1, 1, 3), (3, 4))
-      self._check_gradient('aab,bcc->ac', (2, 2, 3), (3, 4, 4))
+    # Repeated indices.
+    self._check_gradient('aba,a->b', (3, 4, 3), (3,))
+    self._check_gradient('ijj,k->ik', (2, 3, 3), (4,))
+    self._check_gradient('ill,k->ik', (2, 3, 3), (4,))
+    # From https://github.com/dask/dask/pull/3412#discussion_r182413444
+    self._check_gradient('aab,bc->ac', (1, 1, 3), (3, 4))
+    self._check_gradient('aab,bcc->ac', (2, 2, 3), (3, 4, 4))
 
   @test_util.disable_xla('b/131919749')
   def test_empty_with_repeated_indices(self):
-    with compat.forward_compatibility_horizon(2019, 10, 19):
-      self._check_gradient('aab,bc->ac', (0, 0, 10), (10, 10))
-      self._check_gradient('aab,bc->ac', (1, 1, 0), (0, 10))
-      self._check_gradient('aaab,bc->c', (0, 0, 0, 3), (3, 4))
+    self._check_gradient('aab,bc->ac', (0, 0, 10), (10, 10))
+    self._check_gradient('aab,bc->ac', (1, 1, 0), (0, 10))
+    self._check_gradient('aaab,bc->c', (0, 0, 0, 3), (3, 4))
 
   @test_util.disable_xla('b/131919749')
   def test_broadcasting(self):
-    with compat.forward_compatibility_horizon(2019, 10, 19):
-      self._check_gradient('...ij,...jk->...ik', (3, 2), (2, 4))
-      self._check_gradient('ij...,jk...->ik...', (3, 2, 1), (2, 4))
-      self._check_gradient('...ij,...jk->...ik', (3, 1, 3, 2), (1, 5, 2, 4))
-      self._check_gradient('ij,jk...k->i...', (3, 2), (2, 4, 1, 4))
-      self._check_gradient('aab,b...c->a...c', (1, 1, 3), (3, 1, 1, 4))
-      # Tests from dask.
-      self._check_gradient('...i,...j,...k->...ijk', (1, 4, 1, 2), (5, 1, 1, 3),
-                           (1, 1, 1, 1, 9))
-      self._check_gradient('...i,...j,...k->...ijk', (1,), (1,), (1,))
+    self._check_gradient('...ij,...jk->...ik', (3, 2), (2, 4))
+    self._check_gradient('ij...,jk...->ik...', (3, 2, 1), (2, 4))
+    self._check_gradient('...ij,...jk->...ik', (3, 1, 3, 2), (1, 5, 2, 4))
+    self._check_gradient('ij,jk...k->i...', (3, 2), (2, 4, 1, 4))
+    self._check_gradient('aab,b...c->a...c', (1, 1, 3), (3, 1, 1, 4))
+    # Tests from dask.
+    self._check_gradient('...i,...j,...k->...ijk', (1, 4, 1, 2), (5, 1, 1, 3),
+                         (1, 1, 1, 1, 9))
+    self._check_gradient('...i,...j,...k->...ijk', (1,), (1,), (1,))
 
   def test_long_cases(self):
-    with compat.forward_compatibility_horizon(2019, 10, 19):
-      cases = [
-          'abhe,hidj,jgba,hiab,gab->ed',
-          # Tests from dask.
-          'ea,fb,abcd,gc,hd->efgh',
-      ]
-      dimension_map = dict(
-          (c, ((ord(c) - ord('a')) % 3) + 1) for c in 'abcdefghij')
-      for equation in cases:
-        inputs = equation.split('->')[0].replace(' ', '')
-        input_shapes = []
-        for input_str in inputs.split(','):
-          input_shapes.append(tuple([dimension_map[c] for c in input_str]))
-        self._check_gradient(equation, *input_shapes)
+    cases = [
+        'abhe,hidj,jgba,hiab,gab->ed',
+        # Tests from dask.
+        'ea,fb,abcd,gc,hd->efgh',
+    ]
+    dimension_map = dict(
+        (c, ((ord(c) - ord('a')) % 3) + 1) for c in 'abcdefghij')
+    for equation in cases:
+      inputs = equation.split('->')[0].replace(' ', '')
+      input_shapes = []
+      for input_str in inputs.split(','):
+        input_shapes.append(tuple([dimension_map[c] for c in input_str]))
+      self._check_gradient(equation, *input_shapes)
 
   @test_util.disable_xla('b/131919749')
   def test_long_cases_with_repeated_labels(self):
-    with compat.forward_compatibility_horizon(2019, 10, 19):
-      cases = [
-          # Tests from dask.
-          'fdf,cdd,ccd,afe->ae',
-          'fff,fae,bef,def->abd',
-      ]
-      dimension_map = dict(
-          (c, ((ord(c) - ord('a')) % 3) + 1) for c in 'abcdefghij')
-      for equation in cases:
-        inputs = equation.split('->')[0].replace(' ', '')
-        input_shapes = []
-        for input_str in inputs.split(','):
-          input_shapes.append(tuple([dimension_map[c] for c in input_str]))
-        self._check_gradient(equation, *input_shapes)
+    cases = [
+        # Tests from dask.
+        'fdf,cdd,ccd,afe->ae',
+        'fff,fae,bef,def->abd',
+    ]
+    dimension_map = dict(
+        (c, ((ord(c) - ord('a')) % 3) + 1) for c in 'abcdefghij')
+    for equation in cases:
+      inputs = equation.split('->')[0].replace(' ', '')
+      input_shapes = []
+      for input_str in inputs.split(','):
+        input_shapes.append(tuple([dimension_map[c] for c in input_str]))
+      self._check_gradient(equation, *input_shapes)
 
 
 class EinsumBenchmark(test.Benchmark):

@@ -31,8 +31,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
+#include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
+#include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
@@ -634,6 +636,44 @@ TEST_F(AlgebraicSimplifierTest, AddBroadcastZeroR1Operand) {
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
   root = computation->root_instruction();
   EXPECT_EQ(root, param0);
+}
+
+TEST_F(AlgebraicSimplifierTest, AddBroadcastZeroWithDynamicSlice) {
+  auto m = CreateNewVerifiedModule();
+  Shape full_shape = ShapeUtil::MakeShape(F32, {1800, 12, 512});
+
+  Shape partial_shape = ShapeUtil::MakeShape(F32, {1, 12, 512});
+
+  HloComputation::Builder builder(TestName());
+  HloInstruction* full_param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, full_shape, "param0"));
+  HloInstruction* partial_param = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, partial_shape, "param1"));
+
+  HloInstruction* zero = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0)));
+  HloInstruction* index = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(0)));
+
+  HloInstruction* bcast = builder.AddInstruction(
+      HloInstruction::CreateBroadcast(full_shape, zero, {}));
+
+  HloInstruction* dynamic_update_slice =
+      builder.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
+          full_shape, bcast, partial_param, {index, index, index}));
+
+  builder.AddInstruction(HloInstruction::CreateBinary(
+      full_shape, HloOpcode::kAdd, full_param, dynamic_update_slice));
+
+  auto computation = m->AddEntryComputation(builder.Build());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kAdd);
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  root = computation->root_instruction();
+  EXPECT_THAT(root->opcode(), HloOpcode::kDynamicUpdateSlice);
+  EXPECT_THAT(root->operand(0), full_param);
+  EXPECT_THAT(root->operand(1), GmockMatch(m::Add(m::DynamicSlice(), m::Op())));
 }
 
 TEST_F(AlgebraicSimplifierTest, ConstantToBroadcast) {
@@ -3641,9 +3681,6 @@ TEST_F(AlgebraicSimplifierTest, ConvertConvToMatmul) {
       }
     }
 
-    auto out_dims = in_dims;
-    out_dims[in_channel_idx] = options.f_output_channels;
-
     auto make_shape = [](absl::Span<const int64> dims,
                          bool minor_to_major_layout) {
       if (minor_to_major_layout) {
@@ -3654,20 +3691,26 @@ TEST_F(AlgebraicSimplifierTest, ConvertConvToMatmul) {
     };
     auto in_shape = make_shape(in_dims, options.input_minor_to_major_layout);
     auto f_shape = make_shape(f_dims, options.filter_minor_to_major_layout);
-    auto out_shape = make_shape(out_dims, options.output_minor_to_major_layout);
 
     HloInstruction* input =
         b.AddInstruction(HloInstruction::CreateParameter(0, in_shape, "input"));
     HloInstruction* filter =
         b.AddInstruction(HloInstruction::CreateParameter(1, f_shape, "filter"));
+    Shape out_shape = ShapeInference::InferConvolveShape(
+                          in_shape, f_shape, /*feature_group_count=*/1,
+                          /*batch_group_count=*/1, window, dnums)
+                          .ValueOrDie();
+    if (options.output_minor_to_major_layout) {
+      out_shape = ShapeUtil::MakeShapeWithLayout(F32, out_shape.dimensions(),
+                                                 {0, 1, 2, 3});
+    }
 
     b.AddInstruction(HloInstruction::CreateConvolve(
         out_shape, input, filter,
         /*feature_group_count=*/1, /*batch_group_count=*/1, window, dnums,
         DefaultPrecisionConfig(2)));
 
-    // TODO(b/80488902): verify this module.
-    auto module = CreateNewUnverifiedModule();
+    auto module = CreateNewVerifiedModule();
     auto* computation = module->AddEntryComputation(b.Build());
 
     AlgebraicSimplifierOptions simplifier_options;
@@ -3841,8 +3884,7 @@ TEST_F(AlgebraicSimplifierTest, ScalarBroadcastToTransposeReshape) {
 
 // Test that ReduceWindow(Pad(op, x), y) can simplify to ReduceWindow(op, x).
 TEST_F(AlgebraicSimplifierTest, FoldPadIntoReduceWindow) {
-  // TODO(b/80488902): verify this module.
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   HloComputation::Builder builder(TestName());
 
   // Create operand to the pad.
@@ -3883,9 +3925,10 @@ TEST_F(AlgebraicSimplifierTest, FoldPadIntoReduceWindow) {
     dim->set_padding_high(100);
     dim->set_window_dilation(1);
     dim->set_base_dilation(1);
+    dim->set_stride(1);
   }
   const Shape reduce_window_shape =
-      ShapeUtil::MakeShape(F32, {111, 113, 113, 115});
+      ShapeUtil::MakeShape(F32, {111, 113, 113, 116});
   HloInstruction* reduce_init_value = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(5.0f)));
   HloInstruction* reduce_window =
@@ -3923,8 +3966,7 @@ TEST_F(AlgebraicSimplifierTest, FoldPadIntoReduceWindow) {
 // Test that ReduceWindow(Convert(Pad(op, x)), y) can simplify to
 // ReduceWindow(Convert(op), x).
 TEST_F(AlgebraicSimplifierTest, FoldConvertedPadIntoReduceWindow) {
-  // TODO(b/80488902): verify this module.
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   HloComputation::Builder builder(TestName());
 
   // Create operand to the pad.
@@ -3969,9 +4011,10 @@ TEST_F(AlgebraicSimplifierTest, FoldConvertedPadIntoReduceWindow) {
     dim->set_padding_high(100);
     dim->set_window_dilation(1);
     dim->set_base_dilation(1);
+    dim->set_stride(1);
   }
   const Shape reduce_window_shape =
-      ShapeUtil::MakeShape(F32, {111, 113, 113, 115});
+      ShapeUtil::MakeShape(F32, {111, 113, 113, 116});
   HloInstruction* reduce_init_value = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(5.0f)));
   HloInstruction* reduce_window =
@@ -4664,12 +4707,11 @@ TEST_P(BatchDotStrengthReductionTest, BatchDotStrengthReduction) {
   EXPECT_EQ(has_no_dot, dot_should_be_transformed);
 }
 
-INSTANTIATE_TEST_SUITE_P(BatchDotStrengthReductionTestInstantiation,
-                         BatchDotStrengthReductionTest,
-                         ::testing::Combine(::testing::Values(-1, 1, 2),
-                                            ::testing::Values(-1, 1, 2),
-                                            ::testing::Values(-1, 1, 2),
-                                            ::testing::Values(F32, BF16)));
+INSTANTIATE_TEST_SUITE_P(
+    BatchDotStrengthReductionTestInstantiation, BatchDotStrengthReductionTest,
+    ::testing::Combine(::testing::Values(-1, 1, 2), ::testing::Values(-1, 1, 2),
+                       ::testing::Values(-1, 1, 2),
+                       ::testing::Values(C128, C64, F64, F32, BF16)));
 
 class DotStrengthReductionTest
     : public AlgebraicSimplifierTest,
@@ -4715,7 +4757,7 @@ TEST_P(DotStrengthReductionTest, DotStrengthReduction) {
   const bool computation_should_be_modified =
       dot_should_be_transformed || (transpose_lhs && transpose_rhs);
   EXPECT_EQ(changed, computation_should_be_modified);
-  // The second pass of algebriac simplifer will remove dots without
+  // The second pass of algebraic simplifier will remove dots without
   // non-contracting dimensions or contracting dimensions.
   TF_ASSERT_OK_AND_ASSIGN(changed, simplifier.Run(module.get()));
   EXPECT_EQ(changed, computation_should_be_modified);
@@ -4733,7 +4775,8 @@ INSTANTIATE_TEST_SUITE_P(
     DotStrengthReductionTestInstantiation, DotStrengthReductionTest,
     ::testing::Combine(::testing::Values(1, 2), ::testing::Values(1, 2),
                        ::testing::Values(1, 2), ::testing::Bool(),
-                       ::testing::Bool(), ::testing::Values(F32, BF16)));
+                       ::testing::Bool(),
+                       ::testing::Values(C128, C64, F64, F32, BF16)));
 
 struct DotOfConcatTestSpec {
   int64 m;
@@ -5803,6 +5846,244 @@ TEST_F(AlgebraicSimplifierTest, SliceOfConcat) {
   ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Parameter(1)));
+}
+
+TEST_F(AlgebraicSimplifierTest, SqrtOfSelfMultiply) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[32]{0} parameter(0)
+      m0 = f32[32]{0} multiply(f32[32]{0} p0, f32[32]{0} p0)
+      ROOT s0 = f32[32]{0} sqrt(f32[32]{0} m0)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Abs(m::Parameter(0))));
+}
+
+TEST_F(AlgebraicSimplifierTest, RsqrtOfRPower) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[128,32,2,112]{3,2,1,0} parameter(0)
+      p1 = f32[32]{0} parameter(1)
+      p2 = f32[32]{0} parameter(2)
+      c0 = f32[] constant(0.001)
+      c1 = s64[] constant(1)
+      custom-call.1 = (f32[128,32,2,112]{3,2,1,0}, f32[32]{0}, f32[32]{0}) custom-call(p0, p1, p2, c0, c1), custom_call_target="__cudnn$batchNormalizationForwardTraining"
+      get-tuple-element.1 = f32[128,32,2,112]{3,2,1,0} get-tuple-element(custom-call.1), index=0
+      get-tuple-element.2 = f32[32]{0} get-tuple-element(custom-call.1), index=1
+      get-tuple-element = f32[32]{0} get-tuple-element(custom-call.1), index=2
+      c2 = f32[] constant(-2)
+      broadcast = f32[32]{0} broadcast(f32[] c2), dimensions={}
+      power = f32[32]{0} power(get-tuple-element, broadcast)
+      rsqrt = f32[32]{0} rsqrt(f32[32]{0} power)
+      ROOT tuple = (f32[128,32,2,112]{3,2,1,0}, f32[32]{0}, f32[32]{0}) tuple(get-tuple-element.1, get-tuple-element.2, rsqrt)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  default_options_.set_cudnn_batchnorm_forward_training_metadata(
+      "__cudnn$batchNormalizationForwardTraining");
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  // Expect transformation: rsqrt(power(gte.2,-2)) -> abs(gte.2)
+  EXPECT_EQ(FindInstruction(m.get(), HloOpcode::kPower), nullptr);
+  EXPECT_EQ(FindInstruction(m.get(), HloOpcode::kRsqrt), nullptr);
+  auto computation = m->entry_computation();
+  auto root = computation->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kTuple);
+  EXPECT_EQ(root->operand(2)->opcode(), HloOpcode::kAbs);
+  EXPECT_EQ(root->operand(2)->operand(0)->opcode(),
+            HloOpcode::kGetTupleElement);
+}
+
+TEST_F(AlgebraicSimplifierTest, RsqrtDivide) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[128,32,2,112]{3,2,1,0} parameter(0)
+      p1 = f32[32]{0} parameter(1)
+      p2 = f32[32]{0} parameter(2)
+      constant = f32[] constant(0.001)
+      constant.1 = s64[] constant(1)
+      custom-call.1 = (f32[128,32,2,112]{3,2,1,0}, f32[32]{0}, f32[32]{0}) custom-call(p0, p1, p2, constant, constant.1), custom_call_target="__cudnn$batchNormalizationForwardTraining"
+      get-tuple-element.1 = f32[128,32,2,112]{3,2,1,0} get-tuple-element(custom-call.1), index=0
+      get-tuple-element.2 = f32[32]{0} get-tuple-element(custom-call.1), index=1
+      get-tuple-element = f32[32]{0} get-tuple-element(custom-call.1), index=2
+      constant.2 = f32[] constant(1)
+      broadcast.1 = f32[32]{0} broadcast(constant.2), dimensions={}
+      divide = f32[32]{0} divide(broadcast.1, get-tuple-element)
+      rsqrt = f32[32]{0} rsqrt(divide)
+      ROOT tuple = (f32[128,32,2,112]{3,2,1,0}, f32[32]{0}, f32[32]{0}) tuple(get-tuple-element.1, get-tuple-element.2, rsqrt)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  default_options_.set_cudnn_batchnorm_forward_training_metadata(
+      "__cudnn$batchNormalizationForwardTraining");
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  // Expect transformation: rsqrt(divide(1,gte.2)) -> sqrt(gte.2)
+  EXPECT_EQ(FindInstruction(m.get(), HloOpcode::kDivide), nullptr);
+  EXPECT_EQ(FindInstruction(m.get(), HloOpcode::kRsqrt), nullptr);
+  auto computation = m->entry_computation();
+  auto root = computation->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kTuple);
+  EXPECT_EQ(root->operand(2)->opcode(), HloOpcode::kSqrt);
+  EXPECT_EQ(root->operand(2)->operand(0)->opcode(),
+            HloOpcode::kGetTupleElement);
+}
+
+TEST_F(AlgebraicSimplifierTest, MultiplySelfRsqrt) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[128,32,2,112]{3,2,1,0} parameter(0)
+      p1 = f32[32]{0} parameter(1)
+      p2 = f32[32]{0} parameter(2)
+      constant = f32[] constant(0.001)
+      constant.1 = s64[] constant(1)
+      custom-call.1 = (f32[128,32,2,112]{3,2,1,0}, f32[32]{0}, f32[32]{0}) custom-call(p0, p1, p2, constant, constant.1), custom_call_target="__cudnn$batchNormalizationForwardTraining"
+      get-tuple-element.1 = f32[128,32,2,112]{3,2,1,0} get-tuple-element(custom-call.1), index=0
+      get-tuple-element.2 = f32[32]{0} get-tuple-element(custom-call.1), index=1
+      get-tuple-element = f32[32]{0} get-tuple-element(custom-call.1), index=2
+      rsqrt = f32[32]{0} rsqrt(get-tuple-element)
+      multiply = f32[32]{0} multiply(rsqrt, rsqrt)
+      ROOT tuple = (f32[128,32,2,112]{3,2,1,0}, f32[32]{0}, f32[32]{0}) tuple(get-tuple-element.1, get-tuple-element.2, multiply)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  default_options_.set_cudnn_batchnorm_forward_training_metadata(
+      "__cudnn$batchNormalizationForwardTraining");
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+
+  // Expect transformation: multiply(rsqrt(gte.2), rsqrt(gte.2)) -> divide(1,
+  // gte.2)
+  EXPECT_EQ(FindInstruction(m.get(), HloOpcode::kMultiply), nullptr);
+  EXPECT_EQ(FindInstruction(m.get(), HloOpcode::kRsqrt), nullptr);
+
+  auto computation = m->entry_computation();
+  auto root = computation->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kTuple);
+  EXPECT_EQ(root->operand(2)->opcode(), HloOpcode::kDivide);
+  EXPECT_EQ(root->operand(2)->operand(0)->opcode(), HloOpcode::kBroadcast);
+  EXPECT_EQ(root->operand(2)->operand(1)->opcode(),
+            HloOpcode::kGetTupleElement);
+}
+
+TEST_F(AlgebraicSimplifierTest, MultiplySelfRsqrt_NegativeTestCase) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[128,32,2,112]{3,2,1,0} parameter(0)
+      p1 = f32[32]{0} parameter(1)
+      p2 = f32[32]{0} parameter(2)
+      constant = f32[] constant(0.001)
+      constant.1 = s64[] constant(1)
+      custom-call.1 = (f32[128,32,2,112]{3,2,1,0}, f32[32]{0}, f32[32]{0}) custom-call(p0, p1, p2, constant, constant.1), custom_call_target="__cudnn$batchNormalizationForwardTraining"
+      get-tuple-element.1 = f32[128,32,2,112]{3,2,1,0} get-tuple-element(custom-call.1), index=0
+      get-tuple-element.2 = f32[32]{0} get-tuple-element(custom-call.1), index=1
+      get-tuple-element = f32[32]{0} get-tuple-element(custom-call.1), index=2
+      rsqrt = f32[32]{0} rsqrt(get-tuple-element)
+      multiply = f32[32]{0} multiply(rsqrt, rsqrt)
+      ROOT tuple = (f32[128,32,2,112]{3,2,1,0}, f32[32]{0}, f32[32]{0}) tuple(get-tuple-element.1, get-tuple-element.2, multiply)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  default_options_.set_cudnn_batchnorm_forward_training_metadata(
+      "__cudnn$batchNormalizationForward");
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_NE(FindInstruction(m.get(), HloOpcode::kMultiply), nullptr);
+  EXPECT_NE(FindInstruction(m.get(), HloOpcode::kRsqrt), nullptr);
+  EXPECT_EQ(FindInstruction(m.get(), HloOpcode::kDivide), nullptr);
+  EXPECT_EQ(FindInstruction(m.get(), HloOpcode::kBroadcast), nullptr);
+  EXPECT_EQ(m->entry_computation()->root_instruction()->operand(2)->opcode(),
+            HloOpcode::kMultiply);
+}
+
+TEST_F(AlgebraicSimplifierTest, AbsEliminationBatchnormTraining) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[128,32,2,112]{3,2,1,0} parameter(0)
+      p1 = f32[32]{0} parameter(1)
+      p2 = f32[32]{0} parameter(2)
+      constant = f32[] constant(0.001)
+      constant.1 = s64[] constant(1)
+      custom-call.1 = (f32[128,32,2,112]{3,2,1,0}, f32[32]{0}, f32[32]{0}) custom-call(p0, p1, p2, constant, constant.1), custom_call_target="__cudnn$batchNormalizationForwardTraining"
+      get-tuple-element.1 = f32[128,32,2,112]{3,2,1,0} get-tuple-element(custom-call.1), index=0
+      get-tuple-element.2 = f32[32]{0} get-tuple-element(custom-call.1), index=1
+      get-tuple-element = f32[32]{0} get-tuple-element(custom-call.1), index=2
+      abs = f32[32]{0} abs(get-tuple-element)
+      ROOT %tuple = (f32[128,32,2,112]{3,2,1,0}, f32[32]{0}, f32[32]{0}) tuple(get-tuple-element.1, get-tuple-element.2, abs)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  default_options_.set_cudnn_batchnorm_forward_training_metadata(
+      "__cudnn$batchNormalizationForwardTraining");
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  // Verify that the module doesn't have any abs node.
+  EXPECT_EQ(FindInstruction(m.get(), HloOpcode::kAbs), nullptr);
+  EXPECT_EQ(m->entry_computation()->root_instruction()->operand(2)->opcode(),
+            HloOpcode::kGetTupleElement);
+}
+
+TEST_F(AlgebraicSimplifierTest,
+       AbsEliminationBatchnormTraining_NegativeTestCase) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[128,32,2,112]{3,2,1,0} parameter(0)
+      p1 = f32[32]{0} parameter(1)
+      p2 = f32[32]{0} parameter(2)
+      constant = f32[] constant(0.001)
+      constant.1 = s64[] constant(1)
+      custom-call.1 = (f32[128,32,2,112]{3,2,1,0}, f32[32]{0}, f32[32]{0}) custom-call(p0, p1, p2, constant, constant.1), custom_call_target="__cudnn$batchNormalizationForwardTraining"
+      get-tuple-element.1 = f32[128,32,2,112]{3,2,1,0} get-tuple-element(custom-call.1), index=0
+      get-tuple-element.2 = f32[32]{0} get-tuple-element(custom-call.1), index=1
+      get-tuple-element = f32[32]{0} get-tuple-element(custom-call.1), index=2
+      abs = f32[32]{0} abs(get-tuple-element)
+      ROOT %tuple = (f32[128,32,2,112]{3,2,1,0}, f32[32]{0}, f32[32]{0}) tuple(get-tuple-element.1, get-tuple-element.2, abs)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  default_options_.set_cudnn_batchnorm_forward_training_metadata(
+      "__cudnn$batchNormalizationForwardInference");
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_NE(FindInstruction(m.get(), HloOpcode::kAbs), nullptr);
+}
+
+TEST_F(AlgebraicSimplifierTest, AbsEliminationMultiply) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p = f32[32]{0} parameter(0)
+      m = f32[32]{0} multiply(p, p)
+      ROOT a = f32[32]{0} abs(m)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Multiply(m::Parameter(0), m::Parameter(0))));
+}
+
+TEST_F(AlgebraicSimplifierTest, AbsEliminationPower2) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[32]{0} parameter(0)
+      c0 = f32[] constant(2)
+      b0 = f32[32]{0} broadcast(c0), dimensions={}
+      pow = f32[32]{0} power(p0, b0)
+      ROOT a = f32[32]{0} abs(pow)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  // Pow(A, 2) is transformed to AA. As a result, Abs(Power(A, 2)) is
+  // transformed to AA.
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Multiply(m::Parameter(0), m::Parameter(0))));
 }
 
 }  // namespace

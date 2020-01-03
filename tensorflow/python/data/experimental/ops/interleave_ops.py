@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python import tf2
 from tensorflow.python.data.experimental.ops import random_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
@@ -31,23 +32,6 @@ from tensorflow.python.ops import gen_stateless_random_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
-
-
-def _parallel_interleave(map_func,
-                         cycle_length,
-                         block_length=1,
-                         sloppy=False,
-                         buffer_output_elements=None,
-                         prefetch_input_elements=None):
-  """An internal wrapper for deprecated parallel_interleave."""
-
-  def _apply_fn(dataset):
-    return readers.ParallelInterleaveDataset(dataset, map_func, cycle_length,
-                                             block_length, sloppy,
-                                             buffer_output_elements,
-                                             prefetch_input_elements)
-
-  return _apply_fn
 
 
 @deprecation.deprecated(
@@ -105,8 +89,14 @@ def parallel_interleave(map_func,
     A `Dataset` transformation function, which can be passed to
     `tf.data.Dataset.apply`.
   """
-  return _parallel_interleave(map_func, cycle_length, block_length, sloppy,
-                              buffer_output_elements, prefetch_input_elements)
+
+  def _apply_fn(dataset):
+    return readers.ParallelInterleaveDataset(dataset, map_func, cycle_length,
+                                             block_length, sloppy,
+                                             buffer_output_elements,
+                                             prefetch_input_elements)
+
+  return _apply_fn
 
 
 class _DirectedInterleaveDataset(dataset_ops.DatasetV2):
@@ -291,7 +281,9 @@ def choose_from_datasets_v1(datasets, choice_dataset):
 choose_from_datasets_v1.__doc__ = choose_from_datasets_v2.__doc__
 
 
-# TODO(b/119044825): Until all `tf.data` unit tests are converted to V2, keep
-# these aliases in place.
-choose_from_datasets = choose_from_datasets_v1
-sample_from_datasets = sample_from_datasets_v1
+if tf2.enabled():
+  choose_from_datasets = choose_from_datasets_v2
+  sample_from_datasets = sample_from_datasets_v2
+else:
+  choose_from_datasets = choose_from_datasets_v1
+  sample_from_datasets = sample_from_datasets_v1

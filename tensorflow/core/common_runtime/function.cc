@@ -1017,7 +1017,7 @@ void FunctionLibraryRuntimeImpl::RunRemote(const Options& opts, Handle handle,
                                            Item* item, DoneCallback done) {
   string target_device = parent_->GetDeviceName(handle);
   string source_device = opts.source_device;
-  Rendezvous* rendezvous = opts.rendezvous;
+  RendezvousInterface* rendezvous = opts.rendezvous;
   DeviceContext* device_context;
   Status s = parent_->GetDeviceContext(target_device, &device_context);
   if (!s.ok()) {
@@ -1116,11 +1116,11 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
   }
   Options run_opts = opts;
   if (opts.create_rendezvous) {
-    Rendezvous* rendezvous = new IntraProcessRendezvous(device_mgr_);
+    auto* rendezvous = new PrivateIntraProcessRendezvous(device_mgr_);
     run_opts.rendezvous = rendezvous;
     run_opts.create_rendezvous = false;
-    done = [done = std::move(done), rendezvous](const Status& status) {
-      rendezvous->Unref();
+    done = [done = std::move(done), rendezvous](const Status& status) mutable {
+      delete rendezvous;
       done(status);
     };
   }
@@ -1187,11 +1187,11 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
 
   Options run_opts = opts;
   if (opts.create_rendezvous) {
-    Rendezvous* rendezvous = new IntraProcessRendezvous(device_mgr_);
+    auto* rendezvous = new PrivateIntraProcessRendezvous(device_mgr_);
     run_opts.rendezvous = rendezvous;
     run_opts.create_rendezvous = false;
-    done = [done = std::move(done), rendezvous](const Status& status) {
-      rendezvous->Unref();
+    done = [done = std::move(done), rendezvous](const Status& status) mutable {
+      delete rendezvous;
       done(status);
     };
   }
@@ -1545,6 +1545,7 @@ class DefaultFunctionBodyPlacer : public InlinedFunctionBodyPlacer {
   absl::optional<string> OutputNodeDevice(int output_index) const override {
     return absl::nullopt;
   }
+  bool ColocateInputOutputIdentities() const override { return false; }
   absl::optional<string> ControlNodeDevice() const override {
     return absl::nullopt;
   }
@@ -1568,6 +1569,7 @@ class SingleDeviceFunctionBodyPlacer : public InlinedFunctionBodyPlacer {
   absl::optional<string> OutputNodeDevice(int output_index) const override {
     return caller_device_;
   }
+  bool ColocateInputOutputIdentities() const override { return false; }
   absl::optional<string> ControlNodeDevice() const override {
     return caller_device_;
   }
@@ -1598,6 +1600,7 @@ class MultiDeviceFunctionBodyPlacer : public InlinedFunctionBodyPlacer {
   absl::optional<string> OutputNodeDevice(int output_index) const override {
     return absl::nullopt;
   }
+  bool ColocateInputOutputIdentities() const override { return true; }
   absl::optional<string> ControlNodeDevice() const override {
     return caller_device_;
   }
@@ -1872,7 +1875,6 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
                           const InlineFunctionBodyOptions& options) {
   VLOG(3) << "Inline function call: " << SummarizeNode(*caller) << " ["
           << options.DebugString() << "]";
-  VLOG(5) << "Inlined function definition: " << DebugString(fbody->fdef);
 
   Status validation = ValidateInlining(caller, fbody, options);
   if (!validation.ok()) {
@@ -1906,6 +1908,12 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
     Node* node = AddIdentity(absl::StrCat(caller->name(), "/", name), g, input);
     const absl::optional<string> device = placer->InputNodeDevice(index);
     if (device.has_value()) node->set_requested_device(*device);
+    bool colocate_identity = placer->ColocateInputOutputIdentities();
+    if (colocate_identity) {
+      node->AddAttr(kColocationAttrName,
+                    std::vector<string>{absl::StrCat(kColocationGroupPrefix,
+                                                     input.node->name())});
+    }
     return node;
   };
 
@@ -1915,6 +1923,12 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
     Node* node = AddIdentity(absl::StrCat(caller->name(), "/", name), g, input);
     const absl::optional<string> device = placer->OutputNodeDevice(index);
     if (device.has_value()) node->set_requested_device(*device);
+    bool colocate_identity = placer->ColocateInputOutputIdentities();
+    if (colocate_identity) {
+      node->AddAttr(kColocationAttrName,
+                    std::vector<string>{absl::StrCat(kColocationGroupPrefix,
+                                                     input.node->name())});
+    }
     return node;
   };
 
@@ -1994,14 +2008,22 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
         return !e->src()->IsSource() && e->IsControlEdge();
       };
 
-      const bool forward_control_frame =
-          // a) the node has not data or control inputs
-          absl::c_none_of(n->in_edges(), is_input_edge) ||
-          // b) the node is a function call without control inputs
-          (n->IsFunctionCall() &&
-           absl::c_none_of(n->in_edges(), is_control_edge));
+      // Forward execution frame if:
+      //
+      // a) The node has no data or control inputs.
+      // b) OR the node is a function call without control inputs (control edge
+      //    will be used in nested function inlining to forward execution frame
+      //    to constants inside the function body).
+      //
+      // c) Do not forward control frame to function argument nodes, they will
+      //    be connected to the corresponding function input later.
+      const bool forward_execution_frame =
+          (absl::c_none_of(n->in_edges(), is_input_edge) ||       // (a)
+           (n->IsFunctionCall() &&                                // (b)
+            absl::c_none_of(n->in_edges(), is_control_edge))) &&  //
+          !n->IsArg();                                            // (c)
 
-      if (forward_control_frame) {
+      if (forward_execution_frame) {
         VLOG(4) << "Add control edge from input control node to: "
                 << clone->name();
         g->AddControlEdge(input_control_node, clone, kDoNotCheckDuplicates);
@@ -2031,8 +2053,10 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
   for (std::size_t i = 0; i < fbody->arg_nodes.size(); ++i) {
     Node* arg = node_map[fbody->arg_nodes[i]->id()];
     Node* n = input_identity("input", inputs[i], i);
-    VLOG(4) << "    [index " << i << "] " << n->name()
-            << " (input: " << inputs[i].name() << ")";
+    VLOG(4) << "    [index " << i << "] "
+            << fbody->fdef.signature().input_arg(i).name() << " as "
+            << n->name() << " (input: " << inputs[i].name()
+            << ", requested_device: " << n->requested_device() << ")";
 
     if (input_control_node) {
       g->AddControlEdge(input_control_node, n, kDoNotCheckDuplicates);
@@ -2066,6 +2090,7 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
   //
   // If `keep_node_fetchable` is `true` we always add an output control node, to
   // guarantee that executing a fetchable node will execute all side-effects.
+  VLOG(4) << "Add output Identity nodes for each function output argument:";
   std::vector<Node*> outputs(caller->num_outputs());
   for (std::size_t i = 0; i < fbody->ret_nodes.size(); ++i) {
     Node* ret = node_map[fbody->ret_nodes[i]->id()];
@@ -2079,6 +2104,10 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
     CHECK(data.node != nullptr);
     Node* n = output_identity("output", data, i);
     outputs[i] = n;
+    VLOG(4) << "    [index " << i << "] "
+            << fbody->fdef.signature().output_arg(i).name() << " as "
+            << n->name() << " (ret: " << data.node->name() << ":" << data.index
+            << ", requested_device: " << n->requested_device() << ")";
     for (const Edge* e : ret->in_edges()) {
       if (e->IsControlEdge()) {
         g->AddControlEdge(e->src(), n, kDoNotCheckDuplicates);
@@ -2098,13 +2127,16 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
 
   if (has_control_outputs || keep_caller_node) {
     output_control_node = no_op("output_control_node");
+    VLOG(4) << "Add output control node: " << output_control_node->name();
     if (options.output_control_src == OutputControlSrc::kDataOutputs) {
       for (Node* n : outputs) {
+        VLOG(4) << "    [data output] add control edge from: " << n->name();
         g->AddControlEdge(n, output_control_node, kDoNotCheckDuplicates);
       }
     } else {
       for (Node* fbody_node : fbody->control_ret_nodes) {
         Node* n = node_map[fbody_node->id()];
+        VLOG(4) << "    [control output] add control edge from: " << n->name();
         g->AddControlEdge(n, output_control_node, kDoNotCheckDuplicates);
       }
     }
@@ -2118,10 +2150,14 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
   // always have input_control_node when we need it.
   if (output_control_node && output_control_node->in_edges().empty()) {
     if (input_control_node) {
+      VLOG(4)
+          << "Add add a control edge between input and output control nodes: "
+          << input_control_node->name() << " to "
+          << output_control_node->name();
       g->AddControlEdge(input_control_node, output_control_node,
                         kDoNotCheckDuplicates);
     } else {
-      VLOG(3) << "Function inlining potentially dropped execution frame "
+      VLOG(4) << "Function inlining potentially dropped execution frame "
                  "information from outgoing control edges.";
     }
   }

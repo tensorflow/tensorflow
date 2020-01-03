@@ -19,7 +19,7 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/java/src/main/native/jni_utils.h"
 #include "tensorflow/lite/model.h"
@@ -207,9 +207,9 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_hasUnresolvedFlexOp(
   for (size_t subgraph_i = 0; subgraph_i < interpreter->subgraphs_size();
        ++subgraph_i) {
     const auto* subgraph = interpreter->subgraph(static_cast<int>(subgraph_i));
-    for (size_t node_i = 0; node_i < subgraph->nodes_size(); ++node_i) {
+    for (int node_i : subgraph->execution_plan()) {
       const auto& registration =
-          interpreter->node_and_registration(static_cast<int>(node_i))->second;
+          subgraph->node_and_registration(node_i)->second;
       if (tflite::IsUnresolvedCustomOp(registration) &&
           tflite::IsFlexOp(registration.custom_name)) {
         return JNI_TRUE;

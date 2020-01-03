@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <string>
 
-#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/platform.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 

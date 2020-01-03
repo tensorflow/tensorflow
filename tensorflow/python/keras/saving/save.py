@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import sys
 
 import six
 
@@ -26,10 +27,13 @@ from tensorflow.python import tf2
 from tensorflow.python.keras.saving import hdf5_format
 from tensorflow.python.keras.saving.saved_model import load as saved_model_load
 from tensorflow.python.keras.saving.saved_model import save as saved_model_save
+from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.util.tf_export import keras_export
 
 # pylint: disable=g-import-not-at-top
+if sys.version >= '3.4':
+  import pathlib
 try:
   import h5py
 except ImportError:
@@ -73,7 +77,7 @@ def save_model(model,
   Arguments:
       model: Keras model instance to be saved.
       filepath: One of the following:
-        - String, path where to save the model
+        - String or `pathlib.Path` object, path where to save the model
         - `h5py.File` object where to save the model
       overwrite: Whether we should overwrite any existing model at the target
         location, or instead ask the user with a manual prompt.
@@ -94,6 +98,9 @@ def save_model(model,
 
   default_format = 'tf' if tf2.enabled() else 'h5'
   save_format = save_format or default_format
+
+  if sys.version >= '3.4' and isinstance(filepath, pathlib.Path):
+    filepath = str(filepath)
 
   if (save_format == 'h5' or
       (h5py is not None and isinstance(filepath, h5py.File)) or
@@ -121,7 +128,7 @@ def load_model(filepath, custom_objects=None, compile=True):  # pylint: disable=
 
   Arguments:
       filepath: One of the following:
-          - String, path to the saved model
+          - String or `pathlib.Path` object, path to the saved model
           - `h5py.File` object from which to load the model
       custom_objects: Optional dictionary mapping names
           (strings) to custom classes or functions to be
@@ -141,13 +148,16 @@ def load_model(filepath, custom_objects=None, compile=True):  # pylint: disable=
       ImportError: if loading from an hdf5 file and h5py is not available.
       IOError: In case of an invalid savefile.
   """
-  if (h5py is not None and (
-      isinstance(filepath, h5py.File) or h5py.is_hdf5(filepath))):
-    return hdf5_format.load_model_from_hdf5(filepath, custom_objects, compile)
+  with generic_utils.CustomObjectScope(custom_objects or {}):
+    if (h5py is not None and (
+        isinstance(filepath, h5py.File) or h5py.is_hdf5(filepath))):
+      return hdf5_format.load_model_from_hdf5(filepath, custom_objects, compile)
 
-  if isinstance(filepath, six.string_types):
-    loader_impl.parse_saved_model(filepath)
-    return saved_model_load.load(filepath, compile)
+    if sys.version >= '3.4' and isinstance(filepath, pathlib.Path):
+      filepath = str(filepath)
+    if isinstance(filepath, six.string_types):
+      loader_impl.parse_saved_model(filepath)
+      return saved_model_load.load(filepath, compile)
 
   raise IOError(
       'Unable to load model. Filepath is not an hdf5 file (or h5py is not '

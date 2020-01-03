@@ -15,12 +15,69 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/mlir_gpu/emission_context.h"
 
-#include "mlir/IR/Location.h"  // TF:local_config_mlir
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
+#include "absl/strings/substitute.h"
+#include "mlir/IR/Location.h"  // TF:llvm-project
+#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 
 namespace xla {
 namespace mlir_gpu {
+
+EmissionContext::EmissionContext(std::unique_ptr<HloModule> module)
+    : module_(std::move(module)), context_() {
+  error_handler_ = [](const ErrorMap& instructions_with_error,
+                      HloModule* module) {
+    std::set<const HloComputation*> computations_with_error;
+    for (auto err : instructions_with_error) {
+      computations_with_error.insert(err.first->parent());
+    }
+
+    LOG(ERROR) << module->ToString(
+        HloPrintOptions()
+            .set_print_instruction(
+                [&instructions_with_error](const HloInstruction* instr) {
+                  return instructions_with_error.count(instr);
+                })
+            .set_format_instruction(
+                // Returns the string representation of `instr` in the following
+                // format.
+                //
+                // ROOT? instr_name
+                //   FAILED: err_0
+                //   FAILED: err_1
+                //   ...
+                [&instructions_with_error](const HloInstruction* instr,
+                                           const string& instr_name, int indent,
+                                           bool is_root) {
+                  const string tab(2 * indent, ' ');
+                  if (!instructions_with_error.count(instr)) {
+                    return absl::StrCat(tab, is_root ? "ROOT " : "",
+                                        instr_name);
+                  }
+                  static constexpr char kStartBold[] = "\033[1m";
+                  static constexpr char kStartRed[] = "\033[31m";
+                  static constexpr char kBackToNormal[] = "\033[0m";
+
+                  string result =
+                      absl::StrCat(tab, kStartBold, is_root ? "ROOT " : "",
+                                   instr_name, kBackToNormal);
+
+                  for (const string& err : instructions_with_error.at(instr)) {
+                    absl::SubstituteAndAppend(
+                        &result, "\n$0  $1$2FAILED:$3 $4$5$6", tab, kStartBold,
+                        kStartRed, kBackToNormal, kStartBold, err,
+                        kBackToNormal);
+                  }
+                  return result;
+                })
+            .set_print_computation(
+                [&computations_with_error](const HloComputation* comp) {
+                  return computations_with_error.find(comp) !=
+                         computations_with_error.end();
+                }));
+  };
+  registerDiagnosticHandler();
+}
 
 EmissionContext::EmissionContext(
     std::unique_ptr<HloModule> module,
@@ -35,9 +92,9 @@ mlir::Location EmissionContext::getLocation(const HloInstruction* instr) {
   return mlir::OpaqueLoc::get<const HloInstruction*>(instr, &context_);
 }
 
-void EmissionContext::addError(const HloInstruction* hloInstruction,
+void EmissionContext::addError(const HloInstruction* hlo_instruction,
                                const string& str) {
-  instructions_with_error_[hloInstruction].push_back(str);
+  instructions_with_error_[hlo_instruction].push_back(str);
 }
 
 void EmissionContext::setErrorHandler(

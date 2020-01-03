@@ -58,6 +58,12 @@ bool ParseProtoUnlimited(protobuf::MessageLite* proto,
                          const string& serialized);
 bool ParseProtoUnlimited(protobuf::MessageLite* proto, const void* serialized,
                          size_t size);
+#ifdef USE_TSTRING
+inline bool ParseProtoUnlimited(protobuf::MessageLite* proto,
+                                const tstring& serialized) {
+  return ParseProtoUnlimited(proto, serialized.data(), serialized.size());
+}
+#endif  // USE_TSTRING
 
 // Returns the string value for the value of a string or bytes protobuf field.
 inline const string& ProtobufStringToString(const string& s) { return s; }

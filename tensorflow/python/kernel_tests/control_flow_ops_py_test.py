@@ -600,7 +600,6 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       result = self.evaluate(r)
     self.assertAllEqual(12, result)
 
-  @test_util.disable_xla("b/128638446")
   @test_util.run_in_graph_and_eager_modes
   def testCondPruning(self):
     v1 = variables.Variable(7)
@@ -933,10 +932,9 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       r = control_flow_ops.cond(constant_op.constant(False), true_fn, false_fn)
       self.assertAllEqual([2.0], self.evaluate(r))
 
-  @test_util.disable_control_flow_v2("b/79881896 (placeholder)")
   @test_util.run_v1_only("b/120545219")
   def testCondWithControl(self):
-    with self.cached_session():
+    with self.cached_session() as sess:
       control_holder = array_ops.placeholder(dtypes.float32, shape=())
       a = constant_op.constant(3)
 
@@ -948,7 +946,8 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       r = control_flow_ops.cond(
           constant_op.constant(True), true_branch,
           lambda: constant_op.constant(1))
-      self.assertEqual(5, self.evaluate(r))
+      result = sess.run(r, feed_dict={control_holder: 5.})
+      self.assertEqual(5, result)
 
   @test_util.run_v1_only("b/120545219")
   def testUninitializedRefIdentity(self):
@@ -1256,7 +1255,6 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
                                                                   [1., 1.],
                                                                   [0., 0.]])
 
-  @test_util.disable_xla("b/128643464")
   def testCondGrad_MultiGather(self):
     # NOTE(skyewm): this test is interesting because the array_ops.gather and
     # ResourceVariable.sparse_read gradient functions returns IndexedSlices.
@@ -1333,7 +1331,6 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       self.assertAllEqual(0.0, sess.run(result, feed_dict={predicate: True}))
       self.assertAllEqual(0.0, sess.run(result))
 
-  @test_util.disable_xla("b/128644469 PrintV2")
   @test_util.run_in_graph_and_eager_modes
   def testCondAutoControlDeps(self):
     if test_util.is_gpu_available():
@@ -1406,7 +1403,6 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(["C"], filter_test_messages(printed.contents()))
 
 
-  @test_util.disable_xla("b/128643646 PrintV2")
   @test_util.run_in_graph_and_eager_modes
   def testWhileAutoControlDeps(self):
     # Legacy while_loop fails this test because it produces deprecation notices
@@ -3460,7 +3456,6 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       r = gradients_impl.gradients([rx], x)
       self.assertAllClose(1024.0, r[0])
 
-  @test_util.disable_control_flow_v2("b/116355153 (back_prop flag)")
   @test_util.run_v1_only("b/120545219")
   def testWhileGrad_NoGradient(self):
     with self.cached_session():

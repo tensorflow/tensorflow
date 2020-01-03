@@ -82,6 +82,19 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
       self.assertSequenceEqual(self.evaluate(grad), [32.])
 
   @test_util.run_deprecated_v1
+  def testSingleLoopVarBackPropFalse(self):
+    x = constant_op.constant(2.)
+    ret = while_loop_v2(
+        lambda v: v < 8.,
+        lambda v: v * v, [x],
+        return_same_structure=False,
+        back_prop=False)
+    grad = gradients_impl.gradients(ret, [x])
+    self.assertEqual(grad, [None])
+    with self.cached_session():
+      self.assertEqual(self.evaluate(ret), 16.)
+
+  @test_util.run_deprecated_v1
   def testCustomGradient(self):
     x = constant_op.constant(2.)
     n = constant_op.constant(1., name="const-n")

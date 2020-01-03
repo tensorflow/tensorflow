@@ -18,13 +18,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_get_dimension_size_rewriter.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
-#include "tensorflow/compiler/xla/service/hlo_runner.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test_benchmark.h"
@@ -220,10 +221,8 @@ TEST_F(DynamicPadderTest, ReduceWindowNoPadForTrivialWindow) {
 class ExecutionTest : public HloTestBase {
  protected:
   std::unique_ptr<HloModule> GetHloModule(const string& hlo_text) {
-    HloModuleConfig config;
-    config.set_debug_options(GetDebugOptionsForTest());
     std::unique_ptr<HloModule> module =
-        ParseAndReturnUnverifiedModule(hlo_text, config).ValueOrDie();
+        ParseAndReturnVerifiedModule(hlo_text).ValueOrDie();
     return module;
   }
   Literal PadAndExecute(std::unique_ptr<HloModule> module,
@@ -232,6 +231,8 @@ class ExecutionTest : public HloTestBase {
     TF_CHECK_OK(padder.Run(module.get()).status());
     HloGetDimensionSizeRewriter rewriter;
     TF_CHECK_OK(rewriter.Run(module.get()).status());
+    HloDCE dce;
+    TF_CHECK_OK(dce.Run(module.get()).status());
     return ExecuteAndTransfer(std::move(module), arguments);
   }
 };
@@ -461,6 +462,85 @@ ENTRY main {
   EXPECT_EQ(padded, not_padded);
 }
 
+XLA_TEST_F(ExecutionTest, DynamicDimensionClamp) {
+  const string hlo_text = R"(
+HloModule TensorFlowTenaryV1
+
+update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT add = s32[] add(lhs, rhs)
+}
+
+ENTRY main {
+  param = s32[5] parameter(0)
+  const = s32[] constant(3)
+  param_padded = s32[5] set-dimension-size(param, const), dimensions={0}
+  clamp = s32[5] clamp(param_padded, param_padded, param_padded)
+  init = s32[] constant(0)
+  ROOT reduce = s32[] reduce(clamp, init),
+      dimensions={0},
+      to_apply=update_s32
+}
+)";
+
+  // Input has upper bound of 5, dynamic dimension is 3.
+  Literal operand = LiteralUtil::CreateR1<int32>({1, 2, 3, 4, 5});
+  auto module = GetHloModule(hlo_text);
+
+  Literal result = PadAndExecute(std::move(module), {&operand});
+
+  // only first 3 elements will be reduced.
+  Literal expected = LiteralUtil::CreateR0<int32>(6);
+
+  EXPECT_EQ(result, expected);
+}
+
+XLA_TEST_F(ExecutionTest, DynamicConcat) {
+  // Concatting a list of {dynamic_operand, static_operand, dynamic_operand}.
+  const string hlo_text = R"(
+HloModule DynamicConcat
+
+update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT add = s32[] add(lhs, rhs)
+}
+
+ENTRY main {
+  param_0 = s32[3] parameter(0)
+  param_1 = s32[3] parameter(1)
+  param_2 = s32[3] parameter(2)
+  size = s32[] constant(2)
+  param_padded_0 = s32[3] set-dimension-size(param_0, size), dimensions={0}
+  param_padded_2 = s32[3] set-dimension-size(param_2, size), dimensions={0}
+  %concatenate = s32[9]
+    concatenate(s32[3] param_padded_0, s32[3] param_1, s32[3] param_padded_2),
+    dimensions={0}
+  init = s32[] constant(0)
+  ROOT reduce = s32[] reduce(concatenate, init),
+      dimensions={0},
+      to_apply=update_s32
+}
+)";
+
+  // Input has upper bound of 3, dynamic dimension is 2. Using -1 as padding.
+  Literal operand_0 =
+      LiteralUtil::CreateR1<int32>({1, 2, -1});  // Dynamic operand.
+  Literal operand_1 =
+      LiteralUtil::CreateR1<int32>({3, 4, 5});  // Static operand.
+  Literal operand_2 =
+      LiteralUtil::CreateR1<int32>({6, 7, -1});  // Dynamic operand.
+  auto module = GetHloModule(hlo_text);
+
+  Literal result =
+      PadAndExecute(std::move(module), {&operand_0, &operand_1, &operand_2});
+
+  Literal expected = LiteralUtil::CreateR0<int32>(28);
+
+  EXPECT_EQ(result, expected);
+}
+
 XLA_TEST_F(ExecutionTest, DynamicDimensionReduce) {
   const string hlo_text = R"(
 HloModule TensorFlowScatterV1
@@ -525,6 +605,30 @@ ENTRY main {
 
   // Only the first 6 elements will be reduced.
   Literal expected = LiteralUtil::CreateR0<int32>(18);
+
+  EXPECT_EQ(result, expected);
+}
+
+XLA_TEST_F(ExecutionTest, SliceSingleElement) {
+  // Slicing out a single element is supported.
+  const string hlo_text = R"(
+HloModule Slicing
+
+ENTRY main {
+  param = s32[5] parameter(0)
+  const = s32[] constant(3)
+  param_padded = s32[5] set-dimension-size(param, const), dimensions={0}
+  ROOT slice = s32[1]{0} slice(param_padded), slice={[0:1]}
+}
+)";
+
+  // The dynamic dimension has upper bound of 5, dynamic dimension is 3.
+  Literal operand = LiteralUtil::CreateR1<int32>({0, 1, 2, 3, 4});
+  auto module = GetHloModule(hlo_text);
+
+  Literal result = PadAndExecute(std::move(module), {&operand});
+
+  Literal expected = LiteralUtil::CreateR1<int32>({0});
 
   EXPECT_EQ(result, expected);
 }
@@ -668,7 +772,6 @@ ENTRY main {
   ROOT reduce = s32[] reduce(reshaped, init),
       dimensions={0},
       to_apply=update_s32
-  // ROOT gds = s32[] get-dimension-size(reshaped), dimensions={0}
 }
 )";
 
@@ -694,6 +797,111 @@ ENTRY main {
   // Reducing it produces 16
 
   Literal expected = LiteralUtil::CreateR0<int32>(16);
+
+  EXPECT_EQ(result, expected);
+}
+
+XLA_TEST_F(ExecutionTest, SetGetDimensionSize) {
+  const string hlo_text = R"(
+HloModule TensorFlowScatterV1
+
+ENTRY main {
+  param = s32[3] parameter(0)
+  size = s32[] constant(2)
+  param_dynamic_size = s32[3] set-dimension-size(param, size),
+    dimensions={0}
+  ROOT gds = s32[] get-dimension-size(param_dynamic_size),
+    dimensions={0}
+}
+)";
+
+  // First dimension (1) is dynamic. Since dynamic size is 0, result is also 0.
+  Literal operand = LiteralUtil::CreateR1<int32>({1, 2, 3});
+  auto module = GetHloModule(hlo_text);
+
+  Literal result = PadAndExecute(std::move(module), {&operand});
+
+  // Should return the size 2 instead of 3.
+  Literal expected = LiteralUtil::CreateR0<int32>(2);
+
+  EXPECT_EQ(result, expected);
+}
+
+XLA_TEST_F(ExecutionTest, DynamicSort) {
+  const string hlo_text = R"(
+HloModule TEST
+
+update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT add = s32[] add(lhs, rhs)
+}
+
+%compare-greater-than (lhs: s32[], rhs: s32[]) -> pred[] {
+  %lhs = s32[] parameter(0)
+  %rhs = s32[] parameter(1)
+  ROOT %compare = pred[] compare(s32[] %lhs, s32[] %rhs), direction=GT
+}
+
+ENTRY main {
+  param = s32[4] parameter(0)
+  size = s32[] constant(3)
+  param_dynamic_size = s32[4] set-dimension-size(param, size),
+    dimensions={0}
+  sort = s32[4]{0} sort(s32[4]{0} %param_dynamic_size),
+    dimensions={0}, is_stable=false, to_apply=%compare-greater-than
+  full_size = s32[] constant(4)
+  ROOT result = s32[4] set-dimension-size(sort, full_size), dimensions={0}    
+}
+)";
+
+  Literal operand = LiteralUtil::CreateR1<int32>({1, 4, 3, 2});
+  auto module = GetHloModule(hlo_text);
+
+  Literal result = PadAndExecute(std::move(module), {&operand});
+  Literal expected = LiteralUtil::CreateR1<int32>({4, 3, 1, 2});
+
+  EXPECT_EQ(result, expected);
+}
+
+XLA_TEST_F(ExecutionTest, DynamicTupleSort) {
+  const string hlo_text = R"(
+HloModule TEST
+
+%compare-greater-than (lhs: s32[], rhs: s32[], lhs_2: s32[], lhs_2: s32[]) -> pred[] {
+  %lhs = s32[] parameter(0)
+  %rhs = s32[] parameter(1)
+  %lhs_2 = s32[] parameter(2)
+  %rhs_2 = s32[] parameter(3)
+  ROOT %compare = pred[] compare(s32[] %lhs, s32[] %rhs), direction=GT
+}
+
+update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT add = s32[] add(lhs, rhs)
+}
+
+ENTRY main {
+  param = s32[3] parameter(0)
+  size = s32[] constant(2)
+  param_dynamic_size = s32[3] set-dimension-size(param, size),
+    dimensions={0}
+  sort = (s32[3]{0}, s32[3]{0}) sort(s32[3]{0} %param_dynamic_size,
+                                     s32[3]{0} %param_dynamic_size),
+    dimensions={0}, is_stable=true, to_apply=%compare-greater-than
+  get-tuple-element = s32[3]{0} get-tuple-element((s32[3]{0}, s32[3]{0}) %sort),
+    index=0
+  full_size = s32[] constant(3)
+  ROOT result = s32[3] set-dimension-size(get-tuple-element, full_size), dimensions={0}
+}
+)";
+
+  Literal operand = LiteralUtil::CreateR1<int32>({0, 4, 2});
+  auto module = GetHloModule(hlo_text);
+
+  Literal result = PadAndExecute(std::move(module), {&operand});
+  Literal expected = LiteralUtil::CreateR1<int32>({4, 0, 2});
 
   EXPECT_EQ(result, expected);
 }

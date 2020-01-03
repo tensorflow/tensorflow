@@ -37,20 +37,22 @@ class FilterDatasetParams : public DatasetParams {
         func_lib_(std::move(func_lib)),
         type_arguments_(std::move(type_arguments)) {
     input_dataset_params_.push_back(absl::make_unique<T>(input_dataset_params));
-    iterator_prefix_ = name_utils::IteratorPrefix(
-        input_dataset_params.op_name(), input_dataset_params.iterator_prefix());
+    iterator_prefix_ =
+        name_utils::IteratorPrefix(input_dataset_params.dataset_type(),
+                                   input_dataset_params.iterator_prefix());
   }
 
   std::vector<Tensor> GetInputTensors() const override {
     return other_arguments_;
   }
 
-  Status GetInputNames(std::vector<string>* input_placeholder) const override {
-    input_placeholder->reserve(input_dataset_params_.size() +
-                               other_arguments_.size());
-    input_placeholder->emplace_back(FilterDatasetOp::kInputDataset);
+  Status GetInputNames(std::vector<string>* input_names) const override {
+    input_names->clear();
+    input_names->reserve(input_dataset_params_.size() +
+                         other_arguments_.size());
+    input_names->emplace_back(FilterDatasetOp::kInputDataset);
     for (int i = 0; i < other_arguments_.size(); ++i) {
-      input_placeholder->emplace_back(
+      input_names->emplace_back(
           absl::StrCat(FilterDatasetOp::kOtherArguments, "_", i));
     }
 
@@ -67,7 +69,7 @@ class FilterDatasetParams : public DatasetParams {
 
   std::vector<FunctionDef> func_lib() const override { return func_lib_; }
 
-  string op_name() const override { return FilterDatasetOp::kDatasetType; }
+  string dataset_type() const override { return FilterDatasetOp::kDatasetType; }
 
  private:
   std::vector<Tensor> other_arguments_;
@@ -76,7 +78,7 @@ class FilterDatasetParams : public DatasetParams {
   DataTypeVector type_arguments_;
 };
 
-class FilterDatasetOpTest : public DatasetOpsTestBaseV2 {};
+class FilterDatasetOpTest : public DatasetOpsTestBase {};
 
 // Test case 1: norm case.
 FilterDatasetParams FilterDatasetParams1() {

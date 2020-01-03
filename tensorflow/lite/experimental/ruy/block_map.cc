@@ -109,16 +109,36 @@ void GetRectangularness(int rows, int cols, int kernel_rows, int kernel_cols,
                         int* cols_rectangularness_log2) {
   *rows_rectangularness_log2 = 0;
   *cols_rectangularness_log2 = 0;
+
+  // In GEMV-ish cases, that is when kernel blocks are as narrow as the kernel
+  // itself, we risk having too small kernel blocks for good kernel
+  // amortization. We avoid that by limiting recangularness so that kernel
+  // blocks are not too tiny at least in that dimension. Specifically, we try to
+  // have at least (2^min_kernel_inner_loop_runs_log2) kernels fitting in each
+  // kernel block along the large dimension.
+  const int min_kernel_inner_loop_runs_log2 = 3;
   if (rows > cols) {
+    int cols_of_kernel_inner_loop_runs_log2 =
+        ceil_log2(cols) - pot_log2(kernel_cols);
+    int min_rows_of_kernel_inner_loop_runs_log2 =
+        std::max(0, min_kernel_inner_loop_runs_log2 -
+                        cols_of_kernel_inner_loop_runs_log2);
     *rows_rectangularness_log2 =
         std::min(floor_log2_quotient(rows, cols),
-                 floor_log2(rows) - pot_log2(kernel_rows));
+                 std::max(0, floor_log2(rows) - pot_log2(kernel_rows) -
+                                 min_rows_of_kernel_inner_loop_runs_log2));
     // Sanity check that we did not over-estimate rows_rectangularness_log2.
     RUY_DCHECK_GE(rows >> *rows_rectangularness_log2, cols);
   } else if (cols > rows) {
+    int rows_of_kernel_inner_loop_runs_log2 =
+        ceil_log2(rows) - pot_log2(kernel_rows);
+    int min_cols_of_kernel_inner_loop_runs_log2 =
+        std::max(0, min_kernel_inner_loop_runs_log2 -
+                        rows_of_kernel_inner_loop_runs_log2);
     *cols_rectangularness_log2 =
         std::min(floor_log2_quotient(cols, rows),
-                 floor_log2(cols) - pot_log2(kernel_cols));
+                 std::max(0, floor_log2(cols) - pot_log2(kernel_cols) -
+                                 min_cols_of_kernel_inner_loop_runs_log2));
     // Sanity check that we did not over-estimate cols_rectangularness_log2.
     RUY_DCHECK_GE(cols >> *cols_rectangularness_log2, rows);
   }
@@ -166,7 +186,15 @@ int GetMultithreadingScore(int block_size_log2, int rows, int cols,
 // (e.g. L3) caches shared among all cores. Here we aim to fit in a fast,
 // local cache.
 int GetCacheLocalityScore(int block_size_log2, int rows, int cols, int depth,
+                          int kernel_rows_log2, int kernel_cols_log2,
                           int lhs_scalar_size, int rhs_scalar_size, Path path) {
+  // In the narrow case (e.g. matrix*vector), each byte of the big operand
+  // matrix (either LHS or RHS) is traversed only once, so any notion of data
+  // locality is irrelevant. Ignore the 'cache locality score' by forcing it to
+  // be 0 in that case.
+  if (rows <= (1 << kernel_rows_log2) || cols <= (1 << kernel_cols_log2)) {
+    return 0;
+  }
   const int block_rows = std::min(1 << block_size_log2, rows);
   const int block_cols = std::min(1 << block_size_log2, cols);
 #if RUY_PLATFORM(ARM_64)
@@ -304,9 +332,9 @@ void MakeBlockMap(int rows, int cols, int depth, int kernel_rows,
        block_size_log2 <= max_block_size_log2; block_size_log2++) {
     const int multithreading_score = GetMultithreadingScore(
         block_size_log2, rows, cols, tentative_thread_count);
-    const int cache_locality_score =
-        GetCacheLocalityScore(block_size_log2, rows, cols, depth,
-                              lhs_scalar_size, rhs_scalar_size, path);
+    const int cache_locality_score = GetCacheLocalityScore(
+        block_size_log2, rows, cols, depth, kernel_rows_log2, kernel_cols_log2,
+        lhs_scalar_size, rhs_scalar_size, path);
     const int kernel_amortization_score = GetKernelAmortizationScore(
         block_size_log2, rows, cols, kernel_rows_log2, kernel_cols_log2);
     const int score =
@@ -331,13 +359,17 @@ void MakeBlockMap(int rows, int cols, int depth, int kernel_rows,
     fprintf(stderr, "best_score_block_size_log2=%d\n",
             best_score_block_size_log2);
   }
-  firsttime = false;
 
   static const char* explicit_block_size_log2_env =
       getenv("RUY_MAKEBLOCKMAP_EXPLICIT_BLOCK_SIZE_LOG2");
   if (explicit_block_size_log2_env) {
     best_score_block_size_log2 = std::stoi(explicit_block_size_log2_env);
+    if (firsttime || debug_everytime) {
+      fprintf(stderr, "Overridden best_score_block_size_log2=%d\n",
+              best_score_block_size_log2);
+    }
   }
+  firsttime = false;
 #endif
 
   int num_blocks_base_log2 = size_log2 - best_score_block_size_log2;

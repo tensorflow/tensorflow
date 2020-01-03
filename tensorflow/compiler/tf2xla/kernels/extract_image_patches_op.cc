@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/tf2xla/kernels/conv_op_helpers.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
@@ -22,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/util/tensor_format.h"
 
 namespace tensorflow {
@@ -175,7 +177,11 @@ class ExtractImagePatchesOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(ExtractImagePatchesOp);
 };
 
-REGISTER_XLA_OP(Name("ExtractImagePatches"), ExtractImagePatchesOp);
+// We don't support integers for the convolution used in the implementation of
+// this op, so we limit the supported types.
+REGISTER_XLA_OP(
+    Name("ExtractImagePatches").TypeConstraint("T", GetXlaConvTypes()),
+    ExtractImagePatchesOp);
 
 }  // namespace
 }  // namespace tensorflow

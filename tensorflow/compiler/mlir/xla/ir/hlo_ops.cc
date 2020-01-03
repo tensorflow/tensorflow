@@ -29,40 +29,29 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/MathExtras.h"
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/Dialect.h"  // TF:local_config_mlir
-#include "mlir/IR/Location.h"  // TF:local_config_mlir
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/IR/OpDefinition.h"  // TF:local_config_mlir
-#include "mlir/IR/OpImplementation.h"  // TF:local_config_mlir
-#include "mlir/IR/Operation.h"  // TF:local_config_mlir
-#include "mlir/IR/OperationSupport.h"  // TF:local_config_mlir
-#include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
-#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
-#include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
-#include "mlir/IR/Types.h"  // TF:local_config_mlir
-#include "mlir/IR/Value.h"  // TF:local_config_mlir
-#include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/Builders.h"  // TF:llvm-project
+#include "mlir/IR/Dialect.h"  // TF:llvm-project
+#include "mlir/IR/Location.h"  // TF:llvm-project
+#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
+#include "mlir/IR/OpDefinition.h"  // TF:llvm-project
+#include "mlir/IR/OpImplementation.h"  // TF:llvm-project
+#include "mlir/IR/Operation.h"  // TF:llvm-project
+#include "mlir/IR/OperationSupport.h"  // TF:llvm-project
+#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
+#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/IR/TypeUtilities.h"  // TF:llvm-project
+#include "mlir/IR/Types.h"  // TF:llvm-project
+#include "mlir/IR/Value.h"  // TF:llvm-project
+#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
+#include "mlir/Transforms/InliningUtils.h"  // TF:llvm-project
+#include "tensorflow/compiler/mlir/xla/convert_op_folder.h"
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h.inc"
+#include "tensorflow/compiler/mlir/xla/ir/hlo_utils.h"
 
 namespace mlir {
 #include "tensorflow/compiler/mlir/xla/ir/hlo_structs.cc.inc"
-}  // namespace mlir
-
-using namespace mlir;
-using namespace mlir::xla_hlo;
-
-XlaHloDialect::XlaHloDialect(MLIRContext* context)
-    : Dialect(getDialectNamespace(), context) {
-  addOperations<
-#define GET_OP_LIST
-#include "tensorflow/compiler/mlir/xla/ir/hlo_ops.cc.inc"
-      >();
-
-  // Support unknown operations because not all XLA operations are registered.
-  // allowUnknownOperations();
-}
+namespace xla_hlo {
 
 Operation* XlaHloDialect::materializeConstant(OpBuilder& builder,
                                               Attribute value, Type type,
@@ -79,6 +68,37 @@ template <typename T>
 static LogicalResult Verify(T op) {
   return success();
 }
+
+namespace {
+
+//===----------------------------------------------------------------------===//
+// Utilities for the canonicalize patterns
+//===----------------------------------------------------------------------===//
+
+// Returns 1D 64-bit dense elements attribute with the given values.
+DenseIntElementsAttr GetI64ElementsAttr(ArrayRef<int64_t> values,
+                                        Builder* builder) {
+  RankedTensorType ty = RankedTensorType::get(
+      {static_cast<int64_t>(values.size())}, builder->getIntegerType(64));
+  return DenseIntElementsAttr::get(ty, values);
+}
+
+// Given the start indices and slice sizes for a dynamic-slice that can be
+// converted to a static slice, returns the limits for the static slice.
+DenseIntElementsAttr BuildSliceLimits(DenseIntElementsAttr start_indices,
+                                      DenseIntElementsAttr slice_sizes,
+                                      Builder* builder) {
+  SmallVector<int64_t, 4> slice_limits;
+  for (int64_t i = 0; i < slice_sizes.getNumElements(); ++i) {
+    int64_t start_index = start_indices.getValue<IntegerAttr>(i).getInt();
+    int64_t slice_size = slice_sizes.getValue<IntegerAttr>(i).getInt();
+    slice_limits.push_back(start_index + slice_size);
+  }
+  return GetI64ElementsAttr(slice_limits, builder);
+}
+
+#include "tensorflow/compiler/mlir/xla/transforms/generated_canonicalize.inc"
+}  // namespace
 
 //===----------------------------------------------------------------------===//
 // ConstOp
@@ -105,7 +125,7 @@ static void Print(ConstOp op, OpAsmPrinter* printer) {
 }
 
 static ParseResult ParseConstOp(OpAsmParser* parser, OperationState* result) {
-  if (parser->parseOptionalAttributeDict(result->attributes)) return failure();
+  if (parser->parseOptionalAttrDict(result->attributes)) return failure();
 
   // If colon is not present after attribute dictionary, it should be short form
   // and attribute 'value' is outside the dictionary.
@@ -138,7 +158,7 @@ void ConstOp::build(Builder* builder, OperationState& result, Attribute value) {
   } else if (value.isa<BoolAttr>() || value.isa<FloatAttr>() ||
              value.isa<IntegerAttr>()) {
     // All XLA types must be tensor types. In the build() method, we want to
-    // provide more flexiblity by allowing attributes of scalar types. But we
+    // provide more flexibility by allowing attributes of scalar types. But we
     // need to wrap it up with ElementsAttr to construct valid XLA constants.
     type = RankedTensorType::get(/*shape=*/{}, value.getType());
     value = DenseElementsAttr::get(type.cast<TensorType>(), value);
@@ -155,7 +175,7 @@ void ConstOp::build(Builder* builder, OperationState& result, Attribute value) {
 //===----------------------------------------------------------------------===//
 
 OpFoldResult IotaOp::fold(ArrayRef<Attribute> operands) {
-  const auto output_type = getResult()->getType().cast<ShapedType>();
+  const auto output_type = getResult().getType().cast<ShapedType>();
   const auto output_size = output_type.getNumElements();
   const auto dimension = iota_dimension().getSExtValue();
   const auto max_dim_size = output_type.getDimSize(dimension);
@@ -180,72 +200,46 @@ OpFoldResult IotaOp::fold(ArrayRef<Attribute> operands) {
 }
 
 //===----------------------------------------------------------------------===//
+// AbsOp
+//===----------------------------------------------------------------------===//
+
+void AbsOp::build(Builder* builder, OperationState& result, Value operand) {
+  auto shaped_type = operand.getType().cast<ShapedType>();
+  Type new_type;
+  if (!shaped_type.getElementType().isa<ComplexType>()) {
+    new_type = operand.getType();
+  } else if (shaped_type.hasRank()) {
+    new_type = RankedTensorType::get(shaped_type.getShape(), operand.getType());
+  } else {
+    new_type = UnrankedTensorType::get(operand.getType());
+  }
+
+  return AbsOp::build(builder, result, new_type, operand);
+}
+
+//===----------------------------------------------------------------------===//
 // ConvertOp
 //===----------------------------------------------------------------------===//
 
-namespace {
-
-// Converts the values of an ElementsAttr into the corresponding type.
-ElementsAttr ConvertElements(const ElementsAttr& elements, Type newType) {
-  auto oldType = getElementTypeOrSelf(elements);
-  size_t bitWidth = newType.isBF16() ? 64 : newType.getIntOrFloatBitWidth();
-
-  if (oldType.isa<FloatType>()) {
-    // mapValues always takes a function returning APInt, even when the output
-    // is actually float.
-    using func_type = APInt(const APFloat&);
-    if (auto newFloatType = newType.dyn_cast<FloatType>()) {
-      // Float -> Float
-      return elements.mapValues(
-          newType, llvm::function_ref<func_type>([&newFloatType](
-                                                     const APFloat& floatVal) {
-            APFloat newDouble(FloatAttr::getValueAsDouble(floatVal));
-            bool losesInfo = false;
-            newDouble.convert(newFloatType.getFloatSemantics(),
-                              llvm::APFloat::rmNearestTiesToEven, &losesInfo);
-            return newDouble.bitcastToAPInt();
-          }));
-    }
-    // Float -> Int
-    return elements.mapValues(
-        newType,
-        llvm::function_ref<func_type>([&bitWidth](const APFloat& floatVal) {
-          return APInt(bitWidth, FloatAttr::getValueAsDouble(floatVal));
-        }));
+void ConvertOp::build(Builder* builder, OperationState& result, Value operand,
+                      Type result_element_ty) {
+  Type result_ty;
+  Type operand_ty = operand.getType();
+  if (auto ranked_ty = operand_ty.dyn_cast<RankedTensorType>()) {
+    result_ty = RankedTensorType::get(ranked_ty.getShape(), result_element_ty);
+  } else {
+    result_ty = UnrankedTensorType::get(result_element_ty);
   }
-
-  // oldType is Integer
-  // mapValues always takes a function returning APInt, even when the output
-  // is actually float.
-  using func_type = APInt(const APInt&);
-  if (auto newFloatType = newType.dyn_cast<FloatType>()) {
-    // Int -> Float
-    return elements.mapValues(
-        newType,
-        llvm::function_ref<func_type>([&newFloatType](const APInt& intVal) {
-          APFloat newDouble(static_cast<double>(intVal.getSExtValue()));
-          bool losesInfo = false;
-          newDouble.convert(newFloatType.getFloatSemantics(),
-                            llvm::APFloat::rmNearestTiesToEven, &losesInfo);
-          return newDouble.bitcastToAPInt();
-        }));
-  }
-  // newType is Integer
-  // Int -> Int
-  return elements.mapValues(
-      newType, llvm::function_ref<func_type>([&bitWidth](const APInt& intVal) {
-        return APInt(bitWidth, intVal.getSExtValue());
-      }));
+  build(builder, result, result_ty, operand);
 }
 
-}  // namespace
-
 OpFoldResult ConvertOp::fold(ArrayRef<Attribute> operands) {
-  if (getOperand()->getType() == getResult()->getType()) return getOperand();
+  if (getOperand().getType() == getResult().getType()) return getOperand();
 
   // If the operand is constant, we can do the conversion now.
   if (auto elementsAttr = operands.front().dyn_cast_or_null<ElementsAttr>()) {
-    return ConvertElements(elementsAttr, getElementTypeOrSelf(getResult()));
+    return xla::ConvertElementsAttr(elementsAttr,
+                                    getElementTypeOrSelf(getResult()));
   }
 
   return {};
@@ -257,7 +251,7 @@ OpFoldResult ConvertOp::fold(ArrayRef<Attribute> operands) {
 
 static LogicalResult Verify(GetTupleElementOp op) {
   auto indexVal = op.index().getZExtValue();
-  auto operandType = op.getOperand()->getType().cast<TupleType>();
+  auto operandType = op.getOperand().getType().cast<TupleType>();
   if (indexVal >= operandType.size()) {
     return op.emitOpError(
         llvm::formatv("index {0} is out of bounds of operand with size {1}",
@@ -274,7 +268,7 @@ static LogicalResult Verify(GetTupleElementOp op) {
 
 OpFoldResult GetTupleElementOp::fold(ArrayRef<Attribute> operands) {
   if (auto tupleOp =
-          dyn_cast_or_null<xla_hlo::TupleOp>(getOperand()->getDefiningOp())) {
+          dyn_cast_or_null<xla_hlo::TupleOp>(getOperand().getDefiningOp())) {
     return tupleOp.getOperand(index().getLimitedValue());
   }
 
@@ -297,6 +291,25 @@ static LogicalResult Verify(TupleOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// AllToAllOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(AllToAllOp op) {
+  // If operand is ranked, size of split dimension should be a multiple of split
+  // count.
+  auto type = op.getOperand().getType().dyn_cast<RankedTensorType>();
+  if (!type) return success();
+  auto split_dim_size = type.getDimSize(op.split_dimension().getSExtValue());
+  auto split_count = op.split_count().getSExtValue();
+  if (split_dim_size % split_count != 0) {
+    return op.emitError() << "split dimension has size " << split_dim_size
+                          << ", expected to be a multiple of split_count "
+                          << split_count;
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // BroadcastOp
 //===----------------------------------------------------------------------===//
 
@@ -310,9 +323,9 @@ static LogicalResult Verify(BroadcastOp op) {
         "broadcast_sizes has rank {0} instead of rank 1", sizesRank));
   }
 
-  auto resultType = op.getResult()->getType().cast<RankedTensorType>();
+  auto resultType = op.getResult().getType().cast<RankedTensorType>();
   auto resultRank = resultType.getRank();
-  auto operandType = op.operand()->getType().cast<RankedTensorType>();
+  auto operandType = op.operand().getType().cast<RankedTensorType>();
   auto operandRank = operandType.getRank();
   auto sizesSize = sizesType.getNumElements();
   auto expectedRank = operandRank + sizesSize;
@@ -346,7 +359,7 @@ static LogicalResult Verify(BroadcastOp op) {
 //===----------------------------------------------------------------------===//
 
 static LogicalResult Verify(BroadcastInDimOp op) {
-  auto operandType = op.operand()->getType().cast<RankedTensorType>();
+  auto operandType = op.operand().getType().cast<RankedTensorType>();
   auto operandRank = operandType.getRank();
   if (!op.broadcast_dimensions()) {
     if (operandRank == 0) {
@@ -373,7 +386,7 @@ static LogicalResult Verify(BroadcastInDimOp op) {
         dimensionsSize, operandRank));
   }
 
-  auto resultType = op.getResult()->getType().cast<RankedTensorType>();
+  auto resultType = op.getResult().getType().cast<RankedTensorType>();
   auto resultRank = resultType.getRank();
   if (resultRank < operandRank) {
     return op.emitOpError(
@@ -408,9 +421,9 @@ static LogicalResult Verify(BroadcastInDimOp op) {
 //===----------------------------------------------------------------------===//
 
 static LogicalResult Verify(ClampOp op) {
-  auto operandType = op.operand()->getType().cast<RankedTensorType>();
+  auto operandType = op.operand().getType().cast<RankedTensorType>();
   auto operandShape = operandType.getShape();
-  auto minType = op.min()->getType().cast<RankedTensorType>();
+  auto minType = op.min().getType().cast<RankedTensorType>();
 
   auto minShape = minType.getShape();
   if (minShape != operandShape && minType.getRank() != 0) {
@@ -420,7 +433,7 @@ static LogicalResult Verify(ClampOp op) {
         llvm::make_range(operandShape.begin(), operandShape.end())));
   }
 
-  auto maxType = op.max()->getType().cast<RankedTensorType>();
+  auto maxType = op.max().getType().cast<RankedTensorType>();
   auto maxShape = maxType.getShape();
   if (maxShape != operandShape && maxType.getRank() != 0) {
     return op.emitOpError(llvm::formatv(
@@ -433,6 +446,81 @@ static LogicalResult Verify(ClampOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// ComplexOp
+//===----------------------------------------------------------------------===//
+
+void ComplexOp::build(Builder* builder, OperationState& state, Value lhs,
+                      Value rhs) {
+  auto type = lhs.getType();
+  auto element_ty = ComplexType::get(getElementTypeOrSelf(type));
+  Type result_ty;
+  if (auto ranked_type = type.dyn_cast<RankedTensorType>()) {
+    result_ty = RankedTensorType::get(ranked_type.getShape(), element_ty);
+  } else if (type.isa<UnrankedTensorType>()) {
+    result_ty = UnrankedTensorType::get(element_ty);
+  } else {
+    result_ty = element_ty;
+  }
+
+  build(builder, state, result_ty, lhs, rhs);
+}
+
+OpFoldResult ComplexOp::fold(ArrayRef<Attribute> operands) {
+  auto real_op =
+      dyn_cast_or_null<xla_hlo::RealOp>(getOperand(0).getDefiningOp());
+  auto imag_op =
+      dyn_cast_or_null<xla_hlo::ImagOp>(getOperand(1).getDefiningOp());
+  if (real_op && imag_op && real_op.getOperand() == imag_op.getOperand()) {
+    return real_op.getOperand();
+  }
+
+  return {};
+}
+
+namespace {
+Type CreateRealType(Type type) {
+  auto element_ty = getElementTypeOrSelf(type);
+  if (auto complex_ty = element_ty.dyn_cast<ComplexType>()) {
+    element_ty = complex_ty.getElementType();
+  }
+
+  if (auto ranked_type = type.dyn_cast<RankedTensorType>()) {
+    return RankedTensorType::get(ranked_type.getShape(), element_ty);
+  } else if (type.dyn_cast<UnrankedTensorType>()) {
+    return UnrankedTensorType::get(element_ty);
+  }
+
+  return element_ty;
+}
+}  // namespace
+
+void ImagOp::build(Builder* builder, OperationState& state, Value val) {
+  build(builder, state, CreateRealType(val.getType()), val);
+}
+
+OpFoldResult ImagOp::fold(ArrayRef<Attribute> operands) {
+  if (auto complex_op =
+          dyn_cast_or_null<xla_hlo::ComplexOp>(getOperand().getDefiningOp())) {
+    return complex_op.getOperand(1);
+  }
+
+  return {};
+}
+
+void RealOp::build(Builder* builder, OperationState& state, Value val) {
+  build(builder, state, CreateRealType(val.getType()), val);
+}
+
+OpFoldResult RealOp::fold(ArrayRef<Attribute> operands) {
+  if (auto complex_op =
+          dyn_cast_or_null<xla_hlo::ComplexOp>(getOperand().getDefiningOp())) {
+    return complex_op.getOperand(0);
+  }
+
+  return {};
+}
+
+//===----------------------------------------------------------------------===//
 // ConcatenateOp
 //===----------------------------------------------------------------------===//
 
@@ -442,16 +530,16 @@ OpFoldResult ConcatenateOp::fold(ArrayRef<Attribute> operands) {
 }
 
 static LogicalResult Verify(ConcatenateOp op) {
-  auto firstType = op.getOperand(0)->getType().cast<RankedTensorType>();
+  auto firstType = op.getOperand(0).getType().cast<RankedTensorType>();
 
   auto firstShape = firstType.getShape();
   int numOperands = op.getNumOperands();
   for (int i = 1; i < numOperands; i++) {
-    auto secondType = op.getOperand(i)->getType().cast<RankedTensorType>();
+    auto secondType = op.getOperand(i).getType().cast<RankedTensorType>();
 
     if (firstType.getRank() != secondType.getRank()) {
       return op.emitOpError(
-          llvm::formatv("operands (0) and ({0}) do not match rank.", i));
+          llvm::formatv("operands (0) and ({0}) do not match rank", i));
     }
 
     auto secondShape = secondType.getShape();
@@ -459,7 +547,7 @@ static LogicalResult Verify(ConcatenateOp op) {
       if (firstShape[d] != secondShape[d] && d != op.dimension()) {
         return op.emitOpError(llvm::formatv(
             "operands (0) and ({0}) non-concat dimensions do not match "
-            "({1}) != ({2}).",
+            "({1}) != ({2})",
             i, llvm::make_range(firstShape.begin(), firstShape.end()),
             llvm::make_range(secondShape.begin(), secondShape.end())));
       }
@@ -469,22 +557,31 @@ static LogicalResult Verify(ConcatenateOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// DynamicSliceOp
+//===----------------------------------------------------------------------===//
+
+void DynamicSliceOp::getCanonicalizationPatterns(
+    OwningRewritePatternList& results, MLIRContext* context) {
+  results.insert<DynamicSliceToSlice>(context);
+}
+
+//===----------------------------------------------------------------------===//
 // ReshapeOp
 //===----------------------------------------------------------------------===//
 
 OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
-  if (getOperand()->getType() == getType()) {
+  if (getOperand().getType() == getType()) {
     return getOperand();
   }
 
   if (auto prev_op =
-          dyn_cast_or_null<ReshapeOp>(getOperand()->getDefiningOp())) {
+          dyn_cast_or_null<ReshapeOp>(getOperand().getDefiningOp())) {
     setOperand(prev_op.getOperand());
     return getResult();
   }
 
   if (auto elements = operands.front().dyn_cast_or_null<DenseElementsAttr>()) {
-    return elements.reshape(getResult()->getType().cast<ShapedType>());
+    return elements.reshape(getResult().getType().cast<ShapedType>());
   }
 
   return {};
@@ -504,11 +601,46 @@ OpFoldResult ReverseOp::fold(ArrayRef<Attribute> operands) {
 // ReduceOp
 //===----------------------------------------------------------------------===//
 
+// Returns the result type after reducing operand of the given type across the
+// specified dimensions.
+static TensorType GetReduceResultType(Type operand_ty,
+                                      DenseIntElementsAttr dimensions,
+                                      Builder* builder) {
+  Type element_ty = getElementTypeOrSelf(operand_ty);
+
+  auto ranked_ty = operand_ty.dyn_cast<RankedTensorType>();
+  if (!ranked_ty) return UnrankedTensorType::get(element_ty);
+
+  int64_t rank = ranked_ty.getRank();
+  llvm::SmallVector<bool, 4> dims_mask(rank, false);
+  for (int64_t dim : dimensions.getValues<int64_t>()) dims_mask[dim] = true;
+
+  SmallVector<int64_t, 4> shape;
+  for (int64_t i = 0; i < rank; ++i) {
+    if (!dims_mask[i]) shape.push_back(ranked_ty.getDimSize(i));
+  }
+
+  return RankedTensorType::get(shape, element_ty);
+}
+
+void ReduceOp::build(Builder* builder, OperationState& state,
+                     ValueRange operands, ValueRange init_values,
+                     DenseIntElementsAttr dimensions) {
+  SmallVector<Type, 1> result_ty;
+  result_ty.reserve(operands.size());
+
+  for (Value operand : operands) {
+    result_ty.push_back(
+        GetReduceResultType(operand.getType(), dimensions, builder));
+  }
+  build(builder, state, result_ty, operands, init_values, dimensions);
+}
+
 LogicalResult ReduceOp::fold(ArrayRef<Attribute> operands,
                              SmallVectorImpl<OpFoldResult>& results) {
   // No dimensions to reduce.
   if (dimensions().getNumElements() == 0) {
-    for (Value* input : this->operands()) {
+    for (Value input : this->operands()) {
       results.push_back(input);
     }
     return success();
@@ -521,28 +653,8 @@ LogicalResult ReduceOp::fold(ArrayRef<Attribute> operands,
 //===----------------------------------------------------------------------===//
 
 static LogicalResult Verify(SelectOp op) {
-  auto onTrueType = op.on_true()->getType().cast<RankedTensorType>();
-  auto onFalseType = op.on_false()->getType().cast<RankedTensorType>();
-
-  if (onTrueType != onFalseType) {
-    return op.emitOpError(
-        llvm::formatv("on_true type ({0}) does not match on_false type ({1})",
-                      onTrueType, onFalseType));
-  }
-
-  auto predType = op.pred()->getType().cast<RankedTensorType>();
-  auto predShape = predType.getShape();
-  auto predRank = predType.getRank();
-  auto selectShape = onTrueType.getShape();
-
-  if (predRank != 0 && predShape != selectShape) {
-    return op.emitOpError(llvm::formatv(
-        "pred shape ([{0}]) is not scalar and does not match operand shapes "
-        "([{1}])",
-        llvm::make_range(predShape.begin(), predShape.end()),
-        llvm::make_range(selectShape.begin(), selectShape.end())));
-  }
-
+  // TODO(jpienaar): Update to allow broadcastable and unranked inputs. This
+  // corresponds to the client side HLO.
   return success();
 }
 
@@ -551,8 +663,8 @@ static LogicalResult Verify(SelectOp op) {
 //===----------------------------------------------------------------------===//
 
 static LogicalResult Verify(PadOp op) {
-  auto input_type = op.operand()->getType().cast<RankedTensorType>();
-  auto pad_type = op.padding_value()->getType().cast<RankedTensorType>();
+  auto input_type = op.operand().getType().cast<RankedTensorType>();
+  auto pad_type = op.padding_value().getType().cast<RankedTensorType>();
 
   if (pad_type.getRank() != 0) {
     return op.emitOpError(
@@ -564,35 +676,45 @@ static LogicalResult Verify(PadOp op) {
   const auto& padding_low = op.edge_padding_low();
   if (padding_low.getType().getNumElements() != input_type.getRank()) {
     return op.emitOpError(llvm::formatv(
-        "edge_padding_low length ({0}) must match operand rank ({1}).",
+        "edge_padding_low length ({0}) must match operand rank ({1})",
         padding_low.getType().getNumElements(), input_type.getRank()));
   }
 
   const auto& padding_high = op.edge_padding_high();
   if (padding_high.getType().getNumElements() != input_type.getRank()) {
     return op.emitOpError(llvm::formatv(
-        "edge_padding_high length ({0}) must match operand rank ({1}).",
+        "edge_padding_high length ({0}) must match operand rank ({1})",
         padding_high.getType().getNumElements(), input_type.getRank()));
+  }
+
+  const auto& padding_interior = op.interior_padding();
+  if (padding_interior.getType().getNumElements() != input_type.getRank()) {
+    return op.emitOpError(llvm::formatv(
+        "interior_padding length ({0}) must match operand rank ({1})",
+        padding_interior.getType().getNumElements(), input_type.getRank()));
   }
 
   auto input_shape = input_type.getShape();
   auto output_shape =
-      op.getResult()->getType().cast<RankedTensorType>().getShape();
+      op.getResult().getType().cast<RankedTensorType>().getShape();
   if (input_shape.size() != output_shape.size()) {
     return op.emitOpError(
-        llvm::formatv("Operand rank ({0}) and result rank({0}) should match",
+        llvm::formatv("operand rank ({0}) and result rank({0}) should match",
                       input_shape.size(), output_shape.size()));
   }
 
   for (int i = 0, e = input_shape.size(); i < e; i++) {
-    int expected_output = input_shape[i] +
-                          padding_low.getValue<IntegerAttr>(i).getInt() +
-                          padding_high.getValue<IntegerAttr>(i).getInt();
+    int padding_low_val = padding_low.getValue<IntegerAttr>(i).getInt();
+    int padding_high_val = padding_high.getValue<IntegerAttr>(i).getInt();
+    int padding_interior_val =
+        padding_interior.getValue<IntegerAttr>(i).getInt();
+    int expected_output =
+        input_shape[i] + padding_low_val + padding_high_val +
+        std::max<int64_t>(input_shape[i] - 1, 0LL) * padding_interior_val;
     if (expected_output != output_shape[i]) {
-      return op.emitOpError(
-          llvm::formatv("Expected output shape ({0}) and "
-                        "output shape ({1}) should match.",
-                        expected_output, output_shape[i]));
+      return op.emitOpError(llvm::formatv(
+          "expected output shape's dimension #{0} to be {1} but found {2}", i,
+          expected_output, output_shape[i]));
     }
   }
 
@@ -600,10 +722,93 @@ static LogicalResult Verify(PadOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// BinaryOps
+//===----------------------------------------------------------------------===//
+
+namespace {
+// Gets the resulting type from a broadcast between two types.
+static Type GetBroadcastType(Builder* builder, Type x, Type y,
+                             Type element_type,
+                             DenseIntElementsAttr broadcast_dimensions) {
+  auto x_ranked = x.dyn_cast<RankedTensorType>();
+  auto y_ranked = y.dyn_cast<RankedTensorType>();
+  if (!x_ranked || !y_ranked) {
+    return UnrankedTensorType::get(element_type);
+  }
+
+  auto shape_x = x_ranked.getShape();
+  auto shape_y = y_ranked.getShape();
+
+  if (shape_x.size() == shape_y.size()) {
+    llvm::SmallVector<int64_t, 4> out_shape(shape_x.size());
+    for (int i = 0; i < shape_x.size(); i++) {
+      auto x_val = shape_x[i];
+      auto y_val = shape_y[i];
+      if (x_val == -1 || y_val == -1) {
+        out_shape[i] = -1;
+      } else {
+        out_shape[i] = std::max(x_val, y_val);
+      }
+    }
+    return RankedTensorType::get(out_shape, element_type);
+  }
+
+  // Return unranked tensor for invalid broadcast dimensions.
+  if (!broadcast_dimensions) return UnrankedTensorType::get(element_type);
+
+  auto shape_large = shape_x.size() > shape_y.size() ? shape_x : shape_y;
+  auto shape_small = shape_x.size() <= shape_y.size() ? shape_x : shape_y;
+
+  llvm::SmallVector<int64_t, 4> out_shape(shape_large.begin(),
+                                          shape_large.end());
+
+  // Update according to the broadcast dimensions.
+  for (auto index_pair : llvm::enumerate(broadcast_dimensions.getIntValues())) {
+    auto old_value = out_shape[index_pair.value().getSExtValue()];
+    auto new_value = shape_small[index_pair.index()];
+    if (old_value != -1 && (new_value == -1 || new_value > old_value)) {
+      out_shape[index_pair.value().getSExtValue()] = new_value;
+    }
+  }
+
+  return RankedTensorType::get(out_shape, element_type);
+}
+}  // namespace
+
+#define BINARY_BUILDER(Op)                                                   \
+  void Op::build(Builder* builder, OperationState& result, Value left,       \
+                 Value right, DenseIntElementsAttr broadcast_dimensions) {   \
+    auto type = GetBroadcastType(builder, left.getType().cast<ShapedType>(), \
+                                 right.getType().cast<ShapedType>(),         \
+                                 getElementTypeOrSelf(right.getType()),      \
+                                 broadcast_dimensions);                      \
+    return Op::build(builder, result, type, left, right,                     \
+                     broadcast_dimensions);                                  \
+  }
+
+BINARY_BUILDER(AddOp);
+BINARY_BUILDER(AndOp);
+BINARY_BUILDER(Atan2Op);
+BINARY_BUILDER(DivOp);
+BINARY_BUILDER(MaxOp);
+BINARY_BUILDER(MinOp);
+BINARY_BUILDER(MulOp);
+BINARY_BUILDER(OrOp);
+BINARY_BUILDER(PowOp);
+BINARY_BUILDER(RemOp);
+BINARY_BUILDER(ShiftLeftOp);
+BINARY_BUILDER(ShiftRightArithmeticOp);
+BINARY_BUILDER(ShiftRightLogicalOp);
+BINARY_BUILDER(SubOp);
+BINARY_BUILDER(XorOp);
+
+#undef BINARY_BUILDER
+
+//===----------------------------------------------------------------------===//
 // SliceOp
 //===----------------------------------------------------------------------===//
 
-void SliceOp::build(Builder* builder, OperationState& result, Value* operand,
+void SliceOp::build(Builder* builder, OperationState& result, Value operand,
                     DenseIntElementsAttr start_indices,
                     DenseIntElementsAttr limit_indices,
                     DenseIntElementsAttr strides) {
@@ -624,11 +829,11 @@ static int64_t InferSliceDim(int64_t input_dim, int64_t start, int64_t end,
   return llvm::divideCeil(end - start, stride);
 }
 
-Type SliceOp::InferOutputTypes(Builder* builder, Value* operand,
+Type SliceOp::InferOutputTypes(Builder* builder, Value operand,
                                DenseIntElementsAttr start_indices,
                                DenseIntElementsAttr limit_indices,
                                DenseIntElementsAttr strides) {
-  Type ty = operand->getType();
+  Type ty = operand.getType();
   RankedTensorType ranked_ty = ty.dyn_cast<RankedTensorType>();
   if (!ranked_ty) return ty;
   int64_t rank = ranked_ty.getRank();
@@ -650,7 +855,69 @@ Type SliceOp::InferOutputTypes(Builder* builder, Value* operand,
     shape.push_back(InferSliceDim(ranked_ty.getDimSize(i), start[i], limit[i],
                                   stride_vals[i]));
   }
-  return builder->getTensorType(shape, ranked_ty.getElementType());
+  return RankedTensorType::get(shape, ranked_ty.getElementType());
+}
+
+//===----------------------------------------------------------------------===//
+// SortOp
+//===----------------------------------------------------------------------===//
+
+void SortOp::build(Builder* builder, OperationState& state, ValueRange operands,
+                   int64_t dimension, bool is_stable) {
+  state.addOperands(operands);
+  state.addAttribute("dimension", builder->getI64IntegerAttr(dimension));
+  state.addAttribute("is_stable", builder->getBoolAttr(dimension));
+
+  SmallVector<Type, 2> element_types;
+  element_types.reserve(operands.size());
+  for (Value operand : operands) element_types.push_back(operand.getType());
+  state.addTypes(builder->getTupleType(element_types));
+
+  state.addRegion();
+}
+
+static LogicalResult Verify(SortOp op) {
+  Operation::operand_range operands = op.operands();
+  if (operands.empty()) return op.emitOpError("requires at least one input");
+
+  // TODO(antiagainst): verify partionally dynamic shapes
+  if (llvm::all_of(operands, [](Value operand) {
+        return operand.getType().cast<ShapedType>().hasRank();
+      })) {
+    ArrayRef<int64_t> input_shape =
+        (*operands.begin()).getType().cast<ShapedType>().getShape();
+
+    if (llvm::any_of(llvm::drop_begin(operands, 1), [&](Value operand) {
+          return operand.getType().cast<ShapedType>().getShape() != input_shape;
+        }))
+      return op.emitOpError("requires all inputs to have the same dimensions");
+
+    if (op.dimension().getSExtValue() >= input_shape.size())
+      return op.emitOpError(
+          "dimension attribute value must be less than input rank");
+  }
+
+  Block& block = op.comparator().front();
+  size_t num_operands = op.getOperation()->getNumOperands();
+  if (block.getNumArguments() != 2 * num_operands)
+    return op.emitOpError("comparator block should have ")
+           << 2 * num_operands << " arguments";
+
+  for (auto indexed_operand : llvm::enumerate(operands)) {
+    int index = indexed_operand.index();
+    Type element_type =
+        indexed_operand.value().getType().cast<ShapedType>().getElementType();
+    Type tensor_type = RankedTensorType::get({}, element_type);
+    for (int i : {2 * index, 2 * index + 1}) {
+      Type arg_type = block.getArgument(i).getType();
+      if (arg_type != tensor_type)
+        return op.emitOpError("comparator block argument #")
+               << i << " should be of type " << tensor_type << " but got "
+               << arg_type;
+    }
+  }
+
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -667,75 +934,166 @@ OpFoldResult TransposeOp::fold(ArrayRef<Attribute> operands) {
 }
 
 static LogicalResult Verify(TransposeOp op) {
+  // permutation is an attribute of the op so it has static shape.
   auto permutationType = op.permutation().getType();
   auto permutationRank = permutationType.getRank();
   if (permutationRank != 1) {
     return op.emitOpError(llvm::formatv(
         "permutation has rank {0} instead of rank 1", permutationRank));
   }
-
-  auto operandType = op.operand()->getType().cast<RankedTensorType>();
-  auto operandRank = operandType.getRank();
   auto permutationSize = permutationType.getNumElements();
-  if (permutationSize != operandRank) {
-    return op.emitOpError(llvm::formatv(
-        "permutation size ({0}) does not match operand rank ({1})",
-        permutationSize, operandRank));
+
+  auto operandType = op.operand().getType().dyn_cast<RankedTensorType>();
+  if (operandType) {
+    auto operandRank = operandType.getRank();
+    if (operandRank != permutationSize) {
+      return op.emitOpError(llvm::formatv(
+          "operand rank ({0}) does not match permutation size ({1})",
+          operandRank, permutationSize));
+    }
   }
 
-  auto resultType = op.getResult()->getType().cast<RankedTensorType>();
-  auto resultRank = resultType.getRank();
-  if (resultRank != operandRank) {
-    return op.emitOpError(
-        llvm::formatv("result rank ({0}) does not match operand rank ({1})",
-                      resultRank, operandRank));
+  auto resultType = op.getResult().getType().dyn_cast<RankedTensorType>();
+  if (resultType) {
+    auto resultRank = resultType.getRank();
+    if (resultRank != permutationSize) {
+      return op.emitOpError(llvm::formatv(
+          "result rank ({0}) does not match permutation size ({1})", resultRank,
+          permutationSize));
+    }
   }
 
-  auto resultShape = resultType.getShape();
+  if (!resultType || !operandType) return success();
 
-  auto expectedShape = SmallVector<int64_t, 10>(operandRank);
+  auto operandRank = operandType.getRank();
+  SmallVector<int64_t, 4> expectedShape(operandRank);
   for (int i = 0; i != operandRank; ++i) {
     auto permutedDim = op.permutation().getValue<IntegerAttr>(i).getInt();
     expectedShape[i] = operandType.getDimSize(permutedDim);
   }
 
-  if (resultShape != llvm::makeArrayRef(expectedShape)) {
+  auto expectedType =
+      RankedTensorType::get(expectedShape, resultType.getElementType());
+  if (failed(verifyCompatibleShape(resultType, expectedType))) {
     return op.emitOpError(llvm::formatv(
-        "result shape is [{0}"
-        "] instead of [{1}"
-        "]",
-        llvm::make_range(resultShape.begin(), resultShape.end()),
-        llvm::make_range(expectedShape.begin(), expectedShape.end())));
+        "result type {0} is incompatible with the expected type {1}",
+        resultType, expectedType));
   }
 
   return success();
 }
 
 //===----------------------------------------------------------------------===//
+// GetTupleElementOp
+//===----------------------------------------------------------------------===//
+
+void GetTupleElementOp::build(Builder* builder, OperationState& result,
+                              Value tuple, int32_t index) {
+  if (auto tuple_type = tuple.getType().dyn_cast<TupleType>()) {
+    auto element_type = tuple_type.getType(index);
+    build(builder, result, element_type, tuple,
+          builder->getI32IntegerAttr(index));
+    return;
+  }
+
+  build(builder, result, tuple.getType(), tuple,
+        builder->getI32IntegerAttr(index));
+}
+
+//===----------------------------------------------------------------------===//
+// TupleOp
+//===----------------------------------------------------------------------===//
+
+void TupleOp::build(Builder* builder, OperationState& result,
+                    ValueRange values) {
+  SmallVector<Type, 4> types;
+  types.reserve(values.size());
+  for (auto val : values) {
+    types.push_back(val.getType());
+  }
+
+  build(builder, result, builder->getTupleType(types), values);
+}
+
+//===----------------------------------------------------------------------===//
+// UnaryEinsumOp
+//===----------------------------------------------------------------------===//
+
+void UnaryEinsumOp::getCanonicalizationPatterns(
+    OwningRewritePatternList& results, MLIRContext* context) {
+  results.insert<UnaryEinsumToEinsum>(context);
+}
+
+//===----------------------------------------------------------------------===//
 // CompareOp
 //===----------------------------------------------------------------------===//
 
-void CompareOp::build(Builder* builder, OperationState& result, Value* lhs,
-                      Value* rhs, DenseIntElementsAttr broadcast_dimensions,
+void CompareOp::build(Builder* builder, OperationState& result, Value lhs,
+                      Value rhs, DenseIntElementsAttr broadcast_dimensions,
                       StringAttr comparison_direction) {
-  build(builder, result,
-        InferOutputTypes(builder, lhs, rhs, broadcast_dimensions,
-                         comparison_direction),
-        lhs, rhs, broadcast_dimensions, comparison_direction);
-}
-
-Type CompareOp::InferOutputTypes(Builder* builder, Value* lhs, Value* rhs,
-                                 DenseIntElementsAttr broadcast_dimensions,
-                                 StringAttr comparison_direction) {
-  if (!lhs->getType().isa<ShapedType>() || !rhs->getType().isa<ShapedType>())
-    return builder->getTensorType(builder->getI1Type());
-  // TODO(parkers): When binary ops support broadcasting shape inference, reuse
-  // that logic.
-  auto lhs_type = lhs->getType().cast<ShapedType>();
-  auto rhs_type = rhs->getType().cast<ShapedType>();
-  if (lhs_type != rhs_type) return builder->getTensorType(builder->getI1Type());
-  return builder->getTensorType(lhs_type.getShape(), builder->getI1Type());
+  auto new_type = GetBroadcastType(builder, lhs.getType(), rhs.getType(),
+                                   builder->getI1Type(), broadcast_dimensions);
+  build(builder, result, new_type, lhs, rhs, broadcast_dimensions,
+        comparison_direction);
 }
 
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.cc.inc"
+
+//===----------------------------------------------------------------------===//
+// xla_hlo Dialect Interfaces
+//===----------------------------------------------------------------------===//
+
+namespace {
+struct HLOInlinerInterface : public DialectInlinerInterface {
+  using DialectInlinerInterface::DialectInlinerInterface;
+  // We don't have any special restrictions on what can be inlined into
+  // destination regions (e.g. while/conditional bodies). Always allow it.
+  bool isLegalToInline(Region* dest, Region* src,
+                       BlockAndValueMapping& valueMapping) const final {
+    return true;
+  }
+  // Operations in xla_hlo dialect are always legal to inline since they are
+  // pure.
+  bool isLegalToInline(Operation*, Region*, BlockAndValueMapping&) const final {
+    return true;
+  }
+};
+}  // end anonymous namespace
+
+//===----------------------------------------------------------------------===//
+// xla_hlo Dialect Constructor
+//===----------------------------------------------------------------------===//
+
+XlaHloDialect::XlaHloDialect(MLIRContext* context)
+    : Dialect(getDialectNamespace(), context) {
+  addOperations<
+#define GET_OP_LIST
+#include "tensorflow/compiler/mlir/xla/ir/hlo_ops.cc.inc"
+      >();
+  addInterfaces<HLOInlinerInterface>();
+  addTypes<TokenType>();
+  // Support unknown operations because not all XLA operations are registered.
+  // allowUnknownOperations();
+}
+
+Type XlaHloDialect::parseType(DialectAsmParser& parser) const {
+  StringRef data_type;
+  if (parser.parseKeyword(&data_type)) return Type();
+
+  if (data_type == "token") return TokenType::get(getContext());
+  parser.emitError(parser.getNameLoc())
+      << "unknown xla_hlo type: " << data_type;
+  return nullptr;
+}
+
+void XlaHloDialect::printType(Type type, DialectAsmPrinter& os) const {
+  if (type.isa<TokenType>()) {
+    os << "token";
+    return;
+  }
+  os << "<unknown xla_hlo type>";
+}
+
+}  // namespace xla_hlo
+}  // namespace mlir

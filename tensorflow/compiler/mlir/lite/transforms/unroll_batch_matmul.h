@@ -17,9 +17,9 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_LITE_TRANSFORMS_UNROLL_BATCH_MATMUL_H_
 
 #include "llvm/ADT/ArrayRef.h"
-#include "mlir/IR/Location.h"  // TF:local_config_mlir
-#include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
-#include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
+#include "mlir/IR/Location.h"  // TF:llvm-project
+#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
+#include "mlir/IR/TypeUtilities.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/core/util/matmul_bcast.h"
 
@@ -33,21 +33,20 @@ template <typename BatchMatMulOpType>
 class ConvertTFBatchMatMulOp : public OpRewritePattern<BatchMatMulOpType> {
   using OpRewritePattern<BatchMatMulOpType>::OpRewritePattern;
 
-  static TF::ReshapeOp createReshapeOp(Value* value, ArrayRef<int64_t> shape,
-                                       Type elementType, Location loc,
+  static TF::ReshapeOp createReshapeOp(Value value, ArrayRef<int64_t> shape,
+                                       Type element_type, Location loc,
                                        PatternRewriter& rewriter);
 
-  static std::vector<Value*> sliceInput(Value* value, int batch_size,
-                                        Location loc,
-                                        PatternRewriter& rewriter);
+  static std::vector<Value> sliceInput(Value value, int batch_size,
+                                       Location loc, PatternRewriter& rewriter);
 
-  static TF::TransposeOp createTransposeOp(Value* value, Location loc,
+  static TF::TransposeOp createTransposeOp(Value value, Location loc,
                                            PatternRewriter& rewriter);
 
-  static TF::PackOp createMatMulOps(const std::vector<Value*>& sliced_lhs,
-                                    const std::vector<Value*>& sliced_rhs,
+  static TF::PackOp createMatMulOps(const std::vector<Value>& sliced_lhs,
+                                    const std::vector<Value>& sliced_rhs,
                                     const tensorflow::MatMulBCast& bcast,
-                                    int rows, int cols, Type elementType,
+                                    int rows, int cols, Type element_type,
                                     Location loc, PatternRewriter& rewriter);
 
   PatternMatchResult matchAndRewrite(BatchMatMulOpType op,

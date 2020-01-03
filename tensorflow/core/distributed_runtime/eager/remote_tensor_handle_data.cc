@@ -34,7 +34,7 @@ void DestroyRemoteTensorHandle(EagerContext* ctx, const string& remote_task,
     return;
   }
 
-  eager::EagerClient* eager_client;
+  core::RefCountPtr<eager::EagerClient> eager_client;
   Status status = ctx->GetClient(remote_task, &eager_client);
   if (!status.ok()) {
     LOG_EVERY_N_SEC(INFO, 60)
@@ -52,14 +52,17 @@ void DestroyRemoteTensorHandle(EagerContext* ctx, const string& remote_task,
 
   VLOG(3) << "Sending request to delete " << request->DebugString();
   std::unique_ptr<EagerNode> node(
-      absl::make_unique<eager::DestroyTensorHandleNode>(std::move(request), ctx,
-                                                        remote_task, ready));
+      absl::make_unique<eager::DestroyTensorHandleNode>(
+          std::move(request), eager_client.get(), ready));
   auto& executor = ctx->Executor();
   if (executor.Async()) {
     Status status = executor.AddOrExecute(std::move(node));
     if (!status.ok()) {
-      LOG_EVERY_N_SEC(ERROR, 60) << "Unable to destroy remote tensor handles: "
-                                 << status.error_message();
+      LOG_EVERY_N_SEC(WARNING, 60)
+          << "Unable to destroy remote tensor handles. If you are "
+             "running a tf.function, it usually indicates some op in "
+             "the graph gets an error: "
+          << status.error_message();
     }
   } else {
     // This thread may still hold tensorflow::StreamingRPCState::mu_. We need
@@ -69,8 +72,10 @@ void DestroyRemoteTensorHandle(EagerContext* ctx, const string& remote_task,
       Status status =
           ctx->Executor().AddOrExecute(absl::WrapUnique(released_node));
       if (!status.ok()) {
-        LOG_EVERY_N_SEC(ERROR, 60)
-            << "Unable to destroy remote tensor handles: "
+        LOG_EVERY_N_SEC(WARNING, 60)
+            << "Unable to destroy remote tensor handles. If you are "
+               "running a tf.function, it usually indicates some op in "
+               "the graph gets an error: "
             << status.error_message();
       }
     });

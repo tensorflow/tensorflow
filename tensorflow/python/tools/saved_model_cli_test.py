@@ -148,7 +148,7 @@ signature_def['serving_default']:
     self.assertMultiLineEqual(output, exp_out)
     self.assertEqual(err.getvalue().strip(), '')
 
-  def testShowAllWithConcreteFunctions(self):
+  def testShowAllWithFunctions(self):
 
     class DummyModel(tracking.AutoTrackable):
       """Model with callable polymorphic functions specified."""
@@ -211,7 +211,7 @@ Defined Functions:
     Option #1
       Callable with:
         Argument #1
-          y: TensorSpec(shape=(), dtype=tf.int32, name=u'y')
+          y: TensorSpec(shape=(), dtype=tf.int32, name='y')
         Argument #2
           DType: int
           Value: 7
@@ -220,9 +220,9 @@ Defined Functions:
     Option #1
       Callable with:
         Argument #1
-          a: TensorSpec(shape=(), dtype=tf.int32, name=u'a')
+          a: TensorSpec(shape=(), dtype=tf.int32, name='a')
         Argument #2
-          b: TensorSpec(shape=(), dtype=tf.int32, name=u'b')
+          b: TensorSpec(shape=(), dtype=tf.int32, name='b')
         Argument #3
           DType: bool
           Value: True
@@ -231,7 +231,74 @@ Defined Functions:
     Option #1
       Callable with:
         Argument #1
-          x: TensorSpec(shape=(2, 2), dtype=tf.float32, name=u'x')
+          x: TensorSpec(shape=(2, 2), dtype=tf.float32, name='x')
+""".strip()  # pylint: enable=line-too-long
+    self.maxDiff = None  # Produce a useful error msg if the comparison fails
+    self.assertMultiLineEqual(output, exp_out)
+    self.assertEqual(err.getvalue().strip(), '')
+
+  def testShowAllWithPureConcreteFunction(self):
+
+    class DummyModel(tracking.AutoTrackable):
+      """Model with a callable concrete function."""
+
+      def __init__(self):
+        function = def_function.function(
+            self.multiply,
+            input_signature=[
+                tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32),
+                tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32)
+            ])
+        self.pure_concrete_function = function.get_concrete_function()
+        super(DummyModel, self).__init__()
+
+      def multiply(self, a, b):
+        return a * b
+
+    saved_model_dir = os.path.join(test.get_temp_dir(), 'dummy_model')
+    dummy_model = DummyModel()
+    save.save(dummy_model, saved_model_dir)
+    self.parser = saved_model_cli.create_parser()
+    args = self.parser.parse_args(['show', '--dir', saved_model_dir, '--all'])
+    with captured_output() as (out, err):
+      saved_model_cli.show(args)
+    output = out.getvalue().strip()
+    exp_out = """MetaGraphDef with tag-set: 'serve' contains the following SignatureDefs:
+
+signature_def['__saved_model_init_op']:
+  The given SavedModel SignatureDef contains the following input(s):
+  The given SavedModel SignatureDef contains the following output(s):
+    outputs['__saved_model_init_op'] tensor_info:
+        dtype: DT_INVALID
+        shape: unknown_rank
+        name: NoOp
+  Method name is: 
+
+signature_def['serving_default']:
+  The given SavedModel SignatureDef contains the following input(s):
+    inputs['a'] tensor_info:
+        dtype: DT_FLOAT
+        shape: ()
+        name: serving_default_a:0
+    inputs['b'] tensor_info:
+        dtype: DT_FLOAT
+        shape: ()
+        name: serving_default_b:0
+  The given SavedModel SignatureDef contains the following output(s):
+    outputs['output_0'] tensor_info:
+        dtype: DT_FLOAT
+        shape: ()
+        name: PartitionedCall:0
+  Method name is: tensorflow/serving/predict
+
+Defined Functions:
+  Function Name: 'pure_concrete_function'
+    Option #1
+      Callable with:
+        Argument #1
+          a: TensorSpec(shape=(), dtype=tf.float32, name='a')
+        Argument #2
+          b: TensorSpec(shape=(), dtype=tf.float32, name='b')
 """.strip()  # pylint: enable=line-too-long
     self.maxDiff = None  # Produce a useful error msg if the comparison fails
     self.assertMultiLineEqual(output, exp_out)
@@ -244,7 +311,7 @@ Defined Functions:
     with captured_output() as (out, err):
       saved_model_cli.show(args)
     output = out.getvalue().strip()
-    exp_out = 'The given SavedModel contains the following tag-sets:\nserve'
+    exp_out = 'The given SavedModel contains the following tag-sets:\n\'serve\''
     self.assertMultiLineEqual(output, exp_out)
     self.assertEqual(err.getvalue().strip(), '')
 

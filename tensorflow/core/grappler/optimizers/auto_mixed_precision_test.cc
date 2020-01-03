@@ -1020,7 +1020,7 @@ TEST_F(AutoMixedPrecisionTest, Log1pOp) {
 
 TEST_F(AutoMixedPrecisionTest, LogSoftmaxOp) {
   TestSimpleUnaryGrayOp(
-      -8, 8, -1, 5.0e-3,
+      -8, 8, -1, 1.0e-2,
       [](const tensorflow::Scope& scope, Output input) -> Output {
         return ops::LogSoftmax(scope, input);
       });
@@ -1044,7 +1044,7 @@ TEST_F(AutoMixedPrecisionTest, SigmoidOp) {
 
 TEST_F(AutoMixedPrecisionTest, SoftmaxOp) {
   TestSimpleUnaryGrayOp(
-      -8, 8, 1.0e-3, -1,
+      -8, 8, 2.0e-3, -1,
       [](const tensorflow::Scope& scope, Output input) -> Output {
         return ops::Softmax(scope, input);
       });

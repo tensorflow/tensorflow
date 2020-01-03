@@ -117,16 +117,16 @@ TEST_F(LiteralUtilTest, LiteralScalarToString) {
   auto c64_lit = LiteralUtil::CreateR0<complex64>({3.14f, 2.78f});
   EXPECT_EQ("c64[] (3.14, 2.78)", c64_lit.ToString());
 
-  auto c128_lit = LiteralUtil::CreateR0<complex128>({3.14f, 2.78f});
+  auto c128_lit = LiteralUtil::CreateR0<complex128>({3.14, 2.78});
   EXPECT_EQ("c128[] (3.14, 2.78)", c128_lit.ToString());
 
   auto bf16_lit = LiteralUtil::CreateR0<bfloat16>(static_cast<bfloat16>(0.5f));
   EXPECT_EQ("bf16[] 0.5", bf16_lit.ToString());
 
-  // 3.14 will be rounded to 3.14062 in bfloat16 format.
+  // 3.14 will be rounded to 3.140625 in bfloat16 format.
   auto bf16_lit_truncated =
       LiteralUtil::CreateR0<bfloat16>(static_cast<bfloat16>(3.14f));
-  ASSERT_EQ("bf16[] 3.14062", bf16_lit_truncated.ToString());
+  ASSERT_EQ("bf16[] 3.141", bf16_lit_truncated.ToString());
 
   auto bf16_lit_truncated2 =
       LiteralUtil::CreateR0<bfloat16>(static_cast<bfloat16>(9.001f));
@@ -250,42 +250,6 @@ TEST_F(LiteralUtilTest, CreateR3FromArray3d) {
 }
 })";
   EXPECT_EQ(expected, result);
-}
-
-TEST_F(LiteralUtilTest, CreateSparse) {
-  std::vector<int64> dimensions = {8, 8, 8};
-  Array2D<int64> indices = {
-      {3, 4, 5},
-      {1, 2, 3},
-      {2, 3, 4},
-      {3, 5, 6},
-  };
-  std::vector<int64> values = {7, 8, 9, 10};
-  auto literal = LiteralUtil::CreateSparse<int64>(
-      dimensions, SparseIndexArray(indices.n1() + 3, indices), values);
-
-  Array2D<int64> expected_indices = {
-      {1, 2, 3},
-      {2, 3, 4},
-      {3, 4, 5},
-      {3, 5, 6},
-  };
-  std::vector<int64> expected_values = {8, 9, 7, 10};
-
-  EXPECT_EQ(literal.sparse_indices()->data(),
-            absl::Span<const int64>(expected_indices.data(),
-                                    expected_indices.num_elements()));
-  EXPECT_EQ(literal.data<int64>(), absl::Span<const int64>(expected_values));
-
-  // Serialize then deserialize and verify the resulting literal.
-  TF_ASSERT_OK_AND_ASSIGN(Literal literal_from_proto,
-                          Literal::CreateFromProto(literal.ToProto()));
-
-  EXPECT_EQ(literal_from_proto.sparse_indices()->data(),
-            absl::Span<const int64>(expected_indices.data(),
-                                    expected_indices.num_elements()));
-  EXPECT_EQ(literal_from_proto.data<int64>(),
-            absl::Span<const int64>(expected_values));
 }
 
 TEST_F(LiteralUtilTest, LiteralR4F32ProjectedStringifies) {
@@ -1134,7 +1098,7 @@ TEST_F(LiteralUtilTest, CopyFromDifferentShapes) {
 TEST_F(LiteralUtilTest, F16) {
   // Verify that the internal data views are consistent and that they
   // are in little endian format
-  // TODO - modify if we make the data format machine endianess dependent
+  // TODO - modify if we make the data format machine endianness dependent
   Literal m1 = Literal::CreateFromShape(ShapeUtil::MakeShape(F16, {2, 2}));
   const char* d1 = reinterpret_cast<const char*>(m1.data<half>().data());
   EXPECT_EQ(d1[0], 0);
@@ -1847,6 +1811,30 @@ TEST_F(LiteralUtilTest, InvalidProtoNoValues) {
               HasSubstr("Expected 3 elements in LiteralProto"));
 }
 
+TEST_F(LiteralUtilTest, ValidProtoNoValues) {
+  // Proto contains a shape, but no values.
+  LiteralProto proto;
+  *proto.mutable_shape() = ShapeUtil::MakeShape(F32, {3}).ToProto();
+  Status status =
+      Literal::CreateFromProto(proto, /*prohibit_empty_literal=*/false)
+          .status();
+  EXPECT_TRUE(status.ok());
+}
+
+TEST_F(LiteralUtilTest, ValidProtoWithClearedValues) {
+  auto literal = LiteralUtil::CreateR1<bool>({true, false, true});
+  LiteralProto proto = literal.ToProto();
+  EXPECT_EQ(proto.preds_size(), 3);
+
+  // Clear values.
+  proto.clear_preds();
+  EXPECT_EQ(proto.preds_size(), 0);
+  Status status =
+      Literal::CreateFromProto(proto, /*prohibit_empty_literal=*/false)
+          .status();
+  EXPECT_TRUE(status.ok());
+}
+
 TEST_F(LiteralUtilTest, InvalidProtoNoShape) {
   // Proto contains values, but no shape.
   LiteralProto proto;
@@ -1954,43 +1942,6 @@ TEST_F(LiteralUtilTest, InvalidProtoTooManyTupleElements) {
   EXPECT_THAT(status.error_message(), HasSubstr("Expected 2 tuple elements"));
 }
 
-TEST_F(LiteralUtilTest, SortSparseElements) {
-  auto literal = LiteralUtil::CreateSparse<float>({10, 10, 10},
-                                                  SparseIndexArray(10, 3), {});
-  literal.AppendSparseElement<float>({2, 3, 4}, 2.0);
-  literal.AppendSparseElement<float>({3, 4, 5}, 3.0);
-  literal.AppendSparseElement<float>({1, 2, 3}, 1.0);
-  literal.SortSparseElements();
-  EXPECT_EQ(literal.ToString(),
-            "f32[10,10,10]{[1, 2, 3]: 1, [2, 3, 4]: 2, [3, 4, 5]: 3}");
-}
-
-TEST_F(LiteralUtilTest, GetSparseElementAsString) {
-  std::vector<int64> dimensions = {10, 10, 10};
-  SparseIndexArray indices(10, {{1, 2, 3}, {2, 3, 4}, {3, 4, 5}});
-
-  EXPECT_EQ(
-      LiteralUtil::CreateSparse<bool>(dimensions, indices, {true, false, true})
-          .GetSparseElementAsString(1),
-      "false");
-  EXPECT_EQ(LiteralUtil::CreateSparse<int64>(dimensions, indices, {1, 2, 3})
-                .GetSparseElementAsString(1),
-            absl::StrCat(int64{2}));
-  EXPECT_EQ(
-      LiteralUtil::CreateSparse<double>(dimensions, indices, {1.0, 2.0, 3.0})
-          .GetSparseElementAsString(1),
-      absl::StrCat(double{2.0}));
-  EXPECT_EQ(LiteralUtil::CreateSparse<half>(dimensions, indices,
-                                            {half{1.0}, half{2.0}, half{3.0}})
-                .GetSparseElementAsString(1),
-            absl::StrCat(static_cast<float>(half{2.0})));
-  EXPECT_EQ(LiteralUtil::CreateSparse<complex64>(
-                dimensions, indices,
-                std::vector<complex64>{{1.0, 2.0}, {3.0, 4.0}, {5.0, 6.0}})
-                .GetSparseElementAsString(1),
-            absl::StrCat("(", float{3.0}, ", ", float{4.0}, ")"));
-}
-
 TEST_F(LiteralUtilTest, BroadcastVectorToMatrix0) {
   Literal literal = LiteralUtil::CreateR1<int64>({1, 2});
   TF_ASSERT_OK_AND_ASSIGN(
@@ -2035,6 +1986,11 @@ TEST_F(LiteralUtilTest, GetAsComplex128) {
   EXPECT_EQ(*c5.GetAsComplex128({}), other_value);
   Literal c6 = LiteralUtil::CreateR0<int64>(1);
   EXPECT_FALSE(c6.GetAsComplex128({}).has_value());
+}
+
+TEST_F(LiteralUtilTest, SliceOnBool) {
+  Literal c1 = LiteralUtil::CreateR1<bool>({true, true, false});
+  EXPECT_EQ(c1, c1.Slice({0}, {3}));
 }
 
 TEST_F(LiteralUtilTest, IsEqualAt) {

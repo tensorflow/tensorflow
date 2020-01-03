@@ -418,7 +418,7 @@ def _apply_op_helper(op_type_name, name=None, **keywords):  # pylint: disable=in
           observed_types = []
           for value in values:
             try:
-              converted_value = ops.internal_convert_to_tensor(
+              converted_value = ops.convert_to_tensor(
                   value, as_ref=input_arg.is_ref)
               observed_types.append(converted_value.dtype.base_dtype.name)
             except (TypeError, ValueError):
@@ -460,7 +460,7 @@ def _apply_op_helper(op_type_name, name=None, **keywords):  # pylint: disable=in
           default_dtype = default_type_attr_map[input_arg.type_attr]
 
         try:
-          values = ops.internal_convert_to_tensor(
+          values = ops.convert_to_tensor(
               values,
               name=input_arg.name,
               dtype=dtype,
@@ -478,7 +478,7 @@ def _apply_op_helper(op_type_name, name=None, **keywords):  # pylint: disable=in
         except ValueError:
           # What type does convert_to_tensor think it has?
           try:
-            observed = ops.internal_convert_to_tensor(
+            observed = ops.convert_to_tensor(
                 values, as_ref=input_arg.is_ref).dtype.name
           except ValueError as err:
             raise ValueError(

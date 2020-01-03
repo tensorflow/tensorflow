@@ -28,7 +28,6 @@ import numpy as np
 from tensorflow.core.example import example_pb2
 from tensorflow.core.example import feature_pb2
 from tensorflow.python.client import session
-from tensorflow.python.compat import compat
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
@@ -111,6 +110,14 @@ class PForTest(PForTestCase):
         compute, array_ops.ones((10, 5, 3)))
     self.run_and_assert_equal(result, array_ops.ones((10, 1, 3)))
 
+  def test_vectorized_map_with_dynamic_shape(self):
+    def compute(x):
+      return math_ops.reduce_mean(x, axis=0, keepdims=True)
+    x = array_ops.placeholder_with_default(
+        array_ops.ones((10, 5, 3)), shape=None)
+    result = pfor_control_flow_ops.vectorized_map(compute, x)
+    self.run_and_assert_equal(result, array_ops.ones((10, 1, 3)))
+
   def test_vectorized_map_example_1(self):
     def outer_product(a):
       return math_ops.tensordot(a, a, 0)
@@ -142,6 +149,15 @@ class PForTest(PForTestCase):
                         (batch_size, num_features, 1))
     self.assertAllEqual(per_example_gradients[1].shape, (batch_size, 1))
 
+  def test_disable_tf_function(self):
+    def_function.run_functions_eagerly(True)
+    # vectorized_map should ignore disabling tf.functions
+    self.assertTrue(def_function.functions_run_eagerly())
+    self.assertAllEqual([0, 1, 4, 9],
+                        pfor_control_flow_ops.vectorized_map(
+                            lambda x: x * x, math_ops.range(4)))
+    self.assertTrue(def_function.functions_run_eagerly())
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class IndexedSlicesTest(PForTestCase):
@@ -172,6 +188,25 @@ class IndexedSlicesTest(PForTestCase):
 
 @test_util.run_all_in_graph_and_eager_modes
 class ReductionTest(PForTestCase):
+
+  def test_reduce(self):
+
+    def reduce_fn(p, q):
+      return math_ops.reduce_mean(p + q, axis=0)
+
+    x = random_ops.random_uniform([4, 3, 2])
+    y = random_ops.random_uniform([4, 3, 2])
+
+    def loop_fn(i, pfor_config):
+      x_i = array_ops.gather(x, i)
+      y_i = array_ops.gather(y, i)
+      reduced = pfor_config.reduce(reduce_fn, x_i, y_i)
+      return reduced + x_i
+
+    output = pfor_control_flow_ops.pfor(loop_fn, 4)
+    ans = reduce_fn(x, y) + x
+    output_val, ans_val = self.evaluate([output, ans])
+    self.assertAllClose(ans_val, output_val)
 
   def test_reduce_concat(self):
     x = random_ops.random_uniform([8, 3])
@@ -288,7 +323,7 @@ class BitwiseTest(PForTestCase):
         y1 = array_ops.gather(y, i)
         outputs = [op(x, y), op(x1, y), op(x, y1), op(x1, y1), op(x1, x1)]
         del output_dtypes[:]
-        output_dtypes.extend([t.dtype for t in outputs])
+        output_dtypes.extend(t.dtype for t in outputs)
         return outputs
       # pylint: enable=cell-var-from-loop
       self._test_loop_fn(loop_fn, 3)
@@ -408,55 +443,54 @@ class NNTest(PForTestCase):
     self._test_loop_fn(loop_fn, 3)
 
   def test_fused_batch_norm(self):
-    with compat.forward_compatibility_horizon(2019, 6, 7):
-      data_formats = ["NHWC"]
-      if test.is_gpu_available():
-        data_formats.append("NCHW")
-      for is_training in (True, False):
-        for data_format in data_formats:
-          with backprop.GradientTape(persistent=True) as g:
-            if data_format == "NCHW":
-              x = random_ops.random_uniform([3, 1, 2, 5, 5])
-            else:
-              x = random_ops.random_uniform([3, 1, 5, 5, 2])
-            g.watch(x)
-            scale = random_ops.random_uniform([2])
-            g.watch(scale)
-            offset = random_ops.random_uniform([2])
-            g.watch(offset)
-            mean = None if is_training else random_ops.random_uniform([2])
-            variance = None if is_training else random_ops.random_uniform([2])
+    data_formats = ["NHWC"]
+    if test.is_gpu_available():
+      data_formats.append("NCHW")
+    for is_training in (True, False):
+      for data_format in data_formats:
+        with backprop.GradientTape(persistent=True) as g:
+          if data_format == "NCHW":
+            x = random_ops.random_uniform([3, 1, 2, 5, 5])
+          else:
+            x = random_ops.random_uniform([3, 1, 5, 5, 2])
+          g.watch(x)
+          scale = random_ops.random_uniform([2])
+          g.watch(scale)
+          offset = random_ops.random_uniform([2])
+          g.watch(offset)
+          mean = None if is_training else random_ops.random_uniform([2])
+          variance = None if is_training else random_ops.random_uniform([2])
 
-          # pylint: disable=cell-var-from-loop
-          def loop_fn(i):
-            with g:
-              x1 = array_ops.gather(x, i)
-              outputs = nn.fused_batch_norm(
-                  x1,
-                  scale,
-                  offset,
-                  mean=mean,
-                  variance=variance,
-                  epsilon=0.01,
-                  data_format=data_format,
-                  is_training=is_training)
-              outputs = list(outputs)
-              # We only test the first value of outputs when is_training is
-              # False. It looks like CPU and GPU have different outputs for
-              # batch_mean and batch_variance for this case.
-              if not is_training:
-                outputs[1] = constant_op.constant(0.)
-                outputs[2] = constant_op.constant(0.)
-              loss = nn.l2_loss(outputs[0])
-            if is_training:
-              gradients = g.gradient(loss, [x1, scale, offset])
-            else:
-              gradients = [constant_op.constant(0.)] * 3
-            return outputs + gradients
+        # pylint: disable=cell-var-from-loop
+        def loop_fn(i):
+          with g:
+            x1 = array_ops.gather(x, i)
+            outputs = nn.fused_batch_norm(
+                x1,
+                scale,
+                offset,
+                mean=mean,
+                variance=variance,
+                epsilon=0.01,
+                data_format=data_format,
+                is_training=is_training)
+            outputs = list(outputs)
+            # We only test the first value of outputs when is_training is
+            # False. It looks like CPU and GPU have different outputs for
+            # batch_mean and batch_variance for this case.
+            if not is_training:
+              outputs[1] = constant_op.constant(0.)
+              outputs[2] = constant_op.constant(0.)
+            loss = nn.l2_loss(outputs[0])
+          if is_training:
+            gradients = g.gradient(loss, [x1, scale, offset])
+          else:
+            gradients = [constant_op.constant(0.)] * 3
+          return outputs + gradients
 
-          # pylint: enable=cell-var-from-loop
+        # pylint: enable=cell-var-from-loop
 
-          self._test_loop_fn(loop_fn, 3)
+        self._test_loop_fn(loop_fn, 3)
 
   def test_log_softmax(self):
     logits = random_ops.random_uniform([3, 2, 4])
@@ -1448,6 +1482,37 @@ class PartitionedCallTest(PForTestCase):
       return out, g.gradient(out, z_i)
 
     self._test_loop_fn(loop_fn, 4)
+
+
+class VariableTest(PForTestCase):
+
+  def test_create_variable_once(self):
+    x = array_ops.ones(shape=(3, 2, 2), dtype=dtypes.float32)
+    y = array_ops.ones(shape=(2, 3), dtype=dtypes.float32)
+    a_var = []
+
+    def f(z):
+      if not a_var:
+        a_var.append(variables.Variable(lambda: y, name="a"))
+      return math_ops.matmul(z, a_var[0] / 16)
+
+    pfor_control_flow_ops.vectorized_map(f, x)
+
+  @test_util.run_v2_only
+  def test_create_variable_repeated(self):
+    x = array_ops.ones(shape=(3, 2, 2), dtype=dtypes.float32)
+    y = array_ops.ones(shape=(2, 3), dtype=dtypes.float32)
+
+    def f(z):
+      a_var = variables.Variable(lambda: y, name="a") / 4
+      return math_ops.matmul(z, a_var / 16)
+
+    # Note that this error is only raised under v2 behavior.
+    with self.assertRaisesRegexp(
+        ValueError,
+        "tf.function-decorated function tried to create variables on non-first"
+    ):
+      pfor_control_flow_ops.vectorized_map(f, x)
 
 
 if __name__ == "__main__":

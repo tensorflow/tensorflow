@@ -63,22 +63,39 @@ std::string GetTransposeCode(
   c += "  temps[1] = (FLT)(0.0f);\n";
   c += "  temps[2] = (FLT)(0.0f);\n";
   c += "  temps[3] = (FLT)(0.0f);\n";
-  c += "  for (int i = 0; i < 4; ++i) {\n";
-  c += "    int dst_channel = Z * 4 + i;\n";
-  c += "    if (dst_channel < dst_channels) {;\n";
-  const std::string bhwc[] = {"B", "Y", "X", "dst_channel"};
-  std::string src_b = op_def.batch_support ? bhwc[attr.perm.b] : "";
-  c += "      int src_x = " + bhwc[attr.perm.w] + ";\n";
-  c += "      int src_y = " + bhwc[attr.perm.h] + ";\n";
-  c += "      int src_c = " + bhwc[attr.perm.c] + ";\n";
-  c += "      int src_z = src_c / 4;\n";
-  c += "      int src_sub_ch = src_c % 4;\n";
-  c += "      FLT4 t =" + src_tensor.Read4D("src_x", "src_y", "src_z", src_b) +
-       ";\n";
-  c += "      FLT t_ar[4] = {t.x, t.y, t.z, t.w};\n";
-  c += "      temps[i] = t_ar[src_sub_ch];\n";
-  c += "    }\n";
-  c += "  }\n";
+  int remap[4];
+  remap[attr.perm.b] = 0;
+  remap[attr.perm.h] = 1;
+  remap[attr.perm.w] = 2;
+  remap[attr.perm.c] = 3;
+  if (attr.perm.c == 3) {  // optimized reading when no channels permutation
+    const std::string bhw[] = {"B", "Y", "X"};
+    std::string src_b = op_def.batch_support ? bhw[remap[0]] : "";
+    c += "  int s_y = " + bhw[remap[1]] + ";\n";
+    c += "  int s_x = " + bhw[remap[2]] + ";\n";
+    c += "  FLT4 t =" + src_tensor.Read4D("s_x", "s_y", "Z", src_b) + ";\n";
+    c += "  temps[0] = t.x;\n";
+    c += "  temps[1] = t.y;\n";
+    c += "  temps[2] = t.z;\n";
+    c += "  temps[3] = t.w;\n";
+  } else {
+    c += "  for (int i = 0; i < 4; ++i) {\n";
+    c += "    int dst_channel = Z * 4 + i;\n";
+    c += "    if (dst_channel < dst_channels) {;\n";
+    const std::string bhwc[] = {"B", "Y", "X", "dst_channel"};
+    std::string src_b = op_def.batch_support ? bhwc[remap[0]] : "";
+    c += "      int s_y = " + bhwc[remap[1]] + ";\n";
+    c += "      int s_x = " + bhwc[remap[2]] + ";\n";
+    c += "      int s_c = " + bhwc[remap[3]] + ";\n";
+    c += "      int s_z = s_c / 4;\n";
+    c += "      int src_sub_ch = s_c % 4;\n";
+    c += "      FLT4 t =" + src_tensor.Read4D("s_x", "s_y", "s_z", src_b) +
+         ";\n";
+    c += "      FLT t_ar[4] = {t.x, t.y, t.z, t.w};\n";
+    c += "      temps[i] = t_ar[src_sub_ch];\n";
+    c += "    }\n";
+    c += "  }\n";
+  }
   c += "  FLT4 result = (FLT4)(temps[0], temps[1], temps[2], temps[3]);\n";
   std::string x_3dcoord = op_def.batch_support ? "X * dst_size.w + B" : "X";
   const LinkingContext context{"result", x_3dcoord, "Y", "Z"};

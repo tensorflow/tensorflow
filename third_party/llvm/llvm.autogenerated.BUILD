@@ -187,6 +187,202 @@ gentbl(
 )
 
 gentbl(
+    name = "aarch64_enums_gen",
+    tbl_outs = [(
+        "-gen-intrinsic-enums -intrinsic-prefix=aarch64",
+        "include/llvm/IR/IntrinsicsAArch64.h",
+    )],
+    tblgen = ":llvm-tblgen",
+    td_file = "include/llvm/IR/Intrinsics.td",
+    td_srcs = glob([
+        "include/llvm/CodeGen/*.td",
+        "include/llvm/IR/Intrinsics*.td",
+    ]),
+)
+
+gentbl(
+    name = "amdgcn_enums_gen",
+    tbl_outs = [(
+        "-gen-intrinsic-enums -intrinsic-prefix=amdgcn",
+        "include/llvm/IR/IntrinsicsAMDGPU.h",
+    )],
+    tblgen = ":llvm-tblgen",
+    td_file = "include/llvm/IR/Intrinsics.td",
+    td_srcs = glob([
+        "include/llvm/CodeGen/*.td",
+        "include/llvm/IR/Intrinsics*.td",
+    ]),
+)
+
+gentbl(
+    name = "arm_enums_gen",
+    tbl_outs = [(
+        "-gen-intrinsic-enums -intrinsic-prefix=arm",
+        "include/llvm/IR/IntrinsicsARM.h",
+    )],
+    tblgen = ":llvm-tblgen",
+    td_file = "include/llvm/IR/Intrinsics.td",
+    td_srcs = glob([
+        "include/llvm/CodeGen/*.td",
+        "include/llvm/IR/Intrinsics*.td",
+    ]),
+)
+
+gentbl(
+    name = "bpf_enums_gen",
+    tbl_outs = [(
+        "-gen-intrinsic-enums -intrinsic-prefix=bpf",
+        "include/llvm/IR/IntrinsicsBPF.h",
+    )],
+    tblgen = ":llvm-tblgen",
+    td_file = "include/llvm/IR/Intrinsics.td",
+    td_srcs = glob([
+        "include/llvm/CodeGen/*.td",
+        "include/llvm/IR/Intrinsics*.td",
+    ]),
+)
+
+gentbl(
+    name = "hexagon_enums_gen",
+    tbl_outs = [(
+        "-gen-intrinsic-enums -intrinsic-prefix=hexagon",
+        "include/llvm/IR/IntrinsicsHexagon.h",
+    )],
+    tblgen = ":llvm-tblgen",
+    td_file = "include/llvm/IR/Intrinsics.td",
+    td_srcs = glob([
+        "include/llvm/CodeGen/*.td",
+        "include/llvm/IR/Intrinsics*.td",
+    ]),
+)
+
+gentbl(
+    name = "mips_enums_gen",
+    tbl_outs = [(
+        "-gen-intrinsic-enums -intrinsic-prefix=mips",
+        "include/llvm/IR/IntrinsicsMips.h",
+    )],
+    tblgen = ":llvm-tblgen",
+    td_file = "include/llvm/IR/Intrinsics.td",
+    td_srcs = glob([
+        "include/llvm/CodeGen/*.td",
+        "include/llvm/IR/Intrinsics*.td",
+    ]),
+)
+
+gentbl(
+    name = "nvvm_enums_gen",
+    tbl_outs = [(
+        "-gen-intrinsic-enums -intrinsic-prefix=nvvm",
+        "include/llvm/IR/IntrinsicsNVPTX.h",
+    )],
+    tblgen = ":llvm-tblgen",
+    td_file = "include/llvm/IR/Intrinsics.td",
+    td_srcs = glob([
+        "include/llvm/CodeGen/*.td",
+        "include/llvm/IR/Intrinsics*.td",
+    ]),
+)
+
+gentbl(
+    name = "ppc_enums_gen",
+    tbl_outs = [(
+        "-gen-intrinsic-enums -intrinsic-prefix=ppc",
+        "include/llvm/IR/IntrinsicsPowerPC.h",
+    )],
+    tblgen = ":llvm-tblgen",
+    td_file = "include/llvm/IR/Intrinsics.td",
+    td_srcs = glob([
+        "include/llvm/CodeGen/*.td",
+        "include/llvm/IR/Intrinsics*.td",
+    ]),
+)
+
+gentbl(
+    name = "r600_enums_gen",
+    tbl_outs = [(
+        "-gen-intrinsic-enums -intrinsic-prefix=r600",
+        "include/llvm/IR/IntrinsicsR600.h",
+    )],
+    tblgen = ":llvm-tblgen",
+    td_file = "include/llvm/IR/Intrinsics.td",
+    td_srcs = glob([
+        "include/llvm/CodeGen/*.td",
+        "include/llvm/IR/Intrinsics*.td",
+    ]),
+)
+
+gentbl(
+    name = "riscv_enums_gen",
+    tbl_outs = [(
+        "-gen-intrinsic-enums -intrinsic-prefix=riscv",
+        "include/llvm/IR/IntrinsicsRISCV.h",
+    )],
+    tblgen = ":llvm-tblgen",
+    td_file = "include/llvm/IR/Intrinsics.td",
+    td_srcs = glob([
+        "include/llvm/CodeGen/*.td",
+        "include/llvm/IR/Intrinsics*.td",
+    ]),
+)
+
+gentbl(
+    name = "s390_enums_gen",
+    tbl_outs = [(
+        "-gen-intrinsic-enums -intrinsic-prefix=s390",
+        "include/llvm/IR/IntrinsicsS390.h",
+    )],
+    tblgen = ":llvm-tblgen",
+    td_file = "include/llvm/IR/Intrinsics.td",
+    td_srcs = glob([
+        "include/llvm/CodeGen/*.td",
+        "include/llvm/IR/Intrinsics*.td",
+    ]),
+)
+
+gentbl(
+    name = "wasm_enums_gen",
+    tbl_outs = [(
+        "-gen-intrinsic-enums -intrinsic-prefix=wasm",
+        "include/llvm/IR/IntrinsicsWebAssembly.h",
+    )],
+    tblgen = ":llvm-tblgen",
+    td_file = "include/llvm/IR/Intrinsics.td",
+    td_srcs = glob([
+        "include/llvm/CodeGen/*.td",
+        "include/llvm/IR/Intrinsics*.td",
+    ]),
+)
+
+gentbl(
+    name = "x86_enums_gen",
+    tbl_outs = [(
+        "-gen-intrinsic-enums -intrinsic-prefix=x86",
+        "include/llvm/IR/IntrinsicsX86.h",
+    )],
+    tblgen = ":llvm-tblgen",
+    td_file = "include/llvm/IR/Intrinsics.td",
+    td_srcs = glob([
+        "include/llvm/CodeGen/*.td",
+        "include/llvm/IR/Intrinsics*.td",
+    ]),
+)
+
+gentbl(
+    name = "xcore_enums_gen",
+    tbl_outs = [(
+        "-gen-intrinsic-enums -intrinsic-prefix=xcore",
+        "include/llvm/IR/IntrinsicsXCore.h",
+    )],
+    tblgen = ":llvm-tblgen",
+    td_file = "include/llvm/IR/Intrinsics.td",
+    td_srcs = glob([
+        "include/llvm/CodeGen/*.td",
+        "include/llvm/IR/Intrinsics*.td",
+    ]),
+)
+
+gentbl(
     name = "intrinsics_impl_gen",
     tbl_outs = [("-gen-intrinsic-impl", "include/llvm/IR/IntrinsicImpl.inc")],
     tblgen = ":llvm-tblgen",
@@ -195,6 +391,19 @@ gentbl(
         "include/llvm/CodeGen/*.td",
         "include/llvm/IR/Intrinsics*.td",
     ]),
+)
+
+cc_library(
+    name = "utils_tablegen",
+    srcs = glob([
+        "utils/TableGen/GlobalISel/*.cpp",
+    ]),
+    hdrs = glob([
+        "utils/TableGen/GlobalISel/*.h",
+    ]),
+    deps = [
+        ":tablegen",
+    ],
 )
 
 # Binary targets used by Tensorflow.
@@ -211,6 +420,7 @@ cc_binary(
         ":config",
         ":support",
         ":tablegen",
+        ":utils_tablegen",
     ],
 )
 
@@ -262,8 +472,6 @@ llvm_target_list = [
             ("-gen-dag-isel", "lib/Target/AMDGPU/AMDGPUGenDAGISel.inc"),
             ("-gen-callingconv", "lib/Target/AMDGPU/AMDGPUGenCallingConv.inc"),
             ("-gen-subtarget", "lib/Target/AMDGPU/AMDGPUGenSubtargetInfo.inc"),
-            ("-gen-tgt-intrinsic-impl", "lib/Target/AMDGPU/AMDGPUGenIntrinsicImpl.inc"),
-            ("-gen-tgt-intrinsic-enums", "lib/Target/AMDGPU/AMDGPUGenIntrinsicEnums.inc"),
             ("-gen-emitter", "lib/Target/AMDGPU/AMDGPUGenMCCodeEmitter.inc"),
             ("-gen-dfa-packetizer", "lib/Target/AMDGPU/AMDGPUGenDFAPacketizer.inc"),
             ("-gen-asm-writer", "lib/Target/AMDGPU/AMDGPUGenAsmWriter.inc"),
@@ -464,6 +672,7 @@ cc_library(
         ":aarch64_utils",
         ":analysis",
         ":asm_printer",
+        ":cf_guard",
         ":code_gen",
         ":config",
         ":core",
@@ -876,6 +1085,7 @@ cc_library(
         ":arm_info",
         ":arm_utils",
         ":asm_printer",
+        ":cf_guard",
         ":code_gen",
         ":config",
         ":core",
@@ -1417,6 +1627,27 @@ cc_library(
 )
 
 cc_library(
+    name = "cf_guard",
+    srcs = glob([
+        "lib/Transforms/CFGuard/*.c",
+        "lib/Transforms/CFGuard/*.cpp",
+        "lib/Transforms/CFGuard/*.inc",
+        "lib/Transforms/CFGuard/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/Transforms/CFGuard/*.h",
+        "include/llvm/Transforms/CFGuard/*.def",
+        "include/llvm/Transforms/CFGuard/*.inc",
+    ]),
+    copts = llvm_copts,
+    deps = [
+        ":config",
+        ":core",
+        ":support",
+    ],
+)
+
+cc_library(
     name = "code_gen",
     srcs = glob([
         "lib/CodeGen/*.c",
@@ -1470,14 +1701,28 @@ cc_library(
     ]),
     copts = llvm_copts,
     deps = [
+        ":aarch64_enums_gen",
+        ":amdgcn_enums_gen",
+        ":arm_enums_gen",
         ":attributes_compat_gen",
         ":attributes_gen",
         ":binary_format",
+        ":bpf_enums_gen",
         ":config",
+        ":hexagon_enums_gen",
         ":intrinsic_enums_gen",
         ":intrinsics_impl_gen",
+        ":mips_enums_gen",
+        ":nvvm_enums_gen",
+        ":ppc_enums_gen",
+        ":r600_enums_gen",
         ":remarks",
+        ":riscv_enums_gen",
+        ":s390_enums_gen",
         ":support",
+        ":wasm_enums_gen",
+        ":x86_enums_gen",
+        ":xcore_enums_gen",
     ],
 )
 
@@ -1590,6 +1835,7 @@ cc_library(
     copts = llvm_copts,
     deps = [
         ":config",
+        ":mc",
         ":support",
     ],
 )
@@ -1698,6 +1944,28 @@ cc_library(
         ":runtime_dyld",
         ":support",
         ":target",
+    ],
+)
+
+cc_library(
+    name = "frontend_open_mp",
+    srcs = glob([
+        "lib/Frontend/OpenMP/*.c",
+        "lib/Frontend/OpenMP/*.cpp",
+        "lib/Frontend/OpenMP/*.inc",
+        "lib/Frontend/OpenMP/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/Frontend/OpenMP/*.h",
+        "include/llvm/Frontend/OpenMP/*.def",
+        "include/llvm/Frontend/OpenMP/*.inc",
+    ]),
+    copts = llvm_copts,
+    deps = [
+        ":config",
+        ":core",
+        ":support",
+        ":transform_utils",
     ],
 )
 
@@ -2806,6 +3074,26 @@ cc_library(
 )
 
 cc_library(
+    name = "orc_error",
+    srcs = glob([
+        "lib/ExecutionEngine/OrcError/*.c",
+        "lib/ExecutionEngine/OrcError/*.cpp",
+        "lib/ExecutionEngine/OrcError/*.inc",
+        "lib/ExecutionEngine/OrcError/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/ExecutionEngine/OrcError/*.h",
+        "include/llvm/ExecutionEngine/OrcError/*.def",
+        "include/llvm/ExecutionEngine/OrcError/*.inc",
+    ]),
+    copts = llvm_copts,
+    deps = [
+        ":config",
+        ":support",
+    ],
+)
+
+cc_library(
     name = "orc_jit",
     srcs = glob([
         "lib/ExecutionEngine/Orc/*.c",
@@ -2826,6 +3114,7 @@ cc_library(
         ":jit_link",
         ":mc",
         ":object",
+        ":orc_error",
         ":passes",
         ":runtime_dyld",
         ":support",
@@ -3805,6 +4094,7 @@ cc_library(
     copts = llvm_copts + ["-Iexternal/llvm/lib/Target/WebAssembly"],
     deps = [
         ":config",
+        ":mc",
         ":mc_disassembler",
         ":support",
         ":web_assembly_desc",
@@ -3893,6 +4183,7 @@ cc_library(
     deps = [
         ":analysis",
         ":asm_printer",
+        ":cf_guard",
         ":code_gen",
         ":config",
         ":core",

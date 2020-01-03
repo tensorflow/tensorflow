@@ -48,6 +48,7 @@ REGISTER_OP("AutoShardDataset")
     .Input("num_workers: int64")
     .Input("index: int64")
     .Output("handle: variant")
+    .Attr("auto_shard_policy: int = 0")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::ScalarShape);
@@ -57,6 +58,7 @@ REGISTER_OP("ExperimentalAutoShardDataset")
     .Input("num_workers: int64")
     .Input("index: int64")
     .Output("handle: variant")
+    .Attr("auto_shard_policy: int = 0")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::ScalarShape);
@@ -821,6 +823,8 @@ REGISTER_OP("SnapshotDataset")
     .Attr("shuffle_on_read: bool = false")
     .Attr("seed: int = 0")
     .Attr("seed2: int = 0")
+    .Attr("mode: string = 'auto'")
+    .Attr("snapshot_name: string = ''")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
       // snapshot_path should be a scalar.

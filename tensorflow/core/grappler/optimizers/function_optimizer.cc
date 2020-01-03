@@ -836,7 +836,12 @@ const bool IsExemptFromSideEffectsExecutionValidation(const string& op) {
 
        // CudnnRNN ops are stateful but they can't generate any observable
        // side-effect.
-       "CudnnRNNV2", "CudnnRNNV3", "CudnnRNNBackpropV2", "CudnnRNNBackpropV3"});
+       "CudnnRNNV2", "CudnnRNNV3", "CudnnRNNBackpropV2", "CudnnRNNBackpropV3",
+
+       // TPUEmbedding EnqueueOps are stateful but this is only between ops with
+       // the same device_ordinal on the same host.
+       "EnqueueTPUEmbeddingSparseBatch", "EnqueueTPUEmbeddingIntegerBatch",
+       "EnqueueTPUEmbeddingSparseTensorBatch"});
   return exemption->contains(op);
 }
 
@@ -1074,9 +1079,14 @@ Status MakeFunctionBodyForInlining(const Node& node,
 // V2, however we have to guarantee that graphs constructed with Tensorflow V1
 // will produce correct results.
 void AddStrictInputSemantics(Node* caller, Graph* g) {
-  const bool has_incoming_control_edges =
-      absl::c_any_of(caller->in_edges(),
-                     [](const Edge* edge) { return edge->IsControlEdge(); });
+  absl::flat_hash_set<const Node*> existing_control_sources;
+  for (const Edge* edge : caller->in_edges()) {
+    if (edge->IsControlEdge()) {
+      existing_control_sources.insert(edge->src());
+    }
+  }
+
+  const bool has_incoming_control_edges = !existing_control_sources.empty();
 
   const bool has_resource_input =
       absl::c_any_of(caller->input_types(),
@@ -1093,18 +1103,19 @@ void AddStrictInputSemantics(Node* caller, Graph* g) {
       (has_constant_enter_input);                             // Case #2
   if (!requires_strict_semantics) return;
 
-  std::vector<const Node*> data_inputs;
-  data_inputs.reserve(caller->in_edges().size());
-
+  std::set<const Node*> data_inputs;
   for (const Edge* edge : caller->in_edges()) {
-    if (edge->IsControlEdge()) continue;
-    data_inputs.push_back(edge->src());
+    if (!edge->IsControlEdge() &&
+        !existing_control_sources.contains(edge->src())) {
+      data_inputs.insert(edge->src());
+    }
   }
 
   VLOG(3) << "Add control edges from all data inputs to enforce strict "
              "semantics with regard to function inputs";
   for (const Node* node : data_inputs) {
-    g->AddControlEdge(g->FindNodeId(node->id()), caller);
+    g->AddControlEdge(g->FindNodeId(node->id()), caller,
+                      /*allow_duplicates=*/true);
   }
 }
 

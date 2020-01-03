@@ -457,7 +457,7 @@ TEST_P(IndirectUseTest, IndirectUseNotRematerialized) {
   //   F32[1024] %call = call(Subcomputation, {%add_1})
   //   F32[1024] %add_2 = add(%bcast, call)
   //   {F32[1024], F32[1024]} %tuple = tuple(%bcast, %add_2)
-  //   F32[1024] %gte = GetTupleElememt(%tuple, 0)
+  //   F32[1024] %gte = GetTupleElement(%tuple, 0)
   //   F32[1024] %negate = negate(%gte)
   //
   // Subcomputation:
@@ -546,7 +546,7 @@ class CompressingRematerializationTest : public RematerializationTestBase {
     int64 size =
         ShapeUtil::ByteSizeOfPrimitiveType(descending_shape.element_type());
     for (int64 i = 0; i < descending_shape.rank(); ++i) {
-      int64 dim = shape.dimensions(i);
+      int64 dim = descending_shape.dimensions(i);
       if (i == descending_shape.rank() - 1) {
         dim = RoundUpToNearest<int64>(dim, 64);
       }
@@ -555,8 +555,8 @@ class CompressingRematerializationTest : public RematerializationTestBase {
     return size;
   }
 
-  // Swap the two most-minor dimensions if the second-minor dimension is bigger
-  // than the most-minor dimension.
+  // Swap the layout of the two most-minor dimensions if the second-minor
+  // dimension is bigger than the most-minor dimension.
   static StatusOr<Shape> ChooseCompactLayoutForShape(const Shape& shape) {
     Shape result = shape;
     Layout layout = result.layout();
@@ -565,8 +565,10 @@ class CompressingRematerializationTest : public RematerializationTestBase {
     int64 most_minor = result.dimensions(most_minor_index);
     int64 second_minor = result.dimensions(second_minor_index);
     if (most_minor < second_minor) {
-      result.set_dimensions(most_minor_index, second_minor);
-      result.set_dimensions(second_minor_index, most_minor);
+      Layout new_layout = layout;
+      new_layout.set_minor_to_major(0, second_minor_index);
+      new_layout.set_minor_to_major(1, most_minor_index);
+      *result.mutable_layout() = new_layout;
     }
     return result;
   }
@@ -602,9 +604,8 @@ ENTRY %entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module,
-      HloRunner::CreateModuleFromString(hlo_string, GetDebugOptionsForTest()));
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
 
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           RunHloRematerialization(
@@ -643,9 +644,8 @@ ENTRY %entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module,
-      HloRunner::CreateModuleFromString(hlo_string, GetDebugOptionsForTest()));
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
 
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           RunHloRematerialization(

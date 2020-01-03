@@ -499,4 +499,32 @@ TEST_F(QuantizedOpTest, Dequantize) {
   test::ExpectTensorNear<float>(expected, *GetOutput(0), 0.5);
 }
 
+TEST_F(QuantizedOpTest, QuantizeV2DisableEnsureMinimumRange) {
+  TF_ASSERT_OK(NodeDefBuilder("quantize_op", "QuantizeV2")
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Attr("T", DataTypeToEnum<qint8>::v())
+                   .Attr("mode", "MIN_FIRST")
+                   .Attr("ensure_minimum_range", 0.0f)
+                   .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+  AddInputFromArray<float>(TensorShape({3}), {-0.000001, 0.0, 0.000042});
+  AddInputFromArray<float>(TensorShape({1}), {-0.000128});
+  AddInputFromArray<float>(TensorShape({1}), {0.000127});
+  TF_ASSERT_OK(RunOpKernel());
+  Tensor expected(allocator(), DT_QINT8, TensorShape({3}));
+  test::FillValues<qint8>(&expected, {-1, 0, 42});
+  for (int i = 0; i < 3; ++i) {
+    LOG(INFO) << GetOutput(0)->flat<qint8>()(i);
+  }
+  test::ExpectTensorEqual<qint8>(expected, *GetOutput(0));
+  const float output_min = GetOutput(1)->flat<float>()(0);
+  const float output_max = GetOutput(2)->flat<float>()(0);
+  LOG(INFO) << "output_min = " << output_min;
+  LOG(INFO) << "output_max = " << output_max;
+  EXPECT_NEAR(-0.000128f, output_min, 1e-7f);
+  EXPECT_NEAR(0.000127, output_max, 1e-7f);
+}
+
 }  // end namespace tensorflow

@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import contextlib
 
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import pywrap_tfe
 from tensorflow.python.util.lazy_loader import LazyLoader
 
 # There is a circular dependency between this, ops.py, and
@@ -39,24 +39,23 @@ class Tape(object):
     self._tape = tape
 
   def watched_variables(self):
-    return pywrap_tensorflow.TFE_Py_TapeWatchedVariables(self._tape)
+    return pywrap_tfe.TFE_Py_TapeWatchedVariables(self._tape)
 
 
 def push_new_tape(persistent=False, watch_accessed_variables=True):
   """Pushes a new tape onto the tape stack."""
-  tape = pywrap_tensorflow.TFE_Py_TapeSetNew(persistent,
-                                             watch_accessed_variables)
+  tape = pywrap_tfe.TFE_Py_TapeSetNew(persistent, watch_accessed_variables)
   return Tape(tape)
 
 
 def push_tape(tape):
   """Pushes an existing tape onto the tape stack."""
-  pywrap_tensorflow.TFE_Py_TapeSetAdd(tape._tape)  # pylint: disable=protected-access
+  pywrap_tfe.TFE_Py_TapeSetAdd(tape._tape)  # pylint: disable=protected-access
 
 
 def watch(tape, tensor):
   """Marks this tensor to be watched by the given tape."""
-  pywrap_tensorflow.TFE_Py_TapeWatch(tape._tape, tensor)  # pylint: disable=protected-access
+  pywrap_tfe.TFE_Py_TapeWatch(tape._tape, tensor)  # pylint: disable=protected-access
 
 
 def watch_variable(tape, variable):
@@ -68,7 +67,7 @@ def watch_variable(tape, variable):
   else:
     variables = strategy.experimental_local_results(variable)
   for var in variables:
-    pywrap_tensorflow.TFE_Py_TapeWatchVariable(tape._tape, var)  # pylint: disable=protected-access
+    pywrap_tfe.TFE_Py_TapeWatchVariable(tape._tape, var)  # pylint: disable=protected-access
 
 
 def variable_accessed(variable):
@@ -84,7 +83,7 @@ def variable_accessed(variable):
   else:
     variables = strategy.experimental_local_results(variable)
   for var in variables:
-    pywrap_tensorflow.TFE_Py_TapeVariableAccessed(var)
+    pywrap_tfe.TFE_Py_TapeVariableAccessed(var)
 
 
 def variables_accessed(variables):
@@ -107,25 +106,25 @@ def variables_accessed(variables):
         accessed.extend(strategy.experimental_local_results(variable))
 
   for var in accessed:
-    pywrap_tensorflow.TFE_Py_TapeVariableAccessed(var)
+    pywrap_tfe.TFE_Py_TapeVariableAccessed(var)
 
 
 def pop_tape(tape):
   """Pops the given tape in the stack."""
-  pywrap_tensorflow.TFE_Py_TapeSetRemove(tape._tape)  # pylint: disable=protected-access
+  pywrap_tfe.TFE_Py_TapeSetRemove(tape._tape)  # pylint: disable=protected-access
 
 
 @contextlib.contextmanager
 def stop_recording():
   """Stop all gradient recording (backprop and forwardprop)."""
-  is_stopped = pywrap_tensorflow.TFE_Py_TapeSetIsStopped()
+  is_stopped = pywrap_tfe.TFE_Py_TapeSetIsStopped()
   try:
     if not is_stopped:
-      pywrap_tensorflow.TFE_Py_TapeSetStopOnThread()
+      pywrap_tfe.TFE_Py_TapeSetStopOnThread()
     yield
   finally:
     if not is_stopped:
-      pywrap_tensorflow.TFE_Py_TapeSetRestartOnThread()
+      pywrap_tfe.TFE_Py_TapeSetRestartOnThread()
 
 
 def should_record_backprop(tensors):
@@ -139,22 +138,23 @@ def should_record_backprop(tensors):
   Returns:
     Boolean, whether any tape watches any of `tensors`.
   """
-  return pywrap_tensorflow.TFE_Py_TapeSetShouldRecordBackprop(tensors)
+  return pywrap_tfe.TFE_Py_TapeSetShouldRecordBackprop(tensors)
 
 
 def record_operation(op_type, output_tensors, input_tensors, backward_function,
                      forward_function=None):
   """Records the operation on all tapes in the stack."""
-  pywrap_tensorflow.TFE_Py_TapeSetRecordOperation(
-      op_type, output_tensors, input_tensors, backward_function,
-      forward_function)
+  pywrap_tfe.TFE_Py_TapeSetRecordOperation(op_type, output_tensors,
+                                           input_tensors, backward_function,
+                                           forward_function)
 
 
 def record_operation_backprop_only(op_type, output_tensors, input_tensors,
                                    backward_function):
   """Records the operation on all backward tapes in the stack."""
-  pywrap_tensorflow.TFE_Py_TapeSetRecordOperationBackprop(
-      op_type, output_tensors, input_tensors, backward_function)
+  pywrap_tfe.TFE_Py_TapeSetRecordOperationBackprop(op_type, output_tensors,
+                                                   input_tensors,
+                                                   backward_function)
 
 
 def record_operation_forwardprop_only(op_type, output_tensors, input_tensors,
@@ -174,16 +174,16 @@ def record_operation_forwardprop_only(op_type, output_tensors, input_tensors,
       Typically these will have come from TFE_Py_PackForwardGradients. May be
       None or an empty sequence if there are no JVP outputs from the operation.
   """
-  pywrap_tensorflow.TFE_Py_TapeSetRecordOperationForwardprop(
+  pywrap_tfe.TFE_Py_TapeSetRecordOperationForwardprop(
       op_type, output_tensors, input_tensors, backward_function,
       forwardprop_output_indices)
 
 
 def delete_trace(tensor_id):
   """Deletes traces for this Tensor from all tapes in the stack."""
-  pywrap_tensorflow.TFE_Py_TapeSetDeleteTrace(tensor_id)
+  pywrap_tfe.TFE_Py_TapeSetDeleteTrace(tensor_id)
 
 
 def could_possibly_record():
   """Returns True if any tape is active."""
-  return not pywrap_tensorflow.TFE_Py_TapeSetIsEmpty()
+  return not pywrap_tfe.TFE_Py_TapeSetIsEmpty()

@@ -10,8 +10,6 @@ Note: This page describes the converter in the TensorFlow nightly release,
 installed using `pip install tf-nightly`. For docs describing older versions
 reference ["Converting models from TensorFlow 1.12"](#pre_tensorflow_1.12).
 
-[TOC]
-
 
 ## High-level overview
 

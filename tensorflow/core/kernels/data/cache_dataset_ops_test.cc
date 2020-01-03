@@ -32,8 +32,9 @@ class CacheDatasetParams : public DatasetParams {
                       std::move(node_name)),
         filename_(filename) {
     input_dataset_params_.push_back(absl::make_unique<T>(input_dataset_params));
-    iterator_prefix_ = name_utils::IteratorPrefix(
-        input_dataset_params.op_name(), input_dataset_params.iterator_prefix());
+    iterator_prefix_ =
+        name_utils::IteratorPrefix(input_dataset_params.dataset_type(),
+                                   input_dataset_params.iterator_prefix());
   }
 
   std::vector<Tensor> GetInputTensors() const override {
@@ -53,7 +54,7 @@ class CacheDatasetParams : public DatasetParams {
     return Status::OK();
   }
 
-  string op_name() const override { return CacheDatasetOp::kDatasetType; }
+  string dataset_type() const override { return CacheDatasetOp::kDatasetType; }
 
   string filename() const { return filename_; }
 
@@ -61,10 +62,10 @@ class CacheDatasetParams : public DatasetParams {
   string filename_;
 };
 
-class CacheDatasetOpTest : public DatasetOpsTestBaseV2 {
+class CacheDatasetOpTest : public DatasetOpsTestBase {
  public:
   Status Initialize(const DatasetParams& dataset_params) {
-    TF_RETURN_IF_ERROR(DatasetOpsTestBaseV2::Initialize(dataset_params));
+    TF_RETURN_IF_ERROR(DatasetOpsTestBase::Initialize(dataset_params));
     auto params = static_cast<const CacheDatasetParams&>(dataset_params);
     cache_filename_ = params.filename();
     return Status::OK();
@@ -328,11 +329,11 @@ TEST_P(ParameterizedIteratorSaveAndRestoreTest, SaveAndRestore) {
   int cur_iteration = 0;
   auto expected_outputs_it = test_case.expected_outputs.begin();
   for (int breakpoint : test_case.breakpoints) {
-    VariantTensorData data;
-    VariantTensorDataWriter writer(&data);
+    VariantTensorDataWriter writer;
     TF_EXPECT_OK(iterator_->Save(serialization_ctx.get(), &writer));
-    TF_EXPECT_OK(writer.Flush());
-    VariantTensorDataReader reader(&data);
+    std::vector<const VariantTensorData*> data;
+    writer.GetData(&data);
+    VariantTensorDataReader reader(data);
     TF_EXPECT_OK(RestoreIterator(iterator_ctx_.get(), &reader,
                                  test_case.dataset_params.iterator_prefix(),
                                  *dataset_, &iterator_));

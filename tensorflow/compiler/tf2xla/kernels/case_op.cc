@@ -132,7 +132,6 @@ void XlaCaseOp::Compile(XlaOpKernelContext* ctx) {
   // Compile each branch of the conditional.
   XlaCompiler::CompileOptions options;
   options.use_tuple_arg = true;
-  options.resolve_compile_time_constants = false;
   options.return_updated_values_for_all_resources = true;
   options.is_entry_computation = false;
   options.add_token_input_output = has_token_input_output_;

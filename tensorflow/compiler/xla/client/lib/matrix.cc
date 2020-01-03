@@ -15,9 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/lib/matrix.h"
 
+#include <algorithm>
 #include <array>
 #include <limits>
 #include <numeric>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -99,6 +102,69 @@ XlaOp GetMatrixDiagonal(XlaOp x, int k) {
     }
     return SliceInMinorDims(result, {0},
                             {k > 0 ? std::min(m, n - k) : std::min(n, m + k)});
+  });
+}
+
+XlaOp GetMatrixDiagonalViaGather(XlaOp x, int k) {
+  XlaBuilder* builder = x.builder();
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
+    auto n_dims = static_cast<int32>(shape.rank());
+    TF_RET_CHECK(n_dims >= 2);
+    const int64 m = shape.dimensions(n_dims - 2);
+    const int64 n = shape.dimensions(n_dims - 1);
+
+    // The start_indices has a shape of {diag_len, 2}, and each pair of value in
+    // its dimension 1 represents the (row, col) of the diagonal. We set
+    // index_vector_dim to 1 and make start_index_map and collapsed_slice_dims
+    // contain the same two dimension indices. This makes sure that the (row,
+    // col) pairs in start_indices are propagated to the indices for the two
+    // collapsed dimensions in the operand indices through start_index_map.
+    const int64 num_index_dims = 2;
+    const int64 axis = n_dims - num_index_dims;
+
+    // Calculate the indices of diagonal part with offset k.
+    const int64 diag_len =
+        std::max(std::min(m + std::min(k, 0), n - std::max(k, 0)), 0LL);
+    XlaOp diag_base_indices = BroadcastInDim(Iota(builder, S32, diag_len),
+                                             {diag_len, num_index_dims}, {0});
+    XlaOp diag_offset =
+        Broadcast(ConstantR1<int>(builder, {std::max(-k, 0), std::max(k, 0)}),
+                  {diag_len});
+    XlaOp start_indices = Add(diag_base_indices, diag_offset);
+
+    // Example of a 3D diag-part extracting diagonal part with offset=1 out of a
+    // tensor of shape [2,5,4].
+    //
+    //  operand = s32[2,5,4] parameter(0)
+    //  indices = s32[3,2] parameter(1)
+    //  gather = s32[2,3] gather(operand, indices),
+    //       offset_dims={0},
+    //       collapsed_slice_dims={1,2},
+    //       start_index_map={1,2},
+    //       index_vector_dim=1,
+    //       slice_sizes={2, 1, 1}
+
+    xla::GatherDimensionNumbers dim_numbers;
+    std::vector<int64> slice_sizes;
+    slice_sizes.reserve(n_dims);
+    for (int64 i = 0; i < n_dims; i++) {
+      int64 window_bound;
+      if (axis <= i) {
+        dim_numbers.add_collapsed_slice_dims(i);
+        dim_numbers.add_start_index_map(i);
+        window_bound = (shape.dimensions(i) != 0) ? 1 : 0;
+      } else {
+        dim_numbers.add_offset_dims(i);
+        window_bound = shape.dimensions(i);
+      }
+      slice_sizes.push_back(window_bound);
+    }
+
+    dim_numbers.set_index_vector_dim(1);
+
+    return Gather(x, start_indices, dim_numbers, slice_sizes,
+                  /*indices_are_sorted=*/true);
   });
 }
 
@@ -250,7 +316,7 @@ Status ValidateEinsumNumericDimensions(absl::Span<const int64> x_config,
 
 namespace {
 // Helper method to remove dimensions from a shape and dot dimension numbers
-// used to implment implicit broadcasting.
+// used to implement implicit broadcasting.
 template <typename C>
 void DeleteDimsFromContainer(absl::Span<const int64> to_delete, Shape* shape,
                              C* batch_dims, C* contracting_dims) {
@@ -407,7 +473,7 @@ xla::XlaOp Einsum(xla::XlaOp x, absl::Span<const int64> x_config, xla::XlaOp y,
       transpose_dims[output_transpose_dims[i]] = i;
     }
 
-    // Remove ones that where broadcated from the x and the y shape and adjust
+    // Remove ones that where broadcasted from the x and the y shape and adjust
     // the dimension numbers that are more minor than those dimensions.
     DeleteDimsFromContainer(lhs_delete_dims, &x_shape,
                             dnums.mutable_lhs_batch_dimensions(),

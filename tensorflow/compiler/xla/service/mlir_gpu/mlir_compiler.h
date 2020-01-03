@@ -17,8 +17,8 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_MLIR_GPU_MLIR_COMPILER_H_
 
 #include "absl/container/flat_hash_map.h"
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/IR/Module.h"  // TF:local_config_mlir
+#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
+#include "mlir/IR/Module.h"  // TF:llvm-project
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/mlir_gpu/emission_context.h"
 
@@ -78,6 +78,7 @@ class MlirCompiler : public Compiler {
   void SetModuleHook(IRHook module_hook);
   void RemoveModuleHook();
   void SetErrorHandler(ErrorHandler error_handler);
+  void RemoveErrorHandler();
 
  private:
   ::mlir::MLIRContext context_;

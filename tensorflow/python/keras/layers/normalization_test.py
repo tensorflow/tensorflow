@@ -154,13 +154,14 @@ class BatchNormalizationTest(keras_parameterized.TestCase):
         normalization_v2.BatchNormalization, dtype='float16')
 
   @tf_test_util.run_in_graph_and_eager_modes
+  @testing_utils.enable_v2_dtype_behavior
   def test_batchnorm_policy(self):
     norm = keras.layers.BatchNormalization(
         axis=-1,
         input_shape=(4, 4, 3),
         momentum=0.8,
-        dtype=policy.Policy('infer_float32_vars'))
-    x = np.random.normal(size=(10, 4, 4, 3)).astype('float16')
+        dtype=policy.Policy('mixed_float16'))
+    x = np.random.normal(size=(10, 4, 4, 3))
     y = norm(x)
     self.assertEqual(y.dtype, 'float16')
     self.assertEqual(norm.beta.dtype.base_dtype, 'float32')
@@ -377,8 +378,8 @@ def _run_batchnorm_correctness_test(layer, dtype='float32', fused=False):
   out -= keras.backend.eval(norm.beta)
   out /= keras.backend.eval(norm.gamma)
 
-  np.testing.assert_allclose(out.mean(), 0.0, atol=1e-1)
-  np.testing.assert_allclose(out.std(), 1.0, atol=1e-1)
+  np.testing.assert_allclose(out.mean(), 0.0, atol=2e-1)
+  np.testing.assert_allclose(out.std(), 1.0, atol=2e-1)
 
 
 @parameterized.parameters(
@@ -545,6 +546,21 @@ class LayerNormalizationTest(keras_parameterized.TestCase):
         kwargs={'axis': (-3, -2, -1)},
         input_shape=(2, 8, 8, 3))
 
+  @keras_parameterized.run_all_keras_modes
+  def test_non_fused_layernorm(self):
+    testing_utils.layer_test(
+        keras.layers.LayerNormalization,
+        kwargs={'axis': -2},
+        input_shape=(3, 4, 2))
+    testing_utils.layer_test(
+        keras.layers.LayerNormalization,
+        kwargs={'axis': (-3, -2)},
+        input_shape=(2, 8, 8, 3))
+    testing_utils.layer_test(
+        keras.layers.LayerNormalization,
+        kwargs={'axis': (-3, -1)},
+        input_shape=(2, 8, 8, 3))
+
   @tf_test_util.run_in_graph_and_eager_modes
   def test_layernorm_weights(self):
     layer = keras.layers.LayerNormalization(scale=False, center=False)
@@ -618,6 +634,12 @@ class LayerNormalizationTest(keras_parameterized.TestCase):
     with self.assertRaisesRegexp(ValueError, r'Duplicate axis:'):
       layer_norm = normalization.LayerNormalization(axis=[-1, -1])
       layer_norm.build(input_shape=(2, 2, 2))
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def testFusedAttr(self):
+    layer_norm = normalization.LayerNormalization(axis=[-2, -1])
+    layer_norm.build(input_shape=(2, 2, 2))
+    self.assertEqual(layer_norm._fused, True)
 
 
 class LayerNormalizationNumericsTest(keras_parameterized.TestCase):

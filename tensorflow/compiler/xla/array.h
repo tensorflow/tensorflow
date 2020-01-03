@@ -575,6 +575,12 @@ class Array {
   std::unique_ptr<T[]> values_;
 };
 
+// Specialization of FillRandom() method for complex64 type. Uses real part of
+// the stddev parameter as the standard deviation value.
+template <>
+void Array<complex64>::FillRandom(const complex64& stddev, const double mean,
+                                  const int seed);
+
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_ARRAY_H_

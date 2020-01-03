@@ -24,7 +24,7 @@ import tensorflow as tf
 
 
 def device_and_data_format():
-  if tf.config.experimental.list_physical_devices('GPU'):
+  if tf.config.list_physical_devices('GPU'):
     return ('/gpu:0', 'channels_first')
   return ('/cpu:0', 'channels_last')
 

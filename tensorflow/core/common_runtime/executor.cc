@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/costmodel_manager.h"
 #include "tensorflow/core/common_runtime/executor_factory.h"
+#include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/common_runtime/pending_counts.h"
 #include "tensorflow/core/common_runtime/renamed_device.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
@@ -53,7 +54,6 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/manual_constructor.h"
-#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
@@ -66,7 +66,7 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/internal/traceme_recorder.h"
+#include "tensorflow/core/profiler/lib/scoped_annotation.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
 
@@ -82,7 +82,7 @@ bool IsInitializationOp(const Node* node) {
 
 // Helper routines for collecting step stats.
 namespace nodestats {
-inline int64 NowInNsec() { return Env::Default()->NowNanos(); }
+inline int64 NowInNsec() { return EnvTime::NowNanos(); }
 
 void SetScheduled(NodeExecStatsInterface* stats, int64 micros) {
   if (!stats) return;
@@ -275,7 +275,6 @@ struct NodeItem {
 };
 
 typedef gtl::InlinedVector<TensorValue, 4> TensorValueVec;
-typedef gtl::InlinedVector<DeviceContext*, 4> DeviceContextVec;
 typedef gtl::InlinedVector<AllocatorAttributes, 4> AllocatorAttributeVec;
 
 // Immutable view of a Graph organized for efficient execution.
@@ -700,6 +699,19 @@ Status ExecutorImpl::Initialize(const Graph& graph) {
       TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "frame_name", &enter_name));
       EnsureFrameInfo(enter_name)->input_count++;
     }
+
+    // Record information about whether each output of the op is used.
+    std::vector<bool> used_outputs(n->num_outputs(), false);
+    for (const Edge* e : n->out_edges()) {
+      if (e->src_output() >= 0) {
+        used_outputs[e->src_output()] = true;
+      }
+    }
+    for (bool used_output : used_outputs) {
+      if (!used_output) {
+        metrics::RecordUnusedOutput(n->type_string());
+      }
+    }
   }
 
   // Initialize PendingCounts only after item->pending_id is initialized for
@@ -895,8 +907,7 @@ class ExecutorState {
           ref_mu(other.ref_mu),
           has_value(other.has_value),
           val_field_is_set(other.val_field_is_set),
-          alloc_attr(other.alloc_attr),
-          device_context(other.device_context) {
+          alloc_attr(other.alloc_attr) {
       if (val_field_is_set) {
         val.Init(*other.val);
       }
@@ -914,7 +925,6 @@ class ExecutorState {
       has_value = other.has_value;
       val_field_is_set = other.val_field_is_set;
       alloc_attr = other.alloc_attr;
-      device_context = other.device_context;
       if (val_field_is_set) {
         val.Init(*other.val);
       }
@@ -930,7 +940,6 @@ class ExecutorState {
       has_value = other.has_value;
       val_field_is_set = other.val_field_is_set;
       alloc_attr = other.alloc_attr;
-      device_context = other.device_context;
       if (val_field_is_set) {
         val.Init(std::move(*other.val));
       }
@@ -959,10 +968,6 @@ class ExecutorState {
 
     // The attributes of the allocator that creates the tensor.
     AllocatorAttributes alloc_attr;
-
-    // Every entry carries an optional DeviceContext containing
-    // Device-specific information about how the Tensor was produced.
-    DeviceContext* device_context = nullptr;
   };
 
   // Contains the device context assigned by the device at the beginning of a
@@ -1296,7 +1301,7 @@ class ExecutorState {
 
   int64 step_id_;
   // Not owned.
-  Rendezvous* rendezvous_;
+  RendezvousInterface* rendezvous_;
   Executor::RendezvousFactory* create_rendezvous_ = nullptr;
   CollectiveExecutor* collective_executor_ = nullptr;
   SessionState* session_state_;
@@ -1374,7 +1379,6 @@ class ExecutorState {
   // Before invoking item->kernel, fills in its "inputs".
   Status PrepareInputs(const NodeItem& item, Entry* first_input,
                        TensorValueVec* inputs,
-                       DeviceContextVec* input_device_contexts,
                        AllocatorAttributeVec* input_alloc_attrs,
                        bool* is_input_dead);
 
@@ -1600,9 +1604,8 @@ void ExecutorState::RunAsync(Executor::DoneCallback done) {
 }
 
 // State kept alive for executing an asynchronous node in another
-// thread.  NOTE: We need to make a copy of p.input,
-// p.input_device_contexts, and p.input_alloc_attrs for asynchronous
-// kernels because OpKernelContext methods like input_type(i) needs
+// thread.  NOTE: We need to make a copy of p.input and p.input_alloc_attrs for
+// asynchronous kernels because OpKernelContext methods like input_type(i) needs
 // the param points to valid input type vector. It's not an issue for
 // sync kernels because these vectors are kept on the stack.
 struct ExecutorState::AsyncState {
@@ -1610,7 +1613,6 @@ struct ExecutorState::AsyncState {
              const NodeItem* _item, Entry* _first_input,
              NodeExecStatsInterface* _stats)
       : saved_inputs(*p.inputs),
-        saved_input_device_contexts(*p.input_device_contexts),
         saved_input_alloc_attrs(*p.input_alloc_attrs),
         params(p),
         tagged_node(_tagged_node),
@@ -1621,12 +1623,10 @@ struct ExecutorState::AsyncState {
         ctx(ParamsButClearingEigenGPUDevice(&params), item->num_outputs),
         stats(_stats) {
     params.inputs = &saved_inputs;
-    params.input_device_contexts = &saved_input_device_contexts;
     params.input_alloc_attrs = &saved_input_alloc_attrs;
   }
 
   TensorValueVec saved_inputs;
-  DeviceContextVec saved_input_device_contexts;
   AllocatorAttributeVec saved_input_alloc_attrs;
   OpKernelContext::Params params;
   TaggedNode tagged_node;
@@ -1651,7 +1651,7 @@ bool MightTrace(const NodeItem& item,
                 const tracing::EventCollector* event_collector) {
   // Tracing will only be enabled if either `event_collector` is non null,
   // or `trace_collector` is non-null and enabled for this particular kernel.
-  // Although `profiler::TraceMe`, `tracing::ScopedAnnotation`, and
+  // Although `profiler::TraceMe`, `profiler::ScopedAnnotation`, and
   // `tracing::ScopedRegion` check subsets of these properties internally in
   // their constructors, the cost of passing the necessary arguments to them can
   // be significant, so we avoid constructing them in the common case (when we
@@ -1660,9 +1660,9 @@ bool MightTrace(const NodeItem& item,
     return true;
   }
 
-  if (tracing::ScopedAnnotation::IsEnabled()) return true;
+  if (profiler::ScopedAnnotation::IsEnabled()) return true;
 
-  return profiler::TraceMeRecorder::Active(
+  return profiler::TraceMe::Active(
       profiler::GetTFTraceMeLevel(item.kernel->IsExpensive()));
 }
 
@@ -1673,7 +1673,8 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
         if (step_container_ && step_container_->step_id()) {
           id = step_container_->step_id();
         }
-        return absl::StrCat("ExecutorState::Process#id=", id, "#");
+        return absl::StrCat("ExecutorState::Process#id=", id,
+                            ",iter_num=", tagged_node.input_iter, "#");
       },
       2);
   WithContext wc(context_);
@@ -1682,7 +1683,6 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
 
   // Parameters passed to OpKernel::Compute.
   TensorValueVec inputs;
-  DeviceContextVec input_device_contexts;
   AllocatorAttributeVec input_alloc_attrs;
 
   OpKernelContext::Params params;
@@ -1710,7 +1710,6 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
   params.step_container = step_container_;
   params.slice_reader_cache = slice_reader_cache_;
   params.inputs = &inputs;
-  params.input_device_contexts = &input_device_contexts;
   params.input_alloc_attrs = &input_alloc_attrs;
   params.runner = &runner_;
   params.stats_collector = stats_collector_;
@@ -1790,8 +1789,8 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
     } else {
       // Prepares inputs.
       bool is_input_dead = false;
-      s = PrepareInputs(item, first_input, &inputs, &input_device_contexts,
-                        &input_alloc_attrs, &is_input_dead);
+      s = PrepareInputs(item, first_input, &inputs, &input_alloc_attrs,
+                        &is_input_dead);
       if (!s.ok()) {
         // Clear inputs.
         int num_inputs = item.num_inputs;
@@ -1867,13 +1866,8 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
         {
           profiler::TraceMe activity(
               [&] {
-                int64 id = step_id_;
-                if (step_container_ && step_container_->step_id()) {
-                  id = step_container_->step_id();
-                }
-                return strings::StrCat(
-                    op_kernel->name(), ":", op_kernel->type_string(),
-                    "#id=", id, ",device=", device->name(), ",async=true#");
+                return strings::StrCat(op_kernel->name_view(), ":",
+                                       op_kernel->type_string_view());
               },
               profiler::GetTFTraceMeLevel(op_kernel->IsExpensive()));
           device->ComputeAsync(async, &state->ctx, done);
@@ -1884,22 +1878,18 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
         nodestats::SetOpStart(stats);
 
         if (TF_PREDICT_FALSE(MightTrace(item, event_collector_))) {
-          const string& op_name = op_kernel->name();
-          int64 id = step_id_;
-          if (step_container_ && step_container_->step_id()) {
-            id = step_container_->step_id();
-          }
-          const string kernel_label = strings::StrCat(
-              op_name, ":", op_kernel->type_string(), "#id=", id,
-              ",device=", device->name(), ",async=false#");
+          absl::string_view op_name = op_kernel->name_view();
+          const string kernel_label =
+              strings::StrCat(op_name, ":", op_kernel->type_string_view());
           tracing::ScopedRegion region(tracing::EventCategory::kCompute,
                                        op_name);
+          absl::string_view kernel_label_view(kernel_label);
           // 'TraceMe' will trace the OpKernel scheduling time.
           profiler::TraceMe activity(
-              absl::string_view(kernel_label),
+              kernel_label_view,
               profiler::GetTFTraceMeLevel(op_kernel->IsExpensive()));
           // 'ScopedAnnotation' will trace the OpKernel execution time.
-          tracing::ScopedAnnotation annotation(kernel_label);
+          profiler::ScopedAnnotation annotation(kernel_label_view);
           device->Compute(op_kernel, &ctx);
         } else {
           // In the common case, avoid creating any tracing objects.
@@ -1961,13 +1951,10 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
 
 Status ExecutorState::PrepareInputs(const NodeItem& item, Entry* first_input,
                                     TensorValueVec* inputs,
-                                    DeviceContextVec* input_device_contexts,
                                     AllocatorAttributeVec* input_alloc_attrs,
                                     bool* is_input_dead) {
   inputs->clear();
   inputs->resize(item.num_inputs);
-  input_device_contexts->clear();
-  input_device_contexts->resize(item.num_inputs);
   input_alloc_attrs->clear();
   input_alloc_attrs->resize(item.num_inputs);
 
@@ -1977,7 +1964,6 @@ Status ExecutorState::PrepareInputs(const NodeItem& item, Entry* first_input,
   for (int i = 0; i < item.num_inputs; ++i) {
     const bool expect_ref = IsRefType(item.input_type(i));
     Entry* entry = first_input + i;
-    (*input_device_contexts)[i] = entry->device_context;
     (*input_alloc_attrs)[i] = entry->alloc_attr;
 
     // i-th input.
@@ -2084,9 +2070,6 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
     return s;
   }
 
-  // Get the device_context for this node id, if it exists.
-  DeviceContext* device_context = device_context_;
-
   for (int i = 0; i < item.num_outputs; ++i) {
     const TensorValue val = ctx->release_output(i);
     if (val.tensor == nullptr) {
@@ -2098,9 +2081,6 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
       }
     } else {
       Entry* out = &((*outputs)[i]);
-
-      // Set the device context of the output entry.
-      out->device_context = device_context;
 
       // Set the allocator attributes of the output entry.
       out->alloc_attr = ctx->output_alloc_attr(i);
@@ -2160,8 +2140,9 @@ void ExecutorState::PropagateOutputs(const TaggedNode& tagged_node,
                                      TaggedNodeSeq* ready) {
   auto activity_handle = absl::make_unique<profiler::TraceMe>(
       [&]() {
-        return strings::StrCat("ExecutorPropagateOutputs:",
-                               item->kernel->name(), "#id=", step_id_, "#");
+        return strings::StrCat(
+            "ExecutorPropagateOutputs:", item->kernel->name_view(),
+            "#id=", step_id_, "#");
       },
       profiler::GetTFTraceMeLevel(/*is_expensive=*/false));
 
@@ -2520,6 +2501,7 @@ void ExecutorState::Finish() {
   auto done_cb = std::move(done_cb_);
   auto runner = std::move(runner_);
   mu_.unlock();
+  int64 step_id = step_id_;
   CHECK(done_cb != nullptr);
   Device* device = impl_->params_.device;
 
@@ -2566,7 +2548,14 @@ void ExecutorState::Finish() {
       }
     }
     delete this;
-    runner([=]() { done_cb(status); });
+    runner([step_id, status, done_cb = std::move(done_cb)]() {
+      profiler::TraceMe traceme(
+          [&] {
+            return absl::StrCat("ExecutorDoneCallback#id=", step_id, "#");
+          },
+          2);
+      done_cb(status);
+    });
     return;
   }
 
@@ -2575,14 +2564,28 @@ void ExecutorState::Finish() {
     // devices like GPUs that continue to execute Ops after their Compute
     // methods have completed, this ensures that control is not returned to
     // the user until the step (and its side-effects) has actually completed.
-    device->Sync([=](Status new_status) mutable {
-      status.Update(new_status);
+    device->Sync([this, step_id, runner = std::move(runner),
+                  done_cb = std::move(done_cb)](const Status& status) mutable {
       delete this;
-      runner([=]() { done_cb(status); });
+      runner([step_id, status, done_cb = std::move(done_cb)]() {
+        profiler::TraceMe traceme(
+            [&] {
+              return absl::StrCat("ExecutorDoneCallback#id=", step_id, "#");
+            },
+            2);
+        done_cb(status);
+      });
     });
   } else {
     delete this;
-    runner([=]() { done_cb(status); });
+    runner([step_id, status, done_cb = std::move(done_cb)]() {
+      profiler::TraceMe traceme(
+          [&] {
+            return absl::StrCat("ExecutorDoneCallback#id=", step_id, "#");
+          },
+          2);
+      done_cb(status);
+    });
   }
 }
 

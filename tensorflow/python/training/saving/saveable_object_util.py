@@ -197,7 +197,7 @@ def saveable_objects_for_op(op, name):
         raise ValueError("Can only save/restore ResourceVariables when "
                          "executing eagerly, got type: %s." % type(op))
 
-      variable = ops.internal_convert_to_tensor(op, as_ref=True)
+      variable = ops.convert_to_tensor(op, as_ref=True)
       if not _tensor_comes_from_variable(variable):
         raise TypeError("names_to_saveables must be a dict mapping string "
                         "names to Tensors/Variables. Not a variable: %s" %
@@ -287,7 +287,7 @@ def op_list_to_dict(op_list, convert_variable_to_tensor=True):
           if isinstance(var, resource_variable_ops.BaseResourceVariable):
             var = var._graph_element  # pylint: disable=protected-access
           else:
-            var = ops.internal_convert_to_tensor(var, as_ref=True)
+            var = ops.convert_to_tensor(var, as_ref=True)
           if not _tensor_comes_from_variable(var):
             raise TypeError("Variable to save is not a Variable: %s" % var)
         if var.op.type == "ReadVariableOp":

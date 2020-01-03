@@ -234,7 +234,7 @@ class UnknownError(OpError):
 
   An example of where this error may be returned is if a Status value
   received from another address space belongs to an error-space that
-  is not known to this address space. Also errors raised by APIs that
+  is not known to this address space. Also, errors raised by APIs that
   do not return enough error information may be converted to this
   error.
 
@@ -250,7 +250,7 @@ class UnknownError(OpError):
 class InvalidArgumentError(OpError):
   """Raised when an operation receives an invalid argument.
 
-  This may occur, for example, if an operation is receives an input
+  This may occur, for example, if an operation receives an input
   tensor that has an invalid value or shape. For example, the
   `tf.matmul` op will raise this
   error if it receives an input that is not a matrix, and the

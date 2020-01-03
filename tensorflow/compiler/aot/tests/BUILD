@@ -272,7 +272,112 @@ tf_cc_test(
         ":test_graph_tfvariable_sequential_updates",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
-        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/service:hlo_profile_printer",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:regexp_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//third_party/eigen3",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_library(
+    name = "test_graph_tfadd_mlir_bridge",
+    testonly = 1,
+    config = "test_graph_tfadd.config.pbtxt",
+    cpp_class = "AddComp",
+    graph = "test_graph_tfadd.pb",
+    include_standard_runtime_deps = False,
+    mlir_components = "Bridge",
+    tags = [
+        "manual",
+    ],
+)
+
+tf_library(
+    name = "test_graph_tfadd_with_ckpt_mlir_bridge",
+    testonly = 1,
+    config = "test_graph_tfadd_with_ckpt.config.pbtxt",
+    cpp_class = "AddWithCkptComp",
+    freeze_checkpoint = "test_graph_tfadd_with_ckpt.ckpt",
+    graph = "test_graph_tfadd_with_ckpt.pb",
+    mlir_components = "Bridge",
+    tags = [
+        "manual",
+    ],
+)
+
+tf_library(
+    name = "test_graph_tfadd_with_ckpt_saver_mlir_bridge",
+    testonly = 1,
+    config = "test_graph_tfadd_with_ckpt.config.pbtxt",
+    cpp_class = "AddWithCkptSaverComp",
+    freeze_checkpoint = "test_graph_tfadd_with_ckpt_saver.ckpt",
+    freeze_saver = "test_graph_tfadd_with_ckpt_saver.saver",
+    graph = "test_graph_tfadd_with_ckpt_saver.pb",
+    mlir_components = "Bridge",
+    tags = [
+        "manual",
+    ],
+)
+
+tf_library(
+    name = "test_graph_tfmatmul_mlir_bridge",
+    testonly = 1,
+    config = "test_graph_tfmatmul.config.pbtxt",
+    cpp_class = "foo::bar::MatMulComp",
+    graph = "test_graph_tfmatmul.pb",
+    mlir_components = "Bridge",
+    tags = [
+        "manual",
+    ],
+)
+
+tf_library(
+    name = "test_graph_tfmatmulandadd_mlir_bridge",
+    testonly = 1,
+    config = "test_graph_tfmatmulandadd.config.pbtxt",
+    cpp_class = "::foo::bar::MatMulAndAddComp",
+    graph = "test_graph_tfmatmulandadd.pb",
+    mlir_components = "Bridge",
+    tags = [
+        "manual",
+    ],
+    tfcompile_flags = "--gen_name_to_index --gen_program_shape",
+)
+
+tf_library(
+    name = "test_graph_tfmatmulandadd_with_profiling_mlir_bridge",
+    testonly = 1,
+    config = "test_graph_tfmatmulandadd.config.pbtxt",
+    cpp_class = "MatMulAndAddCompWithProfiling",
+    enable_xla_hlo_profiling = True,
+    graph = "test_graph_tfmatmulandadd.pb",
+    mlir_components = "Bridge",
+    tags = [
+        "manual",
+    ],
+)
+
+tf_cc_test(
+    name = "tfcompile_test_mlir_bridge",
+    srcs = ["tfcompile_test.cc"],
+    extra_copts = ["-DENABLE_MLIR_BRIDGE_TEST"],
+    tags = [
+        "manual",
+    ],
+    deps = [
+        ":test_graph_tfadd_mlir_bridge",
+        ":test_graph_tfadd_with_ckpt_mlir_bridge",
+        ":test_graph_tfadd_with_ckpt_saver_mlir_bridge",
+        ":test_graph_tfmatmul_mlir_bridge",
+        ":test_graph_tfmatmulandadd_mlir_bridge",
+        ":test_graph_tfmatmulandadd_with_profiling_mlir_bridge",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/service:hlo_profile_printer",
         "//tensorflow/core:lib",
         "//tensorflow/core:regexp_internal",

@@ -133,11 +133,11 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     super(FunctionTest, self).setUp()
     cpus = config.list_physical_devices('CPU')
     # Set 4 virtual CPUs
-    config.set_virtual_device_configuration(cpus[0], [
-        context.VirtualDeviceConfiguration(),
-        context.VirtualDeviceConfiguration(),
-        context.VirtualDeviceConfiguration(),
-        context.VirtualDeviceConfiguration()
+    config.set_logical_device_configuration(cpus[0], [
+        context.LogicalDeviceConfiguration(),
+        context.LogicalDeviceConfiguration(),
+        context.LogicalDeviceConfiguration(),
+        context.LogicalDeviceConfiguration()
     ])
 
   def testBasic(self):
@@ -147,6 +147,39 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     sq2 = matmul(sq, t, transpose_a=True)
     self.assertAllEqual(sq.numpy().reshape(-1), [10, 14, 14, 20])
     self.assertAllEqual(sq2.numpy().reshape(-1), [52, 76, 74, 108])
+
+  def testOnExitCallback(self):
+    values = []
+    def append_1():
+      values.append(1)
+
+    def append_2():
+      values.append(2)
+
+    def g(x):
+      old_values = list(values)
+      ops.add_exit_callback_to_default_func_graph(append_1)
+      self.assertEqual(old_values, values)
+      return x + 1
+
+    tf_g = def_function.function(g)
+
+    def f(x):
+      old_values = list(values)
+      ops.add_exit_callback_to_default_func_graph(append_2)
+      self.assertEqual(old_values, values)
+      return tf_g(x)
+
+    tf_f = def_function.function(f)
+    self.assertEmpty(values)
+    tf_f(constant_op.constant(1.0))
+    self.assertEqual(values, [1, 2])  # Once for g, once for f.
+    tf_f(constant_op.constant([1.0]))  # force a retrace
+    self.assertEqual(values, [1, 2, 1, 2])  # And again.
+
+  def testCannotAddExitCallbackWhenNotInFunctionScope(self):
+    with self.assertRaisesRegexp(RuntimeError, 'when not building a function.'):
+      ops.add_exit_callback_to_default_func_graph(lambda: None)
 
   def testVariable(self):
     v1 = variables.Variable(1.0)
@@ -290,16 +323,52 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertTrue(unknown_dim[0])
     self.assertLen(total_function_cache(func), 2)
 
-  def testCaptureNonTrainableVariable(self):
+  def testInputShapeRelaxationOnInstanceMethod(self):
+    # Test that experimental_relax_shapes is passed during
+    # instance method bounding.
+    unknown_dim = [False]
 
-    v = variables.Variable(1.0, trainable=False)
+    class Foo(object):
+
+      @def_function.function(experimental_relax_shapes=True)
+      def func(self, a):
+        if a._shape_tuple()[0] is None:
+          unknown_dim[0] = True
+        return a + 1
+
+    foo = Foo()
+    foo.func(constant_op.constant([]))
+    self.assertFalse(unknown_dim[0])
+
+    foo.func(constant_op.constant([1.0]))
+    self.assertFalse(unknown_dim[0])
+
+    foo.func(constant_op.constant([1.0, 2.0]))
+    self.assertTrue(unknown_dim[0])
+
+  def testCapturesVariables(self):
+    a = variables.Variable(1.0, trainable=False)
+    b = variables.Variable(1.0)
+    cc = [None]
 
     @def_function.function
     def f():
-      return v + 1
+      c = cc[0]
+      if c is None:
+        c = cc[0] = variables.Variable(1.)
+      return a + b + c + 1
 
-    c = f.get_concrete_function()
-    self.assertEqual(len(list(c.graph.variables)), 1)  # pylint: disable=g-generic-assert
+    cf = f.get_concrete_function()
+    c = cc[0]
+
+    captured_variables = {v.experimental_ref() for v in (a, b, c)}
+    trainable_variables = {v.experimental_ref() for v in (b, c)}
+    self.assertEqual({v.experimental_ref() for v in cf.variables},
+                     captured_variables)
+    self.assertEqual({v.experimental_ref() for v in cf.trainable_variables},
+                     trainable_variables)
+    self.assertEqual(cf.variables, cf.graph.variables)
+    self.assertEqual(cf.trainable_variables, cf.graph.trainable_variables)
 
   def testNestedInputShapeFunctionRelaxation(self):
     unknown_dim = [False]
@@ -1352,7 +1421,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
   def testVariableNamesRespectNameScopesWithDefun(self):
     @def_function.function
     def create_variable():
-      with ops.name_scope('foo'):
+      with ops.name_scope('foo', skip_on_eager=False):
         v = resource_variable_ops.ResourceVariable(0.0, name='bar')
       self.assertEqual(v.name, 'foo/bar:0')
 
@@ -1362,7 +1431,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     with context.graph_mode():
       @def_function.function
       def create_variable():
-        with ops.name_scope('foo'):
+        with ops.name_scope('foo', skip_on_eager=False):
           v = resource_variable_ops.ResourceVariable([1.0, 2.0], name='bar')
         self.assertEqual(v.name, 'foo/bar:0')
 
@@ -2013,6 +2082,27 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegexp(ValueError, 'does not match'):
       defined(rt5)
 
+  def testInputSignatureWithVariableArgs(self):
+
+    def f(v):
+      v.assign_add(1)
+
+    signature = [
+        resource_variable_ops.VariableSpec(shape=[], dtype=dtypes.int32)
+    ]
+    defined = function.defun(f, input_signature=signature)
+
+    v1 = variables.Variable(0)
+    v2 = variables.Variable(0)
+
+    defined(v1)
+    self.assertEqual(v1.numpy(), 1)
+    self.assertEqual(v2.numpy(), 0)
+
+    defined(v=v2)
+    self.assertEqual(v1.numpy(), 1)
+    self.assertEqual(v2.numpy(), 1)
+
   def testTensorKeywordArguments(self):
 
     def foo(a, b):
@@ -2648,11 +2738,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     def get_list():
       return [constant_op.constant(0.), constant_op.constant(1.)]
 
-    expected_msg = (
-        'Function to be traced should not modify structure of input '
-        'arguments. Check if your function has list and dictionary '
-        'operations that alter input arguments, '
-        'such as `list.pop`, `list.append`')
+    expected_msg = '.*() should not modify'
 
     with self.assertRaisesRegexp(ValueError, expected_msg):
 
@@ -2728,11 +2814,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     def get_dict():
       return {'t1': constant_op.constant(0.), 't2': constant_op.constant(1.)}
 
-    expected_msg = (
-        'Function to be traced should not modify structure of input '
-        'arguments. Check if your function has list and dictionary '
-        'operations that alter input arguments, '
-        'such as `list.pop`, `list.append`')
+    expected_msg = '.* should not modify'
 
     with self.assertRaisesRegexp(ValueError, expected_msg):
 
@@ -2775,14 +2857,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       setdefault(get_dict())
 
   def testFunctionModifiesInputNest(self):
-    # Test on functions that modify structure of nested input arguments
-    expected_msg = (
-        'Function to be traced should not modify structure of input '
-        'arguments. Check if your function has list and dictionary '
-        'operations that alter input arguments, '
-        'such as `list.pop`, `list.append`')
-
-    with self.assertRaisesRegexp(ValueError, expected_msg):
+    with self.assertRaisesRegexp(
+        ValueError, 'modify.* should not modify'):
 
       @def_function.function
       def modify(n):
@@ -2796,7 +2872,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
       modify(nested_input)
 
-    with self.assertRaisesRegexp(ValueError, expected_msg):
+    with self.assertRaisesRegexp(
+        ValueError, 'modify_same_flat.* should not modify'):
 
       # The flat list doesn't change whereas the true structure changes
       @def_function.function
@@ -3074,6 +3151,66 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     # Cancellation after the function executes is a no-op.
     c_mgr.start_cancel()
+
+  def testAddFunctionCallback(self):
+    functions = []
+    def function_callback(f):
+      functions.append(f)
+
+    @def_function.function
+    def plus_one(x):
+      return x + 1
+
+    try:
+      function.add_function_callback(function_callback)
+      x_float32 = numpy.array(3.0, dtype=numpy.float32)
+      self.assertAllClose(plus_one(x_float32), 4.0)
+      self.assertLen(functions, 1)
+      # Function is already created. Executing it again should not invoke the
+      # function callback.
+      self.assertAllClose(plus_one(x_float32), 4.0)
+      self.assertLen(functions, 1)
+      # Signature change leads to a new Function being built.
+      x_float64 = numpy.array(3.0, dtype=numpy.float64)
+      self.assertAllClose(plus_one(x_float64), 4.0)
+      self.assertLen(functions, 2)
+    finally:
+      function.clear_function_callbacks()
+
+  def testRemoveFunctionCallback(self):
+    functions_1 = []
+    def function_callback_1(f):
+      functions_1.append(f)
+
+    functions_2 = []
+    def function_callback_2(f):
+      functions_2.append(f)
+
+    @def_function.function
+    def plus_one(x):
+      return x + 1
+
+    try:
+      function.add_function_callback(function_callback_1)
+      function.add_function_callback(function_callback_2)
+      self.assertAllClose(plus_one(numpy.array(3.0, dtype=numpy.float32)), 4.0)
+      self.assertLen(functions_1, 1)
+      self.assertLen(functions_2, 1)
+      function.remove_function_callback(function_callback_1)
+      # The 1st callback should not be invokved after remove_function_callback()
+      # is called.
+      self.assertAllClose(plus_one(numpy.array(3.0, dtype=numpy.float64)), 4.0)
+      self.assertLen(functions_1, 1)
+      self.assertLen(functions_2, 2)
+    finally:
+      function.clear_function_callbacks()
+
+  def testClearFunctionCallbacks(self):
+    function.add_function_callback(lambda f: None)
+    function.add_function_callback(lambda f: None)
+    self.assertLen(function._function_callbacks, 2)
+    function.clear_function_callbacks()
+    self.assertEmpty(function._function_callbacks)  # pylint:disable=protected-access
 
 
 class MultiDeviceTest(test.TestCase, parameterized.TestCase):

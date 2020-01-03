@@ -1110,17 +1110,6 @@ inline void DepthwiseConvImpl(
   }
 }
 
-inline void DepthwiseConv(
-    const DepthwiseParams& params, const RuntimeShape& input_shape,
-    const float* input_data, const RuntimeShape& filter_shape,
-    const float* filter_data, const RuntimeShape& bias_shape,
-    const float* bias_data, const RuntimeShape& output_shape,
-    float* output_data, const CpuFlags& cpu_flags) {
-  DepthwiseConvImpl(params, input_shape, input_data, filter_shape, filter_data,
-                    bias_shape, bias_data, output_shape, output_data, cpu_flags,
-                    /*thread_start=*/0,
-                    /*thread_end=*/output_shape.Dims(1), /*thread_dim=*/1);
-}
 
 }  // namespace optimized_ops
 }  // namespace tflite

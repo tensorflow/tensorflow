@@ -18,11 +18,14 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/SMLoc.h"
+#include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ToolOutputFile.h"
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/Support/FileUtilities.h"  // TF:local_config_mlir
-#include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
-#include "mlir/Support/TranslateClParser.h"  // TF:local_config_mlir
+#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
+#include "mlir/Support/FileUtilities.h"  // TF:llvm-project
+#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
+#include "mlir/Support/ToolUtilities.h"  // TF:llvm-project
+#include "mlir/Support/TranslateClParser.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate_cl.h"
@@ -37,6 +40,13 @@ static llvm::cl::opt<std::string> input_filename(llvm::cl::Positional,
 static llvm::cl::opt<std::string> output_filename(
     "o", llvm::cl::desc("Output filename"), llvm::cl::value_desc("filename"),
     llvm::cl::init("-"));
+
+// NOLINTNEXTLINE
+static llvm::cl::opt<bool> splitInputFile(
+    "split-input-file",
+    llvm::cl::desc("Split the input file into pieces and process each chunk "
+                   "independently"),
+    llvm::cl::init(false));
 
 // NOLINTNEXTLINE
 static llvm::cl::opt<bool> import_saved_model(
@@ -83,13 +93,12 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  mlir::MLIRContext context;
-
   if (import_saved_model) {
     std::unordered_set<std::string> tags =
         absl::StrSplit(saved_model_tags, ',');
     std::vector<std::string> exported_names =
         absl::StrSplit(saved_model_exported_names, ',', absl::SkipEmpty());
+    mlir::MLIRContext context;
 
     auto module = tensorflow::SavedModelToMlirImport(
         input_filename, tags, absl::Span<std::string>(exported_names),
@@ -105,9 +114,23 @@ int main(int argc, char** argv) {
       return 1;
     }
 
-    if (failed(
-            (*requested_translation)(std::move(input), output->os(), &context)))
-      return 1;
+    // Processes the memory buffer with a new MLIRContext.
+    auto processBuffer = [&](std::unique_ptr<llvm::MemoryBuffer> ownedBuffer,
+                             llvm::raw_ostream& os) {
+      llvm::SourceMgr sourceMgr;
+      sourceMgr.AddNewSourceBuffer(std::move(ownedBuffer), llvm::SMLoc());
+      mlir::MLIRContext context;
+      mlir::SourceMgrDiagnosticHandler diagnostic_handler(sourceMgr, &context);
+      return (*requested_translation)(sourceMgr, os, &context);
+    };
+
+    if (splitInputFile) {
+      if (failed(mlir::splitAndProcessBuffer(std::move(input), processBuffer,
+                                             output->os())))
+        return 1;
+    } else {
+      if (failed(processBuffer(std::move(input), output->os()))) return 1;
+    }
   }
 
   output->keep();

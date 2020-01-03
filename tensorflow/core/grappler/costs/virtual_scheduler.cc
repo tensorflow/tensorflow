@@ -407,23 +407,18 @@ Status VirtualScheduler::Init(const GrapplerItem* item) {
 
   // Get the nodes that would run to output fetch_nodes.
   bool ill_formed = false;
+  std::unordered_map<string, const NodeDef*> name_to_node;
   const std::vector<const NodeDef*> fetch_fanin_nodes =
-      ComputeTransitiveFanin(graph, fetch_nodes, &ill_formed);
+      ComputeTransitiveFanin(graph, fetch_nodes, &name_to_node, &ill_formed);
   if (ill_formed) {
     return errors::InvalidArgument(
         "Ill formed graph or invalid set of fetch nodes specified");
   }
 
-  // TODO(dyoon): this is a bit inefficient as name_to_node is already built in
-  // ComputeTransitiveFanin().
   // Once ComputeTransitiveFanin is complete, only the nodes that can be reached
   // from the fetch nodes are scheduled. So the scheduled nodes should be
   // exactly the same as those executed for real. One possible discrepancy could
   // be the control flow nodes, where tf only executes one path.
-  std::unordered_map<string, const NodeDef*> name_to_node;
-  for (const auto& node : fetch_fanin_nodes) {
-    name_to_node[node->name()] = node;
-  }
 
   // Traverses the graph to record _Send nodes.
   // TODO(dyoon): Instead of identifying _Send node here manually, add _Send
@@ -831,8 +826,10 @@ bool VirtualScheduler::MarkCurrNodeExecuted(const Costs& node_costs) {
                                    ? 1
                                    : node->attr().at(kExecutionCount).i();
 
-  Costs total_node_costs =
-      MultiplyCosts(node_costs, node_state.execution_count);
+  node_state.node_costs = node_costs;
+  // TotalNodeCosts() Should be called after node_costs and execution_count.
+  Costs total_node_costs = node_state.TotalNodeCosts();
+
   graph_costs_ = CombineCosts(graph_costs_, total_node_costs);
   const string& op_name = node->op();
 
@@ -1168,9 +1165,7 @@ void VirtualScheduler::GenerateRunMetadata(RunMetadata* metadata) {
         node_stats->set_timeline_label(timeline_label);
       }
       node_stats->set_node_name(node_def->name());
-      // Timestamps in microseconds.
-      // TODO(b/138165866): Remove once TimelineServer support is no longer
-      // needed.
+      // Timestamps in microseconds (can be used by timeline_server).
       node_stats->set_op_start_rel_micros(0);
       node_stats->set_all_start_micros(
           nodestate.time_scheduled.asMicroSeconds().count());
@@ -1180,7 +1175,7 @@ void VirtualScheduler::GenerateRunMetadata(RunMetadata* metadata) {
       node_stats->set_all_end_rel_micros(
           nodestate.time_finished.asMicroSeconds().count() -
           nodestate.time_scheduled.asMicroSeconds().count());
-      // Timestamps in nanoseconds.
+      // Timestamps in nanoseconds (can be used by xprof trace).
       node_stats->set_op_start_rel_nanos(0);
       node_stats->set_all_start_nanos(nodestate.time_scheduled.count());
       node_stats->set_op_end_rel_nanos(nodestate.time_finished.count() -

@@ -18,7 +18,7 @@ limitations under the License.
 #include <algorithm>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
@@ -87,6 +87,117 @@ static inline void ApplyTimeWeightsBiasAndActivation(
   }
 }
 
+inline void EvalIntegerSVDF(
+    TfLiteContext* context, TfLiteNode* node, const TfLiteTensor* input_tensor,
+    const TfLiteTensor* weights_feature_tensor,
+    const TfLiteTensor* weights_time_tensor, const TfLiteTensor* bias_tensor,
+    const TfLiteSVDFParams* params, TfLiteTensor* state_tensor,
+    TfLiteTensor* output_tensor, TfLiteTensor* scratch_tensor,
+    TfLiteTensor* output_temp_tensor, int32_t scale_1_a, int scale_1_b,
+    int32_t scale_2_a, int scale_2_b, int32_t input_zp, int32_t output_zp) {
+  const int n_rank = params->rank;
+  const int n_batch = input_tensor->dims->data[0];
+  const int n_input = input_tensor->dims->data[1];
+  const int n_filter = weights_feature_tensor->dims->data[0];
+  const int n_unit = n_filter / n_rank;
+  const int n_memory = weights_time_tensor->dims->data[1];
+
+  // Rewrite last bit of state.
+  // TODO(jianlijianli): move this function into matmul.
+  {
+    for (int b = 0; b < n_batch; ++b) {
+      int16_t* state_ptr_batch =
+          GetTensorData<int16_t>(state_tensor) + b * n_memory * n_filter;
+      for (int c = 0; c < n_filter; ++c) {
+        int16_t* state_ptr = state_ptr_batch + c * n_memory;
+        state_ptr[n_memory - 1] = 0;
+      }
+    }
+  }
+
+  // Feature matmul.
+  {
+    int16_t* state = GetTensorData<int16_t>(state_tensor);
+    const int8_t* input = GetTensorData<int8_t>(input_tensor);
+    const int8_t* weight_feature =
+        GetTensorData<int8_t>(weights_feature_tensor);
+    const int32_t output_max = std::numeric_limits<int16_t>::max();
+    const int32_t output_min = std::numeric_limits<int16_t>::min();
+    int16_t* result_in_batch = state + (n_memory - 1);
+    for (int b = 0; b < n_batch; b++) {
+      const int8_t* matrix_ptr = weight_feature;
+      for (int r = 0; r < n_filter; r++) {
+        int32_t dot_prod = 0;
+        const int8_t* vector_in_batch = input + b * n_input;
+        for (int c = 0; c < n_input; c++) {
+          dot_prod += *matrix_ptr++ * (*vector_in_batch++ - input_zp);
+        }
+        dot_prod =
+            MultiplyByQuantizedMultiplier(dot_prod, scale_1_a, scale_1_b);
+        dot_prod = std::min(std::max(output_min, dot_prod), output_max);
+        *result_in_batch = dot_prod;
+        result_in_batch += n_memory;
+      }
+    }
+  }
+
+  // Time.
+  {
+    for (int b = 0; b < n_batch; ++b) {
+      const int16_t* state_ptr_batch =
+          GetTensorData<int16_t>(state_tensor) + b * n_memory * n_filter;
+      int32_t* scratch_ptr_batch =
+          GetTensorData<int32_t>(scratch_tensor) + b * n_filter;
+      tensor_utils::BatchVectorBatchVectorDotProduct(
+          GetTensorData<int16_t>(weights_time_tensor), state_ptr_batch,
+          n_memory, n_filter, scratch_ptr_batch, /*result_stride=*/1);
+    }
+  }
+
+  // Reduce, add bias, rescale, activation.
+  {
+    int32_t* output_temp = GetTensorData<int32_t>(output_temp_tensor);
+    // Add bias.
+    if (bias_tensor) {
+      tensor_utils::VectorBatchVectorAssign(GetTensorData<int32_t>(bias_tensor),
+                                            n_unit, n_batch, output_temp);
+    } else {
+      std::fill_n(output_temp, n_batch * n_unit, 0);
+    }
+    // Reduce.
+    for (int b = 0; b < n_batch; ++b) {
+      int32_t* output_temp_ptr = output_temp + b * n_unit;
+      int32_t* scratch_ptr_batch =
+          GetTensorData<int32_t>(scratch_tensor) + b * n_filter;
+      tensor_utils::ReductionSumVector(scratch_ptr_batch, output_temp_ptr,
+                                       n_unit, n_rank);
+    }
+    // Rescale.
+    const int32_t output_max = std::numeric_limits<int8_t>::max();
+    const int32_t output_min = std::numeric_limits<int8_t>::min();
+    for (int i = 0; i < n_batch * n_unit; ++i) {
+      int32_t x1 = output_temp[i];
+      int32_t x2 = MultiplyByQuantizedMultiplier(x1, scale_2_a, scale_2_b);
+      int32_t x3 = x2 + output_zp;
+      int32_t x4 = std::min(std::max(output_min, x3), output_max);
+      GetTensorData<int8_t>(output_tensor)[i] = static_cast<int8_t>(x4);
+    }
+  }
+
+  // Shift state.
+  {
+    int16_t zero = 0;
+    for (int b = 0; b < n_batch; ++b) {
+      int16_t* state_ptr_batch =
+          GetTensorData<int16_t>(state_tensor) + b * n_memory * n_filter;
+      for (int f = 0; f < n_filter; ++f) {
+        tensor_utils::VectorShiftLeft(state_ptr_batch, n_memory, zero);
+        state_ptr_batch += n_memory;
+      }
+    }
+  }
+}
+
 inline void EvalFloatSVDF(TfLiteContext* context, TfLiteNode* node,
                           const TfLiteTensor* input,
                           const TfLiteTensor* weights_feature,
@@ -145,17 +256,8 @@ inline void EvalHybridSVDF(
 
   // Initialize the pointer to storage for quantized values and the weights
   // feature.
-  int8_t* quantized_input_ptr_batch;
-  const int8_t* weights_feature_ptr;
-  if (weights_feature->type == kTfLiteUInt8) {
-    quantized_input_ptr_batch =
-        reinterpret_cast<int8_t*>(GetTensorData<uint8_t>(input_quantized));
-    weights_feature_ptr = reinterpret_cast<const int8_t*>(
-        GetTensorData<uint8_t>(weights_feature));
-  } else {
-    quantized_input_ptr_batch = GetTensorData<int8_t>(input_quantized);
-    weights_feature_ptr = GetTensorData<int8_t>(weights_feature);
-  }
+  int8_t* quantized_input_ptr_batch = GetTensorData<int8_t>(input_quantized);
+  const int8_t* weights_feature_ptr = GetTensorData<int8_t>(weights_feature);
 
   // Initialize the pointer to storage for scaling factors.
   float* scaling_factors_ptr = GetTensorData<float>(scaling_factors);

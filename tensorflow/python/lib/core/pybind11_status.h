@@ -18,16 +18,18 @@ limitations under the License.
 
 #include <Python.h>
 
-#include "pybind11/pybind11.h"
+#include "include/pybind11/pybind11.h"
+#include "tensorflow/c/tf_status.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "tensorflow/python/lib/core/py_exception_registry.h"
 
 namespace tensorflow {
 
 namespace internal {
 
-PyObject* StatusToPyExc(const Status& status) {
-  switch (status.code()) {
+inline PyObject* CodeToPyExc(const int code) {
+  switch (code) {
     case error::Code::INVALID_ARGUMENT:
       return PyExc_ValueError;
     case error::Code::OUT_OF_RANGE:
@@ -39,12 +41,49 @@ PyObject* StatusToPyExc(const Status& status) {
   }
 }
 
+inline PyObject* StatusToPyExc(const Status& status) {
+  return CodeToPyExc(status.code());
+}
+
+inline PyObject* TFStatusToPyExc(const TF_Status* status) {
+  return CodeToPyExc(TF_GetCode(status));
+}
+
 }  // namespace internal
 
 inline void MaybeRaiseFromStatus(const Status& status) {
   if (!status.ok()) {
     PyErr_SetString(internal::StatusToPyExc(status),
                     status.error_message().c_str());
+    throw pybind11::error_already_set();
+  }
+}
+
+inline void MaybeRaiseRegisteredFromStatus(const tensorflow::Status& status) {
+  if (!status.ok()) {
+    PyErr_SetObject(PyExceptionRegistry::Lookup(status.code()),
+                    pybind11::make_tuple(pybind11::none(), pybind11::none(),
+                                         status.error_message())
+                        .ptr());
+    throw pybind11::error_already_set();
+  }
+}
+
+inline void MaybeRaiseFromTFStatus(TF_Status* status) {
+  TF_Code code = TF_GetCode(status);
+  if (code != TF_OK) {
+    PyErr_SetString(internal::TFStatusToPyExc(status), TF_Message(status));
+    throw pybind11::error_already_set();
+  }
+}
+
+inline void MaybeRaiseRegisteredFromTFStatus(TF_Status* status) {
+  TF_Code code = TF_GetCode(status);
+  if (code != TF_OK) {
+    PyErr_SetObject(PyExceptionRegistry::Lookup(code),
+                    pybind11::make_tuple(pybind11::none(), pybind11::none(),
+                                         TF_Message(status))
+                        .ptr());
     throw pybind11::error_already_set();
   }
 }
@@ -65,7 +104,7 @@ struct type_caster<tensorflow::Status> {
   PYBIND11_TYPE_CASTER(tensorflow::Status, _("Status"));
   static handle cast(tensorflow::Status status, return_value_policy, handle) {
     tensorflow::MaybeRaiseFromStatus(status);
-    return none();
+    return none().inc_ref();
   }
 };
 

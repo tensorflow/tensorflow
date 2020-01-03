@@ -129,6 +129,13 @@ class SerializeKerasObjectTest(test.TestCase):
     inst = OtherTestClass(val=5)
     class_name = keras.utils.generic_utils._GLOBAL_CUSTOM_NAMES[OtherTestClass]
     self.assertEqual(serialized_name, class_name)
+    fn_class_name = keras.utils.generic_utils.get_registered_name(
+        OtherTestClass)
+    self.assertEqual(fn_class_name, class_name)
+
+    cls = keras.utils.generic_utils.get_registered_object(fn_class_name)
+    self.assertEqual(OtherTestClass, cls)
+
     config = keras.utils.generic_utils.serialize_keras_object(inst)
     self.assertEqual(class_name, config['class_name'])
     new_inst = keras.utils.generic_utils.deserialize_keras_object(config)
@@ -145,10 +152,16 @@ class SerializeKerasObjectTest(test.TestCase):
     serialized_name = 'Custom>my_fn'
     class_name = keras.utils.generic_utils._GLOBAL_CUSTOM_NAMES[my_fn]
     self.assertEqual(serialized_name, class_name)
+    fn_class_name = keras.utils.generic_utils.get_registered_name(my_fn)
+    self.assertEqual(fn_class_name, class_name)
+
     config = keras.utils.generic_utils.serialize_keras_object(my_fn)
     self.assertEqual(class_name, config)
     fn = keras.utils.generic_utils.deserialize_keras_object(config)
     self.assertEqual(42, fn())
+
+    fn_2 = keras.utils.generic_utils.get_registered_object(fn_class_name)
+    self.assertEqual(42, fn_2())
 
   def test_serialize_custom_class_without_get_config_fails(self):
 
@@ -224,6 +237,7 @@ class SerializeKerasObjectTest(test.TestCase):
     nested_int = SerializableInt(4)
     layer = keras.layers.Dense(
         SerializableNestedInt(3, nested_int),
+        name='SerializableNestedInt',
         activation='relu',
         kernel_initializer='ones',
         bias_regularizer='l2')
@@ -234,6 +248,9 @@ class SerializeKerasObjectTest(test.TestCase):
             'SerializableInt': SerializableInt,
             'SerializableNestedInt': SerializableNestedInt
         })
+    # Make sure the string field doesn't get convert to custom object, even
+    # they have same value.
+    self.assertEqual(new_layer.name, 'SerializableNestedInt')
     self.assertEqual(new_layer.activation, keras.activations.relu)
     self.assertEqual(new_layer.bias_regularizer.__class__,
                      keras.regularizers.L1L2)
@@ -241,6 +258,45 @@ class SerializeKerasObjectTest(test.TestCase):
     self.assertEqual(new_layer.units, 3)
     self.assertEqual(new_layer.units.int_obj.__class__, SerializableInt)
     self.assertEqual(new_layer.units.int_obj, 4)
+
+  def test_nested_serializable_fn(self):
+
+    def serializable_fn(x):
+      """A serializable function to pass out of a test layer's config."""
+      return x
+
+    class SerializableNestedInt(int):
+      """A serializable object containing a serializable function."""
+
+      def __new__(cls, value, fn):
+        obj = int.__new__(cls, value)
+        obj.fn = fn
+        return obj
+
+      def get_config(self):
+        return {'value': int(self), 'fn': self.fn}
+
+      @classmethod
+      def from_config(cls, config):
+        return cls(**config)
+
+    layer = keras.layers.Dense(
+        SerializableNestedInt(3, serializable_fn),
+        activation='relu',
+        kernel_initializer='ones',
+        bias_regularizer='l2')
+    config = keras.layers.serialize(layer)
+    new_layer = keras.layers.deserialize(
+        config,
+        custom_objects={
+            'serializable_fn': serializable_fn,
+            'SerializableNestedInt': SerializableNestedInt
+        })
+    self.assertEqual(new_layer.activation, keras.activations.relu)
+    self.assertIsInstance(new_layer.bias_regularizer, keras.regularizers.L1L2)
+    self.assertIsInstance(new_layer.units, SerializableNestedInt)
+    self.assertEqual(new_layer.units, 3)
+    self.assertIs(new_layer.units.fn, serializable_fn)
 
 
 class SliceArraysTest(test.TestCase):

@@ -17,6 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.compat import compat
+from tensorflow.python.data.experimental.ops.distribute_options import AutoShardPolicy
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import ops
@@ -46,11 +48,22 @@ class _AutoShardDataset(dataset_ops.UnaryDataset):
     self._input_dataset = input_dataset
 
     self._element_spec = input_dataset.element_spec
-    variant_tensor = ged_ops.auto_shard_dataset(
-        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-        num_workers=num_workers,
-        index=index,
-        **self._flat_structure)
+    if (compat.forward_compatible(2019, 11, 25) or
+        (input_dataset.options().experimental_distribute.auto_shard_policy !=
+         AutoShardPolicy.AUTO)):
+      variant_tensor = ged_ops.auto_shard_dataset(
+          self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+          num_workers=num_workers,
+          index=index,
+          auto_shard_policy=int(input_dataset.options().experimental_distribute
+                                .auto_shard_policy),
+          **self._flat_structure)
+    else:
+      variant_tensor = ged_ops.auto_shard_dataset(
+          self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+          num_workers=num_workers,
+          index=index,
+          **self._flat_structure)
     super(_AutoShardDataset, self).__init__(input_dataset, variant_tensor)
 
   @property
@@ -74,6 +87,10 @@ class _RebatchDataset(dataset_ops.UnaryDataset):
 
     def recalculate_batch_size(output_shapes):
       """Recalculates the output_shapes after dividing it by num_replicas."""
+      # If the output shape is unknown, we set the batch dimension to unknown.
+      if output_shapes.rank is None:
+        return None
+
       if len(output_shapes) < 1:
         raise ValueError(
             "Input shape should have at least one dimension. "
@@ -143,9 +160,10 @@ def replicate(dataset, devices):
 
   with ops.colocate_with(dataset._variant_tensor):
     dataset = dataset._apply_options()
-    allow_stateful = dataset.options().experimental_allow_stateful
+    external_state_policy = dataset.options().experimental_external_state_policy
     graph_def = dataset._as_serialized_graph(
-        allow_stateful=allow_stateful, strip_device_assignment=True)
+        strip_device_assignment=True,
+        external_state_policy=external_state_policy)
   for device in devices:
     ds = _RemoteDataset(graph_def, device, dataset.element_spec)
     datasets[device] = ds

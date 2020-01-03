@@ -30,7 +30,7 @@ from tensorflow.python.ops.linalg import linalg_impl as linalg
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export('linalg.experimental.sparse.conjugate_gradient')
+@tf_export('linalg.experimental.conjugate_gradient')
 def conjugate_gradient(operator,
                        rhs,
                        preconditioner=None,

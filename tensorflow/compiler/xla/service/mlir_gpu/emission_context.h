@@ -18,7 +18,8 @@ limitations under the License.
 
 #include <memory>
 
-#include "mlir/IR/Diagnostics.h"  // TF:local_config_mlir
+#include "mlir/IR/Diagnostics.h"  // TF:llvm-project
+#include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 
@@ -38,13 +39,15 @@ class EmissionContext {
   using ErrorMap =
       std::unordered_map<const HloInstruction*, std::vector<std::string>>;
 
-  // Gets an hlo module and an optional error handler function which is
-  // executed when the instance gets destroyed or `releaseHloModule()` is
-  // called.
-  explicit EmissionContext(
-      std::unique_ptr<HloModule> module,
-      std::function<void(const ErrorMap&, HloModule*)> callback =
-          [](const ErrorMap& instructions_with_error, HloModule* module) {});
+  // Gets an hlo module and sets the default error handler which writes to the
+  // ERROR log and is executed when the instance gets destroyed or
+  // `releaseHloModule()` is called.
+  explicit EmissionContext(std::unique_ptr<HloModule> module);
+
+  // Gets an hlo module and an error handler function which is executed when the
+  // instance gets destroyed or `releaseHloModule()` is called.
+  EmissionContext(std::unique_ptr<HloModule> module,
+                  std::function<void(const ErrorMap&, HloModule*)> callback);
 
   // Handles all the errors according to the error handler function before
   // getting destroyed.
@@ -55,7 +58,7 @@ class EmissionContext {
   mlir::Location getLocation(const HloInstruction* instr);
 
   // Adds an error message associated with provided hlo instruction.
-  void addError(const HloInstruction* hloInstruction, const string& str);
+  void addError(const HloInstruction* hlo_instruction, const string& str);
 
   // Sets a function that handles the errors at the point when the instance
   // gets destroyed or `releaseHloModule()` is called.

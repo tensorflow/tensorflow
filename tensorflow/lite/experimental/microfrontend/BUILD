@@ -17,6 +17,7 @@ package(
 cc_library(
     name = "audio_microfrontend",
     srcs = ["audio_microfrontend.cc"],
+    hdrs = ["audio_microfrontend.h"],
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite/experimental/microfrontend/lib:frontend",
@@ -91,9 +92,9 @@ tf_py_test(
     name = "audio_microfrontend_op_test",
     size = "small",
     srcs = ["python/kernel_tests/audio_microfrontend_op_test.py"],
-    additional_deps = [
+    tags = ["no_pip"],
+    deps = [
         ":audio_microfrontend_py",
         "//tensorflow:tensorflow_py",
     ],
-    tags = ["no_pip"],
 )

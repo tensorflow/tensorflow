@@ -1455,7 +1455,7 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
     if (IsInPreserveSet(*node)) return false;
     if (IsConcat(*node) && node->attr().count("N") != 0) {
       const int n = node->attr().at("N").i();
-      return n > 1;
+      return n > 1 && FirstNInputsAreUnique(*node, n);
     } else if ((IsSplit(*node) || IsSplitV(*node)) &&
                node->attr().count("num_split") != 0) {
       const int num_split = node->attr().at("num_split").i();
@@ -1489,6 +1489,17 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
   }
 
  private:
+  bool FirstNInputsAreUnique(const NodeDef& node, int n) const {
+    if (n > node.input_size()) return false;
+    absl::flat_hash_set<string> unique_inputs;
+    const int start = node.op() == "Concat" ? 1 : 0;
+    const int end = start + n;
+    for (int i = start; i < end; ++i) {
+      unique_inputs.insert(node.input(i));
+    }
+    return unique_inputs.size() == n;
+  }
+
   // Returns the length of the common unary chain of ops that can be
   // hoisted to the other side of concat or split.
   Status FindCommonUnaryOpChain(const NodeDef& root_node, int* prefix_length,
@@ -1525,7 +1536,7 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
   Status HoistUnaryOpChain(const int prefix_length, const ChainLinkSet& tails,
                            std::set<string>* ctrl_inputs, NodeDef* root_node) {
     VLOG(3) << "Hoist unary op chain:"
-            << " root=" << root_node->name()
+            << " root=" << root_node->DebugString()
             << " prefix_length=" << prefix_length << " ctrl_inputs=["
             << absl::StrJoin(*ctrl_inputs, ", ") << "]";
 
@@ -1619,6 +1630,17 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
       if (ctx().node_map->GetOutputs(op->name()).size() > 1) {
         // TODO(rmlarsen): Allow outgoing control edges.
         return false;
+      }
+      // Do not hoist Relu if it can be fused with its predecessors. This is
+      // important because remapping runs after arithmetic.
+      if (IsRelu(*op) || IsRelu6(*op)) {
+        NodeDef* operand = nullptr;
+        if (!GetInputNode(op->input(0), &operand).ok()) {
+          return false;
+        }
+        if (IsFusedBatchNorm(*operand) || IsBiasAdd(*operand)) {
+          return false;
+        }
       }
     }
     return true;
@@ -2240,10 +2262,10 @@ class FoldTransposeIntoMatMul : public ArithmeticOptimizerStage {
     }
 
     const std::set<string> foldable_transpose_ops =
-        !is_complex ? std::set<string>{"ConjugateTranspose", "Transpose"}
-                    : (node->op() == "BatchMatMul"
-                           ? std::set<string>{"ConjugateTranspose"}
-                           : std::set<string>{"Transpose"});
+        !is_complex
+            ? std::set<string>{"ConjugateTranspose", "Transpose"}
+            : (IsAnyBatchMatMul(*node) ? std::set<string>{"ConjugateTranspose"}
+                                       : std::set<string>{"Transpose"});
 
     const bool a_is_foldable = foldable_transpose_ops.count(a->op()) > 0 &&
                                IsInnerMatrixTransposeNode(*a, ctx().node_map);
@@ -2254,8 +2276,7 @@ class FoldTransposeIntoMatMul : public ArithmeticOptimizerStage {
     NodeDef* new_op = AddCopyNode(optimized_node_name, node);
 
     if (a_is_foldable) {
-      const string attr_a =
-          node->op() == "BatchMatMul" ? "adj_x" : "transpose_a";
+      const string attr_a = IsAnyBatchMatMul(*node) ? "adj_x" : "transpose_a";
       FlipBooleanAttr(attr_a, new_op);
       new_op->set_input(0, a->input(0));
       ctx().node_map->UpdateInput(new_op->name(), a->name(), a->input(0));
@@ -2264,8 +2285,7 @@ class FoldTransposeIntoMatMul : public ArithmeticOptimizerStage {
     }
 
     if (b_is_foldable) {
-      const string attr_b =
-          node->op() == "BatchMatMul" ? "adj_y" : "transpose_b";
+      const string attr_b = IsAnyBatchMatMul(*node) ? "adj_y" : "transpose_b";
       FlipBooleanAttr(attr_b, new_op);
       new_op->set_input(1, b->input(0));
       ctx().node_map->UpdateInput(new_op->name(), b->name(), b->input(0));
@@ -2836,14 +2856,23 @@ class OptimizeMaxOrMinOfMonotonicStage : public ArithmeticOptimizerStage {
     // 2. inner_function's output is not being consumed elsewhere.
     // 3. is monotonic increasing if reduction_node is a pooling operation
     //    since we don't have MinPool operations.
-    // 4. inner_functions is not a Relu node with an input from FusedBatchNorm.
-    //    This pattern will be fused later by remapper.
+    // 4. inner_functions is not a Relu node with an input from FusedBatchNorm
+    //    or BiasAdd. This pattern will be fused later by remapper.
+    auto can_be_fused_by_remapper = [](const NodeDef& consumer,
+                                       const NodeDef& producer) -> bool {
+      if (IsRelu(consumer) || IsRelu6(consumer)) {
+        if (IsFusedBatchNorm(producer) || IsBiasAdd(producer)) {
+          return true;
+        }
+      }
+      return false;
+    };
     bool is_non_decreasing = false;
     if (!IsInPreserveSet(*inner_function) &&
         IsElementWiseMonotonic(*inner_function, &is_non_decreasing) &&
         ctx().node_map->GetOutputs(inner_function->name()).size() == 1 &&
         (is_non_decreasing || !IsAnyMaxPool(*reduction_node)) &&
-        !(IsRelu(*inner_function) && IsFusedBatchNorm(*inner_function_input))) {
+        !can_be_fused_by_remapper(*inner_function, *inner_function_input)) {
       // Swap the first inputs of the inner function Op & the reduction Op.
       NodeDef* inner_input;
       TF_RETURN_IF_ERROR(GetInputNode(inner_function->input(0), &inner_input));

@@ -100,7 +100,7 @@ class Sequential(training.Model):
 
   @trackable.no_automatic_dependency_tracking
   def __init__(self, layers=None, name=None):
-    super(Sequential, self).__init__(name=name)
+    super(Sequential, self).__init__(name=name, autocast=False)
     self.supports_masking = True
     self._build_input_shape = None
     self._compute_output_and_mask_jointly = True
@@ -217,8 +217,7 @@ class Sequential(training.Model):
       self._init_graph_network(self.inputs, self.outputs, name=self.name)
     else:
       self._layers.append(layer)
-    if self._layers:
-      self._track_layers(self._layers)
+      self._handle_deferred_layer_dependencies([layer])
 
     self._layer_call_argspecs[layer] = tf_inspect.getfullargspec(layer.call)
     # Different Model types add to `._layers` in different ways, so for safety

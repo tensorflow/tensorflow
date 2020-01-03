@@ -137,6 +137,19 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
 
     self.assertAllEqual(fn(constant_op.constant(1.0)), 2.0)
 
+  def testFunctionMultipleVariableInitializer(self):
+
+    state = []
+
+    @def_function.function
+    def fn(x):
+      if not state:
+        state.append(variables.Variable(lambda: 2.0))
+        state.append(variables.Variable(lambda: 5.0))
+      return state[0] * x, state[1] * x
+
+    self.assertAllEqual(fn(constant_op.constant(1.0)), [2.0, 5.0])
+
   def testFunctionInitializationFunction(self):
 
     state = []
@@ -341,7 +354,7 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
 
       def make_z(self):
         if self.z is None:
-          with ops.name_scope('z_scope'):
+          with ops.name_scope('z_scope', skip_on_eager=False):
             self.z = variables.Variable(1., name='z')
 
     root = HasVars()
@@ -539,7 +552,6 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose([13., 14.], add_var(constant_op.constant(2.)))
 
   def testSameVariableTwice(self):
-
     v = variables.Variable(1.0)
 
     @def_function.function
@@ -547,6 +559,29 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
       return a + b
 
     self.assertAllEqual(add(v, v), 2.0)
+
+  def testVariableUpdate(self):
+    v1 = variables.Variable(1.0)
+    v2 = variables.Variable(2.0)
+    v3 = variables.Variable(4, dtype=dtypes.int32)
+
+    trace_count = [0]
+
+    @def_function.function
+    def double_variable(x):
+      trace_count[0] += 1
+      x.assign_add(x.read_value())
+
+    self.assertEqual(trace_count[0], 0)
+    double_variable(v1)
+    self.assertEqual(trace_count[0], 1)
+    self.assertEqual(self.evaluate(v1), 2.0)
+    double_variable(v2)
+    self.assertEqual(trace_count[0], 1 if ops.Tensor._USE_EQUALITY else 2)
+    self.assertEqual(self.evaluate(v2), 4.0)
+    double_variable(v3)
+    self.assertEqual(trace_count[0], 2 if ops.Tensor._USE_EQUALITY else 3)
+    self.assertEqual(self.evaluate(v3), 8)
 
   def testShapeCache(self):
     @def_function.function
@@ -646,7 +681,7 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(autograph, cloned._autograph)
     self.assertEqual(implements, cloned._implements)
     self.assertEqual(autograph_options, cloned._experimental_autograph_options)
-    self.assertEqual(relax_shapes, cloned.experimental_relax_shapes)
+    self.assertEqual(relax_shapes, cloned._experimental_relax_shapes)
     self.assertEqual(compile_, cloned._experimental_compile)
 
     # This test does not run with XLA JIT support linked in so we can only check
@@ -680,6 +715,18 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
     msg = 'Functions cannot be decorated after they have been traced.'
     with self.assertRaisesRegexp(ValueError, msg):
       func._decorate(lambda f: f)
+
+  def testGetConcreteFunctionGraphLifetime(self):
+
+    @def_function.function
+    def func():
+      pass
+
+    graph = func.get_concrete_function().graph
+    del func
+
+    # If the graph is deleted, then an exception is raised on reading `captures`
+    self.assertEmpty(graph.captures)
 
 
 if __name__ == '__main__':

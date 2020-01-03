@@ -31,7 +31,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_padding_legalization.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_layout_assignment.h"
+#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
+#include "tensorflow/compiler/xla/service/gpu/reduction_degenerate_dim_remover.h"
+#include "tensorflow/compiler/xla/service/gpu/reduction_dimension_grouper.h"
+#include "tensorflow/compiler/xla/service/gpu/reduction_layout_normalizer.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
@@ -96,7 +100,7 @@ string GetLibdeviceDir(const HloModuleConfig& hlo_module_config) {
       "uses routines from libdevice.",
       hlo_module_config);
 
-  // GetCudaRootCandidates always inclues ".", but but if everything fails, we
+  // GetCudaRootCandidates always includes ".", but but if everything fails, we
   // return it anyway.  Better than returning the empty string.
   return ".";
 }
@@ -131,6 +135,8 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
                                           /*allow_mixed_precision=*/false);
 
     AlgebraicSimplifierOptions options;
+    options.set_cudnn_batchnorm_forward_training_metadata(
+        kCudnnBatchNormForwardTrainingCallTarget);
     pass.AddPass<AlgebraicSimplifier>(options);
   }
 
@@ -153,6 +159,10 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
       /*layout_sensitive=*/true,
       /*allow_mixed_precision=*/false,
       LayoutAssignment::InstructionCanChangeLayout);
+
+  pipeline.AddPass<ReductionDegenerateDimRemover>();
+  pipeline.AddPass<ReductionLayoutNormalizer>();
+  pipeline.AddPass<ReductionDimensionGrouper>();
 
   // The LayoutAssignment pass may leave behind kCopy instructions which are
   // duplicate or NOPs, so remove them with algebraic simplification and CSE.
@@ -425,7 +435,7 @@ std::vector<uint8> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
                 "Can't find ptxas binary in ${CUDA_DIR}/bin.  Will back to the "
                 "GPU driver for PTX -> sass compilation.  This is OK so long "
                 "as you don't see a warning below about an out-of-date driver "
-                "version.",
+                "version. Custom ptxas location can be specified using $PATH.",
                 hlo_module_config);
           }
 

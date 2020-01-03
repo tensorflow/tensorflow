@@ -30,6 +30,7 @@ enum class TensorStorageType {
   BUFFER,
   IMAGE_BUFFER,
   TEXTURE_2D,
+  TEXTURE_3D,
   TEXTURE_ARRAY,
   SINGLE_TEXTURE_2D
 };
@@ -37,6 +38,12 @@ enum class TensorStorageType {
 struct TensorDescriptor {
   DataType data_type;
   TensorStorageType storage_type;
+
+  bool operator==(const TensorDescriptor& d) const {
+    return data_type == d.data_type && storage_type == d.storage_type;
+  }
+
+  bool operator!=(const TensorDescriptor& d) const { return !(*this == d); }
 };
 
 std::string ToString(TensorStorageType type);

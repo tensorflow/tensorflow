@@ -56,7 +56,7 @@ class ApiTest(test.TestCase):
       def no_arg(self, x):
         return super().plus_three(x)
 
-    tc = api.converted_call(TestSubclass, (), {}, options=DEFAULT_RECURSIVE)
+    tc = api.converted_call(TestSubclass, (), None, options=DEFAULT_RECURSIVE)
 
     self.assertEqual(5, tc.no_arg(2))
 

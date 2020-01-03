@@ -216,7 +216,8 @@ class HloModule {
   // Convert an HloModule to or from a proto.
   HloModuleProto ToProto() const;
   static StatusOr<std::unique_ptr<HloModule>> CreateFromProto(
-      const HloModuleProto& proto, const HloModuleConfig& module_config);
+      const HloModuleProto& proto, const HloModuleConfig& module_config,
+      bool prohibit_empty_literal = true);
 
   // Creates and returns an HloModuleConfig with an appropriate program shape
   // for the HLO module in the given proto.
@@ -285,7 +286,7 @@ class HloModule {
   // Returns true if the module has a schedule set.
   bool has_schedule() const { return schedule_.has_value(); }
 
-  // Returns the schedue of the module. CHECK fails if no schedule is set.
+  // Returns the schedule of the module. CHECK fails if no schedule is set.
   const HloSchedule& schedule() const { return *schedule_; }
   HloSchedule& schedule() { return *schedule_; }
 
@@ -337,6 +338,10 @@ class HloModule {
   HloComputation* AddComputationInternal(
       std::unique_ptr<HloComputation> computation, bool is_entry,
       bool uniquify_identifiers);
+
+  // Same as MakeComputationPostOrder() but sorting the computations by their
+  // contents.
+  std::vector<HloComputation*> MakeComputationSortedByContent() const;
 
   string name_;
   HloModuleConfig config_;

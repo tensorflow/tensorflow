@@ -565,7 +565,7 @@ ENTRY main {
   operand = s32[20,10]{1,0} parameter(0)
   indices = s32[32,20] parameter(1)
   dynamic_size = s32[] parameter(2)
-  ROOT gather = f32[32,10,10]{2,1,0} gather(%operand, %indices),
+  ROOT gather = s32[32,20,10]{2,1,0} gather(%operand, %indices),
                  offset_dims={2},
                  collapsed_slice_dims={0},
                  start_index_map={0},
@@ -574,7 +574,7 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnUnverifiedModule(hlo_text));
+  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_text));
   TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
       DynamicParameterBinding::DynamicParameter{2, {}},
       DynamicParameterBinding::DynamicDimension{1, {}, 0}));

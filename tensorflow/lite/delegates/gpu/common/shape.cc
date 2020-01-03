@@ -62,6 +62,8 @@ std::string ToString(Axis axis) {
       return "width";
     case Axis::VALUE:
       return "value";
+    case Axis::DEPTH:
+      return "depth";
     case Axis::UNKNOWN:
       return "unknown";
   }
@@ -76,10 +78,14 @@ std::string ToString(Layout layout) {
       return "linear";
     case Layout::HW:
       return "hw";
+    case Layout::HWD:
+      return "hwd";
     case Layout::CHW:
       return "chw";
     case Layout::HWC:
       return "hwc";
+    case Layout::HWDC:
+      return "hwdc";
     case Layout::OHWI:
       return "ohwi";
     case Layout::IHWO:
@@ -90,6 +96,10 @@ std::string ToString(Layout layout) {
       return "iohw";
     case Layout::BHWC:
       return "bhwc";
+    case Layout::BHWDC:
+      return "bhwdc";
+    case Layout::OHWDI:
+      return "ohwi";
     case Layout::UNKNOWN:
       return "unknown";
   }

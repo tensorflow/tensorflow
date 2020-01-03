@@ -18,7 +18,6 @@ limitations under the License.
 #include <functional>
 #include <utility>
 
-#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/tests/filecheck.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -66,7 +65,7 @@ void LlvmIrGenTestBase::CompileAndVerifyIr(const string& hlo_text,
   HloModuleConfig config;
   config.set_debug_options(GetDebugOptionsForTest());
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_text, config));
+                          ParseAndReturnVerifiedModule(hlo_text, config));
   CompileAndVerifyIr(std::move(module), expected_llvm_ir, match_optimized_ir);
 }
 
@@ -99,9 +98,9 @@ void LlvmIrGenTestBase::MatchOptimizedHlo(absl::string_view hlo,
 
 StatusOr<std::unique_ptr<HloModule>> LlvmIrGenTestBase::GetOptimizedModule(
     absl::string_view hlo) {
-  HloModuleConfig config;
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                      ParseAndReturnVerifiedModule(hlo, config));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<HloModule> module,
+      ParseAndReturnVerifiedModule(hlo, GetModuleConfigForTest()));
   return backend().compiler()->RunHloPasses(
       std::move(module), backend().default_stream_executor(),
       backend().default_stream_executor()->GetAllocator());

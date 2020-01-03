@@ -8,13 +8,13 @@ load("@bazel_tools//tools/python:toolchain.bzl", "py_runtime_pair")
 
 py_runtime(
     name = "py2_runtime",
-    interpreter_path = "/usr/bin/python2",
+    interpreter_path = "/usr/bin/python3",
     python_version = "PY2",
 )
 
 py_runtime(
     name = "py3_runtime",
-    interpreter_path = "/usr/bin/python2",
+    interpreter_path = "/usr/bin/python3",
     python_version = "PY3",
 )
 

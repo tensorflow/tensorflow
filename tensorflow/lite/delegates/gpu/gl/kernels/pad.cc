@@ -47,6 +47,9 @@ class Pad : public NodeShader {
         attr.prepended.h < 0 || attr.prepended.w < 0 || attr.prepended.c < 0) {
       return UnimplementedError("Negative padding is not supported.");
     }
+    if (attr.appended.b != 0 || attr.prepended.b != 0) {
+      return UnimplementedError("Padding for BATCH is not supported.");
+    }
     std::vector<Variable> parameters = {
         {"input_data_0_h", input->tensor.shape.h},
         {"input_data_0_w", input->tensor.shape.w},

@@ -332,7 +332,8 @@ BHWC CalculateOutputShape(const BHWC& input, const SliceAttributes& attr) {
 }
 
 BHWC CalculateOutputShape(const BHWC& input, const PadAttributes& attr) {
-  return BHWC(input.b, attr.appended.h + attr.prepended.h + input.h,
+  return BHWC(attr.appended.b + attr.prepended.b + input.b,
+              attr.appended.h + attr.prepended.h + input.h,
               attr.appended.w + attr.prepended.w + input.w,
               attr.appended.c + attr.prepended.c + input.c);
 }

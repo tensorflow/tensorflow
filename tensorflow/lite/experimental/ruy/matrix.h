@@ -106,10 +106,12 @@ class ConstCheckingPtr final {
 // signed or unsigned.
 template <typename Scalar>
 struct Matrix final {
-  void operator=(const Matrix& other) {
+  Matrix& operator=(const Matrix& other) {
     data = other.data;
+    cacheable = other.cacheable;
     layout = other.layout;
     zero_point = other.zero_point;
+    return *this;
   }
 
   // The underlying buffer wrapped by this matrix.
@@ -119,6 +121,10 @@ struct Matrix final {
   // The zero_point, i.e. which Scalar value is to be interpreted as zero.
   // When Scalar is floating-point, this must be 0.
   Scalar zero_point = 0;
+  // Clients of Ruy must set this flag to enable any caching behavior. Doesn't
+  // impact numerical results, but caching can impact observable metrics like
+  // latency, memory usage, power, etc.
+  bool cacheable = false;
 };
 
 inline void MakeSimpleLayout(int rows, int cols, Order order, Layout* layout) {
@@ -160,6 +166,16 @@ struct FixedKernelLayout {
   static constexpr int kRows = tRows;
   static constexpr int kCols = tCols;
 };
+
+#if (__cplusplus < 201703L)
+// A static constexpr data member is automatically inline and should not require
+// redeclaration without an initializer. This is actually deprecated from C++17
+// onwards. Clang with -O0 without this can fail to link.
+template <Order tOrder, int tRows, int tCols>
+constexpr int FixedKernelLayout<tOrder, tRows, tCols>::kCols;
+template <Order tOrder, int tRows, int tCols>
+constexpr int FixedKernelLayout<tOrder, tRows, tCols>::kRows;
+#endif
 
 }  // namespace ruy
 

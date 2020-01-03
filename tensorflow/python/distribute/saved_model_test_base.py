@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+
 from absl.testing import parameterized
 import numpy as np
 
@@ -51,7 +52,7 @@ simple_models = [
 
 
 strategies = [
-    # TODO(b/132702156): include default strategy
+    strategy_combinations.default_strategy,
     strategy_combinations.one_device_strategy,
     strategy_combinations.one_device_strategy_gpu,
     strategy_combinations.mirrored_strategy_with_one_cpu,

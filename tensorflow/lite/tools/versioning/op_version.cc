@@ -149,6 +149,13 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
 
+    case BuiltinOperator_TRANSPOSE_CONV:
+      // If the op takes int8 input, it is version 2.
+      if (op_sig.input_types.at(0) == TensorType_INT8) {
+        return 2;
+      }
+      return 1;
+
     case BuiltinOperator_LSTM:
       // If the input tensor is float and a weight is int8, this is a version
       // 3 hybrid operation.
@@ -212,6 +219,10 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
           op_sig.input_types.at(0) == TensorType_UINT8) {
         return 2;
       }
+      // If the op take bool input, it is version 3.
+      if (op_sig.input_types.at(0) == TensorType_BOOL) {
+        return 3;
+      }
       return 1;
 
     case BuiltinOperator_DEQUANTIZE:
@@ -243,6 +254,15 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
         return 2;
       }
       return 1;
+    case BuiltinOperator_STRIDED_SLICE:
+      // If the op takes bool input, it is version 3.
+      if (op_sig.input_types.at(0) == TensorType_BOOL) {
+        return 3;
+      }
+      if (op_sig.input_types.at(0) == TensorType_INT8) {
+        return 2;
+      }
+      return 1;
 
     case BuiltinOperator_AVERAGE_POOL_2D:
     case BuiltinOperator_ADD:
@@ -268,7 +288,6 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     case BuiltinOperator_TANH:
     case BuiltinOperator_LOGISTIC:
     case BuiltinOperator_LOG_SOFTMAX:
-    case BuiltinOperator_STRIDED_SLICE:
     case BuiltinOperator_TOPK_V2:
     case BuiltinOperator_ARG_MAX:
     case BuiltinOperator_ARG_MIN:

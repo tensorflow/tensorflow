@@ -17,8 +17,10 @@
 set -e
 
 # Get the latest version of pip so it recognize manylinux2010
-easy_install3 -U pip
-easy_install -U pip
+wget https://bootstrap.pypa.io/get-pip.py
+python3 get-pip.py
+python get-pip.py
+rm -f get-pip.py
 
 # Install pip packages from whl files to avoid the time-consuming process of
 # building from source.
@@ -39,8 +41,8 @@ pip3 install virtualenv
 # Install six and future.
 pip2 install --upgrade six==1.12.0
 pip3 install --upgrade six==1.12.0
-pip2 install future>=0.17.1
-pip3 install future>=0.17.1
+pip2 install "future>=0.17.1"
+pip3 install "future>=0.17.1"
 
 # Install absl-py.
 pip2 install --upgrade absl-py
@@ -76,8 +78,8 @@ else
   pip3 install --upgrade numpy==1.14.5
 fi
 
-pip2 install scipy==1.1.0
-pip3 install scipy==1.1.0
+pip2 install scipy==1.2.2
+pip3 install scipy==1.4.1
 
 pip2 install scikit-learn==0.18.1
 pip3 install scikit-learn==0.18.1
@@ -91,6 +93,12 @@ pip2 install psutil
 pip3 install psutil
 pip2 install py-cpuinfo
 pip3 install py-cpuinfo
+
+# pylint==1.6.4 requires python-astroid (>= 1.4.5) requires lazy-object-proxy
+# Latest version of lazy-object-proxy (1.4.2) fails to install from source
+# when using setuptools 39.1.0
+pip2 install lazy-object-proxy==1.4.1
+pip3 install lazy-object-proxy==1.4.1
 
 # pylint tests require the following:
 pip2 install pylint==1.6.4
@@ -119,10 +127,8 @@ pip2 install --upgrade termcolor
 pip3 install --upgrade termcolor
 
 # Keras
-pip2 install keras_applications==1.0.8 --no-deps
-pip3 install keras_applications==1.0.8 --no-deps
-pip2 install keras_preprocessing==1.0.5 --no-deps
-pip3 install keras_preprocessing==1.0.5 --no-deps
+pip2 install keras_preprocessing==1.1.0 --no-deps
+pip3 install keras_preprocessing==1.1.0 --no-deps
 pip2 install --upgrade h5py==2.8.0
 pip3 install --upgrade h5py==2.8.0
 

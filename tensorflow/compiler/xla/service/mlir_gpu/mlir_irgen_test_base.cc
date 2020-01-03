@@ -16,16 +16,21 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/mlir_gpu/mlir_irgen_test_base.h"
 
 #include <functional>
+#include <memory>
+#include <string>
 #include <utility>
 
+#include "absl/memory/memory.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/IR/Module.h"  // TF:local_config_mlir
-#include "mlir/Pass/PassManager.h"  // TF:local_config_mlir
-#include "tensorflow/compiler/xla/service/hlo_parser.h"
+#include "mlir/IR/Module.h"  // TF:llvm-project
+#include "mlir/Pass/PassManager.h"  // TF:llvm-project
+#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/mlir_gpu/failover_compiler.h"
 #include "tensorflow/compiler/xla/service/mlir_gpu/inject_errors_pass.h"
 #include "tensorflow/compiler/xla/service/mlir_gpu/mlir_compiler.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/filecheck.h"
+#include "tensorflow/compiler/xla/tests/verified_hlo_module.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -76,9 +81,25 @@ void MlirIrGenTestBase::CompileAndVerifyIr(const string& hlo_text,
                                            LoweringStage printing_stage) {
   HloModuleConfig config;
   config.set_debug_options(GetDebugOptionsForTest());
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_text, config));
+  auto module = absl::make_unique<VerifiedHloModule>(
+      "Module", config, /*verifier_layout_sensitive=*/true,
+      /*allow_mixed_precision_in_hlo_verifier=*/false,
+      /*shape_size_function=*/ShapeUtil::ByteSizeOfElements);
+  TF_ASSERT_OK(module->ParseHloStringAndVerifyModule(hlo_text));
   CompileAndVerifyIr(std::move(module), expected_llvm_ir, printing_stage);
+}
+
+MlirCompiler::IRHook MlirIrGenTestBase::getIRHookBreakingLoweringStage(
+    LoweringStage breaking_stage) {
+  return {[](mlir::ModuleOp module) -> Status {
+            mlir::PassManager pm(module.getContext());
+            pm.addPass(::mlir::createInjectErrorsForTestingPass());
+            if (failed(pm.run(module))) {
+              return InternalError("InjectErrorsForTestingPass failed.");
+            }
+            return Status::OK();
+          },
+          breaking_stage};
 }
 
 StatusOr<string> MlirIrGenTestBase::CompileAndInjectErrors(
@@ -94,19 +115,11 @@ StatusOr<string> MlirIrGenTestBase::CompileAndInjectErrors(
   };
 
   MlirCompiler* compiler = GetMLIRCompiler();
-  compiler->SetModuleHook(
-      {[](mlir::ModuleOp module) -> Status {
-         mlir::PassManager pm(module.getContext());
-         pm.addPass(::mlir::createInjectErrorsForTestingPass());
-         if (failed(pm.run(module))) {
-           return InternalError("InjectErrorsForTestingPass failed.");
-         }
-         return Status::OK();
-       },
-       breaking_stage});
+  compiler->SetModuleHook(getIRHookBreakingLoweringStage(breaking_stage));
   compiler->SetErrorHandler(error_handler);
   Status status = CompileToExecutable(std::move(hlo_module)).status();
   compiler->RemoveModuleHook();
+  compiler->RemoveErrorHandler();
 
   if (status.ok()) {
     return errors;
@@ -119,8 +132,11 @@ void MlirIrGenTestBase::CompileAndVerifyErrors(const string& hlo_text,
                                                LoweringStage breaking_stage) {
   HloModuleConfig config;
   config.set_debug_options(GetDebugOptionsForTest());
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_text, config));
+  auto module = absl::make_unique<VerifiedHloModule>(
+      "Module", config, /*verifier_layout_sensitive=*/true,
+      /*allow_mixed_precision_in_hlo_verifier=*/false,
+      /*shape_size_function=*/ShapeUtil::ByteSizeOfElements);
+  TF_ASSERT_OK(module->ParseHloStringAndVerifyModule(hlo_text));
   TF_ASSERT_OK_AND_ASSIGN(
       string errors, CompileAndInjectErrors(std::move(module), breaking_stage));
   PatternMatch(errors, expected_errors);

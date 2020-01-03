@@ -122,7 +122,7 @@ TEST_F(HloSubcomputationUnificationTest, UnifyAdditions) {
 
 // Do not unify subcomputations with different parameter shapes.
 TEST_F(HloSubcomputationUnificationTest, DifferentParameterShapes) {
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
   auto callee1 =
@@ -133,7 +133,7 @@ TEST_F(HloSubcomputationUnificationTest, DifferentParameterShapes) {
   auto param1 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, r1s32_5_, "param1"));
   auto param2 = builder.AddInstruction(
-      HloInstruction::CreateParameter(1, r1s32_5_, "param2"));
+      HloInstruction::CreateParameter(1, r1s32_3_, "param2"));
   auto x = builder.AddInstruction(
       HloInstruction::CreateCall(r1s32_5_, {param1, param1}, callee1));
   auto y = builder.AddInstruction(

@@ -53,6 +53,20 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
+filegroup(
+    name = "pywrap_eager_hdrs",
+    srcs = [
+        "c_api_internal.h",
+        "tf_status_helper.h",
+        "tf_status_internal.h",
+        "tf_tensor_internal.h",
+    ],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/python:__pkg__",
+    ],
+)
+
 tf_cuda_library(
     name = "c_api_internal",
     hdrs = [
@@ -108,6 +122,7 @@ tf_cuda_library(
         ":tf_attrtype",
         ":tf_status_internal",
         ":tf_file_statistics",
+        ":tf_tensor_internal",
     ] + select({
         "//tensorflow:with_xla_support": [
             "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -158,6 +173,7 @@ tf_cuda_library(
             "//tensorflow/core/kernels:logging_ops",
         ],
     }),
+    alwayslink = 1,
 )
 
 tf_cuda_library(
@@ -165,6 +181,9 @@ tf_cuda_library(
     hdrs = [
         "tf_status.h",
         "tf_status_internal.h",
+    ],
+    visibility = [
+        "//tensorflow/c:__subpackages__",
     ],
     deps = select({
         "//tensorflow:android": [
@@ -190,6 +209,12 @@ cc_library(
             "//tensorflow/core:lib",
         ],
     }),
+)
+
+cc_library(
+    name = "tf_status_headers",
+    hdrs = ["tf_status.h"],
+    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -241,6 +266,7 @@ tf_cuda_library(
         "tf_tensor.h",
         "tf_tensor_internal.h",
     ],
+    visibility = ["//tensorflow/c:__subpackages__"],
     deps = select({
         "//tensorflow:android": [
             "//tensorflow/core:android_tensorflow_lib_lite",
@@ -249,6 +275,7 @@ tf_cuda_library(
             ":tf_datatype",
             ":tf_status",
             "//tensorflow/core:framework",
+            "//tensorflow/core:protos_all_cc",
         ],
     }),
 )
@@ -288,6 +315,15 @@ exports_files(
         "exported_symbols.lds",
     ],
     visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "checkpoint_reader_hdrs",
+    srcs = [
+        "checkpoint_reader.h",
+        "tf_status_helper.h",
+    ],
+    visibility = ["//tensorflow:__subpackages__"],
 )
 
 tf_cuda_library(
