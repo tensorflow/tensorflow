@@ -126,6 +126,11 @@ class DebugEventsReader(object):
   def graphs_iterator(self):
     return self._generic_iterator(self._graphs_path)
 
+  def read_source_files_event(self, offset):
+    """Read a DebugEvent proto at given offset from the .source_files file."""
+    return debug_event_pb2.DebugEvent.FromString(
+        self._get_reader(self._source_files_path).read(offset)[0])
+
   def read_graphs_event(self, offset):
     """Read a DebugEvent proto at a given offset from the .graphs file.
 
@@ -139,9 +144,8 @@ class DebugEventsReader(object):
       `errors.DataLossError` if offset is at a wrong location.
       `IndexError` if offset is out of range of the file.
     """
-    debug_event = debug_event_pb2.DebugEvent.FromString(
+    return debug_event_pb2.DebugEvent.FromString(
         self._get_reader(self._graphs_path).read(offset)[0])
-    return debug_event
 
   def execution_iterator(self):
     return self._generic_iterator(self._execution_path)
@@ -159,9 +163,8 @@ class DebugEventsReader(object):
       `errors.DataLossError` if offset is at a wrong location.
       `IndexError` if offset is out of range of the file.
     """
-    debug_event = debug_event_pb2.DebugEvent.FromString(
+    return debug_event_pb2.DebugEvent.FromString(
         self._get_reader(self._execution_path).read(offset)[0])
-    return debug_event
 
   def graph_execution_traces_iterator(self):
     return self._generic_iterator(self._graph_execution_traces_path)
@@ -179,9 +182,8 @@ class DebugEventsReader(object):
       `errors.DataLossError` if offset is at a wrong location.
       `IndexError` if offset is out of range of the file.
     """
-    debug_event = debug_event_pb2.DebugEvent.FromString(
+    return debug_event_pb2.DebugEvent.FromString(
         self._get_reader(self._graph_execution_traces_path).read(offset)[0])
-    return debug_event
 
   def close(self):
     with self._readers_lock:
@@ -633,8 +635,8 @@ class DebugDataReader(object):
     # TODO(cais): Implement pagination for memory constraints.
     self._execution_digests = []
 
-    # A list of (host_name, file_path) tuples.
-    self._host_name_file_paths = []
+    # Mapping (host_name, file_path) tuple to offset in the .source_files file.
+    self._host_name_file_path_to_offset = collections.OrderedDict()
     # A dict mapping id to (host_name, file_path, lineno, func) tuple.
     self._stack_frame_by_id = dict()
     # Stores unprocessed stack frame IDs. This is necessary to handle the
@@ -661,10 +663,10 @@ class DebugDataReader(object):
   def _load_source_files(self):
     """Incrementally read the .source_files DebugEvent file."""
     source_files_iter = self._reader.source_files_iterator()
-    for debug_event, _ in source_files_iter:
+    for debug_event, offset in source_files_iter:
       source_file = debug_event.source_file
-      self._host_name_file_paths.append(
-          (source_file.host_name, source_file.file_path))
+      self._host_name_file_path_to_offset[
+          (source_file.host_name, source_file.file_path)] = offset
       self._source_file_timestamp = debug_event.wall_time
 
   def _load_stack_frames(self):
@@ -687,12 +689,11 @@ class DebugDataReader(object):
     unprocessed_stack_frame_ids = tuple(self._unprocessed_stack_frames.keys())
     for stack_frame_id in unprocessed_stack_frame_ids:
       file_line_col = self._unprocessed_stack_frames[stack_frame_id]
-      if len(self._host_name_file_paths) > file_line_col.file_index:
+      if len(self._host_name_file_path_to_offset) > file_line_col.file_index:
+        host_name, file_path = list(self._host_name_file_path_to_offset.keys())[
+            file_line_col.file_index]
         self._stack_frame_by_id[stack_frame_id] = (
-            self._host_name_file_paths[file_line_col.file_index][0],
-            self._host_name_file_paths[file_line_col.file_index][1],
-            file_line_col.line,
-            file_line_col.func)
+            host_name, file_path, file_line_col.line, file_line_col.func)
       del self._unprocessed_stack_frames[stack_frame_id]
 
   def _load_graphs(self):
@@ -774,6 +775,19 @@ class DebugDataReader(object):
     self._load_graphs()
     self._load_graph_execution_traces()
     self._load_execution()
+
+  def source_lines(self, host_name, file_path):
+    """Read the line-by-line content of a source file.
+
+    Args:
+      host_name: Host name on which the source file is located.
+      file_path: File path at which the source file is located.
+
+    Returns:
+      Lines of the source file as a `list` of `str`s.
+    """
+    offset = self._host_name_file_path_to_offset[(host_name, file_path)]
+    return list(self._reader.read_source_files_event(offset).source_file.lines)
 
   def outermost_graphs(self):
     """Get the number of outer most graphs read so far."""
