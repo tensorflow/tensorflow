@@ -365,16 +365,15 @@ def subtract(x, y, name=None):
   <tf.Tensor: shape=(1,), dtype=float32, numpy=array([-2.], dtype=float32)>
   
   Args:
-  'x': A 'Tensor'. Must be one of the following types: 
+  'x': A 'Tensor'. Must be one of the following types:
     'bfloat16', 'half', 'float32', 'float64',
-    'uint8', 'int8', 'uint16', 'int16', 
+    'uint8', 'int8', 'uint16', 'int16',
     'int32', 'int64', 'complex64', 'complex128'.
   'y': A 'Tensor'. Must have the same type as 'x'
   'name': A name for the operation (optional)
   
   Returns:
-  A 'Tensor'. Has same type as 'x'. 
-  
+  A 'Tensor'. Has same type as 'x'.
   """
   
   return gen_math_ops.sub(x, y, name)
@@ -418,8 +417,6 @@ def _neg(x, name=None):
 
 
 # pylint: enable=g-docstring-has-escape
-
-
 @tf_export(v1=["math.scalar_mul", "scalar_mul"])
 def scalar_mul(scalar, x, name=None):
   """Multiplies a scalar times a `Tensor` or `IndexedSlices` object.
@@ -1513,8 +1510,6 @@ def range(start, limit=None, delta=1, dtype=None, name="range"):  # pylint: disa
   <tf.Tensor: shape=(5,), dtype=int32,
   numpy=array([0, 1, 2, 3, 4], dtype=int32)>
 
-  ```
-
   Args:
     start: A 0-D `Tensor` (scalar). Acts as first entry in the range if `limit`
       is not None; otherwise, acts as range limit and first entry defaults to 0.
@@ -1625,16 +1620,13 @@ def reduce_sum_v1(input_tensor,
   tensor with a single element is returned.
 
   For example:
-
-  ```python
-  x = tf.constant([[1, 1, 1], [1, 1, 1]])
-  tf.reduce_sum(x)  # 6
-  tf.reduce_sum(x, 0)  # [2, 2, 2]
-  tf.reduce_sum(x, 1)  # [3, 3]
-  tf.reduce_sum(x, 1, keepdims=True)  # [[3], [3]]
-  tf.reduce_sum(x, [0, 1])  # 6
-  ```
-
+  >>> x = tf.constant([[1, 1, 1], [1, 1, 1]])
+  >>> tf.reduce_sum(x)  # 6
+  >>> tf.reduce_sum(x, 0)  # [2, 2, 2]
+  >>> tf.reduce_sum(x, 1)  # [3, 3]
+  >>> tf.reduce_sum(x, 1, keepdims=True)  # [[3], [3]]
+  >>> tf.reduce_sum(x, [0, 1])  # 6
+  
   Args:
     input_tensor: The tensor to reduce. Should have numeric type.
     axis: The dimensions to reduce. If `None` (the default), reduces all
@@ -1675,16 +1667,13 @@ def reduce_sum(input_tensor, axis=None, keepdims=False, name=None):
   tensor with a single element is returned.
 
   For example:
-
-  ```python
-  x = tf.constant([[1, 1, 1], [1, 1, 1]])
-  tf.reduce_sum(x)  # 6
-  tf.reduce_sum(x, 0)  # [2, 2, 2]
-  tf.reduce_sum(x, 1)  # [3, 3]
-  tf.reduce_sum(x, 1, keepdims=True)  # [[3], [3]]
-  tf.reduce_sum(x, [0, 1])  # 6
-  ```
-
+  >>> x = tf.constant([[1, 1, 1], [1, 1, 1]])
+  >>> tf.reduce_sum(x)  # 6
+  >>> tf.reduce_sum(x, 0)  # [2, 2, 2]
+  >>> tf.reduce_sum(x, 1)  # [3, 3]
+  >>> tf.reduce_sum(x, 1, keepdims=True)  # [[3], [3]]
+  >>> tf.reduce_sum(x, [0, 1])  # 6
+  
   Args:
     input_tensor: The tensor to reduce. Should have numeric type.
     axis: The dimensions to reduce. If `None` (the default), reduces all
@@ -1730,15 +1719,12 @@ def reduce_euclidean_norm(input_tensor, axis=None, keepdims=False, name=None):
   tensor with a single element is returned.
 
   For example:
-
-  ```python
-  x = tf.constant([[1, 2, 3], [1, 1, 1]])
-  tf.reduce_euclidean_norm(x)  # sqrt(17)
-  tf.reduce_euclidean_norm(x, 0)  # [sqrt(2), sqrt(5), sqrt(10)]
-  tf.reduce_euclidean_norm(x, 1)  # [sqrt(14), sqrt(3)]
-  tf.reduce_euclidean_norm(x, 1, keepdims=True)  # [[sqrt(14)], [sqrt(3)]]
-  tf.reduce_euclidean_norm(x, [0, 1])  # sqrt(17)
-  ```
+  >>> x = tf.constant([[1, 2, 3], [1, 1, 1]])
+  >>> tf.reduce_euclidean_norm(x)  # sqrt(17)
+  >>> tf.reduce_euclidean_norm(x, 0)  # [sqrt(2), sqrt(5), sqrt(10)]
+  >>> tf.reduce_euclidean_norm(x, 1)  # [sqrt(14), sqrt(3)]
+  >>> tf.reduce_euclidean_norm(x, 1, keepdims=True)  # [[sqrt(14)], [sqrt(3)]]
+  >>> tf.reduce_euclidean_norm(x, [0, 1])  # sqrt(17)
 
   Args:
     input_tensor: The tensor to reduce. Should have numeric type.
@@ -1787,15 +1773,12 @@ def count_nonzero(input_tensor=None,
   the nonzero check.
 
   For example:
-
-  ```python
-  x = tf.constant([[0, 1, 0], [1, 1, 0]])
-  tf.math.count_nonzero(x)  # 3
-  tf.math.count_nonzero(x, 0)  # [1, 2, 0]
-  tf.math.count_nonzero(x, 1)  # [1, 2]
-  tf.math.count_nonzero(x, 1, keepdims=True)  # [[1], [2]]
-  tf.math.count_nonzero(x, [0, 1])  # 3
-  ```
+  >>> x = tf.constant([[0, 1, 0], [1, 1, 0]])
+  >>> tf.math.count_nonzero(x)  # 3
+  >>> tf.math.count_nonzero(x, 0)  # [1, 2, 0]
+  >>> tf.math.count_nonzero(x, 1)  # [1, 2]
+  >>> tf.math.count_nonzero(x, 1, keepdims=True)  # [[1], [2]]
+  >>> tf.math.count_nonzero(x, [0, 1])  # 3
 
   **NOTE** Strings are compared against zero-length empty string `""`. Any
   string with a size greater than zero is already considered as nonzero.
@@ -1856,15 +1839,12 @@ def count_nonzero_v2(
   the nonzero check.
 
   For example:
-
-  ```python
-  x = tf.constant([[0, 1, 0], [1, 1, 0]])
-  tf.math.count_nonzero(x)  # 3
-  tf.math.count_nonzero(x, 0)  # [1, 2, 0]
-  tf.math.count_nonzero(x, 1)  # [1, 2]
-  tf.math.count_nonzero(x, 1, keepdims=True)  # [[1], [2]]
-  tf.math.count_nonzero(x, [0, 1])  # 3
-  ```
+  >>> x = tf.constant([[0, 1, 0], [1, 1, 0]])
+  >>> tf.math.count_nonzero(x)  # 3
+  >>> tf.math.count_nonzero(x, 0)  # [1, 2, 0]
+  >>> tf.math.count_nonzero(x, 1)  # [1, 2]
+  >>> tf.math.count_nonzero(x, 1, keepdims=True)  # [[1], [2]]
+  >>> tf.math.count_nonzero(x, [0, 1])  # 3
 
   **NOTE** Strings are compared against zero-length empty string `""`. Any
   string with a size greater than zero is already considered as nonzero.
@@ -1920,7 +1900,6 @@ def reduce_mean_v1(input_tensor,
   element is returned.
 
   For example:
-
   >>> x = tf.constant([[1., 1.], [2., 2.]])
   >>> tf.reduce_mean(x)
   <tf.Tensor: shape=(), dtype=float32, numpy=1.5>
@@ -1982,7 +1961,6 @@ def reduce_mean(input_tensor, axis=None, keepdims=False, name=None):
   element is returned.
 
   For example:
-
   >>> x = tf.constant([[1., 1.], [2., 2.]])
   >>> tf.reduce_mean(x)
   <tf.Tensor: shape=(), dtype=float32, numpy=1.5>
@@ -2040,13 +2018,10 @@ def reduce_variance(input_tensor, axis=None, keepdims=False, name=None):
   tensor with a single element is returned.
 
   For example:
-
-  ```python
-  x = tf.constant([[1., 2.], [3., 4.]])
-  tf.reduce_variance(x)  # 1.25
-  tf.reduce_variance(x, 0)  # [1., 1.]
-  tf.reduce_variance(x, 1)  # [0.25,  0.25]
-  ```
+  >>> x = tf.constant([[1., 2.], [3., 4.]])
+  >>> tf.reduce_variance(x)  # 1.25
+  >>> tf.reduce_variance(x, 0)  # [1., 1.]
+  >>> tf.reduce_variance(x, 1)  # [0.25,  0.25]
 
   Args:
     input_tensor: The tensor to reduce. Should have numeric type.
@@ -2088,13 +2063,10 @@ def reduce_std(input_tensor, axis=None, keepdims=False, name=None):
   tensor with a single element is returned.
 
   For example:
-
-  ```python
-  x = tf.constant([[1., 2.], [3., 4.]])
-  tf.reduce_std(x)  # 1.1180339887498949
-  tf.reduce_std(x, 0)  # [1., 1.]
-  tf.reduce_std(x, 1)  # [0.5,  0.5]
-  ```
+  >>> x = tf.constant([[1., 2.], [3., 4.]])
+  >>> tf.reduce_std(x)  # 1.1180339887498949
+  >>> tf.reduce_std(x, 0)  # [1., 1.]
+  >>> tf.reduce_std(x, 1)  # [0.5,  0.5]
 
   Args:
     input_tensor: The tensor to reduce. Should have numeric type.
@@ -2265,12 +2237,10 @@ def reduce_min(input_tensor, axis=None, keepdims=False, name=None):
   If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
   
-  
   For example:
   >>> tf.math.reduce_min(tf.constant([32, 36]), axis=None, keepdims=True)
   <tf.Tensor: shape=(1,), dtype=int32, numpy=array([32], dtype=int32)>
-
-
+  
   Args:
     input_tensor: The tensor to reduce. Should have real numeric type.
     axis: The dimensions to reduce. If `None` (the default), reduces all
@@ -2407,13 +2377,10 @@ def reduce_all_v1(input_tensor,
   tensor with a single element is returned.
 
   For example:
-
-  ```python
-  x = tf.constant([[True,  True], [False, False]])
-  tf.reduce_all(x)  # False
-  tf.reduce_all(x, 0)  # [False, False]
-  tf.reduce_all(x, 1)  # [True, False]
-  ```
+  >>> x = tf.constant([[True,  True], [False, False]])
+  >>> tf.reduce_all(x)  # False
+  >>> tf.reduce_all(x, 0)  # [False, False]
+  >>> tf.reduce_all(x, 1)  # [True, False]
 
   Args:
     input_tensor: The boolean tensor to reduce.
@@ -2454,13 +2421,10 @@ def reduce_all(input_tensor, axis=None, keepdims=False, name=None):
   tensor with a single element is returned.
 
   For example:
-
-  ```python
-  x = tf.constant([[True,  True], [False, False]])
-  tf.reduce_all(x)  # False
-  tf.reduce_all(x, 0)  # [False, False]
-  tf.reduce_all(x, 1)  # [True, False]
-  ```
+  >>> x = tf.constant([[True,  True], [False, False]])
+  >>> tf.reduce_all(x)  # False
+  >>> tf.reduce_all(x, 0)  # [False, False]
+  >>> tf.reduce_all(x, 1)  # [True, False]
 
   Args:
     input_tensor: The boolean tensor to reduce.
@@ -2506,13 +2470,10 @@ def reduce_any_v1(input_tensor,
   tensor with a single element is returned.
 
   For example:
-
-  ```python
-  x = tf.constant([[True,  True], [False, False]])
-  tf.reduce_any(x)  # True
-  tf.reduce_any(x, 0)  # [True, True]
-  tf.reduce_any(x, 1)  # [True, False]
-  ```
+  >>> x = tf.constant([[True,  True], [False, False]])
+  >>> tf.reduce_any(x)  # True
+  >>> tf.reduce_any(x, 0)  # [True, True]
+  >>> tf.reduce_any(x, 1)  # [True, False]
 
   Args:
     input_tensor: The boolean tensor to reduce.
@@ -2553,13 +2514,10 @@ def reduce_any(input_tensor, axis=None, keepdims=False, name=None):
   tensor with a single element is returned.
 
   For example:
-
-  ```python
-  x = tf.constant([[True,  True], [False, False]])
-  tf.reduce_any(x)  # True
-  tf.reduce_any(x, 0)  # [True, True]
-  tf.reduce_any(x, 1)  # [True, False]
-  ```
+  >>> x = tf.constant([[True,  True], [False, False]])
+  >>> tf.reduce_any(x)  # True
+  >>> tf.reduce_any(x, 0)  # [True, True]
+  >>> tf.reduce_any(x, 1)  # [True, False]
 
   Args:
     input_tensor: The boolean tensor to reduce.
@@ -2609,15 +2567,12 @@ def reduce_logsumexp_v1(input_tensor,
   taking the log of small inputs.
 
   For example:
-
-  ```python
-  x = tf.constant([[0., 0., 0.], [0., 0., 0.]])
-  tf.reduce_logsumexp(x)  # log(6)
-  tf.reduce_logsumexp(x, 0)  # [log(2), log(2), log(2)]
-  tf.reduce_logsumexp(x, 1)  # [log(3), log(3)]
-  tf.reduce_logsumexp(x, 1, keepdims=True)  # [[log(3)], [log(3)]]
-  tf.reduce_logsumexp(x, [0, 1])  # log(6)
-  ```
+  >>> x = tf.constant([[0., 0., 0.], [0., 0., 0.]])
+  >>> tf.reduce_logsumexp(x)  # log(6)
+  >>> tf.reduce_logsumexp(x, 0)  # [log(2), log(2), log(2)]
+  >>> tf.reduce_logsumexp(x, 1)  # [log(3), log(3)]
+  >>> tf.reduce_logsumexp(x, 1, keepdims=True)  # [[log(3)], [log(3)]]
+  >>> tf.reduce_logsumexp(x, [0, 1])  # log(6)
 
   Args:
     input_tensor: The tensor to reduce. Should have numeric type.
@@ -2657,15 +2612,12 @@ def reduce_logsumexp(input_tensor, axis=None, keepdims=False, name=None):
   taking the log of small inputs.
 
   For example:
-
-  ```python
-  x = tf.constant([[0., 0., 0.], [0., 0., 0.]])
-  tf.reduce_logsumexp(x)  # log(6)
-  tf.reduce_logsumexp(x, 0)  # [log(2), log(2), log(2)]
-  tf.reduce_logsumexp(x, 1)  # [log(3), log(3)]
-  tf.reduce_logsumexp(x, 1, keepdims=True)  # [[log(3)], [log(3)]]
-  tf.reduce_logsumexp(x, [0, 1])  # log(6)
-  ```
+  >>> x = tf.constant([[0., 0., 0.], [0., 0., 0.]])
+  >>> tf.reduce_logsumexp(x)  # log(6)
+  >>> tf.reduce_logsumexp(x, 0)  # [log(2), log(2), log(2)]
+  >>> tf.reduce_logsumexp(x, 1)  # [log(3), log(3)]
+  >>> tf.reduce_logsumexp(x, 1, keepdims=True)  # [[log(3)], [log(3)]]
+  >>> tf.reduce_logsumexp(x, [0, 1])  # log(6)
 
   Args:
     input_tensor: The tensor to reduce. Should have numeric type.
@@ -3367,7 +3319,6 @@ def bincount(arr,
 
   Raises:
     `InvalidArgumentError` if negative values are provided as an input.
-
   """
   name = "bincount" if name is None else name
   with ops.name_scope(name):
