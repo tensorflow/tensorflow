@@ -11,6 +11,7 @@ def tf_saved_model_test(name, data):
         srcs = [name + ".py"],
         deps = [
             "//tensorflow/compiler/mlir/tensorflow/tests/tf_saved_model:common",
+            "//tensorflow/compiler/mlir/tensorflow/tests/tf_saved_model:common_v1",
         ],
     )
 
