@@ -38,6 +38,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // TF:llvm-project
 #include "mlir/Support/LogicalResult.h"  // TF:llvm-project
 #include "mlir/Transforms/FoldUtils.h"  // TF:llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -96,6 +97,13 @@ Optional<llvm::SmallVector<mlir::Type, 4>> InferShapeForFunctionReturnType(
   return llvm::to_vector<4>(return_op.getOperandTypes());
 }
 
+// Returns if the shape inference pass supports an op outside the TF dialect.
+bool IsSupportedNonTFOp(Operation* op) {
+  return isa<tf_executor::YieldOp>(op) || isa<tf_executor::IslandOp>(op) ||
+         isa<tf_executor::FetchOp>(op) || isa<tf_executor::GraphOp>(op) ||
+         isa<ReturnOp>(op) || isa<tf_device::ReturnOp>(op);
+}
+
 // Inserts tf.Cast operation when changing the type of a result if the user is
 // not a TF operation, as we can't guarantee that the new type will be OK.
 void AddCastBackForUnsupportedNonTFUses(Operation* op, Value result,
@@ -113,7 +121,9 @@ void AddCastBackForUnsupportedNonTFUses(Operation* op, Value result,
     return cast_op;
   };
   for (OpOperand& use : llvm::make_early_inc_range(result->getUses())) {
-    if (use.getOwner()->getDialect() != tf_dialect) use.set(get_cast_op());
+    if (use.getOwner()->getDialect() != tf_dialect &&
+        !IsSupportedNonTFOp(use.getOwner()))
+      use.set(get_cast_op());
   }
 }
 
@@ -127,6 +137,35 @@ Optional<tensorflow::PartialTensorShape> GetShapeFromMlirType(Type t) {
     return tensorflow::PartialTensorShape({tf_shape.data(), tf_shape.size()});
   }
   return None;
+}
+
+// Passes the operand shapes/types to the op's results.
+bool InferShapeForPassThroughOps(OperandRange pass_through_operands,
+                                 Operation* op, Dialect* tf_dialect) {
+  bool changed = false;
+  for (auto entry : llvm::zip(pass_through_operands, op->getResults())) {
+    Type operand_type = std::get<0>(entry).getType();
+    Value result = std::get<1>(entry);
+    if (result.getType() == operand_type) continue;
+    AddCastBackForUnsupportedNonTFUses(op, result, tf_dialect,
+                                       result.getType());
+    result.setType(operand_type);
+    changed = true;
+  }
+  return changed;
+}
+
+// Infers shape for necessary ops that are not in the TF dialect.
+bool InferShapeForNonTFDialectOperation(Operation* op, Dialect* tf_dialect) {
+  if (auto graph_op = dyn_cast<tf_executor::GraphOp>(op)) {
+    return InferShapeForPassThroughOps(graph_op.GetFetch().fetches(), op,
+                                       tf_dialect);
+  }
+  if (auto island_op = dyn_cast<tf_executor::IslandOp>(op)) {
+    return InferShapeForPassThroughOps(island_op.GetYield().fetches(), op,
+                                       tf_dialect);
+  }
+  return false;
 }
 
 }  // namespace
@@ -427,7 +466,10 @@ LogicalResult InferShapeUntilFixPoint(Region* region, int64_t graph_version,
     LLVM_DEBUG(llvm::dbgs()
                << "Shape inference, iteration " << iteration << "\n");
     region->walk([&](Operation* op) {
-      if (op->getDialect() != tf_dialect) return;
+      if (op->getDialect() != tf_dialect) {
+        changed |= InferShapeForNonTFDialectOperation(op, tf_dialect);
+        return;
+      }
 
       // Before attempting inference, just try to fold the operation.
       if (succeeded(folder.tryToFold(op))) return;
