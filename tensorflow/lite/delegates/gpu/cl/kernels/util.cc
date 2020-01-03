@@ -202,6 +202,7 @@ std::string TensorCodeGenerator::GetGlobalAddressNoDeclaration(
     case TensorStorageType::SINGLE_TEXTURE_2D:
       return absl::StrCat("(int2)(", x, ", ", y, ")");
     case TensorStorageType::TEXTURE_ARRAY:
+    case TensorStorageType::TEXTURE_3D:
       return absl::StrCat("(int4)(", x, ", ", y, ", ", z, ", 0)");
     case TensorStorageType::UNKNOWN:
       return "error";
@@ -227,6 +228,7 @@ std::string TensorCodeGenerator::GetGlobalAddressNoDeclaration(
       return absl::Substitute("(int2)(($0) * ($3) + ($1), ($2))", x, b, y,
                               sizes_.batch);
     case TensorStorageType::TEXTURE_ARRAY:
+    case TensorStorageType::TEXTURE_3D:
       return absl::Substitute("(int4)(($0) * ($4) + ($1), ($2), ($3), 0)", x, b,
                               y, z, sizes_.batch);
     case TensorStorageType::UNKNOWN:
@@ -246,6 +248,7 @@ std::string TensorCodeGenerator::DeclareAddress(
     case TensorStorageType::SINGLE_TEXTURE_2D:
       return absl::StrCat("int2 ", var_name, " = ", address, ";\n");
     case TensorStorageType::TEXTURE_ARRAY:
+    case TensorStorageType::TEXTURE_3D:
       return absl::StrCat("int4 ", var_name, " = ", address, ";\n");
     case TensorStorageType::UNKNOWN:
       return "";
@@ -273,6 +276,7 @@ std::string TensorCodeGenerator::Read(const std::string& global_address,
     case TensorStorageType::BUFFER:
       return absl::StrCat(tensor_name_, "[", global_address, "]");
     case TensorStorageType::TEXTURE_2D:
+    case TensorStorageType::TEXTURE_3D:
     case TensorStorageType::SINGLE_TEXTURE_2D:
     case TensorStorageType::TEXTURE_ARRAY:
       return absl::StrCat(
@@ -294,6 +298,7 @@ std::string TensorCodeGenerator::ReadAsFloat(
       return absl::StrCat("convert_float4(", tensor_name_, "[", global_address,
                           "])");
     case TensorStorageType::TEXTURE_2D:
+    case TensorStorageType::TEXTURE_3D:
     case TensorStorageType::SINGLE_TEXTURE_2D:
     case TensorStorageType::TEXTURE_ARRAY:
       return absl::StrCat(
@@ -316,6 +321,7 @@ std::string TensorCodeGenerator::Write(
       return absl::StrCat(tensor_name_, "[", global_address, "] = ", var_name,
                           ";\n");
     case TensorStorageType::TEXTURE_2D:
+    case TensorStorageType::TEXTURE_3D:
     case TensorStorageType::SINGLE_TEXTURE_2D:
     case TensorStorageType::TEXTURE_ARRAY:
       return absl::StrCat(GetWriteImageFromDataType(descriptor_.data_type), "(",
@@ -338,6 +344,8 @@ std::string GetTensorDeclaration(AccessType access,
       return GetImageModifier(access) + " image2d_t " + tensor_name;
     case TensorStorageType::TEXTURE_ARRAY:
       return GetImageModifier(access) + " image2d_array_t " + tensor_name;
+    case TensorStorageType::TEXTURE_3D:
+      return GetImageModifier(access) + " image3d_t " + tensor_name;
     case TensorStorageType::IMAGE_BUFFER:
       if (access == AccessType::WRITE) {
         return absl::StrCat("__global ", ToCLDataType(descriptor.data_type, 4),

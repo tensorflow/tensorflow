@@ -104,6 +104,7 @@ class Tensor {
       case TensorStorageType::BUFFER:
       case TensorStorageType::IMAGE_BUFFER:
       case TensorStorageType::TEXTURE_ARRAY:
+      case TensorStorageType::TEXTURE_3D:
         return (((d * shape_.h + y) * shape_.w + x) * shape_.b + b) * 4 +
                sub_d;  // DHWBC4
       case TensorStorageType::TEXTURE_2D:
