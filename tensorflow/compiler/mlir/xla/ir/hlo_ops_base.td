@@ -68,6 +68,17 @@ class BASE_HLO_CeilOp {
   }];
 }
 
+class BASE_HLO_ClzOp {
+  string summary = "Count-leading-zeros (Clz) operator";
+
+  string description = [{
+    Returns the number of leading zeros in each operand element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+  }];
+}
+
 class BASE_HLO_ComplexOp {
   string summary = "Complex operator";
 
@@ -658,6 +669,39 @@ class BASE_HLO_DynamicUpdateSliceOp {
 // XLA Other op definitions.
 //===----------------------------------------------------------------------===//
 
+class BASE_HLO_AllToAllOp {
+  string summary = "AllToAll";
+
+  string description = [{
+    AllToAll is a collective operation that sends data from all cores to all
+    cores. It has two phases:
+    - The scatter phase. On each core, the operand is split into `split_count`
+      number of blocks along the `split_dimensions`, and the blocks are
+      scattered to all cores, e.g., the i-th block is send to the i-th core.
+    - The gather phase. Each core concatenates the received blocks along the
+      `concat_dimension`.
+
+    The participating cores can be configured by:
+    - replica_groups: each ReplicaGroup contains a list of replica id
+      participating in the computation (replica id for the current replica can
+      be retrieved using ReplicaId op). AllToAll will be applied within
+      subgroups in the specified order. For example,
+      `replica_groups` = {{1,2,3}, {4,5,0}} means that an AllToAll will be applied
+      within replicas {1, 2, 3}, and in the gather phase, the received blocks
+      will be concatenated in the same order of 1, 2, 3. Then, another AllToAll
+      will be applied within replicas 4, 5, 0, and the concatenation order is
+      also 4, 5, 0. If `replica_groups` is empty, all replicas belong to one
+      group, in the concatenation order of their appearance.
+
+    Prerequisites:
+    - The dimension size of the operand on the split_dimension is divisible by
+      `split_count`.
+    - The operand's shape is not tuple.
+
+    See https://www.tensorflow.org/xla/operation_semantics#alltoall
+  }];
+}
+
 class BASE_HLO_BatchNormGradOp {
   string summary = "Batch Normalization Gradient";
 
@@ -736,6 +780,32 @@ class BASE_HLO_BroadcastInDimOp  {
     The scalar value will be broadcast to every element in the target shape.
 
     See https://www.tensorflow.org/xla/broadcasting.
+  }];
+}
+
+class BASE_HLO_CholeskyOp {
+  string summary = "Cholesky operator";
+
+  string description = [{
+  Computes the Cholesky decomposition of a batch of symmetric (Hermitian)
+  positive definite matrices.
+
+  If lower is true, computes lower-triangular matrices l such that
+  `a=l.Transpose(l)`. If lower is false, computes upper-triangular matrices u such
+  that `a=Transpose(u).u`.
+
+  Input data is read only from the lower/upper triangle of a, depending on the
+  value of lower. Values from the other triangle are ignored. Output data is
+  returned in the same triangle; the values in the other triangle are
+  implementation-defined and may be anything.
+
+  If the rank of a is greater than 2, a is treated as a batch of matrices, where
+  all except the minor 2 dimensions are batch dimensions.
+
+  If a is not symmetric (Hermitian) positive definite, the result is
+  implementation-defined.
+
+    See https://www.tensorflow.org/xla/operation_semantics#cholesky.
   }];
 }
 
@@ -875,6 +945,18 @@ class BASE_HLO_SelectAndScatterOp {
     combined using the `scatter` function.
 
     See https://www.tensorflow.org/xla/operation_semantics#selectandscatter.
+  }];
+}
+
+class BASE_HLO_SetDimensionSizeOp {
+  string summary = "SetDimensionSize operator";
+
+  string description = [{
+    Sets the dynamic size of operand's given dimension. Pass through the operand
+    as result, with dynamic dimension tracked by the compiler. Padded values
+    will be ignored by downstream reduction ops.
+
+    See https://www.tensorflow.org/xla/operation_semantics#setdimensionsize.
   }];
 }
 

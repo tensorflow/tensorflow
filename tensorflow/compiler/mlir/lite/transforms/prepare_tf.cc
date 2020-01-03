@@ -38,17 +38,17 @@ limitations under the License.
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
-#include "mlir/Analysis/LoopAnalysis.h"  // TF:local_config_mlir
-#include "mlir/Dialect/QuantOps/FakeQuantSupport.h"  // TF:local_config_mlir
-#include "mlir/Dialect/QuantOps/UniformSupport.h"  // TF:local_config_mlir
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
-#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
-#include "mlir/Support/Functional.h"  // TF:local_config_mlir
-#include "mlir/Support/LLVM.h"  // TF:local_config_mlir
-#include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
+#include "mlir/Analysis/LoopAnalysis.h"  // TF:llvm-project
+#include "mlir/Dialect/QuantOps/FakeQuantSupport.h"  // TF:llvm-project
+#include "mlir/Dialect/QuantOps/UniformSupport.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
+#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
+#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/Support/Functional.h"  // TF:llvm-project
+#include "mlir/Support/LLVM.h"  // TF:llvm-project
+#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
@@ -115,7 +115,7 @@ struct InsertTFLQuantOpsAfterTFFakeQuantOp
                                      PatternRewriter &rewriter) const override {
     // We don't want to insert quantize/dequantize if the quantize op exists.
     auto res = tf_op.outputs();
-    if (!res->hasOneUse() || isa<QuantizeOp>(*res->user_begin()))
+    if (!res.hasOneUse() || isa<QuantizeOp>(*res.user_begin()))
       return this->matchFailure();
 
     // Extract the min/max constant values from the operands. We also consider
@@ -123,9 +123,9 @@ struct InsertTFLQuantOpsAfterTFFakeQuantOp
     // constants and the tf.FakeQuantWithMinMaxVarsOp.
     Value min = tf_op.min(), max = tf_op.max();
     DenseFPElementsAttr min_value, max_value;
-    if (auto id1 = dyn_cast_or_null<TF::IdentityOp>(min->getDefiningOp()))
+    if (auto id1 = dyn_cast_or_null<TF::IdentityOp>(min.getDefiningOp()))
       min = id1.input();
-    if (auto id2 = dyn_cast_or_null<TF::IdentityOp>(max->getDefiningOp()))
+    if (auto id2 = dyn_cast_or_null<TF::IdentityOp>(max.getDefiningOp()))
       max = id2.input();
     if (!matchPattern(min, m_Constant(&min_value))) return this->matchFailure();
     if (!matchPattern(max, m_Constant(&max_value))) return this->matchFailure();
@@ -133,7 +133,7 @@ struct InsertTFLQuantOpsAfterTFFakeQuantOp
     int quant_dim = -1;
     if (PerAxis) {
       // This is a special case that the quant_dim is the last dimensions.
-      quant_dim = res->getType().template cast<ShapedType>().getRank() - 1;
+      quant_dim = res.getType().template cast<ShapedType>().getRank() - 1;
     }
     // Use the min/max from the operands and the num_bits and narrow_range
     // attribute to create the quantization parameter for the new quantize op.
@@ -155,7 +155,7 @@ struct InsertTFLQuantOpsAfterTFFakeQuantOp
         tf_op.getLoc(), qtype.getValue(), value, qtype);
     auto dequantize = rewriter.create<TFL::DequantizeOp>(
         tf_op.getLoc(), res_type, quantize.output());
-    value->replaceAllUsesWith(dequantize);
+    value.replaceAllUsesWith(dequantize);
     quantize.getOperation()->replaceUsesOfWith(dequantize, value);
 
     return this->matchSuccess();
@@ -240,7 +240,7 @@ struct ConvertTFConvOp : public RewritePattern {
     // that we can extract info from the shape (e.g., for constructing bias
     // tensor, for setting depth_multiplier attribute, etc.).
     auto filter_type =
-        tf_op.filter()->getType().template dyn_cast<RankedTensorType>();
+        tf_op.filter().getType().template dyn_cast<RankedTensorType>();
     if (filter_type && filter_type.getRank() == 4)
       return matchSuccess(std::move(state));
 
@@ -262,7 +262,7 @@ struct ConvertTFConvOp : public RewritePattern {
 
     // Get a splat zero tensor with the expected dimension for the bias tensor
     auto filter = tf_op.filter();
-    auto filter_type = filter->getType().template cast<RankedTensorType>();
+    auto filter_type = filter.getType().template cast<RankedTensorType>();
     auto elem_type = filter_type.getElementType();
     auto bias_dim = static_cast<const ConcreteType *>(this)->getBiasDim(
         filter_type.getShape());
@@ -323,7 +323,7 @@ class ConvertTFConv2D : public ConvertTFConvOp<ConvertTFConv2D, TF::Conv2DOp> {
     auto perm_op = rewriter.create<TF::ConstOp>(loc, perm_type, perm_attr);
 
     // Create tensor type for the transpose result.
-    auto filter_type = filter->getType().cast<RankedTensorType>();
+    auto filter_type = filter.getType().cast<RankedTensorType>();
     auto result_shape = functional::map(
         [filter_type](int64_t dim) { return filter_type.getDimSize(dim); },
         perm);
@@ -356,7 +356,7 @@ class ConvertTFDepthwiseConv2dNative
     // have a corresponding 'depth_multiplier' attribute; the multiplier is the
     // fourth dimension in the 4-D filter tensor. We query the multiplier from
     // tf.DepthwiseConv2dNative and set it as the attribute value accordingly.
-    auto multiplier = filter->getType().cast<RankedTensorType>().getDimSize(3);
+    auto multiplier = filter.getType().cast<RankedTensorType>().getDimSize(3);
 
     filter = legalizeFilter(rewriter, loc, filter);
     return rewriter.create<TFL::DepthwiseConv2DOp>(
@@ -380,7 +380,7 @@ class ConvertTFDepthwiseConv2dNative
   /// RankedTensorType.
   Value legalizeFilter(PatternRewriter &rewriter, Location loc,
                        Value filter) const {
-    auto filter_type = filter->getType().cast<RankedTensorType>();
+    auto filter_type = filter.getType().cast<RankedTensorType>();
     auto filterShape = filter_type.getShape();
     SmallVector<int64_t, 4> result_shape = {1, filterShape[0], filterShape[1],
                                             filterShape[2] * filterShape[3]};
@@ -432,11 +432,11 @@ struct ConvertTFStridedSlice : public RewritePattern {
     // Insert a new reshape op.
     Value original_input = strided_slice_op.input();
     RankedTensorType original_input_type =
-        original_input->getType().cast<RankedTensorType>();
+        original_input.getType().cast<RankedTensorType>();
     const ArrayRef<int64_t> &original_input_shape =
         original_input_type.getShape();
     RankedTensorType begin_type =
-        strided_slice_op.begin()->getType().cast<RankedTensorType>();
+        strided_slice_op.begin().getType().cast<RankedTensorType>();
     const int dim_size = begin_type.getShape()[0];
     SmallVector<int64_t, 4> new_shape;
     int mask = 1;

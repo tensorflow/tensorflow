@@ -63,7 +63,7 @@ flatbuffers::FlatBufferBuilder* BuilderInstance() {
   return inst;
 }
 
-const Model* BuildMockModel() {
+const Model* BuildSimpleMockModel() {
   using flatbuffers::Offset;
   flatbuffers::FlatBufferBuilder* builder = BuilderInstance();
 
@@ -126,24 +126,184 @@ const Model* BuildMockModel() {
   return model;
 }
 
+const Model* BuildComplexMockModel() {
+  using flatbuffers::Offset;
+  flatbuffers::FlatBufferBuilder* builder = BuilderInstance();
+
+  constexpr size_t buffer_data_size = 1;
+  const uint8_t buffer_data_1[buffer_data_size] = {21};
+  const uint8_t buffer_data_2[buffer_data_size] = {21};
+  const uint8_t buffer_data_3[buffer_data_size] = {21};
+  constexpr size_t buffers_size = 7;
+  const Offset<Buffer> buffers[buffers_size] = {
+      // Op 1 buffers:
+      CreateBuffer(*builder),
+      CreateBuffer(*builder),
+      CreateBuffer(*builder,
+                   builder->CreateVector(buffer_data_1, buffer_data_size)),
+      // Op 2 buffers:
+      CreateBuffer(*builder),
+      CreateBuffer(*builder,
+                   builder->CreateVector(buffer_data_2, buffer_data_size)),
+      // Op 3 buffers:
+      CreateBuffer(*builder),
+      CreateBuffer(*builder,
+                   builder->CreateVector(buffer_data_3, buffer_data_size)),
+  };
+  constexpr size_t tensor_shape_size = 1;
+  const int32_t tensor_shape[tensor_shape_size] = {1};
+
+  constexpr size_t tensors_size = 10;
+  const Offset<Tensor> tensors[tensors_size] = {
+      // Op 1 inputs:
+      CreateTensor(
+          *builder, builder->CreateVector(tensor_shape, tensor_shape_size),
+          TensorType_INT32, 0, builder->CreateString("test_input_tensor_1"), 0,
+          false /* is_variable */),
+      CreateTensor(
+          *builder, builder->CreateVector(tensor_shape, tensor_shape_size),
+          TensorType_INT32, 1, builder->CreateString("test_variable_tensor_1"),
+          0, true /* is_variable */),
+      CreateTensor(
+          *builder, builder->CreateVector(tensor_shape, tensor_shape_size),
+          TensorType_UINT8, 2, builder->CreateString("test_weight_tensor_1"), 0,
+          false /* is_variable */),
+      // Op 1 output / Op 2 input:
+      CreateTensor(
+          *builder, builder->CreateVector(tensor_shape, tensor_shape_size),
+          TensorType_INT32, 0, builder->CreateString("test_output_tensor_1"), 0,
+          false /* is_variable */),
+      // Op 2 inputs:
+      CreateTensor(
+          *builder, builder->CreateVector(tensor_shape, tensor_shape_size),
+          TensorType_INT32, 1, builder->CreateString("test_variable_tensor_2"),
+          0, true /* is_variable */),
+      CreateTensor(
+          *builder, builder->CreateVector(tensor_shape, tensor_shape_size),
+          TensorType_UINT8, 2, builder->CreateString("test_weight_tensor_2"), 0,
+          false /* is_variable */),
+      // Op 2 output / Op 3 input:
+      CreateTensor(
+          *builder, builder->CreateVector(tensor_shape, tensor_shape_size),
+          TensorType_INT32, 0, builder->CreateString("test_output_tensor_2"), 0,
+          false /* is_variable */),
+      // Op 3 inputs:
+      CreateTensor(
+          *builder, builder->CreateVector(tensor_shape, tensor_shape_size),
+          TensorType_INT32, 1, builder->CreateString("test_variable_tensor_3"),
+          0, true /* is_variable */),
+      CreateTensor(
+          *builder, builder->CreateVector(tensor_shape, tensor_shape_size),
+          TensorType_UINT8, 2, builder->CreateString("test_weight_tensor_3"), 0,
+          false /* is_variable */),
+      // Op 3 output:
+      CreateTensor(
+          *builder, builder->CreateVector(tensor_shape, tensor_shape_size),
+          TensorType_INT32, 0, builder->CreateString("test_output_tensor_3"), 0,
+          false /* is_variable */),
+  };
+
+  constexpr size_t operators_size = 3;
+  Offset<Operator> operators[operators_size];
+  {
+    // Set Op 1 attributes:
+    constexpr size_t operator_inputs_size = 3;
+    const int32_t operator_inputs[operator_inputs_size] = {0, 1, 2};
+    constexpr size_t operator_outputs_size = 1;
+    const int32_t operator_outputs[operator_outputs_size] = {3};
+
+    operators[0] = {CreateOperator(
+        *builder, 0,
+        builder->CreateVector(operator_inputs, operator_inputs_size),
+        builder->CreateVector(operator_outputs, operator_outputs_size),
+        BuiltinOptions_NONE)};
+  }
+
+  {
+    // Set Op 2 attributes
+    constexpr size_t operator_inputs_size = 3;
+    const int32_t operator_inputs[operator_inputs_size] = {3, 4, 5};
+    constexpr size_t operator_outputs_size = 1;
+    const int32_t operator_outputs[operator_outputs_size] = {6};
+
+    operators[1] = {CreateOperator(
+        *builder, 0,
+        builder->CreateVector(operator_inputs, operator_inputs_size),
+        builder->CreateVector(operator_outputs, operator_outputs_size),
+        BuiltinOptions_NONE)};
+  }
+
+  {
+    // Set Op 3 attributes
+    constexpr size_t operator_inputs_size = 3;
+    const int32_t operator_inputs[operator_inputs_size] = {6, 7, 8};
+    constexpr size_t operator_outputs_size = 1;
+    const int32_t operator_outputs[operator_outputs_size] = {9};
+
+    operators[2] = {CreateOperator(
+        *builder, 0,
+        builder->CreateVector(operator_inputs, operator_inputs_size),
+        builder->CreateVector(operator_outputs, operator_outputs_size),
+        BuiltinOptions_NONE)};
+  }
+
+  constexpr size_t inputs_size = 1;
+  const int32_t inputs[inputs_size] = {0};
+  constexpr size_t outputs_size = 1;
+  const int32_t outputs[outputs_size] = {9};
+
+  constexpr size_t subgraphs_size = 1;
+  const Offset<SubGraph> subgraphs[subgraphs_size] = {
+      CreateSubGraph(*builder, builder->CreateVector(tensors, tensors_size),
+                     builder->CreateVector(inputs, inputs_size),
+                     builder->CreateVector(outputs, outputs_size),
+                     builder->CreateVector(operators, operators_size),
+                     builder->CreateString("test_subgraph"))};
+
+  constexpr size_t operator_codes_size = 1;
+  const Offset<OperatorCode> operator_codes[operator_codes_size] = {
+      CreateOperatorCodeDirect(*builder, BuiltinOperator_CUSTOM, "mock_custom",
+                               0)};
+
+  const Offset<Model> model_offset = CreateModel(
+      *builder, 0, builder->CreateVector(operator_codes, operator_codes_size),
+      builder->CreateVector(subgraphs, subgraphs_size),
+      builder->CreateString("test_model"),
+      builder->CreateVector(buffers, buffers_size));
+
+  FinishModelBuffer(*builder, model_offset);
+  void* model_pointer = builder->GetBufferPointer();
+  const Model* model = flatbuffers::GetRoot<Model>(model_pointer);
+  return model;
+}
+
 }  // namespace
 
-const Model* GetMockModel() {
+const Model* GetSimpleMockModel() {
   static Model* model = nullptr;
   if (!model) {
-    model = const_cast<Model*>(BuildMockModel());
+    model = const_cast<Model*>(BuildSimpleMockModel());
   }
   return model;
 }
 
-const Tensor* Create1dFlatbufferTensor(int size) {
+const Model* GetComplexMockModel() {
+  static Model* model = nullptr;
+  if (!model) {
+    model = const_cast<Model*>(BuildComplexMockModel());
+  }
+  return model;
+}
+
+const Tensor* Create1dFlatbufferTensor(int size, bool is_variable) {
   using flatbuffers::Offset;
   flatbuffers::FlatBufferBuilder* builder = BuilderInstance();
   constexpr size_t tensor_shape_size = 1;
   const int32_t tensor_shape[tensor_shape_size] = {size};
   const Offset<Tensor> tensor_offset = CreateTensor(
       *builder, builder->CreateVector(tensor_shape, tensor_shape_size),
-      TensorType_INT32, 0, builder->CreateString("test_tensor"), 0, false);
+      TensorType_INT32, 0, builder->CreateString("test_tensor"), 0,
+      is_variable);
   builder->Finish(tensor_offset);
   void* tensor_pointer = builder->GetBufferPointer();
   const Tensor* tensor = flatbuffers::GetRoot<Tensor>(tensor_pointer);

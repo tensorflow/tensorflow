@@ -13,6 +13,45 @@ func @invalid_type() -> !xla_hlo.foobar
 
 // -----
 
+// CHECK-LABEL: func @alltoall
+func @alltoall(%data: tensor<4x16xf32>) -> tensor<16x4xf32> {
+  %0 = "xla_hlo.all_to_all"(%data) {
+    split_dimension = 1 : i64,
+    concat_dimension = 0 : i64,
+    split_count = 4 : i64,
+    replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>
+  } : (tensor<4x16xf32>) -> tensor<16x4xf32>
+  return %0 : tensor<16x4xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @alltoall_unranked_input
+func @alltoall_unranked_input(%data: tensor<*xf32>) -> tensor<*xf32> {
+  %0 = "xla_hlo.all_to_all"(%data) {
+    split_dimension = 1 : i64,
+    concat_dimension = 0 : i64,
+    split_count = 5 : i64,
+    replica_groups = dense<[[0, 1, 2, 3, 4]]> : tensor<1x5xi64>
+  } : (tensor<*xf32>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+}
+
+// -----
+
+func @alltoall_invalid_split_dim_size(%data: tensor<4x16xf32>) -> tensor<16x4xf32> {
+// expected-error@+1 {{split dimension has size 16, expected to be a multiple of split_count 5}}
+  %0 = "xla_hlo.all_to_all"(%data) {
+    split_dimension = 1 : i64,
+    concat_dimension = 0 : i64,
+    split_count = 5 : i64,
+    replica_groups = dense<[[0, 1, 2, 3, 4]]> : tensor<1x5xi64>
+  } : (tensor<4x16xf32>) -> tensor<16x4xf32>
+  return %0 : tensor<16x4xf32>
+}
+
+// -----
+
 // CHECK-LABEL: func @broadcast
 func @broadcast(%arg0: tensor<3xi32>) -> tensor<1x2x3xi32> {
   %0 = "xla_hlo.broadcast"(%arg0) {broadcast_sizes = dense<[1, 2]> : tensor<2xi64>} : (tensor<3xi32>) -> tensor<1x2x3xi32>

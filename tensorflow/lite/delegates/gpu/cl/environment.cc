@@ -190,6 +190,8 @@ bool Environment::IsSupported(TensorStorageType storage_type) const {
       return device_.SupportsTextureArray();
     case TensorStorageType::IMAGE_BUFFER:
       return device_.IsAdreno() && device_.SupportsImageBuffer();
+    case TensorStorageType::TEXTURE_3D:
+      return false;
     case TensorStorageType::SINGLE_TEXTURE_2D:
       return false;
     case TensorStorageType::UNKNOWN:

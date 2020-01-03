@@ -19,11 +19,11 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/None.h"
 #include "llvm/ADT/Optional.h"
-#include "mlir/Dialect/QuantOps/QuantTypes.h"  // TF:local_config_mlir
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
+#include "mlir/Dialect/QuantOps/QuantTypes.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/IR/Builders.h"  // TF:llvm-project
+#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
@@ -71,7 +71,7 @@ struct LoadQuantizationRecipe : public FunctionPass<LoadQuantizationRecipe> {
 
 void LoadQuantizationRecipe::Initialize(LSTMOp lstm, OpBuilder* builder) {
   Type expressed_type =
-      lstm.input()->getType().cast<ShapedType>().getElementType();
+      lstm.input().getType().cast<ShapedType>().getElementType();
   Type int8_storage_type = builder->getIntegerType(8);
   Type int16_storage_type = builder->getIntegerType(16);
   auto flag = quant::QuantizationFlags::FlagValue::Signed;
@@ -88,8 +88,8 @@ void LoadQuantizationRecipe::Initialize(LSTMOp lstm, OpBuilder* builder) {
   auto any_int16 = quant::AnyQuantizedType::get(
       flag, int16_storage_type, expressed_type, int16_min, int16_max);
 
-  int8 = any_int8.castFromExpressedType(lstm.input()->getType());
-  int16 = any_int16.castFromExpressedType(lstm.input()->getType());
+  int8 = any_int8.castFromExpressedType(lstm.input().getType());
+  int16 = any_int16.castFromExpressedType(lstm.input().getType());
 }
 
 Operation* LoadQuantizationRecipe::CreateLayerNorm(Location loc, Value in,

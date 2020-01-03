@@ -22,13 +22,13 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/Support/Debug.h"
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/Operation.h"  // TF:local_config_mlir
-#include "mlir/IR/Value.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
-#include "mlir/Pass/PassRegistry.h"  // TF:local_config_mlir
-#include "mlir/Support/LLVM.h"  // TF:local_config_mlir
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/IR/Builders.h"  // TF:llvm-project
+#include "mlir/IR/Operation.h"  // TF:llvm-project
+#include "mlir/IR/Value.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/Pass/PassRegistry.h"  // TF:llvm-project
+#include "mlir/Support/LLVM.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/control_flow_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -70,7 +70,7 @@ tf_executor::IslandOp ControlToExecutorDialectConversion::CreateIslandForOp(
   // Create a new region for the tf_executor.island body
   SmallVector<Value, 8> operands;
   for (Value operand : op->getOperands())
-    if (operand->getType().isa<tf_executor::ControlType>())
+    if (operand.getType().isa<tf_executor::ControlType>())
       operands.push_back(operand);
   SmallVector<Type, 8> types;
   for (Type result_type : op->getResultTypes())
@@ -155,7 +155,7 @@ void ControlToExecutorDialectConversion::runOnFunction() {
           loc, types, operands, ArrayRef<NamedAttribute>{});
     } else if (op.getName().getStringRef() == "_tf.NextIteration.source") {
       replacement = builder.create<tf_executor::NextIterationSourceOp>(
-          loc, op.getResult(0)->getType());
+          loc, op.getResult(0).getType());
       // Record a mapping of the name to the nextiteration.source so that when
       // we convert the sink we can get the token.
       StringAttr frame = op.getAttrOfType<StringAttr>("name");
@@ -164,9 +164,9 @@ void ControlToExecutorDialectConversion::runOnFunction() {
           cast<tf_executor::NextIterationSourceOp>(replacement);
       // Replace the results here since the _tf source does not produce a token
       // there isn't a mapping for the new result #1.
-      op.getResult(0)->replaceAllUsesWith(replacement->getResult(0));
+      op.getResult(0).replaceAllUsesWith(replacement->getResult(0));
       for (int i : llvm::seq<int>(1, op.getNumResults()))
-        op.getResult(i)->replaceAllUsesWith(replacement->getResult(i + 1));
+        op.getResult(i).replaceAllUsesWith(replacement->getResult(i + 1));
       replacement->setAttrs(op.getAttrList());
       op.erase();
       continue;
@@ -202,7 +202,7 @@ void ControlToExecutorDialectConversion::runOnFunction() {
       // Only the non-control operands are carried over, the island is handling
       // the control input.
       for (Value operand : op.getOperands())
-        if (!operand->getType().isa<tf_executor::ControlType>())
+        if (!operand.getType().isa<tf_executor::ControlType>())
           result.operands.push_back(operand);
 
       // Add a result type for each non-control result we find
@@ -232,7 +232,7 @@ void ControlToExecutorDialectConversion::runOnFunction() {
     if (!isa<tf_executor::IslandOp>(replacement))
       replacement->setAttrs(op.getAttrList());
     for (int i : llvm::seq<int>(0, op.getNumResults()))
-      op.getResult(i)->replaceAllUsesWith(replacement->getResult(i));
+      op.getResult(i).replaceAllUsesWith(replacement->getResult(i));
     op.erase();
   }
 }

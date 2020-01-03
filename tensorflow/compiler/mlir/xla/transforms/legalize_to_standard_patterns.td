@@ -31,8 +31,8 @@ def : Pat<(HLO_ConstOp ElementsAttr:$value),
 //===----------------------------------------------------------------------===//
 
 def IsSameSizePred : CPred<
-    "$0->getType().cast<ShapedType>().getShape() "
-    "== $1->getType().cast<ShapedType>().getShape()">;
+    "$0.getType().cast<ShapedType>().getShape() "
+    "== $1.getType().cast<ShapedType>().getShape()">;
 def IsSameSizeConstraint : Constraint<IsSameSizePred, "inputs are same size">;
 
 

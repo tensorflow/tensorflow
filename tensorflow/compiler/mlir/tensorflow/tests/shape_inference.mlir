@@ -17,8 +17,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   func @simple_chain(%arg0: tensor<1xf32>) -> tensor<*xf32> {
 // CHECK: %[[MUL:.*]] = "tf.Mul"{{.*}} (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
 // CHECK: %[[ADD:.*]] = "tf.Add"(%[[MUL]], %[[MUL]]) : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
-// CHECK: %[[CAST:.*]] = "tf.Cast"(%[[ADD]]) {{.*}} : (tensor<1xf32>) -> tensor<*xf32>
-// CHECK: return %[[CAST]] : tensor<*xf32>
+// CHECK: return %[[ADD]] : tensor<1xf32>
     %0 = "tf.Mul"(%arg0, %arg0) : (tensor<1xf32>, tensor<1xf32>) -> tensor<*xf32>
     %1 = "tf.Add"(%0, %0) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
     return %1 : tensor<*xf32>
@@ -29,10 +28,12 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
 // CHECK: %[[MUL:.*]] = "tf.Mul"{{.*}} (tensor<1xf32>, tensor<10xf32>) -> tensor<10xf32>
 // CHECK: %[[ADD:.*]] = "tf.Add"(%[[MUL]], %[[MUL]]) : (tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>
 // CHECK: %[[CAST:.*]] = "tf.Cast"(%[[ADD]]) {{.*}} : (tensor<10xf32>) -> tensor<*xf32>
-// CHECK: return %[[CAST]] : tensor<*xf32>
+// CHECK: %[[UNKNOWN:.*]] = "unknown.A"(%[[CAST]]) : (tensor<*xf32>) -> tensor<*xf32>
+// CHECK: return %[[UNKNOWN]] : tensor<*xf32>
     %0 = "tf.Mul"(%arg0, %arg1) : (tensor<1xf32>, tensor<10xf32>) -> tensor<*xf32>
     %1 = "tf.Add"(%0, %0) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
-    return %1 : tensor<*xf32>
+    %2 = "unknown.A"(%1) : (tensor<*xf32>) -> tensor<*xf32>
+    return %2 : tensor<*xf32>
   }
 
 // CHECK-LABEL: func @unknown_op
@@ -52,8 +53,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
 // CHECK: %[[CST:.*]] = "tf.Const"{{.*}} {value = dense<1> : tensor<4xi32>} : () -> tensor<4xi32>
 // CHECK: %[[CONV:.*]] = "tf.Conv2DBackpropInput"(%[[CST]]
 // CHECK-SAME: (tensor<4xi32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>) -> tensor<1x1x1x1xf32>
-// CHECK: %[[CAST:.*]] = "tf.Cast"(%[[CONV]]) {{.*}} : (tensor<1x1x1x1xf32>) -> tensor<?x?x?x?xf32>
-// CHECK: return %[[CAST]] : tensor<?x?x?x?xf32>
+// CHECK: return %[[CONV]] : tensor<1x1x1x1xf32>
     %0 = "tf.Shape"(%arg0) : (tensor<1x1x1x1xi32>) -> tensor<4xi32>
     %1 = "tf.Conv2DBackpropInput"(%0, %arg1, %arg1) {
       padding = "VALID", strides = [1, 1, 1, 1]
@@ -105,14 +105,16 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK-LABEL: func @shape_from_while_to_cond_body_functions
-  func @shape_from_while_to_cond_body_functions(%arg0: tensor<4xf32>) -> tensor<4xf32> {
-    %0 = "tf.While"(%arg0) {cond = @while_cond_func, body = @while_body_func, is_stateless = true} : (tensor<4xf32>) -> tensor<4xf32>
-    return %0 : tensor<4xf32>
+  func @shape_from_while_to_cond_body_functions(%arg0: tensor<4xf32>, %arg1: tensor<!tf.resource<tensor<4xf32>>>, %arg2: tensor<!tf.resource<tensor<*xf32>>>) -> tensor<4xf32> {
+    // CHECK "tf.While"
+    // CHECK-SAME (tensor<4xf32>, tensor<!tf.resource<tensor<4xf32>>>, tensor<!tf.resource<tensor<*xf32>>>) -> (tensor<4xf32>, tensor<!tf.resource<tensor<4xf32>>>, tensor<!tf.resource<tensor<*xf32>>>)
+    %0:3 = "tf.While"(%arg0, %arg1, %arg2) {cond = @while_cond_func, body = @while_body_func, is_stateless = true} : (tensor<4xf32>, tensor<!tf.resource<tensor<4xf32>>>, tensor<!tf.resource<tensor<*xf32>>>) -> (tensor<4xf32>, tensor<*x!tf.resource>, tensor<!tf.resource<tensor<*xf32>>>)
+    return %0#0 : tensor<4xf32>
   }
 
   // CHECK-LABEL: func @while_cond_func
-  // CHECK-SAME: %arg0: tensor<4xf32>) -> tensor<i1>
-  func @while_cond_func(%arg0: tensor<*xf32>) -> tensor<i1> {
+  // CHECK-SAME: (%arg0: tensor<4xf32>, %arg1: tensor<!tf.resource<tensor<4xf32>>>, %arg2: tensor<!tf.resource<tensor<*xf32>>>) -> tensor<i1>
+  func @while_cond_func(%arg0: tensor<*xf32>, %arg1: tensor<*x!tf.resource>, %arg2: tensor<!tf.resource<tensor<*xf32>>>) -> tensor<i1> {
     %0 = "tf.Const"() {value = dense<[1.000000e-04,2.000000e-04,3.000000e-04,4.000000e-04]> : tensor<4xf32>} : () -> tensor<4xf32>
     %1 = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
     // CHECK: tf.Equal
@@ -124,14 +126,27 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK-LABEL: func @while_body_func
-  func @while_body_func(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+  func @while_body_func(%arg0: tensor<*xf32>, %arg1: tensor<*x!tf.resource>, %arg2: tensor<!tf.resource<tensor<*xf32>>>) -> (tensor<*xf32>, tensor<*x!tf.resource>, tensor<!tf.resource<tensor<*xf32>>>) {
     %0 = "tf.Const"() {value = dense<1.000000e-04> : tensor<f32>} : () -> tensor<f32>
     // CHECK: tf.AddV2
     // CHECK-SAME: (tensor<4xf32>, tensor<f32>) -> tensor<4xf32>
     %1 = "tf.AddV2"(%arg0, %0) : (tensor<*xf32>, tensor<f32>) -> tensor<*xf32>
+    // CHECK: "tf.Identity"
+    // CHECK-SAME: (tensor<!tf.resource<tensor<4xf32>>>) -> tensor<!tf.resource<tensor<4xf32>>>
+    %2 = "tf.Identity"(%arg1) : (tensor<*x!tf.resource>) -> tensor<*x!tf.resource>
+    // CHECK: "tf.TPUReplicatedInput"
+    // CHECK-SAME: (tensor<!tf.resource<tensor<4xf32>>>) -> tensor<!tf.resource<tensor<4xf32>>>
+    %ri = "tf.TPUReplicatedInput"(%2) : (tensor<*x!tf.resource>) -> tensor<*x!tf.resource>
+    // CHECK: "tf.ReadVariableOp"
+    // CHECK-SAME: (tensor<!tf.resource<tensor<4xf32>>>) -> tensor<4xf32>
+    %read = "tf.ReadVariableOp"(%ri) : (tensor<*x!tf.resource>) -> tensor<*xf32>
+    // CHECK: "tf.ReadVariableOp"
+    // CHECK-SAME: (tensor<!tf.resource<tensor<*xf32>>>) -> tensor<*xf32>
+    %read1 = "tf.ReadVariableOp"(%arg2) : (tensor<!tf.resource<tensor<*xf32>>>) -> tensor<*xf32>
     // CHECK: return
     // CHECK-SAME: tensor<4xf32>
-    return %1 : tensor<*xf32>
+    // CHECK-SAME: tensor<!tf.resource<tensor<4xf32>>>
+    return %1, %arg1, %arg2 : tensor<*xf32>, tensor<*x!tf.resource>, tensor<!tf.resource<tensor<*xf32>>>
   }
 
   // CHECK-LABEL: func @invalid_function_reused_by_control_flows
@@ -161,5 +176,29 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     // CHECK: return
     // CHECK-SAME: tensor<*xf32>
     return %0 : tensor<*xf32>
+  }
+
+  // CHECK-LABEL: func @with_graph_and_islands
+  // CHECK-SAME: %[[ARG_0:.*]]: tensor<!tf.resource<tensor<4xf32>>>
+  // CHECK-SAME: -> tensor<4xf32>
+  func @with_graph_and_islands(%arg0: tensor<!tf.resource<tensor<4xf32>>>) -> tensor<*xf32> {
+    %graph = tf_executor.graph {
+      %island:2 = tf_executor.island {
+        // CHECK: %[[ID_0:.*]] = "tf.IdentityN"(%[[ARG_0]])
+        %id0 = "tf.IdentityN"(%arg0)
+          : (tensor<!tf.resource<tensor<4xf32>>>) -> tensor<!tf.resource<tensor<4xf32>>>
+        // CHECK-NEXT: %[[READ_0:.*]] = "tf.ReadVariableOp"(%[[ID_0]])
+        // CHECK-SAME: (tensor<!tf.resource<tensor<4xf32>>>) -> tensor<4xf32>
+        %read = "tf.ReadVariableOp"(%id0) : (tensor<!tf.resource<tensor<4xf32>>>) -> tensor<*xf32>
+        // CHECK-NEXT: tf_executor.yield %[[READ_0]] : tensor<4xf32>
+        tf_executor.yield %read : tensor<*xf32>
+      }
+      // CHECK: tf_executor.fetch
+      // CHECK-SAME: tensor<4xf32>
+      tf_executor.fetch %island#0 : tensor<*xf32>
+    }
+    // CHECK: return
+    // CHECK-SAME: tensor<4xf32>
+    return %graph : tensor<*xf32>
   }
 }

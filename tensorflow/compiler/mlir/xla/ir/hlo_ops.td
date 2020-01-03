@@ -152,6 +152,10 @@ def HLO_ConvertOp : HLO_UnaryElementwiseOp<
   let hasCustomHLOConverter = 1;
 }
 
+def HLO_ClzOp: HLO_UnaryElementwiseOp<"count_leading_zeros",
+    [NoSideEffect, SameOperandsAndResultType], HLO_IntTensor>,
+    BASE_HLO_ClzOp;
+
 def HLO_CosOp: HLO_UnaryElementwiseOp<"cos",
     [NoSideEffect, SameOperandsAndResultType], HLO_FpOrComplexTensor>,
     BASE_HLO_CosOp;
@@ -334,6 +338,15 @@ def HLO_XorOp : HLO_BinaryLogicalElementwiseOp<"xor">, BASE_HLO_XorOp;
 // XLA communication op definitions.
 //===----------------------------------------------------------------------===//
 
+// Represents a unique identifier for each Send/Recv instruction pair or
+// optionally for collective instructions (AllReduce, CollectivePermute,
+// AllToAll). Non-positive channel_id handle is equivalent to no channel id.
+def ChannelHandle : StructAttr<"ChannelHandle", HLO_Dialect, [
+                StructFieldAttr<"handle", I64Attr>,
+                StructFieldAttr<"type", I64Attr>]> {
+  let description = "two 64-bit integers 'handle' and 'type'";
+}
+
 // InfeedOp corresponds to 'InfeedWithToken' xla client API and not 'Infeed'.
 // InfeedWithToken allows ordering of infeed HLO instructions using tokens.
 def HLO_InfeedOp : HLO_Op<"infeed", []> {
@@ -380,6 +393,30 @@ def HLO_OutfeedOp : HLO_Op<"outfeed", []> {
   let hasCustomHLOConverter = 1;
 }
 
+def HLO_SendOp : HLO_Op<"send", []> {
+
+  string summary = "Send operator";
+
+  string description = [{
+    Sends the given operand data to a Recv instruction in another computation
+    that shares the same channel handle. Does not return any data. Similar to
+    the Recv operation, Send operation represents synchronous communication,
+    and is internally decomposed into 2 HLO instructions (Send and SendDone) to
+    enable asynchronous data transfers.
+
+    See https://www.tensorflow.org/xla/operation_semantics#send.
+  }];
+
+  let arguments = (ins
+    HLO_TensorOrTuple:$operand,
+    HLO_Token:$token,
+    ChannelHandle:$channel_id,
+    DefaultValuedAttr<BoolAttr, "false">:$is_host_transfer
+  );
+
+  let results = (outs HLO_Token);
+  let hasCustomHLOConverter = 1;
+}
 
 //===----------------------------------------------------------------------===//
 // XLA parallelism related op definitions.
@@ -457,15 +494,6 @@ def HLO_WhileOp: HLO_Op<"while", [NoSideEffect, SameOperandsAndResultType]> {
   let hasCustomHLOConverter = 1;
 }
 
-// Represents a unique identifier for each Send/Recv instruction pair or
-// optionally for collective instructions (AllReduce, CollectivePermute,
-// AllToAll). Non-positive channel_id handle is equivalent to no channel id.
-def ChannelHandle : StructAttr<"ChannelHandle", HLO_Dialect, [
-                StructFieldAttr<"handle", I64Attr>,
-                StructFieldAttr<"type", I64Attr>]> {
-  let description = "two 64-bit integers 'handle' and 'type'";
-}
-
 def HLO_AllReduceOp : HLO_Op<"all_reduce",
     [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_AllReduceOp {
 
@@ -478,6 +506,19 @@ def HLO_AllReduceOp : HLO_Op<"all_reduce",
   let results = (outs HLO_Tensor);
 
   let hasCustomHLOConverter = 1;
+}
+
+def HLO_AllToAllOp : HLO_Op<"all_to_all",
+    [NoSideEffect, SameOperandsElementType, SameOperandsShape]>, BASE_HLO_AllToAllOp {
+
+  let arguments = (ins
+    HLO_Tensor:$operand,
+    I64Attr:$split_dimension,
+    I64Attr:$concat_dimension,
+    I64Attr:$split_count,
+    I64ElementsAttr:$replica_groups
+  );
+  let results = (outs HLO_Tensor);
 }
 
 def HLO_ReduceOp: HLO_Op<"reduce", [
@@ -699,6 +740,16 @@ def HLO_BroadcastInDimOp : HLO_Op<"broadcast_in_dim",
   let hasCustomHLOConverter = 1;
 }
 
+def HLO_CholeskyOp : HLO_Op<"cholesky",
+      [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_CholeskyOp {
+  let arguments = (ins
+    HLO_FpOrComplexTensor:$a,
+    DefaultValuedAttr<BoolAttr, "false">:$lower
+  );
+
+  let results = (outs HLO_FpOrComplexTensor);
+}
+
 def HLO_ClampOp : HLO_Op<"clamp",
       [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_ClampOp {
   let arguments = (ins
@@ -771,8 +822,6 @@ def HLO_ConvOp : HLO_Op<"conv", [NoSideEffect]>, BASE_HLO_ConvOp {
 
   let results = (outs HLO_Tensor);
 
-  // TODO(b/129422361): Conv Op has special conversion logic to HLO.
-  let hasCustomHLOConverter = 1;
 }
 
 def HLO_CopyOp: HLO_Op<"copy", [NoSideEffect, SameOperandsAndResultType]> {
@@ -954,6 +1003,16 @@ def HLO_SelectAndScatterOp: HLO_Op<"select_and_scatter",
   let results = (outs HLO_Tensor);
 
   let hasCustomHLOConverter = 1;
+}
+
+def HLO_SetDimensionSizeOp: HLO_Op<"set_dimension_size", [NoSideEffect]>,
+      BASE_HLO_SetDimensionSizeOp {
+  let arguments = (ins
+    HLO_Tensor:$operand,
+    I32Tensor:$size,
+    I32Attr:$dimension
+  );
+  let results = (outs HLO_Tensor);
 }
 
 def HLO_SortOp : HLO_Op<"sort", [NoSideEffect]>, BASE_HLO_SortOp {

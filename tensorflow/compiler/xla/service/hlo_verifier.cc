@@ -33,17 +33,6 @@ limitations under the License.
 
 namespace xla {
 
-Status VerifyNotSparse(const Shape& shape) {
-  return ShapeUtil::ForEachSubshapeWithStatus(
-      shape, [](const Shape& subshape, const ShapeIndex&) -> Status {
-        if (LayoutUtil::IsSparseArray(subshape)) {
-          return InternalError("Sparse arrays are not yet fully supported: %s",
-                               ShapeUtil::HumanStringWithLayout(subshape));
-        }
-        return Status::OK();
-      });
-}
-
 bool IsCallerInstruction(HloInstruction* hlo) {
   switch (hlo->opcode()) {
     case HloOpcode::kCall:
@@ -93,8 +82,6 @@ Status ShapeVerifier::Preprocess(HloInstruction* hlo) {
         "Called computations specified for non-caller instruction  %s",
         hlo->ToString());
   }
-  TF_RETURN_IF_ERROR(VerifyNotSparse(hlo->shape()));
-
   absl::optional<int> arity = HloOpcodeArity(hlo->opcode());
   if (arity) {
     TF_RETURN_IF_ERROR(CheckOperandCount(hlo, *arity));
@@ -1109,8 +1096,6 @@ Status ShapeVerifier::VerifyEntryComputationLayout(const HloModule& module) {
   TF_RETURN_IF_ERROR(
       ShapeUtil::ValidateShapeWithOptionalLayout(result_layout.shape()));
 
-  TF_RETURN_IF_ERROR(VerifyNotSparse(result_layout.shape()));
-
   if (!ShapeUtil::Compatible(computation->root_instruction()->shape(),
                              result_layout.shape())) {
     return InternalError(
@@ -1131,7 +1116,6 @@ Status ShapeVerifier::VerifyEntryComputationLayout(const HloModule& module) {
     const HloInstruction* parameter = computation->parameter_instruction(i);
     TF_RETURN_IF_ERROR(
         ShapeUtil::ValidateShapeWithOptionalLayout(layout.parameter_shape(i)));
-    TF_RETURN_IF_ERROR(VerifyNotSparse(layout.parameter_shape(i)));
     if (!ShapeUtil::Compatible(parameter->shape(), layout.parameter_shape(i))) {
       return InternalError(
           "Shape of the entry computation parameter %d is %s should be "

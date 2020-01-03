@@ -30,13 +30,13 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/AffineOps/AffineOps.h"  // TF:local_config_mlir
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
-#include "mlir/IR/AffineExpr.h"  // TF:local_config_mlir
-#include "mlir/IR/AffineMap.h"  // TF:local_config_mlir
-#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
-#include "mlir/Transforms/LoopUtils.h"  // TF:local_config_mlir
-#include "mlir/Transforms/RegionUtils.h"  // TF:local_config_mlir
+#include "mlir/Dialect/AffineOps/AffineOps.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/IR/AffineExpr.h"  // TF:llvm-project
+#include "mlir/IR/AffineMap.h"  // TF:llvm-project
+#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/Transforms/LoopUtils.h"  // TF:llvm-project
+#include "mlir/Transforms/RegionUtils.h"  // TF:llvm-project
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/window_util.h"
 
@@ -257,7 +257,7 @@ mlir::AffineForOp TileLoop(mlir::AffineForOp loop, int64_t size,
   }
 
   for (mlir::IROperand& use :
-       llvm::make_early_inc_range(loop.getInductionVar()->getUses())) {
+       llvm::make_early_inc_range(loop.getInductionVar().getUses())) {
     mlir::Operation* owner = use.getOwner();
     BoundAffineMap affine_map = GetBoundAffineMapFrom(owner);
     unsigned new_dim = affine_map.operands.size();
@@ -330,7 +330,7 @@ mlir::Operation* HoistAndFix(llvm::iplist<mlir::Operation>::iterator begin_op,
       indvars.push_back(ancestor.getInductionVar());
     }
     for (mlir::IROperand& use :
-         llvm::make_early_inc_range(alloc.getResult()->getUses())) {
+         llvm::make_early_inc_range(alloc.getResult().getUses())) {
       mlir::Operation* owner = use.getOwner();
       BoundAffineMap affine_map = GetBoundAffineMapFrom(owner);
       affine_map.operands.insert(affine_map.operands.begin(), indvars.begin(),

@@ -518,6 +518,7 @@ cc_library(
         ":eigen_support",
         ":kernel_util",
         ":lstm_eval",
+        ":lstm_shared",
         ":op_macros",
         ":padding",
         "//tensorflow/lite:framework",
@@ -610,6 +611,12 @@ cc_library(
         "//tensorflow/lite/kernels/internal:tensor_utils",
         "@gemmlowp",
     ],
+)
+
+cc_library(
+    name = "lstm_shared",
+    hdrs = ["lstm_shared.h"],
+    copts = tflite_copts(),
 )
 
 cc_library(

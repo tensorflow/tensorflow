@@ -15,18 +15,19 @@ cc_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":profiler_utils",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform",
         "//tensorflow/core/profiler/internal:profiler_interface",
         "//tensorflow/core/profiler/internal:profiler_factory",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/core/util:ptr_util",
     ] + select({
         "//tensorflow:android": [],
         "//conditions:default": [
             "//tensorflow/core/profiler/convert:run_metadata_to_trace_events",
-            "//tensorflow/core/platform",
-            "//tensorflow/core:lib",
-            "//tensorflow/core:lib_internal",
-            "//tensorflow/core:framework",
-            "//tensorflow/core:protos_all_cc",
         ],
     }),
 )

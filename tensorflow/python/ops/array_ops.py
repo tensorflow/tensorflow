@@ -19,10 +19,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numbers
 import numpy as np
-import six
 
-from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import composite_tensor
@@ -54,13 +53,6 @@ tf_export("newaxis").export_constant(__name__, "newaxis")
 # existing 'slice' for later use in this module.
 _BaseSlice = slice
 
-# LINT.IfChange
-matrix_diag_v3_forward_compat_date = (2019, 12, 6)
-# LINT.ThenChange(
-#   //tensorflow/compiler/tests/matrix_diag_ops_test.py,
-#   //tensorflow/python/kernel_tests/diag_op_test.py,
-#   //tensorflow/python/ops/parallel_for/array_test.py
-# )
 
 @tf_export("reshape", v1=["reshape", "manip.reshape"])
 def reshape(tensor, shape, name=None):  # pylint: disable=redefined-outer-name
@@ -825,7 +817,7 @@ _SUPPORTED_SLICE_DTYPES = (dtypes.int32, dtypes.int32_ref, dtypes.int64,
 
 def _check_index(idx):
   """Check if a given value is a valid index into a tensor."""
-  if isinstance(idx, (six.integer_types, tensor_shape.Dimension)):
+  if isinstance(idx, (numbers.Integral, tensor_shape.Dimension)):
     return
 
   # Optimistic check. Assumptions:
@@ -1941,7 +1933,7 @@ def split(value, num_or_size_splits, axis=0, num=None, name="split"):
   """
   size_splits = ops.convert_to_tensor(num_or_size_splits)
   if isinstance(num_or_size_splits,
-                six.integer_types + (tensor_shape.Dimension,)):
+                (numbers.Integral, tensor_shape.Dimension)):
     return gen_array_ops.split(
         axis=axis, num_split=num_or_size_splits, value=value, name=name)
 
@@ -2362,24 +2354,19 @@ def matrix_diag(diagonal,
   Returns:
     A Tensor. Has the same type as `diagonal`.
   """
-  if compat.forward_compatible(*matrix_diag_v3_forward_compat_date):
-    # Special case to sidestep the tf.constant conversion error:
-    # TypeError: Expected bool, got 0 of type 'int' instead.
-    if hasattr(diagonal, "dtype") and diagonal.dtype == "bool":
-      padding_value = bool(padding_value)
+  # Special case to sidestep the tf.constant conversion error:
+  # TypeError: Expected bool, got 0 of type 'int' instead.
+  if hasattr(diagonal, "dtype") and diagonal.dtype == "bool":
+    padding_value = bool(padding_value)
 
-    return gen_array_ops.matrix_diag_v3(
-        diagonal=diagonal,
-        k=k,
-        num_rows=num_rows,
-        num_cols=num_cols,
-        padding_value=padding_value,
-        align=align,
-        name=name)
-
-  # Call v1 to maintain forward compatibility.
-  # (We skip v2 because its alignment conflicts with v3's default alignment.)
-  return gen_array_ops.matrix_diag(diagonal=diagonal, name=name)
+  return gen_array_ops.matrix_diag_v3(
+      diagonal=diagonal,
+      k=k,
+      num_rows=num_rows,
+      num_cols=num_cols,
+      padding_value=padding_value,
+      align=align,
+      name=name)
 
 
 @tf_export("linalg.diag_part", v1=["linalg.diag_part", "matrix_diag_part"])
@@ -2513,18 +2500,13 @@ def matrix_diag_part(
   Returns:
     A Tensor containing diagonals of `input`. Has the same type as `input`.
   """
-  if compat.forward_compatible(*matrix_diag_v3_forward_compat_date):
-    # Special case to sidestep the tf.constant conversion error:
-    # TypeError: Expected bool, got 0 of type 'int' instead.
-    if hasattr(input, "dtype") and input.dtype == "bool":
-      padding_value = bool(padding_value)
+  # Special case to sidestep the tf.constant conversion error:
+  # TypeError: Expected bool, got 0 of type 'int' instead.
+  if hasattr(input, "dtype") and input.dtype == "bool":
+    padding_value = bool(padding_value)
 
-    return gen_array_ops.matrix_diag_part_v3(
-        input=input, k=k, padding_value=padding_value, align=align, name=name)
-
-  # Call v1 to maintain forward compatibility.
-  # (We skip v2 because its alignment conflicts with v3's default alignment.)
-  return gen_array_ops.matrix_diag_part(input=input, name=name)
+  return gen_array_ops.matrix_diag_part_v3(
+      input=input, k=k, padding_value=padding_value, align=align, name=name)
 
 
 @tf_export("linalg.set_diag", v1=["linalg.set_diag", "matrix_set_diag"])
@@ -2659,14 +2641,8 @@ def matrix_set_diag(
       the left (right-pads the row). It is the packing format LAPACK uses.
       cuSPARSE uses "LEFT_RIGHT", which is the opposite alignment.
   """
-  if compat.forward_compatible(*matrix_diag_v3_forward_compat_date):
-    return gen_array_ops.matrix_set_diag_v3(
-        input=input, diagonal=diagonal, k=k, align=align, name=name)
-
-  # Call v1 to maintain forward compatibility.
-  # (We skip v2 because its alignment conflicts with v3's default alignment.)
-  return gen_array_ops.matrix_set_diag(
-      input=input, diagonal=diagonal, name=name)
+  return gen_array_ops.matrix_set_diag_v3(
+      input=input, diagonal=diagonal, k=k, align=align, name=name)
 
 
 # pylint: enable=invalid-name
@@ -4921,7 +4897,7 @@ def quantize_v2(
       raise ValueError("input should have known rank to use negative axis.")
     axis %= input.shape.ndims
 
-  if compat.forward_compatible(2019, 11, 13) or ensure_minimum_range != 0.01:
+  if ensure_minimum_range != 0.01:
     return gen_array_ops.quantize_v2(
         input,
         min_range,
@@ -4965,7 +4941,7 @@ def quantize(
     axis=None,
     ensure_minimum_range=0.01):
   """Quantize the input tensor."""
-  if compat.forward_compatible(2019, 11, 13) or ensure_minimum_range != 0.01:
+  if ensure_minimum_range != 0.01:
     return quantize_v2(
         input,
         min_range,
@@ -5007,7 +4983,7 @@ def dequantize(  # pylint: disable=missing-docstring
       raise ValueError("input should have known rank to use negative axis.")
     axis %= input.shape.ndims
 
-  if compat.forward_compatible(2019, 10, 22) or axis >= 0 or narrow_range:
+  if axis >= 0 or narrow_range:
     return gen_array_ops.dequantize(
         input, min_range, max_range, mode=mode, name=name,
         narrow_range=narrow_range, axis=axis)

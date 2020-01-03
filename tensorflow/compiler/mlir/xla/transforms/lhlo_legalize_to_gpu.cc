@@ -19,21 +19,21 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "llvm/ADT/ArrayRef.h"
-#include "mlir/Dialect/GPU/GPUDialect.h"  // TF:local_config_mlir
-#include "mlir/Dialect/Linalg/IR/LinalgOps.h"  // TF:local_config_mlir
-#include "mlir/Dialect/LoopOps/LoopOps.h"  // TF:local_config_mlir
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/BlockAndValueMapping.h"  // TF:local_config_mlir
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/Function.h"  // TF:local_config_mlir
-#include "mlir/IR/Location.h"  // TF:local_config_mlir
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/IR/Operation.h"  // TF:local_config_mlir
-#include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
-#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
-#include "mlir/Transforms/DialectConversion.h"  // TF:local_config_mlir
+#include "mlir/Dialect/GPU/GPUDialect.h"  // TF:llvm-project
+#include "mlir/Dialect/Linalg/IR/LinalgOps.h"  // TF:llvm-project
+#include "mlir/Dialect/LoopOps/LoopOps.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/BlockAndValueMapping.h"  // TF:llvm-project
+#include "mlir/IR/Builders.h"  // TF:llvm-project
+#include "mlir/IR/Function.h"  // TF:llvm-project
+#include "mlir/IR/Location.h"  // TF:llvm-project
+#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
+#include "mlir/IR/Operation.h"  // TF:llvm-project
+#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
+#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/Transforms/DialectConversion.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/map_lhlo_to_scalar_op.h"
 
@@ -55,7 +55,7 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
     // Only support 1d reductions for now.
     int64_t size = 0;
     for (auto result : reduce_op.out()) {
-      auto shaped_type = result->getType().dyn_cast<ShapedType>();
+      auto shaped_type = result.getType().dyn_cast<ShapedType>();
       if (!shaped_type || shaped_type.getRank() != 1) {
         return matchFailure();
       }
@@ -71,7 +71,7 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
     // Require all inputs to have the same shape.
     int64_t reduce_dim_size = 0;
     for (auto input : reduce_op.operands()) {
-      auto shaped_type = input->getType().dyn_cast<ShapedType>();
+      auto shaped_type = input.getType().dyn_cast<ShapedType>();
       if (!shaped_type || !shaped_type.hasStaticShape()) {
         return matchFailure();
       }
@@ -128,7 +128,7 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
       auto output = mapping.lookup(*reduce_op.out().begin());
       // TODO(herhut) Move this to the SliceOp builder.
       auto resType = MemRefType::get(
-          llvm::None, output->getType().cast<MemRefType>().getElementType(),
+          llvm::None, output.getType().cast<MemRefType>().getElementType(),
           makeStridedLinearLayoutMap(llvm::None,
                                      MemRefType::getDynamicStrideOrOffset(),
                                      rewriter.getContext()));
@@ -136,7 +136,7 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
           loc, resType, output, ArrayRef<Value>{launch_op.getThreadIds().x});
       llvm::SmallVector<Value, 4> indexings;
       auto input_buffer = *reduce_op.operands().begin();
-      auto input_type = input_buffer->getType().cast<MemRefType>();
+      auto input_type = input_buffer.getType().cast<MemRefType>();
       for (int64_t dim = 0; dim < input_type.getRank(); ++dim) {
         indexings.push_back(dim == reducing_dimension
                                 ? loop.getInductionVar()

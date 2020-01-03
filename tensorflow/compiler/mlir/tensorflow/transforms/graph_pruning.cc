@@ -18,10 +18,10 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/IR/Operation.h"  // TF:local_config_mlir
-#include "mlir/IR/Value.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
-#include "mlir/Pass/PassRegistry.h"  // TF:local_config_mlir
+#include "mlir/IR/Operation.h"  // TF:llvm-project
+#include "mlir/IR/Value.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/Pass/PassRegistry.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 
@@ -39,7 +39,7 @@ void PruneGraph(GraphOp graph) {
   // Visit an op's operands if it is output of an Operation in same graph.
   auto visit_op = [&](Operation* op) {
     for (Value operand : op->getOperands()) {
-      Operation* def = operand->getDefiningOp();
+      Operation* def = operand.getDefiningOp();
       if (def && def->getParentOp() == graph &&
           reachable_ops.insert(def).second) {
         // Op has not been visited, add to queue to visit later.

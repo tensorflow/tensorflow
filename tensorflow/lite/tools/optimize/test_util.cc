@@ -51,6 +51,8 @@ const char* kModelMixed = "mixed.bin";
 
 const char* kModelSplit = "split.bin";
 
+const char* kModelPack = "pack.bin";
+
 const char* kLstmCalibrated = "lstm_calibrated.bin";
 const char* kLstmQuantized = "lstm_quantized.bin";
 

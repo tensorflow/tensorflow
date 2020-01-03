@@ -19,12 +19,12 @@ limitations under the License.
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/Diagnostics.h"  // TF:local_config_mlir
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
-#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
-#include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/Diagnostics.h"  // TF:llvm-project
+#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
+#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
+#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/IR/TypeUtilities.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/core/util/tensor_format.h"
@@ -196,7 +196,7 @@ class LowerDynamicStitchOp : public OpRewritePattern<TF::DynamicStitchOp> {
       if (!matchPattern(index, m_Constant(&index_attr))) return matchFailure();
       indices.push_back(index_attr);
 
-      RankedTensorType data_ty = data->getType().dyn_cast<RankedTensorType>();
+      RankedTensorType data_ty = data.getType().dyn_cast<RankedTensorType>();
       if (!data_ty || !data_ty.hasStaticShape()) return matchFailure();
     }
 
@@ -270,7 +270,7 @@ class LowerPackOp : public OpRewritePattern<TF::PackOp> {
       // If input type is different than the previous input type, infer the
       // output type. Otherwise, use the already inferred output type from the
       // previous iteration.
-      Type input_ty = input->getType();
+      Type input_ty = input.getType();
       if (input_ty != prev_input_ty) {
         inferred_ty = InferExpandDimsType(input_ty, axis, &rewriter);
         prev_input_ty = input_ty;
