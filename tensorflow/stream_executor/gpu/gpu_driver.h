@@ -19,6 +19,7 @@ limitations under the License.
 #define TENSORFLOW_STREAM_EXECUTOR_GPU_GPU_DRIVER_H_
 
 #include <stddef.h>
+
 #include "tensorflow/stream_executor/device_options.h"
 #include "tensorflow/stream_executor/gpu/gpu_types.h"
 #include "tensorflow/stream_executor/lib/status.h"

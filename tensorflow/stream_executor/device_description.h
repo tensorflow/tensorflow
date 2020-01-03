@@ -81,34 +81,34 @@ class DeviceDescription {
   // Returns the limit on the total number of threads that can be launched in a
   // single block; i.e. the limit on x * y * z dimensions of a ThreadDim.
   // This limit affects what constitutes a legitimate kernel launch request.
-  const int64& threads_per_block_limit() const {
+  const int64 &threads_per_block_limit() const {
     return threads_per_block_limit_;
   }
 
   // Returns the limit on the total number of threads that can be simultaneously
   // launched on a given multiprocessor.
-  const int64& threads_per_core_limit() const {
+  const int64 &threads_per_core_limit() const {
     return threads_per_core_limit_;
   }
 
   // Returns the number of threads per warp/wavefront.
-  const int64& threads_per_warp() const { return threads_per_warp_; }
+  const int64 &threads_per_warp() const { return threads_per_warp_; }
 
   // Returns the limit on the total number of registers per core.
-  const int64& registers_per_core_limit() const {
+  const int64 &registers_per_core_limit() const {
     return registers_per_core_limit_;
   }
 
   // Returns the limit on the total number of registers that can be
   // simultaneously used by a block.
-  const int64& registers_per_block_limit() const {
+  const int64 &registers_per_block_limit() const {
     return registers_per_block_limit_;
   }
 
   // Returns the number of address bits available to kernel code running on the
   // platform. This affects things like the maximum allocation size and perhaps
   // types used in kernel code such as size_t.
-  const int64& device_address_bits() const { return device_address_bits_; }
+  const int64 &device_address_bits() const { return device_address_bits_; }
 
   // Returns the device memory size in bytes.
   int64 device_memory_size() const { return device_memory_size_; }
@@ -329,9 +329,9 @@ int64 DivideCeil(int64 x, int64 y);
 // elements. Note that you can still end up with more threads than
 // element_count due to rounding, so kernels often start with an "is this
 // thread id in the element_count range?" test.
-void CalculateDimensionality(const DeviceDescription& device_description,
-                             int64 element_count, int64* threads_per_block,
-                             int64* block_count);
+void CalculateDimensionality(const DeviceDescription &device_description,
+                             int64 element_count, int64 *threads_per_block,
+                             int64 *block_count);
 
 }  // namespace stream_executor
 

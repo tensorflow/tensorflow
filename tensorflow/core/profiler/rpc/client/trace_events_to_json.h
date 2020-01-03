@@ -26,7 +26,7 @@ namespace client {
 
 // Converts trace events in the trace proto to a JSON string that can be
 // consumed by catapult trace viewer.
-string TraceEventsToJson(const Trace& trace);
+string TraceEventsToJson(const Trace &trace);
 
 }  // namespace client
 }  // namespace profiler

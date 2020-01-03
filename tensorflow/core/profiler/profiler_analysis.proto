@@ -69,8 +69,10 @@ service ProfileAnalysis {
   }
   // Enumerate existing sessions and return available profile tools.
   rpc EnumSessions(EnumProfileSessionsAndToolsRequest)
-      returns (EnumProfileSessionsAndToolsResponse) {}
+      returns (EnumProfileSessionsAndToolsResponse) {
+  }
   // Retrieve specific tool's data for specific session.
   rpc GetSessionToolData(ProfileSessionDataRequest)
-      returns (ProfileSessionDataResponse) {}
+      returns (ProfileSessionDataResponse) {
+  }
 }
