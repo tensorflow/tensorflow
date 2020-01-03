@@ -366,7 +366,9 @@ def subtract(x, y, name=None):
   
   Args:
   'x': A 'Tensor'. Must be one of the following types: 
-  'bfloat16', 'half', 'float32', 'float64', 'uint8', 'int8', 'uint16', 'int16', 'int32', 'int64', 'complex64', 'complex128'.
+    'bfloat16', 'half', 'float32', 'float64',
+    'uint8', 'int8', 'uint16', 'int16', 
+    'int32', 'int64', 'complex64', 'complex128'.
   'y': A 'Tensor'. Must have the same type as 'x'
   'name': A name for the operation (optional)
   
@@ -3266,7 +3268,7 @@ def sigmoid(x, name=None):
   Specifically, `y = 1 / (1 + exp(-x))`.
   
   For example:
-  >>> x = 32
+  >>> x = 32.0
   >>> tf.math.sigmoid(x)
   <tf.Tensor: shape=(), dtype=float32, numpy=1.0>
 
@@ -4314,10 +4316,11 @@ def polyval(coeffs, x, name=None):
   evaluated using Horner's method, i.e.
 
      p(x) = coeffs[n-1] + x * (coeffs[n-2] + ... + x * (coeffs[1] +
-            x * coeffs[0]))
-  
+            x * coeffs[0])) 
   For example:
-  >>> coefficients = [tf.constant(32, dtype=tf.int32), tf.constant(33, dtype=tf.int32), tf.constant(34, dtype=tf.int32)]
+  >>> coefficients = [tf.constant(32, dtype=tf.int32),
+                      tf.constant(33, dtype=tf.int32), 
+                      tf.constant(34, dtype=tf.int32)]
   >>> w = tf.Variable(tf.constant(1, dtype=tf.int32))
   >>> tf.math.polyval(coefficients, w)
   <tf.Tensor: shape=(), dtype=int32, numpy=99>
