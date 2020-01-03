@@ -2437,8 +2437,10 @@ TfLiteStatus NNAPIDelegateKernel::Map(
     case kTfLiteBuiltinTransposeConv: {
       const bool hybrid_op = IsHybridOperator(
           mapping_args.context, kTfLiteBuiltinTransposeConv, mapping_args.node);
-      mapping_args.builder->AddTensorInput(/*kDataInputTensor*/ 2, hybrid_op);
-      mapping_args.builder->AddTensorInput(/*kWeightsTensor*/ 1, hybrid_op);
+      mapping_args.builder->AddTensorInput(
+          mapping_args.node->inputs->data[/*kDataInputTensor*/ 2], hybrid_op);
+      mapping_args.builder->AddTensorInput(
+          mapping_args.node->inputs->data[/*kWeightsTensor*/ 1], hybrid_op);
 
       // NNAPI requires a bias tensor, so we allocate a new tensor to fill
       // it with zeroes. It is deleted with other tensors in the context
@@ -2494,7 +2496,8 @@ TfLiteStatus NNAPIDelegateKernel::Map(
             /*zero_point=*/0);
       }
 
-      mapping_args.builder->AddTensorInput(/*kOutputShapeTensor*/ 0, hybrid_op);
+      mapping_args.builder->AddTensorInput(
+          mapping_args.node->inputs->data[/*kOutputShapeTensor*/ 0], hybrid_op);
 
       auto builtin = reinterpret_cast<TfLiteTransposeConvParams*>(
           mapping_args.node->builtin_data);
