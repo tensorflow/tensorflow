@@ -92,15 +92,15 @@ struct VariableAccessInfo {
 // Information about all resource accesses to be fused into a TPUExecute op.
 struct VariableAccessesForTPUExecute {
   // Maps each resource detected to VariableAccessInfo.
-  llvm::SmallDenseMap<Value*, VariableAccessInfo, 8> per_resource_info;
+  llvm::SmallDenseMap<Value, VariableAccessInfo, 8> per_resource_info;
   // The corresponding new output index in TPUExecuteAndUpdateVariables for
   // each old output index in TPUExecute.
   llvm::SmallVector<int, 8> old_to_new_output_mapping;
   // The resources read by ReadVariableOps that are inputs to TPUExecute.
   // Ordered by the input indices to TPUExecute
-  llvm::SmallVector<Value*, 8> resources_read;
+  llvm::SmallVector<Value, 8> resources_read;
   // Operands for the new TPUExecuteAndUpdateVariables.
-  llvm::SmallVector<Value*, 8> new_operand_values;
+  llvm::SmallVector<Value, 8> new_operand_values;
 };
 
 // Returns if an op accesses a resource.
@@ -147,7 +147,7 @@ VariableAccessesForTPUExecute BuildVariableAccessInfo(Operation* execute,
         // Check device matching for the node defining the resource.
         if (!resource_attr || resource_attr != device_attr) continue;
       } else {
-        auto resource_arg = llvm::dyn_cast<BlockArgument>(resource);
+        auto resource_arg = resource->dyn_cast<BlockArgument>();
         assert(resource_arg);
         // Check device matching for the argument defining the resource.
         auto resource_attr = func.getArgAttrOfType<mlir::StringAttr>(
@@ -206,7 +206,7 @@ VariableAccessesForTPUExecute BuildVariableAccessInfo(Operation* execute,
     }
     infos.resources_read.erase(
         llvm::remove_if(infos.resources_read,
-                        [&](const Value* resource) {
+                        [&](const Value resource) {
                           return infos.per_resource_info.count(resource) == 0;
                         }),
         infos.resources_read.end());

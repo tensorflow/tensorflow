@@ -134,6 +134,8 @@ py_test(
         ":converters",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/autograph/core:test_lib",
+        # TOODO(b/145618471): Remove this transitive dependency.
+        "//tensorflow/python/distribute:input_lib",
     ],
 )
 

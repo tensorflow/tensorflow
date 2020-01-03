@@ -50,26 +50,20 @@ tflite_cc_shared_object(
 
 cc_library(
     name = "c_api_internal",
-    srcs = [
-        "c_api.h",
-        "common.h",
-    ],
     hdrs = ["c_api_internal.h"],
     copts = tflite_copts(),
     visibility = ["//visibility:private"],
     deps = [
         ":common",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite/core/api",
     ],
 )
 
 cc_library(
     name = "c_api",
     srcs = ["c_api.cc"],
-    hdrs = [
-        "c_api.h",
-        "common.h",
-    ],
+    hdrs = ["c_api.h"],
     copts = tflite_copts(),
     visibility = [
         ":experimental",
@@ -79,6 +73,7 @@ cc_library(
         ":common",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:version",
+        "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels:builtin_ops",
     ],
     alwayslink = 1,
@@ -92,6 +87,8 @@ cc_library(
     deps = [
         ":c_api",
         ":c_api_internal",
+        ":common",
+        "//tensorflow/lite:framework",
         "//tensorflow/lite:kernel_api",
     ],
     alwayslink = 1,
@@ -107,7 +104,7 @@ cc_test(
     ],
     deps = [
         ":c_api",
-        "//tensorflow/lite/c:c_api_internal",
+        ":common",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",
     ],
@@ -121,6 +118,7 @@ cc_test(
     deps = [
         ":c_api",
         ":c_api_experimental",
+        ":common",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",

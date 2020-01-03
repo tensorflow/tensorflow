@@ -68,6 +68,17 @@ class BASE_HLO_CeilOp {
   }];
 }
 
+class BASE_HLO_ClzOp {
+  string summary = "Count-leading-zeros (Clz) operator";
+
+  string description = [{
+    Returns the number of leading zeros in each operand element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+  }];
+}
+
 class BASE_HLO_ComplexOp {
   string summary = "Complex operator";
 
@@ -736,6 +747,32 @@ class BASE_HLO_BroadcastInDimOp  {
     The scalar value will be broadcast to every element in the target shape.
 
     See https://www.tensorflow.org/xla/broadcasting.
+  }];
+}
+
+class BASE_HLO_CholeskyOp {
+  string summary = "Cholesky operator";
+
+  string description = [{
+  Computes the Cholesky decomposition of a batch of symmetric (Hermitian)
+  positive definite matrices.
+
+  If lower is true, computes lower-triangular matrices l such that
+  `a=l.Transpose(l)`. If lower is false, computes upper-triangular matrices u such
+  that `a=Transpose(u).u`.
+
+  Input data is read only from the lower/upper triangle of a, depending on the
+  value of lower. Values from the other triangle are ignored. Output data is
+  returned in the same triangle; the values in the other triangle are
+  implementation-defined and may be anything.
+
+  If the rank of a is greater than 2, a is treated as a batch of matrices, where
+  all except the minor 2 dimensions are batch dimensions.
+
+  If a is not symmetric (Hermitian) positive definite, the result is
+  implementation-defined.
+
+    See https://www.tensorflow.org/xla/operation_semantics#cholesky.
   }];
 }
 

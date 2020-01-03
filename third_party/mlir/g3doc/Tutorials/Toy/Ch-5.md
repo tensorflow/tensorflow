@@ -101,7 +101,7 @@ struct TransposeOpLowering : public mlir::ConversionPattern {
   /// Match and rewrite the given `toy.transpose` operation, with the given
   /// operands that have been remapped from `tensor<...>` to `memref<...>`.
   mlir::PatternMatchResult
-  matchAndRewrite(mlir::Operation *op, ArrayRef<mlir::ValuePtr> operands,
+  matchAndRewrite(mlir::Operation *op, ArrayRef<mlir::Value> operands,
                   mlir::ConversionPatternRewriter &rewriter) const final {
     auto loc = op->getLoc();
 
@@ -112,18 +112,18 @@ struct TransposeOpLowering : public mlir::ConversionPattern {
     lowerOpToLoops(
         op, operands, rewriter,
         [loc](mlir::PatternRewriter &rewriter,
-              ArrayRef<mlir::ValuePtr> memRefOperands,
-              ArrayRef<mlir::ValuePtr> loopIvs) {
+              ArrayRef<mlir::Value> memRefOperands,
+              ArrayRef<mlir::Value> loopIvs) {
           // Generate an adaptor for the remapped operands of the TransposeOp.
           // This allows for using the nice named accessors that are generated
           // by the ODS. This adaptor is automatically provided by the ODS
           // framework.
           TransposeOpOperandAdaptor transposeAdaptor(memRefOperands);
-          mlir::ValuePtr input = transposeAdaptor.input();
+          mlir::Value input = transposeAdaptor.input();
 
           // Transpose the elements by generating a load from the reverse
           // indices.
-          SmallVector<mlir::ValuePtr, 2> reverseIvs(llvm::reverse(loopIvs));
+          SmallVector<mlir::Value, 2> reverseIvs(llvm::reverse(loopIvs));
           return rewriter.create<mlir::AffineLoadOp>(loc, input, reverseIvs);
         });
     return matchSuccess();

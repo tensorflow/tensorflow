@@ -1,19 +1,10 @@
 //===- TestPassManager.cpp - Test pass manager functionality --------------===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 
 #include "mlir/IR/Function.h"
 #include "mlir/Pass/Pass.h"
@@ -30,43 +21,34 @@ struct TestFunctionPass : public FunctionPass<TestFunctionPass> {
 };
 class TestOptionsPass : public FunctionPass<TestOptionsPass> {
 public:
-  struct Options : public PassOptions<Options> {
-    List<int> listOption{*this, "list", llvm::cl::MiscFlags::CommaSeparated,
-                         llvm::cl::desc("Example list option")};
-    List<std::string> stringListOption{
+  struct Options : public PassPipelineOptions<Options> {
+    ListOption<int> listOption{*this, "list",
+                               llvm::cl::MiscFlags::CommaSeparated,
+                               llvm::cl::desc("Example list option")};
+    ListOption<std::string> stringListOption{
         *this, "string-list", llvm::cl::MiscFlags::CommaSeparated,
         llvm::cl::desc("Example string list option")};
     Option<std::string> stringOption{*this, "string",
                                      llvm::cl::desc("Example string option")};
   };
+  TestOptionsPass() = default;
+  TestOptionsPass(const TestOptionsPass &) {}
   TestOptionsPass(const Options &options) {
-    listOption.assign(options.listOption.begin(), options.listOption.end());
-    stringOption = options.stringOption;
-    stringListOption.assign(options.stringListOption.begin(),
-                            options.stringListOption.end());
-  }
-
-  void printAsTextualPipeline(raw_ostream &os) final {
-    os << "test-options-pass{";
-    if (!listOption.empty()) {
-      os << "list=";
-      // Not interleaveComma to avoid spaces between the elements.
-      interleave(listOption, os, ",");
-    }
-    if (!stringListOption.empty()) {
-      os << " string-list=";
-      interleave(stringListOption, os, ",");
-    }
-    if (!stringOption.empty())
-      os << " string=" << stringOption;
-    os << "}";
+    listOption->assign(options.listOption.begin(), options.listOption.end());
+    stringOption.setValue(options.stringOption);
+    stringListOption->assign(options.stringListOption.begin(),
+                             options.stringListOption.end());
   }
 
   void runOnFunction() final {}
 
-  SmallVector<int64_t, 4> listOption;
-  SmallVector<std::string, 4> stringListOption;
-  std::string stringOption;
+  ListOption<int> listOption{*this, "list", llvm::cl::MiscFlags::CommaSeparated,
+                             llvm::cl::desc("Example list option")};
+  ListOption<std::string> stringListOption{
+      *this, "string-list", llvm::cl::MiscFlags::CommaSeparated,
+      llvm::cl::desc("Example string list option")};
+  Option<std::string> stringOption{*this, "string",
+                                   llvm::cl::desc("Example string option")};
 };
 
 /// A test pass that always aborts to enable testing the crash recovery
@@ -106,7 +88,7 @@ static void testNestedPipelineTextual(OpPassManager &pm) {
   (void)parsePassPipeline("test-pm-nested-pipeline", pm);
 }
 
-static PassRegistration<TestOptionsPass, TestOptionsPass::Options>
+static PassRegistration<TestOptionsPass>
     reg("test-options-pass", "Test options parsing capabilities");
 
 static PassRegistration<TestModulePass>

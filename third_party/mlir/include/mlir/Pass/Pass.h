@@ -1,19 +1,10 @@
 //===- Pass.h - Base classes for compiler passes ----------------*- C++ -*-===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 
 #ifndef MLIR_PASS_PASS_H
 #define MLIR_PASS_PASS_H
@@ -70,12 +61,40 @@ public:
   /// this is a generic OperationPass.
   Optional<StringRef> getOpName() const { return opName; }
 
+  //===--------------------------------------------------------------------===//
+  // Options
+  //===--------------------------------------------------------------------===//
+
+  /// This class represents a specific pass option, with a provided data type.
+  template <typename DataType>
+  struct Option : public detail::PassOptions::Option<DataType> {
+    template <typename... Args>
+    Option(Pass &parent, StringRef arg, Args &&... args)
+        : detail::PassOptions::Option<DataType>(parent.passOptions, arg,
+                                                std::forward<Args>(args)...) {}
+    using detail::PassOptions::Option<DataType>::operator=;
+  };
+  /// This class represents a specific pass option that contains a list of
+  /// values of the provided data type.
+  template <typename DataType>
+  struct ListOption : public detail::PassOptions::ListOption<DataType> {
+    template <typename... Args>
+    ListOption(Pass &parent, StringRef arg, Args &&... args)
+        : detail::PassOptions::ListOption<DataType>(
+              parent.passOptions, arg, std::forward<Args>(args)...) {}
+    using detail::PassOptions::ListOption<DataType>::operator=;
+  };
+
+  /// Attempt to initialize the options of this pass from the given string.
+  LogicalResult initializeOptions(StringRef options);
+
   /// Prints out the pass in the textual representation of pipelines. If this is
   /// an adaptor pass, print with the op_name(sub_pass,...) format.
-  /// Note: The default implementation uses the class name and does not respect
-  /// options used to construct the pass. Override this method to allow for your
-  /// pass to be to be round-trippable to the textual format.
-  virtual void printAsTextualPipeline(raw_ostream &os);
+  void printAsTextualPipeline(raw_ostream &os);
+
+  //===--------------------------------------------------------------------===//
+  // Statistics
+  //===--------------------------------------------------------------------===//
 
   /// This class represents a single pass statistic. This statistic functions
   /// similarly to an unsigned integer value, and may be updated and incremented
@@ -128,6 +147,10 @@ protected:
     return getPassState().analysisManager;
   }
 
+  /// Copy the option values from 'other', which is another instance of this
+  /// pass.
+  void copyOptionValuesFrom(const Pass *other);
+
 private:
   /// Forwarding function to execute this pass on the given operation.
   LLVM_NODISCARD
@@ -149,6 +172,9 @@ private:
 
   /// The set of statistics held by this pass.
   std::vector<Statistic *> statistics;
+
+  /// The pass options registered to this pass instance.
+  detail::PassOptions passOptions;
 
   /// Allow access to 'clone' and 'run'.
   friend class OpPassManager;
@@ -213,7 +239,9 @@ protected:
 
   /// A clone method to create a copy of this pass.
   std::unique_ptr<Pass> clone() const override {
-    return std::make_unique<PassT>(*static_cast<const PassT *>(this));
+    auto newInst = std::make_unique<PassT>(*static_cast<const PassT *>(this));
+    newInst->copyOptionValuesFrom(this);
+    return newInst;
   }
 
   /// Returns the analysis for the parent operation if it exists.

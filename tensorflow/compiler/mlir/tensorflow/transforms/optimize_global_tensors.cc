@@ -52,7 +52,7 @@ using GlobalTensorUsesMap =
 // be keep in sync.
 bool IsReadOnlyVariableOp(Operation* op) { return isa<TF::ReadVariableOp>(op); }
 
-void RewriteReadOnlyVariableOpToTensorOp(Operation* op, Value* tensor_value) {
+void RewriteReadOnlyVariableOpToTensorOp(Operation* op, Value tensor_value) {
   auto read_variable = cast<TF::ReadVariableOp>(op);
   read_variable.value()->replaceAllUsesWith(tensor_value);
 }
@@ -73,7 +73,7 @@ bool IsFreezable(GlobalTensorOp global_tensor,
   // func for tf.ReadVariableOp. If the resource is passed into other functions
   // or control flow, we fail to prove it is freezable even though we could.
   for (auto& global_tensor_use : global_tensor_uses) {
-    auto* arg = global_tensor_use.func.getArgument(global_tensor_use.arg_index);
+    auto arg = global_tensor_use.func.getArgument(global_tensor_use.arg_index);
     for (auto user : arg->getUsers()) {
       if (!IsReadOnlyVariableOp(user)) {
         return false;
@@ -129,7 +129,7 @@ void FreezeGlobalTensors(ModuleOp module,
     for (auto global_tensor_use : global_tensor_uses) {
       auto func = global_tensor_use.func;
       auto arg_index = global_tensor_use.arg_index;
-      Value* arg = func.getArgument(arg_index);
+      Value arg = func.getArgument(arg_index);
       for (Operation* user : llvm::make_early_inc_range(arg->getUsers())) {
         RewriteReadOnlyVariableOpToTensorOp(user, arg);
         user->erase();

@@ -29,12 +29,12 @@ namespace xla {
 // Computes the broadcast dimensions attr for an elementwise binary operator
 // between two ranked tensors.
 mlir::DenseIntElementsAttr getBroadcastDimensionsAttr(mlir::Builder* b,
-                                                      mlir::Value* x,
-                                                      mlir::Value* y);
+                                                      mlir::Value x,
+                                                      mlir::Value y);
 
 /// Get a constant splat for the given value type.
 template <typename T>
-static ElementsAttr getSplat(Builder* b, Value* val, T constant) {
+static ElementsAttr getSplat(Builder* b, Value val, T constant) {
   auto valType = val->getType().cast<TensorType>();
   auto valElementType = getElementTypeOrSelf(val->getType());
 

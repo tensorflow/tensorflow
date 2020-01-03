@@ -1,19 +1,10 @@
 //===- LoopAnalysis.h - loop analysis methods -------------------*- C++ -*-===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 //
 // This header file defines prototypes for methods to analyze loops.
 //
@@ -36,9 +27,6 @@ class NestedPattern;
 class Operation;
 class Value;
 
-// TODO(riverriddle) Remove this after Value is value-typed.
-using ValuePtr = Value *;
-
 /// Returns the trip count of the loop as an affine map with its corresponding
 /// operands if the latter is expressible as an affine expression, and nullptr
 /// otherwise. This method always succeeds as long as the lower bound is not a
@@ -48,7 +36,7 @@ using ValuePtr = Value *;
 // TODO(mlir-team): this should be moved into 'Transforms/' and be replaced by a
 // pure analysis method relying on FlatAffineConstraints
 void buildTripCountMapAndOperands(AffineForOp forOp, AffineMap *map,
-                                  SmallVectorImpl<ValuePtr> *operands);
+                                  SmallVectorImpl<Value> *operands);
 
 /// Returns the trip count of the loop if it's a constant, None otherwise. This
 /// uses affine expression analysis and is able to determine constant trip count
@@ -69,8 +57,8 @@ uint64_t getLargestDivisorOfTripCount(AffineForOp forOp);
 ///
 /// Emits a note if it encounters a chain of affine.apply and conservatively
 ///  those cases.
-DenseSet<ValuePtr, DenseMapInfo<ValuePtr>>
-getInvariantAccesses(ValuePtr iv, ArrayRef<ValuePtr> indices);
+DenseSet<Value, DenseMapInfo<Value>>
+getInvariantAccesses(Value iv, ArrayRef<Value> indices);
 
 using VectorizableLoopFun = std::function<bool(AffineForOp)>;
 

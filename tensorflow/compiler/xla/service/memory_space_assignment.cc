@@ -91,6 +91,11 @@ bool InstructionCountPrefetchIntervalPicker::CanAllocateInAlternateMemoryNoCopy(
   return end_time - start_time <= max_overlap_count_;
 }
 
+int64 InstructionCountPrefetchIntervalPicker::PreferredEvictionEndTime(
+    const Shape& shape, int64 start_time, int64 latest_end_time) const {
+  return std::min(start_time + min_overlap_count_, latest_end_time);
+}
+
 void InstructionCountPrefetchIntervalPicker::Begin(const HloUse& use,
                                                    int64 start_time,
                                                    int64 end_time) {
@@ -151,6 +156,21 @@ bool CostAnalysisPrefetchIntervalPicker::CanAllocateInAlternateMemoryNoCopy(
       GetLogicalIntervalElapsed(start_time, end_time);
   return max_async_copy_to_overlap_ratio_ * async_copy_elapsed >
          logical_interval_elapsed;
+}
+
+int64 CostAnalysisPrefetchIntervalPicker::PreferredEvictionEndTime(
+    const Shape& shape, int64 start_time, int64 latest_end_time) const {
+  float async_copy_elapsed = cost_analysis_.GetAsyncCopyElapsed(shape);
+  int64 end_time;
+  for (end_time = start_time + 1; end_time <= latest_end_time; ++end_time) {
+    float logical_interval_elapsed =
+        GetLogicalIntervalElapsed(start_time, end_time);
+    if (logical_interval_elapsed >=
+        min_async_copy_to_overlap_ratio_ * async_copy_elapsed) {
+      break;
+    }
+  }
+  return end_time;
 }
 
 void CostAnalysisPrefetchIntervalPicker::Begin(const HloUse& use,
@@ -337,8 +357,7 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
             absl::make_unique<MemorySpaceAssignment::Allocation>(
                 value->defining_instruction(), value->defining_position(),
                 aliased_allocation->memory_space(), aliased_allocation->chunk(),
-                aliased_allocation->start_time(),
-                aliased_allocation->end_time()));
+                definition_time, definition_time));
       }
 
       // Iterate over the uses.
@@ -663,27 +682,63 @@ bool AlternateMemoryBestFitHeap::FindAllocation(
              prev_allocation->defining_position() == defining_position) {
     // If there was an allocation for this HloValue that was in the alternate
     // memory space, we also need to perform an eviction.
-    // TODO(berkin): For now evictions happen relative to the most recent
-    // allocation in the alternate memory. We can potentially start evictions
-    // earlier and end later.
+    int64 eviction_start_time = prev_allocation->start_time();
+    int64 eviction_end_time = prev_allocation->end_time();
+    CHECK(eviction_start_time <= eviction_end_time);
+
+    int64 preferred_eviction_end_time = std::max(
+        options_.prefetch_interval_picker->PreferredEvictionEndTime(
+            non_bitcast_operand->shape(), eviction_start_time, end_time),
+        eviction_end_time);
+
+    BufferInterval eviction_mem_interval;
+    eviction_mem_interval.buffer = buffer;
+    eviction_mem_interval.size = size;
+    // Try to reserve a buffer from the end of the previous allocation to the
+    // preferred eviction end time.
+    eviction_mem_interval.start = prev_allocation->end_time() + 1;
+    eviction_mem_interval.end = preferred_eviction_end_time;
+    int64 preferred_offset = prev_allocation->chunk().offset;
+    VLOG(4) << "Eviction (" << eviction_start_time << ", " << eviction_end_time
+            << ") preferred end time = " << preferred_eviction_end_time;
+
+    while (preferred_eviction_end_time > eviction_end_time) {
+      ChunkCandidate chunk_candidate =
+          FindChunkCandidate(eviction_mem_interval, preferred_offset);
+      if (chunk_candidate.chunk.offset == preferred_offset) {
+        eviction_end_time = preferred_eviction_end_time;
+        AddToPendingChunks(eviction_mem_interval, chunk_candidate);
+        break;
+      }
+      eviction_mem_interval.end = --preferred_eviction_end_time;
+    }
+
     VLOG(3) << "Evicting buffer at " << prev_allocation->chunk().offset << " ("
-            << prev_allocation->start_time() << ", "
-            << prev_allocation->end_time() << ")";
+            << eviction_start_time << ", " << eviction_end_time << ")";
+
+    bool eviction_interval_too_short =
+        (eviction_start_time == eviction_end_time);
+    bool eviction_violates_outstanding_copies =
+        ViolatesMaximumOutstandingAsyncCopies(eviction_start_time,
+                                              eviction_end_time);
 
     // See if this interval would violate the asynchronous copy limit.
-    if (!ViolatesMaximumOutstandingAsyncCopies(prev_allocation->start_time(),
-                                               prev_allocation->end_time())) {
+    if (!eviction_interval_too_short && !eviction_violates_outstanding_copies) {
+      prev_allocation->Extend(eviction_end_time);
       AddAsyncCopy(*prev_allocation, MemorySpace::kDefault, kDummyChunk,
-                   prev_allocation->start_time(), prev_allocation->end_time(),
-                   prev_allocation->end_time(), allocations);
-
+                   eviction_start_time, prev_allocation->end_time(),
+                   eviction_end_time, allocations);
     } else {
-      VLOG(3) << "This violates the maximum async copies.";
+      if (eviction_violates_outstanding_copies) {
+        VLOG(3) << "This violates the maximum async copies.";
+      } else {
+        VLOG(3) << "Eviction interval is too short (" << eviction_start_time
+                << ", " << eviction_end_time << ").";
+      }
       // If the original interval violated the limit, try sub-intervals within
       // this interval.
       bool eviction_scheduled = false;
-      for (int64 time = prev_allocation->start_time();
-           time <= prev_allocation->end_time(); ++time) {
+      for (int64 time = eviction_start_time; time < eviction_end_time; ++time) {
         VLOG(3) << "Try evicting (" << time << ", " << time << ")";
         if (!ViolatesMaximumOutstandingAsyncCopies(time, time)) {
           VLOG(3) << "Eviction successful.";
@@ -701,10 +756,10 @@ bool AlternateMemoryBestFitHeap::FindAllocation(
                 << " because we hit the limit of maximum asynchronous copies "
                 << "between "
                 << hlo_live_range_.flattened_instruction_sequence()
-                       .instructions()[prev_allocation->start_time()]
+                       .instructions()[eviction_start_time]
                 << " and "
                 << hlo_live_range_.flattened_instruction_sequence()
-                       .instructions()[prev_allocation->end_time()];
+                       .instructions()[eviction_end_time];
         return false;
       }
     }
@@ -1321,6 +1376,13 @@ void MemorySpaceAssignment::EnsureInstructionAndOperandsInserted(
     return;
   }
   for (HloInstruction* operand : new_instruction->operands()) {
+    // CopyStart/CopyDone dependencies should always be already inserted; it is
+    // a red flag when they haven't already been inserted.
+    CHECK((operand->opcode() != HloOpcode::kCopyStart &&
+           operand->opcode() != HloOpcode::kCopyDone) ||
+          inserted_instructions->contains(operand))
+        << "Inserted instruction " << new_instruction->ToString()
+        << " has un-inserted dependency: " << operand->ToString();
     EnsureInstructionAndOperandsInserted(operand, new_sequence,
                                          inserted_instructions);
   }
@@ -1412,10 +1474,14 @@ Status MemorySpaceAssignment::FixSchedule() {
       }
       HloInstruction* instruction = flattened_instructions_[instruction_index];
       // Insert only if it is not deleted (SimplifyGraph sets it to nullptr if
-      // it was deleted) and not previously inserted.
+      // it was deleted) and not previously inserted. Also bitcasts and tuples
+      // are treated specially and only inserted as a result of operand
+      // dependencies.
       if (instruction != nullptr &&
           !inserted_instructions.contains(instruction) &&
-          instruction->parent() == computation) {
+          instruction->parent() == computation &&
+          instruction->opcode() != HloOpcode::kBitcast &&
+          instruction->opcode() != HloOpcode::kTuple) {
         EnsureInstructionAndOperandsInserted(instruction, &new_sequence,
                                              &inserted_instructions);
       }

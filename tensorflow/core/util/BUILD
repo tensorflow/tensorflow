@@ -490,6 +490,7 @@ tf_cc_tests(
         "//tensorflow/core/platform:regexp",
         "//third_party/eigen3",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
     ],

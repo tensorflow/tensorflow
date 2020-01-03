@@ -1,19 +1,10 @@
 //===- PatternMatch.cpp - Base classes for pattern match ------------------===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/BlockAndValueMapping.h"
@@ -177,23 +168,6 @@ void PatternRewriter::cloneRegionBefore(Region &region, Region &parent,
 }
 void PatternRewriter::cloneRegionBefore(Region &region, Block *before) {
   cloneRegionBefore(region, *before->getParent(), before->getIterator());
-}
-
-/// This method is used as the final notification hook for patterns that end
-/// up modifying the pattern root in place, by changing its operands.  This is
-/// a minor efficiency win (it avoids creating a new operation and removing
-/// the old one) but also often allows simpler code in the client.
-///
-/// The opsToRemoveIfDead list is an optional list of nodes that the rewriter
-/// should remove if they are dead at this point.
-///
-void PatternRewriter::updatedRootInPlace(Operation *op,
-                                         ValueRange valuesToRemoveIfDead) {
-  // Notify the rewriter subclass that we're about to replace this root.
-  notifyRootUpdated(op);
-
-  // TODO: Process the valuesToRemoveIfDead list, removing things and calling
-  // the notifyOperationRemoved hook in the process.
 }
 
 //===----------------------------------------------------------------------===//

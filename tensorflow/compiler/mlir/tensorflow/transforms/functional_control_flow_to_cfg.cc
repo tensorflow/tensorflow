@@ -48,7 +48,7 @@ struct FunctionalControlFlowToCFG
 //   non-empty means True and empty means False. If the tensor is not a scalar,
 //   being empty means False and being non-empty means True.
 //
-static Value* LowerCondition(Location loc, Value* value, OpBuilder* builder) {
+static Value LowerCondition(Location loc, Value value, OpBuilder* builder) {
   // TODO: Right now we just handle zero-D tensors of boolean values.
   // FIXME: This is almost all wrong, but is a placeholder to unblock the one
   // testcases, later patches will build on this once I build the right infra to
@@ -70,15 +70,14 @@ static Value* LowerCondition(Location loc, Value* value, OpBuilder* builder) {
 // Requires the function to provide arguments for each of the `fn` operands
 // that is compatible for tensor cast.
 //
-static Operation* CallFn(Location loc,
-                         const std::function<Value*(int)>& get_arg, FuncOp fn,
-                         OpBuilder* builder) {
+static Operation* CallFn(Location loc, const std::function<Value(int)>& get_arg,
+                         FuncOp fn, OpBuilder* builder) {
   FunctionType fn_type = fn.getType();
-  llvm::SmallVector<Value*, 4> operands;
+  llvm::SmallVector<Value, 4> operands;
   int num_operands = fn_type.getNumInputs();
   operands.reserve(num_operands);
   for (int i = 0; i < num_operands; ++i) {
-    Value* val = get_arg(i);
+    Value val = get_arg(i);
     Type expected = fn_type.getInput(i);
     if (val->getType() != expected) {
       val =
@@ -95,14 +94,14 @@ static Operation* CallFn(Location loc,
 //
 // Requires the function to provide values for each of the block arguments and
 // they should be pair-wise compatible for tensor cast.
-static llvm::SmallVector<Value*, 4> PrepareValsForJump(
-    Location loc, const std::function<Value*(int)>& get_val, Block* block,
+static llvm::SmallVector<Value, 4> PrepareValsForJump(
+    Location loc, const std::function<Value(int)>& get_val, Block* block,
     OpBuilder* builder) {
-  llvm::SmallVector<Value*, 4> result;
+  llvm::SmallVector<Value, 4> result;
   int num_vals = block->getNumArguments();
   result.reserve(num_vals);
   for (int i = 0; i < num_vals; ++i) {
-    Value* val = get_val(i);
+    Value val = get_val(i);
     Type expected = block->getArgument(i)->getType();
     if (val->getType() != expected) {
       val =
@@ -119,7 +118,7 @@ static llvm::SmallVector<Value*, 4> PrepareValsForJump(
 //
 // Requires the function to provide values for each of the block arguments and
 // they should be pair-wise compatible for tensor cast.
-static void JumpToBlock(Location loc, const std::function<Value*(int)>& get_arg,
+static void JumpToBlock(Location loc, const std::function<Value(int)>& get_arg,
                         Block* block, OpBuilder* builder) {
   auto operands = PrepareValsForJump(loc, get_arg, block, builder);
   builder->create<BranchOp>(loc, block, operands);
@@ -136,8 +135,8 @@ static void ReplaceOpResultWithBlockArgs(Location loc, Operation* op,
                                          Block* block, OpBuilder* builder) {
   assert(op->getNumResults() == block->getNumArguments());
   for (unsigned i = 0, e = op->getNumResults(); i != e; ++i) {
-    Value* arg = block->getArgument(i);
-    Value* result = op->getResult(i);
+    Value arg = block->getArgument(i);
+    Value result = op->getResult(i);
     if (arg->getType() != result->getType()) {
       arg =
           builder->create<TF::CastOp>(loc, result->getType(), arg,
@@ -160,7 +159,7 @@ static LogicalResult LowerIfOp(IfOp op) {
   OpBuilder builder(op_inst);
 
   // Lower the condition to a boolean value (i1).
-  Value* cond_i1 = LowerCondition(loc, op.cond(), &builder);
+  Value cond_i1 = LowerCondition(loc, op.cond(), &builder);
   if (!cond_i1) return failure();
 
   auto module = op_inst->getParentOfType<ModuleOp>();
@@ -174,7 +173,7 @@ static LogicalResult LowerIfOp(IfOp op) {
 
   // Add the block arguments to the merge point, and replace all uses of the
   // original operation results with them.
-  for (Value* value : op_inst->getResults())
+  for (Value value : op_inst->getResults())
     merge_block->addArgument(value->getType());
   ReplaceOpResultWithBlockArgs(loc, op_inst, merge_block, &builder);
 
@@ -200,8 +199,8 @@ static LogicalResult LowerIfOp(IfOp op) {
   // orig_block with a conditional branch.
   builder.setInsertionPointToEnd(orig_block);
   builder.create<CondBranchOp>(loc, cond_i1, then_block,
-                               llvm::ArrayRef<Value*>(), else_block,
-                               llvm::ArrayRef<Value*>());
+                               llvm::ArrayRef<Value>(), else_block,
+                               llvm::ArrayRef<Value>());
 
   // Finally, delete the op in question.
   op_inst->erase();
@@ -277,7 +276,7 @@ static LogicalResult LowerWhileOp(WhileOp op) {
   Operation* cond_call_op = CallFn(loc, get_cond_arg, cond_fn, &builder);
 
   assert(cond_call_op->getNumResults() == 1);
-  Value* condition = LowerCondition(loc, cond_call_op->getResult(0), &builder);
+  Value condition = LowerCondition(loc, cond_call_op->getResult(0), &builder);
   auto br_operands =
       PrepareValsForJump(loc, get_cond_arg, body_block, &builder);
   builder.create<CondBranchOp>(loc, condition, body_block, br_operands,

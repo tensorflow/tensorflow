@@ -1,19 +1,10 @@
 //===- Intrinsics.h - MLIR Operations for Declarative Builders ---*- C++-*-===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 //
 // Provides intuitive composable intrinsics for building snippets of MLIR
 // declaratively
@@ -44,7 +35,7 @@ struct IndexHandle : public ValueHandle {
   explicit IndexHandle()
       : ValueHandle(ScopedContext::getBuilder().getIndexType()) {}
   explicit IndexHandle(index_t v) : ValueHandle(v) {}
-  explicit IndexHandle(ValuePtr v) : ValueHandle(v) {
+  explicit IndexHandle(Value v) : ValueHandle(v) {
     assert(v->getType() == ScopedContext::getBuilder().getIndexType() &&
            "Expected index type");
   }
@@ -80,8 +71,8 @@ makeHandlePointers(MutableArrayRef<T> ivs) {
 }
 
 /// Returns a vector of the underlying Value from `ivs`.
-inline SmallVector<ValuePtr, 8> extractValues(ArrayRef<IndexHandle> ivs) {
-  SmallVector<ValuePtr, 8> vals;
+inline SmallVector<Value, 8> extractValues(ArrayRef<IndexHandle> ivs) {
+  SmallVector<Value, 8> vals;
   vals.reserve(ivs.size());
   for (auto &iv : ivs) {
     vals.push_back(iv.getValue());
@@ -109,11 +100,11 @@ public:
     SmallVector<IndexHandle, 8> tmp(vals.begin(), vals.end());
     values.append(tmp.begin(), tmp.end());
   }
-  operator ArrayRef<ValuePtr>() { return values; }
+  operator ArrayRef<Value>() { return values; }
 
 private:
   ValueHandleArray() = default;
-  SmallVector<ValuePtr, 8> values;
+  SmallVector<Value, 8> values;
 };
 
 template <typename T> inline T unpack(T value) { return value; }

@@ -2061,6 +2061,11 @@ TEST_F(LiteralUtilTest, GetAsComplex128) {
   EXPECT_FALSE(c6.GetAsComplex128({}).has_value());
 }
 
+TEST_F(LiteralUtilTest, SliceOnBool) {
+  Literal c1 = LiteralUtil::CreateR1<bool>({true, true, false});
+  EXPECT_EQ(c1, c1.Slice({0}, {3}));
+}
+
 TEST_F(LiteralUtilTest, IsEqualAt) {
   double val_double = 10.0;
   int val_integral = 10;

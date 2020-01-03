@@ -804,7 +804,6 @@ tf_py_test(
     srcs = ["layers/convolutional_recurrent_test.py"],
     python_version = "PY3",
     shard_count = 4,
-    tags = ["no_rocm"],
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
@@ -1027,7 +1026,9 @@ cuda_py_test(
     srcs = ["layers/normalization_test.py"],
     python_version = "PY3",
     shard_count = 4,
-    tags = ["notsan"],
+    tags = [
+        "notsan",
+    ],
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",

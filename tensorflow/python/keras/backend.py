@@ -1300,7 +1300,6 @@ def zeros(shape, dtype=None, name=None):
     v = array_ops.zeros(shape=shape, dtype=tf_dtype, name=name)
     if py_all(v.shape.as_list()):
       return variable(v, dtype=dtype, name=name)
-    track_variable(v)
     return v
 
 
@@ -1335,7 +1334,6 @@ def ones(shape, dtype=None, name=None):
     v = array_ops.ones(shape=shape, dtype=tf_dtype, name=name)
     if py_all(v.shape.as_list()):
       return variable(v, dtype=dtype, name=name)
-    track_variable(v)
     return v
 
 
@@ -1450,12 +1448,10 @@ def random_uniform_variable(shape, low, high, dtype=None, name=None, seed=None):
 
   Example:
 
-  # TensorFlow example
   >>> kvar = tf.keras.backend.random_uniform_variable((2,3), 0, 1)
   >>> kvar
   <tf.Variable 'Variable:0' shape=(2, 3) dtype=float32, numpy=...,
   dtype=float32)>
-
   """
   if dtype is None:
     dtype = floatx()
@@ -1486,12 +1482,10 @@ def random_normal_variable(shape, mean, scale, dtype=None, name=None,
 
   Example:
 
-  # TensorFlow example
   >>> kvar = tf.keras.backend.random_normal_variable((2,3), 0, 1)
   >>> kvar
   <tf.Variable 'Variable:0' shape=(2, 3) dtype=float32, numpy=...,
   dtype=float32)>
-
   """
   if dtype is None:
     dtype = floatx()
@@ -1628,27 +1622,23 @@ def dot(x, y):
 
   Examples:
 
-  # dot product between tensors
   >>> x = tf.keras.backend.placeholder(shape=(2, 3))
   >>> y = tf.keras.backend.placeholder(shape=(3, 4))
   >>> xy = tf.keras.backend.dot(x, y)
   >>> xy
   <tf.Tensor ... shape=(2, 4) dtype=float32>
 
-  # dot product between tensors
   >>> x = tf.keras.backend.placeholder(shape=(32, 28, 3))
   >>> y = tf.keras.backend.placeholder(shape=(3, 4))
   >>> xy = tf.keras.backend.dot(x, y)
   >>> xy
   <tf.Tensor ... shape=(32, 28, 4) dtype=float32>
 
-  # Theano-like behavior example
   >>> x = tf.keras.backend.random_uniform_variable(shape=(2, 3), low=0, high=1)
   >>> y = tf.keras.backend.ones((4, 3, 5))
   >>> xy = tf.keras.backend.dot(x, y)
   >>> tf.keras.backend.int_shape(xy)
   (2, 4, 5)
-
   """
   if ndim(x) is not None and (ndim(x) > 2 or ndim(y) > 2):
     x_shape = []
@@ -2400,7 +2390,6 @@ def maximum(x, y):
 
   Examples:
 
-  # maximum of two tensors
   >>> x = tf.Variable([[1, 2], [3, 4]])
   >>> y = tf.Variable([[2, 1], [0, -1]])
   >>> m = tf.keras.backend.maximum(x, y)
@@ -2408,7 +2397,6 @@ def maximum(x, y):
   <tf.Tensor: shape=(2, 2), dtype=int32, numpy=
   array([[2, 2],
          [3, 4]], dtype=int32)>
-
   """
   return math_ops.maximum(x, y)
 

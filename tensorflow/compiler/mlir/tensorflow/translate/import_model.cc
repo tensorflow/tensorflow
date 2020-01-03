@@ -48,6 +48,7 @@ limitations under the License.
 #include "mlir/IR/Location.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
+#include "mlir/IR/OpDefinition.h"  // TF:local_config_mlir
 #include "mlir/IR/Types.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/jit/shape_inference_helpers.h"
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
@@ -264,7 +265,7 @@ class ImporterBase {
   mlir::Operation* createOperation(
       const Node& node, llvm::StringRef node_type_name,
       const mlir::OperationState& result,
-      const llvm::SmallVectorImpl<mlir::Value*>& control_operands,
+      const llvm::SmallVectorImpl<mlir::Value>& control_operands,
       bool convert_to_legacy_call = false);
 
   // Converts one NodeDef from the input GraphDef into an Operation and
@@ -1174,7 +1175,7 @@ Status ImporterBase::ConvertFunctionArgAndRets(
     const absl::InlinedVector<OutputTensor, 4>& ret_nodes,
     const absl::InlinedVector<Node*, 4>& control_ret_nodes) {
   auto* bb = &func.front();
-  llvm::SmallDenseMap<std::pair<Node*, int>, mlir::Value*, 4>
+  llvm::SmallDenseMap<std::pair<Node*, int>, mlir::Value, 4>
       arg_nodes_to_values;
   for (int i = 0, e = arg_types.size(); i < e; ++i) {
     auto& arg_node = arg_nodes[i];
@@ -1182,8 +1183,8 @@ Status ImporterBase::ConvertFunctionArgAndRets(
     // be converted to mlir operations and don't have a mapping.
     mlir::Operation* island = node_values_.find(arg_node.node->id())->second;
 
-    auto* bb_arg = bb->getArgument(i);
-    mlir::Value* arg_def = bb_arg;
+    auto bb_arg = bb->getArgument(i);
+    mlir::Value arg_def = bb_arg;
 
     if (island->getNumResults() != 2)
       return errors::InvalidArgument(
@@ -1206,7 +1207,7 @@ Status ImporterBase::ConvertFunctionArgAndRets(
     island->erase();
   }
 
-  llvm::SmallVector<mlir::Value*, 8> inst_to_return;
+  llvm::SmallVector<mlir::Value, 8> inst_to_return;
   for (const auto& ret : ret_nodes) {
     auto* inst = node_values_[ret.node->id()];
     auto op = absl::string_view(ret.node->type_string());
@@ -1318,15 +1319,21 @@ mlir::Location ImporterBase::GetLocation(const NodeDef& node_def) {
     return create_location(node_def.name(), function_name_for_debug_info_);
   } else {
     // If the original nodes are defined, then we use them to get a list of
-    // call sites, and then fuse them to a single fused location.
-    llvm::SmallVector<mlir::Location, 4> node_call_sites;
-    node_call_sites.reserve(original_nodes.size());
+    // call sites, and then fuse them to a single fused location, with the name
+    // of the node_def.
+    llvm::SmallVector<mlir::Location, 4> node_locations;
+    node_locations.reserve(original_nodes.size() + 1);
+
+    // store the names in the experimental_debug_info
     for (int i = 0, e = original_nodes.size(); i != e; ++i) {
       auto node_name = original_nodes[i];
       auto func_name = (i < original_funcs.size()) ? original_funcs[i] : "";
-      node_call_sites.push_back(create_location(node_name, func_name));
+      node_locations.push_back(create_location(node_name, func_name));
     }
-    return mlir::FusedLoc::get(node_call_sites, context_);
+    // store the name of the node_def
+    node_locations.push_back(
+        create_location(node_def.name(), function_name_for_debug_info_));
+    return mlir::FusedLoc::get(node_locations, context_);
   }
 }
 
@@ -1347,14 +1354,14 @@ std::string ImporterBase::GetLocationStr(const Node& node,
 mlir::Operation* ImporterBase::createOperation(
     const Node& node, llvm::StringRef node_type_name,
     const mlir::OperationState& result,
-    const llvm::SmallVectorImpl<mlir::Value*>& control_operands,
+    const llvm::SmallVectorImpl<mlir::Value>& control_operands,
     bool convert_to_legacy_call) {
   // For the tf.executor specific operations (not wrapped in an island), we
   // have an extra returned value for the control result, and we concatenate
   // control and non-control operands.
   mlir::SmallVector<mlir::Type, 4> types(result.types);
   types.push_back(mlir::tf_executor::ControlType::get(builder_.getContext()));
-  mlir::SmallVector<mlir::Value*, 4> operands(result.operands);
+  mlir::SmallVector<mlir::Value, 4> operands(result.operands);
   operands.append(control_operands.begin(), control_operands.end());
 
   auto loc = result.location;
@@ -1432,6 +1439,32 @@ mlir::Operation* ImporterBase::createOperation(
     inner_op = island_builder.createOperation(result);
   }
 
+  if (inner_op->hasTrait<mlir::OpTrait::AttrSizedResultSegments>()) {
+    // The op has multiple variadic outputs.
+    // Calculate result segment sizes using the OpDef.
+    NameRangeMap output_ranges;
+    // This will fail only if the OpDef is syntactically invalid.
+    // TODO(jpienaar): Convert this CHECK into a properly propagated error.
+    TF_CHECK_OK(
+        NameRangesForNode(node, node.op_def(), nullptr, &output_ranges));
+    std::vector<mlir::Attribute> values;
+    values.reserve(node.op_def().output_arg_size());
+    for (const auto& output_arg : node.op_def().output_arg()) {
+      auto range = output_ranges[output_arg.name()];
+      values.push_back(
+          island_builder.getI32IntegerAttr(range.second - range.first));
+    }
+
+    // Add derived "result_segment_sizes" attr to the created operation.
+    // TODO(b/146937733): Don't use <void> here.
+    llvm::StringRef attr_name = mlir::OpTrait::AttrSizedResultSegments<
+        void>::getResultSegmentSizeAttr();
+    auto attr_type = mlir::VectorType::get(node.op_def().output_arg_size(),
+                                           builder_.getIntegerType(32));
+    auto attr_value = mlir::DenseElementsAttr::get(attr_type, values);
+    inner_op->setAttr(attr_name, attr_value);
+  }
+
   // Add the terminator for the island
   island_builder.create<mlir::tf_executor::YieldOp>(result.location,
                                                     inner_op->getResults());
@@ -1497,7 +1530,7 @@ Status ImporterBase::ConvertNode(const Node& node) {
   result.operands.reserve(in_edges.size());
 
   // Collect the control operands separately, they will be held by the island.
-  mlir::SmallVector<mlir::Value*, 8> control_operands;
+  mlir::SmallVector<mlir::Value, 8> control_operands;
 
   for (const auto* input_edge : in_edges) {
     const Node& input_node = *input_edge->src();
@@ -1566,8 +1599,6 @@ Status ImporterBase::ConvertNode(const Node& node) {
                                                     &result.attributes));
   }
 
-  result.attributes.push_back(builder_.getNamedAttr(
-      "name", builder_.getStringAttr(std::string(node.name()))));
   result.attributes.push_back(builder_.getNamedAttr(
       "device", builder_.getStringAttr(std::string(node_def.device()))));
 
@@ -1648,7 +1679,7 @@ Status ImporterBase::AddBackedge(mlir::Operation* sink, mlir::Operation* dst,
   // Replaces the output uses of the old operation by the corresponding
   // result of the new operation, and deletes the old operation.
   for (unsigned i = 0, e = dst->getNumResults(); i != e; ++i) {
-    auto* new_output = new_dst->getResult(i);
+    auto new_output = new_dst->getResult(i);
     dst->getResult(i)->replaceAllUsesWith(new_output);
   }
   dst->dropAllReferences();
@@ -2533,7 +2564,7 @@ Status CreateSavedModelIR(
         module.insert(module.getBody()->begin(), func);
         func.addEntryBlock();
         func.setName("__sm_exported_" + orig_func.getName().str());
-        llvm::SmallVector<mlir::Value*, 4> args_as_values;
+        llvm::SmallVector<mlir::Value, 4> args_as_values;
         for (auto block_argument : func.getArguments()) {
           args_as_values.push_back(block_argument);
         }

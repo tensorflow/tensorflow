@@ -627,6 +627,13 @@ cl_mem CreateImage2DLegacy(cl_context context, cl_mem_flags flags,
                            const cl_image_desc *image_desc, void *host_ptr,
                            cl_int *errcode_ret);
 
+// It uses clCreateImage if it available (clCreateImage available since cl 1.2)
+// otherwise it will use legacy clCreateImage3D
+cl_mem CreateImage3DLegacy(cl_context context, cl_mem_flags flags,
+                           const cl_image_format *image_format,
+                           const cl_image_desc *image_desc, void *host_ptr,
+                           cl_int *errcode_ret);
+
 }  // namespace cl
 }  // namespace gpu
 }  // namespace tflite

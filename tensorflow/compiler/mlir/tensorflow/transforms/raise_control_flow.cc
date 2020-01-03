@@ -110,7 +110,7 @@ void RaiseTFControlFlow::rewriteOps() {
 
       // Add a result type for each non-control result we find.
       bool sawControlResult = false;
-      for (auto *opResult : op.getResults()) {
+      for (auto opResult : op.getResults()) {
         if (opResult->getType().isa<TFControlType>()) {
           sawControlResult = true;
         } else {

@@ -124,7 +124,7 @@ class AssertTypeLayer(base_layer.Layer):
       for inp in inputs_flattened:
         assert inp.dtype.base_dtype == self._assert_type, (
             'Input tensor has type %s which does not match assert type %s' %
-            (inp.dtype.name, self._assert_type.name))
+            (inp.dtype.name, self._assert_type))
 
 
 class AddLayer(AssertTypeLayer):

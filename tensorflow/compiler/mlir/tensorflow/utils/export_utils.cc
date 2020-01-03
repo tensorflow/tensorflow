@@ -65,8 +65,12 @@ Status ConvertLocation(mlir::Location inst_loc,
       debug_info->add_original_node_names(name_loc.getName().c_str());
     }
   } else if (auto fused = inst_loc.dyn_cast<mlir::FusedLoc>()) {
-    for (auto loc : fused.getLocations()) {
-      TF_RETURN_IF_ERROR(ConvertLocation(loc, debug_info));
+    auto locations = fused.getLocations();
+    if (locations.size() <= 1)
+      return errors::InvalidArgument("expected experimental debuf info.");
+    // skip the first one, which is the name of the node_def.
+    for (int i = 0; i < locations.size() - 1; ++i) {
+      TF_RETURN_IF_ERROR(ConvertLocation(locations[i], debug_info));
     }
   }
   return Status::OK();

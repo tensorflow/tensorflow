@@ -1,19 +1,10 @@
 //===- RewriterGen.cpp - MLIR pattern rewriter generator ------------------===//
 //
-// Copyright 2019 The MLIR Authors.
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// =============================================================================
+//===----------------------------------------------------------------------===//
 //
 // RewriterGen uses pattern rewrite definitions to generate rewriter matchers.
 //
@@ -576,7 +567,7 @@ void PatternEmitter::emitRewriteLogic() {
     os.indent(4) << "rewriter.eraseOp(op0);\n";
   } else {
     // Process replacement result patterns.
-    os.indent(4) << "SmallVector<ValuePtr, 4> tblgen_repl_values;\n";
+    os.indent(4) << "SmallVector<Value, 4> tblgen_repl_values;\n";
     for (int i = replStartIndex; i < numResultPatterns; ++i) {
       DagNode resultTree = pattern.getResultPattern(i);
       auto val = handleResultPattern(resultTree, offsets[i], 0);
@@ -851,7 +842,7 @@ void PatternEmitter::createSeparateLocalVarsForOpArgs(
     std::string varName;
     if (operand->isVariadic()) {
       varName = formatv("tblgen_values_{0}", valueIndex++);
-      os.indent(6) << formatv("SmallVector<ValuePtr, 4> {0};\n", varName);
+      os.indent(6) << formatv("SmallVector<Value, 4> {0};\n", varName);
       std::string range;
       if (node.isNestedDagArg(argIndex)) {
         range = childNodeNames[argIndex];
@@ -865,7 +856,7 @@ void PatternEmitter::createSeparateLocalVarsForOpArgs(
                               varName);
     } else {
       varName = formatv("tblgen_value_{0}", valueIndex++);
-      os.indent(6) << formatv("ValuePtr {0} = ", varName);
+      os.indent(6) << formatv("Value {0} = ", varName);
       if (node.isNestedDagArg(argIndex)) {
         os << symbolInfoMap.getValueAndRangeUse(childNodeNames[argIndex]);
       } else {
@@ -934,7 +925,7 @@ void PatternEmitter::createAggregateLocalVarsForOpArgs(
   Operator &resultOp = node.getDialectOp(opMap);
 
   os.indent(6) << formatv(
-      "SmallVector<ValuePtr, 4> tblgen_values; (void)tblgen_values;\n");
+      "SmallVector<Value, 4> tblgen_values; (void)tblgen_values;\n");
   os.indent(6) << formatv(
       "SmallVector<NamedAttribute, 4> tblgen_attrs; (void)tblgen_attrs;\n");
 

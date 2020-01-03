@@ -79,6 +79,11 @@ class MultiOutputFusion : public HloModulePass {
   // Test if it's legal to fuse instr1 and instr2 into one fusion instruction.
   virtual bool LegalToFuse(HloInstruction* instr1, HloInstruction* instr2);
 
+  // Test if it's legal to fuse instr1 and instr2 into one fusion instruction
+  // using main constraints.
+  bool LegalToFuseMainConstraints(HloInstruction* instr1,
+                                  HloInstruction* instr2);
+
   // Fuse HloInstruction instr1 and instr2 and return the fused instruction.
   // The other instruction is removed from its parent computation.
   virtual HloInstruction* Fuse(HloInstruction* instr1, HloInstruction* instr2);
@@ -104,6 +109,17 @@ class MultiOutputFusion : public HloModulePass {
   // TODO(b/80420762): Perform producer-consumer multi-output fusion in
   // InstructionFusion instead.
   virtual bool DoProducerConsumerMultiOutputFusion();
+
+  // Return a list of new fusible instructions that can be fused into `fusion'
+  // fused with `fused'. The second entry in the vector is a profit value from
+  // fusing the corresponding instruction.
+  std::vector<std::pair<HloInstruction*, int64>> GetNewFusibles(
+      HloInstruction* fusion, HloInstruction* fused);
+
+  // Create a new fusion instruction and add `base' into it.
+  // Prepare for fusing `to_fuse' into the created fusion by updating
+  // reachability, worklist, and fusion candidates.
+  HloInstruction* CreateFusion(HloInstruction* base, HloInstruction* to_fuse);
 
  private:
   // An internal data structure for each instruction in current computation.
