@@ -258,7 +258,7 @@ class ColocationGraph {
 
   string DebugString() const;
 
-  // Returns a list of devices having type in supported_device_types.  The
+  // Returns a list of devices having type in supported_device_types. The
   // returned list is sorted by preferred type (higher numeric type is
   // preferred).
   static std::vector<Device*> FilterSupportedDevices(
