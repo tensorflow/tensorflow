@@ -677,7 +677,7 @@ void QuantizationDriver::SetupAllStates() {
     }
 
     for (int res = 0, e = op->getNumResults(); res != e; ++res) {
-      auto result = op->getResult(res);
+      Value result = op->getResult(res);
       // If the result has been quantized, it should only be used by a
       // tfl.quantize op. For this case, we uses the quantized result to
       // create the state and mark it immutable.
