@@ -1489,8 +1489,6 @@ def range(start, limit=None, delta=1, dtype=None, name="range"):  # pylint: disa
   `range(n) = range(0, n)`.
 
   For example:
-
-  ```python
   >>> start = 3
   >>> limit = 18
   >>> delta = 3
