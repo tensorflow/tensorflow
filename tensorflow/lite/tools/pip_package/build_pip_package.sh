@@ -49,7 +49,12 @@ case "${TENSORFLOW_TARGET}" in
                        bdist_wheel --plat-name=linux-aarch64
     ;;
   *)
-    ${PYTHON} setup.py bdist bdist_wheel
+    if [[ -n "${TENSORFLOW_TARGET}" ]] && [[ -n "${TENSORFLOW_TARGET_ARCH}" ]]; then
+      ${PYTHON} setup.py bdist --plat-name=${TENSORFLOW_TARGET}-${TENSORFLOW_TARGET_ARCH} \
+                         bdist_wheel --plat-name=${TENSORFLOW_TARGET}-${TENSORFLOW_TARGET_ARCH}
+    else
+      ${PYTHON} setup.py bdist bdist_wheel
+    fi
     ;;
 esac
 
