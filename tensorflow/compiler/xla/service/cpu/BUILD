@@ -77,7 +77,6 @@ cc_library(
         ":buffer_info_util",
         ":conv_canonicalization",
         ":cpu_executable",
-        ":cpu_hlo_support_checker",
         ":cpu_instruction_fusion",
         ":cpu_layout_assignment",
         ":cpu_options",
@@ -957,32 +956,6 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:core",
         "@llvm-project//llvm:support",
-    ],
-)
-
-cc_library(
-    name = "cpu_hlo_support_checker",
-    srcs = ["cpu_hlo_support_checker.cc"],
-    hdrs = ["cpu_hlo_support_checker.h"],
-    deps = [
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/compiler/xla/service:hlo_pass",
-        "//tensorflow/core:lib",
-    ],
-)
-
-tf_cc_test(
-    name = "cpu_hlo_support_checker_test",
-    srcs = ["cpu_hlo_support_checker_test.cc"],
-    deps = [
-        ":cpu_hlo_support_checker",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:test",
-        "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
     ],
 )
 

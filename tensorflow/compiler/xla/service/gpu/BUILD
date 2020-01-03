@@ -1093,7 +1093,6 @@ cc_library(
         ":gpu_copy_insertion",
         ":gpu_executable",
         ":gpu_hlo_schedule",
-        ":gpu_hlo_support_checker",
         ":gpu_layout_assignment",
         ":gpu_sanitize_constant_names",
         ":gpu_scatter_expander",
@@ -1417,18 +1416,6 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "gpu_hlo_support_checker",
-    srcs = ["gpu_hlo_support_checker.cc"],
-    hdrs = ["gpu_hlo_support_checker.h"],
-    deps = [
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/compiler/xla/service:hlo_pass",
-        "//tensorflow/core:lib",
-    ],
-)
-
-cc_library(
     name = "stream_executor_util",
     srcs = ["stream_executor_util.cc"],
     hdrs = ["stream_executor_util.h"],
@@ -1452,20 +1439,6 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-    ],
-)
-
-tf_cc_test(
-    name = "gpu_hlo_support_checker_test",
-    srcs = ["gpu_hlo_support_checker_test.cc"],
-    deps = [
-        ":gpu_hlo_support_checker",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:test",
-        "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
     ],
 )
 
