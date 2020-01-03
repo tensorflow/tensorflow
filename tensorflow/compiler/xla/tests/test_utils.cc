@@ -341,9 +341,6 @@ StatusOr<Literal> MakeFakeLiteralInternal(const Shape& shape,
           }));
       break;
     }
-    // Token requires no data.
-    case TOKEN:
-      break;
     default:
       return Unimplemented("Unsupported type for fake literal generation: %s",
                            ShapeUtil::HumanString(shape));
