@@ -38,6 +38,11 @@ class GpuLdgTest : public GpuCodegenTest {};
 
 // Parameters are never overwritten, so parameter reads should get ld.global.nc
 // reads.
+//
+// On the ROCM platform the "ptx" string is not populated for the compiled
+// executable, and hence the call to CompileAdnVerifyPtx does not do the
+// "VerifyPtx" part, it merely compiles the executable
+//
 TEST_F(GpuLdgTest, LdgForParamRead) {
   HloComputation::Builder builder(TestName());
 
@@ -60,6 +65,11 @@ TEST_F(GpuLdgTest, LdgForParamRead) {
 // Check that reading a buffer produced by a non-parameter HLO also results in
 // ld.global.nc, if that buffer isn't modified within the instruction that reads
 // it.
+//
+// On the ROCM platform the "ptx" string is not populated for the compiled
+// executable, and hence the call to CompileAdnVerifyPtx does not do the
+// "VerifyPtx" part, it merely compiles the executable
+//
 TEST_F(GpuLdgTest, LdgForNonParamRead) {
   HloComputation::Builder builder(TestName());
 
@@ -94,6 +104,11 @@ TEST_F(GpuLdgTest, LdgForNonParamRead) {
 // It seems like a fair bet that we won't start fusing sin into the output of
 // reduce in the foreseeable future.  But if that turns out to be wrong, I give
 // you, future reader, permission to delete this test.
+//
+// On the ROCM platform the "ptx" string is not populated for the compiled
+// executable, and hence the call to CompileAdnVerifyPtx does not do the
+// "VerifyPtx" part, it merely compiles the executable
+//
 TEST_F(GpuLdgTest, NoLdgWhenSharingBuffer) {
   auto hlo_module = CreateNewVerifiedModule();
   HloComputation::Builder builder(TestName());
