@@ -26,7 +26,6 @@ limitations under the License.
 #include <memory>
 #include <type_traits>
 
-#include "third_party/eigen3/Eigen/Core"
 #include "fixedpoint/fixedpoint.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/experimental/ruy/profiler/instrumentation.h"
@@ -59,6 +58,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/strided_slice_logic.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/types.h"
+#include "third_party/eigen3/Eigen/Core"
 
 namespace tflite {
 

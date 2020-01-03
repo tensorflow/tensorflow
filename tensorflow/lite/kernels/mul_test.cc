@@ -337,6 +337,25 @@ TEST(QuantizedMulOpTest, NoActivationInt16) {
                                               kQuantizedToleranceInt16)));
 }
 
+TEST(QuantizedMulOpTest, NoActivationInt16Scaled) {
+  const float kMin = -2.f;
+  const float kMax = 2.f*32767.f / 32768.f;;
+  QuantizedMulOpModel m({TensorType_INT16, {1, 2, 3, 1}, kMin, kMax},
+                        {TensorType_INT16, {1, 2, 3, 1}, 2*kMin, 2*kMax},
+                        {TensorType_INT16, {}, 8*kMin, 8*kMax},
+                        ActivationFunctionType_NONE);
+  m.QuantizeAndPopulate<int16_t>(m.input1(), {-1.8, 0.2, 0.9, 1.7, 0.1, -1.95});
+  m.QuantizeAndPopulate<int16_t>(m.input2(), {3.6, -3.4, 3.9, 0.8, -1.0, -3.95});
+  m.Invoke();
+
+  const float kQuantizedToleranceInt16Scaled =
+    6.0 * kQuantizedStepInt16 + kQuantizedStepInt16 * kQuantizedStepInt16;
+
+  EXPECT_THAT(m.GetDequantizedOutputInt16(),
+              ElementsAreArray(ArrayFloatNear({-6.48, -0.68, 3.51, 1.36, -0.1, 7.7025},
+                                              kQuantizedToleranceInt16Scaled)));
+}
+
 template <TensorType tensor_type, typename integer_dtype>
 void NoActivationInt16With8BitOutput() {
   const float kMinInt16 = -1.f;
