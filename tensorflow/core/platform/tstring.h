@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_TSTRING_H_
 #define TENSORFLOW_CORE_PLATFORM_TSTRING_H_
 
+#include <ostream>
 #include <string>
 
 // TODO(b/138799229): Used to toggle until global presubmits pass.
@@ -160,12 +161,14 @@ class tstring {
     return T(str_.data(), str_.size());
   }
 
+#ifdef PLATFORM_GOOGLE
   template <typename T,
             typename std::enable_if<std::is_same<T, absl::AlphaNum>::value,
                                     T>::type* = nullptr>
   operator T() const {
     return T(str_);
   }
+#endif  // PLATFORM_GOOGLE
 
   bool empty() const { return str_.empty(); }
 
