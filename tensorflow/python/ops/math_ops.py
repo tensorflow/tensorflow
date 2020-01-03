@@ -1621,7 +1621,17 @@ def reduce_sum_v1(input_tensor,
   >>> x = tf.constant([[1, 1, 1], [1, 1, 1]])
   >>> tf.reduce_sum(x)
   <tf.Tensor: shape=(), dtype=int32, numpy=6>
-
+  >>> tf.reduce_sum(x, 0)
+  <tf.Tensor: shape=(3,), dtype=int32, numpy=array([2, 2, 2], dtype=int32)>
+  >>> tf.reduce_sum(x, 1)
+  <tf.Tensor: shape=(2,), dtype=int32, numpy=array([3, 3], dtype=int32)>
+  >>> tf.reduce_sum(x, 1, keepdims=True)
+  <tf.Tensor: shape=(2, 1), dtype=int32, numpy=
+  array([[3],
+       [3]], dtype=int32)>
+  >>> tf.reduce_sum(x, [0, 1])
+  <tf.Tensor: shape=(), dtype=int32, numpy=6>
+  
   Args:
     input_tensor: The tensor to reduce. Should have numeric type.
     axis: The dimensions to reduce. If `None` (the default), reduces all
