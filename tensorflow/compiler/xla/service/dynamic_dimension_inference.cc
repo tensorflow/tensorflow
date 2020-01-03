@@ -469,7 +469,7 @@ Status DynamicDimensionInferenceVisitor::HandleSetDimensionSize(
     // Propagate dynamic dimension indicated by this set dimension size
     // instruction.
     parent_->SetDynamicSize(hlo, {}, hlo->dimension(), hlo->mutable_operand(1),
-                            {.stride = 1, .multiple_of = 1});
+                            DimensionConstraint(1, 1));
   }
 
   // Also Propagate dynamic dimension already set by operands.
@@ -813,7 +813,7 @@ Status DynamicDimensionInferenceVisitor::HandleReshape(HloInstruction* hlo) {
 
           parent_->SetDynamicSize(
               reshape, {}, output_dynamic_dimension, new_dynamic_size,
-              {.stride = 1, .multiple_of = constraint.multiple_of / divisor});
+              DimensionConstraint(1, constraint.multiple_of / divisor));
         }
 
         if (input_dim_size < output_dim_size) {
@@ -850,12 +850,12 @@ Status DynamicDimensionInferenceVisitor::HandleReshape(HloInstruction* hlo) {
               hlo->parent()->AddInstruction(HloInstruction::CreateBinary(
                   output_dynamic_size->shape(), HloOpcode::kMultiply,
                   new_dynamic_size, operand_dynamic_size));
+          int64 new_multiple_of_constraint =
+              constraint.multiple_of * output_dim_size /
+              operand->shape().dimensions(input_dynamic_dimension);
           parent_->SetDynamicSize(
               reshape, {}, output_dynamic_dimension, new_dynamic_size,
-              {.stride = 1,
-               .multiple_of =
-                   constraint.multiple_of * output_dim_size /
-                   operand->shape().dimensions(input_dynamic_dimension)});
+              DimensionConstraint(1, new_multiple_of_constraint));
         }
 
         return Status::OK();
@@ -1227,7 +1227,7 @@ Status DynamicDimensionInferenceVisitor::HandleParameter(HloInstruction* hlo) {
         parent_->SetDynamicSize(target_parameter,
                                 dynamic_dimension.parameter_index,
                                 dynamic_dimension.dimension, dynamic_size,
-                                {.stride = 1, .multiple_of = 1});
+                                DimensionConstraint(1, 1));
         return Status::OK();
       });
 }
