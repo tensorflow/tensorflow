@@ -223,7 +223,8 @@ class SummaryWriter(object):
 class ResourceSummaryWriter(SummaryWriter):
   """Implementation of SummaryWriter using a SummaryWriterInterface resource."""
 
-  def  __init__(self, shared_name, init_op_fn, name=None, v2=False, metadata=None):
+  def  __init__(self, shared_name, init_op_fn,
+                name=None, v2=False, metadata=None):
     self._resource = gen_summary_ops.summary_writer(
         shared_name=shared_name, name=name)
     # TODO(nickfelt): cache other constructed ops in graph mode
@@ -1207,8 +1208,8 @@ def trace_export(name, step=None, profiler_outdir=None):
       omitted, this defaults to `tf.summary.experimental.get_step()`, which must
       not be None.
     profiler_outdir: Output directory for profiler. This is only used when the
-      profiler was enabled when the trace was started. In that case, if there
-      is a logdir-based default SummaryWriter, this defaults to the same directory,
+      profiler was enabled when the trace was started. In that case, if there is
+      a logdir-based default SummaryWriter, this defaults to the same directory,
       but otherwise the argument must be passed.
 
   Raises:
