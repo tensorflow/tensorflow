@@ -454,12 +454,12 @@ def flip_left_right(image):
   Outputs the contents of `image` flipped along the width dimension.
 
   See also `reverse()`.
-    
+
   Usage Example:
 
   >>> x = [[[1.0, 2.0, 3.0],
-  ...       [4.0, 5.0, 6.0]],      
-  ...     [[7.0, 8.0, 9.0],      
+  ...       [4.0, 5.0, 6.0]],
+  ...     [[7.0, 8.0, 9.0],
   ...       [10.0, 11.0, 12.0]]]
   >>> tf.image.flip_left_right(x)
   <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
@@ -488,12 +488,12 @@ def flip_up_down(image):
   Outputs the contents of `image` flipped along the height dimension.
 
   See also `reverse()`.
-    
+
   Usage Example:
 
   >>> x = [[[1.0, 2.0, 3.0],
-  ...       [4.0, 5.0, 6.0]],      
-  ...     [[7.0, 8.0, 9.0],      
+  ...       [4.0, 5.0, 6.0]],
+  ...     [[7.0, 8.0, 9.0],
   ...       [10.0, 11.0, 12.0]]]
   >>> tf.image.flip_up_down(x)
   <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
@@ -652,12 +652,12 @@ def _rot90_4D(images, k, name_scope):
 @tf_export('image.transpose', v1=['image.transpose', 'image.transpose_image'])
 def transpose(image, name=None):
   """Transpose image(s) by swapping the height and width dimension.
-    
+
   Usage Example:
 
   >>> x = [[[1.0, 2.0, 3.0],
-  ...       [4.0, 5.0, 6.0]],      
-  ...     [[7.0, 8.0, 9.0],      
+  ...       [4.0, 5.0, 6.0]],
+  ...     [[7.0, 8.0, 9.0],
   ...       [10.0, 11.0, 12.0]]]
   >>> tf.image.transpose(x)
   <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
@@ -1632,12 +1632,12 @@ def random_brightness(image, max_delta, seed=None):
     max_delta: float, must be non-negative.
     seed: A Python integer. Used to create a random seed. See
       `tf.compat.v1.set_random_seed` for behavior.
-    
+
   Usage Example:
 
   >>> x = [[[1.0, 2.0, 3.0],
-  ...       [4.0, 5.0, 6.0]],      
-  ...      [[7.0, 8.0, 9.0],      
+  ...       [4.0, 5.0, 6.0]],
+  ...      [[7.0, 8.0, 9.0],
   ...       [10.0, 11.0, 12.0]]]
   >>> tf.image.random_brightness(x, 0.2)
   <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=...>
@@ -1668,12 +1668,12 @@ def random_contrast(image, lower, upper, seed=None):
     upper: float.  Upper bound for the random contrast factor.
     seed: A Python integer. Used to create a random seed. See
       `tf.compat.v1.set_random_seed` for behavior.
-    
+
   Usage Example:
 
   >>> x = [[[1.0, 2.0, 3.0],
-  ...       [4.0, 5.0, 6.0]],      
-  ...     [[7.0, 8.0, 9.0],      
+  ...       [4.0, 5.0, 6.0]],
+  ...     [[7.0, 8.0, 9.0],
   ...       [10.0, 11.0, 12.0]]]
   >>> tf.image.random_contrast(x, 0.2, 0.5)
   <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=...>
@@ -1713,8 +1713,8 @@ def adjust_brightness(image, delta):
   Usage Example:
 
   >>> x = [[[1.0, 2.0, 3.0],
-  ...       [4.0, 5.0, 6.0]],      
-  ...     [[7.0, 8.0, 9.0],      
+  ...       [4.0, 5.0, 6.0]],
+  ...     [[7.0, 8.0, 9.0],
   ...       [10.0, 11.0, 12.0]]]
   >>> tf.image.adjust_brightness(x, delta=0.1)
   <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
@@ -1768,8 +1768,8 @@ def adjust_contrast(images, contrast_factor):
   Usage Example:
 
   >>> x = [[[1.0, 2.0, 3.0],
-  ...       [4.0, 5.0, 6.0]],      
-  ...     [[7.0, 8.0, 9.0],      
+  ...       [4.0, 5.0, 6.0]],
+  ...     [[7.0, 8.0, 9.0],
   ...       [10.0, 11.0, 12.0]]]
   >>> tf.image.adjust_contrast(x, 2)
   <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
@@ -1816,8 +1816,8 @@ def adjust_gamma(image, gamma=1, gain=1):
   Usage Example:
 
   >>> x = [[[1.0, 2.0, 3.0],
-  ...       [4.0, 5.0, 6.0]],      
-  ...     [[7.0, 8.0, 9.0],      
+  ...       [4.0, 5.0, 6.0]],
+  ...     [[7.0, 8.0, 9.0],
   ...       [10.0, 11.0, 12.0]]]
   >>> tf.image.adjust_gamma(x, 0.2)
   <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
@@ -1889,8 +1889,8 @@ def convert_image_dtype(image, dtype, saturate=False, name=None):
   Usage Example:
 
   >>> x = [[[1.0, 2.0, 3.0],
-  ...       [4.0, 5.0, 6.0]],      
-  ...     [[7.0, 8.0, 9.0],      
+  ...       [4.0, 5.0, 6.0]],
+  ...     [[7.0, 8.0, 9.0],
   ...       [10.0, 11.0, 12.0]]]
   >>> tf.image.convert_image_dtype(x, dtype=tf.float16, saturate=False)
   <tf.Tensor: shape=(2, 2, 3), dtype=float16, numpy=
@@ -1972,7 +1972,7 @@ def rgb_to_grayscale(images, name=None):
   Outputs a tensor of the same `DType` and rank as `images`.  The size of the
   last dimension of the output is 1, containing the Grayscale value of the
   pixels.
-  
+
   ```python
   >>> original = tf.constant([[[1.0, 2.0, 3.0]]])
   >>> converted = tf.image.rgb_to_grayscale(original)
@@ -1980,7 +1980,7 @@ def rgb_to_grayscale(images, name=None):
   [[[1.81...]]]
 
   ```
-  
+
   Args:
     images: The RGB tensor to convert. The last dimension must have size 3 and
       should contain RGB values.
@@ -2010,7 +2010,7 @@ def grayscale_to_rgb(images, name=None):
   Outputs a tensor of the same `DType` and rank as `images`.  The size of the
   last dimension of the output is 3, containing the RGB value of the pixels.
   The input images' last dimension must be size 1.
- 
+
   ```python
   >>> original = tf.constant([[[1.0], [2.0], [3.0]]])
   >>> converted = tf.image.grayscale_to_rgb(original)
@@ -2020,7 +2020,7 @@ def grayscale_to_rgb(images, name=None):
     [3. 3. 3.]]]
 
   ```
-  
+
   Args:
     images: The Grayscale tensor to convert. The last dimension must be size 1.
     name: A name for the operation (optional).
@@ -2050,12 +2050,12 @@ def random_hue(image, max_delta, seed=None):
   picked in the interval `[-max_delta, max_delta]`.
 
   `max_delta` must be in the interval `[0, 0.5]`.
-    
+
   Usage Example:
 
   >>> x = [[[1.0, 2.0, 3.0],
-  ...       [4.0, 5.0, 6.0]],      
-  ...     [[7.0, 8.0, 9.0],      
+  ...       [4.0, 5.0, 6.0]],
+  ...     [[7.0, 8.0, 9.0],
   ...       [10.0, 11.0, 12.0]]]
   >>> tf.image.random_hue(x, 0.2)
   <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=...>
@@ -2103,8 +2103,8 @@ def adjust_hue(image, delta, name=None):
   Usage Example:
 
   >>> x = [[[1.0, 2.0, 3.0],
-  ...       [4.0, 5.0, 6.0]],      
-  ...     [[7.0, 8.0, 9.0],      
+  ...       [4.0, 5.0, 6.0]],
+  ...     [[7.0, 8.0, 9.0],
   ...       [10.0, 11.0, 12.0]]]
   >>> tf.image.adjust_hue(x, 0.2)
   <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
@@ -2143,12 +2143,12 @@ def random_jpeg_quality(image, min_jpeg_quality, max_jpeg_quality, seed=None):
   `min_jpeg_quality` must be in the interval `[0, 100]` and less than
   `max_jpeg_quality`.
   `max_jpeg_quality` must be in the interval `[0, 100]`.
-    
+
   Usage Example:
 
   >>> x = [[[1.0, 2.0, 3.0],
-  ...       [4.0, 5.0, 6.0]],      
-  ...     [[7.0, 8.0, 9.0],      
+  ...       [4.0, 5.0, 6.0]],
+  ...     [[7.0, 8.0, 9.0],
   ...       [10.0, 11.0, 12.0]]]
   >>> tf.image.random_jpeg_quality(x, 75, 95)
   <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=...>
@@ -2196,8 +2196,8 @@ def adjust_jpeg_quality(image, jpeg_quality, name=None):
   Usage Example:
 
   >>> x = [[[1.0, 2.0, 3.0],
-  ...       [4.0, 5.0, 6.0]],      
-  ...     [[7.0, 8.0, 9.0],      
+  ...       [4.0, 5.0, 6.0]],
+  ...     [[7.0, 8.0, 9.0],
   ...       [10.0, 11.0, 12.0]]]
   >>> tf.image.adjust_jpeg_quality(x, 75)
   <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
@@ -2239,12 +2239,12 @@ def random_saturation(image, lower, upper, seed=None):
 
   Equivalent to `adjust_saturation()` but uses a `saturation_factor` randomly
   picked in the interval `[lower, upper]`.
-    
+
   Usage Example:
 
   >>> x = [[[1.0, 2.0, 3.0],
-  ...       [4.0, 5.0, 6.0]],      
-  ...     [[7.0, 8.0, 9.0],      
+  ...       [4.0, 5.0, 6.0]],
+  ...     [[7.0, 8.0, 9.0],
   ...       [10.0, 11.0, 12.0]]]
   >>> tf.image.random_saturation(x, 5, 10)
   <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
@@ -2296,8 +2296,8 @@ def adjust_saturation(image, saturation_factor, name=None):
   Usage Example:
 
   >>> x = [[[1.0, 2.0, 3.0],
-  ...       [4.0, 5.0, 6.0]],      
-  ...     [[7.0, 8.0, 9.0],      
+  ...       [4.0, 5.0, 6.0]],
+  ...     [[7.0, 8.0, 9.0],
   ...       [10.0, 11.0, 12.0]]]
   >>> tf.image.adjust_saturation(x, 0.5)
   <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
@@ -3087,7 +3087,7 @@ def rgb_to_yiq(images):
   Outputs a tensor of the same shape as the `images` tensor, containing the YIQ
   value of the pixels.
   The output is only well defined if the value in images are in [0,1].
-  
+
   Usage Example:
 
   >>> x = tf.constant([[[1.0, 2.0, 3.0]]])
@@ -3148,12 +3148,12 @@ def rgb_to_yuv(images):
   Outputs a tensor of the same shape as the `images` tensor, containing the YUV
   value of the pixels.
   The output is only well defined if the value in images are in [0,1].
-    
+
   Usage Example:
 
   >>> x = [[[1.0, 2.0, 3.0],
-  ...       [4.0, 5.0, 6.0]],      
-  ...     [[7.0, 8.0, 9.0],      
+  ...       [4.0, 5.0, 6.0]],
+  ...     [[7.0, 8.0, 9.0],
   ...       [10.0, 11.0, 12.0]]]
   >>> tf.image.rgb_to_yuv(x)
   <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
@@ -3168,7 +3168,7 @@ def rgb_to_yuv(images):
 
   Returns:
     images: tensor with the same shape as `images`.
-    
+
   """
   images = ops.convert_to_tensor(images, name='images')
   kernel = ops.convert_to_tensor(
@@ -3990,7 +3990,7 @@ def extract_glimpse(
 
   Usage Example:
 
-  >>> x = [[[[0.0], 
+  >>> x = [[[[0.0],
   ...           [1.0],
   ...           [2.0]],
   ...          [[3.0],
@@ -4075,7 +4075,7 @@ def extract_glimpse_v2(
 
   Usage Example:
 
-  >>> x = [[[[0.0], 
+  >>> x = [[[[0.0],
   ...           [1.0],
   ...           [2.0]],
   ...          [[3.0],
