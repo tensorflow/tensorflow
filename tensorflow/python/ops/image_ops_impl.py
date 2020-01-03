@@ -4046,6 +4046,7 @@ def draw_bounding_boxes_v2(images, boxes, colors, name=None):
     A `Tensor`. Has the same type as `images`.
 
   Usage Example:
+
   >>> # create an empty image
   >>> img = tf.zeros([1, 3, 3, 3])
   >>> # draw a box around the image
@@ -4058,11 +4059,11 @@ def draw_bounding_boxes_v2(images, boxes, colors, name=None):
   array([[[[1., 0., 0.],
           [1., 0., 0.],
           [1., 0., 0.]],
-
+          
           [[1., 0., 0.],
           [0., 0., 0.],
           [1., 0., 0.]],
-
+          
           [[1., 0., 0.],
           [1., 0., 0.],
           [1., 0., 0.]]]], dtype=float32)>
@@ -4099,14 +4100,27 @@ def draw_bounding_boxes(images, boxes, name=None, colors=None):
     A `Tensor`. Has the same type as `images`.
 
   Usage Example:
-  >>> # create a random image
-  >>> img = tf.random.normal([1, 128, 128, 3])
-  >>> # draw a box in the center of the image
-  >>> box = np.array([0.25, 0.25, 0.75, 0.75])
+
+  >>> # create an empty image
+  >>> img = tf.zeros([1, 3, 3, 3])
+  >>> # draw a box around the image
+  >>> box = np.array([0, 0, 1, 1])
   >>> boxes = box.reshape([1, 1, 4])
   >>> # alternate between red and blue
   >>> colors = np.array([[1.0, 0.0, 0.0], [0.0, 0.0, 1.0]])
-  >>> boxed_image = tf.image.draw_bounding_boxes(img, boxes, colors)
+  >>> tf.image.draw_bounding_boxes(img, boxes, colors)
+  <tf.Tensor: shape=(1, 3, 3, 3), dtype=float32, numpy=
+  array([[[[1., 0., 0.],
+          [1., 0., 0.],
+          [1., 0., 0.]],
+          
+          [[1., 0., 0.],
+          [0., 0., 0.],
+          [1., 0., 0.]],
+          
+          [[1., 0., 0.],
+          [1., 0., 0.],
+          [1., 0., 0.]]]], dtype=float32)>
   """
   return draw_bounding_boxes_v2(images, boxes, colors, name)
 
