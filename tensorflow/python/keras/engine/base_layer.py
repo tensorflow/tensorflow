@@ -961,11 +961,7 @@ class Layer(module.Module):
       # eager training loop (either a custom one or the one used when
       # `run_eagerly=True`) and so we always return just the eager losses.
       if layer._eager_losses:
-        # Filter placeholder losses that may have been added by revived layers.
-        # (see base_layer_utils for details).
-        if (layer._eager_losses[0] is
-            not base_layer_utils.REVIVED_LOSS_PLACEHOLDER):
-          collected_losses.extend(layer._eager_losses)
+        collected_losses.extend(layer._eager_losses)
       else:
         collected_losses.extend(layer._losses)
       for regularizer in layer._callable_losses:
