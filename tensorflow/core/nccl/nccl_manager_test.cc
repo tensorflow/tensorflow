@@ -307,9 +307,9 @@ class NcclManagerTest : public ::testing::Test {
             auto* stream = device->tensorflow_gpu_device_info()->stream;
             const int global_rank = node * num_ranks_per_node + local_rank;
             auto participant = absl::make_unique<NcclManager::Participant>(
-                device->executor(), stream, info,
-                &test_case->ins[global_rank], &test_case->outs[global_rank],
-                global_rank, this->CreateDoneCallback(test_case.get()));
+                device->executor(), stream, info, &test_case->ins[global_rank],
+                &test_case->outs[global_rank], global_rank,
+                this->CreateDoneCallback(test_case.get()));
             node_states[node].nccl_manager.AddToAllReduce(
                 std::move(participant),
                 {collective_key, num_ranks_per_node, num_global_ranks,
@@ -361,8 +361,8 @@ class NcclManagerTest : public ::testing::Test {
                              ? nullptr
                              : &test_case->outs[global_rank];
           auto participant = absl::make_unique<NcclManager::Participant>(
-              device->executor(), stream, info, input,
-              output, global_rank, this->CreateDoneCallback(test_case.get()));
+              device->executor(), stream, info, input, output, global_rank,
+              this->CreateDoneCallback(test_case.get()));
           if (global_rank == src_global_rank) {
             node_states[node].nccl_manager.AddBroadcastSend(
                 std::move(participant),
@@ -441,8 +441,8 @@ TYPED_TEST(NcclManagerTest, BasicSumReduction) {
       auto* info = device->tensorflow_gpu_device_info();
       auto* stream = device->tensorflow_gpu_device_info()->stream;
       auto participant = absl::make_unique<NcclManager::Participant>(
-          device->executor(), stream, info,
-          &test_case->ins[rank], &test_case->outs[rank], /*global_rank=*/-1,
+          device->executor(), stream, info, &test_case->ins[rank],
+          &test_case->outs[rank], /*global_rank=*/-1,
           this->CreateDoneCallback(test_case.get()));
       NcclManager::instance()->AddToAllReduce(
           std::move(participant),
@@ -508,8 +508,8 @@ TYPED_TEST(NcclManagerTest, MultipleCallers) {
         auto* stream = device->tensorflow_gpu_device_info()->stream;
         typename TestFixture::TestCase* test_case = test_cases[test_num].get();
         auto participant = absl::make_unique<NcclManager::Participant>(
-            device->executor(), stream, info,
-            &test_case->ins[rank], &test_case->outs[rank], /*global_rank=*/-1,
+            device->executor(), stream, info, &test_case->ins[rank],
+            &test_case->outs[rank], /*global_rank=*/-1,
             this->CreateDoneCallback(test_case));
         NcclManager::instance()->AddToAllReduce(
             std::move(participant),
@@ -550,8 +550,8 @@ TYPED_TEST(NcclManagerTest, BasicAllGather) {
       auto* info = device->tensorflow_gpu_device_info();
       auto* stream = device->tensorflow_gpu_device_info()->stream;
       auto participant = absl::make_unique<NcclManager::Participant>(
-          device->executor(), stream, info,
-          &test_case->ins[rank], &test_case->outs[rank], rank,
+          device->executor(), stream, info, &test_case->ins[rank],
+          &test_case->outs[rank], rank,
           this->CreateDoneCallback(test_case.get()));
       NcclManager::instance()->AddToAllGather(
           std::move(participant),
@@ -645,8 +645,8 @@ TYPED_TEST(NcclManagerTest, ConsistentCollectiveType) {
     auto* info = device->tensorflow_gpu_device_info();
     auto* stream = device->tensorflow_gpu_device_info()->stream;
     auto participant = absl::make_unique<NcclManager::Participant>(
-        device->executor(), stream, info,
-        &test_case->ins[rank], &test_case->outs[rank], /*global_rank=*/-1,
+        device->executor(), stream, info, &test_case->ins[rank],
+        &test_case->outs[rank], /*global_rank=*/-1,
         this->CreateDoneCallback(test_case.get()));
     if (rank == 0) {
       NcclManager::instance()->AddToAllReduce(std::move(participant),
@@ -682,8 +682,8 @@ TYPED_TEST(NcclManagerTest, ConsistentCommunicatorKey) {
     auto* info = device->tensorflow_gpu_device_info();
     auto* stream = device->tensorflow_gpu_device_info()->stream;
     auto participant = absl::make_unique<NcclManager::Participant>(
-        device->executor(), stream, info,
-        &test_case->ins[rank], &test_case->outs[rank], /*global_rank=*/-1,
+        device->executor(), stream, info, &test_case->ins[rank],
+        &test_case->outs[rank], /*global_rank=*/-1,
         this->CreateDoneCallback(test_case.get()));
     NcclManager::instance()->AddToAllReduce(
         std::move(participant),
@@ -712,8 +712,8 @@ TYPED_TEST(NcclManagerTest, ConsistentNumberOfDevices) {
     auto* stream = device->tensorflow_gpu_device_info()->stream;
     int num_devices = rank == 0 ? num_ranks : num_ranks + 1;
     auto participant = absl::make_unique<NcclManager::Participant>(
-        device->executor(), stream, info,
-        &test_case->ins[rank], &test_case->outs[rank], /*global_rank=*/-1,
+        device->executor(), stream, info, &test_case->ins[rank],
+        &test_case->outs[rank], /*global_rank=*/-1,
         this->CreateDoneCallback(test_case.get()));
     NcclManager::instance()->AddToAllReduce(std::move(participant),
                                             {"bad_coll_type",
@@ -740,8 +740,7 @@ TYPED_TEST(NcclManagerTest, BroadcastNoSource) {
     auto* info = device->tensorflow_gpu_device_info();
     auto* stream = device->tensorflow_gpu_device_info()->stream;
     auto participant = absl::make_unique<NcclManager::Participant>(
-        device->executor(), stream, info, nullptr,
-        &test_case->outs[rank], rank,
+        device->executor(), stream, info, nullptr, &test_case->outs[rank], rank,
         this->CreateDoneCallback(test_case.get()));
     NcclManager::instance()->AddBroadcastRecv(std::move(participant),
                                               {"bcast_no_send",
@@ -767,8 +766,8 @@ TYPED_TEST(NcclManagerTest, BroadcastMultipleSends) {
     auto* info = device->tensorflow_gpu_device_info();
     auto* stream = device->tensorflow_gpu_device_info()->stream;
     auto participant = absl::make_unique<NcclManager::Participant>(
-        device->executor(), stream, info,
-        &test_case->outs[rank], &test_case->outs[rank], rank,
+        device->executor(), stream, info, &test_case->outs[rank],
+        &test_case->outs[rank], rank,
         this->CreateDoneCallback(test_case.get()));
     NcclManager::instance()->AddBroadcastSend(std::move(participant),
                                               {"bcast_multiple_send",
@@ -795,8 +794,8 @@ TYPED_TEST(NcclManagerTest, BroadcastInconsistentSource) {
     auto* info = device->tensorflow_gpu_device_info();
     auto* stream = device->tensorflow_gpu_device_info()->stream;
     auto participant = absl::make_unique<NcclManager::Participant>(
-        device->executor(), stream, info,
-        &test_case->outs[rank], &test_case->outs[rank], rank,
+        device->executor(), stream, info, &test_case->outs[rank],
+        &test_case->outs[rank], rank,
         this->CreateDoneCallback(test_case.get()));
     NcclManager::instance()->AddBroadcastRecv(std::move(participant),
                                               {"bcast_inconsistent_source",

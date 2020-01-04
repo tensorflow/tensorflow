@@ -3854,7 +3854,6 @@ tf_cc_test(
     ],
 )
 
-
 cc_library(
     name = "stable_sort_expander",
     srcs = ["stable_sort_expander.cc"],

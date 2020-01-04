@@ -20,7 +20,7 @@ namespace xla {
 namespace gpu {
 
 namespace nvptx {
-// The triple that represents our target on LLVM NVPTX backend.
+// The triple that represents our target.
 constexpr char kTargetTriple[] = "nvptx64-nvidia-cuda";
 
 // The data layout of the emitted module. Copied from computeDataLayout in
