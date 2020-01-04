@@ -212,7 +212,7 @@ class Interpreter(object):
       self._interpreter = (
           _interpreter_wrapper.InterpreterWrapper_CreateWrapperCPPFromBuffer(
               model_content, self._custom_op_registerers))
-    elif not model_path and not model_path:
+    elif not model_content and not model_path:
       raise ValueError('`model_path` or `model_content` must be specified.')
     else:
       raise ValueError('Can\'t both provide `model_path` and `model_content`')
