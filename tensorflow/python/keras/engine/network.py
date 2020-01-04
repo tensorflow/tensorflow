@@ -2051,9 +2051,9 @@ def validate_save_format(filepath, save_format):
   filepath_is_h5 = type(filepath) == str and _is_hdf5_filepath(filepath)
   if save_format is None:
     if filepath_is_h5 or filepath_is_h5py_file:
-        save_format = 'h5'
-      else:
-        save_format = 'tf' if tf2.enabled() else 'h5'
+      save_format = 'h5'
+    else:
+      save_format = 'tf' if tf2.enabled() else 'h5'
   else:
     user_format = save_format.lower().strip()
     if user_format in ('tensorflow', 'tf'):
@@ -2063,7 +2063,7 @@ def validate_save_format(filepath, save_format):
     else:
       raise ValueError(
           'Unknown format "%s". Was expecting one of {"tf", "h5"}.' % (
-          save_format,))
+          save_format))
   if save_format == 'tf' and filepath_is_h5:
     raise ValueError(
         ('Got save_format="tf"/"tensorflow", but the filepath ("%s") looks '
