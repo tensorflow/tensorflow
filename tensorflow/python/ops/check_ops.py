@@ -1595,7 +1595,7 @@ def assert_shapes_v2(shapes, data=None, summarize=None, message=None,
   >>> n = 10
   >>> q = 3
   >>> d = 7
-  >>> x = tf.zeros([n,q]) 
+  >>> x = tf.zeros([n,q])
   >>> y = tf.ones([n,d])
   >>> param = tf.Variable([1.0, 2.0, 3.0])
   >>> scalar = 1.0
@@ -1605,9 +1605,9 @@ def assert_shapes_v2(shapes, data=None, summarize=None, message=None,
   ...  (param, ('Q',)),
   ...  (scalar, ()),
   ... ])
-  
+
   >>> tf.debugging.assert_shapes([
-  ...   (x, ('N', 'D')), 
+  ...   (x, ('N', 'D')),
   ...   (y, ('N', 'D'))
   ... ])
   Traceback (most recent call last):
@@ -2121,16 +2121,16 @@ def ensure_shape(x, shape, name=None):
 
   For example:
 
-  >>> @tf.function(input_signature=[tf.TensorSpec(dtype=tf.float32, shape=None)])
-  >>> def f(tensor):
-  >>>   return tf.ensure_shape(x, [3, 3])
+  >>> @tf.function(input_signature=[tf.TensorSpec(shape=None, dtype=tf.float32)])
+  ... def f(tensor):
+  ...   return tf.ensure_shape(tensor, [3, 3])
   >>>
   >>> f(tf.zeros([3, 3])) # Passes
   >>> f([1, 2, 3]) # fails
   Traceback (most recent call last):
   ...
   InvalidArgumentError:  Shape of tensor x [3] is not compatible with expected shape [3,3].
-  
+
   The above example raises `tf.errors.InvalidArgumentError`,
   because the shape (3,) is not compatible with the shape (None, 3, 3)
 

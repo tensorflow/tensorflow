@@ -540,7 +540,7 @@ def broadcast_static_shape(shape_x, shape_y):
   >>> shape_x = tf.TensorShape([1, 2, 3])
   >>> shape_y = tf.TensorShape([5, 1 ,3])
   >>> tf.broadcast_static_shape(shape_x, shape_y)
-  TensorShape([Dimension(5), Dimension(2), Dimension(3)])
+  TensorShape([5, 2, 3])
 
   Args:
     shape_x: A `TensorShape`
@@ -1733,8 +1733,9 @@ def boolean_mask_v2(tensor, mask, axis=None, name="boolean_mask"):
   >>> tensor = [[1, 2], [3, 4], [5, 6]] # 2-D example
   >>> mask = np.array([True, False, True])
   >>> tf.boolean_mask(tensor, mask)
-  <tf.Tensor: shape=(2, 2), dtype=int32, numpy=array([[1, 2], [5, 6]], \
-dtype=int32)>
+  <tf.Tensor: shape=(2, 2), dtype=int32, numpy=
+  array([[1, 2],
+         [5, 6]], dtype=int32)>
 
   Args:
     tensor:  N-D Tensor.
