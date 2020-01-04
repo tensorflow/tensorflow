@@ -790,16 +790,16 @@ def pad_to_bounding_box(image, offset_height, offset_width, target_height,
 
   Raises:
     ValueError: If the shape of `image` is incompatible with the `offset_*` or
-      `target_*` arguments, or either `offset_height` or `offset_width` is
-      negative.
+    `target_*` arguments, or either `offset_height` or `offset_width` is
+    negative.
       
   Usage example:
-  ```python
+  
+  python
     
     >>> x = tf.random.uniform((28, 28, 1))
     >>> tf.image.pad_to_bounding_box(x, 28, 28, 100, 100).shape
     >>> TensorShape([100, 100, 1])
-    ```
     
   """
   with ops.name_scope(None, 'pad_to_bounding_box', [image]):
