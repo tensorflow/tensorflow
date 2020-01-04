@@ -121,6 +121,7 @@ class EagerContext : public core::RefCounted {
   EagerContext(const SessionOptions& opts,
                ContextDevicePlacementPolicy default_device_placement_policy,
                ContextMirroringPolicy default_mirroring_policy, bool async,
+               const bool lazy_copy_function_remote_inputs,
                const DeviceMgr* device_mgr, bool device_mgr_owned,
                Rendezvous* rendezvous,
                const CustomKernelCreator* custom_kernel_creator,
@@ -140,19 +141,14 @@ class EagerContext : public core::RefCounted {
   // Specify a executor for this thread.
   void SetExecutorForThread(EagerExecutor* executor);
 
-  // TODO(apassos) make this return a constant reference
-  gtl::FlatMap<string, Device*, StringPieceHasher>* device_map() {
-    return &devices_map_;
-  }
-
-  // TODO(apassos) make this return a constant reference
-  std::vector<Device*>* devices() { return &devices_; }
   const std::vector<DeviceType>& prioritized_device_type_list() {
     return prioritized_device_type_list_;
   }
 
-  // Clears the kernel caches.
-  void ClearCaches();
+  // Clear pending nodes in thread executors and kernel caches.
+  void ClearCachesAndThreadExecutors();
+  // Clear pending nodes in default executor and kernel caches.
+  void ClearCachesAndDefaultExecutor();
 
   // Sets the device placement policy for the current thread.
   void SetThreadLocalDevicePlacementPolicy(ContextDevicePlacementPolicy policy);
@@ -168,7 +164,7 @@ class EagerContext : public core::RefCounted {
 
   bool MirrorTensors() const;
 
-  bool LazilyCopyFunctionRemoteInputs() const;
+  bool LazyCopyFunctionRemoteInputs() const;
 
   bool FindFunctionByName(const string& name);
 
@@ -177,9 +173,7 @@ class EagerContext : public core::RefCounted {
 
   const FunctionDef* FindFunctionDef(const string& name);
 
-  Status FindDeviceByName(const string& name, Device** result) const;
-
-  Device* HostCPU() const { return devices_[0]; }
+  Device* HostCPU() const { return host_cpu_device_; }
   Device* CanonicalDevice(Device* d) const {
     return HostCPU() == d ? nullptr : d;
   }
@@ -264,10 +258,18 @@ class EagerContext : public core::RefCounted {
   FunctionLibraryDefinition* FuncLibDef() { return &func_lib_def_; }
 
 #if !defined(IS_MOBILE_PLATFORM)
-  Status GetClient(Device* device, eager::EagerClient** client);
+  // Assign the EagerClient pointer to `client` based on the given device / task
+  // name, and increment the refcount of the client. The reference ownership is
+  // transferred to the caller, and the unref should automatically happen when
+  // destructing the RefCountPtr object at the caller's side.
+  // `client` must not be initialized or holding a reference of another object
+  // before calling this method.
+  Status GetClient(Device* device,
+                   core::RefCountPtr<eager::EagerClient>* client);
   Status GetClient(const DeviceNameUtils::ParsedName& device_name,
-                   eager::EagerClient** client);
-  Status GetClient(const string& remote_task, eager::EagerClient** client);
+                   core::RefCountPtr<eager::EagerClient>* client);
+  Status GetClient(const string& remote_task,
+                   core::RefCountPtr<eager::EagerClient>* client);
 
   uint64 GetContextId();
   uint64 GetContextViewId();
@@ -375,10 +377,9 @@ class EagerContext : public core::RefCounted {
   bool OnSameTask(const Device* first, const Device* second) const;
   // Gets the CPU device on the task of device.
   Status CPUDeviceOnTask(const Device* device, Device** cpu_device) const;
-  bool IsLocalDeviceName(const DeviceNameUtils::ParsedName& device_name) const;
 
  private:
-  void InitDeviceMapAndAsync();
+  void InitPrioritizedDeviceTypeList();
   Status MaybeRegisterFunctionRemotely(const FunctionDef& fdef);
   Status RegisterExistingFunctionsOnRemoteWorkers(
       const std::vector<const FunctionDef*>& function_defs,
@@ -445,11 +446,8 @@ class EagerContext : public core::RefCounted {
   // multi-device function on remote worker.
   OwnedOrUnownedHelper<DynamicDeviceMgr> remote_device_manager_;
 
-  // Devices owned by device_manager
-  std::vector<Device*> devices_;
+  Device* host_cpu_device_;  // Owned by device_manager
   std::vector<DeviceType> prioritized_device_type_list_;
-  // All devices are not owned.
-  gtl::FlatMap<string, Device*, StringPieceHasher> devices_map_;
   Rendezvous* rendezvous_;
   std::function<Rendezvous*(const int64)> rendezvous_creator_;
 
@@ -461,7 +459,7 @@ class EagerContext : public core::RefCounted {
 
   // EagerContext owns the DistributedFunctionLibraryRuntime(
   // EagerClusterFunctionLibraryRuntime) if using EagerService for remote
-  // function execution (lazily_copy_function_remote_inputs_=true).
+  // function execution (lazy_copy_function_remote_inputs_=true).
   OwnedOrUnownedHelper<DistributedFunctionLibraryRuntime> cluster_flr_;
   // One FunctionLibraryRuntime per device.
   // func_libs[i] is the FunctionLibraryRuntime corresponding to
@@ -553,7 +551,12 @@ class EagerContext : public core::RefCounted {
   bool is_master_ GUARDED_BY(remote_state_mu_);
 #endif  // IS_MOBILE_PLATFORM
 
-  bool lazily_copy_function_remote_inputs_;
+  // For a multi device function, the target device of each input is unknown
+  // until the function is instantiated on the default function device.
+  // If false, eagerly copy all remote inputs to the default function device;
+  // if true, lazily copy remote inputs to their target devices to avoid
+  // redundant copies.
+  bool lazy_copy_function_remote_inputs_ = false;
   bool use_send_tensor_rpc_;
   const bool pin_small_ops_to_cpu_;
 

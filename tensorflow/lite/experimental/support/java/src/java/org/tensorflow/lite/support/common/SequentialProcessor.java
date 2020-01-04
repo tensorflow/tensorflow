@@ -54,7 +54,7 @@ public class SequentialProcessor<T> implements Processor<T> {
     }
 
     public Builder<T> add(@NonNull Operator<T> op) {
-      SupportPrecondtions.checkNotNull(op, "Adding null Op is illegal.");
+      SupportPreconditions.checkNotNull(op, "Adding null Op is illegal.");
       operatorList.add(op);
       return this;
     }

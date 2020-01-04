@@ -404,7 +404,7 @@ def _construct_concrete_function(func, output_graph_def,
   return new_func
 
 
-def convert_variables_to_constants_v2(func, lower_control_flow=True):
+def _convert_variables_to_constants_v2_impl(func, lower_control_flow=True):
   """Replaces all the variables in a graph with constants of the same values.
 
   TensorFlow 2.0 function for converting all Variable ops into Const ops holding
@@ -416,13 +416,18 @@ def convert_variables_to_constants_v2(func, lower_control_flow=True):
   The current implementation only works for graphs that do not contain any
   control flow or embedding related ops.
 
+  Note that the NodeDefs in the returned GraphDef contains the original node
+  names if they are created by the graph optimization. Converting the GraphDef
+  to concrete function will lose these debug information.
+
   Args:
     func: ConcreteFunction.
     lower_control_flow: Boolean indicating whether or not to lower control flow
       ops such as If and While. (default True)
 
   Returns:
-    ConcreteFunction containing a simplified version of the original.
+    GraphDef containing a simplified version of the original and converted
+    input indices that were converted to constants.
   """
   # Inline the graph in order to remove functions when possible.
   graph_def = _run_inline_graph_optimization(func, lower_control_flow)
@@ -618,5 +623,52 @@ def convert_variables_to_constants_v2(func, lower_control_flow=True):
               output_node.input[idx] = input_name
 
   output_graph_def.versions.CopyFrom(graph_def.versions)
-  return _construct_concrete_function(func, output_graph_def,
-                                      converted_input_indices)
+  return (output_graph_def, converted_input_indices)
+
+
+def convert_variables_to_constants_v2(func, lower_control_flow=True):
+  """Replaces all the variables in a graph with constants of the same values.
+
+  TensorFlow 2.0 function for converting all Variable ops into Const ops holding
+  the same values. This makes it possible to describe the network fully with a
+  single GraphDef file, and allows the removal of a lot of ops related to
+  loading and saving the variables. This function runs Grappler's function
+  inlining optimization in order to return a single subgraph.
+
+  The current implementation only works for graphs that do not contain any
+  control flow or embedding related ops.
+
+  Args:
+    func: ConcreteFunction.
+    lower_control_flow: Boolean indicating whether or not to lower control flow
+      ops such as If and While. (default True)
+
+  Returns:
+    ConcreteFunction containing a simplified version of the original.
+  """
+  output_graph_def, converted_inputs = _convert_variables_to_constants_v2_impl(
+      func, lower_control_flow)
+  return _construct_concrete_function(func, output_graph_def, converted_inputs)
+
+
+def convert_variables_to_constants_v2_as_graph(func, lower_control_flow=True):
+  """Replaces all the variables in a graph with constants of the same values.
+
+  This function works as same as convert_variables_to_constants_v2, but it
+  returns the intermediate `GraphDef` as well. This `GraphDef` contains all the
+  debug information after all the transformations in the frozen phase.
+
+  Args:
+    func: ConcreteFunction.
+    lower_control_flow: Boolean indicating whether or not to lower control flow
+      ops such as If and While. (default True)
+
+  Returns:
+    ConcreteFunction containing a simplified version of the original, and also
+    the intermediate GraphDef containing the node debug information for the
+    transformations in the frozen phase.
+  """
+  graph_def, converted_inputs = _convert_variables_to_constants_v2_impl(
+      func, lower_control_flow)
+  frozen_func = _construct_concrete_function(func, graph_def, converted_inputs)
+  return frozen_func, graph_def

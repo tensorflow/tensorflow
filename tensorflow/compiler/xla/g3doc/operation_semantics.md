@@ -94,7 +94,7 @@ The participating cores can be configured by:
     in the same order of 1, 2, 3. Then, another AllToAll will be applied within
     replicas 4, 5, 0, and the concatenation order is also 4, 5, 0. If
     `replica_groups` is empty, all replicas belong to one group, in the
-    concatenation order of their appearence.
+    concatenation order of their appearance.
 
 Prerequisites:
 
@@ -955,7 +955,7 @@ Arguments           | Type                  | Semantics
 ------------------- | --------------------- | ---------------
 `lhs`               | `XlaOp`               | array of type T
 `rhs`               | `XlaOp`               | array of type T
-`dimension_numbers` | `DotDimensionNumbers` | array of type T
+`dimension_numbers` | `DotDimensionNumbers` | contracting and batch dimension numbers
 
 As Dot, but allows contracting and batch dimension numbers to be specified for
 both the 'lhs' and 'rhs'.
@@ -2053,8 +2053,8 @@ window_strides, padding)` </b>
 :                     :                     : as to have the same output shape :
 :                     :                     : as input if the stride is 1, or  :
 :                     :                     : Padding\:\:kValid, which uses no :
-:                     :                     : no padding and "stops" the       :
-:                     :                     : window once it no longer fits)   :
+:                     :                     : padding and "stops" the window   :
+:                     :                     : once it no longer fits)          :
 
 Below code and figure shows an example of using `ReduceWindow`. Input is a
 matrix of size [4x6] and both window_dimensions and window_stride_dimensions are

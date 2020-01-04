@@ -484,7 +484,7 @@ node {
 # CHECK:       shape: [ 186 ],
 # CHECK:       type: INT32,
 # CHECK:       buffer: 3,
-# CHECK:       name: "tfl.pseudo_qconst",
+# CHECK:       name: "BoxPredictor_4/ClassPredictor/BiasAdd;BoxPredictor_4/ClassPredictor/Conv2D;BoxPredictor_4/ClassPredictor/biases",
 # CHECK:       quantization: {
 # CHECK:         scale: [ 0.027216, 0.00038, 0.000413, 0.000426, 0.001607,
 # CHECK:         zero_point: [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -493,7 +493,7 @@ node {
 # CHECK:       shape: [ 186, 1, 1, 256 ],
 # CHECK:       type: INT8,
 # CHECK:       buffer: 4,
-# CHECK:       name: "tfl.pseudo_qconst1",
+# CHECK:       name: "BoxPredictor_4/ClassPredictor/Conv2D;BoxPredictor_4/ClassPredictor/weights_quant/FakeQuantWithMinMaxVarsPerChannel",
 # CHECK:       quantization: {
 # CHECK:         scale: [ 0.12581, 0.001755, 0.001908, 0.001967, 0.007431,
 # CHECK:         zero_point: [ 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -502,7 +502,7 @@ node {
 # CHECK:       shape: [ 1, 1, 1, 186 ],
 # CHECK:       type: INT8,
 # CHECK:       buffer: 5,
-# CHECK:       name: "tfl.conv_2d",
+# CHECK:       name: "BoxPredictor_4/ClassPredictor/BiasAdd;BoxPredictor_4/ClassPredictor/Conv2D;BoxPredictor_4/ClassPredictor/biases1",
 # CHECK:       quantization: {
 # CHECK:         scale: [ 0.093635 ],
 # CHECK:         zero_point: [ 22 ]

@@ -17,16 +17,16 @@ limitations under the License.
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/IR/Block.h"  // TF:local_config_mlir
-#include "mlir/IR/Diagnostics.h"  // TF:local_config_mlir
-#include "mlir/IR/Module.h"  // TF:local_config_mlir
-#include "mlir/IR/OpDefinition.h"  // TF:local_config_mlir
-#include "mlir/IR/Operation.h"  // TF:local_config_mlir
-#include "mlir/IR/Types.h"  // TF:local_config_mlir
-#include "mlir/IR/Value.h"  // TF:local_config_mlir
-#include "mlir/Parser.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
-#include "mlir/Pass/PassRegistry.h"  // TF:local_config_mlir
+#include "mlir/IR/Block.h"  // TF:llvm-project
+#include "mlir/IR/Diagnostics.h"  // TF:llvm-project
+#include "mlir/IR/Module.h"  // TF:llvm-project
+#include "mlir/IR/OpDefinition.h"  // TF:llvm-project
+#include "mlir/IR/Operation.h"  // TF:llvm-project
+#include "mlir/IR/Types.h"  // TF:llvm-project
+#include "mlir/IR/Value.h"  // TF:llvm-project
+#include "mlir/Parser.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/Pass/PassRegistry.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 #define DEBUG_TYPE "tf-materialize-passthrough-op"
@@ -79,7 +79,7 @@ void MaterializePassthroughOpPass::runOnFunction() {
     Block &block = body.front();
     for (const auto &arg_mapping :
          llvm::zip(block.getArguments(), op->getOperands())) {
-      std::get<0>(arg_mapping)->replaceAllUsesWith(std::get<1>(arg_mapping));
+      std::get<0>(arg_mapping).replaceAllUsesWith(std::get<1>(arg_mapping));
     }
     op->getBlock()->getOperations().splice(op->getIterator(),
                                            block.getOperations(), block.begin(),
@@ -87,7 +87,7 @@ void MaterializePassthroughOpPass::runOnFunction() {
     Operation &return_op = block.front();
     for (auto ret_mapping :
          llvm::zip(op->getResults(), return_op.getOperands())) {
-      std::get<0>(ret_mapping)->replaceAllUsesWith(std::get<1>(ret_mapping));
+      std::get<0>(ret_mapping).replaceAllUsesWith(std::get<1>(ret_mapping));
     }
     op->erase();
   });

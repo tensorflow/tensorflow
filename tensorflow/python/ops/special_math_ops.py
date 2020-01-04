@@ -33,7 +33,6 @@ import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.compiler.tf2xla.ops import gen_xla_ops
-from tensorflow.python.compat import compat as fwd_compat
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
@@ -180,10 +179,10 @@ def _enclosing_tpu_context():
 def einsum(equation, *inputs, **kwargs):
   """Tensor contraction over specified indices and outer product.
 
-  This function returns a tensor whose elements are defined by `equation`,
-  which is written in a shorthand form inspired by the Einstein summation
-  convention.  As an example, consider multiplying two matrices
-  A and B to form a matrix C.  The elements of C are given by:
+  Einsum allows defining Tensors by defining their element-wise computation.
+  This computation is defined by `equation`, a shorthand form based on Einstein
+  summation. As an example, consider multiplying two matrices A and B to form a
+  matrix C.  The elements of C are given by:
 
   ```
     C[i,k] = sum_j A[i,j] * B[j,k]
@@ -195,12 +194,14 @@ def einsum(equation, *inputs, **kwargs):
     ij,jk->ik
   ```
 
-  In general, the `equation` is obtained from the more familiar element-wise
-  equation by
-    1. removing variable names, brackets, and commas,
-    2. replacing "*" with ",",
-    3. dropping summation signs, and
-    4. moving the output to the right, and replacing "=" with "->".
+  In general, to convert the element-wise equation into the `equation` string,
+  use the following procedure (intermediate strings for matrix multiplication
+  example provided in parentheses):
+
+  1. remove variable names, brackets, and commas, (`ik = sum_j ij * jk`)
+  2. replace "*" with ",", (`ik = sum_j ij , jk`)
+  3. drop summation signs, and (`ik = ij, jk`)
+  4. move the output to the right, while replacing "=" with "->". (`ij,jk->ik`)
 
   Many common operations can be expressed in this way.  For example:
 
@@ -251,10 +252,7 @@ def einsum(equation, *inputs, **kwargs):
       - the format of `equation` is incorrect,
       - number of inputs or their shapes are inconsistent with `equation`.
   """
-  if fwd_compat.forward_compatible(2019, 10, 18):
-    return _einsum_v2(equation, *inputs, **kwargs)
-  else:
-    return _einsum_v1(equation, *inputs, **kwargs)
+  return _einsum_v2(equation, *inputs, **kwargs)
 
 
 def _einsum_v1(equation, *inputs, **kwargs):
@@ -358,8 +356,8 @@ def _einsum_v1_parse_and_resolve_equation(equation, input_shapes):
   # tensors of different length and unlabeled output.
   ellipsis_axes = ''
   if '...' in equation:
-    unused = ''.join([c for c in string.ascii_letters
-                      if c not in ''.join(input_axis_labels)])
+    unused = ''.join(
+        c for c in string.ascii_letters if c not in ''.join(input_axis_labels))
     for i, ax in enumerate(input_axis_labels):
       if '...' in ax:
         parts = ax.split('...')
@@ -379,7 +377,7 @@ def _einsum_v1_parse_and_resolve_equation(equation, input_shapes):
         if len(replace_axes) > len(ellipsis_axes):
           ellipsis_axes = replace_axes
 
-    if any(['.' in ax for ax in input_axis_labels]):
+    if any('.' in ax for ax in input_axis_labels):
       raise ValueError('period "." found outside of ellipsis')
 
     if output_axis_labels is not None:

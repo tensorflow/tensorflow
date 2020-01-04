@@ -21,10 +21,10 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/CommandLine.h"
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
-#include "mlir/IR/Value.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
+#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
+#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
+#include "mlir/IR/Value.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
@@ -34,7 +34,7 @@ limitations under the License.
 // NOLINTNEXTLINE
 static llvm::cl::list<std::string> quantize_whitelist(
     "tfl-test-quantize-whitelist", llvm::cl::value_desc("list"),
-    llvm::cl::desc("comma seprarated list of whitelisted functions to be "
+    llvm::cl::desc("comma separated list of whitelisted functions to be "
                    "quantized. Only used in tests"),
     llvm::cl::CommaSeparated);
 
@@ -42,6 +42,12 @@ static llvm::cl::list<std::string> quantize_whitelist(
 static llvm::cl::opt<bool> quantize_signed(
     "tfl-test-quantize-signed", llvm::cl::value_desc("bool"),
     llvm::cl::desc("signed inference type. Only used in tests"),
+    llvm::cl::init(false));
+
+// NOLINTNEXTLINE
+static llvm::cl::opt<bool> disable_per_channel(
+    "tfl-disable-per-channel", llvm::cl::value_desc("bool"),
+    llvm::cl::desc("Whether disable per-channel quantized weights."),
     llvm::cl::init(false));
 
 //===----------------------------------------------------------------------===//
@@ -133,41 +139,31 @@ bool PrepareQuantizePass::SetInputNodesQuantizationParams(FuncOp func) {
   BoolAttr narrow_range = builder.getBoolAttr(false);
 
   auto add_quantize_op = [&](Location loc, Type input_type, Block* block,
-                             Block::iterator insertion_point, Value* arg,
+                             Block::iterator insertion_point, Value arg,
                              int i) {
     if (auto shaped = input_type.dyn_cast<ShapedType>()) {
       if (shaped.getElementType().isa<FloatType>()) {
         auto min_max = GetMinMaxValuesForArgument(func_name, i);
         TypeAttr params = GetQuantizedTypeAttr(
             builder, input_type, builder.getF64FloatAttr(min_max.first),
-            builder.getF64FloatAttr(min_max.second), num_bits, narrow_range,
-            is_signed);
+            builder.getF64FloatAttr(min_max.second), /*quant_dim=*/-1, num_bits,
+            narrow_range, is_signed);
         builder.setInsertionPoint(block, insertion_point);
         auto q_op = builder.create<TFL::QuantizeOp>(loc, params.getValue(), arg,
                                                     params);
         auto dq_op =
             builder.create<TFL::DequantizeOp>(loc, input_type, q_op.output());
-        arg->replaceAllUsesWith(dq_op.output());
+        arg.replaceAllUsesWith(dq_op.output());
         q_op.setOperand(arg);
       }
     }
   };
 
   for (int i = 0, e = func.getNumArguments(); i != e; ++i) {
-    BlockArgument* arg = func.getArgument(i);
-    if (arg->hasOneUse() && llvm::isa<TFL::InputOp>(*arg->getUsers().begin())) {
-      // TODO(lyandy): Remove arg -> tfl.pseudo_input -> tfl.quantize once
-      // tfl.pseudo_input are not generated.
-      Operation* input = *arg->getUsers().begin();
-      auto input_op = llvm::cast<TFL::InputOp>(input);
-      add_quantize_op(input_op.getLoc(), input_op.input()->getType(),
-                      input->getBlock(), ++Block::iterator(input_op),
-                      input_op.output(), i);
-    } else {
-      auto* arg_block = arg->getOwner();
-      add_quantize_op(arg->getLoc(), arg->getType(), arg_block,
-                      std::next(arg_block->begin(), i), arg, i);
-    }
+    BlockArgument arg = func.getArgument(i);
+    auto* arg_block = arg.getOwner();
+    add_quantize_op(arg.getLoc(), arg.getType(), arg_block,
+                    std::next(arg_block->begin(), i), arg, i);
   }
 
   return false;
@@ -215,7 +211,8 @@ void PrepareQuantizePass::runOnFunction() {
 
   // Finally, the quantization parameters can be propagated to the rest of the
   // values (tensors).
-  ApplyQuantizationParamsPropagation(func, is_signed, GetOpQuantSpec);
+  ApplyQuantizationParamsPropagation(func, is_signed, disable_per_channel,
+                                     GetOpQuantSpec);
 }
 
 }  // namespace

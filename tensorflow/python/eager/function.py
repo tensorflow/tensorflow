@@ -32,9 +32,9 @@ from six.moves import map
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import pywrap_tfe
 from tensorflow.python import _pywrap_utils
-from tensorflow.python.compat import compat as fwd_compat
+from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import context
@@ -54,6 +54,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import default_gradient
 from tensorflow.python.ops import functional_ops
@@ -125,8 +126,12 @@ def _make_input_signature_hashable(elem, variable_map=None):
 
 
 CacheKey = collections.namedtuple("CacheKey", [
-    "input_signature", "parent_graph", "device_functions", "colocation_stack",
-    "in_cross_replica_context"
+    "input_signature",
+    "parent_graph",
+    "device_functions",
+    "colocation_stack",
+    "in_cross_replica_context",
+    "xla_context_id",
 ])
 
 
@@ -341,19 +346,81 @@ class _InterpolateFunctionError(object):
     return False
 
 
+_function_callbacks = set()
+
+
+def add_function_callback(function_callback):
+  """Add a callback function for Function creation.
+
+  The callback function has the signature:
+
+    `def function_callback(function):`
+
+  wherein `function` is the just-created _EagerDefinedFunction.
+  The callback is invoked immediately after a new `_EagerDefinedFunction`
+  is created. The return value(s) of the callback fucntion (if any) is ignored.
+
+  Repeated registration of the same callback function is idempotent.
+  After a callback is added, it can be removed with the
+  `remove_function_callback()` method.
+
+  Args:
+    function_callback: The callback to add.
+  """
+  _function_callbacks.add(function_callback)
+
+
+def remove_function_callback(function_callback):
+  """Remove an already-added function callback.
+
+  See the doc string of `add_function_callback()` for more information.
+
+  Args:
+    function_callback: The callback to remove.
+  """
+  _function_callbacks.remove(function_callback)
+
+
+def clear_function_callbacks():
+  """Clear all function callbacks, if any have been regisered."""
+  _function_callbacks.clear()
+
+
+_FORWARD_PREFIX = "__forward_"
+_BACKWARD_PREFIX = "__backward_"
+_INFERENCE_PREFIX = "__inference_"
+
+
 def _forward_name(n):
   """The name of a generated forward defun named n."""
-  return "__forward_%s_%s" % (n, ops.uid())
+  return "%s%s_%s" % (_FORWARD_PREFIX, n, ops.uid())
 
 
 def _backward_name(n):
   """The name of a generated backward defun named n."""
-  return "__backward_%s_%s" % (n, ops.uid())
+  return "%s%s_%s" % (_BACKWARD_PREFIX, n, ops.uid())
 
 
 def _inference_name(n):
   """The name of a forward-but-no-gradient defun named n."""
-  return "__inference_%s_%s" % (n, ops.uid())
+  return "%s%s_%s" % (_INFERENCE_PREFIX, n, ops.uid())
+
+
+def _enclosing_xla_context():
+  """Returns the XLAControlFlowContext, which exists inside a tpu.rewrite()."""
+  graph = ops.get_default_graph()
+  while graph is not None:
+    # pylint: disable=protected-access
+    context_ = graph._get_control_flow_context()
+    # pylint: enable=protected-access
+    while context_ is not None:
+      if isinstance(context_, control_flow_ops.XLAControlFlowContext):
+        return context_
+      context_ = context_.outer_context
+    # This may be a FuncGraph due to defuns or v2 control flow. We need to
+    # find the original graph with the XLAControlFlowContext.
+    graph = getattr(graph, "outer_graph", None)
+  return None
 
 
 class _EagerDefinedFunctionDeleter(object):
@@ -442,7 +509,7 @@ class _EagerDefinedFunction(object):
       proto_data = pywrap_tensorflow.TF_GetBuffer(buffer_)
     function_def = function_pb2.FunctionDef()
     function_def.ParseFromString(compat.as_bytes(proto_data))
-    self.name = compat.as_bytes(function_def.signature.name)
+    self._name = compat.as_bytes(function_def.signature.name)
     with ops.init_scope():
       if context.executing_eagerly():
         context.ensure_initialized()
@@ -464,6 +531,9 @@ class _EagerDefinedFunction(object):
     self.graph = graph
     self._stateful_ops = tuple(op for op in operations if op._is_stateful)  # pylint: disable=protected-access
 
+    for function_callback in _function_callbacks:
+      function_callback(self)
+
   def add_to_graph(self, g=None):
     # pylint: disable=protected-access
     if not g and context.executing_eagerly():
@@ -475,6 +545,10 @@ class _EagerDefinedFunction(object):
         if f.name not in g._functions:
           g._add_function(f)
     # pylint: enable=protected-access
+
+  @property
+  def name(self):
+    return self._name
 
   @property
   def stateful_ops(self):
@@ -512,6 +586,7 @@ class _EagerDefinedFunction(object):
     executor_type = function_call_options.executor_type or ""
 
     executing_eagerly = ctx.executing_eagerly()
+    attrs = ("executor_type", executor_type, "config_proto", config)
     if executing_eagerly:
       with _InterpolateFunctionError(self):
         if cancellation_manager is None:
@@ -519,14 +594,14 @@ class _EagerDefinedFunction(object):
               str(self.signature.name),
               num_outputs=self._num_outputs,
               inputs=args,
-              attrs=("executor_type", executor_type, "config_proto", config),
+              attrs=attrs,
               ctx=ctx)
         else:
           outputs = execute.execute_with_cancellation(
               str(self.signature.name),
               num_outputs=self._num_outputs,
               inputs=args,
-              attrs=("executor_type", executor_type, "config_proto", config),
+              attrs=attrs,
               ctx=ctx,
               cancellation_manager=cancellation_manager)
       # Replace empty list with None
@@ -1008,18 +1083,8 @@ class _TapeGradientFunctions(object):
         with ops.get_default_graph()._override_gradient_function(  # pylint: disable=protected-access
             {"PartitionedCall": gradient_function,
              "StatefulPartitionedCall": gradient_function}):
-          # Previously, we relyed on "_gradient_op_type" attribute to restore a
-          # function gradient in function_deserialization.py, So add a dummy
-          # value "PartitionedCallUnused" for the forward compatibility.
-          if fwd_compat.forward_compatible(2019, 11, 16):
-            forward_outputs = forward_function.call(context.context(),
-                                                    forward_inputs)
-          else:
-            with ops.get_default_graph().gradient_override_map(
-                {"PartitionedCall": "PartitionedCallUnused",
-                 "StatefulPartitionedCall": "PartitionedCallUnused"}):
-              forward_outputs = forward_function.call(context.context(),
-                                                      forward_inputs)
+          forward_outputs = forward_function.call(context.context(),
+                                                  forward_inputs)
         py_backward, _ = self._wrap_backward_function(
             self._func_graph, backward_function, forward_outputs)
       # We will never request backward tape gradients for this operation
@@ -1034,7 +1099,7 @@ class _TapeGradientFunctions(object):
           forward_function.signature.name,
           forward_outputs, forward_inputs, py_backward, None)
       output_indices, output_tangents = (
-          pywrap_tensorflow.TFE_Py_PackJVPs(forward_outputs))
+          pywrap_tfe.TFE_Py_PackJVPs(forward_outputs))
       output_tangents = [forward_wrapper_graph.capture(t)
                          for t in output_tangents]
     return _ForwardWrapper(
@@ -1213,6 +1278,12 @@ class _TapeGradientFunctions(object):
       processed_args = []
       input_index = 0
       for output_index, arg in enumerate(args):
+        # Convert IndexedSlices to dense tensors. The IndexedSlices optimization
+        # is only really effective when doing tf.gather(variable) as the
+        # adjoint functions for most operations are unlikely to preserve the
+        # sparsity in IndexedSlices.
+        if isinstance(arg, ops.IndexedSlices):
+          arg = ops.convert_to_tensor(arg)
         if output_index in skip_positions:
           continue
         if arg is None:
@@ -1662,7 +1733,7 @@ class ConcreteFunction(object):
                          "Tensor." % (self._func_graph.name, i, str(arg)))
     args = tensor_inputs + captured_inputs
     possible_gradient_type = (
-        pywrap_tensorflow.TFE_Py_TapeSetPossibleGradientTypes(args))
+        pywrap_tfe.TFE_Py_TapeSetPossibleGradientTypes(args))
     if (possible_gradient_type == _POSSIBLE_GRADIENT_TYPES_NONE
         and executing_eagerly):
       # No tape is watching; skip to running the function.
@@ -1681,16 +1752,7 @@ class ConcreteFunction(object):
       with ops.get_default_graph()._override_gradient_function(  # pylint: disable=protected-access
           {"PartitionedCall": self._get_gradient_function(),
            "StatefulPartitionedCall": self._get_gradient_function()}):
-        # Previously, we relyed on "_gradient_op_type" attribute to restore a
-        # function gradient in function_deserialization.py. So add a dummy
-        # value "PartitionedCallUnused" for the forward compatibility.
-        if fwd_compat.forward_compatible(2019, 11, 16):
-          flat_outputs = forward_function.call(ctx, args_with_tangents)
-        else:
-          with ops.get_default_graph().gradient_override_map(
-              {"PartitionedCall": "PartitionedCallUnused",
-               "StatefulPartitionedCall": "PartitionedCallUnused"}):
-            flat_outputs = forward_function.call(ctx, args_with_tangents)
+        flat_outputs = forward_function.call(ctx, args_with_tangents)
     forward_backward.record(flat_outputs)
     return self._build_call_outputs(flat_outputs)
 
@@ -2190,10 +2252,9 @@ def _convert_inputs_to_signature(inputs, input_signature, flat_input_signature):
   """Convert inputs to pass into a function with an explicit signature."""
 
   def format_error_message(inputs, input_signature):
-    return ("  inputs: (\n" + "    " +
-            ",\n    ".join([str(i) for i in inputs]) + ")\n" +
-            "  input_signature: (\n" + "    " +
-            ",\n    ".join([str(i) for i in input_signature]) + ")")
+    return ("  inputs: (\n" + "    " + ",\n    ".join(str(i) for i in inputs) +
+            ")\n" + "  input_signature: (\n" + "    " +
+            ",\n    ".join(str(i) for i in input_signature) + ")")
 
   try:
     # TODO(b/124370185): Use all elements as inputs to throw an error if there
@@ -2378,8 +2439,13 @@ class Function(object):
     graph_function._garbage_collector.release()  # pylint: disable=protected-access
     return graph_function
 
-  def get_concrete_function(self, *args, **kwargs):
+  def _get_concrete_function_garbage_collected(self, *args, **kwargs):
     """Returns a `ConcreteFunction` specialized to inputs and execution context.
+
+    Unlike `get_concrete_function(...)`, the graph will be deleted when the
+    returned function is deleted.  It's useful to avoid creating a reference
+    cycle when you know for sure that the graph will be no longer used without
+    the returned function.
 
     Args:
       *args: inputs to specialize on.
@@ -2437,6 +2503,18 @@ class Function(object):
       graph_function._num_positional_args = num_positional  # pylint: disable=protected-access
       return graph_function
 
+  def get_concrete_function(self, *args, **kwargs):
+    """Returns a `ConcreteFunction` specialized to inputs and execution context.
+
+    Args:
+      *args: inputs to specialize on.
+      **kwargs: inputs to specialize on.
+    """
+    graph_function = self._get_concrete_function_garbage_collected(
+        *args, **kwargs)
+    graph_function._garbage_collector.release()  # pylint: disable=protected-access
+    return graph_function
+
   def __get__(self, instance, owner):
     """Makes it possible to defun instance methods."""
     del owner
@@ -2475,8 +2553,8 @@ class Function(object):
     """Computes the cache key given inputs and execution context."""
     if self.input_signature is None:
       inputs = (args, kwargs) if kwargs else args
-      input_signature = pywrap_tensorflow.TFE_Py_EncodeArg(
-          inputs, include_tensor_ranks_only)
+      input_signature = pywrap_tfe.TFE_Py_EncodeArg(inputs,
+                                                    include_tensor_ranks_only)
     else:
       del args, kwargs
       assert not include_tensor_ranks_only
@@ -2488,7 +2566,14 @@ class Function(object):
     # already.
     executing_eagerly = ctx.executing_eagerly()
     parent_graph = None
+    xla_context_id = 0
     if not executing_eagerly:
+      # We want to force function retracing for each different
+      # XLAControlFlowContext, so add `xla_context_id` to the cache key.
+      tpu_context = _enclosing_xla_context()
+      if tpu_context is not None:
+        xla_context_id = id(tpu_context)
+
       with ops.init_scope():
         # The graph, or whether we're executing eagerly, should be a part of the
         # cache key so we don't improperly capture tensors such as variables.
@@ -2529,11 +2614,9 @@ class Function(object):
       pass
 
     return CacheKey(
-        _make_input_signature_hashable(input_signature),
-        parent_graph,
-        device_functions,
-        colocation_stack,
-        in_cross_replica_context)
+        _make_input_signature_hashable(input_signature), parent_graph,
+        device_functions, colocation_stack, in_cross_replica_context,
+        xla_context_id)
 
   def _create_graph_function(self, args, kwargs, override_flat_arg_shapes=None):
     """Create a `ConcreteFunction` from `args` and `kwargs`."""
@@ -3192,7 +3275,8 @@ def class_method_to_instance_method(original_function, instance):
       tf_decorator.make_decorator(bound_method, bound_method_wrapper),
       name=original_function._name,
       autograph=original_function._autograph,
-      input_signature=original_function.input_signature)
+      input_signature=original_function.input_signature,
+      experimental_relax_shapes=original_function._experimental_relax_shapes)
   # pylint: enable=protected-access
 
   # And we wrap the function with tf_decorator so inspection works correctly

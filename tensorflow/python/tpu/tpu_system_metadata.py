@@ -19,10 +19,10 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
-import re
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session as session_lib
+from tensorflow.python.distribute import device_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import config
 from tensorflow.python.framework import device as tf_device
@@ -34,8 +34,6 @@ from tensorflow.python.tpu import tpu
 _PINGING_MASTER_TIMEOUT_IN_MS = 5 * 60 * 1000  # 10 min
 _RETRY_TIMES = 12 * 24  # 1 day
 _INITIAL_TPU_SYSTEM_TIMEOUT_IN_MS = 300 * 1000  # 5 mins
-
-_TPU_DEVICE_REG = re.compile(r'.*task:(\d+)/.*device:TPU:(\d+)$')
 
 _DEFAULT_JOB_NAME = 'tpu_worker'
 _DEFAULT_COORDINATOR_JOB_NAME = 'coordinator'
@@ -61,11 +59,11 @@ def _query_tpu_system_metadata(master_address, cluster_def=None,
 
   if context.executing_eagerly():
     logical_devices = config.list_logical_devices()
-    devices = []
 
     # We want the output type to match in both eager and session mode
-    for d in logical_devices:
-      devices.append(session_lib._DeviceAttributes(d.name, d.device_type, 0, 0))  # pylint: disable=protected-access
+    devices = [session_lib._DeviceAttributes(device_util.canonicalize(d.name),  # pylint: disable=protected-access
+                                             d.device_type, 0, 0)
+               for d in logical_devices]
   else:
     # TODO(b/120564445): Replace with standard library for retries.
     retry_count = 1
@@ -97,11 +95,9 @@ def _query_tpu_system_metadata(master_address, cluster_def=None,
           raise ValueError(msg)
 
   for device in devices:
-    match = _TPU_DEVICE_REG.match(device.name)
-    if match:
-      host_id = match.group(1)
-      core_id = match.group(2)
-      device_dict[host_id].append(core_id)
+    spec = tf_device.DeviceSpec.from_string(device.name)
+    if spec.device_type == 'TPU':
+      device_dict[spec.task].append(spec.device_index)
       tpu_core_count += 1
 
   num_of_cores_per_host = 0
@@ -203,7 +199,7 @@ def master_job(master, cluster_def):
 
   if (not cluster_def or not cluster_def.job):
     return _DEFAULT_JOB_NAME
-  job_names = set([job.name for job in cluster_def.job])
+  job_names = set(job.name for job in cluster_def.job)
   if _DEFAULT_JOB_NAME in job_names:
     # b/37868888 tracks allowing ClusterSpec propagation to reuse job names.
     raise ValueError('Currently, tpu_worker is not an allowed job name.')

@@ -311,7 +311,8 @@ port::StatusOr<RedzoneCheckStatus> RedzoneAllocator::CheckRedzones() const {
     std::call_once(ptxas_not_found_logged, [&]() {
       LOG(WARNING) << compiled_ptx_or.status().ToString()
                    << "\nRelying on driver to perform ptx compilation. "
-                   << "This message will be only logged once.";
+                   << "\nModify $PATH to customize ptxas location."
+                   << "\nThis message will be only logged once.";
     });
   }
 

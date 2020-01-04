@@ -1,4 +1,4 @@
-[cpp_python_util] # util
+[cpp_python_util] # util tfe
 tensorflow::swig::IsSequence
 tensorflow::swig::IsSequenceOrComposite
 tensorflow::swig::IsCompositeTensor
@@ -17,6 +17,7 @@ tensorflow::swig::IsSequenceForData
 tensorflow::swig::FlattenForData
 tensorflow::swig::AssertSameStructureForData
 tensorflow::swig::RegisterType
+tensorflow::swig::IsEagerTensorSlow
 
 [util_port] # util_port
 tensorflow::IsGoogleCudaEnabled
@@ -56,7 +57,15 @@ tensorflow::EventsWriter::Close
 [py_func_lib] # py_func
 tensorflow::InitializePyTrampoline
 
-[framework_internal_impl] # op_def_registry
+[framework_internal_impl] # op_def_registry, dtypes
+tensorflow::BaseType
+tensorflow::DataTypeString
+tensorflow::DataTypeIsComplex
+tensorflow::DataTypeIsFloating
+tensorflow::DataTypeIsInteger
+tensorflow::DataTypeIsQuantized
+tensorflow::DataTypeIsUnsigned
+tensorflow::DataTypeSize
 tensorflow::OpRegistry::Global
 tensorflow::OpRegistry::LookUpOpDef
 tensorflow::RemoveNonDeprecationDescriptionsFromOpDef
@@ -66,13 +75,15 @@ tensorflow::Status::code
 tensorflow::Status::error_message
 tensorflow::Status::ok()
 
-[core_cpu_impl]  # device_lib
+[core_cpu_impl]  # device_lib tfe
 tensorflow::Device::attributes
 tensorflow::DeviceFactory::AddDevices
 tensorflow::SessionOptions::SessionOptions
 tensorflow::DoQuantizeTrainingOnSerializedGraphDef
+tensorflow::DeviceFactory::ListAllPhysicalDevices
 
-[protos_all]  # device_lib
+[protos_all]  # device_lib, dtypes
+tensorflow::DataType_IsValid
 tensorflow::ConfigProto::ConfigProto
 tensorflow::ConfigProto::ParseFromString
 tensorflow::DeviceAttributes::SerializeToString
@@ -80,12 +91,6 @@ tensorflow::DeviceAttributes::SerializeToString
 [py_exception_registry] # py_exception_registry
 tensorflow::PyExceptionRegistry::Init
 tensorflow::PyExceptionRegistry::Lookup
-
-[python_scoped_annotation] # scoped_annotation
-tensorflow::profiler::PythonScopedAnnotation::Init
-tensorflow::profiler::PythonScopedAnnotation::Enter
-tensorflow::profiler::PythonScopedAnnotation::Exit
-tensorflow::profiler::PythonScopedAnnotation::IsEnabled
 
 [kernel_registry] # kernel_registry
 tensorflow::swig::TryFindKernelClass
@@ -98,12 +103,89 @@ toco::TocoGetPotentiallySupportedOps
 tensorflow::graph_transforms::TransformGraph
 tensorflow::graph_transforms::ParseTransformParameters
 
-[python_traceme] # traceme
-tensorflow::profiler::PythonTraceMe::Init
-tensorflow::profiler::PythonTraceMe::Enter
-tensorflow::profiler::PythonTraceMe::Exit
-tensorflow::profiler::PythonTraceMe::IsEnabled
+[checkpoint_reader] # py_checkpoint_reader
+tensorflow::checkpoint::CheckpointReader
+tensorflow::checkpoint::CheckpointReader::Init
+tensorflow::checkpoint::CheckpointReader::DebugString
+tensorflow::checkpoint::CheckpointReader::GetVariableToShapeMap
+tensorflow::checkpoint::CheckpointReader::GetVariableToDataTypeMap
+tensorflow::checkpoint::CheckpointReader::GetTensor
+tensorflow::checkpoint::CheckpointReader::HasTensor
 
-[traceme_recorder] # traceme
-tensorflow::profiler::internal::g_trace_level
+[tensor_bundle] # py_checkpoint_reader
+tensorflow::BundleReader::BundleReader
+tensorflow::BundleReader::~BundleReader
 
+[ndarray_tensor] # py_checkpoint_reader
+tensorflow::TensorToNdarray
+
+[safe_ptr] # py_checkpoint_reader
+tensorflow::detail::PyDecrefDeleter
+tensorflow::make_safe
+
+[python_op_gen] # python_op_gen
+tensorflow::GetPythonWrappers
+
+[pywrap_tfe_lib] # tfe
+tensorflow::TFE_TensorHandleCache
+tensorflow::TFE_TensorHandleCache::Clear
+EagerTensor_CheckExact
+EagerTensorFromHandle
+EagerTensor_Handle
+TFE_Py_ExecuteCancelable
+TFE_Py_RegisterExceptionClass
+TFE_Py_RegisterVSpace
+TFE_Py_RegisterFallbackExceptionClass
+TFE_Py_RegisterGradientFunction
+TFE_Py_RegisterJVPFunction
+TFE_GetPythonString
+TFE_Py_UID
+TFE_DeleteContextCapsule
+TFE_Py_InitEagerTensor
+TFE_Py_SetEagerTensorProfiler
+TFE_Py_TapeSetNew
+TFE_Py_TapeSetRemove
+TFE_Py_TapeSetAdd
+TFE_Py_TapeSetIsEmpty
+TFE_Py_TapeSetShouldRecordBackprop
+TFE_Py_TapeSetPossibleGradientTypes
+TFE_Py_TapeWatch
+TFE_Py_TapeSetDeleteTrace
+TFE_Py_TapeSetStopOnThread
+TFE_Py_TapeSetRestartOnThread
+TFE_Py_TapeSetIsStopped
+TFE_Py_TapeSetRecordOperation
+TFE_Py_TapeSetRecordOperationBackprop
+TFE_Py_TapeSetRecordOperationForwardprop
+TFE_Py_TapeVariableAccessed
+TFE_Py_TapeWatchVariable
+TFE_Py_TapeGradient
+TFE_Py_FastPathExecute_C
+TFE_Py_RecordGradient
+TFE_Py_TapeWatchedVariables
+TFE_Py_ForwardAccumulatorNew
+TFE_Py_ForwardAccumulatorSetAdd
+TFE_Py_ForwardAccumulatorSetRemove
+TFE_Py_ForwardAccumulatorWatch
+TFE_Py_ForwardAccumulatorJVP
+TFE_Py_ForwardAccumulatorPushState
+TFE_Py_ForwardAccumulatorPopState
+TFE_Py_PackJVPs
+TFE_Py_TensorShapeSlice
+TFE_Py_TensorShapeOnDevice
+TFE_Py_EncodeArg
+TFE_Py_EnableInteractivePythonLogging
+TFE_Py_SetEagerContext
+
+[eager_executor] # tfe
+tensorflow::EagerExecutor::~EagerExecutor
+tensorflow::EagerContext::WaitForAndCloseRemoteContexts
+
+[profiler_session] # tfe
+tensorflow::ProfilerSession::~ProfilerSession
+
+[tf_status_helper] # tfe
+tensorflow::Set_TF_Status_from_Status
+
+[context] # tfe
+tensorflow::EagerContext::WaitForAndCloseRemoteContexts

@@ -20,7 +20,9 @@ from __future__ import print_function
 
 import random
 
+from absl.testing import parameterized
 import numpy as np
+import six
 
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.eager import context
@@ -39,7 +41,7 @@ from tensorflow.python.training import server_lib
 from tensorflow.python.training.server_lib import ClusterSpec
 
 
-class SingleWorkerTest(test.TestCase):
+class SingleWorkerTest(test.TestCase, parameterized.TestCase):
 
   def setUp(self):
     super(SingleWorkerTest, self).setUp()
@@ -55,6 +57,7 @@ class SingleWorkerTest(test.TestCase):
     # Reset the context to avoid polluting other test cases.
     context._reset_context()
 
+  @test_util.eager_lazy_remote_copy_on_and_off
   def testMultiDeviceFunctionBasic(self):
 
     @def_function.function
@@ -69,6 +72,7 @@ class SingleWorkerTest(test.TestCase):
     self.assertAllEqual(basic(constant_op.constant([2])).numpy(), [5])
     self.assertAllEqual(basic(constant_op.constant([1])).numpy(), [4])
 
+  @test_util.eager_lazy_remote_copy_on_and_off
   def testMultiDeviceFunctionVariable(self):
     with ops.device('/job:worker/replica:0/task:0/cpu:0'):
       variable_b = variables.Variable(1)
@@ -79,6 +83,7 @@ class SingleWorkerTest(test.TestCase):
 
     self.assertAllEqual(with_variable(constant_op.constant([2])).numpy(), [3])
 
+  @test_util.eager_lazy_remote_copy_on_and_off
   def testMultiDeviceFunctionRemoteOutput(self):
     with ops.device('/job:worker/replica:0/task:0/cpu:0'):
       variable_b = variables.Variable(1)
@@ -89,12 +94,8 @@ class SingleWorkerTest(test.TestCase):
         c = variable_b + 1
       return c, i + variable_b
 
-    with self.assertRaises(errors.UnimplementedError) as cm:
-      remote_output(constant_op.constant([1]))
-
-    self.assertIn(
-        'Currently, outputting tensors on remote devices is not supported.',
-        cm.exception.message)
+    self.assertAllEqual(
+        remote_output(constant_op.constant([1]))[0].numpy(), 2)
 
   def testMultiDeviceFunctionAmbiguousDevice(self):
 
@@ -134,6 +135,7 @@ class SingleWorkerTest(test.TestCase):
 
     self.assertIn('Dimensions must be equal', cm.exception.message)
 
+  @test_util.eager_lazy_remote_copy_on_and_off
   def testShapeError_Function(self):
 
     @def_function.function
@@ -147,10 +149,13 @@ class SingleWorkerTest(test.TestCase):
       with self.assertRaises(ValueError) as cm:
         matmul_func(x, y)
 
-    self.assertIn('Dimensions must be equal', cm.exception.message)
+    if six.PY2:
+      self.assertIn('Dimensions must be equal', cm.exception.message)
+    else:
+      self.assertIn('Dimensions must be equal', cm.exception.args[0])
 
 
-class MultiWorkersTest(test.TestCase):
+class MultiWorkersTest(test.TestCase, parameterized.TestCase):
 
   def setUp(self):
     super(MultiWorkersTest, self).setUp()
@@ -167,6 +172,20 @@ class MultiWorkersTest(test.TestCase):
     # Reset the context to avoid polluting other test cases.
     context._reset_context()
 
+  @test_util.eager_lazy_remote_copy_on_and_off
+  def testReturnRemoteArgument(self):
+
+    @def_function.function
+    def local_func(i):
+      return i
+
+    with ops.device('/job:worker/replica:0/task:0'):
+      x = constant_op.constant([2, 1])
+
+    with ops.device('/job:worker/replica:0/task:1'):
+      self.assertAllEqual(local_func(x), [2, 1])
+
+  @test_util.eager_lazy_remote_copy_on_and_off
   def testMultiDeviceFunctionOnLocalDevice(self):
     with ops.device('/job:worker/replica:0/task:1'):
       variable_b = variables.Variable(1.0)
@@ -180,6 +199,7 @@ class MultiWorkersTest(test.TestCase):
 
     self.assertAllEqual(remote_function(constant_op.constant([1.0])), [3.0])
 
+  @test_util.eager_lazy_remote_copy_on_and_off
   def testMultiDeviceFunctionOnRemoteDevice(self):
     with ops.device('/job:worker/replica:0/task:1'):
       variable_b = variables.Variable(1.0)
@@ -209,6 +229,7 @@ class MultiWorkersTest(test.TestCase):
       with ops.device('/job:worker/replica:0/task:0/device:GPU:0'):
         self.assertAllEqual(remote_function(constant_op.constant([1.0])), [3.0])
 
+  @test_util.eager_lazy_remote_copy_on_and_off
   def testMultiDeviceWhileLoopOnRemoteDevice(self):
     with ops.device('/job:worker/replica:0/task:1'):
       variable_b = variables.Variable(1.0)
@@ -241,6 +262,7 @@ class MultiWorkersTest(test.TestCase):
       with ops.device('/job:worker/replica:0/task:0/device:GPU:0'):
         self.assertAllEqual(remote_function(constant_op.constant([1.0])), [3.0])
 
+  @test_util.eager_lazy_remote_copy_on_and_off
   def testSimpleParameterServer(self):
 
     with ops.device('/job:worker/task:2/device:CPU:0'):
@@ -263,7 +285,7 @@ class MultiWorkersTest(test.TestCase):
 _GRPC_PREFIX = 'grpc://'
 
 
-class MultiJobsTest(test.TestCase):
+class MultiJobsTest(test.TestCase, parameterized.TestCase):
 
   def setUp(self):
     super(MultiJobsTest, self).setUp()
@@ -288,6 +310,7 @@ class MultiJobsTest(test.TestCase):
     # Reset the context to avoid polluting other test cases.
     context._reset_context()
 
+  @test_util.eager_lazy_remote_copy_on_and_off
   def testSimpleParameterServer(self):
     remote.connect_to_cluster(self._cluster)
 
@@ -307,6 +330,7 @@ class MultiJobsTest(test.TestCase):
     with ops.device('/job:my_worker/task:1/device:CPU:0'):
       self.assertAllEqual(worker_fn(), 8)
 
+  @test_util.eager_lazy_remote_copy_on_and_off
   def testConnectWithClusterResolver(self):
     remote.connect_to_cluster(self._cluster_resolver)
 
@@ -325,10 +349,12 @@ class MultiJobsTest(test.TestCase):
     with ops.device('/job:my_worker/task:1/device:CPU:0'):
       self.assertAllEqual(worker_fn(), 8)
 
+  @test_util.eager_lazy_remote_copy_on_and_off
   def testConnectToClusterTwiceOk(self):
     remote.connect_to_cluster(self._cluster_resolver)
     remote.connect_to_cluster(self._cluster_resolver)
 
+  @test_util.eager_lazy_remote_copy_on_and_off
   def testConnectToClusterOnMismatchedDevice(self):
     remote.connect_to_cluster(self._cluster_resolver)
 
@@ -338,9 +364,17 @@ class MultiJobsTest(test.TestCase):
     with self.assertRaises(ValueError):
       remote.connect_to_cluster(self._cluster_resolver)
 
+  @test_util.eager_lazy_remote_copy_on_and_off
   def testConnectToClusterWithLocalMaster(self):
     local_resolver = SimpleClusterResolver(ClusterSpec({}), master='local')
     remote.connect_to_cluster(local_resolver)
+
+  @test_util.eager_lazy_remote_copy_on_and_off
+  def testConnectToClusterInGraphModeWillFail(self):
+    ops.disable_eager_execution()
+    with self.assertRaises(ValueError):
+      remote.connect_to_cluster(self._cluster_resolver)
+    ops.enable_eager_execution()
 
 
 def _strip_prefix(s, prefix):

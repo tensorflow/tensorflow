@@ -40,10 +40,15 @@ class IteratorResource : public ResourceBase {
                    FunctionLibraryRuntime* flr)
       : unbounded_thread_pool_(env, "tf_data_iterator_resource"),
         device_mgr_(std::move(device_mgr)),
-        iterator_state_(std::make_shared<State>(
-            std::move(flib_def), std::move(pflr), flr, /*iterator=*/nullptr)),
+        iterator_state_(std::make_shared<State>(std::move(flib_def),
+                                                std::move(pflr), flr,
+                                                /*iterator=*/nullptr)),
         output_dtypes_(output_dtypes),
-        output_shapes_(output_shapes) {}
+        output_shapes_(output_shapes) {
+    VLOG(2) << "constructor";
+  }
+
+  ~IteratorResource() override { VLOG(2) << "destructor"; }
 
   Status GetNext(OpKernelContext* ctx, std::vector<Tensor>* out_tensors,
                  bool* end_of_sequence);
@@ -63,17 +68,25 @@ class IteratorResource : public ResourceBase {
   }
 
  private:
+  // TODO(aaudibert): convert to a class for better encapsulation.
   struct State {
     State(std::shared_ptr<FunctionLibraryDefinition> flib_def,
           std::shared_ptr<ProcessFunctionLibraryRuntime> pflr,
-          FunctionLibraryRuntime* flr, std::unique_ptr<IteratorBase> iterator)
-        : flib_def(flib_def),
+          FunctionLibraryRuntime* flr,
+          std::unique_ptr<DatasetBaseIterator> iterator)
+        : flib_def(std::move(flib_def)),
           flr(flr),
-          pflr(pflr),
+          pflr(std::move(pflr)),
           function_handle_cache(absl::make_unique<FunctionHandleCache>(flr)),
           iterator(std::move(iterator)) {}
 
     ~State() { cancellation_manager.StartCancel(); }
+
+    // Downcasts the given `IteratorBase` to a `DatasetBaseIterator`, and uses
+    // it to set the `iterator` field.
+    void DowncastAndSetIterator(std::unique_ptr<IteratorBase> it) {
+      iterator.reset(static_cast<DatasetBaseIterator*>(it.release()));
+    }
 
     std::shared_ptr<FunctionLibraryDefinition> flib_def;
     FunctionLibraryRuntime* flr = nullptr;  // not owned.
@@ -81,7 +94,7 @@ class IteratorResource : public ResourceBase {
     std::unique_ptr<FunctionHandleCache> function_handle_cache;
     ResourceMgr resource_mgr;
     CancellationManager cancellation_manager;
-    std::unique_ptr<IteratorBase> iterator;
+    std::unique_ptr<DatasetBaseIterator> iterator;
   };
 
   UnboundedThreadPool unbounded_thread_pool_;
@@ -161,28 +174,55 @@ class AnonymousIteratorHandleOp : public AnonymousResourceOp<IteratorResource> {
   const int graph_def_version_;
 };
 
-class MakeIteratorOp : public AsyncOpKernel {
+// A hybrid asynchronous-and-synchronous OpKernel with efficient support for
+// both modes.
+//
+// Inherit from this class when the application logic of the kernel (i) is
+// implemented synchronously, (ii) must run on a background thread when the
+// kernel executes in the inter-op threadpool (typically because it depends on
+// inter-op threadpool threads, e.g. for function execution), and (iii) can run
+// synchronously on the calling thread when the caller donates a thread
+// (typically in eager execution). The implementation avoids a thread-hop in
+// case (iii).
+//
+// NOTE: Unlike typical OpKernel subclasses, the application logic is
+// implemented in a method (DoCompute()) that returns Status. Use
+// TF_RETURN_IF_ERROR for error-related control flow rather than
+// OP_REQUIRES_OK().
+class HybridAsyncOpKernel : public AsyncOpKernel {
  public:
-  explicit MakeIteratorOp(OpKernelConstruction* ctx)
-      : AsyncOpKernel(ctx),
-        background_worker_(ctx->env(), "tf_data_make_iterator") {}
+  HybridAsyncOpKernel(OpKernelConstruction* ctx,
+                      const char* background_worker_name);
 
-  void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override;
+  void Compute(OpKernelContext* ctx) final;
+  void ComputeAsync(OpKernelContext* ctx, DoneCallback done) final;
+
+ protected:
+  virtual Status DoCompute(OpKernelContext* ctx) = 0;
 
  private:
   BackgroundWorker background_worker_;
 };
 
-class IteratorGetNextOp : public AsyncOpKernel {
+class MakeIteratorOp : public HybridAsyncOpKernel {
+ public:
+  explicit MakeIteratorOp(OpKernelConstruction* ctx)
+      : HybridAsyncOpKernel(ctx, "tf_data_make_iterator") {}
+
+ protected:
+  Status DoCompute(OpKernelContext* ctx) override;
+};
+
+class IteratorGetNextOp : public HybridAsyncOpKernel {
  public:
   explicit IteratorGetNextOp(OpKernelConstruction* ctx)
-      : AsyncOpKernel(ctx),
-        background_worker_(ctx->env(), "tf_data_iterator_get_next") {}
+      : HybridAsyncOpKernel(ctx, "tf_data_iterator_get_next") {}
 
-  void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override;
+  AsyncOpKernel* AsAsync() override;
+  const AsyncOpKernel* AsAsync() const override;
 
- private:
-  BackgroundWorker background_worker_;
+ protected:
+  Status DoCompute(OpKernelContext* ctx) override;
 };
 
 class DeleteIteratorOp : public OpKernel {
@@ -192,29 +232,20 @@ class DeleteIteratorOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override;
 };
 
-class IteratorGetNextAsOptionalOp : public AsyncOpKernel {
+class IteratorGetNextAsOptionalOp : public HybridAsyncOpKernel {
  public:
   explicit IteratorGetNextAsOptionalOp(OpKernelConstruction* ctx)
-      : AsyncOpKernel(ctx),
-        background_worker_(ctx->env(),
-                           "tf_data_iterator_get_next_as_optional") {
+      : HybridAsyncOpKernel(ctx, "tf_data_iterator_get_next_as_optional") {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
   }
 
-  void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override;
+ protected:
+  Status DoCompute(OpKernelContext* ctx) override;
 
  private:
-  BackgroundWorker background_worker_;
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
-};
-
-class IteratorGetNextSyncOp : public OpKernel {
- public:
-  explicit IteratorGetNextSyncOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
-
-  void Compute(OpKernelContext* ctx) override;
 };
 
 class IteratorToStringHandleOp : public OpKernel {
@@ -234,6 +265,27 @@ class IteratorFromStringHandleOp : public OpKernel {
  private:
   DataTypeVector output_dtypes_;
   std::vector<PartialTensorShape> output_shapes_;
+};
+
+class SerializeIteratorOp : public OpKernel {
+ public:
+  static constexpr const char* const kExternalStatePolicy =
+      "external_state_policy";
+
+  explicit SerializeIteratorOp(OpKernelConstruction* ctx);
+
+  void Compute(OpKernelContext* ctx) override;
+
+ private:
+  SerializationContext::ExternalStatePolicy external_state_policy_ =
+      SerializationContext::ExternalStatePolicy::kWarn;
+};
+
+class DeserializeIteratorOp : public OpKernel {
+ public:
+  explicit DeserializeIteratorOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override;
 };
 
 }  // namespace data

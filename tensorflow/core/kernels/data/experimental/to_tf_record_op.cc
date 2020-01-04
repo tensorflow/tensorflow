@@ -48,93 +48,58 @@ class ToTFRecordOp : public AsyncOpKernel {
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
     // The call to `iterator->GetNext()` may block and depend on an inter-op
     // thread pool thread, so we issue the call using a background thread.
-    background_worker_.Schedule(std::bind(
-        [this, ctx](std::function<void()>& done) {
-          tstring filename;
-          OP_REQUIRES_OK_ASYNC(
-              ctx, ParseScalarArgument<tstring>(ctx, "filename", &filename),
-              done);
-          tstring compression_type;
-          OP_REQUIRES_OK_ASYNC(ctx,
-                               ParseScalarArgument<tstring>(
-                                   ctx, "compression_type", &compression_type),
-                               done);
-          std::unique_ptr<WritableFile> file;
-          OP_REQUIRES_OK_ASYNC(
-              ctx, ctx->env()->NewWritableFile(filename, &file), done);
-          auto writer = absl::make_unique<io::RecordWriter>(
-              file.get(), io::RecordWriterOptions::CreateRecordWriterOptions(
-                              compression_type));
-
-          DatasetBase* dataset;
-          OP_REQUIRES_OK_ASYNC(
-              ctx, GetDatasetFromVariantTensor(ctx->input(0), &dataset), done);
-
-          IteratorContext::Params params(ctx);
-          FunctionHandleCache function_handle_cache(params.flr);
-          params.function_handle_cache = &function_handle_cache;
-          ResourceMgr resource_mgr;
-          params.resource_mgr = &resource_mgr;
-          CancellationManager cancellation_manager;
-          params.cancellation_manager = &cancellation_manager;
-          std::function<void()> deregister_fn;
-          OP_REQUIRES_OK_ASYNC(
-              ctx,
-              RegisterCancellationCallback(
-                  ctx->cancellation_manager(),
-                  [cm = params.cancellation_manager]() { cm->StartCancel(); },
-                  &deregister_fn),
-              done);
-
-          // Update the `done` callback to deregister the cancellation callback.
-          done = std::bind(
-              [](const std::function<void()>& done,
-                 const std::function<void()>& deregister_fn) {
-                deregister_fn();
-                done();
-              },
-              std::move(done), std::move(deregister_fn));
-
-          IteratorContext iter_ctx(std::move(params));
-          std::unique_ptr<IteratorBase> iterator;
-          OP_REQUIRES_OK_ASYNC(
-              ctx,
-              dataset->MakeIterator(&iter_ctx, "ToTFRecordOpIterator",
-                                    &iterator),
-              done);
-
-          // Update the `done` callback to destroy the iterator before calling
-          // the actual callback to avoid destruction races.
-          IteratorBase* raw_iterator = iterator.release();
-          done = std::bind(
-              [raw_iterator](const std::function<void()>& done) {
-                delete raw_iterator;
-                done();
-              },
-              std::move(done));
-
-          std::vector<Tensor> components;
-          components.reserve(dataset->output_dtypes().size());
-          bool end_of_sequence;
-          do {
-            OP_REQUIRES_OK_ASYNC(
-                ctx,
-                raw_iterator->GetNext(&iter_ctx, &components, &end_of_sequence),
-                done);
-
-            if (!end_of_sequence) {
-              OP_REQUIRES_OK_ASYNC(
-                  ctx, writer->WriteRecord(components[0].scalar<tstring>()()),
-                  done);
-            }
-            components.clear();
-          } while (!end_of_sequence);
-          done();
-        },
-        std::move(done)));
+    background_worker_.Schedule([this, ctx, done = std::move(done)]() {
+      OP_REQUIRES_OK_ASYNC(ctx, DoCompute(ctx), done);
+      done();
+    });
   }
 
  private:
+  Status DoCompute(OpKernelContext* ctx) {
+    tstring filename;
+    TF_RETURN_IF_ERROR(
+        ParseScalarArgument<tstring>(ctx, "filename", &filename));
+    tstring compression_type;
+    TF_RETURN_IF_ERROR(ParseScalarArgument<tstring>(ctx, "compression_type",
+                                                    &compression_type));
+    std::unique_ptr<WritableFile> file;
+    TF_RETURN_IF_ERROR(ctx->env()->NewWritableFile(filename, &file));
+    auto writer = absl::make_unique<io::RecordWriter>(
+        file.get(),
+        io::RecordWriterOptions::CreateRecordWriterOptions(compression_type));
+
+    DatasetBase* dataset;
+    TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(ctx->input(0), &dataset));
+
+    IteratorContext::Params params(ctx);
+    FunctionHandleCache function_handle_cache(params.flr);
+    params.function_handle_cache = &function_handle_cache;
+    ResourceMgr resource_mgr;
+    params.resource_mgr = &resource_mgr;
+    CancellationManager cancellation_manager(ctx->cancellation_manager());
+    params.cancellation_manager = &cancellation_manager;
+
+    IteratorContext iter_ctx(std::move(params));
+    std::unique_ptr<IteratorBase> iterator;
+    TF_RETURN_IF_ERROR(
+        dataset->MakeIterator(&iter_ctx, "ToTFRecordOpIterator", &iterator));
+
+    std::vector<Tensor> components;
+    components.reserve(dataset->output_dtypes().size());
+    bool end_of_sequence;
+    do {
+      TF_RETURN_IF_ERROR(
+          iterator->GetNext(&iter_ctx, &components, &end_of_sequence));
+
+      if (!end_of_sequence) {
+        TF_RETURN_IF_ERROR(
+            writer->WriteRecord(components[0].scalar<tstring>()()));
+      }
+      components.clear();
+    } while (!end_of_sequence);
+    return Status::OK();
+  }
+
   BackgroundWorker background_worker_;
 };
 

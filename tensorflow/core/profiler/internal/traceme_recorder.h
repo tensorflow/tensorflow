@@ -15,24 +15,26 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_INTERNAL_TRACEME_RECORDER_H_
 #define TENSORFLOW_CORE_PROFILER_INTERNAL_TRACEME_RECORDER_H_
 
+#include <stddef.h>
+
 #include <atomic>
-#include <cstddef>
-#include <string>
 #include <unordered_map>
 #include <vector>
 
-#include "absl/base/optimization.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace profiler {
-
 namespace internal {
+
 // Current trace level.
 // Static atomic so TraceMeRecorder::Active can be fast and non-blocking.
 // Modified by TraceMeRecorder singleton when tracing starts/stops.
 extern std::atomic<int> g_trace_level;
+
 }  // namespace internal
 
 // TraceMeRecorder is a singleton repository of TraceMe events.
@@ -77,8 +79,7 @@ class TraceMeRecorder {
 
   // Returns whether we're currently recording. Racy, but cheap!
   static inline bool Active(int level = 1) {
-    return ABSL_PREDICT_FALSE(
-        internal::g_trace_level.load(std::memory_order_acquire) >= level);
+    return internal::g_trace_level.load(std::memory_order_acquire) >= level;
   }
 
   // Default value for trace_level_ when tracing is disabled
@@ -86,6 +87,9 @@ class TraceMeRecorder {
 
   // Records an event. Non-blocking.
   static void Record(Event event);
+
+  // Returns an activity_id for TraceMe::ActivityStart.
+  static uint64 NewActivityId();
 
  private:
   class ThreadLocalRecorder;
@@ -95,12 +99,10 @@ class TraceMeRecorder {
 
   TraceMeRecorder() = default;
 
-  // No copy and assignment
-  TraceMeRecorder(const TraceMeRecorder&) = delete;
-  TraceMeRecorder& operator=(const TraceMeRecorder&) = delete;
+  TF_DISALLOW_COPY_AND_ASSIGN(TraceMeRecorder);
 
   void RegisterThread(int32 tid, ThreadLocalRecorder* thread);
-  void UnregisterThread(ThreadEvents&& events);
+  void UnregisterThread(int32 tid);
 
   bool StartRecording(int level);
   Events StopRecording();

@@ -19,10 +19,11 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
+
 from absl import logging
 
 from tensorflow.core.protobuf.tensorflow_server_pb2 import ServerDef
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import pywrap_tfe
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute.cluster_resolver import cluster_resolver
 from tensorflow.python.eager import context
@@ -105,6 +106,11 @@ def connect_to_cluster(cluster_spec_or_resolver,
       a cluster spec is passed. Will throw an error if the caller is currently
       already in some device scope.
   """
+  if not context.executing_eagerly():
+    raise ValueError(
+        "`tf.config.experimental_connect_to_cluster` can only be called in "
+        "eager mode."
+    )
   protocol = protocol or remote_utils.get_default_communication_protocol()
   if isinstance(cluster_spec_or_resolver, server_lib.ClusterSpec):
     cluster_spec = cluster_spec_or_resolver
@@ -122,7 +128,7 @@ def connect_to_cluster(cluster_spec_or_resolver,
 
   # Automatically add local job, if not part of the cluster spec.
   if job_name not in cluster_spec.jobs:
-    local_port = pywrap_tensorflow.TF_PickUnusedPortOrDie()
+    local_port = pywrap_tfe.TF_PickUnusedPortOrDie()
     job_def = cluster_def.job.add()
     job_def.name = job_name
     # TODO(fishx): Update this to make sure remote worker has valid ip address

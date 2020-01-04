@@ -17,6 +17,8 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_CWISE_OPS_COMMON_H_
 
 // See docs in ../ops/math_ops.cc.
+#define _USE_MATH_DEFINES
+#include <cmath>
 
 #define EIGEN_USE_THREADS
 
@@ -90,6 +92,56 @@ class BinaryOp : public BinaryOpShared {
                        DataTypeToEnum<Tin>::v()) {}
 
   void Compute(OpKernelContext* ctx) override {
+    const Tensor& input_0 = ctx->input(0);
+    const Tensor& input_1 = ctx->input(1);
+    const Device& eigen_device = ctx->eigen_device<Device>();
+    bool error = false;
+    bool* const error_ptr = Functor::has_errors ? &error : nullptr;
+
+    // NOTE: Handle three simple cases before building the BinaryOpState, which
+    // is relatively expensive for small operations.
+    if (input_0.shape() == input_1.shape()) {
+      // tensor op tensor with no broadcasting.
+      Tensor* out;
+      OP_REQUIRES_OK(ctx, ctx->forward_input_or_allocate_output(
+                              {0, 1}, 0, input_0.shape(), &out));
+      functor::BinaryFunctor<Device, Functor, 1>()(
+          eigen_device, out->template flat<Tout>(),
+          input_0.template flat<Tin>(), input_1.template flat<Tin>(),
+          error_ptr);
+      if (Functor::has_errors && error) {
+        SetComputeError(ctx);
+      }
+      return;
+    } else if (input_0.shape().dims() == 0) {
+      // scalar op tensor.
+      Tensor* out;
+      OP_REQUIRES_OK(ctx, ctx->forward_input_or_allocate_output(
+                              {1}, 0, input_1.shape(), &out));
+
+      functor::BinaryFunctor<Device, Functor, 1>().Left(
+          eigen_device, out->template flat<Tout>(),
+          input_0.template scalar<Tin>(), input_1.template flat<Tin>(),
+          error_ptr);
+      if (Functor::has_errors && error) {
+        SetComputeError(ctx);
+      }
+      return;
+    } else if (input_1.shape().dims() == 0) {
+      // tensor op scalar.
+      Tensor* out;
+      OP_REQUIRES_OK(ctx, ctx->forward_input_or_allocate_output(
+                              {0}, 0, input_0.shape(), &out));
+      functor::BinaryFunctor<Device, Functor, 1>().Right(
+          eigen_device, out->template flat<Tout>(),
+          input_0.template flat<Tin>(), input_1.template scalar<Tin>(),
+          error_ptr);
+      if (Functor::has_errors && error) {
+        SetComputeError(ctx);
+      }
+      return;
+    }
+
     // 'state': Shared helper not dependent on T to reduce code size
     BinaryOpState state(ctx);
     if (ctx->status().code() == error::RESOURCE_EXHAUSTED) {
@@ -97,7 +149,6 @@ class BinaryOp : public BinaryOpShared {
       return;
     }
     auto& bcast = state.bcast;
-    const Device& eigen_device = ctx->eigen_device<Device>();
     Tensor* out = state.out;
     if (!bcast.IsValid()) {
       if (ctx->status().ok()) {
@@ -119,8 +170,6 @@ class BinaryOp : public BinaryOpShared {
     }
 
     const int ndims = state.ndims;
-    bool error = false;
-    bool* const error_ptr = Functor::has_errors ? &error : nullptr;
     if (ndims <= 1) {
       auto out_flat = out->flat<Tout>();
       if (state.in1_num_elements == 1) {

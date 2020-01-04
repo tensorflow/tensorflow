@@ -34,16 +34,18 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/iterator_range.h"
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/Identifier.h"  // TF:local_config_mlir
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/IR/Types.h"  // TF:local_config_mlir
-#include "mlir/IR/Value.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
-#include "mlir/Pass/PassRegistry.h"  // TF:local_config_mlir
-#include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
-#include "mlir/Transforms/RegionUtils.h"  // TF:local_config_mlir
+#include "llvm/Support/Casting.h"
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/Builders.h"  // TF:llvm-project
+#include "mlir/IR/Identifier.h"  // TF:llvm-project
+#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
+#include "mlir/IR/Operation.h"  // TF:llvm-project
+#include "mlir/IR/Types.h"  // TF:llvm-project
+#include "mlir/IR/Value.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/Pass/PassRegistry.h"  // TF:llvm-project
+#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
+#include "mlir/Transforms/RegionUtils.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -57,8 +59,6 @@ constexpr char kTPUReplicateAttr[] = "_tpu_replicate";
 constexpr char kDeviceAttr[] = "device";
 constexpr char kNameAttr[] = "name";
 constexpr char kNumReplicasAttr[] = "num_replicas";
-constexpr char kTPUReplicatedInputOp[] = "tf.TPUReplicatedInput";
-constexpr char kTPUReplicatedOutputOp[] = "tf.TPUReplicatedOutput";
 
 constexpr char kBadTPUReplicateAttrMsg[] =
     "requires '_tpu_replicate' string attribute";
@@ -140,8 +140,8 @@ bool ShouldMoveOpAfterCluster(
     const llvm::SmallSetVector<Operation*, 8>& cluster_ops,
     const llvm::SmallSetVector<Operation*, 8>& preceding_users) {
   auto result = op->walk([&](Operation* op) {
-    for (Value* operand : op->getOperands()) {
-      Operation* def = operand->getDefiningOp();
+    for (Value operand : op->getOperands()) {
+      Operation* def = operand.getDefiningOp();
       // Operands may not have a defining op (BlockArgument) or is from a
       // different block.
       if (!def || def->getBlock() != block) continue;
@@ -179,13 +179,13 @@ llvm::SmallSetVector<Operation*, 8> CollectClusterPrecedingUsers(
 // `tf_device::LaunchOp` and associated terminator. Results that have no uses
 // outside of the cluster (i.e. results of ops in the cluster are only consumed
 // by other ops in the cluster) are pruned.
-llvm::SmallVector<Value*, 8> CollectClusterResults(
+llvm::SmallVector<Value, 8> CollectClusterResults(
     Block* block, const llvm::SmallSetVector<Operation*, 8>& cluster_ops) {
-  llvm::SmallVector<Value*, 8> results;
+  llvm::SmallVector<Value, 8> results;
 
   for (Operation* op : cluster_ops) {
-    for (Value* result : op->getResults()) {
-      for (Operation* user : result->getUsers()) {
+    for (Value result : op->getResults()) {
+      for (Operation* user : result.getUsers()) {
         // Check if user is not an op in the cluster.
         if (cluster_ops.count(block->findAncestorOpInBlock(*user)) == 0) {
           results.push_back(result);
@@ -200,13 +200,13 @@ llvm::SmallVector<Value*, 8> CollectClusterResults(
 
 // Creates a `tf_device::LaunchOp` to wrap cluster ops.
 tf_device::LaunchOp CreateLaunchOpForCluster(Operation* last_cluster_op,
-                                             llvm::ArrayRef<Value*> results) {
+                                             llvm::ArrayRef<Value> results) {
   // `tf_device::LaunchOp` will be placed at where the last op of the cluster
   // is.
   OpBuilder builder(last_cluster_op);
 
   llvm::SmallVector<Type, 8> result_types;
-  for (Value* result : results) result_types.push_back(result->getType());
+  for (Value result : results) result_types.push_back(result.getType());
 
   // An empty string placeholder is used for the device as that will be later
   // populated with the device of the associated TPUReplicateMetadata op.
@@ -241,12 +241,12 @@ void MoveClusterOpsToLaunchOp(
 // Replaces uses of cluster ops results outside of cluster with the associated
 // `tf_device::LaunchOp` results.
 void UpdateLaunchOpResultExternalUses(tf_device::LaunchOp launch_op,
-                                      llvm::ArrayRef<Value*> results) {
+                                      llvm::ArrayRef<Value> results) {
   Block& launch_op_block = launch_op.GetBody();
   for (auto ret_vals : llvm::zip(results, launch_op.getResults())) {
-    Value* old_ret = std::get<0>(ret_vals);
-    Value* new_ret = std::get<1>(ret_vals);
-    for (auto& use : old_ret->getUses())
+    Value old_ret = std::get<0>(ret_vals);
+    Value new_ret = std::get<1>(ret_vals);
+    for (auto& use : old_ret.getUses())
       if (!launch_op_block.findAncestorOpInBlock(*use.getOwner()))
         use.set(new_ret);
   }
@@ -257,6 +257,39 @@ void MovePrecedingClusterUsers(tf_device::LaunchOp launch_op,
                                llvm::ArrayRef<Operation*> preceding_users) {
   Operation* op_after_launch_op = launch_op.getOperation()->getNextNode();
   for (Operation* user : preceding_users) user->moveBefore(op_after_launch_op);
+}
+
+// Sorts `tf.TPUReplicatedInput` ops by `index` attribute. Ops with an `index`
+// of -1 are always after ops with a non negative `index`, and an arbitrary
+// ordering is used as there are no dependencies on their relative ordering.
+LogicalResult SortTPUReplicatedInputsByIndex(
+    llvm::ArrayRef<Operation*> inputs,
+    llvm::SmallVectorImpl<Operation*>* sorted_inputs) {
+  const int input_size = inputs.size();
+  sorted_inputs->resize(input_size, nullptr);
+  int last_index = input_size - 1;
+
+  for (Operation* input : inputs) {
+    int64_t index =
+        llvm::cast<TF::TPUReplicatedInputOp>(input).index().getLimitedValue();
+
+    if (index >= input_size || index < -1)
+      return input->emitError() << "'" << input->getName().getStringRef()
+                                << "' index is not in range [-1, " << input_size
+                                << "), got " << index;
+
+    if (index == -1)
+      (*sorted_inputs)[last_index--] = input;
+    else
+      (*sorted_inputs)[index] = input;
+  }
+
+  if (llvm::any_of(*sorted_inputs, [](Operation* op) { return op == nullptr; }))
+    return inputs.front()->emitError()
+           << "failed to sort '" << inputs.front()->getName().getStringRef()
+           << "' ops, gap(s) found in indices";
+
+  return success();
 }
 
 // Creates a `tf_device.replicate` to represent replication for the cluster, if
@@ -270,15 +303,18 @@ LogicalResult ReplicateCluster(tf_device::LaunchOp launch_op,
     return launch_op.emitError() << "requires '" << kNumReplicasAttr
                                  << "' int attribute to be at least 1";
 
-  // Collect all used TPUReplicatedInput ops.
-  llvm::SmallSetVector<Operation*, 8> replicated_input_ops;
+  // Collect all used TPUReplicatedInput ops and sort by `index`.
+  llvm::SmallSetVector<Operation*, 8> unique_replicated_input_ops;
   mlir::visitUsedValuesDefinedAbove(
       launch_op.body(), launch_op.body(), [&](mlir::OpOperand* operand) {
-        Operation* def = operand->get()->getDefiningOp();
-        if (def && def->getName().getStringRef() == kTPUReplicatedInputOp) {
-          replicated_input_ops.insert(def);
-        }
+        Operation* def = operand->get().getDefiningOp();
+        if (def && llvm::isa<TF::TPUReplicatedInputOp>(def))
+          unique_replicated_input_ops.insert(def);
       });
+  llvm::SmallVector<Operation*, 8> replicated_input_ops;
+  if (failed(SortTPUReplicatedInputsByIndex(
+          unique_replicated_input_ops.getArrayRef(), &replicated_input_ops)))
+    return failure();
 
   // Check if number of operands of each used TPUReplicatedInput op matches
   // `num_replicas`. Collect all their operands and associated type for creating
@@ -301,14 +337,14 @@ LogicalResult ReplicateCluster(tf_device::LaunchOp launch_op,
 
   // Replace replicated cluster results with replicate op results.
   for (auto result_and_idx : llvm::enumerate(launch_op.getResults())) {
-    Value* result = result_and_idx.value();
+    Value result = result_and_idx.value();
     int idx = result_and_idx.index();
-    for (auto& use : result->getUses()) {
+    for (auto& use : result.getUses()) {
       Operation* def = use.getOwner();
-      if (!def || def->getName().getStringRef() != kTPUReplicatedOutputOp)
+      if (!def || !llvm::isa<TF::TPUReplicatedOutputOp>(def))
         return launch_op.emitError()
                << "requires output of " << launch_op.getOperationName()
-               << " to lead to a '" << kTPUReplicatedOutputOp << "' op";
+               << " to lead to a 'tf.TPUReplicatedOutput' op";
 
       if (def->getNumResults() != num_replicas)
         return def->emitOpError() << "requires " << num_replicas << " results";
@@ -324,16 +360,15 @@ LogicalResult ReplicateCluster(tf_device::LaunchOp launch_op,
   for (auto input_and_block_arg :
        llvm::zip(replicated_input_ops, replicate_op.GetBody().getArguments())) {
     Operation* input = std::get<0>(input_and_block_arg);
-    Value* block_arg = std::get<1>(input_and_block_arg);
+    Value block_arg = std::get<1>(input_and_block_arg);
     mlir::replaceAllUsesInRegionWith(input->getResult(0), block_arg,
                                      launch_op.body());
   }
 
   // Create terminator for replicate op and move launch into replicate.
   builder.setInsertionPointToEnd(&replicate_op.GetBody());
-  auto return_op = builder.create<tf_device::ReturnOp>(
-      replicate_op.getLoc(),
-      llvm::SmallVector<Value*, 8>(launch_op.getResults()));
+  auto return_op = builder.create<tf_device::ReturnOp>(replicate_op.getLoc(),
+                                                       launch_op.getResults());
   launch_op.getOperation()->moveBefore(return_op);
 
   return success();
@@ -377,7 +412,7 @@ LogicalResult FormClustersInBlock(Block* block,
     llvm::SmallSetVector<Operation*, 8> preceding_users =
         CollectClusterPrecedingUsers(block, cluster_ops);
 
-    llvm::SmallVector<Value*, 8> results =
+    llvm::SmallVector<Value, 8> results =
         CollectClusterResults(block, cluster_ops);
 
     tf_device::LaunchOp launch_op =
@@ -427,20 +462,21 @@ void TPUClusterFormation::runOnFunction() {
 
   // Remove TPUReplicatedInput and TPUReplicatedOutput nodes.
   auto remove_result = getFunction().walk([&](Operation* op) {
-    auto op_name = op->getName().getStringRef();
-    if (op_name != kTPUReplicatedInputOp && op_name != kTPUReplicatedOutputOp)
+    if (!llvm::isa<TF::TPUReplicatedInputOp>(op) &&
+        !llvm::isa<TF::TPUReplicatedOutputOp>(op))
       return WalkResult::advance();
 
     // Forward operand to result. When `num_replicas` attribute is 1, no
     // `tf_device.replicate` is created and replicated (1) operands/results are
     // untouched.
     if (op->getNumOperands() == 1 && op->getNumResults() == 1)
-      op->getResult(0)->replaceAllUsesWith(op->getOperand(0));
+      op->getResult(0).replaceAllUsesWith(op->getOperand(0));
 
     // Leftover TPUReplicatedInput/TPUReplicatedOutput that are not of
     // `num_replicas` to 1.
     if (!op->use_empty()) {
-      op->emitOpError() << "expects " << op_name << " to have no uses";
+      op->emitOpError() << "expects " << op->getName().getStringRef()
+                        << " to have no uses";
       return WalkResult::interrupt();
     }
 

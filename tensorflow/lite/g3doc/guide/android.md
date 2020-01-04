@@ -132,7 +132,7 @@ in the `.tf_configure.bazelrc` file in the root folder:
 
 ```shell
 build --action_env ANDROID_NDK_HOME="/usr/local/android/android-ndk-r17c"
-build --action_env ANDROID_NDK_API_LEVEL="18"
+build --action_env ANDROID_NDK_API_LEVEL="21"
 build --action_env ANDROID_BUILD_TOOLS_VERSION="28.0.3"
 build --action_env ANDROID_SDK_API_LEVEL="23"
 build --action_env ANDROID_SDK_HOME="/usr/local/android/android-sdk-linux"
@@ -176,35 +176,3 @@ dependencies {
     compile(name:'tensorflow-lite', ext:'aar')
 }
 ```
-
-##### Install AAR to local Maven repository
-
-Execute the following command from your root checkout directory:
-
-```sh
-mvn install:install-file \
-  -Dfile=bazel-bin/tensorflow/lite/java/tensorflow-lite.aar \
-  -DgroupId=org.tensorflow \
-  -DartifactId=tensorflow-lite -Dversion=0.1.100 -Dpackaging=aar
-```
-
-In your app's `build.gradle`, ensure you have the `mavenLocal()` dependency and
-replace the standard TensorFlow Lite dependency with the one that has support
-for select TensorFlow ops:
-
-```
-allprojects {
-    repositories {
-        jcenter()
-        mavenLocal()
-    }
-}
-
-dependencies {
-    implementation 'org.tensorflow:tensorflow-lite-with-select-tf-ops:0.1.100'
-}
-```
-
-Note that the `0.1.100` version here is purely for the sake of
-testing/development. With the local AAR installed, you can use the standard
-[TensorFlow Lite Java inference APIs](inference.md) in your app code.

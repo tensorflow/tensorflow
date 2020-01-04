@@ -34,7 +34,6 @@ SET PATH=%PATH%;C:\%PYTHON_DIRECTORY%
 %PIP_EXE% install opt_einsum --upgrade
 %PIP_EXE% install pandas --upgrade --no-deps
 %PIP_EXE% install protobuf --upgrade --no-deps
-%PIP_EXE% install keras_applications==1.0.8 --upgrade --no-deps
 %PIP_EXE% install keras_preprocessing==1.1.0 --upgrade --no-deps
 %PIP_EXE% install wrapt --upgrade --no-deps
 
@@ -56,7 +55,7 @@ IF "%PYTHON_DIRECTORY%"=="Python37" (
 
 :: Set cuda related environment variables. If we are not using CUDA, these are not used.
 IF NOT DEFINED TF_CUDA_VERSION (
-  SET TF_CUDA_VERSION=10.0
+  SET TF_CUDA_VERSION=10.1
 )
 SET TF_CUDNN_VERSION=7
 SET TF_CUDA_COMPUTE_CAPABILITIES=3.5,3.7,5.2,6.0,6.1,7.0
@@ -70,7 +69,7 @@ SET PATH=%CUDNN_INSTALL_PATH%\bin;%PATH%
 @REM Setup Bazel
 @REM
 :: Download Bazel from github and make sure its found in PATH.
-SET BAZEL_VERSION=0.29.1
+SET BAZEL_VERSION=1.1.0
 md C:\tools\bazel\
 wget -q https://github.com/bazelbuild/bazel/releases/download/%BAZEL_VERSION%/bazel-%BAZEL_VERSION%-windows-x86_64.exe -O C:/tools/bazel/bazel.exe
 SET PATH=C:\tools\bazel;%PATH%

@@ -19,9 +19,9 @@ from __future__ import division
 from __future__ import print_function
 
 import time
+
 import six
 
-from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import io_ops
@@ -31,6 +31,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_management
+from tensorflow.python.training import py_checkpoint_reader
 from tensorflow.python.training.saving import saveable_object_util
 from tensorflow.python.util.tf_export import tf_export
 
@@ -63,7 +64,7 @@ def load_checkpoint(ckpt_dir_or_file):
   if filename is None:
     raise ValueError("Couldn't find 'checkpoint' file or checkpoints in "
                      "given directory %s" % ckpt_dir_or_file)
-  return pywrap_tensorflow.NewCheckpointReader(filename)
+  return py_checkpoint_reader.NewCheckpointReader(filename)
 
 
 @tf_export("train.load_variable")
@@ -330,7 +331,7 @@ def _init_from_checkpoint(ckpt_dir_or_file, assignment_map):
               ))
         var_name = var.name
       else:
-        var_name = ",".join([v.name for v in var])
+        var_name = ",".join(v.name for v in var)
       _set_variable_or_list_initializer(var, ckpt_file, tensor_name_in_ckpt)
       logging.debug("Initialize variable %s from checkpoint %s with %s",
                     var_name, ckpt_dir_or_file, tensor_name_in_ckpt)

@@ -8,11 +8,11 @@ load(
     "tfe_xla_copts",
 )
 load(
-    "//tensorflow/core/platform:default/build_config.bzl",
+    "//tensorflow/core/platform:build_config.bzl",
     "tf_kernel_tests_linkstatic",
 )
 load(
-    "//tensorflow/core/platform:default/build_config_root.bzl",
+    "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
 
@@ -37,9 +37,11 @@ tf_cuda_library(
             "//tensorflow/core:android_tensorflow_lib_lite",
         ],
         "//conditions:default": [
+            "@com_google_absl//absl/algorithm:container",
             "@com_google_absl//absl/container:fixed_array",
             "//tensorflow/c:c_api",
             "//tensorflow/c:c_api_internal",
+            "//tensorflow/c:tf_tensor_internal",
             "//tensorflow/core:core_cpu",
             "//tensorflow/core/common_runtime/eager:attr_builder",
             "//tensorflow/core/common_runtime/eager:context",
@@ -53,7 +55,8 @@ tf_cuda_library(
             "//tensorflow/core:framework_internal",
             "//tensorflow/core:lib",
             "//tensorflow/core:lib_internal",
-            "//tensorflow/core:protos_all",
+            "//tensorflow/core/platform:errors",
+            "//tensorflow/core:protos_all_cc",
             "//tensorflow/core/profiler/lib:traceme",
         ],
     }) + select({
@@ -83,6 +86,18 @@ tf_cuda_library(
         "//tensorflow/core:gpu_runtime",
     ],
     alwayslink = 1,
+)
+
+filegroup(
+    name = "pywrap_eager_hdrs",
+    srcs = [
+        "c_api_experimental.h",
+        "c_api_internal.h",
+    ],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/python:__pkg__",
+    ],
 )
 
 tf_cuda_library(
@@ -228,7 +243,7 @@ tf_cuda_library(
             "//tensorflow/core:framework_internal",
             "//tensorflow/core:lib",
             "//tensorflow/core:lib_internal",
-            "//tensorflow/core:protos_all",
+            "//tensorflow/core:protos_all_cc",
         ],
     }) + select({
         "//tensorflow:with_xla_support": [

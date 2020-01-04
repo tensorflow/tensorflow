@@ -18,7 +18,6 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
-import enum
 import functools
 import sys
 import threading
@@ -29,10 +28,8 @@ import numpy as np
 import six
 from six.moves import queue as Queue  # pylint: disable=redefined-builtin
 
-
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python import tf2
-from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.experimental.ops import optimization_options
 from tensorflow.python.data.experimental.ops import stats_options
@@ -66,7 +63,6 @@ from tensorflow.python.ops import gen_io_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import string_ops
-from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as tracking_base
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import deprecation
@@ -91,21 +87,9 @@ autograph = lazy_loader.LazyLoader(
 
 ops.NotDifferentiable("ReduceDataset")
 
-
 # A constant that can be used to enable auto-tuning.
 AUTOTUNE = -1
 tf_export("data.experimental.AUTOTUNE").export_constant(__name__, "AUTOTUNE")
-
-
-class AutotuneAlgorithm(enum.Enum):
-  HILL_CLIMB = 0
-  GRADIENT_DESCENT = 1
-
-
-class ExternalStatePolicy(enum.Enum):
-  WARN = 0
-  IGNORE = 1
-  FAIL = 2
 
 
 @tf_export("data.Dataset", v1=[])
@@ -123,7 +107,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
   Iteration happens in a streaming fashion, so the full dataset does not need to
   fit into memory.
 
-  # Source Datasets
+  Source Datasets:
 
   The simplest way to create a dataset is to create it from a python `list`:
 
@@ -150,7 +134,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
   See `tf.data.FixedLengthRecordDataset` and `tf.data.Dataset.from_generator`
   for more ways to create datasets.
 
-  # Transformations
+  Transformations:
 
   Once you have a dataset, you can apply transformations to prepare the data for
   your model:
@@ -160,7 +144,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
   >>> list(dataset.as_numpy_iterator())
   [2, 4, 6]
 
-  # Common Terms
+  Common Terms:
 
   **Element**: A single output from calling `next()` on a dataset iterator.
     Elements may be nested structures containing multiple components. For
@@ -168,7 +152,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     tuple. The components are `1`, `3`, and `"apple"`.
   **Component**: The leaf in the nested structure of an element.
 
-  # Supported types
+  Supported types:
 
   Elements can be nested structures of tuples, named tuples, and dictionaries.
   Element components can be of any type representable by `tf.TypeSpec`,
@@ -182,6 +166,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
   >>> Point = collections.namedtuple("Point", ["x", "y"]) # doctest: +SKIP
   >>> e = Point(1, 2) # Named tuple # doctest: +SKIP
   >>> f = tf.data.Dataset.range(10) # Dataset element
+
   """
 
   def __init__(self, variant_tensor):
@@ -217,10 +202,11 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
 
   @deprecation.deprecated_args(None, "Use external_state_policy instead",
                                "allow_stateful")
-  def _as_serialized_graph(self,
-                           allow_stateful=None,
-                           strip_device_assignment=None,
-                           external_state_policy=ExternalStatePolicy.WARN):
+  def _as_serialized_graph(
+      self,
+      allow_stateful=None,
+      strip_device_assignment=None,
+      external_state_policy=distribute_options.ExternalStatePolicy.WARN):
     """Produces serialized graph representation of the dataset.
 
     Args:
@@ -228,15 +214,15 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
         def. In that case, the state in these ops would be thrown away.
       strip_device_assignment: If true, non-local (i.e. job and task) device
         assignment is stripped from ops in the serialized graph.
-      external_state_policy: The ExternalStatePolicy enum that determines how
-        we handle input pipelines that depend on external state. By default,
-        its set to WARN.
+      external_state_policy: The ExternalStatePolicy enum that determines how we
+        handle input pipelines that depend on external state. By default, its
+        set to WARN.
 
     Returns:
       A scalar `tf.Tensor` of `tf.string` type, representing this dataset as a
       serialized graph.
     """
-    if compat.forward_compatible(2019, 11, 25) or external_state_policy:
+    if external_state_policy:
       policy = None
       if external_state_policy:
         policy = external_state_policy.value
@@ -244,7 +230,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
           self._variant_tensor,
           external_state_policy=policy,
           strip_device_assignment=strip_device_assignment)
-    if compat.forward_compatible(2019, 11, 16) or strip_device_assignment:
+    if strip_device_assignment:
       return gen_dataset_ops.dataset_to_graph(
           self._variant_tensor,
           allow_stateful=allow_stateful,
@@ -319,10 +305,10 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
       # If the captured tensor is an eager tensor, we cannot trace its inputs.
       if isinstance(tensor, ops._EagerTensorBase):  # pylint: disable=protected-access
         return False
-      return any([is_tensor_or_parent_ref(x) for x in tensor.op.inputs])
+      return any(is_tensor_or_parent_ref(x) for x in tensor.op.inputs)
 
     for fn in self._functions():
-      if any([is_tensor_or_parent_ref(t) for t in fn.function.captured_inputs]):
+      if any(is_tensor_or_parent_ref(t) for t in fn.function.captured_inputs):
         return True
 
     return any(
@@ -356,6 +342,8 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
 
     dataset = self
     options = self.options()
+
+    # (1) Apply threading options
     if options.experimental_threading is not None:
       t_options = options.experimental_threading
       if t_options.max_intra_op_parallelism is not None:
@@ -364,36 +352,31 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
       if t_options.private_threadpool_size is not None:
         dataset = _PrivateThreadPoolDataset(dataset,
                                             t_options.private_threadpool_size)
+
+    # (2) Apply graph rewrite options
     # pylint: disable=protected-access
-    static_optimizations = options._static_optimizations()
-    static_optimization_configs = options._static_optimization_configs()
+    graph_rewrites = options._graph_rewrites()
+    graph_rewrite_configs = options._graph_rewrite_configs()
     # pylint: enable=protected-access
-    if static_optimizations:
+    if graph_rewrites:
       if self._has_captured_ref():
         warnings.warn(
-            "tf.data static optimizations are not compatible with tf.Variable. "
-            "The following optimizations will be disabled: %s. To enable "
-            "optimizations, use resource variables instead by calling "
+            "tf.data graph rewrites are not compatible with tf.Variable. "
+            "The following rewrites will be disabled: %s. To enable "
+            "rewrites, use resource variables instead by calling "
             "`tf.enable_resource_variables()` at the start of the program." %
-            ", ".join(static_optimizations))
+            ", ".join(graph_rewrites))
       else:
-        dataset = _OptimizeDataset(dataset, static_optimizations,
-                                   static_optimization_configs)
+        dataset = _OptimizeDataset(dataset, graph_rewrites,
+                                   graph_rewrite_configs)
 
-    autotune = True
-    algorithm = AutotuneAlgorithm.HILL_CLIMB
-    cpu_budget = 0  # Indicates that all CPU cores should be used.
-    if options.experimental_optimization is not None:
-      if options.experimental_optimization.autotune is False:  # pylint: disable=g-bool-id-comparison
-        autotune = False
-      if options.experimental_optimization.autotune_algorithm is not None:
-        algorithm = options.experimental_optimization.autotune_algorithm
-      if options.experimental_optimization.autotune_cpu_budget is not None:
-        cpu_budget = options.experimental_optimization.autotune_cpu_budget
+    # (3) Apply autotune options
+    autotune, algorithm, cpu_budget = options._autotune_settings()  # pylint: disable=protected-access
 
     if autotune:
       dataset = _ModelDataset(dataset, algorithm, cpu_budget)
 
+    # (4) Apply stats aggregator options
     if options.experimental_stats and options.experimental_stats.aggregator:  # pylint: disable=line-too-long
       dataset = _SetStatsAggregatorDataset(  # pylint: disable=protected-access
           dataset, options.experimental_stats.aggregator,
@@ -880,7 +863,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     return id_dataset.flat_map(flat_map_fn)
 
   @staticmethod
-  def range(*args):
+  def range(*args, **kwargs):
     """Creates a `Dataset` of a step-separated range of values.
 
     >>> list(Dataset.range(5).as_numpy_iterator())
@@ -895,12 +878,18 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     []
     >>> list(Dataset.range(5, 1, -2).as_numpy_iterator())
     [5, 3]
+    >>> list(Dataset.range(2, 5, output_type=tf.int32).as_numpy_iterator())
+    [2, 3, 4]
+    >>> list(Dataset.range(1, 5, 2, output_type=tf.float32).as_numpy_iterator())
+    [1.0, 3.0]
 
     Args:
       *args: follows the same semantics as python's xrange.
         len(args) == 1 -> start = 0, stop = args[0], step = 1
         len(args) == 2 -> start = args[0], stop = args[1], step = 1
         len(args) == 3 -> start = args[0], stop = args[1, stop = args[2]
+      **kwargs:
+        - output_type: Its expected dtype. (Optional, default: `tf.int64`).
 
     Returns:
       Dataset: A `RangeDataset`.
@@ -908,7 +897,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     Raises:
       ValueError: if len(args) == 0.
     """
-    return RangeDataset(*args)
+    return RangeDataset(*args, **kwargs)
 
   @staticmethod
   def zip(datasets):
@@ -1176,7 +1165,6 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     [1, 0, 2]
     >>> list(dataset.as_numpy_iterator())  # doctest: +SKIP
     [1, 0, 2]
-    ```
 
     Args:
       buffer_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
@@ -1401,7 +1389,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
 
     Unlike `tf.data.Dataset.batch`, the input elements to be batched may have
     different shapes, and this transformation will pad each component to the
-    respective shape in `padding_shapes`. The `padding_shapes` argument
+    respective shape in `padded_shapes`. The `padded_shapes` argument
     determines the resulting shape for each dimension of each component in an
     output element:
 
@@ -1441,19 +1429,18 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     [[ 6  7 -1]
      [ 8 -1 -1]]
     >>> # Components of nested elements can be padded independently.
-    >>> elements = [{'v1': [1, 2, 3], 'v2': [10]},
-    ...             {'v1': [4, 5], 'v2': [11, 12]}]
+    >>> elements = [([1, 2, 3], [10]),
+    ...             ([4, 5], [11, 12])]
     >>> dataset = tf.data.Dataset.from_generator(
-    ...     lambda: iter(elements), {'v1': tf.int32, 'v2': tf.int32})
-    >>> # Pad 'val1' to length 4, and 'val2' to the smallest size that fits.
+    ...     lambda: iter(elements), (tf.int32, tf.int32))
+    >>> # Pad the first component of the tuple to length 4, and the second
+    >>> # component to the smallest size that fits.
     >>> dataset = dataset.padded_batch(2,
-    ...     padded_shapes={'v1': [4], 'v2': [None]},
-    ...     padding_values={'v1': -1, 'v2': 100})
+    ...     padded_shapes=([4], [None]),
+    ...     padding_values=(-1, 100))
     >>> list(dataset.as_numpy_iterator())
-    [{'v1': array([[ 1,  2,  3, -1],
-           [ 4,  5, -1, -1]], dtype=int32), 'v2': array([[ 10, 100],
-           [ 11,  12]], dtype=int32)}]
-
+    [(array([[ 1,  2,  3, -1], [ 4,  5, -1, -1]], dtype=int32),
+      array([[ 10, 100], [ 11,  12]], dtype=int32))]
 
     See also `tf.data.experimental.dense_to_sparse_batch`, which combines
     elements that may have different shapes into a `tf.SparseTensor`.
@@ -1469,8 +1456,9 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
         maximum size of that dimension in each batch.
       padding_values: (Optional.) A nested structure of scalar-shaped
         `tf.Tensor`, representing the padding values to use for the respective
-        components.  Defaults are `0` for numeric types and the empty string for
-        string types.
+        components. None represents that the nested structure should be padded
+        with default values.  Defaults are `0` for numeric types and the empty
+        string for string types.
       drop_remainder: (Optional.) A `tf.bool` scalar `tf.Tensor`, representing
         whether the last batch should be dropped in the case it has fewer than
         `batch_size` elements; the default behavior is not to drop the smaller
@@ -1532,23 +1520,26 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     >>> def g(x):
     ...   return tf.constant(37.0), tf.constant(["Foo", "Bar", "Baz"])
     >>> result = dataset.map(g)
-    >>> result
-    <MapDataset shapes: ((), (3,)), types: (tf.float32, tf.string)>
+    >>> result.element_spec
+    (TensorSpec(shape=(), dtype=tf.float32, name=None), TensorSpec(shape=(3,), \
+dtype=tf.string, name=None))
     >>> # Python primitives, lists, and NumPy arrays are implicitly converted to
     >>> # `tf.Tensor`.
     >>> def h(x):
     ...   return 37.0, ["Foo", "Bar"], np.array([1.0, 2.0], dtype=np.float64)
     >>> result = dataset.map(h)
-    >>> result
-    <MapDataset shapes: ((), (2,), (2,)), \
-types: (tf.float32, tf.string, tf.float64)>
+    >>> result.element_spec
+    (TensorSpec(shape=(), dtype=tf.float32, name=None), TensorSpec(shape=(2,), \
+dtype=tf.string, name=None), TensorSpec(shape=(2,), dtype=tf.float64, \
+name=None))
     >>> # `map_func` can return nested structures.
     >>> def i(x):
-    ...   return {"a": 37.0, "b": [42, 16]}, "foo"
+    ...   return (37.0, [42, 16]), "foo"
     >>> result = dataset.map(i)
-    >>> result
-    <MapDataset shapes: ({a: (), b: (2,)}, ()), \
-types: ({a: tf.float32, b: tf.int32}, tf.string)>
+    >>> result.element_spec
+    ((TensorSpec(shape=(), dtype=tf.float32, name=None),
+      TensorSpec(shape=(2,), dtype=tf.int32, name=None)),
+     TensorSpec(shape=(), dtype=tf.string, name=None))
 
     `map_func` can accept as arguments and return any type of dataset element.
 
@@ -2236,8 +2227,8 @@ class DatasetV1(DatasetV2):
 
   @staticmethod
   @functools.wraps(DatasetV2.range)
-  def range(*args):
-    return DatasetV1Adapter(DatasetV2.range(*args))
+  def range(*args, **kwargs):
+    return DatasetV1Adapter(DatasetV2.range(*args, **kwargs))
 
   @staticmethod
   @functools.wraps(DatasetV2.zip)
@@ -2435,26 +2426,25 @@ class DatasetV1Adapter(DatasetV1):
 
 def _ensure_same_dataset_graph(dataset):
   """Walks the dataset graph to ensure all datasets come from the same graph."""
+  # pylint: disable=protected-access
   current_graph = ops.get_default_graph()
   bfs_q = Queue.Queue()
-  bfs_q.put(dataset)  # pylint: disable=protected-access
+  bfs_q.put(dataset)
   visited = []
   while not bfs_q.empty():
     ds = bfs_q.get()
     visited.append(ds)
-    ds_graph = ds._graph  # pylint: disable=protected-access
+    ds_graph = ds._graph
     if current_graph != ds_graph:
-      logging.warning("The graph (" + str(current_graph) + ") of the iterator "
-                      "is different from the graph (" + str(ds_graph) + ") "
-                      "the dataset: " + str(ds._variant_tensor) + " was "  # pylint: disable=protected-access
-                      "created in. If you are using the Estimator API, "
-                      "make sure that no part of the dataset returned by the "
-                      "`input_fn` function is defined outside the `input_fn` "
-                      "function. Please ensure that all datasets in the "
-                      "pipeline are created in the same graph as the iterator. "
-                      "NOTE: This warning will become an error in future "
-                      "versions of TensorFlow.")
-    for input_ds in ds._inputs():  # pylint: disable=protected-access
+      raise ValueError(
+          "The graph (" + str(current_graph) + ") of the iterator is different "
+          "from the graph (" + str(ds_graph) + ") the dataset: " +
+          str(ds._variant_tensor) + " was  created in. If you are using the "
+          "Estimator API, make sure that no part of the dataset returned by "
+          "the `input_fn` function is defined outside the `input_fn` function. "
+          "Please ensure that all datasets in the pipeline are created in the "
+          "same graph as the iterator.")
+    for input_ds in ds._inputs():
       if input_ds not in visited:
         bfs_q.put(input_ds)
 
@@ -2600,7 +2590,7 @@ def get_legacy_output_types(dataset_or_iterator):
 class Options(options_lib.OptionsBase):
   """Represents options for tf.data.Dataset.
 
-  An `Options` object can be, for instance, used to control which static
+  An `Options` object can be, for instance, used to control which graph
   optimizations to apply or whether to use performance modeling to dynamically
   tune the parallelism of operations such as `tf.data.Dataset.map` or
   `tf.data.Dataset.interleave`.
@@ -2664,7 +2654,7 @@ class Options(options_lib.OptionsBase):
 
   experimental_external_state_policy = options_lib.create_option(
       name="experimental_external_state_policy",
-      ty=ExternalStatePolicy,
+      ty=distribute_options.ExternalStatePolicy,
       docstring="By default, tf.data will refuse to serialize a dataset or "
       "checkpoint its iterator if the dataset contains a stateful op as the "
       "serialization / checkpointing won't be able to capture its state. "
@@ -2673,13 +2663,17 @@ class Options(options_lib.OptionsBase):
       "in these ops. There are three settings available - IGNORE: in which we"
       "completely ignore any state; WARN: We warn the user that some state "
       "might be thrown away; FAIL: We fail if any state is being captured.",
-      default_factory=lambda: ExternalStatePolicy.WARN)
+      default_factory=lambda: distribute_options.ExternalStatePolicy.WARN)
 
-  def _static_optimizations(self):
-    """Produces the list of enabled static optimizations."""
-
+  def _graph_rewrites(self):
+    """Produces the list of enabled static graph rewrites."""
     result = []
-    result.extend(self.experimental_optimization._static_optimizations())  # pylint: disable=protected-access
+    if self.experimental_optimization is not None:
+      result.extend(self.experimental_optimization._graph_rewrites())  # pylint: disable=protected-access
+    else:
+      # Apply default options
+      result.extend(
+          optimization_options.OptimizationOptions()._graph_rewrites())  # pylint: disable=protected-access
 
     if self.experimental_deterministic is False:
       result.append("make_sloppy")
@@ -2692,12 +2686,11 @@ class Options(options_lib.OptionsBase):
       result.append("make_stateless")
     return result
 
-  def _static_optimization_configs(self):
-    """Produces the list of configurations for enabled static optimizations."""
+  def _graph_rewrite_configs(self):
+    """Produces the list of configurations for enabled graph optimizations."""
     result = []
     if self.experimental_optimization:
-      result.extend(
-          self.experimental_optimization._static_optimization_configs())  # pylint: disable=protected-access
+      result.extend(self.experimental_optimization._graph_rewrite_configs())  # pylint: disable=protected-access
 
     if self.experimental_slack:
       num_devices = self.experimental_distribute.num_devices
@@ -2705,6 +2698,13 @@ class Options(options_lib.OptionsBase):
         num_devices = 1
       result.append("slack:slack_period:%d" % num_devices)
     return result
+
+  def _autotune_settings(self):
+    if self.experimental_optimization is not None:
+      return self.experimental_optimization._autotune_settings()  # pylint: disable=protected-access
+
+    # Return default autotune options
+    return optimization_options.OptimizationOptions()._autotune_settings()  # pylint: disable=protected-access
 
   def merge(self, options):
     """Merges itself with the given `tf.data.Options`.
@@ -3143,7 +3143,7 @@ class StructuredFunctionWrapper(object):
       resource_tracker = tracking.ResourceTracker()
       with tracking.resource_tracker_scope(resource_tracker):
         # TODO(b/141462134): Switch to using garbage collection.
-        self._function = wrapper_fn._get_concrete_function_internal()
+        self._function = wrapper_fn.get_concrete_function()
 
         if add_to_graph:
           self._function.add_to_graph(ops.get_default_graph())
@@ -3343,10 +3343,10 @@ class RepeatDataset(UnaryUnchangedStructureDataset):
 class RangeDataset(DatasetSource):
   """A `Dataset` of a step separated range of values."""
 
-  def __init__(self, *args):
+  def __init__(self, *args, **kwargs):
     """See `Dataset.range()` for details."""
-    self._parse_args(*args)
-    self._structure = tensor_spec.TensorSpec([], dtypes.int64)
+    self._parse_args(*args, **kwargs)
+    self._structure = tensor_spec.TensorSpec([], self._output_type)
     variant_tensor = gen_dataset_ops.range_dataset(
         start=self._start,
         stop=self._stop,
@@ -3354,7 +3354,7 @@ class RangeDataset(DatasetSource):
         **self._flat_structure)
     super(RangeDataset, self).__init__(variant_tensor)
 
-  def _parse_args(self, *args):
+  def _parse_args(self, *args, **kwargs):
     """Parse arguments according to the same rules as the `range()` builtin."""
     if len(args) == 1:
       self._start = self._build_tensor(0, "start")
@@ -3370,6 +3370,10 @@ class RangeDataset(DatasetSource):
       self._step = self._build_tensor(args[2], "step")
     else:
       raise ValueError("Invalid arguments to RangeDataset: %s" % str(args))
+    if "output_type" in kwargs:
+      self._output_type = kwargs["output_type"]
+    else:
+      self._output_type = dtypes.int64
 
   def _build_tensor(self, int64_value, name):
     return ops.convert_to_tensor(int64_value, dtype=dtypes.int64, name=name)
@@ -3765,8 +3769,8 @@ def _padding_value_to_tensor(value, output_type):
   return value
 
 
-def _default_padding(input_dataset):
-  """Returns default padding tensors in a structure matching `input_dataset`."""
+def _padding_values_or_default(padding_values, input_dataset):
+  """Returns padding values with None elements replaced with default values."""
   def make_zero(t):
     if t.base_dtype == dtypes.string:
       return ""
@@ -3778,9 +3782,13 @@ def _default_padding(input_dataset):
       raise TypeError(error_msg)
     else:
       return np.zeros_like(t.as_numpy_dtype())
+  def value_or_default(value, default):
+    return default if value is None else value
 
-  return nest.map_structure(
-      make_zero, get_legacy_output_types(input_dataset))
+  default_padding = nest.map_structure(make_zero,
+                                       get_legacy_output_types(input_dataset))
+  return nest.map_structure_up_to(padding_values, value_or_default,
+                                  padding_values, default_padding)
 
 
 class PaddedBatchDataset(UnaryDataset):
@@ -3797,9 +3805,7 @@ class PaddedBatchDataset(UnaryDataset):
     self._input_dataset = input_dataset
     self._batch_size = ops.convert_to_tensor(
         batch_size, dtype=dtypes.int64, name="batch_size")
-    padding_values = (
-        padding_values
-        if padding_values is not None else _default_padding(input_dataset))
+    padding_values = _padding_values_or_default(padding_values, input_dataset)
 
     input_shapes = get_legacy_output_shapes(input_dataset)
     flat_padded_shapes = nest.flatten_up_to(input_shapes, padded_shapes)
@@ -4177,20 +4183,11 @@ class _ModelDataset(UnaryUnchangedStructureDataset):
 
   def __init__(self, input_dataset, algorithm, cpu_budget):
     self._input_dataset = input_dataset
-    # TODO(jsimsa): This check is introduced for forward compatibility and can
-    # be removed after 7/24/2019. At that point, all servers are expected to
-    # recognize the `algorithm` attribute.
-    if algorithm != AutotuneAlgorithm.HILL_CLIMB:
-      variant_tensor = gen_dataset_ops.model_dataset(
-          input_dataset._variant_tensor,  # pylint: disable=protected-access
-          algorithm=algorithm,
-          cpu_budget=cpu_budget,
-          **self._flat_structure)
-    else:
-      variant_tensor = gen_dataset_ops.model_dataset(
-          input_dataset._variant_tensor,  # pylint: disable=protected-access
-          cpu_budget=cpu_budget,
-          **self._flat_structure)
+    variant_tensor = gen_dataset_ops.model_dataset(
+        input_dataset._variant_tensor,  # pylint: disable=protected-access
+        algorithm=algorithm.value,
+        cpu_budget=cpu_budget,
+        **self._flat_structure)
     super(_ModelDataset, self).__init__(input_dataset, variant_tensor)
 
 

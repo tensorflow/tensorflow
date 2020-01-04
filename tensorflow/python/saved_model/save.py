@@ -147,7 +147,7 @@ class _AugmentedGraphView(graph_view.ObjectGraphView):
 class _SaveableView(object):
   """Provides a frozen view over a trackable root.
 
-  This class helps creating a single stable view over an object to save. The
+  This class helps to create a single stable view over an object to save. The
   saving code should access properties and functions via this class and not via
   the original object as there are cases where an object construct their
   trackable attributes and functions dynamically per call and will yield
@@ -252,22 +252,18 @@ class _SaveableView(object):
         # pylint: enable=protected-access
         resource_map[obj.resource_handle] = new_resource
         self.captured_tensor_node_ids[obj.resource_handle] = node_id
-      elif ds_values.is_distributed_variable(obj):
-        # Put both the distributed variable and component variable handles in
-        # `captured_tensor_node_ids`.
-        # Also create a new distributed variable for `object_map` with newly
-        # created component variables.
-        new_vars = []
-        for v in obj.values:
-          new_variable = resource_variable_ops.copy_to_graph_uninitialized(v)
-          object_map[v] = new_variable
-          new_vars.append(new_variable)
-          resource_map[v.handle] = new_variable.handle
-          self.captured_tensor_node_ids[v.handle] = node_id
-        object_map[obj] = obj._clone_with_new_values(new_vars)  # pylint: disable=protected-access
-        self.captured_tensor_node_ids[obj] = node_id
-      elif resource_variable_ops.is_resource_variable(obj):
-        new_variable = resource_variable_ops.copy_to_graph_uninitialized(obj)
+      elif (ds_values.is_distributed_variable(obj) or
+            resource_variable_ops.is_resource_variable(obj)):
+        obj_to_copy = obj.primary if ds_values.is_distributed_variable(
+            obj) else obj
+        new_variable = resource_variable_ops.copy_to_graph_uninitialized(
+            obj_to_copy)
+        if ds_values.is_distributed_variable(obj):
+          self.captured_tensor_node_ids[obj] = node_id
+          for v in obj.values:
+            object_map[v] = new_variable
+            resource_map[v.handle] = new_variable.handle
+            self.captured_tensor_node_ids[v.handle] = node_id
         object_map[obj] = new_variable
         resource_map[obj.handle] = new_variable.handle
         self.captured_tensor_node_ids[obj.handle] = node_id
@@ -275,6 +271,11 @@ class _SaveableView(object):
         _process_asset(obj, asset_info, resource_map)
         self.captured_tensor_node_ids[obj.asset_path] = node_id
 
+    # Note: some concrete functions can have been realized when tracing other
+    # functions, and might closure-capture tensors from their parent functions.
+    # This is normal, but it means those concrete functions can't be serialized
+    # as their own independent endpoints, so we filter them out here.
+    bad_functions = []
     for concrete_function in self.concrete_functions:
       if not concrete_function.graph.saveable:
         raise ValueError(
@@ -287,10 +288,8 @@ class _SaveableView(object):
             and capture not in self.captured_tensor_node_ids):
           capture_constant_value = tensor_util.constant_value(capture)
           if capture_constant_value is None:
-            raise ValueError(
-                ("Attempted to save a function {} which references a symbolic "
-                 "Tensor {} that is not a simple constant. This is not "
-                 "supported.").format(concrete_function.name, capture))
+            bad_functions.append(concrete_function)
+            continue
           copied_tensor = constant_op.constant(capture_constant_value)
           node_id = len(self.nodes)
           node = _CapturedConstant(
@@ -301,6 +300,9 @@ class _SaveableView(object):
           self.captured_tensor_node_ids[capture] = node_id
           resource_map[capture] = copied_tensor
 
+    self.concrete_functions = [
+        x for x in self.concrete_functions if x not in bad_functions
+    ]
     return object_map, resource_map, asset_info
 
 
@@ -747,7 +749,7 @@ def save(obj, export_dir, signatures=None, options=None):
   having any shape and dtype float32.
 
   The optional `signatures` argument controls which methods in `obj` will be
-  available to programs which consume `SavedModel`s, for example serving
+  available to programs which consume `SavedModel`s, for example, serving
   APIs. Python functions may be decorated with
   `@tf.function(input_signature=...)` and passed as signatures directly, or
   lazily with a call to `get_concrete_function` on the method decorated with
@@ -826,21 +828,21 @@ def save(obj, export_dir, signatures=None, options=None):
   automatically. This is the same tracking scheme that `tf.train.Checkpoint`
   uses, and an exported `Checkpoint` object may be restored as a training
   checkpoint by pointing `tf.train.Checkpoint.restore` to the SavedModel's
-  "variables/" subdirectory. Currently variables are the only stateful objects
+  "variables/" subdirectory. Currently, variables are the only stateful objects
   supported by `tf.saved_model.save`, but others (e.g. tables) will be supported
   in the future.
 
   `tf.function` does not hard-code device annotations from outside the function
-  body, instead using the calling context's device. This means for example that
-  exporting a model which runs on a GPU and serving it on a CPU will generally
-  work, with some exceptions. `tf.device` annotations inside the body of the
-  function will be hard-coded in the exported model; this type of annotation is
-  discouraged. Device-specific operations, e.g. with "cuDNN" in the name or with
-  device-specific layouts, may cause issues. Currently a `DistributionStrategy`
-  is another exception: active distribution strategies will cause device
-  placements to be hard-coded in a function. Exporting a single-device
-  computation and importing under a `DistributionStrategy` is not currently
-  supported, but may be in the future.
+  body, instead of using the calling context's device. This means for example
+  that exporting a model that runs on a GPU and serving it on a CPU will
+  generally work, with some exceptions. `tf.device` annotations inside the body
+  of the function will be hard-coded in the exported model; this type of
+  annotation is discouraged. Device-specific operations, e.g. with "cuDNN" in
+  the name or with device-specific layouts, may cause issues. Currently a
+  `DistributionStrategy` is another exception: active distribution strategies
+  will cause device placements to be hard-coded in a function. Exporting a
+  single-device computation and importing under a `DistributionStrategy` is
+  not currently supported, but may be in the future.
 
   SavedModels exported with `tf.saved_model.save` [strip default-valued
   attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes)
@@ -947,6 +949,6 @@ def save(obj, export_dir, signatures=None, options=None):
       path, saved_model.SerializeToString(deterministic=True))
 
   # Clean reference cycles so repeated export()s don't make work for the garbage
-  # collector. Before this point we need to keep references to captured
+  # collector. Before this point, we need to keep references to captured
   # constants in the saved graph.
   ops.dismantle_graph(exported_graph)

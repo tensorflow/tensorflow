@@ -46,7 +46,7 @@ tf_cc_binary(
             "//tensorflow/core:framework",
             "//tensorflow/core:framework_internal",
             "//tensorflow/core:lib",
-            "//tensorflow/core:protos_all",
+            "//tensorflow/core:protos_all_cc",
             "//tensorflow/core:tensorflow",
         ],
     }),
@@ -56,7 +56,7 @@ py_binary(
     name = "label_image_py",
     srcs = ["label_image.py"],
     main = "label_image.py",
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",

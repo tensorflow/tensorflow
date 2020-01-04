@@ -83,6 +83,7 @@ def _get_ground_truth_detections(instances_file,
     if image_id not in image_id_whitelist:
       continue
     image_data_dict = {}
+    image_data_dict['id'] = image_dict['id']
     image_data_dict['file_name'] = image_dict['file_name']
     all_file_names.append(image_data_dict['file_name'])
     image_data_dict['height'] = image_dict['height']
@@ -154,6 +155,7 @@ def _dump_data(ground_truth_detections, images_folder_path, output_folder_path):
   for image_dict in ground_truth_detections.values():
     # Create an ObjectsSet proto for this file's ground truth.
     detection_result = ground_truth_data.detection_results.add()
+    detection_result.image_id = image_dict['id']
     detection_result.image_name = image_dict['file_name']
     for detection_dict in image_dict['detections']:
       object_instance = detection_result.objects.add()

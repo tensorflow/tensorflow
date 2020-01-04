@@ -368,7 +368,6 @@ void BatchedNonMaxSuppressionOp(
       }
 
       std::vector<int> selected;
-      std::vector<float> selected_boxes;
       Candidate next_candidate;
 
       std::sort(candidate_vector.begin(), candidate_vector.end(), cmp);

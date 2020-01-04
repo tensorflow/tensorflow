@@ -63,7 +63,7 @@ class SparseTensorSliceDatasetParams : public DatasetParams {
   DataType tvalues_;
 };
 
-class SparseTensorSliceDatasetOpTest : public DatasetOpsTestBaseV2 {};
+class SparseTensorSliceDatasetOpTest : public DatasetOpsTestBase {};
 
 SparseTensorSliceDatasetParams TwoDimsSparseTensorSliceDatasetParams() {
   return SparseTensorSliceDatasetParams(
@@ -397,11 +397,11 @@ TEST_P(ParameterizedIteratorSaveAndRestoreTest, IteratorSaveAndRestore) {
       EXPECT_TRUE(end_of_sequence);
     }
 
-    VariantTensorData data;
-    VariantTensorDataWriter writer(&data);
+    VariantTensorDataWriter writer;
     TF_ASSERT_OK(iterator_->Save(serialization_ctx.get(), &writer));
-    TF_ASSERT_OK(writer.Flush());
-    VariantTensorDataReader reader(&data);
+    std::vector<const VariantTensorData*> data;
+    writer.GetData(&data);
+    VariantTensorDataReader reader(data);
     TF_EXPECT_OK(RestoreIterator(iterator_ctx_.get(), &reader,
                                  test_case.dataset_params.iterator_prefix(),
                                  *dataset_, &iterator_));

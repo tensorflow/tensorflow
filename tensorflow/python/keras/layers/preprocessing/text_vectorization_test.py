@@ -23,16 +23,19 @@ import os
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.python.keras.layers.preprocessing import text_vectorization
-from tensorflow.python.keras.layers.preprocessing import text_vectorization_v1
-
 from tensorflow.python import keras
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
+from tensorflow.python.keras import backend
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.layers import convolutional
+from tensorflow.python.keras.layers import core
+from tensorflow.python.keras.layers import embeddings
+from tensorflow.python.keras.layers.preprocessing import text_vectorization
+from tensorflow.python.keras.layers.preprocessing import text_vectorization_v1
 from tensorflow.python.keras.layers.preprocessing import preprocessing_test_utils
 from tensorflow.python.keras.saving import saved_model_experimental as saving
 from tensorflow.python.keras.utils import generic_utils
@@ -77,6 +80,24 @@ def _get_end_to_end_test_cases():
           "vocab_data":
               np.array([["fire earth earth"], ["earth earth"], ["wind wind"],
                         ["and wind and"]]),
+          "input_data":
+              np.array([["earth wind and"], ["fire fire"], ["and earth"],
+                        ["michigan"]]),
+          "kwargs": {
+              "max_tokens": None,
+              "standardize": None,
+              "split": text_vectorization.SPLIT_ON_WHITESPACE,
+              "output_mode": text_vectorization.INT
+          },
+          "expected_output": [[2, 3, 4], [5, 5, 0], [4, 2, 0], [1, 0, 0]],
+      },
+      {
+          "testcase_name":
+              "test_documents_1d_input_int_mode",
+          "vocab_data":
+              np.array([
+                  "fire earth earth", "earth earth", "wind wind", "and wind and"
+              ]),
           "input_data":
               np.array([["earth wind and"], ["fire fire"], ["and earth"],
                         ["michigan"]]),
@@ -449,6 +470,34 @@ class TextVectorizationPreprocessingTest(
     with self.assertRaisesRegex(ValueError, ".*is not a supported splitting.*"):
       _ = layer(input_data)
 
+  def test_standardize_with_no_identical_argument(self):
+    input_array = np.array([["hello world"]])
+    expected_output = np.array([[1, 1]])
+
+    standardize = "".join(["lower", "_and_strip_punctuation"])
+    layer = get_layer_class()(standardize=standardize)
+
+    input_data = keras.Input(shape=(1,), dtype=dtypes.string)
+    output_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=output_data)
+    output = model.predict(input_array)
+
+    self.assertAllEqual(expected_output, output)
+
+  def test_splitting_with_no_identical_argument(self):
+    input_array = np.array([["hello world"]])
+    expected_output = np.array([[1, 1]])
+
+    split = "".join(["white", "space"])
+    layer = get_layer_class()(split=split)
+
+    input_data = keras.Input(shape=(1,), dtype=dtypes.string)
+    output_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=output_data)
+    output = model.predict(input_array)
+
+    self.assertAllEqual(expected_output, output)
+
 
 @keras_parameterized.run_all_keras_modes
 class TextVectorizationOutputTest(
@@ -501,6 +550,10 @@ class TextVectorizationOutputTest(
                             ["fire and earth michigan"]])
     expected_output = [[2, 3, 4, 1, 5], [5, 4, 2, 1, 0]]
 
+    # This test doesn't explicitly set an output shape, so the 2nd dimension
+    # should stay 'None'.
+    expected_output_shape = [None, None]
+
     # The input shape here is explicitly 1 because we're tokenizing.
     input_data = keras.Input(shape=(1,), dtype=dtypes.string)
     layer = get_layer_class()(
@@ -510,6 +563,8 @@ class TextVectorizationOutputTest(
         output_mode=text_vectorization.INT)
     layer.set_vocabulary(vocab_data)
     int_data = layer(input_data)
+    self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
+
     model = keras.Model(inputs=input_data, outputs=int_data)
     output_dataset = model.predict(input_array)
     self.assertAllEqual(expected_output, output_dataset)
@@ -523,6 +578,9 @@ class TextVectorizationOutputTest(
                             ["fire and earth michigan"]])
     expected_output = [[2, 3, 4, 1, 5, 0], [5, 4, 2, 1, 0, 0]]
 
+    output_sequence_length = 6
+    expected_output_shape = [None, output_sequence_length]
+
     # The input shape here is explicitly 1 because we're tokenizing.
     input_data = keras.Input(shape=(1,), dtype=dtypes.string)
     layer = get_layer_class()(
@@ -530,9 +588,11 @@ class TextVectorizationOutputTest(
         standardize=None,
         split=text_vectorization.SPLIT_ON_WHITESPACE,
         output_mode=text_vectorization.INT,
-        output_sequence_length=6)
+        output_sequence_length=output_sequence_length)
     layer.set_vocabulary(vocab_data)
     int_data = layer(input_data)
+    self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
+
     model = keras.Model(inputs=input_data, outputs=int_data)
     output_dataset = model.predict(input_array)
     self.assertAllEqual(expected_output, output_dataset)
@@ -545,6 +605,8 @@ class TextVectorizationOutputTest(
     input_array = np.array([["earth wind and also fire"],
                             ["fire and earth michigan"]])
     expected_output = [[2, 3, 4], [5, 4, 2]]
+    output_sequence_length = 3
+    expected_output_shape = [None, output_sequence_length]
 
     # The input shape here is explicitly 1 because we're tokenizing.
     input_data = keras.Input(shape=(1,), dtype=dtypes.string)
@@ -553,9 +615,11 @@ class TextVectorizationOutputTest(
         standardize=None,
         split=text_vectorization.SPLIT_ON_WHITESPACE,
         output_mode=text_vectorization.INT,
-        output_sequence_length=3)
+        output_sequence_length=output_sequence_length)
     layer.set_vocabulary(vocab_data)
     int_data = layer(input_data)
+    self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
+
     model = keras.Model(inputs=input_data, outputs=int_data)
     output_dataset = model.predict(input_array)
     self.assertAllEqual(expected_output, output_dataset)
@@ -568,6 +632,8 @@ class TextVectorizationOutputTest(
     input_array = np.array([["earth wind and also fire"],
                             ["fire and earth michigan"]])
     expected_output = [[2, 3, 4], [5, 4, 2]]
+    output_sequence_length = 3
+    expected_output_shape = [None, output_sequence_length]
 
     # The input shape here is explicitly 1 because we're tokenizing.
     input_data = keras.Input(shape=(1,), dtype=dtypes.string)
@@ -576,9 +642,11 @@ class TextVectorizationOutputTest(
         standardize=None,
         split=text_vectorization.SPLIT_ON_WHITESPACE,
         output_mode=text_vectorization.INT,
-        output_sequence_length=3)
+        output_sequence_length=output_sequence_length)
     layer.set_vocabulary(vocab_data)
     int_data = layer(input_data)
+    self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
+
     model = keras.Model(inputs=input_data, outputs=int_data)
     output_dataset = model.predict(input_array)
     self.assertAllEqual(expected_output, output_dataset)
@@ -600,16 +668,20 @@ class TextVectorizationOutputTest(
     expected_output = [[0, 1, 1, 1, 0, 0],
                        [1, 1, 0, 1, 0, 0]]
     # pyformat: enable
+    max_tokens = 6
+    expected_output_shape = [None, max_tokens]
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
     layer = get_layer_class()(
-        max_tokens=6,
+        max_tokens=max_tokens,
         standardize=None,
         split=None,
         output_mode=text_vectorization.BINARY,
         pad_to_max_tokens=True)
     layer.set_vocabulary(vocab_data)
     int_data = layer(input_data)
+    self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
+
     model = keras.Model(inputs=input_data, outputs=int_data)
     output_dataset = model.predict(input_array)
     self.assertAllEqual(expected_output, output_dataset)
@@ -623,6 +695,8 @@ class TextVectorizationOutputTest(
     expected_output = [[0, 1, 1, 1, 0],
                        [1, 1, 0, 1, 0]]
     # pyformat: enable
+    max_tokens = 5
+    expected_output_shape = [None, max_tokens]
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
     layer = get_layer_class()(
@@ -633,9 +707,172 @@ class TextVectorizationOutputTest(
         pad_to_max_tokens=False)
     layer.set_vocabulary(vocab_data)
     int_data = layer(input_data)
+    self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
+
     model = keras.Model(inputs=input_data, outputs=int_data)
     output_dataset = model.predict(input_array)
     self.assertAllEqual(expected_output, output_dataset)
+
+  def test_bag_output_hard_maximum_set_vocabulary_after_build(self):
+    vocab_data = ["earth", "wind", "and", "fire"]
+    input_array = np.array([["earth", "wind", "and", "earth"],
+                            ["ohio", "and", "earth", "michigan"]])
+
+    # pyformat: disable
+    expected_output = [[0, 1, 1, 1, 0],
+                       [1, 1, 0, 1, 0]]
+    # pyformat: enable
+    max_tokens = 5
+    expected_output_shape = [None, max_tokens]
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
+    layer = get_layer_class()(
+        max_tokens=max_tokens,
+        standardize=None,
+        split=None,
+        output_mode=text_vectorization.BINARY,
+        pad_to_max_tokens=True)
+    int_data = layer(input_data)
+    layer.set_vocabulary(vocab_data)
+    self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
+
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    output_dataset = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_dataset)
+
+  def test_bag_output_hard_maximum_adapt_after_build(self):
+    vocab_data = np.array([
+        "earth", "earth", "earth", "earth", "wind", "wind", "wind", "and",
+        "and", "fire"
+    ])
+    input_array = np.array([["earth", "wind", "and", "earth"],
+                            ["ohio", "and", "earth", "michigan"]])
+
+    # pyformat: disable
+    expected_output = [[0, 1, 1, 1, 0],
+                       [1, 1, 0, 1, 0]]
+    # pyformat: enable
+    max_tokens = 5
+    expected_output_shape = [None, max_tokens]
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
+    layer = get_layer_class()(
+        max_tokens=max_tokens,
+        standardize=None,
+        split=None,
+        output_mode=text_vectorization.BINARY,
+        pad_to_max_tokens=True)
+    int_data = layer(input_data)
+    layer.adapt(vocab_data)
+    self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
+
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    output_dataset = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_dataset)
+
+  def test_bag_output_hard_maximum_set_state_variables_after_build(self):
+    state_variables = {
+        text_vectorization._VOCAB_NAME: ["earth", "wind", "and", "fire"]
+    }
+    input_array = np.array([["earth", "wind", "and", "earth"],
+                            ["ohio", "and", "earth", "michigan"]])
+
+    # pyformat: disable
+    expected_output = [[0, 1, 1, 1, 0],
+                       [1, 1, 0, 1, 0]]
+    # pyformat: enable
+    max_tokens = 5
+    expected_output_shape = [None, max_tokens]
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
+    layer = get_layer_class()(
+        max_tokens=max_tokens,
+        standardize=None,
+        split=None,
+        output_mode=text_vectorization.BINARY,
+        pad_to_max_tokens=True)
+    int_data = layer(input_data)
+    layer._set_state_variables(state_variables)
+    self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
+
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    output_dataset = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_dataset)
+
+  def test_bag_output_soft_maximum_set_state_after_build(self):
+    vocab_data = ["earth", "wind", "and", "fire"]
+    input_array = np.array([["earth", "wind", "and", "earth"],
+                            ["ohio", "and", "earth", "michigan"]])
+
+    # pyformat: disable
+    expected_output = [[0, 1, 1, 1, 0],
+                       [1, 1, 0, 1, 0]]
+    # pyformat: enable
+    max_tokens = 5
+    expected_output_shape = [None, max_tokens]
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
+    layer = get_layer_class()(
+        max_tokens=10,
+        standardize=None,
+        split=None,
+        output_mode=text_vectorization.BINARY,
+        pad_to_max_tokens=False)
+    layer.build(input_data.shape)
+    layer.set_vocabulary(vocab_data)
+    int_data = layer(input_data)
+    self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
+
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    output_dataset = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_dataset)
+
+  def test_bag_output_soft_maximum_set_vocabulary_after_call_fails(self):
+    vocab_data = ["earth", "wind", "and", "fire"]
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
+    layer = get_layer_class()(
+        max_tokens=None,
+        standardize=None,
+        split=None,
+        output_mode=text_vectorization.BINARY,
+        pad_to_max_tokens=False)
+    _ = layer(input_data)
+    with self.assertRaisesRegex(RuntimeError, "vocabulary cannot be changed"):
+      layer.set_vocabulary(vocab_data)
+
+  def test_bag_output_soft_maximum_adapt_after_call_fails(self):
+    vocab_data = np.array([
+        "earth", "earth", "earth", "earth", "wind", "wind", "wind", "and",
+        "and", "fire"
+    ])
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
+    layer = get_layer_class()(
+        max_tokens=None,
+        standardize=None,
+        split=None,
+        output_mode=text_vectorization.BINARY,
+        pad_to_max_tokens=False)
+    _ = layer(input_data)
+    with self.assertRaisesRegex(RuntimeError, "vocabulary cannot be changed"):
+      layer.adapt(vocab_data)
+
+  def test_bag_output_soft_maximum_set_state_variables_after_call_fails(self):
+    state_variables = {
+        text_vectorization._VOCAB_NAME: ["earth", "wind", "and", "fire"]
+    }
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
+    layer = get_layer_class()(
+        max_tokens=None,
+        standardize=None,
+        split=None,
+        output_mode=text_vectorization.BINARY,
+        pad_to_max_tokens=False)
+    _ = layer(input_data)
+    with self.assertRaisesRegex(RuntimeError, "vocabulary cannot be changed"):
+      layer._set_state_variables(state_variables)
 
   def test_count_output_hard_maximum(self):
     vocab_data = ["earth", "wind", "and", "fire"]
@@ -646,6 +883,8 @@ class TextVectorizationOutputTest(
     expected_output = [[0, 2, 1, 1, 0, 0],
                        [2, 1, 0, 1, 0, 0]]
     # pyformat: enable
+    max_tokens = 6
+    expected_output_shape = [None, max_tokens]
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
     layer = get_layer_class()(
@@ -655,6 +894,8 @@ class TextVectorizationOutputTest(
         output_mode=text_vectorization.COUNT)
     layer.set_vocabulary(vocab_data)
     int_data = layer(input_data)
+    self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
+
     model = keras.Model(inputs=input_data, outputs=int_data)
     output_dataset = model.predict(input_array)
     self.assertAllEqual(expected_output, output_dataset)
@@ -668,6 +909,8 @@ class TextVectorizationOutputTest(
     expected_output = [[0, 2, 1, 1, 0],
                        [2, 1, 0, 1, 0]]
     # pyformat: enable
+    max_tokens = 5
+    expected_output_shape = [None, max_tokens]
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
     layer = get_layer_class()(
@@ -678,6 +921,8 @@ class TextVectorizationOutputTest(
         pad_to_max_tokens=False)
     layer.set_vocabulary(vocab_data)
     int_data = layer(input_data)
+    self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
+
     model = keras.Model(inputs=input_data, outputs=int_data)
     output_dataset = model.predict(input_array)
     self.assertAllEqual(expected_output, output_dataset)
@@ -694,6 +939,8 @@ class TextVectorizationOutputTest(
                        [.1, .5,   0,  0, .125, 0]]
     # pylint: enable=bad-whitespace
     # pyformat: enable
+    max_tokens = 6
+    expected_output_shape = [None, max_tokens]
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
     layer = get_layer_class()(
@@ -704,6 +951,8 @@ class TextVectorizationOutputTest(
         pad_to_max_tokens=True)
     layer.set_vocabulary(vocab_data, df_data=tfidf_data, oov_df_value=.05)
     int_data = layer(input_data)
+    self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
+
     model = keras.Model(inputs=input_data, outputs=int_data)
     output_dataset = model.predict(input_array)
     self.assertAllClose(expected_output, output_dataset)
@@ -720,6 +969,8 @@ class TextVectorizationOutputTest(
                        [.1, .5,   0,  0, .125]]
     # pylint: enable=bad-whitespace
     # pyformat: enable
+    max_tokens = 5
+    expected_output_shape = [None, max_tokens]
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
     layer = get_layer_class()(
@@ -730,6 +981,8 @@ class TextVectorizationOutputTest(
         pad_to_max_tokens=False)
     layer.set_vocabulary(vocab_data, df_data=tfidf_data, oov_df_value=.05)
     int_data = layer(input_data)
+    self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
+
     model = keras.Model(inputs=input_data, outputs=int_data)
     output_dataset = model.predict(input_array)
     self.assertAllClose(expected_output, output_dataset)
@@ -787,6 +1040,89 @@ class TextVectorizationOutputTest(
     model = keras.Model(inputs=input_data, outputs=int_data)
     output_dataset = model.predict(input_array)
     self.assertAllClose(expected_output, output_dataset)
+
+
+@keras_parameterized.run_all_keras_modes
+class TextVectorizationModelBuildingTest(
+    keras_parameterized.TestCase,
+    preprocessing_test_utils.PreprocessingLayerTest):
+
+  @parameterized.named_parameters(
+      {
+          "testcase_name": "count_hard_max",
+          "pad_to_max_tokens": True,
+          "output_mode": text_vectorization.COUNT
+      }, {
+          "testcase_name": "count_soft_max",
+          "pad_to_max_tokens": False,
+          "output_mode": text_vectorization.COUNT
+      }, {
+          "testcase_name": "binary_hard_max",
+          "pad_to_max_tokens": True,
+          "output_mode": text_vectorization.BINARY
+      }, {
+          "testcase_name": "binary_soft_max",
+          "pad_to_max_tokens": False,
+          "output_mode": text_vectorization.BINARY
+      }, {
+          "testcase_name": "tfidf_hard_max",
+          "pad_to_max_tokens": True,
+          "output_mode": text_vectorization.TFIDF
+      }, {
+          "testcase_name": "tfidf_soft_max",
+          "pad_to_max_tokens": False,
+          "output_mode": text_vectorization.TFIDF
+      })
+  def test_end_to_end_bagged_modeling(self, output_mode, pad_to_max_tokens):
+    vocab_data = ["earth", "wind", "and", "fire"]
+    tfidf_data = [.5, .25, .2, .125]
+    input_array = np.array([["earth", "wind", "and", "earth"],
+                            ["ohio", "and", "earth", "michigan"]])
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
+    layer = get_layer_class()(
+        max_tokens=10,
+        standardize=None,
+        split=None,
+        output_mode=output_mode,
+        pad_to_max_tokens=pad_to_max_tokens)
+    if output_mode == text_vectorization.TFIDF:
+      layer.set_vocabulary(vocab_data, df_data=tfidf_data, oov_df_value=.05)
+    else:
+      layer.set_vocabulary(vocab_data)
+
+    int_data = layer(input_data)
+    float_data = backend.cast(int_data, dtype="float32")
+    output_data = core.Dense(64)(float_data)
+    model = keras.Model(inputs=input_data, outputs=output_data)
+    _ = model.predict(input_array)
+
+  def test_end_to_end_vocab_modeling(self):
+    vocab_data = ["earth", "wind", "and", "fire"]
+    input_array = np.array([["earth wind and also fire"],
+                            ["fire and earth michigan"]])
+    output_sequence_length = 6
+    max_tokens = 5
+
+    # The input shape here is explicitly 1 because we're tokenizing.
+    input_data = keras.Input(shape=(1,), dtype=dtypes.string)
+    layer = get_layer_class()(
+        max_tokens=None,
+        standardize=None,
+        split=text_vectorization.SPLIT_ON_WHITESPACE,
+        output_mode=text_vectorization.INT,
+        output_sequence_length=output_sequence_length)
+    layer.set_vocabulary(vocab_data)
+    int_data = layer(input_data)
+    embedded_data = embeddings.Embedding(
+        input_dim=max_tokens + 1, output_dim=32)(
+            int_data)
+    output_data = convolutional.Conv1D(
+        250, 3, padding="valid", activation="relu", strides=1)(
+            embedded_data)
+
+    model = keras.Model(inputs=input_data, outputs=output_data)
+    _ = model.predict(input_array)
 
 
 @keras_parameterized.run_all_keras_modes(always_skip_eager=True)
@@ -907,6 +1243,10 @@ class TextVectorizationErrorTest(keras_parameterized.TestCase,
                                 ".*df_data should only be set if.*"):
       layer.set_vocabulary(vocab_data, df_data)
 
+  def test_zero_max_tokens_fails(self):
+    with self.assertRaisesRegex(ValueError, ".*max_tokens.*"):
+      _ = get_layer_class()(max_tokens=0)
+
   def test_non_string_dtype_fails(self):
     with self.assertRaisesRegex(ValueError, ".*dtype of string.*"):
       _ = get_layer_class()(dtype=dtypes.int64)
@@ -963,6 +1303,50 @@ class TextVectorizationSavingTest(
     keras_parameterized.TestCase,
     preprocessing_test_utils.PreprocessingLayerTest):
 
+  def test_saving_errors(self):
+    vocab_data = ["earth", "wind", "and", "fire"]
+
+    # Build and validate a golden model.
+    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
+    layer = get_layer_class()(
+        max_tokens=None,
+        standardize=None,
+        split=None,
+        output_mode=text_vectorization.INT)
+    layer.set_vocabulary(vocab_data)
+    int_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=int_data)
+
+    # Save the model to disk.
+    output_path = os.path.join(self.get_temp_dir(), "tf_keras_saved_model")
+
+    with self.assertRaisesRegex(NotImplementedError, ".*Saving is not yet.*"):
+      model.save(output_path, save_format="tf")
+
+  def test_saving_errors_when_nested(self):
+    vocab_data = ["earth", "wind", "and", "fire"]
+
+    # Build and validate a golden model.
+    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
+    layer = get_layer_class()(
+        max_tokens=None,
+        standardize=None,
+        split=None,
+        output_mode=text_vectorization.INT)
+    layer.set_vocabulary(vocab_data)
+    int_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=int_data)
+
+    outer_input = keras.Input(shape=(None,), dtype=dtypes.string)
+    outer_output = model(outer_input)
+    outer_model = keras.Model(inputs=outer_input, outputs=outer_output)
+
+    # Save the model to disk.
+    output_path = os.path.join(self.get_temp_dir(), "tf_keras_saved_model")
+
+    with self.assertRaisesRegex(NotImplementedError, ".*Saving is not yet.*"):
+      outer_model.save(output_path, save_format="tf")
+
   def test_serialization_with_custom_callables(self):
     input_array = np.array([["earth>wind>and Fire"],
                             ["\tfire>And\nearth>michigan"]])
@@ -987,7 +1371,7 @@ class TextVectorizationSavingTest(
     new_output_dataset = new_model.predict(input_array)
     self.assertAllEqual(expected_output, new_output_dataset)
 
-  def test_vocabulary_persistence_across_saving(self):
+  def DISABLED_test_vocabulary_persistence_across_saving(self):
     vocab_data = ["earth", "wind", "and", "fire"]
     input_array = np.array([["earth", "wind", "and", "fire"],
                             ["fire", "and", "earth", "michigan"]])
@@ -1008,7 +1392,7 @@ class TextVectorizationSavingTest(
 
     # Save the model to disk.
     output_path = os.path.join(self.get_temp_dir(), "tf_keras_saved_model")
-    saving.export_saved_model(model, output_path)
+    model.save(output_path, save_format="tf")
     loaded_model = saving.load_from_saved_model(
         output_path, custom_objects={"TextVectorization": get_layer_class()})
 
@@ -1019,7 +1403,7 @@ class TextVectorizationSavingTest(
     new_output_dataset = loaded_model.predict(input_array)
     self.assertAllEqual(new_output_dataset, expected_output)
 
-  def test_vocabulary_persistence_across_saving_with_tfidf(self):
+  def DISABLED_test_vocabulary_persistence_across_saving_with_tfidf(self):
     vocab_data = ["earth", "wind", "and", "fire"]
     tfidf_data = [.5, .25, .2, .125]
     input_array = np.array([["earth", "wind", "and", "earth"],
@@ -1048,7 +1432,7 @@ class TextVectorizationSavingTest(
 
     # Save the model to disk.
     output_path = os.path.join(self.get_temp_dir(), "tf_keras_saved_model")
-    saving.export_saved_model(model, output_path)
+    model.save(output_path, save_format="tf")
     loaded_model = saving.load_from_saved_model(
         output_path, custom_objects={"TextVectorization": get_layer_class()})
 

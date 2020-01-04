@@ -16,14 +16,39 @@ limitations under the License.
 
 namespace tensorflow {
 
-tensorflow::Status EagerOperation::SetDeviceName(const char* device) {
+tensorflow::Status EagerOperation::SetDeviceName(const char* device,
+                                                 const bool reset) {
   if (device != nullptr && strlen(device) > 0) {
-    if (!DeviceNameUtils::ParseFullName(device, &device_name_)) {
-      return errors::InvalidArgument("Malformed device specification '", device,
-                                     "' in eager op: ", DebugString());
+    if (device != raw_device_name_) {
+      if (!DeviceNameUtils::ParseFullName(device, &device_parsed_name_)) {
+        return errors::InvalidArgument("Malformed device specification '",
+                                       device,
+                                       "' in eager op: ", DebugString());
+      }
+      raw_device_name_ = device;
+      device_name_ =
+          DeviceNameUtils::HasSomeDetails(device_parsed_name_)
+              ? DeviceNameUtils::ParsedNameToString(device_parsed_name_)
+              : "";
     }
+  } else if (reset) {
+    raw_device_name_.clear();
+    device_name_.clear();
+    device_parsed_name_.Clear();
   }
   return Status::OK();
+}
+
+bool EagerOperation::IsLocal() const {
+  if (ctx_->remote_device_mgr() == nullptr) return true;
+
+  if (!device_parsed_name_.has_job && !device_parsed_name_.has_replica &&
+      !device_parsed_name_.has_task)
+    return true;
+  auto& host_cpu_name = ctx_->HostCPU()->parsed_name();
+  return device_parsed_name_.job == host_cpu_name.job &&
+         device_parsed_name_.replica == host_cpu_name.replica &&
+         device_parsed_name_.task == host_cpu_name.task;
 }
 
 string EagerOperation::DebugString() const {
@@ -31,8 +56,7 @@ string EagerOperation::DebugString() const {
   VLOG(1) << "EagerOperation::DebugString() over " << this;
 
   strings::StrAppend(&out, "Name: ", Name(), "\n");
-  strings::StrAppend(&out, "Device Name: [",
-                     DeviceNameUtils::ParsedNameToString(device_name_), "]\n");
+  strings::StrAppend(&out, "Device Name: [", device_name_, "]\n");
   strings::StrAppend(
       &out, "Device: ", Device() ? Device()->DebugString() : "[]", "\n");
   for (const auto& input : inputs_) {

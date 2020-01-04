@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/python/lib/core/bfloat16.h"
 #include "tensorflow/python/lib/core/ndarray_tensor_bridge.h"
+#include "tensorflow/python/lib/core/numpy.h"
 
 namespace tensorflow {
 namespace {
@@ -527,12 +528,12 @@ Status PyArrayToTF_Tensor(PyObject* ndarray, Safe_TF_TensorPtr* out_tensor) {
     size_t size = 0;
     void* encoded = nullptr;
     TF_RETURN_IF_ERROR(EncodePyBytesArray(array, nelems, &size, &encoded));
-    *out_tensor =
-        make_safe(TF_NewTensor(dtype, dims.data(), dims.size(), encoded, size,
-                               [](void* data, size_t len, void* arg) {
-                                 delete[] reinterpret_cast<char*>(data);
-                               },
-                               nullptr));
+    *out_tensor = make_safe(TF_NewTensor(
+        dtype, dims.data(), dims.size(), encoded, size,
+        [](void* data, size_t len, void* arg) {
+          delete[] reinterpret_cast<char*>(data);
+        },
+        nullptr));
   }
   return Status::OK();
 }

@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/python/lib/core/numpy.h"
 #include "tensorflow/python/lib/core/py_util.h"
@@ -64,12 +65,38 @@ bool IsPyFloat(PyObject* obj) {
          PyIsInstance(obj, &PyFloatingArrType_Type);  // NumPy float types
 }
 
+struct ConverterState {
+  // The inferred tensor shape.
+  TensorShape inferred_shape;
+
+  // The inferred tensor data type.
+  DataType inferred_dtype;
+
+  // The following fields are used by ZeroDimArrayToScalar.
+  // We cache the last result of the check for a zero dimensional array: the
+  // function is called many times in a conversion, and most of the time is
+  // to check for the same type. This cache can reduce the conversion time by
+  // about 25%.
+  PyTypeObject* last_zerodim_type;
+  bool last_zerodim_check;
+
+  ConverterState() : inferred_dtype(DT_INVALID), last_zerodim_type(nullptr) {}
+};
+
 // If the input is a zero dimensional PyArray return it converted to a scalar.
 // Otherwise return the input and increment its reference count.
 // Users must Py_DECREF the output of this method.
-PyObject* ZeroDimArrayToScalar(PyObject* obj) {
-  if (PyArray_IsZeroDim(obj) && !PyArray_IsScalar(obj, Generic)) {
-    auto pyarray_obj = reinterpret_cast<PyArrayObject*>(obj);
+PyObject* ZeroDimArrayToScalar(PyObject* obj, ConverterState* state) {
+  auto type = Py_TYPE(obj);
+  auto pyarray_obj = reinterpret_cast<PyArrayObject*>(obj);
+  if (type != state->last_zerodim_type) {
+    state->last_zerodim_type = type;
+    state->last_zerodim_check =
+        PyObject_TypeCheck(obj, &PyArray_Type) &&
+        !PyObject_TypeCheck(obj, &PyGenericArrType_Type);
+  }
+
+  if (state->last_zerodim_check && PyArray_NDIM(pyarray_obj) == 0) {
     obj = PyArray_ToScalar(PyArray_DATA(pyarray_obj), pyarray_obj);
   } else {
     Py_INCREF(obj);
@@ -115,28 +142,28 @@ Status SampleElementFromSequence(PyObject* seq, PyObject** elem) {
 tstring PyRepr(PyObject* obj);
 bool IsPyDimension(PyObject* obj);
 
-Status InferShapeAndType(PyObject* obj, TensorShape* shape, DataType* dtype) {
+Status InferShapeAndType(PyObject* obj, ConverterState* state) {
   std::vector<Safe_PyObjectPtr> refs_to_clean;
   while (true) {
     // Convert any zero dimensional numpy arrays to scalars first of all.
     // We also have to make sure a reference to the safe_obj is kept.
-    obj = ZeroDimArrayToScalar(obj);
+    obj = ZeroDimArrayToScalar(obj, state);
     refs_to_clean.push_back(make_safe(obj));
     // We test strings first, in case a string is considered a sequence.
     if (IsPyString(obj)) {
-      *dtype = DT_STRING;
+      state->inferred_dtype = DT_STRING;
     } else if (PySequence_Check(obj)) {
       auto length = PySequence_Length(obj);
       if (length > 0) {
-        shape->AddDim(length);
+        state->inferred_shape.AddDim(length);
         PyObject* elem = nullptr;
         TF_RETURN_IF_ERROR(SampleElementFromSequence(obj, &elem));
         obj = elem;
         refs_to_clean.push_back(make_safe(obj));
         continue;
       } else if (length == 0) {
-        shape->AddDim(length);
-        *dtype = DT_INVALID;  // Invalid dtype for empty tensors.
+        state->inferred_shape.AddDim(length);
+        state->inferred_dtype = DT_INVALID;  // Invalid dtype for empty tensors.
       } else {
         // The sequence does not have a valid length (PySequence_Length < 0).
         if (PyErr_Occurred()) {
@@ -151,21 +178,21 @@ Status InferShapeAndType(PyObject* obj, TensorShape* shape, DataType* dtype) {
         }
       }
     } else if (IsPyDouble(obj)) {
-      *dtype = DT_DOUBLE;
+      state->inferred_dtype = DT_DOUBLE;
     } else if (IsNumpyHalf(obj)) {
-      *dtype = DT_HALF;
+      state->inferred_dtype = DT_HALF;
     } else if (IsPyFloat(obj)) {
-      *dtype = DT_FLOAT;
+      state->inferred_dtype = DT_FLOAT;
     } else if (PyBool_Check(obj) || PyIsInstance(obj, &PyBoolArrType_Type)) {
       // Have to test for bool before int, since IsInt(True/False) == true.
-      *dtype = DT_BOOL;
+      state->inferred_dtype = DT_BOOL;
     } else if (IsPyInt(obj)) {
-      *dtype = DT_INT64;
+      state->inferred_dtype = DT_INT64;
     } else if (IsPyDimension(obj)) {
-      *dtype = DT_INT64;
+      state->inferred_dtype = DT_INT64;
     } else if (PyComplex_Check(obj) ||
                PyIsInstance(obj, &PyComplexFloatingArrType_Type)) {  // NumPy
-      *dtype = DT_COMPLEX128;
+      state->inferred_dtype = DT_COMPLEX128;
     } else {
       return errors::InvalidArgument("Attempt to convert a value (",
                                      PyRepr(obj),
@@ -211,35 +238,31 @@ struct ConverterTraits {
 
 template <class T>
 struct Converter {
-  static const char* Helper(PyObject* obj, const TensorShape& shape, T** buf) {
+  static const char* Helper(PyObject* obj, int depth, ConverterState* state,
+                            T** buf) {
     if (TF_PREDICT_FALSE(obj == nullptr)) {
       return ErrorConverting;
     }
-    if (shape.dims() > 1) {
+
+    Safe_PyObjectPtr seq = make_safe(PySequence_Fast(obj, ""));
+    if (TF_PREDICT_FALSE(seq == nullptr)) return ErrorRectangular;
+
+    const int64 s = state->inferred_shape.dim_size(depth);
+    if (TF_PREDICT_FALSE(s != PySequence_Fast_GET_SIZE(seq.get()))) {
+      return ErrorRectangular;
+    }
+
+    if (state->inferred_shape.dims() - depth > 1) {
       /* Iterate over outer dim, and recursively convert each element. */
-      const int64 s = shape.dim_size(0);
-      Safe_PyObjectPtr seq = make_safe(PySequence_Fast(obj, ""));
-      if (TF_PREDICT_FALSE(seq == nullptr)) return ErrorRectangular;
-      if (TF_PREDICT_FALSE(s != PySequence_Fast_GET_SIZE(seq.get()))) {
-        return ErrorRectangular;
-      }
-      TensorShape rest = shape;
-      rest.RemoveDim(0);
       for (int64 i = 0; i < s; ++i) {
-        const char* error =
-            Helper(PySequence_Fast_GET_ITEM(seq.get(), i), rest, buf);
+        const char* error = Helper(PySequence_Fast_GET_ITEM(seq.get(), i),
+                                   depth + 1, state, buf);
         if (TF_PREDICT_FALSE(error != nullptr)) return error;
       }
     } else {
-      Safe_PyObjectPtr seq = make_safe(PySequence_Fast(obj, ""));
-      if (TF_PREDICT_FALSE(seq == nullptr)) return ErrorRectangular;
-      const int64 s = shape.dim_size(0);
-      if (TF_PREDICT_FALSE(s != PySequence_Fast_GET_SIZE(seq.get()))) {
-        return ErrorRectangular;
-      }
       PyObject** l = PySequence_Fast_ITEMS(seq.get());
       for (int64 i = 0; i < s; ++i) {
-        auto scalar = ZeroDimArrayToScalar(l[i]);
+        auto scalar = ZeroDimArrayToScalar(l[i], state);
         const char* error = ConverterTraits<T>::ConvertScalar(scalar, *buf);
         Py_DECREF(scalar);
         if (TF_PREDICT_FALSE(error != nullptr)) return error;
@@ -248,20 +271,21 @@ struct Converter {
     }
     return nullptr;
   }
-  static const char* Convert(PyObject* obj, const TensorShape& shape,
+
+  static const char* Convert(PyObject* obj, ConverterState* state,
                              Tensor* dest) {
     /* TODO(josh11b): Allocator & attributes? */
-    Tensor result(ConverterTraits<T>::kTypeEnum, shape);
-    if (shape.dims() == 0) { /* Scalar case */
+    Tensor result(ConverterTraits<T>::kTypeEnum, state->inferred_shape);
+    if (state->inferred_shape.dims() == 0) { /* Scalar case */
       T value;
-      auto scalar = ZeroDimArrayToScalar(obj);
+      auto scalar = ZeroDimArrayToScalar(obj, state);
       const char* error = ConverterTraits<T>::ConvertScalar(scalar, &value);
       Py_DECREF(scalar);
       if (error != nullptr) return error;
       result.scalar<T>()() = value;
     } else {
       T* buf = result.flat<T>().data();
-      const char* error = Helper(obj, shape, &buf);
+      const char* error = Helper(obj, 0, state, &buf);
       if (error != nullptr) return error;
     }
     *dest = result;
@@ -373,6 +397,21 @@ typedef Converter<int32> Int32Converter;
 
 // Floating-point support
 
+// Returns `true` if `out` overflows when converted from `as_double`.
+template <class T>
+static inline bool CheckForOverflow(double as_double, T* out) {
+  return (sizeof(T) < sizeof(double) && std::isinf(*out) &&
+          std::isfinite(as_double));
+}
+
+// There is no `std::isinf` that takes `Eigen::half` as argument but Eigen
+// provides `Eigen::half_impl::isinf` instead.
+template <>
+inline bool CheckForOverflow<Eigen::half>(double as_double, Eigen::half* out) {
+  return (sizeof(Eigen::half) < sizeof(double) &&
+          Eigen::half_impl::isinf(*out) && std::isfinite(as_double));
+}
+
 template <class T>
 static const char* ConvertOneFloat(PyObject* v, T* out) {
   if (PyErr_Occurred()) {
@@ -382,20 +421,19 @@ static const char* ConvertOneFloat(PyObject* v, T* out) {
     const double as_double = PyFloat_AS_DOUBLE(v);
     *out = static_cast<T>(as_double);
     // Check for overflow
-    if (TF_PREDICT_FALSE(sizeof(T) < sizeof(double) && std::isinf(*out) &&
-                         std::isfinite(as_double))) {
+    if (TF_PREDICT_FALSE(CheckForOverflow<T>(as_double, out))) {
       return ErrorOutOfRangeDouble;
     }
     return nullptr;
   }
 #if PY_MAJOR_VERSION < 3
   if (PyInt_Check(v)) {
-    *out = PyInt_AS_LONG(v);
+    *out = static_cast<T>(PyInt_AS_LONG(v));
     return nullptr;
   }
 #endif
   if (PyLong_Check(v)) {
-    *out = PyLong_AsDouble(v);
+    *out = static_cast<T>(PyLong_AsDouble(v));
     if (PyErr_Occurred()) return ErrorOutOfRangeDouble;
     return nullptr;
   }
@@ -444,13 +482,7 @@ struct ConverterTraits<Eigen::half> {
   static const tensorflow::DataType kTypeEnum = DT_HALF;
 
   static const char* ConvertScalar(PyObject* v, Eigen::half* out) {
-    // NOTE(nareshmodi): Is there a way to convert to C double without the
-    // intermediate Python double? This will help with ConvertOneFloat as well.
-    Safe_PyObjectPtr as_float = make_safe(PyNumber_Float(v));
-    double v_double = PyFloat_AS_DOUBLE(as_float.get());
-    *out = Eigen::half(v_double);
-
-    return nullptr;
+    return ConvertOneFloat<Eigen::half>(v, out);
   }
 };
 
@@ -459,7 +491,7 @@ typedef Converter<Eigen::half> NumpyHalfConverter;
 // String support
 
 template <>
-struct ConverterTraits<string> {
+struct ConverterTraits<tstring> {
   static const tensorflow::DataType kTypeEnum = DT_STRING;
 
   static const char* ConvertScalar(PyObject* v, tstring* out) {
@@ -486,7 +518,7 @@ struct ConverterTraits<string> {
   }
 };
 
-typedef Converter<string> StringConverter;
+typedef Converter<tstring> StringConverter;
 
 // Converts Python object `c` that should hold a Python string into a
 // C++ string in *out.  Returns nullptr on success, or a message on error.
@@ -498,7 +530,7 @@ tstring PyRepr(PyObject* obj) {
   Safe_PyObjectPtr repr_obj = make_safe(PyObject_Repr(obj));
   if (repr_obj) {
     tstring repr_str;
-    if (ConverterTraits<string>::ConvertScalar(repr_obj.get(), &repr_str) ==
+    if (ConverterTraits<tstring>::ConvertScalar(repr_obj.get(), &repr_str) ==
         nullptr) {
       return repr_str;
     }
@@ -568,9 +600,8 @@ typedef Converter<bool> BoolConverter;
   } while (0)
 
 Status PySeqToTensor(PyObject* obj, DataType dtype, Tensor* ret) {
-  DataType infer_dtype;
-  TensorShape shape;
-  TF_RETURN_IF_ERROR(InferShapeAndType(obj, &shape, &infer_dtype));
+  ConverterState state;
+  TF_RETURN_IF_ERROR(InferShapeAndType(obj, &state));
   DataType requested_dtype = DT_INVALID;
   if (dtype != DT_INVALID) {
     requested_dtype = dtype;
@@ -581,109 +612,111 @@ Status PySeqToTensor(PyObject* obj, DataType dtype, Tensor* ret) {
   // operation.
   switch (requested_dtype) {
     case DT_FLOAT:
-      if (FloatConverter::Convert(obj, shape, ret) == nullptr)
+      if (FloatConverter::Convert(obj, &state, ret) == nullptr)
         return Status::OK();
       break;
 
     case DT_DOUBLE:
-      if (DoubleConverter::Convert(obj, shape, ret) == nullptr)
+      if (DoubleConverter::Convert(obj, &state, ret) == nullptr)
         return Status::OK();
       break;
 
     case DT_HALF:
-      RETURN_STRING_AS_STATUS(NumpyHalfConverter::Convert(obj, shape, ret));
+      if (NumpyHalfConverter::Convert(obj, &state, ret) == nullptr)
+        return Status::OK();
+      break;
 
     case DT_INT64:
-      if (Int64Converter::Convert(obj, shape, ret) == nullptr)
+      if (Int64Converter::Convert(obj, &state, ret) == nullptr)
         return Status::OK();
       break;
 
     case DT_INT32:
-      if (Int32Converter::Convert(obj, shape, ret) == nullptr)
+      if (Int32Converter::Convert(obj, &state, ret) == nullptr)
         return Status::OK();
       break;
 
     case DT_UINT64:
-      if (UInt64Converter::Convert(obj, shape, ret) == nullptr)
+      if (UInt64Converter::Convert(obj, &state, ret) == nullptr)
         return Status::OK();
       break;
 
     case DT_COMPLEX128:
-      if (Complex128Converter::Convert(obj, shape, ret) == nullptr)
+      if (Complex128Converter::Convert(obj, &state, ret) == nullptr)
         return Status::OK();
       break;
 
     case DT_STRING:
-      if (StringConverter::Convert(obj, shape, ret) == nullptr)
+      if (StringConverter::Convert(obj, &state, ret) == nullptr)
         return Status::OK();
       break;
 
     case DT_BOOL:
-      if (BoolConverter::Convert(obj, shape, ret) == nullptr)
+      if (BoolConverter::Convert(obj, &state, ret) == nullptr)
         return Status::OK();
       break;
 
     default:
       break;
   }
-  switch (infer_dtype) {
+  switch (state.inferred_dtype) {
     case DT_FLOAT:
       // TODO(josh11b): Handle mixed floats and complex numbers?
       if (requested_dtype == DT_INVALID) {
         // TensorFlow uses float32s to represent floating point numbers
         // by default (for space and speed over using doubles).
-        RETURN_STRING_AS_STATUS(FloatConverter::Convert(obj, shape, ret));
+        RETURN_STRING_AS_STATUS(FloatConverter::Convert(obj, &state, ret));
       } else {
         // We are going to do a cast to the user's requested dtype
         // after this.  We use doubles for this intermediate result so
         // we don't lose precision that might be representable in the
         // final type.
-        RETURN_STRING_AS_STATUS(DoubleConverter::Convert(obj, shape, ret));
+        RETURN_STRING_AS_STATUS(DoubleConverter::Convert(obj, &state, ret));
       }
 
     case DT_DOUBLE:
-      RETURN_STRING_AS_STATUS(DoubleConverter::Convert(obj, shape, ret));
+      RETURN_STRING_AS_STATUS(DoubleConverter::Convert(obj, &state, ret));
 
     case DT_HALF:
-      RETURN_STRING_AS_STATUS(NumpyHalfConverter::Convert(obj, shape, ret));
+      RETURN_STRING_AS_STATUS(NumpyHalfConverter::Convert(obj, &state, ret));
 
     case DT_INT64:
       if (requested_dtype == DT_INVALID) {
-        const char* error = Int32Converter::Convert(obj, shape, ret);
+        const char* error = Int32Converter::Convert(obj, &state, ret);
         if (error == ErrorFoundInt64) {
-          error = Int64Converter::Convert(obj, shape, ret);
+          error = Int64Converter::Convert(obj, &state, ret);
         }
         if (error == ErrorFoundFloat) {
-          error = FloatConverter::Convert(obj, shape, ret);
+          error = FloatConverter::Convert(obj, &state, ret);
         }
         // TODO(josh11b): May also want to fall back to using doubles if
         // error == ErrorOutOfRange?
         RETURN_STRING_AS_STATUS(error);
       } else {
-        const char* error = Int64Converter::Convert(obj, shape, ret);
+        const char* error = Int64Converter::Convert(obj, &state, ret);
         if (error == ErrorFoundFloat) {
-          error = DoubleConverter::Convert(obj, shape, ret);
+          error = DoubleConverter::Convert(obj, &state, ret);
         }
         RETURN_STRING_AS_STATUS(error);
       }
 
     case DT_STRING:
-      RETURN_STRING_AS_STATUS(StringConverter::Convert(obj, shape, ret));
+      RETURN_STRING_AS_STATUS(StringConverter::Convert(obj, &state, ret));
 
     case DT_COMPLEX128:
-      RETURN_STRING_AS_STATUS(Complex128Converter::Convert(obj, shape, ret));
+      RETURN_STRING_AS_STATUS(Complex128Converter::Convert(obj, &state, ret));
 
     case DT_BOOL:
-      RETURN_STRING_AS_STATUS(BoolConverter::Convert(obj, shape, ret));
+      RETURN_STRING_AS_STATUS(BoolConverter::Convert(obj, &state, ret));
 
     case DT_INVALID:  // Only occurs for empty tensors.
       *ret = Tensor(requested_dtype == DT_INVALID ? DT_FLOAT : requested_dtype,
-                    shape);
+                    state.inferred_shape);
       return Status::OK();
 
     default:
       return errors::Unimplemented("Missing Python -> Tensor conversion for ",
-                                   DataTypeString(infer_dtype));
+                                   DataTypeString(state.inferred_dtype));
   }
 
   return Status::OK();

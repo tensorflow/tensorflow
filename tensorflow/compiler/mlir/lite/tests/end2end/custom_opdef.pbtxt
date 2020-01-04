@@ -37,7 +37,7 @@ versions {
 }
 
 # CHECK: func @main(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<*xi32>
-# CHECK-NEXT: attributes {tf.entry_function = {inputs = "input0,input1", outputs = "output"}} {
-# CHECK-NEXT:   %0 = "tf.BannaPotatoSaladWithColeslaw"(%arg0, %arg1) {T = "tfdtype$DT_INT32", device = "", name = "output"} : (tensor<4xi32>, tensor<4xi32>) -> tensor<*xi32>
+# CHECK: attributes {tf.entry_function = {inputs = "input0,input1", outputs = "output"}} {
+# CHECK-NEXT:   %0 = "tf.BannaPotatoSaladWithColeslaw"(%arg0, %arg1) {T = i32, device = ""} : (tensor<4xi32>, tensor<4xi32>) -> tensor<*xi32>
 # CHECK-NEXT:   return %0 : tensor<*xi32>
 # CHECK-NEXT: }

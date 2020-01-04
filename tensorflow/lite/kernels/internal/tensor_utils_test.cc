@@ -54,31 +54,143 @@ TEST(uKernels, VectorScalarMultiply) {
                    0.6,  0.7,  0.8,  0.9,  1.0,  1.1,  1.2,  1.3,  1.4})));
 }
 
+#define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
+
 // Test if a float array if full of zero values.
 TEST(uKernels, IsZeroFloatTest) {
-  constexpr int kVectorSize = 21;
-  static float zeros[kVectorSize] = {0.0};
-  EXPECT_TRUE(IsZeroVector(zeros, kVectorSize));
-
-  static float nonzeros[kVectorSize] = {
-      1e-6,  1e-7,  1e-8,  1e-9,  1e-10, 1e-11, 1e-12,
-      1e-13, 1e-14, 1e-15, 1e-16, 1e-17, 1e-18, 1e-19,
-      1e-20, 1e-21, 1e-22, 1e-23, 1e-24, 1e-25, 1e-26};
-  EXPECT_FALSE(IsZeroVector(nonzeros, kVectorSize));
+  // Single NEON vector (= 4 floats)
+  {
+    const float four_zeros[4] = {0, 0, 0, 0};
+    EXPECT_TRUE(IsZeroVector(four_zeros, ARRAY_SIZE(four_zeros)));
+  }
+  {
+    const float four_nonzeros[4] = {1, 2, 3, 4};
+    EXPECT_FALSE(IsZeroVector(four_nonzeros, ARRAY_SIZE(four_nonzeros)));
+  }
+  // Multiple NEON vectors
+  {
+    const float eight_zeros[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+    EXPECT_TRUE(IsZeroVector(eight_zeros, ARRAY_SIZE(eight_zeros)));
+  }
+  {
+    const float eight_nonzeros[8] = {1, 2, 3, 4, 5, 6, 7, 8};
+    EXPECT_FALSE(IsZeroVector(eight_nonzeros, ARRAY_SIZE(eight_nonzeros)));
+  }
+  {
+    const float multiple_four_mixed1[8] = {0, 0, 0, 0, 5, 6, 7, 8};
+    EXPECT_FALSE(
+        IsZeroVector(multiple_four_mixed1, ARRAY_SIZE(multiple_four_mixed1)));
+  }
+  {
+    const float multiple_four_mixed2[8] = {1, 2, 3, 4, 0, 0, 0, 0};
+    EXPECT_FALSE(
+        IsZeroVector(multiple_four_mixed2, ARRAY_SIZE(multiple_four_mixed2)));
+  }
+  // less than one NEON vector
+  {
+    const float three_zeros[3] = {0, 0, 0};
+    EXPECT_TRUE(IsZeroVector(three_zeros, ARRAY_SIZE(three_zeros)));
+  }
+  {
+    const float three_nonzeros[3] = {1, 2, 3};
+    EXPECT_FALSE(IsZeroVector(three_nonzeros, ARRAY_SIZE(three_nonzeros)));
+  }
+  {
+    const float three_mixed[3] = {1, 0, 3};
+    EXPECT_FALSE(IsZeroVector(three_mixed, ARRAY_SIZE(three_mixed)));
+  }
+  // Postamble after NEON vectors
+  {
+    const float seven_zeros[7] = {0, 0, 0, 0, 0, 0, 0};
+    EXPECT_TRUE(IsZeroVector(seven_zeros, ARRAY_SIZE(seven_zeros)));
+  }
+  {
+    const float seven_nonzeros[7] = {1, 2, 3, 4, 5, 6, 7};
+    EXPECT_FALSE(IsZeroVector(seven_nonzeros, ARRAY_SIZE(seven_nonzeros)));
+  }
+  {
+    const float nonzeros_after_zeros[7] = {0, 0, 0, 0, 5, 6, 7};
+    EXPECT_FALSE(
+        IsZeroVector(nonzeros_after_zeros, ARRAY_SIZE(nonzeros_after_zeros)));
+  }
 }
 
 // Test if an int8 array if full of zero values.
 TEST(uKernels, IsZeroInt8Test) {
-  constexpr int kVectorSize = 43;
-  static int8_t zeros[kVectorSize] = {0};
-  EXPECT_TRUE(IsZeroVector(zeros, kVectorSize));
-
-  for (int i = 0; i < kVectorSize; ++i) {
-    int8_t non_zeros[kVectorSize] = {0};
-    non_zeros[i] = 1;
-    EXPECT_FALSE(IsZeroVector(non_zeros, kVectorSize));
+  // Single NEON vector (= 16x int8_t)
+  {
+    const int8_t sixteen_zeros[16] = {0, 0, 0, 0, 0, 0, 0, 0,
+                                      0, 0, 0, 0, 0, 0, 0, 0};
+    EXPECT_TRUE(IsZeroVector(sixteen_zeros, ARRAY_SIZE(sixteen_zeros)));
+  }
+  {
+    const int8_t sixteen_nonzeros[16] = {1, 2,  3,  4,  5,  6,  7,  8,
+                                         9, 10, 11, 12, 13, 14, 15, 16};
+    EXPECT_FALSE(IsZeroVector(sixteen_nonzeros, ARRAY_SIZE(sixteen_nonzeros)));
+  }
+  // Multiple NEON vectors
+  {
+    const int8_t thritytwo_zeros[32] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                                        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                                        0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    EXPECT_TRUE(IsZeroVector(thritytwo_zeros, ARRAY_SIZE(thritytwo_zeros)));
+  }
+  {
+    const int8_t thritytwo_nonzeros[32] = {
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
+    EXPECT_FALSE(
+        IsZeroVector(thritytwo_nonzeros, ARRAY_SIZE(thritytwo_nonzeros)));
+  }
+  {
+    const int8_t thritytwo_mixed1[32] = {1,  2,  3,  4,  5,  6, 7, 8, 9, 10, 11,
+                                         12, 13, 14, 15, 16, 0, 0, 0, 0, 0,  0,
+                                         0,  0,  0,  0,  0,  0, 0, 0, 0, 0};
+    EXPECT_FALSE(IsZeroVector(thritytwo_mixed1, ARRAY_SIZE(thritytwo_mixed1)));
+  }
+  {
+    const int8_t thritytwo_mixed2[32] = {0, 0, 0, 0,  0,  0,  0,  0,  0,  0, 0,
+                                         0, 0, 0, 0,  0,  1,  2,  3,  4,  5, 6,
+                                         7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
+    EXPECT_FALSE(IsZeroVector(thritytwo_mixed2, ARRAY_SIZE(thritytwo_mixed2)));
+  }
+  // less than one NEON vector
+  {
+    const int8_t fifteen_zeros[15] = {0, 0, 0, 0, 0, 0, 0, 0,
+                                      0, 0, 0, 0, 0, 0, 0};
+    EXPECT_TRUE(IsZeroVector(fifteen_zeros, ARRAY_SIZE(fifteen_zeros)));
+  }
+  {
+    const int8_t fifteen_nonzeros[15] = {1, 2,  3,  4,  5,  6,  7, 8,
+                                         9, 10, 11, 12, 13, 14, 15};
+    EXPECT_FALSE(IsZeroVector(fifteen_nonzeros, ARRAY_SIZE(fifteen_nonzeros)));
+  }
+  {
+    const int8_t fifteen_mixed[15] = {1, 0, 3,  0, 5,  0, 7, 0,
+                                      9, 0, 11, 0, 13, 0, 15};
+    EXPECT_FALSE(IsZeroVector(fifteen_mixed, ARRAY_SIZE(fifteen_mixed)));
+  }
+  // Postamble after NEON vectors
+  {
+    const int8_t seventeen_zeros[17] = {0, 0, 0, 0, 0, 0, 0, 0,
+                                        0, 0, 0, 0, 0, 0, 0};
+    EXPECT_TRUE(IsZeroVector(seventeen_zeros, ARRAY_SIZE(seventeen_zeros)));
+  }
+  {
+    const int8_t seventeen_nonzeros[17] = {1,  2,  3,  4,  5,  6,  7,  8, 9,
+                                           10, 11, 12, 13, 14, 15, 16, 17};
+    EXPECT_FALSE(
+        IsZeroVector(seventeen_nonzeros, ARRAY_SIZE(seventeen_nonzeros)));
+  }
+  {
+    const int8_t nonzeros_after_zeros[17] = {0, 0, 0, 0, 0, 0, 0, 0,
+                                             0, 0, 0, 0, 0, 0, 17};
+    EXPECT_FALSE(
+        IsZeroVector(nonzeros_after_zeros, ARRAY_SIZE(nonzeros_after_zeros)));
   }
 }
+
+#undef ARRAY_SIZE
 
 TEST(uKernels, SymmetricQuantizeFloatsTest) {
   constexpr int kVectorSize = 9;
@@ -412,7 +524,7 @@ TEST(uKernels, QuantTanh0Test) {
       653,  -29, -53,  1058, -52, -164, -149, -635, 201,  -1297,
   };
   std::vector<int16_t> output(4 * 15, 0);
-  ApplyTanh0(input.data(), 4, 15, output.data());
+  ApplyTanh(0, input.data(), 4, 15, output.data());
   const std::vector<int16_t> expected_output = {
       -136, 904, -176, -40,  260, 292,  8,    28,   -44,  -1304,
       -120, 120, -24,  112,  376, -576, -308, 88,   -544, 544,
@@ -435,7 +547,7 @@ TEST(uKernels, QuantTanh3Test) {
       653,  -29, -53,  1058, -52, -164, -149, -635, 201,  -1297,
   };
   std::vector<int16_t> output(4 * 15, 0);
-  ApplyTanh3(input.data(), 4, 15, output.data());
+  ApplyTanh(3, input.data(), 4, 15, output.data());
   const std::vector<int16_t> expected_output = {
       -1156, 7076, -1412, -276, 2104, 2308,  64,    220,   -288,  -10132,
       -964,  1016, -120,  844,  2944, -4640, -2392, 736,   -4352, 4352,
@@ -456,7 +568,7 @@ TEST(uKernels, QuantTanh4Test) {
       -26, -36, 9,   -73, 25, 14, -2, -1, 29, -10, -12, -18, -29, 51, -92,
   };
   std::vector<int16_t> output(4 * 15, 0);
-  ApplyTanh4(input.data(), 4, 15, output.data());
+  ApplyTanh(4, input.data(), 4, 15, output.data());
   const std::vector<int16_t> expected_output = {
       -76,  2596, -496, -76, 856,  1436, 24,   36,   -64,   -672,
       -120, 456,  0,    752, 2400, -412, -576, 148,  -1168, 400,
@@ -643,7 +755,8 @@ struct MatrixVectorData {
 
 MatrixVectorData SetupMatrixVectorData(int rows, int cols, int batch,
                                        bool negative = false,
-                                       bool is_per_channel = false) {
+                                       bool is_per_channel = false,
+                                       bool init_to_one = false) {
   MatrixVectorData data;
   data.rows = rows;
   data.cols = cols;
@@ -660,7 +773,7 @@ MatrixVectorData SetupMatrixVectorData(int rows, int cols, int batch,
     data.vectors.push_back(sign * (i % 50));
   }
   data.scale_factors = {1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8};
-  data.results.resize(rows * batch, 0);
+  data.results.resize(rows * batch, init_to_one ? 1 : 0);
 
   data.zeroed_matrix = data.matrix;
 
@@ -715,10 +828,11 @@ MatrixVectorData SetupMatrixVectorData(int rows, int cols, int batch,
   return data;
 }
 
-std::vector<float> TestDotprodMatrixBatchVectorMultiply(int rows, int cols,
-                                                        int batch,
-                                                        bool negative = false) {
-  MatrixVectorData data = SetupMatrixVectorData(rows, cols, batch, negative);
+std::vector<float> TestDotprodMatrixBatchVectorMultiply(
+    int rows, int cols, int batch, bool negative = false,
+    bool init_to_one = false) {
+  MatrixVectorData data =
+      SetupMatrixVectorData(rows, cols, batch, negative, false, init_to_one);
 
   // All partial sums in this computation are small enough to fit in the
   // mantissa of a float, and the scale factors are all integers, so we expect
@@ -777,6 +891,13 @@ TEST(uKernels, DotprodMatrixBatchVectorMultiplyAccumulateTest) {
   ASSERT_THAT(
       TestDotprodMatrixBatchVectorMultiply(4, 32, 2, kNegative),
       testing::ElementsAre(3436, 3522, 1590, 6972, 2516, 20520, 456, 10628));
+
+  // Initialize the results vector with 1s to verify that the code adds
+  // to the results vector instead of zero-ing it first.
+  const bool kInitToOne = true;
+  ASSERT_THAT(
+      TestDotprodMatrixBatchVectorMultiply(4, 32, 2, kNegative, kInitToOne),
+      testing::ElementsAre(3437, 3523, 1591, 6973, 2517, 20521, 457, 10629));
 }
 
 TEST(uKernels, PerChannelDotprodMatrixBatchVectorMultiplyAccumulateTest) {
@@ -1303,7 +1424,60 @@ TEST(uKernels, Sub1VectorInt16Test) {
       }));
 }
 
-TEST(uKernels, VectorBatchVectorCwiseProductAccumulate) {
+TEST(uKernels, VectorBatchVectorCwiseProductAccumulateInteger) {
+  constexpr int kVectorSize = 29;
+  constexpr int kBatchSize = 4;
+  static int16_t vector[kVectorSize] = {-10, 9,  8,  7,  6,  5,  4,  3,  2, 1,
+                                        0,   1,  2,  3,  4,  5,  6,  7,  8, 9,
+                                        10,  11, 12, 13, 14, 15, 16, 17, 18};
+  const std::vector<int16_t> batch_vector = {
+      /* batch 0 */
+      10, 11, 12, 13, 14, 15, 16, 17, 18, -10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 1,
+      2, 3, 4, 5, 6, 7, 8, 9,
+      /* batch 1 */
+      -10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 10, 11, 12, 13, 14, 15, 16, 17, 18, 0, 1,
+      2, 3, 4, 5, 6, 7, 8, 9,
+      /* batch 2 */
+      0, 1, 2, 3, 4, 5, 6, 7, 8, 9, -10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 10, 11, 12,
+      13, 14, 15, 16, 17, 18,
+      /* batch 3 */
+      0, 1, 2, 3, 4, 5, 6, 7, 8, 9, -10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 10, 11, 12,
+      13, 14, 15, 16, 17, 18};
+  std::vector<int16_t> batch_output = {
+      /* batch 0 */
+      -10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 10, 11, 12, 13, 14, 15, 16, 17, 18, 0, 1,
+      2, 3, 4, 5, 6, 7, 8, 9,
+      /* batch 1 */
+      2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, -10, 9, 8, 7, 6, 5,
+      4, 3, 2, 1, 10, 11, 12,
+      /* batch 2 */
+      0, 1, 2, 3, 4, 5, 6, 7, 8, 9, -10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 10, 11, 12,
+      13, 14, 15, 16, 17, 18,
+      /* batch 3 */
+      10, 11, 12, 13, 14, 15, 16, 17, 18, -10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 1,
+      13, 14, 15, 16, 17, 18};
+  // Test with 0.25 scale, which is decomposed into (1073741824, -1).
+  VectorBatchVectorCwiseProductAccumulate(vector, kVectorSize,
+                                          batch_vector.data(), kBatchSize,
+                                          1073741824, -1, batch_output.data());
+
+  const std::vector<int16_t> expected_output = {
+      /* batch 0 */
+      -35, 34, 32, 30, 27, 24, 20, 16, 11, -2, 10, 13, 16, 18, 19, 20, 21, 21,
+      20, 0, 4, 8, 12, 17, 23, 29, 35, 42, 50,
+      /* batch 1 */
+      27, 24, 20, 18, 15, 14, 12, 12, 1, 2, 2, 6, 10, 15, 20, 26, 32, 39, 26, 9,
+      11, 13, 15, 18, 22, 26, 30, 35, 51,
+      /* batch 2 */
+      11, 15, 4, 7, 8, 10, 10, 11, 10, 10, 8, 12, -6, 15, 14, 14, 12, 11, 8, 6,
+      27, 32, 46, 54, 61, 70, 78, 88, 97,
+      /* batch 3 */
+      17, 21, 14, 17, 18, 20, 20, 21, 20, 20, 18, -7, 13, 14, 13, 13, 11, 10, 7,
+      5, 26, 31, 37, 56, 63, 72, 80, 90, 99};
+  EXPECT_THAT(batch_output, testing::ElementsAreArray(expected_output));
+}
+
+TEST(uKernels, VectorBatchVectorCwiseProductAccumulateFloat) {
   constexpr int kVectorSize = 29;
   constexpr int kBatchSize = 4;
   static float input[kVectorSize] = {
@@ -1433,6 +1607,19 @@ TEST(uKernels, BatchVectorBatchVectorDotProductTest) {
   EXPECT_THAT(output, ElementsAreArray(ArrayFloatNear({0.5, 1.75})));
 }
 
+TEST(uKernels, BatchVectorBatchVectorDotProductIntegerTest) {
+  constexpr int kVectorSize = 5;
+  constexpr int kBatch = 2;
+  static int16_t input1[kVectorSize * kBatch] = {0,   5,  10,  -15, 20,
+                                                 -25, 30, -35, 40,  -45};
+  static int16_t input2[kVectorSize * kBatch] = {1,  -1, 1,  -1, 1,
+                                                 -1, 1,  -1, 1,  1};
+  std::vector<int32_t> output(kBatch);
+  BatchVectorBatchVectorDotProduct(input1, input2, kVectorSize, kBatch,
+                                   output.data(), /*result_stride=*/1);
+  EXPECT_THAT(output, ElementsAreArray(ArrayFloatNear({40, 85})));
+}
+
 TEST(uKernels, VectorShiftLeftTest) {
   constexpr int kVectorSize = 5;
   static float input[kVectorSize] = {0.0, -0.5, 1.0, -1.5, 2.0};
@@ -1463,84 +1650,93 @@ TEST(uKernels, ReductionSumVectorTest) {
   EXPECT_THAT(result2, ElementsAreArray(ArrayFloatNear({1.0, 3.5})));
 }
 
-TEST(uKernels, MeanStddevNormalizationNoneZeroInput) {
+TEST(uKernels, ReductionSumVectorIntegerTest) {
+  constexpr int kInputVectorSize = 10;
+  constexpr int kOutputVectorSize1 = 5;
+  constexpr int kReductionSize1 = 2;
+  static int32_t input[kInputVectorSize] = {1, 2, 1, 5, -3, 2, 1, 2, 5, 10};
+  std::vector<int32_t> result1(kOutputVectorSize1);
+  ReductionSumVector(input, result1.data(), kOutputVectorSize1,
+                     kReductionSize1);
+  EXPECT_THAT(result1, testing::ElementsAreArray({3, 6, -1, 3, 15}));
+}
+
+namespace {
+// Parameterized test: mean, difference, tolerance.
+// Input is constructed as [mean-2*diff, mean-diff, mean+diff, mean+2*diff]
+class MeanStddevNormalizationTest
+    : public testing::TestWithParam<std::tuple<float, float, float>> {};
+}  // namespace
+
+TEST_P(MeanStddevNormalizationTest, SeparateBatches) {
+  const float mean = std::get<0>(GetParam());
+  const float diff = std::get<1>(GetParam());
+  const float tolerance = std::get<2>(GetParam());
+
   constexpr int kVectorSize = 4;
-  constexpr int kBatchSize = 2;
-  constexpr float kNormalizationEpsilon = 1e-8;
+  const float input[kVectorSize] = {mean - 2 * diff, mean - diff, mean + diff,
+                                    mean + 2 * diff};
+  float output[kVectorSize];
+  MeanStddevNormalization(input, output, kVectorSize, 1);
+  std::vector<float> expected_output;
+  if (diff == 0.0f) {
+    expected_output.assign({0.0f, 0.0f, 0.0f, 0.0f});
+  } else {
+    const float ksqrt16 = std::sqrt(1.6f);
+    const float ksqrt04 = std::sqrt(0.4f);
+    expected_output.assign({-ksqrt16, -ksqrt04, ksqrt04, ksqrt16});
+  }
+  EXPECT_THAT(output, testing::ElementsAreArray(
+                          ArrayFloatNear(expected_output, tolerance)));
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    uKernels, MeanStddevNormalizationTest,
+    testing::Values(
+        std::make_tuple(0.0f, 0.0f, 0.0f),         // zero mean, zero variance
+        std::make_tuple(0.0f, 0.01f, 2.53e-5f),    // zero mean, small variance
+        std::make_tuple(0.0f, 100.0f, 1.20e-7f),   // zero mean, large variance
+        std::make_tuple(0.01f, 0.0f, 0.0f),        // small mean, zero variance
+        std::make_tuple(0.01f, 0.01f, 2.53e-5f),   // small mean, small variance
+        std::make_tuple(0.01f, 100.0f, 1.20e-7f),  // small mean, large variance
+        std::make_tuple(100.0f, 0.0f, 0.0f),       // large mean, zero variance
+        std::make_tuple(100.0f, 0.01f, 1.81e-4f),  // large mean, small variance
+        std::make_tuple(100.0f, 100.0f, 1.20e-7f)  // large mean, large variance
+        ));
+
+TEST(uKernels, MeanStddevNormalizationAllBatches) {
+  constexpr int kVectorSize = 4;
+  constexpr int kBatchSize = 9;
 
   // None-zero input.
   static float input[kVectorSize * kBatchSize] = {
-      0.1, 0.2, 0.3, 0.4,  // batch 0
-      0.9, 1.0, 1.1, 1.2,  // batch 1
+      0.0f,     0.0f,    0.0f,    0.0f,     // zero mean, zero variance
+      -0.02f,   -0.01f,  0.01f,   0.02f,    // zero mean, small variance
+      -200.0f,  -100.0f, 100.0f,  200.0f,   // zero mean, large variance
+      0.01f,    0.01f,   0.01f,   0.01f,    // small mean, zero variance
+      -0.01f,   0.0f,    0.02f,   0.03f,    // small mean, small variance
+      -199.99f, -99.99f, 100.01f, 200.01f,  // small mean, large variance
+      100.0f,   100.0f,  100.0f,  100.0f,   // large mean, zero variance
+      99.98f,   99.99f,  100.01f, 100.02f,  // large mean, small variance
+      -100.0f,  0.0f,    200.0f,  300.0f,   // large mean, large variance
   };
-  std::vector<float> output(kVectorSize * kBatchSize);
-  MeanStddevNormalization(input, output.data(), kVectorSize, kBatchSize,
-                          kNormalizationEpsilon);
+  float output[kVectorSize * kBatchSize];
+  MeanStddevNormalization(input, output, kVectorSize, kBatchSize);
+  const float ksqrt16 = std::sqrt(1.6f);
+  const float ksqrt04 = std::sqrt(0.4f);
   const std::vector<float> expected_output = {
-      -1.34164071, -0.447213531, 0.44721365,  1.34164071,  // batch 0
-      -1.34163153, -0.447210163, 0.447211236, 1.3416326,   // batch 1
+      0.0f,     0.0f,     0.0f,    0.0f,     // zero mean, zero variance
+      -ksqrt16, -ksqrt04, ksqrt04, ksqrt16,  // zero mean, small variance
+      -ksqrt16, -ksqrt04, ksqrt04, ksqrt16,  // zero mean, large variance
+      0.0f,     0.0f,     0.0f,    0.0f,     // small mean, zero variance
+      -ksqrt16, -ksqrt04, ksqrt04, ksqrt16,  // small mean, small variance
+      -ksqrt16, -ksqrt04, ksqrt04, ksqrt16,  // small mean, large variance
+      0.0f,     0.0f,     0.0f,    0.0f,     // large mean, zero variance
+      -ksqrt16, -ksqrt04, ksqrt04, ksqrt16,  // large mean, small variance
+      -ksqrt16, -ksqrt04, ksqrt04, ksqrt16,  // large mean, large variance
   };
-  EXPECT_THAT(output, testing::ElementsAreArray(expected_output));
-}
-
-TEST(uKernels, MeanStddevNormalizationAllZeroInput) {
-  constexpr int kVectorSize = 4;
-  constexpr int kBatchSize = 2;
-  constexpr float kNormalizationEpsilon = 1e-8;
-
-  // Zero input.
-  static float input[kVectorSize * kBatchSize] = {
-      0.0, 0.0, 0.0, 0.0,  // batch 0
-      0.0, 0.0, 0.0, 0.0,  // batch 1
-  };
-  std::vector<float> output(kVectorSize * kBatchSize);
-  MeanStddevNormalization(input, output.data(), kVectorSize, kBatchSize,
-                          kNormalizationEpsilon);
-  const std::vector<float> expected_output = {
-      0.0, 0.0, 0.0, 0.0,  // batch 0
-      0.0, 0.0, 0.0, 0.0,  // batch 1
-  };
-  EXPECT_THAT(output, testing::ElementsAreArray(expected_output));
-}
-
-TEST(uKernels, MeanStddevNormalizationMixed) {
-  constexpr int kVectorSize = 4;
-  constexpr int kBatchSize = 2;
-  constexpr float kNormalizationEpsilon = 1e-8;
-
-  // Mix of zero and non-zero input.
-  static float input[kVectorSize * kBatchSize] = {
-      0.0, 0.0, 0.0, 0.0,  // batch 0
-      0.1, 0.2, 0.3, 0.4,  // batch 1
-  };
-  std::vector<float> output(kVectorSize * kBatchSize);
-  MeanStddevNormalization(input, output.data(), kVectorSize, kBatchSize,
-                          kNormalizationEpsilon);
-  const std::vector<float> expected_output = {
-      0.0,         0.0,          0.0,        0.0,         // batch 0
-      -1.34164071, -0.447213531, 0.44721365, 1.34164071,  // batch 1
-  };
-  EXPECT_THAT(output, testing::ElementsAreArray(expected_output));
-}
-
-TEST(uKernels, MeanStddevNormalizationSmallValue) {
-  constexpr int kVectorSize = 4;
-  constexpr int kBatchSize = 2;
-  constexpr float kNormalizationEpsilon = 1e-8;
-
-  // Mix of zero and non-zero input.
-  static float input[kVectorSize * kBatchSize] = {
-      3e-5, -7e-6, -9e-5, 1e-6,  // batch 0
-      4e-5, 9e-6,  2e-4,  0.0,   // batch 1
-  };
-  std::vector<float> output(kVectorSize * kBatchSize);
-  MeanStddevNormalization(input, output.data(), kVectorSize, kBatchSize,
-                          kNormalizationEpsilon);
-  const std::vector<float> expected_output = {
-      1.04231524,   0.212946132,  -1.64753067, 0.392269224,   // batch 0
-      -0.275023013, -0.658201098, 1.70267045,  -0.769446373,  // batch 1
-  };
-  EXPECT_THAT(output, testing::ElementsAreArray(expected_output));
+  EXPECT_THAT(output, testing::ElementsAreArray(
+                          ArrayFloatNear(expected_output, 1.81e-4f)));
 }
 
 }  // namespace tensor_utils
@@ -1555,10 +1751,21 @@ void BM_DotprodBatchOneMultiply(benchmark::State& state) {
   const int rows = state.range(0);
   const int cols = state.range(1);
   const int batch = state.range(2);
+  const int copies = state.range(3);
 
-  tflite::tensor_utils::MatrixVectorData data =
-      tflite::tensor_utils::SetupMatrixVectorData(rows, cols, batch);
+  // For some benchmarks we make multiple matrix copies. This allows us to
+  // measure the performance differences of being entirely in cache vs.
+  // out of cache.
+  std::vector<tflite::tensor_utils::MatrixVectorData> datas;
+  for (int i = 0; i < copies; i++) {
+    datas.push_back(
+        tflite::tensor_utils::SetupMatrixVectorData(rows, cols, batch));
+  }
+
+  int copy = 0;
   for (auto _ : state) {
+    copy = (copy + 1) % datas.size();
+    auto& data = datas[copy];
     for (int i = 0; i < batch; i++) {
       tflite::tensor_utils::MatrixBatchVectorMultiplyAccumulate(
           data.matrix.data(), data.rows, data.cols,
@@ -1569,33 +1776,48 @@ void BM_DotprodBatchOneMultiply(benchmark::State& state) {
   }
 }
 BENCHMARK(BM_DotprodBatchOneMultiply)
-    ->Args({16, 16, 1})
-    ->Args({16, 16, 4})
-    ->Args({32, 32, 1})
-    ->Args({32, 32, 4})
-    ->Args({64, 64, 1})
-    ->Args({64, 64, 4})
-    ->Args({128, 128, 1})
-    ->Args({128, 128, 4})
-    ->Args({992, 992, 1})
-    ->Args({992, 992, 8})
-    ->Args({1024, 1024, 1})
-    ->Args({1024, 1024, 4})
-    ->Args({1024, 1024, 8})
-    ->Args({640, 2048, 1})
-    ->Args({640, 2048, 4})
-    ->Args({640, 2048, 8})
-    ->Args({2048, 2048, 1})
-    ->Args({2048, 2048, 8});
+    ->Args({16, 16, 1, 1})
+    ->Args({16, 16, 4, 1})
+    ->Args({32, 32, 1, 1})
+    ->Args({32, 32, 4, 1})
+    ->Args({64, 64, 1, 1})
+    ->Args({64, 64, 4, 1})
+    ->Args({128, 128, 1, 1})
+    ->Args({128, 128, 4, 1})
+    ->Args({992, 992, 1, 1})
+    ->Args({992, 992, 8, 1})
+    ->Args({1024, 1024, 1, 1})
+    ->Args({1024, 1024, 1, 8})
+    ->Args({1024, 1024, 4, 1})
+    ->Args({1024, 1024, 4, 8})
+    ->Args({1024, 1024, 8, 1})
+    ->Args({640, 2048, 1, 1})
+    ->Args({640, 2048, 4, 1})
+    ->Args({640, 2048, 8, 1})
+    ->Args({640, 2048, 8, 8})
+    ->Args({2048, 2048, 1, 1})
+    ->Args({2048, 2048, 1, 8})
+    ->Args({2048, 2048, 8, 1});
 
 void BM_DotprodBatchFourMultiply(benchmark::State& state) {
   const int rows = state.range(0);
   const int cols = state.range(1);
   const int batch = state.range(2);
+  const int copies = state.range(3);
 
-  tflite::tensor_utils::MatrixVectorData data =
-      tflite::tensor_utils::SetupMatrixVectorData(rows, cols, batch);
+  // For some benchmarks we make multiple matrix copies. This allows us to
+  // measure the performance differences of being entirely in cache vs.
+  // out of cache.
+  std::vector<tflite::tensor_utils::MatrixVectorData> datas;
+  for (int i = 0; i < copies; i++) {
+    datas.push_back(
+        tflite::tensor_utils::SetupMatrixVectorData(rows, cols, batch));
+  }
+
+  int copy = 0;
   for (auto _ : state) {
+    copy = (copy + 1) % datas.size();
+    auto& data = datas[copy];
     tflite::tensor_utils::MatrixBatchVectorMultiplyAccumulate(
         data.matrix.data(), data.rows, data.cols, data.vectors.data(),
         data.scale_factors.data(), data.batch, &data.results[0], 1);
@@ -1603,32 +1825,57 @@ void BM_DotprodBatchFourMultiply(benchmark::State& state) {
   }
 }
 BENCHMARK(BM_DotprodBatchFourMultiply)
-    ->Args({16, 16, 4})
-    ->Args({32, 32, 4})
-    ->Args({64, 64, 4})
-    ->Args({64, 256, 64})
-    ->Args({64, 256, 256})
-    ->Args({64, 256, 1024})
-    ->Args({64, 256, 12544})
-    ->Args({128, 128, 4})
-    ->Args({640, 640, 4})
-    ->Args({992, 992, 8})
-    ->Args({1024, 1024, 4})
-    ->Args({1024, 1024, 8})
-    ->Args({1024, 1024, 256})
-    ->Args({640, 2048, 4})
-    ->Args({640, 2048, 8})
-    ->Args({2048, 2048, 4})
-    ->Args({2048, 2048, 8});
+    ->Args({16, 16, 4, 1})
+    ->Args({32, 32, 4, 1})
+    ->Args({64, 64, 4, 1})
+    ->Args({64, 256, 64, 1})
+    ->Args({64, 256, 256, 1})
+    ->Args({64, 256, 1024, 1})
+    ->Args({64, 256, 12544, 1})
+    ->Args({128, 128, 2, 1})
+    ->Args({128, 128, 3, 1})
+    ->Args({128, 128, 4, 1})
+    ->Args({128, 128, 5, 1})
+    ->Args({640, 640, 4, 1})
+    ->Args({992, 992, 8, 1})
+    ->Args({1024, 1024, 2, 1})
+    ->Args({1024, 1024, 3, 1})
+    ->Args({1024, 1024, 4, 1})
+    ->Args({1024, 1024, 5, 1})
+    ->Args({1024, 1024, 8, 1})
+    ->Args({1024, 1024, 8, 8})
+    ->Args({1024, 1024, 256, 1})
+    ->Args({640, 2048, 2, 1})
+    ->Args({640, 2048, 3, 1})
+    ->Args({640, 2048, 4, 1})
+    ->Args({640, 2048, 4, 8})
+    ->Args({640, 2048, 8, 1})
+    ->Args({2048, 2048, 3, 1})
+    ->Args({2048, 2048, 4, 1})
+    ->Args({2048, 2048, 4, 8})
+    ->Args({2048, 2048, 5, 1})
+    ->Args({2048, 2048, 8, 1});
 
 void BM_DotprodSparseMultiply(benchmark::State& state) {
   const int rows = state.range(0);
   const int cols = state.range(1);
   const int batch = state.range(2);
 
-  tflite::tensor_utils::MatrixVectorData data =
-      tflite::tensor_utils::SetupMatrixVectorData(rows, cols, batch);
+  const int copies = state.range(3);
+
+  // For some benchmarks we make multiple matrix copies. This allows us to
+  // measure the performance differences of being entirely in cache vs.
+  // out of cache.
+  std::vector<tflite::tensor_utils::MatrixVectorData> datas;
+  for (int i = 0; i < copies; i++) {
+    datas.push_back(
+        tflite::tensor_utils::SetupMatrixVectorData(rows, cols, batch));
+  }
+
+  int copy = 0;
   for (auto _ : state) {
+    copy = (copy + 1) % datas.size();
+    auto& data = datas[copy];
     tflite::tensor_utils::SparseMatrixBatchVectorMultiplyAccumulate(
         data.sparse_matrix.data(), data.ledger.data(), data.rows, data.cols,
         data.vectors.data(), data.scale_factors.data(), data.batch,
@@ -1637,17 +1884,17 @@ void BM_DotprodSparseMultiply(benchmark::State& state) {
   }
 }
 BENCHMARK(BM_DotprodSparseMultiply)
-    ->Args({128, 128, 1})
-    ->Args({128, 128, 4})
-    ->Args({640, 640, 4})
-    ->Args({992, 992, 8})
-    ->Args({1024, 1024, 1})
-    ->Args({1024, 1024, 4})
-    ->Args({1024, 1024, 8})
-    ->Args({640, 2048, 1})
-    ->Args({640, 2048, 4})
-    ->Args({640, 2048, 8})
-    ->Args({2048, 2048, 1})
-    ->Args({2048, 2048, 8});
+    ->Args({128, 128, 1, 1})
+    ->Args({128, 128, 4, 1})
+    ->Args({640, 640, 4, 1})
+    ->Args({992, 992, 8, 1})
+    ->Args({1024, 1024, 1, 1})
+    ->Args({1024, 1024, 4, 1})
+    ->Args({1024, 1024, 8, 1})
+    ->Args({640, 2048, 1, 1})
+    ->Args({640, 2048, 4, 1})
+    ->Args({640, 2048, 8, 1})
+    ->Args({2048, 2048, 1, 1})
+    ->Args({2048, 2048, 8, 1});
 
 #endif  // DOTPROD_BENCHMARKS

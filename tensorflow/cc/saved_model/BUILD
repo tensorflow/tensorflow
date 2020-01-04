@@ -10,7 +10,7 @@ load(
     "tf_cc_test",
 )
 load(
-    "//tensorflow/core/platform:default/build_config_root.bzl",
+    "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
     "if_static_and_not_mobile",
 )
@@ -20,7 +20,10 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["LICENSE"])
+exports_files([
+    "LICENSE",
+    "loader.h",
+])
 
 cc_library(
     name = "constants",
@@ -41,21 +44,12 @@ cc_library(
     name = "reader",
     srcs = ["reader.cc"],
     hdrs = ["reader.h"],
-    deps = [
-        ":constants",
-    ] + if_not_mobile([
+    deps = [":constants"] + if_not_mobile([
         # TODO(b/111634734): :lib and :protos_all contain dependencies that
         # cannot be built on mobile platforms. Instead, include the appropriate
         # tf_lib depending on the build platform.
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-    ]) + if_mobile([
-        # Mobile-friendly SavedModel proto. See go/portable-proto for more info.
-        "//tensorflow/core:saved_model_portable_proto",
-    ]) + if_android([
-        "//tensorflow/core:android_tensorflow_lib",
-    ]) + if_ios([
-        "//tensorflow/core:ios_tensorflow_lib",
     ]),
 )
 
@@ -103,7 +97,6 @@ cc_library(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        # mobile not supported yet
     ]),
 )
 
@@ -121,9 +114,40 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/util/tensor_bundle:naming",
-        # mobile not supported yet
     ]),
     alwayslink = 1,
+)
+
+cc_library(
+    name = "bundle_v2",
+    srcs = ["bundle_v2.cc"],
+    hdrs = ["bundle_v2.h"],
+    deps = [
+        ":constants",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ] + if_not_mobile([
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:strcat",
+        "//tensorflow/core/util/tensor_bundle",
+    ]),
+)
+
+tf_cc_test(
+    name = "bundle_v2_test",
+    srcs = ["bundle_v2_test.cc"],
+    data = [
+        ":saved_model_half_plus_two",
+    ],
+    linkstatic = 1,
+    deps = [
+        ":bundle_v2",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/platform:test",
+    ],
 )
 
 tf_cc_test(
@@ -168,6 +192,26 @@ tf_cc_test(
     ],
 )
 
+# A subset of the TF2 saved models can be generated with this tool.
+py_binary(
+    name = "testdata/generate_saved_models",
+    srcs = ["testdata/generate_saved_models.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/module",
+        "//tensorflow/python/saved_model",
+        "//tensorflow/python/saved_model:save_options",
+        "@absl_py//absl:app",
+    ],
+)
+
 # TODO(b/32673259): add a test to continuously validate these files.
 filegroup(
     name = "saved_model_half_plus_two",
@@ -177,5 +221,7 @@ filegroup(
         "testdata/half_plus_two/**",
         "testdata/half_plus_two_v2/**",
         "testdata/x_plus_y_v2_debuginfo/**",
+        "testdata/CyclicModule/**",
+        "testdata/VarsAndArithmeticObjectGraph/**",
     ]),
 )

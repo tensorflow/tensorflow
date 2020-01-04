@@ -23,7 +23,7 @@ limitations under the License.
 #include "llvm/TableGen/Main.h"
 #include "llvm/TableGen/Record.h"
 #include "llvm/TableGen/TableGenBackend.h"
-#include "mlir/TableGen/Operator.h"  // TF:local_config_mlir
+#include "mlir/TableGen/Operator.h"  // TF:llvm-project
 
 using llvm::LessRecord;
 using llvm::raw_ostream;
@@ -64,9 +64,13 @@ static void EmitOpAttrPopulators(const std::vector<Operator> &ops,
                  retType == "mlir::ResultElementTypeRange") {
         OUT(2) << "TF_RETURN_IF_ERROR(SetTypeAttribute(\"" << attr_name
                << "\", op." << attr_name << "(), values));\n";
+      } else if (attr.isSubClassOf("TF_DerivedOperandSizeAttr") ||
+                 attr.isSubClassOf("TF_DerivedResultSizeAttr")) {
+        OUT(2) << "TF_RETURN_IF_ERROR(SetSizeAttribute(\"" << attr_name
+               << "\", op." << attr_name << "(), values));\n";
       } else {
         PrintFatalError(op.getLoc(),
-                        "NYI: Derived attributes other than DerivedTypeAttr");
+                        "NYI: attribute populator for derived attributes");
       }
     }
 

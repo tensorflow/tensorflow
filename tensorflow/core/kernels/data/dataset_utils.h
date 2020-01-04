@@ -34,8 +34,8 @@ Status CreateHandle(OpKernelContext* ctx, T* resource,
   ResourceMgr* mgr = ctx->resource_manager();
   TF_RETURN_IF_ERROR(mgr->Create<T>(container_name, unique_name, resource));
 
-  *handle =
-      MakeResourceHandle(ctx, container_name, unique_name, MakeTypeIndex<T>());
+  *handle = MakeResourceHandle(container_name, unique_name, *ctx->device(),
+                               MakeTypeIndex<T>());
   return Status::OK();
 }
 
@@ -162,45 +162,81 @@ Status HashTensor(const Tensor& tensor, uint64* hash);
 // the same between TensorFlow builds.
 Status HashGraph(const GraphDef& graph, uint64* hash);
 
-// Helper class for reading data from a VariantTensorData object.
+// Helper class for reading data from a vector of VariantTensorData objects.
 class VariantTensorDataReader : public IteratorStateReader {
  public:
-  explicit VariantTensorDataReader(const VariantTensorData* data);
+  explicit VariantTensorDataReader(
+      const std::vector<const VariantTensorData*>& data);
 
-  // Returns OK iff the initialization was successful.
   Status ReadScalar(StringPiece key, int64* val) override;
   Status ReadScalar(StringPiece key, tstring* val) override;
   Status ReadTensor(StringPiece key, Tensor* val) override;
   bool Contains(StringPiece key) override;
+
+  Status ReadScalar(StringPiece name, StringPiece key, int64* val) override;
+  Status ReadScalar(StringPiece name, StringPiece key, tstring* val) override;
+  Status ReadTensor(StringPiece name, StringPiece key, Tensor* val) override;
+  bool Contains(StringPiece name, StringPiece key) override;
 
  private:
   template <typename T>
   Status ReadScalarInternal(StringPiece key, T* val);
   Status ReadTensorInternal(StringPiece key, Tensor* val);
 
-  std::map<string, size_t> map_;
-  const VariantTensorData* data_;  // Not owned.
+  template <typename T>
+  Status ReadScalarInternal(StringPiece name, StringPiece key, T* val);
+  Status ReadTensorInternal(StringPiece name, StringPiece key, Tensor* val);
+
+  std::map<string, std::map<string, size_t>> map_;
+  std::map<string, const VariantTensorData*> data_;  // Not owned.
 };
 
-// Helper class for writing data to a VariantTensorData object.
+// Helper class used to build a list of VariantTensorData objects, one for each
+// iterator which is determined from the key supplied from the Write* calls.
+// Sample usage:
+// VariantTensorDataWriter writer;
+// writer.WriteScalar(full_name("buffer_size"), buffer_.size());
+// writer.WriteScalar(full_name("num_threads"), threadpool_.size());
+// ....
+// std::vector<std::unique_ptr<VariantTensorData>> variants;
+// writer.ReleaseData(&variants);
+// Now the VariantTensorData objects can be used to serialize.
 class VariantTensorDataWriter : public IteratorStateWriter {
  public:
-  // Does not take ownership of data.
-  explicit VariantTensorDataWriter(VariantTensorData* data) : data_(data) {}
   Status WriteScalar(StringPiece key, const int64 val) override;
   Status WriteScalar(StringPiece key, const tstring& val) override;
   Status WriteTensor(StringPiece key, const Tensor& val) override;
 
-  // Writes the metadata to `data_`.
-  Status Flush();
+  Status WriteScalar(StringPiece name, StringPiece key,
+                     const int64 val) override;
+  Status WriteScalar(StringPiece name, StringPiece key,
+                     const tstring& val) override;
+  Status WriteTensor(StringPiece name, StringPiece key,
+                     const Tensor& val) override;
+
+  // Releases the built VariantTensorData's to `variants`. Clears out all
+  // class state.
+  void ReleaseData(std::vector<std::unique_ptr<VariantTensorData>>* variants);
+
+  // Obtains a read-only version of the VariantTensorData's built.
+  void GetData(std::vector<const VariantTensorData*>* variants);
 
  private:
+  void MaybeFlush();
+  void Reset();
+
   template <typename T>
   Status WriteScalarInternal(StringPiece key, const T& val);
   Status WriteTensorInternal(StringPiece key, const Tensor& val);
 
-  VariantTensorData* data_;
-  std::vector<string> keys_;
+  template <typename T>
+  Status WriteScalarInternal(StringPiece name, StringPiece key, const T& val);
+  Status WriteTensorInternal(StringPiece name, StringPiece key,
+                             const Tensor& val);
+
+  bool is_flushed_ = false;
+  std::map<string, std::unique_ptr<VariantTensorData>> data_;
+  std::map<string, std::vector<string>> keys_;
 };
 
 // Adds the functions in `to_add` to `base`. If a function with a matching

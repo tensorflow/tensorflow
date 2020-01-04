@@ -22,6 +22,8 @@ set_bazel_outdir
 
 install_ubuntu_16_pip_deps pip3.5
 
+update_bazel_linux
+
 python2.7 tensorflow/tools/ci_build/update_version.py --nightly
 
 # Run configure.
@@ -40,7 +42,7 @@ yes "" | "$PYTHON_BIN_PATH" configure.py
 
 # Build the pip package
 bazel build --config=opt --config=v2 \
-  --crosstool_top=//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.0:toolchain \
+  --crosstool_top=//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.1:toolchain \
   tensorflow/tools/pip_package:build_pip_package
 
 ./bazel-bin/tensorflow/tools/pip_package/build_pip_package pip_pkg --nightly_flag
@@ -58,6 +60,17 @@ for WHL_PATH in $(ls pip_pkg/tf_nightly*dev*.whl); do
   cp "${WHL_DIR}"/"${WHL_BASE_NAME}" "${WHL_PATH}"
   echo "Copied manylinux2010 wheel file at: ${WHL_PATH}"
 
-  echo "Uploading package: ${AUDITED_WHL_NAME}"
-  twine upload -r pypi-warehouse "${AUDITED_WHL_NAME}" || echo
+  # test the whl pip package
+  chmod +x tensorflow/tools/ci_build/builds/nightly_release_smoke_test.sh
+  ./tensorflow/tools/ci_build/builds/nightly_release_smoke_test.sh ${AUDITED_WHL_NAME}
+  RETVAL=$?
+
+  # Upload the PIP package if whl test passes.
+  if [ ${RETVAL} -eq 0 ]; then
+    echo "Basic PIP test PASSED, Uploading package: ${AUDITED_WHL_NAME}"
+    twine upload -r pypi-warehouse "${AUDITED_WHL_NAME}" || echo
+  else
+    echo "Basic PIP test FAILED, will not upload ${AUDITED_WHL_NAME} package"
+    return 1
+  fi
 done

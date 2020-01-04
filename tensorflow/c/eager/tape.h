@@ -19,6 +19,8 @@ limitations under the License.
 // maintains the data structures required to do so.
 
 #include <stack>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "tensorflow/core/framework/tensor_shape.h"

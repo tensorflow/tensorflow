@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/costmodel_manager.h"
 #include "tensorflow/core/common_runtime/executor_factory.h"
+#include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/common_runtime/pending_counts.h"
 #include "tensorflow/core/common_runtime/renamed_device.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
@@ -65,7 +66,7 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/internal/traceme_recorder.h"
+#include "tensorflow/core/profiler/lib/scoped_annotation.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
 
@@ -81,7 +82,7 @@ bool IsInitializationOp(const Node* node) {
 
 // Helper routines for collecting step stats.
 namespace nodestats {
-inline int64 NowInNsec() { return Env::Default()->NowNanos(); }
+inline int64 NowInNsec() { return EnvTime::NowNanos(); }
 
 void SetScheduled(NodeExecStatsInterface* stats, int64 micros) {
   if (!stats) return;
@@ -698,6 +699,19 @@ Status ExecutorImpl::Initialize(const Graph& graph) {
       TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "frame_name", &enter_name));
       EnsureFrameInfo(enter_name)->input_count++;
     }
+
+    // Record information about whether each output of the op is used.
+    std::vector<bool> used_outputs(n->num_outputs(), false);
+    for (const Edge* e : n->out_edges()) {
+      if (e->src_output() >= 0) {
+        used_outputs[e->src_output()] = true;
+      }
+    }
+    for (bool used_output : used_outputs) {
+      if (!used_output) {
+        metrics::RecordUnusedOutput(n->type_string());
+      }
+    }
   }
 
   // Initialize PendingCounts only after item->pending_id is initialized for
@@ -1287,7 +1301,7 @@ class ExecutorState {
 
   int64 step_id_;
   // Not owned.
-  Rendezvous* rendezvous_;
+  RendezvousInterface* rendezvous_;
   Executor::RendezvousFactory* create_rendezvous_ = nullptr;
   CollectiveExecutor* collective_executor_ = nullptr;
   SessionState* session_state_;
@@ -1637,7 +1651,7 @@ bool MightTrace(const NodeItem& item,
                 const tracing::EventCollector* event_collector) {
   // Tracing will only be enabled if either `event_collector` is non null,
   // or `trace_collector` is non-null and enabled for this particular kernel.
-  // Although `profiler::TraceMe`, `tracing::ScopedAnnotation`, and
+  // Although `profiler::TraceMe`, `profiler::ScopedAnnotation`, and
   // `tracing::ScopedRegion` check subsets of these properties internally in
   // their constructors, the cost of passing the necessary arguments to them can
   // be significant, so we avoid constructing them in the common case (when we
@@ -1646,9 +1660,9 @@ bool MightTrace(const NodeItem& item,
     return true;
   }
 
-  if (tracing::ScopedAnnotation::IsEnabled()) return true;
+  if (profiler::ScopedAnnotation::IsEnabled()) return true;
 
-  return profiler::TraceMeRecorder::Active(
+  return profiler::TraceMe::Active(
       profiler::GetTFTraceMeLevel(item.kernel->IsExpensive()));
 }
 
@@ -1659,7 +1673,8 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
         if (step_container_ && step_container_->step_id()) {
           id = step_container_->step_id();
         }
-        return absl::StrCat("ExecutorState::Process#id=", id, "#");
+        return absl::StrCat("ExecutorState::Process#id=", id,
+                            ",iter_num=", tagged_node.input_iter, "#");
       },
       2);
   WithContext wc(context_);
@@ -1851,13 +1866,8 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
         {
           profiler::TraceMe activity(
               [&] {
-                int64 id = step_id_;
-                if (step_container_ && step_container_->step_id()) {
-                  id = step_container_->step_id();
-                }
-                return strings::StrCat(
-                    op_kernel->name(), ":", op_kernel->type_string(),
-                    "#id=", id, ",device=", device->name(), ",async=true#");
+                return strings::StrCat(op_kernel->name_view(), ":",
+                                       op_kernel->type_string_view());
               },
               profiler::GetTFTraceMeLevel(op_kernel->IsExpensive()));
           device->ComputeAsync(async, &state->ctx, done);
@@ -1868,22 +1878,18 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
         nodestats::SetOpStart(stats);
 
         if (TF_PREDICT_FALSE(MightTrace(item, event_collector_))) {
-          const string& op_name = op_kernel->name();
-          int64 id = step_id_;
-          if (step_container_ && step_container_->step_id()) {
-            id = step_container_->step_id();
-          }
-          const string kernel_label = strings::StrCat(
-              op_name, ":", op_kernel->type_string(), "#id=", id,
-              ",device=", device->name(), ",async=false#");
+          absl::string_view op_name = op_kernel->name_view();
+          const string kernel_label =
+              strings::StrCat(op_name, ":", op_kernel->type_string_view());
           tracing::ScopedRegion region(tracing::EventCategory::kCompute,
                                        op_name);
+          absl::string_view kernel_label_view(kernel_label);
           // 'TraceMe' will trace the OpKernel scheduling time.
           profiler::TraceMe activity(
-              absl::string_view(kernel_label),
+              kernel_label_view,
               profiler::GetTFTraceMeLevel(op_kernel->IsExpensive()));
           // 'ScopedAnnotation' will trace the OpKernel execution time.
-          tracing::ScopedAnnotation annotation(kernel_label);
+          profiler::ScopedAnnotation annotation(kernel_label_view);
           device->Compute(op_kernel, &ctx);
         } else {
           // In the common case, avoid creating any tracing objects.
@@ -2134,8 +2140,9 @@ void ExecutorState::PropagateOutputs(const TaggedNode& tagged_node,
                                      TaggedNodeSeq* ready) {
   auto activity_handle = absl::make_unique<profiler::TraceMe>(
       [&]() {
-        return strings::StrCat("ExecutorPropagateOutputs:",
-                               item->kernel->name(), "#id=", step_id_, "#");
+        return strings::StrCat(
+            "ExecutorPropagateOutputs:", item->kernel->name_view(),
+            "#id=", step_id_, "#");
       },
       profiler::GetTFTraceMeLevel(/*is_expensive=*/false));
 
@@ -2541,7 +2548,7 @@ void ExecutorState::Finish() {
       }
     }
     delete this;
-    runner([=]() {
+    runner([step_id, status, done_cb = std::move(done_cb)]() {
       profiler::TraceMe traceme(
           [&] {
             return absl::StrCat("ExecutorDoneCallback#id=", step_id, "#");
@@ -2557,10 +2564,10 @@ void ExecutorState::Finish() {
     // devices like GPUs that continue to execute Ops after their Compute
     // methods have completed, this ensures that control is not returned to
     // the user until the step (and its side-effects) has actually completed.
-    device->Sync([=](Status new_status) mutable {
-      status.Update(new_status);
+    device->Sync([this, step_id, runner = std::move(runner),
+                  done_cb = std::move(done_cb)](const Status& status) mutable {
       delete this;
-      runner([=]() {
+      runner([step_id, status, done_cb = std::move(done_cb)]() {
         profiler::TraceMe traceme(
             [&] {
               return absl::StrCat("ExecutorDoneCallback#id=", step_id, "#");
@@ -2571,7 +2578,7 @@ void ExecutorState::Finish() {
     });
   } else {
     delete this;
-    runner([=]() {
+    runner([step_id, status, done_cb = std::move(done_cb)]() {
       profiler::TraceMe traceme(
           [&] {
             return absl::StrCat("ExecutorDoneCallback#id=", step_id, "#");

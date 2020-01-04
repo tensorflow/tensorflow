@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import json
 import os
+
 from absl.testing import parameterized
 import numpy as np
 
@@ -75,7 +76,7 @@ class MultiWorkerContinuousRunTest(test.TestCase, parameterized.TestCase):
       for _ in range(100):
         worker_step_fn()
 
-    multi_process_runner.MultiProcessRunner().run(
+    multi_process_runner.run(
         worker_fn,
         cluster_spec=test_base.create_cluster_spec(num_workers=num_workers))
 

@@ -59,6 +59,8 @@ class EagerKernelArgs : public FunctionArgsInterface {
  public:
   EagerKernelArgs() {}
 
+  explicit EagerKernelArgs(int count) : tensor_args_(count) {}
+
   explicit EagerKernelArgs(gtl::InlinedVector<TensorValue, 4>&& tensor_args)
       : tensor_args_(std::move(tensor_args)) {}
 
@@ -170,12 +172,14 @@ class KernelAndDeviceOp final : public KernelAndDevice {
       FunctionLibraryRuntime* flr,
       std::function<void(std::function<void()>)>* runner,
       std::unique_ptr<CollectiveExecutor::Handle> collective_executor,
-      Device* host_cpu_device, const bool compile_with_xla = false)
+      Device* host_cpu_device)
       : KernelAndDevice(flr, runner, std::move(collective_executor),
                         host_cpu_device),
         rendez_(rendez),
         log_memory_(log_memory),
-        compile_with_xla_(compile_with_xla) {}
+        step_container_(0, [this](const string& name) {
+          device_->resource_manager()->Cleanup(name).IgnoreError();
+        }) {}
 
   ~KernelAndDeviceOp() override {}
 
@@ -208,10 +212,12 @@ class KernelAndDeviceOp final : public KernelAndDevice {
 
  private:
   std::unique_ptr<OpKernel> kernel_;
+  gtl::InlinedVector<AllocatorAttributes, 4> input_alloc_attrs_;
+  gtl::InlinedVector<AllocatorAttributes, 1> output_alloc_attrs_;
   Rendezvous* const rendez_;
   checkpoint::TensorSliceReaderCacheWrapper slice_reader_cache_;
   const bool log_memory_;
-  const bool compile_with_xla_;
+  ScopedStepContainer step_container_;
 };
 
 // Represents a multi-device function. Functions can also be run using
@@ -241,9 +247,17 @@ class KernelAndDeviceFunc final : public KernelAndDevice {
             std::move(input_resource_dtypes_and_shapes)),
         name_(name),
         rendezvous_creator_(std::move(rendezvous_creator)),
-        get_op_id_(std::move(get_op_id)) {}
+        get_op_id_(std::move(get_op_id)),
+        step_container_(0, [this](const string& name) {
+          // TODO(b/139809335): This does not properly clean up remote resources
+          const std::vector<Device*> devices =
+              pflr_->device_mgr()->ListDevices();
+          for (Device* device : devices) {
+            device->resource_manager()->Cleanup(name).IgnoreError();
+          }
+        }) {}
 
-  virtual ~KernelAndDeviceFunc();
+  ~KernelAndDeviceFunc() override;
 
   bool IsFunction() override { return true; };
 
@@ -295,6 +309,8 @@ class KernelAndDeviceFunc final : public KernelAndDevice {
 
   std::function<Rendezvous*(const int64)> rendezvous_creator_;
   std::function<int64()> get_op_id_;
+
+  ScopedStepContainer step_container_;
 };
 
 }  // namespace tensorflow

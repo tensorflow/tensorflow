@@ -97,8 +97,8 @@ Optional<std::unique_ptr<tflite::ModelT>> InjectStatsToFullyConnected(
   // FB-NEXT:       } ],
 
   // CHECK-LABEL: func @main(%arg0: tensor<40x37xf32>, %arg1: tensor<40x37xf32>)
-  // CHECK-SAME:      -> tensor<40x40xf32> {
-  // CHECK-NEXT:    %[[stat:.*]] = "quant.stats"(%arg0) {layerStats = dense<
+  // CHECK-SAME:      -> tensor<40x40xf32>
+  // CHECK:         %[[stat:.*]] = "quant.stats"(%arg0) {layerStats = dense<
   // CHECK-SAME:      [-1.000000e+00, 1.000000e+00]> : tensor<2xf32>}
   // CHECK-SAME:      : (tensor<40x37xf32>) -> tensor<40x37xf32>
   // CHECK-NEXT:    %[[cst:.*]] = "tfl.pseudo_const"() {value = dense<
@@ -108,8 +108,7 @@ Optional<std::unique_ptr<tflite::ModelT>> InjectStatsToFullyConnected(
   // CHECK-SAME:      axisStats = dense<{{\[}}[-0.000000e+00, 0.000000e+00],
   // CHECK-SAME:      [-1.000000e+00, 1.000000e+00],
   // CHECK-SAME:      [-2.000000e+00, 2.000000e+00]
-  // CHECK-NEXT:    return %[[stat1]] :
-  // CHECK-SAME:      tensor<40x40xf32>
+  // CHECK-NEXT:    return %[[stat1]] : tensor<40x40xf32>
   // CHECK-NEXT:  }
 
   // Find the tensors and inject the min and max to the input and output

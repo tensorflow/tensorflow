@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_reachability.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -30,10 +31,10 @@ StatusOr<bool> MultiOutputFusion::Run(HloModule* module) {
 
   for (auto* computation : module->MakeNonfusionComputations()) {
     computation_ = computation;
-    RecomputeReachability();
     candidates_.clear();
     candidates_index_.clear();
     all_fusion_candidates_.clear();
+    RecomputeReachability();
 
     int64 index = 0;
     for (auto it : computation_->MakeInstructionPostOrder()) {
@@ -62,7 +63,19 @@ StatusOr<bool> MultiOutputFusion::Run(HloModule* module) {
           continue;
         }
         VLOG(10) << "Operand profitable: " << operand->name();
-        for (auto user : operand->users()) {
+        // We don't look at all users of operands as it's quadratic. Only look
+        // at one slice of users.
+        const int64 kUserSliceSize = 128;
+
+        const int64 user_slice_begin =
+            RoundDownToNearest(operand->UserId(instruction), kUserSliceSize);
+
+        const int64 user_slice_end =
+            std::min(static_cast<int64>(operand->users().size()),
+                     user_slice_begin + kUserSliceSize);
+
+        for (int64 i = user_slice_begin; i < user_slice_end; ++i) {
+          HloInstruction* user = operand->users()[i];
           VLOG(10) << "User: " << user->name();
           if (user == instruction || !IsFusible(user)) {
             VLOG(10) << "User is not fusible, or is the instruction itself: "
@@ -108,6 +121,11 @@ StatusOr<bool> MultiOutputFusion::Run(HloModule* module) {
       changed = true;
     }
   }
+  // Clean up state in case this pass is wrapped in an HloPassPipeline.
+  candidates_.clear();
+  candidates_index_.clear();
+  all_fusion_candidates_.clear();
+  reachability_.reset();
   return changed;
 }
 
@@ -133,6 +151,37 @@ HloInstruction* MultiOutputFusion::Fuse(HloInstruction* instr1,
   return remaining;
 }
 
+HloInstruction* MultiOutputFusion::CreateFusion(HloInstruction* base,
+                                                HloInstruction* to_fuse) {
+  HloInstruction* input_fusion =
+      computation()->AddInstruction(HloInstruction::CreateFusion(
+          base->shape(), HloInstruction::FusionKind::kLoop, base));
+
+  // Update candidate_ and all_fusion_candidates_.
+  std::vector<std::pair<HloInstruction*, int64>> new_fusibles =
+      GetNewFusibles(base, to_fuse);
+  int64 index;
+  if (candidates_index_.contains(input_fusion)) {
+    index = candidates_index_[input_fusion];
+  } else {
+    index = candidates_.size();
+    InsertOrDie(&candidates_index_, input_fusion, index);
+    candidates_.emplace_back(input_fusion);
+    all_fusion_candidates_.push_back(input_fusion);
+  }
+
+  // Update the worklist_.
+  FusionCandidate& candidate_node = candidates_[index];
+  for (auto it : new_fusibles) {
+    candidate_node.fusibles.emplace_back(it.first, it.second);
+    worklist_.emplace(input_fusion, it.first, it.second);
+  }
+
+  reachability_->Replace(base, input_fusion);
+  TF_CHECK_OK(computation()->ReplaceInstruction(base, input_fusion));
+  return input_fusion;
+}
+
 bool MultiOutputFusion::IsProfitableOperand(HloInstruction* instr) {
   // kConstant instruction will not have memory reads, so it won't be a profit
   // source. Skip them.
@@ -149,28 +198,11 @@ bool MultiOutputFusion::IsProfitableOperand(HloInstruction* instr) {
   return true;
 }
 
-void MultiOutputFusion::Update(HloInstruction* instr1, HloInstruction* instr2) {
-  HloInstruction* fusion = instr1;
-  HloInstruction* fused = instr2;
-  if (is_fused(instr1)) {
-    fusion = instr2;
-    fused = instr1;
-  }
-
-  // Insert the newly created instruction (if any), to candidates_.
-  for (auto use : fusion->users()) {
-    if (candidates_index_.find(use) == candidates_index_.end()) {
-      int64 index = candidates_.size();
-      candidates_.emplace_back(use);
-      InsertOrDie(&candidates_index_, use, index++);
-    }
-  }
+std::vector<std::pair<HloInstruction*, int64>>
+MultiOutputFusion::GetNewFusibles(HloInstruction* fusion,
+                                  HloInstruction* fused) {
   FusionCandidate& fusion_node = candidates_[get_candidate_id(fusion)];
   FusionCandidate& fused_node = candidates_[get_candidate_id(fused)];
-
-  // Update the reachability graph.
-  UpdateReachability(fusion, fused, all_fusion_candidates_,
-                     [this](HloInstruction* instr) { return is_fused(instr); });
 
   // Update the fusible list for fusion. Variable new_fusibles keeps
   // track of the new or changed entries.
@@ -209,6 +241,33 @@ void MultiOutputFusion::Update(HloInstruction* instr1, HloInstruction* instr2) {
   }
   fused_node.fusibles.clear();
 
+  return new_fusibles;
+}
+
+void MultiOutputFusion::Update(HloInstruction* instr1, HloInstruction* instr2) {
+  HloInstruction* fusion = instr1;
+  HloInstruction* fused = instr2;
+  if (is_fused(instr1)) {
+    fusion = instr2;
+    fused = instr1;
+  }
+
+  // Insert the newly created instruction (if any), to candidates_.
+  for (auto use : fusion->users()) {
+    if (candidates_index_.find(use) == candidates_index_.end()) {
+      int64 index = candidates_.size();
+      candidates_.emplace_back(use);
+      InsertOrDie(&candidates_index_, use, index++);
+    }
+  }
+
+  // Update the reachability graph.
+  UpdateReachability(fusion, fused, all_fusion_candidates_,
+                     [this](HloInstruction* instr) { return is_fused(instr); });
+
+  std::vector<std::pair<HloInstruction*, int64>> new_fusibles =
+      GetNewFusibles(fusion, fused);
+
   // Update the worklist_.
   for (auto it : new_fusibles) {
     worklist_.emplace(fusion, it.first, it.second);
@@ -217,10 +276,15 @@ void MultiOutputFusion::Update(HloInstruction* instr1, HloInstruction* instr2) {
 
 bool MultiOutputFusion::LegalToFuse(HloInstruction* instr1,
                                     HloInstruction* instr2) {
-  if (instr1 == instr2) {
+  if (instr1->opcode() != HloOpcode::kFusion) {
     return false;
   }
-  if (instr1->opcode() != HloOpcode::kFusion) {
+  return LegalToFuseMainConstraints(instr1, instr2);
+}
+
+bool MultiOutputFusion::LegalToFuseMainConstraints(HloInstruction* instr1,
+                                                   HloInstruction* instr2) {
+  if (instr1 == instr2) {
     return false;
   }
 
@@ -258,6 +322,8 @@ bool MultiOutputFusion::LegalToFuse(HloInstruction* instr1,
 }
 
 void MultiOutputFusion::RecomputeReachability() {
+  // Free the memory used for the reachability map before computing a new one.
+  reachability_.reset();
   reachability_ = HloReachabilityMap::Build(computation_);
 }
 
@@ -322,7 +388,12 @@ bool MultiOutputFusion::Perform() {
       }
       Update(instr1, instr2);
       HloInstruction* ret = Fuse(instr1, instr2);
-      set_is_fused(ret == instr1 ? instr2 : instr1);
+      if (ret != instr1) {
+        set_is_fused(instr1);
+      }
+      if (ret != instr2) {
+        set_is_fused(instr2);
+      }
       changed = true;
       VLOG(2) << "After fusion, \t this: " << ret->name() << "\n"
               << ret->fused_instructions_computation()->ToString(

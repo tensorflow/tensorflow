@@ -55,15 +55,10 @@ class TensorCodeGenerator {
 
     std::string width = "unknown";
     std::string height = "unknown";
-    std::string channels = "unknown";
     std::string depth = "unknown";
     std::string batch = "unknown";
   };
   TensorCodeGenerator() = default;
-  TensorCodeGenerator(const std::string& name,
-                      const std::string& uniform_size_name,
-                      const TensorDescriptor& descriptor);
-
   TensorCodeGenerator(const std::string& name, const SizeVariablesNames& sizes,
                       const TensorDescriptor& descriptor);
 
@@ -83,7 +78,6 @@ class TensorCodeGenerator {
       const std::string& x, const std::string& y, const std::string& z,
       TextureAddressMode address_mode = TextureAddressMode::DONT_CARE) const;
 
-  // Read4D supports BUFFER and IMAGE_BUFFER storage types.
   std::string Read4D(
       const std::string& x, const std::string& y, const std::string& z,
       const std::string& b,
@@ -134,6 +128,10 @@ class TensorCodeGenerator {
   SizeVariablesNames sizes_;
   TensorDescriptor descriptor_;
 };
+
+std::string GetTensorDeclaration(AccessType access,
+                                 const std::string& tensor_name,
+                                 const TensorDescriptor& descriptor);
 
 // Calculates correct X coordinate when stride != 1 and batch != 1 for
 // DHWBC4, HDWBC4, HWBC layouts
