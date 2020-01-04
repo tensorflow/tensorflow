@@ -24,7 +24,6 @@ import time
 import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
-from tensorflow.python.compat import compat
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes

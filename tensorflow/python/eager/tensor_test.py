@@ -521,7 +521,7 @@ class TFETensorUtilTest(test_util.TensorFlowTestCase):
 
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testTensorDir(self):
-    t = array_ops.zeros(1)
+    t = array_ops.ones(1)
     t.test_attr = "Test"
 
     instance_dir = dir(t)
