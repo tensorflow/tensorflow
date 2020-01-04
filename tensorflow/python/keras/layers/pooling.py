@@ -479,6 +479,9 @@ class AveragePooling2D(Pooling2D):
       4D tensor with shape `(batch_size, pooled_rows, pooled_cols, channels)`.
     - If `data_format='channels_first'`:
       4D tensor with shape `(batch_size, channels, pooled_rows, pooled_cols)`.
+  Usage Example:
+    python
+    >>>Average_pooling_layer = tf.keras.layers.AveragePooling2D(pool_size = (2,2),strides = (1,1),padding = "same")
   """
 
   def __init__(self,
