@@ -127,8 +127,11 @@ class TRTEngineOp : public AsyncOpKernel {
   // Verify that the input shapes are consistent and can be handled by this op.
   Status VerifyInputShapes(const std::vector<TensorShape>& shapes);
 
-  // Return engine batch in cached_engine_batch_sizes_ which is closest to input
-  // batch.
+  // Make actual_input_shapes compatible with an existing shape
+  // in the cache and return it. Two shapes are compatibile if their
+  // only different dimension (if any) is the batch dimension. The returned
+  // shape (engine_input_shapes) must be ready to use for either cache
+  // lookup or building an engine.
   Status GetEngineInputShapes(
       const CacheType& cache,
       const std::vector<TensorShape>& actual_input_shapes,
@@ -579,19 +582,16 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
 
   const bool kRetry = true;
   if (opt_profile_idx >= engine_context->execution_context.size()) {
-    VLOG(1) << "Error requested engine context " << opt_profile_idx
-            << ", but only " <<  engine_context->execution_context.size()
-            << "contexts are present.";
+    LOG(ERROR) << "Requested engine context with index " << opt_profile_idx
+               << ", but only " <<  engine_context->execution_context.size()
+               << "contexts are present.";
     return kRetry;
   }
   auto& execution_context = engine_context->execution_context[opt_profile_idx];
-  // All inputs must have the same batch size, so just get it from the first
-  // input.
-  const int num_batch = ctx->input(0).shape().dim_size(0);
   const int num_binding = ctx->num_inputs() + ctx->num_outputs();
-
   std::vector<void*> buffers(num_binding);
 
+  // Setup engine inputs
   for (int i = 0; i < ctx->num_inputs(); i++) {
     const string input_name = StrCat(IONamePrefixes::kInputPHName, i);
     const int binding_index = cuda_engine->getBindingIndex(input_name.c_str());
@@ -606,20 +606,28 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
     const Tensor& input_tensor = ctx->input(i);
     const TensorShape& input_shape = input_tensor.shape();
 
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
-    nvinfer1::Dims trt_dims;
-    trt_dims.nbDims = input_shape.dims();
-    for (int k = 0; k < input_shape.dims(); k++) {
-      trt_dims.d[k] = input_shape.dim_size(k);
+    if (use_implicit_batch_) {
+      // Ensure all inputs have the same batch size
+      const int num_batch = ctx->input(0).shape().dim_size(0);
+      if (num_batch != input_shape.dim_size(0)) {
+        LOG(ERROR) << "Input data has inconsistent batch size: " << num_batch
+                   << " vs " << input_shape.dim_size(0);
+        return kRetry;
+      }
     }
-    execution_context->setBindingDimensions(binding_index, trt_dims);
-#else
-    if (num_batch != input_shape.dim_size(0)) {
-      LOG(ERROR) << "Input data has inconsistent batch size: " << num_batch
-                 << " vs " << input_shape.dim_size(0);
-      return kRetry;
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
+    // Set known input dimensions. This is necessary because TRT network
+    // could be made with dynamic dimensions.
+    if (!use_implicit_batch_) {
+      nvinfer1::Dims trt_dims;
+      trt_dims.nbDims = input_shape.dims();
+      for (int k = 0; k < input_shape.dims(); k++) {
+        trt_dims.d[k] = input_shape.dim_size(k);
+      }
+      execution_context->setBindingDimensions(binding_index, trt_dims);
     }
 #endif
+    // Setup input bindings.
     auto dtype = cuda_engine->getBindingDataType(binding_index);
     switch (dtype) {
       case nvinfer1::DataType::kFLOAT:
@@ -644,6 +652,7 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
   }
 
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
+  // Ensure all network dynamic dimensions (if any) are set in execution context.
   if (!execution_context->allInputDimensionsSpecified()) {
     LOG(WARNING) << "Failed to set dimensions for all dynamic input tensors.";
     return kRetry;
@@ -654,43 +663,57 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
   }
 #endif
 
+  // Setup engine outputs
   for (int i = 0; i < ctx->num_outputs(); i++) {
     // Create an output tensor
     const string output_name = StrCat(IONamePrefixes::kOutputPHName, i);
     const int binding_index = cuda_engine->getBindingIndex(output_name.c_str());
-    Tensor* output_tensor = nullptr;
-
-    TensorShape output_shape;
-    if (binding_index != -1) {
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
-      auto dims = execution_context->getBindingDimensions(binding_index);
-      std::vector<int> trt_shape(dims.nbDims);
-      for (int j = 0; j < dims.nbDims; j++) trt_shape[j] = dims.d[j];
-#else
-      auto dims = cuda_engine->getBindingDimensions(binding_index);
-      std::vector<int> trt_shape(dims.nbDims + 1);
-      trt_shape[0] = num_batch;
-      for (int j = 0; j < dims.nbDims; j++) trt_shape[j + 1] = dims.d[j];
-#endif
-      auto status = TensorShapeUtils::MakeShape(
-          trt_shape.data(), trt_shape.size(), &output_shape);
-      if (!status.ok()) {
-        LOG(ERROR) << "Failed to get output shape: " << status;
-        return kRetry;
-      }
-    } else {
+    if (binding_index == -1) {
       const string msg =
           StrCat("Ouput node ", output_name, " not found, at ", name());
       LOG(ERROR) << msg;
       ctx->SetStatus(errors::NotFound(msg));
       return !kRetry;
     }
-    auto status = ctx->allocate_output(i, output_shape, &output_tensor);
+    // Get TRT output shapes for allocating output memory.
+    std::vector<int> trt_shape;
+    if (!use_implicit_batch_) {
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
+      // Get dims from context instead of engine in explicit batch mode
+      // because engine might have dynamic shapes.
+      auto dims = execution_context->getBindingDimensions(binding_index);
+      for (int j = 0; j < dims.nbDims; j++) {
+        trt_shape.push_back(dims.d[j]);
+      }
+#else
+      LOG(ERROR) << "Explicit batch mode is only supported with TensorRT 6 and above.";
+      return kRetry;
+#endif
+    } else {
+      auto dims = cuda_engine->getBindingDimensions(binding_index);
+      // In implicit batch mode, it's assumed that first dimension of
+      // all inputs and outputs is batch size.
+      trt_shape.push_back(ctx->input(0).shape().dim_size(0));
+      for (int j = 0; j < dims.nbDims; j++) {
+        trt_shape.push_back(dims.d[j]);
+      }
+    }
+    // Allocate output tensor of TRTEngineOp.
+    Tensor* output_tensor = nullptr;
+    TensorShape output_shape;
+    auto status = TensorShapeUtils::MakeShape(
+        trt_shape.data(), trt_shape.size(), &output_shape);
+    if (!status.ok()) {
+      LOG(ERROR) << "Failed to get output shape: " << status;
+      return kRetry;
+    }
+    status = ctx->allocate_output(i, output_shape, &output_tensor);
     if (!status.ok()) {
       LOG(ERROR) << "Allocating output failed with " << status;
       ctx->SetStatus(status);
       return kRetry;
     }
+    // Setup output bindings.
     auto dtype = cuda_engine->getBindingDataType(binding_index);
     switch (dtype) {
       case nvinfer1::DataType::kFLOAT:
@@ -720,22 +743,21 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
                                                 ->implementation()
                                                 ->GpuStreamMemberHack()));
 
-  // nvinfer1::IExecutionContext::enqueue is not thread safe and we need a mutex
+  // nvinfer1::IExecutionContext::enqueue* is not thread safe and we need a mutex
   // for it.
   mutex_lock lock(engine_context->mu);
-  bool ret;
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
+  bool ret = false;
   if (use_implicit_batch_) {
-    ret = execution_context->enqueue(num_batch, &buffers[0], *stream,
-                                          nullptr);
-  }
-  else {
+    const int num_batch = ctx->input(0).shape().dim_size(0);
+    ret = execution_context->enqueue(num_batch, &buffers[0], *stream, nullptr);
+  } else {
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
     ret = execution_context->enqueueV2(&buffers[0], *stream, nullptr);
-  }
 #else
-  ret = execution_context->enqueue(num_batch, &buffers[0], *stream,
-                                        nullptr);
+    LOG(ERROR) << "Explicit batch mode is only supported with TensorRT 6 and above.";
+    return kRetry;
 #endif
+  }
   if (!ret) {
     LOG(WARNING) << "Failed to enqueue batch for TRT engine: " << name();
     return kRetry;
@@ -774,7 +796,9 @@ StatusOr<EngineContext*> TRTEngineOp::GetEngine(
 
   mutex_lock lock(engine_mutex_);
   // Using first input to get batch size is reliable - VerifyInputShapes() has
-  // verified that.
+  // verified that. Although this is not needed for explicit batch mode, but
+  // we still have to pass it to ConvertGraphDefToEngine until the requirement
+  // is removed from that function.
   const int batch_size = input_shapes[0].dim_size(0);
   auto& cache = cache_res->cache_;
   auto allocator = cache_res->allocator_.get();
@@ -834,15 +858,15 @@ StatusOr<EngineContext*> TRTEngineOp::GetEngine(
     return cache.at(engine_input_shapes).get();
   }  // static_engine_
 
-  // Handle the dynamic engine case. See if there is a compatible engine cached.
+  // Find a shape from cache that is compatible with input_shapes
   // TODO(Tamas): if the input_shapes are the concrete shapes (knows shapes, without -1),
   // then we should look up the engine based on optimization profile ranges.
   std::vector<TensorShape> engine_input_shapes;
   TF_RETURN_IF_ERROR(
       GetEngineInputShapes(cache, input_shapes, &engine_input_shapes));
 
-  // If matched, use that engine. Otherwise, we will look in cache for that
-  // exact shape and possibly create a new engine if it is not in cache.
+  // If cache does not have an engine with engine_input_shapes,
+  // then create a new engine.
   if (!cache.count(engine_input_shapes)) {
     TrtUniquePtrType<nvinfer1::ICudaEngine> engine;
     bool convert_successfully = false;
