@@ -4229,24 +4229,15 @@ def polyval(coeffs, x, name=None):
      p(x) = coeffs[n-1] + x * (coeffs[n-2] + ... + x * (coeffs[1] +
             x * coeffs[0]))
 
-  Args:
-    coeffs: A list of `Tensor` representing the coefficients of the polynomial.
-    x: A `Tensor` representing the variable of the polynomial.
-    name: A name for the operation (optional).
-
-  Returns:
-    A `tensor` of the shape as the expression p(x) with usual broadcasting
-    rules for element-wise addition and multiplication applied.
-    
   Usage Example:
 
   >>> y = tf.math.polyval([2, 1, 0], 3) # evaluates 2 * (3**2) + 1 * (3**1) + 0 * (3**0)
   >>> print(y)
   tf.Tensor(21, shape=(), dtype=int32)
 
-  `tf.math.polyval` can also be used in polynomial regression. Taking 
-  advantage of this function can facilitate writing a polynomial equation 
-  as compared to explicitly writing it out, especially for higher degree 
+  `tf.math.polyval` can also be used in polynomial regression. Taking
+  advantage of this function can facilitate writing a polynomial equation
+  as compared to explicitly writing it out, especially for higher degree
   polynomials.
 
   >>> x = tf.constant(3)
@@ -4256,6 +4247,15 @@ def polyval(coeffs, x, name=None):
   >>> y = tf.math.polyval([theta1, theta2, theta3], x)
   >>> print(y)
   tf.Tensor(21, shape=(), dtype=int32)
+
+  Args:
+    coeffs: A list of `Tensor` representing the coefficients of the polynomial.
+    x: A `Tensor` representing the variable of the polynomial.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `tensor` of the shape as the expression p(x) with usual broadcasting
+    rules for element-wise addition and multiplication applied.
 
   @compatibility(numpy)
   Equivalent to numpy.polyval.
