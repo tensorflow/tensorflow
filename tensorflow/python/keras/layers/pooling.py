@@ -446,7 +446,12 @@ class MaxPooling2D(Pooling2D):
 @keras_export('keras.layers.AveragePooling2D', 'keras.layers.AvgPool2D')
 class AveragePooling2D(Pooling2D):
   """Average pooling operation for spatial data.
-
+  
+  >>> import numpy as np
+  >>> x = tf.keras.Input(shape=(3, 3, 1), name='x')
+  >>> average_pooling_layer = tf.keras.layers.AveragePooling2D(pool_size = (2,2),strides = (1,1),padding = "same")(x)
+  <tf.Tensor 'average_pooling2d_2/Identity:0' shape=(None, 1, 1, 1) dtype=float32>
+  
   Arguments:
     pool_size: integer or tuple of 2 integers,
       factors by which to downscale (vertical, horizontal).
@@ -479,9 +484,6 @@ class AveragePooling2D(Pooling2D):
       4D tensor with shape `(batch_size, pooled_rows, pooled_cols, channels)`.
     - If `data_format='channels_first'`:
       4D tensor with shape `(batch_size, channels, pooled_rows, pooled_cols)`.
-  
-  >>>average_pooling_layer = tf.keras.layers.AveragePooling2D(pool_size = (2,2),strides = (1,1),padding = "same")
-  <tensorflow.python.keras.layers.pooling.AveragePooling2D at 0x7fc011667978>
   """
 
   def __init__(self,
