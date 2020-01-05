@@ -180,7 +180,7 @@ _TRT_ENGINE_OP_NAME = "TRTEngineOp"
 
 
 def _check_conversion_params(conversion_params, is_v2=False):
-  """Validate the provided TrtConversionParams
+  """Validate the provided TrtConversionParams.
 
   Args:
     conversion_params: a TrtConversionParams instance.
@@ -209,15 +209,17 @@ def _check_conversion_params(conversion_params, is_v2=False):
     for optimizer in rewriter_cfg.custom_optimizers:
       if optimizer.name == "TensorRTOptimizer":
         if trt_optimizer:
-          raise TypeError("Found more than one TensorRTOptimizer in "
-                          "rewriter_config_template while only one is allowed.")
+          raise ValueError(
+              "Found more than one TensorRTOptimizer in "
+              "rewriter_config_template while only one is allowed.")
         trt_optimizer = optimizer
     # If rewriter_config_template is set, it should inculde TensorRTOptimizer.
     # It is possible to remove this requirement if needed.
     if not trt_optimizer:
-      raise TypeError("Found no TensorRTOptimizer in rewriter_config_template.")
+      raise ValueError(
+          "Found no TensorRTOptimizer in rewriter_config_template.")
     if not trt_optimizer.parameter_map:
-      raise TypeError("Found no parameter_map in TensorRTOptimizer.")
+      raise ValueError("Found no parameter_map in TensorRTOptimizer.")
     if ("precision_mode" in trt_optimizer.parameter_map.keys() and
         trt_optimizer.parameter_map["precision_mode"].s not in map(
             _to_bytes, supported_precision_modes)):
@@ -226,8 +228,8 @@ def _check_conversion_params(conversion_params, is_v2=False):
                             trt_optimizer.parameter_map["precision_mode"],
                             supported_precision_modes))
     if is_v2:
-      # Static mode (building TRT engine without executing the op) is not supported
-      # in TF 2.0. See TrtGraphConverterV2 for more details.
+      # Static mode (building TRT engine without executing the op) is not
+      # supported in TF 2.0. See TrtGraphConverterV2 for more details.
       if ("is_dynamic_op" in trt_optimizer.parameter_map.keys() and
           not trt_optimizer.parameter_map["is_dynamic_op"]):
         raise ValueError("Option is_dynamic_op=False is not supported "
@@ -251,8 +253,8 @@ def _check_trt_version_compatibility():
   if loaded_version < linked_version:
     tf_logging.error(
         "Loaded TensorRT %s but linked TensorFlow against TensorRT %s. " %
-        (".".join([str(x) for x in loaded_version]),
-         ".".join([str(x) for x in linked_version])) +
+        (".".join(str(x) for x in loaded_version), ".".join(
+            str(x) for x in linked_version)) +
         "TensorRT does not support forward compatibility. " +
         "It is also required to use the same major version of TensorRT " +
         "during compilation and runtime.")
@@ -260,16 +262,16 @@ def _check_trt_version_compatibility():
   if loaded_version[0] > linked_version[0]:
     tf_logging.error(
         "Loaded TensorRT %s but linked TensorFlow against TensorRT %s. " %
-        (".".join([str(x) for x in loaded_version]),
-         ".".join([str(x) for x in linked_version])) +
+        (".".join(str(x) for x in loaded_version), ".".join(
+            str(x) for x in linked_version)) +
         "It is required to use the same major version " +
         "of TensorRT during compilation and runtime.")
     raise RuntimeError("Incompatible TensorRT major version")
   if loaded_version != linked_version:
     tf_logging.info(
         "Loaded TensorRT %s and linked TensorFlow against TensorRT %s. " %
-        (".".join([str(x) for x in loaded_version]),
-         ".".join([str(x) for x in linked_version])) +
+        (".".join(str(x) for x in loaded_version), ".".join(
+            str(x) for x in linked_version)) +
         "This is supported because TensorRT " +
         " minor/patch upgrades are backward compatible")
 
@@ -1020,11 +1022,7 @@ class TrtGraphConverterV2(object):
       calibration_input_fn: a generator function that yields input data as a
         list or tuple, which will be used to execute the converted signature for
         calibration. All the returned input data should have the same shape.
-        Example:
-        ```
-        def input_fn():
-          yield input1, input2, input3
-        ```
+        Example: `def input_fn(): yield input1, input2, input3`
 
     Raises:
       ValueError: if the input combination is invalid.
@@ -1097,11 +1095,7 @@ class TrtGraphConverterV2(object):
       input_fn: a generator function that yields input data as a list or tuple,
         which will be used to execute the converted signature to generate TRT
         engines.
-        Example:
-        ```
-        def input_fn():
-          yield input1, input2, input3
-        ```
+        Example: `def input_fn(): yield input1, input2, input3`
     """
     for inp in input_fn():
       self._converted_func(*map(ops.convert_to_tensor, inp))

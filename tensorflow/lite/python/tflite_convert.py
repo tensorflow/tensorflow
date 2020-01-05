@@ -205,8 +205,8 @@ def _convert_tf1_model(flags):
   if flags.conversion_summary_dir:
     converter.conversion_summary_dir = flags.conversion_summary_dir
 
-  if flags.experimental_new_converter:
-    converter.experimental_new_converter = True
+  if flags.experimental_new_converter is not None:
+    converter.experimental_new_converter = flags.experimental_new_converter
 
   # Convert model.
   output_data = converter.convert()
@@ -230,8 +230,8 @@ def _convert_tf2_model(flags):
     model = keras.models.load_model(flags.keras_model_file)
     converter = lite.TFLiteConverterV2.from_keras_model(model)
 
-  if flags.experimental_new_converter:
-    converter.experimental_new_converter = True
+  if flags.experimental_new_converter is not None:
+    converter.experimental_new_converter = flags.experimental_new_converter
 
   # Convert the model.
   tflite_model = converter.convert()
@@ -592,7 +592,7 @@ def _get_parser(use_v2_converter):
 
 
 def run_main(_):
-  """Main in toco_convert.py."""
+  """Main in tflite_convert.py."""
   use_v2_converter = tf2.enabled()
   parser = _get_parser(use_v2_converter)
   tflite_flags, unparsed = parser.parse_known_args(args=sys.argv[1:])

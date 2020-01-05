@@ -191,7 +191,7 @@ class TfDoctestOutputChecker(doctest.OutputChecker, object):
     message = textwrap.dedent("""\n
         #############################################################
         Check the documentation
-        (go/testable-docstrings) on how to write testable docstrings.
+        (https://www.tensorflow.org/community/contribute/docs_ref) on how to write testable docstrings.
         #############################################################""")
 
     got.append(message)

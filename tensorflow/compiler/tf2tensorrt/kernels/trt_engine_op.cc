@@ -529,6 +529,25 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
                                    EngineContext* engine_context) {
   VLOG(1) << "Executing TRT engine: " << name();
   auto& cuda_engine = engine_context->cuda_engine;
+
+  if (VLOG_IS_ON(2)) {
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
+    VLOG(2) << "  Network name: " << cuda_engine->getName();
+#endif  // #if IS_TRT_VERSION_GE(6, 0, 0, 0)
+    VLOG(2) << "  Activation size: " << cuda_engine->getDeviceMemorySize()
+            << " bytes";
+    VLOG(2) << "  Workspace size: " << cuda_engine->getWorkspaceSize()
+            << " bytes";
+    VLOG(2) << "  Datatype of " << cuda_engine->getNbBindings()
+            << " inputs/outputs";
+    string binding_types = "";
+    for (int i = 0; i < cuda_engine->getNbBindings(); i++) {
+      binding_types += "    " + string(cuda_engine->getBindingName(i)) + ": " +
+                       DebugString(cuda_engine->getBindingDataType(i)) + "\n";
+    }
+    VLOG(2) << binding_types;
+  }
+
   const bool kRetry = true;
   // All inputs must have the same batch size, so just get it from the first
   // input.
@@ -694,6 +713,8 @@ StatusOr<EngineContext*> TRTEngineOp::GetEngine(
   // single element containing the only engine.
   if (static_engine_) {
     if (cache.size()) {
+      // TODO(laigd): need a better shape compatibility check for the case where
+      // implicit batch is disabled.
       if (!use_implicit_batch_ ||
           AreShapesCompatible(input_shapes, cache.begin()->first)) {
         return cache.begin()->second.get();

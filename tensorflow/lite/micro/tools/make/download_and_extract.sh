@@ -68,18 +68,27 @@ patch_kissfft() {
   echo "Finished patching kissfft"
 }
 
+build_embarc_mli() {
+  gmake -j 4 -C ${1}/lib/make TCF_FILE=${2}
+}
+
 # Main function handling the download, verify, extract, and patch process.
 download_and_extract() {
-  local usage="Usage: download_and_extract URL MD5 DIR [ACTION]"
+  local usage="Usage: download_and_extract URL MD5 DIR [ACTION] [ACTION_PARAM]"
   local url="${1:?${usage}}"
   local expected_md5="${2:?${usage}}"
   local dir="${3:?${usage}}"
   local action=${4}
+  local action_param1=${5}  # optional action parameter
   local tempdir=$(mktemp -d)
   local tempdir2=$(mktemp -d)
   local tempfile=${tempdir}/temp_file
   local curl_retries=3
 
+  command -v curl >/dev/null 2>&1 || {
+    echo >&2 "The required 'curl' tool isn't installed. Try 'apt-get install curl'."; exit 1;
+  }
+  
   echo "downloading ${url}" >&2
   mkdir -p "${dir}"
   # We've been seeing occasional 56 errors from valid URLs, so set up a retry
@@ -136,10 +145,12 @@ download_and_extract() {
     patch_am_sdk ${dir}
   elif [[ ${action} == "patch_kissfft" ]]; then
     patch_kissfft ${dir}
+  elif [[ ${action} == "build_embarc_mli" ]]; then
+    build_embarc_mli ${dir} ${action_param1}
   elif [[ ${action} ]]; then
     echo "Unknown action '${action}'"
     exit 1
   fi
 }
 
-download_and_extract "$1" "$2" "$3" "$4"
+download_and_extract "$1" "$2" "$3" "$4" "$5"

@@ -659,7 +659,7 @@ def flex_dep(target_op_sets):
     else:
         return []
 
-def gen_model_coverage_test(src, model_name, data, failure_type, tags):
+def gen_model_coverage_test(src, model_name, data, failure_type, tags, size = "medium"):
     """Generates Python test targets for testing TFLite models.
 
     Args:
@@ -682,7 +682,7 @@ def gen_model_coverage_test(src, model_name, data, failure_type, tags):
             name = "model_coverage_test_%s_%s" % (model_name, target_op_sets.lower().replace(",", "_")),
             srcs = [src],
             main = src,
-            size = "large",
+            size = size,
             args = [
                 "--model_name=%s" % model_name,
                 "--target_ops=%s" % target_op_sets,
@@ -691,6 +691,7 @@ def gen_model_coverage_test(src, model_name, data, failure_type, tags):
             srcs_version = "PY2AND3",
             python_version = "PY3",
             tags = [
+                "no_gpu",  # Executing with TF GPU configurations is redundant.
                 "no_oss",
                 "no_windows",
             ] + tags,
@@ -700,3 +701,18 @@ def gen_model_coverage_test(src, model_name, data, failure_type, tags):
                 "//tensorflow/python:client_testlib",
             ] + flex_dep(target_op_sets),
         )
+
+def if_tflite_experimental_runtime(if_true, if_false = []):
+    return select({
+        "//tensorflow/lite:tflite_experimental_runtime": if_true,
+        "//conditions:default": if_false,
+    })
+
+def tflite_experimental_runtime_linkopts():
+    return if_tflite_experimental_runtime(
+        if_true = [
+            # "//tensorflow/lite/experimental/tf_runtime:interpreter",
+            # "//tensorflow/lite/experimental/tf_runtime:model",
+        ],
+        if_false = [],
+    )

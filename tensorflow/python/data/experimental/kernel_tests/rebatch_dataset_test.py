@@ -34,8 +34,10 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.lib.io import python_io
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import image_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import variables
@@ -61,6 +63,30 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     expected_output = [[k for k in range(i, i + 8)] for i in range(0, 1024, 8)]  # pylint: disable=g-complex-comprehension
     self.assertDatasetProduces(rebatched_dataset, expected_output)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testCanHandleUnknownRank(self):
+    dataset = dataset_ops.Dataset.from_tensors("xxx")
+    # decode_image results in a tensor of completely unknown shape (i.e. unknown
+    # rank)
+    dataset = dataset.map(image_ops.decode_image)
+    self.assertEqual([tensor_shape.TensorShape(None)], _flat_shapes(dataset))
+    rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=4)
+    # Note that we are just testing the dataset shapes, not the actual output.
+    self.assertEqual([tensor_shape.TensorShape(None)],
+                     _flat_shapes(rebatched_dataset))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testCanHandleUnknownDims(self):
+    dataset = dataset_ops.Dataset.range(1000)
+    dataset = dataset.batch(10, drop_remainder=False)
+    dataset = dataset.batch(10, drop_remainder=False)
+    self.assertEqual([[None, None]],
+                     [ts.as_list() for ts in _flat_shapes(dataset)])
+    rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=4)
+    # Note that we are just testing the dataset shapes, not the actual output.
+    self.assertEqual([[None, None]],
+                     [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
 
   @combinations.generate(test_base.default_test_combinations())
   def testScalarInputError(self):

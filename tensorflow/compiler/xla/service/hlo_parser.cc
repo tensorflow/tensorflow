@@ -72,10 +72,6 @@ HloSchedule ScheduleFromInstructionOrder(HloModule* module) {
   return schedule;
 }
 
-// Some functions accept either a linear index or a multi-dimensional index
-// (used for indexing into sparse literals).
-using LinearOrMultiIndex = absl::variant<int64, absl::Span<const int64>>;
-
 // Parser for the HloModule::ToString() format text.
 class HloParserImpl : public HloParser {
  public:
@@ -137,24 +133,21 @@ class HloParserImpl : public HloParser {
   bool ParseTupleLiteral(Literal* literal, const Shape& shape);
   bool ParseNonTupleLiteral(Literal* literal, const Shape& shape);
   bool ParseDenseLiteral(Literal* literal, const Shape& shape);
-  bool ParseSparseLiteral(Literal* literal, const Shape& shape);
 
-  // Sets the sub-value of literal at the given linear or sparse index to the
-  // given value. If the literal is dense, it myst have the default layout.
+  // Sets the sub-value of literal at the given linear index to the
+  // given value. If the literal is dense, it must have the default layout.
   //
   // `loc` should be the source location of the value.
-  bool SetValueInLiteral(LocTy loc, int64 value, LinearOrMultiIndex index,
+  bool SetValueInLiteral(LocTy loc, int64 value, int64 index, Literal* literal);
+  bool SetValueInLiteral(LocTy loc, double value, int64 index,
                          Literal* literal);
-  bool SetValueInLiteral(LocTy loc, double value, LinearOrMultiIndex index,
+  bool SetValueInLiteral(LocTy loc, bool value, int64 index, Literal* literal);
+  bool SetValueInLiteral(LocTy loc, std::complex<double> value, int64 index,
                          Literal* literal);
-  bool SetValueInLiteral(LocTy loc, bool value, LinearOrMultiIndex index,
-                         Literal* literal);
-  bool SetValueInLiteral(LocTy loc, std::complex<double> value,
-                         LinearOrMultiIndex index, Literal* literal);
   // `loc` should be the source location of the value.
   template <typename LiteralNativeT, typename ParsedElemT>
-  bool SetValueInLiteralHelper(LocTy loc, ParsedElemT value,
-                               LinearOrMultiIndex index, Literal* literal);
+  bool SetValueInLiteralHelper(LocTy loc, ParsedElemT value, int64 index,
+                               Literal* literal);
 
   // Checks whether the given value is within the range of LiteralNativeT.
   // `loc` should be the source location of the value.
@@ -2125,8 +2118,7 @@ bool HloParserImpl::ParseInstructionNames(
                     "expects '}' at the end of instruction name list");
 }
 
-bool HloParserImpl::SetValueInLiteral(LocTy loc, int64 value,
-                                      LinearOrMultiIndex index,
+bool HloParserImpl::SetValueInLiteral(LocTy loc, int64 value, int64 index,
                                       Literal* literal) {
   const Shape& shape = literal->shape();
   switch (shape.element_type()) {
@@ -2160,8 +2152,7 @@ bool HloParserImpl::SetValueInLiteral(LocTy loc, int64 value,
   }
 }
 
-bool HloParserImpl::SetValueInLiteral(LocTy loc, double value,
-                                      LinearOrMultiIndex index,
+bool HloParserImpl::SetValueInLiteral(LocTy loc, double value, int64 index,
                                       Literal* literal) {
   const Shape& shape = literal->shape();
   switch (shape.element_type()) {
@@ -2180,8 +2171,7 @@ bool HloParserImpl::SetValueInLiteral(LocTy loc, double value,
   }
 }
 
-bool HloParserImpl::SetValueInLiteral(LocTy loc, bool value,
-                                      LinearOrMultiIndex index,
+bool HloParserImpl::SetValueInLiteral(LocTy loc, bool value, int64 index,
                                       Literal* literal) {
   const Shape& shape = literal->shape();
   switch (shape.element_type()) {
@@ -2194,8 +2184,7 @@ bool HloParserImpl::SetValueInLiteral(LocTy loc, bool value,
 }
 
 bool HloParserImpl::SetValueInLiteral(LocTy loc, std::complex<double> value,
-                                      LinearOrMultiIndex index,
-                                      Literal* literal) {
+                                      int64 index, Literal* literal) {
   const Shape& shape = literal->shape();
   switch (shape.element_type()) {
     case C64:
@@ -2221,54 +2210,21 @@ std::string StringifyValue(std::complex<double> val) {
 
 template <typename LiteralNativeT, typename ParsedElemT>
 bool HloParserImpl::SetValueInLiteralHelper(LocTy loc, ParsedElemT value,
-                                            LinearOrMultiIndex index,
-                                            Literal* literal) {
+                                            int64 index, Literal* literal) {
   if (!CheckParsedValueIsInRange<LiteralNativeT>(loc, value)) {
     return false;
   }
 
   // Check that the index is in range and assign into the literal
-  if (auto* linear_index = absl::get_if<int64>(&index)) {
-    if (*linear_index >= ShapeUtil::ElementsIn(literal->shape())) {
-      return Error(loc, StrCat("trys to set value ", StringifyValue(value),
-                               " to a literal in shape ",
-                               ShapeUtil::HumanString(literal->shape()),
-                               " at linear index ", *linear_index,
-                               ", but the index is out of range"));
-    }
-    literal->data<LiteralNativeT>().at(*linear_index) =
-        static_cast<LiteralNativeT>(value);
-  } else {
-    auto* multi_index = absl::get_if<absl::Span<const int64>>(&index);
-    CHECK(multi_index != nullptr);
-
-    auto invalid_idx = [&](std::string msg) {
-      return Error(loc, StrFormat("Invalid sparse index [%s]. %s",
-                                  absl::StrJoin(*multi_index, ", "), msg));
-    };
-
-    const auto& shape = literal->shape();
-    if (shape.rank() != multi_index->size()) {
-      return invalid_idx(
-          StrFormat("Has rank %d, but constant has shape %s, which has rank %d",
-                    multi_index->size(), shape.ToString(), shape.rank()));
-    }
-    for (int64 i = 0; i < shape.rank(); ++i) {
-      auto idx = (*multi_index)[i];
-      if (idx < 0) {
-        return invalid_idx(StrFormat(
-            "Sub-index value at %d, namely %d, cannot be negative.", i, idx));
-      }
-      if (idx >= shape.dimensions(i)) {
-        return invalid_idx(
-            StrFormat("Sub-index at %d, namely %d, doesn't fit within shape "
-                      "dimension %d in %s",
-                      i, idx, shape.dimensions(i), shape.ToString()));
-      }
-    }
-    literal->AppendSparseElement(*multi_index,
-                                 static_cast<LiteralNativeT>(value));
+  if (index >= ShapeUtil::ElementsIn(literal->shape())) {
+    return Error(loc, StrCat("trys to set value ", StringifyValue(value),
+                             " to a literal in shape ",
+                             ShapeUtil::HumanString(literal->shape()),
+                             " at linear index ", index,
+                             ", but the index is out of range"));
   }
+  literal->data<LiteralNativeT>().at(index) =
+      static_cast<LiteralNativeT>(value);
   return true;
 }
 
@@ -2314,12 +2270,8 @@ bool HloParserImpl::ParseTupleLiteral(Literal* literal, const Shape& shape) {
 // non_tuple
 //   ::= rank01
 //   ::= rank2345
-// rank2345 ::= shape sparse_or_nested_array
+// rank2345 ::= shape nested_array
 bool HloParserImpl::ParseNonTupleLiteral(Literal* literal, const Shape& shape) {
-  if (LayoutUtil::IsSparseArray(shape)) {
-    return ParseSparseLiteral(literal, shape);
-  }
-
   CHECK(LayoutUtil::IsDenseArray(shape)) << shape.ToString(true);
   return ParseDenseLiteral(literal, shape);
 }
@@ -2500,98 +2452,6 @@ bool HloParserImpl::ParseDenseLiteral(Literal* literal, const Shape& shape) {
   return true;
 }
 
-bool HloParserImpl::ParseSparseLiteral(Literal* literal, const Shape& shape) {
-  *literal = Literal(shape);
-  if (!ParseToken(TokKind::kLbrace,
-                  "expects '{' at the beginning of a sparse literal")) {
-    return false;
-  }
-
-  for (;;) {
-    if (lexer_.GetKind() == TokKind::kRbrace) {
-      lexer_.Lex();
-      break;
-    }
-
-    std::vector<int64> index;
-    if (lexer_.GetKind() == TokKind::kInt) {
-      int64 single_index = lexer_.GetInt64Val();
-      lexer_.Lex();
-      index.push_back(single_index);
-    } else {
-      if (!ParseInt64List(TokKind::kLsquare, TokKind::kRsquare, TokKind::kComma,
-                          &index)) {
-        return false;
-      }
-    }
-    if (!ParseToken(TokKind::kColon,
-                    "expects ':' after after the sparse array index and before "
-                    "the sparse array value")) {
-      return false;
-    }
-
-    LocTy value_loc = lexer_.GetLoc();
-    if (lexer_.GetKind() == TokKind::kw_true ||
-        lexer_.GetKind() == TokKind::kw_false) {
-      bool value = lexer_.GetKind() == TokKind::kw_true;
-      if (!SetValueInLiteral(lexer_.GetLoc(), value, index, literal)) {
-        return false;
-      }
-      lexer_.Lex();
-    } else if (primitive_util::IsIntegralType(shape.element_type())) {
-      int64 value;
-      if (!ParseInt64(&value)) {
-        return Error(value_loc,
-                     StrCat("expects integer for primitive type: ",
-                            PrimitiveType_Name(shape.element_type())));
-      }
-      if (!SetValueInLiteral(value_loc, value, index, literal)) {
-        return false;
-      }
-    } else if (primitive_util::IsFloatingPointType(shape.element_type())) {
-      double value;
-      if (!ParseDouble(&value)) {
-        return Error(value_loc,
-                     StrCat("expects floating point value for primitive type: ",
-                            PrimitiveType_Name(shape.element_type())));
-      }
-      if (!SetValueInLiteral(value_loc, value, index, literal)) {
-        return false;
-      }
-    } else if (primitive_util::IsComplexType(shape.element_type())) {
-      std::complex<double> value;
-      if (!ParseComplex(&value)) {
-        return Error(value_loc,
-                     StrCat("expects complex value for primitive type: ",
-                            PrimitiveType_Name(shape.element_type())));
-      }
-      if (!SetValueInLiteral(value_loc, value, index, literal)) {
-        return false;
-      }
-    } else {
-      LOG(FATAL) << "Unexpected element type: "
-                 << PrimitiveType_Name(shape.element_type());
-    }
-
-    if (lexer_.GetKind() != TokKind::kRbrace &&
-        !ParseToken(TokKind::kComma,
-                    "expects ',' separator between sparse array elements")) {
-      return false;
-    }
-
-    if (literal->sparse_element_count() + 1 ==
-        LayoutUtil::MaxSparseElements(shape.layout())) {
-      return Error(
-          lexer_.GetLoc(),
-          StrCat("number of sparse elements exceeds maximum for layout: ",
-                 ShapeUtil::HumanStringWithLayout(shape)));
-    }
-  }
-
-  literal->SortSparseElements();
-  return true;
-}
-
 // MaxFiniteValue is a type-traits helper used by
 // HloParserImpl::CheckParsedValueIsInRange.
 template <typename T>
@@ -2615,18 +2475,37 @@ struct MinMaxFiniteValue<bfloat16> {
   static double min() { return -max(); }
 };
 
+// MSVC's standard C++ library does not define isnan/isfinite for integer types.
+// To work around that we will need to provide our own.
+template <typename T>
+std::enable_if_t<std::is_floating_point<T>::value, bool> IsFinite(T val) {
+  return std::isfinite(val);
+}
+template <typename T>
+std::enable_if_t<std::is_floating_point<T>::value, bool> IsNaN(T val) {
+  return std::isnan(val);
+}
+template <typename T>
+std::enable_if_t<std::is_integral<T>::value, bool> IsFinite(T val) {
+  return std::isfinite(static_cast<double>(val));
+}
+template <typename T>
+std::enable_if_t<std::is_integral<T>::value, bool> IsNaN(T val) {
+  return std::isnan(static_cast<double>(val));
+}
+
 template <typename LiteralNativeT, typename ParsedElemT>
 bool HloParserImpl::CheckParsedValueIsInRange(LocTy loc, ParsedElemT value) {
   if (std::is_floating_point<ParsedElemT>::value) {
     auto value_as_native_t = static_cast<LiteralNativeT>(value);
     auto value_double_converted = static_cast<ParsedElemT>(value_as_native_t);
-    if (!std::isfinite(value) || std::isfinite(value_double_converted)) {
+    if (!IsFinite(value) || IsFinite(value_double_converted)) {
       value = value_double_converted;
     }
   }
   PrimitiveType literal_ty =
       primitive_util::NativeToPrimitiveType<LiteralNativeT>();
-  if (std::isnan(value) ||
+  if (IsNaN(value) ||
       (std::numeric_limits<ParsedElemT>::has_infinity &&
        (std::numeric_limits<ParsedElemT>::infinity() == value ||
         -std::numeric_limits<ParsedElemT>::infinity() == value))) {
@@ -3820,21 +3699,6 @@ bool HloParserImpl::ParseShape(Shape* result) {
   }
   LayoutUtil::SetToDefaultLayout(result);
 
-  if (lexer_.GetKind() == TokKind::kw_sparse) {
-    lexer_.Lex();
-    const std::string message =
-        "expects a brace-bracketed integer for sparse layout";
-    int64 max_sparse_elements;
-    if (!ParseToken(TokKind::kLbrace, message) ||
-        !ParseInt64(&max_sparse_elements) ||
-        !ParseToken(TokKind::kRbrace, message)) {
-      return false;
-    }
-    *result->mutable_layout() =
-        LayoutUtil::MakeSparseLayout(max_sparse_elements);
-    return true;
-  }
-
   // We need to lookahead to see if a following open brace is the start of a
   // layout. The specific problematic case is:
   //
@@ -4386,6 +4250,7 @@ bool HloParserImpl::ParseSingleInstruction(HloModule* module) {
   for (auto& comp : computations_) {
     module->AddEmbeddedComputation(std::move(comp));
   }
+  TF_CHECK_OK(module->set_schedule(ScheduleFromInstructionOrder(module)));
   return true;
 }
 

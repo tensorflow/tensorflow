@@ -1187,7 +1187,7 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
     }
 
     if (!whitelist.empty() && !whitelist.contains(node->def().op())) {
-      VLOG(1) << "Rejecting " << node->name()
+      VLOG(1) << "Rejecting TF operation " << node->def().op()
               << " as it is not listed in --tf_xla_ops_to_cluster.";
       continue;
     }
@@ -1770,9 +1770,10 @@ absl::flat_hash_map<string, std::vector<string>>* GetWhitelistTable() {
            {"ComplexAbs", "Angle", "Conj", "Abs", "Acos", "Acosh", "Asin",
             "Atan", "Atanh", "Ceil", "Cos", "Cosh", "Sin", "Exp", "Expm1",
             "Floor", "IsFinite", "IsInf", "IsNan", "Inv", "Reciprocal", "Log",
-            "Log1p", "Invert", "LogicalNot", "Neg", "Rint", "Round", "Rsqrt",
-            "Sigmoid", "Sign", "Sinh", "Softplus", "Softsign", "Sqrt", "Square",
-            "Tan", "Tanh", "Real", "Imag", "Erf", "Erfc", "Lgamma", "Digamma",
+            "Log1p", "Invert", "LogicalNot", "Ndtri", "Neg", "Rint", "Round",
+            "Rsqrt", "Sigmoid", "Sign", "Sinh", "Softplus", "Softsign", "Sqrt",
+            "Square", "Tan", "Tanh", "Real", "Imag", "Erf", "Erfc", "Erfinv",
+            "Lgamma", "Digamma",
             // Binary
             "Add", "AddV2", "Sub", "Mul", "Div", "Atan2", "Complex", "DivNoNan",
             "MulNoNan", "FloorDiv", "Xlogy", "Xdivy", "FloorMod", "BitwiseAnd",
@@ -2035,6 +2036,7 @@ absl::flat_hash_set<string> GetKnownXLAWhitelistOp() {
                                      "XlaDynamicSlice",
                                      "XlaDynamicUpdateSlice",
                                      "XlaEinsum",
+                                     "XlaGather",
                                      "XlaIf",
                                      "XlaKeyValueSort",
                                      "XlaPad",
@@ -2042,6 +2044,7 @@ absl::flat_hash_set<string> GetKnownXLAWhitelistOp() {
                                      "XlaReduce",
                                      "XlaReduceWindow",
                                      "XlaReplicaId",
+                                     "XlaScatter",
                                      "XlaSelectAndScatter",
                                      "XlaSelfAdjointEig",
                                      "XlaSend",

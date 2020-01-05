@@ -102,7 +102,7 @@ class TraceMeRecorder {
   TF_DISALLOW_COPY_AND_ASSIGN(TraceMeRecorder);
 
   void RegisterThread(int32 tid, ThreadLocalRecorder* thread);
-  void UnregisterThread(ThreadEvents&& events);
+  void UnregisterThread(int32 tid);
 
   bool StartRecording(int level);
   Events StopRecording();

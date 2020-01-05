@@ -209,6 +209,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         local_devices = tuple("/device:GPU:%d" % i for i in range(num_gpus))
       else:
         local_devices = ("/device:CPU:0",)
+
     self._worker_device = device_util.canonicalize("/device:CPU:0")
     self._host_input_device = numpy_dataset.SingleDevice(self._worker_device)
 
@@ -327,7 +328,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     super(CollectiveAllReduceExtended, self)._initialize_single_worker(
         local_devices)
     self._input_workers = input_lib.InputWorkers(
-        self._device_map, [(self._worker_device, self.worker_devices)])
+        [(self._worker_device, self.worker_devices)])
 
     # Add a default device so that ops without specified devices will not end up
     # on other workers.
@@ -523,7 +524,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
       # replicas in which case `value` would be a single value or value could
       # be 0.
       return cross_device_ops_lib.reduce_non_distributed_value(
-          reduce_op, self._device_map, value, destinations)
+          reduce_op, value, destinations, len(self.worker_devices))
     return self._get_cross_device_ops().reduce(
         reduce_op, value, destinations=destinations)
 

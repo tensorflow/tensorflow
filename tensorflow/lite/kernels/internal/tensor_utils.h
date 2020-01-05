@@ -314,14 +314,26 @@ void CwiseClipping(int8_t* input, const int8_t clipping_value, int32_t n_batch,
                    int32_t n_input);
 
 // Cwise product of two vectors.
-void VectorVectorCwiseProduct(const float* vector1, const float* vector2,
-                              int v_size, float* result);
+template <typename T>
+inline void VectorVectorCwiseProduct(const T* __restrict__ vector1,
+                                     const T* __restrict__ vector2, int v_size,
+                                     T* __restrict__ result) {
+  for (int v = 0; v < v_size; v++) {
+    *result++ = *vector1++ * *vector2++;
+  }
+}
 
 // Cwise product and accumulate of two vectors. Since it's a MAC opertation, the
 // assumption here is that result array is initialized to valid values.
-void VectorVectorCwiseProductAccumulate(const float* vector1,
-                                        const float* vector2, int v_size,
-                                        float* result);
+template <typename T>
+inline void VectorVectorCwiseProductAccumulate(const T* __restrict__ vector1,
+                                               const T* __restrict__ vector2,
+                                               int v_size,
+                                               T* __restrict__ result) {
+  for (int v = 0; v < v_size; v++) {
+    *result++ += *vector1++ * *vector2++;
+  }
+}
 
 // Dot product of two vectors.
 float VectorVectorDotProduct(const float* vector1, const float* vector2,

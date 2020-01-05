@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <memory>
 
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
+#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
+#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
 
 namespace mlir {
 namespace xla_hlo {

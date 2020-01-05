@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import pywrap_tfe
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import core
@@ -54,14 +54,16 @@ class Tests(test.TestCase):
 
     self.assertAllClose(
         math_ops.matmul(a_2_by_2, b_2_by_2),
-        pywrap_tensorflow.TFE_Py_FastPathExecute(
-            ctx._handle, ctx.device_name, "MatMul", None, None, a_2_by_2,
-            b_2_by_2, "transpose_a", False, "transpose_b", False))
+        pywrap_tfe.TFE_Py_FastPathExecute(ctx._handle, ctx.device_name,
+                                          "MatMul", None, None, a_2_by_2,
+                                          b_2_by_2, "transpose_a", False,
+                                          "transpose_b", False))
     self.assertAllClose(
         math_ops.matmul(a_100_by_784, b_100_by_784, transpose_b=True),
-        pywrap_tensorflow.TFE_Py_FastPathExecute(
-            ctx._handle, ctx.device_name, "MatMul", None, None, a_100_by_784,
-            b_100_by_784, "transpose_a", False, "transpose_b", True))
+        pywrap_tfe.TFE_Py_FastPathExecute(ctx._handle, ctx.device_name,
+                                          "MatMul", None, None, a_100_by_784,
+                                          b_100_by_784, "transpose_a", False,
+                                          "transpose_b", True))
 
   @test_util.assert_no_new_tensors
   @test_util.assert_no_garbage_created
@@ -71,12 +73,14 @@ class Tests(test.TestCase):
 
     a_2_by_2 = constant_op.constant(1.0, shape=[2, 2])
     m = resource_variable_ops.ResourceVariable(a_2_by_2)
-    x = pywrap_tensorflow.TFE_Py_FastPathExecute(
-        ctx._handle, ctx.device_name, "MatMul", None, None, m, m, "transpose_a",
-        False, "transpose_b", False)
-    y = pywrap_tensorflow.TFE_Py_FastPathExecute(
-        ctx._handle, ctx.device_name, "MatMul", None, None, a_2_by_2, a_2_by_2,
-        "transpose_a", False, "transpose_b", False)
+    x = pywrap_tfe.TFE_Py_FastPathExecute(ctx._handle, ctx.device_name,
+                                          "MatMul", None, None, m, m,
+                                          "transpose_a", False, "transpose_b",
+                                          False)
+    y = pywrap_tfe.TFE_Py_FastPathExecute(ctx._handle, ctx.device_name,
+                                          "MatMul", None, None, a_2_by_2,
+                                          a_2_by_2, "transpose_a", False,
+                                          "transpose_b", False)
 
     self.assertAllEqual(x, y)
 
@@ -89,9 +93,10 @@ class Tests(test.TestCase):
     with backprop.GradientTape(persistent=True) as tape:
       a_2_by_2 = constant_op.constant(1.0, shape=[2, 2])
       tape.watch(a_2_by_2)
-      z = pywrap_tensorflow.TFE_Py_FastPathExecute(
-          ctx._handle, ctx.device_name, "MatMul", None, None, a_2_by_2,
-          a_2_by_2, "transpose_a", False, "transpose_b", False)
+      z = pywrap_tfe.TFE_Py_FastPathExecute(ctx._handle, ctx.device_name,
+                                            "MatMul", None, None, a_2_by_2,
+                                            a_2_by_2, "transpose_a", False,
+                                            "transpose_b", False)
     dz_dy = tape.gradient(z, [a_2_by_2])[0]
     self.assertAllEqual(dz_dy.numpy(),
                         constant_op.constant(4.0, shape=[2, 2]).numpy())
@@ -106,9 +111,10 @@ class Tests(test.TestCase):
       a_2_by_2 = constant_op.constant(1.0, shape=[2, 2])
       m = resource_variable_ops.ResourceVariable(a_2_by_2)
       tape.watch(m)
-      z = pywrap_tensorflow.TFE_Py_FastPathExecute(
-          ctx._handle, ctx.device_name, "MatMul", None, None, m, m,
-          "transpose_a", False, "transpose_b", False)
+      z = pywrap_tfe.TFE_Py_FastPathExecute(ctx._handle, ctx.device_name,
+                                            "MatMul", None, None, m, m,
+                                            "transpose_a", False, "transpose_b",
+                                            False)
     dz_dy = tape.gradient(z, [m])[0]
     self.assertAllEqual(dz_dy.numpy(),
                         constant_op.constant(4.0, shape=[2, 2]).numpy())
@@ -125,9 +131,8 @@ class Tests(test.TestCase):
 
     self.assertAllClose(
         math_ops.add_n([a_2_by_2, b_2_by_2]),
-        pywrap_tensorflow.TFE_Py_FastPathExecute(ctx._handle, ctx.device_name,
-                                                 "AddN", None, None,
-                                                 [a_2_by_2, b_2_by_2]))
+        pywrap_tfe.TFE_Py_FastPathExecute(ctx._handle, ctx.device_name, "AddN",
+                                          None, None, [a_2_by_2, b_2_by_2]))
 
   # Tests homogeneous list op
   @test_util.assert_no_new_tensors
@@ -142,9 +147,9 @@ class Tests(test.TestCase):
     with backprop.GradientTape(persistent=True) as tape:
       tape.watch(a_2_by_2)
       tape.watch(b_2_by_2)
-      z1 = pywrap_tensorflow.TFE_Py_FastPathExecute(
-          ctx._handle, ctx.device_name, "AddN", None, None,
-          [a_2_by_2, b_2_by_2])
+      z1 = pywrap_tfe.TFE_Py_FastPathExecute(ctx._handle, ctx.device_name,
+                                             "AddN", None, None,
+                                             [a_2_by_2, b_2_by_2])
       z2 = math_ops.add_n([a_2_by_2, b_2_by_2])
     dz1_dy = tape.gradient(z1, [a_2_by_2])[0]
     dz2_dy = tape.gradient(z2, [a_2_by_2])[0]
@@ -162,9 +167,9 @@ class Tests(test.TestCase):
 
     self.assertAllClose(
         array_ops.identity_n([a_2_by_2, b_2_by_2]),
-        pywrap_tensorflow.TFE_Py_FastPathExecute(ctx._handle, ctx.device_name,
-                                                 "IdentityN", None, None,
-                                                 [a_2_by_2, b_2_by_2]))
+        pywrap_tfe.TFE_Py_FastPathExecute(ctx._handle, ctx.device_name,
+                                          "IdentityN", None, None,
+                                          [a_2_by_2, b_2_by_2]))
 
   # Tests heterogeneous list op
   @test_util.assert_no_new_tensors
@@ -179,9 +184,9 @@ class Tests(test.TestCase):
     with backprop.GradientTape(persistent=True) as tape:
       tape.watch(a_2_by_2)
       tape.watch(b_2_by_2)
-      z1 = pywrap_tensorflow.TFE_Py_FastPathExecute(
-          ctx._handle, ctx.device_name, "IdentityN", None, None,
-          [a_2_by_2, b_2_by_2])
+      z1 = pywrap_tfe.TFE_Py_FastPathExecute(ctx._handle, ctx.device_name,
+                                             "IdentityN", None, None,
+                                             [a_2_by_2, b_2_by_2])
       z2 = array_ops.identity_n([a_2_by_2, b_2_by_2])
     dz1_dy = tape.gradient(z1[0], [a_2_by_2])[0]
     dz2_dy = tape.gradient(z2[0], [a_2_by_2])[0]
@@ -201,19 +206,18 @@ class Tests(test.TestCase):
     # Not enough base params
     with self.assertRaisesRegexp(ValueError,
                                  "at least 5 items in the input tuple"):
-      pywrap_tensorflow.TFE_Py_FastPathExecute(ctx_handle, ctx.device_name,
-                                               "Identity")
+      pywrap_tfe.TFE_Py_FastPathExecute(ctx_handle, ctx.device_name, "Identity")
 
     # Not enough inputs
     with self.assertRaisesRegexp(ValueError,
                                  "Expected to be at least 6, was 5"):
-      pywrap_tensorflow.TFE_Py_FastPathExecute(ctx_handle, ctx_handle,
-                                               "Identity", None, [])
+      pywrap_tfe.TFE_Py_FastPathExecute(ctx_handle, ctx_handle, "Identity",
+                                        None, [])
 
     # Bad type
     with self.assertRaisesRegexp(TypeError, "expected a string for op_name"):
-      pywrap_tensorflow.TFE_Py_FastPathExecute(ctx_handle, ctx.device_name,
-                                               ctx_handle, None, [], a_2_by_2)
+      pywrap_tfe.TFE_Py_FastPathExecute(ctx_handle, ctx.device_name, ctx_handle,
+                                        None, [], a_2_by_2)
 
   @test_util.assert_no_new_tensors
   @test_util.assert_no_garbage_created
@@ -225,9 +229,9 @@ class Tests(test.TestCase):
 
     ctx_handle = ctx._handle
     with self.assertRaises(core._FallbackException):
-      pywrap_tensorflow.TFE_Py_FastPathExecute(ctx_handle, ctx.device_name,
-                                               "Split", None, None, split_dim,
-                                               value, "num_split", -1)
+      pywrap_tfe.TFE_Py_FastPathExecute(ctx_handle, ctx.device_name, "Split",
+                                        None, None, split_dim, value,
+                                        "num_split", -1)
 
   @test_util.assert_no_new_tensors
   @test_util.assert_no_garbage_created
@@ -266,10 +270,9 @@ class Tests(test.TestCase):
     ctx = context.context()
     ctx.ensure_initialized()
     with self.assertRaises(core._FallbackException):
-      pywrap_tensorflow.TFE_Py_FastPathExecute(ctx._handle, ctx.device_name,
-                                               "MatMul", None, None, m, m,
-                                               "transpose_a", False,
-                                               "transpose_b", False)
+      pywrap_tfe.TFE_Py_FastPathExecute(ctx._handle, ctx.device_name, "MatMul",
+                                        None, None, m, m, "transpose_a", False,
+                                        "transpose_b", False)
 
   def testOpDefDefaultType(self):
     im = np.random.randint(

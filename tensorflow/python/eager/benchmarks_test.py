@@ -39,7 +39,7 @@ import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python import keras
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import pywrap_tfe
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import backprop  # pylint: disable=unused-import
 from tensorflow.python.eager import context
@@ -65,6 +65,7 @@ from tensorflow.python.training import gradient_descent
 
 CPU = "/device:CPU:0"
 GPU = "/device:GPU:0"
+GLOBAL_TEST_VALUE = None
 
 
 def c_tfe_py_fastpath_execute(a,
@@ -76,10 +77,10 @@ def c_tfe_py_fastpath_execute(a,
   assert ctx.executing_eagerly(
   ), "The prototype doesn't contain C code for graph construction"
   try:
-    return pywrap_tensorflow.TFE_Py_FastPathExecute(
-        ctx._handle, ctx.device_name, "MatMul", name,
-        ctx.op_callbacks, a, b, "transpose_a", transpose_a,
-        "transpose_b", transpose_b)
+    return pywrap_tfe.TFE_Py_FastPathExecute(ctx._handle, ctx.device_name,
+                                             "MatMul", name, ctx.op_callbacks,
+                                             a, b, "transpose_a", transpose_a,
+                                             "transpose_b", transpose_b)
   except core._NotOkStatusException as e:
     if name is not None:
       message = e.message + " name: " + name
@@ -200,9 +201,19 @@ class MicroBenchmarks(test.Benchmark):
 
     self._run(func, 30000)
 
-  def _benchmark_create_constant(self, value, dtype):
-    def func():
+  def _benchmark_create_constant(self, value, dtype, cached=True):
+    global GLOBAL_TEST_VALUE
+    GLOBAL_TEST_VALUE = value
+
+    def cached_func():
       constant_op.constant(value, dtype=dtype)
+
+    def uncached_func():
+      global GLOBAL_TEST_VALUE
+      GLOBAL_TEST_VALUE += 1
+      constant_op.constant(GLOBAL_TEST_VALUE, dtype=dtype)
+
+    func = cached_func if cached else uncached_func
 
     with ops.device("GPU:0" if context.num_gpus() else "CPU:0"):
       for _ in range(1000):
@@ -212,13 +223,22 @@ class MicroBenchmarks(test.Benchmark):
   def benchmark_create_float_constant(self):
     self._benchmark_create_constant(42.0, dtype=None)
 
+  def benchmark_create_float_constant_uncached(self):
+    self._benchmark_create_constant(42.0, dtype=None, cached=False)
+
   def benchmark_create_int32_constant(self):
     if context.num_gpus():
       return  # int32 constants are always allocated on CPU.
 
     self._benchmark_create_constant(42, dtype=dtypes.int32)
 
-  def _benchmark_add_scalars(self, a, b):
+  def benchmark_create_int32_constant_uncached(self):
+    if context.num_gpus():
+      return  # int32 constants are always allocated on CPU.
+
+    self._benchmark_create_constant(42, dtype=dtypes.int32, cached=False)
+
+  def _benchmark_add(self, a, b):
     def func():
       return memoryview(math_ops.add(a, b))
 
@@ -228,10 +248,30 @@ class MicroBenchmarks(test.Benchmark):
       self._run(func, 30000)
 
   def benchmark_add_float_scalars(self):
-    self._benchmark_add_scalars(42.0, 24.0)
+    self._benchmark_add(42.0, 24.0)
 
   def benchmark_add_int32_scalars(self):
-    self._benchmark_add_scalars(42, 24)
+    self._benchmark_add(42, 24)
+
+  def benchmark_add_float_scalar_tensor(self):
+    tensor_a = constant_op.constant(42.0)
+    tensor_b = constant_op.constant(24.0)
+    self._benchmark_add(tensor_a, tensor_b)
+
+  def benchmark_add_int32_scalar_tensor(self):
+    tensor_a = constant_op.constant(42)
+    tensor_b = constant_op.constant(24)
+    self._benchmark_add(tensor_a, tensor_b)
+
+  def benchmark_add_float_dense_tensor(self):
+    tensor_a = constant_op.constant([[42.0, 42.0], [42.0, 42.0]])
+    tensor_b = constant_op.constant([[24.0, 24.0], [24.0, 24.0]])
+    self._benchmark_add(tensor_a, tensor_b)
+
+  def benchmark_add_int32_dense_tensor(self):
+    tensor_a = constant_op.constant([[42, 42], [42, 42]])
+    tensor_b = constant_op.constant([[24, 24], [24, 24]])
+    self._benchmark_add(tensor_a, tensor_b)
 
   def benchmark_create_float_tensor_from_list_CPU(self):
     self._benchmark_create_tensor([[3.0]], dtypes.float32.as_datatype_enum, CPU)
@@ -339,8 +379,7 @@ class MicroBenchmarks(test.Benchmark):
     inputs = [m]
 
     def f():
-      pywrap_tensorflow.TFE_Py_Execute(ctx_handle, None, "Identity", inputs,
-                                       attrs, 1)
+      pywrap_tfe.TFE_Py_Execute(ctx_handle, None, "Identity", inputs, attrs, 1)
 
     self._run(f, 30000)
 
@@ -406,8 +445,7 @@ class MicroBenchmarks(test.Benchmark):
              m.dtype.as_datatype_enum)
 
     def func():
-      pywrap_tensorflow.TFE_Py_Execute(ctx_handle, device, "MatMul", inputs,
-                                       attrs, 1)
+      pywrap_tfe.TFE_Py_Execute(ctx_handle, device, "MatMul", inputs, attrs, 1)
 
     self._run(func, num_iters)
 

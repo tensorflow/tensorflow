@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
+#include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
 #include "tensorflow/lite/delegates/gpu/cl/precision.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 
@@ -30,7 +31,8 @@ namespace {
 
 std::string GenerateConvolutionTransposedCode(
     const OperationDef& op_def,
-    const std::vector<ElementwiseOperation*>& linked_operations) {
+    const std::vector<ElementwiseOperation*>& linked_operations,
+    ConvolutionTransposed4x4::WeightsUploadType weights_upload_type) {
   std::string c = GetCommonDefines(op_def.precision);
 
   TensorCodeGenerator src_tensor("src_data",
@@ -43,6 +45,12 @@ std::string GenerateConvolutionTransposedCode(
   const auto src_tensor_type = op_def.src_tensors[0].storage_type;
   const bool manual_clamp = src_tensor_type == TensorStorageType::BUFFER ||
                             src_tensor_type == TensorStorageType::IMAGE_BUFFER;
+
+  const bool need_local_mem =
+      weights_upload_type ==
+          ConvolutionTransposed4x4::WeightsUploadType::LOCAL_MEM_BY_THREADS ||
+      weights_upload_type ==
+          ConvolutionTransposed4x4::WeightsUploadType::LOCAL_MEM_ASYNC;
 
   switch (op_def.precision) {
     case CalculationsPrecision::F32:
@@ -62,7 +70,9 @@ std::string GenerateConvolutionTransposedCode(
   }
 
   const std::string pixel_stride = op_def.batch_support ? "dst_size.w" : "1";
-  c += "__attribute__((reqd_work_group_size(8, 4, 1)))\n";
+  if (need_local_mem) {  // we use fixed workgroup size when use local mem
+    c += "__attribute__((reqd_work_group_size(8, 4, 1)))\n";
+  }
   c += "__kernel void main_function(\n";
   c += src_tensor.GetDeclaration(AccessType::READ) + ",\n";
   c += "    __global FLT4* filters,\n";
@@ -81,12 +91,28 @@ std::string GenerateConvolutionTransposedCode(
   c += "  int X = get_global_id(0);\n";
   c += "  int Y = get_global_id(1);\n";
   c += "  int Z = get_global_id(2);\n";
+  if (!need_local_mem) {
+    if (op_def.batch_support) {
+      c += "  if (X0 * 2 * dst_size.w > dst_size.x || Y * 2 > dst_size.y || Z "
+           ">= "
+           "dst_size.z) return;\n";
+    } else {
+      c += "  if (X * 2 > dst_size.x || Y * 2 > dst_size.y || Z >= dst_size.z) "
+           "return;\n";
+    }
+  }
   c += "  ACCUM_FLT4 r0 = (ACCUM_FLT4)(0.0f);\n";
   c += "  ACCUM_FLT4 r1 = (ACCUM_FLT4)(0.0f);\n";
   c += "  ACCUM_FLT4 r2 = (ACCUM_FLT4)(0.0f);\n";
   c += "  ACCUM_FLT4 r3 = (ACCUM_FLT4)(0.0f);\n";
   c += "  int f_offset = Z * filter_offset;\n";
-  c += "  __local FLT4 weights_cache[64];\n";
+  if (need_local_mem) {
+    c += "  __local FLT4 weights_cache[64];\n";
+  }
+  if (weights_upload_type ==
+      ConvolutionTransposed4x4::WeightsUploadType::LOCAL_MEM_BY_THREADS) {
+    c += "  int local_id = (int)(get_local_id(1) * 8 + get_local_id(0));\n";
+  }
   if (manual_clamp) {
     const std::string prev_x = "X - " + pixel_stride;
     c += "  bool in_x0 = " + prev_x + " >= 0 && " + prev_x + " < src_size.x;\n";
@@ -140,14 +166,30 @@ std::string GenerateConvolutionTransposedCode(
     }
   };
   c += "  for (int s = 0; s < src_size.z; ++s) {\n";
-  c += "    barrier(CLK_LOCAL_MEM_FENCE);\n";
-  c += "    async_work_group_copy(weights_cache, filters + f_offset, 64, 0);\n";
+  if (need_local_mem) {
+    c += "    barrier(CLK_LOCAL_MEM_FENCE);\n";
+  }
+  if (weights_upload_type ==
+      ConvolutionTransposed4x4::WeightsUploadType::LOCAL_MEM_ASYNC) {
+    c += "    async_work_group_copy(weights_cache, filters + f_offset, 64, "
+         "0);\n";
+  } else if (weights_upload_type ==
+             ConvolutionTransposed4x4::WeightsUploadType::
+                 LOCAL_MEM_BY_THREADS) {
+    c += "    weights_cache[local_id] = filters[f_offset + local_id];\n";
+    c += "    weights_cache[local_id + 32] = filters[f_offset + local_id + "
+         "32];\n";
+  } else {  // GLOBAL_MEM
+    c += "    __global FLT4* weights_cache = filters + f_offset;\n";
+  }
   c += "    FLT4 src0 = " + read_src(0, 0) + ";\n";
   c += "    FLT4 src1 = " + read_src(1, 0) + ";\n";
   c += "    FLT4 src2 = " + read_src(0, 1) + ";\n";
   c += "    FLT4 src3 = " + read_src(1, 1) + ";\n";
   c += "    f_offset += 64;\n";
-  c += "    barrier(CLK_LOCAL_MEM_FENCE);\n";
+  if (need_local_mem) {
+    c += "    barrier(CLK_LOCAL_MEM_FENCE);\n";
+  }
   c += "    CONV(r0, src0, 0);\n";
   c += "    CONV(r1, src0, 4);\n";
   c += "    CONV(r2, src0, 8);\n";
@@ -166,12 +208,15 @@ std::string GenerateConvolutionTransposedCode(
   c += "    CONV(r3, src3, 60);\n";
   c += "  }\n";
   c += "\n";
-  if (op_def.batch_support) {
-    c += "  if (X0 * 2 * dst_size.w > dst_size.x || Y * 2 > dst_size.y || Z >= "
-         "dst_size.z) return;\n";
-  } else {
-    c += "  if (X * 2 > dst_size.x || Y * 2 > dst_size.y || Z >= dst_size.z) "
-         "return;\n";
+  if (need_local_mem) {
+    if (op_def.batch_support) {
+      c += "  if (X0 * 2 * dst_size.w > dst_size.x || Y * 2 > dst_size.y || Z "
+           ">= "
+           "dst_size.z) return;\n";
+    } else {
+      c += "  if (X * 2 > dst_size.x || Y * 2 > dst_size.y || Z >= dst_size.z) "
+           "return;\n";
+    }
   }
   if (op_def.batch_support) {
     c += "  X = X0 * 2 * dst_size.w + B - dst_size.w;\n";
@@ -214,13 +259,22 @@ std::string GenerateConvolutionTransposedCode(
 }  // namespace
 
 ConvolutionTransposed4x4::ConvolutionTransposed4x4(
-    const OperationDef& definition)
-    : GPUOperation(definition) {}
+    const OperationDef& definition, const CLDevice& device)
+    : GPUOperation(definition) {
+  if (device.IsPowerVR()) {
+    weights_upload_type_ = WeightsUploadType::LOCAL_MEM_ASYNC;
+  } else if (device.IsNvidia()) {
+    weights_upload_type_ = WeightsUploadType::LOCAL_MEM_BY_THREADS;
+  } else {
+    weights_upload_type_ = WeightsUploadType::GLOBAL_MEM;
+  }
+}
 
 ConvolutionTransposed4x4::ConvolutionTransposed4x4(
     ConvolutionTransposed4x4&& operation)
     : GPUOperation(std::move(operation)),
       weights_(std::move(operation.weights_)),
+      weights_upload_type_(operation.weights_upload_type_),
       biases_(std::move(operation.biases_)),
       kernel_(std::move(operation.kernel_)),
       work_group_size_(operation.work_group_size_) {}
@@ -229,6 +283,7 @@ ConvolutionTransposed4x4& ConvolutionTransposed4x4::operator=(
     ConvolutionTransposed4x4&& operation) {
   if (this != &operation) {
     weights_ = std::move(operation.weights_);
+    std::swap(weights_upload_type_, operation.weights_upload_type_);
     biases_ = std::move(operation.biases_);
     kernel_ = std::move(operation.kernel_);
     std::swap(work_group_size_, operation.work_group_size_);
@@ -239,8 +294,8 @@ ConvolutionTransposed4x4& ConvolutionTransposed4x4::operator=(
 
 Status ConvolutionTransposed4x4::Compile(
     const CreationContext& creation_context) {
-  const auto code =
-      GenerateConvolutionTransposedCode(definition_, linked_operations_);
+  const auto code = GenerateConvolutionTransposedCode(
+      definition_, linked_operations_, weights_upload_type_);
 
   std::vector<CompilerOptions> options;
   if (definition_.precision == CalculationsPrecision::F16 &&
@@ -277,6 +332,16 @@ int3 ConvolutionTransposed4x4::GetGridSize() const {
   return int3(grid_x, grid_y, grid_z);
 }
 
+Status ConvolutionTransposed4x4::Tune(const TuningParameters& params) {
+  if (weights_upload_type_ == WeightsUploadType::LOCAL_MEM_ASYNC ||
+      weights_upload_type_ == WeightsUploadType::LOCAL_MEM_BY_THREADS) {
+    return OkStatus();
+  }
+  RETURN_IF_ERROR(BindArguments());
+  return GetBestWorkGroupConv(params, kernel_, GetGridSize(),
+                              &work_group_size_);
+}
+
 Status ConvolutionTransposed4x4::AddToQueue(CLCommandQueue* queue) {
   RETURN_IF_ERROR(BindArguments());
   return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
@@ -299,7 +364,7 @@ Status CreateConvolutionTransposed4x4(
     return InvalidArgumentError(
         "ConvolutionTransposed4x4 doesn't support this attributes");
   }
-  *result = ConvolutionTransposed4x4(definition);
+  *result = ConvolutionTransposed4x4(definition, *creation_context.device);
   RETURN_IF_ERROR(
       result->UploadWeights(attr.weights, creation_context.context));
   LinearStorageCreateInfo create_info;

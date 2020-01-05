@@ -34,8 +34,9 @@ extern const char* const kXlaClusterAttr;
 // compilation by the encapsulate subgraphs pass.
 extern const char* const kXlaOutsideCompilationAttr;
 
-// Pass that marks a subset of operators in the graph with attribute
-// _XlaCluster so they are compiled by the EncapsulateSubgraphsPass.
+// Marks a subset of nodes in the graph which are to be clustered
+// with an attribute _XlaCluster=<cluster id> so they are picked up by the
+// EncapsulateSubgraphsPass.
 class MarkForCompilationPass : public GraphOptimizationPass {
  public:
   MarkForCompilationPass() = default;

@@ -51,6 +51,7 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/tensor_coding.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/strided_slice_op.h"
 
 #if GOOGLE_CUDA
@@ -200,18 +201,6 @@ int64 TFAttrs::get<int64>(const string& key) const {
   return this->at(key)->i();
 }
 
-template <typename TensorShapeType>
-inline nvinfer1::Dims TensorShapeToTrtDims(const TensorShapeType& shape,
-                                           bool ignore_first_dim) {
-  nvinfer1::Dims trt_dims;
-  const int offset = (ignore_first_dim ? 1 : 0);
-  for (int i = offset; i < shape.dims(); i++) {
-    trt_dims.d[i - offset] = shape.dim_size(i);
-  }
-  trt_dims.nbDims = shape.dims() - offset;
-  return trt_dims;
-}
-
 template <typename Container>
 Status TensorShapeArrayToTrtDims(const Container& shape, nvinfer1::Dims* out,
                                  bool ignore_first_dim = false) {
@@ -286,7 +275,7 @@ Status ValidateTensorProperties(const string& producer_node_type,
   }
   *trt_dims = TensorShapeToTrtDims(shape,
                                    /*ignore_first_dim=*/use_implicit_batch);
-  // Get batch size for tensor if it will not be included the the shape.
+  // Get batch size for tensor if it will not be included the shape.
   if (use_implicit_batch) {
     *batch_size = shape.dim_size(0);
   }
@@ -312,66 +301,6 @@ Status ValidateTensorProperties(const string& producer_node_type,
     }
   }
   return Status::OK();
-}
-
-string DebugString(const nvinfer1::DimensionType type) {
-  switch (type) {
-    case nvinfer1::DimensionType::kSPATIAL:
-      return "kSPATIAL";
-    case nvinfer1::DimensionType::kCHANNEL:
-      return "kCHANNEL";
-    case nvinfer1::DimensionType::kINDEX:
-      return "kINDEX";
-    case nvinfer1::DimensionType::kSEQUENCE:
-      return "kSEQUENCE";
-    default:
-      return StrCat(static_cast<int>(type), "=unknown");
-  }
-}
-
-string DebugString(const nvinfer1::DataType trt_dtype) {
-  switch (trt_dtype) {
-    case nvinfer1::DataType::kFLOAT:
-      return "kFLOAT";
-    case nvinfer1::DataType::kHALF:
-      return "kHALF";
-    case nvinfer1::DataType::kINT8:
-      return "kINT8";
-    case nvinfer1::DataType::kINT32:
-      return "kINT32";
-    default:
-      return "Invalid TRT data type";
-  }
-}
-
-string DebugString(const nvinfer1::Dims& dims) {
-  string out = StrCat("nvinfer1::Dims(nbDims=", dims.nbDims, ", d=");
-  for (int i = 0; i < dims.nbDims; ++i) {
-    StrAppend(&out, dims.d[i]);
-    if (VLOG_IS_ON(2)) {
-      StrAppend(&out, "[", DebugString(dims.type[i]), "],");
-    } else {
-      StrAppend(&out, ",");
-    }
-  }
-  StrAppend(&out, ")");
-  return out;
-}
-
-string DebugString(const nvinfer1::Permutation& permutation, int len) {
-  string out = "nvinfer1::Permutation(";
-  for (int i = 0; i < len; ++i) {
-    StrAppend(&out, permutation.order[i], ",");
-  }
-  StrAppend(&out, ")");
-  return out;
-}
-
-string DebugString(const nvinfer1::ITensor& tensor) {
-  return StrCat("nvinfer1::ITensor(@", reinterpret_cast<uintptr_t>(&tensor),
-                ", name=", tensor.getName(),
-                ", dtype=", DebugString(tensor.getType()),
-                ", dims=", DebugString(tensor.getDimensions()), ")");
 }
 
 Status GetTrtBroadcastShape(const TRT_TensorOrWeights& operand_l,
@@ -581,14 +510,6 @@ inline nvinfer1::Dims GetTrtDimsForTensor(const Tensor& tensor) {
   return dims;
 }
 
-inline bool HasStaticShape(const nvinfer1::Dims& dims) {
-  if (dims.nbDims < 0) return false;
-  for (int d = 0; d < dims.nbDims; ++d) {
-    if (dims.d[d] < 0) return false;
-  }
-  return true;
-}
-
 int64_t Prod(const nvinfer1::Dims& dims) {
   int64_t count = 1;
   for (int d = 0; d < dims.nbDims; ++d) {
@@ -732,9 +653,10 @@ size_t TRT_ShapedWeights::size_bytes() const {
 }
 
 string TRT_ShapedWeights::DebugString() const {
-  return StrCat("TRT_ShapedWeights(shape=", convert::DebugString(shape_),
-                ", type=", convert::DebugString(type_),
-                ", values=", reinterpret_cast<uintptr_t>(GetValues()), ")");
+  return StrCat(
+      "TRT_ShapedWeights(shape=", tensorflow::tensorrt::DebugString(shape_),
+      ", type=", tensorflow::tensorrt::DebugString(type_),
+      ", values=", reinterpret_cast<uintptr_t>(GetValues()), ")");
 }
 
 // A fake ITensor implementation used to check whether the TF-TRT converter can
@@ -858,7 +780,7 @@ nvinfer1::Dims TRT_TensorOrWeights::GetTrtDims() const {
 string TRT_TensorOrWeights::DebugString() const {
   string output = "TRT_TensorOrWeights(type=";
   if (is_tensor()) {
-    StrAppend(&output, "tensor=", convert::DebugString(*tensor()),
+    StrAppend(&output, "tensor=", tensorflow::tensorrt::DebugString(*tensor()),
               ", batch_size=", batch_size_);
   } else {
     StrAppend(&output, "weights=", weights_.DebugString());
@@ -1210,11 +1132,8 @@ static void InitializeTrtPlugins(nvinfer1::ILogger* trt_logger) {
   mutex_lock lock(plugin_mutex);
   if (plugin_initialized) return;
 
-  LOG(INFO) << "Linked TensorRT version: " << NV_TENSORRT_MAJOR << "."
-            << NV_TENSORRT_MINOR << "." << NV_TENSORRT_PATCH;
-  const int loaded_version = getInferLibVersion();
-  LOG(INFO) << "Loaded TensorRT version: " << loaded_version / 1000 << "."
-            << (loaded_version / 100) % 10 << "." << loaded_version % 100;
+  LOG(INFO) << "Linked TensorRT version: " << GetLinkedTensorRTVersion();
+  LOG(INFO) << "Loaded TensorRT version: " << GetLoadedTensorRTVersion();
 
   plugin_initialized = initLibNvInferPlugins(trt_logger, "");
   if (!plugin_initialized) {
@@ -1450,6 +1369,19 @@ Status Converter::BuildCudaEngine(
       trt_builder_->setInt8Calibrator(nullptr);
     }
   }
+
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
+  string precision_mode_str;
+  TF_RETURN_IF_ERROR(
+      TrtPrecisionModeToName(precision_mode_, &precision_mode_str));
+  string trt_network_name = StrCat(
+      "TF:", TF_VERSION_STRING, ", ", "TRT:", GetLoadedTensorRTVersion(), "-",
+      "Precision:", precision_mode_str, ", ", "Calibration:", use_calibration_,
+      ", ", "Max-Batch-Size:", max_batch_size, ", ",
+      "Max-Workspace-Size:", max_workspace_size_bytes);
+  VLOG(1) << "Setting TensorRT network name to " << trt_network_name;
+  network()->setName(trt_network_name.c_str());
+#endif  // #if IS_TRT_VERSION_GE(6, 0, 0, 0)
 
   VLOG(1) << "Building TensorRT engine";
   engine->reset(trt_builder_->buildCudaEngine(*network()));
@@ -2230,7 +2162,37 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
     conv_layer = layer;
   }
   nvinfer1::ITensor* output_tensor = conv_layer->getOutput(0);
-
+  // Add an extra padding for Deconv because TRT doesn't accept the
+  // argument output_shape and thus the TRT output shape could be wrong
+  // in case of strides>1.
+  if (is_conv2d_backprop_input) {
+    auto tf_output_shape =
+        static_cast<int*>(backprop_output_size.weights().GetValues());
+    nvinfer1::Dims trt_output_shape = output_tensor->getDimensions();
+    // What determines the padding size is the difference between the given
+    // input_sizes (tf_output_shape) and TRT computed size.
+    const int height_diff = tf_output_shape[h_index] - trt_output_shape.d[1];
+    const int width_diff = tf_output_shape[w_index] - trt_output_shape.d[2];
+    if ((height_diff < 0) || (width_diff < 0)) {
+      return errors::InvalidArgument(
+          "input_sizes argument of Conv2DBackprop (i.e. output_shape argument "
+          "of conv2d_transpose) ",
+          "is too small for the given out_backprop argument of Conv2DBackprop "
+          "(i.e. input argument of conv2d_transpose). Expect: ",
+          "(", tf_output_shape[h_index], ", ", tf_output_shape[w_index],
+          ") >= ", "(", trt_output_shape.d[1], ", ", trt_output_shape.d[2],
+          ") for op ", node_def.name());
+    }
+    // Only add a padding layer if padding sizes are larger than 0
+    if ((height_diff > 0) || (width_diff > 0)) {
+      nvinfer1::DimsHW pre_padding(0, 0);
+      nvinfer1::DimsHW post_padding(height_diff, width_diff);
+      nvinfer1::IPaddingLayer* padding_layer =
+          params->converter->network()->addPadding(*output_tensor, pre_padding,
+                                                   post_padding);
+      output_tensor = padding_layer->getOutput(0);
+    }
+  }
   // Restore transpose.
   if (need_transpose) {
     TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
@@ -5145,6 +5107,17 @@ Status ConvertTopK(OpConverterParams* params) {
       CheckInputsWeights(*params, {{"input", false}, {"k", true}}));
   TF_RETURN_IF_ERROR(
       AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
+  TFAttrs attrs(node_def);
+  const bool sorted = attrs.get<bool>("sorted");
+  if (!sorted) {
+    // TensorRT only supports sorted output. Although TensorFlow API
+    // doesn't specify the order of output elements in case sorted=false,
+    // but it's safer to not convert because the output of TensorRT might
+    // be different with TensorFlow which can cause confusion.
+    return errors::InvalidArgument("Only sorted=True is supported, at",
+                                   node_def.name());
+  }
+
   nvinfer1::ITensor* tensor = inputs.at(0).tensor();
   const int num_dims = tensor->getDimensions().nbDims;
   if (num_dims == 0) {

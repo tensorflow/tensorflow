@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 import tempfile
+
 import numpy as np
 from six.moves import range
 import tensorflow as tf
@@ -215,8 +216,8 @@ class UnidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
     """
     converter = tf.lite.TFLiteConverter.from_session(sess, [input_tensor],
                                                      [output_tensor])
-    tflite = converter.convert()
     converter.experimental_new_converter = use_mlir_converter
+    tflite = converter.convert()
 
     interpreter = tf.lite.Interpreter(model_content=tflite)
     interpreter.allocate_tensors()

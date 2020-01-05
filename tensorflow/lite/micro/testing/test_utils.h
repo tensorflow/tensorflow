@@ -215,6 +215,24 @@ inline TfLiteTensor CreateQuantizedTensor(float* data, int8_t* quantized_data,
   return result;
 }
 
+inline TfLiteTensor CreateQuantizedTensor(float* data, int16_t* quantized_data,
+                                          TfLiteIntArray* dims,
+                                          const char* name,
+                                          bool is_variable = false) {
+  TfLiteTensor result;
+  SignedSymmetricQuantize(data, dims, quantized_data, &result.params.scale);
+  result.data.i16 = quantized_data;
+  result.type = kTfLiteInt16;
+  result.dims = dims;
+  result.params.zero_point = 0;
+  result.allocation_type = kTfLiteMemNone;
+  result.bytes = ElementCount(*dims) * sizeof(int16_t);
+  result.allocation = nullptr;
+  result.name = name;
+  result.is_variable = is_variable;
+  return result;
+}
+
 inline TfLiteTensor CreateQuantized32Tensor(const int32_t* data,
                                             TfLiteIntArray* dims,
                                             const char* name, float scale,

@@ -21,7 +21,7 @@ limitations under the License.
 
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/core/common_runtime/step_stats_collector.h"
+#include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/platform/env_time.h"
 
 namespace tensorflow {

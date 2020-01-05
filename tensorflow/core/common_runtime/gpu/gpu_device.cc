@@ -833,6 +833,9 @@ int64 MinSystemMemory(int64 available_memory) {
   // RAM and Video RAM
   min_system_memory = 1 << 30;
 #endif
+
+  VLOG(5) << "available_memory = " << available_memory;
+  VLOG(5) << "min_system_memory = " << min_system_memory;
   return min_system_memory;
 }
 
@@ -1186,7 +1189,7 @@ static string GetShortDeviceDescription(PlatformGpuId platform_gpu_id,
                          ", name: ", desc.name(),
                          ", pci bus id: ", desc.pci_bus_id(),
                          ", compute capability: ", cc_major, ".", cc_minor);
-  // LINT.ThenChange(//tensorflow/python/platform/test.py)
+  // LINT.ThenChange(//tensorflow/python/framework/gpu_util.py)
 #elif TENSORFLOW_USE_ROCM
   return strings::StrCat("device: ", platform_gpu_id.value(),
                          ", name: ", desc.name(),

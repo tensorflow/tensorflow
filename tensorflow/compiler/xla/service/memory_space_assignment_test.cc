@@ -67,9 +67,9 @@ class MemorySpaceAssignmentTest : public HloTestBase,
 
   std::unique_ptr<PresetAssignments> AssignMemorySpace(
       HloModule* module, int64 max_outstanding_async_copies = -1,
-      int64 max_prefetch_interval = 10) {
+      int64 max_prefetch_interval = 10, int64 min_prefetch_interval = 2) {
     InstructionCountPrefetchIntervalPicker prefetch_interval_picker(
-        /*min_overlap_count=*/2, max_prefetch_interval);
+        min_prefetch_interval, max_prefetch_interval);
     return AssignMemorySpace(module, max_outstanding_async_copies,
                              /*buffer_interval_compare=*/{},
                              &prefetch_interval_picker);
@@ -107,6 +107,7 @@ class MemorySpaceAssignmentTest : public HloTestBase,
     options.is_allowed_in_alternate_mem_fn = is_allowed_in_alternate_mem;
     options.max_outstanding_async_copies = max_outstanding_async_copies;
     options.allocate_across_sequential_calls = GetParam();
+    options.verify = true;
     std::unique_ptr<PresetAssignments> preset_assignments =
         MemorySpaceAssignment::Run(module, options).ValueOrDie();
     CheckPresetAssignments(preset_assignments.get());
@@ -428,6 +429,103 @@ TEST_P(MemorySpaceAssignmentTest, DontEvictWhenThereIsDefaultMemAllocation) {
   // We make sure that the second argument to this multiply is not evicted
   // CopyDone but is the original c.
   EXPECT_THAT(h, op::Multiply(op::Subtract(), op::Multiply()));
+}
+
+TEST_P(MemorySpaceAssignmentTest, EvictAndPrefetchAndPrefetch) {
+  // Test for a memory corruption bug involving evict/prefetch/prefetch pattern,
+  // where the last prefetch copied from the original buffer in alternate buffer
+  // instead of evicted buffer.
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* p1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "p1"));
+  HloInstruction* tanh = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kTanh, p0));
+  HloInstruction* a = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, p0, tanh));
+  HloInstruction* b = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kSubtract, p0, p1));
+  HloInstruction* c = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kMultiply, p0, p1));
+  HloInstruction* d = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kSubtract, p0, p1));
+  HloInstruction* e = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kMultiply, a, b));
+  HloInstruction* f = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kMultiply, a, c));
+  HloInstruction* g = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kMultiply, a, d));
+  HloInstruction* h = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kMultiply, b, c));
+  HloInstruction* i = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kMultiply, b, d));
+  HloInstruction* j = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kMultiply, c, d));
+  HloInstruction* k = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, e, f));
+  HloInstruction* l = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, g, h));
+  HloInstruction* m = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, i, j));
+  HloInstruction* n = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, k, l));
+  HloInstruction* o = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, n, m));
+  HloInstruction* add0 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, o, tanh));
+  HloInstruction* negate0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, add0));
+  HloInstruction* negate1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate0));
+  HloInstruction* negate2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate1));
+  HloInstruction* negate3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate2));
+  HloInstruction* negate4 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate3));
+  HloInstruction* negate5 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate4));
+  HloInstruction* negate6 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate5));
+  HloInstruction* negate7 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate6));
+  HloInstruction* negate8 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate7));
+  HloInstruction* negate9 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate8));
+  HloInstruction* add1 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, negate9, tanh));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(
+      computation,
+      {p0,      p1,      tanh,    a,       b,       c,       d,       e,
+       f,       g,       h,       i,       j,       k,       l,       m,
+       n,       o,       add0,    negate0, negate1, negate2, negate3, negate4,
+       negate5, negate6, negate7, negate8, negate9, add1});
+  TF_CHECK_OK(module->set_schedule(schedule));
+
+  AssignMemorySpace(module.get());
+
+  // Check that both prefetches (add0 and add1) prefetch from the eviction
+  // instead of tanh, which will be placed in the alternate memory directly.
+  EXPECT_THAT(
+      add0,
+      op::Add(op::Add(),
+              op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace,
+                            op::AsyncCopy(kDefaultMemorySpace,
+                                          kAlternateMemorySpace, op::Tanh()))));
+  EXPECT_THAT(
+      add1,
+      op::Add(op::Negate(),
+              op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace,
+                            op::AsyncCopy(kDefaultMemorySpace,
+                                          kAlternateMemorySpace, op::Tanh()))));
 }
 
 TEST_P(MemorySpaceAssignmentTest, While) {
@@ -757,6 +855,77 @@ TEST_P(MemorySpaceAssignmentTest, BitcastTuple) {
   TF_CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get());
+}
+
+TEST_P(MemorySpaceAssignmentTest, BitcastScheduleBug) {
+  // Bitcasts can force asynchronous copies to be scheduled too early, possibly
+  // leading to memory corruption.
+  //  Bug:
+  //    p0------------------>neg-->neg-->neg ... -->neg-->neg-->neg->add
+  //                                                                 /
+  //    p1->cs->cd->bitcast-----------------------------------------+
+  //
+  //  Expected:
+  //    p0-->neg-->neg-->neg ... -->neg-->neg-->neg------------->add
+  //                                                             /
+  //    p1--------------------->cs----------------->cd->bitcast-+
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  Shape param_shape = ShapeUtil::MakeShape(F32, {6});
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* p1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, param_shape, "p1"));
+  HloInstruction* bitcast =
+      builder.AddInstruction(HloInstruction::CreateBitcast(shape, p1));
+  HloInstruction* negate0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, p0));
+  HloInstruction* negate1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate0));
+  HloInstruction* negate2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate1));
+  HloInstruction* negate3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate2));
+  HloInstruction* negate4 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate3));
+  HloInstruction* negate5 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate4));
+  HloInstruction* negate6 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate5));
+  HloInstruction* negate7 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate6));
+  HloInstruction* negate8 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate7));
+  HloInstruction* negate9 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate8));
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, bitcast, negate9));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(
+      computation, {p0, p1, bitcast, negate0, negate1, negate2, negate3,
+                    negate4, negate5, negate6, negate7, negate8, negate9, add});
+  TF_CHECK_OK(module->set_schedule(schedule));
+
+  AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/-1,
+                    /*max_prefetch_interval=*/5, /*min_prefetch_interval=*/4);
+
+  EXPECT_EQ(bitcast->shape().layout().memory_space(), kAlternateMemorySpace);
+  const auto& instructions =
+      module->schedule().sequence(module->entry_computation()).instructions();
+  for (int i = 0; i < instructions.size(); ++i) {
+    // Expect that there is a negate before and after the CopyStart and there is
+    // a negate before CopyDone.
+    if (instructions.at(i)->opcode() == HloOpcode::kCopyStart) {
+      EXPECT_EQ(instructions.at(i - 1)->opcode(), HloOpcode::kNegate);
+      EXPECT_EQ(instructions.at(i + 1)->opcode(), HloOpcode::kNegate);
+    } else if (instructions.at(i)->opcode() == HloOpcode::kCopyDone) {
+      EXPECT_EQ(instructions.at(i - 1)->opcode(), HloOpcode::kNegate);
+    }
+  }
 }
 
 TEST_P(MemorySpaceAssignmentTest, LastUseOpt) {
@@ -2265,6 +2434,39 @@ TEST_P(MemorySpaceAssignmentTest,
 INSTANTIATE_TEST_SUITE_P(MemorySpaceAssignmentInstantiation,
                          MemorySpaceAssignmentTest,
                          ::testing::Values(false, true));
+
+using AsynchronousCopyOrderingTest = ::testing::Test;
+
+TEST_F(AsynchronousCopyOrderingTest, Simple) {
+  // Given asynchronous copies like the following, ensure the pipelining order
+  // is maintained (earlier start time must have earlier end time).
+  // 3,11       +-------+         OK
+  // 1,8      +------+            OK
+  // 5,14         +--------+      OK
+  // 7,14           +------+      OK
+  // 2,16      +-------------+    Violate
+  // 9,12             +--+        Violate
+  // 6,17          +----------+   Violate
+  // 5,13         +-------+       OK (same start as 5,14)
+  // 5,14         +--------+      OK (same as 5,14)
+  auto alternate_mem_space = MemorySpaceAssignment::MemorySpace::kAlternate;
+  AsynchronousCopyOrdering ordering;
+  EXPECT_FALSE(ordering.ViolatesOrdering(3, 11));
+  ordering.AddCopy({3, 11, alternate_mem_space});
+  EXPECT_FALSE(ordering.ViolatesOrdering(1, 8));
+  ordering.AddCopy({1, 8, alternate_mem_space});
+  EXPECT_FALSE(ordering.ViolatesOrdering(5, 14));
+  ordering.AddCopy({5, 14, alternate_mem_space});
+  EXPECT_FALSE(ordering.ViolatesOrdering(7, 14));
+  ordering.AddCopy({7, 14, alternate_mem_space});
+  EXPECT_TRUE(ordering.ViolatesOrdering(2, 16));
+  EXPECT_TRUE(ordering.ViolatesOrdering(9, 12));
+  EXPECT_TRUE(ordering.ViolatesOrdering(6, 17));
+  EXPECT_FALSE(ordering.ViolatesOrdering(5, 13));
+  ordering.AddCopy({5, 13, alternate_mem_space});
+  EXPECT_FALSE(ordering.ViolatesOrdering(5, 14));
+  ordering.AddCopy({5, 14, alternate_mem_space});
+}
 
 }  // namespace
 }  // namespace xla

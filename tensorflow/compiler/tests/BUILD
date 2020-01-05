@@ -316,6 +316,11 @@ tf_xla_py_test(
     timeout = "moderate",
     srcs = ["matrix_inverse_op_test.py"],
     python_version = "PY3",
+    tags = [
+        "noasan",
+        "nomsan",
+        "notsan",
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",

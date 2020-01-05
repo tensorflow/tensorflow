@@ -402,7 +402,7 @@ def assert_no_legacy_layers(layers):
   # isinstance check for tf.layers.Layer introduces a circular dependency.
   legacy_layers = [l for l in layers if getattr(l, '_is_legacy_layer', None)]
   if legacy_layers:
-    layer_str = '\n'.join(['  ' + str(l) for l in legacy_layers])
+    layer_str = '\n'.join('  ' + str(l) for l in legacy_layers)
     raise TypeError(
         'The following are legacy tf.layers.Layers:\n{}\nTo use keras as a '
         'framework (for instance using the Network, Model, or Sequential '

@@ -184,6 +184,19 @@ class IrEmitterUnnested : public IrEmitter,
   ReductionCodegenInfo ComputeReductionCodegenInfo(
       const HloInstruction* unnested_hlo, const HloInstruction* first_reduce);
 
+  // Generates code for input-fusible slices.
+  //
+  // Prerequisite: ROOT is either a slice or a tuple of slices. The input shapes
+  // of all ROOT slices need to be the same while their output shapes can be
+  // different. On the other hand, the input ranges of slices can be
+  // overlapping. Further generalization/specialization when the needs are seen
+  // in the future.
+  Status EmitInputFusibleNonStridedSlices(HloInstruction* unnested_hlo);
+
+  void EmitElementForInputFusibleSlices(
+      HloInstruction* unnested_hlo,
+      const llvm_ir::IrArray::Index& slice_input_index);
+
   // Emits code for an in-place scatter, modifying `thunk`s launch dimensions in
   // the process. `scatter` may be fused, scatter indices are taken from
   // `scatter_indices_gen`, updates from`updates_gen`. The output buffer is

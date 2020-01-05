@@ -826,8 +826,10 @@ bool VirtualScheduler::MarkCurrNodeExecuted(const Costs& node_costs) {
                                    ? 1
                                    : node->attr().at(kExecutionCount).i();
 
-  Costs total_node_costs =
-      MultiplyCosts(node_costs, node_state.execution_count);
+  node_state.node_costs = node_costs;
+  // TotalNodeCosts() Should be called after node_costs and execution_count.
+  Costs total_node_costs = node_state.TotalNodeCosts();
+
   graph_costs_ = CombineCosts(graph_costs_, total_node_costs);
   const string& op_name = node->op();
 

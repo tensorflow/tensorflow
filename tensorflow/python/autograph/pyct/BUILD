@@ -27,6 +27,7 @@ py_library(
         "cfg.py",
         "error_utils.py",
         "errors.py",
+        "gast_util.py",
         "inspect_utils.py",
         "loader.py",
         "origin_info.py",

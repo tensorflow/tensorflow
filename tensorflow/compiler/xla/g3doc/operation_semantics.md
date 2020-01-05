@@ -2053,8 +2053,8 @@ window_strides, padding)` </b>
 :                     :                     : as to have the same output shape :
 :                     :                     : as input if the stride is 1, or  :
 :                     :                     : Padding\:\:kValid, which uses no :
-:                     :                     : no padding and "stops" the       :
-:                     :                     : window once it no longer fits)   :
+:                     :                     : padding and "stops" the window   :
+:                     :                     : once it no longer fits)          :
 
 Below code and figure shows an example of using `ReduceWindow`. Input is a
 matrix of size [4x6] and both window_dimensions and window_stride_dimensions are

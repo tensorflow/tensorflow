@@ -78,8 +78,8 @@ else
   pip3 install --upgrade numpy==1.14.5
 fi
 
-pip2 install scipy==1.1.0
-pip3 install scipy==1.1.0
+pip2 install scipy==1.2.2
+pip3 install scipy==1.4.1
 
 pip2 install scikit-learn==0.18.1
 pip3 install scikit-learn==0.18.1

@@ -27,6 +27,7 @@ import re
 import shutil
 import tempfile
 import warnings
+
 import numpy as np
 import six
 
@@ -213,7 +214,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
                            run_params,
                            conversion_params,
                            disable_non_trt_optimizers=False):
-    trt_convert.get_tensorrt_rewriter_config(
+    return trt_convert.get_tensorrt_rewriter_config(
         conversion_params=conversion_params,
         is_v2=run_params.is_v2,
         disable_non_trt_optimizers=disable_non_trt_optimizers)
@@ -586,7 +587,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
             trt_op_names.append(node.name)
     # Remove the function name prefix.
     def _Canonicalize(names):
-      return set([self._ToString(name.split("/")[-1]) for name in names])
+      return set(self._ToString(name.split("/")[-1]) for name in names)
 
     all_op_names = _Canonicalize(all_op_names)
     trt_op_names = _Canonicalize(trt_op_names)

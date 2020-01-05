@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import collections
 import os
+
 import numpy as np
 
 from tensorflow.python.eager import context
@@ -246,6 +247,17 @@ class PoolingTest(test.TestCase):
     self._VerifyValues(
         nn_ops.avg_pool,
         input_sizes=[1, 3, 3, 3],
+        ksize=[1, 2, 2, 1],
+        strides=[1, 2, 2, 1],
+        padding="VALID",
+        expected=expected_output,
+        use_gpu=use_gpu)
+
+  def _testAvgPoolEmpty(self, use_gpu):
+    expected_output = [7.0, 8.0, 9.0]
+    self._VerifyValues(
+        nn_ops.avg_pool,
+        input_sizes=[1, 3, 3, 0],
         ksize=[1, 2, 2, 1],
         strides=[1, 2, 2, 1],
         padding="VALID",

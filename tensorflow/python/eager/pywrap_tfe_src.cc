@@ -72,11 +72,15 @@ TFE_Op* GetOp(TFE_Context* ctx, const char* op_or_function_name,
   TFE_Op* maybe_op = ReleaseThreadLocalOp();
   if (maybe_op) {
     TFE_OpReset(ctx, op_or_function_name, raw_device_name, status, maybe_op);
-    return maybe_op;
-  } else {
-    return NewOrResetOp(ctx, op_or_function_name, raw_device_name, status,
-                        nullptr);
+    if (status->status.ok()) {
+      return maybe_op;
+    }
+    // Delete op and create a fresh one
+    delete maybe_op;
   }
+
+  return NewOrResetOp(ctx, op_or_function_name, raw_device_name, status,
+                      nullptr);
 }
 
 void ReturnOp(TFE_Op* object) {

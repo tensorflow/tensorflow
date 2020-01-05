@@ -711,13 +711,21 @@ class MirroredVariableUpdateTest(test.TestCase):
       mirrored_var_result = self.evaluate(
           mirrored_var.assign_add(6.0, read_value=True))
       self.assertEqual(7.0, mirrored_var_result)
-      self.assertEqual(7.0, self.evaluate(mirrored_var.get("/device:CPU:0")))
-      self.assertEqual(7.0, self.evaluate(mirrored_var.get("/device:GPU:0")))
+      self.assertEqual(7.0, self.evaluate(mirrored_var.values[0]))
+      self.assertEqual(7.0, self.evaluate(mirrored_var.values[1]))
+      self.assertEqual(
+          distribution.extended.worker_devices[0], mirrored_var.devices[0])
+      self.assertEqual(
+          distribution.extended.worker_devices[1], mirrored_var.devices[1])
 
       # read_value == False
       self.evaluate(mirrored_var.assign_add(2.0, read_value=False))
-      self.assertEqual(9.0, self.evaluate(mirrored_var.get("/device:CPU:0")))
-      self.assertEqual(9.0, self.evaluate(mirrored_var.get("/device:GPU:0")))
+      self.assertEqual(9.0, self.evaluate(mirrored_var.values[0]))
+      self.assertEqual(9.0, self.evaluate(mirrored_var.values[1]))
+      self.assertEqual(
+          distribution.extended.worker_devices[0], mirrored_var.devices[0])
+      self.assertEqual(
+          distribution.extended.worker_devices[1], mirrored_var.devices[1])
 
   def testAssignAddMirroredVarReplicaContext(self, distribution):
     def var_fn():
@@ -769,8 +777,12 @@ class MirroredVariableUpdateTest(test.TestCase):
       self.assertEqual(5.0, self.evaluate(mirrored_var))
       mirrored_var_result = self.evaluate(mirrored_var.assign_sub(2.0))
       self.assertEqual(3.0, mirrored_var_result)
-      self.assertEqual(3.0, self.evaluate(mirrored_var.get("/device:GPU:0")))
-      self.assertEqual(3.0, self.evaluate(mirrored_var.get("/device:CPU:0")))
+      self.assertEqual(3.0, self.evaluate(mirrored_var.values[0]))
+      self.assertEqual(3.0, self.evaluate(mirrored_var.values[1]))
+      self.assertEqual(
+          distribution.extended.worker_devices[0], mirrored_var.devices[0])
+      self.assertEqual(
+          distribution.extended.worker_devices[1], mirrored_var.devices[1])
 
   def testAssignSubMirroredVarReplicaContext(self, distribution):
     def var_fn():
@@ -981,8 +993,8 @@ class MirroredStrategyDefunTest(test.TestCase):
         per_replica_graph_functions = (
             distribution.extended.call_for_each_replica(
                 defun.get_concrete_function, args=[mock_model] + inputs))
-        for device in devices:
-          graph_function = per_replica_graph_functions.get(device=device)
+        for i in range(len(devices)):
+          graph_function = per_replica_graph_functions.values[i]
           # TODO(b/129555712): re-enable an assertion here that the two sets of
           # variables are the same.
           # self.assertEqual(set(graph_function.graph.variables),
@@ -1053,9 +1065,8 @@ class MirroredStrategyDefunTest(test.TestCase):
     def fn1(mock_model, factor):
       return mock_model(factor)
 
-    device_map = values.ReplicaDeviceMap(("/device:CPU:0", "/device:GPU:0"))
-    factors = values.PerReplica(device_map, (5.0, 3.0))
-    expected_result = values.PerReplica(device_map, (5.0 * 1.25, 3.0 * 1.25))
+    factors = values.PerReplica((5.0, 3.0))
+    expected_result = values.PerReplica((5.0 * 1.25, 3.0 * 1.25))
     self._call_and_check(distribution, fn1, [factors], expected_result, [fn1])
 
   def testTrain(self, distribution):

@@ -21,7 +21,6 @@ are supported, including:
 *   Snapdragon 710/845 (685 DSP)
 *   Snapdragon 8150/855 (690 DSP)
 
-
 **Supported models:**
 
 The Hexagon delegate currently supports quantized models generated using
@@ -34,7 +33,7 @@ Sample models include
 [MobileNet V1](https://storage.googleapis.com/download.tensorflow.org/models/mobilenet_v1_2018_08_02/mobilenet_v1_1.0_224_quant.tgz),
 [SSD Mobilenet](https://storage.googleapis.com/download.tensorflow.org/models/tflite/coco_ssd_mobilenet_v1_1.0_quant_2018_06_29.zip).
 
-## Hexagon Delegate Java API {#hexagon-delegate-java-api}
+## Hexagon Delegate Java API
 
 ```
 public class HexagonDelegate implements Delegate, Closeable {
@@ -57,15 +56,24 @@ public class HexagonDelegate implements Delegate, Closeable {
 }
 ```
 
-## Example Usage from Java {#example-usage-from-java}
+## Example Usage from Java
+
+NOTE: As of 19 Dec 2019 you need to use the nightly build for TFLite (typically
+imported in gradle via `implementation
+'org.tensorflow:tensorflow-lite:0.0.0-nightly'`).
 
 1.  Add the ‘tensorflow-lite-hexagon.aar’ to your app - this is in addition to
     the standard tensorflow-lite AAR (nightly or release).
     [Relevant instructions](https://stackoverflow.com/questions/16682847/how-to-manually-include-external-aar-package-using-new-gradle-android-build-syst).
-1.  Run “hexagon_nn_skel.run” - Note: you will need to accept the license
-    agreement. It should provide 3 different shared libraries
-    “libhexagon_nn_skel.so”, “libhexagon_nn_skel_v65.so”,
-    “libhexagon_nn_skel_v66.so” \
+    You can do this by running bazel command like example below for arm64. We
+    will provide a version hosted on JCenter soon.
+    *   `bazel build -c opt --config=android_arm64
+        tensorflow/lite/experimental/delegates/hexagon/java:tensorflow-lite-hexagon`
+1.  Download and run
+    [“hexagon_nn_skel.run](https://storage.cloud.google.com/download.tensorflow.org/tflite/hexagon_nn_skel_1_10_3_1.run)” -
+    Note: you will need to accept the license agreement. It should provide 3
+    different shared libraries “libhexagon_nn_skel.so”,
+    “libhexagon_nn_skel_v65.so”, “libhexagon_nn_skel_v66.so” \
     Include all 3 in your app with other shared libraries. See
     [How to add shared library to your app](#how-to-add-shared-library-to-your-app)
     \
@@ -96,7 +104,7 @@ if (hexagonDelegate != null) {
 }
 ```
 
-## Hexagon Delegate C API {#hexagon-delegate-c-api}
+## Hexagon Delegate C API
 
 ```
 struct TfLiteHexagonDelegateOptions {
@@ -141,14 +149,16 @@ Void TfLiteHexagonInit();
 Void TfLiteHexagonTearDown();
 ```
 
-## Example Usage from C {#example-usage-from-c}
+## Example Usage from C
 
 1.  Add the ‘tensorflow-lite-hexagon.aar’ to your app - this is in addition to
     the standard tensorflow-lite AAR (nightly or release).
     [Relevant instructions](https://stackoverflow.com/questions/16682847/how-to-manually-include-external-aar-package-using-new-gradle-android-build-syst).
 1.  Include the provided hexagon_delegate.h
-1.  Run “hexagon_nn_skel.run” - Note: you will need to accept the license
-    agreement. It should provide 3 different shared libraries \
+1.  Download and run
+    [“hexagon_nn_skel.run](https://storage.cloud.google.com/download.tensorflow.org/tflite/hexagon_nn_skel_1_10_3_1.run)” -
+    Note: you will need to accept the license agreement. It should provide 3
+    different shared libraries \
     “libhexagon_nn_skel.so”, “libhexagon_nn_skel_v65.so”,
     “libhexagon_nn_skel_v66.so” \
     Include all 3 in your app with other shared libraries. See How to add shared
@@ -187,7 +197,7 @@ Void TfLiteHexagonTearDown();
     TfLiteHexagonTearDown();  // Needed once at end of app/DSP usage.
     ```
 
-## How to add shared library to your app {#how-to-add-shared-library-to-your-app}
+## How to add shared library to your app
 
 Create folder “app/src/main/jniLibs”, then for each target architecture create a
 directory.
@@ -200,7 +210,7 @@ Arm32 bit: “app/src/main/jniLibs/armeabi-v7a”
 
 Put your .so in the directory that match the architecture.
 
-## Feedback {#feedback}
+## Feedback
 
 For issues, please create a
 [github](https://github.com/tensorflow/tensorflow/issues/new?template=50-other-issues.md)
@@ -208,7 +218,7 @@ issue with all the necessary repro details, including the phone model and board
 used (`adb shell getprop ro.product.device` and `adb shell getprop
 ro.board.platform`).
 
-## FAQ {#faq}
+## FAQ
 
 *   Will the delegate support models created using
     [post-training quantization](https://www.tensorflow.org/lite/performance/post_training_quantization)?

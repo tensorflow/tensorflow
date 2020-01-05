@@ -21,6 +21,7 @@ from __future__ import print_function
 import gc
 import os
 import tempfile
+
 from absl.testing import parameterized
 import numpy as np
 
@@ -144,14 +145,14 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     trt_optimizer = None
     for optimizer in rewriter_cfg.custom_optimizers:
       if optimizer.name == "TensorRTOptimizer":
-        self.assertTrue(trt_optimizer is None)
+        self.assertIsNone(trt_optimizer)
         trt_optimizer = optimizer
-    self.assertTrue(trt_optimizer is not None)
+    self.assertIsNotNone(trt_optimizer)
     for key in [
         "minimum_segment_size", "max_batch_size", "is_dynamic_op",
         "max_workspace_size_bytes", "precision_mode", "maximum_cached_engines"
     ]:
-      self.assertTrue(key in trt_optimizer.parameter_map)
+      self.assertIn(key, trt_optimizer.parameter_map)
     self.assertEqual(10, trt_optimizer.parameter_map["minimum_segment_size"].i)
     self.assertEqual(128, trt_optimizer.parameter_map["max_batch_size"].i)
     self.assertEqual(True, trt_optimizer.parameter_map["is_dynamic_op"].b)

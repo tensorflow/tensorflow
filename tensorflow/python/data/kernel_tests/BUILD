@@ -83,9 +83,6 @@ tf_py_test(
     name = "dataset_test",
     size = "small",
     srcs = ["dataset_test.py"],
-    tags = [
-        "no_rocm",
-    ],
     deps = [
         ":test_base",
         "//tensorflow/core:protos_all_py",

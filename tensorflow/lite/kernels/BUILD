@@ -430,6 +430,7 @@ cc_library(
         "comparisons.cc",
         "concatenation.cc",
         "conv.cc",
+        "densify.cc",
         "depth_to_space.cc",
         "depthwise_conv.cc",
         "dequantize.cc",
@@ -517,6 +518,7 @@ cc_library(
         ":eigen_support",
         ":kernel_util",
         ":lstm_eval",
+        ":lstm_shared",
         ":op_macros",
         ":padding",
         "//tensorflow/lite:framework",
@@ -609,6 +611,12 @@ cc_library(
         "//tensorflow/lite/kernels/internal:tensor_utils",
         "@gemmlowp",
     ],
+)
+
+cc_library(
+    name = "lstm_shared",
+    hdrs = ["lstm_shared.h"],
+    copts = tflite_copts(),
 )
 
 cc_library(
@@ -850,6 +858,23 @@ cc_test(
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework",
+        "@com_google_absl//absl/memory",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "densify_test",
+    size = "small",
+    srcs = ["densify_test.cc"],
+    tags = ["tflite_nnapi"],
+    deps = [
+        ":builtin_ops",
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels/internal:types",
+        "//third_party/eigen3",
         "@com_google_absl//absl/memory",
         "@com_google_googletest//:gtest",
     ],

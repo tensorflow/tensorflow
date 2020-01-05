@@ -175,7 +175,7 @@ class RNNCellWrapperTest(test.TestCase, parameterized.TestCase):
     _ = rnn_cell(inputs, [state, state])
     weights = base_cell._cells[0].weights
     self.assertLen(weights, expected_len=2)
-    self.assertTrue(all(["_wrapper" in v.name for v in weights]))
+    self.assertTrue(all("_wrapper" in v.name for v in weights))
 
   @parameterized.parameters(
       [rnn_cell_wrapper_v2.DropoutWrapper, rnn_cell_wrapper_v2.ResidualWrapper])

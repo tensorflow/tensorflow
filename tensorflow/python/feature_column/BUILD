@@ -99,6 +99,7 @@ filegroup(
         "testdata/embedding.ckpt.data-00000-of-00001",
         "testdata/embedding.ckpt.index",
         "testdata/embedding.ckpt.meta",
+        "testdata/unicode_vocabulary",
         "testdata/warriors_vocabulary.txt",
         "testdata/wire_vocabulary.txt",
     ],

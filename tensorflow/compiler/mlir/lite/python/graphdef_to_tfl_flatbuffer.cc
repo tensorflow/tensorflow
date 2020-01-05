@@ -19,11 +19,11 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/Support/ToolOutputFile.h"
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/IR/Module.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
-#include "mlir/Support/FileUtilities.h"  // TF:local_config_mlir
-#include "mlir/Transforms/ViewOpGraph.h"  // TF:local_config_mlir
+#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
+#include "mlir/IR/Module.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/Support/FileUtilities.h"  // TF:llvm-project
+#include "mlir/Transforms/ViewOpGraph.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/tf_tfl_passes.h"
 #include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
@@ -151,10 +151,9 @@ Status RegisterCustomBuiltinOps(const std::vector<string> extra_tf_opdefs) {
       return errors::InvalidArgument("fail to parse extra OpDef");
     }
     // Make sure the op is not already registered. If registered continue.
-    const OpRegistrationData* op_reg = nullptr;
-    auto status =
-        tensorflow::OpRegistry::Global()->LookUp(opdef.name(), &op_reg);
-    if (status.ok()) continue;
+    const OpRegistrationData* op_reg =
+        tensorflow::OpRegistry::Global()->LookUp(opdef.name());
+    if (op_reg) continue;
 
     tensorflow::OpRegistry::Global()->Register(
         [opdef](tensorflow::OpRegistrationData* op_reg_data) -> Status {
@@ -278,7 +277,6 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
   auto status = ConvertTFExecutorToTFLOrFlatbuffer(
       module.get(), /*export_to_mlir=*/false, emit_builtin_tflite_ops,
       emit_select_tf_ops, emit_custom_ops, quant_specs, result, &pm);
-
   if (toco_flags.has_dump_graphviz_dir()) {
     TF_RETURN_IF_ERROR(DumpOpGraphToFile(
         // rename once we enable the new converter feature flag.
