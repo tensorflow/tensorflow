@@ -121,7 +121,7 @@ class WhileOp(object):
     """
     self._pfor_config = pfor_config
     self._pfor_ops = set(pfor_ops)
-    self._pfor_op_ids = set([x._id for x in pfor_ops])
+    self._pfor_op_ids = set(x._id for x in pfor_ops)
     assert isinstance(exit_node, ops.Tensor)
     self._while_context = exit_node.op._get_control_flow_context()
     assert isinstance(self._while_context, control_flow_ops.WhileContext)
@@ -1176,7 +1176,7 @@ class PFor(object):
     self._conversion_map = object_identity.ObjectIdentityDictionary()
     self._conversion_map[loop_var] = wrap(self.all_indices, True)
     self._pfor_ops = set(pfor_ops)
-    self._pfor_op_ids = set([x._id for x in pfor_ops])
+    self._pfor_op_ids = set(x._id for x in pfor_ops)
     self._pfor_config = pfor_config
 
   def op_is_inside_loop(self, op):

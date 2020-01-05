@@ -60,28 +60,57 @@ namespace data {
 constexpr int kInfiniteCardinality = -1;
 constexpr int kUnknownCardinality = -2;
 
+// This constant is a magic number that is used (as a prefix) to identify keys
+// used for serialization of iterator state.
+constexpr char kFullNameRandomHex[] = "60d899aa0d8ce4351e7c3b419e92d25b";
+constexpr char kPipe[] = "|";
+constexpr char kColon[] = ":";
+
 class DatasetBase;
 class SerializationContext;
 
 // Interface for reading values from a key-value store.
-// Used for restoring iterator state.
+// Used for restoring iterator state. This class is thread safe.
+// Please see comment on IteratorStateWriter for guidance around using the
+// Read*(key, val) vs Read*(name, key, val).
 class IteratorStateReader {
  public:
   virtual Status ReadScalar(StringPiece key, int64* val) = 0;
   virtual Status ReadScalar(StringPiece key, tstring* val) = 0;
   virtual Status ReadTensor(StringPiece key, Tensor* val) = 0;
+
+  virtual Status ReadScalar(StringPiece name, StringPiece key, int64* val) = 0;
+  virtual Status ReadScalar(StringPiece name, StringPiece key,
+                            tstring* val) = 0;
+  virtual Status ReadTensor(StringPiece name, StringPiece key, Tensor* val) = 0;
+
   virtual bool Contains(StringPiece key) = 0;
+  virtual bool Contains(StringPiece name, StringPiece key) = 0;
 
   virtual ~IteratorStateReader() {}
 };
 
 // Interface for writing values to a key-value store.
-// Used for saving iterator state.
+// Used for saving iterator state. Not thread safe.
+// The IteratorStateWriter creates a tensor for each unique iterator name it
+// sees. For the Write*(key, val) API's the key is expected to encode this
+// name as keys are required to be produced using the full_name() method.
+// Each tensor has an upper limit of 2 GB and so if the state for an iterator
+// might exceed the 2 GB limit, you can pass an explicit name in via the
+// Write*(name, key, val) APIs allowing you to further split up the state
+// into more manageable chunks.
 class IteratorStateWriter {
  public:
   virtual Status WriteScalar(StringPiece key, const int64 val) = 0;
   virtual Status WriteScalar(StringPiece key, const tstring& val) = 0;
   virtual Status WriteTensor(StringPiece key, const Tensor& val) = 0;
+
+  virtual Status WriteScalar(StringPiece name, StringPiece key,
+                             const int64 val) = 0;
+  virtual Status WriteScalar(StringPiece name, StringPiece key,
+                             const tstring& val) = 0;
+  virtual Status WriteTensor(StringPiece name, StringPiece key,
+                             const Tensor& val) = 0;
 
   virtual ~IteratorStateWriter() {}
 };
@@ -469,6 +498,14 @@ class SerializationContext {
     // latter makes sense to do when performing data agnostic graph rewrites to
     // reduce the memory usage.
     bool serialize_data_tensors = true;
+
+    // Indicates whether datasets that use random seeds should have the values
+    // of random seeds serialized or not. If the values of random seeds are
+    // serialized, the deserialized dataset will have the same seeds as the
+    // original dataset. Otherwise, the deserialized dataset will use different
+    // seeds. This param does not affect datasets that use fixed seeds; fixed
+    // seeds will always be preserved.
+    bool preserve_random_seeds = true;
   };
 
   explicit SerializationContext(Params params) : params_(params) {}
@@ -484,6 +521,8 @@ class SerializationContext {
   bool fail_if_unimplemented() const { return params_.fail_if_unimplemented; }
 
   bool serialize_data_tensors() const { return params_.serialize_data_tensors; }
+
+  bool preserve_random_seeds() const { return params_.preserve_random_seeds; }
 
  private:
   Params params_;
@@ -653,6 +692,9 @@ class DatasetContext {
 // Returns the number of bytes allocated for the given tensor.
 int64 GetAllocatedBytes(const std::vector<Tensor>& element);
 
+// Returns the estimated memory usage in bytes of the given tensor.
+int64 GetTotalBytes(const std::vector<Tensor>& element);
+
 // Validates and extracts a `DatasetBase` object from `tensor`.
 //
 // `tensor` must have been written by a call to SetVariantTensorToDataset().
@@ -754,6 +796,9 @@ class DatasetBase : public core::RefCounted {
 
   // Returns the number of bytes allocated for tensors of this dataset.
   virtual int64 AllocatedBytes() const { return 0; }
+
+  // Returns the estimated number of bytes used for tensors of this dataset.
+  virtual int64 TotalBytes() const { return 0; }
 
   // Returns the cardinality of this dataset.
   virtual int64 Cardinality() const { return kUnknownCardinality; }
@@ -875,7 +920,17 @@ class DatasetBaseIterator : public IteratorBase {
   }
 
   Status Save(SerializationContext* ctx, IteratorStateWriter* writer) final {
-    TF_RETURN_IF_ERROR(params_.dataset->CheckExternalState());
+    Status s = params_.dataset->CheckExternalState();
+    if (!s.ok()) {
+      if (ctx->external_state_policy() ==
+          SerializationContext::ExternalStatePolicy::kWarn) {
+        LOG(WARNING) << "Dataset contains external state: " << s.ToString();
+      }
+      if (ctx->external_state_policy() ==
+          SerializationContext::ExternalStatePolicy::kFail) {
+        return s;
+      }
+    }
     return IteratorBase::Save(ctx, writer);
   }
 
@@ -886,7 +941,12 @@ class DatasetBaseIterator : public IteratorBase {
                                  bool* end_of_sequence) = 0;
 
   string full_name(const string& name) const {
-    return strings::StrCat(params_.prefix, ":", name);
+    if (str_util::StrContains(name, kColon)) {
+      LOG(ERROR) << name << " should not contain " << kColon;
+    }
+
+    return strings::StrCat(kFullNameRandomHex, kPipe, params_.prefix, kColon,
+                           name);
   }
 
   // By default we model iterators using an unknown node, which acts as
@@ -1084,7 +1144,7 @@ class BinaryDatasetOpKernel : public DatasetOpKernel {
 // overhead is tolerable.
 class BackgroundWorker {
  public:
-  BackgroundWorker(Env* env, const string& name);
+  BackgroundWorker(Env* env, const char* name);
 
   ~BackgroundWorker();
 
@@ -1092,6 +1152,9 @@ class BackgroundWorker {
 
  private:
   void WorkerLoop();
+
+  Env* const env_;
+  const char* const name_;
 
   std::unique_ptr<Thread> thread_;
   mutex mu_;

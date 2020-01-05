@@ -792,7 +792,8 @@ class MklConvOp : public OpKernel {
         // Tensorflow format to MKL format by caching the filter when it is
         // converted for the first time. This cached filter can then be reused
         // in subsequent iterations.
-        if (is_filter_const_) {
+        bool do_cache_filter = src_dims[MklDnnDims::Dim_N] > kSmallBatchSize;
+        if (is_filter_const_ && do_cache_filter) {
           if (IsFilterCacheEmpty(context)) {
             // Cache filter if it is not already cached.
             CacheFilter(context, conv_fwd_pd, filter_data, filter_tensor,
@@ -805,6 +806,13 @@ class MklConvOp : public OpKernel {
           filter_data = GetCachedFilter(
               context, GET_WEIGHTS_FORMAT_FROM_OP_PD(conv_fwd_pd, conv_fwd));
           is_filter_cached = (filter_data != nullptr);
+          if (filter_out_tensor != nullptr) {
+            Tfilter* filter_out_tensor_buf =
+                static_cast<Tfilter*>(const_cast<Tfilter*>(
+                    filter_out_tensor->flat<Tfilter>().data()));
+            memcpy(filter_out_tensor_buf, filter_data,
+                   filter_out_tensor->AllocatedBytes());
+          }
         }
         if (!is_filter_cached) {
           filter.SetUsrMem(filter_md, &filter_tensor);
@@ -1307,7 +1315,7 @@ class MklConvOp : public OpKernel {
         *cached_filter_md_ptensor_.AccessTensor(context);
 
 // Check if the memory descriptor of the cached weights is same as
-// filter_md. If so, we can used the cached weights; otherwise
+// filter_md. If so, we can use the cached weights; otherwise
 // return NULL.
 #ifdef ENABLE_MKLDNN_V1
     if (cached_filter_md.scalar<int64>().size() &&
@@ -1590,8 +1598,6 @@ class MklQuantizedConv2DOp
     const Tensor& max_filter_vector = context->input(5 + bias_index_offset);
     const float* min_filter = min_filter_vector.flat<float>().data();
     const float* max_filter = max_filter_vector.flat<float>().data();
-
-    std::vector<mkldnn::primitive> net;
 
     const float int_const_scale_limit =
         (std::is_same<Tinput, quint8>::value) ? 255.0 * 127.0 : 127.0 * 127.0;

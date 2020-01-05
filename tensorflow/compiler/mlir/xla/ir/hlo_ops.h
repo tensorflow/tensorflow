@@ -19,15 +19,16 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_XLA_IR_HLO_OPS_H_
 
 #include "llvm/ADT/StringRef.h"
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/Dialect.h"  // TF:local_config_mlir
-#include "mlir/IR/Location.h"  // TF:local_config_mlir
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/IR/OpDefinition.h"  // TF:local_config_mlir
-#include "mlir/IR/Operation.h"  // TF:local_config_mlir
-#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
-#include "mlir/IR/Types.h"  // TF:local_config_mlir
-#include "mlir/Support/Functional.h"  // TF:local_config_mlir
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/Dialect.h"  // TF:llvm-project
+#include "mlir/IR/DialectImplementation.h"  // TF:llvm-project
+#include "mlir/IR/Location.h"  // TF:llvm-project
+#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
+#include "mlir/IR/OpDefinition.h"  // TF:llvm-project
+#include "mlir/IR/Operation.h"  // TF:llvm-project
+#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/IR/Types.h"  // TF:llvm-project
+#include "mlir/Support/Functional.h"  // TF:llvm-project
 
 namespace mlir {
 class OpBuilder;
@@ -45,6 +46,30 @@ class XlaHloDialect : public Dialect {
   // value with the desired resultant type.
   Operation *materializeConstant(OpBuilder &builder, Attribute value, Type type,
                                  Location loc) override;
+
+  // Parses a type registered to this dialect.
+  Type parseType(DialectAsmParser &parser) const override;
+
+  // Prints a type registered to this dialect.
+  void printType(Type type, DialectAsmPrinter &os) const override;
+};
+
+namespace HLOTypes {
+enum Kind {
+  Token = Type::FIRST_XLA_HLO_TYPE,
+};
+}  // namespace HLOTypes
+
+class TokenType : public Type::TypeBase<TokenType, Type> {
+ public:
+  using Base::Base;
+
+  static TokenType get(MLIRContext *context) {
+    return Base::get(context, HLOTypes::Token);
+  }
+
+  // Support method to enable LLVM-style type casting.
+  static bool kindof(unsigned kind) { return kind == HLOTypes::Token; }
 };
 
 #define GET_OP_CLASSES

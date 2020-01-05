@@ -344,8 +344,8 @@ Status ModularFileSystem::CopyFile(const std::string& src,
   if (ops_->copy_file == nullptr) return FileSystem::CopyFile(src, target);
 
   UniquePtrTo_TF_Status plugin_status(TF_NewStatus(), TF_DeleteStatus);
-  const std::string& translated_src = TranslateName(src);
-  const std::string& translated_target = TranslateName(target);
+  std::string translated_src = TranslateName(src);
+  std::string translated_target = TranslateName(target);
   ops_->copy_file(filesystem_.get(), translated_src.c_str(),
                   translated_target.c_str(), plugin_status.get());
   return StatusFromTF_Status(plugin_status.get());

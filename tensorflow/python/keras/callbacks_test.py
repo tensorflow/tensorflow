@@ -38,7 +38,6 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
-from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.keras.optimizer_v2 import learning_rate_schedule
@@ -644,18 +643,10 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
       ds = dataset_ops.Dataset.from_tensor_slices((train_input, train_label))
       return ds.batch(8, drop_remainder=True)
 
-    class Bias(base_layer.Layer):
-
-      def build(self, input_shape):
-        self.bias = self.add_variable('bias', (1,), initializer='zeros')
-
-      def call(self, inputs):
-        return inputs + self.bias
-
     # Very simple bias model to eliminate randomness.
     optimizer = gradient_descent.SGD(0.1)
     model = sequential.Sequential()
-    model.add(Bias(input_shape=(1,)))
+    model.add(testing_utils.Bias(input_shape=(1,)))
     model.compile(loss='mae', optimizer=optimizer, metrics=['mae'])
     train_ds = get_input_datasets()
 

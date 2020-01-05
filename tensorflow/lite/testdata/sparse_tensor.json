@@ -1,7 +1,6 @@
 {
   "version": 3,
-  "operator_codes": [
-  ],
+  "operator_codes": [{"builtin_code": "CUSTOM", "custom_code": "FakeOp"}],
   "subgraphs": [
     {
       "tensors": [
@@ -12,7 +11,7 @@
           ],
           "name": "sparse_tensor",
           "buffer": 1,
-          "type": "FLOAT32",
+          "type": "INT8",
           "quantization": {
           },
           "is_variable": "false",
@@ -41,12 +40,9 @@
           }
         }
       ],
-      "inputs": [
-      ],
-      "outputs": [
-      ],
-      "operators": [
-      ]
+      "inputs": [0],
+      "outputs": [0],
+      "operators": [{"inputs":[-1], "outputs":[-1]}]
     }
   ],
   "buffers": [

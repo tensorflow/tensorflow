@@ -72,7 +72,7 @@ static inline void ApplyTimeWeightsBiasAndActivation(
 
   // Initialize output with bias if provided.
   if (bias) {
-    // TODO(kreeger): doc me - VectorBatchVectorAssign
+    // VectorBatchVectorAssign
     const float* bias_data = GetTensorData<float>(bias);
     float* output_data = GetTensorData<float>(output);
     for (int i = 0; i < batch_size; ++i) {
@@ -95,10 +95,9 @@ static inline void ApplyTimeWeightsBiasAndActivation(
     float* scratch_ptr_batch = GetTensorData<float>(scratch) + b * num_filters;
 
     // Reduction sum vector
-    const float* input_vector_ptr = scratch_ptr_batch;
     for (int i = 0; i < num_units; ++i) {
       for (int j = 0; j < rank; j++) {
-        output_ptr_batch[i] += *input_vector_ptr++;
+        output_ptr_batch[i] += *scratch_ptr_batch++;
       }
     }
   }
@@ -274,6 +273,150 @@ inline void EvalHybridSVDF(
       params->activation, activation_state, scratch, output);
 }
 
+void EvalIntegerSVDF(
+    TfLiteContext* context, TfLiteNode* node, const TfLiteTensor* input_tensor,
+    const TfLiteTensor* weights_feature_tensor,
+    const TfLiteTensor* weights_time_tensor, const TfLiteTensor* bias_tensor,
+    const TfLiteSVDFParams* params, TfLiteTensor* activation_state_tensor,
+    TfLiteTensor* output_tensor, TfLiteTensor* scratch_tensor,
+    TfLiteTensor* scratch_output_tensor, int32_t scale_1_a, int scale_1_b,
+    int32_t scale_2_a, int scale_2_b, int32_t input_zp, int32_t output_zp) {
+  const int n_rank = params->rank;
+  const int n_batch = input_tensor->dims->data[0];
+  const int n_input = input_tensor->dims->data[1];
+  const int n_filter = weights_feature_tensor->dims->data[0];
+  const int n_unit = n_filter / n_rank;
+  const int n_memory = weights_time_tensor->dims->data[1];
+
+  // Rewrite last bit of state.
+  {
+    for (int b = 0; b < n_batch; ++b) {
+      int16_t* state_ptr_batch =
+          GetTensorData<int16_t>(activation_state_tensor) +
+          b * n_memory * n_filter;
+      for (int c = 0; c < n_filter; ++c) {
+        int16_t* state_ptr = state_ptr_batch + c * n_memory;
+        state_ptr[n_memory - 1] = 0;
+      }
+    }
+  }
+
+  // Feature matmul.
+  {
+    int16_t* state = GetTensorData<int16_t>(activation_state_tensor);
+    const int8_t* input = GetTensorData<int8_t>(input_tensor);
+    const int8_t* weight_feature =
+        GetTensorData<int8_t>(weights_feature_tensor);
+    const int32_t output_max = std::numeric_limits<int16_t>::max();
+    const int32_t output_min = std::numeric_limits<int16_t>::min();
+    int16_t* result_in_batch = state + (n_memory - 1);
+    for (int b = 0; b < n_batch; b++) {
+      const int8_t* matrix_ptr = weight_feature;
+      for (int r = 0; r < n_filter; r++) {
+        int32_t dot_prod = 0;
+        const int8_t* vector_in_batch = input + b * n_input;
+        for (int c = 0; c < n_input; c++) {
+          dot_prod += *matrix_ptr++ * (*vector_in_batch++ - input_zp);
+        }
+        dot_prod =
+            MultiplyByQuantizedMultiplier(dot_prod, scale_1_a, scale_1_b);
+        dot_prod = std::min(std::max(output_min, dot_prod), output_max);
+        *result_in_batch = dot_prod;
+        result_in_batch += n_memory;
+      }
+    }
+  }
+
+  // Time.
+  {
+    for (int b = 0; b < n_batch; ++b) {
+      int32_t* scratch_ptr_batch =
+          GetTensorData<int32_t>(scratch_tensor) + b * n_filter;
+
+      // Perform batched vector dot product:
+      const int16_t* vector1_ptr = GetTensorData<int16_t>(weights_time_tensor);
+      const int16_t* vector2_ptr =
+          GetTensorData<int16_t>(activation_state_tensor) +
+          b * n_memory * n_filter;
+
+      for (int i = 0; i < n_filter; i++) {
+        *scratch_ptr_batch = 0;
+        for (int j = 0; j < n_memory; j++) {
+          *scratch_ptr_batch += *vector1_ptr++ * *vector2_ptr++;
+        }
+        scratch_ptr_batch++;
+      }
+    }
+  }
+
+  // Reduce, add bias, rescale, activation.
+  {
+    int32_t* output_temp = GetTensorData<int32_t>(scratch_output_tensor);
+    // Add bias.
+    if (bias_tensor) {
+      // Vector batch assign:
+      const int32_t* bias_data = GetTensorData<int32_t>(bias_tensor);
+      for (int i = 0; i < n_batch; ++i) {
+        int32_t* output_ptr = output_temp + i * n_unit;
+        const int32_t* bias_ptr = bias_data;
+        for (int j = 0; j < n_unit; ++j) {
+          *output_ptr++ = *bias_ptr++;
+        }
+      }
+    } else {
+      int32_t* output_ptr = output_temp;
+      for (int i = 0; i < n_batch * n_unit; ++i) {
+        *output_ptr++ = 0;
+      }
+    }
+
+    // Reduce.
+    for (int b = 0; b < n_batch; ++b) {
+      int32_t* output_temp_ptr = output_temp + b * n_unit;
+      int32_t* scratch_ptr_batch =
+          GetTensorData<int32_t>(scratch_tensor) + b * n_filter;
+
+      // Reduction sum vector
+      for (int i = 0; i < n_unit; ++i) {
+        for (int j = 0; j < n_rank; ++j) {
+          output_temp_ptr[i] += *scratch_ptr_batch++;
+        }
+      }
+    }
+
+    // Rescale.
+    const int32_t output_max = std::numeric_limits<int8_t>::max();
+    const int32_t output_min = std::numeric_limits<int8_t>::min();
+    for (int i = 0; i < n_batch * n_unit; ++i) {
+      int32_t x1 = output_temp[i];
+      int32_t x2 = MultiplyByQuantizedMultiplier(x1, scale_2_a, scale_2_b);
+      int32_t x3 = x2 + output_zp;
+      int32_t x4 = std::min(std::max(output_min, x3), output_max);
+      GetTensorData<int8_t>(output_tensor)[i] = static_cast<int8_t>(x4);
+    }
+  }
+
+  // Shift state.
+  {
+    for (int b = 0; b < n_batch; ++b) {
+      int16_t* state_ptr_batch =
+          GetTensorData<int16_t>(activation_state_tensor) +
+          b * n_memory * n_filter;
+      for (int f = 0; f < n_filter; ++f) {
+        // Shift the vector left:
+        int16_t* batch_ptr = state_ptr_batch;
+        int16_t* batch_start = state_ptr_batch + 1;
+        int16_t* batch_end = state_ptr_batch + n_memory;
+        while (batch_start != batch_end) {
+          *batch_ptr++ = *batch_start++;
+        }
+        state_ptr_batch[n_memory - 1] = 0;
+        state_ptr_batch += n_memory;
+      }
+    }
+  }
+}
+
 }  // namespace
 
 // Input tensors.
@@ -303,10 +446,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // [3] = Bias (optional), {1, num_units}
   // [4] = Activation State (variable),
   //         {2, batch_size, memory_size * num_filters}
-  // TODO(kreeger): Use input tensor as variable until scratch tensor allocation
-  // has been implemented (cl/263032056)
-  // TF_LITE_ENSURE_EQ(context, node->inputs->size, 5);
-  TF_LITE_ENSURE_EQ(context, node->inputs->size, 6);
+
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   const TfLiteTensor* weights_feature =
       GetInput(context, node, kWeightsFeatureTensor);
@@ -325,9 +465,22 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const int num_units = num_filters / rank;
   const int memory_size = weights_time->dims->data[1];
 
+  // The weights are of consistent type, so it suffices to check one.
+  const bool is_hybrid_op = IsHybridOp(input, weights_feature);
+  const bool is_full_integer = input->type == kTfLiteInt8;
+
   // Validate Input Tensor:
-  TF_LITE_ENSURE_EQ(context, input->type, kTfLiteFloat32);
+  TF_LITE_ENSURE(context,
+                 input->type == kTfLiteFloat32 || input->type == kTfLiteInt8);
   TF_LITE_ENSURE_EQ(context, NumDimensions(input), 2);
+
+  // Validate Tensor Output:
+  // [0] = float/int8, {2, batch_size, num_units}
+  TF_LITE_ENSURE_EQ(context, node->outputs->size, 1);
+  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  TF_LITE_ENSURE_EQ(context, NumDimensions(output), 2);
+  TF_LITE_ENSURE_EQ(context, output->dims->data[0], batch_size);
+  TF_LITE_ENSURE_EQ(context, output->dims->data[1], num_units);
 
   // Validate Weights Feature Input Tensor:
   TF_LITE_ENSURE_EQ(context, NumDimensions(weights_feature), 2);
@@ -341,11 +494,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // Validate Optional Bias Input Tensor:
   if (bias) {
     TF_LITE_ENSURE_EQ(context, bias->dims->data[0], num_units);
-    TF_LITE_ENSURE_EQ(context, bias->type, kTfLiteFloat32);
   }
 
   // Validate Activation State Input Tensor:
-  TF_LITE_ENSURE_EQ(context, activation_state->type, kTfLiteFloat32);
   TF_LITE_ENSURE_EQ(context, NumDimensions(activation_state), 2);
   TF_LITE_ENSURE_EQ(context, activation_state->dims->data[0], batch_size);
   TF_LITE_ENSURE_EQ(context, activation_state->dims->data[1],
@@ -354,26 +505,29 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // Validate shared Scratch Tensor (same for full float and hybrid):
   // [0] = Holds dot-product of time-forward calculations in
   //       ApplyTimeWeightsBiasAndActivation():
-  //         float, {2, batch_size, num_filters}
+  //         float/int32, {2, batch_size, num_filters}
   // TODO(kreeger): Use input tensor as variable until scratch tensor allocation
-  // has been implemented (cl/263032056)
+  // has been implemented (b/132070898)
   // TfLiteTensor* scratch_tensor = GetTemporary(context, node, 0);
   TfLiteTensor* scratch_tensor = &context->tensors[node->inputs->data[5]];
 
-  TF_LITE_ENSURE_EQ(context, scratch_tensor->type, kTfLiteFloat32);
   TF_LITE_ENSURE_EQ(context, NumDimensions(scratch_tensor), 2);
   TF_LITE_ENSURE_EQ(context, scratch_tensor->dims->data[0], batch_size);
   TF_LITE_ENSURE_EQ(context, scratch_tensor->dims->data[1], num_filters);
 
-  // The weights are of consistent type, so it suffices to check one.
-  const bool is_hybrid_op = IsHybridOp(input, weights_feature);
-  // TODO(kreeger): Handle full quant svdf b/139435798
   if (is_hybrid_op) {
+    TF_LITE_ENSURE_EQ(context, node->inputs->size, 6);
+
     // Validate Input Tensor dtypes:
     TF_LITE_ENSURE(context, weights_feature->type == kTfLiteUInt8 ||
                                 weights_feature->type == kTfLiteInt8);
     TF_LITE_ENSURE(context, weights_time->type == kTfLiteUInt8 ||
                                 weights_time->type == kTfLiteInt8);
+    TF_LITE_ENSURE_EQ(context, activation_state->type, kTfLiteFloat32);
+
+    if (bias) {
+      TF_LITE_ENSURE_EQ(context, bias->type, kTfLiteFloat32);
+    }
 
     // Validate Scratch Tensors:
     // [0] = (shared - see above for usage)
@@ -384,6 +538,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TfLiteTensor* scratch_input_quantized = GetTemporary(context, node, 1);
     TfLiteTensor* scratch_scaling_factors = GetTemporary(context, node, 2);
     TfLiteTensor* scratch_float_weights_time = GetTemporary(context, node, 3);
+
+    // Validate shared scratch tensor type:
+    TF_LITE_ENSURE_EQ(context, scratch_tensor->type, kTfLiteFloat32);
 
     // Validate Input Quantized Scratch Tensor:
     TF_LITE_ENSURE(context, scratch_input_quantized->type == kTfLiteUInt8 ||
@@ -412,37 +569,75 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     // called. Use this time to do a one-time de-quantization copy of
     // the input values from the Weights Time tensor to the float weights time
     // scratch tensor.
-    // TODO(kreeger): Consider doing this at model conversion time?
+    // TODO(b/146029510): Consider doing this at model conversion time.
     SymmetricDequantize(GetTensorData<int8_t>(weights_time),
                         NumElements(scratch_float_weights_time),
                         weights_time->params.scale,
                         GetTensorData<float>(scratch_float_weights_time));
+
+    TF_LITE_ENSURE_EQ(context, output->type, kTfLiteFloat32);
+  } else if (is_full_integer) {
+    // TODO(b/132070898): Use input tensor as variable until scratch tensor
+    // allocation has been implemented
+    TF_LITE_ENSURE_EQ(context, node->inputs->size, 8);
+
+    TF_LITE_ENSURE_EQ(context, weights_feature->type, kTfLiteInt8);
+    TF_LITE_ENSURE_EQ(context, weights_time->type, kTfLiteInt16);
+
+    if (bias) {
+      TF_LITE_ENSURE_EQ(context, bias->type, kTfLiteInt32);
+    }
+
+    TF_LITE_ENSURE_EQ(context, activation_state->type, kTfLiteInt16);
+
+    // Validate Scratch Tensors:
+    // [0] = (shared - see above for usage)
+    // [1] = Output Temp, int8_t, {2, num_units, batch_size}
+    // TODO(b/132070898): Use input tensor as variable until scratch tensor
+    // allocation has been implemented.
+    /* TF_LITE_ENSURE_EQ(context, node->temporaries->size, 2); */
+
+    // Validate shared scratch tensor type:
+    TF_LITE_ENSURE_EQ(context, scratch_tensor->type, kTfLiteInt32);
+
+    // Validate Output Temp Scratch Tensor:
+    TfLiteTensor* scratch_output = &context->tensors[node->inputs->data[6]];
+    TF_LITE_ENSURE_EQ(context, scratch_output->type, kTfLiteInt32);
+    TF_LITE_ENSURE_EQ(context, NumDimensions(scratch_output), 2);
+    TF_LITE_ENSURE_EQ(context, scratch_output->dims->data[0], num_units);
+    TF_LITE_ENSURE_EQ(context, scratch_output->dims->data[1], batch_size);
+
+    // Validate output tensor:
+    TF_LITE_ENSURE_EQ(context, output->type, kTfLiteInt8);
   } else {
+    TF_LITE_ENSURE_EQ(context, node->inputs->size, 6);
+
     // Validate Input Tensor dtypes:
     TF_LITE_ENSURE_EQ(context, weights_feature->type, kTfLiteFloat32);
     TF_LITE_ENSURE_EQ(context, weights_time->type, kTfLiteFloat32);
+    TF_LITE_ENSURE_EQ(context, activation_state->type, kTfLiteFloat32);
+
+    if (bias) {
+      TF_LITE_ENSURE_EQ(context, bias->type, kTfLiteFloat32);
+    }
 
     // Full-float SVDF only uses the one shared scratch tensor (see above for
     // usage).
-    // TODO(kreeger): Use input tensor as variable until scratch tensor
-    // allocation has been implemented (cl/263032056)
+    // TODO(b/132070898): Use input tensor as variable until scratch tensor
+    // allocation has been implemented.
     // TF_LITE_ENSURE_EQ(context, node->temporaries->size, 1);
-  }
 
-  // Validate Tensor Output:
-  // [0] = float, {2, batch_size, num_units}
-  TF_LITE_ENSURE_EQ(context, node->outputs->size, 1);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
-  TF_LITE_ENSURE_EQ(context, output->type, kTfLiteFloat32);
-  TF_LITE_ENSURE_EQ(context, NumDimensions(output), 2);
-  TF_LITE_ENSURE_EQ(context, output->dims->data[0], batch_size);
-  TF_LITE_ENSURE_EQ(context, output->dims->data[1], num_units);
+    // Validate shared scratch tensor type:
+    TF_LITE_ENSURE_EQ(context, scratch_tensor->type, kTfLiteFloat32);
+
+    TF_LITE_ENSURE_EQ(context, output->type, kTfLiteFloat32);
+  }
 
   return kTfLiteOk;
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  const auto* params = reinterpret_cast<TfLiteSVDFParams*>(node->builtin_data);
+  auto* params = reinterpret_cast<TfLiteSVDFParams*>(node->builtin_data);
 
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   const TfLiteTensor* weights_feature =
@@ -451,14 +646,16 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       GetInput(context, node, kWeightsTimeTensor);
   const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
 
-  // TODO(kreeger): Use input tensor as variable until scratch tensor allocation
-  // has been implemented (cl/263032056)
-  // TfLiteTensor* scratch = GetTemporary(context, node, /*index=*/0);
+  // TODO(b/132070898): Use input tensor as variable until scratch tensor
+  // allocation has been implemented. TfLiteTensor* scratch =
+  // GetTemporary(context, node, /*index=*/0);
   TfLiteTensor* scratch = &context->tensors[node->inputs->data[5]];
 
   TfLiteTensor* activation_state =
       &context->tensors[node->inputs->data[kInputActivationStateTensor]];
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+
+  const bool is_full_integer = input->type == kTfLiteInt8;
 
   switch (weights_feature->type) {
     case kTfLiteFloat32: {
@@ -470,19 +667,46 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
     case kTfLiteUInt8:
     case kTfLiteInt8: {
-      TfLiteTensor* scratch_input_quantized = GetTemporary(context, node, 1);
-      TfLiteTensor* scratch_scaling_factors = GetTemporary(context, node, 2);
-      TfLiteTensor* scratch_float_weights_time = GetTemporary(context, node, 3);
-      EvalHybridSVDF(context, node, input, weights_feature,
-                     scratch_float_weights_time, bias, params, scratch,
-                     scratch_scaling_factors, scratch_input_quantized,
-                     activation_state, output);
-      return kTfLiteOk;
+      if (is_full_integer) {
+        // TODO(b/146029510): In order to prevent expensive scale calculations
+        // during each eval of this Op, pre-calculated values are being stored
+        // in a Tensor in the flatbuffer. Inside this Tensor, the 4 scale values
+        // are stored in a int32 buffer.
+        const TfLiteTensor* effective_scale_data_tensor =
+            GetInput(context, node, 7);
+        const int32_t* effective_scale_data =
+            GetTensorData<int32_t>(effective_scale_data_tensor);
+
+        // TODO(b/132070898): Use input tensor as variable until scratch tensor
+        // allocation has been implemented TfLiteTensor*
+        // output_temp = GetTemporary(context, node, /*index=*/2);
+        TfLiteTensor* output_temp = &context->tensors[node->inputs->data[6]];
+
+        // Currently supports only ReLU.
+        TF_LITE_ENSURE_EQ(context, params->activation, kTfLiteActRelu);
+        EvalIntegerSVDF(context, node, input, weights_feature, weights_time,
+                        bias, params, activation_state, output, scratch,
+                        output_temp, effective_scale_data[0],
+                        effective_scale_data[1], effective_scale_data[2],
+                        effective_scale_data[3], input->params.zero_point,
+                        output->params.zero_point);
+        return kTfLiteOk;
+      } else {
+        // Hybrid quantized:
+        TfLiteTensor* scratch_input_quantized = GetTemporary(context, node, 1);
+        TfLiteTensor* scratch_scaling_factors = GetTemporary(context, node, 2);
+        TfLiteTensor* scratch_float_weights_time =
+            GetTemporary(context, node, 3);
+        EvalHybridSVDF(context, node, input, weights_feature,
+                       scratch_float_weights_time, bias, params, scratch,
+                       scratch_scaling_factors, scratch_input_quantized,
+                       activation_state, output);
+        return kTfLiteOk;
+      }
       break;
     }
 
     default:
-      // TODO(kreeger): Handle this case for full quant svdf b/139435798
       context->ReportError(context, "Type %s not currently supported.",
                            TfLiteTypeGetName(weights_feature->type));
       return kTfLiteError;

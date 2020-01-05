@@ -131,7 +131,7 @@ py_library(
 py_binary(
     name = "generate_examples",
     srcs = ["generate_examples.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         ":generate_examples_lib",
@@ -219,16 +219,18 @@ cc_library(
         ":join",
         ":split",
         ":test_runner",
+        "@com_google_absl//absl/strings",
         "//tensorflow/lite:builtin_op_data",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
-        "//tensorflow/lite/delegates/flex:delegate",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:custom_ops",
         "//tensorflow/lite/kernels:reference_ops",
         "//tensorflow/lite/tools/evaluation:utils",
-        "@com_google_absl//absl/strings",
-    ],
+    ] + select({
+        "//tensorflow:ios": [],
+        "//conditions:default": ["//tensorflow/lite/delegates/flex:delegate"],
+    }),
 )
 
 tf_cc_test(
@@ -355,6 +357,7 @@ cc_library(
         ":join",
         ":split",
         ":tf_driver",
+        ":tflite_driver",
         "//tensorflow/lite:string",
     ] + select({
         "//conditions:default": [
@@ -403,6 +406,9 @@ cc_library(
         "//tensorflow:android": [
             "//tensorflow/core:android_tensorflow_lib",
         ],
+        "//tensorflow:ios": [
+            "//tensorflow/core:ios_tensorflow_lib",
+        ],
     }),
 )
 
@@ -434,6 +440,9 @@ cc_library(
         ],
         "//tensorflow:android": [
             "//tensorflow/core:android_tensorflow_lib",
+        ],
+        "//tensorflow:ios": [
+            "//tensorflow/core:ios_tensorflow_lib",
         ],
     }),
 )

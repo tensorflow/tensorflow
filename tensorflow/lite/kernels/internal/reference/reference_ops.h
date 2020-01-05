@@ -2561,6 +2561,57 @@ void RankOneSelect(const RuntimeShape& input_condition_shape,
 }
 
 template <typename D, typename T>
+void BroadcastSelect4DSlow(const RuntimeShape& input_condition_shape,
+                           const D* input_condition_data,
+                           const RuntimeShape& input_x_shape,
+                           const T* input_x_data,
+                           const RuntimeShape& input_y_shape,
+                           const T* input_y_data,
+                           const RuntimeShape& output_shape, T* output_data) {
+  TFLITE_DCHECK_LE(input_condition_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(input_x_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(input_y_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(output_shape.DimensionsCount(), 4);
+
+  const RuntimeShape extended_output_shape =
+      RuntimeShape::ExtendedShape(4, output_shape);
+
+  NdArrayDesc<4> desc_condition;
+  NdArrayDesc<4> desc_x;
+  NdArrayDesc<4> desc_y;
+  NdArrayDescsForElementwiseBroadcast(input_condition_shape, input_x_shape,
+                                      input_y_shape, &desc_condition, &desc_x,
+                                      &desc_y);
+
+  // In Tensorflow, the dimensions are canonically named (batch_number, row,
+  // col, channel), with extents (batches, height, width, depth), with the
+  // trailing dimension changing most rapidly (channels has the smallest
+  // stride, typically 1 element).
+  //
+  // In generated C code, we store arrays with the dimensions reversed. The
+  // first dimension has smallest stride.
+  //
+  // We name our variables by their Tensorflow convention, but generate C code
+  // nesting loops such that the innermost loop has the smallest stride for
+  // the best cache behavior.
+  for (int b = 0; b < extended_output_shape.Dims(0); ++b) {
+    for (int y = 0; y < extended_output_shape.Dims(1); ++y) {
+      for (int x = 0; x < extended_output_shape.Dims(2); ++x) {
+        for (int c = 0; c < extended_output_shape.Dims(3); ++c) {
+          const int condition_index =
+              SubscriptToIndex(desc_condition, b, y, x, c);
+          const int x_index = SubscriptToIndex(desc_x, b, y, x, c);
+          const int y_index = SubscriptToIndex(desc_y, b, y, x, c);
+          output_data[Offset(extended_output_shape, b, y, x, c)] =
+              input_condition_data[condition_index] ? input_x_data[x_index]
+                                                    : input_y_data[y_index];
+        }
+      }
+    }
+  }
+}
+
+template <typename D, typename T>
 void SelectTrueCoords(const RuntimeShape& input_condition_shape,
                       const D* input_condition_data, T* output_data) {
   const size_t size = input_condition_shape.FlatSize();

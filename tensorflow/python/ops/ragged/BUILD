@@ -6,7 +6,7 @@ package(
         "//intelligence/datum/prensor:__pkg__",
         "//learning/brain/contrib/text:__pkg__",
         "//nlp/nlx/bert:__pkg__",
-        "//nlp/nlx/i18n/saft:__subpackages__",
+        "//nlp/nlx/i18n/pangloss:__subpackages__",
         "//nlp/nlx/infrastructure/multiscale:__subpackages__",
         "//nlp/projects/atc/tf/ops:__pkg__",
         "//research/socrates:__subpackages__",

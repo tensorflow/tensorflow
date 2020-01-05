@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <memory>
 
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
 
 namespace mlir {
 
@@ -46,7 +46,8 @@ std::unique_ptr<OpPassBase<ModuleOp>> CreateTFShapeInferencePass();
 // Optimizes Tensorflow graph.
 std::unique_ptr<OpPassBase<FuncOp>> CreateTFOptimizePass();
 
-struct StandardPipelineOptions : public PassOptions<StandardPipelineOptions> {
+struct StandardPipelineOptions
+    : public PassPipelineOptions<StandardPipelineOptions> {
   Option<bool> enable_inliner{*this, "enable-inliner",
                               llvm::cl::desc("Enable inliner."),
                               llvm::cl::init(false)};
@@ -128,6 +129,10 @@ namespace TFTPU {
 // Creates a pass that forms clusters from operations of the same
 // `_tpu_replicate` attribute.
 std::unique_ptr<OpPassBase<FuncOp>> CreateTPUClusterFormationPass();
+
+// Creates a pass that remaps and assigns padding map from a
+// `tf_device.launch_func` `padding_map` attribute to its encapsulated function.
+std::unique_ptr<OpPassBase<ModuleOp>> CreateTPUDynamicPaddingMapperPass();
 
 // Creates a pass that rewrites `tf_device.launch_func` on TPUs into TPU runtime
 // ops.

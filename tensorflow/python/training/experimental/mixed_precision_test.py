@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+
 from absl.testing import parameterized
 
 from tensorflow.core.protobuf import config_pb2

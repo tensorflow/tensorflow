@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -28,10 +27,8 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import linalg_ops
-from tensorflow.python.ops import manip_ops
 from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import special_math_ops
@@ -486,14 +483,8 @@ def tridiagonal_solve(diagonals,
           'Expected last two dimensions of diagonals to be same, got {} and {}'
           .format(m1, m2))
     m = m1 or m2
-    diagonals = gen_array_ops.matrix_diag_part_v2(
-        diagonals, k=(-1, 1), padding_value=0.)
-    # matrix_diag_part pads at the end. Because the subdiagonal has the
-    # convention of having the padding in the front, we need to rotate the last
-    # Tensor.
-    superdiag, d, subdiag = array_ops.unstack(diagonals, num=3, axis=-2)
-    subdiag = manip_ops.roll(subdiag, shift=1, axis=-1)
-    diagonals = array_ops.stack((superdiag, d, subdiag), axis=-2)
+    diagonals = array_ops.matrix_diag_part(
+        diagonals, k=(-1, 1), padding_value=0., align='LEFT_RIGHT')
     return _tridiagonal_solve_compact_format(
         diagonals, rhs, transpose_rhs, conjugate_rhs, partial_pivoting, name)
 
@@ -545,10 +536,7 @@ def _tridiagonal_solve_compact_format(diagonals, rhs, transpose_rhs,
     rhs = math_ops.conj(rhs)
 
   check_num_lhs_matches_num_rhs()
-  result = linalg_ops.tridiagonal_solve(diagonals, rhs, partial_pivoting, name)
-  if transpose_rhs and not compat.forward_compatible(2019, 10, 18):
-    return array_ops.matrix_transpose(result)
-  return result
+  return linalg_ops.tridiagonal_solve(diagonals, rhs, partial_pivoting, name)
 
 
 @tf_export('linalg.tridiagonal_matmul')
@@ -614,20 +602,11 @@ def tridiagonal_matmul(diagonals, rhs, diagonals_format='compact', name=None):
       raise ValueError(
           'Expected last two dimensions of diagonals to be same, got {} and {}'
           .format(m1, m2))
-
-    maindiag = array_ops.matrix_diag_part(diagonals)
-    superdiag = gen_array_ops.matrix_diag_part_v2(
-        diagonals, k=1, padding_value=0.)
-    superdiag = array_ops.concat(
-        [superdiag,
-         array_ops.zeros_like(
-             superdiag[..., 0])[..., array_ops.newaxis]],
-        axis=-1)
-    subdiag = gen_array_ops.matrix_diag_part_v2(
-        diagonals, k=-1, padding_value=0.)
-    subdiag = array_ops.concat([
-        array_ops.zeros_like(subdiag[..., 0])[..., array_ops.newaxis],
-        subdiag], axis=-1)
+    diags = array_ops.matrix_diag_part(
+        diagonals, k=(-1, 1), padding_value=0., align='LEFT_RIGHT')
+    superdiag = diags[..., 0, :]
+    maindiag = diags[..., 1, :]
+    subdiag = diags[..., 2, :]
   else:
     raise ValueError('Unrecognized diagonals_format: %s' % diagonals_format)
 

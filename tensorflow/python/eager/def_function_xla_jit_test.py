@@ -20,6 +20,7 @@ from __future__ import print_function
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -44,6 +45,79 @@ class DefFunctionTest(test.TestCase):
     if not test.is_built_with_rocm():
       # XLA support is not yet enabled for TF ROCm
       self.assertAllClose([2, 3, 3, 4, 4], xla_func(inputs, 1))
+
+  def testBasicInt32(self):
+
+    def fn(x, a):
+      return x + a
+
+    xla_func = def_function.function(fn, experimental_compile=True)
+
+    inputs = constant_op.constant([1, 2, 2, 3, 3], dtype=dtypes.int32)
+    if not test.is_built_with_rocm():
+      # XLA support is not yet enabled for TF ROCm
+      self.assertAllClose([2, 3, 3, 4, 4], xla_func(inputs, 1))
+
+  def testDerivative(self):
+    if test.is_built_with_rocm():
+      return
+
+    def fn(x, a):
+      return 2 * x + a
+
+    xla_func = def_function.function(fn, experimental_compile=True)
+
+    with backprop.GradientTape() as tape:
+      inputs = constant_op.constant([1., 2., 2., 3., 3.])
+      tape.watch(inputs)
+      outputs = xla_func(inputs, 1)
+
+    self.assertAllClose([2, 2, 2, 2, 2], tape.gradient(outputs, inputs))
+
+    # pylint: disable=protected-access
+    (forward, backward) = xla_func.get_concrete_function(
+        inputs, 1)._delayed_rewrite_functions.forward_backward()
+
+    # Check that the must-compile attribute gets correctly propagated to the
+    # created derivatives.
+    self.assertTrue(backward.function_def.attr['_XlaMustCompile'])
+    self.assertTrue(forward.definition.attr['_XlaMustCompile'])
+
+  # Calling function with experimental_compile=True from
+  # experimental_compile=False should compile the inner func.
+  def testNestedCall(self):
+
+    def fn(x, a):
+      return x + a
+
+    xla_func = def_function.function(fn, experimental_compile=True)
+
+    def fn2(x, a):
+      return xla_func(x, a)
+
+    func = def_function.function(fn2, experimental_compile=False)
+
+    inputs = constant_op.constant([1, 2, 2, 3, 3])
+    if not test.is_built_with_rocm():
+      # XLA support is not yet enabled for TF ROCm
+      self.assertAllClose([2, 3, 3, 4, 4], func(inputs, 1))
+
+  def testNestedCallUnsupportedOps(self):
+
+    def fn(x):
+      return array_ops.unique(x).y
+
+    xla_func = def_function.function(fn, experimental_compile=True)
+
+    def fn2(x):
+      return xla_func(x)
+
+    func = def_function.function(fn2, experimental_compile=False)
+    inputs = constant_op.constant([1, 2, 2, 3, 3])
+    if not test.is_built_with_rocm():
+      with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                   'not compilable'):
+        func(inputs)
 
   def testUnsupportedOps(self):
 

@@ -70,6 +70,29 @@ constexpr char kFixedSeedDatasetPrefix[] = "FixedSeed";
 constexpr char kReshufflingDatasetPrefix[] = "Reshuffling";
 constexpr char kShuffleDataset[] = "ShuffleDataset";
 
+namespace {
+class Seeds {
+ public:
+  Seeds(int64 seed, int64 seed2) {
+    input_seed_ = seed;
+    input_seed2_ = seed2;
+    seed_ = seed;
+    seed2_ = seed2;
+    // By TensorFlow convention, if both seeds are 0, then shuffling should be
+    // seeded non-deterministically.
+    if (seed == 0 && seed2 == 0) {
+      seed_ = random::New64();
+      seed2_ = random::New64();
+    }
+  }
+
+  int64 input_seed_;
+  int64 input_seed2_;
+  int64 seed_;
+  int64 seed2_;
+};
+}  // namespace
+
 ShuffleDatasetOpBase::ShuffleDatasetOpBase(OpKernelConstruction* ctx)
     : UnaryDatasetOpKernel(ctx) {}
 
@@ -110,6 +133,18 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
   }
 
  protected:
+  // Adds the seeds to the given graphdef builder. `preserve_random_seeds`
+  // controls whether to add the input seeds or the resolved seeds.
+  Status AddSeeds(Seeds seeds, bool preserve_random_seeds,
+                  DatasetGraphDefBuilder* b, Node** seed, Node** seed2) const {
+    int64 seed_to_add = preserve_random_seeds ? seeds.input_seed_ : seeds.seed_;
+    int64 seed2_to_add =
+        preserve_random_seeds ? seeds.input_seed2_ : seeds.seed2_;
+    TF_RETURN_IF_ERROR(b->AddScalar(seed_to_add, seed));
+    TF_RETURN_IF_ERROR(b->AddScalar(seed2_to_add, seed2));
+    return Status::OK();
+  }
+
   template <class T>
   class Iterator : public DatasetIterator<T> {
    public:
@@ -408,29 +443,6 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
   const int64 count_;
 };
 
-namespace {
-class Seeds {
- public:
-  Seeds(int64 seed, int64 seed2) {
-    input_seed_ = seed;
-    input_seed2_ = seed2;
-    seed_ = seed;
-    seed2_ = seed2;
-    // By TensorFlow convention, if both seeds are 0, then shuffling should be
-    // seeded non-deterministically.
-    if (seed == 0 && seed2 == 0) {
-      seed_ = random::New64();
-      seed2_ = random::New64();
-    }
-  }
-
-  int64 input_seed_;
-  int64 input_seed2_;
-  int64 seed_;
-  int64 seed2_;
-};
-}  // namespace
-
 // A dataset that uses a pseudorandom sequence of seeds for the iterators
 // created from it. Used when `reshuffle_each_iteration` is true.
 class ShuffleDatasetOp::ReshufflingDataset : public ShuffleDatasetBase {
@@ -543,8 +555,8 @@ class ShuffleDatasetOp::ReshufflingDataset : public ShuffleDatasetBase {
     AttrValue reshuffle_each_iteration;
 
     TF_RETURN_IF_ERROR(b->AddScalar(buffer_size_, &buffer_size));
-    TF_RETURN_IF_ERROR(b->AddScalar(seeds_.input_seed_, &seed));
-    TF_RETURN_IF_ERROR(b->AddScalar(seeds_.input_seed2_, &seed2));
+    TF_RETURN_IF_ERROR(
+        AddSeeds(seeds_, ctx->preserve_random_seeds(), b, &seed, &seed2));
     b->BuildAttrValue(true, &reshuffle_each_iteration);
     TF_RETURN_IF_ERROR(b->AddDataset(
         this, {input_graph_node, buffer_size, seed, seed2},  // Inputs
@@ -700,8 +712,8 @@ class ShuffleDatasetOp::FixedSeedDataset : public ShuffleDatasetBase {
     AttrValue reshuffle_each_iteration;
 
     TF_RETURN_IF_ERROR(b->AddScalar(buffer_size_, &buffer_size));
-    TF_RETURN_IF_ERROR(b->AddScalar(seeds_.input_seed_, &seed));
-    TF_RETURN_IF_ERROR(b->AddScalar(seeds_.input_seed2_, &seed2));
+    TF_RETURN_IF_ERROR(
+        AddSeeds(seeds_, ctx->preserve_random_seeds(), b, &seed, &seed2));
     b->BuildAttrValue(false, &reshuffle_each_iteration);
     TF_RETURN_IF_ERROR(b->AddDataset(
         this, {input_graph_node, buffer_size, seed, seed2},  // Inputs
@@ -799,8 +811,8 @@ class ShuffleAndRepeatDatasetOp::Dataset : public ShuffleDatasetBase {
     Node* count = nullptr;
 
     TF_RETURN_IF_ERROR(b->AddScalar(buffer_size_, &buffer_size));
-    TF_RETURN_IF_ERROR(b->AddScalar(seeds_.input_seed_, &seed));
-    TF_RETURN_IF_ERROR(b->AddScalar(seeds_.input_seed2_, &seed2));
+    TF_RETURN_IF_ERROR(
+        AddSeeds(seeds_, ctx->preserve_random_seeds(), b, &seed, &seed2));
     TF_RETURN_IF_ERROR(b->AddScalar(count_, &count));
     TF_RETURN_IF_ERROR(b->AddDataset(
         this, {input_graph_node, buffer_size, seed, seed2, count},  // Inputs

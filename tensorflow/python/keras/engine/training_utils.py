@@ -253,7 +253,7 @@ class SliceAggregator(Aggregator):
     shape = (self.num_samples,) + batch_element.shape[1:]
     dtype = batch_element.dtype
     if isinstance(batch_element, ops.EagerTensor):
-      dtype = dtype.as_numpy_dtype()
+      dtype = dtype.as_numpy_dtype
 
     self.results = np.empty(shape=shape, dtype=dtype)
 

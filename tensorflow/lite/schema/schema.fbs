@@ -89,11 +89,10 @@ table QuantizationParameters {
 //      whereas to store it in column major order, the traversal order would be
 //      (d1, d0). If the 2-D matrix has a 2-D inner block, the traversal order
 //      could be (d0, d1, d2, d3).
-//   2. In the order of (d0, ..., dn-1, dn, ..., dn+k-1), whether each dimension
-//      is DENSE or SPARSE.
-//   3. How each block dimension in (dn, ..., dn+k-1) maps to the original
+//   2. How each block dimension in (dn, ..., dn+k-1) maps to the original
 //      tensor dimension in (d0, ..., dn-1).
-//   4. Index metadata for each dimension. For a dense dimension, this is just
+//   3. In the traversal order defined above, the format (dense vs. sparse) and
+//      index metadata for each dimension. For a dense dimension, this is just
 //      the size of that dimension. For a sparse dimension, it's the same as
 //      the compressed index defined in the Compressed Sparse Row (CSR) format.
 //      (http://scipy-lectures.org/advanced/scipy_sparse/csr_matrix.html)
@@ -110,9 +109,9 @@ enum DimensionType : byte {
 }
 
 table DimensionMetadata {
-  // Whether each dimension is dense or sparse.
+  // Whether a dimension is dense or sparse.
   format:DimensionType;
-  // Index metadata used for each dimension.
+  // Index metadata used for a dimension.
   //   - If format is DimensionType.DENSE then we use the dense_size field to
   //     store the size of that dimension. Each index in that dimension is
   //     stored implicitly.
@@ -149,7 +148,7 @@ table SparsityParameters {
   // It's stored in the order of (dn, ..., dn+k-1).
   // If not block-sparse, this field is NULL.
   block_map:[int];
-  // In the order of (d0, ..., dn-1, dn, ..., dn+k-1), the metadata needed for
+  // In the traversal order defined above, the metadata needed for
   // each dimension to locate the non-zero values in the original dense tensor.
   // The size of the dim_metadata array = the size of the traversal_order array
   // = n + k.
@@ -316,7 +315,9 @@ enum BuiltinOperator : byte {
   WHILE = 119,
   NON_MAX_SUPPRESSION_V4 = 120,
   NON_MAX_SUPPRESSION_V5 = 121,
-  SCATTER_ND = 122
+  SCATTER_ND = 122,
+  SELECT_V2 = 123,
+  DENSIFY = 124
 }
 
 
@@ -418,7 +419,9 @@ union BuiltinOptions {
   DepthToSpaceOptions,
   NonMaxSuppressionV4Options,
   NonMaxSuppressionV5Options,
-  ScatterNdOptions
+  ScatterNdOptions,
+  SelectV2Options,
+  DensifyOptions
 }
 
 enum Padding : byte { SAME, VALID }
@@ -900,6 +903,12 @@ table NonMaxSuppressionV5Options {
 }
 
 table ScatterNdOptions {
+}
+
+table SelectV2Options {
+}
+
+table DensifyOptions {
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a

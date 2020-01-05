@@ -43,28 +43,13 @@ class XStatVisitor {
 
   XStat::ValueCase ValueCase() const { return stat_->value_case(); }
 
-  template <typename Number>
-  Number Value() const {
-    switch (stat_->value_case()) {
-      case XStat::kDoubleValue:
-        return stat_->double_value();
-      case XStat::kUint64Value:
-        return stat_->uint64_value();
-      case XStat::kInt64Value:
-        return stat_->int64_value();
-      case XStat::kStrValue:
-      case XStat::VALUE_NOT_SET:
-        return 0;
-    }
-  }
+  int64 IntValue() const { return stat_->int64_value(); }
 
-  template <>
-  absl::string_view Value() const {
-    if (stat_->value_case() == XStat::kStrValue) {
-      return stat_->str_value();
-    }
-    return absl::string_view();
-  }
+  uint64 UintValue() const { return stat_->uint64_value(); }
+
+  double DoubleValue() const { return stat_->double_value(); }
+
+  absl::string_view StrValue() const { return stat_->str_value(); }
 
   const XStat& RawStat() const { return *stat_; }
 

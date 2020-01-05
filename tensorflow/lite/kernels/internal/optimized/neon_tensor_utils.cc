@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <sys/types.h>
-#include <unistd.h>
 
 #include <algorithm>
 #include <cmath>
@@ -962,6 +961,7 @@ void NeonCpuBackendGemm(const int8_t* input, const int32_t* bias,
   lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
   lhs_params.rows = n_output;
   lhs_params.cols = n_input;
+  lhs_params.cacheable = true;
 
   MatrixParams<int8_t> rhs_params;
   rhs_params.order = cpu_backend_gemm::Order::kColMajor;
@@ -1815,54 +1815,6 @@ void NeonSparseMatrixBatchVectorMultiplyAccumulate(
     }  // for row
   }    // for batch
   free(aligned_vec_free);
-}
-
-void NeonVectorVectorCwiseProduct(const float* vector1, const float* vector2,
-                                  int v_size, float* result) {
-  // If v_size is not divisible by the vector size, then we need to process the
-  // final few elements sequentially. postamble_start shows the start index
-  // where this should happen.
-  const int postamble_start =
-      RoundDownVectors<kFloatValuesPerNeonVector>(v_size);
-  int v = 0;
-  for (; v < postamble_start; v += kFloatValuesPerNeonVector) {
-    // Load 4 float values from vector1 and vector2.
-    const float32x4_t v1_f32x4 = vld1q_f32(vector1 + v);
-    const float32x4_t v2_f32x4 = vld1q_f32(vector2 + v);
-    // Vector multiply 4 float
-    const float32x4_t mul_32x4 = vmulq_f32(v1_f32x4, v2_f32x4);
-    // Save to result array.
-    vst1q_f32(result + v, mul_32x4);
-  }
-#pragma clang loop vectorize(disable) unroll(disable)
-  for (; v < v_size; v++) {
-    result[v] = vector1[v] * vector2[v];
-  }
-}
-
-void NeonVectorVectorCwiseProductAccumulate(const float* vector1,
-                                            const float* vector2, int v_size,
-                                            float* result) {
-  // If v_size is not divisible by the vector size, then we need to process the
-  // final few elements sequentially. postamble_start shows the start index
-  // where this should happen.
-  const int postamble_start =
-      RoundDownVectors<kFloatValuesPerNeonVector>(v_size);
-  int v = 0;
-  for (; v < postamble_start; v += kFloatValuesPerNeonVector) {
-    // Load 4 float values from vector1 and vector2 and accumulator.
-    const float32x4_t v1_f32x4 = vld1q_f32(vector1 + v);
-    const float32x4_t v2_f32x4 = vld1q_f32(vector2 + v);
-    float32x4_t acc_32x4 = vld1q_f32(result + v);
-    // Vector multiply-accumulate 4 float
-    acc_32x4 = vmlaq_f32(acc_32x4, v1_f32x4, v2_f32x4);
-    // Save to result array.
-    vst1q_f32(result + v, acc_32x4);
-  }
-#pragma clang loop vectorize(disable) unroll(disable)
-  for (; v < v_size; v++) {
-    result[v] += vector1[v] * vector2[v];
-  }
 }
 
 void NeonSub1Vector(const float* vector, int v_size, float* result) {

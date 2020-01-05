@@ -94,13 +94,6 @@ void SetDefaultLayoutToContainer(T* minor_to_major) {
   return layout;
 }
 
-/* static */ Layout LayoutUtil::MakeSparseLayout(int64 max_sparse_elements) {
-  Layout layout;
-  layout.set_format(SPARSE);
-  layout.set_max_sparse_elements(max_sparse_elements);
-  return layout;
-}
-
 namespace {
 
 // Internal helper that creates a default layout for an array of the given rank.
@@ -293,19 +286,6 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
                         layout.minor_to_major().end(), std::greater<int64>());
 }
 
-/* static */ bool LayoutUtil::IsSparseArray(const Shape& shape) {
-  return shape.IsArray() && shape.has_layout() && IsSparse(shape.layout());
-}
-
-/* static */ bool LayoutUtil::IsSparse(const Layout& layout) {
-  return layout.format() == SPARSE;
-}
-
-/* static */ int64 LayoutUtil::MaxSparseElements(const Layout& layout) {
-  CHECK(IsSparse(layout));
-  return layout.max_sparse_elements();
-}
-
 /* static */ bool LayoutUtil::HasLayout(const Shape& shape) {
   if (shape.IsTuple()) {
     // Tuple shape: all subshapes must have a layout.
@@ -461,8 +441,6 @@ Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src, Shape* dst) {
   for (int64 minor_to_major : layout.minor_to_major()) {
     hash_value = Hash64Combine(hash_value, hash<int64>()(minor_to_major));
   }
-  hash_value = Hash64Combine(hash_value, layout.max_sparse_elements());
-
   for (Tile tile : layout.tiles()) {
     for (int64 tile_dim : tile.dimensions()) {
       hash_value = Hash64Combine(hash_value, hash<int64>()(tile_dim));

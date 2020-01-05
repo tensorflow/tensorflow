@@ -691,7 +691,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexUnaryOp(
       llvm::Value* imag_numerator = FMul(four, FMul(cos_b, sin_b));
 
       // Expm1(x) is about x for small values of x, but exp_sum_m2 is about x^2
-      // for small value of x. As a result, due to floating point precission
+      // for small value of x. As a result, due to floating point precision
       // issues, x^2 is a better approximation than Expm1(x) + Expm1(x) for
       // small values of x.
       llvm::Value* a_sqr = FMul(a, a);
@@ -1376,7 +1376,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitExpm1(PrimitiveType prim_type,
   auto for_small_x = FAdd(x, x_squared_over_two);
   // At this point, the relative errors due to floating point precision loss of
   // calculating exp(x) - 1 and the polynomial exp(x)-1 = x + x^2/2 are about
-  // equal, with a value of approximetely 2^-16.
+  // equal, with a value of approximately 2^-16.
   const auto kExponentIsSmallThreshold = 0.009;
   auto abs_x =
       llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs, {value}, {type}, b_);

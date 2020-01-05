@@ -267,6 +267,8 @@ def get_win_copts(is_external = False):
         # "/EHs-c-",
         "/wd4577",
         "/DNOGDI",
+        # Also see build:windows lines in tensorflow/opensource_only/.bazelrc
+        # where we set some other options globally.
     ]
     if is_external:
         return WINDOWS_COPTS + ["/UTF_COMPILE_LIBRARY"]
@@ -473,7 +475,8 @@ def tf_shared_library_deps():
 def tf_binary_dynamic_kernel_dsos():
     return if_dynamic_kernels(
         extra_deps = [
-            "//tensorflow/core/kernels:libtfkernel_all_kernels.so",
+            # TODO(gunan): Remove dependencies on these, and make them load dynamically.
+            # "//tensorflow/core/kernels:libtfkernel_all_kernels.so",
         ],
         otherwise = [],
     )
@@ -1176,7 +1179,8 @@ register_extension_info(
     label_regex_for_dep = "{extension_name}_gpu",
 )
 
-# Create a cc_test for each of the tensorflow tests listed in "tests"
+# Create a cc_test for each of the tensorflow tests listed in "tests", along
+# with a test suite of the given name, if provided.
 def tf_cc_tests(
         srcs,
         deps,
@@ -1186,10 +1190,14 @@ def tf_cc_tests(
         size = "medium",
         args = None,
         linkopts = [],
-        kernels = []):
+        kernels = [],
+        create_named_test_suite = False,
+        visibility = None):
+    test_names = []
     for src in srcs:
+        test_name = src_to_test_name(src)
         tf_cc_test(
-            name = src_to_test_name(src),
+            name = test_name,
             size = size,
             srcs = [src],
             args = args,
@@ -1198,6 +1206,17 @@ def tf_cc_tests(
             linkstatic = linkstatic,
             tags = tags,
             deps = deps,
+            visibility = visibility,
+        )
+        test_names.append(test_name)
+
+    # Add a test suite with the generated tests if a name was provided and
+    # it does not conflict any of the test names.
+    if create_named_test_suite:
+        native.test_suite(
+            name = name,
+            tests = test_names,
+            visibility = visibility,
         )
 
 def tf_cc_test_mkl(
@@ -2048,9 +2067,9 @@ def py_test(deps = [], data = [], kernels = [], **kwargs):
             clean_dep("//tensorflow:no_tensorflow_py_deps"): [],
         }),
         data = data + select({
-            "//conditions:default": [],
+            "//conditions:default": kernels,
             clean_dep("//tensorflow:no_tensorflow_py_deps"): ["//tensorflow/tools/pip_package:win_pip_package_marker"],
-        }) + tf_binary_dynamic_kernel_dsos(),
+        }),
         exec_compatible_with = tf_exec_compatible_with(kwargs),
         **kwargs
     )
@@ -2094,7 +2113,6 @@ def tf_py_test(
         args = [],
         tags = [],
         shard_count = 1,
-        additional_deps = [],
         additional_visibility = [],
         kernels = [],
         flaky = 0,
@@ -2104,6 +2122,7 @@ def tf_py_test(
         **kwargs):
     """Create one or more python tests with extra tensorflow dependencies."""
     xla_test_true_list = []
+    additional_deps = kwargs.pop("additional_deps", []) + kwargs.pop("deps", [])
 
     # xla_enable_strict_auto_jit is used to run Tensorflow unit tests with all XLA compilable
     # kernels compiled with XLA.
@@ -2139,7 +2158,7 @@ def tf_py_test(
 
 register_extension_info(
     extension_name = "tf_py_test",
-    label_regex_map = {"additional_deps": "deps:{extension_name}"},
+    label_regex_map = {"deps": "deps:{extension_name}"},
 )
 
 def gpu_py_test(
@@ -2150,7 +2169,6 @@ def gpu_py_test(
         main = None,
         args = [],
         shard_count = 1,
-        additional_deps = [],
         kernels = [],
         tags = [],
         flaky = 0,
@@ -2163,6 +2181,7 @@ def gpu_py_test(
     _ignored = [xla_enable_strict_auto_jit]
     if main == None:
         main = name + ".py"
+    additional_deps = kwargs.pop("additional_deps", []) + kwargs.pop("deps", [])
     for config in ["cpu", "gpu"]:
         test_name = name
         test_tags = tags
@@ -2189,7 +2208,7 @@ def gpu_py_test(
 
 register_extension_info(
     extension_name = "gpu_py_test",
-    label_regex_map = {"additional_deps": "additional_deps:{extension_name}"},
+    label_regex_map = {"deps": "deps:{extension_name}"},
 )
 
 # terminology changes: saving cuda_* definition for compatibility
@@ -2198,7 +2217,7 @@ def cuda_py_test(*args, **kwargs):
 
 register_extension_info(
     extension_name = "cuda_py_test",
-    label_regex_map = {"additional_deps": "additional_deps:{extension_name}"},
+    label_regex_map = {"deps": "deps:{extension_name}"},
 )
 
 def sycl_py_test(
@@ -2209,13 +2228,14 @@ def sycl_py_test(
         main = None,
         args = [],
         shard_count = 1,
-        additional_deps = [],
         kernels = [],
         tags = [],
         flaky = 0,
         xla_enabled = False,
-        grpc_enabled = False):
+        grpc_enabled = False,
+        **kwargs):
     test_tags = tags + tf_sycl_tests_tags()
+    additional_deps = kwargs.pop("additional_deps", []) + kwargs.pop("deps", [])
     tf_py_test(
         name = name,
         size = size,
@@ -2230,18 +2250,18 @@ def sycl_py_test(
         shard_count = shard_count,
         tags = test_tags,
         xla_enabled = xla_enabled,
+        **kwargs
     )
 
 register_extension_info(
     extension_name = "sycl_py_test",
-    label_regex_map = {"additional_deps": "additional_deps:{extension_name}"},
+    label_regex_map = {"deps": "deps:{extension_name}"},
 )
 
 def py_tests(
         name,
         srcs,
         size = "medium",
-        additional_deps = [],
         kernels = [],
         data = [],
         tags = [],
@@ -2251,6 +2271,7 @@ def py_tests(
         xla_enabled = False,
         grpc_enabled = False,
         **kwargs):
+    additional_deps = kwargs.pop("additional_deps", []) + kwargs.pop("deps", [])
     for src in srcs:
         test_name = src.split("/")[-1].split(".")[0]
         if prefix:
@@ -2275,7 +2296,6 @@ def gpu_py_tests(
         name,
         srcs,
         size = "medium",
-        additional_deps = [],
         kernels = [],
         data = [],
         shard_count = 1,
@@ -2289,6 +2309,7 @@ def gpu_py_tests(
     # XLA tests once enough compute resources are available.
     _ignored = [xla_enable_strict_auto_jit]
     test_tags = tags + tf_gpu_tests_tags()
+    additional_deps = kwargs.pop("additional_deps", []) + kwargs.pop("deps", [])
     py_tests(
         name = name,
         size = size,
@@ -2379,7 +2400,7 @@ def tf_py_build_info_genrule(name, out, **kwargs):
             " --is_config_rocm " + if_rocm("True", "False") +
             " --key_value " +
             if_cuda(" cuda_version_number=$${TF_CUDA_VERSION:-} cudnn_version_number=$${TF_CUDNN_VERSION:-} ", "") +
-            if_windows(" msvcp_dll_name=msvcp140.dll ", "") +
+            if_windows(" msvcp_dll_names=msvcp140.dll,msvcp140_1.dll ", "") +
             if_windows_cuda(" ".join([
                 "nvcuda_dll_name=nvcuda.dll",
                 "cudart_dll_name=cudart64_$$(echo $${TF_CUDA_VERSION:-} | sed \"s/\\.//\").dll",
@@ -2462,7 +2483,14 @@ def pybind_extension(
         name = so_file,
         srcs = srcs + hdrs,
         data = data,
-        copts = copts + ["-fexceptions"],
+        copts = copts + [
+            "-fexceptions",
+        ] + select({
+            clean_dep("//tensorflow:windows"): [],
+            "//conditions:default": [
+                "-fvisibility=hidden",
+            ],
+        }),
         linkopts = linkopts + _rpath_linkopts(name) + select({
             "@local_config_cuda//cuda:darwin": [
                 "-Wl,-exported_symbols_list,$(location %s)" % exported_symbols_file,

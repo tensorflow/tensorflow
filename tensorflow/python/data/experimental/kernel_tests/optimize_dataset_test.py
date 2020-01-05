@@ -221,7 +221,7 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
                 " To enable rewrites, use resource variables instead by "
                 "calling `tf.enable_resource_variables()` at the start of the "
                 "program." % (", ".join(options._graph_rewrites())))
-    self.assertTrue(any([expected in str(warning) for warning in w]))
+    self.assertTrue(any(expected in str(warning) for warning in w))
 
     # Check that outputs are the same in the optimized and unoptimized cases,
     # when the variable value is changing.

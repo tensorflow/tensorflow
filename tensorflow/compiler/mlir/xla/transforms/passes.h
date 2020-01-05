@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <memory>
 
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
+#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
+#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
 
 namespace mlir {
 
@@ -64,6 +64,9 @@ std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToAffinePass();
 
 // Lowers from LHLO dialect to Linalg dialect.
 std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToLinalgPass();
+
+// Lowers from LHLO dialect to GPU dialect.
+std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToGpuPass();
 
 // Fuses linalg ops obtained after LHLO lowering.
 std::unique_ptr<OpPassBase<FuncOp>> createLhloFuseLinalg();

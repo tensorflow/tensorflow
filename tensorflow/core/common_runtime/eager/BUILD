@@ -326,6 +326,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/memory",
+        "//tensorflow/compiler/jit:common",
         "//tensorflow/core/profiler/lib:traceme",
     ] + select({
         "//tensorflow:android": [
@@ -435,6 +436,23 @@ tf_cc_test(
         "//tensorflow/core:tensorflow",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+    ],
+)
+
+filegroup(
+    name = "pywrap_eager_hdrs",
+    srcs = [
+        "attr_builder.h",
+        "context.h",
+        "eager_executor.h",
+        "eager_operation.h",
+        "kernel_and_device.h",
+        "tensor_handle.h",
+        "tensor_handle_data.h",
+    ],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/python:__pkg__",
     ],
 )
 

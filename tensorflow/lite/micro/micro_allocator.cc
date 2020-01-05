@@ -130,31 +130,7 @@ MicroAllocator::MicroAllocator(TfLiteContext* context, const Model* model,
         "Failed to allocate memory for context->tensors, %d bytes required",
         sizeof(TfLiteTensor) * context_->tensors_size);
   }
-
-  // Null all inputs so we can later perform a null check to avoid re-allocating
-  // registered pre-allocated inputs.
-  for (size_t i = 0; i < context_->tensors_size; ++i) {
-    context_->tensors[i].data.raw = nullptr;
-  }
-
   active_ = true;
-}
-
-TfLiteStatus MicroAllocator::RegisterPreallocatedInput(uint8_t* buffer,
-                                                       size_t input_index) {
-  if (buffer == nullptr || input_index < 0 ||
-      input_index >= subgraph_->inputs()->size()) {
-    error_reporter_->Report("Invalid pre-allocated input %d provided.",
-                            input_index);
-    return kTfLiteError;
-  }
-  const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* buffers =
-      model_->buffers();
-
-  const int tensor_index = subgraph_->inputs()->Get(input_index);
-  const auto* tensor = tensors_->Get(tensor_index);
-  return InitializeRuntimeTensor(*tensor, buffers, error_reporter_,
-                                 &context_->tensors[tensor_index], buffer);
 }
 
 TfLiteStatus MicroAllocator::AllocateNodeAndRegistrations(
@@ -260,30 +236,19 @@ TfLiteStatus MicroAllocator::FinishTensorAllocation() {
     return kTfLiteError;
   }
 
-  const size_t tensors_size = tensors_->size();
-
-  const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* buffers =
-      model_->buffers();
-
-  // Initialize runtime tensors.
-  for (size_t i = 0; i < tensors_size; ++i) {
-    auto* runtime_tensor = &context_->tensors[i];
-    auto* flatbuffer_tensor = tensors_->Get(i);
-
-    // Preallocated inputs have already been set up earlier, so skip them.
-    const bool is_preallocated_input = (runtime_tensor->data.raw != nullptr);
-    if (!is_preallocated_input) {
-      TF_LITE_ENSURE_STATUS(InitializeRuntimeTensor(*flatbuffer_tensor, buffers,
-                                                    error_reporter_,
-                                                    runtime_tensor, nullptr));
-    }
+  // Initialize runtime tensors in context_ using the flatbuffer.
+  for (size_t i = 0; i < tensors_->size(); ++i) {
+    TF_LITE_ENSURE_STATUS(
+        InitializeRuntimeTensor(*tensors_->Get(i), model_->buffers(),
+                                error_reporter_, &context_->tensors[i]));
   }
 
   // tensor_info is only used in this function.
-  auto tmp_allocator = memory_allocator_.CreateChildAllocator();
+  SimpleMemoryAllocator tmp_allocator =
+      memory_allocator_.CreateChildAllocator();
   TensorInfo* tensor_info =
       reinterpret_cast<TensorInfo*>(tmp_allocator.AllocateFromTail(
-          sizeof(TensorInfo) * tensors_size, alignof(TensorInfo)));
+          sizeof(TensorInfo) * tensors_->size(), alignof(TensorInfo)));
   if (tensor_info == nullptr) {
     error_reporter_->Report(
         "Failed to allocate memory for tensor_info, %d bytes required",
@@ -292,7 +257,7 @@ TfLiteStatus MicroAllocator::FinishTensorAllocation() {
   }
 
   // Set up the runtime data structures for all tensors.
-  for (size_t i = 0; i < tensors_size; ++i) {
+  for (size_t i = 0; i < tensors_->size(); ++i) {
     TensorInfo* current = &tensor_info[i];
     current->flatbuffer_tensor = &(*(tensors_->Get(i)));
     current->runtime_tensor = &context_->tensors[i];
@@ -329,7 +294,8 @@ TfLiteStatus MicroAllocator::FinishTensorAllocation() {
     for (size_t n = 0; n < op->inputs()->size(); ++n) {
       const int tensor_index = op->inputs()->Get(n);
       TensorInfo* current = &tensor_info[tensor_index];
-      if ((current->last_used == -1) || (current->last_used > i)) {
+      if (!current->flatbuffer_tensor->is_variable() &&
+          ((current->last_used == -1) || (current->last_used > i))) {
         current->last_used = i;
       }
     }
@@ -436,8 +402,7 @@ TfLiteStatus MicroAllocator::FinishTensorAllocation() {
 TfLiteStatus MicroAllocator::InitializeRuntimeTensor(
     const tflite::Tensor& flatbuffer_tensor,
     const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* buffers,
-    ErrorReporter* error_reporter, TfLiteTensor* result,
-    uint8_t* preallocated_buffer) {
+    ErrorReporter* error_reporter, TfLiteTensor* result) {
   if (!active_) {
     return kTfLiteError;
   }
@@ -484,23 +449,30 @@ TfLiteStatus MicroAllocator::InitializeRuntimeTensor(
     // make a note that they will be allocated from memory. The actual
     // allocation won't happen until later.
     result->allocation_type = kTfLiteArenaRw;
-    if (preallocated_buffer != nullptr) {
-      // If the client is supplying memory for the contents of the tensor
-      // themselves, use it.
-      // TODO(petewarden): Should we store the fact this is a client-allocated
-      // buffer?
-      result->data.raw = reinterpret_cast<char*>(preallocated_buffer);
-    }
   }
 
   // Figure out what the size in bytes of the buffer is and store it.
   size_t type_size;
   TF_LITE_ENSURE_STATUS(BytesRequiredForTensor(
       flatbuffer_tensor, &result->bytes, &type_size, error_reporter));
-  // Copy the shape of the tensor from the serialized data into the runtime
-  // form. We have to allocate memory for this.
-  TF_LITE_ENSURE_STATUS(FlatBufferIntArrayToTfLiteIntArray(
-      flatbuffer_tensor.shape(), &(result->dims)));
+
+  if (!FLATBUFFERS_LITTLEENDIAN) {
+    // Big-endian architecture. Copy and byte-swap the little-endian shape
+    // data.
+    TF_LITE_ENSURE_STATUS(FlatBufferIntArrayToTfLiteIntArray(
+        flatbuffer_tensor.shape(), &(result->dims)));
+  } else {
+    // On little-endian machines, TfLiteIntArray happens to have the same
+    // memory layout as flatbuffers:Vector<int>, so we can reinterpret_cast the
+    // tensor shape vector and avoid a copy.
+    // TFLM doesn't allow reshaping the tensor which requires dynamic memory
+    // allocation so it is safe to drop the const qualifier. In the future, if we
+    // really want to update the tensor shape, we can always pass in a new
+    // TfLiteIntArray - especially we have to do so if the dimension is changed.
+    result->dims = const_cast<TfLiteIntArray*>(
+        reinterpret_cast<const TfLiteIntArray*>(flatbuffer_tensor.shape()));
+  }
+
   // Copy the quantization information from the serialized data.
   const auto* src_quantization = flatbuffer_tensor.quantization();
   if (src_quantization && src_quantization->scale() &&

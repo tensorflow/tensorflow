@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import collections
 import contextlib
+
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.compiler.jit.ops import xla_ops

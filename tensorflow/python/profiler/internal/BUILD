@@ -58,21 +58,21 @@ py_test(
 cuda_py_test(
     name = "run_metadata_test",
     srcs = ["run_metadata_test.py"],
-    additional_deps = [
-        ":model_analyzer_testlib",
-        "//tensorflow/core/profiler:protos_all_py",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python/profiler:model_analyzer",
-        "//tensorflow/python:random_ops",
-    ],
     python_version = "PY3",
     tags = [
         "no_gpu",  # b/138442728
         "no_pip",
     ],
     xla_enable_strict_auto_jit = False,  # Node names are different with autojit
+    deps = [
+        ":model_analyzer_testlib",
+        "//tensorflow/core/profiler:protos_all_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python/profiler:model_analyzer",
+    ],
 )
 
 pybind_extension(

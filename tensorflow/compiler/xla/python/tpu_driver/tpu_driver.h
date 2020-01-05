@@ -37,7 +37,7 @@
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/logging.h"
 
-// This API is EXPERIMENTAL and under active developement. It is subject to
+// This API is EXPERIMENTAL and under active development. It is subject to
 // change without notice.
 
 namespace tpu_driver {

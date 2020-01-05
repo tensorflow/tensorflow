@@ -28,15 +28,15 @@ limitations under the License.
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringSwitch.h"
-#include "mlir/Dialect/QuantOps/FakeQuantSupport.h"  // TF:local_config_mlir
-#include "mlir/Dialect/QuantOps/UniformSupport.h"  // TF:local_config_mlir
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/Operation.h"  // TF:local_config_mlir
-#include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
-#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
-#include "mlir/Support/Functional.h"  // TF:local_config_mlir
-#include "mlir/Support/LLVM.h"  // TF:local_config_mlir
+#include "mlir/Dialect/QuantOps/FakeQuantSupport.h"  // TF:llvm-project
+#include "mlir/Dialect/QuantOps/UniformSupport.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/Operation.h"  // TF:llvm-project
+#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
+#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/Support/Functional.h"  // TF:llvm-project
+#include "mlir/Support/LLVM.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
@@ -65,6 +65,28 @@ using xla::StatusOr;
 struct LegalizeTF : public FunctionPass<LegalizeTF> {
   void runOnFunction() override;
 };
+
+// Returns true if all tensor value in `values` has static shape and same shape.
+bool HasSameStaticShapes(Operation* op) {
+  auto values = op->getOperands();
+  int index = 0;
+  ArrayRef<int64_t> shape;
+  for (Value value : values) {
+    auto shaped_type = value.getType().dyn_cast<ShapedType>();
+    if (!shaped_type && !shaped_type.hasStaticShape()) {
+      return false;
+    }
+    if (index == 0) {
+      shape = shaped_type.getShape();
+    } else {
+      if (shape != shaped_type.getShape()) {
+        return false;
+      }
+    }
+    ++index;
+  }
+  return true;
+}
 
 #include "tensorflow/compiler/mlir/lite/transforms/generated_legalize_tf.inc"
 
@@ -100,7 +122,7 @@ PatternMatchResult ConvertTFConcatOp::matchAndRewrite(
   auto tf_concat_op = cast<TF::ConcatOp>(op);
 
   auto values = tf_concat_op.values();
-  auto output_type = tf_concat_op.output()->getType();
+  auto output_type = tf_concat_op.output().getType();
   // Extract axis attribute from constant concat_dims tensor
   ElementsAttr axis;
   if (!matchPattern(tf_concat_op.concat_dim(), m_Constant(&axis)))
@@ -119,7 +141,7 @@ PatternMatchResult ConvertTFConcatV2Op::matchAndRewrite(
   auto tf_concat_op = cast<TF::ConcatV2Op>(op);
 
   auto values = tf_concat_op.values();
-  auto output_type = tf_concat_op.output()->getType();
+  auto output_type = tf_concat_op.output().getType();
   // Extract axis attribute from constant axis tensor
   ElementsAttr axis;
   if (!matchPattern(tf_concat_op.axis(), m_Constant(&axis)))
@@ -145,7 +167,7 @@ PatternMatchResult ConvertTFMatMulOp::matchAndRewrite(
   if (tf_matmul_op.transpose_a()) return matchFailure();
   if (!tf_matmul_op.transpose_b()) return matchFailure();
 
-  Type output_type = tf_matmul_op.getResult()->getType();
+  Type output_type = tf_matmul_op.getResult().getType();
   // TODO(jpienaar): Follow up post shuffle discussion.
   auto no_input = rewriter.create<ConstantOp>(
       op->getLoc(), rewriter.getNoneType(), rewriter.getUnitAttr());
@@ -161,8 +183,8 @@ PatternMatchResult ConvertTFPackOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_pack_op = cast<TF::PackOp>(op);
 
-  SmallVector<Value*, 4> values(tf_pack_op.values());
-  auto output_type = tf_pack_op.output()->getType();
+  SmallVector<Value, 4> values(tf_pack_op.values());
+  auto output_type = tf_pack_op.output().getType();
   auto values_count = rewriter.getI32IntegerAttr(tf_pack_op.N());
   // Axis can be negative.
   auto axis = rewriter.getI32IntegerAttr(tf_pack_op.axis().getSExtValue());
@@ -176,10 +198,10 @@ PatternMatchResult ConvertTFReshapeOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_reshape_op = cast<TF::ReshapeOp>(op);
 
-  auto* input = tf_reshape_op.tensor();
-  auto* shape = tf_reshape_op.shape();
+  auto input = tf_reshape_op.tensor();
+  auto shape = tf_reshape_op.shape();
 
-  ShapedType shape_type = shape->getType().cast<ShapedType>();
+  ShapedType shape_type = shape.getType().cast<ShapedType>();
   // The tfl reshape's #2 operand needs to i32 tensor type, so we have to cast.
   if (!shape_type.getElementType().isInteger(32)) {
     auto new_shape = shape_type.getShape();
@@ -191,7 +213,7 @@ PatternMatchResult ConvertTFReshapeOp::matchAndRewrite(
                                     rewriter.getBoolAttr(false))
                 .y();
   }
-  rewriter.replaceOpWithNewOp<ReshapeOp>(op, tf_reshape_op.output()->getType(),
+  rewriter.replaceOpWithNewOp<ReshapeOp>(op, tf_reshape_op.output().getType(),
                                          input, shape);
   return matchSuccess();
 }
@@ -200,7 +222,7 @@ PatternMatchResult ConvertTFSplitOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_split_op = cast<TF::SplitOp>(op);
 
-  auto output_types = functional::map([](Value* v) { return v->getType(); },
+  auto output_types = functional::map([](Value v) { return v.getType(); },
                                       tf_split_op.output());
   // Number of splits cannot be negative.
   auto num_split = rewriter.getI32IntegerAttr(tf_split_op.num_split());
@@ -215,7 +237,7 @@ PatternMatchResult ConvertTFSplitVOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_splitv_op = cast<TF::SplitVOp>(op);
 
-  auto output_types = functional::map([](Value* v) { return v->getType(); },
+  auto output_types = functional::map([](Value v) { return v.getType(); },
                                       tf_splitv_op.output());
   // Number of splits cannot be negative.
   auto num_split = rewriter.getI32IntegerAttr(tf_splitv_op.num_split());
@@ -226,13 +248,13 @@ PatternMatchResult ConvertTFSplitVOp::matchAndRewrite(
   return matchSuccess();
 }
 
-Value* PadStridedSliceAttributeArray(Operation* op, PatternRewriter& rewriter,
-                                     Value* attribute,
-                                     ArrayRef<int32_t> padding_val, int* mask) {
+Value PadStridedSliceAttributeArray(Operation* op, PatternRewriter& rewriter,
+                                    Value attribute,
+                                    ArrayRef<int32_t> padding_val, int* mask) {
   DenseIntElementsAttr dense_elem_attr;
   SmallVector<int32_t, 8> padded_val;
 
-  auto ranked_attr_type = attribute->getType().dyn_cast<RankedTensorType>();
+  auto ranked_attr_type = attribute.getType().dyn_cast<RankedTensorType>();
   if (!ranked_attr_type ||
       !matchPattern(attribute, m_Constant(&dense_elem_attr))) {
     // If the input attribute is neither ranked type nor constant, we
@@ -258,14 +280,14 @@ PatternMatchResult ConvertTFStridedSliceOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_strided_slice_op = cast<TF::StridedSliceOp>(op);
   auto ranked_input_type =
-      tf_strided_slice_op.input()->getType().dyn_cast<RankedTensorType>();
+      tf_strided_slice_op.input().getType().dyn_cast<RankedTensorType>();
   if (!ranked_input_type) {
     // If input is not a ranked tensor, we can't deduce the padding dimensions
     // from it, so we just do a plain conversion here.
     rewriter.replaceOpWithNewOp<TFL::StridedSliceOp>(
-        op, tf_strided_slice_op.output()->getType(),
-        tf_strided_slice_op.input(), tf_strided_slice_op.begin(),
-        tf_strided_slice_op.end(), tf_strided_slice_op.strides(),
+        op, tf_strided_slice_op.output().getType(), tf_strided_slice_op.input(),
+        tf_strided_slice_op.begin(), tf_strided_slice_op.end(),
+        tf_strided_slice_op.strides(),
         rewriter.getI32IntegerAttr(
             tf_strided_slice_op.begin_mask().getSExtValue()),
         rewriter.getI32IntegerAttr(
@@ -283,20 +305,20 @@ PatternMatchResult ConvertTFStridedSliceOp::matchAndRewrite(
   // Pad `begin` array with zero values and update the `begin_mask`.
   SmallVector<int32_t, 8> begin_pad_val(num_input_dims, 0);
   int begin_mask = tf_strided_slice_op.begin_mask().getSExtValue();
-  Value* padded_begin = PadStridedSliceAttributeArray(
+  Value padded_begin = PadStridedSliceAttributeArray(
       op, rewriter, tf_strided_slice_op.begin(), begin_pad_val, &begin_mask);
   // Pad `end` array with `input_shape` and update the `end_mask`.
   int end_mask = tf_strided_slice_op.end_mask().getSExtValue();
   auto input_shape = ranked_input_type.getShape();
   SmallVector<int32_t, 8> end_pad_val(input_shape.begin(), input_shape.end());
-  Value* padded_end = PadStridedSliceAttributeArray(
+  Value padded_end = PadStridedSliceAttributeArray(
       op, rewriter, tf_strided_slice_op.end(), end_pad_val, &end_mask);
   // Pad `strides` array with ones.
   SmallVector<int32_t, 8> strides_pad_val(num_input_dims, 1);
-  Value* padded_strides = PadStridedSliceAttributeArray(
+  Value padded_strides = PadStridedSliceAttributeArray(
       op, rewriter, tf_strided_slice_op.strides(), strides_pad_val, nullptr);
   rewriter.replaceOpWithNewOp<TFL::StridedSliceOp>(
-      op, tf_strided_slice_op.output()->getType(), tf_strided_slice_op.input(),
+      op, tf_strided_slice_op.output().getType(), tf_strided_slice_op.input(),
       padded_begin, padded_end, padded_strides,
       rewriter.getI32IntegerAttr(begin_mask),
       rewriter.getI32IntegerAttr(end_mask),
@@ -313,8 +335,8 @@ PatternMatchResult ConvertTFUnpackOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_unpack_op = cast<TF::UnpackOp>(op);
 
-  auto* input = tf_unpack_op.value();
-  auto output_types = functional::map([](Value* v) { return v->getType(); },
+  auto input = tf_unpack_op.value();
+  auto output_types = functional::map([](Value v) { return v.getType(); },
                                       tf_unpack_op.output());
   auto num = rewriter.getI32IntegerAttr(tf_unpack_op.num());
   // Axis can be negative.
@@ -338,7 +360,7 @@ bool ConvertTFMatrixDiagV2orV3(Operation* op, PatternRewriter* rewriter) {
   if (tf_matrix_diag_v2_or_v3_op.getNumOperands() != 5) return false;
 
   auto input = tf_matrix_diag_v2_or_v3_op.diagonal();
-  auto output_type = tf_matrix_diag_v2_or_v3_op.output()->getType();
+  auto output_type = tf_matrix_diag_v2_or_v3_op.output().getType();
 
   // Extract k constant tensor and check value = 0.
   ElementsAttr k;
@@ -478,7 +500,7 @@ PatternMatchResult ConvertTFReciprocalOp::matchAndRewrite(
 
   auto status_or_const_op = CreateConstOpWithSingleValue(
       &rewriter, op->getLoc(),
-      tf_reciprocal_op.x()->getType().cast<ShapedType>(), 1);
+      tf_reciprocal_op.x().getType().cast<ShapedType>(), 1);
   if (!status_or_const_op.ok()) {
     return matchFailure();
   }

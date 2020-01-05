@@ -3423,7 +3423,7 @@ int main(int argc, char** argv) {
       tensorflow::Flag(
           "tf_xla_random_seed", &tensorflow::tf_xla_random_seed,
           "Random seed to use for XLA tests. <= 0 means choose a seed "
-          "nondetermistically."),
+          "nondeterministically."),
       // TODO(phawkins): it might make more sense to run each test up to a
       // configurable time bound.
       tensorflow::Flag("tf_xla_test_repetitions",

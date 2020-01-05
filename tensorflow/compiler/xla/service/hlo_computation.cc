@@ -838,7 +838,7 @@ bool HloComputation::Equal(const HloComputation& other,
       continue;
     }
     visited.emplace(pair);
-    // TODO(b/123082518): Avoid recursively invoking == becasue it may
+    // TODO(b/123082518): Avoid recursively invoking == because it may
     // cause a stack overflow with deeply nested subcomputations.
     bool identical_ignoring_operands = pair.first->Identical(
         *pair.second,

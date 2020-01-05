@@ -288,8 +288,7 @@ class TensorTracer(object):
     Raises:
       ValueError: If the given trace mode is not supported for the device.
     """
-    if trace_mode in (tensor_tracer_flags.TRACE_MODE_SUMMARY,
-                      tensor_tracer_flags.TRACE_MODE_FULL_TENSOR_SUMMARY):
+    if trace_mode == tensor_tracer_flags.TRACE_MODE_FULL_TENSOR_SUMMARY:
       if device_type != _DEVICE_TYPE_TPU:
         raise ValueError('Device_type "%s" is not yet supported for '
                          'trace mode "%s"' % (device_type, trace_mode))
@@ -1344,9 +1343,12 @@ class TensorTracer(object):
               # Expand 1 more dimension so that it will match with the expected
               # structure num_cores x num_traced_tensors x num_signatures.
               value = array_ops.expand_dims(transposed_signatures, axis=0)
-          summary_write_ops.append(summary.write(
-              _TT_SUMMARY_TAG + '/' + key, value, metadata=summary_metadata,
-              step=step[0]))
+
+          with ops.control_dependencies(
+              summary.summary_writer_initializer_op()):
+            summary_write_ops.append(summary.write(
+                _TT_SUMMARY_TAG + '/' + key, value, metadata=summary_metadata,
+                step=step[0]))
       return control_flow_ops.group(summary_write_ops)
 
     step = array_ops.reshape(training_util.get_or_create_global_step(), [1])
@@ -1547,8 +1549,14 @@ class TensorTracer(object):
       processed_t_fetches = control_flow_ops.tuple(processed_t_fetches,
                                                    control_inputs=tracing_ops)
     if self._use_tensor_values_cache() or self._use_tensor_buffer():
-      if self._create_host_call() and on_tpu:
+      if self._create_host_call():
         self._prepare_host_call_fn(processed_t_fetches, op_fetches)
+        if not on_tpu:
+          write_cache, caches_to_write = self._host_call_fn[_TT_HOSTCALL_KEY]
+          cache_write_op = write_cache(**caches_to_write)
+          processed_t_fetches = control_flow_ops.tuple(
+              processed_t_fetches, control_inputs=[cache_write_op])
+          del self._host_call_fn[_TT_HOSTCALL_KEY]
       else:
         processed_t_fetches = self._flush_tensor_values_cache(
             processed_t_fetches, op_fetches, on_tpu=on_tpu)

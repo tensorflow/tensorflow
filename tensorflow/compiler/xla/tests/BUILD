@@ -175,7 +175,7 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/core:lib",
-        "@llvm//:support",
+        "@llvm-project//llvm:support",
     ],
 )
 
@@ -255,7 +255,7 @@ cc_library(
     srcs = ["filecheck.cc"],
     hdrs = ["filecheck.h"],
     data = [
-        "@llvm//:FileCheck",
+        "@llvm-project//llvm:FileCheck",
     ],
     deps = [
         "//tensorflow/compiler/xla:statusor",
@@ -2136,7 +2136,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/stream_executor",
         "@com_google_absl//absl/memory",
-        "@llvm//:core",
+        "@llvm-project//llvm:core",
     ],
 )
 

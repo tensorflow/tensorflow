@@ -309,6 +309,9 @@ ATTR(const NameAttrList&)
 ATTR(gtl::ArraySlice<StringPiece>)
 ATTR(gtl::ArraySlice<const char*>)
 ATTR(gtl::ArraySlice<string>)
+#ifdef USE_TSTRING
+ATTR(gtl::ArraySlice<tstring>)
+#endif
 ATTR(gtl::ArraySlice<int32>)
 ATTR(gtl::ArraySlice<int64>)
 ATTR(gtl::ArraySlice<float>)

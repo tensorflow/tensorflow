@@ -1,5 +1,6 @@
 load("//tensorflow:tensorflow.bzl", "if_not_windows", "tf_cc_test")
 load("//tensorflow/lite:build_def.bzl", "tflite_cc_shared_object", "tflite_copts")
+load("//tensorflow/lite/micro:build_def.bzl", "cc_library")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
 package(
@@ -16,6 +17,13 @@ exports_files(glob([
 ]))
 
 config_setting(
+    name = "gemmlowp_profiling",
+    values = {
+        "copt": "-DGEMMLOWP_PROFILING",
+    },
+)
+
+config_setting(
     name = "mips",
     values = {
         "cpu": "mips",
@@ -27,6 +35,12 @@ config_setting(
     values = {
         "cpu": "mips64",
     },
+)
+
+config_setting(
+    name = "tflite_experimental_runtime",
+    values = {"define": "tflite_experimental_runtime=true"},
+    visibility = ["//visibility:public"],
 )
 
 TFLITE_DEFAULT_COPTS = if_not_windows([
@@ -143,6 +157,7 @@ cc_library(
     hdrs = [
         "string_type.h",
     ],
+    build_for_embedded = True,
     copts = TFLITE_DEFAULT_COPTS,
 )
 
@@ -226,6 +241,7 @@ cc_library(
     name = "string_util",
     srcs = ["string_util.cc"],
     hdrs = ["string_util.h"],
+    build_for_embedded = True,
     copts = TFLITE_DEFAULT_COPTS,
     deps = [
         ":string",
@@ -430,6 +446,7 @@ cc_library(
 cc_library(
     name = "type_to_tflitetype",
     hdrs = ["type_to_tflitetype.h"],
+    build_for_embedded = True,
     deps = ["//tensorflow/lite/c:common"],
 )
 

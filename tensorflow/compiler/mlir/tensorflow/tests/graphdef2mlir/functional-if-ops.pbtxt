@@ -1,11 +1,11 @@
-# RUN: tf-mlir-translate -graphdef-to-mlir %s -tf-input-arrays=a,b -tf-input-data-types=DT_FLOAT,DT_FLOAT -tf-input-shapes=':' -tf-output-arrays=StatefulIf,StatelessIf -o - | FileCheck %s
+# RUN: tf-mlir-translate -graphdef-to-mlir %s -tf-input-arrays=a,b -tf-input-data-types=DT_FLOAT,DT_FLOAT -tf-input-shapes=':' -tf-output-arrays=StatefulIf,StatelessIf -o - -mlir-print-debuginfo | FileCheck %s
 
 # Verify that TensorFlow If and StatelessIf ops are mapped to the
 # composite If op in MLIR with is_stateless attribute set accordingly to
 # distinguish between them.
 
-# CHECK-DAG: "tf.If"{{.*}} is_stateless = false, name = "StatefulIf"
-# CHECK-DAG: "tf.If"{{.*}} is_stateless = true, name = "StatelessIf"
+# CHECK-DAG: "tf.If"{{.*}} is_stateless = false{{.*}} loc("StatefulIf")
+# CHECK-DAG: "tf.If"{{.*}} is_stateless = true{{.*}} loc("StatelessIf")
 
 node {
   name: "tf.Less"

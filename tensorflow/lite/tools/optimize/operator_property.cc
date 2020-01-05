@@ -193,7 +193,6 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
     }
     case BuiltinOperator_LSTM: {
       // TODO(jianlijianli): extend LSTM op spec to inlucde input, bias etc.
-      // TODO(jianlijianli): extend this to other variants of LSTM.
       // LSTM needs 5 intermediate tensors. This agrees with the fully quantized
       // kernels in lstm_eval.cc
       if (op_variant.use_layer_norm && op_variant.use_projection &&
@@ -869,6 +868,29 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       tensor_property.restriction = true;
       tensor_property.restricted_value = {1 / 128.0, 0};
       property.outputs = {{0, tensor_property}};
+      property.version = 2;
+      break;
+    }
+    case BuiltinOperator_SVDF: {
+      TensorProperty tensor_property_time;
+      // Only 10bits are needed because 6bits are reserved for the reduce
+      // operation after elemement-wise multiplication between state and time
+      // weights.
+      tensor_property_time.number_of_bits = 10;
+      TensorProperty tensor_property_bias;
+      tensor_property_bias.use_derived_scale = true;
+      tensor_property_bias.number_of_bits = 32;
+      tensor_property_bias.derived_scale = {{2, 4}, {}, {}};
+      TensorProperty tensor_property_state;
+      tensor_property_state.number_of_bits = 16;
+      tensor_property_state.state_tensor = true;
+
+      property.inputs = {{0, {}},
+                         {1, {}},
+                         {2, tensor_property_time},
+                         {4, tensor_property_state},
+                         {3, tensor_property_bias}};
+      property.outputs = {{0, {}}};
       property.version = 2;
       break;
     }

@@ -32,6 +32,9 @@ inline const TfLiteTensor* GetInput(TfLiteContext* context,
                                     const TfLiteNode* node, int index) {
   return &context->tensors[node->inputs->data[index]];
 }
+// Note: You must check if result is not null:
+// TfLiteTensor* my_tensor = GetVariableInput(context, node, kMyTensorIdx);
+// TF_LITE_ENSURE(context, my_tensor != nullptr);
 inline TfLiteTensor* GetVariableInput(TfLiteContext* context,
                                       const TfLiteNode* node, int index) {
   TfLiteTensor* tensor = &context->tensors[node->inputs->data[index]];
@@ -70,7 +73,8 @@ inline int64_t NumElements(const TfLiteTensor* t) {
 inline const TfLiteTensor* GetOptionalInputTensor(TfLiteContext* context,
                                                   const TfLiteNode* node,
                                                   int index) {
-  const bool use_tensor = node->inputs->data[index] != kTfLiteOptionalTensor;
+  const bool use_tensor = index < node->inputs->size &&
+                          node->inputs->data[index] != kTfLiteOptionalTensor;
   if (use_tensor) {
     return &context->tensors[node->inputs->data[index]];
   }
@@ -134,12 +138,7 @@ TfLiteStatus CalculateActivationRangeQuantized(TfLiteContext* context,
                                                TfLiteTensor* output,
                                                int32_t* act_min,
                                                int32_t* act_max);
-void CalculateActivationRangeUint8(TfLiteFusedActivation activation,
-                                   TfLiteTensor* output, int32_t* act_min,
-                                   int32_t* act_max);
-void CalculateActivationRangeInt8(TfLiteFusedActivation activation,
-                                  TfLiteTensor* output, int32_t* act_min,
-                                  int32_t* act_max);
+
 // Calculates the useful range of an activation layer given its activation
 // tensor.a
 template <typename T>
@@ -163,11 +162,19 @@ void CalculateActivationRange(TfLiteFusedActivation activation,
 // Return true if the given tensors have the same shape.
 bool HaveSameShapes(const TfLiteTensor* input1, const TfLiteTensor* input2);
 
-// Calculate the output_shape that is necessary for element-wise operations
+// Calculates the output_shape that is necessary for element-wise operations
 // with broadcasting involving the two input tensors.
 TfLiteStatus CalculateShapeForBroadcast(TfLiteContext* context,
                                         const TfLiteTensor* input1,
                                         const TfLiteTensor* input2,
+                                        TfLiteIntArray** output_shape);
+
+// Calculates the output_shape that is necessary for element-wise operations
+// with broadcasting involving the three input tensors.
+TfLiteStatus CalculateShapeForBroadcast(TfLiteContext* context,
+                                        const TfLiteTensor* input1,
+                                        const TfLiteTensor* input2,
+                                        const TfLiteTensor* input3,
                                         TfLiteIntArray** output_shape);
 }  // namespace tflite
 

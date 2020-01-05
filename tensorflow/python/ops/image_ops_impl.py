@@ -1554,7 +1554,7 @@ def per_image_standardization(image):
     adjusted_stddev = math_ops.maximum(stddev, min_stddev)
 
     image -= image_mean
-    image = math_ops.div(image, adjusted_stddev, name=scope)
+    image = math_ops.divide(image, adjusted_stddev, name=scope)
     return convert_image_dtype(image, orig_dtype, saturate=True)
 
 
@@ -1742,7 +1742,7 @@ def adjust_gamma(image, gamma=1, gain=1):
     For gamma less than 1, the histogram will shift towards right and
     the output image will be brighter than the input image.
   References:
-    [1] http://en.wikipedia.org/wiki/Gamma_correction
+    [Wikipedia](http://en.wikipedia.org/wiki/Gamma_correction)
   """
 
   with ops.name_scope(None, 'adjust_gamma', [image, gamma, gain]) as name:
@@ -1823,7 +1823,7 @@ def convert_image_dtype(image, dtype, saturate=False, name=None):
         # cause in.max to be mapped to above out.max but below out.max+1,
         # so that the output is safely in the supported range.
         scale = (scale_in + 1) // (scale_out + 1)
-        scaled = math_ops.div(image, scale)
+        scaled = math_ops.floordiv(image, scale)
 
         if saturate:
           return math_ops.saturate_cast(scaled, dtype, name=name)
@@ -1866,7 +1866,15 @@ def rgb_to_grayscale(images, name=None):
   Outputs a tensor of the same `DType` and rank as `images`.  The size of the
   last dimension of the output is 1, containing the Grayscale value of the
   pixels.
+  
+  ```python
+  >>> original = tf.constant([[[1.0, 2.0, 3.0]]])
+  >>> converted = tf.image.rgb_to_grayscale(original)
+  >>> print(converted.numpy())
+  [[[1.81...]]]
 
+  ```
+  
   Args:
     images: The RGB tensor to convert. The last dimension must have size 3 and
       should contain RGB values.
@@ -1896,7 +1904,17 @@ def grayscale_to_rgb(images, name=None):
   Outputs a tensor of the same `DType` and rank as `images`.  The size of the
   last dimension of the output is 3, containing the RGB value of the pixels.
   The input images' last dimension must be size 1.
+ 
+  ```python
+  >>> original = tf.constant([[[1.0], [2.0], [3.0]]])
+  >>> converted = tf.image.grayscale_to_rgb(original)
+  >>> print(converted.numpy())
+  [[[1. 1. 1.]
+    [2. 2. 2.]
+    [3. 3. 3.]]]
 
+  ```
+  
   Args:
     images: The Grayscale tensor to convert. The last dimension must be size 1.
     name: A name for the operation (optional).
@@ -2913,6 +2931,13 @@ def rgb_to_yiq(images):
   Outputs a tensor of the same shape as the `images` tensor, containing the YIQ
   value of the pixels.
   The output is only well defined if the value in images are in [0,1].
+  
+  Usage Example:
+
+  >>> x = tf.constant([[[1.0, 2.0, 3.0]]])
+  >>> tf.image.rgb_to_yiq(x)
+  <tf.Tensor: shape=(1, 1, 3), dtype=float32,
+  numpy=array([[[ 1.815     , -0.91724455,  0.09962624]]], dtype=float32)>
 
   Args:
     images: 2-D or higher rank. Image data to convert. Last dimension must be
@@ -4026,6 +4051,27 @@ def draw_bounding_boxes_v2(images, boxes, colors, name=None):
 
   Returns:
     A `Tensor`. Has the same type as `images`.
+
+  Usage Example:
+
+  >>> # create an empty image
+  >>> img = tf.zeros([1, 3, 3, 3])
+  >>> # draw a box around the image
+  >>> box = np.array([0, 0, 1, 1])
+  >>> boxes = box.reshape([1, 1, 4])
+  >>> # alternate between red and blue
+  >>> colors = np.array([[1.0, 0.0, 0.0], [0.0, 0.0, 1.0]])
+  >>> tf.image.draw_bounding_boxes(img, boxes, colors)
+  <tf.Tensor: shape=(1, 3, 3, 3), dtype=float32, numpy=
+  array([[[[1., 0., 0.],
+          [1., 0., 0.],
+          [1., 0., 0.]],
+          [[1., 0., 0.],
+          [0., 0., 0.],
+          [1., 0., 0.]],
+          [[1., 0., 0.],
+          [1., 0., 0.],
+          [1., 0., 0.]]]], dtype=float32)>
   """
   if colors is None:
     return gen_image_ops.draw_bounding_boxes(images, boxes, name)
@@ -4057,6 +4103,27 @@ def draw_bounding_boxes(images, boxes, name=None, colors=None):
 
   Returns:
     A `Tensor`. Has the same type as `images`.
+
+  Usage Example:
+
+  >>> # create an empty image
+  >>> img = tf.zeros([1, 3, 3, 3])
+  >>> # draw a box around the image
+  >>> box = np.array([0, 0, 1, 1])
+  >>> boxes = box.reshape([1, 1, 4])
+  >>> # alternate between red and blue
+  >>> colors = np.array([[1.0, 0.0, 0.0], [0.0, 0.0, 1.0]])
+  >>> tf.image.draw_bounding_boxes(img, boxes, colors)
+  <tf.Tensor: shape=(1, 3, 3, 3), dtype=float32, numpy=
+  array([[[[1., 0., 0.],
+          [1., 0., 0.],
+          [1., 0., 0.]],
+          [[1., 0., 0.],
+          [0., 0., 0.],
+          [1., 0., 0.]],
+          [[1., 0., 0.],
+          [1., 0., 0.],
+          [1., 0., 0.]]]], dtype=float32)>
   """
   return draw_bounding_boxes_v2(images, boxes, colors, name)
 

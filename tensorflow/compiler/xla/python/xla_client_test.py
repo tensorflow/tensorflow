@@ -530,7 +530,8 @@ class BufferTest(ComputationTest):
     )
     b0 = xla_client.Buffer.from_pyval(t[0])
     b1 = xla_client.Buffer.from_pyval(t[1])
-    btup = xla_client.Buffer.make_tuple([b0, b1], device=0)
+    device = xla_client.get_local_backend().local_devices()[0]
+    btup = xla_client.Buffer.make_tuple([b0, b1], device=device)
     pieces = btup.destructure()
     self.assertLen(pieces, 2)
     array0, array1 = pieces
@@ -575,15 +576,6 @@ class BufferTest(ComputationTest):
       buf = xla_client.Buffer.from_pyval(x, device=device)
       self.assertEqual(buf.device(), device)
       np.testing.assert_equal(x, buf.to_py())
-
-  def testInvalidDevice(self):
-    t = np.array(1.)
-    with self.assertRaisesRegexp(
-        RuntimeError,
-        r"PyLocalBuffer::FromLiterals got bad device_ordinal: 100 "
-        r"\(num_local_devices=\d+\)"):
-      # TODO(skyewm): figure out how to test this with a Device
-      xla_client.Buffer.from_pyval(t, device=100)
 
 
 class SingleOpTest(ComputationTest):
