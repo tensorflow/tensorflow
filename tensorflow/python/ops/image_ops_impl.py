@@ -766,14 +766,16 @@ def central_crop(image, central_fraction):
 def pad_to_bounding_box(image, offset_height, offset_width, target_height,
                         target_width):
   """Pad `image` with zeros to the specified `height` and `width`.
-
   Adds `offset_height` rows of zeros on top, `offset_width` columns of
   zeros on the left, and then pads the image on the bottom and right
   with zeros until it has dimensions `target_height`, `target_width`.
-
   This op does nothing if `offset_*` is zero and the image already has size
   `target_height` by `target_width`.
-  
+  Usage example:
+    
+    >>> x = tf.random.uniform((28, 28, 1))
+    >>> tf.image.pad_to_bounding_box(x, 28, 28, 100, 100).shape
+    TensorShape([100, 100, 1])
   Args:
     image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
       of shape `[height, width, channels]`.
@@ -781,26 +783,15 @@ def pad_to_bounding_box(image, offset_height, offset_width, target_height,
     offset_width: Number of columns of zeros to add on the left.
     target_height: Height of output image.
     target_width: Width of output image.
-
   Returns:
     If `image` was 4-D, a 4-D float Tensor of shape
     `[batch, target_height, target_width, channels]`
     If `image` was 3-D, a 3-D float Tensor of shape
     `[target_height, target_width, channels]`
-
   Raises:
     ValueError: If the shape of `image` is incompatible with the `offset_*` or
     `target_*` arguments, or either `offset_height` or `offset_width` is
-    negative.
-      
-  Usage example:
-  
-  python
-    
-    >>> x = tf.random.uniform((28, 28, 1))
-    >>> tf.image.pad_to_bounding_box(x, 28, 28, 100, 100).shape
-    >>> TensorShape([100, 100, 1])
-    
+    negative.    
   """
   with ops.name_scope(None, 'pad_to_bounding_box', [image]):
     image = ops.convert_to_tensor(image, name='image')
