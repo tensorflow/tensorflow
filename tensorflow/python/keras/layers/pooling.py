@@ -449,8 +449,8 @@ class AveragePooling2D(Pooling2D):
   
   >>> import numpy as np
   >>> x = tf.keras.Input(shape=(3, 3, 1), name='x')
-  >>> average_pooling_layer = tf.keras.layers.AveragePooling2D(pool_size = (2,2),strides = (1,1),padding = "same")(x)
-  <tf.Tensor 'average_pooling2d_2/Identity:0' shape=(None, 1, 1, 1) dtype=float32>
+  >>> average_pooling_layer = tf.keras.layers.AveragePooling2D(pool_size = (1,1),strides = (1,1),padding = "same")(x)
+  <tf.Tensor 'average_pooling2d_3/Identity:0' shape=(None, 3, 3, 1) dtype=float32>
   
   Arguments:
     pool_size: integer or tuple of 2 integers,
