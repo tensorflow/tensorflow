@@ -38,7 +38,7 @@ def make_expand_dims_tests(options):
   def build_graph(parameters):
     """Build the where op testing graph."""
     inputs = []
-    input_value = tf.placeholder(
+    input_value = tf.compat.v1.placeholder(
         dtype=parameters["input_type"],
         name="input",
         shape=parameters["input_shape"])
@@ -48,7 +48,8 @@ def make_expand_dims_tests(options):
       axis_value = tf.constant(
           parameters["axis_value"], dtype=tf.int32, shape=[1])
     else:
-      axis_value = tf.placeholder(dtype=tf.int32, name="axis", shape=[1])
+      axis_value = tf.compat.v1.placeholder(
+          dtype=tf.int32, name="axis", shape=[1])
       inputs.append(axis_value)
 
     out = tf.expand_dims(input_value, axis=axis_value)

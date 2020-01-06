@@ -21,7 +21,7 @@ namespace tensorflow {
 
 bool XlaKernelCreator::CanCreateKernel(const FunctionLibraryRuntime& flr,
                                        const NodeDef& node_def) const {
-  return CanCreateXlaKernel(flr, node_def);
+  return CanCreateXlaKernel(node_def);
 }
 
 Status XlaKernelCreator::CreateKernel(FunctionLibraryRuntime* flr,

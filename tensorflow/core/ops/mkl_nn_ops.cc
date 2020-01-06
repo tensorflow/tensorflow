@@ -974,6 +974,56 @@ REGISTER_OP("_MklQuantizedMatMulWithBiasAndReluAndRequantize")
       return Status::OK();
     });
 
+REGISTER_OP("_MklQuantizedMatMulWithBiasAndRequantize")
+    .Input("a: T1")
+    .Input("b: T2")
+    .Input("bias: Tbias")
+    .Input("min_a: float")
+    .Input("max_a: float")
+    .Input("min_b: float")
+    .Input("max_b: float")
+    .Input("min_freezed_output: float")
+    .Input("max_freezed_output: float")
+    .Input("mkl_a: uint8")                   // MKL second tensor
+    .Input("mkl_b: uint8")                   // MKL second tensor
+    .Input("mkl_bias: uint8")                // MKL second tensor
+    .Input("mkl_min_a: uint8")               // MKL second tensor
+    .Input("mkl_max_a: uint8")               // MKL second tensor
+    .Input("mkl_min_b: uint8")               // MKL second tensor
+    .Input("mkl_max_b: uint8")               // MKL second tensor
+    .Input("mkl_min_freezed_output: uint8")  // MKL second tensor
+    .Input("mkl_max_freezed_output: uint8")  // MKL second tensor
+    .Output("out: Toutput")
+    .Output("min_out: float")
+    .Output("max_out: float")
+    .Output("mkl_out: uint8")      // MKL second tensor
+    .Output("mkl_min_out: uint8")  // MKL second tensor
+    .Output("mkl_max_out: uint8")  // MKL second tensor
+    .Attr("T1: quantizedtype")
+    .Attr("T2: quantizedtype")
+    .Attr("Tbias: {float, qint32}")
+    .Attr("T: quantizedtype")  // Additional attr "T" for MklToTf conversion
+    .Attr("Toutput: quantizedtype = DT_QUINT8")
+    .Attr("transpose_a: bool = false")
+    .Attr("transpose_b: bool = false")
+    .Attr("input_quant_mode: {'MIN_FIRST', 'SCALED'} = 'MIN_FIRST'")
+    .Attr("is_weight_const: bool = true")
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(shape_inference::MatMulShape(c));
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(7), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(8), 0, &unused));
+
+      c->set_output(1, c->Scalar());
+      c->set_output(2, c->Scalar());
+      return Status::OK();
+    });
+
 REGISTER_OP("_MklQuantizedDepthwiseConv2D")
     .Input("input: Tinput")
     .Input("filter: Tfilter")
@@ -1104,6 +1154,7 @@ REGISTER_OP("_MklQuantizedDepthwiseConv2DWithBiasAndRelu")
     .Attr("is_bias_const: bool = true")
     .Attr(GetPaddingAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .Attr("padding_list: list(int) = []")
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::Conv2DShape(c));
       ShapeHandle unused, channel;
@@ -1159,6 +1210,7 @@ REGISTER_OP("_MklQuantizedDepthwiseConv2DWithBiasAndReluAndRequantize")
     .Attr("is_bias_const: bool = true")
     .Attr(GetPaddingAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .Attr("padding_list: list(int) = []")
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::Conv2DShape(c));
       ShapeHandle unused;

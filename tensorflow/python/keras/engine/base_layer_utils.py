@@ -28,6 +28,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import control_flow_v2_func_graphs
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import init_ops_v2
@@ -40,7 +41,8 @@ _call_context = threading.local()
 
 
 def create_mean_metric(value, name=None):
-  # TODO(psv): Remove this import when b/110718070 is fixed.
+  # import keras will import base_layer and then this module, and metric relies
+  # on base_layer, which result into a cyclic dependency.
   from tensorflow.python.keras import metrics as metrics_module  # pylint: disable=g-import-not-at-top
   metric_obj = metrics_module.Mean(name=name)
   return metric_obj, metric_obj(value)
@@ -230,14 +232,20 @@ def _create_keras_history_helper(tensors, processed_ops, created_layers):
         else:
           # Treat any value not originating from a `keras.Input` as
           # a constant. Variables cannot be supported.
-          if (distribution_strategy_context.in_cross_replica_context() and
-              not ops.executing_eagerly_outside_functions()):
+          ds_with_session = (
+              distribution_strategy_context.in_cross_replica_context() and
+              not ops.executing_eagerly_outside_functions())
+          using_xla = control_flow_util.GraphOrParentsInXlaContext(
+              ops.get_default_graph())
+          if ds_with_session or using_xla:
             # In Legacy Graph mode, evaluating here makes Session be
-            # configured improperly.
+            # configured improperly. The downside of this is that saving
+            # via `get_config` breaks, but SavedModel still works.
             constants[i] = op_input
           else:
             with ops.init_scope():
               constants[i] = backend.function([], op_input)([])
+      layer_inputs = unnest_if_single_tensor(layer_inputs)
       processed_ops, created_layers = _create_keras_history_helper(
           layer_inputs, processed_ops, created_layers)
       name = op.name
@@ -249,6 +257,17 @@ def _create_keras_history_helper(tensors, processed_ops, created_layers):
           layer_inputs, op.outputs)
       processed_ops.update([op])
   return processed_ops, created_layers
+
+
+def unnest_if_single_tensor(input_tensors):
+  # Preserve compatibility with older configs
+  flat_input_tensors = nest.flatten(input_tensors)
+  # If this is a single element but not a dict, unwrap. If this is a dict,
+  # assume the first layer expects a dict (as is the case with a
+  # DenseFeatures layer); pass through.
+  if not isinstance(input_tensors, dict) and len(flat_input_tensors) == 1:
+    input_tensors = flat_input_tensors[0]
+  return input_tensors
 
 
 def needs_keras_history(tensors, ignore_call_context=False):

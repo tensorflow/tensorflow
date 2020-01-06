@@ -49,7 +49,7 @@ def make_lstm_tests(options):
     num_cells = parameters["num_cells"]
     inputs_after_split = []
     for i in xrange(time_step_size):
-      one_timestamp_input = tf.placeholder(
+      one_timestamp_input = tf.compat.v1.placeholder(
           dtype=parameters["dtype"],
           name="split_{}".format(i),
           shape=[num_batchs, input_vec_size])
@@ -58,7 +58,7 @@ def make_lstm_tests(options):
     # forget_bias == 0, inner state activation == tanh.
     # TODO(zhixianyan): Add another test with forget_bias == 1.
     # TODO(zhixianyan): Add another test with relu as activation.
-    lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(
+    lstm_cell = tf.compat.v1.nn.rnn_cell.BasicLSTMCell(
         num_cells, forget_bias=0.0, state_is_tuple=True)
     cell_outputs, _ = rnn.static_rnn(
         lstm_cell, inputs_after_split, dtype=tf.float32)
@@ -68,7 +68,7 @@ def make_lstm_tests(options):
   def build_inputs(parameters, sess, inputs, outputs):
     """Feed inputs, assign variables, and freeze graph."""
 
-    with tf.variable_scope("", reuse=True):
+    with tf.compat.v1.variable_scope("", reuse=True):
       kernel = tf.get_variable("rnn/basic_lstm_cell/kernel")
       bias = tf.get_variable("rnn/basic_lstm_cell/bias")
       kernel_values = create_tensor_data(parameters["dtype"],

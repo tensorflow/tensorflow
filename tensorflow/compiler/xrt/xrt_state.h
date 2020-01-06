@@ -97,6 +97,16 @@ class XRTTupleAllocation : public core::RefCounted {
                                  xla::Backend* backend, int device_ordinal,
                                  XRTTupleAllocation** allocation);
 
+  // Same as the CreateFromBuffer() API above, but with the shapes being passed
+  // as input. This API is used when creating tuple allocations with the output
+  // of XLA computations which emit dynamic shaped output via the output shape
+  // table.
+  static Status CreateFromBuffer(const xla::ShapedBuffer& shaped_buffer,
+                                 const xla::Shape& on_host_shape,
+                                 const xla::Shape& on_device_shape,
+                                 xla::Backend* backend, int device_ordinal,
+                                 XRTTupleAllocation** allocation);
+
   // Aliases a sub-shape of parent and returns a XRTTupleAllocation handle
   // to the sub-shape. If alias_base_allocation is true, the buffers in the
   // sub-shape will be shared between parent and the returned allocation,
@@ -219,7 +229,8 @@ class XRTTupleAllocation : public core::RefCounted {
   // ScopedShapedBuffer, which wants ownership and does not allow sharing.
   xla::StatusOr<xla::ShapeTree<xla::MaybeOwningDeviceMemory>>
   ToDeviceMemoryTree(
-      const std::function<bool(const xla::ShapeIndex&)>& release_checker);
+      const std::function<xla::StatusOr<bool>(const xla::ShapeIndex&)>&
+          release_checker);
 
  private:
   // Creates a new handle with (tuple) shape.

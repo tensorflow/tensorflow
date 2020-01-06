@@ -34,7 +34,7 @@ def make_round_tests(options):
 
   def build_graph(parameters):
     """Build the round op testing graph."""
-    input_value = tf.placeholder(
+    input_value = tf.compat.v1.placeholder(
         dtype=parameters["input_dtype"],
         name="input1",
         shape=parameters["input_shape"])

@@ -32,10 +32,23 @@ def make_resize_nearest_neighbor_tests(options):
       "input_shape": [[1, 3, 4, 3], [1, 10, 2, 1]],
       "size": [[1, 1], [4, 3], [2, 2], [5, 6]],
       "align_corners": [False],
+      "fully_quantize": [False],
+  }, {
+      "dtype": [tf.float32],
+      "input_shape": [[1, 3, 4, 3], [1, 10, 2, 1]],
+      "size": [[1, 1], [4, 3], [2, 2], [5, 6]],
+      "align_corners": [False],
+      "fully_quantize": [True],
+  }, {
+      "dtype": [tf.float32],
+      "input_shape": [[1, 16, 24, 3], [1, 12, 18, 3]],
+      "size": [[8, 12], [12, 18]],
+      "align_corners": [None, True, False],
+      "fully_quantize": [True]
   }]
 
   def build_graph(parameters):
-    input_tensor = tf.placeholder(
+    input_tensor = tf.compat.v1.placeholder(
         dtype=parameters["dtype"],
         name="input",
         shape=parameters["input_shape"])
@@ -46,8 +59,11 @@ def make_resize_nearest_neighbor_tests(options):
     return [input_tensor], [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
-    input_values = create_tensor_data(parameters["dtype"],
-                                      parameters["input_shape"])
+    input_values = create_tensor_data(
+        parameters["dtype"],
+        parameters["input_shape"],
+        min_value=-1,
+        max_value=1)
     return [input_values], sess.run(
         outputs, feed_dict=dict(zip(inputs, [input_values])))
 

@@ -35,8 +35,8 @@ class TestModule(tf.Module):
   # the initial import, in which case this test doesn't make much sense and
   # will be superceded by MLIR->MLIR shape inference tests.
   #
-  # CHECK: func {{@[a-zA-Z_0-9]+}}(%arg0: tensor<*x!tf.resource> {tf_saved_model.bound_input = {{@[a-zA-Z_0-9]+}}}) -> tensor<f32>
-  # CHECK-NEXT: tf_saved_model.exported_names = ["some_function"]
+  # CHECK:      func {{@[a-zA-Z_0-9]+}}({{.*}}) -> (tensor<f32> {{.*}})
+  # CHECK:      tf_saved_model.exported_names = ["some_function"]
   def __init__(self):
     super(TestModule, self).__init__()
     self.my_variable = tf.Variable(42.)

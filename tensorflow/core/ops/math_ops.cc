@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/framework/ops_util.h"
 #include "tensorflow/core/framework/shape_inference.h"
 
 namespace tensorflow {
@@ -428,7 +427,12 @@ REGISTER_OP("_MklAddV2")
         "complex64, complex128}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
     .SetIsAggregate()
-    .SetIsCommutative();
+    .SetIsCommutative()
+    .Doc(R"doc(
+Returns `x` + `y` element-wise.
+*NOTE*: `tf.math.add` supports broadcasting. `tf.math.add_n` does not. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html).
+)doc");
 #endif  // INTEL_MKL
 
 REGISTER_OP("Sub").BINARY_MORE().SetShapeFn(
@@ -1390,14 +1394,27 @@ REGISTER_OP("Any")
 namespace {
 
 template <typename T>
-Status SetRangeSizeFromTensors(const Tensor& start_t, const Tensor& limit_t,
-                               const Tensor& delta_t,
-                               InferenceContext* const c) {
-  const T start = start_t.scalar<T>()();
-  const T limit = limit_t.scalar<T>()();
-  const T delta = delta_t.scalar<T>()();
-  int64 size;
-  TF_RETURN_IF_ERROR(RangeSize(start, limit, delta, &size));
+Status RangeSize(const Tensor* start_t, const Tensor* limit_t,
+                 const Tensor* delta_t, InferenceContext* const c) {
+  T start = start_t->scalar<T>()();
+  T limit = limit_t->scalar<T>()();
+  T delta = delta_t->scalar<T>()();
+  if (start > limit && delta > T(0)) {
+    return errors::InvalidArgument(
+        "Requires start <= limit when delta > 0: ", start, "/", limit);
+  }
+  if (start < limit && delta < T(0)) {
+    return errors::InvalidArgument(
+        "Requires start >= limit when delta < 0: ", start, "/", limit);
+  }
+  if (delta == T(0)) {
+    return errors::InvalidArgument("Requires delta != 0");
+  }
+
+  auto size = (std::is_integral<T>::value
+                   ? ((std::abs(limit - start) + std::abs(delta) - T(1)) /
+                      std::abs(delta))
+                   : (std::ceil(std::abs((limit - start) / delta))));
   c->set_output(0, c->Vector(static_cast<int64>(size)));
   return Status::OK();
 }
@@ -1428,19 +1445,15 @@ REGISTER_OP("Range")
         return Status::OK();
       }
       if (dtype == DT_INT32) {
-        return SetRangeSizeFromTensors<int32>(*start_t, *limit_t, *delta_t, c);
+        return RangeSize<int32>(start_t, limit_t, delta_t, c);
       } else if (dtype == DT_INT64) {
-        return SetRangeSizeFromTensors<int64>(*start_t, *limit_t, *delta_t, c);
+        return RangeSize<int64>(start_t, limit_t, delta_t, c);
       } else if (dtype == DT_FLOAT) {
-        return SetRangeSizeFromTensors<float>(*start_t, *limit_t, *delta_t, c);
+        return RangeSize<float>(start_t, limit_t, delta_t, c);
       } else if (dtype == DT_DOUBLE) {
-        return SetRangeSizeFromTensors<double>(*start_t, *limit_t, *delta_t, c);
+        return RangeSize<double>(start_t, limit_t, delta_t, c);
       } else if (dtype == DT_BFLOAT16) {
-        return SetRangeSizeFromTensors<bfloat16>(*start_t, *limit_t, *delta_t,
-                                                 c);
-      } else if (dtype == DT_HALF) {
-        return SetRangeSizeFromTensors<Eigen::half>(*start_t, *limit_t,
-                                                    *delta_t, c);
+        return RangeSize<bfloat16>(start_t, limit_t, delta_t, c);
       } else {
         return errors::InvalidArgument("Unsupported dtype", dtype);
       }
@@ -1893,5 +1906,29 @@ REGISTER_OP("NextAfter")
     .Input("x2: T")
     .Output("output: T")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
+
+REGISTER_OP("SobolSample")
+    .Input("dim: int32")
+    .Input("num_results: int32")
+    .Input("skip: int32")
+    .Attr("dtype: {float, double} = DT_DOUBLE")
+    .Output("samples: dtype")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      ShapeHandle unused;
+      // inputs must be  scalars
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      const Tensor* dim_t = c->input_tensor(0);
+      const Tensor* num_results_t = c->input_tensor(1);
+      if (dim_t == nullptr || num_results_t == nullptr) {
+        c->set_output(0, c->Vector(InferenceContext::kUnknownDim));
+        return Status::OK();
+      }
+      const int32 output_size =
+          dim_t->scalar<int32>()() * num_results_t->scalar<int32>()();
+      c->set_output(0, c->Vector(output_size));
+      return Status::OK();
+    });
 
 }  // namespace tensorflow

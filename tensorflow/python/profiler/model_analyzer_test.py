@@ -229,7 +229,7 @@ class PrintModelAnalysisTest(test.TestCase):
         with gfile.Open(outfile, 'r') as f:
           lines = f.read().split('\n')
           self.assertGreater(len(lines), 5)
-          result = '\n'.join([l[:min(len(l), 80)] for l in lines])
+          result = '\n'.join(l[:min(len(l), 80)] for l in lines)
           self.assertTrue(
               compat.as_text(lib.CheckAndRemoveDoc(result))
               .startswith('node name | # parameters | # float_ops'))

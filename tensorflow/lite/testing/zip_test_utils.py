@@ -25,6 +25,7 @@ import re
 import string
 import traceback
 import zipfile
+
 import numpy as np
 from six import StringIO
 
@@ -316,8 +317,8 @@ def make_zip_of_tests(options,
   processed_labels = set()
 
   if options.make_edgetpu_tests:
-    extra_toco_options.inference_input_type = tf.lite.constants.QUANTIZED_UINT8
-    extra_toco_options.inference_output_type = tf.lite.constants.QUANTIZED_UINT8
+    extra_toco_options.inference_input_type = tf.uint8
+    extra_toco_options.inference_output_type = tf.uint8
     # Only count parameters when fully_quantize is True.
     parameter_count = 0
     for parameters in test_parameters:
@@ -351,11 +352,15 @@ def make_zip_of_tests(options,
           "fully_quantize", False):
         continue
 
-      def build_tflite_inputs(tflite_model_binary):
-        """Build input values and output values of the given tflite model.
+      def generate_inputs_outputs(tflite_model_binary,
+                                  min_value=0,
+                                  max_value=255):
+        """Generate input values and output values of the given tflite model.
 
         Args:
           tflite_model_binary: A serialized flatbuffer as a string.
+          min_value: min value for the input tensor.
+          max_value: max value for the input tensor.
 
         Returns:
           (input_values, output_values): input values and output values built.
@@ -366,12 +371,11 @@ def make_zip_of_tests(options,
         input_details = interpreter.get_input_details()
         input_values = []
         for input_detail in input_details:
-          # TODO(yunluli): Set proper min max value according to dtype.
           input_value = create_tensor_data(
               input_detail["dtype"],
               input_detail["shape"],
-              min_value=0,
-              max_value=255)
+              min_value=min_value,
+              max_value=max_value)
           interpreter.set_tensor(input_detail["index"], input_value)
           input_values.append(input_value)
 
@@ -406,7 +410,7 @@ def make_zip_of_tests(options,
         # Build graph
         report["tf_log"] = ""
         report["toco_log"] = ""
-        tf.reset_default_graph()
+        tf.compat.v1.reset_default_graph()
 
         with tf.device("/cpu:0"):
           try:
@@ -458,8 +462,9 @@ def make_zip_of_tests(options,
 
         if tflite_model_binary:
           if options.make_edgetpu_tests:
-            baseline_inputs, baseline_outputs = build_tflite_inputs(
-                tflite_model_binary)
+            # Set proper min max values according to input dtype.
+            baseline_inputs, baseline_outputs = generate_inputs_outputs(
+                tflite_model_binary, min_value=0, max_value=255)
           archive.writestr(label + ".bin", tflite_model_binary,
                            zipfile.ZIP_DEFLATED)
           example = {"inputs": baseline_inputs, "outputs": baseline_outputs}
@@ -518,9 +523,10 @@ def make_zip_of_tests(options,
   percent = 0
   if tf_success > 0:
     percent = float(toco_success) / float(tf_success) * 100.
-  tf.logging.info(("Archive %s Considered %d graphs, %d TF evaluated graphs "
-                   " and %d TOCO converted graphs (%.1f%%"), zip_path,
-                  total_conversions, tf_success, toco_success, percent)
+  tf.compat.v1.logging.info(
+      ("Archive %s Considered %d graphs, %d TF evaluated graphs "
+       " and %d TOCO converted graphs (%.1f%%"), zip_path, total_conversions,
+      tf_success, toco_success, percent)
 
   tf_failures = parameter_count - tf_success
 

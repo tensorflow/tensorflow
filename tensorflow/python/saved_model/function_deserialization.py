@@ -244,8 +244,7 @@ def recreate_function(saved_function, concrete_functions):
 
     def _pretty_format_positional(positional):
       return "Positional arguments ({} total):\n    * {}".format(
-          len(positional),
-          "\n    * ".join([str(a) for a in positional]))
+          len(positional), "\n    * ".join(str(a) for a in positional))
 
     for index, function_name in enumerate(saved_function.concrete_functions):
       concrete_function = concrete_functions[function_name]
@@ -286,7 +285,7 @@ def load_function_def_library(library, load_shared_name_suffix=None):
   Args:
     library: FunctionDefLibrary proto message.
     load_shared_name_suffix: If specified, used to uniquify shared
-      names. Otherwise a unique name is generated.
+      names. Otherwise, a unique name is generated.
 
   Returns:
     Map of original function names in the library to instances of
@@ -447,11 +446,15 @@ def _list_function_deps(fdef, library_function_names):
   return deps
 
 
+_FUNCTION_WARPPER_NAME_REGEX = r"^%s(.*)_\d+$" % (
+    function_lib._INFERENCE_PREFIX)  # pylint:disable=protected-access
+
+
 def _clean_function_name(name):
   """Vanity function to keep the function names comprehensible."""
   # Note: each time a function is wrapped into `function_lib.ConcreteFunction`
   # its name becomes "__inference_<orig>_xyz".
-  match = re.search(r"^__inference_(.*)_\d+$", name)
+  match = re.search(_FUNCTION_WARPPER_NAME_REGEX, name)
   if match:
     return match.group(1)
   else:

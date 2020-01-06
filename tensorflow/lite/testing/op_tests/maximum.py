@@ -31,16 +31,16 @@ def make_maximum_tests(options):
       "input_dtype": [tf.float32],
       "input_shape_1": [[], [3], [1, 100], [4, 2, 3], [5, 224, 224, 3]],
       "input_shape_2": [[], [3], [1, 100], [4, 2, 3], [5, 224, 224, 3]],
-      "fully_quantize": [True, False],
+      "fully_quantize": [False, True],
   }]
 
   def build_graph(parameters):
     """Build the maximum op testing graph."""
-    input_tensor_1 = tf.placeholder(
+    input_tensor_1 = tf.compat.v1.placeholder(
         dtype=parameters["input_dtype"],
         name="input_1",
         shape=parameters["input_shape_1"])
-    input_tensor_2 = tf.placeholder(
+    input_tensor_2 = tf.compat.v1.placeholder(
         dtype=parameters["input_dtype"],
         name="input_2",
         shape=parameters["input_shape_2"])
@@ -49,8 +49,7 @@ def make_maximum_tests(options):
     return [input_tensor_1, input_tensor_2], [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
-    """Build inputs for maximum op."""
-
+    """Builds the inputs for the model above."""
     values = [
         create_tensor_data(
             parameters["input_dtype"],

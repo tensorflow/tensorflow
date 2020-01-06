@@ -45,6 +45,7 @@ from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import loader_impl
@@ -162,23 +163,6 @@ class SaveTest(test.TestCase):
   def test_unbuilt_model_does_not_prevent_saving(self):
     root = util.Checkpoint(model=sequential.Sequential([core.Dense(2)]))
     save.save(root, os.path.join(self.get_temp_dir(), "saved_model"))
-
-  def test_captured_symbolic_tensor_exception(self):
-    root = module.Module()
-    symbolic_tensor = []
-
-    @def_function.function
-    def captured_intermediate(x):
-      symbolic_tensor.append(math_ops.add(x, x, name="a_tensor"))
-      return symbolic_tensor[-1] * 2
-
-    captured_intermediate(constant_op.constant(1.))
-
-    root.f = def_function.function(lambda: symbolic_tensor[-1],
-                                   input_signature=[])
-    with self.assertRaisesRegexp(ValueError, "a_tensor"):
-      save.save(root, os.path.join(self.get_temp_dir(), "saved_model"),
-                signatures=root.f)
 
   def test_unsaveable_func_graph(self):
     root = module.Module()
@@ -428,6 +412,65 @@ class SaveTest(test.TestCase):
             tensor_spec.TensorSpec(None, dtypes.int64)))
     self.assertAllClose({"output_0": 3 * (1 + 4 + 9 + 16)},
                         _import_and_infer(save_dir, {"x": 3}))
+
+  def test_variable_args_cannot_be_used_as_signature(self):
+    @def_function.function(input_signature=[
+        resource_variable_ops.VariableSpec(shape=[], dtype=dtypes.int32)])
+    def f(unused_v):
+      return 1
+    root = tracking.AutoTrackable()
+    root.f = f.get_concrete_function()
+    with self.assertRaisesRegexp(ValueError,
+                                 "tf.Variable inputs cannot be exported"):
+      save.save(root, os.path.join(self.get_temp_dir(), "saved_model"),
+                signatures=root.f)
+
+  def test_export_correct_output_shapes(self):
+    """Asserts that nodes are exported with the correct number of output shapes.
+
+    After backpropagation rewrite, functions are rewritten with additional
+    outputs. When exporting to SavedModel, the shapes of the additional outputs
+    were incorrectly added to the FunctionDef proto (b/133666530).
+    """
+    obj = tracking.AutoTrackable()
+    obj.v = variables.Variable(2.)
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec(None, dtypes.float32)])
+    def f(x):
+      return (math_ops.multiply(obj.v, x),
+              math_ops.multiply(obj.v, (x+1)),
+              None)
+    obj.f = f
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec(None, dtypes.float32)])
+    def g(x):
+      return obj.f(x)[1]
+    obj.g = g
+
+    # After the following lines, the concrete functions of obj.g and obj.f are
+    # rewritten with many extra outputs.
+    with backprop.GradientTape():
+      obj.g(constant_op.constant(3.0))
+
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    save.save(obj, save_dir, signatures={"g": obj.g})
+    graph_def = loader_impl.parse_saved_model(save_dir).meta_graphs[0].graph_def
+
+    def assert_correct_number_of_output_shapes(node):
+      if node.op == "StatefulPartitionedCall":
+        fn_name = node.attr["f"].func.name
+        if fn_name.startswith("__inference_f"):
+          self.assertLen(node.attr["_output_shapes"].list.shape, 2)
+        if fn_name.startswith("__inference_g"):
+          self.assertLen(node.attr["_output_shapes"].list.shape, 1)
+
+    for f in graph_def.library.function:
+      if(f.signature.name.startswith("__inference_f") or
+         f.signature.name.startswith("__inference_g")):
+        for node in f.node_def:
+          assert_correct_number_of_output_shapes(node)
 
 
 class SavingOptionsTest(test.TestCase):

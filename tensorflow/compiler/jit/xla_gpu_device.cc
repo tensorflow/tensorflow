@@ -109,6 +109,14 @@ Status XlaGpuDeviceFactory::CreateDevices(
     VLOG(1) << "Failed to create XLA_GPU device: " << platform.status();
     return Status::OK();
   }
+
+  auto iter = session_options.config.device_count().find("GPU");
+  if (iter != session_options.config.device_count().end() &&
+      iter->second == 0) {
+    // Device count for GPU is 0.
+    return Status::OK();
+  }
+
   string allowed_gpus =
       session_options.config.gpu_options().visible_device_list();
   absl::optional<std::set<int>> gpu_ids =
@@ -133,9 +141,9 @@ Status XlaGpuDeviceFactory::CreateDevices(
 
     Status status = device->UseGpuDeviceInfo();
     if (!status.ok()) {
-      errors::AppendToMessage(&status, "while setting up ", DEVICE_GPU_XLA_JIT,
-                              " device number ", i);
-      return status;
+      LOG(INFO) << "Ignoring visible " << DEVICE_GPU_XLA_JIT
+                << " device. Device number is " << i << ", reason: " << status;
+      continue;
     }
 
     devices->push_back(std::move(device));

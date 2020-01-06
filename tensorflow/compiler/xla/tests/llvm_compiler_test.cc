@@ -110,13 +110,8 @@ class LLVMCompilerTest : public ::testing::Test {
 
  private:
   Platform *FindPlatform() {
-    for (Platform *platform :
-         PlatformUtil::GetSupportedPlatforms().ConsumeValueOrDie()) {
-      if (platform->Name() == platform_name_) {
-        return platform;
-      }
-    }
-    return nullptr;
+    auto status_or_platform = PlatformUtil::GetPlatform(platform_name_);
+    return status_or_platform.ok() ? status_or_platform.ValueOrDie() : nullptr;
   }
 
   string platform_name_;

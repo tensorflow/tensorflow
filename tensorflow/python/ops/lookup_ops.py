@@ -21,9 +21,9 @@ from __future__ import print_function
 import collections
 import functools
 import uuid
+
 import six
 
-from tensorflow.python.compat import compat as fwd_compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -461,14 +461,8 @@ class KeyValueTensorInitializer(TableInitializerBase):
     _check_table_dtypes(table, self._keys.dtype, self._values.dtype)
     with ops.name_scope(
         self._name, values=(table.resource_handle, self._keys, self._values)):
-      if fwd_compat.forward_compatible(2018, 9, 19):
-        init_op = gen_lookup_ops.lookup_table_import_v2(table.resource_handle,
-                                                        self._keys,
-                                                        self._values)
-      else:
-        # To maintain forward compatibiltiy, use the old implementation.
-        init_op = gen_lookup_ops.initialize_table_v2(table.resource_handle,
-                                                     self._keys, self._values)
+      init_op = gen_lookup_ops.lookup_table_import_v2(table.resource_handle,
+                                                      self._keys, self._values)
     ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
     return init_op
 

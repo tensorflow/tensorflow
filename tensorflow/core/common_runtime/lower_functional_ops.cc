@@ -25,6 +25,11 @@ limitations under the License.
 
 namespace tensorflow {
 
+/*static*/ constexpr const char* const
+    LowerFunctionalOpsPass::kLowerUsingSwitchMergeAttr;
+/*static*/ constexpr const char* const
+    LowerFunctionalOpsPass::kLowerAsMultiDeviceFunctionAttr;
+
 namespace {
 
 constexpr const char* const kLowerUsingSwitchMergeAttr =
@@ -174,7 +179,7 @@ Status LowerFunctionalOpsPass::Run(
   return Status::OK();
 }
 
-REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 0,
+REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 10,
                       LowerFunctionalOpsPass);
 
 }  // namespace tensorflow

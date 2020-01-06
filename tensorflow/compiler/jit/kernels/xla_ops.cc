@@ -326,11 +326,6 @@ static Status CompileToLocalExecutable(
   }
   XlaCompiler::CompileOptions compile_options;
   compile_options.is_entry_computation = true;
-  // If we resolve constants we never emit them on the device, meaning that if
-  // they are needed by a following computation the host has to transfer
-  // them. Not resolving constants is expected to be faster than resolving
-  // constants.
-  compile_options.resolve_compile_time_constants = true;
   // Optimization: where possible, have the computation return a naked array
   // rather than a one-element tuple.
   compile_options.always_return_tuple = false;
@@ -630,6 +625,16 @@ void XlaRunOp::Compute(OpKernelContext* ctx) {
           input_output_alias, closure.resource_var_snapshots()));
 }
 
+XlaMergeOp::XlaMergeOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+void XlaMergeOp::Compute(OpKernelContext* ctx) {
+  VLOG(3) << "XlaMergeOp " << def().name();
+  int i = 0;
+  if (ctx->has_input(i) || ctx->has_input(++i)) {
+    ctx->set_output(0, ctx->input(i));
+  }
+}
+
 REGISTER_KERNEL_BUILDER(Name("XlaLaunch").Device(DEVICE_CPU), XlaLocalLaunchOp);
 
 REGISTER_KERNEL_BUILDER(Name("XlaLaunch")
@@ -648,6 +653,10 @@ REGISTER_KERNEL_BUILDER(Name("_XlaCompile")
                         XlaCompileOp);
 
 REGISTER_KERNEL_BUILDER(Name("_XlaRun").Device(DEVICE_CPU), XlaRunOp);
-REGISTER_KERNEL_BUILDER(Name("_XlaRun").Device(DEVICE_GPU), XlaRunOp);
+REGISTER_KERNEL_BUILDER(Name("_XlaRun").Device(DEVICE_GPU).HostMemory("key"),
+                        XlaRunOp);
+
+REGISTER_KERNEL_BUILDER(Name("_XlaMerge").Device(DEVICE_CPU), XlaMergeOp);
+REGISTER_KERNEL_BUILDER(Name("_XlaMerge").Device(DEVICE_GPU), XlaMergeOp);
 
 }  // namespace tensorflow

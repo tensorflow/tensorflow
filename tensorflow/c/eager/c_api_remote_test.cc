@@ -25,6 +25,8 @@ limitations under the License.
 
 namespace {
 
+using ::tensorflow::string;
+
 tensorflow::ServerDef GetServerDef(const string& job_name, int num_tasks) {
   tensorflow::ServerDef server_def;
   server_def.set_protocol("grpc");

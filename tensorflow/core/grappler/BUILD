@@ -166,7 +166,6 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/grappler/costs:graph_properties",
         "//tensorflow/core/grappler/inputs:utils",
         "//tensorflow/core/grappler/optimizers:model_pruner",
     ],

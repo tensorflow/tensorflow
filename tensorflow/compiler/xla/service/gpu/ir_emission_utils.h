@@ -157,25 +157,35 @@ bool ImplementedAsLibraryCall(const HloInstruction& hlo);
 // kept are contiguous in the input of the reduce instruction.
 bool IsReductionFromOrToContiguousDimensions(const HloInstruction& reduce);
 
-// Given the input shape and dimensions to reduce for a reduction, returns
-// <is_row_reduction, DimensionVector>:
-// is_row_reduction:  indicates whether the reduction is a row reduction or a
-//   column reduction.
-// DimensionVector: contains the size of the three contiguous components for the
-//   reduction [depth, height, width]. For row reduction, height is the size of
-//   the dimensions to keep, depth is the size of the dimensions to reduce that
-//   are more major than the dimensions to keep, and width is the size of the
-//   dimensions to reduce that are more minor than the dimensions to keep. For
-//   column reduction, height is the size of dimensions to reduce, depth is the
-//   the size of the dimensions to keep that are more major than the dimensions
-//   to reduce, and width is the size of the dimensions to keep that are more
-//   minor than the dimensions to reduce.
+// Returns whether unnested_hlo is an input fusion whose root is either a slice
+// or a tuple of slices. If verify_no_strides is true, returns false unless all
+// ROOT slices have no strides.
+bool IsInputFusibleSlices(const HloInstruction& unnested_hlo,
+                          bool verify_no_strides = false);
+
+struct ReductionDimensions {
+  // Indicates whether the reduction is a row reduction or a column reduction.
+  bool is_row_reduction;
+
+  // Contains the size of the three contiguous components for
+  // the reduction [depth, height, width] (major-to-minor ordering).
+  //
+  // For row reduction, we do: [D, H, W] -> [D, H].
+  // For column reduction, we do: [D, H, W] -> [D, W].
+  std::array<int64, 3> dimensions;
+};
+
+// Given the reduction operation, returns ReductionDimensions.
 //
 // Prerequisite: the reduction instruction passes the check
 // IsReductionFromOrToContiguousDimensions, which guarantees either the
 // dimensions to reduce or the dimensions to keep are consecutive.
-std::pair<bool, DimensionVector> GetReductionKindAndContiguousComponents(
-    const Shape& input_shape, absl::Span<const int64> dims_to_reduce);
+ReductionDimensions GetReductionKindAndContiguousComponents(
+    const HloInstruction& reduce);
+
+// Get tiling per thread for the given reduction in dimensions [D, H, W].
+std::array<int64, 3> GetReductionTiling(
+    const ReductionDimensions& reduction_dimensions);
 
 // Emits call to "vprintf" with given format and arguments.
 llvm::Value* EmitPrintf(absl::string_view fmt,
@@ -198,6 +208,11 @@ llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
 // Emits code that determines whether the current thread is thread 0 within
 // block 0 of the kernel.
 llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b);
+
+// Returns whether the outputs of a fusion with reduction are consistent.
+bool AreFusedReductionOutputsConsistent(
+    absl::Span<const HloInstruction* const> output_instructions,
+    const HloInstruction* first_reduce);
 
 }  // namespace gpu
 }  // namespace xla

@@ -37,19 +37,19 @@ def make_one_hot_tests(options):
 
   def build_graph(parameters):
     """Build the one_hot op testing graph."""
-    indices = tf.placeholder(
+    indices = tf.compat.v1.placeholder(
         dtype=parameters["indices_type"],
         name="indices",
         shape=parameters["indices_shape"])
-    depth = tf.placeholder(dtype=tf.int32, name="depth", shape=())
+    depth = tf.compat.v1.placeholder(dtype=tf.int32, name="depth", shape=())
 
     if not parameters["provide_optional_inputs"]:
       out = tf.one_hot(indices=indices, depth=depth)
       return [indices, depth], [out]
 
-    on_value = tf.placeholder(
+    on_value = tf.compat.v1.placeholder(
         dtype=parameters["dtype"], name="on_value", shape=())
-    off_value = tf.placeholder(
+    off_value = tf.compat.v1.placeholder(
         dtype=parameters["dtype"], name="off_value", shape=())
     out = tf.one_hot(
         indices=indices,

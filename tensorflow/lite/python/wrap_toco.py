@@ -17,7 +17,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python import pywrap_tensorflow
+# We need to import pywrap_tensorflow prior to the toco wrapper.
+# pylint: disable=invalud-import-order,g-bad-import-order
+from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
+from tensorflow.python import _pywrap_toco_api
+
 
 # TODO(b/137402359): Remove lazy loading wrapper
 
@@ -25,7 +29,7 @@ from tensorflow.python import pywrap_tensorflow
 def wrapped_toco_convert(model_flags_str, toco_flags_str, input_data_str,
                          debug_info_str, enable_mlir_converter):
   """Wraps TocoConvert with lazy loader."""
-  return pywrap_tensorflow.TocoConvert(
+  return _pywrap_toco_api.TocoConvert(
       model_flags_str,
       toco_flags_str,
       input_data_str,
@@ -36,4 +40,4 @@ def wrapped_toco_convert(model_flags_str, toco_flags_str, input_data_str,
 
 def wrapped_get_potentially_supported_ops():
   """Wraps TocoGetPotentiallySupportedOps with lazy loader."""
-  return pywrap_tensorflow.TocoGetPotentiallySupportedOps()
+  return _pywrap_toco_api.TocoGetPotentiallySupportedOps()

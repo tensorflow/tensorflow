@@ -15,7 +15,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/optimized/integer_ops/add.h"
 
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
@@ -118,15 +118,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     QuantizeMultiplierSmallerThanOneExp(
         real_output_multiplier, &data->output_multiplier, &data->output_shift);
 
-    if (output->type == kTfLiteUInt8) {
-      CalculateActivationRangeUint8(params->activation, output,
-                                    &data->output_activation_min,
-                                    &data->output_activation_max);
-    } else {
-      CalculateActivationRangeInt8(params->activation, output,
-                                   &data->output_activation_min,
-                                   &data->output_activation_max);
-    }
+    TF_LITE_ENSURE_STATUS(CalculateActivationRangeQuantized(
+        context, params->activation, output, &data->output_activation_min,
+        &data->output_activation_max));
   } else if (output->type == kTfLiteInt16) {
     // 16bit -> 16bit special quantized path, supporting only a rather
     // narrow case of quantization parameters: zero_points must all be 0
@@ -164,9 +158,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE(context, data->input1_shift <= 0);
     TF_LITE_ENSURE(context, data->input2_shift <= 0);
 
-    CalculateActivationRangeQuantized(context, params->activation, output,
-                                      &data->output_activation_min,
-                                      &data->output_activation_max);
+    TF_LITE_ENSURE_STATUS(CalculateActivationRangeQuantized(
+        context, params->activation, output, &data->output_activation_min,
+        &data->output_activation_max));
   }
 
   return context->ResizeTensor(context, output, output_size);
@@ -212,7 +206,7 @@ void EvalAdd(TfLiteContext* context, TfLiteNode* node, TfLiteAddParams* params,
       }
     } else {
       if (need_broadcast) {
-        TF_LITE_ADD(optimized_ops, BroadcastAddFivefold, float);
+        TF_LITE_ADD(optimized_ops, BroadcastAddDispatch, float);
       } else {
         TF_LITE_ADD(optimized_ops, Add, float);
       }
@@ -256,11 +250,8 @@ TfLiteStatus EvalAddQuantized(TfLiteContext* context, TfLiteNode* node,
           TF_LITE_ADD(reference_integer_ops, Add, int8_t);
         }
       } else {
-        if (op_params.broadcast_category ==
-            BroadcastableOpCategory::kGenericBroadcast) {
-          TF_LITE_ADD(reference_integer_ops, BroadcastAdd4DSlow, int8_t);
-        } else if (need_broadcast) {
-          TF_LITE_ADD(optimized_integer_ops, BroadcastAddFivefold, int8_t);
+        if (need_broadcast) {
+          TF_LITE_ADD(optimized_integer_ops, BroadcastAddDispatch, int8_t);
         } else {
           TF_LITE_ADD(optimized_integer_ops, Add, int8_t);
         }
@@ -273,11 +264,8 @@ TfLiteStatus EvalAddQuantized(TfLiteContext* context, TfLiteNode* node,
           TF_LITE_ADD(reference_ops, Add, uint8_t);
         }
       } else {
-        if (op_params.broadcast_category ==
-            BroadcastableOpCategory::kGenericBroadcast) {
-          TF_LITE_ADD(optimized_ops, BroadcastAdd4DSlow, uint8_t);
-        } else if (need_broadcast) {
-          TF_LITE_ADD(optimized_ops, BroadcastAddFivefold, uint8_t);
+        if (need_broadcast) {
+          TF_LITE_ADD(optimized_ops, BroadcastAddDispatch, uint8_t);
         } else {
           TF_LITE_ADD(optimized_ops, Add, uint8_t);
         }

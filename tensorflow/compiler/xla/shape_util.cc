@@ -176,11 +176,22 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
   return MakeValidatedShape(element_type, dimensions).ValueOrDie();
 }
 
+/* static */ Shape ShapeUtil::MakeScalarShape(PrimitiveType element_type) {
+  return MakeShape(element_type, {});
+}
+
 /* static */ Shape ShapeUtil::MakeShape(
     PrimitiveType element_type, absl::Span<const int64> dimensions,
     const std::vector<bool>& dynamic_dimensions) {
   return MakeValidatedShape(element_type, dimensions, dynamic_dimensions)
       .ValueOrDie();
+}
+
+/* static */ Shape ShapeUtil::MakeShapeWithStaticDimensions(
+    const Shape& shape) {
+  Shape output = shape;
+  output.clear_dynamic_dimensions();
+  return output;
 }
 
 /* static */ StatusOr<Shape> ShapeUtil::MakeValidatedShape(
@@ -218,16 +229,6 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
   return MakeShapeWithLayout(element_type, dimensions, layout);
 }
 
-/* static */ Shape ShapeUtil::MakeShapeWithSparseLayout(
-    PrimitiveType element_type, absl::Span<const int64> dimensions,
-    int64 max_sparse_elements) {
-  CHECK(IsArrayPrimitiveType(element_type));
-  Shape shape = ShapeUtil::MakeShape(element_type, dimensions);
-  *shape.mutable_layout() = LayoutUtil::MakeSparseLayout(max_sparse_elements);
-  TF_DCHECK_OK(ShapeUtil::ValidateShape(shape));
-  return shape;
-}
-
 /* static */ Shape
 ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
     const Shape& shape) {
@@ -242,6 +243,9 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
       shape.layout().tiles().begin(), shape.layout().tiles().end());
   new_shape.mutable_layout()->set_element_size_in_bits(
       shape.layout().element_size_in_bits());
+  for (int i = 0; i < shape.dimensions_size(); ++i) {
+    new_shape.set_dynamic_dimension(i, shape.is_dynamic_dimension(i));
+  }
   return new_shape;
 }
 
@@ -292,6 +296,20 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
                                               Shape* tuple_shape) {
   CHECK(index < tuple_shape->tuple_shapes_size());
   *tuple_shape->mutable_tuple_shapes(index) = shape;
+}
+
+/* static */ void ShapeUtil::UpdateDynamicDimension(Shape* shape,
+                                                    ShapeIndexView index,
+                                                    int64 dim,
+                                                    bool is_dynamic) {
+  if (index.empty()) {
+    CHECK(!shape->IsTuple());
+    shape->set_dynamic_dimension(dim, is_dynamic);
+    return;
+  }
+
+  UpdateDynamicDimension(shape->mutable_tuple_shapes(index.front()),
+                         index.ConsumeFront(), dim, is_dynamic);
 }
 
 /* static */ void ShapeUtil::AppendMajorDimension(int bound, Shape* shape) {
@@ -609,9 +627,6 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
     return ByteSizeOfTupleIndexTable(shape, pointer_size);
   } else if (shape.IsArray()) {
     int64 byte_size = ByteSizeOfElements(shape);
-    if (LayoutUtil::IsSparseArray(shape)) {
-      byte_size += ByteSizeOfSparseIndices(shape);
-    }
     return byte_size;
   } else if (shape.element_type() == TOKEN) {
     return 0;
@@ -636,21 +651,10 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   CHECK(shape.IsArray());
   int64 allocated_element_count;
 
-  if (LayoutUtil::IsSparseArray(shape)) {
-    allocated_element_count = LayoutUtil::MaxSparseElements(shape.layout());
-  } else {
-    CHECK(LayoutUtil::IsDenseArray(shape)) << shape.ShortDebugString();
-    allocated_element_count = ElementsIn(shape);
-  }
+  CHECK(LayoutUtil::IsDenseArray(shape)) << shape.ShortDebugString();
+  allocated_element_count = ElementsIn(shape);
   return allocated_element_count *
          ByteSizeOfPrimitiveType(shape.element_type());
-}
-
-/* static */ int64 ShapeUtil::ByteSizeOfSparseIndices(const Shape& shape) {
-  TF_DCHECK_OK(ValidateShape(shape));
-  CHECK(LayoutUtil::IsSparseArray(shape));
-  return LayoutUtil::MaxSparseElements(shape.layout()) * shape.rank() *
-         sizeof(int64);
 }
 
 /* static */ Status ShapeUtil::ValidateShapeWithOptionalLayoutInternal(
@@ -693,9 +697,6 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
     return Status::OK();
   }
 
-  if (LayoutUtil::IsSparseArray(shape) && shape.rank() == 0) {
-    return InvalidArgument("sparse arrays must have rank > 0");
-  }
   for (int64 i = 0; i < shape.rank(); ++i) {
     int64 dimension = shape.dimensions(i);
     if (dimension < 0) {
@@ -716,43 +717,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
     return Status::OK();
   }
 
-  // We can only reason about some aspects of array's shape if it has a valid
-  // layout, these aspects will be ignored otherwise.
-  bool shape_has_valid_layout = LayoutUtil::HasLayout(shape) &&
-                                LayoutUtil::ValidateLayoutInShape(shape).ok();
-
   int64 shape_size = [&]() {
-    if (shape_has_valid_layout && LayoutUtil::IsSparseArray(shape)) {
-      int64 max_sparse_elements = LayoutUtil::MaxSparseElements(shape.layout());
-      if (max_sparse_elements < 0) {
-        return max_sparse_elements;
-      }
-      int64 sparse_elements_size = MultiplyWithoutOverflow(
-          max_sparse_elements, ByteSizeOfPrimitiveType(shape.element_type()));
-      if (sparse_elements_size < 0) {
-        return sparse_elements_size;
-      }
-      int64 sparse_indices_size =
-          MultiplyWithoutOverflow(max_sparse_elements, shape.rank());
-      if (sparse_indices_size < 0) {
-        return sparse_indices_size;
-      }
-      sparse_indices_size =
-          MultiplyWithoutOverflow(sparse_indices_size, sizeof(int64));
-      if (sparse_indices_size < 0) {
-        return sparse_indices_size;
-      }
-      // At this point, both sparse_indices_size and sparse_elements_size are
-      // non-negative, so we can easily check if adding them wraps.
-      if (static_cast<uint64>(sparse_elements_size) +
-              static_cast<uint64>(sparse_indices_size) >
-          INT64_MAX) {
-        return static_cast<int64>(-1);
-      }
-    }
-
-    // This is intentionally unconditional: even if the shape is sparse, we want
-    // to verify the densified version has a reasonable size.
     int64 dense_shape_size = 1;
     if (shape.dimensions().empty()) {
       return dense_shape_size;
@@ -1099,7 +1064,8 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
   }
   // `CommonFactors(a, b).back() == (a.rank, b.rank)` so we must pop it.
   common_factors.pop_back();
-  return common_factors;
+  return std::vector<std::pair<int64, int64>>(common_factors.begin(),
+                                              common_factors.end());
 }
 
 /* static */ absl::optional<std::vector<int64>>

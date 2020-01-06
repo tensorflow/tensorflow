@@ -217,8 +217,8 @@ class RaggedTensorFromVariantOp : public OpKernel {
  public:
   explicit RaggedTensorFromVariantOp(OpKernelConstruction* context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context,
-                   context->GetAttr("input_ragged_rank", &input_ragged_rank_));
+    OP_REQUIRES_OK(context, context->GetAttr("input_ragged_rank",
+                                             &input_ragged_rank_attr_));
     OP_REQUIRES_OK(
         context, context->GetAttr("output_ragged_rank", &output_ragged_rank_));
   }
@@ -226,6 +226,7 @@ class RaggedTensorFromVariantOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     // Read input Tensor.
     const Tensor& encoded_variant = context->input(0);
+    auto input_ragged_rank_ = input_ragged_rank_attr_;
 
     if (input_ragged_rank_ == -1) {  // Infer input_ragged_rank_.
       input_ragged_rank_ = output_ragged_rank_ - encoded_variant.dims();
@@ -277,7 +278,7 @@ class RaggedTensorFromVariantOp : public OpKernel {
   }
 
  private:
-  int input_ragged_rank_;
+  int input_ragged_rank_attr_;
   int output_ragged_rank_;
 
   void ReturnRaggedTensor(OpKernelContext* context,

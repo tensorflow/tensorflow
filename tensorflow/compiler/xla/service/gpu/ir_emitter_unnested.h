@@ -45,7 +45,7 @@ namespace gpu {
 // Examples of things that are not unnested computations:
 //
 //  - The reducer of a kReduce HLO.  This is emitted using IrEmitterNested.
-//  - The body of a fusion node.  IrEmitterUnenested emits the relevant code
+//  - The body of a fusion node.  IrEmitterUnnested emits the relevant code
 //    within a kernel function using FusedIrEmitter.  (FusedIrEmitter is not
 //    really an IrEmitter, but is more an "IR generator generator".)
 //
@@ -169,9 +169,12 @@ class IrEmitterUnnested : public IrEmitter,
 
   // Generates code for reduction to contiguous dimensions.
   //
-  // Prerequisite: `IsReductionFromOrToContiguousDimensions(*unnested_hlo)`
+  // output_instructions: Output instructions in the computation: instruction
+  // itself if it's not a fusion, fusion root if fusion is not multi-output, and
+  // elements of the fusion multi-output tuple otherwise.
   Status EmitReductionFromOrToContiguousDimensions(
-      HloInstruction* unnested_hlo);
+      HloInstruction* unnested_hlo,
+      absl::Span<HloInstruction* const> output_instructions);
 
   // Computes the KernelMappingScheme for the reduce HLO and indicates whether
   // the reduction is a row reduction. For an un-fused reduce op, unnested_hlo
@@ -180,6 +183,19 @@ class IrEmitterUnnested : public IrEmitter,
   // reduce op.
   ReductionCodegenInfo ComputeReductionCodegenInfo(
       const HloInstruction* unnested_hlo, const HloInstruction* first_reduce);
+
+  // Generates code for input-fusible slices.
+  //
+  // Prerequisite: ROOT is either a slice or a tuple of slices. The input shapes
+  // of all ROOT slices need to be the same while their output shapes can be
+  // different. On the other hand, the input ranges of slices can be
+  // overlapping. Further generalization/specialization when the needs are seen
+  // in the future.
+  Status EmitInputFusibleNonStridedSlices(HloInstruction* unnested_hlo);
+
+  void EmitElementForInputFusibleSlices(
+      HloInstruction* unnested_hlo,
+      const llvm_ir::IrArray::Index& slice_input_index);
 
   // Emits code for an in-place scatter, modifying `thunk`s launch dimensions in
   // the process. `scatter` may be fused, scatter indices are taken from

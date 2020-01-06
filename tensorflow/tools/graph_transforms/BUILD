@@ -207,6 +207,18 @@ tf_cc_test(
     ],
 )
 
+filegroup(
+    name = "transform_graph_hdrs",
+    srcs = [
+        "transform_graph.h",
+        "transform_utils.h",
+    ],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/python:__pkg__",
+    ],
+)
+
 cc_library(
     name = "transform_graph_lib",
     srcs = ["transform_graph.cc"],
@@ -222,6 +234,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
     ],
+    alwayslink = 1,
 )
 
 # This library includes a main function, to make it easy to create other
@@ -316,8 +329,8 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:_pywrap_transform_graph",
         "//tensorflow/python:errors",
-        "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python:util",
     ],
 )
@@ -326,7 +339,9 @@ tf_py_test(
     name = "transform_graph_py_test",
     size = "small",
     srcs = ["python/transform_graph_test.py"],
-    additional_deps = [
+    main = "python/transform_graph_test.py",
+    tags = ["v1only"],
+    deps = [
         ":transform_graph_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
@@ -334,6 +349,4 @@ tf_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:variables",
     ],
-    main = "python/transform_graph_test.py",
-    tags = ["v1only"],
 )

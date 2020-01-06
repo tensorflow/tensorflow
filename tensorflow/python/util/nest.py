@@ -37,6 +37,7 @@ from __future__ import print_function
 import collections as _collections
 
 import six as _six
+import wrapt as _wrapt
 
 from tensorflow.python import _pywrap_utils
 from tensorflow.python.util.compat import collections_abc as _collections_abc
@@ -86,7 +87,7 @@ def _get_attrs_items(obj):
 def _sorted(dict_):
   """Returns a sorted list of the dict keys, with error if keys not sortable."""
   try:
-    return sorted(dict_)
+    return sorted(dict_.keys())
   except TypeError:
     raise TypeError("nest only supports dicts with sortable keys.")
 
@@ -146,7 +147,11 @@ def _sequence_like(instance, args):
     # We can't directly construct mapping views, so we create a list instead
     return list(args)
   elif _is_namedtuple(instance) or _is_attrs(instance):
-    return type(instance)(*args)
+    if isinstance(instance, _wrapt.ObjectProxy):
+      instance_type = type(instance.__wrapped__)
+    else:
+      instance_type = type(instance)
+    return instance_type(*args)
   elif _is_composite_tensor(instance):
     assert len(args) == 1
     spec = instance._type_spec  # pylint: disable=protected-access
@@ -157,6 +162,10 @@ def _sequence_like(instance, args):
     return instance._from_components(args[0])  # pylint: disable=protected-access
   elif isinstance(instance, _six.moves.range):
     return _sequence_like(list(instance), args)
+  elif isinstance(instance, _wrapt.ObjectProxy):
+    # For object proxies, first create the underlying type and then re-wrap it
+    # in the proxy type.
+    return type(instance)(_sequence_like(instance.__wrapped__, args))
   else:
     # Not a namedtuple
     return type(instance)(args)
@@ -384,7 +393,7 @@ def flatten_dict_items(dictionary):
   return flat_dictionary
 
 
-def _packed_nest_with_indices(structure, flat, index, is_seq):
+def _packed_nest_with_indices(structure, flat, index, is_seq, sequence_fn=None):
   """Helper function for pack_sequence_as.
 
   Args:
@@ -392,6 +401,7 @@ def _packed_nest_with_indices(structure, flat, index, is_seq):
     flat: Flattened values to output substructure for.
     index: Index at which to start reading from flat.
     is_seq: Function used to test if a value should be treated as a sequence.
+    sequence_fn: Function used to generate a new sequence instance.
 
   Returns:
     The tuple (new_index, child), where:
@@ -405,15 +415,57 @@ def _packed_nest_with_indices(structure, flat, index, is_seq):
       (assuming indexing starts from `index`).
   """
   packed = []
+  sequence_fn = sequence_fn or _sequence_like
   for s in _yield_value(structure):
     if is_seq(s):
-      new_index, child = _packed_nest_with_indices(s, flat, index, is_seq)
-      packed.append(_sequence_like(s, child))
+      new_index, child = _packed_nest_with_indices(s, flat, index, is_seq,
+                                                   sequence_fn)
+      packed.append(sequence_fn(s, child))
       index = new_index
     else:
       packed.append(flat[index])
       index += 1
   return index, packed
+
+
+def _pack_sequence_as(structure, flat_sequence, expand_composites,
+                      sequence_fn=None):
+  """Implements sequence packing, with the option to alter the structure."""
+  is_seq = is_sequence_or_composite if expand_composites else is_sequence
+  sequence_fn = sequence_fn or _sequence_like
+  def truncate(value, length):
+    value_str = str(value)
+    return value_str[:length] + (value_str[length:] and "...")
+
+  if not is_seq(flat_sequence):
+    raise TypeError(
+        "Attempted to pack value:\n  {}\ninto a sequence, but found "
+        "incompatible type `{}` instead."
+        .format(truncate(flat_sequence, 100), type(flat_sequence)))
+
+  if not is_seq(structure):
+    if len(flat_sequence) != 1:
+      raise ValueError(
+          "The target structure is of type `{}`\n  {}\nHowever the input "
+          "structure is a sequence ({}) of length {}.\n  {}\nnest cannot "
+          "guarantee that it is safe to map one to the other.".format(
+              type(structure), truncate(structure, 100), type(flat_sequence),
+              len(flat_sequence), truncate(flat_sequence, 100)))
+    return flat_sequence[0]
+
+  try:
+    final_index, packed = _packed_nest_with_indices(structure, flat_sequence,
+                                                    0, is_seq, sequence_fn)
+    if final_index < len(flat_sequence):
+      raise IndexError
+  except IndexError:
+    flat_structure = flatten(structure)
+    if len(flat_structure) != len(flat_sequence):
+      raise ValueError(
+          "Could not pack sequence. Structure had %d elements, but "
+          "flat_sequence had %d elements.  Structure: %s, flat_sequence: %s." %
+          (len(flat_structure), len(flat_sequence), structure, flat_sequence))
+  return sequence_fn(structure, packed)
 
 
 @tf_export("nest.pack_sequence_as")
@@ -449,29 +501,7 @@ def pack_sequence_as(structure, flat_sequence, expand_composites=False):
       element counts.
     TypeError: `structure` is or contains a dict with non-sortable keys.
   """
-  is_seq = is_sequence_or_composite if expand_composites else is_sequence
-  if not is_seq(flat_sequence):
-    raise TypeError("flat_sequence must be a sequence")
-
-  if not is_seq(structure):
-    if len(flat_sequence) != 1:
-      raise ValueError("Structure is a scalar but len(flat_sequence) == %d > 1"
-                       % len(flat_sequence))
-    return flat_sequence[0]
-
-  try:
-    final_index, packed = _packed_nest_with_indices(structure, flat_sequence,
-                                                    0, is_seq)
-    if final_index < len(flat_sequence):
-      raise IndexError
-  except IndexError:
-    flat_structure = flatten(structure)
-    if len(flat_structure) != len(flat_sequence):
-      raise ValueError(
-          "Could not pack sequence. Structure had %d elements, but "
-          "flat_sequence had %d elements.  Structure: %s, flat_sequence: %s." %
-          (len(flat_structure), len(flat_sequence), structure, flat_sequence))
-  return _sequence_like(structure, packed)
+  return _pack_sequence_as(structure, flat_sequence, expand_composites)
 
 
 @tf_export("nest.map_structure")
@@ -699,7 +729,12 @@ def assert_shallow_structure(shallow_tree,
           "If shallow structure is a sequence, input must also be a sequence. "
           "Input has type: %s." % type(input_tree))
 
-    if check_types and not isinstance(input_tree, type(shallow_tree)):
+    if isinstance(shallow_tree, _wrapt.ObjectProxy):
+      shallow_type = type(shallow_tree.__wrapped__)
+    else:
+      shallow_type = type(shallow_tree)
+
+    if check_types and not isinstance(input_tree, shallow_type):
       # Duck-typing means that nest should be fine with two different
       # namedtuples with identical name and fields.
       shallow_is_namedtuple = _is_namedtuple(shallow_tree, False)
@@ -1208,7 +1243,7 @@ def yield_flat_paths(nest, expand_composites=False):
   integers or other types which are used as indices in a dict.
 
   The flat list will be in the corresponding order as if you called
-  `snt.nest.flatten` on the structure. This is handy for naming Tensors such
+  `nest.flatten` on the structure. This is handy for naming Tensors such
   the TF scope structure matches the tuple structure.
 
   E.g. if we have a tuple `value = Foo(a=3, b=Bar(c=23, d=42))`
@@ -1291,6 +1326,34 @@ def flatten_with_tuple_paths(structure, expand_composites=False):
                   flatten(structure, expand_composites=expand_composites)))
 
 
+def _list_to_tuple(structure):
+  """Replace all lists with tuples.
+
+  The fork of nest that tf.data uses treats lists as single elements, while
+  tf.nest treats them as structures to recurse into. Keras has chosen to adopt
+  the latter convention, and must therefore deeply replace all lists with tuples
+  before passing structures to Dataset.from_generator.
+
+  Args:
+    structure: A nested structure to be remapped.
+
+  Returns:
+    structure mapped to replace all lists with tuples.
+  """
+  def sequence_fn(instance, args):
+    if isinstance(instance, list):
+      return tuple(args)
+    return _sequence_like(instance, args)
+
+  return _pack_sequence_as(structure, flatten(structure), False,
+                           sequence_fn=sequence_fn)
+
+
+# TODO(b/143287251): Only have `list_to_tuple`
+list_to_tuple = _list_to_tuple
+
+
 _pywrap_utils.RegisterType("Mapping", _collections_abc.Mapping)
 _pywrap_utils.RegisterType("Sequence", _collections_abc.Sequence)
 _pywrap_utils.RegisterType("MappingView", _collections_abc.MappingView)
+_pywrap_utils.RegisterType("ObjectProxy", _wrapt.ObjectProxy)

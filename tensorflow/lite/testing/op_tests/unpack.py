@@ -17,7 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
 import tensorflow as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
@@ -31,6 +30,7 @@ def make_unpack_tests(options):
   test_parameters = [{
       "base_shape": [[3, 4, 3], [3, 4], [5, 6, 7, 8]],
       "axis": [0, 1, 2, 3],
+      "dtype": [tf.int32, tf.bool, tf.float32],
   }]
 
   def get_valid_axis(parameters):
@@ -42,13 +42,16 @@ def make_unpack_tests(options):
     return axis
 
   def build_graph(parameters):
-    input_tensor = tf.placeholder(
-        dtype=tf.float32, name=("input"), shape=parameters["base_shape"])
+    input_tensor = tf.compat.v1.placeholder(
+        dtype=parameters["dtype"],
+        name=("input"),
+        shape=parameters["base_shape"])
     outs = tf.unstack(input_tensor, axis=get_valid_axis(parameters))
     return [input_tensor], [outs[0]]
 
   def build_inputs(parameters, sess, inputs, outputs):
-    input_value = create_tensor_data(np.float32, shape=parameters["base_shape"])
+    input_value = create_tensor_data(
+        parameters["dtype"], shape=parameters["base_shape"])
     return [input_value], sess.run(
         outputs, feed_dict=dict(zip(inputs, [input_value])))
 

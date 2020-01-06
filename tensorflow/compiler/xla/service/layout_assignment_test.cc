@@ -869,11 +869,8 @@ TEST_F(LayoutAssignmentTest, ChannelLayoutMismatch) {
   ChannelLayoutConstraints channel_constraints;
   AssignLayouts(m.get(), &computation_layout, &channel_constraints);
 
-  EXPECT_THAT(LayoutOf(m.get(), "gte"), ElementsAre(0, 1));
-  EXPECT_THAT(LayoutOf(m.get(), "root"), ElementsAre(1, 0));
-  EXPECT_TRUE(ShapeUtil::Equal(
-      ShapeUtil::GetSubshape(FindInstruction(m.get(), "send")->shape(), {0}),
-      ShapeUtil::MakeShapeWithLayout(F32, {2, 2}, {1, 0})));
+  EXPECT_TRUE(ShapeUtil::Equal(FindInstruction(m.get(), "send")->shape(),
+                               FindInstruction(m.get(), "recv")->shape()));
 }
 
 TEST_F(LayoutAssignmentTest, AllReduceLayoutMissmatch) {
@@ -1348,6 +1345,44 @@ TEST_F(LayoutAssignmentTest, OverwriteDiamondShapedConstraintsX) {
               ElementsAre(1, 0));
 
   EXPECT_THAT(transpose->shape().layout().minor_to_major(), ElementsAre(0, 1));
+}
+
+// Tests that the layout assignment supports layout-constrained all-reduce with
+// different operand layouts (b/146056839).
+TEST_F(LayoutAssignmentTest, LayoutConstrainedAllReduce) {
+  const char* module_str = R"(
+HloModule test_module
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY entry_computation {
+  param = (f32[8,4]{0,1}, f32[16,2]{0,1}) parameter(0)
+  gte0 = f32[8,4] get-tuple-element(param), index=0
+  gte1 = f32[16,2] get-tuple-element(param), index=1
+  crs = (f32[8,4]{0,1}, f32[16,2]{1,0}) all-reduce(gte0, gte1),
+    replica_groups={}, constrain_layout=true, to_apply=add
+  gte2 = f32[8,4] get-tuple-element(crs), index=0
+  gte3 = f32[16,2] get-tuple-element(crs), index=1
+  ROOT result = (f32[8,4]{1,0}, f32[16,2]{1,0}) tuple(gte2, gte3)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(module_str));
+  ComputationLayout computation_layout(
+      m->entry_computation()->ComputeProgramShape(), /*ignore_layouts=*/false);
+
+  ChannelLayoutConstraints channel_constraints;
+  AssignLayouts(m.get(), &computation_layout, &channel_constraints);
+
+  const HloInstruction* crs = FindInstruction(m.get(), "crs");
+  ExpectTupleLayoutIs(crs->shape(), {{0, 1}, {1, 0}});
+  ExpectLayoutIs(crs->operand(0)->shape(), {0, 1});
+  ExpectLayoutIs(crs->operand(1)->shape(), {1, 0});
 }
 
 }  // namespace

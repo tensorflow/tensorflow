@@ -34,11 +34,12 @@ def make_depth_to_space_tests(options):
   }]
 
   def build_graph(parameters):
-    input_tensor = tf.placeholder(
+    input_tensor = tf.compat.v1.placeholder(
         dtype=parameters["dtype"],
         name="input",
         shape=parameters["input_shape"])
-    out = tf.depth_to_space(input_tensor, block_size=parameters["block_size"])
+    out = tf.compat.v1.depth_to_space(
+        input_tensor, block_size=parameters["block_size"])
     return [input_tensor], [out]
 
   def build_inputs(parameters, sess, inputs, outputs):

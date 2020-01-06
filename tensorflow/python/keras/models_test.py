@@ -28,6 +28,7 @@ from tensorflow.python import keras
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import metrics
@@ -312,10 +313,10 @@ def _has_placeholder(graph):
   return any('Placeholder' in s for s in ops_types)
 
 
-@keras_parameterized.run_with_all_model_types
-@keras_parameterized.run_all_keras_modes
 class CheckpointingTests(keras_parameterized.TestCase):
 
+  @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes
   def test_optimizer_dependency(self):
     model = _get_model()
     opt = adam.AdamOptimizer(.01)
@@ -336,6 +337,37 @@ class CheckpointingTests(keras_parameterized.TestCase):
     self.evaluate(beta1_power.assign(13.))
     model.load_weights(save_prefix)
     self.assertEqual(12., self.evaluate(beta1_power))
+
+  @keras_parameterized.run_with_all_model_types(exclude_models=['subclass'])
+  def test_layer_tracking(self):
+    with self.cached_session():
+      model = _get_model(input_shape=(4,))
+
+      if testing_utils.get_model_type() == 'subclass':
+        # Subclassed model must be built separately.
+        model._set_inputs(tensor_spec.TensorSpec((None, 4)))
+
+      # Ensure that checkpoints are compatible with another model with the same
+      # layers, even if the model isn't built until after initialization.
+      layers = _get_layers(input_shape=None, add_input_layer=False)
+      model2 = models.Sequential(layers)
+      # Build model by calling it.
+      model2.predict_on_batch(np.random.random((10, 4)))
+
+      model_path = os.path.join(self.get_temp_dir(), 'model_ckpt')
+      model.save_weights(model_path)
+      model2_path = os.path.join(self.get_temp_dir(), 'model2_ckpt')
+      model2.save_weights(model2_path)
+
+      # Check that the checkpoints are compatible with both models.
+      model.load_weights(model2_path)
+      self.assertAllClose(self.evaluate(model.weights),
+                          self.evaluate(model2.weights))
+
+      model.load_weights(model_path)
+      model2.load_weights(model_path)
+      self.assertAllClose(self.evaluate(model.weights),
+                          self.evaluate(model2.weights))
 
 
 @keras_parameterized.run_all_keras_modes
@@ -386,12 +418,13 @@ class TestCloneAndBuildModel(keras_parameterized.TestCase):
         experimental_run_tf_function=testing_utils.should_run_tf_function())
     new_model.train_on_batch(inp, out)
 
-    # Create new tensors for inputs and targets
+    # Create new tensors for inputs.
     input_a = keras.Input(shape=(4,))
-    target_a = keras.Input(shape=(4,))
     new_model = models.clone_and_build_model(
-        model, input_tensors=input_a, target_tensors=[target_a],
-        compile_clone=False, in_place_reset=is_subclassed)
+        model,
+        input_tensors=input_a,
+        compile_clone=False,
+        in_place_reset=is_subclassed)
     with self.assertRaisesRegexp(RuntimeError, 'must compile'):
       new_model.evaluate(inp, out)
     with self.assertRaisesRegexp(RuntimeError, 'must compile'):
@@ -428,7 +461,7 @@ class TestCloneAndBuildModel(keras_parameterized.TestCase):
     new_model.train_on_batch(inp, out)
     new_model.evaluate(inp, out)
 
-    # Create new tensors for inputs and targets
+    # Create new tensors for inputs.
     input_a = keras.Input(shape=(4,), name='a')
     new_model = models.clone_and_build_model(
         model, input_tensors=input_a, compile_clone=True,
@@ -437,10 +470,12 @@ class TestCloneAndBuildModel(keras_parameterized.TestCase):
     new_model.train_on_batch(inp, out)
     new_model.evaluate(inp, out)
 
-    target_a = keras.Input(shape=(4,), name='b')
     new_model = models.clone_and_build_model(
-        model, input_tensors=input_a, target_tensors=[target_a],
-        compile_clone=True, in_place_reset=is_subclassed)
+        model,
+        input_tensors=input_a,
+        target_tensors=None,
+        compile_clone=True,
+        in_place_reset=is_subclassed)
     self._assert_same_compile_params(new_model)
     new_model.train_on_batch(inp, out)
     new_model.evaluate(inp, out)

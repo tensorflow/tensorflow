@@ -35,7 +35,7 @@ def _make_elementwise_tests(op):
 
     def build_graph(parameters):
       """Build the unary op testing graph."""
-      input_value = tf.placeholder(
+      input_value = tf.compat.v1.placeholder(
           dtype=parameters["input_dtype"],
           name="input1",
           shape=parameters["input_shape"])
@@ -62,7 +62,7 @@ def make_sin_tests(options):
 @register_make_test_function()
 def make_log_tests(options):
   """Make a set of tests to do log."""
-  return _make_elementwise_tests(tf.log)(options)
+  return _make_elementwise_tests(tf.math.log)(options)
 
 
 @register_make_test_function()
@@ -74,7 +74,7 @@ def make_sqrt_tests(options):
 @register_make_test_function()
 def make_rsqrt_tests(options):
   """Make a set of tests to do 1/sqrt."""
-  return _make_elementwise_tests(tf.rsqrt)(options)
+  return _make_elementwise_tests(tf.math.rsqrt)(options)
 
 
 @register_make_test_function()

@@ -457,61 +457,63 @@ class VarianceScalingInitializationTest(test.TestCase):
 # TODO(vrv): move to sequence_ops_test?
 class RangeTest(test.TestCase):
 
-  def _Range(self, start, limit=None, delta=1, expected=None):
-    expected = expected or []
-    for dtype in [np.int32, np.int64, np.float32, np.float64, np.float16]:
-      with self.session(use_gpu=True):
-        cast_start = math_ops.cast(start, dtype=dtype)
-        if limit is None:
-          tf_ans = math_ops.range(cast_start, dtype=dtype, name="range")
-        else:
-          if dtype in [np.int32, np.int64] and np.floor(delta) != delta:
-            continue
-          cast_limit = math_ops.cast(limit, dtype=dtype)
-          cast_delta = math_ops.cast(delta, dtype=dtype)
-          tf_ans = math_ops.range(
-              cast_start, cast_limit, cast_delta, name="range")
-        tf_val = self.evaluate(tf_ans)
-        self.assertAllClose(tf_val, np.array(expected, dtype=dtype))
+  def _Range(self, start, limit, delta):
+    with self.cached_session(use_gpu=True):
+      tf_ans = math_ops.range(start, limit, delta, name="range")
+      self.assertEqual([len(np.arange(start, limit, delta))],
+                       tf_ans.get_shape())
+      return self.evaluate(tf_ans)
 
   def testBasic(self):
-    self._Range(0, 5, 1, [0, 1, 2, 3, 4])
-    self._Range(0, 5, 2, [0, 2, 4])
-    self._Range(0, 6, 2, [0, 2, 4])
-    self._Range(13, 32, 7, [13, 20, 27])
-    self._Range(100, 500, 100, [100, 200, 300, 400])
+    self.assertTrue(
+        np.array_equal(self._Range(0, 5, 1), np.array([0, 1, 2, 3, 4])))
+    self.assertTrue(np.array_equal(self._Range(0, 5, 2), np.array([0, 2, 4])))
+    self.assertTrue(np.array_equal(self._Range(0, 6, 2), np.array([0, 2, 4])))
+    self.assertTrue(
+        np.array_equal(self._Range(13, 32, 7), np.array([13, 20, 27])))
+    self.assertTrue(
+        np.array_equal(
+            self._Range(100, 500, 100), np.array([100, 200, 300, 400])))
+    self.assertEqual(math_ops.range(0, 5, 1).dtype, dtypes.int32)
 
   @test_util.run_deprecated_v1
   def testLimitOnly(self):
-    self._Range(5, expected=[0, 1, 2, 3, 4])
+    with self.session(use_gpu=True):
+      self.assertAllEqual(np.arange(5), math_ops.range(5).eval())
 
   def testEmpty(self):
     for start in 0, 5:
-      self._Range(start, start, 1, [])
+      self.assertTrue(np.array_equal(self._Range(start, start, 1), []))
 
-  def testNonIntegerDelta(self):
-    self._Range(0, 2, 0.5, [0, 0.5, 1, 1.5])
-    self._Range(0, 5, 2.5, [0, 2.5])
-    self._Range(0, 3, 0.9, [0, 0.9, 1.8, 2.7])
-    self._Range(100., 500., 100., [100, 200, 300, 400])
+  def testNonInteger(self):
+    self.assertTrue(
+        np.allclose(self._Range(0, 2, 0.5), np.array([0, 0.5, 1, 1.5])))
+    self.assertTrue(np.allclose(self._Range(0, 5, 2.5), np.array([0, 2.5])))
+    self.assertTrue(
+        np.allclose(self._Range(0, 3, 0.9), np.array([0, 0.9, 1.8, 2.7])))
+    self.assertTrue(
+        np.allclose(
+            self._Range(100., 500., 100.), np.array([100, 200, 300, 400])))
+    self.assertEqual(math_ops.range(0., 5., 1.).dtype, dtypes.float32)
 
   def testNegativeDelta(self):
-    self._Range(5, -1, -1, [5, 4, 3, 2, 1, 0])
-    self._Range(2.5, 0, -0.5, [2.5, 2, 1.5, 1, 0.5])
-    self._Range(-5, -10, -3, [-5, -8])
+    self.assertTrue(
+        np.array_equal(self._Range(5, -1, -1), np.array([5, 4, 3, 2, 1, 0])))
+    self.assertTrue(
+        np.allclose(self._Range(2.5, 0, -0.5), np.array([2.5, 2, 1.5, 1, 0.5])))
+    self.assertTrue(
+        np.array_equal(self._Range(-5, -10, -3), np.array([-5, -8])))
 
   def testDType(self):
     zero_int32 = math_ops.cast(0, dtypes.int32)
     zero_int64 = math_ops.cast(0, dtypes.int64)
     zero_float32 = math_ops.cast(0, dtypes.float32)
     zero_float64 = math_ops.cast(0, dtypes.float64)
-    zero_half = math_ops.cast(0, dtypes.half)
 
     self.assertEqual(math_ops.range(zero_int32, 0, 1).dtype, dtypes.int32)
     self.assertEqual(math_ops.range(zero_int64, 0, 1).dtype, dtypes.int64)
     self.assertEqual(math_ops.range(zero_float32, 0, 1).dtype, dtypes.float32)
     self.assertEqual(math_ops.range(zero_float64, 0, 1).dtype, dtypes.float64)
-    self.assertEqual(math_ops.range(zero_half, 0, 1).dtype, dtypes.half)
 
     self.assertEqual(
         math_ops.range(zero_int32, zero_int64, 1).dtype, dtypes.int64)
@@ -545,52 +547,66 @@ class LinSpaceTest(test.TestCase):
     else:
       return [False]
 
-  def _test_linspace(self, start, stop, num, expected):
-    for idx_type in [np.int32, np.int64]:
-      for dtype in [np.float32, np.float64, np.float16]:
-        with ops.Graph().as_default() as graph:
-          with self.session(graph=graph, force_gpu=self.force_gpu):
-            cast_start = math_ops.cast(start, dtype=dtype)
-            cast_stop = math_ops.cast(stop, dtype=dtype)
-            cast_num = math_ops.cast(num, dtype=idx_type)
-            tf_ans = math_ops.linspace(
-                cast_start, cast_stop, cast_num, name="linspace")
-            self.assertEqual([num], tf_ans.get_shape())
-            tf_val = self.evaluate(tf_ans).astype(dtype)
-            cast_expected = np.array(expected, dtype=dtype)
-            tol = 1e-3 if dtype == np.float16 else 1e-6
-            self.assertAllClose(tf_val, cast_expected, rtol=tol)
-            # Endpoints should be exact.
-            self.assertEqual(tf_val[0], cast_expected[0])
-            self.assertEqual(tf_val[-1], cast_expected[-1])
+  def _LinSpace(self, start, stop, num):
+    with ops.Graph().as_default() as graph:
+      with self.session(graph=graph, force_gpu=self.force_gpu):
+        tf_ans = math_ops.linspace(start, stop, num, name="linspace")
+        self.assertEqual([num], tf_ans.get_shape())
+        return self.evaluate(tf_ans)
 
   def testPositive(self):
     for self.force_gpu in self._gpu_modes():
-      self._test_linspace(1., 5., 1, [1.])
-      self._test_linspace(1., 5., 2, [1., 5.])
-      self._test_linspace(1., 5., 3, [1., 3., 5.])
-      self._test_linspace(1., 5., 4, [1., 7. / 3., 11. / 3., 5.])
+      self.assertArrayNear(self._LinSpace(1., 5., 1), np.array([1.]), 1e-5)
+      self.assertArrayNear(self._LinSpace(1., 5., 2), np.array([1., 5.]), 1e-5)
+      self.assertArrayNear(
+          self._LinSpace(1., 5., 3), np.array([1., 3., 5.]), 1e-5)
+      self.assertArrayNear(
+          self._LinSpace(1., 5., 4), np.array([1., 7. / 3., 11. / 3., 5.]),
+          1e-5)
 
   def testNegative(self):
     for self.force_gpu in self._gpu_modes():
-      self._test_linspace(-1., -5., 1, [-1.])
-      self._test_linspace(-1., -5., 2, [-1., -5.])
-      self._test_linspace(-1., -5., 3, [-1., -3., -5.])
-      self._test_linspace(-1., -5., 4, [-1., -7. / 3., -11. / 3., -5.])
+      self.assertArrayNear(self._LinSpace(-1., -5., 1), np.array([-1.]), 1e-5)
+      self.assertArrayNear(
+          self._LinSpace(-1., -5., 2), np.array([-1., -5.]), 1e-5)
+      self.assertArrayNear(
+          self._LinSpace(-1., -5., 3), np.array([-1., -3., -5.]), 1e-5)
+      self.assertArrayNear(
+          self._LinSpace(-1., -5., 4),
+          np.array([-1., -7. / 3., -11. / 3., -5.]), 1e-5)
 
   def testNegativeToPositive(self):
     for self.force_gpu in self._gpu_modes():
-      self._test_linspace(-1., 5., 1, [-1.])
-      self._test_linspace(-1., 5., 2, [-1., 5.])
-      self._test_linspace(-1., 5., 3, [-1., 2., 5.])
-      self._test_linspace(-1., 5., 4, [-1., 1., 3., 5.])
+      self.assertArrayNear(self._LinSpace(-1., 5., 1), np.array([-1.]), 1e-5)
+      self.assertArrayNear(
+          self._LinSpace(-1., 5., 2), np.array([-1., 5.]), 1e-5)
+      self.assertArrayNear(
+          self._LinSpace(-1., 5., 3), np.array([-1., 2., 5.]), 1e-5)
+      self.assertArrayNear(
+          self._LinSpace(-1., 5., 4), np.array([-1., 1., 3., 5.]), 1e-5)
 
   def testPoint(self):
     for self.force_gpu in self._gpu_modes():
-      self._test_linspace(5., 5., 1, [5.])
-      self._test_linspace(5., 5., 2, [5.] * 2)
-      self._test_linspace(5., 5., 3, [5.] * 3)
-      self._test_linspace(5., 5., 4, [5.] * 4)
+      self.assertArrayNear(self._LinSpace(5., 5., 1), np.array([5.]), 1e-5)
+      self.assertArrayNear(self._LinSpace(5., 5., 2), np.array([5.] * 2), 1e-5)
+      self.assertArrayNear(self._LinSpace(5., 5., 3), np.array([5.] * 3), 1e-5)
+      self.assertArrayNear(self._LinSpace(5., 5., 4), np.array([5.] * 4), 1e-5)
+
+  def testEndpointsAreExact(self):
+    for self.force_gpu in self._gpu_modes():
+      # Test some cases that produce last values not equal to "stop" when
+      # computed via start + (num - 1) * ((stop - start) / (num - 1)), since
+      # float arithmetic will introduce error through precision loss.
+      self.assertAllEqual(
+          self._LinSpace(0., 1., 42)[[0, -1]], np.array([0., 1.], np.float32))
+      self.assertAllEqual(
+          self._LinSpace(-1., 0., 42)[[0, -1]], np.array([-1., 0.], np.float32))
+      self.assertAllEqual(
+          self._LinSpace(.1, .2, 4)[[0, -1]], np.array([.1, .2], np.float32))
+      # Check a case for float64 error too.
+      self.assertAllEqual(
+          self._LinSpace(np.array(0., np.float64), .1, 12)[[0, -1]],
+          np.array([0., .1], np.float64))
 
 
 class DeviceTest(test.TestCase):

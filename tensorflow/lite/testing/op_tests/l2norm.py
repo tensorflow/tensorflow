@@ -30,14 +30,19 @@ def make_l2norm_tests(options):
 
   # Chose a set of parameters
   test_parameters = [{
-      "input_shape": [[5, 7], [1, 1, 1, 1], [1, 3, 4, 3], [3, 15, 14, 3],
-                      [3, 1, 2, 4, 6], [2, 2, 3, 4, 5, 6]],
+      "input_shape": [[5, 7], [1, 1, 1, 1], [1, 3, 4, 3], [3, 15, 14, 3]],
       "dim": [0, 1, 2, 3, [2, 3], -2],
       "epsilon": [None, 1e-12, 1e-3],
+      "fully_quantize": [False],
+  }, {
+      "input_shape": [[5, 7], [1, 1, 1, 1], [1, 3, 4, 3], [3, 15, 14, 3]],
+      "dim": [0, 1, 2, 3, [2, 3], -2],
+      "epsilon": [None, 1e-12, 1e-3],
+      "fully_quantize": [True],
   }]
 
   def build_graph(parameters):
-    input_tensor = tf.placeholder(
+    input_tensor = tf.compat.v1.placeholder(
         dtype=tf.float32, name="input", shape=parameters["input_shape"])
     if parameters["epsilon"]:
       out = tf.nn.l2_normalize(
@@ -48,7 +53,7 @@ def make_l2norm_tests(options):
 
   def build_inputs(parameters, sess, inputs, outputs):
     input_values = create_tensor_data(
-        np.float32, parameters["input_shape"], min_value=-4, max_value=10)
+        np.float32, parameters["input_shape"], min_value=-1, max_value=1)
     return [input_values], sess.run(
         outputs, feed_dict=dict(zip(inputs, [input_values])))
 
@@ -57,4 +62,4 @@ def make_l2norm_tests(options):
       test_parameters,
       build_graph,
       build_inputs,
-      expected_tf_failures=9)
+      expected_tf_failures=18)

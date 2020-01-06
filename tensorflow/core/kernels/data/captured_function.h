@@ -80,6 +80,7 @@ class InstantiatedCapturedFunction {
   // possible. This can be useful for calling a captured
   // function in cases where an `IteratorContext*` is not available
   // (such as a destructor).
+  // TODO(b/144278100): Avoid running functions without IteratorContext.
   Status RunInstantiated(const std::vector<Tensor>& args,
                          std::vector<Tensor>* rets);
 
@@ -97,7 +98,6 @@ class InstantiatedCapturedFunction {
       FunctionLibraryRuntime* lib, FunctionLibraryRuntime::Handle f_handle,
       DataTypeVector ret_types,
       std::function<void(std::function<void()>)> runner,
-      CancellationManager* cancellation_manager,
       CapturedFunction* captured_func);
 
   // Determines whether a rendezvous object should be created when running the
@@ -109,8 +109,9 @@ class InstantiatedCapturedFunction {
   FunctionLibraryRuntime* const lib_;
   const FunctionLibraryRuntime::Handle f_handle_;
   const DataTypeVector ret_types_;
+  // Note: We capture the runner at function instantiation time to be able to
+  // run the function without `IteratorContext` via `RunInstantiated`.
   std::function<void(std::function<void()>)> captured_runner_;
-  CancellationManager* cancellation_manager_;
   CapturedFunction* const captured_func_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(InstantiatedCapturedFunction);
@@ -189,14 +190,14 @@ class CapturedFunction {
   // Creates a new instance using a list of named attributes, fetching captured
   // inputs from a context argument.
   static Status Create(OpKernelContext* ctx,
-                       const std::shared_ptr<const FunctionMetadata> metadata,
+                       std::shared_ptr<const FunctionMetadata> metadata,
                        const string& argument_name,
                        std::unique_ptr<CapturedFunction>* out_function);
 
   // Creates a new instance using a list of named attributes, using provided
   // captured inputs.
   static Status Create(OpKernelContext* ctx,
-                       const std::shared_ptr<const FunctionMetadata> metadata,
+                       std::shared_ptr<const FunctionMetadata> metadata,
                        std::vector<Tensor>&& captured_inputs,
                        std::unique_ptr<CapturedFunction>* out_function);
 
@@ -255,7 +256,7 @@ class CapturedFunction {
   }
 
  private:
-  CapturedFunction(const std::shared_ptr<const FunctionMetadata> metadata,
+  CapturedFunction(std::shared_ptr<const FunctionMetadata> metadata,
                    std::vector<Tensor> captured_inputs);
 
   // Determines whether the captured function requires the use of the

@@ -49,7 +49,7 @@ struct CanonicalDebugOptions {
     // function we treat this struct's members as write-only, and read only from
     // `opts`.
 
-    // Did the user specifiy an explicit format for dumping?
+    // Did the user specify an explicit format for dumping?
     bool output_format_other_than_url_specified =
         opts.xla_dump_hlo_as_text() || opts.xla_dump_hlo_as_proto() ||
         opts.xla_dump_hlo_as_dot() || opts.xla_dump_hlo_as_html() ||
@@ -284,12 +284,17 @@ void DumpExecutionOptions(const ExecutionOptions& execution_options,
   const string& dir = opts.dump_to;
   if (env->IsDirectory(dir).ok()) {
     string filename = tensorflow::io::JoinPath(dir, "execution_options");
+    Status status;
     if (opts.dump_as_text) {
-      TF_CHECK_OK(tensorflow::WriteTextProto(
-          env, absl::StrCat(filename, ".txt"), execution_options));
+      status = tensorflow::WriteTextProto(env, absl::StrCat(filename, ".txt"),
+                                          execution_options);
     } else {
-      TF_CHECK_OK(tensorflow::WriteBinaryProto(
-          env, absl::StrCat(filename, ".pb"), execution_options));
+      status = tensorflow::WriteBinaryProto(env, absl::StrCat(filename, ".pb"),
+                                            execution_options);
+    }
+    if (!status.ok()) {
+      LOG(ERROR) << "Could not write XLA debug data to " << filename << ": "
+                 << status;
     }
   }
 }

@@ -18,21 +18,22 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/None.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/Function.h"  // TF:local_config_mlir
-#include "mlir/IR/Identifier.h"  // TF:local_config_mlir
-#include "mlir/IR/Location.h"  // TF:local_config_mlir
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/IR/OpDefinition.h"  // TF:local_config_mlir
-#include "mlir/IR/Operation.h"  // TF:local_config_mlir
-#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
-#include "mlir/IR/Types.h"  // TF:local_config_mlir
-#include "mlir/IR/Value.h"  // TF:local_config_mlir
-#include "mlir/Support/LLVM.h"  // TF:local_config_mlir
-#include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/Builders.h"  // TF:llvm-project
+#include "mlir/IR/Function.h"  // TF:llvm-project
+#include "mlir/IR/Identifier.h"  // TF:llvm-project
+#include "mlir/IR/Location.h"  // TF:llvm-project
+#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
+#include "mlir/IR/OpDefinition.h"  // TF:llvm-project
+#include "mlir/IR/Operation.h"  // TF:llvm-project
+#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/IR/Types.h"  // TF:llvm-project
+#include "mlir/IR/Value.h"  // TF:llvm-project
+#include "mlir/Support/LLVM.h"  // TF:llvm-project
+#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
@@ -41,35 +42,35 @@ namespace TFL {
 
 namespace {
 
-Value* CreateI32SplatConst(OpBuilder* builder, ArrayRef<int64_t> shape,
-                           int32_t val, mlir::Location location) {
+Value CreateI32SplatConst(OpBuilder* builder, ArrayRef<int64_t> shape,
+                          int32_t val, mlir::Location location) {
   auto type = RankedTensorType::get(shape, builder->getIntegerType(32));
   auto attr = DenseElementsAttr::get(type, val);
   return builder->create<ConstantOp>(location, type, attr);
 }
 
-Value* CreateF32SplatConst(OpBuilder* builder, ArrayRef<int64_t> shape,
-                           float val, mlir::Location location) {
+Value CreateF32SplatConst(OpBuilder* builder, ArrayRef<int64_t> shape,
+                          float val, mlir::Location location) {
   auto type = RankedTensorType::get(shape, builder->getF32Type());
   auto attr = DenseElementsAttr::get(type, val);
   return builder->create<ConstantOp>(location, type, attr);
 }
 
-Value* CreateI64DenseConst(OpBuilder* builder, ArrayRef<int64_t> shape,
-                           ArrayRef<int64_t> values, mlir::Location location) {
+Value CreateI64DenseConst(OpBuilder* builder, ArrayRef<int64_t> shape,
+                          ArrayRef<int64_t> values, mlir::Location location) {
   auto type = RankedTensorType::get(static_cast<int>(shape.size()),
                                     builder->getIntegerType(64));
   auto attr = DenseElementsAttr::get(type, values);
   return builder->create<ConstantOp>(location, type, attr);
 }
 
-Value* CreateNoneValue(OpBuilder* builder, mlir::Location location) {
+Value CreateNoneValue(OpBuilder* builder, mlir::Location location) {
   return builder->create<mlir::ConstantOp>(location, builder->getNoneType(),
                                            builder->getUnitAttr());
 }
 
-Value* Transpose2D(OpBuilder* builder, Value* value_to_transpose,
-                   RankedTensorType type, mlir::Location location) {
+Value Transpose2D(OpBuilder* builder, Value value_to_transpose,
+                  RankedTensorType type, mlir::Location location) {
   // Create a constant op for transpose permutation.
   SmallVector<int64_t, 2> perm = {1, 0};
   auto perm_op = CreateI64DenseConst(builder, perm, perm, location);
@@ -86,18 +87,18 @@ Value* Transpose2D(OpBuilder* builder, Value* value_to_transpose,
                                           value_to_transpose, perm_op);
 }
 
-ArrayRef<int64_t> GetRankedTensorShape(Value* value) {
-  return value->getType().cast<RankedTensorType>().getShape();
+ArrayRef<int64_t> GetRankedTensorShape(Value value) {
+  return value.getType().cast<RankedTensorType>().getShape();
 }
 
-Value* SliceRankedTensor(OpBuilder* builder, Value* input,
-                         ArrayRef<int64_t> begin_shape,
-                         ArrayRef<int64_t> begin_values,
-                         ArrayRef<int64_t> size_shape,
-                         ArrayRef<int64_t> size_values,
-                         mlir::Location location) {
+Value SliceRankedTensor(OpBuilder* builder, Value input,
+                        ArrayRef<int64_t> begin_shape,
+                        ArrayRef<int64_t> begin_values,
+                        ArrayRef<int64_t> size_shape,
+                        ArrayRef<int64_t> size_values,
+                        mlir::Location location) {
   // If the size of the tensor to be sliced from the input overflows
-  // the input tensor's dimenions, return 0-valued tensor of the requested
+  // the input tensor's dimensions, return 0-valued tensor of the requested
   // shape.
   ArrayRef<int64_t> input_shape = GetRankedTensorShape(input);
   for (int i = 0; i < input_shape.size(); i++) {
@@ -119,7 +120,7 @@ Value* SliceRankedTensor(OpBuilder* builder, Value* input,
       location,
       RankedTensorType::get(
           size_values,
-          input->getType().cast<RankedTensorType>().getElementType()),
+          input.getType().cast<RankedTensorType>().getElementType()),
       input, slice_i2c_begin, slice_i2c_size);
 }
 
@@ -323,21 +324,20 @@ void ConvertLSTMCellSimpleToFusedLSTM::GenerateFusedOpOperands() {
 
 void ConvertLSTMCellSimpleToFusedLSTM::UpdateFuncSignature() {
   // https://github.com/tensorflow/community/pull/113
-  auto attr = fused_func_op_.getAttrOfType<StringAttr>("tf_.implements");
-  if (!attr) {
-    fused_func_op_.setAttr("tf._implements",
-                           builder_.getStringAttr(GetCompositeOpName()));
-  }
   SmallVector<int64_t, 2> output_shape{1, -1};
   auto input_types = fused_func_op_.getType().getInputs();
   auto output_type = mlir::RankedTensorType::get(
-      output_shape,
-      input_->getType().cast<RankedTensorType>().getElementType());
+      output_shape, input_.getType().cast<RankedTensorType>().getElementType());
   fused_func_op_.setType(mlir::FunctionType::get(input_types, output_type,
                                                  fused_func_op_.getContext()));
 }
 
-void ConvertLSTMCellSimpleToFusedLSTM::RewriteFunc() {
+LogicalResult ConvertLSTMCellSimpleToFusedLSTM::RewriteFunc() {
+  LogicalResult result = Initialize();
+  if (failed(result)) {
+    return result;
+  }
+
   // Update the func signature, based on output shape.
   // The func will ultimately return the output of the fused
   // LSTM op.
@@ -350,8 +350,7 @@ void ConvertLSTMCellSimpleToFusedLSTM::RewriteFunc() {
   // Create the fused LSTM op.
   SmallVector<int64_t, 2> output_shape = {1, n_output_};
   auto result_type = mlir::RankedTensorType::get(
-      output_shape,
-      input_->getType().cast<RankedTensorType>().getElementType());
+      output_shape, input_.getType().cast<RankedTensorType>().getElementType());
   lstm_ = builder_.create<mlir::TFL::LSTMOp>(
       fused_func_op_.getLoc(), result_type, input_, input2input_, input2forget_,
       input2cell_, input2output_, rec2input_, rec2forget_, rec2cell_,
@@ -370,22 +369,62 @@ void ConvertLSTMCellSimpleToFusedLSTM::RewriteFunc() {
   SmallVector<int64_t, 2> func_output_shape = {1, -1};
   auto func_result_type = mlir::RankedTensorType::get(
       func_output_shape,
-      input_->getType().cast<RankedTensorType>().getElementType());
+      input_.getType().cast<RankedTensorType>().getElementType());
 
   auto tensor_cast = builder_.create<mlir::TensorCastOp>(
       fused_func_op_.getLoc(), lstm_.getResult(), func_result_type);
   builder_.create<mlir::ReturnOp>(fused_func_op_.getLoc(),
                                   tensor_cast.getResult());
+  return success();
+}
+
+LogicalResult ConvertLSTMCellSimpleToFusedLSTM::InitializeFromFuncAttributes() {
+  auto attr = fused_func_op_.getAttrOfType<StringAttr>(kTFImplements);
+  if (!attr) {
+    return fused_func_op_.emitError()
+           << "Invalid function attribute, expected " << kTFImplements
+           << " attribute "
+              "not found";
+  }
+
+  // TODO(ashwinm, b/144775479): Make these NamedAttribute on TF import
+  // once tf.function can support this.
+  llvm::SmallVector<llvm::StringRef, 4> attr_tokens;
+  attr.getValue().split(attr_tokens, ",");
+  if (attr_tokens.empty()) {
+    return fused_func_op_.emitError()
+           << kTFImplements << " attribute should be set";
+  }
+
+  // Check if the interface matches.
+  if (GetCompositeOpName().str() != attr_tokens[0]) {
+    return fused_func_op_.emitError()
+           << "Unexpected interface for the composite op. Expected: "
+           << GetCompositeOpName() << " Actual: " << attr_tokens[0];
+  }
+
+  // Extract other interface attributes, for now cifg.
+  couple_input_forget_gates_ =
+      std::find(attr_tokens.begin() + 1, attr_tokens.end(),
+                kCoupleInputForgetGates) != attr_tokens.end();
+
+  return success();
 }
 
 LogicalResult ConvertLSTMCellSimpleToFusedLSTM::Initialize() {
+  if (failed(InitializeFromFuncAttributes())) {
+    return fused_func_op_.emitError()
+           << "Expected function attributes were not set on the function "
+              "encapsulating the composite op";
+  }
+
   num_gates_ = couple_input_forget_gates_ ? 3 : 4;
 
   input_ = fused_func_op_.getArgument(0);
   bias_ = fused_func_op_.getArgument(2);
 
   weight_ = fused_func_op_.getArgument(1);
-  weight_type_ = weight_->getType().cast<RankedTensorType>();
+  weight_type_ = weight_.getType().cast<RankedTensorType>();
 
   if (weight_type_.getRank() != 2) {
     return fused_func_op_.emitError() << "The weight tensor was not of rank 2";
@@ -399,7 +438,7 @@ LogicalResult ConvertLSTMCellSimpleToFusedLSTM::Initialize() {
   n_cell_ = weight_type_.getDimSize(1) / num_gates_;
 
   projection_ = fused_func_op_.getArgument(3);
-  projection_type_ = projection_->getType().cast<RankedTensorType>();
+  projection_type_ = projection_.getType().cast<RankedTensorType>();
   if (projection_type_.getRank() != 2) {
     n_output_ = n_cell_;
   } else {
@@ -426,8 +465,7 @@ LogicalResult ConvertLayerNormalizedLSTMCellSimpleToFusedLSTM::Initialize() {
   }
 
   layer_norm_scale_ = fused_func_op_.getArgument(4);
-  layer_norm_scale_type_ =
-      layer_norm_scale_->getType().cast<RankedTensorType>();
+  layer_norm_scale_type_ = layer_norm_scale_.getType().cast<RankedTensorType>();
   if (layer_norm_scale_type_.getRank() != 1) {
     return fused_func_op_.emitError()
            << "The layer_norm_scale tensor was not of rank 1";

@@ -61,9 +61,9 @@ def make_unroll_batch_matmul_tests(options):
 
     def _build_graph():
       """Build the graph."""
-      input_tensor1 = tf.placeholder(
+      input_tensor1 = tf.compat.v1.placeholder(
           dtype=parameters["dtype"], shape=parameters["shape"][0])
-      input_tensor2 = tf.placeholder(
+      input_tensor2 = tf.compat.v1.placeholder(
           dtype=parameters["dtype"], shape=parameters["shape"][1])
       # Should be unrolled and replaced with fully_connected ops in the end.
       out = tf.matmul(

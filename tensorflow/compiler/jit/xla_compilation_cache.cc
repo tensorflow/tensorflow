@@ -124,6 +124,7 @@ XlaCompilationCache::BuildSignature(
     absl::Span<const XlaCompiler::Argument> args) {
   Signature signature;
   signature.name = Canonicalize(function.name(), AttrSlice(&function.attr()));
+
   for (const XlaCompiler::Argument& arg : args) {
     switch (arg.kind) {
       case XlaCompiler::Argument::kConstant:
@@ -131,7 +132,8 @@ XlaCompilationCache::BuildSignature(
         break;
       case XlaCompiler::Argument::kParameter:
       case XlaCompiler::Argument::kResource:
-        signature.arg_shapes.emplace_back(arg.type, arg.DimensionSizes());
+        signature.arg_shapes.emplace_back(arg.type,
+                                          arg.DimensionSizesAsInlinedVector());
         break;
       default:
         return errors::InvalidArgument(
@@ -257,7 +259,7 @@ Status XlaCompilationCache::CompileImpl(
   if (VLOG_IS_ON(2)) {
     VLOG(2) << "num_inputs=" << args.size();
     for (int i = 0; i < args.size(); i++) {
-      VLOG(2) << i << ": " << args[i].HumanString();
+      VLOG(3) << i << ": " << args[i].HumanString();
     }
   }
 

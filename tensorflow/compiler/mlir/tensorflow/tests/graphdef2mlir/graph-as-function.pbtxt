@@ -5,12 +5,12 @@
 # functions are converted.
 
 # CHECK:      func @main(%arg0: tensor<*x!tf.resource>, %arg1: tensor<*x!tf.resource<tensor<3x3x1x32xf32>>>, %arg2: tensor<*xf32>, %arg3: tensor<2x4x6x8xi32>) -> (tensor<f32>, tensor<f32>)
-# CHECK:      attributes {tf.entry_function = {inputs = "args_0,args_1,args_2,args_3", outputs = "rets_0_RetVal,rets_1_RetVal"}} {
-# CHECK:          %[[ISLAND_0:[0-9]]]:2 = tf_executor.island wraps "tf.Const"
-# CHECK:          %[[ISLAND_1:[0-9]]]:2 = tf_executor.island wraps "tf.Identity"(%[[ISLAND_0]]#0)
-# CHECK:          %[[ISLAND_2:[0-9]]]:2 = tf_executor.island wraps "tf.StatefulPartitionedCall"
+# CHECK:      attributes {tf.entry_function = {inputs = "args_0,args_1,args_2,args_3", outputs = "rets_0,rets_1"}} {
+# CHECK:          %[[ISLAND_0:.*]], %[[ISLAND_0_control:.*]] = tf_executor.island wraps "tf.Const"
+# CHECK:          %[[ISLAND_1:.*]], %[[ISLAND_1_control:.*]] = tf_executor.island wraps "tf.Identity"(%[[ISLAND_0]])
+# CHECK:          %[[ISLAND_2:.*]], %[[ISLAND_2_control:.*]] = tf_executor.island wraps "tf.StatefulPartitionedCall"
 # CHECK-SAME:       f = @[[FUNC:[a-z0-9]*]]
-# CHECK:          tf_executor.fetch %[[ISLAND_1]]#0, %[[ISLAND_2]]#0 : tensor<f32>, tensor<f32>
+# CHECK:          tf_executor.fetch %[[ISLAND_1]], %[[ISLAND_2]] : tensor<f32>, tensor<f32>
 # CHECK:      func @[[FUNC]](%arg0: tensor<*xf32>, %arg1: tensor<*x!tf.resource>) -> tensor<*xf32>
 
 node {

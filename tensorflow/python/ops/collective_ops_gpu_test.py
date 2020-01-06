@@ -54,6 +54,17 @@ class CollectiveOpGPUTest(test.TestCase):
     return config_pb2.ConfigProto(gpu_options=gpu_options,
                                   experimental=experimental)
 
+  def _ensure_context_initialized(self):
+    gpus = config.list_physical_devices('GPU')
+    if len(gpus) < 1:
+      self.skipTest('Expected at least 1 GPU but found {} GPUs'.format(
+          len(gpus)))
+    config.set_logical_device_configuration(gpus[0], [
+        context.LogicalDeviceConfiguration(1024),
+        context.LogicalDeviceConfiguration(1024)
+    ])
+    context.ensure_initialized()
+
   @test_util.run_deprecated_v1
   def testBasicNcclAllReduce(self):
     inputs = [[0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1],
@@ -265,14 +276,7 @@ class CollectiveOpGPUTest(test.TestCase):
 
   @test_util.run_v2_only
   def testCollectiveReduceMinMax(self):
-    gpus = config.list_physical_devices('GPU')
-    if len(gpus) != 1:
-      self.skipTest('Expected 1 GPU but found {} GPUs'.format(len(gpus)))
-    config.set_virtual_device_configuration(gpus[0], [
-        context.VirtualDeviceConfiguration(1024),
-        context.VirtualDeviceConfiguration(1024)
-    ])
-    context.ensure_initialized()
+    self._ensure_context_initialized()
 
     @def_function.function
     def run_all_reduce(group_key, instance_key, merge_op):
@@ -300,6 +304,27 @@ class CollectiveOpGPUTest(test.TestCase):
       expected = combination[1]
       for result in results:
         self.assertAllClose(result, expected, rtol=1e-5, atol=1e-5)
+
+  @test_util.run_v2_only
+  def testCollectiveGroupSizeOne(self):
+    self._ensure_context_initialized()
+
+    group_size = 1
+    group_key = 100
+    instance_key = 100
+    in_value = [1., 2., 3., 4.]
+    in_tensor = constant_op.constant(in_value)
+
+    with ops.device('/GPU:0'):
+      reduced_tensor = collective_ops.all_reduce(
+          in_tensor, group_size, group_key, instance_key, 'Add', 'Id',
+          communication_hint='nccl')
+    self.assertAllEqual(in_value, reduced_tensor.numpy())
+
+    with ops.device('/GPU:0'):
+      gathered_tensor = collective_ops.all_gather(
+          in_tensor, group_size, group_key, instance_key)
+    self.assertAllEqual(in_value, gathered_tensor.numpy())
 
 
 if __name__ == '__main__':

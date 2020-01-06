@@ -21,6 +21,7 @@ import abc
 import atexit
 import collections
 from collections import OrderedDict
+import functools
 import multiprocessing.pool
 import threading
 import time
@@ -31,6 +32,7 @@ from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python import tf2
 from tensorflow.python.data.experimental.ops import cardinality
+from tensorflow.python.data.experimental.ops.distribute_options import AutoShardPolicy
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import readers
@@ -39,6 +41,7 @@ from tensorflow.python.framework import composite_tensor_utils
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import smart_cond
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
@@ -50,10 +53,12 @@ from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.losses import util as tf_losses_utils
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.compat import collections_abc
 
 
@@ -248,7 +253,7 @@ class SliceAggregator(Aggregator):
     shape = (self.num_samples,) + batch_element.shape[1:]
     dtype = batch_element.dtype
     if isinstance(batch_element, ops.EagerTensor):
-      dtype = dtype.as_numpy_dtype()
+      dtype = dtype.as_numpy_dtype
 
     self.results = np.empty(shape=shape, dtype=dtype)
 
@@ -634,6 +639,65 @@ def standardize_sample_weights(sample_weight, output_names):
                                              'sample_weight')
 
 
+def handle_partial_sample_weights(outputs, sample_weights, sample_weight_modes,
+                                  check_all_flat=False):
+  """Adds 1.0 as sample weights for the outputs for which there is no weight.
+
+  Args:
+    outputs: List of model outputs.
+    sample_weights: List of sample weight inputs.
+    sample_weight_modes: List of sample weight modes or None.
+    check_all_flat: Ensure that inputs are not nested structures. This is not
+      a free check, so we may not want to run it eagerly every iteration.
+
+  Returns:
+    Tuple of sample weights, one sample weight for every output, and booleans
+    describing the raw sample weights.
+  """
+  any_sample_weight = sample_weights is not None and any(
+      w is not None for w in sample_weights)
+  partial_sample_weight = any_sample_weight and any(
+      w is None for w in sample_weights)
+
+  if not any_sample_weight:
+    return None, any_sample_weight, partial_sample_weight
+
+  if not partial_sample_weight:
+    return sample_weights, any_sample_weight, partial_sample_weight
+
+  if check_all_flat:
+    nest.assert_same_structure(
+        list_to_tuple(sample_weights),
+        list_to_tuple(nest.flatten(sample_weights)))
+    nest.assert_same_structure(
+        list_to_tuple(outputs),
+        list_to_tuple(nest.flatten(outputs)))
+    if sample_weight_modes is not None:
+      nest.assert_same_structure(
+          sample_weight_modes, nest.flatten(sample_weight_modes))
+
+  new_sample_weights = []
+  for i, sw in enumerate(sample_weights):
+    if sw is None:
+      as_numpy = isinstance(outputs[i], np.ndarray)
+      output = outputs[i]
+      output_shape = output.shape if as_numpy else array_ops.shape(output)
+
+      is_temporal = (
+          sample_weight_modes is not None and
+          sample_weight_modes[i] == 'temporal')
+      sw_shape = (output_shape[0],
+                  output_shape[1]) if is_temporal else (output_shape[0],)
+
+      new_sample_weights.append(
+          np.ones(sw_shape) if as_numpy else array_ops.ones(sw_shape))
+
+    else:
+      new_sample_weights.append(sw)
+  return (list_to_tuple(new_sample_weights),
+          any_sample_weight, partial_sample_weight)
+
+
 def check_array_lengths(inputs, targets, weights=None):
   """Does user input validation for numpy arrays.
 
@@ -862,7 +926,7 @@ def standardize_weights(y,
   the weights are multiplied.
 
   Arguments:
-      y: Numpy array of model targets to be weighted.
+      y: Numpy array or Tensor of model targets to be weighted.
       sample_weight: User-provided `sample_weight` argument.
       class_weight: User-provided `class_weight` argument.
       sample_weight_mode: One of `None` or `"temporal"`. `"temporal"` indicated
@@ -898,14 +962,12 @@ def standardize_weights(y,
                        'you should pass a 2D sample_weight array.')
   else:
     if sample_weight is not None and len(sample_weight.shape) != 1:
-      raise ValueError('Found a sample_weight array with shape ' +
-                       str(sample_weight.shape) + '. '
-                       'In order to use timestep-wise sample weights, '
-                       'you should specify '
-                       'sample_weight_mode="temporal" '
-                       'in compile(). If you just mean to use '
-                       'sample-wise weights, make sure your '
-                       'sample_weight array is 1D.')
+      raise ValueError('Found a sample_weight array with shape {}. In order to '
+                       'use timestep-wise sample weights, you should specify '
+                       'sample_weight_mode="temporal" in compile(); found "{}" '
+                       'instead. If you just mean to use sample-wise weights, '
+                       'make sure your sample_weight array is 1D.'
+                       .format(sample_weight.shape, sample_weight_mode))
 
   if sample_weight is not None:
     if len(sample_weight.shape) > len(y.shape):
@@ -928,25 +990,47 @@ def standardize_weights(y,
       raise ValueError('`class_weight` not supported for '
                        '3+ dimensional targets.')
 
-    if len(y.shape) == 2:
-      if y.shape[1] > 1:
-        y_classes = np.argmax(y, axis=1)
-      elif y.shape[1] == 1:
-        y_classes = np.reshape(y, y.shape[0])
+    if tensor_util.is_tensor(y):
+      # Few classes are expected, so densifying is reasonable.
+      keys = np.array(sorted(class_weight.keys()))
+      values = np.array([class_weight[i] for i in keys])
+      weight_vector = np.zeros(np.max(keys) + 1)
+      weight_vector[:] = np.nan
+      weight_vector[keys] = values
+
+      y_classes = smart_cond.smart_cond(
+          len(y.shape.as_list()) == 2 and K.shape(y)[1] > 1,
+          lambda: K.argmax(y, axis=1),
+          lambda: math_ops.cast(K.reshape(y, (-1,)), dtypes.int64)
+      )
+      class_sample_weight = array_ops.gather(weight_vector, y_classes)
+      gen_array_ops.check_numerics(
+          class_sample_weight,
+          'Invalid classes or class weights detected. NaN values indicate that '
+          'an appropriate class weight could not be determined.')
+      class_sample_weight = math_ops.cast(class_sample_weight, K.floatx())
+      if sample_weight is not None:
+        sample_weight = math_ops.cast(ops.convert_to_tensor(sample_weight),
+                                      K.floatx())
     else:
       y_classes = y
+      if len(y.shape) == 2:
+        if y.shape[1] > 1:
+          y_classes = np.argmax(y, axis=1)
+        elif y.shape[1] == 1:
+          y_classes = np.reshape(y, y.shape[0])
 
-    class_sample_weight = np.asarray(
-        [class_weight[cls] for cls in y_classes if cls in class_weight])
+      class_sample_weight = np.asarray(
+          [class_weight[cls] for cls in y_classes if cls in class_weight])
 
-    if len(class_sample_weight) != len(y_classes):
-      # subtract the sets to pick all missing classes
-      existing_classes = set(y_classes)
-      existing_class_weight = set(class_weight.keys())
-      raise ValueError(
-          '`class_weight` must contain all classes in the data.'
-          ' The classes %s exist in the data but not in '
-          '`class_weight`.' % (existing_classes - existing_class_weight))
+      if len(class_sample_weight) != len(y_classes):
+        # subtract the sets to pick all missing classes
+        existing_classes = set(y_classes)
+        existing_class_weight = set(class_weight.keys())
+        raise ValueError(
+            '`class_weight` must contain all classes in the data.'
+            ' The classes %s exist in the data but not in '
+            '`class_weight`.' % (existing_classes - existing_class_weight))
 
   if class_sample_weight is not None and sample_weight is not None:
     # Multiply weights if both are provided.
@@ -1062,6 +1146,7 @@ def call_metric_function(metric_fn,
       weights = mask
     else:
       # Update dimensions of weights to match with mask.
+      weights = math_ops.cast(weights, dtype=y_pred.dtype)
       mask, _, weights = tf_losses_utils.squeeze_or_expand_dimensions(
           mask, sample_weight=weights)
       weights *= mask
@@ -1076,6 +1161,12 @@ def get_loss_function(loss):
   """Returns the loss corresponding to the loss input in `compile` API."""
   if loss is None or isinstance(loss, losses.Loss):
     return loss
+
+  if tf_inspect.isclass(loss) and issubclass(loss, losses.Loss):
+    # It is not safe to assume that the loss takes no constructor arguments.
+    raise ValueError(
+        'Received uninstantiated Loss class: {}\nPlease call loss ""classes '
+        'before passing them to Model.compile.'.format(loss))
 
   # Deserialize loss configuration, if needed.
   if isinstance(loss, collections_abc.Mapping):
@@ -1096,6 +1187,52 @@ def get_loss_function(loss):
       loss_fn,
       name=loss_fn.__name__,
       reduction=losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE)
+
+
+class RespectCompiledTrainableState(object):
+  """Set and restore trainable state if it has changed since compile.
+
+  The keras API guarantees that the value of each Layer's `trainable` property
+  at `Model.compile` time will be used when training that model. In order to
+  respect this requirement, it may be necessary to set the trainable value of
+  layers to their compile time values before beginning a training endpoint and
+  restore the values before returing from said endpoint. This scope checks if
+  any layer's trainable state has changed since Model compile, and performs this
+  set and un-set bookkeeping.
+
+  However, the trainable state of a layer changes quite infrequently, if ever,
+  for many kinds of workflows. Moreover, updating every layer in a model is an
+  expensive operation. As a result, we will only explicitly set and unset the
+  trainable state of a model if a trainable value has changed since compile.
+  """
+
+  def __init__(self, model):
+    self._model = model
+    self._current_trainable_state = None
+    self._compiled_trainable_state = None
+    self._should_set_trainable = False
+
+  def __enter__(self):
+    self._current_trainable_state = self._model._get_trainable_state()  # pylint: disable=protected-access
+    self._compiled_trainable_state = self._model._compiled_trainable_state  # pylint: disable=protected-access
+
+    # Check to see if any layer's trainable state has changed since `compile`.
+    for layer, trainable in self._compiled_trainable_state.items():
+      if (layer in self._current_trainable_state and
+          trainable != self._current_trainable_state[layer]):
+        self._should_set_trainable = True
+        break
+
+    # If so, restore the model to its compiled state.
+    if self._should_set_trainable:
+      self._model._set_trainable_state(self._compiled_trainable_state)  # pylint: disable=protected-access
+
+  def __exit__(self, type_arg, value_arg, traceback_arg):
+    # If we set the values to their compiled state in __enter__, we need to
+    # restore the original values before leaving the scope.
+    if self._should_set_trainable:
+      self._model._set_trainable_state(self._current_trainable_state)  # pylint: disable=protected-access
+    return False  # False values do not suppress exceptions
 
 
 def validate_dataset_input(x, y, sample_weight, validation_split=None):
@@ -1194,7 +1331,7 @@ def check_steps_argument(input_data, steps, steps_name):
         but not provided.
   """
   is_x_iterator = isinstance(
-      input_data, (iterator_ops.Iterator, iterator_ops.IteratorV2))
+      input_data, (iterator_ops.Iterator, iterator_ops.OwnedIterator))
   if (input_data is None or is_x_iterator or has_symbolic_tensors(input_data) or
       (isinstance(input_data, list) and not input_data)):
     if steps is None:
@@ -1254,17 +1391,19 @@ def cast_if_floating_dtype_and_mismatch(targets, outputs):
   return new_targets
 
 
-def cast_if_floating_dtype(x):
+def cast_if_floating_dtype(x, dtype=None):
   """Casts the given data tensors to the default floating point type.
 
   Casts only if the input is already a floating point type.
   Args:
     x: tensor or list/tuple of tensors.
+    dtype: The dtype to which Tensors should be cast.
 
   Returns:
     Converted input.
   """
-  return nest.map_structure(cast_single_tensor, x)
+  return nest.map_structure(functools.partial(cast_single_tensor, dtype=dtype),
+                            x)
 
 
 def cast_to_model_input_dtypes(x, model):
@@ -1415,8 +1554,8 @@ def is_feature_layer(layer):
 
 def is_eager_dataset_or_iterator(data):
   return context.executing_eagerly() and isinstance(
-      data,
-      (dataset_ops.DatasetV1, dataset_ops.DatasetV2, iterator_ops.IteratorV2))
+      data, (dataset_ops.DatasetV1, dataset_ops.DatasetV2,
+             iterator_ops.OwnedIterator))
 
 
 # pylint: disable=protected-access
@@ -1553,7 +1692,7 @@ def verify_dataset_shuffled(x):
 
 def is_dataset_or_iterator(data):
   return isinstance(data, (dataset_ops.DatasetV1, dataset_ops.DatasetV2,
-                           iterator_ops.Iterator, iterator_ops.IteratorV2))
+                           iterator_ops.Iterator, iterator_ops.OwnedIterator))
 
 
 def get_iterator(dataset):
@@ -1647,7 +1786,8 @@ def infer_steps_for_dataset(model,
   """
   assert isinstance(dataset, dataset_ops.DatasetV2)
   if (model._in_multi_worker_mode() and
-      dataset.options().experimental_distribute.auto_shard):
+      (dataset.options().experimental_distribute.auto_shard_policy !=
+       AutoShardPolicy.OFF)):
     # If the dataset would be auto-sharded, we should not infer a local
     # steps_per_epoch due to the possible inbalanced sharding between workers.
     return None
@@ -1890,7 +2030,7 @@ def split_training_and_validation_data(x, y, sample_weights, validation_split):
   return x, y, sample_weights, val_x, val_y, val_sample_weights
 
 
-def unpack_validation_data(validation_data):
+def unpack_validation_data(validation_data, raise_if_ambiguous=True):
   """Unpack validation data based input type.
 
   The validation data is not touched if its dataset or dataset iterator.
@@ -1899,12 +2039,15 @@ def unpack_validation_data(validation_data):
 
   Args:
     validation_data: dataset, dataset iterator, or numpy, tensor tuple.
+    raise_if_ambiguous: boolean on whether to fail if validation_data cannot be
+      parsed. Otherwise simply return validation_data, None, None and defer the
+      decision to the caller.
 
   Returns:
     tuple of 3, (x, y, sample_weights) for numpy and tensor input.
   """
   if (isinstance(validation_data, (iterator_ops.Iterator,
-                                   iterator_ops.IteratorV2,
+                                   iterator_ops.OwnedIterator,
                                    dataset_ops.DatasetV2,
                                    data_utils.Sequence))
       or not hasattr(validation_data, '__len__')):
@@ -1912,18 +2055,26 @@ def unpack_validation_data(validation_data):
     val_y = None
     val_sample_weight = None
   elif len(validation_data) == 2:
-    val_x, val_y = validation_data  # pylint: disable=unpacking-non-sequence
-    val_sample_weight = None
+    try:
+      val_x, val_y = validation_data  # pylint: disable=unpacking-non-sequence
+      val_sample_weight = None
+    except ValueError:
+      val_x, val_y, val_sample_weight = validation_data, None, None
   elif len(validation_data) == 3:
-    val_x, val_y, val_sample_weight = validation_data  # pylint: disable=unpacking-non-sequence
+    try:
+      val_x, val_y, val_sample_weight = validation_data  # pylint: disable=unpacking-non-sequence
+    except ValueError:
+      val_x, val_y, val_sample_weight = validation_data, None, None
   else:
-    raise ValueError(
-        'When passing a `validation_data` argument, '
-        'it must contain either 2 items (x_val, y_val), '
-        'or 3 items (x_val, y_val, val_sample_weights), '
-        'or alternatively it could be a dataset or a '
-        'dataset or a dataset iterator. '
-        'However we received `validation_data=%s`' % validation_data)
+    if raise_if_ambiguous:
+      raise ValueError(
+          'When passing a `validation_data` argument, '
+          'it must contain either 2 items (x_val, y_val), '
+          'or 3 items (x_val, y_val, val_sample_weights), '
+          'or alternatively it could be a dataset or a '
+          'dataset or a dataset iterator. '
+          'However we received `validation_data=%s`' % validation_data)
+    val_x, val_y, val_sample_weight = validation_data, None, None
   return val_x, val_y, val_sample_weight
 
 

@@ -17,14 +17,40 @@ limitations under the License.
 
 namespace xla {
 
+absl::optional<ReductionKind> MatchReductionComputation(
+    const HloComputation* computation) {
+  namespace m = match;
+  const HloInstruction* root = computation->root_instruction();
+
+  auto match_opcode = [&](HloOpcode opcode) {
+    return Match(
+        root, m::Op()
+                  .WithOpcode(opcode)
+                  .WithBinaryOperandsAnyOrder(m::Parameter(0), m::Parameter(1))
+                  .WithShape(m::Shape().IsEffectiveScalar()));
+  };
+
+  if (match_opcode(HloOpcode::kAdd)) {
+    return ReductionKind::SUM;
+  } else if (match_opcode(HloOpcode::kMultiply)) {
+    return ReductionKind::PRODUCT;
+  } else if (match_opcode(HloOpcode::kMinimum)) {
+    return ReductionKind::MIN;
+  } else if (match_opcode(HloOpcode::kMaximum)) {
+    return ReductionKind::MAX;
+  } else {
+    return absl::nullopt;
+  }
+}
+
 StatusOr<std::vector<int64>> GetParticipatingReplicas(
-    int64 device_ordinal, const HloInstruction* instr,
+    int64 device_ordinal, absl::Span<const ReplicaGroup> replica_groups,
     int64 total_replica_count, const DeviceAssignment& device_assn) {
   std::vector<int64> participating_replicas;
 
   // Empty replica_groups() means that all replicas participate in one big
   // group.
-  if (instr->replica_groups().empty()) {
+  if (replica_groups.empty()) {
     participating_replicas.resize(total_replica_count);
     absl::c_iota(participating_replicas, 0);
     return participating_replicas;
@@ -36,16 +62,15 @@ StatusOr<std::vector<int64>> GetParticipatingReplicas(
 
   // Figure out the other replicas that go together with this one.
   absl::optional<ReplicaGroup> replica_group;
-  for (const ReplicaGroup& g : instr->replica_groups()) {
+  for (const ReplicaGroup& g : replica_groups) {
     if (absl::c_linear_search(g.replica_ids(), replica_id)) {
       CHECK(!replica_group.has_value())
-          << "Replica appears twice in replica groups? " << instr->ToString();
+          << "Replica " << replica_id << " appears twice in replica groups";
       replica_group = g;
     }
   }
   CHECK(replica_group.has_value())
-      << "Replica " << replica_id << " doesn't appear in replica groups? "
-      << instr->ToString();
+      << "Replica " << replica_id << " doesn't appear in replica groups? ";
 
   participating_replicas.insert(participating_replicas.begin(),
                                 replica_group->replica_ids().begin(),

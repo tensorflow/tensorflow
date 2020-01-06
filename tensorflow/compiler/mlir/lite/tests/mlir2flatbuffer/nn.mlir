@@ -12,7 +12,7 @@ func @main(tensor<1x6x6x16xf32>) -> tensor<1x1x1x16xf32> {
   // CHECK-NEXT:     tensors: [ {
   // CHECK-NEXT:       shape: [ 1, 6, 6, 16 ],
   // CHECK-NEXT:       buffer: 1,
-  // CHECK-NEXT:       name: "Input",
+  // CHECK-NEXT:       name: "arg0",
   // CHECK-NEXT:       quantization: {
   // CHECK-EMPTY:
   // CHECK-NEXT:       }
@@ -50,7 +50,6 @@ func @main(tensor<1x6x6x16xf32>) -> tensor<1x1x1x16xf32> {
   // CHECK-NEXT:   } ]
   // CHECK-NEXT: }
 
-  %0 = "tfl.pseudo_input"(%arg0) : (tensor<1x6x6x16xf32>) -> tensor<1x6x6x16xf32> loc("Input")
-  %1 = "tfl.average_pool_2d"(%0) {filter_height = 3 : i32, filter_width = 6 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 3 : i32, stride_w = 1 : i32} : (tensor<1x6x6x16xf32>) -> tensor<1x1x1x16xf32> loc("avgpool")
-  return %1 : tensor<1x1x1x16xf32>
+  %0 = "tfl.average_pool_2d"(%arg0) {filter_height = 3 : i32, filter_width = 6 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 3 : i32, stride_w = 1 : i32} : (tensor<1x6x6x16xf32>) -> tensor<1x1x1x16xf32> loc("avgpool")
+  return %0 : tensor<1x1x1x16xf32>
 }

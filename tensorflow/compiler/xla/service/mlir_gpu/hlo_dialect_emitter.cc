@@ -16,13 +16,15 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/mlir_gpu/hlo_dialect_emitter.h"
 
 #include "llvm/ADT/STLExtras.h"
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
-#include "mlir/IR/Types.h"  // TF:local_config_mlir
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/IR/Types.h"  // TF:llvm-project
+#include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 
 namespace xla {
 namespace mlir_gpu {
@@ -30,71 +32,57 @@ namespace {
 
 using ::mlir::ArrayRef;
 using ::mlir::Attribute;
-using ::mlir::Builder;
 using ::mlir::Identifier;
 using ::mlir::Location;
 using ::mlir::NamedAttribute;
 using ::mlir::OpBuilder;
-using ::mlir::ShapedType;
+using ::mlir::RankedTensorType;
 using ::mlir::Type;
 using ::mlir::Value;
 
 namespace hlo = ::mlir::xla_hlo;
 
 // TODO(b/137624192) Use tablegen for this.
-StatusOr<Value*> InsertMlirOp(
-    HloOpcode opcode, OpBuilder func_builder, Location loc, ArrayRef<Type> rets,
-    ArrayRef<Value*> args, ArrayRef<std::pair<Identifier, Attribute>> attrs) {
+StatusOr<Value> InsertMlirOp(HloOpcode opcode, OpBuilder func_builder,
+                             Location loc, ArrayRef<Type> rets,
+                             ArrayRef<Value> args,
+                             ArrayRef<std::pair<Identifier, Attribute>> attrs) {
   switch (opcode) {
+    case HloOpcode::kAbs:
+      return {func_builder.create<hlo::AbsOp>(loc, rets, args, attrs)};
     case HloOpcode::kAdd:
       return {func_builder.create<hlo::AddOp>(loc, rets, args, attrs)};
-    case HloOpcode::kMultiply:
-      return {func_builder.create<hlo::MulOp>(loc, rets, args, attrs)};
-    case HloOpcode::kSubtract:
-      return {func_builder.create<hlo::SubOp>(loc, rets, args, attrs)};
-    case HloOpcode::kDivide:
-      return {func_builder.create<hlo::DivOp>(loc, rets, args, attrs)};
     case HloOpcode::kAnd:
       return {func_builder.create<hlo::AndOp>(loc, rets, args, attrs)};
-    case HloOpcode::kMinimum:
-      return {func_builder.create<hlo::MinOp>(loc, rets, args, attrs)};
-    case HloOpcode::kMaximum:
-      return {func_builder.create<hlo::MaxOp>(loc, rets, args, attrs)};
+    case HloOpcode::kCeil:
+      return {func_builder.create<hlo::CeilOp>(loc, rets, args, attrs)};
+    case HloOpcode::kCos:
+      return {func_builder.create<hlo::CosOp>(loc, rets, args, attrs)};
+    case HloOpcode::kDivide:
+      return {func_builder.create<hlo::DivOp>(loc, rets, args, attrs)};
     case HloOpcode::kExp:
       return {func_builder.create<hlo::ExpOp>(loc, rets, args, attrs)};
+    case HloOpcode::kMaximum:
+      return {func_builder.create<hlo::MaxOp>(loc, rets, args, attrs)};
+    case HloOpcode::kMinimum:
+      return {func_builder.create<hlo::MinOp>(loc, rets, args, attrs)};
+    case HloOpcode::kMultiply:
+      return {func_builder.create<hlo::MulOp>(loc, rets, args, attrs)};
+    case HloOpcode::kNegate:
+      return {func_builder.create<hlo::NegOp>(loc, rets, args, attrs)};
+    case HloOpcode::kRemainder:
+      return {func_builder.create<hlo::RemOp>(loc, rets, args, attrs)};
     case HloOpcode::kSelect:
       return {func_builder.create<hlo::SelectOp>(loc, rets, args, attrs)};
+    case HloOpcode::kSign:
+      return {func_builder.create<hlo::SignOp>(loc, rets, args, attrs)};
+    case HloOpcode::kSubtract:
+      return {func_builder.create<hlo::SubOp>(loc, rets, args, attrs)};
+    case HloOpcode::kTanh:
+      return {func_builder.create<hlo::TanhOp>(loc, rets, args, attrs)};
     default:
       return tensorflow::errors::Internal(absl::StrCat(
-          "Opcode ", HloOpcodeString(opcode), " is not supported."));
-  }
-}
-
-StatusOr<::mlir::TensorType> ConvertTensorType(const Shape& shape,
-                                               Builder builder) {
-  auto dimensions = shape.dimensions();
-  llvm::SmallVector<int64_t, 4> array(dimensions.begin(), dimensions.end());
-
-  switch (shape.element_type()) {
-    case PrimitiveType::PRED:
-      return mlir::RankedTensorType::get(array, builder.getI1Type());
-    case PrimitiveType::F16:
-      return mlir::RankedTensorType::get(array, builder.getF16Type());
-    case PrimitiveType::F32:
-      return mlir::RankedTensorType::get(array, builder.getF32Type());
-    case PrimitiveType::F64:
-      return mlir::RankedTensorType::get(array, builder.getF64Type());
-    case PrimitiveType::S8:
-      return mlir::RankedTensorType::get(array, builder.getIntegerType(8));
-    case PrimitiveType::S16:
-      return mlir::RankedTensorType::get(array, builder.getIntegerType(16));
-    case PrimitiveType::S32:
-      return mlir::RankedTensorType::get(array, builder.getIntegerType(32));
-    case PrimitiveType::S64:
-      return mlir::RankedTensorType::get(array, builder.getIntegerType(64));
-    default:
-      return tensorflow::errors::Internal(absl::StrCat(
-          "Unsupported type: ", PrimitiveType_Name(shape.element_type())));
+          "HLO Opcode ", HloOpcodeString(opcode), " is not supported."));
   }
 }
 
@@ -105,7 +93,7 @@ mlir::Location HloDialectEmitter::getLocation(
   return emission_context_->getLocation(instr);
 }
 
-StatusOr<Value*> HloDialectEmitter::EmitComputation(
+StatusOr<Value> HloDialectEmitter::EmitComputation(
     const HloComputation& computation) {
   const auto root = computation.root_instruction();
   TF_RETURN_IF_ERROR(root->Accept(this));
@@ -113,19 +101,28 @@ StatusOr<Value*> HloDialectEmitter::EmitComputation(
 }
 
 Status HloDialectEmitter::DefaultAction(HloInstruction* instr) {
-  TF_ASSIGN_OR_RETURN(auto res_type,
-                      ConvertTensorType(instr->shape(), builder_));
-
-  auto name_attr =
-      builder_.getNamedAttr("name", builder_.getStringAttr(instr->name()));
-  llvm::SmallVector<Value*, 4> arguments;
+  TF_ASSIGN_OR_RETURN(auto res_type, ConvertTensorShapeToType<RankedTensorType>(
+                                         instr->shape(), builder_));
+  llvm::SmallVector<Value, 4> arguments;
   for (auto operand : instr->operands()) {
     arguments.push_back(instruction_to_values_[operand]);
   }
   TF_ASSIGN_OR_RETURN(
       auto inserted, InsertMlirOp(instr->opcode(), builder_, getLocation(instr),
-                                  res_type, arguments, name_attr));
+                                  res_type, arguments, llvm::None));
   instruction_to_values_[instr] = inserted;
+  return Status::OK();
+}
+
+Status HloDialectEmitter::HandleBroadcast(HloInstruction* broadcast) {
+  mlir::DenseIntElementsAttr broadcast_dim =
+      CreateDenseIntElementsAttrFromVector(broadcast->dimensions(), builder_);
+  TF_ASSIGN_OR_RETURN(Type res_type, ConvertTensorShapeToType<RankedTensorType>(
+                                         broadcast->shape(), builder_));
+
+  instruction_to_values_[broadcast] = builder_.create<hlo::BroadcastInDimOp>(
+      getLocation(broadcast), llvm::makeArrayRef(res_type),
+      instruction_to_values_[broadcast->operand(0)], broadcast_dim);
   return Status::OK();
 }
 
@@ -135,54 +132,16 @@ Status HloDialectEmitter::HandleParameter(HloInstruction* param) {
   return Status::OK();
 }
 
-namespace {
-
-template <typename CppType>
-::mlir::DenseElementsAttr CreateDenseAttrFromLiteral(const ShapedType& type,
-                                                     const Literal& literal) {
-  auto data_span = literal.data<CppType>();
-  return ::mlir::DenseElementsAttr::get(
-      type, llvm::makeArrayRef(data_span.data(), data_span.size()));
-}
-
-}  // namespace
-
 Status HloDialectEmitter::HandleConstant(HloInstruction* constant) {
-  TF_ASSIGN_OR_RETURN(auto type,
-                      ConvertTensorType(constant->shape(), builder_));
-  const auto& literal = constant->literal();
-  auto element_type = constant->shape().element_type();
-
-  mlir::DenseElementsAttr value;
-  switch (element_type) {
-    case PrimitiveType::PRED:
-      value = CreateDenseAttrFromLiteral<bool>(type, literal);
-      break;
-    case PrimitiveType::F16:
-      value = CreateDenseAttrFromLiteral<float>(type, literal);
-      break;
-    case PrimitiveType::F32:
-      value = CreateDenseAttrFromLiteral<float>(type, literal);
-      break;
-    case PrimitiveType::F64:
-      value = CreateDenseAttrFromLiteral<double>(type, literal);
-      break;
-    case PrimitiveType::S8:
-      value = CreateDenseAttrFromLiteral<int8>(type, literal);
-      break;
-    case PrimitiveType::S16:
-      value = CreateDenseAttrFromLiteral<int16>(type, literal);
-      break;
-    case PrimitiveType::S32:
-      value = CreateDenseAttrFromLiteral<int32>(type, literal);
-      break;
-    case PrimitiveType::S64:
-      value = CreateDenseAttrFromLiteral<int64>(type, literal);
-      break;
-    default:
-      return tensorflow::errors::Internal(
-          absl::StrCat("Unsupported type: ", PrimitiveType_Name(element_type)));
+  auto shape = constant->shape();
+  if (!shape.IsArray() || shape.rank() != 0) {
+    return Unimplemented("non-scalar constants are not supported yet");
   }
+  TF_ASSIGN_OR_RETURN(auto type, ConvertTensorShapeToType<RankedTensorType>(
+                                     constant->shape(), builder_));
+
+  TF_ASSIGN_OR_RETURN(auto value, CreateDenseElementsAttrFromLiteral(
+                                      constant->literal(), builder_));
 
   auto const_value =
       builder_.create<hlo::ConstOp>(getLocation(constant), type, value);
@@ -191,20 +150,16 @@ Status HloDialectEmitter::HandleConstant(HloInstruction* constant) {
 }
 
 Status HloDialectEmitter::HandleReduce(HloInstruction* reduce) {
-  llvm::SmallVector<Value*, 4> operands;
+  llvm::SmallVector<Value, 4> operands;
   for (auto operand : reduce->operands()) {
     operands.push_back(instruction_to_values_.at(operand));
   }
   const unsigned num_inputs = operands.size() / 2;
-  TF_ASSIGN_OR_RETURN(const auto return_type,
-                      ConvertTensorType(reduce->shape(), builder_));
-  const auto& dimensions = reduce->dimensions();
+  TF_ASSIGN_OR_RETURN(
+      const auto return_type,
+      ConvertTensorShapeToType<RankedTensorType>(reduce->shape(), builder_));
   const auto dimensions_attr =
-      ::mlir::DenseIntElementsAttr::get(
-          mlir::RankedTensorType::get(dimensions.size(),
-                                      builder_.getIntegerType(64)),
-          llvm::makeArrayRef(dimensions))
-          .cast<::mlir::DenseIntElementsAttr>();
+      CreateDenseIntElementsAttrFromVector(reduce->dimensions(), builder_);
   auto reduceOp = builder_.create<hlo::ReduceOp>(
       getLocation(reduce), return_type,
       llvm::makeArrayRef(operands).take_front(num_inputs),
@@ -212,11 +167,12 @@ Status HloDialectEmitter::HandleReduce(HloInstruction* reduce) {
   {
     auto computation = reduce->to_apply();
     auto block = new mlir::Block();
-    llvm::SmallVector<Value*, 4> arguments;
+    llvm::SmallVector<Value, 4> arguments;
     arguments.reserve(computation->num_parameters());
     for (auto parameter : computation->parameter_instructions()) {
       TF_ASSIGN_OR_RETURN(auto param_type,
-                          ConvertTensorType(parameter->shape(), builder_));
+                          ConvertTensorShapeToType<RankedTensorType>(
+                              parameter->shape(), builder_));
       arguments.push_back(block->addArgument(param_type));
     }
     reduceOp.body().push_back(block);
@@ -225,7 +181,7 @@ Status HloDialectEmitter::HandleReduce(HloInstruction* reduce) {
     OpBuilder body_builder(block);
     body_builder.setInsertionPointToEnd(block);
     body_builder.create<hlo::ReturnOp>(getLocation(reduce),
-                                       ArrayRef<Value*>{result});
+                                       ArrayRef<Value>{result});
   }
   // TODO(b/137624192) Add support for multiple results.
   instruction_to_values_[reduce] = reduceOp.getResult(0);
@@ -233,20 +189,29 @@ Status HloDialectEmitter::HandleReduce(HloInstruction* reduce) {
 }
 
 Status HloDialectEmitter::HandleCompare(HloInstruction* compare) {
-  TF_ASSIGN_OR_RETURN(Type res_type,
-                      ConvertTensorType(compare->shape(), builder_));
-  llvm::SmallVector<NamedAttribute, 2> attributes{
-      builder_.getNamedAttr("name", builder_.getStringAttr(compare->name())),
-      builder_.getNamedAttr("comparison_direction",
-                            builder_.getStringAttr(ComparisonDirectionToString(
-                                compare->comparison_direction())))};
-  llvm::SmallVector<Value*, 4> arguments;
+  TF_ASSIGN_OR_RETURN(Type res_type, ConvertTensorShapeToType<RankedTensorType>(
+                                         compare->shape(), builder_));
+  auto comparison_direction_attr = builder_.getNamedAttr(
+      "comparison_direction",
+      builder_.getStringAttr(
+          ComparisonDirectionToString(compare->comparison_direction())));
+  llvm::SmallVector<Value, 4> arguments;
   for (auto operand : compare->operands()) {
     arguments.push_back(instruction_to_values_[operand]);
   }
   instruction_to_values_[compare] = builder_.create<hlo::CompareOp>(
       getLocation(compare), llvm::makeArrayRef(res_type), arguments,
-      attributes);
+      comparison_direction_attr);
+  return Status::OK();
+}
+
+Status HloDialectEmitter::HandleIota(HloInstruction* iota) {
+  mlir::IntegerAttr iota_dim = builder_.getI64IntegerAttr(
+      static_cast<HloIotaInstruction*>(iota)->iota_dimension());
+  TF_ASSIGN_OR_RETURN(Type res_type, ConvertTensorShapeToType<RankedTensorType>(
+                                         iota->shape(), builder_));
+  instruction_to_values_[iota] =
+      builder_.create<hlo::IotaOp>(getLocation(iota), res_type, iota_dim);
   return Status::OK();
 }
 

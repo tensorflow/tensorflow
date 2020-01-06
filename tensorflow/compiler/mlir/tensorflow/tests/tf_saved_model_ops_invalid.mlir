@@ -13,7 +13,7 @@ module attributes {tf_saved_model.semantics} {
 
 module attributes {tf_saved_model.semantics} {
 
-  // expected-error@+1 {{'tf_saved_model.bound_input' attribute should be a SymbolRefAttr}}
+  // expected-error@+1 {{'tf_saved_model.bound_input' attribute should be a FlatSymbolRefAttr}}
   func @f(
     %arg0: tensor<f32> {tf_saved_model.bound_input = 1 : i32}
   ) attributes { tf_saved_model.exported_names = ["foo.some_func"] } {
@@ -133,7 +133,7 @@ module attributes {tf_saved_model.semantics} {
 
 module attributes {tf_saved_model.semantics} {
 
-  "tf_saved_model.global_tensor"() { sym_name = "some_constant", value = dense<42.0> : tensor<f32> } : () -> ()
+  "tf_saved_model.global_tensor"() { sym_name = "some_constant", type = tensor<f32>, value = dense<42.0> : tensor<f32> } : () -> ()
 
   // expected-error@+1 {{all 'tf_saved_model.index_path' arg attributes should precede all 'tf_saved_model.bound_input' arg attributes}}
   func @f(
@@ -143,4 +143,85 @@ module attributes {tf_saved_model.semantics} {
     return
   }
 
+}
+
+// -----
+
+module attributes {tf_saved_model.semantics} {
+
+  // expected-error@+1 {{all results should have 'tf_saved_model.index_path' attributes}}
+  func @f() -> tensor<f32>
+  attributes { tf_saved_model.exported_names = ["f"] } {
+    %ret = "some_dialect.some_op"() : () -> tensor<f32>
+    return %ret : tensor<f32>
+  }
+
+}
+
+// -----
+
+module attributes {tf_saved_model.semantics} {
+
+  // Sanity-check that we are verifying tf_saved_model.index_path attributes
+  // on results as well. The underlying verification logic is shared,
+  // so no need to test all error cases.
+
+  // expected-error@+1 {{'tf_saved_model.index_path' elements should be strings or 64-bit integers}}
+  func @f() -> (tensor<f32> {tf_saved_model.index_path = [1.0]})
+  attributes { tf_saved_model.exported_names = ["f"] } {
+    %ret = "some_dialect.some_op"() : () -> tensor<f32>
+    return %ret : tensor<f32>
+  }
+
+}
+
+// -----
+
+module attributes {tf_saved_model.semantics} {
+
+  func @f() attributes { tf_saved_model.exported_names = ["f"] } {
+    // expected-error@+1 {{exported function cannot be internally referenced}}
+    "some_dialect.some_call"() { callee = @g } : () -> ()
+    return
+  }
+
+  // expected-note@+1 {{references this exported function}}
+  func @g() attributes { tf_saved_model.exported_names = ["g"] } {
+    return
+  }
+
+}
+
+// -----
+
+// expected-error@+1 {{modules with 'tf_saved_model.semantics' must have analyzable symbol uses}}
+module attributes {tf_saved_model.semantics} {
+
+  func @root() attributes {tf_saved_model.exported_names = ["root"]} {
+    "some_unregistered_dialect.maybe_a_symbol_table"() ({
+      return
+    }) : () -> ()
+    return
+  }
+
+}
+
+// -----
+
+module attributes {tf_saved_model.semantics} {
+  // expected-error@+1 {{'type' and 'value' attributes should have compatible tensor types}}
+  "tf_saved_model.global_tensor"() { is_mutable, sym_name = "v0", type = tensor<3xf32>, value = dense<42.0> : tensor<9xf32> } : () -> ()
+}
+
+// -----
+
+module attributes {tf_saved_model.semantics} {
+  "tf_saved_model.global_tensor"() { is_mutable, sym_name = "v", type = tensor<f32>, value = dense<42.0> : tensor<f32> } : () -> ()
+  // expected-error@+1 {{duplicate 'tf_saved_model.bound_input' binding}}
+  func @f(
+    %arg0: tensor<*x!tf.resource> {tf_saved_model.bound_input = @v},
+    %arg1: tensor<*x!tf.resource> {tf_saved_model.bound_input = @v}
+  ) attributes {tf_saved_model.exported_names = ["f"]} {
+    return
+  }
 }

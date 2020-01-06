@@ -305,12 +305,15 @@ Status InferenceContext::ConvertOperations(
 
     OperationDef op_def;
     op_def.precision = precision_;
-    op_def.batch_support = outputs[0]->tensor.shape.b != 1;
     for (int j = 0; j < inputs.size(); ++j) {
+      op_def.batch_support =
+          op_def.batch_support || inputs[j]->tensor.shape.b != 1;
       op_def.src_tensors.push_back(
           tensor_reserver_.Get(inputs[j]->id).descriptor);
     }
     for (int j = 0; j < outputs.size(); ++j) {
+      op_def.batch_support =
+          op_def.batch_support || outputs[j]->tensor.shape.b != 1;
       op_def.dst_tensors.push_back(
           tensor_reserver_.Get(outputs[j]->id).descriptor);
     }
@@ -339,7 +342,7 @@ Status InferenceContext::ConvertOperations(
       }
       cl_node.outputs.resize(gpu_op.output_ids.size());
       for (int j = 0; j < gpu_op.output_ids.size(); ++j) {
-        int id = gpu_op.input_ids[j];
+        int id = gpu_op.output_ids[j];
         if (id >= 0) {
           cl_node.outputs[j] = outputs[id]->id;
         } else {
@@ -385,6 +388,13 @@ void InferenceContext::Merge() {
         dynamic_cast<ElementwiseOperation*>(linkable_node.operations[0].get());
     if (!elementwise || linkable_node.outputs.size() != 1 ||
         !IsReady(ready_tensors, linkable_node)) {
+      continue;
+    }
+    const auto& original_dst_def =
+        node.operations[0]->GetDefinition().dst_tensors[0];
+    const auto& link_dst_def =
+        linkable_node.operations[0]->GetDefinition().dst_tensors[0];
+    if (original_dst_def != link_dst_def) {
       continue;
     }
     MergeCLNodes(&linkable_node, &node);

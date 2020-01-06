@@ -49,7 +49,7 @@ def make_global_batch_norm_tests(options):
         x, mean, variance, scale, offset, parameters["epsilon"],
         parameters["scale_after"])
 
-    input_tensor = tf.placeholder(
+    input_tensor = tf.compat.v1.placeholder(
         dtype=parameters["dtype"],
         name="input",
         shape=parameters["input_shape"])

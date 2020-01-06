@@ -16,26 +16,22 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/optimized/integer_ops/fully_connected.h"
 
 #include <algorithm>
-#include <cassert>
-#include <cmath>
+#include <cstddef>
 #include <cstdint>
-#include <cstdio>
-#include <cstdlib>
-#include <iostream>
-#include <limits>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
-#include "tensorflow/lite/kernels/activation_functor.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
+#include "tensorflow/lite/kernels/internal/reference/fully_connected.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/fully_connected.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
+#include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/op_macros.h"
 
 namespace tflite {
 namespace ops {
@@ -127,7 +123,7 @@ void Free(TfLiteContext* context, void* buffer) {
   delete reinterpret_cast<OpData*>(buffer);
 }
 
-TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
+TfLiteStatus PrepareImpl(TfLiteContext* context, TfLiteNode* node) {
   auto* params =
       reinterpret_cast<TfLiteFullyConnectedParams*>(node->builtin_data);
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
@@ -232,6 +228,29 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                     context->ResizeTensor(context, output, output_size_array));
 
   return kTfLiteOk;
+}
+
+template <KernelType kernel_type>
+TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
+  // Check for supported activation types.
+  auto* params =
+      reinterpret_cast<TfLiteFullyConnectedParams*>(node->builtin_data);
+  const TfLiteTensor* filter = GetInput(context, node, kWeightsTensor);
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const bool is_quantized =
+      ((filter->type == kTfLiteUInt8) || (filter->type == kTfLiteInt8));
+  const bool is_hybrid = is_quantized && (input->type == kTfLiteFloat32);
+  const bool is_pie = kernel_type == kLegacyPie;
+
+  // Pie and hybrid path supports all kinds of fused activations, otherwise only
+  // clipping activations are supported.
+  if (!is_pie && !is_hybrid) {
+    TF_LITE_ENSURE(context, params->activation == kTfLiteActNone ||
+                                params->activation == kTfLiteActRelu ||
+                                params->activation == kTfLiteActRelu1 ||
+                                params->activation == kTfLiteActRelu6);
+  }
+  return PrepareImpl(context, node);
 }
 
 TfLiteStatus EvalPie(TfLiteContext* context, TfLiteNode* node,
@@ -577,14 +596,16 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
 TfLiteRegistration* Register_FULLY_CONNECTED_REF() {
   static TfLiteRegistration r = {
-      fully_connected::Init, fully_connected::Free, fully_connected::Prepare,
+      fully_connected::Init, fully_connected::Free,
+      fully_connected::Prepare<fully_connected::kReference>,
       fully_connected::Eval<fully_connected::kReference>};
   return &r;
 }
 
 TfLiteRegistration* Register_FULLY_CONNECTED_GENERIC_OPT() {
   static TfLiteRegistration r = {
-      fully_connected::Init, fully_connected::Free, fully_connected::Prepare,
+      fully_connected::Init, fully_connected::Free,
+      fully_connected::Prepare<fully_connected::kGenericOptimized>,
       fully_connected::Eval<fully_connected::kGenericOptimized>};
   return &r;
 }
@@ -592,7 +613,8 @@ TfLiteRegistration* Register_FULLY_CONNECTED_GENERIC_OPT() {
 // Legacy path for PIE clients.
 TfLiteRegistration* Register_FULLY_CONNECTED_PIE() {
   static TfLiteRegistration r = {
-      fully_connected::Init, fully_connected::Free, fully_connected::Prepare,
+      fully_connected::Init, fully_connected::Free,
+      fully_connected::Prepare<fully_connected::kLegacyPie>,
       fully_connected::Eval<fully_connected::kLegacyPie>};
   return &r;
 }

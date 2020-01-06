@@ -82,10 +82,10 @@ def make_mirror_pad_tests(options):
   def build_graph(parameters):
     """Build the graph for the test case."""
 
-    input_tensor = tf.placeholder(
+    input_tensor = tf.compat.v1.placeholder(
         dtype=tf.int32, name="input", shape=parameters["input_shape"])
     if parameters["type"] != "const":
-      padding_matrix = tf.placeholder(
+      padding_matrix = tf.compat.v1.placeholder(
           dtype=tf.int32,
           name="padding",
           shape=[len(parameters["input_shape"]), 2])

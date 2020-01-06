@@ -48,7 +48,7 @@ def make_unique_tests(options):
   def build_graph(parameters):
     """Build the graph for the test case."""
 
-    input_tensor = tf.placeholder(
+    input_tensor = tf.compat.v1.placeholder(
         dtype=tf.int32, name="input", shape=parameters["input_shape"])
     if parameters["index_type"] is None:
       output = tf.unique(input_tensor)

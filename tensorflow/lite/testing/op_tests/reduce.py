@@ -27,7 +27,8 @@ from tensorflow.lite.testing.zip_test_utils import register_make_test_function
 def make_reduce_tests(reduce_op,
                       min_value=-10,
                       max_value=10,
-                      boolean_tensor_only=False):
+                      boolean_tensor_only=False,
+                      allow_fully_quantize=False):
   """Make a set of tests to do reduce operation.
 
   Args:
@@ -35,6 +36,7 @@ def make_reduce_tests(reduce_op,
     min_value: min value for created tensor data.
     max_value: max value for created tensor data.
     boolean_tensor_only: If true, will only generate tensor with boolean value.
+    allow_fully_quantize: bool, whether fully_quantize is allowed.
 
   Returns:
     a function representing the true generator with `reduce_op_in` curried.
@@ -54,6 +56,7 @@ def make_reduce_tests(reduce_op,
             ],
             "const_axis": [True, False],
             "keepdims": [True, False],
+            "fully_quantize": [False],
         },
         {
             "input_dtype": [tf.float32],
@@ -67,6 +70,7 @@ def make_reduce_tests(reduce_op,
             ],
             "const_axis": [True, False],
             "keepdims": [True, False],
+            "fully_quantize": [False],
         },
         {
             "input_dtype": [tf.float32],
@@ -74,6 +78,7 @@ def make_reduce_tests(reduce_op,
             "axis": [[]],  # shape is: [0]
             "const_axis": [False],
             "keepdims": [True, False],
+            "fully_quantize": [False],
         },
         {
             "input_dtype": [tf.float32],
@@ -81,15 +86,46 @@ def make_reduce_tests(reduce_op,
             "axis": [None],  # shape is: []
             "const_axis": [True],
             "keepdims": [True, False],
-        }
+            "fully_quantize": [False],
+        },
+        {
+            "input_dtype": [tf.float32],
+            "input_shape": [[3, 3, 2, 4]],
+            "axis": [
+                0, 1, 2, [0, 1], [0, 2], [1, 2], [0, 1, 2], [1, 0], [2, 0],
+                [2, 1], [2, 1, 0], [2, 0, 1], -1, -2, -3, [1, -1], [0, -1],
+                [-1, 0], [-1, -2, -3], [0, 0, 0], [2, 2, 0], [1, 0, -3, -3]
+            ],
+            "const_axis": [True],
+            "keepdims": [True, False],
+            "fully_quantize": [True],
+        },
+        {
+            "input_dtype": [tf.float32],
+            "input_shape": [[1, 8, 8, 4], [1, 8, 8, 3]],
+            "axis": [
+                0, 1, 2, 3, [0], [1], [2], [3], [-1], [-2], [-3], [1, 2],
+                [0, 3], [1, 2, 3], [1, 3], [2, 3]
+            ],
+            "const_axis": [True],
+            "keepdims": [True, False],
+            "fully_quantize": [True],
+        },
     ]
+    # test_parameters include fully_quantize option only when
+    # allow_fully_quantize is True.
+    if not allow_fully_quantize:
+      test_parameters = [
+          test_parameter for test_parameter in test_parameters
+          if True not in test_parameter["fully_quantize"]
+      ]
 
     def build_graph(parameters):
       """Build the mean op testing graph."""
       dtype = parameters["input_dtype"]
       if boolean_tensor_only:
         dtype = tf.bool
-      input_tensor = tf.placeholder(
+      input_tensor = tf.compat.v1.placeholder(
           dtype=dtype, name="input", shape=parameters["input_shape"])
 
       # Get axis as either a placeholder or constants.
@@ -101,7 +137,8 @@ def make_reduce_tests(reduce_op,
           shape = [len(parameters["axis"])]
         else:
           shape = []  # shape for None or integers.
-        axis = tf.placeholder(dtype=tf.int32, name="axis", shape=shape)
+        axis = tf.compat.v1.placeholder(
+            dtype=tf.int32, name="axis", shape=shape)
         input_tensors = [input_tensor, axis]
 
       out = reduce_op(input_tensor, axis=axis, keepdims=parameters["keepdims"])
@@ -132,13 +169,25 @@ def make_reduce_tests(reduce_op,
 @register_make_test_function()
 def make_mean_tests(options):
   """Make a set of tests to do mean."""
-  return make_reduce_tests(tf.reduce_mean)(options)
+  return make_reduce_tests(
+      tf.reduce_mean,
+      min_value=-1,
+      max_value=1,
+      boolean_tensor_only=False,
+      allow_fully_quantize=True)(
+          options)
 
 
 @register_make_test_function()
 def make_sum_tests(options):
   """Make a set of tests to do sum."""
-  return make_reduce_tests(tf.reduce_sum)(options)
+  return make_reduce_tests(
+      tf.reduce_sum,
+      min_value=-1,
+      max_value=1,
+      boolean_tensor_only=False,
+      allow_fully_quantize=True)(
+          options)
 
 
 @register_make_test_function()

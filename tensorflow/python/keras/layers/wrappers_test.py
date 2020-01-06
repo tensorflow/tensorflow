@@ -376,6 +376,8 @@ class TimeDistributedTest(keras_parameterized.TestCase):
           layer=[keras.layers.LSTM,
                  keras.layers.Dense]))
   def test_TimeDistributed_with_ragged_input(self, layer):
+    if testing_utils.should_run_tf_function():
+      self.skipTest('b/143103634')
     np.random.seed(100)
     layer = layer(4)
     ragged_data = ragged_factory_ops.constant(
@@ -387,6 +389,9 @@ class TimeDistributedTest(keras_parameterized.TestCase):
     x_ragged = keras.Input(shape=(None, 2, 1), dtype='float32', ragged=True)
     y_ragged = keras.layers.TimeDistributed(layer)(x_ragged)
     model_1 = keras.models.Model(x_ragged, y_ragged)
+    model_1._experimental_run_tf_function = (
+        testing_utils.should_run_tf_function())
+    model_1._run_eagerly = testing_utils.should_run_eagerly()
     output_ragged = model_1.predict(ragged_data, steps=1)
 
     x_dense = keras.Input(shape=(None, 2, 1), dtype='float32')
@@ -394,6 +399,9 @@ class TimeDistributedTest(keras_parameterized.TestCase):
     y_dense = keras.layers.TimeDistributed(layer)(masking)
     model_2 = keras.models.Model(x_dense, y_dense)
     dense_data = ragged_data.to_tensor()
+    model_2._experimental_run_tf_function = (
+        testing_utils.should_run_tf_function())
+    model_2._run_eagerly = testing_utils.should_run_eagerly()
     output_dense = model_2.predict(dense_data, steps=1)
 
     output_ragged = ragged_tensor.convert_to_tensor_or_ragged_tensor(
@@ -543,9 +551,18 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
       y = np.random.random((samples, target_dim))
 
       inputs = keras.layers.Input(batch_shape=(1, timesteps, dim))
-      output = keras.layers.Bidirectional(
-          rnn(output_dim, stateful=True), merge_mode=mode)(inputs)
+      bidi_rnn = keras.layers.Bidirectional(
+          rnn(output_dim, stateful=True), merge_mode=mode)
+      self.assertTrue(bidi_rnn.stateful)
+      output = bidi_rnn(inputs)
       model = keras.models.Model(inputs, output)
+
+      y_1 = model.predict(x)
+      model.reset_states()
+      y_2 = model.predict(x)
+
+      self.assertAllClose(y_1, y_2)
+
       model.compile(loss='mse', optimizer='sgd')
       model.fit(x, y, epochs=1, batch_size=1)
 

@@ -24,7 +24,8 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/util/stats_calculator.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/profiling/memory_info.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_params.h"
 #include "tensorflow/lite/tools/command_line_flags.h"
 
@@ -40,11 +41,15 @@ class BenchmarkResults {
  public:
   BenchmarkResults(int64_t startup_latency_us, uint64_t input_bytes,
                    tensorflow::Stat<int64_t> warmup_time_us,
-                   tensorflow::Stat<int64_t> inference_time_us)
+                   tensorflow::Stat<int64_t> inference_time_us,
+                   const profiling::memory::MemoryUsage& init_mem_usage,
+                   const profiling::memory::MemoryUsage& overall_mem_usage)
       : startup_latency_us_(startup_latency_us),
         input_bytes_(input_bytes),
         warmup_time_us_(warmup_time_us),
-        inference_time_us_(inference_time_us) {}
+        inference_time_us_(inference_time_us),
+        init_mem_usage_(init_mem_usage),
+        overall_mem_usage_(overall_mem_usage) {}
 
   tensorflow::Stat<int64_t> inference_time_us() const {
     return inference_time_us_;
@@ -58,11 +63,20 @@ class BenchmarkResults {
     return bytes_per_sec / (1024.0 * 1024.0);
   }
 
+  const profiling::memory::MemoryUsage& init_mem_usage() const {
+    return init_mem_usage_;
+  }
+  const profiling::memory::MemoryUsage& overall_mem_usage() const {
+    return overall_mem_usage_;
+  }
+
  private:
   int64_t startup_latency_us_;
   uint64_t input_bytes_;
   tensorflow::Stat<int64_t> warmup_time_us_;
   tensorflow::Stat<int64_t> inference_time_us_;
+  profiling::memory::MemoryUsage init_mem_usage_;
+  profiling::memory::MemoryUsage overall_mem_usage_;
 };
 
 class BenchmarkListener {
@@ -90,6 +104,14 @@ class BenchmarkListeners : public BenchmarkListener {
   void AddListener(BenchmarkListener* listener) {
     listeners_.push_back(listener);
   }
+
+  // Remove all listeners after [index] including the one at 'index'.
+  void RemoveListeners(int index) {
+    if (index >= NumListeners()) return;
+    listeners_.resize(index);
+  }
+
+  int NumListeners() const { return listeners_.size(); }
 
   void OnBenchmarkStart(const BenchmarkParams& params) override {
     for (auto listener : listeners_) {
@@ -151,6 +173,9 @@ class BenchmarkModel {
   void AddListener(BenchmarkListener* listener) {
     listeners_.AddListener(listener);
   }
+  // Remove all listeners after [index] including the one at 'index'.
+  void RemoveListeners(int index) { listeners_.RemoveListeners(index); }
+  int NumListeners() const { return listeners_.NumListeners(); }
 
   BenchmarkParams* mutable_params() { return &params_; }
 

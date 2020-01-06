@@ -92,7 +92,7 @@ class ProcessFunctionLibraryRuntime {
                             gtl::ArraySlice<Tensor> tensors_to_send,
                             DeviceContext* device_context,
                             const std::vector<AllocatorAttributes>& alloc_attrs,
-                            Rendezvous* rendezvous);
+                            RendezvousInterface* rendezvous);
 
   // Receives `received_tensors` from `target_device` (originally sent from
   // `source_device`) using `rendezvous`. Uses `key_prefix` to construct the
@@ -105,7 +105,7 @@ class ProcessFunctionLibraryRuntime {
       const string& key_prefix, int64 src_incarnation, int64 num_tensors,
       DeviceContext* device_context,
       const std::vector<AllocatorAttributes>& alloc_attrs,
-      Rendezvous* rendezvous, std::vector<Tensor>* received_tensors,
+      RendezvousInterface* rendezvous, std::vector<Tensor>* received_tensors,
       StatusCallback done);
 
   static const char kDefaultFLRDevice[];
@@ -157,6 +157,11 @@ class ProcessFunctionLibraryRuntime {
   Status Instantiate(const string& function_name, AttrSlice attrs,
                      const FunctionLibraryRuntime::InstantiateOptions& options,
                      FunctionLibraryRuntime::Handle* handle);
+
+  // Returns whether the function represented by the given handle needs to
+  // execute cross process.
+  Status IsCrossProcess(FunctionLibraryRuntime::Handle handle,
+                        bool* is_cross_process) const;
 
   // Delegates to the local FLR that owns state corresponding to `handle` and
   // tells it to release it. If the `handle` isnt' needed at all, the local FLR
@@ -282,16 +287,16 @@ class ProcessFunctionLibraryRuntime {
     FunctionLibraryRuntime::Handle local_handle;
   };
 
-  // If handle represents a multi-device function, returns the multi-device
-  // data associated with handle. Else, nullptr.
-  MultiDeviceFunctionData* IsMultiDevice(
-      FunctionLibraryRuntime::Handle handle) const;
-
   virtual void RunRemoteDevice(const FunctionLibraryRuntime::Options& opts,
                                FunctionLibraryRuntime::Handle local_handle,
                                const InternalArgsView& args,
                                std::vector<Tensor>* rets,
                                FunctionLibraryRuntime::DoneCallback done) const;
+
+  // If `handle` represents a multi-device function, returns the multi-device
+  // data associated with `handle`. Else, nullptr.
+  MultiDeviceFunctionData* IsMultiDevice(
+      FunctionLibraryRuntime::Handle handle) const;
 
   void RunMultiDevice(
       const FunctionLibraryRuntime::Options& opts,

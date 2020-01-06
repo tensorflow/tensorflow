@@ -109,6 +109,9 @@ class NodeDefBuilder {
   NodeDefBuilder& Attr(StringPiece name, gtl::ArraySlice<StringPiece> value);
   NodeDefBuilder& Attr(StringPiece name, gtl::ArraySlice<const char*> value);
   NodeDefBuilder& Attr(StringPiece name, gtl::ArraySlice<string> value);
+#ifdef USE_TSTRING
+  NodeDefBuilder& Attr(StringPiece name, gtl::ArraySlice<tstring> value);
+#endif
   NodeDefBuilder& Attr(StringPiece name, gtl::ArraySlice<int32> value);
   NodeDefBuilder& Attr(StringPiece name, gtl::ArraySlice<int64> value);
   NodeDefBuilder& Attr(StringPiece name, gtl::ArraySlice<float> value);

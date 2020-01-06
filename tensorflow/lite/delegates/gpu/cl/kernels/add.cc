@@ -131,8 +131,9 @@ std::string Add::GetArgsDeclaration() const {
   for (int i = 1; i < src_depthes_.size(); ++i) {
     const std::string tensor_name =
         absl::StrCat("src_data_", link_index_, "_", i);
-    TensorCodeGenerator src_tensor(tensor_name, "", definition_.src_tensors[i]);
-    absl::StrAppend(&args, ",\n", src_tensor.GetDeclaration(AccessType::READ));
+    absl::StrAppend(&args, ",\n",
+                    GetTensorDeclaration(AccessType::READ, tensor_name,
+                                         definition_.src_tensors[i]));
   }
   for (int i = 1; i < src_depthes_.size(); ++i) {
     const std::string size_name =

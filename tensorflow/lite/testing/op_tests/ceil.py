@@ -34,11 +34,11 @@ def make_ceil_tests(options):
 
   def build_graph(parameters):
     """Build the ceil op testing graph."""
-    input_value = tf.placeholder(
+    input_value = tf.compat.v1.placeholder(
         dtype=parameters["input_dtype"],
         name="input1",
         shape=parameters["input_shape"])
-    out = tf.ceil(input_value)
+    out = tf.math.ceil(input_value)
     return [input_value], [out]
 
   def build_inputs(parameters, sess, inputs, outputs):

@@ -26,8 +26,7 @@ import threading
 import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
-from tensorflow.python import pywrap_tensorflow
-from tensorflow.python.compat import compat
+from tensorflow.python import pywrap_tfe
 from tensorflow.python.eager import context
 from tensorflow.python.eager import core
 from tensorflow.python.eager import def_function
@@ -70,9 +69,9 @@ def current_device():
 def configure_virtual_cpus():
   cpus = config.list_physical_devices('CPU')
   # Set 2 virtual CPUs
-  config.set_virtual_device_configuration(cpus[0], [
-      context.VirtualDeviceConfiguration(),
-      context.VirtualDeviceConfiguration()
+  config.set_logical_device_configuration(cpus[0], [
+      context.LogicalDeviceConfiguration(),
+      context.LogicalDeviceConfiguration()
   ])
 
 
@@ -304,13 +303,9 @@ class TFETest(test_util.TensorFlowTestCase):
       with self.assertRaises(ValueError):
         bool(tf_a == tf_d)
       self.assertAllEqual(tf_a == tf_d, [[True, False], [True, False]])
-      if compat.forward_compatible(2019, 9, 25):
-        self.assertFalse(bool(tf_a == tf_e))
-        self.assertTrue(bool(tf_a != tf_e))
-        self.assertNotAllEqual(tf_a, tf_e)
-      else:
-        with self.assertRaises(errors.InvalidArgumentError):
-          bool(tf_a != tf_e)
+      self.assertFalse(bool(tf_a == tf_e))
+      self.assertTrue(bool(tf_a != tf_e))
+      self.assertNotAllEqual(tf_a, tf_e)
 
       with self.assertRaises(ValueError):
         bool(np_a == np_b)
@@ -607,8 +602,8 @@ class TFETest(test_util.TensorFlowTestCase):
 
   def testRegisterExceptionClass(self):
     with self.assertRaises(TypeError):
-      pywrap_tensorflow.TFE_Py_RegisterExceptionClass(str)
-    pywrap_tensorflow.TFE_Py_RegisterExceptionClass(core._NotOkStatusException)  # pylint: disable=protected-access
+      pywrap_tfe.TFE_Py_RegisterExceptionClass(str)
+    pywrap_tfe.TFE_Py_RegisterExceptionClass(core._NotOkStatusException)  # pylint: disable=protected-access
 
   # TODO(agarwal): add tests passing incorrect typed values to attrs.
   def testExecuteBasic(self):
@@ -1017,6 +1012,14 @@ class TFETest(test_util.TensorFlowTestCase):
 
     for t in threads:
       t.join()
+
+  def testEmptyResourceReturned(self):
+    v = variables.Variable(1.)
+    empty_handle = array_ops.gather(
+        v.handle[array_ops.newaxis], array_ops.zeros([0], dtype=dtypes.int32))
+    self.assertEqual(
+        [0],
+        empty_handle.shape.as_list())
 
 
 class SendRecvTest(test_util.TensorFlowTestCase):

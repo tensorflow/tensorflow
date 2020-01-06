@@ -23,14 +23,16 @@ import time
 from tensorflow.core.protobuf import debug_event_pb2
 from tensorflow.python import _pywrap_debug_events_writer
 
-# Default size of each cyclic buffer (unit: number of DebugEvent protos).
-DEFAULT_CYCLIC_BUFFER_SIZE = 1000
+# Default size of each circular buffer (unit: number of DebugEvent protos).
+DEFAULT_CIRCULAR_BUFFER_SIZE = 1000
 
 
 class DebugEventsWriter(object):
   """A writer for TF debugging events. Used by tfdbg v2."""
 
-  def __init__(self, dump_root, cyclic_buffer_size=DEFAULT_CYCLIC_BUFFER_SIZE):
+  def __init__(self,
+               dump_root,
+               circular_buffer_size=DEFAULT_CIRCULAR_BUFFER_SIZE):
     """Construct a DebugEventsWriter object.
 
     NOTE: Given the same `dump_root`, all objects from this constructor
@@ -41,15 +43,15 @@ class DebugEventsWriter(object):
     Args:
       dump_root: The root directory for dumping debug data. If `dump_root` does
         not exist as a directory, it will be created.
-      cyclic_buffer_size: Size of the cyclic buffer for each of the two
+      circular_buffer_size: Size of the circular buffer for each of the two
         execution-related debug events files: with the following suffixes: -
-          .execution - .graph_execution_traces If <= 0, the cyclic-buffer
+          .execution - .graph_execution_traces If <= 0, the circular-buffer
           behavior will be abolished in the constructed object.
     """
     if not dump_root:
       raise ValueError("Empty or None dump root")
     self._dump_root = dump_root
-    _pywrap_debug_events_writer.Init(self._dump_root, cyclic_buffer_size)
+    _pywrap_debug_events_writer.Init(self._dump_root, circular_buffer_size)
 
   def WriteSourceFile(self, source_file):
     """Write a SourceFile proto with the writer.
@@ -125,6 +127,10 @@ class DebugEventsWriter(object):
     self._EnsureTimestampAdded(debug_event)
     _pywrap_debug_events_writer.WriteGraphExecutionTrace(
         self._dump_root, debug_event)
+
+  def RegisterDeviceAndGetId(self, device_name):
+    return _pywrap_debug_events_writer.RegisterDeviceAndGetId(
+        self._dump_root, device_name)
 
   def FlushNonExecutionFiles(self):
     """Flush the non-execution debug event files."""

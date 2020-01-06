@@ -31,7 +31,8 @@ cc_library(
         ":aot_only_var_handle_op",
         ":embedded_protocol_buffers",
         "//tensorflow/compiler/tf2xla",
-        "//tensorflow/compiler/tf2xla:tf2xla_proto",
+        "//tensorflow/compiler/tf2xla:mlir_tf2xla",
+        "//tensorflow/compiler/tf2xla:tf2xla_proto_cc",
         "//tensorflow/compiler/tf2xla:tf2xla_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/kernels:xla_dummy_ops",
@@ -40,7 +41,7 @@ cc_library(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:compile_only_client",
         "//tensorflow/compiler/xla/client:xla_computation",
@@ -74,8 +75,8 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@com_google_absl//absl/strings",
-        "@llvm//:support",  # fixdeps: keep
-        "@llvm//:x86_code_gen",  # fixdeps: keep
+        "@llvm-project//llvm:support",  # fixdeps: keep
+        "@llvm-project//llvm:x86_code_gen",  # fixdeps: keep
     ],
 )
 
@@ -91,7 +92,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":tfcompile_lib",
-        "//tensorflow/compiler/tf2xla:tf2xla_proto",
+        "//tensorflow/compiler/tf2xla:tf2xla_proto_cc",
         "//tensorflow/compiler/tf2xla:tf2xla_util",
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla/service:compiler",
@@ -103,15 +104,11 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/strings",
-        "@llvm//:aarch64_code_gen",  # fixdeps: keep
-        "@llvm//:aarch64_disassembler",  # fixdeps: keep
-        "@llvm//:arm_code_gen",  # fixdeps: keep
-        "@llvm//:arm_disassembler",  # fixdeps: keep
-        "@llvm//:powerpc_code_gen",  # fixdeps: keep
-        "@llvm//:powerpc_disassembler",  # fixdeps: keep
-        "@llvm//:target",
-        "@llvm//:x86_code_gen",  # fixdeps: keep
-        "@llvm//:x86_disassembler",  # fixdeps: keep
+        "@llvm-project//llvm:aarch64_code_gen",  # fixdeps: keep
+        "@llvm-project//llvm:arm_code_gen",  # fixdeps: keep
+        "@llvm-project//llvm:powerpc_code_gen",  # fixdeps: keep
+        "@llvm-project//llvm:target",
+        "@llvm-project//llvm:x86_code_gen",  # fixdeps: keep
     ],
 )
 
@@ -208,9 +205,9 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@llvm//:core",
-        "@llvm//:support",
-        "@llvm//:target",
+        "@llvm-project//llvm:core",
+        "@llvm-project//llvm:support",
+        "@llvm-project//llvm:target",
     ],
 )
 

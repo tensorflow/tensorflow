@@ -19,63 +19,36 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
-import os
 import re
 
-from six.moves import urllib
-from six.moves.urllib.error import URLError
-from six.moves.urllib.request import Request
-from six.moves.urllib.request import urlopen
-
-from tensorflow.python.distribute.cluster_resolver.cluster_resolver import ClusterResolver
-from tensorflow.python.distribute.cluster_resolver.cluster_resolver import format_master_url
-from tensorflow.python.distribute.cluster_resolver.cluster_resolver import get_accelerator_devices
+from tensorflow.python.distribute.cluster_resolver import cluster_resolver
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
 from tensorflow.python.util import compat
 from tensorflow.python.util.tf_export import tf_export
 
-_GOOGLE_API_CLIENT_INSTALLED = True
 try:
-  from googleapiclient import discovery  # pylint: disable=g-import-not-at-top
-  from oauth2client.client import GoogleCredentials  # pylint: disable=g-import-not-at-top
+  from cloud_tpu_client import client  # pylint: disable=g-import-not-at-top
 except ImportError:
-  _GOOGLE_API_CLIENT_INSTALLED = False
+  logging.debug(
+      'Falling back to TensorFlow client; we recommended you install the Cloud '
+      'TPU client directly with pip install cloud-tpu-client.')
+  from tensorflow.python.tpu.client import client
 
-_GKE_ENV_VARIABLE = 'KUBE_GOOGLE_CLOUD_TPU_ENDPOINTS'
-_ENDPOINTS_SEPARATOR = ','
-_DEFAULT_ENV_VARIABLE = 'TPU_NAME'
-_DISCOVERY_SERVICE_URL_ENV_VARIABLE = 'TPU_API_DISCOVERY_URL'
+def is_running_in_gce():
+  return True
+
 
 _TPU_DEVICE_REGEX = re.compile(
     r'.*task:(?P<host_id>\d+)/.*device:TPU:(?P<core_id>\d+)$')
 _TPU_CONN_RETRIES = 120
-
-_GCE_METADATA_ENDPOINT = 'http://metadata.google.internal'
-
 DeviceDetails = collections.namedtuple(
     'DeviceDetails', ['device_map', 'total_cores'])
 
 
-def is_running_in_gce():
-  """Checks for GCE presence by attempting to query the metadata service."""
-  try:
-    req = Request(
-        '%s/computeMetadata/v1' % _GCE_METADATA_ENDPOINT,
-        headers={'Metadata-Flavor': 'Google'})
-    resp = urllib.request.urlopen(req, timeout=1)
-    info = resp.info()
-    if 'Metadata-Flavor' in info and info['Metadata-Flavor'] == 'Google':
-      return True
-  except URLError:
-    pass
-  return False
-
-
 @tf_export('distribute.cluster_resolver.TPUClusterResolver')
-class TPUClusterResolver(ClusterResolver):
+class TPUClusterResolver(cluster_resolver.ClusterResolver):
   """Cluster Resolver for Google Cloud TPUs.
 
   This is an implementation of cluster resolvers for the Google Cloud TPU
@@ -88,53 +61,6 @@ class TPUClusterResolver(ClusterResolver):
   Google Kubernetes Engine
   Google internal
   """
-
-  def _tpu_service(self):
-    """Creates a new Cloud TPU API object.
-
-    This works around an issue where the underlying HTTP connection sometimes
-    times out when the script has been running for too long. Other methods in
-    this object call this method to get a new API object whenever they need
-    to communicate with the Cloud API.
-
-    Returns:
-      A Google Cloud TPU API object.
-    """
-    if self._service:
-      return self._service
-
-    credentials = self._credentials
-    if credentials is None or credentials == 'default':
-      credentials = GoogleCredentials.get_application_default()
-
-    if self._discovery_url:
-      return discovery.build(
-          'tpu',
-          'v1',
-          credentials=credentials,
-          discoveryServiceUrl=self._discovery_url,
-          cache_discovery=False)
-    else:
-      return discovery.build(
-          'tpu', 'v1', credentials=credentials, cache_discovery=False)
-
-  def _request_compute_metadata(self, path):
-    req = Request('%s/computeMetadata/v1/%s' % (_GCE_METADATA_ENDPOINT, path),
-                  headers={'Metadata-Flavor': 'Google'})
-    resp = urlopen(req)
-    return compat.as_bytes(resp.read())
-
-  def _is_local_tpu(self):
-    return (
-        self._tpu == compat.as_bytes('') or
-        self._tpu == compat.as_bytes('local'))
-
-  def _should_resolve(self):
-    if isinstance(self._should_resolve_override, bool):
-      return self._should_resolve_override
-    else:
-      return not (self._tpu.startswith(compat.as_bytes('grpc://')) or
-                  self._is_local_tpu())
 
   @staticmethod
   def _get_device_dict_and_cores(devices):
@@ -168,25 +94,6 @@ class TPUClusterResolver(ClusterResolver):
                          'should never happen. Devices: {}'.format(device_dict))
     return num_cores_per_host_set.pop()
 
-  @staticmethod
-  def _in_gke():
-    """When running in GKE, the environment variable will be set."""
-    return _GKE_ENV_VARIABLE in os.environ
-
-  @staticmethod
-  def _gke_endpoints():
-    return os.environ[_GKE_ENV_VARIABLE]
-
-  @staticmethod
-  def _env_var_fallback():
-    if _DEFAULT_ENV_VARIABLE in os.environ:
-      return os.environ[_DEFAULT_ENV_VARIABLE]
-    return None
-
-  @staticmethod
-  def _environment_discovery_url():
-    return os.environ.get(_DISCOVERY_SERVICE_URL_ENV_VARIABLE)
-
   def __init__(self,
                tpu=None,
                zone=None,
@@ -204,11 +111,11 @@ class TPUClusterResolver(ClusterResolver):
 
     Args:
       tpu: A string corresponding to the TPU to use. If the string is an empty
-        string, the string 'local', or a string that begins with 'grpc://',
-        then it is assumed to not correspond with a Cloud TPU and will
-        instead be passed as the session master and no ClusterSpec propagation
-        will be done. In the future, this may also support a list of strings
-        when multiple Cloud TPUs are used.
+        string, the string 'local', or a string that begins with 'grpc://', then
+          it is assumed to not correspond with a Cloud TPU and will instead be
+          passed as the session master and no ClusterSpec propagation will be
+          done. In the future, this may also support a list of strings when
+          multiple Cloud TPUs are used.
       zone: Zone where the TPUs are located. If omitted or empty, we will assume
         that the zone of the TPU is the same as the zone of the GCE VM, which we
         will try to discover from the GCE metadata service.
@@ -239,92 +146,31 @@ class TPUClusterResolver(ClusterResolver):
       RuntimeError: If an empty TPU name is specified and this is running in a
         Google Cloud environment.
     """
-    if isinstance(tpu, list):
-      if not tpu:
-        raise ValueError('At least one TPU must be specified.')
-      if len(tpu) != 1:
-        raise NotImplementedError(
-            'Using multiple TPUs in a single session is not yet implemented')
-      tpu = tpu[0]
 
-    in_gke = self._in_gke()
-    # When using GKE with Cloud TPUs, the env variable will be set.
-    if tpu is None:
-      if in_gke:
-        tpu = self._gke_endpoints()
-      else:
-        tpu = self._env_var_fallback()
+    self._cloud_tpu_client = client.Client(
+        tpu=tpu,
+        zone=zone,
+        project=project,
+        credentials=credentials,
+        service=service,
+        discovery_url=discovery_url)
 
-    if tpu is None:
-      raise ValueError('Please provide a TPU Name to connect to.')
-
-    self._tpu = compat.as_bytes(tpu)  # self._tpu is always bytes
-
-    # If we are running in Cloud and don't specify a TPU name
-    if is_running_in_gce() and not self._tpu:
-      raise RuntimeError('You need to specify a TPU Name if you are running in '
-                         'the Google Cloud environment.')
-
+    self._tpu = self._cloud_tpu_client.name()
     # By default the task_type is 'worker` and the task_id is 0 (which is the
     # first worker in the task).
     self.task_type = job_name
     self.task_id = 0
-
-    if self._is_local_tpu():
-      self.rpc_layer = None
-    else:
-      self._environment = ''
-      self.rpc_layer = 'grpc'
-
-    # Setting this overrides the return value of self._should_resolve()
-    self._should_resolve_override = None
-
-    # We strip out the protocol if it is included, and override the
-    # shouldResolve function to never resolve. We are adding the protocol back
-    # in later in self.master().
-    if self.rpc_layer is not None and tpu.startswith(self.rpc_layer + '://'):
-      tpu = tpu[len(self.rpc_layer + '://'):]
-      self._tpu = compat.as_bytes(tpu)  # self._tpu is always bytes
-      self._should_resolve_override = False
-
-    # Whether we should actually attempt to contact Cloud APIs
-    should_resolve = self._should_resolve()
-
-    # We error out if we are in a non-Cloud environment which cannot talk to the
-    # Cloud APIs using the standard class and a special object is not passed in.
-    self._service = service
-    if (self._service is None and should_resolve and
-        not _GOOGLE_API_CLIENT_INSTALLED):
-      raise ImportError('googleapiclient and oauth2client must be installed '
-                        'before using the TPU cluster resolver. Execute: '
-                        '`pip install --upgrade google-api-python-client` '
-                        'and `pip install --upgrade oauth2client` to '
-                        'install with pip.')
-
-    # We save user-passed credentials, unless the user didn't pass in anything.
-    self._credentials = credentials
-    if (credentials == 'default' and should_resolve and
-        _GOOGLE_API_CLIENT_INSTALLED):
-      self._credentials = None
-
-    # Automatically detect project and zone if unspecified.
-    if not project and should_resolve:
-      project = compat.as_str(
-          self._request_compute_metadata('project/project-id'))
-    if not zone and should_resolve:
-      zone_path = compat.as_str(self._request_compute_metadata('instance/zone'))
-      zone = zone_path.split('/')[-1]
-    self._project = project
-    self._zone = zone
-
-    self._discovery_url = self._environment_discovery_url() or discovery_url
-
     self._coordinator_name = coordinator_name
-    if (coordinator_name and not coordinator_address and
-        (should_resolve or in_gke)):
+    if (coordinator_name and not coordinator_address):
       self._start_local_server()
     else:
       self._coordinator_address = coordinator_address
+
+  def __enter__(self):
+    self._cloud_tpu_client.enter()
+
+  def __exit__(self, type, value, traceback):  # pylint: disable=redefined-builtin
+    self._cloud_tpu_client.exit(type, value, traceback)
 
   def master(self, task_type=None, task_id=None, rpc_layer=None):
     """Get the Master string to be used for the session.
@@ -351,35 +197,27 @@ class TPUClusterResolver(ClusterResolver):
     Raises:
       ValueError: If none of the TPUs specified exists.
     """
-    if self._should_resolve():
-      # We are going to communicate with the Cloud TPU APIs to get a Cluster.
-      cluster_spec = self.cluster_spec()
-      if task_type is not None and task_id is not None:
-        # task_type and task_id is from the function parameter
-        master = cluster_spec.task_address(task_type, task_id)
-      elif self.task_type is not None and self.task_id is not None:
-        # task_type and task_id is from the object
-        master = cluster_spec.task_address(self.task_type, self.task_id)
-      else:
-        # by default we take the first item in the cluster with the right name
-        job_tasks = cluster_spec.job_tasks(self.task_type)
-        if not job_tasks:
-          raise ValueError('No TPUs with the specified names exist.')
-        master = job_tasks[0]
+
+    cluster_spec = self.cluster_spec()
+    if task_type is not None and task_id is not None:
+      # task_type and task_id is from the function parameter
+      master = cluster_spec.task_address(task_type, task_id)
+    elif self.task_type is not None and self.task_id is not None:
+      # task_type and task_id is from the object
+      master = cluster_spec.task_address(self.task_type, self.task_id)
     else:
-      if isinstance(self._tpu, (bytes, bytearray)):
-        master = compat.as_text(self._tpu).split(_ENDPOINTS_SEPARATOR)[0]
-      else:
-        master = self._tpu.split(_ENDPOINTS_SEPARATOR)[0]
-    return format_master_url(master, rpc_layer or self.rpc_layer)
+      # by default we take the first item in the cluster with the right name
+      job_tasks = cluster_spec.job_tasks(self.task_type)
+      if not job_tasks:
+        raise ValueError('No TPUs with the specified names exist.')
+      master = job_tasks[0]
+    return cluster_resolver.format_master_url(master, 'grpc')
 
   def get_master(self):
     return self.master()
 
   def get_job_name(self):
-    if ops.executing_eagerly_outside_functions() or self._should_resolve(
-    ) or is_running_in_gce():
-      return self.task_type
+    return self.task_type
 
   def cluster_spec(self):
     """Returns a ClusterSpec object based on the latest TPU information.
@@ -403,64 +241,19 @@ class TPUClusterResolver(ClusterResolver):
     #     tasks and
     #      a. Create a ClusterSpec with the coordinator
     #      b. Create a ClusterSpec without the coordinator
-    #  3. [Other (legacy non-gRPC).] We should return None.
     ############################################################################
 
-    if self._should_resolve():
-      # Case 1.
-      response = self._fetch_cloud_tpu_metadata()  # pylint: disable=protected-access
-
-      if 'state' in response and response['state'] != 'READY':
-        raise RuntimeError('TPU "%s" is not yet ready; state: "%s"' %
-                           (compat.as_text(self._tpu), response['state']))
-
-      if 'networkEndpoints' in response:
-        worker_list = [
-            '%s:%s' % (endpoint['ipAddress'], endpoint['port'])
-            for endpoint in response['networkEndpoints']
-        ]
-      else:
-        # Fall back to the deprecated response format
-        instance_url = '%s:%s' % (response['ipAddress'], response['port'])
-        worker_list = [instance_url]
-
-      cluster_spec = {self.task_type: worker_list}
-    else:
-      is_eager = ops.executing_eagerly_outside_functions()
-      if self.rpc_layer is None and not is_eager:
-        # Case 3.
-        return None
-      # Case 2.
-      tpus = []
-      for tpu in compat.as_text(self._tpu).split(_ENDPOINTS_SEPARATOR):
-        # We are working around the fact that GKE environment variable that is
-        # supplied to us has the protocol string embedded in it, but we want
-        # to strip it out for the ClusterSpec.
-        if (self.rpc_layer is not None and
-            tpu.startswith(self.rpc_layer + '://')):
-          tpus.append(tpu[len(self.rpc_layer + '://'):])
-        else:
-          tpus.append(tpu)
-      cluster_spec = {self.task_type: tpus}
-
+    network_endpoints = self._cloud_tpu_client.network_endpoints()
+    worker_list = [
+        '%s:%s' % (endpoint['ipAddress'], endpoint['port'])
+        for endpoint in network_endpoints
+    ]
+    cluster_spec = {self.task_type: worker_list}
     if self._coordinator_address:
       # {1, 2}.a
       cluster_spec[self._coordinator_name] = [self._coordinator_address]
 
     return server_lib.ClusterSpec(cluster_spec)
-
-  def _fetch_cloud_tpu_metadata(self):
-    """Returns the TPU metadata object from the TPU Get API call."""
-    try:
-      full_name = 'projects/%s/locations/%s/nodes/%s' % (
-          self._project, self._zone, compat.as_text(self._tpu))
-      service = self._tpu_service()
-      request = service.projects().locations().nodes().get(name=full_name)
-      return request.execute()
-    except Exception as e:
-      raise ValueError("Could not lookup TPU metadata from name '%s'. Please "
-                       "doublecheck the tpu argument in the TPUClusterResolver "
-                       "constructor. Exception: %s" % (self._tpu, e))
 
   def num_accelerators(self,
                        task_type=None,
@@ -487,7 +280,8 @@ class TPUClusterResolver(ClusterResolver):
     while True:
       try:
         device_details = TPUClusterResolver._get_device_dict_and_cores(
-            get_accelerator_devices(self.master(), config_proto=config_proto))
+            cluster_resolver.get_accelerator_devices(
+                self.master(), config_proto=config_proto))
         break
       except errors.DeadlineExceededError:
         error_message = ('Failed to connect to master. The TPU might not be '
@@ -511,12 +305,11 @@ class TPUClusterResolver(ClusterResolver):
     return self._environment
 
   def _start_local_server(self):
-    address = compat.as_text(
-        self._request_compute_metadata('instance/network-interfaces/0/ip'))
-    self._server = server_lib.Server(
-        {
-            'local': ['0.0.0.0:0']
-        }, protocol='grpc', config=None, start=True)
+    address = compat.as_text(self._cloud_tpu_client.get_local_ip())
+    self._server = server_lib.Server({'local': ['0.0.0.0:0']},
+                                     protocol='grpc',
+                                     config=None,
+                                     start=True)
     # self._server.target is of the form: grpc://ipaddress:port
     target = compat.as_bytes(self._server.target)
     splits = target.split(compat.as_bytes(':'))

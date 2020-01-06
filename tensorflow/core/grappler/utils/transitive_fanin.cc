@@ -26,6 +26,7 @@ namespace grappler {
 
 std::vector<const NodeDef*> ComputeTransitiveFanin(
     const GraphDef& graph, const std::vector<string>& terminal_nodes,
+    std::unordered_map<string, const NodeDef*>* name_to_fanin_node,
     bool* ill_formed) {
   *ill_formed = false;
   std::unordered_map<string, const NodeDef*> name_to_node;
@@ -60,6 +61,8 @@ std::vector<const NodeDef*> ComputeTransitiveFanin(
       continue;
     }
     result.push_back(node);
+    name_to_fanin_node->insert(
+        std::pair<string, const NodeDef*>(node->name(), node));
     for (const string& input : node->input()) {
       const NodeDef* in = name_to_node[NodeName(input)];
       if (!in) {
@@ -88,8 +91,9 @@ Status SetTransitiveFaninGraph(const GraphDef& input_graph,
   // Determines transitive fanin nodes from terminal nodes and add them to the
   // output graph.
   bool ill_formed = false;
-  std::vector<const NodeDef*> keep =
-      ComputeTransitiveFanin(input_graph, terminal_nodes, &ill_formed);
+  std::unordered_map<string, const NodeDef*> name_to_fanin_node;
+  std::vector<const NodeDef*> keep = ComputeTransitiveFanin(
+      input_graph, terminal_nodes, &name_to_fanin_node, &ill_formed);
   if (ill_formed) {
     // Some graph edges are invalid, or some of the feeds/fetch don't exist:
     // let's be conservative and preserve the graph as is.

@@ -147,9 +147,11 @@ Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
   SerializationContext::Params params;
   std::vector<std::pair<string, Tensor>> input_list;
   params.input_list = &input_list;
-  params.check_external_state = false;
+  params.external_state_policy =
+      SerializationContext::ExternalStatePolicy::kIgnore;
   params.fail_if_unimplemented = false;
   params.serialize_data_tensors = false;
+  params.preserve_random_seeds = false;
   SerializationContext serialization_ctx(params);
   GraphDef graph_def;
   TF_RETURN_IF_ERROR(

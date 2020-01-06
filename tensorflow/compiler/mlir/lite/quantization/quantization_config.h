@@ -51,6 +51,13 @@ struct QuantizationSpecs {
   // the `weight_quantization` flag needs to set to false.
   tensorflow::DataType inference_type = tensorflow::DT_FLOAT;
 
+  // The input and output data type during inference. This flag is only used
+  // when `inference_type` is different from DT_FLOAT. This flag can only be set
+  // to DT_FLOAT or as same as `inference_type`. If this flag is different
+  // from `inference_type`, adaptor ops are inserted as heading and tailing ops
+  // in the result model.
+  tensorflow::DataType inference_input_type = tensorflow::DT_FLOAT;
+
   // Input node ranges. These ranges are stored as the same order of function
   // arguments. They are only used when `weight_quantization` is set to false,
   // and the model is required to have quantization parameters, either from
@@ -72,7 +79,7 @@ struct QuantizationSpecs {
   bool RunWeightQuantization() const { return weight_quantization; }
 
   // Whether this inference type represents a signed storage type.
-  bool IsSignedInferneceType() {
+  bool IsSignedInferenceType() {
     switch (inference_type) {
       case tensorflow::DT_QUINT8:
       case tensorflow::DT_QUINT16:

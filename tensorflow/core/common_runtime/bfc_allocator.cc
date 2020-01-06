@@ -19,7 +19,6 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/allocator_retry.h"
 #include "tensorflow/core/lib/core/bits.h"
-#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -422,10 +421,14 @@ void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
   // Dump the memory log for analysis.
   MaybeWriteMemoryMap();
   if (dump_log_on_failure) {
+    string op_ident;
+#ifdef TENSORFLOW_MEM_DEBUG
+    op_ident = strings::StrCat(" requested by op ", pending_op_name);
+#endif
     LOG(WARNING) << "Allocator (" << Name() << ") ran out of memory trying "
                  << "to allocate " << strings::HumanReadableNumBytes(num_bytes)
-                 << " (rounded to " << rounded_bytes
-                 << ").  Current allocation summary follows.";
+                 << " (rounded to " << rounded_bytes << ")" << op_ident
+                 << "\nCurrent allocation summary follows.";
     DumpMemoryLog(rounded_bytes);
     LOG(WARNING) << RenderOccupancy();
   }
@@ -491,6 +494,8 @@ void* BFCAllocator::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
           }
           chunk->action_count = ++action_counter_;
           chunk->step_id = pending_step_id;
+          int slot = chunk->action_count % MEM_DEBUG_SIZE_HISTORY_SIZE;
+          size_history_[slot] = stats_.bytes_in_use;
         }
 #endif
 
@@ -664,6 +669,8 @@ void BFCAllocator::MarkFree(BFCAllocator::ChunkHandle h) {
 #ifdef TENSORFLOW_MEM_DEBUG
   if (ShouldRecordOpName()) {
     c->action_count = ++action_counter_;
+    int slot = c->action_count % MEM_DEBUG_SIZE_HISTORY_SIZE;
+    size_history_[slot] = stats_.bytes_in_use;
   }
 #endif
 }
@@ -996,6 +1003,15 @@ MemoryDump BFCAllocator::RecordMemoryMapInternal() {
   MemoryDump md;
   md.set_allocator_name(Name());
 
+  // Record the general stats
+  MemAllocatorStats* mas = md.mutable_stats();
+  mas->set_num_allocs(stats_.num_allocs);
+  mas->set_bytes_in_use(stats_.bytes_in_use);
+  mas->set_peak_bytes_in_use(stats_.peak_bytes_in_use);
+  mas->set_largest_alloc_size(stats_.largest_alloc_size);
+  int64 largest_free_chunk = 0;
+  int64 free_bytes = 0;
+
   // Record summary data for every bin.
   const std::array<BinDebugInfo, kNumBins> bin_infos = get_bin_debug_info();
   for (BinNum bin_num = 0; bin_num < kNumBins; bin_num++) {
@@ -1030,9 +1046,34 @@ MemoryDump BFCAllocator::RecordMemoryMapInternal() {
       if (timing_counter_) {
         mc->set_freed_at_count(c->in_use() ? 0 : c->freed_at_count);
       }
+      if (!c->in_use()) {
+        free_bytes += c->size;
+        if (c->size > largest_free_chunk) {
+          largest_free_chunk = c->size;
+        }
+      }
       h = c->next;
     }
   }
+  double frag_metric = 0.0;
+  if (free_bytes > 0) {
+    frag_metric =
+        (free_bytes - largest_free_chunk) / static_cast<double>(free_bytes);
+  }
+  mas->set_fragmentation_metric(frag_metric);
+
+#ifdef TENSORFLOW_MEM_DEBUG
+  // Record the recent size history
+  int history_len = static_cast<int>(std::min(
+      action_counter_, static_cast<long long>(MEM_DEBUG_SIZE_HISTORY_SIZE)));
+  for (int i = action_counter_ - history_len; i < action_counter_; ++i) {
+    SnapShot* ss = md.add_snap_shot();
+    ss->set_action_count(i);
+    int slot = i % MEM_DEBUG_SIZE_HISTORY_SIZE;
+    ss->set_size(size_history_[slot]);
+  }
+#endif
+
   return md;
 }
 

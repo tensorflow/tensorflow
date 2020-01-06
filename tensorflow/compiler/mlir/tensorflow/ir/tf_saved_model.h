@@ -16,8 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_SAVED_MODEL_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_SAVED_MODEL_H_
 
-#include "mlir/IR/Dialect.h"  // TF:local_config_mlir
-#include "mlir/IR/OpDefinition.h"  // TF:local_config_mlir
+#include "mlir/IR/Dialect.h"  // TF:llvm-project
+#include "mlir/IR/Function.h"  // TF:llvm-project
+#include "mlir/IR/Module.h"  // TF:llvm-project
+#include "mlir/IR/OpDefinition.h"  // TF:llvm-project
 
 namespace mlir {
 namespace tf_saved_model {
@@ -28,6 +30,10 @@ class TensorFlowSavedModelDialect : public Dialect {
   LogicalResult verifyRegionArgAttribute(Operation *op, unsigned region_index,
                                          unsigned arg_index,
                                          NamedAttribute named_attr) override;
+  LogicalResult verifyRegionResultAttribute(Operation *op,
+                                            unsigned region_index,
+                                            unsigned result_index,
+                                            NamedAttribute named_attr) override;
   LogicalResult verifyOperationAttribute(Operation *op,
                                          NamedAttribute named_attr) override;
 };
@@ -37,7 +43,19 @@ class TensorFlowSavedModelDialect : public Dialect {
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h.inc"
 
 // Returns the list of exported names for `op`.
+// An empty list means `op` is not exported.
 SmallVector<StringRef, 2> GetExportedNames(Operation *op);
+
+// Returns true if `op` is exported.
+bool IsExported(Operation *op);
+
+// Returns true if `module` has tf_saved_model linkage semantics.
+bool HasTfSavedModelSemantics(ModuleOp module);
+
+// Returns the tf_saved_model.global_tensor op that func's arg_index'th argument
+// refers to as a bound input, or null.
+GlobalTensorOp LookupBoundInput(FuncOp func, int arg_index,
+                                const SymbolTable &symbol_table);
 
 }  // namespace tf_saved_model
 }  // namespace mlir

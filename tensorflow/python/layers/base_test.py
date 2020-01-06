@@ -67,12 +67,12 @@ class BaseLayerTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def testKerasStyleAddWeight(self):
     keras_layer = keras_base_layer.Layer(name='keras_layer')
-    with ops.name_scope('foo'):
+    with ops.name_scope('foo', skip_on_eager=False):
       keras_variable = keras_layer.add_variable(
           'my_var', [2, 2], initializer=init_ops.zeros_initializer())
     self.assertEqual(keras_variable.name, 'foo/my_var:0')
 
-    with ops.name_scope('baz'):
+    with ops.name_scope('baz', skip_on_eager=False):
       old_style_layer = base_layers.Layer(name='my_layer')
       # Test basic variable creation.
       variable = old_style_layer.add_variable(
@@ -82,7 +82,7 @@ class BaseLayerTest(test.TestCase):
     with base_layers.keras_style_scope():
       layer = base_layers.Layer(name='my_layer')
     # Test basic variable creation.
-    with ops.name_scope('bar'):
+    with ops.name_scope('bar', skip_on_eager=False):
       variable = layer.add_variable(
           'my_var', [2, 2], initializer=init_ops.zeros_initializer())
     self.assertEqual(variable.name, 'bar/my_var:0')

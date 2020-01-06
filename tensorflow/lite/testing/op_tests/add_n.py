@@ -50,7 +50,7 @@ def make_add_n_tests(options):
     input_tensors = []
     for i in range(parameters["num_inputs"]):
       input_tensors.append(
-          tf.placeholder(
+          tf.compat.v1.placeholder(
               dtype=parameters["dtype"],
               name="input_{}".format(i),
               shape=parameters["input_shape"]))

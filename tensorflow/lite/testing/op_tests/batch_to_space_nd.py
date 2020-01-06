@@ -59,7 +59,7 @@ def make_batch_to_space_nd_tests(options):
 
   def build_graph(parameters):
     """Build a batch_to_space graph given `parameters`."""
-    input_tensor = tf.placeholder(
+    input_tensor = tf.compat.v1.placeholder(
         dtype=parameters["dtype"],
         name="input",
         shape=parameters["input_shape"])
@@ -70,7 +70,8 @@ def make_batch_to_space_nd_tests(options):
       block_shape = parameters["block_shape"]
     else:
       shape = [len(parameters["block_shape"])]
-      block_shape = tf.placeholder(dtype=tf.int32, name="shape", shape=shape)
+      block_shape = tf.compat.v1.placeholder(
+          dtype=tf.int32, name="shape", shape=shape)
       input_tensors.append(block_shape)
 
     # Get crops either as a const or as a placeholder (tensor).
@@ -78,7 +79,8 @@ def make_batch_to_space_nd_tests(options):
       crops = parameters["crops"]
     else:
       shape = [len(parameters["crops"]), 2]
-      crops = tf.placeholder(dtype=tf.int32, name="crops", shape=shape)
+      crops = tf.compat.v1.placeholder(
+          dtype=tf.int32, name="crops", shape=shape)
       input_tensors.append(crops)
 
     out = tf.batch_to_space_nd(input_tensor, block_shape, crops)

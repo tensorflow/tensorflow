@@ -36,12 +36,12 @@ def make_topk_tests(options):
 
   def build_graph(parameters):
     """Build the topk op testing graph."""
-    input_value = tf.placeholder(
+    input_value = tf.compat.v1.placeholder(
         dtype=parameters["input_dtype"],
         name="input",
         shape=parameters["input_shape"])
     if parameters["input_k"] is not None:
-      k = tf.placeholder(dtype=tf.int32, name="input_k", shape=[])
+      k = tf.compat.v1.placeholder(dtype=tf.int32, name="input_k", shape=[])
       inputs = [input_value, k]
     else:
       k = tf.constant(3, name="k")

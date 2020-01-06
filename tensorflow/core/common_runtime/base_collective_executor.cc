@@ -214,7 +214,7 @@ CollectiveAdapter* MakeCollectiveAdapter(Tensor* output, int num_chunks,
 BaseCollectiveExecutor::~BaseCollectiveExecutor() {}
 
 void BaseCollectiveExecutor::StartAbort(const Status& s) {
-  LOG(WARNING) << "BaseCollectiveExecutor::StartAbort " << s;
+  VLOG(1) << "BaseCollectiveExecutor::StartAbort " << s;
   remote_access_->StartAbort(s);
 }
 
@@ -268,8 +268,8 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
   remote_access_->RunClosure([col_impl, col_ctx, done_safe, ctx]() {
     profiler::TraceMe activity(
         [&] {
-          return strings::StrCat(ctx->op_kernel().name(), ":",
-                                 ctx->op_kernel().type_string(),
+          return strings::StrCat(ctx->op_kernel().name_view(), ":",
+                                 ctx->op_kernel().type_string_view(),
                                  "#id=", ctx->step_id(), "#");
         },
         profiler::TraceMeLevel::kInfo);
@@ -341,7 +341,8 @@ void BaseCollectiveExecutor::WaitForDependencies(
   VLOG(1) << "Unblocking collective " << col_params.ToString();
 }
 
-void BaseCollectiveExecutor::Launched(const CollectiveParams& col_params) {
+void BaseCollectiveExecutor::UnblockDependencies(
+    const CollectiveParams& col_params) {
   mutex_lock l(launch_mu_);
   if (launched_.find(col_params.instance.instance_key) == launched_.end()) {
     const string& task_name =

@@ -67,7 +67,7 @@ def make_conv_tests(options):
   def build_graph(parameters):
     """Build a conv graph given `parameters`."""
     input_shape, filter_shape = get_tensor_shapes(parameters)
-    input_tensor = tf.placeholder(
+    input_tensor = tf.compat.v1.placeholder(
         dtype=tf.float32, name="input", shape=input_shape)
 
     # Get filter input either as a placeholder or constants. Also get a list of
@@ -77,7 +77,7 @@ def make_conv_tests(options):
           np.float32, filter_shape, min_value=-10, max_value=10)
       input_tensors = [input_tensor]
     else:
-      filter_input = tf.placeholder(
+      filter_input = tf.compat.v1.placeholder(
           dtype=tf.float32, name="filter", shape=filter_shape)
       input_tensors = [input_tensor, filter_input]
 

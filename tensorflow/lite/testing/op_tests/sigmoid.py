@@ -30,10 +30,12 @@ def make_sigmoid_tests(options):
   test_parameters = [{
       "dtype": [tf.float32],
       "input_shape": [[1, 3, 4, 3], [4], [], [1, 2, 3, 4, 5, 6]],
+      "fully_quantize": [True, False],
+      "input_range": [(-10, 10)],
   }]
 
   def build_graph(parameters):
-    input_tensor = tf.placeholder(
+    input_tensor = tf.compat.v1.placeholder(
         dtype=parameters["dtype"],
         name="input",
         shape=parameters["input_shape"])
@@ -41,8 +43,10 @@ def make_sigmoid_tests(options):
     return [input_tensor], [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
+    min_value, max_value = parameters["input_range"]
     input_values = create_tensor_data(parameters["dtype"],
-                                      parameters["input_shape"])
+                                      parameters["input_shape"], min_value,
+                                      max_value)
     return [input_values], sess.run(
         outputs, feed_dict=dict(zip(inputs, [input_values])))
 

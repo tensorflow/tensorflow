@@ -111,6 +111,13 @@ DataType XlaHelpers::SumAccumulationType(const DataType& dtype) {
   if (dtype == DT_BFLOAT16 || dtype == DT_HALF) {
     return DT_FLOAT;
   }
+  // Upcast small integer types to 32 bit to avoid overflow.
+  if (dtype == DT_INT8 || dtype == DT_INT16) {
+    return DT_INT32;
+  }
+  if (dtype == DT_UINT8 || dtype == DT_UINT16) {
+    return DT_UINT32;
+  }
   return dtype;
 }
 

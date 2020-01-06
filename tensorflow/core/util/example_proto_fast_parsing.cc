@@ -546,7 +546,7 @@ void LogSparseFeatureDataLoss(StringPiece feature_name) {
 }
 
 Status FastParseSerializedExample(
-    const string& serialized_example, const string& example_name,
+    const tstring& serialized_example, const tstring& example_name,
     const size_t example_index, const Config& config,
     const PresizedCuckooMap<std::pair<size_t, Type>>& config_index,
     SeededHasher hasher, std::vector<Tensor>* output_dense,
@@ -926,7 +926,7 @@ inline void ReportUnexpectedDataType(DataType dtype) {
       << "in variable that should have been checked by CheckConfigDataType().";
 }
 
-Status CheckConfigDataTypes(Config config) {
+Status CheckConfigDataTypes(const Config& config) {
   // Check config so we can safely CHECK(false) in switches on config.*.dtype
   for (auto& c : config.sparse) {
     TF_RETURN_IF_ERROR(CheckConfigDataType(c.dtype));
@@ -1078,7 +1078,7 @@ void CopySparseBufferToTensor(DataType dtype, size_t offset, SparseBuffer* src,
     }
     case DT_STRING: {
       std::move(src->bytes_list.begin(), src->bytes_list.end(),
-                dst->flat<string>().data() + offset);
+                dst->flat<tstring>().data() + offset);
       break;
     }
     default:

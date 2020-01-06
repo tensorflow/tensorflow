@@ -32,7 +32,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
@@ -369,7 +368,6 @@ void BatchedNonMaxSuppressionOp(
       }
 
       std::vector<int> selected;
-      std::vector<float> selected_boxes;
       Candidate next_candidate;
 
       std::sort(candidate_vector.begin(), candidate_vector.end(), cmp);

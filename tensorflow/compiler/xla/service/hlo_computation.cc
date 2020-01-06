@@ -248,11 +248,6 @@ bool HloComputation::HasSideEffect() const {
   return false;
 }
 
-bool HloComputation::ContainsInstruction(
-    const HloInstruction* instruction) const {
-  return instruction_iterators_.contains(instruction);
-}
-
 Status HloComputation::RemoveInstructionAndUnusedOperands(
     HloInstruction* instruction, std::function<void(HloInstruction*)> cleanup) {
   TF_RET_CHECK(root_instruction() != instruction);
@@ -528,10 +523,10 @@ string HloComputation::ToString(
     absl::Span<const HloInstruction* const> instruction_order) const {
   CHECK_EQ(instruction_order.size(), instruction_count());
 
+  const string tab(2 * options.indent_amount(), ' ');
+
   std::ostringstream s;
-  for (int i = 0; i < options.indent_amount(); i++) {
-    s << "  ";
-  }
+  s << tab;
 
   if (!options.is_in_nested_computation()) {
     if (options.print_percent()) {
@@ -545,28 +540,79 @@ string HloComputation::ToString(
       << " ";
   }
   s << "{\n";
+
+  // There are instructions which are required to be printed. Additionally, we
+  // print some instructions before and after required ones. The resulting
+  // output has the following format.
+  //
+  //  computation {
+  //    ...
+  //    additional_instructions
+  //    required_instructions
+  //    additional_instructions
+  //    ...
+  //    additional_instructions
+  //    required_instructions
+  //    additional_instructions
+  //    ...
+  //  }
+  std::set<int> instructions_to_print;
+  {
+    // Find all the instructions that should be printed.
+    auto add_instruction = [&instructions_to_print,
+                            &instruction_order](int index) {
+      if (index < 0 || index >= instruction_order.size()) {
+        return;
+      }
+      instructions_to_print.insert(index);
+    };
+
+    auto add_instructions_arround = [&add_instruction, &options](int index) {
+      for (int i = index - options.leading_and_trailing_instructions_number();
+           i <= index + options.leading_and_trailing_instructions_number();
+           ++i) {
+        add_instruction(i);
+      }
+    };
+
+    for (int i = 0; i < instruction_order.size(); ++i) {
+      const HloInstruction* instruction = instruction_order[i];
+      CHECK_EQ(this, instruction->parent());
+      if (options.print_instruction(instruction)) {
+        add_instructions_arround(i);
+      }
+    }
+  }
+
   {
     // Print the instructions in this computation.
     HloPrintOptions new_options = options;
     new_options.set_indent_amount(options.indent_amount() + 1)
         .set_is_in_nested_computation(true);
-    CanonicalNameMap name_map;
-    for (const HloInstruction* instruction : instruction_order) {
-      CHECK_EQ(this, instruction->parent());
 
-      s << new_options.format_instruction(
-               instruction,
-               instruction->ToStringWithCanonicalNameMap(new_options,
-                                                         &name_map),
-               new_options.indent_amount(), instruction == root_instruction_)
-        << "\n";
+    const string new_tab(2 * new_options.indent_amount(), ' ');
+
+    CanonicalNameMap name_map;
+
+    bool print_prev = true;
+    for (int index = 0; index < instruction_order.size(); ++index) {
+      const HloInstruction* instruction = instruction_order[index];
+      if (instructions_to_print.find(index) != instructions_to_print.end()) {
+        s << new_options.format_instruction(
+                 instruction,
+                 instruction->ToStringWithCanonicalNameMap(new_options,
+                                                           &name_map),
+                 new_options.indent_amount(), instruction == root_instruction_)
+          << "\n";
+        print_prev = true;
+      } else if (print_prev) {
+        s << new_tab << "...\n";
+        print_prev = false;
+      }
     }
   }
 
-  for (int i = 0; i < options.indent_amount(); i++) {
-    s << "  ";
-  }
-  s << "}";
+  s << tab << "}";
   return s.str();
 }
 
@@ -589,16 +635,17 @@ HloComputationProto HloComputation::ToProto() const {
 /* static */ StatusOr<std::unique_ptr<HloComputation>>
 HloComputation::CreateFromProto(
     const HloComputationProto& proto,
-    const absl::flat_hash_map<int64, HloComputation*>& computation_map) {
+    const absl::flat_hash_map<int64, HloComputation*>& computation_map,
+    bool prohibit_empty_literal) {
   absl::flat_hash_map<int64, HloInstruction*> instruction_map;
   absl::flat_hash_map<HloInstruction*, int64> to_proto_id;
   std::vector<std::unique_ptr<HloInstruction>> instructions;
   int64 parameter_count = 0;
   for (const HloInstructionProto& instruction_proto : proto.instructions()) {
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<HloInstruction> instruction,
-        HloInstruction::CreateFromProto(instruction_proto, instruction_map,
-                                        computation_map));
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloInstruction> instruction,
+                        HloInstruction::CreateFromProto(
+                            instruction_proto, instruction_map, computation_map,
+                            prohibit_empty_literal));
     if (instruction->opcode() == HloOpcode::kParameter) {
       parameter_count++;
     }
@@ -791,7 +838,7 @@ bool HloComputation::Equal(const HloComputation& other,
       continue;
     }
     visited.emplace(pair);
-    // TODO(b/123082518): Avoid recursively invoking == becasue it may
+    // TODO(b/123082518): Avoid recursively invoking == because it may
     // cause a stack overflow with deeply nested subcomputations.
     bool identical_ignoring_operands = pair.first->Identical(
         *pair.second,

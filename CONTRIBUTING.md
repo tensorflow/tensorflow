@@ -72,7 +72,7 @@ TensorFlow coding style.
     [tensorflow/core](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/core)
     and
     [tensorflow/python](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/python).
-    TensorFlow has reached version 1 and hence cannot make
+    TensorFlow has passed version 1.0 and hence cannot make
     non-backward-compatible API changes without a major release. Reviewers of
     your pull request will comment on any API compatibility issues.
 *   When you contribute a new feature to TensorFlow, the maintenance burden is
@@ -84,6 +84,10 @@ TensorFlow coding style.
     [tensorflow/addons](https://github.com/tensorflow/addons) to get some
     airtime before a decision is made regarding whether they are to be migrated
     to the core.
+*   As every PR requires several CPU/GPU hours of CI testing, we discourage
+    submitting PRs to fix one typo, one warning,etc. We recommend fixing the
+    same issue at the file level at least (e.g.: fix all typos in a file, fix
+    all compiler warning in a file, etc.)
 
 #### License
 

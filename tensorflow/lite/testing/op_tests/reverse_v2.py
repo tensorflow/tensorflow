@@ -42,7 +42,7 @@ def make_reverse_v2_tests(options):
     return axis
 
   def build_graph(parameters):
-    input_tensor = tf.placeholder(
+    input_tensor = tf.compat.v1.placeholder(
         dtype=tf.float32, name=("input"), shape=parameters["base_shape"])
     outs = tf.reverse(input_tensor, axis=[get_valid_axis(parameters)])
     return [input_tensor], [outs]

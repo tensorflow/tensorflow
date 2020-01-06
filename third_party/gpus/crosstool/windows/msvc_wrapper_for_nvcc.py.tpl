@@ -37,7 +37,13 @@ GCC_HOST_COMPILER_PATH = ('%{gcc_host_compiler_path}')
 NVCC_PATH = '%{nvcc_path}'
 NVCC_VERSION = '%{cuda_version}'
 NVCC_TEMP_DIR = "%{nvcc_tmp_dir}"
-supported_cuda_compute_capabilities = [ %{cuda_compute_capabilities} ]
+DEFAULT_CUDA_COMPUTE_CAPABILITIES = '3.5,6.0'
+
+# Taken from environment variable for supported TF CUDA Compute Capabilities
+# eg. export TF_CUDA_COMPUTE_CAPABILITIES=3.5,3.7,5.2,6.0,6.1,7.0
+supported_cuda_compute_capabilities = os.environ.get(
+    'TF_CUDA_COMPUTE_CAPABILITIES',
+    DEFAULT_CUDA_COMPUTE_CAPABILITIES).split(',')
 
 def Log(s):
   print('gpus/crosstool: {0}'.format(s))
@@ -117,7 +123,7 @@ def InvokeNvcc(argv, log=False):
   nvcc_compiler_options, argv = GetNvccOptions(argv)
 
   opt_option, argv = GetOptionValue(argv, 'O')
-  opt = ['-g', '-G']
+  opt = ['-g']
   if (len(opt_option) > 0 and opt_option[0] != 'd'):
     opt = ['-O2']
 

@@ -38,7 +38,7 @@ def make_leaky_relu_tests(options):
   def build_graph(parameters):
     """Build the graph for the test case."""
 
-    input_tensor = tf.placeholder(
+    input_tensor = tf.compat.v1.placeholder(
         dtype=tf.float32, name="input", shape=parameters["input_shape"])
     out = tf.nn.leaky_relu(input_tensor, alpha=parameters["alpha"])
     return [input_tensor], [out]

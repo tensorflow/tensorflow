@@ -39,10 +39,22 @@ class _ObjectIdentityWrapper(object):
   def unwrapped(self):
     return self._wrapped
 
-  def __eq__(self, other):
+  def _assert_type(self, other):
     if not isinstance(other, _ObjectIdentityWrapper):
       raise TypeError("Cannot compare wrapped object with unwrapped object")
 
+  def __lt__(self, other):
+    self._assert_type(other)
+    return id(self._wrapped) < id(other._wrapped)  # pylint: disable=protected-access
+
+  def __gt__(self, other):
+    self._assert_type(other)
+    return id(self._wrapped) > id(other._wrapped)  # pylint: disable=protected-access
+
+  def __eq__(self, other):
+    if other is None:
+      return False
+    self._assert_type(other)
     return self._wrapped is other._wrapped  # pylint: disable=protected-access
 
   def __ne__(self, other):
@@ -160,7 +172,7 @@ class ObjectIdentitySet(collections_abc.MutableSet):
   """Like the built-in set, but compares objects with "is"."""
 
   def __init__(self, *args):
-    self._storage = set([self._wrap_key(obj) for obj in list(*args)])
+    self._storage = set(self._wrap_key(obj) for obj in list(*args))
 
   @staticmethod
   def _from_storage(storage):

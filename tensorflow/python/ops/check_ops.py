@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+
 import numpy as np
 
 from tensorflow.python.eager import context
@@ -351,7 +352,7 @@ def _binary_assert(sym, opname, op_func, static_func, x, y, data, summarize,
       raise errors.InvalidArgumentError(
           node_def=None,
           op=None,
-          message=('\n'.join([_pretty_print(d, summarize) for d in data])))
+          message=('\n'.join(_pretty_print(d, summarize) for d in data)))
 
     else:  # not context.executing_eagerly()
       if data is None:
@@ -1592,14 +1593,27 @@ def assert_shapes_v2(shapes, data=None, summarize=None, message=None,
 
   Example:
 
-  ```python
-  tf.assert_shapes([
-    (x: ('N', 'Q')),
-    (y: ('N', 'D')),
-    (param: ('Q',)),
-    (scalar: ()),
-  ])
-  ```
+  >>> n = 10
+  >>> q = 3
+  >>> d = 7
+  >>> x = tf.zeros([n,q]) 
+  >>> y = tf.ones([n,d])
+  >>> param = tf.Variable([1.0, 2.0, 3.0])
+  >>> scalar = 1.0
+  >>> tf.debugging.assert_shapes([
+  ...  (x, ('N', 'Q')),
+  ...  (y, ('N', 'D')),
+  ...  (param, ('Q',)),
+  ...  (scalar, ()),
+  ... ])
+  
+  >>> tf.debugging.assert_shapes([
+  ...   (x, ('N', 'D')), 
+  ...   (y, ('N', 'D'))
+  ... ])
+  Traceback (most recent call last):
+  ...
+  ValueError: ...
 
   If `x`, `y`, `param` or `scalar` does not have a shape that satisfies
   all specified constraints, `message`, as well as the first `summarize` entries
@@ -1645,12 +1659,12 @@ def assert_shapes(shapes, data=None, summarize=None, message=None, name=None):
   Example:
 
   ```python
-  tf.assert_shapes({
+  tf.assert_shapes([
     (x, ('N', 'Q')),
     (y, ('N', 'D')),
     (param, ('Q',)),
     (scalar, ())
-  })
+  ])
   ```
 
   Example of adding a dependency to an operation:
@@ -1913,6 +1927,13 @@ def is_non_decreasing(x, name=None):
 
   See also:  `is_strictly_increasing`
 
+  >>> x1 = tf.constant([1.0, 1.0, 3.0])
+  >>> tf.math.is_non_decreasing(x1)
+  <tf.Tensor: shape=(), dtype=bool, numpy=True>
+  >>> x2 = tf.constant([3.0, 1.0, 2.0])
+  >>> tf.math.is_non_decreasing(x2)
+  <tf.Tensor: shape=(), dtype=bool, numpy=False>
+
   Args:
     x: Numeric `Tensor`.
     name: A name for this operation (optional).  Defaults to "is_non_decreasing"
@@ -1946,6 +1967,13 @@ def is_strictly_increasing(x, name=None):
   If `x` has less than two elements, it is trivially strictly increasing.
 
   See also:  `is_non_decreasing`
+
+  >>> x1 = tf.constant([1.0, 2.0, 3.0])
+  >>> tf.math.is_strictly_increasing(x1)
+  <tf.Tensor: shape=(), dtype=bool, numpy=True>
+  >>> x2 = tf.constant([3.0, 1.0, 2.0])
+  >>> tf.math.is_strictly_increasing(x2)
+  <tf.Tensor: shape=(), dtype=bool, numpy=False>
 
   Args:
     x: Numeric `Tensor`.

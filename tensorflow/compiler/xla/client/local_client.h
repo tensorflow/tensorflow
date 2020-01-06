@@ -122,7 +122,7 @@ class LocalClient : public Client {
 
   // Transfer the BorrowingLiteral to the device with the given ordinal.
   StatusOr<TransferToServerResponse> TransferToLocalServer(
-      const ::xla::BorrowingLiteral& literal, int device_oridinal);
+      const ::xla::BorrowingLiteral& literal, int device_ordinal);
 
   // Copy the data from the device contained in the given ShapedBuffer and
   // return as a Literal.

@@ -20,8 +20,9 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 #if defined(PLATFORM_GOOGLE) || defined(PLATFORM_GOOGLE_ANDROID) || \
-    defined(GOOGLE_LOGGING) || defined(__EMSCRIPTEN__)
-#include "tensorflow/core/platform/google/build_config/logging.h"
+    defined(PLATFORM_GOOGLE_IOS) || defined(GOOGLE_LOGGING) ||      \
+    defined(__EMSCRIPTEN__)
+#include "tensorflow/core/platform/google/logging.h"
 #else
 #include "tensorflow/core/platform/default/logging.h"
 #endif

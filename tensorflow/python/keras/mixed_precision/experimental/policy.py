@@ -24,6 +24,7 @@ import six
 from tensorflow.python.framework import dtypes
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_layer_utils
+from tensorflow.python.keras.mixed_precision.experimental import device_compatibility_check
 from tensorflow.python.keras.mixed_precision.experimental import loss_scale as keras_loss_scale_module
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.platform import tf_logging
@@ -225,41 +226,24 @@ class Policy(object):
 
   ### The deprecated "infer" policy
 
-  In addition to a dtype or "<dtype>_with_float32_vars", a policy can also be
-  "infer". This Policy is deprecated, and it is not recommended. When a layer
-  has an infer policy, it will infer the computation and variable dtype from
-  the first input the first time the layer is called.
+  In addition to the above mentioned policies, a policy can also be "infer".
+  This Policy is deprecated, and it is not recommended. When a layer has an
+  infer policy, it will infer the computation and variable dtype from the first
+  input the first time the layer is called. Once the layer is called for the
+  first time, the layer's policy will change to the dtype of the first input.
 
-  Once the layer is called for the first time, the layer's policy will change to
-  the dtype of the first input.
-
-  Similarly to "infer", there is a deprecated "infer_with_float32_vars" policy
-  that infers the compute dtype, but not the variable dtype. Once a layer with
-  an "infer_with_float32_vars" policy is called for the first time, the layer's
-  policy will change to "<dtype>_with_float32_vars", where <dtype> is the dtype
-  of the first input. These policies force variables in float32.
-
-  Warning: Policies ending in "_with_float32_vars" will be removed in TensorFlow
-  2.1. Please use "mixed_float16" or "mixed_bfloat16" instead.
-
-  In TensorFlow 1, only the "infer" and "infer_with_float32_vars" policies are
-  available.
+  In TensorFlow 1, only the "infer" policy is available.
   """
   # TODO(reedwm): Replace link in above docstring with a version that is more
   # TensorFlow-specific, and that also mentions bfloat16.
 
-  # If True, warn when a policy is created whose name ends in
-  # "_with_float32_vars". We always want to warn when a user creates such a
-  # policy, but when the TensorFlow creates a policy, it suppresses the warning
-  # by setting this to False when creating the policy.
-  _warn_about_float32_vars = True
-
   def __init__(self, name, loss_scale=USE_DEFAULT):
     """Constructs the policy.
 
-    The `name` argument determines the compute and variable dtype, and has no
-    additional effect on the Policy. The compute and variable dtypes can only be
-    specified through `name`, and cannot be specified directly.
+    The `name` argument determines the compute and variable dtype, the default
+    loss scale, and has no additional effect on the Policy. The compute and
+    variable dtypes can only be specified through `name`, and cannot be
+    specified directly.
 
     Args:
       name: A string. Can be one of the following values:
@@ -271,39 +255,20 @@ class Policy(object):
           precision training.
         * 'infer' (deprecated): Infer the compute and variable dtype from the
           input dtype.
-      loss_scale: A `tf.mixed_precision.experimental.LossScale`, or a value
-        convertible to one such as "dynamic". Defaults to using no loss scaling
-        unless `name` is "mixed_float16", in which case this defaults to
-        "dynamic". Only `tf.keras.Model`s, not layers, use the loss scale, and
-        it is only used during `Model.fit`, `Model.train_on_batch`, and other
-        similar methods.
+      loss_scale: A `tf.mixed_precision.experimental.LossScale`, an int (which
+      uses a `FixedLossScale`), or the string "dynamic" (which uses a
+      `DynamicLossScale`). Defaults to using no loss scaling unless `name` is
+      "mixed_float16", in which case this defaults to "dynamic". Only
+      `tf.keras.Model`s, not layers, use the loss scale, and it is only used
+      during `Model.fit`, `Model.train_on_batch`, and other similar methods.
     """
     if isinstance(name, dtypes.DType):
       raise TypeError("'name' must be a string, not a DType. "
                       "Instead, pass DType.name. Got: %s" % (name.name,))
     elif not isinstance(name, six.string_types):
       raise TypeError("'name' must be a string, but got: %s" % (name,))
-    if name == 'infer_float32_vars':
-      # For backwards compatibility. TODO(reedwm): Remove this.
-      name = 'infer_with_float32_vars'
-    if name == 'float32_with_float32_vars':
-      # Doesn't affect correctness, but causes "float32" instead of
-      # "float32_with_float32_vars" to be printed in __repr__.
-      name = 'float32'
     self._name = name
     self._compute_dtype, self._variable_dtype = self._parse_name(name)
-
-    if name.endswith('_with_float32_vars') and self._warn_about_float32_vars:
-      warning = ("WARNING: The '%s' policy is deprecated and will be removed "
-                 "in TensorFlow 2.1." % name)
-      if name == 'infer_with_float32_vars':
-        warning += (" Please use the 'mixed_float16' or 'mixed_bfloat16' "
-                    "policy instead.")
-      elif name == 'float16_with_float32_vars':
-        warning += " Please use the 'mixed_float16' policy instead."
-      elif name == 'bfloat16_with_float32_vars':
-        warning += " Please use the 'mixed_bfloat16' policy instead."
-      tf_logging.warn(warning)
 
     if loss_scale == USE_DEFAULT:
       loss_scale = 'dynamic' if name == 'mixed_float16' else None
@@ -317,6 +282,9 @@ class Policy(object):
                       (loss_scale, name))
     self._loss_scale = keras_loss_scale_module.get(loss_scale)
 
+    if name in ('mixed_float16', 'mixed_bloat16'):
+      device_compatibility_check.log_device_compatibility_check(name)
+
   def _parse_name(self, name):
     """Parses a Policy name into a compute and variable dtype.
 
@@ -326,47 +294,45 @@ class Policy(object):
     Returns:
       The (compute_dtype, variable_dtype) pair.
     """
+    if name.endswith('_float32_vars'):
+      error_msg = ('Policies ending in \'_float32_vars\' have been removed '
+                   'from TensorFlow.')
+      if name in ('infer_float32_vars', 'infer_with_float32_vars'):
+        error_msg += (' Please use the \'mixed_float16\' or \'mixed_bfloat16\' '
+                      'policy instead.')
+      elif name == 'float16_with_float32_vars':
+        error_msg += (' Please use the \'mixed_float16\' policy instead.')
+      elif name == 'bfloat16_with_float32_vars':
+        error_msg += (' Please use the \'mixed_bfloat16\' policy instead.')
+      error_msg += ' Got policy name: \'%s\'' % name
+      raise ValueError(error_msg)
+
     if name == 'mixed_float16':
       return 'float16', 'float32'
     elif name == 'mixed_bfloat16':
       return 'bfloat16', 'float32'
+    elif name == 'infer':
+      return None, None
 
-    if name.endswith('_with_float32_vars'):
-      base_name = name[:-len('_with_float32_vars')]
-      float32_vars = True
-    else:
-      base_name = name
-      float32_vars = False
-
-    if base_name == 'infer':
-      base_dtype = None
-    else:
-      try:
-        base_dtype = dtypes.as_dtype(base_name).name
-      except TypeError:
-        error = ("Cannot convert value %s to a mixed precision Policy. "
-                 "Valid policies include include 'mixed_float16', "
-                 "'mixed_bfloat16', and the name of any dtype such as "
-                 "'float32'." % (name,))
-        if float32_vars:
-          error += (' The value %s ends with _with_float32_vars, but %s cannot '
-                    'be converted to a DType' % (name, base_name))
-        # six.raise_from supresses the original TypeError from being raised
-        six.raise_from(ValueError(error), None)
-
-    if float32_vars:
-      return base_dtype, 'float32'
-    else:
-      return base_dtype, base_dtype
+    try:
+      dtype = dtypes.as_dtype(name).name
+    except TypeError:
+      error = ("Cannot convert value %s to a mixed precision Policy. "
+               "Valid policies include include 'mixed_float16', "
+               "'mixed_bfloat16', and the name of any dtype such as "
+               "'float32'." % (name,))
+      # six.raise_from suppresses the original TypeError from being raised
+      six.raise_from(ValueError(error), None)
+    return dtype, dtype
 
   @property
   def variable_dtype(self):
     """The variable dtype of this policy.
 
     This is the dtype layers will create their variables in, unless a layer
-    explicit chooses a different dtype. If this is different than
-    `Policy.compute_dtype` and both are non-None, Layers will cast variables to
-    the compute dtype to avoid type errors.
+    explicitly chooses a different dtype. If this is different than
+    `Policy.compute_dtype`, Layers will cast variables to the compute dtype to
+    avoid type errors.
 
     Returns:
       The variable dtype of this policy, or None if the variable dtype should be
@@ -397,7 +363,7 @@ class Policy(object):
     keeping intermediate computations in float32.
 
     Returns:
-      The variable dtype of this policy, or None if the variable dtype should be
+      The compute dtype of this policy, or None if the compute dtype should be
       inferred from the inputs.
     """
     return self._compute_dtype
@@ -448,37 +414,6 @@ class Policy(object):
       config['loss_scale'] = keras_loss_scale_module.deserialize(
           config['loss_scale'], custom_objects=custom_objects)
     return cls(**config)
-
-
-def with_input_dtype(policy, dtype):
-  """Copies "infer" `policy`, adding `dtype` to it.
-
-  Policy must be "infer" or "infer_float32_vars" (i.e., has no compute dtype).
-  Returns a new policy with compute dtype `dtype`. The returned policy's
-  variable dtype is also `dtype` if `policy` is "infer", and is `float32` if
-  `policy` is "infer_with_float32_vars".
-
-  Args:
-    policy: An "infer" or "infer_float32_vars" policy
-    dtype: The dtype of an input to a layer.
-
-  Returns:
-    A new policy copied from `policy`, but with compute dtype and maybe
-    variable_dtype set to `dtype`.
-  """
-  assert not policy.compute_dtype
-  dtype = dtypes.as_dtype(dtype).name
-  if policy.variable_dtype is None:
-    return Policy(dtype)
-  else:
-    # Policies without a compute dtype are either "infer" or
-    # "infer_with_float32_vars", so the variable_dtype must be float32 here.
-    assert policy.variable_dtype == 'float32'
-    try:
-      Policy._warn_about_float32_vars = False  # pylint: disable=protected-access
-      return Policy(dtype + '_with_float32_vars')
-    finally:
-      Policy._warn_about_float32_vars = True  # pylint: disable=protected-access
 
 
 # The current global policy in effect. If None, it means the current value of

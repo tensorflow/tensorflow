@@ -21,7 +21,6 @@ from absl.testing import parameterized
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
-from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.ops import distribute
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -30,7 +29,6 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
-from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import test
 
@@ -108,42 +106,8 @@ class ReplicateClusterTest(test_base.DatasetTestBase, parameterized.TestCase):
       it1 = dataset_ops.make_initializable_iterator(dataset1)
     # We don't support stateful ops across processes in functions as of now.
     with session.Session(self._target) as sess:
-      with self.assertRaisesRegexp(
-          errors.InternalError,
-          "tf.function with resource inputs residing on remote devices."):
+      with self.assertRaises(errors.OpError):
         sess.run(it1.initializer)
-
-  @combinations.generate(
-      combinations.combine(tf_api_version=[1], mode=["graph"]))
-  def testAllowStatefulOp(self):
-    with compat.forward_compatibility_horizon(2019, 9, 12):
-      with ops.device(self._device0):
-        dataset0 = dataset_ops.Dataset.range(100).map(
-            lambda _: random_ops.random_uniform(  # pylint:disable=g-long-lambda
-                [],
-                minval=1,
-                maxval=10,
-                dtype=dtypes.float32))
-        opt = dataset_ops.Options()
-        opt.experimental_allow_stateful = True
-        dataset0 = dataset0.with_options(opt)
-      replicated_ds = distribute.replicate(dataset0,
-                                           [self._device1, self._device2])
-      dataset1 = replicated_ds[self._device1]
-      dataset2 = replicated_ds[self._device2]
-
-      with ops.device(self._device0):
-        get_next0 = self.getNext(dataset0)
-      with ops.device(self._device1):
-        get_next1 = self.getNext(dataset1)
-      with ops.device(self._device2):
-        get_next2 = self.getNext(dataset2)
-
-      with session.Session(self._target) as sess:
-        for _ in range(100):
-          sess.run(get_next0())
-          sess.run(get_next1())
-          sess.run(get_next2())
 
 
 if __name__ == "__main__":

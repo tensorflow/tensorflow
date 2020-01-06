@@ -21,10 +21,10 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/allocation.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
-#include "tensorflow/lite/experimental/resource_variable/resource_variable.h"
+#include "tensorflow/lite/experimental/resource/resource_base.h"
 #include "tensorflow/lite/memory_planner.h"
 #include "tensorflow/lite/util.h"
 
@@ -40,7 +40,7 @@ class Subgraph {
   Subgraph(ErrorReporter* error_reporter,
            TfLiteExternalContext** external_contexts,
            std::vector<std::unique_ptr<Subgraph>>* subgraphs,
-           ResourceVariableMap* resource_variables);
+           resource::ResourceMap* resources);
 
   Subgraph(const Subgraph&) = delete;
 
@@ -94,16 +94,17 @@ class Subgraph {
   inline TfLiteStatus SetTensorParametersReadOnly(
       int tensor_index, TfLiteType type, const char* name,
       const std::vector<int>& dims, TfLiteQuantization quantization,
-      const char* buffer, size_t bytes,
-      const Allocation* allocation = nullptr) {
+      const char* buffer, size_t bytes, const Allocation* allocation = nullptr,
+      TfLiteSparsity* sparsity = nullptr) {
     return SetTensorParametersReadOnly(tensor_index, type, name, dims.size(),
                                        dims.data(), quantization, buffer, bytes,
-                                       allocation);
+                                       allocation, sparsity);
   }
   TfLiteStatus SetTensorParametersReadOnly(
       int tensor_index, TfLiteType type, const char* name, const size_t rank,
       const int* dims, TfLiteQuantization quantization, const char* buffer,
-      size_t bytes, const Allocation* allocation = nullptr);
+      size_t bytes, const Allocation* allocation = nullptr,
+      TfLiteSparsity* sparsity = nullptr);
 
   // Set description of inputs/outputs/data/fptrs for node `node_index`.
   // This variant assumes an external buffer has been allocated of size
@@ -166,7 +167,7 @@ class Subgraph {
 
   // WARNING: Experimental interface, subject to change.
   // TODO(ycling): Move this function to an external context interface.
-  ResourceVariableMap& resource_variables() { return *resource_variables_; }
+  resource::ResourceMap& resources() { return *resources_; }
 
   size_t tensors_size() const { return tensors_.size(); }
 
@@ -210,6 +211,11 @@ class Subgraph {
   //   if our partners determine that dependency is acceptable.
   TfLiteStatus ResizeInputTensor(int tensor_index,
                                  const std::vector<int>& dims);
+
+  // This releases memory held by non-persistent tensors. It does NOT re-perform
+  // memory planning.
+  // AllocateTensors needs to be called before next invocation.
+  TfLiteStatus ReleaseNonPersistentMemory();
 
   // Update allocations for all tensors. This will redim dependent tensors using
   // the input tensor dimensionality as given. This is relatively expensive.
@@ -285,9 +291,15 @@ class Subgraph {
   // WARNING: This is an experimental API and subject to change.
   TfLiteStatus ResetVariableTensors();
 
-  void SetProfiler(std::unique_ptr<Profiler> profiler) {
-    profiler_ = std::move(profiler);
-    context_.profiler = profiler_.get();
+  void SetProfiler(Profiler* profiler, int associated_subgraph_idx) {
+    if (!profiler) {
+      profiler_.reset(nullptr);
+      context_.profiler = nullptr;
+    } else {
+      profiler_.reset(
+          new SubgraphAwareProfiler(profiler, associated_subgraph_idx));
+      context_.profiler = profiler_.get();
+    }
   }
 
   Profiler* GetProfiler() { return profiler_.get(); }
@@ -302,6 +314,40 @@ class Subgraph {
   bool HasDynamicTensors() { return has_dynamic_tensors_; }
 
  private:
+  // SubgraphAwareProfiler wraps an actual TFLite profiler, such as a
+  // BufferedProfiler instance, and takes care of event profiling/tracing in a
+  // certain subgraph.
+  class SubgraphAwareProfiler : public Profiler {
+   public:
+    // Constructor should be called with the non-nullptr profiler argument.
+    SubgraphAwareProfiler(Profiler* profiler, uint32_t subgraph_index)
+        : profiler_(profiler), subgraph_index_(subgraph_index) {}
+    ~SubgraphAwareProfiler() override {}
+
+    uint32_t BeginEvent(const char* tag, EventType event_type,
+                        uint32_t event_metadata,
+                        uint32_t subgraph_index) override {
+      if (!profiler_) return 0;
+      return profiler_->BeginEvent(tag, event_type, event_metadata,
+                                   subgraph_index);
+    }
+
+    uint32_t BeginEvent(const char* tag, EventType event_type,
+                        uint32_t event_metadata) override {
+      return BeginEvent(tag, event_type, event_metadata, subgraph_index_);
+    }
+
+    void EndEvent(uint32_t event_handle) override {
+      if (!profiler_) return;
+      profiler_->EndEvent(event_handle);
+    }
+
+   private:
+    // Not own the memory.
+    Profiler* const profiler_;
+    const uint32_t subgraph_index_;
+  };
+
   // Prevent 'context_' from accessing functions that are only available to
   // delegated kernels.
   void SwitchToKernelContext();
@@ -486,7 +532,7 @@ class Subgraph {
   // A pure C data structure used to communicate with the pure C plugin
   // interface. To avoid copying tensor metadata, this is also the definitive
   // structure to store tensors.
-  TfLiteContext context_;
+  TfLiteContext context_ = {};
 
   // A pointer to the external contexts (kTfLiteMaxExternalContexts) array that
   // sits inside the associated TFLite interpreter instance.
@@ -570,7 +616,7 @@ class Subgraph {
   bool tensor_resized_since_op_invoke_ = false;
 
   // Profiler for this interpreter instance.
-  std::unique_ptr<Profiler> profiler_;
+  std::unique_ptr<SubgraphAwareProfiler> profiler_;
 
   // A pointer to vector of subgraphs. The vector is owned by the interpreter.
   std::vector<std::unique_ptr<Subgraph>>* subgraphs_ = nullptr;
@@ -590,9 +636,8 @@ class Subgraph {
   // `check_cancelled_func_`.
   void* cancellation_data_ = nullptr;
 
-  // A map of resource variables. Owned by interpreter and shared by multiple
-  // subgraphs.
-  ResourceVariableMap* resource_variables_ = nullptr;
+  // A map of resources. Owned by interpreter and shared by multiple subgraphs.
+  resource::ResourceMap* resources_ = nullptr;
 };
 
 }  // namespace tflite

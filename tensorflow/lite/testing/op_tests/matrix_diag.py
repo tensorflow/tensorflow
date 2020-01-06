@@ -35,11 +35,11 @@ def make_matrix_diag_tests(options):
   ]
 
   def build_graph(parameters):
-    input_tensor = tf.placeholder(
+    input_tensor = tf.compat.v1.placeholder(
         dtype=parameters["input_dtype"],
         name="input",
         shape=parameters["input_shape"])
-    outs = tf.matrix_diag(input_tensor)
+    outs = tf.linalg.diag(input_tensor)
     return [input_tensor], [outs]
 
   def build_inputs(parameters, sess, inputs, outputs):

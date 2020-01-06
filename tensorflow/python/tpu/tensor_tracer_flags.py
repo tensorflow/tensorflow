@@ -23,6 +23,8 @@ import os
 import os.path
 import re
 
+from tensorflow.python.ops import linalg_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
 
 TRACE_MODE_NAN_INF = 'nan-inf'
@@ -68,6 +70,28 @@ _FLAG_NAME_OP_RANGE = 'op_range'
 _FLAG_DUMP_BEFORE_AFTER_GRAPHS = 'dump_graphs'
 _OP_RANGE_PAT = re.compile(r'(\d+):(\d+)')
 _TEST_UNDECLARED_OUTPUTS_DIR_ENV_VAR = 'TEST_UNDECLARED_OUTPUTS_DIR'
+_FLAG_SUMMARY_SIGNATURES = 'signatures'
+_FLAG_NAME_SUMMARY_PER_CORE = 'collect_summary_per_core'
+
+_TT_DEFAULT_TRACE_LEVEL = 3
+_TT_PREFIX = 'tensor_tracer'
+
+_TT_NORM = 'norm'
+_TT_MAX = 'max'
+_TT_MIN = 'min'
+_TT_MEAN = 'mean'
+_TT_VAR = 'var'
+_TT_SIZE = 'size'
+
+TT_SUMMARY_NORM = '%s_%s' % (_TT_PREFIX, _TT_NORM)
+TT_SUMMARY_MAX = '%s_%s' % (_TT_PREFIX, _TT_MAX)
+TT_SUMMARY_MIN = '%s_%s' % (_TT_PREFIX, _TT_MIN)
+TT_SUMMARY_MEAN = '%s_%s' % (_TT_PREFIX, _TT_MEAN)
+TT_SUMMARY_VAR = '%s_%s' % (_TT_PREFIX, _TT_VAR)
+TT_SUMMARY_SIZE = '%s_%s' % (_TT_PREFIX, _TT_SIZE)
+
+TT_SUMMARY_SIGNATURES = (TT_SUMMARY_NORM, TT_SUMMARY_MAX, TT_SUMMARY_MIN,
+                         TT_SUMMARY_MEAN, TT_SUMMARY_VAR, TT_SUMMARY_SIZE)
 
 _TT_DEFAULT_TRACE_LEVEL = 3
 
@@ -120,10 +144,12 @@ class TTParameters(object):
         _FLAG_DUMP_BEFORE_AFTER_GRAPHS)
     self.included_cores = self._flag_value_as_int_list(
         _FLAG_NAME_INCLUDED_CORES)
-    self.include_less_interesting_ops, _ = self.get_flag_value(
+    self.include_less_interesting_ops = self.is_flag_on(
         _FLAG_NAME_INCLUDE_LESS_INTERESTING_OPS)
     self.trace_level = self._get_flag_int_value(
         _FLAG_NAME_TRACE_LEVEL, _TT_DEFAULT_TRACE_LEVEL)
+    self.summary_signatures = self._get_summary_signatures()
+    self.collect_summary_per_core = self.is_flag_on(_FLAG_NAME_SUMMARY_PER_CORE)
 
   def _is_conditional_trace_mode(self):
     return self.trace_mode == TRACE_MODE_FULL_IF_NAN
@@ -244,7 +270,8 @@ class TTParameters(object):
         _FLAG_NAME_INCLUDED_CORES, _FLAG_NAME_REPORT_FILE,
         _FLAG_NAME_USE_TEST_UNDECLARED_OUTPUTS_DIR,
         _FLAG_NAME_INCLUDE_LESS_INTERESTING_OPS, _FLAG_NAME_OP_RANGE,
-        _FLAG_DUMP_BEFORE_AFTER_GRAPHS, _FLAG_NAME_TRACE_LEVEL
+        _FLAG_DUMP_BEFORE_AFTER_GRAPHS, _FLAG_NAME_TRACE_LEVEL,
+        _FLAG_SUMMARY_SIGNATURES, _FLAG_NAME_SUMMARY_PER_CORE
     ]
     tensor_tracer_flags = self._env.get(_FLAGS_ENV_VAR)
     if not tensor_tracer_flags:
@@ -261,6 +288,56 @@ class TTParameters(object):
             'is invalid. Valid flag names are:'
             '\n%s'%(flag_name, _FLAGS_ENV_VAR, valid_flag_names))
       pos = match.end()
+
+  def _get_summary_signatures(self):
+    """Verifies and returns the summary signatures.
+
+    Returns:
+      A dictionary of the signature identifiers {signature: index} that will be
+      computed when trace_mode is summary.
+    """
+    signatures = self._flag_value_as_list(_FLAG_SUMMARY_SIGNATURES)
+
+    tt_signatures = []
+    for signature in signatures:
+      signature_with_prefix = '%s_%s' % (_TT_PREFIX, signature)
+      if signature in TT_SUMMARY_SIGNATURES:
+        tt_signatures.append(signature)
+      elif signature_with_prefix in TT_SUMMARY_SIGNATURES:
+        tt_signatures.append(signature_with_prefix)
+      else:
+        logging.warning('Unknown signature:%s. Supported signatures: %s' % (
+            signature, TT_SUMMARY_SIGNATURES))
+    if not tt_signatures:
+      # Default case collects norm and max only.
+      return {TT_SUMMARY_MAX: 0, TT_SUMMARY_NORM: 1}
+    else:
+      return {signature: idx for idx, signature in enumerate(tt_signatures)}
+
+  def get_signature_to_agg_fn_map(self):
+    """Returns a map that contains the aggragate function for each signature."""
+    return {TT_SUMMARY_NORM: linalg_ops.norm,
+            TT_SUMMARY_MAX: math_ops.reduce_max,
+            TT_SUMMARY_MIN: math_ops.reduce_min,
+            TT_SUMMARY_MEAN: math_ops.reduce_mean,
+            TT_SUMMARY_VAR: math_ops.reduce_max,  # Simply reduce max variance.
+            TT_SUMMARY_SIZE: math_ops.reduce_sum}
+
+  def _flag_value_as_list(self, wanted_flag_name):
+    """Returns the string list of a TensorTracer flag.
+
+    Args:
+      wanted_flag_name: the name of the flag we are looking for.
+
+    Returns:
+      The list value of the flag.
+    """
+    string_value_list = []
+    found, flag_value = self.get_flag_value(wanted_flag_name)
+
+    if found:
+      string_value_list = flag_value.split(',')
+    return string_value_list
 
   def _flag_value_as_int_list(self, wanted_flag_name):
     """Returns the integer list of a TensorTracer flag.

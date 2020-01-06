@@ -1,9 +1,13 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_cuda_cc_test")
 load(
-    "//tensorflow/core/platform:default/cuda_build_defs.bzl",
+    "//tensorflow/core/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
-load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library", "xla_py_proto_library")
+load(
+    "//tensorflow/core/platform:build_config.bzl",
+    "tf_proto_library_cc",
+)
+load("//tensorflow/compiler/xla:xla.bzl", "xla_py_proto_library")
 load("//tensorflow:tensorflow.bzl", "tf_portable_proto_library")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 
@@ -58,13 +62,14 @@ tf_cc_binary(
     deps = [":tf2xla_supported_ops_lib"],
 )
 
-xla_proto_library(
+tf_proto_library_cc(
     name = "tf2xla_proto",
     srcs = ["tf2xla.proto"],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/core:protos_all_cc",
+    cc_api_version = 2,
+    protodeps = [
+        "//tensorflow/core:protos_all",
     ],
+    visibility = ["//visibility:public"],
 )
 
 # A proto library that is minimal in size and dependencies for platforms like Android.
@@ -75,7 +80,7 @@ tf_portable_proto_library(
     portable_deps = ["//tensorflow/core:android_proto_lib"],
     proto_deps = [
         ":tf2xla_proto",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:protos_all",
     ],
     visibility = ["//visibility:public"],
 )
@@ -88,13 +93,14 @@ xla_py_proto_library(
     deps = [":tf2xla_proto"],
 )
 
-xla_proto_library(
+tf_proto_library_cc(
     name = "host_compute_metadata_proto",
     srcs = ["host_compute_metadata.proto"],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/core:protos_all_cc",
+    cc_api_version = 2,
+    protodeps = [
+        "//tensorflow/core:protos_all",
     ],
+    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -105,12 +111,12 @@ cc_library(
     deps = [
         ":functionalize_control_flow",
         ":sharding_util",
-        ":tf2xla_proto",
+        ":tf2xla_proto_cc",
         ":tf2xla_util",
         ":xla_compiler",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -131,7 +137,7 @@ cc_library(
     deps = [
         ":common",
         ":graph_compiler_util",
-        ":tf2xla_proto",
+        ":tf2xla_proto_cc",
         ":tf2xla_util",
         ":xla_compiler",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
@@ -144,6 +150,33 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "mlir_tf2xla",
+    srcs = ["mlir_tf2xla.cc"],
+    hdrs = ["tf2xla.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":tf2xla_proto_cc",
+        ":xla_compiler",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:compile_mlir_util",
+        "//tensorflow/compiler/mlir/tensorflow:convert_graphdef",
+        "//tensorflow/compiler/mlir/tensorflow:device_util",
+        "//tensorflow/compiler/mlir/tensorflow:error_util",
+        "//tensorflow/compiler/mlir/tensorflow:import_utils",
+        "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
+        "//tensorflow/compiler/mlir/xla:hlo",
+        "//tensorflow/compiler/mlir/xla:mlir_hlo_to_hlo",
+        "//tensorflow/compiler/xla/client",
+        "//tensorflow/compiler/xla/client:xla_computation",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:types",
     ],
 )
 
@@ -179,12 +212,12 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":tf2xla",
-        ":tf2xla_proto",
+        ":tf2xla_proto_cc",
         ":xla_compiled_cpu_function",
         "//tensorflow/compiler/xla:cpu_function_runtime",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client:xla_computation",
@@ -233,7 +266,7 @@ cc_library(
     deps = [
         ":common",
         ":frontend_attributes_util",
-        ":host_compute_metadata_proto",
+        ":host_compute_metadata_proto_cc",
         ":rearrange_function_argument",
         ":sharding_util",
         ":side_effect_util",
@@ -248,7 +281,7 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:local_client",
@@ -291,7 +324,7 @@ cc_library(
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -308,7 +341,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -356,9 +389,9 @@ cc_library(
     visibility = [":friends"],
     deps = [
         ":sharding_util",
-        ":tf2xla_proto",
+        ":tf2xla_proto_cc",
         "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -398,7 +431,7 @@ tf_cc_test(
     srcs = ["tf2xla_test.cc"],
     deps = [
         ":tf2xla",
-        ":tf2xla_proto",
+        ":tf2xla_proto_cc",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:statusor",
@@ -418,13 +451,13 @@ tf_cc_test(
     name = "xla_jit_compiled_cpu_function_test",
     srcs = ["xla_jit_compiled_cpu_function_test.cc"],
     deps = [
-        ":tf2xla_proto",
+        ":tf2xla_proto_cc",
         ":xla_jit_compiled_cpu_function",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:test",
-        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/service:compiler",
         "//tensorflow/compiler/xla/service:platform_util",
@@ -463,7 +496,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/service:cpu_plugin",
-        "//tensorflow/compiler/xla/service:hlo_proto",
+        "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -593,7 +626,8 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:device_util",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
         "//tensorflow/core:core_cpu_lib",
-        "@llvm//:support",
+        "//tensorflow/core:session_options",
+        "@llvm-project//llvm:support",
     ],
     alwayslink = 1,
 )
@@ -706,6 +740,7 @@ tf_cc_test(
         "//tensorflow/cc:function_ops",
         "//tensorflow/cc:ops",
         "//tensorflow/cc:resource_variable_ops",
+        "//tensorflow/cc:scope",
         "//tensorflow/compiler/tf2xla/cc:xla_ops",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:core_cpu",
@@ -713,10 +748,14 @@ tf_cc_test(
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:ops",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:resource_variable_ops_op_lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/platform:test",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
     ],
 )
 
