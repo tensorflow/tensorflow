@@ -32,9 +32,9 @@ from six.moves import map
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
-from tensorflow.python import pywrap_tfe
 from tensorflow.python import _pywrap_utils
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import pywrap_tfe
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import context
@@ -1967,6 +1967,14 @@ class ConcreteFunction(object):
         j += 1
     ret = nest.pack_sequence_as(self._func_graph.structured_outputs,
                                 outputs_list, expand_composites=True)
+    return ret
+
+  @property
+  def _as_name_attr_list(self):
+    """Returns a `NameAttrList` representing this function."""
+    ret = attr_value_pb2.NameAttrList(name=self.name)
+    for name, value in self._attrs.items():
+      ret.attr[name].CopyFrom(value)
     return ret
 
 
