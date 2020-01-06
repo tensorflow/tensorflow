@@ -52,12 +52,6 @@ from tensorflow.python.util import object_identity
 
 # pylint: disable=protected-access
 
-# TODO(b/79881896): Handle external control dependencies. tf.while_loop allows
-# control dependencies on external nodes with at least 1 output.
-# Another idea is to create const nodes outside the loop and add control edges
-# to them and then pass those in as data inputs. This should probably be
-# handled in the CapturingGraph itself.
-
 
 def while_loop(cond,
                body,
@@ -310,9 +304,11 @@ def while_loop(cond,
       # exit op as input.
       outputs = tuple(array_ops.identity(t) for t in outputs)
 
-  outputs = _pack_sequence_as(
-      orig_loop_vars, outputs[first_loop_var_index:first_loop_var_index +
-                              num_flattened_outputs])
+  output_loop_vars = outputs[first_loop_var_index:first_loop_var_index +
+                             num_flattened_outputs]
+  if not back_prop:
+    output_loop_vars = [array_ops.stop_gradient(t) for t in output_loop_vars]
+  outputs = _pack_sequence_as(orig_loop_vars, output_loop_vars)
 
   if return_same_structure:
     return outputs
@@ -347,10 +343,11 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
 
   num_intermediates = len(while_op.outputs) - num_original_outputs
   grads = [
-      _preprocess_grad(grad, body_out, while_out)  # pylint: disable=g-complex-comprehension
-      for grad, body_out, while_out in zip(
+      _preprocess_grad(grad, body_out, while_in, while_out)  # pylint: disable=g-complex-comprehension
+      for grad, body_out, while_in, while_out in zip(
           grads[:num_original_outputs],
           body_graph.outputs[:num_original_outputs],
+          while_op.inputs[:num_original_outputs],
           while_op.outputs[:num_original_outputs])
   ] + [None] * num_intermediates
 
@@ -471,12 +468,13 @@ def _get_intermediates(func_graph):
   return intermediates
 
 
-def _preprocess_grad(grad, body_graph_output, while_op_output):
+def _preprocess_grad(grad, body_graph_output, while_op_input, while_op_output):
   """Returns the initial gradient to be used for a given output tensor.
 
   Args:
     grad: the original gradient Tensor passed to the gradient function.
     body_graph_output: the corresponding Tensor in the body graph.
+    while_op_input: the corresponding Tensor input of the While op.
     while_op_output: the corresponding Tensor output of the While op.
 
   Returns:
@@ -497,21 +495,30 @@ def _preprocess_grad(grad, body_graph_output, while_op_output):
   # GradientTape initializes resource and variant grads as None instead of
   # zeros. Set to zeros so _GradientsHelper computes the gradients instead of
   # returning None.
-  if (while_op_output.dtype in (dtypes.resource, dtypes.variant)
-      and grad is None):
-    return _zeros_like(while_op_output)
+  # TODO(b/143286622): The supports_default_grad check is needed
+  # because While op emits non-differentiable resource tensors
+  # as outputs. Remove this check when that is not the case.
+  # Note: We use `while_op_input` instead of `while_op_output` for the call
+  # to `supports_default_grad` because `while_op_output` may be missing
+  # handle_data if the While is in a restored saved model.
+  if (while_op_output.dtype in (dtypes.resource, dtypes.variant) and
+      default_gradient.supports_default_grad(while_op_input) and grad is None):
+    return _zeros_like(while_op_input, while_op_output)
 
   return grad
 
 
 # TODO(skyewm): make this return constants if op_output's shape is fully
 # defined (this can be done by checking the "shape" attr of resource vars).
-def _zeros_like(op_output):
+def _zeros_like(op_input, op_output):
   """Like array_ops.zeros_like() but also accepts resource var handles."""
   if op_output.dtype == dtypes.resource:
+    # Note: We use `op_input` instead of `op_output` to get the zeros dtype
+    # because `op_output` may be missing handle_data if the While is in a
+    # restored saved model.
     return array_ops.zeros(
         gen_resource_variable_ops.variable_shape(op_output),
-        dtype=default_gradient.get_zeros_dtype(op_output))
+        dtype=default_gradient.get_zeros_dtype(op_input))
   return array_ops.zeros_like(op_output)
 
 
@@ -910,8 +917,9 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
       ValueError: If attempting to capture an external tensor not in the forward
         graph with `whitelisted` set to False.
     """
-    if (not whitelisted and tensor.graph is not self and
-        tensor.graph != self._forward_graph):
+    if not whitelisted and (isinstance(tensor, ops.EagerTensor) or
+                            (tensor.graph is not self and
+                             tensor.graph != self._forward_graph)):
       with self._forward_cond_graph.as_default():
         self._forward_cond_graph.capture(tensor)
       with self._forward_graph.as_default():

@@ -55,11 +55,11 @@ func @tensorlistSetItem(%arg0: tensor<3x10xf32>, %arg1: tensor<1xi32>, %arg2: te
 // CHECK:  [[PARTIAL_START_POS:%.*]] = "tf.Fill"([[VECTOR_RANK]], [[ZERO_1]]) : (tensor<1xi32>, tensor<i32>) -> tensor<?xi32>
 // CHECK:  [[ZERO_2:%cst.*]] = constant dense<0> : tensor<i32>
 // CHECK:  [[EXPANDED_START_INDEX:%.*]] = "tf.ExpandDims"([[ZERO]], [[ZERO_2]]) : (tensor<i32>, tensor<i32>) -> tensor<1xi32>
-// CHECK:  [[START_POS:%.*]] = "tf.Concat"([[ZERO_2]], [[EXPANDED_START_INDEX]], [[PARTIAL_START_POS]]) {N = 2 : i64} : (tensor<i32>, tensor<1xi32>, tensor<?xi32>) -> tensor<?xi32>
+// CHECK:  [[START_POS:%.*]] = "tf.Concat"([[ZERO_2]], [[EXPANDED_START_INDEX]], [[PARTIAL_START_POS]]) : (tensor<i32>, tensor<1xi32>, tensor<?xi32>) -> tensor<?xi32>
 // CHECK:  [[LEADING_DIM:%.*]] = "tf.ExpandDims"([[INDEX]], [[ZERO_2]]) : (tensor<i32>, tensor<i32>) -> tensor<1xi32>
 // CHECK:  [[NEG_ONE_1:%cst.*]] = constant dense<-1> : tensor<i32>
 // CHECK:  [[PARTIAL_SIZE:%.*]] = "tf.Fill"([[VECTOR_RANK]], [[NEG_ONE_1]]) : (tensor<1xi32>, tensor<i32>) -> tensor<?xi32>
-// CHECK:  [[SLICE_SIZE:%.*]] = "tf.Concat"([[ZERO_2]], [[LEADING_DIM]], [[PARTIAL_SIZE]]) {N = 2 : i64} : (tensor<i32>, tensor<1xi32>, tensor<?xi32>) -> tensor<?xi32>
+// CHECK:  [[SLICE_SIZE:%.*]] = "tf.Concat"([[ZERO_2]], [[LEADING_DIM]], [[PARTIAL_SIZE]]) : (tensor<i32>, tensor<1xi32>, tensor<?xi32>) -> tensor<?xi32>
 // CHECK:  [[SLICE:%.*]] = "tf.Slice"([[INPUT]], [[START_POS]], [[SLICE_SIZE]]) : (tensor<3x10xf32>, tensor<?xi32>, tensor<?xi32>) -> tensor<*xf32>
 
 
@@ -67,16 +67,16 @@ func @tensorlistSetItem(%arg0: tensor<3x10xf32>, %arg1: tensor<1xi32>, %arg2: te
 // CHECK:  [[PARTIAL_START_POS_1:%.*]] = "tf.Fill"([[VECTOR_RANK]], [[ZERO_3]]) : (tensor<1xi32>, tensor<i32>) -> tensor<?xi32>
 // CHECK:  [[ZERO_4:%cst.*]] = constant dense<0> : tensor<i32>
 // CHECK:  [[EXPANDED_START_INDEX_1:%.*]] = "tf.ExpandDims"([[SUFFIX_START]], [[ZERO_4]]) : (tensor<i32>, tensor<i32>) -> tensor<1xi32>
-// CHECK:  [[START_POS_1:%.*]] = "tf.Concat"([[ZERO_4]], [[EXPANDED_START_INDEX_1]], [[PARTIAL_START_POS_1]]) {N = 2 : i64} : (tensor<i32>, tensor<1xi32>, tensor<?xi32>) -> tensor<?xi32>
+// CHECK:  [[START_POS_1:%.*]] = "tf.Concat"([[ZERO_4]], [[EXPANDED_START_INDEX_1]], [[PARTIAL_START_POS_1]]) : (tensor<i32>, tensor<1xi32>, tensor<?xi32>) -> tensor<?xi32>
 // CHECK:  [[LEADING_DIM_1:%.*]] = "tf.ExpandDims"([[NEG_ONE]], [[ZERO_4]]) : (tensor<i32>, tensor<i32>) -> tensor<1xi32>
 // CHECK:  [[NEG_ONE_2:%cst.*]] = constant dense<-1> : tensor<i32>
 // CHECK:  [[PARTIAL_SIZE_1:%.*]] = "tf.Fill"([[VECTOR_RANK]], [[NEG_ONE_2]]) : (tensor<1xi32>, tensor<i32>) -> tensor<?xi32>
-// CHECK:  [[SLICE_SIZE_1:%.*]] = "tf.Concat"([[ZERO_4]], [[LEADING_DIM_1]], [[PARTIAL_SIZE_1]]) {N = 2 : i64} : (tensor<i32>, tensor<1xi32>, tensor<?xi32>) -> tensor<?xi32>
+// CHECK:  [[SLICE_SIZE_1:%.*]] = "tf.Concat"([[ZERO_4]], [[LEADING_DIM_1]], [[PARTIAL_SIZE_1]]) : (tensor<i32>, tensor<1xi32>, tensor<?xi32>) -> tensor<?xi32>
 // CHECK:  [[SLICE_1:%.*]] = "tf.Slice"([[INPUT]], [[START_POS_1]], [[SLICE_SIZE_1]]) : (tensor<3x10xf32>, tensor<?xi32>, tensor<?xi32>) -> tensor<*xf32>
 
 
 // CHECK:  [[EXPANDED_ITEM:%.*]] = "tf.ExpandDims"([[ITEM]], [[ZERO]]) : (tensor<10xf32>, tensor<i32>) -> tensor<*xf32>
-// CHECK:  [[RESULT:%.*]] = "tf.Concat"([[ZERO]], [[SLICE]], [[EXPANDED_ITEM]], [[SLICE_1]]) {N = 3 : i64} : (tensor<i32>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) -> tensor<3x10xf32>
+// CHECK:  [[RESULT:%.*]] = "tf.Concat"([[ZERO]], [[SLICE]], [[EXPANDED_ITEM]], [[SLICE_1]]) : (tensor<i32>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) -> tensor<3x10xf32>
 // CHECK:  return [[RESULT]] : tensor<3x10xf32>
 }
 
@@ -100,11 +100,11 @@ func @tensorlistSetItemWithScalarElements(%arg0: tensor<5xf32>, %arg1: tensor<0x
 // CHECK:  [[PARTIAL_START_POS:%.*]] = "tf.Fill"([[VECTOR_RANK]], [[ZERO_1]]) : (tensor<1xi32>, tensor<i32>) -> tensor<?xi32>
 // CHECK:  [[ZERO_2:%cst.*]] = constant dense<0> : tensor<i32>
 // CHECK:  [[EXPANDED_START_INDEX:%.*]] = "tf.ExpandDims"([[ZERO]], [[ZERO_2]]) : (tensor<i32>, tensor<i32>) -> tensor<1xi32>
-// CHECK:  [[START_POS:%.*]] = "tf.Concat"([[ZERO_2]], [[EXPANDED_START_INDEX]], [[PARTIAL_START_POS]]) {N = 2 : i64} : (tensor<i32>, tensor<1xi32>, tensor<?xi32>) -> tensor<?xi32>
+// CHECK:  [[START_POS:%.*]] = "tf.Concat"([[ZERO_2]], [[EXPANDED_START_INDEX]], [[PARTIAL_START_POS]]) : (tensor<i32>, tensor<1xi32>, tensor<?xi32>) -> tensor<?xi32>
 // CHECK:  [[LEADING_DIM:%.*]] = "tf.ExpandDims"([[INDEX]], [[ZERO_2]]) : (tensor<i32>, tensor<i32>) -> tensor<1xi32>
 // CHECK:  [[NEG_ONE_1:%cst.*]] = constant dense<-1> : tensor<i32>
 // CHECK:  [[PARTIAL_SIZE:%.*]] = "tf.Fill"([[VECTOR_RANK]], [[NEG_ONE_1]]) : (tensor<1xi32>, tensor<i32>) -> tensor<?xi32>
-// CHECK:  [[SLICE_SIZE:%.*]] = "tf.Concat"([[ZERO_2]], [[LEADING_DIM]], [[PARTIAL_SIZE]]) {N = 2 : i64} : (tensor<i32>, tensor<1xi32>, tensor<?xi32>) -> tensor<?xi32>
+// CHECK:  [[SLICE_SIZE:%.*]] = "tf.Concat"([[ZERO_2]], [[LEADING_DIM]], [[PARTIAL_SIZE]]) : (tensor<i32>, tensor<1xi32>, tensor<?xi32>) -> tensor<?xi32>
 // CHECK:  [[SLICE:%.*]] = "tf.Slice"([[INPUT]], [[START_POS]], [[SLICE_SIZE]]) : (tensor<5xf32>, tensor<?xi32>, tensor<?xi32>) -> tensor<*xf32>
 
 
@@ -112,16 +112,16 @@ func @tensorlistSetItemWithScalarElements(%arg0: tensor<5xf32>, %arg1: tensor<0x
 // CHECK:  [[PARTIAL_START_POS_1:%.*]] = "tf.Fill"([[VECTOR_RANK]], [[ZERO_3]]) : (tensor<1xi32>, tensor<i32>) -> tensor<?xi32>
 // CHECK:  [[ZERO_4:%cst.*]] = constant dense<0> : tensor<i32>
 // CHECK:  [[EXPANDED_START_INDEX_1:%.*]] = "tf.ExpandDims"([[SUFFIX_START]], [[ZERO_4]]) : (tensor<i32>, tensor<i32>) -> tensor<1xi32>
-// CHECK:  [[START_POS_1:%.*]] = "tf.Concat"([[ZERO_4]], [[EXPANDED_START_INDEX_1]], [[PARTIAL_START_POS_1]]) {N = 2 : i64} : (tensor<i32>, tensor<1xi32>, tensor<?xi32>) -> tensor<?xi32>
+// CHECK:  [[START_POS_1:%.*]] = "tf.Concat"([[ZERO_4]], [[EXPANDED_START_INDEX_1]], [[PARTIAL_START_POS_1]]) : (tensor<i32>, tensor<1xi32>, tensor<?xi32>) -> tensor<?xi32>
 // CHECK:  [[LEADING_DIM_1:%.*]] = "tf.ExpandDims"([[NEG_ONE]], [[ZERO_4]]) : (tensor<i32>, tensor<i32>) -> tensor<1xi32>
 // CHECK:  [[NEG_ONE_2:%cst.*]] = constant dense<-1> : tensor<i32>
 // CHECK:  [[PARTIAL_SIZE_1:%.*]] = "tf.Fill"([[VECTOR_RANK]], [[NEG_ONE_2]]) : (tensor<1xi32>, tensor<i32>) -> tensor<?xi32>
-// CHECK:  [[SLICE_SIZE_1:%.*]] = "tf.Concat"([[ZERO_4]], [[LEADING_DIM_1]], [[PARTIAL_SIZE_1]]) {N = 2 : i64} : (tensor<i32>, tensor<1xi32>, tensor<?xi32>) -> tensor<?xi32>
+// CHECK:  [[SLICE_SIZE_1:%.*]] = "tf.Concat"([[ZERO_4]], [[LEADING_DIM_1]], [[PARTIAL_SIZE_1]])  : (tensor<i32>, tensor<1xi32>, tensor<?xi32>) -> tensor<?xi32>
 // CHECK:  [[SLICE_1:%.*]] = "tf.Slice"([[INPUT]], [[START_POS_1]], [[SLICE_SIZE_1]]) : (tensor<5xf32>, tensor<?xi32>, tensor<?xi32>) -> tensor<*xf32>
 
 
 // CHECK:  [[EXPANDED_ITEM:%.*]] = "tf.ExpandDims"([[ITEM]], [[ZERO]]) : (tensor<f32>, tensor<i32>) -> tensor<*xf32>
-// CHECK:  [[RESULT:%.*]] = "tf.Concat"([[ZERO]], [[SLICE]], [[EXPANDED_ITEM]], [[SLICE_1]]) {N = 3 : i64} : (tensor<i32>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) -> tensor<5xf32>
+// CHECK:  [[RESULT:%.*]] = "tf.Concat"([[ZERO]], [[SLICE]], [[EXPANDED_ITEM]], [[SLICE_1]]) : (tensor<i32>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) -> tensor<5xf32>
 // CHECK:  return [[RESULT]] : tensor<5xf32>
 }
 
@@ -134,7 +134,7 @@ func @tensorlistReserve(%arg0: tensor<3xi32>, %arg1: tensor<i32>, %arg2: tensor<
 // CHECK-DAG:  [[ZERO1:%cst.*]] = constant dense<0> : tensor<i32>
 // CHECK-DAG:  [[ZERO2:%cst.*]] = constant dense<0> : tensor<i32>
 // CHECK-DAG:  [[DIM0:%.*]] = "tf.ExpandDims"(%arg1, [[ZERO1]]) : (tensor<i32>, tensor<i32>) -> tensor<1xi32>
-// CHECK-DAG:  [[SHAPE:%.*]] = "tf.Concat"([[ZERO2]], [[DIM0]], %arg0) {N = 2 : i64} : (tensor<i32>, tensor<1xi32>, tensor<3xi32>) -> tensor<4xi32>
+// CHECK-DAG:  [[SHAPE:%.*]] = "tf.Concat"([[ZERO2]], [[DIM0]], %arg0) : (tensor<i32>, tensor<1xi32>, tensor<3xi32>) -> tensor<4xi32>
 // CHECK-DAG:  [[VALUES:%.*]] = constant dense<0.000000e+00> : tensor<f32>
 // CHECK:      [[LIST:%.*]] = "tf.Fill"([[SHAPE]], [[VALUES]]) : (tensor<4xi32>, tensor<f32>) -> tensor<?x?x?x?xf32>
 // CHECK:      [[RESULT:%.*]] = "tf.Gather"([[LIST]], %arg2) {validate_indices = true} : (tensor<?x?x?x?xf32>, tensor<i32>) -> tensor<?x?x?xf32>
@@ -163,7 +163,7 @@ func @tensorlistReserveConstantUnknownElementShapeDim(%arg0: tensor<i32>, %arg1:
 // CHECK-DAG:  [[ZERO2:%cst.*]] = constant dense<0> : tensor<i32>
 // CHECK-DAG:  [[ELEMENT_SHAPE:%cst.*]] = constant dense<[1, 7]> : tensor<2xi32>
 // CHECK-DAG:  [[DIM0:%.*]] = "tf.ExpandDims"(%arg0, [[ZERO1]]) : (tensor<i32>, tensor<i32>) -> tensor<1xi32>
-// CHECK-DAG:  [[SHAPE:%.*]] = "tf.Concat"([[ZERO2]], [[DIM0]], [[ELEMENT_SHAPE]]) {N = 2 : i64} : (tensor<i32>, tensor<1xi32>, tensor<2xi32>) -> tensor<3xi32>
+// CHECK-DAG:  [[SHAPE:%.*]] = "tf.Concat"([[ZERO2]], [[DIM0]], [[ELEMENT_SHAPE]]) : (tensor<i32>, tensor<1xi32>, tensor<2xi32>) -> tensor<3xi32>
 // CHECK-DAG:  [[VALUES:%.*]] = constant dense<0.000000e+00> : tensor<f32>
 // CHECK:      [[LIST:%.*]] = "tf.Fill"([[SHAPE]], [[VALUES]]) : (tensor<3xi32>, tensor<f32>) -> tensor<?x?x7xf32>
 // CHECK:      [[RESULT:%.*]] = "tf.Gather"([[LIST]], %arg1) {validate_indices = true} : (tensor<?x?x7xf32>, tensor<i32>) -> tensor<?x7xf32>
@@ -179,7 +179,7 @@ func @EmptyTensorList(%arg0: tensor<3xi32>, %arg1: tensor<i32>, %arg2: tensor<i3
 // CHECK-SAME:  ([[ELEM_SHAPE:%.*]]: tensor<3xi32>, [[MAX_ELEMS:%.*]]: tensor<i32>, [[IDX:%.*]]: tensor<i32>)
 // CHECK-DAG:  [[DIM0:%cst.*]] = constant dense<0> : tensor<1xi32>
 // CHECK-DAG:  [[ZERO:%cst.*]] = constant dense<0> : tensor<i32>
-// CHECK-DAG:  [[SHAPE:%.*]] = "tf.Concat"([[ZERO]], [[DIM0]], [[ELEM_SHAPE]]) {N = 2 : i64} : (tensor<i32>, tensor<1xi32>, tensor<3xi32>) -> tensor<4xi32>
+// CHECK-DAG:  [[SHAPE:%.*]] = "tf.Concat"([[ZERO]], [[DIM0]], [[ELEM_SHAPE]]) : (tensor<i32>, tensor<1xi32>, tensor<3xi32>) -> tensor<4xi32>
 // CHECK-DAG:  [[VALUES:%.*]] = constant dense<0.000000e+00> : tensor<f32>
 // CHECK:      [[LIST:%.*]] = "tf.Fill"([[SHAPE]], [[VALUES]]) : (tensor<4xi32>, tensor<f32>) -> tensor<?x?x?x?xf32>
 // CHECK:      [[RESULT:%.*]] = "tf.Gather"([[LIST]], [[IDX]]) {validate_indices = true} : (tensor<?x?x?x?xf32>, tensor<i32>) -> tensor<?x?x?xf32>
@@ -196,7 +196,7 @@ func @tensorlistPushBack(%arg0: tensor<3x10xf32>, %arg1: tensor<1xi32>, %arg2: t
 // CHECK-SAME:  ([[INPUT:%.*]]: tensor<3x10xf32>, [[ELEM_SHAPE:%.*]]: tensor<1xi32>, [[ITEM:%.*]]: tensor<10xf32>)
 // CHECK:   [[ZERO:%.*]] = constant dense<0> : tensor<i32>
 // CHECK:   [[EXP_ITEM:%.*]] = "tf.ExpandDims"([[ITEM]], [[ZERO]]) {{.*}} -> tensor<1x10xf32>
-// CHECK:   [[RESULT:%.*]] = "tf.Concat"(%cst, [[INPUT]], [[EXP_ITEM]]) {N = 2 : i64} : {{.*}} -> tensor<?x10xf32>
+// CHECK:   [[RESULT:%.*]] = "tf.Concat"(%cst, [[INPUT]], [[EXP_ITEM]]) : {{.*}} -> tensor<?x10xf32>
 // CHECK:   return [[RESULT]] : tensor<?x10xf32>
 }
 
@@ -284,11 +284,11 @@ func @tensorlistResize(%arg0: tensor<3x10xf32>, %arg1: tensor<1xi32>, %arg2: ten
 // CHECK-NEXT:  [[ZERO_1:%.*]] = constant dense<0> : tensor<i32>
 // CHECK-NEXT:  [[EXPANDED_SIZE_DIFF:%.*]] = "tf.ExpandDims"([[SIZE_DIFF]], [[ZERO_1]]) : (tensor<i32>, tensor<i32>) -> tensor<1xi32>
 // CHECK-NEXT:  [[ZERO_2:%.*]] = constant dense<0> : tensor<i32>
-// CHECK-NEXT:  [[EXTENDED_SHAPE:%.*]] = "tf.Concat"([[ZERO_2]], [[EXPANDED_SIZE_DIFF]], [[ELEM_SHAPE]]) {N = 2 : i64} : (tensor<i32>, tensor<1xi32>, tensor<?xi32>) -> tensor<2xi32>
+// CHECK-NEXT:  [[EXTENDED_SHAPE:%.*]] = "tf.Concat"([[ZERO_2]], [[EXPANDED_SIZE_DIFF]], [[ELEM_SHAPE]]) : (tensor<i32>, tensor<1xi32>, tensor<?xi32>) -> tensor<2xi32>
 // CHECK-NEXT:  [[ZERO_FLOAT:%.*]] = constant dense<0.000000e+00> : tensor<f32>
 // CHECK-NEXT:  [[EXTENDED_PART:%.*]] = "tf.Fill"([[EXTENDED_SHAPE]], [[ZERO_FLOAT]]) : (tensor<2xi32>, tensor<f32>) -> tensor<?x10xf32>
 // CHECK-NEXT:  [[NEG_ONE_1:%.*]] = constant dense<-1> : tensor<i32>
-// CHECK-NEXT:  [[RESULT:%.*]] = "tf.Concat"([[ZERO]], [[INPUT]], [[EXTENDED_PART]]) {N = 2 : i64} : (tensor<i32>, tensor<3x10xf32>, tensor<?x10xf32>) -> tensor<?x10xf32>
+// CHECK-NEXT:  [[RESULT:%.*]] = "tf.Concat"([[ZERO]], [[INPUT]], [[EXTENDED_PART]]) : (tensor<i32>, tensor<3x10xf32>, tensor<?x10xf32>) -> tensor<?x10xf32>
 // CHECK-NEXT:  return [[RESULT]] : tensor<?x10xf32>
 
 
@@ -302,11 +302,11 @@ func @tensorlistResize(%arg0: tensor<3x10xf32>, %arg1: tensor<1xi32>, %arg2: ten
 // CHECK:  [[PARTIAL_POS:%.*]] = "tf.Fill"([[ELEM_RANK]], [[ZERO_1]]) : (tensor<1xi32>, tensor<i32>) -> tensor<?xi32>
 // CHECK:  [[ZERO_2:%.*]] = constant dense<0> : tensor<i32>
 // CHECK:  [[START:%.*]] = "tf.ExpandDims"([[ZERO]], [[ZERO_2]]) : (tensor<i32>, tensor<i32>) -> tensor<1xi32>
-// CHECK:  [[SLICE_BEGIN:%.*]] = "tf.Concat"([[ZERO_2]], [[START]], [[PARTIAL_POS]]) {N = 2 : i64} : (tensor<i32>, tensor<1xi32>, tensor<?xi32>) -> tensor<?xi32>
+// CHECK:  [[SLICE_BEGIN:%.*]] = "tf.Concat"([[ZERO_2]], [[START]], [[PARTIAL_POS]]) : (tensor<i32>, tensor<1xi32>, tensor<?xi32>) -> tensor<?xi32>
 // CHECK:  [[SLICE_SIZE_HEAD:%.*]] = "tf.ExpandDims"([[SIZE]], [[ZERO_2]]) : (tensor<i32>, tensor<i32>) -> tensor<1xi32>
 // CHECK:  [[NEG_ONE:%.*]] = constant dense<-1> : tensor<i32>
 // CHECK:  [[SLICE_SIZE_TAIL:%.*]] = "tf.Fill"([[ELEM_RANK]], [[NEG_ONE]]) : (tensor<1xi32>, tensor<i32>) -> tensor<?xi32>
-// CHECK:  [[SLICE_SIZE:%.*]] = "tf.Concat"([[ZERO_2]], [[SLICE_SIZE_HEAD]], [[SLICE_SIZE_TAIL]]) {N = 2 : i64} : (tensor<i32>, tensor<1xi32>, tensor<?xi32>) -> tensor<?xi32>
+// CHECK:  [[SLICE_SIZE:%.*]] = "tf.Concat"([[ZERO_2]], [[SLICE_SIZE_HEAD]], [[SLICE_SIZE_TAIL]]) : (tensor<i32>, tensor<1xi32>, tensor<?xi32>) -> tensor<?xi32>
 // CHECK:  [[RESULT:%.*]] = "tf.Slice"([[INPUT]], [[SLICE_BEGIN]], [[SLICE_SIZE]]) : (tensor<3x10xf32>, tensor<?xi32>, tensor<?xi32>) -> tensor<?x10xf32>
 // CHECK:  return [[RESULT]] : tensor<?x10xf32>
 // CHECK:  }

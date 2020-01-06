@@ -2,12 +2,11 @@
 
 # Verify that we match correctly the input / output when they are scalar.
 
-# CHECK: func @main(%arg0: tensor<f32>) -> (tensor<f32>, tensor<f32>)
-# CHECK-NEXT: attributes {tf.entry_function = {inputs = "input", outputs = "out:1,out"}} {
-# CHECK:  "tf.Placeholder.input"(%arg0)
+# CHECK: func @main(%arg0: tensor<f32> {tf.device = "/device:CPU:0"}) -> (tensor<f32>, tensor<f32>)
+# CHECK: attributes {tf.entry_function = {inputs = "input", outputs = "out:1,out"}} {
 
 # CHECK: tf.Relu
-# CHECK:  %[[IDENTITY:[0-9]+]]:3 = tf_executor.island wraps "tf.IdentityN"
+# CHECK:  %[[IDENTITY:[a-z_0-9]+]]:2, {{.*}} = tf_executor.island wraps "tf.IdentityN"
 # CHECK:  fetch %[[IDENTITY]]#1, %[[IDENTITY]]#0 : tensor<f32>, tensor<f32>
 
 node {

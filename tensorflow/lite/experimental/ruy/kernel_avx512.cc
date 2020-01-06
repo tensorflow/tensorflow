@@ -35,46 +35,25 @@ void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params) {
   RUY_DCHECK(false);
 }
 
+void Kernel8bitAvx512SingleCol(const KernelParams8bit<16, 16>& params) {
+  // CPU-ID-based checks should disable the path that would reach this point.
+  RUY_DCHECK(false);
+}
+
 void KernelFloatAvx512(const KernelParamsFloat<16, 16>& params) {
+  // CPU-ID-based checks should disable the path that would reach this point.
+  RUY_DCHECK(false);
+}
+
+void KernelFloatAvx512SingleCol(const KernelParamsFloat<16, 16>& params) {
   // CPU-ID-based checks should disable the path that would reach this point.
   RUY_DCHECK(false);
 }
 
 #else  // RUY_PLATFORM(AVX512) && RUY_OPT_ENABLED(RUY_OPT_ASM)
 
-namespace {
-namespace intrin_utils {
-
-inline std::int32_t mm512_get1_epi32(const __m512i v, int i) {
-  __m256i a =
-      i < 8 ? _mm512_extracti32x8_epi32(v, 0) : _mm512_extracti32x8_epi32(v, 1);
-  switch (i & ~8) {
-    case 0:
-      return _mm256_extract_epi32(a, 0);
-    case 1:
-      return _mm256_extract_epi32(a, 1);
-    case 2:
-      return _mm256_extract_epi32(a, 2);
-    case 3:
-      return _mm256_extract_epi32(a, 3);
-    case 4:
-      return _mm256_extract_epi32(a, 4);
-    case 5:
-      return _mm256_extract_epi32(a, 5);
-    case 6:
-      return _mm256_extract_epi32(a, 6);
-    case 7:
-      return _mm256_extract_epi32(a, 7);
-    default:
-      RUY_DCHECK_LT(i, 16);
-      return 0;
-  }
-}
-}  // namespace intrin_utils
-}  // namespace
-
 void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params) {
-  gemmlowp::ScopedProfilingLabel label("Kernel kAvx512");
+  gemmlowp::ScopedProfilingLabel label("Kernel kAvx512 8-bit");
 
   std::int32_t dst_stride;
   if ((params.dst_type_id == DstTypeId<std::int8_t>::kValue) ||
@@ -1070,8 +1049,234 @@ void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params) {
   }  // End col-block loop.
 }  // NOLINT(readability/fn_size)
 
+void Kernel8bitAvx512SingleCol(const KernelParams8bit<16, 16>& params) {
+  gemmlowp::ScopedProfilingLabel label("Kernel kAvx512 8-bit GEMV");
+
+  RUY_DCHECK_EQ(params.dst_cols, 1);
+  RUY_DCHECK_EQ(params.last_col, 0);
+  RUY_DCHECK_EQ(params.start_col, 0);
+
+  std::int32_t dst_stride;
+  if ((params.dst_type_id == DstTypeId<std::int8_t>::kValue) ||
+      (params.dst_type_id == DstTypeId<std::uint8_t>::kValue)) {
+    dst_stride = params.dst_stride;
+  } else if (params.dst_type_id == DstTypeId<std::int16_t>::kValue) {
+    dst_stride = params.dst_stride / sizeof(std::int16_t);
+  } else if (params.dst_type_id == DstTypeId<std::int32_t>::kValue) {
+    dst_stride = params.dst_stride / sizeof(std::int32_t);
+  } else {
+    RUY_DCHECK(false);
+  }
+
+  int bias_ptr_block_increment = params.flags & RUY_ASM_FLAG_HAS_BIAS ? 16 : 0;
+
+  const std::int8_t* rhs_col_ptr = params.rhs_base_ptr;
+  void* dst_col_ptr = params.dst_base_ptr;
+  const std::int32_t* bias_col_ptr = params.bias;
+  if (params.flags & RUY_ASM_FLAG_HAS_BIAS) {
+    bias_col_ptr += params.start_row;
+  }
+
+  const std::int8_t* lhs_col_ptr = params.lhs_base_ptr;
+  void* dst_ptr = dst_col_ptr;
+  const std::int32_t* bias_ptr = bias_col_ptr;
+
+  const std::int32_t lhs_zero_point = params.lhs_zero_point;
+  const bool has_rhs_sums_offsets =
+      (params.flags & RUY_ASM_FLAG_HAS_RHS_SUMS) && lhs_zero_point;
+  std::int32_t rhs_sums_offsets[16];
+  if (has_rhs_sums_offsets) {
+    const __m512i rhs_sums_offset_v =
+        _mm512_mullo_epi32(_mm512_set1_epi32(lhs_zero_point),
+                           _mm512_loadu_epi32(&params.rhs_sums[0]));
+    _mm512_storeu_si512(reinterpret_cast<__m512i*>(rhs_sums_offsets),
+                        rhs_sums_offset_v);
+  }
+
+  for (int row = params.start_row; row <= params.last_row; row += 16) {
+    const int residual_rows = std::min(params.dst_rows - row, 16);
+
+    __m512i accum_data_v0;
+
+    // Initialize with bias.
+    const __mmask16 row_mask =
+        (static_cast<std::uint32_t>(1) << residual_rows) - 1;
+    __m512i initial_accum_data = _mm512_maskz_loadu_epi32(row_mask, bias_ptr);
+    bias_ptr += bias_ptr_block_increment;
+
+    const std::int32_t rhs_zero_point = params.rhs_zero_point;
+    if ((params.flags & RUY_ASM_FLAG_HAS_LHS_SUMS) && rhs_zero_point) {
+      const __m512i lhs_sums_offset =
+          _mm512_mullo_epi32(_mm512_set1_epi32(rhs_zero_point),
+                             _mm512_loadu_epi32(&params.lhs_sums[row]));
+      initial_accum_data =
+          _mm512_sub_epi32(initial_accum_data, lhs_sums_offset);
+    }
+
+    const std::int32_t prod_zp_depth = params.prod_zp_depth;
+    if (prod_zp_depth != 0) {
+      initial_accum_data = _mm512_add_epi32(initial_accum_data,
+                                            _mm512_set1_epi32(prod_zp_depth));
+    }
+
+    // Adjustments differing across columns.
+    if (has_rhs_sums_offsets) {
+      accum_data_v0 = _mm512_sub_epi32(initial_accum_data,
+                                       _mm512_set1_epi32(rhs_sums_offsets[0]));
+    } else {
+      accum_data_v0 = initial_accum_data;
+    }
+
+    const std::int8_t* lhs_ptr = lhs_col_ptr;
+    const std::int8_t* rhs_ptr = rhs_col_ptr;
+    for (int d = 0; d < params.depth; d += 4) {
+      const __m512i lhs_data = _mm512_loadu_epi8(lhs_ptr);
+      const __m128i rhs_data_8bit = _mm_loadu_epi8(rhs_ptr);
+
+      // Each "int32" is two 16-bit RHS values, sign extended from 8-bit.
+      // For simplicity we load 4x the data that we need and process twice the
+      // data  that we need  and store only the data we need.
+      std::int32_t rhs_data[2];
+      const __m128i rhs_16_bit_dup = _mm_cvtepi8_epi16(rhs_data_8bit);
+      // Now that we have cast the RHS data, we store it so that each value
+      // can be separately loaded in the accumulation loop.
+      _mm_storeu_si64(reinterpret_cast<__m128i*>(rhs_data), rhs_16_bit_dup);
+
+      // Take bytes 0, 1, 4, 5, 8, 9, ... and expand to 16-bit.
+      const __m512i lhs_16_bit_low =
+          _mm512_cvtepi8_epi16(_mm512_cvtepi32_epi16(lhs_data));
+      // Take bytes 2, 3, 6, 7, 10, 11, ... and expand to 16-bit.
+      const __m512i lhs_16_bit_high = _mm512_cvtepi8_epi16(
+          _mm512_cvtepi32_epi16(_mm512_srli_epi32(lhs_data, 16)));
+
+      // Process column 0.
+      __m512i accum_v = accum_data_v0;
+      constexpr int index = 0;
+
+      const __m512i rhs_16_bit_dup_low = _mm512_set1_epi32(rhs_data[index]);
+      const __m512i rhs_16_bit_dup_high =
+          _mm512_set1_epi32(rhs_data[index + 1]);
+
+      accum_v = _mm512_add_epi32(
+          accum_v, _mm512_madd_epi16(lhs_16_bit_low, rhs_16_bit_dup_low));
+      accum_v = _mm512_add_epi32(
+          accum_v, _mm512_madd_epi16(lhs_16_bit_high, rhs_16_bit_dup_high));
+      accum_data_v0 = accum_v;
+
+      lhs_ptr += 16 * 4;
+      rhs_ptr += 16 * 4;
+    }
+
+    if (params.dst_type_id != DstTypeId<std::int32_t>::kValue) {
+      __m512i m_vector;
+      __m512i e_vector;
+      // Does not make use of RUY_ASM_FLAG_NEEDS_LEFT_SHIFT.
+      if (params.flags & RUY_ASM_FLAG_HAS_PERCHANNEL) {
+        m_vector = _mm512_maskz_loadu_epi32(row_mask,
+                                            &params.multiplier_fixedpoint[row]);
+        e_vector = _mm512_maskz_loadu_epi32(row_mask,
+                                            &params.multiplier_exponent[row]);
+      } else {
+        // These arrays have size LhsCols, and are pre-filled.
+        m_vector = _mm512_set1_epi32(params.multiplier_fixedpoint[0]);
+        e_vector = _mm512_set1_epi32(params.multiplier_exponent[0]);
+      }
+
+      const __m512i m_64bit_low =
+          _mm512_cvtepi32_epi64(_mm512_extracti32x8_epi32(m_vector, 0));
+      const __m512i m_64bit_high =
+          _mm512_cvtepi32_epi64(_mm512_extracti32x8_epi32(m_vector, 1));
+
+      const __m512i zero_vector = _mm512_setzero_epi32();
+      const __m512i left_shift = _mm512_max_epi32(e_vector, zero_vector);
+      const __m512i neg_e_vector = _mm512_sub_epi32(zero_vector, e_vector);
+      const __m512i right_shift = _mm512_max_epi32(neg_e_vector, zero_vector);
+      const __m512i final_right_shift =
+          _mm512_add_epi32(right_shift, _mm512_set1_epi32(31));
+      const __m512i final_right_shift_low = _mm512_cvtepi32_epi64(
+          _mm512_extracti32x8_epi32(final_right_shift, 0));
+      const __m512i final_right_shift_high = _mm512_cvtepi32_epi64(
+          _mm512_extracti32x8_epi32(final_right_shift, 1));
+
+      const __m512i offset_vector = _mm512_slli_epi64(_mm512_set1_epi64(1), 30);
+      // Really these should be shifted by neg_e_vector, but tests pass when
+      // using right_shift.
+      const __m512i offset_vector_low = _mm512_sllv_epi64(
+          offset_vector,
+          _mm512_cvtepi32_epi64(_mm512_extracti32x8_epi32(right_shift, 0)));
+      const __m512i offset_vector_high = _mm512_sllv_epi64(
+          offset_vector,
+          _mm512_cvtepi32_epi64(_mm512_extracti32x8_epi32(right_shift, 1)));
+
+      // Shift and round column 0.
+      accum_data_v0 = _mm512_sllv_epi32(accum_data_v0, left_shift);
+      // Apply the fixed-point part of the multiplier.
+      __m512i scaled_v_low = _mm512_mul_epi32(
+          _mm512_cvtepi32_epi64(_mm512_extracti32x8_epi32(accum_data_v0, 0)),
+          m_64bit_low);
+      __m512i scaled_v_high = _mm512_mul_epi32(
+          _mm512_cvtepi32_epi64(_mm512_extracti32x8_epi32(accum_data_v0, 1)),
+          m_64bit_high);
+
+      scaled_v_low = _mm512_add_epi64(scaled_v_low, offset_vector_low);
+      scaled_v_high = _mm512_add_epi64(scaled_v_high, offset_vector_high);
+
+      scaled_v_low = _mm512_srav_epi64(scaled_v_low, final_right_shift_low);
+      scaled_v_high = _mm512_srav_epi64(scaled_v_high, final_right_shift_high);
+
+      accum_data_v0 =
+          _mm512_castsi256_si512(_mm512_cvtepi64_epi32(scaled_v_low));
+      accum_data_v0 = _mm512_inserti32x8(
+          accum_data_v0, _mm512_cvtepi64_epi32(scaled_v_high), 1);
+#if !RUY_OPT_ENABLED(RUY_OPT_NATIVE_ROUNDING)
+      RUY_DCHECK(false);
+#endif
+
+      if (params.dst_zero_point != 0) {
+        __m512i dst_zero_point = _mm512_set1_epi32(params.dst_zero_point);
+        accum_data_v0 = _mm512_add_epi32(accum_data_v0, dst_zero_point);
+      }
+    }
+
+    const __m512i clamp_max_v = _mm512_set1_epi32(params.clamp_max);
+    const __m512i clamp_min_v = _mm512_set1_epi32(params.clamp_min);
+
+    if (params.dst_type_id == DstTypeId<std::int8_t>::kValue) {
+      std::int8_t* tmp_ptr = static_cast<std::int8_t*>(dst_ptr);
+      __m512i result = accum_data_v0;
+      result = _mm512_min_epi32(result, clamp_max_v);
+      result = _mm512_max_epi32(result, clamp_min_v);
+      _mm_mask_storeu_epi8(tmp_ptr, row_mask, _mm512_cvtepi32_epi8(result));
+      dst_ptr = static_cast<void*>(static_cast<std::int8_t*>(dst_ptr) + 16);
+    } else if (params.dst_type_id == DstTypeId<std::uint8_t>::kValue) {
+      std::uint8_t* tmp_ptr = static_cast<std::uint8_t*>(dst_ptr);
+      __m512i result = accum_data_v0;
+      result = _mm512_min_epi32(result, clamp_max_v);
+      result = _mm512_max_epi32(result, clamp_min_v);
+      _mm_mask_storeu_epi8(tmp_ptr, row_mask, _mm512_cvtepi32_epi8(result));
+      dst_ptr = static_cast<void*>(static_cast<std::uint8_t*>(dst_ptr) + 16);
+    } else if (params.dst_type_id == DstTypeId<std::int16_t>::kValue) {
+      std::int16_t* tmp_ptr = static_cast<std::int16_t*>(dst_ptr);
+      __m512i result = accum_data_v0;
+      result = _mm512_min_epi32(result, clamp_max_v);
+      result = _mm512_max_epi32(result, clamp_min_v);
+      _mm256_mask_storeu_epi16(tmp_ptr, row_mask,
+                               _mm512_cvtepi32_epi16(result));
+      dst_ptr = static_cast<void*>(static_cast<std::int16_t*>(dst_ptr) + 16);
+    } else if (params.dst_type_id == DstTypeId<std::int32_t>::kValue) {
+      std::int32_t* tmp_ptr = static_cast<std::int32_t*>(dst_ptr);
+      _mm512_mask_storeu_epi32(tmp_ptr, row_mask, accum_data_v0);
+      dst_ptr = static_cast<void*>(static_cast<std::int32_t*>(dst_ptr) + 16);
+    } else {
+      RUY_DCHECK(false);
+    }
+
+    lhs_col_ptr += 16 * params.lhs_stride;
+  }  // End row-block loop.
+}  // NOLINT(readability/fn_size)
+
 void KernelFloatAvx512(const KernelParamsFloat<16, 16>& params) {
-  gemmlowp::ScopedProfilingLabel label("Kernel kAvx512");
+  gemmlowp::ScopedProfilingLabel label("Kernel kAvx512 float");
 
   // As parameters are defined, we need to scale by sizeof(float).
   const std::int64_t lhs_stride = params.lhs_stride >> 2;
@@ -1524,6 +1729,90 @@ void KernelFloatAvx512(const KernelParamsFloat<16, 16>& params) {
       }  // Inner half-block loop.
     }    // End row-block loop.
   }      // Residual cols.
+}
+
+void KernelFloatAvx512SingleCol(const KernelParamsFloat<16, 16>& params) {
+  gemmlowp::ScopedProfilingLabel label("Kernel kAvx512 float GEMV");
+
+  RUY_DCHECK_EQ(params.dst_cols, 1);
+  RUY_DCHECK_EQ(params.last_col, 0);
+  RUY_DCHECK_EQ(params.start_col, 0);
+
+  // As parameters are defined, we need to scale by sizeof(float).
+  const std::int64_t lhs_stride = params.lhs_stride >> 2;
+
+  int bias_ptr_block_increment = params.flags & RUY_ASM_FLAG_HAS_BIAS ? 1 : 0;
+  const int end_row = std::min(params.dst_rows, params.last_row + 16);
+
+  float* adj_dst_col_ptr = params.dst_base_ptr - params.start_row;
+  const float* adj_lhs_col_ptr =
+      params.lhs_base_ptr - params.start_row * lhs_stride;
+  const float* bias_col_ptr = params.bias;
+
+  const __m512 clamp_max_v = _mm512_set1_ps(params.clamp_max);
+  const __m512 clamp_min_v = _mm512_set1_ps(params.clamp_min);
+
+  __m512 accum_data_v;
+
+  const float* rhs_col_ptr = params.rhs_base_ptr;
+  float* dst_col_ptr = adj_dst_col_ptr;
+
+  int row = params.start_row;
+  for (; row <= end_row - 16; row += 16) {
+    const float* lhs_col_ptr = adj_lhs_col_ptr + row * lhs_stride;
+    float* dst_ptr = dst_col_ptr + row;
+    const float* bias_ptr = bias_col_ptr + row * bias_ptr_block_increment;
+
+    // Initialize with bias.
+    accum_data_v = _mm512_loadu_ps(bias_ptr);
+
+    const float* lhs_ptr = lhs_col_ptr;
+    const float* rhs_ptr = rhs_col_ptr;
+    for (int d = 0; d < params.depth; ++d) {
+      const __m512 lhs_data = _mm512_loadu_ps(lhs_ptr);
+      const float rhs_data = *rhs_ptr;
+
+      const __m512 dup_rhs_element_j = _mm512_set1_ps(rhs_data);
+      accum_data_v = _mm512_fmadd_ps(lhs_data, dup_rhs_element_j, accum_data_v);
+      lhs_ptr += 16;
+      rhs_ptr += 16;
+    }
+
+    accum_data_v = _mm512_min_ps(accum_data_v, clamp_max_v);
+    accum_data_v = _mm512_max_ps(accum_data_v, clamp_min_v);
+    _mm512_storeu_ps(dst_ptr, accum_data_v);
+  }  // End row-block loop.
+
+  if (row < end_row) {
+    const int residual_rows = end_row - row;
+    RUY_CHECK_GE(residual_rows, 1);
+    RUY_CHECK_LT(residual_rows, 16);
+
+    const float* lhs_col_ptr = adj_lhs_col_ptr + row * lhs_stride;
+    float* dst_ptr = dst_col_ptr + row;
+    const float* bias_ptr = bias_col_ptr + row * bias_ptr_block_increment;
+
+    // Initialize with bias.
+    const __mmask16 row_mask =
+        (static_cast<std::uint32_t>(1) << residual_rows) - 1;
+    accum_data_v = _mm512_maskz_loadu_ps(row_mask, bias_ptr);
+
+    const float* lhs_ptr = lhs_col_ptr;
+    const float* rhs_ptr = rhs_col_ptr;
+    for (int d = 0; d < params.depth; ++d) {
+      const __m512 lhs_data = _mm512_loadu_ps(lhs_ptr);
+      const float rhs_data = *rhs_ptr;
+
+      const __m512 dup_rhs_element_j = _mm512_set1_ps(rhs_data);
+      accum_data_v = _mm512_fmadd_ps(lhs_data, dup_rhs_element_j, accum_data_v);
+      lhs_ptr += 16;
+      rhs_ptr += 16;
+    }
+
+    accum_data_v = _mm512_min_ps(accum_data_v, clamp_max_v);
+    accum_data_v = _mm512_max_ps(accum_data_v, clamp_min_v);
+    _mm512_mask_storeu_ps(dst_ptr, row_mask, accum_data_v);
+  }  // End handling of residual rows.
 }
 
 #endif  //  RUY_PLATFORM(AVX512) && RUY_OPT_ENABLED(RUY_OPT_ASM)

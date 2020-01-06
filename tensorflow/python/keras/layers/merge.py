@@ -381,11 +381,24 @@ class Concatenate(_Merge):
     for i in range(len(reduced_inputs_shapes)):
       del reduced_inputs_shapes[i][self.axis]
       shape_set.add(tuple(reduced_inputs_shapes[i]))
-    if len(shape_set) > 1:
-      raise ValueError('A `Concatenate` layer requires '
-                       'inputs with matching shapes '
-                       'except for the concat axis. '
-                       'Got inputs shapes: %s' % (input_shape))
+
+    if len(shape_set) != 1:
+      err_msg = ('A `Concatenate` layer requires inputs with matching shapes '
+                 'except for the concat axis. Got inputs shapes: %s' %
+                 input_shape)
+      # Make sure all the shapes have same ranks.
+      ranks = set(len(shape) for shape in shape_set)
+      if len(ranks) != 1:
+        raise ValueError(err_msg)
+      # Get the only rank for the set.
+      (rank,) = ranks
+      for axis in range(rank):
+        # Skip the Nones in the shape since they are dynamic, also the axis for
+        # concat has been removed above.
+        unique_dims = set(
+            shape[axis] for shape in shape_set if shape[axis] is not None)
+        if len(unique_dims) > 1:
+          raise ValueError(err_msg)
 
   def _merge_function(self, inputs):
     return K.concatenate(inputs, axis=self.axis)

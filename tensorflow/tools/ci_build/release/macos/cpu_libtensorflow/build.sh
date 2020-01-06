@@ -20,4 +20,8 @@ echo "bazel clean --expunge" >> tensorflow/tools/ci_build/linux/libtensorflow.sh
 source tensorflow/tools/ci_build/release/common.sh
 update_bazel_macos
 
+# Pick a version of xcode
+export DEVELOPER_DIR=/Applications/Xcode_10.3.app/Contents/Developer
+sudo xcode-select -s "${DEVELOPER_DIR}"
+
 tensorflow/tools/ci_build/osx/libtensorflow_cpu.sh

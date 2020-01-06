@@ -482,9 +482,7 @@ class BasicRNNCell(LayerRNNCell):
 
 @tf_export(v1=["nn.rnn_cell.GRUCell"])
 class GRUCell(LayerRNNCell):
-  """Gated Recurrent Unit cell (cf.
-
-  http://arxiv.org/abs/1406.1078).
+  """Gated Recurrent Unit cell.
 
   Note that this cell is not optimized for performance. Please use
   `tf.contrib.cudnn_rnn.CudnnGRU` for better performance on GPU, or
@@ -505,6 +503,13 @@ class GRUCell(LayerRNNCell):
       the first input). Required when `build` is called before `call`.
     **kwargs: Dict, keyword named properties for common layer attributes, like
       `trainable` etc when constructing the cell from configs of get_config().
+
+      References:
+    Learning Phrase Representations using RNN Encoder Decoder for Statistical
+    Machine Translation:
+      [Cho et al., 2014]
+      (https://aclanthology.coli.uni-saarland.de/papers/D14-1179/d14-1179)
+      ([pdf](http://emnlp2014.org/papers/pdf/EMNLP2014179.pdf))
   """
 
   @deprecated(None, "This class is equivalent as tf.keras.layers.GRUCell,"
@@ -638,7 +643,7 @@ class BasicLSTMCell(LayerRNNCell):
 
   Basic LSTM recurrent network cell.
 
-  The implementation is based on: http://arxiv.org/abs/1409.2329.
+  The implementation is based on
 
   We add forget_bias (default: 1) to the biases of the forget gate in order to
   reduce the scale of forgetting in the beginning of the training.
@@ -804,20 +809,8 @@ class BasicLSTMCell(LayerRNNCell):
 class LSTMCell(LayerRNNCell):
   """Long short-term memory unit (LSTM) recurrent network cell.
 
-  The default non-peephole implementation is based on:
-
-    https://pdfs.semanticscholar.org/1154/0131eae85b2e11d53df7f1360eeb6476e7f4.pdf
-
-  Felix Gers, Jurgen Schmidhuber, and Fred Cummins.
-  "Learning to forget: Continual prediction with LSTM." IET, 850-855, 1999.
-
-  The peephole implementation is based on:
-
-    https://research.google.com/pubs/archive/43905.pdf
-
-  Hasim Sak, Andrew Senior, and Francoise Beaufays.
-  "Long short-term memory recurrent neural network architectures for
-   large scale acoustic modeling." INTERSPEECH, 2014.
+  The default non-peephole implementation is based on (Gers et al., 1999).
+  The peephole implementation is based on (Sak et al., 2014).
 
   The class uses optional peep-hole connections, optional cell clipping, and
   an optional projection layer.
@@ -826,6 +819,21 @@ class LSTMCell(LayerRNNCell):
   `tf.contrib.cudnn_rnn.CudnnLSTM` for better performance on GPU, or
   `tf.contrib.rnn.LSTMBlockCell` and `tf.contrib.rnn.LSTMBlockFusedCell` for
   better performance on CPU.
+  References:
+    Long short-term memory recurrent neural network architectures for large
+    scale acoustic modeling:
+      [Sak et al., 2014]
+      (https://www.isca-speech.org/archive/interspeech_2014/i14_0338.html)
+      ([pdf]
+      (https://www.isca-speech.org/archive/archive_papers/interspeech_2014/i14_0338.pdf))
+    Learning to forget:
+      [Gers et al., 1999]
+      (http://digital-library.theiet.org/content/conferences/10.1049/cp_19991218)
+      ([pdf](https://arxiv.org/pdf/1409.2329.pdf))
+    Long Short-Term Memory:
+      [Hochreiter et al., 1997]
+      (https://www.mitpressjournals.org/doi/abs/10.1162/neco.1997.9.8.1735)
+      ([pdf](http://ml.jku.at/publications/older/3504.pdf))
   """
 
   @deprecated(None, "This class is equivalent as tf.keras.layers.LSTMCell,"
@@ -1229,7 +1237,7 @@ class MultiRNNCell(RNNCell):
     if not nest.is_sequence(cells):
       raise TypeError("cells must be a list or tuple, but saw: %s." % cells)
 
-    if len(set([id(cell) for cell in cells])) < len(cells):
+    if len(set(id(cell) for cell in cells)) < len(cells):
       logging.log_first_n(
           logging.WARN, "At least two cells provided to MultiRNNCell "
           "are the same object and will share weights.", 1)

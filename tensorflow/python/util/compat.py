@@ -12,14 +12,30 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Functions for Python 2 vs. 3 compatibility.
+"""Compatibility functions.
 
-## Conversion routines
-In addition to the functions below, `as_str` converts an object to a `str`.
+The `tf.compat` module contains two sets of compatibility functions.
+
+## Tensorflow 1.x and 2.x APIs
+
+The `compat.v1` and `compat.v2` submodules provide a complete copy of both the
+`v1` and `v2` APIs for backwards and forwards compatibility across TensorFlow
+versions 1.x and 2.x. See the
+[migration guide](https://www.tensorflow.org/guide/migrate) for details.
+
+## Utilities for writing compatible code
+
+Aside from the `compat.v1` and `compat.v2` submodules, `tf.compat` also contains
+a set of helper functions for writing code that works in both:
+
+* TensorFlow 1.x and 2.x
+* Python 2 and 3
 
 
-## Types
-The compatibility module also provides the following types:
+## Type collections
+
+The compatibility module also provides the following aliases for common
+sets of python types:
 
 * `bytes_or_text_types`
 * `complex_types`

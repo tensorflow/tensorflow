@@ -141,7 +141,7 @@ class WindowOpsTest(test.TestCase, parameterized.TestCase):
         tflite_model, [window_length])
 
     expected_output = self.evaluate(fn(window_length))
-    self.assertAllClose(actual_output, expected_output, rtol=1e-7, atol=1e-7)
+    self.assertAllClose(actual_output, expected_output, rtol=1e-6, atol=1e-6)
 
 
 if __name__ == '__main__':

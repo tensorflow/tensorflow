@@ -63,7 +63,8 @@ class Adagrad(optimizer_v2.OptimizerV2):
     """Construct a new Adagrad optimizer.
 
     Args:
-      learning_rate: A `Tensor` or a floating point value.  The learning rate.
+      learning_rate: A `Tensor`, floating point value, or a schedule that is a
+        `tf.keras.optimizers.schedules.LearningRateSchedule`. The learning rate.
       initial_accumulator_value: A floating point value.
         Starting value for the accumulators, must be non-negative.
       epsilon: A small floating point value to avoid zero denominator.

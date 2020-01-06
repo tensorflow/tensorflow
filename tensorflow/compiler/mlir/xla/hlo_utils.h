@@ -18,9 +18,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_XLA_HLO_UTILS_H_
 #define TENSORFLOW_COMPILER_MLIR_XLA_HLO_UTILS_H_
 
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/Builders.h"  // TF:llvm-project
+#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "tensorflow/compiler/mlir/xla/convert_op_folder.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 
 namespace xla {
@@ -32,8 +33,8 @@ mlir::DenseIntElementsAttr CreateDenseIntElementsAttrFromVector(
     const llvm::ArrayRef<int64> vector, mlir::Builder builder);
 
 template <typename TypeT>
-StatusOr<TypeT> ConvertTensorShapeToType(const Shape& shape,
-                                         mlir::Builder builder) {
+static StatusOr<TypeT> ConvertTensorShapeToType(const Shape& shape,
+                                                mlir::Builder builder) {
   auto dimensions = shape.dimensions();
   llvm::SmallVector<int64_t, 4> array(dimensions.begin(), dimensions.end());
 
@@ -61,8 +62,8 @@ StatusOr<TypeT> ConvertTensorShapeToType(const Shape& shape,
 }
 
 template <typename TypeT>
-StatusOr<mlir::Type> ConvertShapeToType(const Shape& shape,
-                                        mlir::Builder builder) {
+static StatusOr<mlir::Type> ConvertShapeToType(const Shape& shape,
+                                               mlir::Builder builder) {
   if (shape.IsTuple()) {
     mlir::Type mlir_type;
     llvm::SmallVector<mlir::Type, 4> contents;
@@ -76,7 +77,6 @@ StatusOr<mlir::Type> ConvertShapeToType(const Shape& shape,
   }
   return ConvertTensorShapeToType<TypeT>(shape, builder);
 }
-
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_MLIR_XLA_HLO_UTILS_H_

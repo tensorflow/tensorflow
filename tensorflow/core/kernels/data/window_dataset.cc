@@ -55,6 +55,14 @@ class WindowDataset : public DatasetBase {
     return allocated_bytes;
   }
 
+  int64 TotalBytes() const override {
+    int64 total_bytes = 0;
+    for (auto& element : elements_) {
+      total_bytes += GetTotalBytes(element);
+    }
+    return total_bytes;
+  }
+
   int64 Cardinality() const override { return elements_.size(); }
 
   string DebugString() const override { return kWindowDataset; }

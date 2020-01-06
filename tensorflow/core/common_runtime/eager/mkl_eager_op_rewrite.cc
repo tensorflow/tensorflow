@@ -87,7 +87,7 @@ REGISTER_REWRITE(EagerOpRewriteRegistry::PRE_EXECUTION, MklEagerOpRewrite);
 
 // Constructor
 MklEagerOpRewrite::MklEagerOpRewrite(string name, string file, string line)
-    : EagerOpRewrite(name, file, line) {
+    : EagerOpRewrite(name, file, line), registered_kernels_map_() {
   InsertMKLEagerOps({"BatchMatMul", AlwaysRewrite, CreateGenericMklOp});
   InsertMKLEagerOps({"BatchMatMulV2", AlwaysRewrite, CreateGenericMklOp});
   InsertMKLEagerOps({"Conv2D", RewriteConv2D, CreateMklConv2DOp});
@@ -127,7 +127,6 @@ Status MklEagerOpRewrite::SetupNewOp(
   }
 
   // Copy all attributes to the new op.
-  string name;
   const NodeDef& orig_ndef = orig_op->MutableAttrs()->BuildNodeDef();
 
   AttrSlice attr_list(orig_ndef);
@@ -142,8 +141,7 @@ Status MklEagerOpRewrite::SetupNewOp(
   if (orig_op->Device() != nullptr) {
     (*new_mkl_op)->SetDevice(orig_op->Device());
   } else {
-    string device_name =
-        DeviceNameUtils::ParsedNameToString(orig_op->GetDeviceName());
+    string device_name = orig_op->GetDeviceName();
     (*new_mkl_op)->SetDeviceName(device_name.c_str());
   }
   return Status::OK();

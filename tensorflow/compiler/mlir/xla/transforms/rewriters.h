@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <memory>
 
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
+#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
+#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
 
 namespace mlir {
 namespace xla_hlo {
@@ -28,8 +28,17 @@ namespace xla_hlo {
 void PopulateGeneralDotOpLoweringPatterns(OwningRewritePatternList *patterns,
                                           MLIRContext *ctx);
 
+// Collection of rewrite patterns for lowering complex operations to equivalent
+// float operations.
+void PopulateComplexLoweringPatterns(MLIRContext *context,
+                                     OwningRewritePatternList *patterns);
+
 void PopulateXlaToStdPatterns(OwningRewritePatternList *patterns,
                               MLIRContext *ctx);
+
+// Collection of rewrite patterns for lowering of HLO to LHLO dialect.
+void populateHLOToLHLOConversionPattern(MLIRContext *context,
+                                        OwningRewritePatternList *patterns);
 
 }  // namespace xla_hlo
 }  // namespace mlir

@@ -48,5 +48,4 @@ bazel test --test_output=errors --config=opt \
   --test_tag_filters="${tag_filters}" -- \
   //tensorflow/... \
   -//tensorflow/compiler/... \
-  -//tensorflow/lite/... \
-  -//tensorflow/contrib/tensorrt/...
+  -//tensorflow/lite/...

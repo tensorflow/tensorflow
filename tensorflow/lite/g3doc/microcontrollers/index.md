@@ -21,7 +21,7 @@ To try the example applications and learn how to use the API, read
 ## Supported platforms
 
 TensorFlow Lite for Microcontrollers is written in C++ 11 and requires a 32-bit
-platform. It has been test extensively with many processors based on the
+platform. It has been tested extensively with many processors based on the
 [Arm Cortex-M Series](https://developer.arm.com/ip-products/processors/cortex-m)
 architecture, and has been ported to other architectures including
 [ESP32](https://www.espressif.com/en/products/hardware/esp32/overview).
@@ -35,6 +35,8 @@ There are example applications available for the following development boards:
 *   [Arduino Nano 33 BLE Sense](https://store.arduino.cc/usa/nano-33-ble-sense-with-headers)
 *   [SparkFun Edge](https://www.sparkfun.com/products/15170)
 *   [STM32F746 Discovery kit](https://www.st.com/en/evaluation-tools/32f746gdiscovery.html)
+*   [Adafruit EdgeBadge](https://www.adafruit.com/product/4400)
+*   [Adafruit TensorFlow Lite for Microcontrollers Kit](https://www.adafruit.com/product/4317)
 
 To learn more about the libraries and examples, see
 [Get started with microcontrollers](get_started.md).

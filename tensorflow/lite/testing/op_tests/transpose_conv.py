@@ -34,22 +34,60 @@ def make_transpose_conv_tests(options):
   """Make a set of tests to do transpose_conv."""
 
   # Tensorflow only supports equal strides
-  test_parameters = [{
-      "input_shape": [[1, 3, 4, 1], [1, 10, 10, 3], [3, 20, 20, 1]],
-      "filter_size": [[1, 1], [1, 2], [3, 3]],
-      "strides": [[1, 1, 1, 1], [1, 3, 3, 1]],
-      "padding": ["SAME", "VALID"],
-      "data_format": ["NHWC"],
-      "channel_multiplier": [1, 2],
-  }]
+  test_parameters = [
+      {
+          "input_shape": [[1, 3, 4, 1], [1, 10, 10, 3], [3, 20, 20, 1]],
+          "filter_size": [[1, 1], [1, 2], [3, 3]],
+          "strides": [[1, 1, 1, 1], [1, 3, 3, 1]],
+          "padding": ["SAME", "VALID"],
+          "data_format": ["NHWC"],
+          "channel_multiplier": [1, 2],
+          "output_shape": [[]],
+          "fully_quantize": [False]
+      },
+      # TODO(yunluli): Adding simple tests for now to unblock edgetpu debugging.
+      # Need to add more test cases.
+      {
+          "input_shape": [[1, 3, 3, 1]],
+          "filter_size": [[3, 3, 2, 1]],
+          "strides": [[1, 1, 1, 1]],
+          "padding": ["SAME"],
+          "data_format": ["NHWC"],
+          "channel_multiplier": [1],
+          "output_shape": [[1, 3, 3, 2]],
+          "fully_quantize": [True]
+      },
+      {
+          "input_shape": [[1, 3, 3, 1]],
+          "filter_size": [[3, 3, 2, 1]],
+          "strides": [[1, 2, 2, 1]],
+          "padding": ["SAME"],
+          "data_format": ["NHWC"],
+          "channel_multiplier": [1],
+          "output_shape": [[1, 6, 6, 2]],
+          "fully_quantize": [True]
+      },
+      {
+          "input_shape": [[1, 4, 3, 1]],
+          "filter_size": [[3, 3, 2, 1]],
+          "strides": [[1, 2, 2, 1]],
+          "padding": ["SAME"],
+          "data_format": ["NHWC"],
+          "channel_multiplier": [1],
+          "output_shape": [[1, 8, 6, 2]],
+          "fully_quantize": [True]
+      }
+  ]
 
   def get_tensor_shapes(parameters):
     input_shape = parameters["input_shape"]
     filter_size = parameters["filter_size"]
-    filter_shape = filter_size + [
-        input_shape[3], parameters["channel_multiplier"]
-    ]
-    return [input_shape, filter_shape]
+    if not parameters["fully_quantize"]:
+      filter_shape = filter_size + [
+          input_shape[3], parameters["channel_multiplier"]
+      ]
+      return [input_shape, filter_shape]
+    return [input_shape, filter_size]
 
   def build_graph(parameters):
     """Build a transpose_conv graph given `parameters`."""
@@ -60,28 +98,48 @@ def make_transpose_conv_tests(options):
     filter_input = tf.compat.v1.placeholder(
         dtype=tf.float32, name="filter", shape=filter_shape)
 
-    conv_outputs = tf.nn.conv2d(
-        input_tensor,
-        filter_input,
-        strides=parameters["strides"],
-        padding=parameters["padding"],
-        data_format=parameters["data_format"])
-    out = tf.compat.v1.nn.conv2d_backprop_input(
-        input_shape,
-        filter_input,
-        conv_outputs,
-        strides=parameters["strides"],
-        padding=parameters["padding"],
-        data_format=parameters["data_format"])
-    input_tensors = [input_tensor, filter_input]
+    if not parameters["fully_quantize"]:
+      input_tensors = [input_tensor, filter_input]
+      conv_outputs = tf.nn.conv2d(
+          input_tensor,
+          filter_input,
+          strides=parameters["strides"],
+          padding=parameters["padding"],
+          data_format=parameters["data_format"])
+      out = tf.compat.v1.nn.conv2d_backprop_input(
+          input_shape,
+          filter_input,
+          conv_outputs,
+          strides=parameters["strides"],
+          padding=parameters["padding"],
+          data_format=parameters["data_format"])
+    else:
+      input_tensors = [input_tensor]
+      filter_input = create_tensor_data(
+          np.float32, filter_shape, min_value=-1, max_value=1)
+      out = tf.nn.conv2d_transpose(
+          input_tensor,
+          filter_input,
+          parameters["output_shape"],
+          strides=parameters["strides"],
+          padding=parameters["padding"],
+          data_format=parameters["data_format"])
+
     return input_tensors, [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
     input_shape, filter_shape = get_tensor_shapes(parameters)
-    values = [
-        create_tensor_data(np.float32, input_shape),
-        create_tensor_data(np.float32, filter_shape)
-    ]
+    if not parameters["fully_quantize"]:
+      values = [
+          create_tensor_data(np.float32, input_shape),
+          create_tensor_data(np.float32, filter_shape)
+      ]
+    else:
+      values = [
+          create_tensor_data(
+              np.float32, input_shape, min_value=-1, max_value=1),
+      ]
+
     return values, sess.run(outputs, feed_dict=dict(zip(inputs, values)))
 
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)

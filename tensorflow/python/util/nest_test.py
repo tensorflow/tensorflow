@@ -67,6 +67,10 @@ class _CustomSequenceThatRaisesException(collections.Sequence):
 class NestTest(parameterized.TestCase, test.TestCase):
 
   PointXY = collections.namedtuple("Point", ["x", "y"])  # pylint: disable=invalid-name
+  unsafe_map_pattern = ("nest cannot guarantee that it is safe to map one to "
+                        "the other.")
+  bad_pack_pattern = ("Attempted to pack value:\n  .+\ninto a sequence, but "
+                      "found incompatible type `<(type|class) 'str'>` instead.")
 
   if attr:
     class BadAttr(object):
@@ -145,11 +149,10 @@ class NestTest(parameterized.TestCase, test.TestCase):
         np.array([5]), nest.pack_sequence_as("scalar", [np.array([5])]))
 
     with self.assertRaisesRegexp(
-        ValueError,
-        "nest cannot guarantee that it is safe to map one to the other."):
+        ValueError, self.unsafe_map_pattern):
       nest.pack_sequence_as("scalar", [4, 5])
 
-    with self.assertRaisesRegexp(TypeError, "but found incompatible type"):
+    with self.assertRaisesRegexp(TypeError, self.bad_pack_pattern):
       nest.pack_sequence_as([4, 5], "bad_sequence")
 
     with self.assertRaises(ValueError):
@@ -270,9 +273,7 @@ class NestTest(parameterized.TestCase, test.TestCase):
 
   def testPackSequenceAs_notIterableError(self):
     with self.assertRaisesRegexp(
-        TypeError,
-        "Attempted to pack value:\n  bye\ninto a sequence, but found "
-        "incompatible type `<(type|class) 'str'>` instead."):
+        TypeError, self.bad_pack_pattern):
       nest.pack_sequence_as("hi", "bye")
 
   def testPackSequenceAs_wrongLengthsError(self):

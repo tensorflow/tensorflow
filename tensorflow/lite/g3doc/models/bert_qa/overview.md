@@ -44,6 +44,44 @@ pre-processing including tokenization and post-processing steps that are
 described in the BERT [paper](https://arxiv.org/abs/1810.04805) and implemented
 in the sample app.
 
+## Performance Benchmarks
+
+Performance benchmark numbers are generated with the tool
+[described here](https://www.tensorflow.org/lite/performance/benchmarks).
+
+<table>
+  <thead>
+    <tr>
+      <th>Model Name</th>
+      <th>Model size </th>
+      <th>Device </th>
+      <th>CPU</th>
+    </tr>
+  </thead>
+  <tr>
+    <td rowspan = 3>
+      <a href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/bert_qa/mobilebert_qa_vocab.zip">Mobile Bert</a>
+    </td>
+    <td rowspan = 3>
+      100.5 Mb
+    </td>
+    <td>Pixel 3 (Android 10) </td>
+    <td>123ms*</td>
+  </tr>
+   <tr>
+     <td>Pixel 4 (Android 10) </td>
+    <td>74ms*</td>
+  </tr>
+   <tr>
+     <td>iPhone XS (iOS 12.4.1) </td>
+    <td>257ms** </td>
+  </tr>
+</table>
+
+\* 4 threads used.
+
+\*\* 2 threads used on iPhone for the best performance result.
+
 ## Example output
 
 ### Passage (Input)

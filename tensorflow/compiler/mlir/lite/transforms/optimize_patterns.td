@@ -18,6 +18,7 @@ limitations under the License.
 include "mlir/IR/OpBase.td"
 include "mlir/Dialect/StandardOps/Ops.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
+include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 
 def F32ElementsAttr : ElementsAttrBase<
   CPred<"$_self.cast<ElementsAttr>().getType().getElementType().isF32()">, "float constant tensor">;
@@ -44,20 +45,24 @@ multiclass FuseActFnIntoConvOpPat<dag ActFnOp, dag ActFnAttr> {
                                    $multiplier)>;
 }
 
-// TODO(hinsu): Also fuse ops corresponding to RELU_N1_TO_1 and SIGN_BIT fused
+// TODO(hinsu): Also fuse ops corresponding to SIGN_BIT fused
 // activation functions.
+// Currently we're not fusing tanh, sigmoid, hard_swish and other activations
+// those cannot be simply translated into clamping.
 foreach actFnPair = [[TFL_ReluOp, TFL_AF_Relu],
                      [TFL_Relu6Op, TFL_AF_Relu6],
-		     [TFL_TanhOp, TFL_AF_Tanh]] in
+                     [TFL_Relu1Op, TFL_AF_Relu1]] in
   defm : FuseActFnIntoConvOpPat<actFnPair[0], actFnPair[1]>;
 
+// Checks if the value has only one user.
+def HasOneUse : Constraint<CPred<"$0.hasOneUse()">>;
 
 // If we see a binary op (add, sub) op adding a constant value to a convolution
 // op with constant bias, we can fuse the binary op into the convolution op by
 // constant folding the bias and the binary op's constant operand. The following
 // pattern restricts to float constant values for now.
 multiclass FuseBinaryOpToPrecedingAffine<dag binaryOp> {
-  def : Pat<(binaryOp (TFL_Conv2DOp $input, $filter,
+  def : Pat<(binaryOp (TFL_Conv2DOp:$output $input, $filter,
                           (ConstantOp F32ElementsAttr:$bias),
                           $h_factor, $w_factor, TFL_AF_None,
                           $padding, $stride_h, $stride_w),
@@ -66,8 +71,9 @@ multiclass FuseBinaryOpToPrecedingAffine<dag binaryOp> {
                         (binaryOp (ConstantOp $bias),
                                    (ConstantOp $value), TFL_AF_None),
                         $h_factor, $w_factor, $act_fn,
-                        $padding, $stride_h, $stride_w)>;
-  def : Pat<(binaryOp (TFL_DepthwiseConv2DOp $input, $filter,
+                        $padding, $stride_h, $stride_w),
+          [(HasOneUse $output)]>;
+  def : Pat<(binaryOp (TFL_DepthwiseConv2DOp:$output $input, $filter,
                           (ConstantOp F32ElementsAttr:$bias),
                           $h_factor, $w_factor, TFL_AF_None,
                           $padding, $stride_h, $stride_w,
@@ -79,7 +85,8 @@ multiclass FuseBinaryOpToPrecedingAffine<dag binaryOp> {
                                      TFL_AF_None),
                           $h_factor, $w_factor, $act_fn,
                           $padding, $stride_h, $stride_w,
-                          $multiplier)>;
+                          $multiplier),
+          [(HasOneUse $output)]>;
 }
 foreach binaryOp = [TFL_AddOp, TFL_SubOp] in
   defm : FuseBinaryOpToPrecedingAffine<binaryOp>;
@@ -99,7 +106,7 @@ def ExpandTo4DForDepthwiseConv: NativeCodeCall<
 // The following pattern restricts to float constant values for now.
 
 multiclass FuseMulOrDivWithConv2dOrDepthwiseConv2d<dag BinaryOp> {
-  def : Pat<(BinaryOp (TFL_DepthwiseConv2DOp $input,
+  def : Pat<(BinaryOp (TFL_DepthwiseConv2DOp:$output $input,
                           (ConstantOp F32ElementsAttr:$filter),
                           (ConstantOp F32ElementsAttr:$bias),
                           $h_factor, $w_factor, TFL_AF_None,
@@ -117,8 +124,9 @@ multiclass FuseMulOrDivWithConv2dOrDepthwiseConv2d<dag BinaryOp> {
                           $h_factor, $w_factor, $act_fn,
                           $padding, $stride_h, $stride_w,
                           $multiplier),
-          [(CanFuseConvOrDepthwiseConv<"true"> $filter, $value)]>;
-  def : Pat<(BinaryOp (TFL_Conv2DOp $input,
+          [(CanFuseConvOrDepthwiseConv<"true"> $filter, $value),
+           (HasOneUse $output)]>;
+  def : Pat<(BinaryOp (TFL_Conv2DOp:$conv_output $input,
                           (ConstantOp F32ElementsAttr:$filter),
                           (ConstantOp F32ElementsAttr:$bias),
                           $h_factor, $w_factor, TFL_AF_None,
@@ -133,7 +141,8 @@ multiclass FuseMulOrDivWithConv2dOrDepthwiseConv2d<dag BinaryOp> {
                                      TFL_AF_None),
                           $h_factor, $w_factor, $act_fn,
                           $padding, $stride_h, $stride_w),
-          [(CanFuseConvOrDepthwiseConv<"false"> $filter, $value)]>;
+          [(CanFuseConvOrDepthwiseConv<"false"> $filter, $value),
+           (HasOneUse $conv_output)]>;
 }
 
 foreach BinaryOp = [TFL_DivOp, TFL_MulOp] in
@@ -152,7 +161,7 @@ def EqualOperands : Constraint<CPred<"$0 == $1">>;
 
 // Checks if the operand has rank == n
 class OperandHasRank<int n> : Constraint<
-  CPred<"$0->getType().cast<ShapedType>().getRank() == " # n>>;
+  CPred<"$0.getType().cast<ShapedType>().getRank() == " # n>>;
 
 // Matching HardSwish
 def : Pat<
@@ -189,6 +198,9 @@ class ConstDoubleValueLessThan<string n> : Constraint<
   "std::abs(*$0.cast<DenseElementsAttr>().getValues<float>().begin()) < "
   # n>>;
 
+def L2NormValidReduceIndex : Constraint<CPred<
+  "L2NormalizeReduceAxis($0, $1.cast<DenseElementsAttr>())">>;
+
 // Currently L2Normalization doesn't support activation function
 // in TFLite.
 // TODO(karimnosseir): Add constraints that the kernel code assumes.
@@ -200,12 +212,13 @@ multiclass L2NormalizePatterns<dag FirstOp, dag SecondOp> {
   def : Pat<(FirstOp $operand1,
                      (SecondOp
                         (TFL_SumOp
-                           (TFL_SquareOp $square_operand),
-                           (ConstantOp I32ElementsAttr:$constant),
+                           (TFL_SquareOp:$sq_op $square_operand),
+                           (ConstantOp I32ElementsAttr:$axis),
                            $keep_dims)),
                      TFL_AF_None),
            (TFL_L2NormalizationOp $operand1, TFL_AF_None),
-           [(EqualOperands $operand1, $square_operand)]>;
+           [(EqualOperands $operand1, $square_operand),
+            (L2NormValidReduceIndex $sq_op, $axis)]>;
 
   // Below patterns for L2Normalize when there is an Add or Maximum
   // adding or clamping to a small constant scalar.
@@ -213,26 +226,28 @@ multiclass L2NormalizePatterns<dag FirstOp, dag SecondOp> {
                      (SecondOp
                       (TFL_AddOp
                        (TFL_SumOp
-                        (TFL_SquareOp $square_operand),
-                        (ConstantOp I32ElementsAttr:$constant),
+                        (TFL_SquareOp:$sq_op $square_operand),
+                        (ConstantOp I32ElementsAttr:$axis),
                         $keep_dims),
                        (ConstantOp $epsilon), TFL_AF_None)),
            TFL_AF_None),
            (TFL_L2NormalizationOp $operand1, TFL_AF_None),
            [(EqualOperands $operand1, $square_operand),
+            (L2NormValidReduceIndex $sq_op, $axis),
             (ConstDoubleValueLessThan<"1e-3"> $epsilon)]>;
 
   def : Pat<(FirstOp $operand1,
                      (SecondOp
                       (TFL_MaximumOp
                        (TFL_SumOp
-                        (TFL_SquareOp $square_operand),
-                        (ConstantOp I32ElementsAttr:$constant),
+                        (TFL_SquareOp:$sq_op $square_operand),
+                        (ConstantOp I32ElementsAttr:$axis),
                         $keep_dims),
                        (ConstantOp $epsilon))),
            TFL_AF_None),
            (TFL_L2NormalizationOp $operand1, TFL_AF_None),
            [(EqualOperands $operand1, $square_operand),
+            (L2NormValidReduceIndex $sq_op, $axis),
             (ConstDoubleValueLessThan<"1e-3"> $epsilon)]>;
 
 }
@@ -241,7 +256,7 @@ foreach L2NormalizePairs = [[TFL_MulOp, TFL_RsqrtOp], [TFL_DivOp, TFL_SqrtOp]]
   in defm : L2NormalizePatterns<L2NormalizePairs[0], L2NormalizePairs[1]>;
 
 def AreBroadcastableTypes : Constraint<CPred<
-  "TFL::IsBroadcastableElementsAttrAndType($0->getType(), $1->getType())">>;
+  "TFL::IsBroadcastableElementsAttrAndType($0.getType(), $1.getType())">>;
 
 // Pattern for skipping Tile if it is mainly for broadcasting and the
 // Op is already supporting broadcasting.
@@ -259,3 +274,47 @@ multiclass FuseTileBroadcastIntoFollowingBinary<dag BinaryOp> {
 
 foreach BroadcastingOp = [TFL_AddOp, TFL_SubOp, TFL_DivOp, TFL_MulOp]
   in defm : FuseTileBroadcastIntoFollowingBinary<BroadcastingOp>;
+
+// Returns shape of a ranked tensor.
+// if called without a ranked tensor it will fail.
+def GetShape: NativeCodeCall<"GetShape($0)">;
+
+def : Pat<(TFL_SqueezeOp:$squeeze_op $input, $squeeze_dims),
+          (TFL_ReshapeOp $input,
+           (ConstantOp (GetShape $squeeze_op))),
+          [(AnyStaticShapeTensor $squeeze_op)]>;
+
+class ValueEquals<string val> : Constraint<CPred<
+  "$0.cast<DenseElementsAttr>().getNumElements() == 1 &&"
+  "*$0.cast<DenseElementsAttr>().getValues<float>().begin() == " # val>>;
+
+def : Pat<(TFL_MinimumOp (TFL_MaximumOp $input,
+                          (ConstantOp $NegOne)),
+           (ConstantOp $One)),
+          (TFL_Relu1Op $input),
+          [(ValueEquals<"-1"> $NegOne), (ValueEquals<"1"> $One)]>;
+
+def : Pat<(TFL_MaximumOp (TFL_MinimumOp $input,
+                          (ConstantOp $One)),
+           (ConstantOp $NegOne)),
+          (TFL_Relu1Op $input),
+          [(ValueEquals<"-1"> $NegOne), (ValueEquals<"1"> $One)]>;
+
+// Multi-pattern consisting of matching stand-alone op or op followed by relu.
+multiclass FusedBinaryActivationFuncOpPat<dag BinaryOp> {
+  foreach actFnPair = [[TFL_ReluOp, TFL_AF_Relu],
+                       [TFL_Relu6Op, TFL_AF_Relu6],
+                       [TFL_Relu1Op, TFL_AF_Relu1]] in {
+    def : Pat<(actFnPair[0] (BinaryOp $lhs, $rhs, TFL_AF_None)),
+              (BinaryOp $lhs, $rhs, actFnPair[1])>;
+  }
+}
+
+// Instantiated FusedBinary patterns for the from-to pairs of ops.
+foreach BinaryOps = [TFL_AddOp, TFL_DivOp,
+                     TFL_MulOp, TFL_SubOp] in
+  defm : FusedBinaryActivationFuncOpPat<BinaryOps>;
+
+// The constant folding in this pass might produce constant in the tf dialect.
+// This rule is to legalize these constant to the tfl dialect.
+def : Pat<(TF_ConstOp ElementsAttr:$value), (TFL_ConstOp $value)>;

@@ -46,7 +46,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
-#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
@@ -134,7 +133,6 @@ class Buffer : public BufferBase {
   size_t size() const override { return sizeof(T) * elem_; }
 
  private:
-  T* data_;
   int64 elem_;
 
   ~Buffer() override;
@@ -639,7 +637,7 @@ void UnrefIfNonNull(core::RefCounted* buf) {
 
 Tensor::Tensor() : Tensor(DT_FLOAT) {}
 
-Tensor::Tensor(DataType type) : shape_({0}), buf_(nullptr) { set_dtype(type); }
+Tensor::Tensor(DataType type) : shape_(type), buf_(nullptr) {}
 
 Tensor::Tensor(DataType type, const TensorShape& shape, TensorBuffer* buf)
     : shape_(shape), buf_(buf) {
@@ -853,7 +851,6 @@ class SubBuffer : public TensorBuffer {
 
  private:
   TensorBuffer* root_;
-  T* data_;
   int64 elem_;
 
   ~SubBuffer() override { root_->Unref(); }

@@ -329,7 +329,6 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
   XlaCompiler::CompileOptions body_options;
   body_options.use_tuple_arg = true;
   body_options.return_updated_values_for_all_resources = true;
-  body_options.resolve_compile_time_constants = false;
   body_options.is_entry_computation = false;
   body_options.add_token_input_output = has_token_input_output_;
   XlaCompiler::CompilationResult body;
@@ -422,7 +421,6 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
 
   XlaCompiler::CompileOptions cond_options;
   cond_options.use_tuple_arg = true;
-  cond_options.resolve_compile_time_constants = false;
   cond_options.is_entry_computation = false;
   cond_options.add_token_input_output = has_token_input_output_;
   XlaCompiler::CompilationResult cond;

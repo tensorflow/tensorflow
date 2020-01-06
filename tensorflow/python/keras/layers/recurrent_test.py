@@ -1477,7 +1477,7 @@ class RNNTest(keras_parameterized.TestCase):
               input_layer, initial_state=initial_states)
       model = keras.Model(input_layer, rnn_output)
       model.compile(
-          optimizer=keras.optimizers.RMSprop(), loss='mse',
+          optimizer='rmsprop', loss='mse',
           run_eagerly=testing_utils.should_run_eagerly(),
           experimental_run_tf_function=testing_utils.should_run_tf_function())
       return model

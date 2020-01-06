@@ -22,6 +22,7 @@ import collections
 import copy
 import math
 import re
+
 import six
 
 from tensorflow.core.protobuf.tpu import optimization_parameters_pb2
@@ -32,6 +33,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
@@ -49,7 +51,7 @@ INFERENCE = elc.TPUEmbeddingConfiguration.INFERENCE
 class TableConfig(
     collections.namedtuple('TableConfig', [
         'vocabulary_size', 'dimension', 'initializer', 'combiner',
-        'hot_id_replication', 'learning_rate', 'learning_rate_key'
+        'hot_id_replication', 'learning_rate', 'learning_rate_fn'
     ])):
   """Embedding table configuration."""
 
@@ -60,7 +62,7 @@ class TableConfig(
               combiner='mean',
               hot_id_replication=False,
               learning_rate=None,
-              learning_rate_key=None):
+              learning_rate_fn=None):
     """Embedding table configuration.
 
     Args:
@@ -79,17 +81,16 @@ class TableConfig(
       hot_id_replication: If true, enables hot id replication, which can make
         embedding lookups faster if there are some hot rows in the table.
       learning_rate: float, static learning rate for this table. If
-        learning_rate and learning_rate_key are both `None`, global
+        learning_rate and learning_rate_fn are both `None`, global
         static learning rate as specified in `optimization_parameters` in
-        `TPUEmbedding` constructor will be used. `learning_rate_key` must be
+        `TPUEmbedding` constructor will be used. `learning_rate_fn` must be
         `None` if `learning_rate` is not `None.
-      learning_rate_key: string, use dynamic learning rate of
-        `learning_rates[learning_rate_key]` for this table, where
-        `learning_rates` is the second argument of
-        `generate_send_gradients_op()`. If learning_rate and learning_rate_key
-        are both `None`, global static learning rate as specified in
-        `optimization_parameters` in `TPUEmbedding` constructor will be used.
-        `learning_rate` must be `None` if `learning_rate_key` is not `None.
+      learning_rate_fn: string, use dynamic learning rate given by the function.
+        This function function will be passed the current global step. If
+        learning_rate and learning_rate_fn are both `None`, global static
+        learning rate as specified in `optimization_parameters` in
+        `TPUEmbedding` constructor will be used. `learning_rate` must be `None`
+        if `learning_rate_fn` is not `None.
 
     Returns:
       `TableConfig`.
@@ -99,7 +100,7 @@ class TableConfig(
       ValueError: if `dimension` is not positive integer.
       ValueError: if `initializer` is specified and is not callable.
       ValueError: if `combiner` is not supported.
-      ValueError: if `learning_rate` and `learning_rate_key` are both not
+      ValueError: if `learning_rate` and `learning_rate_fn` are both not
         `None`.
     """
     if not isinstance(vocabulary_size, int) or vocabulary_size < 1:
@@ -117,14 +118,14 @@ class TableConfig(
     if combiner not in ('mean', 'sum', 'sqrtn', None):
       raise ValueError('Invalid combiner {}'.format(combiner))
 
-    if learning_rate is not None and learning_rate_key is not None:
-      raise ValueError('At most one of learning_rate and learning_rate_key '
+    if learning_rate is not None and learning_rate_fn is not None:
+      raise ValueError('At most one of learning_rate and learning_rate_fn '
                        'can be None; got {} and {}'
-                       .format(learning_rate, learning_rate_key))
+                       .format(learning_rate, learning_rate_fn))
 
     return super(TableConfig, cls).__new__(
         cls, vocabulary_size, dimension, initializer, combiner,
-        hot_id_replication, learning_rate, learning_rate_key)
+        hot_id_replication, learning_rate, learning_rate_fn)
 
 
 class FeatureConfig(
@@ -234,11 +235,17 @@ AdamSlotVariableNames = collections.namedtuple(
 AdagradSlotVariableName = collections.namedtuple(
     'AdagradSlotVariableName', ['accumulator'])
 
+FtrlSlotVariableName = collections.namedtuple(
+    'FtrlSlotVariableName', ['accumulator', 'linear'])
+
 AdamSlotVariables = collections.namedtuple(
     'AdamSlotVariables', ['m', 'v'])
 
 AdagradSlotVariable = collections.namedtuple(
     'AdagradSlotVariable', ['accumulator'])
+
+FtrlSlotVariable = collections.namedtuple(
+    'FtrlSlotVariable', ['accumulator', 'linear'])
 
 VariablesAndOps = collections.namedtuple(
     'VariablesAndOps',
@@ -372,6 +379,82 @@ class AdamParameters(_OptimizationParameters):
     self.epsilon = epsilon
     self.lazy_adam = lazy_adam
     self.sum_inside_sqrt = sum_inside_sqrt
+
+
+@tf_export(v1=['tpu.experimental.FtrlParameters'])
+class FtrlParameters(_OptimizationParameters):
+  """Optimization parameters for Ftrl with TPU embeddings.
+
+  Pass this to `tf.estimator.tpu.experimental.EmbeddingConfigSpec` via the
+  `optimization_parameters` argument to set the optimizer and its parameters.
+  See the documentation for `tf.estimator.tpu.experimental.EmbeddingConfigSpec`
+  for more details.
+
+  ```
+  estimator = tf.estimator.tpu.TPUEstimator(
+      ...
+      embedding_config_spec=tf.estimator.tpu.experimental.EmbeddingConfigSpec(
+          ...
+          optimization_parameters=tf.tpu.experimental.FtrlParameters(0.1),
+          ...))
+  ```
+
+  """
+
+  def __init__(self,
+               learning_rate,
+               learning_rate_power=-0.5,
+               initial_accumulator_value=0.1,
+               l1_regularization_strength=0.0,
+               l2_regularization_strength=0.0,
+               use_gradient_accumulation=True,
+               clip_weight_min=None,
+               clip_weight_max=None):
+    """Optimization parameters for Ftrl.
+
+    Args:
+      learning_rate: a floating point value. The learning rate.
+      learning_rate_power: A float value, must be less or equal to zero.
+        Controls how the learning rate decreases during training. Use zero for
+        a fixed learning rate. See section 3.1 in the
+        [paper](https://www.eecs.tufts.edu/~dsculley/papers/ad-click-prediction.pdf).
+      initial_accumulator_value: The starting value for accumulators.
+        Only zero or positive values are allowed.
+      l1_regularization_strength: A float value, must be greater than or
+        equal to zero.
+      l2_regularization_strength: A float value, must be greater than or
+        equal to zero.
+      use_gradient_accumulation: setting this to `False` makes embedding
+        gradients calculation less accurate but faster. Please see
+        `optimization_parameters.proto` for details.
+        for details.
+      clip_weight_min: the minimum value to clip by; None means -infinity.
+      clip_weight_max: the maximum value to clip by; None means +infinity.
+    """
+    super(FtrlParameters,
+          self).__init__(learning_rate, use_gradient_accumulation,
+                         clip_weight_min, clip_weight_max)
+    if learning_rate_power > 0.:
+      raise ValueError('learning_rate_power must be less than or equal to 0. '
+                       'got {}.'.format(learning_rate_power))
+
+    if initial_accumulator_value < 0.:
+      raise ValueError('initial_accumulator_value must be greater than or equal'
+                       ' to 0. got {}.'.format(initial_accumulator_value))
+
+    if l1_regularization_strength < 0.:
+      raise ValueError('l1_regularization_strength must be greater than or '
+                       'equal to 0. got {}.'.format(l1_regularization_strength))
+
+    if l2_regularization_strength < 0.:
+      raise ValueError('l2_regularization_strength must be greater than or '
+                       'equal to 0. got {}.'.format(l2_regularization_strength))
+
+    self.learning_rate_power = learning_rate_power
+    self.initial_accumulator_value = initial_accumulator_value
+    self.initial_linear_value = 0.0
+    self.l1_regularization_strength = l1_regularization_strength
+    self.l2_regularization_strength = l2_regularization_strength
 
 
 @tf_export(v1=['tpu.experimental.StochasticGradientDescentParameters'])
@@ -612,6 +695,11 @@ class TPUEmbedding(object):
         self._optimization_parameters)
     self._pipeline_execution_with_tensor_core = (
         pipeline_execution_with_tensor_core)
+    self._learning_rate_fn = list(set(
+        c.learning_rate_fn for c in self._table_to_config_dict.values()
+        if c.learning_rate_fn is not None))
+    self._learning_rate_fn_to_tag = {
+        fn: id for id, fn in enumerate(self._learning_rate_fn)}
 
     self._config_proto = self._create_config_proto()
 
@@ -685,10 +773,6 @@ class TPUEmbedding(object):
 
   def _create_config_proto(self):
     """Create `TPUEmbeddingConfiguration`."""
-    self._learning_rate_keys = list(
-        set(c.learning_rate_key
-            for c in self._table_to_config_dict.values()
-            if c.learning_rate_key is not None))
     config_proto = elc.TPUEmbeddingConfiguration()
     for table in self._table_to_config_dict:
       table_descriptor = config_proto.table_descriptor.add()
@@ -706,9 +790,9 @@ class TPUEmbedding(object):
       parameters = table_descriptor.optimization_parameters
       if table_config.learning_rate:
         parameters.learning_rate.constant = (table_config.learning_rate)
-      elif table_config.learning_rate_key:
+      elif table_config.learning_rate_fn:
         parameters.learning_rate.dynamic.tag = (
-            self._learning_rate_keys.index(table_config.learning_rate_key))
+            self._learning_rate_fn_to_tag[table_config.learning_rate_fn])
       else:
         parameters.learning_rate.constant = (
             self._optimization_parameters.learning_rate)
@@ -884,10 +968,9 @@ class TPUEmbedding(object):
                                i, feature))
 
         if enqueue_data.sample_indices is None and combiner:
-          raise ValueError('`enqueue_datas_list[{}]` has a feature that has '
-                           'neither `EnqueueData` or `combiner`.'
-                           '`feature`: {}, combiner: {}.'.format(
-                               i, feature, combiner))
+          logging.warn('No sample indices set for features %f table %f but '
+                       'combiner is set to %s.', feature,
+                       self._feature_to_config_dict[feature].table_id, combiner)
 
         if (enqueue_data.sample_indices is not None and
             enqueue_data.sample_indices.device !=
@@ -928,17 +1011,11 @@ class TPUEmbedding(object):
   def _generate_enqueue_op(self, enqueue_datas, device_ordinal):
     enqueue_data0 = list(enqueue_datas.values())[0]
     with ops.colocate_with(enqueue_data0.embedding_indices):
-      (sample_indices_list, embedding_indices_list, aggregation_weights_list,
-       table_ids, max_sequence_lengths) = (
-           self._format_for_tpu_embedding_sparse_tensor_batch(enqueue_datas))
       return tpu_ops.enqueue_tpu_embedding_sparse_tensor_batch(
-          sample_indices_list,
-          embedding_indices_list,
-          aggregation_weights_list,
-          table_ids,
           device_ordinal=device_ordinal,
           combiners=self._combiners,
-          max_sequence_lengths=max_sequence_lengths)
+          **self._format_for_tpu_embedding_sparse_tensor_batch(enqueue_datas)
+      )
 
   def _format_for_tpu_embedding_sparse_tensor_batch(self, enqueue_datas):
     """Format sparse features for `enqueue_tpu_embedding_sparse_tensor_batch()`.
@@ -948,36 +1025,37 @@ class TPUEmbedding(object):
       dense.
 
     Returns:
-      Arguments for `enqueue_tpu_embedding_sparse_tensor_batch()`.
+      Dict of arguments for `enqueue_tpu_embedding_sparse_tensor_batch()`.
     """
-
-    (sample_indices_list, embedding_indices_list, aggregation_weights_list,
-     table_ids, max_sequence_lengths) = [], [], [], [], []
+    kwargs = {
+        'sample_indices': [],
+        'embedding_indices': [],
+        'aggregation_weights': [],
+        'table_ids': [],
+        'max_sequence_lengths': [],
+    }
     for table_id, table in enumerate(self._table_to_features_dict):
       features = self._table_to_features_dict[table]
       for feature in features:
         enqueue_data = enqueue_datas[feature]
 
-        sample_indices = (
+        kwargs['sample_indices'].append(
             enqueue_data.sample_indices
             if enqueue_data.sample_indices is not None else array_ops.zeros(
-                (0,), dtype=dtypes.int32))
-        sample_indices_list.append(sample_indices)
+                (0,), dtype=dtypes.int64))
 
-        aggregation_weights = (
+        kwargs['aggregation_weights'].append(
             enqueue_data.aggregation_weights if
             enqueue_data.aggregation_weights is not None else array_ops.zeros(
                 (0,), dtype=dtypes.float32))
-        aggregation_weights_list.append(aggregation_weights)
 
-        embedding_indices_list.append(enqueue_data.embedding_indices)
+        kwargs['embedding_indices'].append(enqueue_data.embedding_indices)
 
-        table_ids.append(table_id)
-        max_sequence_lengths.append(
+        kwargs['table_ids'].append(table_id)
+        kwargs['max_sequence_lengths'].append(
             self._feature_to_config_dict[feature].max_sequence_length)
 
-    return (sample_indices_list, embedding_indices_list,
-            aggregation_weights_list, table_ids, max_sequence_lengths)
+    return kwargs
 
   def get_activations(self):
     """Get activations for features.
@@ -1015,14 +1093,13 @@ class TPUEmbedding(object):
 
   def generate_send_gradients_op(self,
                                  feature_to_gradient_dict,
-                                 learning_rates=None):
+                                 step=None):
     """Send gradient to TPU embedding.
 
     Args:
       feature_to_gradient_dict: dict mapping feature names to gradient wrt
         activations.
-      learning_rates: dict mapping from learning rate key to dynamic learning
-        rate. Defaults to `None`.
+      step: the current global step, used for dynamic learning rate.
 
     Returns:
       SendTPUEmbeddingGradients Op.
@@ -1034,9 +1111,8 @@ class TPUEmbedding(object):
       raise RuntimeError('Only in training mode gradients need to '
                          'be sent to TPU embedding; got mode {}.'
                          .format(self._mode))
-
-    if learning_rates is None:
-      learning_rates = dict()
+    if step is None and self._learning_rate_fn:
+      raise ValueError('There are dynamic learning rates but step is None.')
 
     gradients = []
     for table in self._table_to_features_dict:
@@ -1055,9 +1131,8 @@ class TPUEmbedding(object):
 
     return tpu_ops.send_tpu_embedding_gradients(
         inputs=gradients,
-        learning_rates=[
-            learning_rates[tag] for tag in self._learning_rate_keys
-        ],
+        learning_rates=[math_ops.cast(fn(step), dtype=dtypes.float32)
+                        for fn in self._learning_rate_fn],
         config=self.config_proto.SerializeToString())
 
 
@@ -1297,6 +1372,109 @@ class _AdamHandler(_OptimizerHandler):
     return slot_variables, load_ops_fn, retrieve_ops_fn
 
 
+class _FtrlHandler(_OptimizerHandler):
+  """Handles Ftrl specific logic."""
+
+  def __init__(self, optimization_parameters):
+    super(_FtrlHandler, self).__init__(optimization_parameters)
+    self._table_to_accumulator_variables_dict = {}
+    self._table_to_linear_variables_dict = {}
+
+  def set_optimization_parameters(self, table_descriptor):
+    table_descriptor.optimization_parameters.ftrl.lr_power = (
+        self._optimization_parameters.learning_rate_power)
+    table_descriptor.optimization_parameters.ftrl.l1 = (
+        self._optimization_parameters.l1_regularization_strength)
+    table_descriptor.optimization_parameters.ftrl.l2 = (
+        self._optimization_parameters.l2_regularization_strength)
+    table_descriptor.optimization_parameters.ftrl.initial_accum = (
+        self._optimization_parameters.initial_accumulator_value)
+    table_descriptor.optimization_parameters.ftrl.initial_linear = (
+        self._optimization_parameters.initial_linear_value)
+
+  def get_default_slot_variable_names(self, table):
+    # These match the default slot variable names created by
+    # tf.train.FtrlOptimizer.
+    return FtrlSlotVariableName('{}/{}'.format(table, 'Ftrl'),  # accumulator
+                                '{}/{}'.format(table, 'Ftrl_1'))  # linear
+
+  def create_variables_and_ops(self, table, slot_variable_names, num_hosts,
+                               table_config, table_variables, config_proto):
+    accumulator_initializer = init_ops.constant_initializer(
+        self._optimization_parameters.initial_accumulator_value)
+    accumulator_variables = _create_partitioned_variables(
+        name=slot_variable_names.accumulator,
+        num_hosts=num_hosts,
+        vocabulary_size=table_config.vocabulary_size,
+        embedding_dimension=table_config.dimension,
+        collections=[ops.GraphKeys.GLOBAL_VARIABLES],
+        initializer=accumulator_initializer)
+    linear_initializer = init_ops.constant_initializer(
+        self._optimization_parameters.initial_linear_value)
+    linear_variables = _create_partitioned_variables(
+        name=slot_variable_names.linear,
+        num_hosts=num_hosts,
+        vocabulary_size=table_config.vocabulary_size,
+        embedding_dimension=table_config.dimension,
+        collections=[ops.GraphKeys.GLOBAL_VARIABLES],
+        initializer=linear_initializer)
+    slot_variables = FtrlSlotVariable(accumulator_variables,
+                                      linear_variables)
+
+    def load_ops_fn():
+      """Returns the retrieve ops for Ftrl embedding tables.
+
+      Returns:
+        A list of ops to load embedding and slot variables from CPU to TPU.
+      """
+      config = config_proto
+      load_op_list = []
+      for host_id, table_variable, accumulator_variable, linear_variable in zip(
+          range(num_hosts), table_variables, accumulator_variables,
+          linear_variables):
+        with ops.colocate_with(table_variable):
+          load_parameters_op = (
+              tpu_ops.load_tpu_embedding_ftrl_parameters(
+                  parameters=table_variable,
+                  accumulators=accumulator_variable,
+                  linears=linear_variable,
+                  table_name=table,
+                  num_shards=num_hosts,
+                  shard_id=host_id,
+                  config=config))
+        config = None
+        load_op_list.append(load_parameters_op)
+      return load_op_list
+
+    def retrieve_ops_fn():
+      """Returns the retrieve ops for Ftrl embedding tables.
+
+      Returns:
+        A list of ops to retrieve embedding and slot variables from TPU to CPU.
+      """
+      config = config_proto
+      retrieve_op_list = []
+      for host_id, table_variable, accumulator_variable, linear_variable in zip(
+          range(num_hosts), table_variables, accumulator_variables,
+          linear_variables):
+        with ops.colocate_with(table_variable):
+          retrieved_table, retrieved_accumulator, retrieved_linear = (
+              tpu_ops.retrieve_tpu_embedding_ftrl_parameters(
+                  table_name=table,
+                  num_shards=num_hosts,
+                  shard_id=host_id,
+                  config=config))
+          retrieve_parameters_op = control_flow_ops.group(
+              state_ops.assign(table_variable, retrieved_table),
+              state_ops.assign(accumulator_variable, retrieved_accumulator),
+              state_ops.assign(linear_variable, retrieved_linear))
+        config = None
+        retrieve_op_list.append(retrieve_parameters_op)
+      return retrieve_op_list
+
+    return slot_variables, load_ops_fn, retrieve_ops_fn
+
+
 class _StochasticGradientDescentHandler(_OptimizerHandler):
   """Handles stochastic gradient descent specific logic."""
 
@@ -1361,10 +1539,13 @@ class _StochasticGradientDescentHandler(_OptimizerHandler):
 
 
 def _get_optimization_handler(optimization_parameters):
+  """Gets the optimization handler given the parameter type."""
   if isinstance(optimization_parameters, AdagradParameters):
     return _AdagradHandler(optimization_parameters)
   elif isinstance(optimization_parameters, AdamParameters):
     return _AdamHandler(optimization_parameters)
+  elif isinstance(optimization_parameters, FtrlParameters):
+    return _FtrlHandler(optimization_parameters)
   elif isinstance(optimization_parameters, StochasticGradientDescentParameters):
     return _StochasticGradientDescentHandler(optimization_parameters)
   else:

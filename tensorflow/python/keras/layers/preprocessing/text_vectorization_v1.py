@@ -21,11 +21,15 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.keras import backend as K
+from tensorflow.python.keras.engine import base_preprocessing_layer_v1
 from tensorflow.python.keras.layers.preprocessing import text_vectorization
 from tensorflow.python.ops.ragged import ragged_tensor_value
+from tensorflow.python.util.tf_export import keras_export
 
 
-class TextVectorization(text_vectorization.TextVectorization):
+@keras_export(v1=['keras.layers.experimental.preprocessing.TextVectorization'])
+class TextVectorization(text_vectorization.TextVectorization,
+                        base_preprocessing_layer_v1.CombinerPreprocessingLayer):
   """Text vectorization layer.
 
   This layer has basic options for managing text in a Keras model. It
@@ -84,13 +88,27 @@ class TextVectorization(text_vectorization.TextVectorization):
     return K.get_session().run(self._table.size())
 
   def _clear_table(self):
+    if (self._output_mode in [
+        text_vectorization.BINARY, text_vectorization.COUNT,
+        text_vectorization.TFIDF
+    ] and self._called and not self._pad_to_max):
+      raise RuntimeError(("When using TextVectorization in {mode} mode, the "
+                          "vocabulary cannot be changed after the layer is "
+                          "called.").format(mode=self._output_mode))
     keys, _ = self._table.export()
     K.get_session().run(self._table.remove(keys))
-    self._has_vocab = False
+    self._vocab_size = 0
 
   def _insert_table_data(self, keys, values):
+    if (self._output_mode in [
+        text_vectorization.BINARY, text_vectorization.COUNT,
+        text_vectorization.TFIDF
+    ] and self._called and not self._pad_to_max):
+      raise RuntimeError(("When using TextVectorization in {mode} mode, the "
+                          "vocabulary cannot be changed after the layer is "
+                          "called.").format(mode=self._output_mode))
     K.get_session().run(self._table.insert(keys, values))
-    self._has_vocab = True
+    self._vocab_size += len(keys)
 
   def _to_numpy(self, data):
     """Converts preprocessed inputs into numpy arrays."""

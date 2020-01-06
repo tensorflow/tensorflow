@@ -382,6 +382,44 @@ struct CompileTimeEnabledReferenceMul</*ReferenceMulIsEnabled=*/false> {
   }
 };
 
+inline void HandlePrepackedCaching(TrMulParams* params,
+                                   const SidePair<bool>& cacheable,
+                                   Context* context) {
+  if (context->cache_policy == CachePolicy::kNoCache) {
+    return;
+  }
+
+  if (context->cache_policy == CachePolicy::kCacheLHSOnGemV) {
+    if (!cacheable[Side::kLhs] || params->dst.layout.cols != 1) {
+      return;
+    }
+    PrepackedCache* prepacked_cache = context->GetPrepackedCache();
+    auto cache_key = std::make_pair(reinterpret_cast<void*>(params->run_kernel),
+                                    params->src[Side::kLhs].data);
+    auto it = prepacked_cache->FindAndUpdate(cache_key);
+    if (it != prepacked_cache->cend()) {
+      params->packed[Side::kLhs].data = it->second.first.data;
+      params->packed[Side::kLhs].sums = it->second.first.sums;
+      params->is_prepacked[Side::kLhs] = true;
+      return;
+    }
+
+    // Allocate the prepacked matrix.
+    PrepackedMatrix prepacked_lhs;
+    prepacked_lhs.data_size = DataSize(params->packed[Side::kLhs]);
+    prepacked_lhs.sums_size = SumsSize(params->packed[Side::kLhs]);
+    prepacked_cache->AllocatePrepackedMatrix(&prepacked_lhs);
+    params->packed[Side::kLhs].data = prepacked_lhs.data;
+    params->packed[Side::kLhs].sums = prepacked_lhs.sums;
+    params->is_prepacked[Side::kLhs] = true;
+    Tuning tuning = context->GetMainThreadTuning();
+    params->RunPack(Side::kLhs, tuning, 0,
+                    params->packed[Side::kLhs].layout.cols);
+    prepacked_cache->Insert(cache_key, prepacked_lhs);
+    return;
+  }
+}
+
 template <Path CompiledPaths, typename LhsScalar, typename RhsScalar,
           typename DstScalar, typename Spec>
 void DispatchMul(const Matrix<LhsScalar>& lhs, const Matrix<RhsScalar>& rhs,
@@ -429,6 +467,8 @@ void DispatchMul(const Matrix<LhsScalar>& lhs, const Matrix<RhsScalar>& rhs,
   TrMulParams params;
   CreateTrMulParams<TrMulCompiledPaths>(transposed_lhs, rhs, spec, context, dst,
                                         the_path, &params);
+  SidePair<bool> cacheable(lhs.cacheable, rhs.cacheable);
+  HandlePrepackedCaching(&params, cacheable, context);
   TrMul(&params, context);
 }
 

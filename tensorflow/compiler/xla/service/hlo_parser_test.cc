@@ -841,50 +841,6 @@ ENTRY %fusion.v3 () -> f32[3,2,1,1] {
 )"
 },
 {
-"Sparse",
-R"(HloModule sparse_f32
-
-ENTRY %sparse () -> f32[2,3,4] {
-  ROOT %foo = f32[2,3,4]sparse{10} constant({[0, 1, 2]: 1, [1, 2, 2]: 2, [1, 2, 3]: 3})
-}
-
-)",
-/*enable_verification=*/false
-},
-{
-"SparseC128",
-R"(HloModule sparse_c128
-
-ENTRY %sparse () -> c128[2,3,4] {
-  ROOT %foo = c128[2,3,4]sparse{10} constant({[0, 1, 2]: (1, 0), [1, 2, 2]: (2, 5), [1, 2, 3]: (3, 10)})
-}
-
-)",
-/*enable_verification=*/false
-},
-{
-"SparseEmpty",
-R"(HloModule sparse_f32_empty
-
-ENTRY %sparse_f32_empty () -> f32[2,3,4] {
-  ROOT %foo = f32[2,3,4]sparse{10} constant({})
-}
-
-)",
-/*enable_verification=*/false,
-},
-{
-"SparseR1",
-R"(HloModule sparse_f32_r1
-
-ENTRY %sparse_f32_r1 () -> f32[9] {
-  ROOT %foo = f32[9]sparse{10} constant({1: 2, 3: 4, 5: 6})
-}
-
-)",
-/*enable_verification=*/false,
-},
-{
 "Gather",
 R"(HloModule StringifyGather
 
@@ -1203,7 +1159,7 @@ ENTRY Rng {
 },
 // Reduce precision
 {
-"ReducePrevison",
+"ReducePrecision",
 R"(HloModule reduce_precision
 
 ENTRY ReducePrecision {
@@ -1474,6 +1430,24 @@ ENTRY AllReduceWithSubgroups {
 
 )"
 },
+// all-reduce with constrained layout
+{
+"AllReduceWithLayout",
+R"(HloModule CRS
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY CRS {
+  input = f32[8]{0} parameter(0)
+  ROOT crs = f32[8]{0} all-reduce(input), replica_groups={}, constrain_layout=true, to_apply=add
+}
+
+)"
+},
 // all-reduce with all-reduce-id
 {
 "AllReduceAllReduce",
@@ -1641,7 +1615,7 @@ ENTRY MinMaxValues {
   x.u16 = u16[2]{0} constant({0, 65535})
   x.u32 = u32[2]{0} constant({0, 4294967295})
   x.f16 = f16[2]{0} constant({-65504, 65504})
-  x.bf16 = bf16[2]{0} constant({-3.38953e+38, 3.38953e+38})
+  x.bf16 = bf16[2]{0} constant({-3.39e+38, 3.39e+38})
   x.f32 = f32[2]{0} constant({-3.40282e+38, 3.40282e+38})
   x.f64 = f64[2]{0} constant({-1.79769e+308, 1.79769e+308})
   x.c64 = c64[2]{0} constant({(-3.40282e+38, 3.40282e+38), (3.40282e+38, -3.40282e+38)})
@@ -1798,6 +1772,27 @@ ENTRY %blabla (x: f32[], y: f32[]) -> f32[] {
   EXPECT_NE(Status::OK(), result.status());
 }
 
+TEST_F(HloParserTest, MetadataWithCholesky) {
+  const string original = R"(HloModule metadata_with_cholesky
+ENTRY %blabla (a: f32[1,291,291]) -> f32[1,291,291] {
+  %a = f32[1,291,291] parameter(0)
+  %out = f32[1,291,291] cholesky(f32[1,291,291] %a), lower=true, metadata={op_type="Cholesky" op_name="Cholesky"}
+}
+)";
+  auto result = ParseAndReturnVerifiedModule(original);
+  EXPECT_EQ(Status::OK(), result.status());
+  EXPECT_EQ("Cholesky", result.ValueOrDie()
+                            ->entry_computation()
+                            ->root_instruction()
+                            ->metadata()
+                            .op_name());
+  EXPECT_EQ("Cholesky", result.ValueOrDie()
+                            ->entry_computation()
+                            ->root_instruction()
+                            ->metadata()
+                            .op_type());
+}
+
 TEST_F(HloParserTest, WrongShape) {
   const string original = R"(HloModule wrong_opcode:
 
@@ -1911,7 +1906,7 @@ TEST_F(HloParserTest, ConstantF16Overflow) {
       R"(HloModule ConstantF16Overflow_module
 
 ENTRY %ConstantF16Overflow.v4 () -> f16[] {
-  ROOT %constant = f16[] constant(-65505)
+  ROOT %constant = f16[] constant(-65520)
 }
 
 )";
@@ -1941,17 +1936,6 @@ TEST_F(HloParserTest, ConstantBf16Overflow) {
   ExpectHasSubstr(
       ParseAndReturnUnverifiedModule(original).status().error_message(),
       "out of range");
-}
-
-TEST_F(HloParserTest, ConstantF16OverflowInSparseArray) {
-  const string original = R"(
-    HloModule test_module
-    ENTRY test {
-      ROOT c = f16[5]sparse{10} constant({[0]: 0, [1]: -65505})
-    })";
-  ExpectHasSubstr(
-      ParseAndReturnUnverifiedModule(original).status().error_message(),
-      "is out of range for literal's primitive type F16");
 }
 
 TEST_F(HloParserTest, ConstantUnsignedUnderflow) {
@@ -2056,7 +2040,7 @@ ENTRY %ShortConstant.v4 () -> f32[67,89] {
   EXPECT_EQ(result.ValueOrDie()->ToString(HloPrintOptions()), original);
 }
 
-TEST_F(HloParserTest, AttibutesAnyOrder) {
+TEST_F(HloParserTest, AttributesAnyOrder) {
   const string original = R"(HloModule any_order_module
 
 ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,1], filter: f32[1,1,1]) -> f32[1,4,1] {
@@ -2813,50 +2797,6 @@ ENTRY %entrycomp (p: f32[2,2]) -> f32[2,2] {
                   " with the shape of the operand instruction f32[2,2]{1,0}.");
 }
 
-TEST_F(HloParserTest, OutOfRangeSparseIndex) {
-  const string original = R"(
-    HloModule test_module
-    ENTRY test {
-      ROOT c = f16[5]sparse{10} constant({[100]: 0})
-    })";
-  ExpectHasSubstr(
-      ParseAndReturnUnverifiedModule(original).status().error_message(),
-      "Invalid sparse index");
-}
-
-TEST_F(HloParserTest, NegativeSparseIndex) {
-  const string original = R"(
-    HloModule test_module
-    ENTRY test {
-      ROOT c = f16[5]sparse{10} constant({-1: 0})
-    })";
-  ExpectHasSubstr(
-      ParseAndReturnUnverifiedModule(original).status().error_message(),
-      "Invalid sparse index");
-}
-
-TEST_F(HloParserTest, SparseIndexWithRankTooLarge) {
-  const string original = R"(
-    HloModule test_module
-    ENTRY test {
-      ROOT c = f16[5]sparse{10} constant({[0, 0]: 0})
-    })";
-  ExpectHasSubstr(
-      ParseAndReturnUnverifiedModule(original).status().error_message(),
-      "Invalid sparse index");
-}
-
-TEST_F(HloParserTest, SparseIndexWithRankTooSmall) {
-  const string original = R"(
-    HloModule test_module
-    ENTRY test {
-      ROOT c = f16[5, 5]sparse{10} constant({[0]: 0})
-    })";
-  ExpectHasSubstr(
-      ParseAndReturnUnverifiedModule(original).status().error_message(),
-      "Invalid sparse index");
-}
-
 TEST_F(HloParserTest, ParseShapeStringR2F32) {
   string shape_string = "f32[123,456]";
   TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
@@ -2955,15 +2895,6 @@ TEST_F(HloParserTest, ParseShapeStringWithTilingLayout) {
                   "Dimensions size is 3, but minor to major size is 1.");
 }
 
-TEST_F(HloParserTest, ParseShapeStringWithSparseLayout) {
-  string shape_string = "f32[123,456]sparse{10}";
-  TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
-  Shape expected = ShapeUtil::MakeShapeWithSparseLayout(F32, {123, 456}, 10);
-  ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
-      << "expected: " << ShapeUtil::HumanString(expected)
-      << "actual: " << ShapeUtil::HumanString(actual);
-}
-
 TEST_F(HloParserTest, ParseShapeStringWithMemorySpaceLayout) {
   // Tile, element size, and memory space.
   string shape_string = "pred[123,456]{1,0:T(2,128)E(1)S(3)}";
@@ -3008,10 +2939,8 @@ TEST_F(HloParserTest, ParseTokenType) {
 }
 
 TEST_F(HloParserTest, ParseInvalidShapeString) {
-  string shape_strings[] = {
-      "f32[123,456]foobar{0,1}", "f32[123,456]sparse{0,1}", "f32[123,456]{foo}",
-      "f32[123,456]dense{foo}",  "f32[123,456]sparse{foo}",
-  };
+  string shape_strings[] = {"f32[123,456]foobar{0,1}", "f32[123,456]{foo}",
+                            "f32[123,456]dense{foo}"};
   for (const string& shape_string : shape_strings) {
     StatusOr<Shape> result = ParseShape(shape_string);
     ASSERT_FALSE(result.ok()) << "shape: " << shape_string;

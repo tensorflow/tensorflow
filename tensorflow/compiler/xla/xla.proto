@@ -20,44 +20,6 @@ package xla;
 import "tensorflow/compiler/xla/service/hlo.proto";
 import "tensorflow/compiler/xla/xla_data.proto";
 
-// Options for the HLO insert-reduce-precision-operations pass.
-message HloReducePrecisionOptions {
-  // Where and when the reduce-precision operations will be added.
-  enum Location {
-    // Add reduce-precision operations to the inputs of selected instructions.
-    // This is done before any optimization occurs.
-    OP_INPUTS = 0;
-    // Add reduce-precision operations to the outputs of selected instructions.
-    // This is done before any optimization occurs.
-    OP_OUTPUTS = 1;
-    // After operation-fusion occurs, add reduce-precision operations to the
-    // outputs of any selected instructions that have not been fused into
-    // fusion instructions.
-    UNFUSED_OP_OUTPUTS = 2;
-    // After operation-fusion occurs, add reduce-precision operations to the
-    // outputs of any fusion instructions that contain operations matching the
-    // selection criteria.
-    FUSION_INPUTS_BY_CONTENT = 3;
-    // After operation-fusion occurs, add reduce-precision operations to the
-    // outputs of any fusion instructions that contain operations matching the
-    // selection criteria.
-    FUSION_OUTPUTS_BY_CONTENT = 4;
-  }
-  Location location = 1;
-
-  // Exponent and mantissa bit counts for the reduced precision.
-  uint32 exponent_bits = 2;
-  uint32 mantissa_bits = 3;
-
-  // Operations matching these opcodes should be suffixed with reduce-precision
-  // operations.
-  repeated uint32 opcodes_to_suffix = 4;
-
-  // Operations with names containing these substrings should be suffixed with
-  // reduce-precision operations.
-  repeated string opname_substrings_to_suffix = 5;
-}
-
 // Debugging options for XLA. These options may change at any time - there are
 // no guarantees about backward or forward compatibility for these fields.
 message DebugOptions {
@@ -122,10 +84,7 @@ message DebugOptions {
   // If true, a set of expensive LLVM optimization passes will not be run.
   bool xla_llvm_disable_expensive_passes = 73;
 
-  // Options for inserting reduce-precision operations for numerical
-  // experimentation.  This is a repeated field, as we may want to have
-  // multiple passes with different parameters.
-  repeated HloReducePrecisionOptions hlo_reduce_precision_options = 80;
+  reserved 80;  // Was hlo_reduce_precision_options
 
   // This is used by ClientLibraryTestBase::ComputeAndCompare*. If true, the
   // computation will run n! times with all permunations of layouts for the

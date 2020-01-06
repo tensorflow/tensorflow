@@ -18,11 +18,16 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.keras import regularizers
+from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import custom_gradient
+from tensorflow.python.ops import math_ops
+from tensorflow.python.util import nest
 
 
 def create_identity_with_grad_check_fn(expected_gradient, expected_dtype=None):
@@ -102,3 +107,83 @@ def create_identity_with_nan_gradients_fn(have_nan_gradients):
   def identity_with_nan_gradients(x):
     return _identity_with_nan_gradients(x)
   return identity_with_nan_gradients
+
+
+class AssertTypeLayer(base_layer.Layer):
+  """A layer which asserts it's inputs are a certain type."""
+
+  def __init__(self, assert_type=None, **kwargs):
+    self._assert_type = (dtypes.as_dtype(assert_type).name if assert_type
+                         else None)
+    super(AssertTypeLayer, self).__init__(**kwargs)
+
+  def assert_input_types(self, inputs):
+    """Asserts `inputs` are of the correct type. Should be called in call()."""
+    if self._assert_type:
+      inputs_flattened = nest.flatten(inputs)
+      for inp in inputs_flattened:
+        assert inp.dtype.base_dtype == self._assert_type, (
+            'Input tensor has type %s which does not match assert type %s' %
+            (inp.dtype.name, self._assert_type))
+
+
+class AddLayer(AssertTypeLayer):
+  """A layer which adds it's input to a scalar variable."""
+
+  def __init__(self,
+               regularizer=None,
+               use_operator=False,
+               var_name='v',
+               **kwargs):
+    """Initializes the AddLayer.
+
+    Args:
+      regularizer: The regularizer on the scalar variable.
+      use_operator: If True, add using the + operator. If False, add using
+        tf.add.
+      var_name: The name of the variable. It can be useful to pass a name other
+        than 'v', to test having the attribute name (self.v) being different
+        from the variable name.
+      **kwargs: Passed to AssertTypeLayer constructor.
+    """
+    self._regularizer = regularizer
+    if isinstance(regularizer, dict):
+      self._regularizer = regularizers.deserialize(regularizer,
+                                                   custom_objects=globals())
+    self._use_operator = use_operator
+    self._var_name = var_name
+    super(AddLayer, self).__init__(**kwargs)
+
+  def build(self, _):
+    self.v = self.add_weight(
+        self._var_name, (), initializer='ones', regularizer=self._regularizer)
+    self.built = True
+
+  def call(self, inputs):
+    self.assert_input_types(inputs)
+    assert inputs.dtype == self.v.dtype
+    return self._add(inputs, self.v)
+
+  def _add(self, x, y):
+    if self._use_operator:
+      return x + y
+    else:
+      return math_ops.add(x, y)
+
+  def get_config(self):
+    config = super(AddLayer, self).get_config()
+    config['regularizer'] = regularizers.serialize(self._regularizer)
+    config['use_operator'] = self._use_operator
+    config['var_name'] = self._var_name
+    config['assert_type'] = self._assert_type
+    return config
+
+
+class IdentityRegularizer(regularizers.Regularizer):
+
+  def __call__(self, x):
+    assert x.dtype == dtypes.float32
+    return array_ops.identity(x)
+
+  def get_config(self):
+    return {}

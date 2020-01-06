@@ -47,10 +47,12 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
 
@@ -71,6 +73,23 @@ class NoReusePortOption : public ::grpc::ServerBuilderOption {
 // static utility function
 RendezvousMgrInterface* NewRpcRendezvousMgr(const WorkerEnv* env) {
   return new RpcRendezvousMgr(env);
+}
+
+std::unique_ptr<GrpcWorkerEnv> CreateGrpcWorkerEnv() {
+  int num_cpus = port::NumSchedulableCPUs();
+  int64 num_completion_queues;
+  Status status = ReadInt64FromEnvVar("TF_GRPC_WORKER_CACHE_QUEUES", 64,
+                                      &num_completion_queues);
+  if (!status.ok()) {
+    LOG(ERROR) << "Error parsing TF_GRPC_WORKER_CACHE_QUEUES: " << status;
+  }
+  int64 num_threads;
+  status = ReadInt64FromEnvVar("TF_GRPC_WORKER_CACHE_THREADS", num_cpus,
+                               &num_threads);
+  if (!status.ok()) {
+    LOG(ERROR) << "Error parsing TF_GRPC_WORKER_CACHE_THREADS: " << status;
+  }
+  return absl::make_unique<GrpcWorkerEnv>(num_completion_queues, num_threads);
 }
 
 }  // namespace
@@ -223,6 +242,8 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
   if (!server_) {
     return errors::Unknown("Could not start gRPC server");
   }
+  // Create the execution environment for the GRPC workers cache.
+  grpc_worker_env_ = CreateGrpcWorkerEnv();
 
   WorkerCacheInterface* worker_cache;
   WorkerCacheFactoryOptions worker_cache_factory_options(server_def_);
@@ -343,14 +364,12 @@ Status GrpcServer::WorkerCacheFactory(const WorkerCacheFactoryOptions& options,
     return errors::Internal("Could not parse port for local server from \"",
                             host_port, "\".");
   }
-
   if (requested_port != bound_port_) {
     return errors::InvalidArgument("Requested port ", requested_port,
                                    " differs from expected port ", bound_port_);
   }
-
-  *worker_cache = NewGrpcWorkerCacheWithLocalWorker(channel_cache,
-                                                    worker_impl(), name_prefix);
+  *worker_cache = NewGrpcWorkerCacheWithLocalWorker(
+      channel_cache, worker_impl(), name_prefix, grpc_worker_env_.get());
   return Status::OK();
 }
 
@@ -418,13 +437,6 @@ Status GrpcServer::UpdateServerDef(const ServerDef& server_def) {
       std::move(dev_resolver), std::move(param_resolver), worker_cache,
       default_worker_name);
 
-  worker_env_.session_mgr = new SessionMgr(
-      &worker_env_, SessionMgr::WorkerNameFromServerDef(server_def_),
-      std::unique_ptr<WorkerCacheInterface>(worker_cache),
-      [this](const ServerDef& server_def, WorkerCacheInterface** worker_cache) {
-        WorkerCacheFactoryOptions options(server_def);
-        return WorkerCacheFactory(options, worker_cache);
-      });
   master_env_.worker_cache = worker_cache;
   master_env_.collective_executor_mgr = worker_env_.collective_executor_mgr;
   return Status::OK();

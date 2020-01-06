@@ -1,6 +1,6 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_library")
 load(
-    "//tensorflow/core/platform:default/build_config.bzl",
+    "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_all_protos",
     "tf_proto_library",
     "tf_protos_grappler",
@@ -136,6 +136,7 @@ tf_cuda_library(
     hdrs = ["utils.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":cost_estimator",
         "//third_party/eigen3",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
@@ -289,6 +290,7 @@ cc_library(
     deps = [
         ":cost_estimator",
         ":op_context",
+        ":utils",
         "//third_party/eigen3",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",

@@ -35,6 +35,66 @@ namespace tensorflow {
 
 namespace {
 
+struct NameCounts {
+  mutex counts_mutex;
+  std::unordered_map<string, int> counts;
+};
+
+string MakeUniqueFilename(string name) {
+  static NameCounts& instance = *new NameCounts;
+
+  // Remove illegal characters from `name`.
+  for (int i = 0; i < name.size(); ++i) {
+    char ch = name[i];
+    if (ch == '/' || ch == '[' || ch == ']' || ch == '*' || ch == '?') {
+      name[i] = '_';
+    }
+  }
+
+  int count;
+  {
+    mutex_lock lock(instance.counts_mutex);
+    count = instance.counts[name]++;
+  }
+
+  string filename = name;
+  if (count > 0) {
+    absl::StrAppend(&filename, "_", count);
+  }
+  absl::StrAppend(&filename, ".txt");
+  return filename;
+}
+
+Status GetFileName(string base_name, string* fname) {
+  const char* dir = nullptr;
+  dir = getenv("TF_DUMP_GRAPH_PREFIX");
+  if (!dir) {
+    return errors::Internal("Failed to get the directory for ", base_name,
+                            " because dump location is not specified through "
+                            "TF_DUMP_GRAPH_PREFIX environment variable");
+  }
+  base_name = MakeUniqueFilename(base_name);
+  *fname = absl::StrCat(dir, "/", base_name);
+  return Status::OK();
+}
+
+void DumpColocationGraph(const string& base_name,
+                         const ColocationGraph& colocation_graph) {
+  string fname;
+  Status status = GetFileName(base_name, &fname);
+  if (status.ok()) {
+    status = WriteStringToFile(Env::Default(), fname,
+                               colocation_graph.DebugString());
+    if (status.ok()) {
+      LOG(INFO) << "Wrote ColocationGraph to " << fname;
+    }
+  }
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to write final colocation graph to file " << fname
+               << " with " << status.ToString();
+  }
+}
+
 // Returns true if the node has no inputs and produces outputs
 // that are consumed by a single node.
 //
@@ -229,6 +289,7 @@ Status Placer::Run() {
 
   if (VLOG_IS_ON(3)) {
     DumpGraphToFile("placer_output", *graph_, nullptr);
+    DumpColocationGraph("colocation_graph", colocation_graph);
   }
   return Status::OK();
 }

@@ -21,7 +21,7 @@ import functools
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import pywrap_tfe
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -127,20 +127,30 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
   @parameterized.named_parameters(
       [('Function', def_function.function),
        ('NoFunction', lambda f: f)])
-  def testIdentityBehaviorConsistent(self, decorator):
+  def testNoOpBehaviorConsistent(self, decorator):
 
     @decorator
     def f(x):
+      # Test all different types of no-ops
       x1 = array_ops.identity(x)
+      x2 = math_ops.add_v2(x, 0)
+      x3 = math_ops.subtract(x, 0)
+      x4 = math_ops.multiply(x, 1)
       with backprop.GradientTape() as t:
         t.watch(x)
         t.watch(x1)
+        t.watch(x2)
+        t.watch(x3)
+        t.watch(x4)
         y1 = x * 2.
         y2 = x1 * 3.
-        loss = y1 + y2
-      return t.gradient(loss, [x, x1])
+        y3 = x2 * 3.
+        y4 = x3 * 3.
+        y5 = x4 * 3.
+        loss = y1 + y2 + y3 + y4 + y5
+      return t.gradient(loss, [x, x1, x2, x3, x4])
 
-    self.assertAllClose([2., 3.], f(constant_op.constant(10.)))
+    self.assertAllClose([2., 3., 3., 3., 3.], f(constant_op.constant(10.)))
 
   def testGradientInsideLoop(self):
     with ops.Graph().as_default():
@@ -306,6 +316,19 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
       t.watch(x)
       y = array_ops.identity(x)
     self.assertEqual(t.gradient(y, x).numpy(), 1.0)
+
+  def testFunctionIndexedSlicesGradient(self):
+
+    @def_function.function
+    def f(x):
+      return x + 1
+
+    with backprop.GradientTape() as t:
+      x = constant_op.constant([1.0])
+      t.watch(x)
+      y = f(x)
+      y = array_ops.gather(y, [0])
+    self.assertAllEqual(t.gradient(y, x), [1.0])
 
   def testTapeGradientMultiTargetOneIsSource(self):
     x = constant_op.constant(2.0)
@@ -910,7 +933,6 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
     dz_dx = g.gradient(z, x, unconnected_gradients='zero')
     self.assertAllEqual([[0.0, 0.0], [0.0, 0.0]], self.evaluate(dz_dx))
 
-  @test_util.assert_no_new_tensors
   @test_util.run_in_graph_and_eager_modes
   def testUnknownUnconnectedGradientsValueGiven(self):
     x = constant_op.constant(1.0)
@@ -1002,19 +1024,19 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
 
   def testGetAttrType(self):
     typ = backprop.op_attr_type('Add', 'T')
-    self.assertEqual(typ, pywrap_tensorflow.TF_ATTR_TYPE)
+    self.assertEqual(typ, int(pywrap_tfe.TF_ATTR_TYPE))
 
   def testGetAttrList(self):
     typ = backprop.op_attr_type('MaxPool', 'ksize')
-    self.assertEqual(typ, [pywrap_tensorflow.TF_ATTR_INT])
+    self.assertEqual(typ, [int(pywrap_tfe.TF_ATTR_INT)])
 
   def testMakeAttrType(self):
     self.assertEqual(dtypes.float32,
-                     backprop.make_attr(pywrap_tensorflow.TF_ATTR_TYPE, 1))
+                     backprop.make_attr(int(pywrap_tfe.TF_ATTR_TYPE), 1))
 
   def testMakeAttrTypeList(self):
     self.assertEqual([dtypes.float32],
-                     backprop.make_attr([pywrap_tensorflow.TF_ATTR_TYPE], [1]))
+                     backprop.make_attr([int(pywrap_tfe.TF_ATTR_TYPE)], [1]))
 
   def testMulType(self):
 
@@ -1028,7 +1050,7 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
   def testMakeAttrShape(self):
     for s in ([], None, [1, 2, 3], [None, None], [1, None, 3]):
       expected = tensor_shape.TensorShape(s).as_proto()
-      actual = backprop.make_attr(pywrap_tensorflow.TF_ATTR_SHAPE, s)
+      actual = backprop.make_attr(int(pywrap_tfe.TF_ATTR_SHAPE), s)
       self.assertEqual(
           expected,
           actual,
@@ -1039,7 +1061,7 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
     shape_list = [[], None, [1, 2, 3], [None, None], [1, None, 3]]
     self.assertEqual(
         [tensor_shape.TensorShape(s).as_proto() for s in shape_list],
-        backprop.make_attr([pywrap_tensorflow.TF_ATTR_SHAPE], shape_list))
+        backprop.make_attr([int(pywrap_tfe.TF_ATTR_SHAPE)], shape_list))
 
   def testArgsGradientFunction(self):
 

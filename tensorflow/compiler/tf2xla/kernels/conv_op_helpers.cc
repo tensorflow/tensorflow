@@ -36,7 +36,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
-#include "tensorflow/core/kernels/conv_grad_ops.h"
+#include "tensorflow/core/kernels/conv_grad_shape_utils.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
 
@@ -272,6 +272,10 @@ Status ConvBackpropComputeDimensionsV2XlaShapes(
 
 }  // anonymous namespace
 
+absl::Span<const DataType> GetXlaConvTypes() {
+  return {DT_FLOAT, DT_BFLOAT16, DT_HALF, DT_DOUBLE};
+}
+
 xla::StatusOr<ConvOpAttrs> ConvOpAttrs::Create(int num_spatial_dims,
                                                bool depthwise,
                                                OpKernelConstruction* ctx) {
@@ -404,7 +408,7 @@ xla::StatusOr<xla::XlaOp> MakeXlaBackpropInputConvOp(
   xla::Shape expanded_filter_shape =
       attrs.depthwise ? ExpandedFilterShapeForDepthwiseConvolution(filter_shape)
                       : filter_shape;
-  // Reuse dimension computation logic from conv_grad_ops.cc.
+  // Reuse dimension computation logic from conv_grad_shape_utils.cc.
   ConvBackpropDimensions dims;
   TF_RETURN_IF_ERROR(ConvBackpropComputeDimensionsV2XlaShapes(
       type_string, attrs.num_spatial_dims, input_shape, expanded_filter_shape,
@@ -413,7 +417,7 @@ xla::StatusOr<xla::XlaOp> MakeXlaBackpropInputConvOp(
 
   // The input gradients are computed by a convolution of the output
   // gradients and the filter, with some appropriate padding. See the
-  // comment at the top of conv_grad_ops.h for details.
+  // comment at the top of conv_grad_shape_utils.h for details.
 
   xla::ConvolutionDimensionNumbers dnums;
   dnums.set_input_batch_dimension(batch_dim);
@@ -487,11 +491,11 @@ xla::StatusOr<xla::XlaOp> MakeXlaBackpropFilterConvOp(
   const xla::Shape expanded_filter_shape =
       attrs.depthwise ? ExpandedFilterShapeForDepthwiseConvolution(filter_shape)
                       : filter_shape;
-  // Reuse dimension computation logic from conv_grad_ops.cc.
+  // Reuse dimension computation logic from conv_grad_shape_utils.cc.
   ConvBackpropDimensions dims;
   // The filter gradients are computed by a convolution of the input
   // activations and the output gradients, with some appropriate padding.
-  // See the comment at the top of conv_grad_ops.h for details.
+  // See the comment at the top of conv_grad_shape_utils.h for details.
   xla::ConvolutionDimensionNumbers dnums;
 
   TF_RETURN_IF_ERROR(ConvBackpropComputeDimensionsV2XlaShapes(
@@ -508,21 +512,25 @@ xla::StatusOr<xla::XlaOp> MakeXlaBackpropFilterConvOp(
         filter_in_depth = filter_shape.dimensions(attrs.num_spatial_dims),
         feature_group_count = in_depth / filter_in_depth;
 
+  // In the case of depthwise convolutions, the computation can be done by the
+  // batch_group_count parameter.
+  bool use_batch_group_count = in_depth > 1 && in_depth == filter_in_depth &&
+                               (feature_group_count != 1 || attrs.depthwise);
+
+  if (use_batch_group_count) {
+    feature_group_count = 1;
+  }
+
   // The activations (inputs) form the LHS of the convolution.
   // Activations have shape: [batch, in_rows, in_cols, ..., in_depth]
   // For the gradient computation, we need to:
   // 1. In the case of group convolution, move the num_groups dimension before
   // the batch dimension
   // 2. Swap the roles of the batch and feature dimensions.
-  if (feature_group_count != 1 && !attrs.depthwise) {
+  if (!use_batch_group_count && feature_group_count != 1 && !attrs.depthwise) {
     activations = TransposeInputForGroupConvolutionBackpropFilter(
         activations, input_shape, feature_group_count, n_dim, c_dim);
   }
-
-  // In the case of depthwise convolution with no multiplier,
-  // the computation can be done by the batch_group_count parameter.
-  bool use_batch_group_count =
-      filter_tensor_shape.dim_size(num_dims - 1) == 1 && attrs.depthwise;
 
   std::vector<std::pair<int64, int64>> padding(attrs.num_spatial_dims);
   std::vector<int64> rhs_dilation(attrs.num_spatial_dims);

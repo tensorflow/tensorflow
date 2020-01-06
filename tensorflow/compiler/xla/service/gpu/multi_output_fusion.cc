@@ -136,7 +136,7 @@ std::vector<HloInstruction*> GetProducerConsumerMultiOutputFusionCandidates(
     // Do not fuse a producer if the other operands of the fusion are
     // reachable from the producer, this would create a cycle.
     auto operand_reachable_from_producer = [&](const HloInstruction* operand) {
-      // If a get-tuple-elment instruction is not in the reachability
+      // If a get-tuple-element instruction is not in the reachability
       // map, it has been created by fusion in this pass. Simply move
       // on to its operand, which is in the reachability map.
       if (!reachability.IsPresent(operand) &&

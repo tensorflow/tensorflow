@@ -123,8 +123,8 @@ std::vector<ComputeTaskDescriptorPtr> FullyConnected(
   auto desc = std::make_shared<ComputeTaskDescriptor>();
   desc->id = id;
   desc->is_linkable = false;
-  int gpu_type = GetAppleSocVersion();
-  bool shared = gpu_type == 7 || gpu_type == 8;
+  auto gpu_type = GetGpuType();
+  bool shared = gpu_type == GpuType::kA7 || gpu_type == GpuType::kA8;
   desc->shader_source =
       GetFullyConnectedCode(shared, attr.weights.shape.i, attr.weights.shape.o);
 

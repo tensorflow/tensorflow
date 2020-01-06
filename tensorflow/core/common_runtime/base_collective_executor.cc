@@ -214,7 +214,7 @@ CollectiveAdapter* MakeCollectiveAdapter(Tensor* output, int num_chunks,
 BaseCollectiveExecutor::~BaseCollectiveExecutor() {}
 
 void BaseCollectiveExecutor::StartAbort(const Status& s) {
-  LOG(WARNING) << "BaseCollectiveExecutor::StartAbort " << s;
+  VLOG(1) << "BaseCollectiveExecutor::StartAbort " << s;
   remote_access_->StartAbort(s);
 }
 
@@ -268,8 +268,8 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
   remote_access_->RunClosure([col_impl, col_ctx, done_safe, ctx]() {
     profiler::TraceMe activity(
         [&] {
-          return strings::StrCat(ctx->op_kernel().name(), ":",
-                                 ctx->op_kernel().type_string(),
+          return strings::StrCat(ctx->op_kernel().name_view(), ":",
+                                 ctx->op_kernel().type_string_view(),
                                  "#id=", ctx->step_id(), "#");
         },
         profiler::TraceMeLevel::kInfo);

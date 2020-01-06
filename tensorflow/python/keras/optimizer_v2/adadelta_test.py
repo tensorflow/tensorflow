@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import platform
+
 import numpy as np
 
 from tensorflow.python.eager import context
@@ -31,12 +33,18 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
+_DATA_TYPES = [dtypes.half, dtypes.float32, dtypes.float64]
+# TODO(b/143684500): Eigen to support complex sqrt
+if (not test_util.IsBuiltWithNvcc() and platform.system() != "Windows" and
+    not test.is_built_with_rocm()):
+  _DATA_TYPES += [dtypes.complex64, dtypes.complex128]
+
 
 class AdadeltaOptimizerTest(test.TestCase):
 
   def doTestBasic(self, use_resource=False, use_callable_params=False):
     num_updates = 4  # number of ADADELTA steps to perform
-    for dtype in [dtypes.half, dtypes.float32]:
+    for dtype in _DATA_TYPES:
       for grad in [0.2, 0.1, 0.01]:
         for lr in [1.0, 0.5, 0.1]:
           var0_init = [1.0, 2.0]
@@ -113,14 +121,14 @@ class AdadeltaOptimizerTest(test.TestCase):
               # TODO(lxuechen): This is hard to test in eager mode
               for slot_idx in range(2):
                 self.assertAllCloseAccordingToType(
-                    np.array([accum, accum], dtype=dtype.as_numpy_dtype()),
+                    np.array([accum, accum], dtype=dtype.as_numpy_dtype(0)),
                     self.evaluate(slot[slot_idx]),
                     rtol=1e-5)
 
                 self.assertAllCloseAccordingToType(
                     np.array(
                         [accum_update, accum_update],
-                        dtype=dtype.as_numpy_dtype()),
+                        dtype=dtype.as_numpy_dtype(0)),
                     self.evaluate(slot_update[slot_idx]),
                     rtol=1e-5)
 
@@ -128,14 +136,14 @@ class AdadeltaOptimizerTest(test.TestCase):
               self.assertAllCloseAccordingToType(
                   np.array(
                       [var0_init[0] - tot_update, var0_init[1] - tot_update],
-                      dtype=dtype.as_numpy_dtype()),
+                      dtype=dtype.as_numpy_dtype(0)),
                   self.evaluate(var0),
                   rtol=1e-5)
 
               self.assertAllCloseAccordingToType(
                   np.array(
                       [var1_init[0] - tot_update, var1_init[1] - tot_update],
-                      dtype=dtype.as_numpy_dtype()),
+                      dtype=dtype.as_numpy_dtype(0)),
                   self.evaluate(var1),
                   rtol=1e-5)
 
@@ -149,24 +157,22 @@ class AdadeltaOptimizerTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testMinimizeSparseResourceVariable(self):
-    for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.cached_session():
-        var0 = resource_variable_ops.ResourceVariable([[1.0, 2.0]], dtype=dtype)
-        x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
+    for dtype in _DATA_TYPES:
+      var0 = resource_variable_ops.ResourceVariable([[1.0, 2.0]], dtype=dtype)
+      x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
 
-        def loss():
-          pred = math_ops.matmul(embedding_ops.embedding_lookup([var0], [0]), x)  # pylint: disable=cell-var-from-loop
-          return pred * pred
+      def loss():
+        pred = math_ops.matmul(embedding_ops.embedding_lookup([var0], [0]), x)  # pylint: disable=cell-var-from-loop
+        return pred * pred
 
-        sgd_op = adadelta.Adadelta(1.0, 1.0, 1.0).minimize(
-            loss, var_list=[var0])
-        variables.global_variables_initializer().run()
-        # Fetch params to validate initial values
-        self.assertAllCloseAccordingToType([[1.0, 2.0]], self.evaluate(var0))
-        # Run 1 step of sgd
-        sgd_op.run()
-        # Validate updated params
-        self.assertAllCloseAccordingToType([[-111, -138]], self.evaluate(var0))
+      sgd_op = adadelta.Adadelta(1.0, 1.0, 1.0).minimize(loss, var_list=[var0])
+      self.evaluate(variables.global_variables_initializer())
+      # Fetch params to validate initial values
+      self.assertAllCloseAccordingToType([[1.0, 2.0]], self.evaluate(var0))
+      # Run 1 step of sgd
+      self.evaluate(sgd_op)
+      # Validate updated params
+      self.assertAllCloseAccordingToType([[-111, -138]], self.evaluate(var0))
 
   def testConstructAdadeltaWithLR(self):
     opt = adadelta.Adadelta(lr=1.0, rho=0.9, epsilon=1.)

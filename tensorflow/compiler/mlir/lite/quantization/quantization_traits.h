@@ -18,8 +18,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_QUANTIZATION_TRAITS_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_QUANTIZATION_TRAITS_H_
 
-#include "mlir/Dialect/QuantOps/QuantTypes.h"  // TF:local_config_mlir
-#include "mlir/Support/LLVM.h"  // TF:local_config_mlir
+#include "mlir/Dialect/QuantOps/QuantTypes.h"  // TF:llvm-project
+#include "mlir/Support/LLVM.h"  // TF:llvm-project
 
 namespace mlir {
 namespace OpTrait {
@@ -51,10 +51,10 @@ class SameOperandsAndResultsScale
 //
 //   class SoftmaxOp
 //       : public Op<SoftmaxOp,
-//           OpTrait::TFL::FixedResultUniformScale<
+//           OpTrait::quant::FixedResultUniformScale<
 //               8, -128, 390625, -8, 0, 255, false>::Impl> {
 //
-// TODO(fengliuai): create a better way to epxress floating point scale in the
+// TODO(fengliuai): create a better way to express floating point scale in the
 // template argument list.
 template <unsigned BitWidth, int ZeroPoint, int ScaleMantissa, int ScaleExp,
           int64_t StorageTypeMin, int64_t StorageTypeMax, bool Sign>
@@ -70,7 +70,7 @@ class FixedResultUniformScale {
     QuantizedType GetResultQuantizedType(int index) {
       auto op = this->getOperation();
       auto result_type =
-          op->getResult(index)->getType().template cast<TensorType>();
+          op->getResult(index).getType().template cast<TensorType>();
       Builder builder(op->getContext());
       IntegerType storage_type = builder.getIntegerType(BitWidth);
       const double scale = static_cast<double>(ScaleMantissa) *
@@ -86,7 +86,7 @@ class FixedResultUniformScale {
 // as a trait like this:
 //
 //   class Conv2DOp
-//       : public Op<Conv2DOp, OpTrait::TFL::AccumulatorScale<2, 0, 1>::Impl> {
+//       : public Op<Conv2DOp, OpTrait::quant::AccumulatorScale<2, 0, 1>::Impl>
 //
 // TODO(fengliuai): supports a configurable accumulator bit width.
 template <int Bias, int... Operands>
@@ -107,10 +107,30 @@ class AccumulatorUniformScale {
   };
 };
 
+// The trait to specify the operand index of the coefficient for an affine op
+// and also the quantization dimension if per-axis quantization is support.
+// If the quantization dimension is -1, per-axis quantization isn't supported.
+//
+//   class Conv2DOp
+//       : public Op<Conv2DOp, OpTrait::quant::AffineOpCoefficient<0>::Impl>
+//
+template <int QuantDim, int OperandIndex = 1>
+class AffineOpCoefficient {
+ public:
+  template <typename ConcreteType>
+  class Impl
+      : public TraitBase<ConcreteType,
+                         AffineOpCoefficient<QuantDim, OperandIndex>::Impl> {
+   public:
+    static int GetCoefficientOperandIndex() { return OperandIndex; }
+    static int GetQuantizationDim() { return QuantDim; }
+  };
+};
+
 // This class provides the API for TFL ops that shouldn't be quantized. This is
 // used as a trait like this:
 //
-//   class LessOp : public Op<LessOp, OpTrait::TFL::NoQuantizableResult> {
+//   class LessOp : public Op<LessOp, OpTrait::quant::NoQuantizableResult> {
 //
 template <typename ConcreteType>
 class NoQuantizableResult

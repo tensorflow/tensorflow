@@ -33,8 +33,12 @@ std::string GenerateDepthWiseConvCode(
     const std::vector<ElementwiseOperation*>& linked_operations,
     const CLDevice& device, bool weights_are_buffer, bool local_mem_uploads) {
   std::string c = GetCommonDefines(op_def.precision);
-  TensorCodeGenerator src_tensor("src_data", "dst_size", op_def.src_tensors[0]);
-  TensorCodeGenerator dst_tensor("dst_data", "dst_size", op_def.dst_tensors[0]);
+  TensorCodeGenerator src_tensor("src_data",
+                                 {"dst_size.x", "dst_size.y", "dst_size.z"},
+                                 op_def.src_tensors[0]);
+  TensorCodeGenerator dst_tensor("dst_data",
+                                 {"dst_size.x", "dst_size.y", "dst_size.z"},
+                                 op_def.dst_tensors[0]);
   const auto src_tensor_type = op_def.src_tensors[0].storage_type;
 
   const auto mode = GetFastestZeroMode(device);
@@ -64,7 +68,7 @@ std::string GenerateDepthWiseConvCode(
   c += "   ACCUM_FLT4 r2 = (ACCUM_FLT4)(0.0f);\n";
   c += "   ACCUM_FLT4 r3 = (ACCUM_FLT4)(0.0f);\n";
   if (!local_mem_uploads) {
-    c += "  if (X >= dst_size.x || Y >= dst_size.y || Z >= dst_size.w) "
+    c += "  if (X >= dst_size.x || Y >= dst_size.y || Z >= dst_size.z) "
          "return;\n";
   }
   if (local_mem_uploads) {
@@ -227,7 +231,7 @@ std::string GenerateDepthWiseConvCode(
   c += "  r2 += TO_ACCUM_TYPE(" + bias + ");\n";
   c += "  r3 += TO_ACCUM_TYPE(" + bias + ");\n";
   if (local_mem_uploads) {
-    c += "  if (X >= dst_size.x || Y >= dst_size.y || Z >= dst_size.w) "
+    c += "  if (X >= dst_size.x || Y >= dst_size.y || Z >= dst_size.z) "
          "return;\n";
   }
   c += "  if(X + 0 < dst_size.x && Y + 0 < dst_size.y) {\n";
@@ -313,7 +317,7 @@ Status DepthWiseConv3x3::BindArguments() {
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(weights_));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetSizeWithDepth()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWHDB()));
 
   return OkStatus();
 }

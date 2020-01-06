@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import os
 import tempfile
+
 import numpy as np
 import six
 
@@ -26,7 +27,9 @@ from tensorflow.python import tf2
 from tensorflow.python.client import session
 from tensorflow.python.data.experimental.ops import counter
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
 from tensorflow.python.eager import wrap_function
 from tensorflow.python.framework import constant_op
@@ -36,6 +39,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import variables
@@ -396,6 +400,53 @@ class StaticHashTableTest(BaseLookupTableTest):
 
     self.assertAllEqual([10, -1, 5], self.evaluate(result1))
     self.assertAllEqual([10, -1, 5], self.evaluate(result2))
+
+  @test_util.enable_control_flow_v2
+  def testLookupTableInWhileV2(self):
+    lookup = self.getHashTable()(lookup_ops.KeyValueTensorInitializer(
+        constant_op.constant([2, 5], dtype=dtypes.int64),
+        constant_op.constant([-10.0, 1], dtype=dtypes.float32)), -1)
+
+    beta = variables.Variable(1.0, trainable=True)
+
+    @def_function.function
+    def get_loss(unused_beta):
+      return map_fn.map_fn(
+          lookup.lookup,
+          constant_op.constant([2, 3], dtype=dtypes.int64),
+          dtype=dtypes.float32)
+
+    with backprop.GradientTape() as tape:
+      loss = get_loss(beta)
+
+    self.assertIsNone(tape.gradient(loss, beta))
+
+  @test_util.enable_control_flow_v2
+  def testLookupTableInCondV2(self):
+    lookup = self.getHashTable()(lookup_ops.KeyValueTensorInitializer(
+        constant_op.constant([2, 5], dtype=dtypes.int64),
+        constant_op.constant([-10.0, 1], dtype=dtypes.float32)), -1)
+
+    beta = variables.Variable(1.0, trainable=True)
+
+    @def_function.function
+    def get_loss(beta):
+
+      def true_fn():
+        return lookup.lookup(constant_op.constant(2, dtype=dtypes.int64))
+
+      def false_fn():
+        return constant_op.constant(0, dtype=dtypes.float32)
+
+      return beta * control_flow_ops.cond(
+          constant_op.constant(True), true_fn=true_fn, false_fn=false_fn)
+
+    with backprop.GradientTape() as tape:
+      loss = get_loss(beta)
+    grad = tape.gradient(loss, beta)
+    self.evaluate(variables.global_variables_initializer())
+    self.evaluate(lookup_ops.tables_initializer())
+    self.assertAllEqual(grad, -10.)
 
 
 class KeyValueTensorInitializerTest(BaseLookupTableTest):
@@ -1753,6 +1804,20 @@ class DenseHashTableOpTest(test.TestCase):
             empty_key=[1, 2, 3],
             deleted_key=[1, 2, 3])
         self.assertAllEqual(0, self.evaluate(table5.size()))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testStringToResource(self):
+    v = variables.Variable(1.)
+    v1 = variables.Variable(1.)
+    table = lookup_ops.DenseHashTable(
+        dtypes.string,
+        dtypes.resource,
+        default_value=v.handle,
+        empty_key="<empty>",
+        deleted_key="<deleted>")
+    self.assertEqual([], table.lookup("not_found").shape)
+    table.insert("v1", v1.handle)
+    self.assertEqual([], table.lookup("v1").shape)
 
 
 class IndexTableFromFile(test.TestCase):

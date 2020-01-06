@@ -16,6 +16,10 @@ application we'll be using has been tested on the following devices:
     from source)
 *   [STM32F746 Discovery kit](https://www.st.com/en/evaluation-tools/32f746gdiscovery.html)
     (using Mbed)
+*   [Adafruit EdgeBadge](https://www.adafruit.com/product/4400) (using Arduino
+    IDE)
+*   [Adafruit TensorFlow Lite for Microcontrollers Kit](https://www.adafruit.com/product/4317)
+    (using Arduino IDE)
 
 Learn more about supported platforms in
 [TensorFlow Lite for Microcontrollers](index.md).
@@ -26,15 +30,15 @@ TensorFlow Lite for Microcontrollers comes with several example applications
 that demonstrate its use for various tasks. At the time of writing, the
 following are available:
 
-*   [Hello World](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/micro/examples/hello_world) -
+*   [Hello World](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/examples/hello_world) -
     Demonstrates the absolute basics of using TensorFlow Lite for
     Microcontrollers
-*   [Micro speech](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/micro/examples/micro_speech) -
+*   [Micro speech](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/examples/micro_speech) -
     Captures audio with a microphone in order to detect the words "yes" and "no"
-*   [Person detection](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/micro/examples/person_detection) -
+*   [Person detection](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/examples/person_detection) -
     Captures camera data with an image sensor in order to detect the presence or
     absence of a person
-*   [Magic wand](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/micro/examples/magic_wand) -
+*   [Magic wand](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/examples/magic_wand) -
     Captures accelerometer data in order to classify three different physical
     gestures
 
@@ -42,7 +46,7 @@ Each example application has a `README.md` file that explains how it can be
 deployed to its supported platforms.
 
 The rest of this guide walks through the
-[Hello World](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/micro/examples/hello_world)
+[Hello World](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/examples/hello_world)
 example application.
 
 ## The Hello World example
@@ -69,13 +73,13 @@ The example includes the following:
 To run the example on your device, walk through the instructions in the
 `README.md`:
 
-<a class="button button-primary" href="https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/micro/examples/hello_world/README.md">Hello
+<a class="button button-primary" href="https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/examples/hello_world/README.md">Hello
 World README.md</a>
 
 ## How to run inference
 
 The following section walks through the *Hello World* example's
-[`hello_world_test.cc`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/micro/examples/hello_world/hello_world_test.cc),
+[`hello_world_test.cc`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/examples/hello_world/hello_world_test.cc),
 which demonstrates how to run inference using TensorFlow Lite for
 Microcontrollers.
 
@@ -87,18 +91,18 @@ To use the TensorFlow Lite for Microcontrollers library, we must include the
 following header files:
 
 ```C++
-#include "tensorflow/lite/experimental/micro/kernels/all_ops_resolver.h"
-#include "tensorflow/lite/experimental/micro/micro_error_reporter.h"
-#include "tensorflow/lite/experimental/micro/micro_interpreter.h"
+#include "tensorflow/lite/micro/kernels/all_ops_resolver.h"
+#include "tensorflow/lite/micro/micro_error_reporter.h"
+#include "tensorflow/lite/micro/micro_interpreter.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/version.h"
 ```
 
--   [`all_ops_resolver.h`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/micro/kernels/all_ops_resolver.h)
+-   [`all_ops_resolver.h`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/kernels/all_ops_resolver.h)
     provides the operations used by the interpreter to run the model.
--   [`micro_error_reporter.h`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/micro/micro_error_reporter.h)
+-   [`micro_error_reporter.h`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/micro_error_reporter.h)
     outputs debug information.
--   [`micro_interpreter.h`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/micro/micro_interpreter.h)
+-   [`micro_interpreter.h`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/micro_interpreter.h)
     contains code to load and run models.
 -   [`schema_generated.h`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/schema/schema_generated.h)
     contains the schema for the TensorFlow Lite
@@ -114,7 +118,7 @@ provided as a C++ array. In the *Hello World* example, the model is defined in
 following line:
 
 ```C++
-#include "tensorflow/lite/experimental/micro/examples/hello_world/sine_model_data.h"
+#include "tensorflow/lite/micro/examples/hello_world/sine_model_data.h"
 ```
 
 ### Set up the unit test
@@ -124,7 +128,7 @@ Microcontrollers unit test framework. To load the framework, we include the
 following file:
 
 ```C++
-#include "tensorflow/lite/experimental/micro/testing/micro_test.h"
+#include "tensorflow/lite/micro/testing/micro_test.h"
 ```
 
 The test is defined using the following macros:
@@ -171,7 +175,7 @@ if (model->version() != TFLITE_SCHEMA_VERSION) {
 ### Instantiate operations resolver
 
 An
-[`AllOpsResolver`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/micro/kernels/all_ops_resolver.h)
+[`AllOpsResolver`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/kernels/all_ops_resolver.h)
 instance is declared. This will be used by the interpreter to access the
 operations that are used by the model:
 
@@ -186,7 +190,7 @@ load only the operations that are needed.
 
 This is done using a different class, `MicroMutableOpResolver`. You can see how
 to use it in the *Micro speech* example's
-[`micro_speech_test.cc`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/micro/examples/micro_speech/micro_speech_test.cc).
+[`micro_speech_test.cc`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/examples/micro_speech/micro_speech_test.cc).
 
 ### Allocate memory
 
@@ -253,7 +257,7 @@ TF_LITE_MICRO_EXPECT_EQ(kTfLiteFloat32, input->type);
 
 The enum value `kTfLiteFloat32` is a reference to one of the TensorFlow Lite
 data types, and is defined in
-[`c_api_internal.h`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/c/c_api_internal.h).
+[`common.h`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/c/common.h).
 
 ### Provide an input value
 
@@ -280,7 +284,7 @@ if (invoke_status != kTfLiteOk) {
 
 We can check the return value, a `TfLiteStatus`, to determine if the run was
 successful. The possible values of `TfLiteStatus`, defined in
-[`c_api_internal.h`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/c/c_api_internal.h),
+[`common.h`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/c/common.h),
 are `kTfLiteOk` and `kTfLiteError`.
 
 The following code asserts that the value is `kTfLiteOk`, meaning inference was
@@ -344,7 +348,7 @@ TF_LITE_MICRO_EXPECT_NEAR(-0.959, value, 0.05);
 
 Once you have walked through this unit test, you should be able to understand
 the example's application code, located in
-[`main_functions.cc`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/micro/examples/hello_world/main_functions.cc).
+[`main_functions.cc`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/examples/hello_world/main_functions.cc).
 It follows a similar process, but generates an input value based on how many
 inferences have been run, and calls a device-specific function that displays the
 model's output to the user.
@@ -355,7 +359,7 @@ To understand how the library can be used with a variety of models and
 applications, we recommend deploying the other examples and walking through
 their code.
 
-<a class="button button-primary" href="https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/micro/examples">Example
+<a class="button button-primary" href="https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/examples">Example
 applications on GitHub</a>
 
 To learn how to use the library in your own project, read

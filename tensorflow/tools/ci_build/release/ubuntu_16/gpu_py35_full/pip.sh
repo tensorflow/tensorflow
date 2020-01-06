@@ -19,6 +19,8 @@ set -x
 source tensorflow/tools/ci_build/release/common.sh
 
 install_ubuntu_16_pip_deps pip3.5
+# Update bazel
+update_bazel_linux
 
 # Export required variables for running pip.sh
 export OS_TYPE="UBUNTU"
@@ -46,9 +48,9 @@ yes "" | "$PYTHON_BIN_PATH" configure.py
 source tensorflow/tools/ci_build/build_scripts/PRESUBMIT_BUILD_TARGETS.sh
 
 # Export optional variables for running pip.sh
-export TF_TEST_FILTER_TAGS='gpu,requires-gpu,-no_gpu,-nogpu,-no_oss,-oss_serial,-no_oss_py35'
+export TF_TEST_FILTER_TAGS='gpu,requires-gpu,-no_gpu,-no_oss,-oss_serial,-no_oss_py35'
 export TF_BUILD_FLAGS="--config=opt --config=v2 --config=cuda --distinct_host_configuration=false \
---action_env=TF_CUDA_VERSION --action_env=TF_CUDNN_VERSION --crosstool_top=//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.0:toolchain "
+--action_env=TF_CUDA_VERSION --action_env=TF_CUDNN_VERSION --crosstool_top=//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.1:toolchain "
 export TF_TEST_FLAGS="--test_tag_filters=${TF_TEST_FILTER_TAGS} --build_tag_filters=${TF_TEST_FILTER_TAGS} \
 --distinct_host_configuration=false \
 --action_env=TF_CUDA_VERSION --action_env=TF_CUDNN_VERSION --test_env=TF2_BEHAVIOR=1 \
@@ -60,5 +62,8 @@ export TF_PIP_TESTS="test_pip_virtualenv_non_clean test_pip_virtualenv_clean"
 export IS_NIGHTLY=0 # Not nightly
 export TF_PROJECT_NAME=${PROJECT_NAME}
 export TF_PIP_TEST_ROOT="pip_test"
+
+# To build both tensorflow and tensorflow-gpu pip packages
+export TF_BUILD_BOTH_GPU_PACKAGES=1
 
 ./tensorflow/tools/ci_build/builds/pip_new.sh

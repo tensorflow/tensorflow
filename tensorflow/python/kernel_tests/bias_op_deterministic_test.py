@@ -19,7 +19,10 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+
 import numpy as np
+
+from absl.testing import parameterized
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -31,7 +34,8 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import test
 
 
-class BiasAddDeterministicTest(bias_op_base.BiasAddTestBase):
+class BiasAddDeterministicTest(bias_op_base.BiasAddTestBase,
+                               parameterized.TestCase):
 
   def _make_shape_tuple(self, batch_size, channel_count, data_rank, data_dim,
                         data_layout):
@@ -65,7 +69,16 @@ class BiasAddDeterministicTest(bias_op_base.BiasAddTestBase):
       result_b = operation[0].eval(feed_dict=feed_dict)
       self.assertAllEqual(result_a, result_b)
 
-  def _testDeterministicGradientsCase(self, data_layout, data_rank, data_type):
+  # TODO(duncanriach): add test coverage for deterministic gradients
+  #   in eager mode
+  @parameterized.named_parameters(
+      *test_util.generate_combinations_with_testcase_name(
+          data_layout=['channels_first', 'channels_last'],
+          data_rank=[1, 2, 3],
+          data_type=[dtypes.float16, dtypes.float32, dtypes.float64]))
+  @test_util.run_deprecated_v1
+  @test_util.run_cuda_only
+  def testDeterministicGradients(self, data_layout, data_rank, data_type):
     seed = (
         hash(data_layout) % 256 + hash(data_rank) % 256 + hash(data_type) % 256)
     np.random.seed(seed)
@@ -96,17 +109,6 @@ class BiasAddDeterministicTest(bias_op_base.BiasAddTestBase):
     for i in range(5):
       feed_dict = {upstream_gradients: self._random_ndarray(out_shape)}
       self._assert_reproducible(bias_gradients_op, feed_dict=feed_dict)
-
-  # TODO(duncanriach): add test coverage for deterministic gradients
-  #   in eager mode
-  @test_util.run_deprecated_v1
-  @test_util.run_cuda_only
-  def testDeterministicGradients(self):
-    for data_layout in ('channels_first', 'channels_last'):
-      for data_rank in (1, 2, 3):
-        for data_type in (dtypes.float16, dtypes.float32, dtypes.float64):
-          self._testDeterministicGradientsCase(data_layout, data_rank,
-                                               data_type)
 
   # TODO(duncanriach): Re-enable the following three tests for the error checks
   #   after deterministic functionality is implemented at the CUDA kernel level.

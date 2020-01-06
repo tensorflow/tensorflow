@@ -40,6 +40,7 @@ from tensorflow.python.tpu import device_assignment as device_assignment_lib
 from tensorflow.python.tpu import tpu_strategy_util
 from tensorflow.python.training import adagrad
 from tensorflow.python.training import adam
+from tensorflow.python.training import ftrl
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.training import rmsprop
 
@@ -130,11 +131,16 @@ adagrad_optimizer_v1_fn = combinations.NamedObject(
     "AdagradV1", lambda: adagrad.AdagradOptimizer(0.001))
 adam_optimizer_v1_fn = combinations.NamedObject(
     "AdamV1", lambda: adam.AdamOptimizer(0.001, epsilon=1))
+ftrl_optimizer_v1_fn = combinations.NamedObject(
+    "FtrlV1", lambda: ftrl.FtrlOptimizer(0.001))
 rmsprop_optimizer_v1_fn = combinations.NamedObject(
     "RmsPropV1", lambda: rmsprop.RMSPropOptimizer(0.001))
 
 # TODO(shiningsun): consider adding the other v1 optimizers
-optimizers_v1 = [gradient_descent_optimizer_v1_fn, adagrad_optimizer_v1_fn]
+optimizers_v1 = [
+    gradient_descent_optimizer_v1_fn, adagrad_optimizer_v1_fn,
+    ftrl_optimizer_v1_fn, rmsprop_optimizer_v1_fn
+]
 
 adadelta_optimizer_keras_v2_fn = combinations.NamedObject(
     "AdadeltaKerasV2", lambda: adadelta_keras_v2.Adadelta(0.001))
@@ -173,12 +179,13 @@ def set_virtual_cpus_to_at_least(num_virtual_cpus):
   physical_devices = config.list_physical_devices("CPU")
   if not physical_devices:
     raise RuntimeError("No CPUs found")
-  configs = config.get_virtual_device_configuration(physical_devices[0])
+  configs = config.get_logical_device_configuration(physical_devices[0])
   if configs is None:
-    virtual_devices = [context.VirtualDeviceConfiguration()
-                       for _ in range(num_virtual_cpus)]
-    config.set_virtual_device_configuration(
-        physical_devices[0], virtual_devices)
+    logical_devices = [
+        context.LogicalDeviceConfiguration() for _ in range(num_virtual_cpus)
+    ]
+    config.set_logical_device_configuration(physical_devices[0],
+                                            logical_devices)
   else:
     if len(configs) < num_virtual_cpus:
       raise RuntimeError("Already configured with %d < %d virtual CPUs" %
@@ -227,6 +234,8 @@ tpu_strategies = [
     tpu_strategy,  # steps_per_run=2
     tpu_strategy_one_step
 ]
+
+all_strategies = strategies_minus_tpu + tpu_strategies
 
 
 def strategy_minus_tpu_combinations():

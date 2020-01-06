@@ -6,7 +6,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 package(
     default_visibility = [
         "//tensorflow/compiler/tf2xla:__subpackages__",
-        "@local_config_mlir//:friends",
+        "@llvm-project//mlir:friends",
     ],
     licenses = ["notice"],  # Apache 2.0
 )
@@ -16,6 +16,8 @@ package_group(
     packages = ["//tensorflow/compiler/mlir/..."],
 )
 
+exports_files(glob(["g3doc/*.md"]))
+
 # To reference all tablegen files here when checking for updates to them.
 filegroup(
     name = "td_files",
@@ -23,13 +25,13 @@ filegroup(
 )
 
 cc_library(
-    name = "op_name_mapper",
-    srcs = ["op_name_mapper.cc"],
-    hdrs = ["op_name_mapper.h"],
+    name = "op_or_arg_name_mapper",
+    srcs = ["op_or_arg_name_mapper.cc"],
+    hdrs = ["op_or_arg_name_mapper.h"],
     deps = [
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@llvm//:support",
-        "@local_config_mlir//:IR",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -41,11 +43,11 @@ cc_library(
         ":passes",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:logging",
-        "@llvm//:support",
-        "@local_config_mlir//:MlirOptLib",
-        "@local_config_mlir//:Pass",
-        "@local_config_mlir//:Support",
-        "@local_config_mlir//test:TestTransforms",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:MlirOptLib",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir/test:TestTransforms",
     ],
 )
 
@@ -71,15 +73,16 @@ cc_library(
         "//tensorflow/compiler/mlir/xla:lhlo",
         "//tensorflow/compiler/mlir/xla:lhlo_fuse_linalg",
         "//tensorflow/compiler/mlir/xla:lhlo_legalize_to_affine",
+        "//tensorflow/compiler/mlir/xla:lhlo_legalize_to_gpu",
         "//tensorflow/compiler/mlir/xla:lhlo_legalize_to_linalg",
         "//tensorflow/compiler/mlir/xla:xla_dialect_registration",
         "//tensorflow/compiler/mlir/xla:xla_legalize_control_flow",
         "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
         "//tensorflow/compiler/mlir/xla:xla_legalize_to_standard",
-        "//tensorflow/compiler/mlir/xla:xla_lower_general_dot",
-        "@local_config_mlir//:AffineDialectRegistration",
-        "@local_config_mlir//:QuantOps",
-        "@local_config_mlir//:QuantOpsDialectRegistration",
+        "//tensorflow/compiler/mlir/xla:xla_lower",
+        "@llvm-project//mlir:AffineDialectRegistration",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:QuantOpsDialectRegistration",
     ],
 )
 
@@ -89,7 +92,7 @@ cc_library(
     hdrs = ["init_mlir.h"],
     deps = [
         "//tensorflow/core:lib",
-        "@llvm//:support",
+        "@llvm-project//llvm:support",
     ],
 )
 
@@ -115,15 +118,15 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir/tensorflow:translate_tf_dialect_op",
         "//tensorflow/compiler/mlir/xla:xla_mlir_translate",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_proto_cc",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/strings",
-        "@llvm//:support",
-        "@local_config_mlir//:IR",
-        "@local_config_mlir//:Support",
-        "@local_config_mlir//:TranslateClParser",
-        "@local_config_mlir//:Translation",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TranslateClParser",
+        "@llvm-project//mlir:Translation",
     ],
 )
 

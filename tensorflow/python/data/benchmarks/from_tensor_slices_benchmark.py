@@ -20,7 +20,9 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.data.benchmarks import benchmark_base
+from tensorflow.python.data.experimental.ops import get_single_element
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import sparse_tensor
 
 
 # TODO(b/119837791): Add eager benchmarks.
@@ -62,6 +64,30 @@ class FromTensorSlicesBenchmark(benchmark_base.DatasetBenchmarkBase):
         num_elements=num_elements,
         name="reshape_slice_repeat_input_%d" % input_size,
     )
+
+  def benchmark_slice_repeat_sparse(self):
+    non_zeros_per_row_values = [0, 1, 5, 10, 100]
+    num_rows_values = [32, 64, 128, 1024]
+
+    for non_zeros_per_row in non_zeros_per_row_values:
+      tensor = sparse_tensor.SparseTensor(
+          indices=np.arange(non_zeros_per_row, dtype=np.int64)[:, np.newaxis],
+          values=np.arange(non_zeros_per_row, dtype=np.int64),
+          dense_shape=[1000])
+
+      for num_rows in num_rows_values:
+        batched = dataset_ops.Dataset.from_tensors(
+            tensor).repeat(num_rows).batch(num_rows)
+        batched_tensor = get_single_element.get_single_element(batched)
+
+        dataset = dataset_ops.Dataset.from_tensors(batched_tensor).flat_map(
+            dataset_ops.Dataset.from_tensor_slices).repeat()
+        self.run_and_report_benchmark(
+            dataset,
+            num_elements=100000,
+            iters=5,
+            name="slice_repeat_sparse_elements_per_row_%d_num_rows_%d" % (
+                non_zeros_per_row, num_rows))
 
   def benchmark_slice_batch_cache_repeat(self):
     input_size = 10000

@@ -75,8 +75,8 @@ Status DataTypeToPrimitiveType(DataType data_type, xla::PrimitiveType* type) {
       return Status::OK();
     default:
       return errors::InvalidArgument(
-          "Unsupported type in DataTypeToPrimitiveType ",
-          DataTypeString(data_type));
+          "Unsupported type in DataTypeToPrimitiveType: '",
+          DataTypeString(data_type), "'");
   }
 }
 

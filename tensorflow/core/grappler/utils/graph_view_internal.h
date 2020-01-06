@@ -687,8 +687,7 @@ inline bool IsWellFormed(
   auto* node_view = diff->graph_view->GetNode(diff->node_index);
   const string& node_name =
       diff->update_name ? diff->name : node_view->GetName();
-  auto invalid_node_name = [diff, updated_node_names,
-                            node_name](absl::string_view fanin_node_name) {
+  auto invalid_node_name = [&](absl::string_view fanin_node_name) -> bool {
     return fanin_node_name == node_name ||
            !CheckNodeNameExists(fanin_node_name, updated_node_names,
                                 diff->graph_view);

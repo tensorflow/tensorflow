@@ -16,8 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/mlir_gpu/emission_context.h"
 
 #include "absl/strings/substitute.h"
-#include "mlir/IR/Location.h"  // TF:local_config_mlir
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
+#include "mlir/IR/Location.h"  // TF:llvm-project
+#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 
 namespace xla {
@@ -50,14 +50,23 @@ EmissionContext::EmissionContext(std::unique_ptr<HloModule> module)
                                            const string& instr_name, int indent,
                                            bool is_root) {
                   const string tab(2 * indent, ' ');
-                  string result =
-                      absl::StrCat(tab, is_root ? "ROOT " : "", instr_name);
                   if (!instructions_with_error.count(instr)) {
-                    return result;
+                    return absl::StrCat(tab, is_root ? "ROOT " : "",
+                                        instr_name);
                   }
+                  static constexpr char kStartBold[] = "\033[1m";
+                  static constexpr char kStartRed[] = "\033[31m";
+                  static constexpr char kBackToNormal[] = "\033[0m";
+
+                  string result =
+                      absl::StrCat(tab, kStartBold, is_root ? "ROOT " : "",
+                                   instr_name, kBackToNormal);
+
                   for (const string& err : instructions_with_error.at(instr)) {
-                    absl::SubstituteAndAppend(&result, "\n$0  FAILED: $1", tab,
-                                              err);
+                    absl::SubstituteAndAppend(
+                        &result, "\n$0  $1$2FAILED:$3 $4$5$6", tab, kStartBold,
+                        kStartRed, kBackToNormal, kStartBold, err,
+                        kBackToNormal);
                   }
                   return result;
                 })

@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import json
 import os
+
 from absl.testing import parameterized
 import numpy as np
 
@@ -70,12 +71,12 @@ class MultiWorkerContinuousRunTest(test.TestCase, parameterized.TestCase):
       if gpus:
         # Set virtual GPU with memory limit of 64MB so that multiple worker
         # processes can share the physical GPU
-        config.set_virtual_device_configuration(
-            gpus[0], [context.VirtualDeviceConfiguration(64)])
+        config.set_logical_device_configuration(
+            gpus[0], [context.LogicalDeviceConfiguration(64)])
       for _ in range(100):
         worker_step_fn()
 
-    multi_process_runner.MultiProcessRunner().run(
+    multi_process_runner.run(
         worker_fn,
         cluster_spec=test_base.create_cluster_spec(num_workers=num_workers))
 

@@ -20,20 +20,22 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_LITE_UTILS_LSTM_UTILS_H_
 
 #include "llvm/ADT/StringRef.h"
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/Function.h"  // TF:local_config_mlir
-#include "mlir/IR/Location.h"  // TF:local_config_mlir
-#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
-#include "mlir/IR/Value.h"  // TF:local_config_mlir
-#include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
+#include "mlir/IR/Builders.h"  // TF:llvm-project
+#include "mlir/IR/Function.h"  // TF:llvm-project
+#include "mlir/IR/Location.h"  // TF:llvm-project
+#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/IR/Value.h"  // TF:llvm-project
+#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 
 namespace mlir {
 namespace TFL {
 
+constexpr char kTFImplements[] = "tf._implements";
 constexpr char kLstmCellSimple[] = "LSTMCellSimple";
 constexpr char kLayerNormalizedLstmCellSimple[] =
     "LayerNormalizedLstmCellSimple";
+constexpr char kCoupleInputForgetGates[] = "CoupleInputForgetGates";
 
 // A utility class that enables the conversion of the LSTMCellSimple composite
 // op into a fused TFL LSTM op. The fused op is contained within a FuncOp
@@ -45,12 +47,9 @@ constexpr char kLayerNormalizedLstmCellSimple[] =
 // This class sets the layer norm coefficients to NoneType.
 class ConvertLSTMCellSimpleToFusedLSTM {
  public:
-  // TODO(b/140053256): The couple_input_forget_gates should be specified on
-  // FuncOp as an attribute.
-  explicit ConvertLSTMCellSimpleToFusedLSTM(mlir::FuncOp fused_func_op,
-                                            bool couple_input_forget_gates)
+  explicit ConvertLSTMCellSimpleToFusedLSTM(mlir::FuncOp fused_func_op)
       : fused_func_op_(fused_func_op),
-        couple_input_forget_gates_(couple_input_forget_gates),
+        couple_input_forget_gates_(false),
         builder_(fused_func_op.getBody()) {}
 
   // not copyable.
@@ -60,17 +59,18 @@ class ConvertLSTMCellSimpleToFusedLSTM {
       const ConvertLSTMCellSimpleToFusedLSTM&) = delete;
   virtual ~ConvertLSTMCellSimpleToFusedLSTM() {}
 
-  // verify input func op arguments and initialize internal state.
-  virtual LogicalResult Initialize();
-
   virtual llvm::StringRef GetCompositeOpName() { return kLstmCellSimple; }
 
   // Rewrite the func body with constructed fused lstm.
-  void RewriteFunc();
+  LogicalResult RewriteFunc();
 
   int GetNumInputs() { return n_input_; }
 
  protected:
+  // verify input func op arguments/attributes and initialize internal state.
+  virtual LogicalResult InitializeFromFuncAttributes();
+  virtual LogicalResult Initialize();
+
   void UpdateFuncSignature();
   void GenerateFusedOpOperands();
 
@@ -102,15 +102,15 @@ class ConvertLSTMCellSimpleToFusedLSTM {
 
   // specified state
   FuncOp fused_func_op_;
-  Value* input_;
-  Value* weight_;
-  Value* bias_;
-  Value* projection_;
+  Value input_;
+  Value weight_;
+  Value bias_;
+  Value projection_;
   bool couple_input_forget_gates_;
 
   // internal state
-  Value* weight_transposed_;
-  Value* projection_transposed_;
+  Value weight_transposed_;
+  Value projection_transposed_;
   RankedTensorType weight_type_;
   RankedTensorType projection_type_;
   int num_gates_;
@@ -121,40 +121,40 @@ class ConvertLSTMCellSimpleToFusedLSTM {
   int num_cols_projection_transposed_;
 
   // input -> cifg
-  Value* input2input_;
-  Value* input2forget_;
-  Value* input2cell_;
-  Value* input2output_;
+  Value input2input_;
+  Value input2forget_;
+  Value input2cell_;
+  Value input2output_;
 
-  // reccurrent -> cifg
-  Value* rec2input_;
-  Value* rec2forget_;
-  Value* rec2cell_;
-  Value* rec2output_;
+  // recurrent -> cifg
+  Value rec2input_;
+  Value rec2forget_;
+  Value rec2cell_;
+  Value rec2output_;
 
   // bias -> cifg
-  Value* bias2input_;
-  Value* bias2forget_;
-  Value* bias2cell_;
-  Value* bias2output_;
+  Value bias2input_;
+  Value bias2forget_;
+  Value bias2cell_;
+  Value bias2output_;
 
   // projection
-  Value* proj_weight_;
-  Value* proj_bias_;
+  Value proj_weight_;
+  Value proj_bias_;
 
   // state
-  Value* input_activation_state_;
-  Value* input_cell_state_;
+  Value input_activation_state_;
+  Value input_cell_state_;
 
   // layer norm coefficients
-  Value* input_layer_norm_coefficients_;
-  Value* forget_layer_norm_coefficients_;
-  Value* cell_layer_norm_coefficients_;
-  Value* output_layer_norm_coefficients_;
+  Value input_layer_norm_coefficients_;
+  Value forget_layer_norm_coefficients_;
+  Value cell_layer_norm_coefficients_;
+  Value output_layer_norm_coefficients_;
 
   mlir::TFL::LSTMOp lstm_;
 
-  Value* none_;
+  Value none_;
   SmallVector<int64_t, 1> bias_slice_shape_;
   SmallVector<int64_t, 1> bias_size_values_;
   SmallVector<int64_t, 2> weight_slice_shape_;
@@ -174,12 +174,9 @@ class ConvertLSTMCellSimpleToFusedLSTM {
 class ConvertLayerNormalizedLSTMCellSimpleToFusedLSTM
     : public ConvertLSTMCellSimpleToFusedLSTM {
  public:
-  // TODO(b/140053256): The couple_input_forget_gates should be specified on
-  // FuncOp as an attribute.
   explicit ConvertLayerNormalizedLSTMCellSimpleToFusedLSTM(
-      mlir::FuncOp fused_func_op, bool couple_input_forget_gates)
-      : ConvertLSTMCellSimpleToFusedLSTM(fused_func_op,
-                                         couple_input_forget_gates) {}
+      mlir::FuncOp fused_func_op)
+      : ConvertLSTMCellSimpleToFusedLSTM(fused_func_op) {}
 
   // not copyable.
   ConvertLayerNormalizedLSTMCellSimpleToFusedLSTM(
@@ -192,9 +189,9 @@ class ConvertLayerNormalizedLSTMCellSimpleToFusedLSTM
     return kLayerNormalizedLstmCellSimple;
   }
 
+ protected:
   LogicalResult Initialize() override;
 
- protected:
   void SetCellLayerNormCoefficients() override;
   void SetInputLayerNormCoefficients() override;
   void SetForgetLayerNormCoefficients() override;
@@ -202,7 +199,7 @@ class ConvertLayerNormalizedLSTMCellSimpleToFusedLSTM
 
  private:
   // specified state
-  Value* layer_norm_scale_;
+  Value layer_norm_scale_;
 
   // internal state
   RankedTensorType layer_norm_scale_type_;

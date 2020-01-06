@@ -19,10 +19,10 @@ limitations under the License.
 #include <memory>
 
 #include "absl/container/flat_hash_map.h"
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/Function.h"  // TF:local_config_mlir
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/IR/Module.h"  // TF:local_config_mlir
+#include "mlir/IR/Builders.h"  // TF:llvm-project
+#include "mlir/IR/Function.h"  // TF:llvm-project
+#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
+#include "mlir/IR/Module.h"  // TF:llvm-project
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk_emitter.h"
@@ -55,10 +55,13 @@ class LhloDialectEmitter : public DfsHloVisitorWithDefault,
   Status DefaultAction(HloInstruction* instr) override;
   Status HandleBroadcast(HloInstruction* broadcast) override;
   Status HandleCompare(HloInstruction* compare) override;
+  Status HandleConstant(HloInstruction* constant) override;
   Status HandleCustomCall(HloInstruction* custom_call) override;
   Status HandleFusion(HloInstruction* fusion) override;
   Status HandleIota(HloInstruction* iota) override;
   Status HandleParameter(HloInstruction* parameter) override;
+  Status HandleReduce(HloInstruction* reduce) override;
+  Status HandleTuple(HloInstruction* tuple) override;
 
   Status FinishVisit(HloInstruction* root) override;
 

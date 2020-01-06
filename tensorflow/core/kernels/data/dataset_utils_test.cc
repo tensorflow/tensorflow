@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {
@@ -49,21 +50,25 @@ class DatasetHashUtilsTest : public ::testing::Test {
   }
 };
 
+string full_name(string key) {
+  return strings::StrCat(kFullNameRandomHex, kPipe, "Iterator:", key);
+}
+
 TEST(DatasetUtilsTest, VariantTensorDataRoundtrip) {
-  VariantTensorData data;
-  VariantTensorDataWriter writer(&data);
-  TF_ASSERT_OK(writer.WriteScalar("Int64", 24));
+  VariantTensorDataWriter writer;
+  TF_ASSERT_OK(writer.WriteScalar(full_name("Int64"), 24));
   Tensor input_tensor(DT_FLOAT, {1});
   input_tensor.flat<float>()(0) = 2.0f;
-  TF_ASSERT_OK(writer.WriteTensor("Tensor", input_tensor));
-  TF_ASSERT_OK(writer.Flush());
+  TF_ASSERT_OK(writer.WriteTensor(full_name("Tensor"), input_tensor));
+  std::vector<const VariantTensorData*> data;
+  writer.GetData(&data);
 
-  VariantTensorDataReader reader(&data);
+  VariantTensorDataReader reader(data);
   int64 val_int64;
-  TF_ASSERT_OK(reader.ReadScalar("Int64", &val_int64));
+  TF_ASSERT_OK(reader.ReadScalar(full_name("Int64"), &val_int64));
   EXPECT_EQ(val_int64, 24);
   Tensor val_tensor;
-  TF_ASSERT_OK(reader.ReadTensor("Tensor", &val_tensor));
+  TF_ASSERT_OK(reader.ReadTensor(full_name("Tensor"), &val_tensor));
   EXPECT_EQ(input_tensor.NumElements(), val_tensor.NumElements());
   EXPECT_EQ(input_tensor.flat<float>()(0), val_tensor.flat<float>()(0));
 }
@@ -72,16 +77,68 @@ TEST(DatasetUtilsTest, VariantTensorDataNonExistentKey) {
   VariantTensorData data;
   strings::StrAppend(&data.metadata_, "key1", "@@");
   data.tensors_.push_back(Tensor(DT_INT64, {1}));
-  VariantTensorDataReader reader(&data);
+  std::vector<const VariantTensorData*> reader_data;
+  reader_data.push_back(&data);
+  VariantTensorDataReader reader(reader_data);
   int64 val_int64;
   tstring val_string;
   Tensor val_tensor;
   EXPECT_EQ(error::NOT_FOUND,
-            reader.ReadScalar("NonExistentKey", &val_int64).code());
+            reader.ReadScalar(full_name("NonExistentKey"), &val_int64).code());
   EXPECT_EQ(error::NOT_FOUND,
-            reader.ReadScalar("NonExistentKey", &val_string).code());
+            reader.ReadScalar(full_name("NonExistentKey"), &val_string).code());
   EXPECT_EQ(error::NOT_FOUND,
-            reader.ReadTensor("NonExistentKey", &val_tensor).code());
+            reader.ReadTensor(full_name("NonExistentKey"), &val_tensor).code());
+}
+
+TEST(DatasetUtilsTest, VariantTensorDataRoundtripIteratorName) {
+  VariantTensorDataWriter writer;
+  TF_ASSERT_OK(writer.WriteScalar("Iterator", "Int64", 24));
+  Tensor input_tensor(DT_FLOAT, {1});
+  input_tensor.flat<float>()(0) = 2.0f;
+  TF_ASSERT_OK(writer.WriteTensor("Iterator", "Tensor", input_tensor));
+  std::vector<const VariantTensorData*> data;
+  writer.GetData(&data);
+
+  VariantTensorDataReader reader(data);
+  int64 val_int64;
+  TF_ASSERT_OK(reader.ReadScalar("Iterator", "Int64", &val_int64));
+  EXPECT_EQ(val_int64, 24);
+  Tensor val_tensor;
+  TF_ASSERT_OK(reader.ReadTensor("Iterator", "Tensor", &val_tensor));
+  EXPECT_EQ(input_tensor.NumElements(), val_tensor.NumElements());
+  EXPECT_EQ(input_tensor.flat<float>()(0), val_tensor.flat<float>()(0));
+}
+
+TEST(DatasetUtilsTest, VariantTensorDataNonExistentKeyIteratorName) {
+  VariantTensorData data;
+  strings::StrAppend(&data.metadata_, "key1", "@@");
+  data.tensors_.push_back(Tensor(DT_INT64, {1}));
+  std::vector<const VariantTensorData*> reader_data;
+  reader_data.push_back(&data);
+  VariantTensorDataReader reader(reader_data);
+  int64 val_int64;
+  tstring val_string;
+  Tensor val_tensor;
+  EXPECT_EQ(error::NOT_FOUND,
+            reader.ReadScalar("Iterator", "NonExistentKey", &val_int64).code());
+  EXPECT_EQ(
+      error::NOT_FOUND,
+      reader.ReadScalar("Iterator", "NonExistentKey", &val_string).code());
+  EXPECT_EQ(
+      error::NOT_FOUND,
+      reader.ReadTensor("Iterator", "NonExistentKey", &val_tensor).code());
+}
+
+TEST(DatasetUtilsTest, VariantTensorDataWriteAfterFlushing) {
+  VariantTensorDataWriter writer;
+  TF_ASSERT_OK(writer.WriteScalar(full_name("Int64"), 24));
+  std::vector<const VariantTensorData*> data;
+  writer.GetData(&data);
+  Tensor input_tensor(DT_FLOAT, {1});
+  input_tensor.flat<float>()(0) = 2.0f;
+  EXPECT_EQ(error::FAILED_PRECONDITION,
+            writer.WriteTensor(full_name("Tensor"), input_tensor).code());
 }
 
 TEST(DatasetUtilsTest, AddToFunctionLibrary) {
@@ -326,6 +383,63 @@ TEST_F(DatasetHashUtilsTest, HashNodeDifferentGraphs) {
 
   // We expect different hashes because the op of n3 has changed.
   EXPECT_NE(hash1, hash2);
+}
+
+TEST_F(DatasetHashUtilsTest, HashSameGraphDifferentSeeds) {
+  GraphDef gd;
+
+  NodeDef* n1 = gd.add_node();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_1", "Const")
+                  .Attr("value", 1)
+                  .Device("CPU:0")
+                  .Finalize(n1));
+
+  NodeDef* seed = gd.add_node();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/seed", "Const")
+                  .Attr("value", 123)
+                  .Device("CPU:0")
+                  .Finalize(seed));
+
+  NodeDef* seed2 = gd.add_node();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/seed2", "Const")
+                  .Attr("value", 456)
+                  .Device("CPU:0")
+                  .Finalize(seed2));
+
+  NodeDef* range_ds = gd.add_node();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/range", "RangeDataset")
+                  .Input(n1->name(), 0, DT_INT64)
+                  .Input(n1->name(), 0, DT_INT64)
+                  .Input(n1->name(), 0, DT_INT64)
+                  .Device("CPU:0")
+                  .Finalize(range_ds));
+
+  NodeDef* shuffle_ds = gd.add_node();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/shuffle", "ShuffleDataset")
+                  .Input(range_ds->name(), 0, DT_VARIANT)
+                  .Input(n1->name(), 0, DT_INT64)
+                  .Input(seed->name(), 0, DT_INT64)
+                  .Input(seed2->name(), 0, DT_INT64)
+                  .Device("CPU:0")
+                  .Finalize(shuffle_ds));
+
+  uint64 hash1 = GetHash(gd, *shuffle_ds);
+
+  seed->Clear();
+  seed2->Clear();
+
+  TF_CHECK_OK(NodeDefBuilder("graph_1/seed", "Const")
+                  .Attr("value", 789)
+                  .Device("CPU:0")
+                  .Finalize(seed));
+  TF_CHECK_OK(NodeDefBuilder("graph_1/seed2", "Const")
+                  .Attr("value", 654)
+                  .Device("CPU:0")
+                  .Finalize(seed2));
+
+  uint64 hash2 = GetHash(gd, *shuffle_ds);
+
+  EXPECT_EQ(hash1, hash2);
 }
 
 TEST_F(DatasetHashUtilsTest, HashNodeReversedOrder) {

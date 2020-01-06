@@ -26,6 +26,7 @@ import subprocess
 import sys
 import threading
 import unittest
+
 import six
 
 _portpicker_import_error = None

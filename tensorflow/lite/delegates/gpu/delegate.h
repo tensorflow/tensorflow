@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <stdint.h>
 
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 
 #ifdef SWIG
 #define TFL_CAPI_EXPORT
@@ -38,8 +38,8 @@ limitations under the License.
 extern "C" {
 #endif  // __cplusplus
 
-// Encapsulated precision/compilation/runtime tradeoffs.
-enum TfLiteGpuInferencePreference {
+// Encapsulated compilation/runtime tradeoffs.
+enum TfLiteGpuInferenceUsage {
   // Delegate will be used only once, therefore, bootstrap/init time should
   // be taken into account.
   TFLITE_GPU_INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER = 0,
@@ -47,6 +47,17 @@ enum TfLiteGpuInferencePreference {
   // Prefer maximizing the throughput. Same delegate will be used repeatedly on
   // multiple inputs.
   TFLITE_GPU_INFERENCE_PREFERENCE_SUSTAINED_SPEED = 1,
+};
+
+enum TfLiteGpuInferencePriority {
+  // AUTO priority is needed when a single priority is the most important
+  // factor. For example,
+  // priority1 = MIN_LATENCY would result in the configuration that achieves
+  // maximum performance.
+  TFLITE_GPU_INFERENCE_PRIORITY_AUTO = 0,
+  TFLITE_GPU_INFERENCE_PRIORITY_MAX_PRECISION = 1,
+  TFLITE_GPU_INFERENCE_PRIORITY_MIN_LATENCY = 2,
+  TFLITE_GPU_INFERENCE_PRIORITY_MIN_MEMORY_USAGE = 3,
 };
 
 // IMPORTANT: Always use TfLiteGpuDelegateOptionsV2Default() method to create
@@ -57,15 +68,41 @@ typedef struct {
   // precision. Otherwise, the GPU may quantify tensors, downcast values,
   // process in FP16 to increase performance. For most models precision loss is
   // warranted.
+  // [OBSOLETE]: to be removed
   int32_t is_precision_loss_allowed;
 
   // Preference is defined in TfLiteGpuInferencePreference.
   int32_t inference_preference;
+
+  // Ordered priorities provide better control over desired semantics,
+  // where priority(n) is more important than priority(n+1), therefore,
+  // each time inference engine needs to make a decision, it uses
+  // ordered priorities to do so.
+  // For example:
+  //   MAX_PRECISION at priority1 would not allow to decrease presision,
+  //   but moving it to priority2 or priority3 would result in F16 calculation.
+  //
+  // Priority is defined in TfLiteGpuInferencePriority.
+  // AUTO priority can only be used when higher priorities are fully specified.
+  // For example:
+  //   VALID:   priority1 = MIN_LATENCY, priority2 = AUTO, priority3 = AUTO
+  //   VALID:   priority1 = MIN_LATENCY, priority2 = MAX_PRECISION,
+  //            priority3 = AUTO
+  //   INVALID: priority1 = AUTO, priority2 = MIN_LATENCY, priority3 = AUTO
+  //   INVALID: priority1 = MIN_LATENCY, priority2 = AUTO,
+  //            priority3 = MAX_PRECISION
+  // Invalid priorities will result in error.
+  int32_t inference_priority1;
+  int32_t inference_priority2;
+  int32_t inference_priority3;
 } TfLiteGpuDelegateOptionsV2;
 
 // Populates TfLiteGpuDelegateOptionsV2 as follows:
 //   is_precision_loss_allowed = false
 //   inference_preference = TFLITE_GPU_INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER
+//   priority1 = TFLITE_GPU_INFERENCE_PRIORITY_MAX_PRECISION
+//   priority2 = TFLITE_GPU_INFERENCE_PRIORITY_AUTO
+//   priority3 = TFLITE_GPU_INFERENCE_PRIORITY_AUTO
 TFL_CAPI_EXPORT TfLiteGpuDelegateOptionsV2 TfLiteGpuDelegateOptionsV2Default();
 
 // Creates a new delegate instance that need to be destroyed with

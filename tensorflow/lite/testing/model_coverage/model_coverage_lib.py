@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+
 import numpy as np
 from six import PY3
 
@@ -96,6 +97,10 @@ def _convert(converter, **kwargs):
     converter.optimizations = [_lite.Optimize.DEFAULT]
   if kwargs.get("quantize_to_float16", False):
     converter.target_spec.supported_types = [constants.FLOAT16]
+  # Some cases are broken when we enable the new converter by default.
+  # Explicitly disabling it for now.
+  # TODO(b/145763444): Investigate if these are real issues.
+  converter.experimental_new_converter = False
   return converter.convert()
 
 

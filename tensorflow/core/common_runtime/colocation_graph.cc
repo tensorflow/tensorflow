@@ -641,29 +641,27 @@ Status ColocationGraph::ColocateAllNodes() {
     // backing store of the std::vector<string> as well as the copies of the
     // strings within it).  Instead, we combine the query of the colocation
     // attribute with the calls to ColocateNodeToGroup.
-    bool found_spec = false;
     const AttrValue* attr_value =
         node->attrs().Find(kColocationAttrNameStringPiece);
-    if (attr_value != nullptr && attr_value->has_list()) {
-      for (const string& class_spec : attr_value->list().s()) {
-        StringPiece spec(class_spec);
-        if (absl::ConsumePrefix(&spec, kColocationGroupPrefixStringPiece)) {
-          found_spec = true;
-          TF_RETURN_IF_ERROR(
-              ColocateNodeToGroup(&colocation_group_root, node, spec));
+    if (attr_value != nullptr) {
+      if (attr_value->has_list()) {
+        for (const string& class_spec : attr_value->list().s()) {
+          StringPiece spec(class_spec);
+          if (absl::ConsumePrefix(&spec, kColocationGroupPrefixStringPiece)) {
+            TF_RETURN_IF_ERROR(
+                ColocateNodeToGroup(&colocation_group_root, node, spec));
+          }
         }
+      } else if (!attr_value->s().empty()) {
+        LOG(ERROR) << "The value for colocation attribute '_class' must be a "
+                      "list of strings, not a single string: "
+                   << node->DebugString();
       }
     }
 
-    // TODO(iga): Even when the node has a spec, we need to colocate the
-    // node to its "name group" because other nodes can still use
-    // "loc:@<this_node_name>" in their colocation specs.
-    if (!found_spec) {
-      // If the node does not specify a colocation group, then use the
-      // name of this node as the colocation group.
-      TF_RETURN_IF_ERROR(
-          ColocateNodeToGroup(&colocation_group_root, node, node->name()));
-    }
+    // Each node belongs to a colocation group with the node's name.
+    TF_RETURN_IF_ERROR(
+        ColocateNodeToGroup(&colocation_group_root, node, node->name()));
   }
 
   return Status::OK();
@@ -1335,7 +1333,7 @@ Status ColocationGraph::InitializeMember(const Node& node, Member* member) {
       return errors::InvalidArgument(
           "No OpKernel was registered to support Op '", node.type_string(),
           "' used by ", errors::FormatNodeNameForError(node.name()),
-          "with these attrs: [", node.attrs().DebugString(),
+          " with these attrs: [", node.attrs().DebugString(),
           "]\n"
           "Registered devices: [",
           absl::StrJoin(registered_device_types, ", "), "]\n",

@@ -124,7 +124,7 @@ class Layer(module.Module):
       using Python control flow. If `False`, we assume that the layer can
       safely be used to generate a static computation graph.
 
-  Read-only properties:
+  Attributes (read-only properties):
     name: The name of the layer (string).
     dtype: The dtype of the layer's computations and weights. If mixed
       precision is used with a `tf.keras.mixed_precision.experimental.Policy`,
@@ -444,8 +444,6 @@ class Layer(module.Module):
         synchronization=synchronization,
         aggregation=aggregation,
         caching_device=caching_device)
-    backend.track_variable(variable)
-
     if regularizer is not None:
       # TODO(fchollet): in the future, this should be handled at the
       # level of variable creation, and weight regularization losses
@@ -454,10 +452,19 @@ class Layer(module.Module):
       self._handle_weight_regularization(name_in_scope,
                                          variable,
                                          regularizer)
-    if trainable:
-      self._trainable_weights.append(variable)
+    if isinstance(variable, tf_variables.PartitionedVariable):
+      for v in variable:
+        backend.track_variable(v)
+        if trainable:
+          self._trainable_weights.append(v)
+        else:
+          self._non_trainable_weights.append(v)
     else:
-      self._non_trainable_weights.append(variable)
+      backend.track_variable(variable)
+      if trainable:
+        self._trainable_weights.append(variable)
+      else:
+        self._non_trainable_weights.append(variable)
     return variable
 
   @base_layer_utils.default
@@ -888,22 +895,24 @@ class Layer(module.Module):
 
   @property
   def trainable_weights(self):
-    if self.trainable:
-      nested = self._gather_children_attribute('trainable_weights')
-      return self._dedup_weights(self._trainable_weights + nested)
-    else:
-      return []
+    collected_weights = []
+    all_layers = self._gather_unique_layers()
+    for layer in all_layers:
+      if layer.trainable:
+        collected_weights.extend(layer._trainable_weights)
+    return self._dedup_weights(collected_weights)
 
   @property
   def non_trainable_weights(self):
-    if self.trainable:
-      nested = self._gather_children_attribute('non_trainable_weights')
-      non_trainable_weights = self._non_trainable_weights + nested
-    else:
-      nested = self._gather_children_attribute('weights')
-      non_trainable_weights = (
-          self._trainable_weights + self._non_trainable_weights + nested)
-    return self._dedup_weights(non_trainable_weights)
+    collected_weights = []
+    all_layers = self._gather_unique_layers()
+    for layer in all_layers:
+      if layer.trainable:
+        collected_weights.extend(layer._non_trainable_weights)
+      else:
+        collected_weights.extend(layer._trainable_weights +
+                                 layer._non_trainable_weights)
+    return self._dedup_weights(collected_weights)
 
   @property
   def weights(self):
@@ -916,21 +925,23 @@ class Layer(module.Module):
 
   @property
   def updates(self):
-    if not self.trainable and not self.stateful:
-      return []
+    collected_updates = []
+    all_layers = self._gather_unique_layers()
     with backend.get_graph().as_default():
-      updates = []
-      for u in self._updates:
-        if callable(u):
-          try:
-            u = u()
-          except errors.InaccessibleTensorError:
-            base_layer_utils.check_graph_consistency(
-                method='add_update', force_raise=True)
-            raise  # check_graph_consistency may not always raise.
-        base_layer_utils.check_graph_consistency(u, method='add_update')
-        updates.append(u)
-    return updates + self._gather_children_attribute('updates')
+      for layer in all_layers:
+        if not layer.trainable and not layer.stateful:
+          continue
+        for u in layer._updates:
+          if callable(u):
+            try:
+              u = u()
+            except errors.InaccessibleTensorError:
+              base_layer_utils.check_graph_consistency(
+                  method='add_update', force_raise=True)
+              raise  # check_graph_consistency may not always raise.
+          base_layer_utils.check_graph_consistency(u, method='add_update')
+          collected_updates.append(u)
+    return collected_updates
 
   @property
   def losses(self):
@@ -944,20 +955,20 @@ class Layer(module.Module):
       A list of tensors.
     """
     collected_losses = []
-
-    # If any eager losses are present, we assume the model to be part of an
-    # eager training loop (either a custom one or the one used when
-    # `run_eagerly=True`), and so we always return just the eager losses in that
-    # case.
-    if self._eager_losses:
-      collected_losses.extend(self._eager_losses)
-    else:
-      collected_losses.extend(self._losses)
-    for regularizer in self._callable_losses:
-      loss_tensor = regularizer()
-      if loss_tensor is not None:
-        collected_losses.append(loss_tensor)
-    return collected_losses + self._gather_children_attribute('losses')
+    all_layers = self._gather_unique_layers()
+    for layer in all_layers:
+      # If any eager losses are present, we assume the model to be part of an
+      # eager training loop (either a custom one or the one used when
+      # `run_eagerly=True`) and so we always return just the eager losses.
+      if layer._eager_losses:
+        collected_losses.extend(layer._eager_losses)
+      else:
+        collected_losses.extend(layer._losses)
+      for regularizer in layer._callable_losses:
+        loss_tensor = regularizer()
+        if loss_tensor is not None:
+          collected_losses.append(loss_tensor)
+    return collected_losses
 
   @doc_controls.for_subclass_implementers
   def add_loss(self, losses, inputs=None):
@@ -1094,7 +1105,11 @@ class Layer(module.Module):
 
   @property
   def metrics(self):
-    return self._metrics + self._gather_children_attribute('metrics')
+    collected_metrics = []
+    all_layers = self._gather_unique_layers()
+    for layer in all_layers:
+      collected_metrics.extend(layer._metrics)
+    return collected_metrics
 
   @doc_controls.for_subclass_implementers
   def add_metric(self, value, aggregation=None, name=None):
@@ -1202,6 +1217,9 @@ class Layer(module.Module):
         # ignored, following the default path for adding updates.
         not call_context.saving):
       # Updates don't need to be run in a cross-replica context.
+      # TODO(b/142574744): Relax this restriction so that metrics/variables
+      # created outside of a strategy scope can be updated in the cross-replica
+      # context.
       if (ops.executing_eagerly_outside_functions() and
           not base_layer_utils.is_in_keras_graph()):
         raise RuntimeError(  # pylint: disable=g-doc-exception
@@ -1261,6 +1279,36 @@ class Layer(module.Module):
   def set_weights(self, weights):
     """Sets the weights of the layer, from Numpy arrays.
 
+    The weights of a layer represent the state of the layer. This function
+    sets the weight values from numpy arrays. The weight values should be
+    passed in the order they are created by the layer. Note that the layer's
+    weights must be instantiated before calling this function by calling
+    the layer.
+
+    For example, a Dense layer returns a list of two values-- per-output
+    weights and the bias value. These can be used to set the weights of another
+    Dense layer:
+
+    >>> a = tf.keras.layers.Dense(1,
+    ...   kernel_initializer=tf.constant_initializer(1.))
+    >>> a_out = a(tf.convert_to_tensor([[1., 2., 3.]]))
+    >>> a.get_weights()
+    [array([[1.],
+           [1.],
+           [1.]], dtype=float32), array([0.], dtype=float32)]
+    >>> b = tf.keras.layers.Dense(1,
+    ...   kernel_initializer=tf.constant_initializer(2.))
+    >>> b_out = b(tf.convert_to_tensor([[10., 20., 30.]]))
+    >>> b.get_weights()
+    [array([[2.],
+           [2.],
+           [2.]], dtype=float32), array([0.], dtype=float32)]
+    >>> b.set_weights(a.get_weights())
+    >>> b.get_weights()
+    [array([[1.],
+           [1.],
+           [1.]], dtype=float32), array([0.], dtype=float32)]
+
     Arguments:
         weights: a list of Numpy arrays. The number
             of arrays and their shape must match
@@ -1310,6 +1358,35 @@ class Layer(module.Module):
 
   def get_weights(self):
     """Returns the current weights of the layer.
+
+    The weights of a layer represent the state of the layer. This function
+    returns both trainable and non-trainable weight values associated with this
+    layer as a list of Numpy arrays, which can in turn be used to load state
+    into similarly parameterized layers.
+
+    For example, a Dense layer returns a list of two values-- per-output
+    weights and the bias value. These can be used to set the weights of another
+    Dense layer:
+
+    >>> a = tf.keras.layers.Dense(1,
+    ...   kernel_initializer=tf.constant_initializer(1.))
+    >>> a_out = a(tf.convert_to_tensor([[1., 2., 3.]]))
+    >>> a.get_weights()
+    [array([[1.],
+           [1.],
+           [1.]], dtype=float32), array([0.], dtype=float32)]
+    >>> b = tf.keras.layers.Dense(1,
+    ...   kernel_initializer=tf.constant_initializer(2.))
+    >>> b_out = b(tf.convert_to_tensor([[10., 20., 30.]]))
+    >>> b.get_weights()
+    [array([[2.],
+           [2.],
+           [2.]], dtype=float32), array([0.], dtype=float32)]
+    >>> b.set_weights(a.get_weights())
+    >>> b.get_weights()
+    [array([[1.],
+           [1.],
+           [1.]], dtype=float32), array([0.], dtype=float32)]
 
     Returns:
         Weights values as a list of numpy arrays.
@@ -2308,18 +2385,29 @@ class Layer(module.Module):
     # at __delattr__.
     super(tracking.AutoTrackable, self).__setattr__(name, value)
 
-  def _gather_children_attribute(self, attribute):
-    assert attribute in {
-        'weights', 'trainable_weights', 'non_trainable_weights', 'updates',
-        'losses', 'metrics'
-    }
+  def _gather_unique_layers(self):
+    """Returns the current layer and all its children depth first deduped.
+
+    We are deduping after getting the layers to maintain the order.
+    """
+    all_layers = self._gather_layers()
+    unique_layers, seen_layers = [], object_identity.ObjectIdentitySet()
+    for layer in all_layers:
+      if layer not in seen_layers:
+        unique_layers.append(layer)
+        # Track the Variable's identity to avoid __eq__ issues.
+        seen_layers.add(layer)
+    return unique_layers
+
+  def _gather_layers(self):
+    """Returns the current layer and all its children depth first."""
+    all_layers = [self]
     if hasattr(self, '_layers'):
-      nested_layers = trackable_layer_utils.filter_empty_layer_containers(
+      child_layers = trackable_layer_utils.filter_empty_layer_containers(
           self._layers)
-      return list(
-          itertools.chain.from_iterable(
-              getattr(layer, attribute) for layer in nested_layers))
-    return []
+      for child_layer in child_layers:
+        all_layers.extend(child_layer._gather_layers())
+    return all_layers
 
   @property
   @tracking.cached_per_instance
@@ -2516,10 +2604,6 @@ class TensorFlowOpLayer(Layer):
         if value is not None:
           constant = constant_op.constant(value, name=node_def.input[index])
         inputs.insert(index, constant)
-      # Check for case where first input should be a list of Tensors.
-      if 'N' in node_def.attr:
-        num_tensors = node_def.attr['N'].i
-        inputs = [inputs[:num_tensors]] + inputs[num_tensors:]
       c_op = ops._create_c_op(graph, node_def, inputs, control_inputs=[])
       op = graph._create_op_from_tf_operation(c_op)
       op._control_flow_post_processing()

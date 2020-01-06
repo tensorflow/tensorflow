@@ -76,6 +76,22 @@ inline void ZeroHalf8bitAvx512(int src_rows, std::int8_t packed_zero_point,
   }
 }
 
+inline __m512i LoaduTwo(const std::int8_t* addr_lo,
+                        const std::int8_t* addr_hi) {
+  __m512i lower_filled = _mm512_castsi256_si512(_mm256_loadu_epi8(addr_lo));
+  return _mm512_inserti32x8(lower_filled, _mm256_loadu_epi8(addr_hi), 1);
+}
+
+inline __m512i MaskLoaduTwo(__mmask32 row_mask, const __m256i default_value_v,
+                            const std::int8_t* addr_lo,
+                            const std::int8_t* addr_hi) {
+  const __m512i lower_filled = _mm512_castsi256_si512(
+      _mm256_mask_loadu_epi8(default_value_v, row_mask, addr_lo));
+  return _mm512_inserti32x8(
+      lower_filled, _mm256_mask_loadu_epi8(default_value_v, row_mask, addr_hi),
+      1);
+}
+
 inline void HalfPack8bitAvx512(const std::int8_t* src_ptr,
                                std::int8_t input_xor,
                                const std::int8_t* zerobuf, int src_stride,
@@ -83,18 +99,12 @@ inline void HalfPack8bitAvx512(const std::int8_t* src_ptr,
                                std::int8_t* packed_ptr, std::int32_t* sums_ptr,
                                std::int8_t* trailing_buf) {
   using Layout = PackImpl8bitAvx512::Layout;
-  static constexpr int kHalfLayoutCols =
-      PackImpl8bitAvx512::kHalfLayoutCols;  // Half the number of cols in a
-                                            // block.
   RUY_DCHECK_EQ(Layout::kCols, 16);
   RUY_DCHECK_EQ(Layout::kRows, 4);
-  RUY_DCHECK_EQ(kHalfLayoutCols, 8);
   // Each Layout::Rows is 4 contiguous input, contiguous packed elements.
   // We process 8 of these chunks at a time, padding short input chunks.
   constexpr int kNumRowChunks = 8;
   constexpr int kNumChunkedSrcRows = kNumRowChunks * Layout::kRows;
-
-  std::int8_t in_data[kHalfLayoutCols][kNumRowChunks][Layout::kRows];
 
   const std::int8_t* src_ptr0 = src_ptr;
   const std::int8_t* src_ptr1 = src_ptr0 + src_stride;
@@ -154,6 +164,9 @@ inline void HalfPack8bitAvx512(const std::int8_t* src_ptr,
       sums_ptr[i] = 0;
     }
   }
+  std::int32_t sums_adjustment = 0;
+  const __m512i ones_16bit = _mm512_set1_epi16(1);
+  __m512i sums_8x2_32bit = _mm512_set1_epi32(0);
 
   // The overall packing effectively pads the source rows to
   // (src_rows + 63) & ~63. The iteration over k may skip when m=1, and then we
@@ -172,111 +185,211 @@ inline void HalfPack8bitAvx512(const std::int8_t* src_ptr,
       // treat each case separately.
       if (available_src_rows >= kNumChunkedSrcRows) {
         // i: chunks, s: Layout::Rows.
-        for (int i = 0; i < 8; ++i) {
-          for (int s = 0; s < 4; ++s) {
-            in_data[0][i][s] = src_ptr0[i * 4 + s];
-            in_data[1][i][s] = src_ptr1[i * 4 + s];
-            in_data[2][i][s] = src_ptr2[i * 4 + s];
-            in_data[3][i][s] = src_ptr3[i * 4 + s];
-            in_data[4][i][s] = src_ptr4[i * 4 + s];
-            in_data[5][i][s] = src_ptr5[i * 4 + s];
-            in_data[6][i][s] = src_ptr6[i * 4 + s];
-            in_data[7][i][s] = src_ptr7[i * 4 + s];
-          }
-        }
-        // i: chunks, j: kHalfLayoutCols, s: Layout::Rows.
-        for (int i = 0; i < 8; ++i) {
-          for (int j = 0; j < 8; ++j) {
-            for (int s = 0; s < 4; ++s) {
-              // 16 * 4 * i is offset for each block, that is
-              // (Layout::kCols * Layout::kRows * i)
-              packed_ptr[(16 * i + j) * 4 + s] = in_data[j][i][s] ^ input_xor;
-            }
-            if (sums_ptr) {
-              for (int s = 0; s < 4; ++s) {
-                sums_ptr[j] += in_data[j][i][s] ^ input_xor;
-              }
-            }
-          }
+        if (sums_ptr) {
+          __m512i t0, t1, t2, t3;
+          __m512i r0, r1, r2, r3;
+          const __m512i input_xor_v = _mm512_set1_epi8(input_xor);
+
+          t0 = LoaduTwo(src_ptr0, src_ptr4);
+          t1 = LoaduTwo(src_ptr1, src_ptr5);
+          t2 = LoaduTwo(src_ptr2, src_ptr6);
+          t3 = LoaduTwo(src_ptr3, src_ptr7);
+
+          r0 = _mm512_unpacklo_epi32(t0, t1);
+          r2 = _mm512_unpackhi_epi32(t0, t1);
+          r1 = _mm512_unpacklo_epi32(t2, t3);
+          r3 = _mm512_unpackhi_epi32(t2, t3);
+
+          t0 = _mm512_unpacklo_epi64(r0, r1);
+          t2 = _mm512_unpackhi_epi64(r0, r1);
+          t1 = _mm512_unpacklo_epi64(r2, r3);
+          t3 = _mm512_unpackhi_epi64(r2, r3);
+
+          r0 = _mm512_shuffle_i32x4(t0, t1, 0x88);
+          r1 = _mm512_shuffle_i32x4(t0, t1, 0xdd);
+          r2 = _mm512_shuffle_i32x4(t2, t3, 0x88);
+          r3 = _mm512_shuffle_i32x4(t2, t3, 0xdd);
+
+          r0 = _mm512_xor_si512(r0, input_xor_v);
+          r1 = _mm512_xor_si512(r1, input_xor_v);
+          r2 = _mm512_xor_si512(r2, input_xor_v);
+          r3 = _mm512_xor_si512(r3, input_xor_v);
+
+          const __m256i r0_0 = _mm512_castsi512_si256(r0);
+          const __m256i r0_1 = _mm512_extracti32x8_epi32(r0, 1);
+          const __m256i r1_0 = _mm512_castsi512_si256(r1);
+          const __m256i r1_1 = _mm512_extracti32x8_epi32(r1, 1);
+          const __m256i r2_0 = _mm512_castsi512_si256(r2);
+          const __m256i r2_1 = _mm512_extracti32x8_epi32(r2, 1);
+          const __m256i r3_0 = _mm512_castsi512_si256(r3);
+          const __m256i r3_1 = _mm512_extracti32x8_epi32(r3, 1);
+
+          __m512i sums_8x4_16bit;
+          sums_8x4_16bit = _mm512_cvtepi8_epi16(r0_0);
+          sums_8x4_16bit =
+              _mm512_add_epi16(sums_8x4_16bit, _mm512_cvtepi8_epi16(r0_1));
+          sums_8x4_16bit =
+              _mm512_add_epi16(sums_8x4_16bit, _mm512_cvtepi8_epi16(r1_0));
+          sums_8x4_16bit =
+              _mm512_add_epi16(sums_8x4_16bit, _mm512_cvtepi8_epi16(r1_1));
+          sums_8x4_16bit =
+              _mm512_add_epi16(sums_8x4_16bit, _mm512_cvtepi8_epi16(r2_0));
+          sums_8x4_16bit =
+              _mm512_add_epi16(sums_8x4_16bit, _mm512_cvtepi8_epi16(r2_1));
+          sums_8x4_16bit =
+              _mm512_add_epi16(sums_8x4_16bit, _mm512_cvtepi8_epi16(r3_0));
+          sums_8x4_16bit =
+              _mm512_add_epi16(sums_8x4_16bit, _mm512_cvtepi8_epi16(r3_1));
+          // The sums have been performed across columns, and now we have
+          // 4x16-bit sums packed together. We use madd for pairwise 32-bit
+          // sums.
+          const __m512i sums_8x2_32bit_new =
+              _mm512_madd_epi16(sums_8x4_16bit, ones_16bit);
+          sums_8x2_32bit = _mm512_add_epi32(sums_8x2_32bit, sums_8x2_32bit_new);
+
+          _mm256_storeu_epi8(packed_ptr + 0 * 16 * 4, r0_0);
+          _mm256_storeu_epi8(packed_ptr + 2 * 16 * 4, r0_1);
+          _mm256_storeu_epi8(packed_ptr + 4 * 16 * 4, r1_0);
+          _mm256_storeu_epi8(packed_ptr + 6 * 16 * 4, r1_1);
+          _mm256_storeu_epi8(packed_ptr + 1 * 16 * 4, r2_0);
+          _mm256_storeu_epi8(packed_ptr + 3 * 16 * 4, r2_1);
+          _mm256_storeu_epi8(packed_ptr + 5 * 16 * 4, r3_0);
+          _mm256_storeu_epi8(packed_ptr + 7 * 16 * 4, r3_1);
+        } else {
+          __m512i t0, t1, t2, t3;
+          __m512i r0, r1, r2, r3;
+          const __m512i input_xor_v = _mm512_set1_epi8(input_xor);
+
+          t0 = LoaduTwo(src_ptr0, src_ptr4);
+          t1 = LoaduTwo(src_ptr1, src_ptr5);
+          t2 = LoaduTwo(src_ptr2, src_ptr6);
+          t3 = LoaduTwo(src_ptr3, src_ptr7);
+
+          r0 = _mm512_unpacklo_epi32(t0, t1);
+          r2 = _mm512_unpackhi_epi32(t0, t1);
+          r1 = _mm512_unpacklo_epi32(t2, t3);
+          r3 = _mm512_unpackhi_epi32(t2, t3);
+
+          t0 = _mm512_unpacklo_epi64(r0, r1);
+          t2 = _mm512_unpackhi_epi64(r0, r1);
+          t1 = _mm512_unpacklo_epi64(r2, r3);
+          t3 = _mm512_unpackhi_epi64(r2, r3);
+
+          r0 = _mm512_shuffle_i32x4(t0, t1, 0x88);
+          r1 = _mm512_shuffle_i32x4(t0, t1, 0xdd);
+          r2 = _mm512_shuffle_i32x4(t2, t3, 0x88);
+          r3 = _mm512_shuffle_i32x4(t2, t3, 0xdd);
+
+          r0 = _mm512_xor_si512(r0, input_xor_v);
+          r1 = _mm512_xor_si512(r1, input_xor_v);
+          r2 = _mm512_xor_si512(r2, input_xor_v);
+          r3 = _mm512_xor_si512(r3, input_xor_v);
+
+          const __m256i r0_0 = _mm512_castsi512_si256(r0);
+          const __m256i r0_1 = _mm512_extracti32x8_epi32(r0, 1);
+          const __m256i r1_0 = _mm512_castsi512_si256(r1);
+          const __m256i r1_1 = _mm512_extracti32x8_epi32(r1, 1);
+          const __m256i r2_0 = _mm512_castsi512_si256(r2);
+          const __m256i r2_1 = _mm512_extracti32x8_epi32(r2, 1);
+          const __m256i r3_0 = _mm512_castsi512_si256(r3);
+          const __m256i r3_1 = _mm512_extracti32x8_epi32(r3, 1);
+          _mm256_storeu_epi8(packed_ptr + 0 * 16 * 4, r0_0);
+          _mm256_storeu_epi8(packed_ptr + 2 * 16 * 4, r0_1);
+          _mm256_storeu_epi8(packed_ptr + 4 * 16 * 4, r1_0);
+          _mm256_storeu_epi8(packed_ptr + 6 * 16 * 4, r1_1);
+          _mm256_storeu_epi8(packed_ptr + 1 * 16 * 4, r2_0);
+          _mm256_storeu_epi8(packed_ptr + 3 * 16 * 4, r2_1);
+          _mm256_storeu_epi8(packed_ptr + 5 * 16 * 4, r3_0);
+          _mm256_storeu_epi8(packed_ptr + 7 * 16 * 4, r3_1);
         }
       } else if (available_src_rows > 0) {
         RUY_DCHECK_LT(available_src_rows >> 2, kNumChunkedSrcRows);
-        int i = 0;
-        // Consume chunks of 4 rows that are complete.
-        for (; i < (available_src_rows >> 2); ++i) {
-          for (int s = 0; s < 4; ++s) {
-            in_data[0][i][s] = src_ptr0[i * 4 + s];
-            in_data[1][i][s] = src_ptr1[i * 4 + s];
-            in_data[2][i][s] = src_ptr2[i * 4 + s];
-            in_data[3][i][s] = src_ptr3[i * 4 + s];
-            in_data[4][i][s] = src_ptr4[i * 4 + s];
-            in_data[5][i][s] = src_ptr5[i * 4 + s];
-            in_data[6][i][s] = src_ptr6[i * 4 + s];
-            in_data[7][i][s] = src_ptr7[i * 4 + s];
-          }
-        }
-        // Consume any incomplete chunk.
-        if (i < ((available_src_rows + 3) >> 2)) {
-          int s = 0;
-          for (; s < (available_src_rows & 3); ++s) {
-            in_data[0][i][s] = src_ptr0[i * 4 + s];
-            in_data[1][i][s] = src_ptr1[i * 4 + s];
-            in_data[2][i][s] = src_ptr2[i * 4 + s];
-            in_data[3][i][s] = src_ptr3[i * 4 + s];
-            in_data[4][i][s] = src_ptr4[i * 4 + s];
-            in_data[5][i][s] = src_ptr5[i * 4 + s];
-            in_data[6][i][s] = src_ptr6[i * 4 + s];
-            in_data[7][i][s] = src_ptr7[i * 4 + s];
-          }
-          RUY_DCHECK_LE(s, 4);
-          for (; s < 4; ++s) {
-            // j: kHalfLayoutCols.
-            for (int j = 0; j < 8; ++j) {
-              in_data[j][i][s] = zero_point;
-            }
-          }
-          ++i;
-        }
+        const __mmask32 row_mask =
+            (static_cast<std::uint64_t>(1) << available_src_rows) - 1;
+
         // We do not care what goes into the trailing buffer, but we want
         // in_data[...] ^ input_xor == 0 for irrelevant values in the summation.
         //
-        // It might prove better in optimized code to pad uniformly with
-        // zero_point, and compensate by initializing the summations with the
-        // compensating offset, effectively
-        // ((input_xor - zero_point) ^ input_xor) *
+        // We compensate for padding-with-zero_point by initializing the
+        // summations with the compensating offset, effectively
+        // ((input_xor ^ input_xor) - (zero_point ^ input_xor)) *
         //                         4 * (8 - ((available_src_rows + 3) >> 2)).
-        for (; i < 8; ++i) {
-          for (int s = 0; s < 4; ++s) {
-            for (int j = 0; j < 8; ++j) {
-              in_data[j][i][s] = input_xor;
-            }
-          }
-        }
-        // We loop through [0, 8) rather than
-        // [0, (available_src_rows + 3) >> 2), since that emulates what we might
-        // do in fully-optimized code.
         //
-        // i: chunks, j: kHalfLayoutCols, s: Layout::Rows.
-        if (sums_ptr) {
-          for (int i = 0; i < 8; ++i) {
-            for (int j = 0; j < 8; ++j) {
-              for (int s = 0; s < 4; ++s) {
-                trailing_buf[(16 * i + j) * 4 + s] =
-                    in_data[j][i][s] ^ input_xor;
-                sums_ptr[j] = sums_ptr[j] + (in_data[j][i][s] ^ input_xor);
-              }
-            }
-          }
-        } else {
-          for (int i = 0; i < 8; ++i) {
-            for (int j = 0; j < 8; ++j) {
-              for (int s = 0; s < 4; ++s) {
-                trailing_buf[(16 * i + j) * 4 + s] =
-                    in_data[j][i][s] ^ input_xor;
-              }
-            }
-          }
-        }
+        // Note that (zero_point ^ input_xor) is performed in 8-bits and then
+        // cast.
+        sums_adjustment += -(zero_point ^ input_xor) * 4 *
+                           (8 - ((available_src_rows + 3) >> 2));
+
+        __m512i t0, t1, t2, t3;
+        __m512i r0, r1, r2, r3;
+        const __m512i input_xor_v = _mm512_set1_epi8(input_xor);
+        const __m256i zero_point_v = _mm256_set1_epi8(zero_point);
+
+        t0 = MaskLoaduTwo(row_mask, zero_point_v, src_ptr0, src_ptr4);
+        t1 = MaskLoaduTwo(row_mask, zero_point_v, src_ptr1, src_ptr5);
+        t2 = MaskLoaduTwo(row_mask, zero_point_v, src_ptr2, src_ptr6);
+        t3 = MaskLoaduTwo(row_mask, zero_point_v, src_ptr3, src_ptr7);
+
+        r0 = _mm512_unpacklo_epi32(t0, t1);
+        r2 = _mm512_unpackhi_epi32(t0, t1);
+        r1 = _mm512_unpacklo_epi32(t2, t3);
+        r3 = _mm512_unpackhi_epi32(t2, t3);
+
+        t0 = _mm512_unpacklo_epi64(r0, r1);
+        t2 = _mm512_unpackhi_epi64(r0, r1);
+        t1 = _mm512_unpacklo_epi64(r2, r3);
+        t3 = _mm512_unpackhi_epi64(r2, r3);
+
+        r0 = _mm512_shuffle_i32x4(t0, t1, 0x88);
+        r1 = _mm512_shuffle_i32x4(t0, t1, 0xdd);
+        r2 = _mm512_shuffle_i32x4(t2, t3, 0x88);
+        r3 = _mm512_shuffle_i32x4(t2, t3, 0xdd);
+
+        r0 = _mm512_xor_si512(r0, input_xor_v);
+        r1 = _mm512_xor_si512(r1, input_xor_v);
+        r2 = _mm512_xor_si512(r2, input_xor_v);
+        r3 = _mm512_xor_si512(r3, input_xor_v);
+
+        const __m256i r0_0 = _mm512_castsi512_si256(r0);
+        const __m256i r0_1 = _mm512_extracti32x8_epi32(r0, 1);
+        const __m256i r1_0 = _mm512_castsi512_si256(r1);
+        const __m256i r1_1 = _mm512_extracti32x8_epi32(r1, 1);
+        const __m256i r2_0 = _mm512_castsi512_si256(r2);
+        const __m256i r2_1 = _mm512_extracti32x8_epi32(r2, 1);
+        const __m256i r3_0 = _mm512_castsi512_si256(r3);
+        const __m256i r3_1 = _mm512_extracti32x8_epi32(r3, 1);
+
+        __m512i sums_8x4_16bit;
+        sums_8x4_16bit = _mm512_cvtepi8_epi16(r0_0);
+        sums_8x4_16bit =
+            _mm512_add_epi16(sums_8x4_16bit, _mm512_cvtepi8_epi16(r0_1));
+        sums_8x4_16bit =
+            _mm512_add_epi16(sums_8x4_16bit, _mm512_cvtepi8_epi16(r1_0));
+        sums_8x4_16bit =
+            _mm512_add_epi16(sums_8x4_16bit, _mm512_cvtepi8_epi16(r1_1));
+        sums_8x4_16bit =
+            _mm512_add_epi16(sums_8x4_16bit, _mm512_cvtepi8_epi16(r2_0));
+        sums_8x4_16bit =
+            _mm512_add_epi16(sums_8x4_16bit, _mm512_cvtepi8_epi16(r2_1));
+        sums_8x4_16bit =
+            _mm512_add_epi16(sums_8x4_16bit, _mm512_cvtepi8_epi16(r3_0));
+        sums_8x4_16bit =
+            _mm512_add_epi16(sums_8x4_16bit, _mm512_cvtepi8_epi16(r3_1));
+        // The sums have been performed across columns, and now we have
+        // 4x16-bit sums packed together. We use madd for pairwise 32-bit
+        // sums.
+        const __m512i sums_8x2_32bit_new =
+            _mm512_madd_epi16(sums_8x4_16bit, ones_16bit);
+        sums_8x2_32bit = _mm512_add_epi32(sums_8x2_32bit, sums_8x2_32bit_new);
+
+        _mm256_storeu_epi8(trailing_buf + 0 * 16 * 4, r0_0);
+        _mm256_storeu_epi8(trailing_buf + 2 * 16 * 4, r0_1);
+        _mm256_storeu_epi8(trailing_buf + 4 * 16 * 4, r1_0);
+        _mm256_storeu_epi8(trailing_buf + 6 * 16 * 4, r1_1);
+        _mm256_storeu_epi8(trailing_buf + 1 * 16 * 4, r2_0);
+        _mm256_storeu_epi8(trailing_buf + 3 * 16 * 4, r2_1);
+        _mm256_storeu_epi8(trailing_buf + 5 * 16 * 4, r3_0);
+        _mm256_storeu_epi8(trailing_buf + 7 * 16 * 4, r3_1);
       }
 
       packed_ptr += 16 * kNumChunkedSrcRows;
@@ -290,16 +403,34 @@ inline void HalfPack8bitAvx512(const std::int8_t* src_ptr,
       src_ptr7 += src_inc7;
     }
   }
+
+  if (sums_ptr) {
+    const __m256i sums_adjustment_v = _mm256_set1_epi32(sums_adjustment);
+
+    __m256i sums = _mm256_loadu_epi32(sums_ptr);
+    const __m512i idx =
+        _mm512_set_epi32(15, 13, 11, 9, 7, 5, 3, 1, 14, 12, 10, 8, 6, 4, 2, 0);
+
+    // We earlier used madd for pairwise 32-bit sums, and now we deinterlace the
+    // neighbours, finshing up by adding them to the stored accumulated sums.
+    const __m512i sums_2x8_32bit =
+        _mm512_permutexvar_epi32(idx, sums_8x2_32bit);
+    sums = _mm256_add_epi32(sums, sums_adjustment_v);
+    sums = _mm256_add_epi32(sums, _mm512_castsi512_si256(sums_2x8_32bit));
+    sums = _mm256_add_epi32(sums, _mm512_extracti32x8_epi32(sums_2x8_32bit, 1));
+
+    _mm256_storeu_epi32(sums_ptr, sums);
+  }
 }
 
 inline __m512 LoaduTwo(const float* addr_lo, const float* addr_hi) {
-  __m512 lower_filled = _mm512_castps256_ps512(_mm256_loadu_ps(addr_lo));
+  const __m512 lower_filled = _mm512_castps256_ps512(_mm256_loadu_ps(addr_lo));
   return _mm512_insertf32x8(lower_filled, _mm256_loadu_ps(addr_hi), 1);
 }
 
 inline __m512 MaskLoaduTwo(__mmask8 row_mask, const float* addr_lo,
                            const float* addr_hi) {
-  __m512 lower_filled =
+  const __m512 lower_filled =
       _mm512_castps256_ps512(_mm256_maskz_loadu_ps(row_mask, addr_lo));
   return _mm512_insertf32x8(lower_filled,
                             _mm256_maskz_loadu_ps(row_mask, addr_hi), 1);

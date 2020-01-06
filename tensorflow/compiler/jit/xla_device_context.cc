@@ -262,7 +262,7 @@ void XlaDeviceContext::CopyDeviceTensorToCPU(const Tensor* device_tensor,
                 << xla_tensor->shaped_buffer().ToString();
         // For devices don't allow sync on completion, the device execution is
         // deferred. We check the execution stream status here to avoid wrong
-        // results from a failed stream being propogated to following
+        // results from a failed stream being propagated to following
         // host-side ops.
         if (!device_allows_sync_on_completion) {
           done_status.Update(xla_tensor->RefreshStatusOfStreams());
