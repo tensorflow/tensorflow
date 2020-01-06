@@ -2944,15 +2944,15 @@ def rgb_to_yiq(images):
   Returns:
     images: tensor with the same shape as `images`.
 
-    Usage Example:
+  Usage Example:
     
-    >>> image = [[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]],
-    ...          [[7.0, 8.0, 9.0], [10.0, 11.0, 12.0]],
-    ...          [[13.0, 14.0, 15.0], [16.0, 17.0, 18.0]]]
-    >>> image = tf.constant(image)
-    >>> tf.image.rgb_to_yiq(image)
-    <tf.Tensor: shape=(3, 2, 3), dtype=float32, numpy=
-    array([[[ 1.815     , -0.91724455,  0.09962624],
+  >>> image = [[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]],
+  ...          [[7.0, 8.0, 9.0], [10.0, 11.0, 12.0]],
+  ...          [[13.0, 14.0, 15.0], [16.0, 17.0, 18.0]]]
+  >>> image = tf.constant(image)
+  >>> tf.image.rgb_to_yiq(image)
+  <tf.Tensor: shape=(3, 2, 3), dtype=float32, numpy=
+  array([[[ 1.815     , -0.91724455,  0.09962624],
         [ 4.815     , -0.9172445 ,  0.09951639]],
        [[ 7.815     , -0.91724443,  0.09940636],
         [10.815001  , -0.91724455,  0.09929633]],
@@ -2986,15 +2986,15 @@ def yiq_to_rgb(images):
   Returns:
     images: tensor with the same shape as `images`.
 
-    Usage Example:
+  Usage Example:
     
-    >>> image = [[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]],
-    ...          [[7.0, 8.0, 9.0], [10.0, 11.0, 12.0]],
-    ...          [[13.0, 14.0, 15.0], [16.0, 17.0, 18.0]]]
-    >>> image = tf.constant(image)
-    >>> tf.image.yiq_to_rgb(image)
-    <tf.Tensor: shape=(3, 2, 3), dtype=float32, numpy=
-    array([[[ 4.774447  , -1.4856384 ,  3.8992112 ],
+  >>> image = [[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]],
+  ...          [[7.0, 8.0, 9.0], [10.0, 11.0, 12.0]],
+  ...          [[13.0, 14.0, 15.0], [16.0, 17.0, 18.0]]]
+  >>> image = tf.constant(image)
+  >>> tf.image.yiq_to_rgb(image)
+  <tf.Tensor: shape=(3, 2, 3), dtype=float32, numpy=
+  array([[[ 4.774447  , -1.4856384 ,  3.8992112 ],
         [12.504881  , -1.2432894 ,  8.691683  ]],
        [[20.235313  , -1.0009406 , 13.484153  ],
         [27.965748  , -0.7585919 , 18.276623  ]],
