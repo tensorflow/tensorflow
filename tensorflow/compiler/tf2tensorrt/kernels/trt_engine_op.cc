@@ -875,10 +875,10 @@ StatusOr<EngineContext*> TRTEngineOp::GetEngine(
               << TensorShapeUtils::ShapeListString(engine_input_shapes);
 
     // In case we did not collect any shape information so far,
-    // then we add add the current input shape so that we can create an engine for that
+    // then we add the current input shape so that we can create an engine for that.
     cache_res->profiles_.addShapeIfEmpty(engine_input_shapes);
 
-    // Convert to partial shapes
+    // Convert to partial shapes.
     std::vector<PartialTensorShape> partial_shapes(engine_input_shapes.begin(),
                                                    engine_input_shapes.end());
 

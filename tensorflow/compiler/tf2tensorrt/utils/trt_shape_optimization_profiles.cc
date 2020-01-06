@@ -31,7 +31,7 @@ bool isAnyInputDynamic(const nvinfer1::INetworkDefinition *network) {
   return is_any_dynamic;
 }
 
-/// Create optimization profise for a list of input shapes.
+/// Create optimization profiles for a list of input shapes.
 /// The list of input shapes are stored in shapes_.
 void TrtShapeOptimizationProfile::initProfiles(int n_profiles) {
   // Can it happen that we call build twice? In that case we should decide
