@@ -28,7 +28,6 @@ package(
 exports_files(
     srcs = [
         "allocator_registry.h",
-        "attr_value_util.h",
         "cancellation.h",
         "collective.h",
         "common_shape_fns.h",
@@ -47,11 +46,8 @@ exports_files(
         "memory_types.h",
         "model.h",
         "node_def_builder.h",
-        "node_def_util.h",
         "numeric_op.h",
         "op.h",
-        "op_def_builder.h",
-        "op_def_util.h",
         "op_kernel.h",
         "op_segment.h",
         "ops_util.h",
@@ -212,7 +208,6 @@ filegroup(
 filegroup(
     name = "framework_internal_impl_srcs",
     srcs = [
-        "attr_value_util.cc",
         "cancellation.cc",
         "collective.cc",
         "common_shape_fns.cc",
@@ -231,10 +226,7 @@ filegroup(
         "memory_types.cc",
         "model.cc",
         "node_def_builder.cc",
-        "node_def_util.cc",
         "op.cc",
-        "op_def_builder.cc",
-        "op_def_util.cc",
         "op_kernel.cc",
         "op_segment.cc",
         "ops_util.cc",
@@ -611,7 +603,10 @@ cc_library(
 cc_library(
     name = "tensor_shape",
     srcs = ["tensor_shape.cc"],
-    hdrs = ["tensor_shape.h"],
+    hdrs = [
+        "partial_tensor_shape.h",
+        "tensor_shape.h",
+    ],
     visibility = ["//tensorflow/core:__pkg__"],
     deps = [
         ":bounds_check",
@@ -734,6 +729,106 @@ tf_cuda_library(
         "@com_google_absl//absl/strings",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "attr_value_util",
+    srcs = ["attr_value_util.cc"],
+    hdrs = ["attr_value_util.h"],
+    deps = [
+        ":attr_value_proto_text",
+        ":tensor",
+        ":tensor_shape",
+        ":tensor_shape_proto_cc",
+        "//tensorflow/core/lib/core:errors",
+        "//tensorflow/core/lib/core:status",
+        "//tensorflow/core/lib/core:stringpiece",
+        "//tensorflow/core/lib/gtl:array_slice",
+        "//tensorflow/core/lib/hash",
+        "//tensorflow/core/lib/strings:proto_serialization",
+        "//tensorflow/core/lib/strings:str_util",
+        "//tensorflow/core/platform:protobuf",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "op_def_util",
+    srcs = ["op_def_util.cc"],
+    hdrs = ["op_def_util.h"],
+    deps = [
+        ":api_def_proto_cc",
+        ":attr_value_proto_cc",
+        ":attr_value_util",
+        ":op_def_proto_cc",
+        ":tensor",
+        "//tensorflow/core/lib/core:errors",
+        "//tensorflow/core/lib/core:status",
+        "//tensorflow/core/lib/core:stringpiece",
+        "//tensorflow/core/lib/gtl:map_util",
+        "//tensorflow/core/lib/hash",
+        "//tensorflow/core/lib/strings:proto_serialization",
+        "//tensorflow/core/lib/strings:scanner",
+        "//tensorflow/core/lib/strings:str_util",
+        "//tensorflow/core/lib/strings:strcat",
+        "//tensorflow/core/platform:mutex",
+        "//tensorflow/core/platform:protobuf",
+        "//tensorflow/core/platform:types",
+    ],
+)
+
+cc_library(
+    name = "node_def_util",
+    srcs = ["node_def_util.cc"],
+    hdrs = ["node_def_util.h"],
+    deps = [
+        ":attr_value_proto_cc",
+        ":attr_value_util",
+        ":node_def_proto_cc",
+        ":op_def_proto_cc",
+        ":op_def_util",
+        ":tensor",
+        ":tensor_proto_cc",
+        ":tensor_shape",
+        ":tensor_shape_proto_cc",
+        ":types_proto_cc",
+        "//tensorflow/core/lib/core:stringpiece",
+        "//tensorflow/core/lib/gtl:array_slice",
+        "//tensorflow/core/lib/gtl:flatmap",
+        "//tensorflow/core/lib/gtl:map_util",
+        "//tensorflow/core/lib/hash",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:hash",
+        "//tensorflow/core/platform:protobuf",
+        "//tensorflow/core/platform:scanner",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:strcat",
+        "//tensorflow/core/platform:stringpiece",
+        "//tensorflow/core/platform:types",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "op_def_builder",
+    srcs = ["op_def_builder.cc"],
+    hdrs = ["op_def_builder.h"],
+    deps = [
+        ":attr_value_proto_cc",
+        ":attr_value_util",
+        ":op_def_proto_cc",
+        ":op_def_util",
+        ":tensor",
+        "//tensorflow/core/lib/core:errors",
+        "//tensorflow/core/lib/core:status",
+        "//tensorflow/core/lib/core:stringpiece",
+        "//tensorflow/core/lib/gtl:array_slice",
+        "//tensorflow/core/lib/strings:scanner",
+        "//tensorflow/core/lib/strings:str_util",
+        "//tensorflow/core/lib/strings:strcat",
+        "//tensorflow/core/platform:macros",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 # Files whose users still need to be migrated from core:framework to the
