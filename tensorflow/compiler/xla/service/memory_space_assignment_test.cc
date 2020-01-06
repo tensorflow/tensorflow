@@ -857,6 +857,36 @@ TEST_P(MemorySpaceAssignmentTest, BitcastTuple) {
   AssignMemorySpace(module.get());
 }
 
+TEST_P(MemorySpaceAssignmentTest, BitcastGetTupleElementTuple) {
+  // This test pattern was encountered in
+  // //third_party/tensorflow/compiler/xla/tests:slice_test and was causing a
+  // breakage when there is a GetTupleElement(Tuple(Bitcast())) pattern. Also
+  // added a GetTupleElement(GetTupleElement(Tuple(Tuple(Bitcast())))) pattern.
+  absl::string_view hlo_string = R"(
+  HloModule DoIt_S64_10_0_5_1.3, is_scheduled=true
+
+  ENTRY %DoIt_S64_10_0_5_1.3 (p0.1: (u32[10], u32[10])) -> (u32[5], u32[5]) {
+    %p0.1 = (u32[10]{0:T(128)}, u32[10]{0:T(128)}) parameter(0)
+    %get-tuple-element.1 = u32[10]{0:T(128)} get-tuple-element((u32[10]{0:T(128)}, u32[10]{0:T(128)}) %p0.1), index=1
+    %bitcast.1 = u32[5]{0:T(128)} bitcast(u32[10]{0:T(128)} %get-tuple-element.1)
+    %get-tuple-element = u32[10]{0:T(128)} get-tuple-element((u32[10]{0:T(128)}, u32[10]{0:T(128)}) %p0.1), index=0
+    %bitcast = u32[5]{0:T(128)} bitcast(u32[10]{0:T(128)} %get-tuple-element)
+    %tuple.1 = (u32[5]{0:T(128)}, u32[5]{0:T(128)}) tuple(u32[5]{0:T(128)} %bitcast, u32[5]{0:T(128)} %bitcast.1)
+    %tuple.3 = ((u32[5]{0:T(128)}, u32[5]{0:T(128)}), (u32[5]{0:T(128)}, u32[5]{0:T(128)})) tuple(%tuple.1, %tuple.1)
+    %get-tuple-element.4 = u32[5]{0:T(128)} get-tuple-element((u32[5]{0:T(128)}, u32[5]{0:T(128)}) %tuple.1), index=0
+    %get-tuple-element.5 = (u32[5]{0:T(128)}, u32[5]{0:T(128)}) get-tuple-element(%tuple.3), index=0
+    %get-tuple-element.6 = u32[5]{0:T(128)} get-tuple-element((u32[5]{0:T(128)}, u32[5]{0:T(128)}) %get-tuple-element.5), index=1
+    %copy.2 = u32[5]{0:T(128)} copy(u32[5]{0:T(128)} %get-tuple-element.4)
+    %copy.3 = u32[5]{0:T(128)} copy(u32[5]{0:T(128)} %get-tuple-element.6)
+    ROOT %tuple.2 = (u32[5]{0:T(128)}, u32[5]{0:T(128)}) tuple(u32[5]{0:T(128)} %copy.2, u32[5]{0:T(128)} %copy.3)
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+}
+
 TEST_P(MemorySpaceAssignmentTest, BitcastScheduleBug) {
   // Bitcasts can force asynchronous copies to be scheduled too early, possibly
   // leading to memory corruption.
