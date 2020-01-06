@@ -1351,8 +1351,10 @@ Status Converter::BuildCudaEngine(
       builder_config->setInt8Calibrator(nullptr);
     }
   }
-  profiles.configureBuilder(trt_builder_.get(), builder_config.get(),
-                            network());
+  if (!use_implicit_batch_) {
+    profiles.configureBuilder(trt_builder_.get(), builder_config.get(),
+                              network());
+  }
   VLOG(1) << "Building TensorRT engine";
   engine->reset(
       trt_builder_->buildEngineWithConfig(*network(), *builder_config));
