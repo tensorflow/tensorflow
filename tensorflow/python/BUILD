@@ -2168,6 +2168,7 @@ tf_py_test(
 tf_py_test(
     name = "framework_ops_test",
     size = "small",
+    timeout = "moderate",
     srcs = ["framework/ops_test.py"],
     main = "framework/ops_test.py",
     python_version = "PY3",

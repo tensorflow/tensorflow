@@ -2687,9 +2687,8 @@ class InitScopeTest(test_util.TensorFlowTestCase):
     with context.eager_mode():
       c = constant_op.constant(1.0)
       with ops.Graph().as_default():
-        with self.assertRaisesRegexp(
-            RuntimeError, "Attempting to capture an EagerTensor"):
-          math_ops.add(c, c)
+        with self.cached_session():
+          self.assertEqual(2.0, math_ops.add(c, c).eval())
         c2 = constant_op.constant(2.0)
       with self.assertRaisesRegexp(
           TypeError, "Graph tensors"):

@@ -1293,9 +1293,9 @@ def convert_to_tensor(value,
     if not ctx.executing_eagerly():
       graph = get_default_graph()
       if not graph.building_function:
-        raise RuntimeError("Attempting to capture an EagerTensor without "
-                           "building a function.")
-      return graph.capture(value, name=name)
+        value = value.numpy()
+      else:
+        return graph.capture(value, name=name)
 
   if dtype is not None:
     dtype = dtypes.as_dtype(dtype)
