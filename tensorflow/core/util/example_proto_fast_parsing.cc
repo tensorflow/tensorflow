@@ -1213,6 +1213,13 @@ Status FastParseExample(const Config& config,
     TF_RETURN_IF_ERROR(status);
   }
 
+  result->sparse_indices.reserve(config.sparse.size());
+  result->sparse_values.reserve(config.sparse.size());
+  result->sparse_shapes.reserve(config.sparse.size());
+  result->dense_values.reserve(config.dense.size());
+  result->ragged_values.reserve(config.ragged.size());
+  result->ragged_splits.reserve(config.ragged.size());
+
   for (size_t d = 0; d < config.dense.size(); ++d) {
     result->dense_values.push_back(std::move(fixed_dense_values[d]));
   }
@@ -1435,6 +1442,13 @@ Status FastParseSingleExample(const Config& config, StringPiece serialized,
     return errors::Internal(
         "Could not avoid collision. This should not happen.");
   }
+
+  result->sparse_indices.reserve(config.sparse.size());
+  result->sparse_values.reserve(config.sparse.size());
+  result->sparse_shapes.reserve(config.sparse.size());
+  result->dense_values.reserve(config.dense.size());
+  result->ragged_values.reserve(config.ragged.size());
+  result->ragged_splits.reserve(config.ragged.size());
 
   // Allocate dense output tensors.
   for (size_t d = 0; d < config.dense.size(); ++d) {
