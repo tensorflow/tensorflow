@@ -97,7 +97,6 @@ class TensorCodeGenerator {
   std::string Write3D(const std::string& var_name, const std::string& x,
                       const std::string& y, const std::string& z) const;
 
-  // Write4D supports BUFFER and IMAGE_BUFFER storage types.
   std::string Write4D(const std::string& var_name, const std::string& x,
                       const std::string& y, const std::string& z,
                       const std::string& b) const;
@@ -133,8 +132,9 @@ std::string GetTensorDeclaration(AccessType access,
                                  const std::string& tensor_name,
                                  const TensorDescriptor& descriptor);
 
-// Calculates correct X coordinate when stride != 1 and batch != 1 for
-// DHWBC4, HDWBC4, HWBC layouts
+// Calculates correct X coordinate when stride != 1 and batch != 1 for layouts
+// with B after W (for example HWBC4) and WB stored in one axis of GPU
+// resources.
 std::string GetXStrideCorrected(const std::string& src_x,
                                 const std::string& batch_size,
                                 const std::string& stride_x,
