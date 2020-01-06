@@ -137,8 +137,11 @@ int64 NextChannelId(const HloModule& module) {
   int64 next_channel_id = 1;
   for (const HloComputation* comp : module.computations()) {
     for (const HloInstruction* hlo : comp->instructions()) {
-      if (DynCast<HloChannelInstruction>(hlo)) {
-        next_channel_id = std::max(next_channel_id, *hlo->channel_id() + 1);
+      const HloChannelInstruction* channel_instr =
+          DynCast<HloChannelInstruction>(hlo);
+      if (channel_instr && channel_instr->channel_id()) {
+        next_channel_id =
+            std::max(next_channel_id, *channel_instr->channel_id() + 1);
       }
     }
   }
