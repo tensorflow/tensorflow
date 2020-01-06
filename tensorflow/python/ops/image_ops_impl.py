@@ -2004,7 +2004,6 @@ def adjust_hue(image, delta, name=None):
         [11, 10, 12]],
        [[14, 13, 15],
         [17, 16, 18]]], dtype=int32)>
-  
   """
   with ops.name_scope(name, 'adjust_hue', [image]) as name:
     image = ops.convert_to_tensor(image, name='image')
@@ -2958,8 +2957,7 @@ def rgb_to_yiq(images):
        [[ 7.815     , -0.91724443,  0.09940636],
         [10.815001  , -0.91724455,  0.09929633]],
        [[13.815001  , -0.91724443,  0.09918654],
-        [16.815     , -0.9172445 ,  0.09907603]]], dtype=float32)>
-    
+        [16.815     , -0.9172445 ,  0.09907603]]], dtype=float32)>  
   """
   images = ops.convert_to_tensor(images, name='images')
   kernel = ops.convert_to_tensor(
@@ -3043,8 +3041,7 @@ def rgb_to_yuv(images):
        [[ 7.815     ,  0.5831516 , -0.7149856 ],
         [10.815001  ,  0.5831518 , -0.7149852 ]],
        [[13.815001  ,  0.58315134, -0.7149857 ],
-        [16.815     ,  0.58315134, -0.7149854 ]]], dtype=float32)>
-  
+        [16.815     ,  0.58315134, -0.7149854 ]]], dtype=float32)> 
   """
   images = ops.convert_to_tensor(images, name='images')
   kernel = ops.convert_to_tensor(
