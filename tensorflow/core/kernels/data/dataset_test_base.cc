@@ -333,7 +333,7 @@ Status DatasetOpsTestBase::InitFunctionLibraryRuntime(
       nullptr /* cluster_flr */);
   flr_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:0");
   if (thread_pool_ == nullptr) {
-    runner_ = [](const std::function<void()> fn) { fn(); };
+    runner_ = [](const std::function<void()>& fn) { fn(); };
   } else {
     runner_ = [this](std::function<void()> fn) {
       thread_pool_->Schedule(std::move(fn));

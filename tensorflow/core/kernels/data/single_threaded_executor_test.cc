@@ -68,7 +68,7 @@ class ExecutorTest : public ::testing::Test {
     };
     delete exec_;
     TF_CHECK_OK(NewSingleThreadedExecutor(params, *graph, &exec_));
-    runner_ = [](const std::function<void()> fn) { fn(); };
+    runner_ = [](const std::function<void()>& fn) { fn(); };
     rendez_ = NewLocalRendezvous();
   }
 
