@@ -1460,6 +1460,11 @@ class TensorBoard(Callback):
   You can find more information about TensorBoard
   [here](https://www.tensorflow.org/get_started/summaries_and_tensorboard).
 
+  Example:
+  >>>tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir="./logs")
+  >>>model.fit(x_train, y_train, epochs=2, callbacks=[tensorboard_callback])
+  >>>#run the tensorboard command to view the visualizations
+
   Arguments:
       log_dir: the path of the directory where to save the log files to be
         parsed by TensorBoard.
