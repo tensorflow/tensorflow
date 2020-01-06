@@ -2621,7 +2621,7 @@ def reduce_logsumexp(input_tensor, axis=None, keepdims=False, name=None):
     raw_max = reduce_max_with_dims(
         input_tensor, axis=axis, keepdims=True, dims=reduce_dim)
     my_max = array_ops.stop_gradient(
-        gen_math_ops.select(
+        gen_math_ops.select_v2(
             gen_math_ops.is_finite(raw_max), raw_max,
             gen_array_ops.zeros_like(raw_max)))
     result = gen_math_ops.log(
@@ -3365,6 +3365,7 @@ def cumsum(x, axis=0, exclusive=False, reverse=False, name=None):
   >>> tf.cumsum(x)
   <tf.Tensor: shape=(4,), dtype=int32,
   numpy=array([ 2,  6, 12, 20], dtype=int32)>
+
 
   >>> # using varying `axis` values
   >>> y = tf.constant([[2, 4, 6, 8], [1,3,5,7]])
