@@ -73,7 +73,7 @@ extern tflite::ErrorReporter* reporter;
   bool did_test_fail;                          \
   tflite::ErrorReporter* reporter;             \
   }                                            \
-                                               \
+  _Pragma ("stackcalls 15000")              \
   int main(int argc, char** argv) {            \
     micro_test::tests_passed = 0;              \
     micro_test::tests_failed = 0;              \
