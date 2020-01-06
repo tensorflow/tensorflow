@@ -156,7 +156,7 @@ struct MklConvFwdParams {
     string name;
     mkldnn::algorithm alg;
     std::vector<float> param;
-    std::string param_key;
+    std::string partial_key;
   };
   std::vector<PostOpParam> post_op_params;
 
@@ -501,8 +501,8 @@ class MklConvFwdPrimitiveFactory : public MklPrimitiveFactory<float> {
           key_creator.AddAsKey(param);
         }
       } else if (post_op_param.name == "output_scale") {
-        key_creator.AddAsKey(post_op_param.param_key);
-      } else if (post_op_param.name != "output_scale") {
+        key_creator.AddAsKey(post_op_param.partial_key);
+      } else {
         return string("not_a_key");
       }
     }
