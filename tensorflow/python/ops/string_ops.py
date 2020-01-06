@@ -78,6 +78,9 @@ regex_full_match.__doc__ = gen_string_ops.regex_full_match.__doc__
 def regex_replace(input, pattern, rewrite, replace_global=True, name=None):
   r"""Replace elements of `input` matching regex `pattern` with `rewrite`.
 
+  >>> tf.strings.regex_replace("Raw text with tags.<br /><b>It contains html</b>", '<[^>]+>', ' ')
+  <tf.Tensor: shape=(), dtype=string, numpy=b'Raw text with tags.  It contains html '>
+
   Args:
     input: string `Tensor`, the source strings to process.
     pattern: string or scalar string `Tensor`, regular expression to use,
