@@ -297,10 +297,19 @@ bool CanCreateTensorWithShape(const CLContext& context, const CLDevice& device,
       return shape.b * shape.w * shape.h * depth <=
              device.GetInfo().image_buffer_max_size;
     case TensorStorageType::TEXTURE_3D:
+      if (device.cl_version() < OpenCLVersion::CL_1_2 && depth == 1) {
+        // clCreateImage3D (that used in CL 1.0/1.1) can not create image with
+        // depth = 1 by specification;
+        return false;
+      }
       return shape.w * shape.b <= device.GetInfo().image3d_max_width &&
              shape.h <= device.GetInfo().image3d_max_height &&
              depth <= device.GetInfo().image3d_max_depth;
     case TensorStorageType::TEXTURE_ARRAY:
+      // Bug on some Adreno. b/131099086
+      if (depth == 1 && !device.SupportsOneLayerTextureArray()) {
+        return false;
+      }
       return shape.w * shape.b <= device.GetInfo().image2d_max_width &&
              shape.h <= device.GetInfo().image2d_max_height &&
              depth <= device.GetInfo().image_array_max_layers;
@@ -412,12 +421,7 @@ Status AllocateTensorMemory(const CLContext& context, const CLDevice& device,
       desc.image_width = shape.w * shape.b;
       desc.image_height = shape.h;
       desc.image_depth = 0;
-      int layers_count = depth;
-      // Adreno bug. b/131099086
-      if (layers_count == 1 && !device.SupportsOneLayerTextureArray()) {
-        layers_count = 2;
-      }
-      desc.image_array_size = layers_count;
+      desc.image_array_size = depth;
       desc.image_row_pitch = 0;
       desc.image_slice_pitch = 0;
       desc.num_mip_levels = 0;
