@@ -1046,6 +1046,8 @@ class Network(base_layer.Layer):
         save_format = 'tf'
       elif user_format in ('hdf5', 'h5', 'keras'):
         save_format = 'h5'
+      elif user_format in ("JSON","json"):
+        save_format = "json"
       else:
         raise ValueError(
             'Unknown format "%s". Was expecting one of {"tf", "h5"}.' % (
@@ -1072,6 +1074,9 @@ class Network(base_layer.Layer):
     if save_format == 'h5':
       with h5py.File(filepath, 'w') as f:
         saving.save_weights_to_hdf5_group(f, self.layers)
+    elif save_format == 'json':
+      with open("model.json", "w") as file:
+      file.write(self.to_json())
     else:
       if context.executing_eagerly():
         session = None
