@@ -3217,8 +3217,8 @@ def sigmoid(x, name=None):
   
   >>> x = tf.constant([-128.0, 0.0, 128.0], dtype=tf.float32)
   >>> tf.sigmoid(x)
-  <tf.Tensor: shape=(3,), dtype=float32, numpy=
-  array([0. , 0.5, 1. ], dtype=float32)>
+  <tf.Tensor: shape=(3,), dtype=float32,
+  numpy=array([0. , 0.5, 1. ], dtype=float32)>
 
   @compatibility(scipy)
   Equivalent to scipy.special.expit
