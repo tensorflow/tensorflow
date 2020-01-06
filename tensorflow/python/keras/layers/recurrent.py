@@ -3218,7 +3218,7 @@ class LayernormSimpleRNNCell(DropoutRNNCellMixin, Layer):
 
 
 @keras_export('keras.experimental.LayernormSimpleRNN')
-class LayernormSimpleRNN(RNN):
+class LayernormSimpleRNN(SimpleRNN):
   """Fully-connected RNN where the output is to be fed back to input.
 
   Motivation:
@@ -3378,7 +3378,7 @@ class LayernormSimpleRNN(RNN):
         recurrent_dropout=recurrent_dropout,
         dtype=kwargs.get('dtype'),
         trainable=kwargs.get('trainable', True))
-    super(LayernormSimpleRNN, self).__init__(  # TMP(!)
+    super(SimpleRNN, self).__init__(  # TMP(!)
         cell,
         return_sequences=return_sequences,
         return_state=return_state,
@@ -3388,23 +3388,8 @@ class LayernormSimpleRNN(RNN):
         **kwargs)
     self.activity_regularizer = regularizers.get(activity_regularizer)
     self.input_spec = [InputSpec(ndim=3)]
-
-  def call(self, inputs, mask=None, training=None, initial_state=None):
-    self._maybe_reset_cell_dropout_mask(self.cell)
-    return super(LayernormSimpleRNN, self).call(  # TMP(!)
-        inputs, mask=mask, training=training, initial_state=initial_state)
-
-  @property
-  def units(self):
-    return self.cell.units
-
-  @property
-  def activation(self):
-    return self.cell.activation
-
-  @property
-  def use_bias(self):
-    return self.cell.use_bias
+  
+  # use SimpleRNN's call() method
 
   @property
   def use_layernorm(self):
@@ -3415,110 +3400,19 @@ class LayernormSimpleRNN(RNN):
     return self.cell.layernorm_epsilon  # NEW(!)
 
   @property
-  def kernel_initializer(self):
-    return self.cell.kernel_initializer
-
-  @property
-  def recurrent_initializer(self):
-    return self.cell.recurrent_initializer
-
-  @property
-  def bias_initializer(self):
-    return self.cell.bias_initializer
-
-  @property
   def gamma_initializer(self):
     return self.cell.gamma_initializer  # NEW(!)
-
-  @property
-  def kernel_regularizer(self):
-    return self.cell.kernel_regularizer
-
-  @property
-  def recurrent_regularizer(self):
-    return self.cell.recurrent_regularizer
-
-  @property
-  def bias_regularizer(self):
-    return self.cell.bias_regularizer
 
   @property
   def gamma_regularizer(self):
     return self.cell.gamma_regularizer  # NEW(!)
 
   @property
-  def kernel_constraint(self):
-    return self.cell.kernel_constraint
-
-  @property
-  def recurrent_constraint(self):
-    return self.cell.recurrent_constraint
-
-  @property
-  def bias_constraint(self):
-    return self.cell.bias_constraint
-
-  @property
   def gamma_constraint(self):
     return self.cell.gamma_constraint  # NEW(!)
 
-  @property
-  def dropout(self):
-    return self.cell.dropout
-
-  @property
-  def recurrent_dropout(self):
-    return self.cell.recurrent_dropout
-
   def get_config(self):
-    config = {
-        'units':
-            self.units,
-        'activation':
-            activations.serialize(self.activation),
-        'use_bias':
-            self.use_bias,
-        'use_layernorm':
-            self.use_layernorm,  # NEW(!)
-        'layernorm_epsilon':
-            self.layernorm_epsilon,  # NEW(!)
-        'kernel_initializer':
-            initializers.serialize(self.kernel_initializer),
-        'recurrent_initializer':
-            initializers.serialize(self.recurrent_initializer),
-        'bias_initializer':
-            initializers.serialize(self.bias_initializer),
-        'gamma_initializer':
-            initializers.serialize(self.gamma_initializer),  # NEW(!)
-        'kernel_regularizer':
-            regularizers.serialize(self.kernel_regularizer),
-        'recurrent_regularizer':
-            regularizers.serialize(self.recurrent_regularizer),
-        'bias_regularizer':
-            regularizers.serialize(self.bias_regularizer),
-        'gamma_regularizer':
-            regularizers.serialize(self.gamma_regularizer),  # NEW(!)
-        'activity_regularizer':
-            regularizers.serialize(self.activity_regularizer),
-        'kernel_constraint':
-            constraints.serialize(self.kernel_constraint),
-        'recurrent_constraint':
-            constraints.serialize(self.recurrent_constraint),
-        'bias_constraint':
-            constraints.serialize(self.bias_constraint),
-        'gamma_constraint':
-            constraints.serialize(self.gamma_constraint),  # NEW(!)
-        'dropout':
-            self.dropout,
-        'recurrent_dropout':
-            self.recurrent_dropout
-    }
-    base_config = super(LayernormSimpleRNN, self).get_config()  # TMP(!)
+    base_config = super(SimpleRNN, self).get_config()
     del base_config['cell']
-    return dict(list(base_config.items()) + list(config.items()))
-
-  @classmethod
-  def from_config(cls, config):
-    if 'implementation' in config:
-      config.pop('implementation')
-    return cls(**config)
+    cell_config = self.cell.get_config()
+    return dict(list(base_config.items()) + list(cell_config.items()))
