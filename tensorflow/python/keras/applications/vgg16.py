@@ -48,6 +48,12 @@ def VGG16(include_top=True,
   Optionally loads weights pre-trained on ImageNet.
   Note that the data format convention used by the model is
   the one specified in your Keras config at `~/.keras/keras.json`.
+  
+  Usage Example:
+     >>> from tensorflow.keras.applications.vgg16 import VGG16
+     >>> # Including the top layer (the last dense layer responsible for classification)
+     >>> vgg16_model = VGG16(input_shape = (224,224,3) , include_top = True)
+     >>> vgg16_model.summary()
 
   Arguments:
       include_top: whether to include the 3 fully-connected
@@ -87,13 +93,6 @@ def VGG16(include_top=True,
   Raises:
       ValueError: in case of invalid argument for `weights`,
           or invalid input shape.
-          
-          
-  Usage Example:
-     >>> from tensorflow.keras.applications.vgg16 import VGG16
-     >>> # Including the top layer (the last dense layer responsible for classification)
-     >>> vgg16_model = VGG16(input_shape = (224,224,3) , include_top = True)
-     >>> vgg16_model.summary()
   """
   if not (weights in {'imagenet', None} or os.path.exists(weights)):
     raise ValueError('The `weights` argument should be either '
