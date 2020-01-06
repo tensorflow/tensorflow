@@ -70,6 +70,8 @@ class HadoopFileSystem : public FileSystem {
   Status Connect(StringPiece fname, hdfsFS* fs);
 };
 
+Status SplitArchiveNameAndPath(StringPiece& path, string& nn);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_PLATFORM_HADOOP_HADOOP_FILE_SYSTEM_H_

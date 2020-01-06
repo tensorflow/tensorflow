@@ -176,17 +176,6 @@ void CwiseClipping(int8_t* input, const int8_t clipping_value, int32_t n_batch,
   PortableCwiseClipping(input, clipping_value, n_batch, n_input);
 }
 
-void VectorVectorCwiseProduct(const float* vector1, const float* vector2,
-                              int v_size, float* result) {
-  PortableVectorVectorCwiseProduct(vector1, vector2, v_size, result);
-}
-
-void VectorVectorCwiseProductAccumulate(const float* vector1,
-                                        const float* vector2, int v_size,
-                                        float* result) {
-  PortableVectorVectorCwiseProductAccumulate(vector1, vector2, v_size, result);
-}
-
 void VectorBatchVectorCwiseProductAccumulate(const int16_t* vector, int v_size,
                                              const int16_t* batch_vector,
                                              int n_batch, int32_t multiplier,

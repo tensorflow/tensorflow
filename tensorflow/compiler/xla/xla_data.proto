@@ -115,9 +115,8 @@ enum Format {
   INVALID_FORMAT = 0;
   // The default layout, with exactly one storage location per element.
   DENSE = 1;
-  // A sparsely encoded layout, providing only the index/value pairs of non-zero
-  // elements.
-  SPARSE = 2;
+  reserved 2;
+  reserved "SPARSE";
 }
 
 // Describes a tile used in tiling-based layout. Refer to
@@ -156,10 +155,8 @@ message LayoutProto {
   reserved 3;
   reserved "padding_value";
 
-  // The maximum number of elements that can be stored for SPARSE formats.  This
-  // can be used to determine the maximum size in bytes of arrays stored in
-  // memory.  This field must be unset unless the format is SPARSE.
-  int64 max_sparse_elements = 5;
+  reserved 5;
+  reserved "max_sparse_elements";
 
   // A sequence of tiles, starting from the tile that's applied first to the
   // Shape.

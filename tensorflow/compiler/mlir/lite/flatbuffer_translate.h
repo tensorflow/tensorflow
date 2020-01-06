@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <string>
 
-#include "mlir/IR/Module.h"  // TF:local_config_mlir
+#include "mlir/IR/Module.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
 
 namespace tflite {

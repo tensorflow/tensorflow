@@ -30,6 +30,7 @@ enum class TensorStorageType {
   BUFFER,
   IMAGE_BUFFER,
   TEXTURE_2D,
+  TEXTURE_3D,
   TEXTURE_ARRAY,
   SINGLE_TEXTURE_2D
 };

@@ -27,12 +27,12 @@ limitations under the License.
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/IR/Block.h"  // TF:local_config_mlir
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/Location.h"  // TF:local_config_mlir
-#include "mlir/IR/Operation.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
-#include "mlir/Pass/PassRegistry.h"  // TF:local_config_mlir
+#include "mlir/IR/Block.h"  // TF:llvm-project
+#include "mlir/IR/Builders.h"  // TF:llvm-project
+#include "mlir/IR/Location.h"  // TF:llvm-project
+#include "mlir/IR/Operation.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/Pass/PassRegistry.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/core/platform/logging.h"
@@ -49,11 +49,11 @@ enum IslandType { kParentIsland, kChildIsland };
 // IslandResult is a helper struct holding an islands result and associated
 // inner op result.
 struct IslandResult {
-  IslandResult(Value* inner_op_result, Value* island_result)
+  IslandResult(Value inner_op_result, Value island_result)
       : inner_op_result(inner_op_result), island_result(island_result) {}
 
-  Value* inner_op_result;
-  Value* island_result;
+  Value inner_op_result;
+  Value island_result;
 };
 
 struct ExecutorIslandCoarsening
@@ -70,16 +70,16 @@ llvm::Optional<IslandOp> GetOperandCandidateToMergeWith(IslandOp island) {
   Operation* candidate = nullptr;
 
   // Check island control operands.
-  for (Value* input : island.controlInputs()) {
-    Operation* def = input->getDefiningOp();
+  for (Value input : island.controlInputs()) {
+    Operation* def = input.getDefiningOp();
     DCHECK_EQ(def->getParentOp(), graph_op);
     if (!candidate || candidate->isBeforeInBlock(def)) candidate = def;
   }
 
   // Check island data operands.
   island.walk([graph_op, &candidate](Operation* op) {
-    for (Value* input : op->getOperands()) {
-      Operation* def = input->getDefiningOp();
+    for (Value input : op->getOperands()) {
+      Operation* def = input.getDefiningOp();
       if (!def || def->getParentOp() != graph_op) continue;
       if (!candidate || candidate->isBeforeInBlock(def)) candidate = def;
     }
@@ -99,15 +99,15 @@ llvm::Optional<IslandOp> GetResultCandidateToMergeWith(IslandOp island) {
   Operation* candidate = nullptr;
 
   // Check island control results.
-  for (Operation* user : island.control()->getUsers()) {
+  for (Operation* user : island.control().getUsers()) {
     DCHECK_EQ(user->getParentOp(), graph_op);
     if (!candidate || user->isBeforeInBlock(candidate)) candidate = user;
   }
 
   // Check island data results.
   Block& graph_body = llvm::cast<GraphOp>(graph_op).GetBody();
-  for (Value* result : island.outputs()) {
-    for (Operation* user : result->getUsers()) {
+  for (Value result : island.outputs()) {
+    for (Operation* user : result.getUsers()) {
       Operation* def = graph_body.findAncestorOpInBlock(*user);
       DCHECK_NE(def, nullptr);
       if (!candidate || def->isBeforeInBlock(candidate)) candidate = def;
@@ -121,9 +121,9 @@ llvm::Optional<IslandOp> GetResultCandidateToMergeWith(IslandOp island) {
 
 // Collects the operands for the new island by collecting all control inputs of
 // the islands being merged.
-llvm::SmallSetVector<Value*, 8> GetNewIslandOperands(IslandOp parent,
-                                                     IslandOp child) {
-  llvm::SmallSetVector<Value*, 8> operands;
+llvm::SmallSetVector<Value, 8> GetNewIslandOperands(IslandOp parent,
+                                                    IslandOp child) {
+  llvm::SmallSetVector<Value, 8> operands;
   operands.insert(parent.getOperands().begin(), parent.getOperands().end());
   operands.insert(child.getOperands().begin(), child.getOperands().end());
   operands.remove(parent.control());
@@ -145,9 +145,9 @@ llvm::SmallVector<IslandResult, 8> GetNewIslandResultsAndForwardResults(
   for (auto ret_vals :
        llvm::zip(parent.GetYield().getOperands(), parent.outputs())) {
     bool result_captured = false;
-    Value* inner_op_result = std::get<0>(ret_vals);
-    Value* island_result = std::get<1>(ret_vals);
-    for (auto& use : llvm::make_early_inc_range(island_result->getUses())) {
+    Value inner_op_result = std::get<0>(ret_vals);
+    Value island_result = std::get<1>(ret_vals);
+    for (auto& use : llvm::make_early_inc_range(island_result.getUses())) {
       if (child_body.findAncestorOpInBlock(*use.getOwner())) {
         // Forward result from inner op.
         use.set(inner_op_result);
@@ -160,9 +160,9 @@ llvm::SmallVector<IslandResult, 8> GetNewIslandResultsAndForwardResults(
 
   for (auto ret_vals :
        llvm::zip(child.GetYield().getOperands(), child.outputs())) {
-    Value* inner_op_result = std::get<0>(ret_vals);
-    Value* island_result = std::get<1>(ret_vals);
-    if (!island_result->use_empty()) {
+    Value inner_op_result = std::get<0>(ret_vals);
+    Value island_result = std::get<1>(ret_vals);
+    if (!island_result.use_empty()) {
       results.emplace_back(inner_op_result, island_result);
     }
   }
@@ -173,12 +173,12 @@ llvm::SmallVector<IslandResult, 8> GetNewIslandResultsAndForwardResults(
 // Creates the new merged island.
 IslandOp CreateNewIsland(IslandOp parent, IslandOp child,
                          IslandType insert_position,
-                         llvm::ArrayRef<Value*> operands,
+                         llvm::ArrayRef<Value> operands,
                          llvm::ArrayRef<IslandResult> results) {
   // Collect types from results.
   llvm::SmallVector<Type, 8> result_types;
   for (const auto& result : results)
-    result_types.push_back(result.inner_op_result->getType());
+    result_types.push_back(result.inner_op_result.getType());
 
   // IslandOps always have a control result.
   result_types.push_back(ControlType::get(parent.getContext()));
@@ -194,14 +194,14 @@ IslandOp CreateNewIsland(IslandOp parent, IslandOp child,
 // Creates respective YieldOp for the new merged island.
 YieldOp CreateNewIslandYieldOp(IslandOp new_island,
                                llvm::ArrayRef<IslandResult> results) {
-  llvm::SmallVector<Value*, 8> yield_operands;
+  llvm::SmallVector<Value, 8> yield_operands;
   yield_operands.reserve(results.size());
 
   for (auto ret_vals : llvm::zip(results, new_island.outputs())) {
     const auto& old_result = std::get<0>(ret_vals);
 
     // Replace original island result with new island result.
-    old_result.island_result->replaceAllUsesWith(std::get<1>(ret_vals));
+    old_result.island_result.replaceAllUsesWith(std::get<1>(ret_vals));
 
     // Add associated inner op result to operands of the YieldOp.
     yield_operands.push_back(old_result.inner_op_result);
@@ -232,8 +232,7 @@ void MoveInnerOpsToNewIsland(IslandOp parent, IslandOp child,
 // Merges two islands and places new merged island before parent or child.
 void MergeIslands(IslandOp parent, IslandOp child, IslandType insert_position) {
   // Collect operands for the new merged island.
-  llvm::SmallSetVector<Value*, 8> operands =
-      GetNewIslandOperands(parent, child);
+  llvm::SmallSetVector<Value, 8> operands = GetNewIslandOperands(parent, child);
 
   // Collect results for the new merged island.
   llvm::SmallVector<IslandResult, 8> results =
@@ -250,8 +249,8 @@ void MergeIslands(IslandOp parent, IslandOp child, IslandType insert_position) {
   MoveInnerOpsToNewIsland(parent, child, new_yield_op.getOperation());
 
   // Update control inputs to point to the new merged island.
-  child.control()->replaceAllUsesWith(new_island.control());
-  parent.control()->replaceAllUsesWith(new_island.control());
+  child.control().replaceAllUsesWith(new_island.control());
+  parent.control().replaceAllUsesWith(new_island.control());
 
   // Remove merged islands.
   child.erase();
@@ -288,15 +287,15 @@ bool MergeIslandWithResult(IslandOp parent) {
 // This allows our def-use based island coarsening algorithm to merge
 // islands that independently feed into a fetch.
 void InsertDummyIslandForFetch(FetchOp fetch) {
-  llvm::SmallVector<Value*, 4> data_fetches;
+  llvm::SmallVector<Value, 4> data_fetches;
   llvm::SmallVector<Type, 4> data_types;
-  llvm::SmallVector<Value*, 4> control_fetches;
+  llvm::SmallVector<Value, 4> control_fetches;
   for (auto value : fetch.fetches()) {
-    if (value->getType().isa<ControlType>()) {
+    if (value.getType().isa<ControlType>()) {
       control_fetches.push_back(value);
     } else {
       data_fetches.push_back(value);
-      data_types.push_back(value->getType());
+      data_types.push_back(value.getType());
     }
   }
   auto island = OpBuilder(fetch).create<IslandOp>(

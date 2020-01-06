@@ -21,6 +21,7 @@ load(
 visibility = [
     "//engedu/ml/tf_from_scratch:__pkg__",
     "//third_party/cloud_tpu/convergence_tools:__subpackages__",
+    "//third_party/mlperf:__subpackages__",
     "//tensorflow:internal",
     "//tensorflow/lite/toco/python:__pkg__",
     "//tensorflow_models:__subpackages__",
@@ -1740,6 +1741,12 @@ py_library(
 )
 
 py_library(
+    name = "gpu_util",
+    srcs = ["framework/gpu_util.py"],
+    deps = [],
+)
+
+py_library(
     name = "framework_test_lib",
     srcs = ["framework/test_util.py"],
     srcs_version = "PY2AND3",
@@ -1752,6 +1759,7 @@ py_library(
         ":client",
         ":errors",
         ":framework_for_generated_wrappers",
+        ":gpu_util",
         ":platform",
         ":platform_test",
         ":pywrap_tensorflow",
@@ -1835,6 +1843,17 @@ py_library(
         ":platform_test",
         ":util",
         ":while_v2",
+    ],
+)
+
+tf_py_test(
+    name = "framework_constant_op_test",
+    size = "small",
+    srcs = ["framework/constant_op_test.py"],
+    main = "framework/constant_op_test.py",
+    python_version = "PY3",
+    deps = [
+        ":constant_op",
     ],
 )
 
@@ -3640,9 +3659,6 @@ cuda_py_test(
     size = "small",
     srcs = ["training/experimental/mixed_precision_test.py"],
     python_version = "PY3",
-    tags = [
-        "no_rocm",
-    ],
     deps = [
         ":mixed_precision",
         "//tensorflow/python:client_testlib",
@@ -3668,6 +3684,7 @@ cuda_py_test(
     name = "loss_scaling_gradient_tape_test",
     size = "medium",
     srcs = ["training/experimental/loss_scaling_gradient_tape_test.py"],
+    shard_count = 2,
     deps = [
         ":client_testlib",
         ":constant_op",
@@ -4753,7 +4770,6 @@ cuda_py_test(
     srcs = ["ops/nn_fused_batchnorm_test.py"],
     python_version = "PY3",
     shard_count = 16,
-    tags = ["no_rocm"],
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -5496,7 +5512,6 @@ tf_py_wrap_cc(
         "grappler/item.i",
         "grappler/tf_optimizer.i",
         "lib/core/strings.i",
-        "lib/io/file_io.i",
         "lib/io/py_record_reader.i",
         "platform/base.i",
         "//tensorflow/compiler/mlir/python:mlir.i",
@@ -5683,6 +5698,19 @@ cc_import(
 
 # ** Targets for Windows build (end) **
 
+tf_python_pybind_extension(
+    name = "_pywrap_file_io",
+    srcs = ["lib/io/file_io_wrapper.cc"],
+    module_name = "_pywrap_file_io",
+    deps = [
+        ":pybind11_absl",
+        ":pybind11_status",
+        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:protos_all_cc",
+        "@pybind11",
+    ],
+)
+
 py_library(
     name = "lib",
     srcs = [
@@ -5692,6 +5720,7 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":_pywrap_file_io",
         ":_pywrap_record_io",
         ":errors",
         ":pywrap_tensorflow",

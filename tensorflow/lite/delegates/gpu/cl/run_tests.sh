@@ -61,12 +61,22 @@ cleanup_device() {
 ADB shell mkdir -p $OPENCL_DIR
 trap "cleanup_device" EXIT
 
+declare -a BUILD_CONFIG
+abi_version=$(ADB shell getprop ro.product.cpu.abi | tr -d '\r')
+if [[ "$abi_version" == "armeabi-v7a" ]]; then
+#"32 bit"
+BUILD_CONFIG=( --config=android_arm -c opt --copt=-fPIE --linkopt=-pie )
+else
+#"64 bit"
+BUILD_CONFIG=( --config=android_arm64 -c opt )
+fi
+
 targets=($(bazel query 'tests('$test_target')'))
 num_targets=${#targets[@]}
 if ((num_targets == 1)); then
   target=${targets[0]}
   executable=${target##*:}  #finds last token after ':'
-  bazel build --config=android_arm64 -c opt $target
+  bazel build "${BUILD_CONFIG[@]}" $target
   test_path=$(echo $target | tr : /)
   exec_path=bazel-bin/$(echo $test_path | cut -c 3-)
   ADB push "$exec_path" $OPENCL_DIR
@@ -77,7 +87,7 @@ else # Cleaning log records for multiple test targets
   for ((i = 0; i < num_targets; i++)); do
     target=${targets[i]}
     executable=${target##*:}  #finds last token after ':'
-    bazel build --config=android_arm64 -c opt $target > /dev/null 2>&1
+    bazel build "${BUILD_CONFIG[@]}" $target > /dev/null 2>&1
     test_path=$(echo $target | tr : /)
     exec_path=bazel-bin/$(echo $test_path | cut -c 3-)
     ADB push "$exec_path" $OPENCL_DIR > /dev/null 2>&1

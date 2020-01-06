@@ -1848,7 +1848,7 @@ def conv2d_v2(input,  # pylint: disable=redefined-builtin
                           filter[di, dj, q, k]
 
   Must have `strides[0] = strides[3] = 1`.  For the most common case of the same
-  horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
+  horizontal and vertical strides, `strides = [1, stride, stride, 1]`.
 
   Args:
     input: A `Tensor`. Must be one of the following types:
@@ -1934,7 +1934,7 @@ def conv2d(  # pylint: disable=redefined-builtin,dangerous-default-value
                           * filter[di, dj, q, k]
 
   Must have `strides[0] = strides[3] = 1`.  For the most common case of the same
-  horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
+  horizontal and vertical strides, `strides = [1, stride, stride, 1]`.
 
   Args:
     input: A `Tensor`. Must be one of the following types:
@@ -3299,7 +3299,7 @@ def softmax_cross_entropy_with_logits_v2_helper(
 
     # Do the actual op computation.
     # The second output tensor contains the gradients.  We use it in
-    # _CrossEntropyGrad() in nn_grad but not here.
+    # CrossEntropyGrad() in nn_grad but not here.
     cost, unused_backprop = gen_nn_ops.softmax_cross_entropy_with_logits(
         precise_logits, labels, name=name)
 

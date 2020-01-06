@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import os
 import shutil
+
 from absl.testing import parameterized
 import numpy as np
 
@@ -173,7 +174,7 @@ class MetricsSerialization(keras_parameterized.TestCase):
     def get_instance(x):
       if isinstance(x, str):
         return x
-      if issubclass(x, metrics.Metric):
+      if isinstance(x, type) and issubclass(x, metrics.Metric):
         return x()
       return x
 
@@ -219,7 +220,7 @@ class MetricsSerialization(keras_parameterized.TestCase):
     def get_instance(x):
       if isinstance(x, str):
         return x
-      if issubclass(x, metrics.Metric):
+      if isinstance(x, type) and issubclass(x, metrics.Metric):
         return x()
       return x
 

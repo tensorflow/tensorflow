@@ -123,6 +123,11 @@ class PrefetchIntervalPicker {
                                                   int64 start_time,
                                                   int64 end_time) const = 0;
 
+  // Returns the preferred end time for an eviction that starts at a given time
+  // and must end by the given end time.
+  virtual int64 PreferredEvictionEndTime(const Shape& shape, int64 start_time,
+                                         int64 latest_end_time) const = 0;
+
   // Begins the iterator for the first start time of the prefetch.
   virtual void Begin(const HloUse& use, int64 start_time, int64 end_time) = 0;
 
@@ -166,6 +171,9 @@ class InstructionCountPrefetchIntervalPicker : public PrefetchIntervalPicker {
   bool CanAllocateInAlternateMemoryNoCopy(const Shape& shape, int64 start_time,
                                           int64 end_time) const override;
 
+  int64 PreferredEvictionEndTime(const Shape& shape, int64 start_time,
+                                 int64 latest_end_time) const override;
+
   void Begin(const HloUse& use, int64 start_time, int64 end_time) override;
 
   int64 Next() override;
@@ -205,6 +213,9 @@ class CostAnalysisPrefetchIntervalPicker : public PrefetchIntervalPicker {
 
   bool CanAllocateInAlternateMemoryNoCopy(const Shape& shape, int64 start_time,
                                           int64 end_time) const override;
+
+  int64 PreferredEvictionEndTime(const Shape& shape, int64 start_time,
+                                 int64 latest_end_time) const override;
 
   void Begin(const HloUse& use, int64 start_time, int64 end_time) override;
 
@@ -288,6 +299,10 @@ class MemorySpaceAssignment {
     // If true, tries allocating buffers across (e.g., before and inside a while
     // loop body) sequential calls (kWhile, kCall, and kConditional).
     bool allocate_across_sequential_calls = false;
+
+    // If true, verifies the memory space assignment against overlapping
+    // buffers.
+    bool verify = false;
   };
 
   // This class represents an allocation that might either be in the default or
@@ -459,6 +474,9 @@ class MemorySpaceAssignment {
 
   static BufferIntervalCompare GetMemoryBoundednessBufferIntervalCompare(
       const MemorySpaceAssignmentCostAnalysis& cost_analysis);
+
+  // Verify that the memory space assignment is free of overlapping buffers.
+  Status Verify() const;
 
  private:
   MemorySpaceAssignment(HloModule* module, int64 alternate_memory_space,

@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <Python.h>
 
-#include "pybind11/pybind11.h"
+#include "include/pybind11/pybind11.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"

@@ -104,6 +104,8 @@ from tensorflow.python.platform import flags  # pylint: disable=g-import-not-at-
 _current_module.app.flags = flags  # pylint: disable=undefined-variable
 setattr(_current_module, "flags", flags)
 
+_major_api_version = 1
+
 # Load all plugin libraries from site-packages/tensorflow-plugins if we are
 # running under pip.
 # TODO(gunan): Enable setting an environment variable to define arbitrary plugin
@@ -132,8 +134,14 @@ def _running_from_pip_package():
       _current_file_location.startswith(dir_) for dir_ in _site_packages_dirs)
 
 if _running_from_pip_package():
+  # TODO(gunan): Add sanity checks to loaded modules here.
   for _s in _site_packages_dirs:
-    # TODO(gunan): Add sanity checks to loaded modules here.
+    # Load first party dynamic kernels.
+    _main_dir = _os.path.join(_s, 'tensorflow_core/core/kernels')
+    if _fi.file_exists(_main_dir):
+      _ll.load_library(_main_dir)
+
+    # Load third party dynamic kernels.
     _plugin_dir = _os.path.join(_s, 'tensorflow-plugins')
     if _fi.file_exists(_plugin_dir):
       _ll.load_library(_plugin_dir)

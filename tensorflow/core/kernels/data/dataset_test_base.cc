@@ -426,7 +426,6 @@ Status DatasetOpsTestBase::CreateOpKernelContext(
   params->op_kernel = kernel;
   params->resource_manager = resource_mgr_.get();
   params->runner = &runner_;
-  checkpoint::TensorSliceReaderCacheWrapper slice_reader_cache_wrapper;
   slice_reader_cache_ =
       absl::make_unique<checkpoint::TensorSliceReaderCacheWrapper>();
   params->slice_reader_cache = slice_reader_cache_.get();

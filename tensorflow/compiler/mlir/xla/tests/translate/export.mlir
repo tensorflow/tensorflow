@@ -356,6 +356,18 @@ func @main(%arg0: tensor<3x4xi32>, %arg1: tensor<4x5xi32>) -> tensor<3x5xi32> {
 // -----
 
 // CHECK:  HloModule
+func @main(%arg0: tensor<3x9xf32>) -> tensor<3x5xcomplex<f32>> {
+  %0 = "xla_hlo.fft"(%arg0) {fft_length = dense<9> : tensor<1xi64>, fft_type = "RFFT"} : (tensor<3x9xf32>) -> tensor<3x5xcomplex<f32>>
+  return %0 : tensor<3x5xcomplex<f32>>
+}
+
+// CHECK:  ENTRY
+// CHECK:  [[ARG:%.*]] = f32[3,9] parameter(0)
+// CHECK:  c64[3,5] fft(f32[3,9] [[ARG]]), fft_type=RFFT, fft_length={9}
+
+// -----
+
+// CHECK:  HloModule
 func @main(%arg0: tensor<200x100x300xf32>, %arg1: tensor<10x2xi32>) -> tensor<10x300xf32> {
   // CHECK:  [[ARG0:%.*]] = f32[200,100,300] parameter(0)
   // CHECK:  [[ARG1:%.*]] = s32[10,2] parameter(1)
@@ -530,6 +542,20 @@ func @main(%arg0 : tensor<10x11x12x13xf32>) -> tensor<10x11x12x13xf32> {
 // -----
 
 // CHECK:  HloModule
+func @main(%mu: tensor<f32>, %sigma: tensor<f32>) -> tensor<2x3x5xf32> {
+  %shape = xla_hlo.constant dense<[2, 3, 5]> : tensor<3xi64>
+  %0 = "xla_hlo.rng_normal"(%mu, %sigma, %shape) : (tensor<f32>, tensor<f32>, tensor<3xi64>) -> tensor<2x3x5xf32>
+  return %0 : tensor<2x3x5xf32>
+}
+
+// CHECK:  ENTRY
+// CHECK:  %[[MU:.*]] = f32[] parameter(0)
+// CHECK:  %[[SIGMA:.*]] = f32[] parameter(1)
+// CHECK:  ROOT %[[RESULT:.*]] = f32[2,3,5] rng(f32[] %[[MU]], f32[] %[[SIGMA]]), distribution=rng_normal
+
+// -----
+
+// CHECK:  HloModule
 func @main() -> tensor<2x3x5xf32> {
   %0 = xla_hlo.constant dense<0.000000e+00> : tensor<f32>
   %1 = xla_hlo.constant dense<1.000000e+00> : tensor<f32>
@@ -621,6 +647,62 @@ func @main(%arg0: tensor<10x24x24x64xf32>, %arg1: tensor<10x12x12x64xf32>) -> te
 // CHECK-SAME:  select-and-scatter(f32[10,24,24,64] %[[ARG0]], f32[10,12,12,64] %[[ARG1]], f32[] %[[INIT]]),
 // CHECK-SAME:  window={size=1x2x2x1 stride=1x2x2x1},
 // CHECK-SAME:  select=%[[SELECT_COMPUTATION]], scatter=%[[SCATTER_COMPUTATION]]
+
+// -----
+
+// CHECK:  HloModule
+func @main(%arg: tensor<3x4xi32>, %token: !xla_hlo.token) -> !xla_hlo.token {
+  %0 = "xla_hlo.send"(%arg, %token) {
+    channel_id = {
+      handle = 5 : i64,
+      type = 2 : i64  // Device to host channel
+    },
+    is_host_transfer = true
+  } : (tensor<3x4xi32>, !xla_hlo.token) -> !xla_hlo.token
+  return %0 : !xla_hlo.token
+}
+
+// CHECK:  ENTRY
+// CHECK:  [[ARG:%.*]] = s32[3,4] parameter(0)
+// CHECK:  [[TOKEN:%.*]] = token[] parameter(1)
+// CHECK:  [[SEND:%.*]] = (s32[3,4], u32[], token[]) send(s32[3,4] [[ARG]], token[] [[TOKEN]]), channel_id=5, is_host_transfer=true
+// CHECK:  ROOT
+// CHECK-SAME:  token[] send-done((s32[3,4], u32[], token[]) [[SEND]]), channel_id=5, is_host_transfer=true
+
+// -----
+
+// CHECK:  HloModule
+func @main(%arg: tensor<3x4xi32>, %token: !xla_hlo.token) -> !xla_hlo.token {
+  %0 = "xla_hlo.send"(%arg, %token) {
+    channel_id = {
+      handle = 5 : i64,
+      type = 1 : i64  // Device to device channel
+    },
+    is_host_transfer = false
+  } : (tensor<3x4xi32>, !xla_hlo.token) -> !xla_hlo.token
+  return %0 : !xla_hlo.token
+}
+
+// CHECK:  ENTRY
+// CHECK:  [[ARG:%.*]] = s32[3,4] parameter(0)
+// CHECK:  [[TOKEN:%.*]] = token[] parameter(1)
+// CHECK:  [[SEND:%.*]] = (s32[3,4], u32[], token[]) send(s32[3,4] [[ARG]], token[] [[TOKEN]]), channel_id=5
+// CHECK:  ROOT
+// CHECK-SAME:  token[] send-done((s32[3,4], u32[], token[]) [[SEND]]), channel_id=5
+
+// -----
+
+// CHECK:  HloModule
+func @main(%arg: tensor<4x4xf32>, %size: tensor<i32>) -> tensor<4x4xf32> {
+  %0 = "xla_hlo.set_dimension_size"(%arg, %size) {dimension = 1 : i32} : (tensor<4x4xf32>, tensor<i32>) -> tensor<4x4xf32>
+  return %0 : tensor<4x4xf32>
+}
+
+// CHECK:  ENTRY
+// CHECK:  [[ARG:%.*]] = f32[4,4] parameter(0)
+// CHECK:  [[SIZE:%.*]] = s32[] parameter(1)
+// CHECK:  ROOT
+// CHECK-SAME:  f32[4,<=4] set-dimension-size(f32[4,4] [[ARG]], s32[] [[SIZE]]), dimensions={1}
 
 // -----
 

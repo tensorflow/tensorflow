@@ -79,6 +79,9 @@ extern const char* kModelMixed;
 // Test model with split op.
 extern const char* kModelSplit;
 
+// Test model with pack op.
+extern const char* kModelPack;
+
 // Test model with LSTM op that has layer norm, has projection, without
 // peephole, without cifg.
 extern const char* kLstmCalibrated;
@@ -94,6 +97,10 @@ extern const char* kModelWithMaximumOp;
 // projection, without cifg.
 extern const char* kLstmCalibrated2;
 extern const char* kLstmQuantized2;
+
+// Test model with SVDF op.
+extern const char* kSvdfCalibrated;
+extern const char* kSvdfQuantized;
 
 // Test model with an unpack op.
 extern const char* kModelWithUnpack;

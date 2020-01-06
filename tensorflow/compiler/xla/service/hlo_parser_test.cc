@@ -841,50 +841,6 @@ ENTRY %fusion.v3 () -> f32[3,2,1,1] {
 )"
 },
 {
-"Sparse",
-R"(HloModule sparse_f32
-
-ENTRY %sparse () -> f32[2,3,4] {
-  ROOT %foo = f32[2,3,4]sparse{10} constant({[0, 1, 2]: 1, [1, 2, 2]: 2, [1, 2, 3]: 3})
-}
-
-)",
-/*enable_verification=*/false
-},
-{
-"SparseC128",
-R"(HloModule sparse_c128
-
-ENTRY %sparse () -> c128[2,3,4] {
-  ROOT %foo = c128[2,3,4]sparse{10} constant({[0, 1, 2]: (1, 0), [1, 2, 2]: (2, 5), [1, 2, 3]: (3, 10)})
-}
-
-)",
-/*enable_verification=*/false
-},
-{
-"SparseEmpty",
-R"(HloModule sparse_f32_empty
-
-ENTRY %sparse_f32_empty () -> f32[2,3,4] {
-  ROOT %foo = f32[2,3,4]sparse{10} constant({})
-}
-
-)",
-/*enable_verification=*/false,
-},
-{
-"SparseR1",
-R"(HloModule sparse_f32_r1
-
-ENTRY %sparse_f32_r1 () -> f32[9] {
-  ROOT %foo = f32[9]sparse{10} constant({1: 2, 3: 4, 5: 6})
-}
-
-)",
-/*enable_verification=*/false,
-},
-{
 "Gather",
 R"(HloModule StringifyGather
 
@@ -1982,17 +1938,6 @@ TEST_F(HloParserTest, ConstantBf16Overflow) {
       "out of range");
 }
 
-TEST_F(HloParserTest, ConstantF16OverflowInSparseArray) {
-  const string original = R"(
-    HloModule test_module
-    ENTRY test {
-      ROOT c = f16[5]sparse{10} constant({[0]: 0, [1]: -65520})
-    })";
-  ExpectHasSubstr(
-      ParseAndReturnUnverifiedModule(original).status().error_message(),
-      "is out of range for literal's primitive type F16");
-}
-
 TEST_F(HloParserTest, ConstantUnsignedUnderflow) {
   const string original = R"(
       HloModule ConstantUnsignedUnderflow_module
@@ -2852,50 +2797,6 @@ ENTRY %entrycomp (p: f32[2,2]) -> f32[2,2] {
                   " with the shape of the operand instruction f32[2,2]{1,0}.");
 }
 
-TEST_F(HloParserTest, OutOfRangeSparseIndex) {
-  const string original = R"(
-    HloModule test_module
-    ENTRY test {
-      ROOT c = f16[5]sparse{10} constant({[100]: 0})
-    })";
-  ExpectHasSubstr(
-      ParseAndReturnUnverifiedModule(original).status().error_message(),
-      "Invalid sparse index");
-}
-
-TEST_F(HloParserTest, NegativeSparseIndex) {
-  const string original = R"(
-    HloModule test_module
-    ENTRY test {
-      ROOT c = f16[5]sparse{10} constant({-1: 0})
-    })";
-  ExpectHasSubstr(
-      ParseAndReturnUnverifiedModule(original).status().error_message(),
-      "Invalid sparse index");
-}
-
-TEST_F(HloParserTest, SparseIndexWithRankTooLarge) {
-  const string original = R"(
-    HloModule test_module
-    ENTRY test {
-      ROOT c = f16[5]sparse{10} constant({[0, 0]: 0})
-    })";
-  ExpectHasSubstr(
-      ParseAndReturnUnverifiedModule(original).status().error_message(),
-      "Invalid sparse index");
-}
-
-TEST_F(HloParserTest, SparseIndexWithRankTooSmall) {
-  const string original = R"(
-    HloModule test_module
-    ENTRY test {
-      ROOT c = f16[5, 5]sparse{10} constant({[0]: 0})
-    })";
-  ExpectHasSubstr(
-      ParseAndReturnUnverifiedModule(original).status().error_message(),
-      "Invalid sparse index");
-}
-
 TEST_F(HloParserTest, ParseShapeStringR2F32) {
   string shape_string = "f32[123,456]";
   TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
@@ -2994,15 +2895,6 @@ TEST_F(HloParserTest, ParseShapeStringWithTilingLayout) {
                   "Dimensions size is 3, but minor to major size is 1.");
 }
 
-TEST_F(HloParserTest, ParseShapeStringWithSparseLayout) {
-  string shape_string = "f32[123,456]sparse{10}";
-  TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
-  Shape expected = ShapeUtil::MakeShapeWithSparseLayout(F32, {123, 456}, 10);
-  ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
-      << "expected: " << ShapeUtil::HumanString(expected)
-      << "actual: " << ShapeUtil::HumanString(actual);
-}
-
 TEST_F(HloParserTest, ParseShapeStringWithMemorySpaceLayout) {
   // Tile, element size, and memory space.
   string shape_string = "pred[123,456]{1,0:T(2,128)E(1)S(3)}";
@@ -3047,10 +2939,8 @@ TEST_F(HloParserTest, ParseTokenType) {
 }
 
 TEST_F(HloParserTest, ParseInvalidShapeString) {
-  string shape_strings[] = {
-      "f32[123,456]foobar{0,1}", "f32[123,456]sparse{0,1}", "f32[123,456]{foo}",
-      "f32[123,456]dense{foo}",  "f32[123,456]sparse{foo}",
-  };
+  string shape_strings[] = {"f32[123,456]foobar{0,1}", "f32[123,456]{foo}",
+                            "f32[123,456]dense{foo}"};
   for (const string& shape_string : shape_strings) {
     StatusOr<Shape> result = ParseShape(shape_string);
     ASSERT_FALSE(result.ok()) << "shape: " << shape_string;

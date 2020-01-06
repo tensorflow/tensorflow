@@ -963,6 +963,161 @@ class DataHandlerTest(keras_parameterized.TestCase):
     self.assertEqual(returned_data, [[([0],), ([1],),
                                       ([2],)], [([0],), ([1],), ([2],)]])
 
+  def test_class_weight(self):
+    data_handler = data_adapter.DataHandler(
+        x=[[0], [1], [2]],
+        y=[[2], [1], [0]],
+        class_weight={
+            0: 0.5,
+            1: 1.,
+            2: 1.5
+        },
+        epochs=2,
+        steps_per_epoch=3)
+    returned_data = []
+    for _, iterator in data_handler.enumerate_epochs():
+      epoch_data = []
+      for _ in data_handler.steps():
+        epoch_data.append(next(iterator))
+      returned_data.append(epoch_data)
+    returned_data = self.evaluate(returned_data)
+    self.assertEqual(returned_data, [[([0], [2], [1.5]), ([1], [1], [1.]),
+                                      ([2], [0], [0.5])],
+                                     [([0], [2], [1.5]), ([1], [1], [1.]),
+                                      ([2], [0], [0.5])]])
+
+  def test_class_weight_and_sample_weight(self):
+    data_handler = data_adapter.DataHandler(
+        x=[[0], [1], [2]],
+        y=[[2], [1], [0]],
+        sample_weight=[[1.], [2.], [4.]],
+        class_weight={
+            0: 0.5,
+            1: 1.,
+            2: 1.5
+        },
+        epochs=2,
+        steps_per_epoch=3)
+    returned_data = []
+    for _, iterator in data_handler.enumerate_epochs():
+      epoch_data = []
+      for _ in data_handler.steps():
+        epoch_data.append(next(iterator))
+      returned_data.append(epoch_data)
+    returned_data = self.evaluate(returned_data)
+    self.assertEqual(returned_data, [[([0], [2], [1.5]), ([1], [1], [2.]),
+                                      ([2], [0], [2.])],
+                                     [([0], [2], [1.5]), ([1], [1], [2.]),
+                                      ([2], [0], [2.])]])
+
+  def test_class_weight_user_errors(self):
+    with self.assertRaisesRegexp(ValueError, 'to be a dict with keys'):
+      data_adapter.DataHandler(
+          x=[[0], [1], [2]],
+          y=[[2], [1], [0]],
+          batch_size=1,
+          sample_weight=[[1.], [2.], [4.]],
+          class_weight={
+              0: 0.5,
+              1: 1.,
+              3: 1.5  # Skips class `2`.
+          })
+
+    with self.assertRaisesRegexp(ValueError, 'with a single output'):
+      data_adapter.DataHandler(
+          x=np.ones((10, 1)),
+          y=[np.ones((10, 1)), np.zeros((10, 1))],
+          batch_size=2,
+          class_weight={
+              0: 0.5,
+              1: 1.,
+              2: 1.5
+          })
+
+
+class TestValidationSplit(keras_parameterized.TestCase):
+
+  @parameterized.named_parameters(('numpy_arrays', True), ('tensors', False))
+  def test_validation_split_shuffled(self, use_numpy):
+    if use_numpy:
+      x = np.array([0, 1, 2, 3, 4])
+      y = np.array([0, 2, 4, 6, 8])
+      sw = np.array([0, 4, 8, 12, 16])
+    else:
+      x = ops.convert_to_tensor([0, 1, 2, 3, 4])
+      y = ops.convert_to_tensor([0, 2, 4, 6, 8])
+      sw = ops.convert_to_tensor([0, 4, 8, 12, 16])
+
+    (train_x, train_y, train_sw), (val_x, val_y, val_sw) = (
+        data_adapter.train_validation_split((x, y, sw), validation_split=0.2))
+
+    self.assertEqual(int(train_x.shape[0]), 4)
+    self.assertEqual(int(train_y.shape[0]), 4)
+    self.assertEqual(int(train_sw.shape[0]), 4)
+    for i in range(4):
+      # Check that all arrays were shuffled in identical order.
+      self.assertEqual(2 * train_x[i].numpy(), train_y[i].numpy())
+      self.assertEqual(2 * train_y[i].numpy(), train_sw[i].numpy())
+
+    self.assertEqual(int(val_x.shape[0]), 1)
+    self.assertEqual(int(val_y.shape[0]), 1)
+    self.assertEqual(int(val_sw.shape[0]), 1)
+    for i in range(1):
+      # Check that all arrays were shuffled in identical order.
+      self.assertEqual(2 * train_x[i].numpy(), train_y[i].numpy())
+      self.assertEqual(2 * train_y[i].numpy(), train_sw[i].numpy())
+
+    # Check that arrays contain expected values.
+    self.assertEqual(
+        sorted(array_ops.concat([train_x, val_x], axis=0).numpy().tolist()),
+        sorted(ops.convert_to_tensor(x).numpy().tolist()))
+    self.assertEqual(
+        sorted(array_ops.concat([train_y, val_y], axis=0).numpy().tolist()),
+        sorted(ops.convert_to_tensor(y).numpy().tolist()))
+    self.assertEqual(
+        sorted(array_ops.concat([train_sw, val_sw], axis=0).numpy().tolist()),
+        sorted(ops.convert_to_tensor(sw).numpy().tolist()))
+
+  @parameterized.named_parameters(('numpy_arrays', True), ('tensors', False))
+  def test_validation_split_unshuffled(self, use_numpy):
+    if use_numpy:
+      x = np.array([0, 1, 2, 3, 4])
+      y = np.array([0, 2, 4, 6, 8])
+      sw = np.array([0, 4, 8, 12, 16])
+    else:
+      x = ops.convert_to_tensor([0, 1, 2, 3, 4])
+      y = ops.convert_to_tensor([0, 2, 4, 6, 8])
+      sw = ops.convert_to_tensor([0, 4, 8, 12, 16])
+
+    (train_x, train_y, train_sw), (val_x, val_y, val_sw) = (
+        data_adapter.train_validation_split((x, y, sw),
+                                            validation_split=0.2,
+                                            shuffle=False))
+
+    self.assertEqual(train_x.numpy().tolist(), [0, 1, 2, 3])
+    self.assertEqual(train_y.numpy().tolist(), [0, 2, 4, 6])
+    self.assertEqual(train_sw.numpy().tolist(), [0, 4, 8, 12])
+
+    self.assertEqual(val_x.numpy().tolist(), [4])
+    self.assertEqual(val_y.numpy().tolist(), [8])
+    self.assertEqual(val_sw.numpy().tolist(), [16])
+
+  def test_validation_split_user_error(self):
+    with self.assertRaisesRegexp(ValueError, 'is only supported for Tensors'):
+      data_adapter.train_validation_split(
+          lambda: np.ones((10, 1)), validation_split=0.2)
+
+  def test_validation_split_none(self):
+    train_sw, val_sw = data_adapter.train_validation_split(
+        None, validation_split=0.2)
+    self.assertIsNone(train_sw)
+    self.assertIsNone(val_sw)
+
+    (_, train_sw), (_, val_sw) = data_adapter.train_validation_split(
+        (np.ones((10, 1)), None), validation_split=0.2)
+    self.assertIsNone(train_sw)
+    self.assertIsNone(val_sw)
+
 
 if __name__ == '__main__':
   ops.enable_eager_execution()

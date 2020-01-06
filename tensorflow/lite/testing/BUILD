@@ -7,7 +7,7 @@ load(
 )
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("//tensorflow/lite/testing:tflite_model_test.bzl", "tflite_model_test")
-load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
+load("//tensorflow:tensorflow.bzl", "pybind_extension")
 load(
     "//tensorflow:tensorflow.bzl",
     "py_test",  # @unused
@@ -121,8 +121,8 @@ py_library(
     srcs = ["zip_test_utils.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":_pywrap_string_util",
         ":generate_examples_report",
-        ":string_util_wrapper",
         "//tensorflow:tensorflow_py",
         "//third_party/py/numpy",
     ],
@@ -513,14 +513,19 @@ cc_library(
     ],
 )
 
-tf_py_wrap_cc(
-    name = "string_util_wrapper",
+pybind_extension(
+    name = "_pywrap_string_util",
     srcs = [
-        "string_util.i",
+        "string_util_wrapper.cc",
     ],
+    hdrs = ["string_util.h"],
+    features = ["-use_header_modules"],
+    module_name = "_pywrap_string_util",
     deps = [
         ":string_util_lib",
+        "//tensorflow/python:pybind11_lib",
         "//third_party/python_runtime:headers",
+        "@pybind11",
     ],
 )
 

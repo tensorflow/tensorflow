@@ -74,7 +74,9 @@ REQUIRED_PACKAGES = [
     'functools32 >= 3.2.3;python_version<"3"',
     'six >= 1.12.0',
     # scipy < 1.4.1 causes segfaults due to pybind11
-    'scipy == 1.4.1',
+    # Latest scipy pip for py2 is scipy==1.2.2
+    'scipy == 1.4.1;python_version>="3"',
+    'scipy == 1.2.2;python_version<"3"',
 ]
 
 if sys.byteorder == 'little':

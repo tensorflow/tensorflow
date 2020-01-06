@@ -51,6 +51,7 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/tensor_coding.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/strided_slice_op.h"
 
 #if GOOGLE_CUDA
@@ -1131,11 +1132,8 @@ static void InitializeTrtPlugins(nvinfer1::ILogger* trt_logger) {
   mutex_lock lock(plugin_mutex);
   if (plugin_initialized) return;
 
-  LOG(INFO) << "Linked TensorRT version: " << NV_TENSORRT_MAJOR << "."
-            << NV_TENSORRT_MINOR << "." << NV_TENSORRT_PATCH;
-  const int loaded_version = getInferLibVersion();
-  LOG(INFO) << "Loaded TensorRT version: " << loaded_version / 1000 << "."
-            << (loaded_version / 100) % 10 << "." << loaded_version % 100;
+  LOG(INFO) << "Linked TensorRT version: " << GetLinkedTensorRTVersion();
+  LOG(INFO) << "Loaded TensorRT version: " << GetLoadedTensorRTVersion();
 
   plugin_initialized = initLibNvInferPlugins(trt_logger, "");
   if (!plugin_initialized) {
@@ -1371,6 +1369,19 @@ Status Converter::BuildCudaEngine(
       trt_builder_->setInt8Calibrator(nullptr);
     }
   }
+
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
+  string precision_mode_str;
+  TF_RETURN_IF_ERROR(
+      TrtPrecisionModeToName(precision_mode_, &precision_mode_str));
+  string trt_network_name = StrCat(
+      "TF:", TF_VERSION_STRING, ", ", "TRT:", GetLoadedTensorRTVersion(), "-",
+      "Precision:", precision_mode_str, ", ", "Calibration:", use_calibration_,
+      ", ", "Max-Batch-Size:", max_batch_size, ", ",
+      "Max-Workspace-Size:", max_workspace_size_bytes);
+  VLOG(1) << "Setting TensorRT network name to " << trt_network_name;
+  network()->setName(trt_network_name.c_str());
+#endif  // #if IS_TRT_VERSION_GE(6, 0, 0, 0)
 
   VLOG(1) << "Building TensorRT engine";
   engine->reset(trt_builder_->buildCudaEngine(*network()));

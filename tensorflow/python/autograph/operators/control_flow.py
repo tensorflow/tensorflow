@@ -60,11 +60,13 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
+
 import numpy as np
 
 from tensorflow.python.autograph.operators import py_builtins
 from tensorflow.python.autograph.operators import special_values
 from tensorflow.python.autograph.utils import ag_logging
+from tensorflow.python.autograph.utils import compat_util
 from tensorflow.python.autograph.utils import misc
 from tensorflow.python.autograph.utils import tensors
 from tensorflow.python.data.experimental.ops import scan_ops
@@ -78,12 +80,18 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.util import lazy_loader
 from tensorflow.python.util import nest
 
+
+# TODO(b/145618471): Remove this dependency.
+# Lazy import to work around circular dependencies
+input_lib = lazy_loader.LazyLoader(
+    'input_lib', globals(),
+    'tensorflow.python.distribute.input_lib')
 
 LIMIT_PYTHON_ITERATIONS = True
 PYTHON_MAX_ITERATIONS = 100000000  # Fails in about one minute for empty loops.
@@ -342,6 +350,11 @@ def for_stmt(iter_,
                                init_vars, basic_symbol_names,
                                composite_symbol_names, opts)
 
+  if isinstance(iter_, input_lib.DistributedIterator):
+    raise NotImplementedError(
+        'distributed iterators not supported yet, use the distributed dataset'
+        ' directly')
+
   # Note: This experimental interface is subject to change.
   custom_handler = getattr(iter_, '_autograph_for_loop', None)
   if custom_handler is not None:
@@ -409,9 +422,7 @@ def _known_len_tf_for_stmt(iter_,
                                    lambda: False)
     return iterate_index < n
 
-  # TODO(b/134181679): Let the op itself handle optimizations.
-  if control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph()):
-    opts['maximum_iterations'] = n
+  opts['maximum_iterations'] = n
 
   results = _tf_while_stmt(
       while_cond,
@@ -525,26 +536,9 @@ def _tf_range_for_stmt(iter_,
 
   def while_cond(iterate, *loop_vars):
     """Cond function for `tf.while_loop`."""
-
-    def build_main_test():
-      """Main iteration condition."""
-      # TODO(b/138857806): The optimizer should handle this.
-      # LogicalAnd is slow on GPU so we avoid adding it if `delta` is a
-      # compile time constant.
-      delta_const = tensor_util.constant_value(delta)
-      if delta_const is not None:
-        # Support single element arrays.
-        delta_const = np.asscalar(delta_const)
-        if delta_const >= 0:
-          return iterate < limit
-        else:
-          return iterate > limit
-      else:
-        return math_ops.logical_or(
-            math_ops.logical_and(delta >= 0, iterate < limit),
-            math_ops.logical_and(delta < 0, iterate > limit))
-
-    main_test = build_main_test()
+    main_test = math_ops.logical_or(
+        math_ops.logical_and(delta >= 0, iterate < limit),
+        math_ops.logical_and(delta < 0, iterate > limit))
     if extra_test is not None:
       return control_flow_ops.cond(
           main_test,
@@ -553,11 +547,8 @@ def _tf_range_for_stmt(iter_,
       )
     return main_test
 
-  # TODO(b/134181679): The op should handle this optimizations.
-  if control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph()):
-    # This specific dtype is required by while_loop.
-    opts['maximum_iterations'] = math_ops.cast(
-        misc.get_range_len(start, limit, delta), dtypes.int32)
+  opts['maximum_iterations'] = math_ops.cast(
+      misc.get_range_len(start, limit, delta), dtypes.int32)
 
   results = _tf_while_stmt(
       while_cond,
@@ -1143,3 +1134,6 @@ def _wrap_disallow_undefs_from_cond(func, branch_name):
 def _py_if_stmt(cond, body, orelse):
   """Overload of if_stmt that executes a Python if statement."""
   return body() if cond else orelse()
+
+
+compat_util.deprecated_py2_support(__name__)

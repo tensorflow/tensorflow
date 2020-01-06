@@ -298,7 +298,6 @@ Status ReadMetadataFile(const string& hash_dir,
 
 Status DumpDatasetGraph(const std::string& path, uint64 hash,
                         const GraphDef& graph) {
-  std::unique_ptr<WritableFile> file;
   std::string hash_hex =
       strings::StrCat(strings::Hex(hash, strings::kZeroPad16));
   std::string graph_file =
@@ -750,7 +749,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           // Get all the files in the run_dir.
           std::vector<std::string> filenames_str;
           TF_RETURN_IF_ERROR(ctx->env()->GetMatchingPaths(
-              absl::StrCat(run_dir_, "/*"), &filenames_str));
+              absl::StrCat(absl::string_view(run_dir_), "/*"), &filenames_str));
           filenames_.resize(filenames_str.size());
           std::copy(filenames_str.begin(), filenames_str.end(),
                     filenames_.begin());
@@ -974,7 +973,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
               }
             }
 #if !defined(PLATFORM_GOOGLE)
-            string record_bytes;
+            tstring record_bytes;
             Status s = reader->ReadRecord(&record_bytes);
 #else
             absl::Cord record_cord;

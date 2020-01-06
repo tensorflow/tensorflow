@@ -352,8 +352,8 @@ void AppendTensorShapeToFingerprint(const PartialTensorShape& shape,
   }
 }
 
-Status ShouldCompileWithXLA(const EagerOperation* op, const EagerContext* ctx,
-                            bool* compile_with_xla) {
+Status MustCompileWithXLA(const EagerOperation* op, const EagerContext* ctx,
+                          bool* compile_with_xla) {
   if (!op->is_function()) {
     *compile_with_xla = false;
     return Status::OK();
@@ -368,7 +368,7 @@ Status ShouldCompileWithXLA(const EagerOperation* op, const EagerContext* ctx,
   }
 
   // Does node have an explicit request to compile or not?
-  Status status = op->Attrs().Get(kXlaCompileAttr, compile_with_xla);
+  Status status = op->Attrs().Get(kXlaMustCompileAttr, compile_with_xla);
   if (status.ok()) {
     DVLOG(2) << "Caller explicitly requested "
              << (*compile_with_xla ? "" : "not ")
@@ -383,7 +383,7 @@ Status ShouldCompileWithXLA(const EagerOperation* op, const EagerContext* ctx,
     return errors::NotFound("Failed to find function '", op->Name(), "'");
   }
 
-  status = GetNodeAttr(AttrSlice(&function_def->attr()), kXlaCompileAttr,
+  status = GetNodeAttr(AttrSlice(&function_def->attr()), kXlaMustCompileAttr,
                        compile_with_xla);
   if (status.ok()) {
     DVLOG(2) << "Function definition explicitly specifies "
@@ -511,12 +511,12 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
     bool run_function_with_flr = false;
     if (op->is_function()) {
       bool compile_with_xla;
-      TF_RETURN_IF_ERROR(ShouldCompileWithXLA(op, ctx, &compile_with_xla));
+      TF_RETURN_IF_ERROR(MustCompileWithXLA(op, ctx, &compile_with_xla));
       if (compile_with_xla) {
         // Note that it is not ideal, but currently correct, to set this
         // attribute after computing the kernel cache key above.
         // Note: If the attribute is already set to true, this is a noop.
-        op->MutableAttrs()->Set(kXlaCompileAttr, true);
+        op->MutableAttrs()->Set(kXlaMustCompileAttr, true);
       } else {
         run_function_with_flr = true;
       }

@@ -2931,6 +2931,13 @@ def rgb_to_yiq(images):
   Outputs a tensor of the same shape as the `images` tensor, containing the YIQ
   value of the pixels.
   The output is only well defined if the value in images are in [0,1].
+  
+  Usage Example:
+
+  >>> x = tf.constant([[[1.0, 2.0, 3.0]]])
+  >>> tf.image.rgb_to_yiq(x)
+  <tf.Tensor: shape=(1, 1, 3), dtype=float32,
+  numpy=array([[[ 1.815     , -0.91724455,  0.09962624]]], dtype=float32)>
 
   Args:
     images: 2-D or higher rank. Image data to convert. Last dimension must be
@@ -4044,6 +4051,27 @@ def draw_bounding_boxes_v2(images, boxes, colors, name=None):
 
   Returns:
     A `Tensor`. Has the same type as `images`.
+
+  Usage Example:
+
+  >>> # create an empty image
+  >>> img = tf.zeros([1, 3, 3, 3])
+  >>> # draw a box around the image
+  >>> box = np.array([0, 0, 1, 1])
+  >>> boxes = box.reshape([1, 1, 4])
+  >>> # alternate between red and blue
+  >>> colors = np.array([[1.0, 0.0, 0.0], [0.0, 0.0, 1.0]])
+  >>> tf.image.draw_bounding_boxes(img, boxes, colors)
+  <tf.Tensor: shape=(1, 3, 3, 3), dtype=float32, numpy=
+  array([[[[1., 0., 0.],
+          [1., 0., 0.],
+          [1., 0., 0.]],
+          [[1., 0., 0.],
+          [0., 0., 0.],
+          [1., 0., 0.]],
+          [[1., 0., 0.],
+          [1., 0., 0.],
+          [1., 0., 0.]]]], dtype=float32)>
   """
   if colors is None:
     return gen_image_ops.draw_bounding_boxes(images, boxes, name)
@@ -4075,6 +4103,27 @@ def draw_bounding_boxes(images, boxes, name=None, colors=None):
 
   Returns:
     A `Tensor`. Has the same type as `images`.
+
+  Usage Example:
+
+  >>> # create an empty image
+  >>> img = tf.zeros([1, 3, 3, 3])
+  >>> # draw a box around the image
+  >>> box = np.array([0, 0, 1, 1])
+  >>> boxes = box.reshape([1, 1, 4])
+  >>> # alternate between red and blue
+  >>> colors = np.array([[1.0, 0.0, 0.0], [0.0, 0.0, 1.0]])
+  >>> tf.image.draw_bounding_boxes(img, boxes, colors)
+  <tf.Tensor: shape=(1, 3, 3, 3), dtype=float32, numpy=
+  array([[[[1., 0., 0.],
+          [1., 0., 0.],
+          [1., 0., 0.]],
+          [[1., 0., 0.],
+          [0., 0., 0.],
+          [1., 0., 0.]],
+          [[1., 0., 0.],
+          [1., 0., 0.],
+          [1., 0., 0.]]]], dtype=float32)>
   """
   return draw_bounding_boxes_v2(images, boxes, colors, name)
 

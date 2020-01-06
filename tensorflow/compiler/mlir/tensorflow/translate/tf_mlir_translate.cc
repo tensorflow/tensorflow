@@ -17,14 +17,14 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/Function.h"  // TF:local_config_mlir
-#include "mlir/IR/Identifier.h"  // TF:local_config_mlir
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/IR/Module.h"  // TF:local_config_mlir
-#include "mlir/IR/Operation.h"  // TF:local_config_mlir
-#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
-#include "mlir/Parser.h"  // TF:local_config_mlir
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/Function.h"  // TF:llvm-project
+#include "mlir/IR/Identifier.h"  // TF:llvm-project
+#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
+#include "mlir/IR/Module.h"  // TF:llvm-project
+#include "mlir/IR/Operation.h"  // TF:llvm-project
+#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/Parser.h"  // TF:llvm-project
 #include "tensorflow/cc/saved_model/bundle_v2.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
@@ -125,6 +125,27 @@ mlir::OwningModuleRef SavedModelToMlirImport(
   auto module_or = ConvertSavedModelToMlir(&bundle, context, exported_names);
   if (!module_or.status().ok()) {
     LOG(ERROR) << "SavedModel import failed: " << module_or.status();
+    return nullptr;
+  }
+  return module_or.ConsumeValueOrDie();
+}
+
+mlir::OwningModuleRef SavedModelV1ToMlirImport(
+    absl::string_view saved_model_dir,
+    const std::unordered_set<std::string>& tags, mlir::MLIRContext* context) {
+  tensorflow::SavedModelBundle bundle;
+  auto load_status = tensorflow::LoadSavedModel(
+      /* session_options = */ {}, /* run_options = */ {},
+      std::string(saved_model_dir), tags, &bundle);
+  if (!load_status.ok()) {
+    LOG(ERROR) << "Failed to load saved model v1 '" << saved_model_dir
+               << "': " << load_status;
+    return nullptr;
+  }
+
+  auto module_or = ConvertSavedModelV1ToMlir(bundle, context);
+  if (!module_or.status().ok()) {
+    LOG(ERROR) << "SavedModel V1 import failed: " << module_or.status();
     return nullptr;
   }
   return module_or.ConsumeValueOrDie();

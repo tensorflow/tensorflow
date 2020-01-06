@@ -458,6 +458,7 @@ py_library(
         "layers/normalization.py",
         "layers/normalization_v2.py",
         "layers/pooling.py",
+        "layers/preprocessing/categorical.py",
         "layers/preprocessing/image_preprocessing.py",
         "layers/preprocessing/normalization.py",
         "layers/preprocessing/normalization_v1.py",
@@ -657,6 +658,20 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "add_loss_correctness_test",
+    size = "medium",
+    srcs = ["add_loss_correctness_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
+    python_version = "PY3",
+    shard_count = 4,
+)
+
+tf_py_test(
     name = "metrics_functional_test",
     size = "small",
     srcs = ["metrics_functional_test.py"],
@@ -728,7 +743,7 @@ tf_py_test(
     size = "medium",
     srcs = ["saving/metrics_serialization_test.py"],
     python_version = "PY3",
-    shard_count = 4,
+    shard_count = 8,
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
@@ -786,7 +801,6 @@ tf_py_test(
     srcs = ["layers/convolutional_recurrent_test.py"],
     python_version = "PY3",
     shard_count = 4,
-    tags = ["no_rocm"],
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
@@ -801,6 +815,31 @@ cuda_py_test(
     srcs = ["layers/convolutional_test.py"],
     python_version = "PY3",
     shard_count = 8,
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+filegroup(
+    name = "vocabulary_testdata",
+    srcs = [
+        "layers/preprocessing/testdata/wire_vocabulary.txt",
+    ],
+)
+
+cuda_py_test(
+    name = "categorical_test",
+    size = "medium",
+    srcs = ["layers/preprocessing/categorical_test.py"],
+    data = [":vocabulary_testdata"],
+    python_version = "PY3",
+    shard_count = 4,
+    tags = [
+        "no_oss",
+    ],
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
@@ -843,7 +882,6 @@ cuda_py_test(
     python_version = "PY3",
     shard_count = 4,
     tags = [
-        "no_rocm",
         "no_windows_gpu",
     ],
     deps = [
@@ -986,7 +1024,6 @@ cuda_py_test(
     python_version = "PY3",
     shard_count = 4,
     tags = [
-        "no_rocm",
         "notsan",
     ],
     deps = [
@@ -1381,7 +1418,7 @@ cuda_py_test(
         "guitar",
         "multi_gpu",
     ],
-    xla_enable_strict_auto_jit = False,  # b/142744009
+    xla_enable_strict_auto_jit = True,
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
@@ -1594,7 +1631,6 @@ tf_py_test(
     srcs = ["engine/training_arrays_test.py"],
     python_version = "PY3",
     tags = [
-        "no_rocm",
         "nomac",  # TODO(mihaimaruseac): b/127695564
     ],
     deps = [
@@ -1669,7 +1705,6 @@ tf_py_test(
     srcs = ["engine/training_eager_test.py"],
     python_version = "PY3",
     tags = [
-        "no_rocm",
         "nomac",  # TODO(mihaimaruseac): b/127695564
         "notsan",
     ],
@@ -1819,7 +1854,6 @@ tf_py_test(
     srcs = ["engine/base_layer_utils_test.py"],
     python_version = "PY3",
     tags = [
-        "no_rocm",
         "nomac",  # TODO(mihaimaruseac): b/127695564
     ],
     deps = [

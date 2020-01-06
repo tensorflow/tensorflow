@@ -156,6 +156,7 @@ struct MklConvFwdParams {
     string name;
     mkldnn::algorithm alg;
     std::vector<float> param;
+    std::string partial_key;
   };
   std::vector<PostOpParam> post_op_params;
 
@@ -488,16 +489,21 @@ class MklConvFwdPrimitiveFactory : public MklPrimitiveFactory<float> {
 
     // Generate keys for post-ops
     for (auto const& post_op_param : convFwdDims.post_op_params) {
+      key_creator.AddAsKey(post_op_param.name);
       if (post_op_param.name == "activation") {
         DCHECK_EQ(post_op_param.param.size(), 3);
+        for (auto& param : post_op_param.param) {
+          key_creator.AddAsKey(param);
+        }
       } else if (post_op_param.name == "sum") {
         DCHECK_EQ(post_op_param.param.size(), 1);
-      } else if (post_op_param.name != "output_scale") {
+        for (auto& param : post_op_param.param) {
+          key_creator.AddAsKey(param);
+        }
+      } else if (post_op_param.name == "output_scale") {
+        key_creator.AddAsKey(post_op_param.partial_key);
+      } else {
         return string("not_a_key");
-      }
-      key_creator.AddAsKey(post_op_param.name);
-      for (auto& param : post_op_param.param) {
-        key_creator.AddAsKey(param);
       }
     }
 
@@ -792,7 +798,8 @@ class MklConvOp : public OpKernel {
         // Tensorflow format to MKL format by caching the filter when it is
         // converted for the first time. This cached filter can then be reused
         // in subsequent iterations.
-        if (is_filter_const_) {
+        bool do_cache_filter = src_dims[MklDnnDims::Dim_N] > kSmallBatchSize;
+        if (is_filter_const_ && do_cache_filter) {
           if (IsFilterCacheEmpty(context)) {
             // Cache filter if it is not already cached.
             CacheFilter(context, conv_fwd_pd, filter_data, filter_tensor,
@@ -805,6 +812,13 @@ class MklConvOp : public OpKernel {
           filter_data = GetCachedFilter(
               context, GET_WEIGHTS_FORMAT_FROM_OP_PD(conv_fwd_pd, conv_fwd));
           is_filter_cached = (filter_data != nullptr);
+          if (filter_out_tensor != nullptr) {
+            Tfilter* filter_out_tensor_buf =
+                static_cast<Tfilter*>(const_cast<Tfilter*>(
+                    filter_out_tensor->flat<Tfilter>().data()));
+            memcpy(filter_out_tensor_buf, filter_data,
+                   filter_out_tensor->AllocatedBytes());
+          }
         }
         if (!is_filter_cached) {
           filter.SetUsrMem(filter_md, &filter_tensor);
@@ -946,11 +960,11 @@ class MklConvOp : public OpKernel {
     // NOTE: Fusion of BiasAdd is handled directly inside MklConvOp by
     // checking `fuse_biasadd_` flag.
     if (fuse_add_) {
-      params.post_op_params.push_back({"sum", ALGORITHM_UNDEF, {1.0}});
+      params.post_op_params.push_back({"sum", ALGORITHM_UNDEF, {1.0}, ""});
     }
     if (fuse_activation_) {
       params.post_op_params.push_back(
-          {"activation", activation_alg_, {1.0, relu_up_bound_, 0.0}});
+          {"activation", activation_alg_, {1.0, relu_up_bound_, 0.0}, ""});
     }
   }
 
@@ -1307,7 +1321,7 @@ class MklConvOp : public OpKernel {
         *cached_filter_md_ptensor_.AccessTensor(context);
 
 // Check if the memory descriptor of the cached weights is same as
-// filter_md. If so, we can used the cached weights; otherwise
+// filter_md. If so, we can use the cached weights; otherwise
 // return NULL.
 #ifdef ENABLE_MKLDNN_V1
     if (cached_filter_md.scalar<int64>().size() &&
@@ -1564,8 +1578,19 @@ class MklQuantizedConv2DOp
         scales[i] = int_output_limit * float_input_range * float_filter_range /
                     (int_const_scale_limit * float_output_range);
       }
+      // we are creating a partial key here to use with primitive key caching to
+      // improve key creation performance. Instead of using actual values we are
+      // using the pointers for min/max_filter_vector, and this works since the
+      // filter vector here is a constant.
+      FactoryKeyCreator param_key;
+      param_key.AddAsKey<float>(min_input);
+      param_key.AddAsKey<float>(max_input);
+      param_key.AddAsKey<float>(min_freezed_output);
+      param_key.AddAsKey<float>(max_freezed_output);
+      param_key.AddAsKey<const Tensor*>(&min_filter_vector);
+      param_key.AddAsKey<const Tensor*>(&max_filter_vector);
       params.post_op_params.push_back(
-          {"output_scale", ALGORITHM_UNDEF, scales});
+          {"output_scale", ALGORITHM_UNDEF, scales, param_key.GetKey()});
     }
   }
 
@@ -1590,8 +1615,6 @@ class MklQuantizedConv2DOp
     const Tensor& max_filter_vector = context->input(5 + bias_index_offset);
     const float* min_filter = min_filter_vector.flat<float>().data();
     const float* max_filter = max_filter_vector.flat<float>().data();
-
-    std::vector<mkldnn::primitive> net;
 
     const float int_const_scale_limit =
         (std::is_same<Tinput, quint8>::value) ? 255.0 * 127.0 : 127.0 * 127.0;
@@ -1745,7 +1768,7 @@ class MklQuantizedConv2DReluOp
                          bias_enabled,
                          is_depthwise>::ExtendConvFwdParams(context, params);
     params.post_op_params.push_back(
-        {"activation", ALGORITHM::eltwise_relu, {1.0, 0.0, 0.0}});
+        {"activation", ALGORITHM::eltwise_relu, {1.0, 0.0, 0.0}, ""});
   }
 };
 
@@ -1793,17 +1816,18 @@ class MklQuantizedConv2DSumReluOp
       // If it is not then  it is DT_INT8 and is scaled appropriately.
       if (summand_type == DT_QUINT8)
         params.post_op_params.push_back(
-            {"sum", ALGORITHM_UNDEF, {scale_summand / scale_output}});
+            {"sum", ALGORITHM_UNDEF, {scale_summand / scale_output}, ""});
       else
         params.post_op_params.push_back(
             {"sum",
              ALGORITHM_UNDEF,
-             {255.0f * scale_summand / (scale_output * 127.0f)}});
+             {255.0f * scale_summand / (scale_output * 127.0f)},
+             ""});
     } else {
-      params.post_op_params.push_back({"sum", ALGORITHM_UNDEF, {1.0}});
+      params.post_op_params.push_back({"sum", ALGORITHM_UNDEF, {1.0}, ""});
     }
     params.post_op_params.push_back(
-        {"activation", ALGORITHM::eltwise_relu, {1.0, 0.0, 0.0}});
+        {"activation", ALGORITHM::eltwise_relu, {1.0, 0.0, 0.0}, ""});
   }
 
   void AllocateOutputTensor(OpKernelContext* context,

@@ -724,8 +724,8 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
     options.graph_collector->CollectOptimizedGraph(def);
   }
 
-  VLOG(2) << "Main function graph to be partitioned:";
-  VLOG(2) << DebugString(graph->ToGraphDefDebug());
+  VLOG(4) << "Main function graph to be partitioned:";
+  VLOG(4) << DebugString(graph->ToGraphDefDebug());
 
   std::unordered_map<string, std::unique_ptr<Graph>> subgraphs;
   TF_RETURN_IF_ERROR(
@@ -843,7 +843,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
       auto attrs = AttrSlice(&shard.attr());
       VLOG(1) << "Start instantiating component function " << unique_name
               << " on device " << target;
-      VLOG(2) << DebugString(shard);
+      VLOG(4) << DebugString(shard);
 
       auto* component_handle = new FunctionLibraryRuntime::Handle;
       auto done = [this, status, unique_name, comp_data, component_handle,
@@ -851,7 +851,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
         status->Update(s);
 
         VLOG(1) << "Finished instantiating component function " << unique_name
-                << "with handle " << *component_handle << " status: " << s;
+                << " with handle " << *component_handle << " status: " << s;
         if (status->ok()) {
           {
             mutex_lock l(mu_);

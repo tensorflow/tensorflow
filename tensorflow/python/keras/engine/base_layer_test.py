@@ -226,28 +226,6 @@ class BaseLayerTest(keras_parameterized.TestCase):
       self.assertEqual(new_layer.bias_regularizer, bias_reg)
       self.assertEqual(layer.get_config(), new_layer.get_config())
 
-  @keras_parameterized.run_all_keras_modes
-  def test_add_loss_correctness(self):
-
-    class MyLayer(keras.layers.Layer):
-
-      def call(self, inputs, training=None):
-        self.add_loss(math_ops.reduce_sum(inputs))
-        return inputs
-
-    inputs = keras.Input((3,))
-    layer = MyLayer()
-    outputs = layer(inputs)
-    model = keras.Model(inputs, outputs)
-    self.assertEqual(len(model.losses), 1)
-    model.compile(
-        'sgd',
-        'mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
-    loss = model.train_on_batch(np.ones((2, 3)), np.ones((2, 3)))
-    self.assertEqual(loss, 2 * 3)
-
   @test_util.run_in_graph_and_eager_modes
   def test_invalid_forward_pass(self):
     inputs = keras.Input((3,))

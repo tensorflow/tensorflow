@@ -175,7 +175,7 @@ def weighted_moving_average(value,
     if truediv:
       return math_ops.truediv(numerator, denominator, name=scope.name)
     else:
-      return math_ops.div(numerator, denominator, name=scope.name)
+      return math_ops.divide(numerator, denominator, name=scope.name)
 
 
 def _zero_debias(strategy, unbiased_var, value, decay):

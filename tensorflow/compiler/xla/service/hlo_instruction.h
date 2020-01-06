@@ -1792,6 +1792,10 @@ class HloInstruction {
   // Delegates to HloCholeskyInstruction::cholesky_options().
   const CholeskyOptions& cholesky_options() const;
 
+  // Appends operand to the list of operands and adds this instruction as a user
+  // of the operand.
+  void AppendOperand(HloInstruction* operand);
+
   // Old methods kept for smooth subclassing transition END.
 
  protected:
@@ -1830,10 +1834,6 @@ class HloInstruction {
   // Internal constructor for a given opcode/shape, other fields must be filled
   // by factory methods.
   HloInstruction(HloOpcode opcode, const Shape& shape);
-
-  // Appends operand to the list of operands and adds this instruction as a user
-  // of the operand.
-  void AppendOperand(HloInstruction* operand);
 
   void RemoveOperandAt(int index) {
     operands_.erase(operands_.begin() + index);

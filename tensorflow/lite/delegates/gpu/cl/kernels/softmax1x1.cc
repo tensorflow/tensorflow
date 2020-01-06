@@ -28,10 +28,14 @@ namespace {
 std::string GetSoftmaxKernelCode(
     const OperationDef& op_def,
     const std::vector<ElementwiseOperation*>& linked_operations) {
-  TensorCodeGenerator src_tensor("src_data", "tensor_size",
-                                 op_def.src_tensors[0]);
-  TensorCodeGenerator dst_tensor("dst_data", "tensor_size",
-                                 op_def.dst_tensors[0]);
+  TensorCodeGenerator src_tensor(
+      "src_data",
+      {"tensor_size.x", "tensor_size.y", "tensor_size.z", "tensor_size.w"},
+      op_def.src_tensors[0]);
+  TensorCodeGenerator dst_tensor(
+      "dst_data",
+      {"tensor_size.x", "tensor_size.y", "tensor_size.z", "tensor_size.w"},
+      op_def.dst_tensors[0]);
 
   const std::string batch_id = op_def.batch_support ? "batch_id" : "";
   std::string c = GetCommonDefines(op_def.precision);
@@ -41,14 +45,11 @@ std::string GetSoftmaxKernelCode(
   c += dst_tensor.GetDeclaration(AccessType::WRITE) + ",\n";
   c += "    int4 tensor_size,\n";
   c += "    int2 size,\n";
-  if (op_def.batch_support) {
-    c += "    int BATCH_SIZE,  \n";
-  }
   c += "    float4 mask\n";
   c += ") {\n";
   if (op_def.batch_support) {
     c += "  int batch_id = get_global_id(1);\n";
-    c += "  if (batch_id >= BATCH_SIZE) return;\n";
+    c += "  if (batch_id >= tensor_size.w) return;\n";
   }
   c += "  int offset = 0;\n";
   c += "  float sum = 0.0f;\n";
@@ -126,13 +127,10 @@ Status Softmax1x1::AddToQueue(CLCommandQueue* queue) {
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetSizeWithDepth()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWHDB()));
   const int depth = src_[0]->Depth();
   RETURN_IF_ERROR(
       kernel_.SetBytesAuto(int2(depth, IntegralDivideRoundUp(depth, 32))));
-  if (definition_.batch_support) {
-    RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->Batch()));
-  }
   RETURN_IF_ERROR(
       kernel_.SetBytesAuto(GetMaskForLastPlane(src_[0]->Channels())));
 

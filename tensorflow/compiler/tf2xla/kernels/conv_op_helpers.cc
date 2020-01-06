@@ -512,21 +512,25 @@ xla::StatusOr<xla::XlaOp> MakeXlaBackpropFilterConvOp(
         filter_in_depth = filter_shape.dimensions(attrs.num_spatial_dims),
         feature_group_count = in_depth / filter_in_depth;
 
+  // In the case of depthwise convolutions, the computation can be done by the
+  // batch_group_count parameter.
+  bool use_batch_group_count = in_depth > 1 && in_depth == filter_in_depth &&
+                               (feature_group_count != 1 || attrs.depthwise);
+
+  if (use_batch_group_count) {
+    feature_group_count = 1;
+  }
+
   // The activations (inputs) form the LHS of the convolution.
   // Activations have shape: [batch, in_rows, in_cols, ..., in_depth]
   // For the gradient computation, we need to:
   // 1. In the case of group convolution, move the num_groups dimension before
   // the batch dimension
   // 2. Swap the roles of the batch and feature dimensions.
-  if (feature_group_count != 1 && !attrs.depthwise) {
+  if (!use_batch_group_count && feature_group_count != 1 && !attrs.depthwise) {
     activations = TransposeInputForGroupConvolutionBackpropFilter(
         activations, input_shape, feature_group_count, n_dim, c_dim);
   }
-
-  // In the case of depthwise convolution with no multiplier,
-  // the computation can be done by the batch_group_count parameter.
-  bool use_batch_group_count =
-      filter_tensor_shape.dim_size(num_dims - 1) == 1 && attrs.depthwise;
 
   std::vector<std::pair<int64, int64>> padding(attrs.num_spatial_dims);
   std::vector<int64> rhs_dilation(attrs.num_spatial_dims);

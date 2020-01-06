@@ -26,6 +26,7 @@ import argparse
 import datetime
 import os
 from data_load import DataLoader
+
 import numpy as np
 import tensorflow as tf
 

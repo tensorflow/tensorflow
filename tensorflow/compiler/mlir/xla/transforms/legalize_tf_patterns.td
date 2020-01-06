@@ -35,19 +35,19 @@ def FalseBoolAttr : AttrConstraint<CPred<"!$_self.getValue()">>;
 def TrueBoolAttr : AttrConstraint<CPred<"$_self.getValue()">>;
 
 def CastValueToI64: NativeCodeCall<
-  "CastValueToI64($0->getLoc(), $1, &$_builder)">;
+  "CastValueToI64($0.getLoc(), $1, &$_builder)">;
 
 // Here, $0 is an ElementsAttr with exactly one element of type integer. $1 is
 // the corresponding value of ranked tensor type whose axis is referred in $0.
 def GetHLOAxisFromTFAxis : NativeCodeCall<
   "GetHLOAxisFromTFAxis("
-  "$0, $1->getType().cast<RankedTensorType>().getRank(), &$_builder)">;
+  "$0, $1.getType().cast<RankedTensorType>().getRank(), &$_builder)">;
 
 // Same as the above but with $1 of type operand_range from variadic TensorFlow
 // input.
 def GetHLOAxisFromTFAxisVariadic : NativeCodeCall<
   "GetHLOAxisFromTFAxis("
-  "$0, (*$1.begin())->getType().cast<RankedTensorType>().getRank(), "
+  "$0, (*$1.begin()).getType().cast<RankedTensorType>().getRank(), "
   "&$_builder)">;
 
 def : Pattern<
@@ -251,10 +251,10 @@ def OneElementAttr
                      "Scalar ElementsAttr">;
 
 def HasRankedFirstOperand
-  : Constraint<CPred<"(*$0.begin())->getType().isa<RankedTensorType>()">>;
+  : Constraint<CPred<"(*$0.begin()).getType().isa<RankedTensorType>()">>;
 
 def IsShapedTensor
-  : Constraint<CPred<"$0->getType().isa<RankedTensorType>()">>;
+  : Constraint<CPred<"$0.getType().isa<RankedTensorType>()">>;
 
 // This pattern converts TensorFlow axis format to HLO axis format which
 // doesn't wrap around like TensorFlow and is always positive. For this
@@ -405,7 +405,7 @@ def : Pat<(TF_SliceOp:$op HLO_Tensor:$input, HLO_Tensor:$starting_indices,
 // Ternary op patterns.
 //===----------------------------------------------------------------------===//
 
-def BothTypesMatch : Constraint<CPred<"$0->getType() == $1->getType()">,
+def BothTypesMatch : Constraint<CPred<"$0.getType() == $1.getType()">,
    "types must be equal">;
 
 foreach src = [TF_SelectOp, TF_SelectV2Op] in
@@ -428,6 +428,7 @@ foreach Mapping = [
                    [TF_ImagOp, HLO_ImagOp],
                    [TF_IsFiniteOp, HLO_IsFiniteOp],
                    [TF_LogOp, HLO_LogOp],
+                   [TF_Log1pOp, HLO_Log1pOp],
                    [TF_LogicalNotOp, HLO_NotOp],
                    [TF_NegOp, HLO_NegOp],
                    [TF_RealOp, HLO_RealOp],
@@ -456,6 +457,19 @@ foreach TfOp = [TF_ExpandDimsOp, TF_ReshapeOp, TF_SqueezeOp, ] in {
   def : Pat<(TfOp:$res $arg, $ignored),
             (HLO_ReshapeOp $arg), [(AnyStaticShapeTensor $res)]>;
 }
+
+// Returns 0 if x is NaN, 0 if x is 0, -1 if x < 0 and 1 if x > 0.
+def : Pat<(TF_SignOp $x),
+          (HLO_SelectOp
+            (HLO_CompareOp
+              $x,
+              $x,
+              (NullDenseIntElementsAttr),
+              HLO_COMPARISON_DIRECTION_NE
+            ),
+            (HLO_ConstOp (ConstantSplat<"0"> $x)),
+            (HLO_SignOp $x)
+          )>;
 
 //===----------------------------------------------------------------------===//
 // RngUniform.
