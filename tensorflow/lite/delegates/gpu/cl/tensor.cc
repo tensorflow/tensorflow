@@ -129,9 +129,9 @@ int3 Tensor::GetFullTensorRegion() const {
     case TensorStorageType::TEXTURE_ARRAY:
     case TensorStorageType::TEXTURE_3D:
     case TensorStorageType::IMAGE_BUFFER:
-      return {shape_.w * shape_.b, shape_.h, Depth()};
+      return {shape_.w * shape_.b, shape_.h, Slices()};
     case TensorStorageType::TEXTURE_2D:
-      return {shape_.w * shape_.b, shape_.h * Depth(), 1};
+      return {shape_.w * shape_.b, shape_.h * Slices(), 1};
     case TensorStorageType::SINGLE_TEXTURE_2D:
       return {shape_.w * shape_.b, shape_.h, 1};
     case TensorStorageType::UNKNOWN:
@@ -177,7 +177,7 @@ uint64_t Tensor::GetMemorySizeInBytes() const {
     case TensorStorageType::TEXTURE_ARRAY:
     case TensorStorageType::TEXTURE_2D:
     case TensorStorageType::TEXTURE_3D:
-      return flt4_size * shape_.b * shape_.w * shape_.h * Depth();
+      return flt4_size * shape_.b * shape_.w * shape_.h * Slices();
     case TensorStorageType::SINGLE_TEXTURE_2D:
       return flt_size * shape_.w * shape_.h * shape_.c * shape_.b;
     default:
@@ -285,37 +285,37 @@ Status Tensor::ReadData(CLCommandQueue* queue, TensorFloat32* dst) const {
 bool CanCreateTensorWithShape(const CLContext& context, const CLDevice& device,
                               const BHWC& shape,
                               const TensorDescriptor& descriptor) {
-  const int depth = IntegralDivideRoundUp(shape.c, 4);
+  const int slices = IntegralDivideRoundUp(shape.c, 4);
   switch (descriptor.storage_type) {
     case TensorStorageType::BUFFER: {
       const int flt4_size =
           4 * (descriptor.data_type == DataType::FLOAT32 ? 4 : 2);
-      const int buffer_size = shape.b * shape.w * shape.h * depth * flt4_size;
+      const int buffer_size = shape.b * shape.w * shape.h * slices * flt4_size;
       return buffer_size <= device.GetInfo().buffer_max_size;
     }
     case TensorStorageType::IMAGE_BUFFER:
-      return shape.b * shape.w * shape.h * depth <=
+      return shape.b * shape.w * shape.h * slices <=
              device.GetInfo().image_buffer_max_size;
     case TensorStorageType::TEXTURE_3D:
-      if (device.cl_version() < OpenCLVersion::CL_1_2 && depth == 1) {
+      if (device.cl_version() < OpenCLVersion::CL_1_2 && slices == 1) {
         // clCreateImage3D (that used in CL 1.0/1.1) can not create image with
         // depth = 1 by specification;
         return false;
       }
       return shape.w * shape.b <= device.GetInfo().image3d_max_width &&
              shape.h <= device.GetInfo().image3d_max_height &&
-             depth <= device.GetInfo().image3d_max_depth;
+             slices <= device.GetInfo().image3d_max_depth;
     case TensorStorageType::TEXTURE_ARRAY:
       // Bug on some Adreno. b/131099086
-      if (depth == 1 && !device.SupportsOneLayerTextureArray()) {
+      if (slices == 1 && !device.SupportsOneLayerTextureArray()) {
         return false;
       }
       return shape.w * shape.b <= device.GetInfo().image2d_max_width &&
              shape.h <= device.GetInfo().image2d_max_height &&
-             depth <= device.GetInfo().image_array_max_layers;
+             slices <= device.GetInfo().image_array_max_layers;
     case TensorStorageType::TEXTURE_2D:
       return shape.w * shape.b <= device.GetInfo().image2d_max_width &&
-             shape.h * depth <= device.GetInfo().image2d_max_height;
+             shape.h * slices <= device.GetInfo().image2d_max_height;
     case TensorStorageType::SINGLE_TEXTURE_2D:
       return shape.c <= 4 &&
              context.IsFloatTexture2DSupported(shape.c, descriptor.data_type) &&
@@ -342,11 +342,11 @@ Status AllocateTensorMemory(const CLContext& context, const CLDevice& device,
                             const BHWC& shape,
                             const TensorDescriptor& descriptor,
                             CLMemory* result) {
-  const int depth = IntegralDivideRoundUp(shape.c, 4);
+  const int slices = IntegralDivideRoundUp(shape.c, 4);
   switch (descriptor.storage_type) {
     case TensorStorageType::BUFFER:
     case TensorStorageType::IMAGE_BUFFER: {
-      const size_t data_size = shape.b * shape.w * shape.h * depth * 4 *
+      const size_t data_size = shape.b * shape.w * shape.h * slices * 4 *
                                SizeOf(descriptor.data_type);
       cl_int error_code;
       cl_mem memory = clCreateBuffer(context.context(), CL_MEM_READ_WRITE,
@@ -363,7 +363,7 @@ Status AllocateTensorMemory(const CLContext& context, const CLDevice& device,
       cl_image_desc desc;
       desc.image_type = CL_MEM_OBJECT_IMAGE2D;
       desc.image_width = shape.w * shape.b;
-      desc.image_height = shape.h * depth;
+      desc.image_height = shape.h * slices;
       desc.image_depth = 0;
       desc.image_row_pitch = 0;
       desc.image_slice_pitch = 0;
@@ -392,7 +392,7 @@ Status AllocateTensorMemory(const CLContext& context, const CLDevice& device,
       desc.image_type = CL_MEM_OBJECT_IMAGE3D;
       desc.image_width = shape.w * shape.b;
       desc.image_height = shape.h;
-      desc.image_depth = depth;
+      desc.image_depth = slices;
       desc.image_row_pitch = 0;
       desc.image_slice_pitch = 0;
       desc.num_mip_levels = 0;
@@ -421,7 +421,7 @@ Status AllocateTensorMemory(const CLContext& context, const CLDevice& device,
       desc.image_width = shape.w * shape.b;
       desc.image_height = shape.h;
       desc.image_depth = 0;
-      desc.image_array_size = depth;
+      desc.image_array_size = slices;
       desc.image_row_pitch = 0;
       desc.image_slice_pitch = 0;
       desc.num_mip_levels = 0;
@@ -446,7 +446,7 @@ Status AllocateTensorMemory(const CLContext& context, const CLDevice& device,
     }
 
     case TensorStorageType::SINGLE_TEXTURE_2D: {
-      if (depth != 1) {
+      if (slices != 1) {
         return InvalidArgumentError(absl::StrCat(
             "SINGLE_TEXTURE_2D support only cnannels in range [1-4], but ",
             shape.c, "was provided"));
@@ -495,18 +495,18 @@ void Tensor::DataFromBHWC(absl::Span<const float> src,
                           absl::Span<T> dst) const {
   const int channels_batch = GetChannelsAlignment();
   for (int b = 0; b < shape_.b; ++b) {
-    for (int d = 0; d < Depth(); ++d) {
+    for (int s = 0; s < Slices(); ++s) {
       for (int y = 0; y < shape_.h; ++y) {
         for (int x = 0; x < shape_.w; ++x) {
           for (int c = 0; c < channels_batch; ++c) {
             float value;
-            if (d * 4 + c < shape_.c) {
-              const int cpu_index = shape_.LinearIndex({b, y, x, d * 4 + c});
+            if (s * 4 + c < shape_.c) {
+              const int cpu_index = shape_.LinearIndex({b, y, x, s * 4 + c});
               value = src[cpu_index];
             } else {
               value = 0.0f;
             }
-            const int gpu_index = GetLinearIndex(b, x, y, d, c);
+            const int gpu_index = GetLinearIndex(b, x, y, s, c);
             dst[gpu_index] = value;
           }
         }
@@ -524,14 +524,15 @@ template <typename T>
 void Tensor::DataToBHWC(absl::Span<const T> src, absl::Span<float> dst) const {
   const int channels_batch = GetChannelsAlignment();
   for (int b = 0; b < shape_.b; ++b) {
-    for (int d = 0; d < Depth(); ++d) {
+    for (int s = 0; s < Slices(); ++s) {
       for (int y = 0; y < shape_.h; ++y) {
         for (int x = 0; x < shape_.w; ++x) {
           for (int c = 0; c < channels_batch; ++c) {
-            if (d * 4 + c >= shape_.c) continue;
-
-            const int cpu_index = shape_.LinearIndex({b, y, x, d * 4 + c});
-            const int gpu_index = GetLinearIndex(b, x, y, d, c);
+            if (s * 4 + c >= shape_.c) {
+              continue;
+            }
+            const int cpu_index = shape_.LinearIndex({b, y, x, s * 4 + c});
+            const int gpu_index = GetLinearIndex(b, x, y, s, c);
             dst[cpu_index] = src[gpu_index];
           }
         }

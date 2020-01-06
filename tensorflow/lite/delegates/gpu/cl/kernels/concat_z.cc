@@ -185,9 +185,9 @@ Status ConcatZ::BindArguments() {
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
   for (int i = 0; i < channels_.size(); ++i) {
-    RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[i]->Depth()));
+    RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[i]->Slices()));
   }
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWBatchedHDB()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWBatchedHSB()));
   return OkStatus();
 }
 

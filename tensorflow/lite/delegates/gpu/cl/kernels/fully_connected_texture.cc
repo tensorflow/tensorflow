@@ -157,11 +157,11 @@ Status FullyConnectedTexture::AddToQueue(CLCommandQueue* queue) {
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(biases_.GetMemoryPtr()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
-  const int src_depth_x4 = IntegralDivideRoundUp(src_[0]->Depth(), 4);
+  const int src_depth_x4 = IntegralDivideRoundUp(src_[0]->Slices(), 4);
   RETURN_IF_ERROR(kernel_.SetBytesAuto(
-      int4(src_[0]->Depth(), dst_[0]->Depth(), src_depth_x4, 1)));
+      int4(src_[0]->Slices(), dst_[0]->Slices(), src_depth_x4, 1)));
 
-  return queue->DispatchImplicit(kernel_, {dst_[0]->Depth(), 1, 1},
+  return queue->DispatchImplicit(kernel_, {dst_[0]->Slices(), 1, 1},
                                  work_group_size_);
 }
 

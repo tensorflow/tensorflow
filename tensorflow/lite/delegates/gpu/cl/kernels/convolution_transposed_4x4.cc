@@ -316,9 +316,9 @@ Status ConvolutionTransposed4x4::BindArguments() {
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(biases_.GetMemoryPtr()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWBatchedHDB()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWBatchedHDB()));
-  const int32_t filters_offset = 4 * 16 * src_[0]->Depth();
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWBatchedHSB()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWBatchedHSB()));
+  const int32_t filters_offset = 4 * 16 * src_[0]->Slices();
   RETURN_IF_ERROR(kernel_.SetBytesAuto(filters_offset));
 
   return OkStatus();
@@ -328,7 +328,7 @@ int3 ConvolutionTransposed4x4::GetGridSize() const {
   const int grid_x =
       IntegralDivideRoundUp(dst_[0]->Width() + 2, 2) * dst_[0]->Batch();
   const int grid_y = IntegralDivideRoundUp(dst_[0]->Height() + 2, 2);
-  const int grid_z = dst_[0]->Depth();
+  const int grid_z = dst_[0]->Slices();
   return int3(grid_x, grid_y, grid_z);
 }
 

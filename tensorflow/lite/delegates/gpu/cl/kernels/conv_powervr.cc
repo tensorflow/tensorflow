@@ -141,8 +141,8 @@ Status ConvPowerVR::BindArguments() {
         int4(kernel_dilation_.x, kernel_dilation_.y,
              kernel_dilation_.z * src_[0]->Batch(), kernel_dilation_.w)));
   }
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWBatchedHDB()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWBatchedHDB()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWBatchedHSB()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWBatchedHSB()));
   return OkStatus();
 }
 
@@ -152,7 +152,7 @@ int3 ConvPowerVR::GetGridSize() const {
   const int grid_y =
       IntegralDivideRoundUp(dst_[0]->Height(), conv_params_.block_size.y);
   const int grid_z =
-      IntegralDivideRoundUp(dst_[0]->Depth(), conv_params_.block_size.z);
+      IntegralDivideRoundUp(dst_[0]->Slices(), conv_params_.block_size.z);
   int3 wg;
   wg.x = IntegralDivideRoundUp(grid_x, conv_params_.work_group_size.x);
   wg.y = IntegralDivideRoundUp(grid_y, conv_params_.work_group_size.y);

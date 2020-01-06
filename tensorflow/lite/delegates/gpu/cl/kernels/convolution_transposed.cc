@@ -370,8 +370,8 @@ Status ConvolutionTransposed::BindArguments() {
   RETURN_IF_ERROR(kernel_.SetBytesAuto(kernel_size_));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(stride_));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(padding_));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWHDB()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWHDB()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWHSB()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWHSB()));
   return OkStatus();
 }
 
@@ -381,7 +381,7 @@ int3 ConvolutionTransposed::GetGridSize() const {
   const int grid_x =
       IntegralDivideRoundUp(aligned_w, block_size_.x) * dst_[0]->Batch();
   const int grid_y = IntegralDivideRoundUp(aligned_h, block_size_.y);
-  const int grid_z = IntegralDivideRoundUp(dst_[0]->Depth(), block_size_.z);
+  const int grid_z = IntegralDivideRoundUp(dst_[0]->Slices(), block_size_.z);
   return int3(grid_x, grid_y, grid_z);
 }
 

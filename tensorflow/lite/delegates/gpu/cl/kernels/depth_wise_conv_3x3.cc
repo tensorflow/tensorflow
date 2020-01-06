@@ -317,7 +317,7 @@ Status DepthWiseConv3x3::BindArguments() {
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(weights_));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWHDB()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWHSB()));
 
   return OkStatus();
 }
@@ -325,7 +325,7 @@ Status DepthWiseConv3x3::BindArguments() {
 int3 DepthWiseConv3x3::GetGridSize() const {
   const int grid_x = IntegralDivideRoundUp(dst_[0]->Width(), 2);
   const int grid_y = IntegralDivideRoundUp(dst_[0]->Height(), 2);
-  const int grid_z = dst_[0]->Depth();
+  const int grid_z = dst_[0]->Slices();
   return int3(grid_x, grid_y, grid_z);
 }
 

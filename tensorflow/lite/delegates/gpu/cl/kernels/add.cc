@@ -148,7 +148,7 @@ Status Add::BindArguments(CLKernel* kernel) {
     RETURN_IF_ERROR(kernel->SetMemoryAuto(src_[i]->GetMemoryPtr()));
   }
   for (int i = 1; i < src_depthes_.size(); ++i) {
-    RETURN_IF_ERROR(kernel->SetBytesAuto(src_[i]->GetWBatchedHDB()));
+    RETURN_IF_ERROR(kernel->SetBytesAuto(src_[i]->GetWBatchedHSB()));
   }
   return OkStatus();
 }

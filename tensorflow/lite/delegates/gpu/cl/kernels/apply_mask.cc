@@ -78,7 +78,7 @@ std::string ApplyMask::GetArgsDeclaration() const {
 
 Status ApplyMask::BindArguments(CLKernel* kernel) {
   RETURN_IF_ERROR(kernel->SetMemoryAuto(src_[1]->GetMemoryPtr()));
-  RETURN_IF_ERROR(kernel->SetBytesAuto(src_[1]->GetWBatchedHDB()));
+  RETURN_IF_ERROR(kernel->SetBytesAuto(src_[1]->GetWBatchedHSB()));
   return OkStatus();
 }
 
