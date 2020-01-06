@@ -68,6 +68,7 @@ are verified in `IsNodeSupportedByHexagon`:
 * Conv2D:
   * Constraints:
     - stride width/height <= 3
+* DepthToSpace
 * DepthwiseConv2D:
   * Constraints:
       - Filter width == 3
@@ -89,6 +90,7 @@ are verified in `IsNodeSupportedByHexagon`:
     - Requested size <= 65 (b/143105433)
 * Resize Nearest Neighbor
 * SoftMax
+* SpaceToDepth
 * Split
 * Sub
 * Tanh
