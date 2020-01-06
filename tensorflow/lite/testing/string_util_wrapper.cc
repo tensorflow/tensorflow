@@ -13,19 +13,25 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-%{
-
-#define SWIG_FILE_WITH_INIT
+#include "include/pybind11/pybind11.h"
+#include "include/pybind11/pytypes.h"
 #include "tensorflow/lite/testing/string_util.h"
+#include "tensorflow/python/lib/core/pybind11_lib.h"
 
-%}
+namespace py = pybind11;
 
-namespace tflite {
-namespace testing {
-namespace python {
-
-PyObject* SerializeAsHexString(PyObject* string_tensor);
-
-}  // namespace python
-}  // namespace testing
-}  // namespace tflite
+PYBIND11_MODULE(_pywrap_string_util, m) {
+  m.doc() = R"pbdoc(
+    _pywrap_string_util
+    -----
+  )pbdoc";
+  m.def(
+      "SerializeAsHexString",
+      [](py::handle& string_tensor) {
+        return tensorflow::pyo_or_throw(
+            tflite::testing::python::SerializeAsHexString(string_tensor.ptr()));
+      },
+      R"pbdoc(
+      Serializes TF Lite dynamic buffer format as a HexString.
+    )pbdoc");
+}
