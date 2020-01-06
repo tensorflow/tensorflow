@@ -340,11 +340,11 @@ def make_csv_dataset_v2(
   tuple that corresponds to a batch of CSV rows. The features dictionary
   maps feature column names to `Tensor`s containing the corresponding
   feature data, and labels is a `Tensor` containing the batch's label data.
-  
+
   Usage Example:
- 
+
   Using IRIS dataset to show how to convert .csv file into a dataset.
-    
+
   >>> train_dataset_url = "https://storage.googleapis.com/download.tensorflow.org/data/iris_training.csv"
   >>> train_dataset_fp = tf.keras.utils.get_file(fname=os.path.basename(train_dataset_url), origin=train_dataset_url)
   >>> column_names = ['sepal_length', 'sepal_width', 'petal_length', 'petal_width', 'species']
@@ -352,15 +352,15 @@ def make_csv_dataset_v2(
   >>> label_name = column_names[-1]
   >>> batch_size = 32
   >>> train_dataset = tf.data.experimental.make_csv_dataset(
-  ...  train_dataset_fp,
-  ...  batch_size,
-  ...  column_names=column_names,
-  ...  label_name=label_name,
-  ...  num_epochs=1)
+  ...   train_dataset_fp,
+  ...   batch_size,
+  ...   column_names=column_names,
+  ...   label_name=label_name,
+  ...   num_epochs=1)
   >>> features_batch, labels_batch = next(iter(train_dataset))
   >>> print(features_batch)
   <OrderedDict([(..., <tf.Tensor: shape=(32,), dtype=float32, numpy=array([...], dtype=float32)>)])>
-  
+
   Args:
     file_pattern: List of files or patterns of file paths containing CSV
       records. See `tf.io.gfile.glob` for pattern rules.
