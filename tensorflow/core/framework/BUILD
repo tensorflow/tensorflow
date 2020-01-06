@@ -30,7 +30,6 @@ exports_files(
         "allocator_registry.h",
         "cancellation.h",
         "collective.h",
-        "common_shape_fns.h",
         "control_flow.h",
         "dataset.h",
         "dataset_stateful_op_whitelist.h",
@@ -64,7 +63,6 @@ exports_files(
         "run_handler_util.h",
         "selective_registration.h",
         "session_state.h",
-        "shape_inference.h",
         "shared_ptr_variant.h",
         "stats_aggregator.h",
         "tensor_reference.h",
@@ -210,7 +208,6 @@ filegroup(
     srcs = [
         "cancellation.cc",
         "collective.cc",
-        "common_shape_fns.cc",
         "dataset.cc",
         "device_base.cc",
         "function.cc",
@@ -234,7 +231,6 @@ filegroup(
         "resource_mgr.cc",
         "run_handler.cc",
         "run_handler_util.cc",
-        "shape_inference.cc",
         "tensor_slice.cc",
         "tensor_util.cc",
         "unique_tensor_references.cc",
@@ -688,7 +684,10 @@ tf_cuda_library(
         "variant_op_registry.h",
         "variant_tensor_data.h",
     ],
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/util:__pkg__",
+    ],
     deps = [
         ":allocation_description_proto_cc",
         ":allocator",
@@ -729,6 +728,47 @@ tf_cuda_library(
         "@com_google_absl//absl/strings",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "shape_inference",
+    srcs = ["shape_inference.cc"],
+    hdrs = ["shape_inference.h"],
+    deps = [
+        ":bounds_check",
+        ":node_def_proto_cc",
+        ":node_def_util",
+        ":tensor",
+        ":tensor_shape",
+        ":tensor_shape_proto_cc",
+        "//tensorflow/core/lib/core:errors",
+        "//tensorflow/core/lib/core:status",
+        "//tensorflow/core/lib/gtl:inlined_vector",
+        "//tensorflow/core/lib/strings:numbers",
+        "//tensorflow/core/lib/strings:scanner",
+        "//tensorflow/core/lib/strings:str_util",
+        "//tensorflow/core/platform:macros",
+        "@com_google_absl//absl/memory",
+    ],
+)
+
+cc_library(
+    name = "common_shape_fns",
+    srcs = ["common_shape_fns.cc"],
+    hdrs = ["common_shape_fns.h"],
+    deps = [
+        ":attr_value_proto_cc",
+        ":shape_inference",
+        ":tensor",
+        ":tensor_shape",
+        "//tensorflow/core/lib/core:errors",
+        "//tensorflow/core/lib/gtl:inlined_vector",
+        "//tensorflow/core/util:einsum_op_util",
+        "//tensorflow/core/util:padding",
+        "//tensorflow/core/util:tensor_format",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 cc_library(
