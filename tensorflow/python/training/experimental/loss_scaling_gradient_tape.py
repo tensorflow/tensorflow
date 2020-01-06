@@ -29,9 +29,21 @@ from tensorflow.python.training.experimental import loss_scale as loss_scale_mod
 from tensorflow.python.util import nest
 
 
-def _convert_to_per_replica(distribution, value):
-  """Converts a tensor or a DistributedVariable to a PerReplica value."""
-  return distribution.experimental_run_v2(array_ops.identity, args=(value,))
+def _convert_to_per_replicas(distribution, values):
+  """Converts tensors and DistributedVariables to PerReplica values.
+
+  Args:
+    distribution: The distribution strategy in effect.
+    values: A list of tensors, variables, DistributedValues, or anything else
+      that can be converted to a PerReplcia value
+
+  Returns:
+    `values`, but each element has been converted to a PerReplica value.
+  """
+  return distribution.experimental_run_v2(
+      lambda values: [array_ops.identity(v) for v in values],
+      args=(values,)
+  )
 
 
 # TODO(reedwm): Expose this after testing it on several models.
@@ -237,8 +249,7 @@ def _compute_gradients_until_finite(
     # types subclass 'DistributedValues', while_loop will still throw an error.
     # So we convert 'initial_grads' to be PerReplica values.
     # TODO(b/146084534): Once the bug is fixed, remove this special case.
-    initial_grads = [_convert_to_per_replica(distribution, g)
-                     for g in initial_grads]
+    initial_grads = _convert_to_per_replicas(distribution, initial_grads)
   initial_ready_to_update = False
   initial_is_first_iteration = True
 
