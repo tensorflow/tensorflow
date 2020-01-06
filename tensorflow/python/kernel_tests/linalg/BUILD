@@ -386,8 +386,13 @@ cuda_py_test(
     name = "linear_operator_tridiag_test",
     size = "medium",
     srcs = ["linear_operator_tridiag_test.py"],
-    additional_deps = [
-        "//tensorflow/python/ops/linalg",
+    shard_count = 5,
+    tags = [
+        "noasan",
+        "optonly",
+    ],
+    xla_enable_strict_auto_jit = True,
+    deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
@@ -396,13 +401,8 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:random_ops",
+        "//tensorflow/python/ops/linalg",
     ],
-    shard_count = 5,
-    tags = [
-        "noasan",
-        "optonly",
-    ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(

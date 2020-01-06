@@ -661,14 +661,14 @@ tf_py_test(
     name = "add_loss_correctness_test",
     size = "medium",
     srcs = ["add_loss_correctness_test.py"],
-    additional_deps = [
-        ":keras",
-        "@absl_py//absl/testing:parameterized",
-        "//third_party/py/numpy",
-        "//tensorflow/python:client_testlib",
-    ],
     python_version = "PY3",
     shard_count = 4,
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
 )
 
 tf_py_test(
