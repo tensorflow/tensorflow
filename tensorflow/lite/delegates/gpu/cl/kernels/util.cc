@@ -73,6 +73,7 @@ std::string GetCommonDefines(CalculationsPrecision precision) {
 
   switch (precision) {
     case CalculationsPrecision::F32:
+      result += "#pragma OPENCL EXTENSION cl_khr_3d_image_writes : enable\n";
       result += "#define ACCUM_FLT4 float4\n";
       result += "#define FLT float\n";
       result += "#define FLT2 float2\n";
@@ -85,6 +86,7 @@ std::string GetCommonDefines(CalculationsPrecision precision) {
       result += "#define WRITE_IMAGE write_imagef\n";
       break;
     case CalculationsPrecision::F16:
+      result += "#pragma OPENCL EXTENSION cl_khr_3d_image_writes : enable\n";
       result += "#pragma OPENCL EXTENSION cl_khr_fp16 : enable\n";
       result += "#define ACCUM_FLT4 half4\n";
       result += "#define FLT half\n";
@@ -98,6 +100,7 @@ std::string GetCommonDefines(CalculationsPrecision precision) {
       result += "#define WRITE_IMAGE write_imageh\n";
       break;
     case CalculationsPrecision::F32_F16:
+      result += "#pragma OPENCL EXTENSION cl_khr_3d_image_writes : enable\n";
       result += "#pragma OPENCL EXTENSION cl_khr_fp16 : enable\n";
       result += "#define ACCUM_FLT4 float4\n";
       result += "#define FLT half\n";
