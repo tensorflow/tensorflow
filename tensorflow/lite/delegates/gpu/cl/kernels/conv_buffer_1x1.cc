@@ -261,10 +261,10 @@ Status ConvBuffer1x1::BindArguments() {
   RETURN_IF_ERROR(BindArgs(kernel, linked_operations_));
   RETURN_IF_ERROR(kernel->SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
   int4 src_size = int4(
-      src_[0]->Width() * src_[0]->Batch(), src_[0]->Height(), src_[0]->Depth(),
+      src_[0]->Width() * src_[0]->Batch(), src_[0]->Height(), src_[0]->Slices(),
       GetGridWidth(src_[0]->Width()) * src_[0]->Height() * src_[0]->Batch());
   RETURN_IF_ERROR(kernel->SetBytesAuto(src_size));
-  RETURN_IF_ERROR(kernel->SetBytesAuto(dst_[0]->GetWBatchedHDB()));
+  RETURN_IF_ERROR(kernel->SetBytesAuto(dst_[0]->GetWBatchedHSB()));
   return OkStatus();
 }
 
@@ -276,7 +276,7 @@ int3 ConvBuffer1x1::GetGridSize() const {
   const int grid_x = IntegralDivideRoundUp(
       GetGridWidth(dst_[0]->Width()) * dst_[0]->Batch(), fltx_count);
   const int grid_y = IntegralDivideRoundUp(dst_[0]->Height(), flty_count);
-  const int grid_z = dst_[0]->Depth();
+  const int grid_z = dst_[0]->Slices();
   return int3(grid_x, grid_y, grid_z);
 }
 

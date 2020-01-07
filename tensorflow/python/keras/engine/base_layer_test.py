@@ -22,6 +22,7 @@ import copy
 import os
 import sys
 import traceback
+
 import numpy as np
 
 from tensorflow.python import keras
@@ -224,28 +225,6 @@ class BaseLayerTest(keras_parameterized.TestCase):
       new_layer = copy.deepcopy(layer)
       self.assertEqual(new_layer.bias_regularizer, bias_reg)
       self.assertEqual(layer.get_config(), new_layer.get_config())
-
-  @keras_parameterized.run_all_keras_modes
-  def test_add_loss_correctness(self):
-
-    class MyLayer(keras.layers.Layer):
-
-      def call(self, inputs, training=None):
-        self.add_loss(math_ops.reduce_sum(inputs))
-        return inputs
-
-    inputs = keras.Input((3,))
-    layer = MyLayer()
-    outputs = layer(inputs)
-    model = keras.Model(inputs, outputs)
-    self.assertEqual(len(model.losses), 1)
-    model.compile(
-        'sgd',
-        'mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
-    loss = model.train_on_batch(np.ones((2, 3)), np.ones((2, 3)))
-    self.assertEqual(loss, 2 * 3)
 
   @test_util.run_in_graph_and_eager_modes
   def test_invalid_forward_pass(self):
@@ -694,8 +673,7 @@ class SymbolicSupportTest(test.TestCase):
       if hasattr(e, 'ag_error_metadata'):
         self.assertIn('easily_identifiable_name', str(e))
         # See ErrorMetadataBase in autograph/pyct/errors.py
-        # Topmost frame corresponds to `call` itself.
-        function_name = e.ag_error_metadata.translated_stack[-2].function_name
+        function_name = e.ag_error_metadata.translated_stack[-1].function_name
       else:
         tb = traceback.extract_tb(sys.exc_info()[2])
         last_entry = tb[-1]

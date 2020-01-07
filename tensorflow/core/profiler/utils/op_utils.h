@@ -48,30 +48,6 @@ class HostOpMetricsDbBuilder : public OpMetricsDbBuilder {
                                uint64 start_timestamp_ps_diff);
 };
 
-// Type of a TensorFlow Op activity, which is either beginning or ending an Op.
-enum TfActivityType { kTfOpBegin, kTfOpEnd };
-
-// Instant activity representing the begin or end of a host-side TF Op.
-struct TfActivity {
-  // The timestamp in picoseconds when this activity happened.
-  uint64 timestamp_ps;
-  // The ID of this Op.
-  uint32 tf_op_id;
-  // Type of this activity.
-  TfActivityType activity_type;
-  // Full TF op name and type of this activity (backed by XEvent::name).
-  TfOp tf_op;
-};
-
-// TF Op metrics stored as element in OpStack.
-struct TfOpInfo {
-  explicit TfOpInfo(uint64 ts) : start_timestamp_ps(ts) {}
-
-  // Start timestamp in picoseconds.
-  uint64 start_timestamp_ps;
-  // Children duration in picoseconds.
-  uint64 children_duration_ps = 0;
-};
 }  // namespace profiler
 }  // namespace tensorflow
 

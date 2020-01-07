@@ -126,7 +126,7 @@ WhileLoopSimplifierTest::MakeModuleWithSimpleLoopTupleElementLoopBound(
   return ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
 }
 
-TEST_F(WhileLoopSimplifierTest, LoopWithZeroIterationSimiplified) {
+TEST_F(WhileLoopSimplifierTest, LoopWithZeroIterationSimplified) {
   auto m = MakeModuleWithSimpleLoop(/*num_iters=*/0);
   ASSERT_TRUE(WhileLoopSimplifier().Run(m.get()).ValueOrDie());
   EXPECT_THAT(m->entry_computation()->root_instruction(),

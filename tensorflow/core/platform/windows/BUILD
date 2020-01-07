@@ -81,6 +81,17 @@ cc_library(
 )
 
 cc_library(
+    name = "intrinsics_port",
+    srcs = ["intrinsics_port.h"],
+    tags = [
+        "manual",
+        "no_oss",
+        "nobuilder",
+    ],
+    deps = ["//tensorflow/core/platform:types"],
+)
+
+cc_library(
     name = "load_library",
     srcs = ["load_library.cc"],
     hdrs = ["//tensorflow/core/platform:load_library.h"],
@@ -199,6 +210,6 @@ cc_library(
 )
 
 exports_files(
-    srcs = glob(["*"]),
+    srcs = ["intrinsics_port.h"],
     visibility = ["//tensorflow/core/platform:__pkg__"],
 )

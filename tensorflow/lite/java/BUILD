@@ -41,14 +41,6 @@ aar_with_jni(
     android_library = ":tensorflowlite_flex",
 )
 
-# DEPRECATED: AAR target that supports TensorFlow op execution with TFLite.
-# Please use `tensorflowlite-select-tf-ops` instead (along with the standard
-# `tensorflowlite` AAR).
-aar_with_jni(
-    name = "tensorflow-lite-with-select-tf-ops",
-    android_library = ":tensorflowlite_flex_deprecated",
-)
-
 # EXPERIMENTAL: AAR target for GPU acceleration. Note that this .aar contains
 # *only* the GPU delegate; clients must also include the core `tensorflow-lite`
 # runtime.
@@ -81,22 +73,6 @@ android_library(
     proguard_specs = ["proguard.flags"],
     deps = [
         ":tensorflowlite_java",
-        ":tensorflowlite_native_flex",
-        "@org_checkerframework_qual",
-    ],
-)
-
-# DEPRECATED: Android target that supports TensorFlow op execution with TFLite.
-# Please use `tensorflowlite_flex`.
-android_library(
-    name = "tensorflowlite_flex_deprecated",
-    srcs = JAVA_SRCS + [
-        "//tensorflow/lite/delegates/flex/java/src/main/java/org/tensorflow/lite/flex:flex_delegate",
-    ],
-    manifest = "AndroidManifest.xml",
-    proguard_specs = ["proguard.flags"],
-    deps = [
-        ":tensorflowlite",
         ":tensorflowlite_native_flex",
         "@org_checkerframework_qual",
     ],
@@ -163,6 +139,35 @@ java_test(
         ":tensorflowlitelib",
         "@com_google_truth",
         "@junit",
+    ],
+)
+
+java_test(
+    name = "TensorFlowLiteNoNativeLibTest",
+    size = "small",
+    srcs = JAVA_SRCS + ["src/test/java/org/tensorflow/lite/TensorFlowLiteNoNativeLibTest.java"],
+    javacopts = JAVACOPTS,
+    test_class = "org.tensorflow.lite.TensorFlowLiteNoNativeLibTest",
+    visibility = ["//visibility:private"],
+    deps = [
+        "@com_google_truth",
+        "@junit",
+        "@org_checkerframework_qual",
+    ],
+)
+
+java_test(
+    name = "TensorFlowLiteInvalidNativeLibTest",
+    size = "small",
+    srcs = JAVA_SRCS + ["src/test/java/org/tensorflow/lite/TensorFlowLiteInvalidNativeLibTest.java"],
+    javacopts = JAVACOPTS,
+    test_class = "org.tensorflow.lite.TensorFlowLiteInvalidNativeLibTest",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//tensorflow/lite/java/src/test/native:libtensorflowlite_jni.so",
+        "@com_google_truth",
+        "@junit",
+        "@org_checkerframework_qual",
     ],
 )
 

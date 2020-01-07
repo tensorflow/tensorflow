@@ -1133,7 +1133,7 @@ bool CopyDataFromInput(const Literal& input_literal, int64 input_start,
   auto base_case = [&](int64 axis, int64 dst_index, int64 src_index,
                        bool within_src_bounds) {
     if (axis == 0) {
-      // For IRFFT, the negavie frequencies are only needed for the sweep along
+      // For IRFFT, the negative frequencies are only needed for the sweep along
       // the X axis, which is performed last. Leave this part of the working set
       // uninitialized until then.
       const int64 length = fft_lengths[axis];
@@ -1684,7 +1684,7 @@ class OutputOffsetIndexToInputIndex {
   std::vector<int64> input_index_;
 };
 
-// Rehapes the gather indices input to have a trailing degenerate `1` dimension
+// Reshapes the gather indices input to have a trailing degenerate `1` dimension
 // if necessary.  Hands over the ownership of the newly created literal (if
 // there is one) to `reshaped_start_indices`.
 static StatusOr<std::reference_wrapper<const Literal>> ReshapedGatherIndices(

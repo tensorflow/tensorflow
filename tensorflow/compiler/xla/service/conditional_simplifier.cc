@@ -189,7 +189,7 @@ StatusOr<bool> TryRemoveUnusedConditionalOperands(
     }
     for (HloInstruction* user : param->users()) {
       // If the user is not a get tuple element, assume it is unsafe to remove
-      // elemnts from the tuple.
+      // elements from the tuple.
       if (user->opcode() != HloOpcode::kGetTupleElement) {
         return false;
       }

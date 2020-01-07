@@ -33,7 +33,7 @@ def distribute_py_test(
         srcs = srcs,
         data = data,
         main = main,
-        additional_deps = deps,
+        deps = deps,
         shard_count = shard_count,
         tags = tags,
         args = args,

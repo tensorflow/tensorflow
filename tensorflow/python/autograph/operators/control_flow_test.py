@@ -166,6 +166,53 @@ class ForLoopTest(test.TestCase):
         opts={})
     self.assertEqual(s, (1234,))
 
+  def test_python_generator_with_early_stopping(self):
+    def new_generator():
+      for i in range(1, 5):
+        yield i
+
+    gen = new_generator()
+    def run_loop():
+      return control_flow.for_stmt(
+          gen,
+          extra_test=lambda s, c: c == 0,  # Break after first iteration
+          body=lambda i, s, c: (s * 10 + i, c + 1),
+          get_state=None,
+          set_state=None,
+          init_vars=(0, 0),
+          basic_symbol_names=('s', 'c'),
+          composite_symbol_names=(),
+          opts={})
+
+    self.assertEqual(run_loop(), (1, 1))
+    self.assertEqual(run_loop(), (2, 1))
+    self.assertEqual(run_loop(), (3, 1))
+
+    self.assertEqual(next(gen), 4)
+
+  def test_python_generator_with_early_stopping_before_loop(self):
+    def new_generator():
+      for i in range(5):
+        yield i
+
+    gen = new_generator()
+    def run_loop():
+      return control_flow.for_stmt(
+          gen,
+          extra_test=lambda s: False,  # Break before loop
+          body=lambda i, s: (s * 10 + i,),
+          get_state=None,
+          set_state=None,
+          init_vars=(0,),
+          basic_symbol_names=('s',),
+          composite_symbol_names=(),
+          opts={})
+
+    self.assertEqual(run_loop(), (0,))
+    self.assertEqual(run_loop(), (0,))
+
+    self.assertEqual(next(gen), 0)
+
   def test_tf_dataset(self):
     s = control_flow.for_stmt(
         dataset_ops.Dataset.range(5),

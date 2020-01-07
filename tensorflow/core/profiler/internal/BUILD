@@ -448,9 +448,7 @@ cc_library(
 filegroup(
     name = "mobile_srcs",
     srcs = [
-        "profiler_factory.h",
         "profiler_interface.h",
-        "traceme_recorder.h",
     ],
     visibility = ["//visibility:public"],
 )
@@ -523,5 +521,16 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+    ],
+)
+
+filegroup(
+    name = "pywrap_eager_hdrs",
+    srcs = [
+        "profiler_interface.h",
+    ],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/python:__pkg__",
     ],
 )

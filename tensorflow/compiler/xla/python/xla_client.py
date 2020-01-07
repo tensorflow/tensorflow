@@ -76,13 +76,6 @@ class Backend(object):
   def buffer_from_pyval(self, pyval, device=None):
     """Allocates a fresh buffer and populates it with `pyval`."""
 
-  def buffers_from_pyvals(self, pyvals_and_devices):
-    """Allocates buffers and populates them with `pyvals`."""
-    return [
-        self.buffer_from_pyval(pyval, device)
-        for pyval, device in pyvals_and_devices
-    ]
-
   @abc.abstractmethod
   def make_tuple(self, c_buffers, device):
     """Makes a tuple from a sequence of backend buffer objects."""
@@ -405,22 +398,6 @@ class Buffer(object):
     return backend.buffer_from_pyval(pyval, device)
 
   @staticmethod
-  def from_pyvals(pyvals_and_devices, backend=None):
-    """Copies multiple Python values to freshly allocated on-device buffers.
-
-    Arguments:
-      pyvals_and_devices: a list of `(pyval, device)` pairs, where `pyval` is a
-        Python value to copy (e.g., a NumPy array), and `device` is an integer
-        device ordinal.
-      backend: a Backend object, or `None` to use the default local backend.
-
-    Returns:
-      A list of `Buffer` objects corresponding to `pyvals_and_devices`.
-    """
-    backend = backend or get_local_backend()
-    return backend.buffers_from_pyvals(pyvals_and_devices)
-
-  @staticmethod
   def make_tuple(buffers, device, backend=None):
     backend = backend or get_local_backend()
     return backend.make_tuple(buffers, device)
@@ -467,7 +444,7 @@ def shape_from_pyval(pyval):
   return convert(pyval)
 
 
-def transfer_to_infeed(value, device_ordinal=0):
+def transfer_to_infeed(value, device=None):
   """Transfers the given value into the XLA infeed queue.
 
   XLA's infeed queue is a single queue that feeds the "XLA virtual machine" with
@@ -477,29 +454,31 @@ def transfer_to_infeed(value, device_ordinal=0):
   Args:
     value: the value that the caller would like to enqueue into the XLA infeed
       queue
-    device_ordinal: the device to infeed the value to. Each device has a
+    device: the device to infeed the value to. Each device has a
       distinct infeed queue.
   """
   # TODO(phawkins): support non-default backends.
   backend = get_local_backend()
-  backend.client.TransferToInfeed(value, device_ordinal)
+  device = device or backend.local_devices()[0]
+  backend.client.TransferToInfeed(value, device)
 
 
-def transfer_from_outfeed(shape, device_ordinal=0):
-  """Transfers a literal of the given shape from `device_ordinal`'s outfeed.
+def transfer_from_outfeed(shape, device=None):
+  """Transfers a literal of the given shape from `device`'s outfeed.
 
   Args:
     shape: The shape of the value to transfer from outfeed.
-    device_ordinal: The device ordinal to transfer the outfeed value from. Each
-      device has a distinct outfeed queue..
+    device: The device from which to transfer the outfeed value. Each device has
+      a distinct outfeed queue..
 
   Returns:
     The literal value that is produced from the outfeed queue.
   """
   # TODO(phawkins): support non-default backends.
   backend = get_local_backend()
+  device = device or backend.local_devices()[0]
   return backend.client.TransferFromOutfeed(
-      shape.with_major_to_minor_layout_if_absent(), device_ordinal)
+      shape.with_major_to_minor_layout_if_absent(), device)
 
 
 DeviceAssignment = _xla.DeviceAssignment
@@ -620,7 +599,7 @@ class Computation(object):
 
 # An Executable is a C++ class that duck types with the following API:
 # class Executable(object):
-#   def DeviceOrdinals(self) -> [int]:
+#   def local_devices(self) -> [Device]:
 #   def Execute(self, arguments : [Buffer]) -> Buffer:
 #     """Execute on one replica with Buffer arguments and return value."""
 #
@@ -650,7 +629,7 @@ def execute_with_python_values(executable, arguments=(), backend=None):
 
   def put(arg):
     return Buffer.from_pyval(
-        arg, device=executable.DeviceOrdinals()[0], backend=backend)
+        arg, device=executable.local_devices()[0], backend=backend)
 
   arguments = [put(arg) for arg in arguments]
   return executable.Execute(arguments).to_py()
@@ -669,12 +648,14 @@ def execute_with_python_values_replicated(executable, arguments, backend=None):
     A list of python values, one per replica.
   """
   backend = backend or get_local_backend()
-  device_ordinals = executable.DeviceOrdinals()
+  devices = executable.local_devices()
   # pylint: disable=g-complex-comprehension
-  flat_args = [(arg, device_ordinals[replica])
+  flat_args = [(arg, devices[replica])
                for replica, replica_args in enumerate(arguments)
                for arg in replica_args]
-  flat_arg_buffers = Buffer.from_pyvals(flat_args, backend=backend)
+  flat_arg_buffers = [
+      backend.buffer_from_pyval(pyval, device) for pyval, device in flat_args
+  ]
   arg_buffers = []
   for replica_args in arguments:
     arg_buffers.append(flat_arg_buffers[:len(replica_args)])
@@ -1526,7 +1507,7 @@ class ComputationBuilder(object):
           ConvWithGeneralPadding.
       feature_group_count: number of feature groups for grouped convolution.
       batch_group_count: number of batch groups for grouped convolution.
-    Returns: a XlaOp representing the ConvGenralDilated operation.
+    Returns: a XlaOp representing the ConvGeneralDilated operation.
     """
     if dimension_numbers is None:
       dimension_numbers = self._GetConvDimensionNumbers(len(window_strides))

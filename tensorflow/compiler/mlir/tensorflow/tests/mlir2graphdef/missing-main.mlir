@@ -1,4 +1,4 @@
-// RUN: tf-mlir-translate -mlir-to-graphdef %s -o - 2>&1 | FileCheck %s; if [[ ${PIPESTATUS[0]} != 0  &&  ${PIPESTATUS[1]} == 0 ]]; then exit 0; else exit 1; fi
+// RUN: not tf-mlir-translate -mlir-to-graphdef %s -o - 2>&1 | FileCheck %s
 
 // CHECK: Graph export failed: Failed precondition: entry function `main` must be present
 

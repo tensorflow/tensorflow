@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/grappler/clusters/utils.h"
+#include "tensorflow/core/grappler/costs/utils.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -385,6 +386,8 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
   const int quantize_v2_cost =
       EIGEN_COST(scalar_product_op<float>) + EIGEN_COST(scalar_max_op<float>) +
       EIGEN_COST(scalar_min_op<float>) + EIGEN_COST(scalar_round_op<float>);
+  const int quantize_and_dequantize_v2_cost =
+      quantize_v2_cost + EIGEN_COST(scalar_product_op<float>);
 
   // Unary ops alphabetically sorted
   elementwise_ops_.emplace("Acos", EIGEN_COST(scalar_acos_op<float>));
@@ -413,6 +416,8 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
   elementwise_ops_.emplace("Log", EIGEN_COST(scalar_log_op<float>));
   elementwise_ops_.emplace("Log1p", EIGEN_COST(scalar_log1p_op<float>));
   elementwise_ops_.emplace("Neg", EIGEN_COST(scalar_opposite_op<float>));
+  elementwise_ops_.emplace("QuantizeAndDequantizeV2",
+                           quantize_and_dequantize_v2_cost);
   elementwise_ops_.emplace("QuantizeV2", quantize_v2_cost);
   elementwise_ops_.emplace("Reciprocal", EIGEN_COST(scalar_inverse_op<float>));
   elementwise_ops_.emplace("Rint", 1);
@@ -655,7 +660,7 @@ Costs OpLevelCostEstimator::PredictOpCountBasedCost(
       Costs::NanoSeconds(intermediate_read_time);
   costs.intermediate_memory_write_time =
       Costs::NanoSeconds(intermediate_write_time);
-  CombineCostsAndUpdateExecutionTime(&costs);
+  CombineCostsAndUpdateExecutionTime(compute_memory_overlap_, &costs);
   return costs;
 }
 
@@ -1711,7 +1716,7 @@ Costs OpLevelCostEstimator::PredictFusedOp(
     fused_cost.intermediate_memory_time += op_cost.intermediate_memory_time;
   }
 
-  CombineCostsAndUpdateExecutionTime(&fused_cost);
+  CombineCostsAndUpdateExecutionTime(compute_memory_overlap_, &fused_cost);
   return fused_cost;
 }
 
@@ -2045,18 +2050,6 @@ Costs OpLevelCostEstimator::PredictFusedBatchNormGrad(
   costs.num_ops_with_unknown_shapes = found_unknown_shapes;
   costs.max_memory = total_output_size;
   return costs;
-}
-
-void OpLevelCostEstimator::CombineCostsAndUpdateExecutionTime(
-    Costs* costs) const {
-  if (compute_memory_overlap_) {
-    costs->execution_time =
-        std::max(costs->intermediate_memory_time,
-                 std::max(costs->compute_time, costs->memory_time));
-  } else {
-    costs->execution_time = costs->compute_time + costs->memory_time +
-                            costs->intermediate_memory_time;
-  }
 }
 }  // end namespace grappler
 }  // end namespace tensorflow

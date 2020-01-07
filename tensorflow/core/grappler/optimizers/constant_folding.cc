@@ -3594,7 +3594,6 @@ bool ConstantFolding::MergeConcat(bool use_shape_info,
 
   protobuf::RepeatedPtrField<string> parent_inputs;
   parent_inputs.Swap(parent->mutable_input());
-  std::vector<string> ctrl_output;
   // TODO(rmlarsen): IF the child occurs more than once, is it beneficial to
   // collapse it into the parent multiple times? Probably not.
   for (const auto& input : parent_inputs) {

@@ -223,7 +223,6 @@ TfLiteStatus PopulateInputLayerInfo(
 
   // Populate input value range if it's specified.
   std::vector<std::string> value_ranges = Split(value_ranges_string, ':');
-  std::vector<int> tmp_range;
   for (const auto val : value_ranges) {
     std::vector<std::string> name_range = Split(val, ',');
     if (name_range.size() != 3) {

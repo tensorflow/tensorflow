@@ -405,7 +405,7 @@ class Function(object):
     self._implements = experimental_implements
     self._autograph = autograph
     self._experimental_autograph_options = experimental_autograph_options
-    self.experimental_relax_shapes = experimental_relax_shapes
+    self._experimental_relax_shapes = experimental_relax_shapes
     self._experimental_compile = experimental_compile
     self._created_variables = None  # GUARDED_BY(self._lock)
     self._stateful_fn = None  # GUARDED_BY(self._lock)
@@ -449,7 +449,9 @@ class Function(object):
     if self._implements is not None:
       attributes[function_lib.IMPLEMENTS_ATTRIBUTE_NAME] = self._implements
     if self._experimental_compile is not None:
-      attributes.update(_XlaCompile=bool(self._experimental_compile))
+      attributes.update(_XlaMustCompile=bool(self._experimental_compile))
+      if self._experimental_compile:
+        attributes.update(_noinline=True)
     if not attributes:
       attributes = None
     return function_lib.defun_with_attributes(
@@ -458,7 +460,7 @@ class Function(object):
         attributes=attributes,
         autograph=self._autograph,
         experimental_autograph_options=self._experimental_autograph_options,
-        experimental_relax_shapes=self.experimental_relax_shapes)
+        experimental_relax_shapes=self._experimental_relax_shapes)
 
   def _initialize(self, args, kwds, add_initializers_to=None):
     """Initializes, on the first call.
@@ -514,7 +516,7 @@ class Function(object):
         autograph=self._autograph,
         experimental_implements=self._implements,
         experimental_autograph_options=self._experimental_autograph_options,
-        experimental_relax_shapes=self.experimental_relax_shapes,
+        experimental_relax_shapes=self._experimental_relax_shapes,
         experimental_compile=self._experimental_compile)
 
   def _decorate(self, decorator):
@@ -793,7 +795,7 @@ class Function(object):
     """Returns all concrete functions for serialization.
 
     Returns:
-      A list of instances of `Function`.
+      A list of instances of `ConcreteFunction`.
     """
     if self.input_signature is not None:
       self.get_concrete_function()

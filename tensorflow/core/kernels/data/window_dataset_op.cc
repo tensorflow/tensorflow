@@ -261,15 +261,15 @@ class WindowDatasetOp::Dataset : public DatasetBase {
       }
       // Save buffer.
       TF_RETURN_IF_ERROR(
-          writer->WriteScalar(strings::StrCat(kBufferSize), buffer_.size()));
+          writer->WriteScalar(full_name(kBufferSize), buffer_.size()));
       for (int64 i = 0; i < buffer_.size(); i++) {
         TF_RETURN_IF_ERROR(WriteStatusLocked(writer, i, buffer_[i].status));
         TF_RETURN_IF_ERROR(writer->WriteScalar(
-            strings::StrCat(kBuffer, "[", i, "]", kSizeSuffix),
+            full_name(strings::StrCat(kBuffer, "[", i, "]", kSizeSuffix)),
             buffer_[i].result.size()));
         for (int64 j = 0; j < buffer_[i].result.size(); j++) {
           TF_RETURN_IF_ERROR(writer->WriteTensor(
-              strings::StrCat(kBuffer, "[", i, "][", j, "]"),
+              full_name(strings::StrCat(kBuffer, "[", i, "][", j, "]")),
               buffer_[i].result[j]));
         }
       }
@@ -287,18 +287,19 @@ class WindowDatasetOp::Dataset : public DatasetBase {
       // Restore buffer.
       int64 buffer_size = 0;
       TF_RETURN_IF_ERROR(
-          reader->ReadScalar(strings::StrCat(kBufferSize), &buffer_size));
+          reader->ReadScalar(full_name(kBufferSize), &buffer_size));
       buffer_.resize(buffer_size);
       for (int64 i = 0; i < buffer_size; i++) {
         int64 vector_size;
         TF_RETURN_IF_ERROR(ReadStatusLocked(reader, i, &buffer_[i].status));
         TF_RETURN_IF_ERROR(reader->ReadScalar(
-            strings::StrCat(kBuffer, "[", i, "]", kSizeSuffix), &vector_size));
+            full_name(strings::StrCat(kBuffer, "[", i, "]", kSizeSuffix)),
+            &vector_size));
         buffer_[i].result.resize(vector_size);
         for (int64 j = 0; j < vector_size; j++) {
-          TF_RETURN_IF_ERROR(
-              reader->ReadTensor(strings::StrCat(kBuffer, "[", i, "][", j, "]"),
-                                 &buffer_[i].result[j]));
+          TF_RETURN_IF_ERROR(reader->ReadTensor(
+              full_name(strings::StrCat(kBuffer, "[", i, "][", j, "]")),
+              &buffer_[i].result[j]));
         }
       }
       return Status::OK();

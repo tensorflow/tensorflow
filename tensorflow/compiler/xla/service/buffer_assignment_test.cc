@@ -770,7 +770,7 @@ TEST_F(BufferAssignmentTest, PresetAssignments) {
 }
 
 TEST_F(BufferAssignmentTest, PresetAssignmentsWhile) {
-  // Tests preset assignments when there is no 1-to-1 corrspondance between
+  // Tests preset assignments when there is no 1-to-1 correspondence between
   // HloValue and HloBuffer (i.e., a while loop).
   auto module = CreateNewVerifiedModule();
   Shape f32vec10_color1 =

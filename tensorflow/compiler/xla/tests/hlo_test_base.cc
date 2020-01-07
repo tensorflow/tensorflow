@@ -364,7 +364,6 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
     instruction->set_raw_backend_config_string(backend_config);
   }
 
-  // return ::testing::AssertionSuccess();
   auto output = test_runner_.Execute(std::move(module), fake_argument_ptrs,
                                      /*run_hlo_passes=*/run_hlo_passes,
                                      /*profile=*/profile);
@@ -494,6 +493,19 @@ HloInstruction* HloTestBase::FindInstruction(HloModule* module,
     auto instructions = c->instructions();
     auto it = absl::c_find_if(
         instructions, [&](HloInstruction* i) { return i->name() == name; });
+    if (it != instructions.end()) {
+      return *it;
+    }
+  }
+  return nullptr;
+}
+
+HloInstruction* HloTestBase::FindInstruction(HloModule* module,
+                                             HloOpcode opcode) {
+  for (const HloComputation* c : module->computations()) {
+    auto instructions = c->instructions();
+    auto it = absl::c_find_if(
+        instructions, [&](HloInstruction* i) { return i->opcode() == opcode; });
     if (it != instructions.end()) {
       return *it;
     }

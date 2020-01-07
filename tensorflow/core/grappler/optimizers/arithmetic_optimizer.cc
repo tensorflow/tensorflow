@@ -1631,6 +1631,17 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
         // TODO(rmlarsen): Allow outgoing control edges.
         return false;
       }
+      // Do not hoist Relu if it can be fused with its predecessors. This is
+      // important because remapping runs after arithmetic.
+      if (IsRelu(*op) || IsRelu6(*op)) {
+        NodeDef* operand = nullptr;
+        if (!GetInputNode(op->input(0), &operand).ok()) {
+          return false;
+        }
+        if (IsFusedBatchNorm(*operand) || IsBiasAdd(*operand)) {
+          return false;
+        }
+      }
     }
     return true;
   }
@@ -1751,7 +1762,8 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
     const std::set<NodeDef*> consumers = ctx().node_map->GetOutputs(node_name);
     for (NodeDef* consumer : consumers) {
       for (int i = 0; i < consumer->input_size(); ++i) {
-        if (consumer->input(i) == node_name) {
+        if (consumer->input(i) == node_name &&
+            consumer->name() != NodeName(new_input)) {
           consumer->set_input(i, new_input);
           ctx().node_map->UpdateInput(consumer->name(), node_name, new_input);
         }
@@ -2845,14 +2857,23 @@ class OptimizeMaxOrMinOfMonotonicStage : public ArithmeticOptimizerStage {
     // 2. inner_function's output is not being consumed elsewhere.
     // 3. is monotonic increasing if reduction_node is a pooling operation
     //    since we don't have MinPool operations.
-    // 4. inner_functions is not a Relu node with an input from FusedBatchNorm.
-    //    This pattern will be fused later by remapper.
+    // 4. inner_functions is not a Relu node with an input from FusedBatchNorm
+    //    or BiasAdd. This pattern will be fused later by remapper.
+    auto can_be_fused_by_remapper = [](const NodeDef& consumer,
+                                       const NodeDef& producer) -> bool {
+      if (IsRelu(consumer) || IsRelu6(consumer)) {
+        if (IsFusedBatchNorm(producer) || IsBiasAdd(producer)) {
+          return true;
+        }
+      }
+      return false;
+    };
     bool is_non_decreasing = false;
     if (!IsInPreserveSet(*inner_function) &&
         IsElementWiseMonotonic(*inner_function, &is_non_decreasing) &&
         ctx().node_map->GetOutputs(inner_function->name()).size() == 1 &&
         (is_non_decreasing || !IsAnyMaxPool(*reduction_node)) &&
-        !(IsRelu(*inner_function) && IsFusedBatchNorm(*inner_function_input))) {
+        !can_be_fused_by_remapper(*inner_function, *inner_function_input)) {
       // Swap the first inputs of the inner function Op & the reduction Op.
       NodeDef* inner_input;
       TF_RETURN_IF_ERROR(GetInputNode(inner_function->input(0), &inner_input));
@@ -2887,7 +2908,8 @@ class OptimizeMaxOrMinOfMonotonicStage : public ArithmeticOptimizerStage {
     const std::set<NodeDef*> consumers = ctx().node_map->GetOutputs(node_name);
     for (NodeDef* consumer : consumers) {
       for (int i = 0; i < consumer->input_size(); ++i) {
-        if (consumer->input(i) == node_name && consumer->name() != new_input) {
+        if (consumer->input(i) == node_name &&
+            consumer->name() != NodeName(new_input)) {
           consumer->set_input(i, new_input);
           ctx().node_map->UpdateInput(consumer->name(), node_name, new_input);
         }

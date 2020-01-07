@@ -142,24 +142,12 @@ void CwiseClipping(int8_t* input, const int8_t clipping_value, int32_t n_batch,
   NEON_OR_PORTABLE(CwiseClipping, input, clipping_value, n_batch, n_input);
 }
 
-void VectorVectorCwiseProduct(const float* vector1, const float* vector2,
-                              int v_size, float* result) {
-  NEON_OR_PORTABLE(VectorVectorCwiseProduct, vector1, vector2, v_size, result);
-}
-
 void BatchVectorBatchVectorDotProduct(const int16_t* vector1,
                                       const int16_t* vector2, int v_size,
                                       int n_batch, int32_t* result,
                                       int result_stride) {
   return PortableBatchVectorBatchVectorDotProduct(
       vector1, vector2, v_size, n_batch, result, result_stride);
-}
-
-void VectorVectorCwiseProductAccumulate(const float* vector1,
-                                        const float* vector2, int v_size,
-                                        float* result) {
-  NEON_OR_PORTABLE(VectorVectorCwiseProductAccumulate, vector1, vector2, v_size,
-                   result);
 }
 
 void VectorBatchVectorCwiseProductAccumulate(const int16_t* vector, int v_size,

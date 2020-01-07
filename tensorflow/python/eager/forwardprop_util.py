@@ -24,7 +24,7 @@ from __future__ import print_function
 import collections
 import contextlib
 
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import pywrap_tfe
 
 
 class TangentInfo(
@@ -54,8 +54,7 @@ def pack_tangents(tensors):
       tangents: A flat list of Tensors. Best interpreted as a sequence to be
         appended to `tensors`.
   """
-  return TangentInfo(
-      *pywrap_tensorflow.TFE_Py_PackJVPs(tensors))
+  return TangentInfo(*pywrap_tfe.TFE_Py_PackJVPs(tensors))
 
 
 @contextlib.contextmanager
@@ -73,7 +72,7 @@ def push_forwardprop_state():
     None (used for its side effect).
   """
   try:
-    pywrap_tensorflow.TFE_Py_ForwardAccumulatorPushState()
+    pywrap_tfe.TFE_Py_ForwardAccumulatorPushState()
     yield
   finally:
-    pywrap_tensorflow.TFE_Py_ForwardAccumulatorPopState()
+    pywrap_tfe.TFE_Py_ForwardAccumulatorPopState()

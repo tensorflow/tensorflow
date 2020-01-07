@@ -104,7 +104,7 @@ int main(int argc, char** argv) {
       tensorflow::Flag(
           "use_large_float_range", &opts.use_large_float_range,
           "Generate floating point values using a large uniform-log "
-          "distribtion as opposed to a small uniform distribution."),
+          "distribution as opposed to a small uniform distribution."),
       tensorflow::Flag(
           "abs_error_bound", &opts.abs_error_bound,
           "The absolute error bound used when comparing the test and "

@@ -151,6 +151,7 @@ Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
       SerializationContext::ExternalStatePolicy::kIgnore;
   params.fail_if_unimplemented = false;
   params.serialize_data_tensors = false;
+  params.preserve_random_seeds = false;
   SerializationContext serialization_ctx(params);
   GraphDef graph_def;
   TF_RETURN_IF_ERROR(

@@ -496,7 +496,7 @@ def convert_entity_to_ast(o, program_ctx):
             keyed by their symbol name.
 
   Raises:
-    ValueError: if the entity type is not supported.
+    NotImplementedError: if entity is of a type that is not yet supported.
   """
   logging.log(1, 'Converting %s', o)
 
@@ -513,7 +513,7 @@ def convert_entity_to_ast(o, program_ctx):
         'cannot convert entity "{}": object conversion is not yet'
         ' supported.'.format(o))
   else:
-    raise ValueError(
+    raise NotImplementedError(
         'Entity "%s" has unsupported type "%s". Only functions and classes are '
         'supported for now.' % (o, type(o)))
 

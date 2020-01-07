@@ -7,7 +7,6 @@ load("//third_party/nccl:nccl_configure.bzl", "nccl_configure")
 load("//third_party/mkl:build_defs.bzl", "mkl_repository")
 load("//third_party/git:git_configure.bzl", "git_configure")
 load("//third_party/py:python_configure.bzl", "python_configure")
-load("//third_party/mlir:mlir_configure.bzl", "mlir_configure")
 load("//third_party/sycl:sycl_configure.bzl", "sycl_configure")
 load("//third_party/systemlibs:syslibs_configure.bzl", "syslibs_configure")
 load("//third_party/toolchains/remote:configure.bzl", "remote_execution_configure")
@@ -22,8 +21,12 @@ load(
     "def_file_filter_configure",
 )
 load("//third_party/FP16:workspace.bzl", FP16 = "repo")
+load("//third_party/FXdiv:workspace.bzl", FXdiv = "repo")
 load("//third_party/aws:workspace.bzl", aws = "repo")
+load("//third_party/clog:workspace.bzl", clog = "repo")
+load("//third_party/cpuinfo:workspace.bzl", cpuinfo = "repo")
 load("//third_party/flatbuffers:workspace.bzl", flatbuffers = "repo")
+load("//third_party/hexagon:workspace.bzl", hexagon_nn = "repo")
 load("//third_party/highwayhash:workspace.bzl", highwayhash = "repo")
 load("//third_party/hwloc:workspace.bzl", hwloc = "repo")
 load("//third_party/icu:workspace.bzl", icu = "repo")
@@ -31,23 +34,31 @@ load("//third_party/jpeg:workspace.bzl", jpeg = "repo")
 load("//third_party/nasm:workspace.bzl", nasm = "repo")
 load("//third_party/opencl_headers:workspace.bzl", opencl_headers = "repo")
 load("//third_party/kissfft:workspace.bzl", kissfft = "repo")
-load("//third_party/keras_applications_archive:workspace.bzl", keras_applications = "repo")
 load("//third_party/pasta:workspace.bzl", pasta = "repo")
+load("//third_party/psimd:workspace.bzl", psimd = "repo")
+load("//third_party/pthreadpool:workspace.bzl", pthreadpool = "repo")
+load("//third_party/sobol_data:workspace.bzl", sobol_data = "repo")
 
 def initialize_third_party():
     """ Load third party repositories.  See above load() statements. """
     FP16()
+    FXdiv()
     aws()
+    clog()
+    cpuinfo()
     flatbuffers()
+    hexagon_nn()
     highwayhash()
     hwloc()
     icu()
-    keras_applications()
     kissfft()
     jpeg()
     nasm()
     opencl_headers()
     pasta()
+    psimd()
+    pthreadpool()
+    sobol_data()
 
 # Sanitize a dependency so that it works correctly from code that includes
 # TensorFlow as a submodule.
@@ -76,7 +87,6 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     syslibs_configure(name = "local_config_syslibs")
     python_configure(name = "local_config_python")
     rocm_configure(name = "local_config_rocm")
-    mlir_configure(name = "local_config_mlir")
     remote_execution_configure(name = "local_config_remote_execution")
 
     initialize_third_party()
@@ -127,6 +137,16 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         print("path_prefix was specified to tf_workspace but is no longer used " +
               "and will be removed in the future.")
 
+    tf_http_archive(
+        name = "XNNPACK",
+        sha256 = "24b6285c679dece8805d2a7d63cc567413b7670279bc0c66a99e555123fe4700",
+        strip_prefix = "XNNPACK-9a88efe2d84fef93eb2b8acb6f0ac8f3cacee8b5",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/9a88efe2d84fef93eb2b8acb6f0ac8f3cacee8b5.zip",
+            "https://github.com/google/XNNPACK/archive/9a88efe2d84fef93eb2b8acb6f0ac8f3cacee8b5.zip",
+        ],
+    )
+
     # Important: If you are upgrading MKL-DNN, then update the version numbers
     # in third_party/mkl_dnn/mkldnn.BUILD. In addition, the new version of
     # MKL-DNN might require upgrading MKL ML libraries also. If they need to be
@@ -172,11 +192,11 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         name = "eigen_archive",
         build_file = clean_dep("//third_party:eigen.BUILD"),
         patch_file = clean_dep("//third_party/eigen3:gpu_packet_math.patch"),
-        sha256 = "7ab6bfe4d63543d29390ccd60b31dc09248023986068974dccfba11be6906fda",
-        strip_prefix = "eigen-8056a05b5485442ebc5c087a25f8ee027eb9a338",
+        sha256 = "22a69745812cb040b3e8e8d3cd002932999252727897ad3326b4b6e72a1f24e9",
+        strip_prefix = "eigen-7252163335f56f23fcc7381c1efdea47161005fa",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/gitlab.com/libeigen/eigen/-/archive/8056a05b5485442ebc5c087a25f8ee027eb9a338/eigen-8056a05b5485442ebc5c087a25f8ee027eb9a338.tar.gz",
-            "https://gitlab.com/libeigen/eigen/-/archive/8056a05b5485442ebc5c087a25f8ee027eb9a338/eigen-8056a05b5485442ebc5c087a25f8ee027eb9a338.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/gitlab.com/libeigen/eigen/-/archive/7252163335f56f23fcc7381c1efdea47161005fa/eigen-7252163335f56f23fcc7381c1efdea47161005fa.tar.gz",
+            "https://gitlab.com/libeigen/eigen/-/archive/7252163335f56f23fcc7381c1efdea47161005fa/eigen-7252163335f56f23fcc7381c1efdea47161005fa.tar.gz",
         ],
     )
 
@@ -546,15 +566,23 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         ],
     )
 
+    # Check out LLVM and MLIR from llvm-project.
+    LLVM_COMMIT = "a21beccea2020f950845cbb68db663d0737e174c"
+    LLVM_SHA256 = "73682f2b78c1c46621afb69b850e50c4d787f9c77fb3b53ac50fc42ffbac0493"
+    LLVM_URLS = [
+        "https://storage.googleapis.com/mirror.tensorflow.org/github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
+        "https://github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
+    ]
     tf_http_archive(
-        name = "llvm",
-        build_file = clean_dep("//third_party/llvm:llvm.autogenerated.BUILD"),
-        sha256 = "d8a2bf26d0862242d67ab5ab54e53c168c6e36cbd7de82a897baa1389ac87100",
-        strip_prefix = "llvm-project-a7bdab2e9d59ba0fdf06390f4ddadfd00fe50f2e/llvm",
-        urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/llvm/llvm-project/archive/a7bdab2e9d59ba0fdf06390f4ddadfd00fe50f2e.tar.gz",
-            "https://github.com/llvm/llvm-project/archive/a7bdab2e9d59ba0fdf06390f4ddadfd00fe50f2e.tar.gz",
-        ],
+        name = "llvm-project",
+        sha256 = LLVM_SHA256,
+        strip_prefix = "llvm-project-" + LLVM_COMMIT,
+        urls = LLVM_URLS,
+        additional_build_files = {
+            clean_dep("//third_party/llvm:llvm.autogenerated.BUILD"): "llvm/BUILD",
+            "//third_party/mlir:BUILD": "mlir/BUILD",
+            "//third_party/mlir:test.BUILD": "mlir/test/BUILD",
+        },
     )
 
     tf_http_archive(
@@ -824,16 +852,6 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         urls = [
             "https://storage.googleapis.com/mirror.tensorflow.org/storage.googleapis.com/download.tensorflow.org/models/tflite/conv_actions_tflite.zip",
             "https://storage.googleapis.com/download.tensorflow.org/models/tflite/conv_actions_tflite.zip",
-        ],
-    )
-
-    tf_http_archive(
-        name = "tflite_smartreply",
-        build_file = clean_dep("//third_party:tflite_smartreply.BUILD"),
-        sha256 = "8980151b85a87a9c1a3bb1ed4748119e4a85abd3cb5744d83da4d4bd0fbeef7c",
-        urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/storage.googleapis.com/download.tensorflow.org/models/tflite/smartreply_1.0_2017_11_01.zip",
-            "https://storage.googleapis.com/download.tensorflow.org/models/tflite/smartreply_1.0_2017_11_01.zip",
         ],
     )
 

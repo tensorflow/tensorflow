@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
-#include "mlir/IR/Module.h"  // TF:local_config_mlir
+#include "mlir/IR/Module.h"  // TF:llvm-project
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/stream_executor/lib/statusor.h"

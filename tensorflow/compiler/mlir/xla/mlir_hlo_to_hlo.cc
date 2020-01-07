@@ -16,24 +16,31 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/xla/mlir_hlo_to_hlo.h"
 
 #include <memory>
+#include <string>
 
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/SMLoc.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/Function.h"  // TF:local_config_mlir
-#include "mlir/IR/Location.h"  // TF:local_config_mlir
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/IR/Matchers.h"  // TF:local_config_mlir
-#include "mlir/IR/Module.h"  // TF:local_config_mlir
-#include "mlir/IR/Operation.h"  // TF:local_config_mlir
-#include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/Function.h"  // TF:llvm-project
+#include "mlir/IR/Location.h"  // TF:llvm-project
+#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
+#include "mlir/IR/Matchers.h"  // TF:llvm-project
+#include "mlir/IR/Module.h"  // TF:llvm-project
+#include "mlir/IR/Operation.h"  // TF:llvm-project
+#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/IR/TypeUtilities.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/client/lib/matrix.h"
+#include "tensorflow/compiler/xla/client/lib/slicing.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
@@ -51,6 +58,10 @@ using ::tensorflow::uint16;
 using ::tensorflow::uint32;
 using ::tensorflow::uint64;
 using ::tensorflow::uint8;
+
+constexpr char kPaddingMapAttr[] = "xla_hlo.padding_map";
+constexpr char kShapeIndicesAttr[] = "shape_indices";
+constexpr char kPaddingArgIndicesAttr[] = "padding_arg_indices";
 
 // Passes through everything except for unique_ptr, on which it calls get().
 // This exists to allow the generated code to call XLA functions that take a raw
@@ -80,6 +91,8 @@ static double ConvertAPFloat(llvm::APFloat value) {
   return value.convertToDouble();
 }
 
+static inline bool Convertbool(bool value) { return value; }
+
 static absl::string_view ConvertStringRef(mlir::StringRef value) {
   return {value.data(), value.size()};
 }
@@ -102,6 +115,15 @@ static std::vector<int64> Convert_broadcast_dimensions(
   if (!broadcast_dimensions.hasValue()) return {};
 
   return ConvertDenseIntAttr(*broadcast_dimensions);
+}
+
+// Converts StringRef to xla FftType enum
+static xla::FftType Convert_fft_type(llvm::StringRef fft_type_str) {
+  xla::FftType fft_type_enum;
+  // Illegal fft_type string would be caught by the verifier, so 'FftType_Parse'
+  // call below should never return false.
+  if (!FftType_Parse(fft_type_str, &fft_type_enum)) return xla::FftType::FFT;
+  return fft_type_enum;
 }
 
 // Convert a nx2 dense attribute to a list of tuples. This is the way padding
@@ -140,10 +162,10 @@ static std::vector<xla::ReplicaGroup> Convert_replica_groups(
   return result;
 }
 
-#define I64_ELEMENTS_ATTR_TO_VECTOR(attribute)   \
-  static std::vector<int64> Convert_##attribute( \
-      mlir::DenseIntElementsAttr attribute) {    \
-    return ConvertDenseIntAttr(attribute);       \
+#define I64_ELEMENTS_ATTR_TO_VECTOR(attribute)                \
+  static std::vector<int64> Convert_##attribute(              \
+      llvm::Optional<mlir::DenseIntElementsAttr> attribute) { \
+    return ConvertDenseIntAttr(attribute);                    \
   }
 
 I64_ELEMENTS_ATTR_TO_VECTOR(broadcast_sizes);
@@ -152,6 +174,11 @@ I64_ELEMENTS_ATTR_TO_VECTOR(start_indices);
 I64_ELEMENTS_ATTR_TO_VECTOR(limit_indices);
 I64_ELEMENTS_ATTR_TO_VECTOR(strides);
 I64_ELEMENTS_ATTR_TO_VECTOR(slice_sizes);
+I64_ELEMENTS_ATTR_TO_VECTOR(fft_length);
+I64_ELEMENTS_ATTR_TO_VECTOR(dimensions);
+I64_ELEMENTS_ATTR_TO_VECTOR(window_strides);
+I64_ELEMENTS_ATTR_TO_VECTOR(lhs_dilation);
+I64_ELEMENTS_ATTR_TO_VECTOR(rhs_dilation);
 
 #undef I64_ELEMENTS_ATTR_TO_VECTOR
 
@@ -219,7 +246,7 @@ static xla::DotDimensionNumbers Convert_dot_dimension_numbers(
   return dot_dimension_numbers;
 }
 
-static xla::ConvolutionDimensionNumbers Convert_convolution_dimension_numbers(
+static xla::ConvolutionDimensionNumbers Convert_dimension_numbers(
     mlir::xla_hlo::ConvDimensionNumbers input) {
   xla::ConvolutionDimensionNumbers output;
 
@@ -270,7 +297,7 @@ static xla::ComparisonDirection Convert_comparison_direction(
       .ValueOrDie();
 }
 
-static xla::GatherDimensionNumbers Convert_gather_dimension_numbers(
+static xla::GatherDimensionNumbers Convert_dimension_numbers(
     mlir::xla_hlo::GatherDimensionNumbers input) {
   xla::GatherDimensionNumbers output;
 
@@ -324,7 +351,7 @@ namespace mlir {
 namespace {
 class ConvertToHloModule {
  public:
-  using ValueLoweringMap = llvm::DenseMap<Value*, xla::XlaOp>;
+  using ValueLoweringMap = llvm::DenseMap<Value, xla::XlaOp>;
   using FunctionLoweringMap = llvm::DenseMap<mlir::FuncOp, xla::XlaComputation>;
 
   // If use_tuple_args is true, then the entry function's arguments are
@@ -406,7 +433,7 @@ class ConvertToHloModule {
 namespace {
 
 struct OpLoweringContext {
-  llvm::DenseMap<mlir::Value*, xla::XlaOp>* values;
+  llvm::DenseMap<mlir::Value, xla::XlaOp>* values;
   mlir::ConvertToHloModule* converter;
   xla::XlaBuilder* builder;
 };
@@ -414,7 +441,7 @@ struct OpLoweringContext {
 llvm::SmallVector<xla::XlaOp, 4> GetTuple(mlir::Operation::operand_range values,
                                           OpLoweringContext ctx) {
   llvm::SmallVector<xla::XlaOp, 4> ops;
-  for (mlir::Value* value : values) {
+  for (mlir::Value value : values) {
     ops.push_back((*ctx.values)[value]);
   }
   return ops;
@@ -464,13 +491,6 @@ LogicalResult ExportXlaOp(BroadcastInDimOp op, OpLoweringContext ctx) {
   return success();
 }
 
-LogicalResult ExportXlaOp(ConcatenateOp op, OpLoweringContext ctx) {
-  auto& value_map = *ctx.values;
-  value_map[op] = xla::ConcatInDim(ctx.builder, GetTuple(op.val(), ctx),
-                                   op.dimension().getSExtValue());
-  return success();
-}
-
 LogicalResult ExportXlaOp(ConditionalOp op, OpLoweringContext ctx) {
   xla::XlaComputation true_branch;
   xla::XlaComputation false_branch;
@@ -493,21 +513,6 @@ LogicalResult ExportXlaOp(ConstOp op, OpLoweringContext ctx) {
   return failure();
 }
 
-LogicalResult ExportXlaOp(ConvOp op, OpLoweringContext ctx) {
-  auto& value_map = *ctx.values;
-  value_map[op] = xla::ConvGeneralDilated(
-      value_map[op.lhs()], value_map[op.rhs()],
-      Convert_broadcast_dimensions(op.window_strides()),
-      Convert_padding(op.padding()),
-      Convert_broadcast_dimensions(op.lhs_dilation()),
-      Convert_broadcast_dimensions(op.rhs_dilation()),
-      Convert_convolution_dimension_numbers(op.dimension_numbers()),
-      op.feature_group_count().getSExtValue(),
-      op.batch_group_count().getSExtValue(),
-      Convert_precision_config(op.precision_config()).get());
-  return success();
-}
-
 LogicalResult ExportXlaOp(ConvertOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   value_map[op] = xla::ConvertElementType(
@@ -516,27 +521,13 @@ LogicalResult ExportXlaOp(ConvertOp op, OpLoweringContext ctx) {
   return success();
 }
 
-LogicalResult ExportXlaOp(CopyOp op, OpLoweringContext ctx) {
-  return failure();
-}
-
-LogicalResult ExportXlaOp(DynamicSliceOp op, OpLoweringContext ctx) {
-  return failure();
-}
-
-LogicalResult ExportXlaOp(DynamicUpdateSliceOp op, OpLoweringContext ctx) {
-  return failure();
-}
-
-LogicalResult ExportXlaOp(FftOp op, OpLoweringContext ctx) { return failure(); }
-
-LogicalResult ExportXlaOp(GatherOp op, OpLoweringContext ctx) {
+LogicalResult ExportXlaOp(InfeedOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
-  xla::GatherDimensionNumbers dimension_numbers =
-      Convert_gather_dimension_numbers(op.dimension_numbers());
-  value_map[op] = xla::Gather(
-      value_map[op.operand()], value_map[op.start_indices()], dimension_numbers,
-      Convert_slice_sizes(op.slice_sizes()), op.indices_are_sorted());
+  // The shape argument expected by the xla client API is the type of the first
+  // element in the result tuple.
+  auto result_type = op.getType().cast<mlir::TupleType>().getType(0);
+  value_map[op] = xla::InfeedWithToken(
+      value_map[op.token()], xla::TypeToShape(result_type), op.infeed_config());
   return success();
 }
 
@@ -544,6 +535,14 @@ LogicalResult ExportXlaOp(IotaOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   value_map[op] = xla::Iota(ctx.builder, xla::TypeToShape(op.getType()),
                             op.iota_dimension().getSExtValue());
+  return success();
+}
+
+LogicalResult ExportXlaOp(OutfeedOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  value_map[op] = xla::OutfeedWithToken(
+      value_map[op.operand()], value_map[op.token()],
+      xla::TypeToShape(op.operand().getType()), op.outfeed_config());
   return success();
 }
 
@@ -614,10 +613,10 @@ LogicalResult ExportXlaOp(ReturnOp op, OpLoweringContext ctx) {
   return failure();
 }
 
-LogicalResult ExportXlaOp(ReverseOp op, OpLoweringContext ctx) {
+LogicalResult ExportXlaOp(RngNormalOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
-  value_map[op] = xla::Rev(value_map[op.operand()],
-                           Convert_broadcast_dimensions(op.dimensions()));
+  value_map[op] = xla::RngNormal(value_map[op.mu()], value_map[op.sigma()],
+                                 xla::TypeToShape(op.getType()));
   return success();
 }
 
@@ -661,6 +660,21 @@ LogicalResult ExportXlaOp(SelectAndScatterOp op, OpLoweringContext ctx) {
   return success();
 }
 
+LogicalResult ExportXlaOp(SendOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  if (op.is_host_transfer()) {
+    value_map[op] =
+        xla::SendToHost(value_map[op.operand()], value_map[op.token()],
+                        xla::TypeToShape(op.operand().getType()),
+                        Convert_channel_handle(op.channel_id()));
+    return success();
+  }
+  value_map[op] =
+      xla::SendWithToken(value_map[op.operand()], value_map[op.token()],
+                         Convert_channel_handle(op.channel_id()));
+  return success();
+}
+
 LogicalResult ExportXlaOp(SliceOp op, OpLoweringContext ctx) {
   return failure();
 }
@@ -674,12 +688,6 @@ LogicalResult ExportXlaOp(SortOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   value_map[op] = xla::Sort(GetTuple(op.operands(), ctx), comparator,
                             op.dimension().getSExtValue(), op.is_stable());
-  return success();
-}
-
-LogicalResult ExportXlaOp(TupleOp op, OpLoweringContext ctx) {
-  auto& value_map = *ctx.values;
-  value_map[op] = xla::Tuple(ctx.builder, GetTuple(op.val(), ctx));
   return success();
 }
 
@@ -734,6 +742,18 @@ StatusOr<xla::Literal> CreateLiteralFromAttr(Type type, ElementsAttr attr) {
     ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::U16, uint16)
     ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::U32, uint32)
     ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::U64, uint64)
+    case xla::PrimitiveType::BF16: {
+      xla::Array<double> source_data(shape.dimensions());
+      auto attr_values = attr.getValues<APFloat>();
+      std::vector<double> values_double(source_data.num_elements());
+      for (auto index_and_value : llvm::enumerate(attr_values)) {
+        values_double[index_and_value.index()] =
+            index_and_value.value().convertToDouble();
+      }
+      source_data.SetValues(values_double);
+      return xla::LiteralUtil::ConvertF64ToBF16(
+          xla::LiteralUtil::CreateFromArray(source_data));
+    }
     default:
       return tensorflow::errors::Internal(absl::StrCat(
           "Unsupported type: ", xla::PrimitiveType_Name(shape.element_type())));
@@ -863,7 +883,7 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
     std::vector<xla::Shape> arg_shapes;
     arg_shapes.reserve(bb.getNumArguments());
     for (auto& arg : bb.getArguments())
-      arg_shapes.push_back(xla::TypeToShape(arg->getType()));
+      arg_shapes.push_back(xla::TypeToShape(arg.getType()));
     xla::Shape input_shape = xla::ShapeUtil::MakeTupleShape(arg_shapes);
     auto tuple = xla::Parameter(builder, 0, input_shape, "arg_tuple");
     for (auto& it : llvm::enumerate(bb.getArguments())) {
@@ -871,9 +891,9 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
     }
   } else {
     for (auto& it : llvm::enumerate(bb.getArguments())) {
-      auto* arg = it.value();
+      auto arg = it.value();
       auto num = it.index();
-      xla::Shape shape = xla::TypeToShape(arg->getType());
+      xla::Shape shape = xla::TypeToShape(arg.getType());
       lowering[arg] =
           xla::Parameter(builder, num, shape, absl::StrCat("Arg_", num));
     }
@@ -894,6 +914,171 @@ LogicalResult ConvertToHloModule::LowerRegionAsComputation(
                                    /*is_entry_function=*/false, func);
 }
 
+std::string PaddingMapBadArrayAttrMsg(llvm::StringRef attr_name, int index) {
+  return llvm::formatv(
+             "requires '{0}' array attribute in '{1}' dict at arg {2}",
+             attr_name, kPaddingMapAttr, index)
+      .str();
+}
+
+std::string PaddingMapMismatchedArraySizeMsg(int arg_index,
+                                             int shape_indices_size,
+                                             int padding_arg_indices_size) {
+  return llvm::formatv(
+             "requires '{0}' and '{1}' array attributes in '{2}' dic at arg "
+             "{3} to be of the same size, got sizes {4} and {5}",
+             kShapeIndicesAttr, kPaddingArgIndicesAttr, kPaddingMapAttr,
+             arg_index, shape_indices_size, padding_arg_indices_size)
+      .str();
+}
+
+std::string PaddingMapBadIntAttrMsg(llvm::StringRef attr_name, int arg_index,
+                                    int element_index) {
+  return llvm::formatv(
+             "requires element {0} in '{1}' array of '{2}' dict at arg {3} "
+             "to be an int attribute",
+             element_index, attr_name, kPaddingMapAttr, arg_index)
+      .str();
+}
+
+std::string PaddingMapBadIndexMsg(llvm::StringRef attr_name, int arg_index,
+                                  int element_index, int max, int32_t value) {
+  return llvm::formatv(
+             "requires element {0} in '{1}' array of '{2}' dict at arg {3} "
+             "to be in range [0, {4}), got {5}",
+             element_index, attr_name, kPaddingMapAttr, arg_index, max, value)
+      .str();
+}
+
+std::string PaddingMapNegativeShapeIndexMsg(int arg_index, int element_index,
+                                            int32_t value) {
+  return llvm::formatv(
+             "requires element {0} in '{1}' array of '{2}' dict at arg {3} to "
+             "be non-negative, got {4}",
+             element_index, kShapeIndicesAttr, kPaddingMapAttr, arg_index,
+             value)
+      .str();
+}
+
+std::string PaddingMapUniqueShapeIndexMsg(int arg_index, int element_index,
+                                          int32_t value) {
+  return llvm::formatv(
+             "requires elements in '{0}' array of '{1}' dict at arg {2} to be "
+             "unique, got duplicate element {3} at index {4}",
+             kShapeIndicesAttr, kPaddingMapAttr, arg_index, value,
+             element_index)
+      .str();
+}
+
+void AddDynamicParameterBindingEntry(xla::DynamicParameterBindingProto* binding,
+                                     int arg_index, int32_t shape_index,
+                                     int32_t padding_arg_index,
+                                     bool use_tuple_args) {
+  auto* entry = binding->add_entries();
+  entry->set_target_param_dim_num(shape_index);
+  if (use_tuple_args) {
+    entry->set_target_param_num(0);
+    entry->add_target_param_index(arg_index);
+    entry->set_dynamic_param_num(0);
+    entry->add_dynamic_param_index(padding_arg_index);
+  } else {
+    entry->set_target_param_num(arg_index);
+    entry->set_dynamic_param_num(padding_arg_index);
+  }
+}
+
+// Validates and populates dynamic parameter bindings from a module's entry
+// function `xla_hlo.padding_map` argument attributes to a `xla::HloModuleProto`
+// `DynamicParameterBindingProto`.
+LogicalResult AddDynamicParameterBindings(mlir::ModuleOp module,
+                                          xla::HloModuleProto* hlo_module_proto,
+                                          bool use_tuple_args) {
+  auto entry_func = module.lookupSymbol<mlir::FuncOp>("main");
+  if (!entry_func) return success();
+
+  auto* dynamic_parameter_binding =
+      hlo_module_proto->mutable_dynamic_parameter_binding();
+  for (int i = 0, e = entry_func.getNumArguments(); i < e; ++i) {
+    auto padding_map_attr = entry_func.getArgAttr(i, kPaddingMapAttr);
+    if (!padding_map_attr) continue;
+    auto padding_map = padding_map_attr.dyn_cast<DictionaryAttr>();
+    if (!padding_map)
+      return entry_func.emitError() << "requires '" << kPaddingMapAttr
+                                    << "' dict attribute at arg " << i;
+
+    auto shape_indices =
+        padding_map.get(kShapeIndicesAttr).dyn_cast_or_null<ArrayAttr>();
+    if (!shape_indices)
+      return entry_func.emitError(
+          PaddingMapBadArrayAttrMsg(kShapeIndicesAttr, i));
+
+    auto padding_arg_indices =
+        padding_map.get(kPaddingArgIndicesAttr).dyn_cast_or_null<ArrayAttr>();
+    if (!padding_arg_indices)
+      return entry_func.emitError(
+          PaddingMapBadArrayAttrMsg(kPaddingArgIndicesAttr, i));
+
+    if (shape_indices.size() != padding_arg_indices.size())
+      return entry_func.emitError(PaddingMapMismatchedArraySizeMsg(
+          i, shape_indices.size(), padding_arg_indices.size()));
+
+    llvm::SmallDenseSet<int32_t, 4> used_shape_indices;
+    auto arg_type =
+        entry_func.getArgument(i).getType().dyn_cast<RankedTensorType>();
+    for (auto shape_and_padding : llvm::enumerate(llvm::zip(
+             shape_indices.getValue(), padding_arg_indices.getValue()))) {
+      const int element_index = shape_and_padding.index();
+      auto shape_index_attr =
+          std::get<0>(shape_and_padding.value()).dyn_cast<IntegerAttr>();
+      if (!shape_index_attr)
+        return entry_func.emitError(
+            PaddingMapBadIntAttrMsg(kShapeIndicesAttr, i, element_index));
+
+      auto padding_arg_index_attr =
+          std::get<1>(shape_and_padding.value()).dyn_cast<IntegerAttr>();
+      if (!padding_arg_index_attr)
+        return entry_func.emitError(
+            PaddingMapBadIntAttrMsg(kPaddingArgIndicesAttr, i, element_index));
+
+      const int32_t shape_index = shape_index_attr.getInt();
+      if (arg_type && (shape_index < 0 || shape_index >= arg_type.getRank()))
+        return entry_func.emitError(
+            PaddingMapBadIndexMsg(kShapeIndicesAttr, i, element_index,
+                                  arg_type.getRank(), shape_index));
+      else if (shape_index < 0)
+        return entry_func.emitError(
+            PaddingMapNegativeShapeIndexMsg(i, element_index, shape_index));
+
+      if (!used_shape_indices.insert(shape_index).second)
+        return entry_func.emitError(
+            PaddingMapUniqueShapeIndexMsg(i, element_index, shape_index));
+
+      const int32_t padding_arg_index = padding_arg_index_attr.getInt();
+      if (padding_arg_index < 0 || padding_arg_index >= e)
+        return entry_func.emitError(PaddingMapBadIndexMsg(
+            kPaddingArgIndicesAttr, i, element_index, e, padding_arg_index));
+
+      Type padding_arg_type =
+          entry_func.getArgument(padding_arg_index).getType();
+      if (auto tensor_type = padding_arg_type.dyn_cast<RankedTensorType>())
+        if (tensor_type.getRank() != 0)
+          return entry_func.emitError()
+                 << "requires arg " << padding_arg_index
+                 << " to be a scalar for use as a dynamic parameter";
+
+      if (!mlir::getElementTypeOrSelf(padding_arg_type).isa<IntegerType>())
+        return entry_func.emitError()
+               << "requires arg " << padding_arg_index
+               << " to be of an int type for use as a dynamic parameter";
+
+      AddDynamicParameterBindingEntry(dynamic_parameter_binding, i, shape_index,
+                                      padding_arg_index, use_tuple_args);
+    }
+  }
+
+  return success();
+}
+
 }  // namespace
 
 Status ConvertMlirHloToHlo(mlir::ModuleOp module, xla::HloProto* hlo_proto,
@@ -903,6 +1088,10 @@ Status ConvertMlirHloToHlo(mlir::ModuleOp module, xla::HloProto* hlo_proto,
   if (failed(converter.Run())) return diag_handler.ConsumeStatus();
   auto hlo_module = converter.ConsumeMainProto();
   hlo_proto->mutable_hlo_module()->Swap(&hlo_module);
+  if (failed(AddDynamicParameterBindings(
+          module, hlo_proto->mutable_hlo_module(), use_tuple_args)))
+    return diag_handler.ConsumeStatus();
+
   return Status::OK();
 }
 

@@ -464,7 +464,7 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
         &new_remote_device_mgr));
     remote_device_mgr = new_remote_device_mgr.get();
   } else {
-    ctx->context->ClearCaches();
+    ctx->context->ClearCachesAndDefaultExecutor();
     // TODO(b/143914772): Potential memory leak if rendezvous has pending
     // tensors for removed / replaced workers.
 
@@ -754,7 +754,9 @@ TF_DeviceList* TFE_ContextListDevices(TFE_Context* ctx, TF_Status* status) {
   return list;
 }
 
-void TFE_ContextClearCaches(TFE_Context* ctx) { ctx->context->ClearCaches(); }
+void TFE_ContextClearCaches(TFE_Context* ctx) {
+  ctx->context->ClearCachesAndThreadExecutors();
+}
 
 // Set server_def on the context, possibly updating it.
 TF_CAPI_EXPORT extern void TFE_ContextSetServerDef(TFE_Context* ctx,
@@ -1045,7 +1047,7 @@ TFE_TensorHandle* TFE_NewTensorHandleFromDeviceMemory(
     void (*deallocator)(void* data, size_t len, void* arg),
     void* deallocator_arg, TF_Status* status) {
   tensorflow::Device* device;
-  status->status = ctx->context->FindDeviceByName(device_name, &device);
+  status->status = ctx->context->FindDeviceFromName(device_name, &device);
   if (!status->status.ok()) {
     deallocator(data, len, deallocator_arg);
     return nullptr;

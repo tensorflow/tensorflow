@@ -323,6 +323,29 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertTrue(unknown_dim[0])
     self.assertLen(total_function_cache(func), 2)
 
+  def testInputShapeRelaxationOnInstanceMethod(self):
+    # Test that experimental_relax_shapes is passed during
+    # instance method bounding.
+    unknown_dim = [False]
+
+    class Foo(object):
+
+      @def_function.function(experimental_relax_shapes=True)
+      def func(self, a):
+        if a._shape_tuple()[0] is None:
+          unknown_dim[0] = True
+        return a + 1
+
+    foo = Foo()
+    foo.func(constant_op.constant([]))
+    self.assertFalse(unknown_dim[0])
+
+    foo.func(constant_op.constant([1.0]))
+    self.assertFalse(unknown_dim[0])
+
+    foo.func(constant_op.constant([1.0, 2.0]))
+    self.assertTrue(unknown_dim[0])
+
   def testCapturesVariables(self):
     a = variables.Variable(1.0, trainable=False)
     b = variables.Variable(1.0)
@@ -2715,11 +2738,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     def get_list():
       return [constant_op.constant(0.), constant_op.constant(1.)]
 
-    expected_msg = (
-        'Function to be traced should not modify structure of input '
-        'arguments. Check if your function has list and dictionary '
-        'operations that alter input arguments, '
-        'such as `list.pop`, `list.append`')
+    expected_msg = '.*() should not modify'
 
     with self.assertRaisesRegexp(ValueError, expected_msg):
 
@@ -2795,11 +2814,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     def get_dict():
       return {'t1': constant_op.constant(0.), 't2': constant_op.constant(1.)}
 
-    expected_msg = (
-        'Function to be traced should not modify structure of input '
-        'arguments. Check if your function has list and dictionary '
-        'operations that alter input arguments, '
-        'such as `list.pop`, `list.append`')
+    expected_msg = '.* should not modify'
 
     with self.assertRaisesRegexp(ValueError, expected_msg):
 
@@ -2842,14 +2857,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       setdefault(get_dict())
 
   def testFunctionModifiesInputNest(self):
-    # Test on functions that modify structure of nested input arguments
-    expected_msg = (
-        'Function to be traced should not modify structure of input '
-        'arguments. Check if your function has list and dictionary '
-        'operations that alter input arguments, '
-        'such as `list.pop`, `list.append`')
-
-    with self.assertRaisesRegexp(ValueError, expected_msg):
+    with self.assertRaisesRegexp(
+        ValueError, 'modify.* should not modify'):
 
       @def_function.function
       def modify(n):
@@ -2863,7 +2872,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
       modify(nested_input)
 
-    with self.assertRaisesRegexp(ValueError, expected_msg):
+    with self.assertRaisesRegexp(
+        ValueError, 'modify_same_flat.* should not modify'):
 
       # The flat list doesn't change whereas the true structure changes
       @def_function.function

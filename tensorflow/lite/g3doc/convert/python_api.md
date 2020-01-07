@@ -20,7 +20,7 @@ to convert a model based on the original model format:
 *   `TFLiteConverter.from_keras_model()`: Converts
     [`tf.keras` models](https://www.tensorflow.org/guide/keras/overview).
 *   `TFLiteConverter.from_concrete_functions()`: Converts
-    [concrete functions](concrete_function.md).
+    [concrete functions](https://tensorflow.org/guide/concrete_function).
 
 This document contains [example usages](#examples) of the API, a detailed list
 of [changes in the API between Tensorflow 1 and TensorFlow 2](#differences), and
@@ -93,8 +93,8 @@ tflite_model = converter.convert()
 ### Converting a concrete function <a name="concrete_function"></a>
 
 The following example shows how to convert a TensorFlow
-[concrete function](concrete_function.md) into a TensorFlow Lite
-[`FlatBuffer`](https://google.github.io/flatbuffers/).
+[concrete function](https://tensorflow.org/guide/concrete_function) into a
+TensorFlow Lite [`FlatBuffer`](https://google.github.io/flatbuffers/).
 
 ```python
 import tensorflow as tf

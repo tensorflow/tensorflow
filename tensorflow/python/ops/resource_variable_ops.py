@@ -497,6 +497,9 @@ class BaseResourceVariable(variables.VariableV1):
     """The shape of this variable."""
     return self._shape
 
+  def set_shape(self, shape):
+    self._shape = self._shape.merge_with(shape)
+
   def _shape_as_list(self):
     if self.shape.ndims is None:
       return None
@@ -718,10 +721,6 @@ class BaseResourceVariable(variables.VariableV1):
     return ResourceVariable(
         variable_def=variable_def, import_scope=import_scope)
 
-  def set_shape(self, shape):
-    """Unsupported."""
-    raise NotImplementedError("ResourceVariable does not implement set_shape()")
-
   __array_priority__ = 100
 
   def is_initialized(self, name=None):
@@ -812,7 +811,7 @@ class BaseResourceVariable(variables.VariableV1):
       it will return the `Operation` that does the assignment, and when in eager
       mode it will return `None`.
     """
-    # Note: not depending on the cached value here since this can used to
+    # Note: not depending on the cached value here since this can be used to
     # initialize the variable.
     with _handle_graph(self.handle):
       value_tensor = ops.convert_to_tensor(value, dtype=self.dtype)

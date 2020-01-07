@@ -480,9 +480,6 @@ def tf_proto_library_py(
 def tf_jspb_proto_library(**kwargs):
     pass
 
-def tf_nano_proto_library(**kwargs):
-    pass
-
 def tf_proto_library(
         name,
         srcs = [],
@@ -534,23 +531,6 @@ def tf_proto_library(
         use_grpc_plugin = has_services,
         visibility = visibility,
     )
-
-# A list of all files under platform matching the pattern in 'files'. In
-# contrast with 'tf_platform_srcs' below, which seletive collects files that
-# must be compiled in the 'default' platform, this is a list of all headers
-# mentioned in the platform/* files.
-def tf_platform_hdrs(files):
-    return native.glob(["*/" + f for f in files])
-
-def tf_platform_srcs(files):
-    base_set = ["default/" + f for f in files]
-    windows_set = base_set + ["windows/" + f for f in files]
-    posix_set = base_set + ["posix/" + f for f in files]
-
-    return select({
-        clean_dep("//tensorflow:windows"): native.glob(windows_set),
-        "//conditions:default": native.glob(posix_set),
-    })
 
 def tf_additional_lib_hdrs():
     return [
@@ -619,9 +599,6 @@ def tf_additional_device_tracer_srcs():
     return ["device_tracer.cc"]
 
 def tf_additional_cupti_utils_cuda_deps():
-    return []
-
-def tf_additional_cupti_test_flags():
     return []
 
 def tf_additional_test_deps():
@@ -745,3 +722,28 @@ def tf_protobuf_compiler_deps():
         ],
         otherwise = [clean_dep("@com_google_protobuf//:protobuf_headers")],
     )
+
+def tf_windows_aware_platform_deps(name):
+    return select({
+        "//tensorflow:windows": [
+            "//tensorflow/core/platform/windows:" + name,
+        ],
+        "//conditions:default": [
+            "//tensorflow/core/platform/default:" + name,
+        ],
+    })
+
+def tf_platform_deps(name, platform_dir = "//tensorflow/core/platform/"):
+    return [platform_dir + "default:" + name]
+
+def tf_platform_alias(name):
+    return ["//tensorflow/core/platform/default:" + name]
+
+def tf_logging_deps():
+    return ["//tensorflow/core/platform/default:logging"]
+
+def tf_monitoring_deps():
+    return ["//tensorflow/core/platform/default:monitoring"]
+
+def tf_legacy_srcs_no_runtime_google():
+    return []

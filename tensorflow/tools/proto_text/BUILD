@@ -41,7 +41,7 @@ cc_binary(
         "@com_google_protobuf//:protobuf",
         "//tensorflow/core/platform:protobuf_compiler",
         "//tensorflow/core:lib_proto_parsing",
-    ] + if_ios(["//tensorflow/core/platform/default/build_config:logging"]),
+    ] + if_ios(["//tensorflow/core/platform:logging"]),
 )
 
 cc_library(
@@ -67,7 +67,7 @@ cc_library(
     }),
     deps = [
         "//tensorflow/core:lib_proto_parsing",
-    ] + if_ios(["//tensorflow/core/platform/default/build_config:logging"]),
+    ] + if_ios(["//tensorflow/core/platform:logging"]),
 )
 
 tf_proto_library_cc(

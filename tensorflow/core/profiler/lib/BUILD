@@ -15,18 +15,19 @@ cc_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":profiler_utils",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform",
         "//tensorflow/core/profiler/internal:profiler_interface",
         "//tensorflow/core/profiler/internal:profiler_factory",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
-        "@com_google_absl//absl/strings",
+        "//tensorflow/core/util:ptr_util",
     ] + select({
         "//tensorflow:android": [],
         "//conditions:default": [
-            "//tensorflow/core/platform",
-            "//tensorflow/core:core_cpu_lib",
-            "//tensorflow/core:lib",
-            "//tensorflow/core:lib_internal",
-            "//tensorflow/core:protos_all_cc",
+            "//tensorflow/core/profiler/convert:run_metadata_to_trace_events",
         ],
     }),
 )
@@ -41,6 +42,17 @@ tf_cuda_library(
         "//tensorflow/core/profiler/internal/cpu:host_tracer",
     ],
     alwayslink = True,
+)
+
+filegroup(
+    name = "pywrap_eager_hdrs",
+    srcs = [
+        "profiler_session.h",
+    ],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/python:__pkg__",
+    ],
 )
 
 cc_library(
@@ -79,7 +91,6 @@ filegroup(
     srcs = [
         "profiler_session.cc",
         "profiler_session.h",
-        "profiler_utils.h",
         "scoped_annotation.h",
         "traceme.h",
     ],

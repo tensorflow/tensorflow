@@ -161,7 +161,8 @@ TrtConversionParams = collections.namedtuple(
         "use_calibration",
 
         # Max size for the input batch.
-        # This option is deprecated in TF 2.0.
+        # This parameter is only effective when is_dynamic_op=False which
+        # is not supported in TF 2.0.
         "max_batch_size",
     ])
 
@@ -178,11 +179,12 @@ DEFAULT_TRT_CONVERSION_PARAMS = TrtConversionParams(
 _TRT_ENGINE_OP_NAME = "TRTEngineOp"
 
 
-def _check_conversion_params(conversion_params):
+def _check_conversion_params(conversion_params, is_v2=False):
   """Validate the provided TrtConversionParams.
 
   Args:
     conversion_params: a TrtConversionParams instance.
+    is_v2: whether we're getting a RewriterConfig for TF 2.0.
 
   Raises:
     TypeError: if any of the parameters are of unexpected type.
@@ -194,6 +196,44 @@ def _check_conversion_params(conversion_params):
         ("precision mode '{}' is not supported."
          "It should be one of {}").format(conversion_params.precision_mode,
                                           supported_precision_modes))
+  if is_v2:
+    # Static mode (building TRT engine without executing the op) is deprecated
+    # in TF 2.0. See TrtGraphConverterV2 for more details.
+    if not conversion_params.is_dynamic_op:
+      raise ValueError("Option is_dynamic_op=False is not supported in TF 2.0, "
+                       "please set it to True instead.")
+
+  if conversion_params.rewriter_config_template:
+    rewriter_cfg = conversion_params.rewriter_config_template
+    trt_optimizer = None
+    for optimizer in rewriter_cfg.custom_optimizers:
+      if optimizer.name == "TensorRTOptimizer":
+        if trt_optimizer:
+          raise ValueError(
+              "Found more than one TensorRTOptimizer in "
+              "rewriter_config_template while only one is allowed.")
+        trt_optimizer = optimizer
+    # If rewriter_config_template is set, it should inculde TensorRTOptimizer.
+    # It is possible to remove this requirement if needed.
+    if not trt_optimizer:
+      raise ValueError(
+          "Found no TensorRTOptimizer in rewriter_config_template.")
+    if not trt_optimizer.parameter_map:
+      raise ValueError("Found no parameter_map in TensorRTOptimizer.")
+    if ("precision_mode" in trt_optimizer.parameter_map.keys() and
+        trt_optimizer.parameter_map["precision_mode"].s not in map(
+            _to_bytes, supported_precision_modes)):
+      raise ValueError(("precision_mode '{}' is not supported. "
+                        "It should be one of {}").format(
+                            trt_optimizer.parameter_map["precision_mode"],
+                            supported_precision_modes))
+    if is_v2:
+      # Static mode (building TRT engine without executing the op) is not
+      # supported in TF 2.0. See TrtGraphConverterV2 for more details.
+      if ("is_dynamic_op" in trt_optimizer.parameter_map.keys() and
+          not trt_optimizer.parameter_map["is_dynamic_op"]):
+        raise ValueError("Option is_dynamic_op=False is not supported "
+                         "in TF 2.0, please set it to True instead.")
 
 
 def _check_trt_version_compatibility():
@@ -213,8 +253,8 @@ def _check_trt_version_compatibility():
   if loaded_version < linked_version:
     tf_logging.error(
         "Loaded TensorRT %s but linked TensorFlow against TensorRT %s. " %
-        (".".join([str(x) for x in loaded_version]),
-         ".".join([str(x) for x in linked_version])) +
+        (".".join(str(x) for x in loaded_version), ".".join(
+            str(x) for x in linked_version)) +
         "TensorRT does not support forward compatibility. " +
         "It is also required to use the same major version of TensorRT " +
         "during compilation and runtime.")
@@ -222,26 +262,29 @@ def _check_trt_version_compatibility():
   if loaded_version[0] > linked_version[0]:
     tf_logging.error(
         "Loaded TensorRT %s but linked TensorFlow against TensorRT %s. " %
-        (".".join([str(x) for x in loaded_version]),
-         ".".join([str(x) for x in linked_version])) +
+        (".".join(str(x) for x in loaded_version), ".".join(
+            str(x) for x in linked_version)) +
         "It is required to use the same major version " +
         "of TensorRT during compilation and runtime.")
     raise RuntimeError("Incompatible TensorRT major version")
   if loaded_version != linked_version:
     tf_logging.info(
         "Loaded TensorRT %s and linked TensorFlow against TensorRT %s. " %
-        (".".join([str(x) for x in loaded_version]),
-         ".".join([str(x) for x in linked_version])) +
+        (".".join(str(x) for x in loaded_version), ".".join(
+            str(x) for x in linked_version)) +
         "This is supported because TensorRT " +
         " minor/patch upgrades are backward compatible")
 
 
-def get_tensorrt_rewriter_config(conversion_params, is_v2=False):
+def get_tensorrt_rewriter_config(conversion_params,
+                                 is_v2=False,
+                                 disable_non_trt_optimizers=False):
   """Returns a RewriterConfig proto for TRT transformation.
 
   Args:
     conversion_params: a TrtConversionParams instance.
     is_v2: whether we're getting a RewriterConfig for TF 2.0.
+    disable_non_trt_optimizers: Turn off all default Grappler optimizers.
 
   Returns:
     A RewriterConfig proto which sets a TensorRTOptimizer to run Grappler.
@@ -255,46 +298,61 @@ def get_tensorrt_rewriter_config(conversion_params, is_v2=False):
       rewriter_config_pb2.RewriterConfig):
     raise TypeError(
         "rewriter_config_template should be a RewriterConfig proto.")
-  _check_conversion_params(conversion_params)
+  _check_conversion_params(conversion_params, is_v2=is_v2)
 
   rewriter_config_with_trt = rewriter_config_pb2.RewriterConfig()
+
   if conversion_params.rewriter_config_template is None:
-    # Layout optimizer may add Const nodes followed by Reshape nodes, thus we
-    # need to run constant folding again.
-    rewriter_config_with_trt.optimizers.extend(
-        ["constfold", "layout", "constfold"])
+    if not disable_non_trt_optimizers:
+      # Layout optimizer may add Const nodes followed by Reshape nodes, thus we
+      # need to run constant folding again.
+      rewriter_config_with_trt.optimizers.extend(
+          ["constfold", "layout", "constfold"])
     rewriter_config_with_trt.meta_optimizer_iterations = (
         rewriter_config_pb2.RewriterConfig.ONE)
+    optimizer = rewriter_config_with_trt.custom_optimizers.add()
+    # Add a constfold optimizer to cleanup the unused Const nodes.
+    rewriter_config_with_trt.custom_optimizers.add().name = "constfold"
+
+    optimizer.name = "TensorRTOptimizer"
+    optimizer.parameter_map[
+        "minimum_segment_size"].i = conversion_params.minimum_segment_size
+    optimizer.parameter_map["max_workspace_size_bytes"].i = (
+        conversion_params.max_workspace_size_bytes)
+    optimizer.parameter_map["precision_mode"].s = _to_bytes(
+        conversion_params.precision_mode)
+    optimizer.parameter_map[
+        "maximum_cached_engines"].i = conversion_params.maximum_cached_engines
+    optimizer.parameter_map[
+        "use_calibration"].b = conversion_params.use_calibration
+    optimizer.parameter_map["is_dynamic_op"].b = conversion_params.is_dynamic_op
+    if not is_v2:
+      optimizer.parameter_map[
+          "max_batch_size"].i = conversion_params.max_batch_size
   else:
     rewriter_config_with_trt.CopyFrom(
         conversion_params.rewriter_config_template)
 
-  optimizer = rewriter_config_with_trt.custom_optimizers.add()
-  # Add a constfold optimizer to cleanup the unused Const nodes.
-  rewriter_config_with_trt.custom_optimizers.add().name = "constfold"
+  # Disabling optimizers should happen after CopyFrom the temaplte
+  # otherwise the template can overwrite the disablement.
+  if disable_non_trt_optimizers:
+    off = rewriter_config_pb2.RewriterConfig.OFF
+    rewriter_config_with_trt.layout_optimizer = off
+    rewriter_config_with_trt.constant_folding = off
+    rewriter_config_with_trt.shape_optimization = off
+    rewriter_config_with_trt.remapping = off
+    rewriter_config_with_trt.arithmetic_optimization = off
+    rewriter_config_with_trt.dependency_optimization = off
+    rewriter_config_with_trt.loop_optimization = off
+    rewriter_config_with_trt.function_optimization = off
+    rewriter_config_with_trt.debug_stripper = off
+    rewriter_config_with_trt.disable_model_pruning = True
+    rewriter_config_with_trt.scoped_allocator_optimization = off
+    rewriter_config_with_trt.memory_optimization = (
+        rewriter_config_pb2.RewriterConfig.NO_MEM_OPT)
+    rewriter_config_with_trt.pin_to_host_optimization = off
+    rewriter_config_with_trt.auto_parallel.enable = False
 
-  optimizer.name = "TensorRTOptimizer"
-  optimizer.parameter_map[
-      "minimum_segment_size"].i = conversion_params.minimum_segment_size
-  optimizer.parameter_map[
-      "max_workspace_size_bytes"].i = conversion_params.max_workspace_size_bytes
-  optimizer.parameter_map["precision_mode"].s = _to_bytes(
-      conversion_params.precision_mode)
-  optimizer.parameter_map[
-      "maximum_cached_engines"].i = conversion_params.maximum_cached_engines
-  optimizer.parameter_map[
-      "use_calibration"].b = conversion_params.use_calibration
-  if is_v2:
-    # Static mode (building TRT engine without executing the op) is deprecated
-    # in TF 2.0. See TrtGraphConverterV2 for more details.
-    if not conversion_params.is_dynamic_op:
-      raise ValueError("Option is_dynamic_op=False is not supported in TF 2.0, "
-                       "please set it to True instead.")
-    optimizer.parameter_map["is_dynamic_op"].b = True
-  else:
-    optimizer.parameter_map[
-        "max_batch_size"].i = conversion_params.max_batch_size
-    optimizer.parameter_map["is_dynamic_op"].b = conversion_params.is_dynamic_op
   return rewriter_config_with_trt
 
 
@@ -517,7 +575,7 @@ class TrtGraphConverter(object):
 
       def _gather_names(tensor_info):
         """Get the node names from a TensorInfo."""
-        return set([tensor_info[key].name.split(":")[0] for key in tensor_info])
+        return {tensor_info[key].name.split(":")[0] for key in tensor_info}
 
       # Get input and outputs from all SignatureDef.
       output_node_names = _gather_names(input_signature_def.inputs).union(
@@ -713,7 +771,7 @@ class TrtGraphConverter(object):
               # exists
               try:
                 col_op = dest_graph.as_graph_element(name)
-              except (TypeError, ValueError, KeyError) as e:
+              except (TypeError, ValueError, KeyError):
                 continue
               dest_graph.add_to_collection(key, col_op)
           elif kind == "int64_list":
@@ -909,7 +967,7 @@ class TrtGraphConverterV2(object):
     """
     assert context.executing_eagerly()
     _check_trt_version_compatibility()
-    _check_conversion_params(conversion_params)
+    _check_conversion_params(conversion_params, is_v2=True)
 
     self._conversion_params = conversion_params
     self._input_saved_model_dir = input_saved_model_dir
@@ -964,11 +1022,7 @@ class TrtGraphConverterV2(object):
       calibration_input_fn: a generator function that yields input data as a
         list or tuple, which will be used to execute the converted signature for
         calibration. All the returned input data should have the same shape.
-        Example:
-        ```
-        def input_fn():
-          yield input1, input2, input3
-        ```
+        Example: `def input_fn(): yield input1, input2, input3`
 
     Raises:
       ValueError: if the input combination is invalid.
@@ -1041,11 +1095,7 @@ class TrtGraphConverterV2(object):
       input_fn: a generator function that yields input data as a list or tuple,
         which will be used to execute the converted signature to generate TRT
         engines.
-        Example:
-        ```
-        def input_fn():
-          yield input1, input2, input3
-        ```
+        Example: `def input_fn(): yield input1, input2, input3`
     """
     for inp in input_fn():
       self._converted_func(*map(ops.convert_to_tensor, inp))

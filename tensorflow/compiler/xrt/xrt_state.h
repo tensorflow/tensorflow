@@ -229,7 +229,8 @@ class XRTTupleAllocation : public core::RefCounted {
   // ScopedShapedBuffer, which wants ownership and does not allow sharing.
   xla::StatusOr<xla::ShapeTree<xla::MaybeOwningDeviceMemory>>
   ToDeviceMemoryTree(
-      const std::function<bool(const xla::ShapeIndex&)>& release_checker);
+      const std::function<xla::StatusOr<bool>(const xla::ShapeIndex&)>&
+          release_checker);
 
  private:
   // Creates a new handle with (tuple) shape.
