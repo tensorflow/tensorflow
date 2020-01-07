@@ -20,6 +20,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "third_party/eigen3/Eigen/Core"
+#include "tensorflow/lite/context.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -1210,11 +1211,16 @@ class TestDelegate : public ::testing::Test {
     // Create a simple implementation of a TfLiteDelegate. We use the C++ class
     // SimpleDelegate and it can produce a handle TfLiteDelegate that is
     // value-copyable and compatible with TfLite.
+    // fail_node_prepare: To simulate failure of Delegate node's Prepare().
+    // min_ops_per_subset: If >0, partitioning preview is used to choose only
+    // those subsets with min_ops_per_subset number of nodes.
     explicit SimpleDelegate(
         const std::vector<int>& nodes,
         TfLiteDelegateFlags delegate_flags = kTfLiteDelegateFlagsNone,
-        bool fail_node_prepare = false)
-        : nodes_(nodes), fail_delegate_node_prepare_(fail_node_prepare) {
+        bool fail_node_prepare = false, int min_ops_per_subset = 0)
+        : nodes_(nodes),
+          fail_delegate_node_prepare_(fail_node_prepare),
+          min_ops_per_subset_(min_ops_per_subset) {
       delegate_.Prepare = [](TfLiteContext* context,
                              TfLiteDelegate* delegate) -> TfLiteStatus {
         auto* simple = static_cast<SimpleDelegate*>(delegate->data_);
@@ -1247,6 +1253,40 @@ class TestDelegate : public ::testing::Test {
             TFLITE_CHECK_EQ(strcmp(reg->custom_name, "my_add"), 0);
           }
         }
+
+        // Get preview of delegate partitioning from the context.
+        TfLiteDelegateParams* params_array;
+        int num_partitions;
+        TFLITE_CHECK_EQ(
+            context->PreviewDelegatePartitioning(
+                context, nodes_to_separate, &params_array, &num_partitions),
+            kTfLiteOk);
+
+        if (simple->min_ops_per_subset() > 0) {
+          // Build a new vector of ops from subsets with atleast the minimum
+          // size.
+          std::vector<int> allowed_ops;
+          for (int idx = 0; idx < num_partitions; ++idx) {
+            const auto* nodes_in_subset = params_array[idx].nodes_to_replace;
+            if (nodes_in_subset->size < simple->min_ops_per_subset()) continue;
+            allowed_ops.insert(allowed_ops.end(), nodes_in_subset->data,
+                               nodes_in_subset->data + nodes_in_subset->size);
+          }
+
+          // Free existing nodes_to_separate & initialize a new array with
+          // allowed_ops.
+          TfLiteIntArrayFree(nodes_to_separate);
+          nodes_to_separate = TfLiteIntArrayCreate(allowed_ops.size());
+          memcpy(nodes_to_separate->data, allowed_ops.data(),
+                 sizeof(int) * nodes_to_separate->size);
+        }
+
+        // Another call to PreviewDelegateParitioning should be okay, since
+        // partitioning memory is managed by context.
+        TFLITE_CHECK_EQ(
+            context->PreviewDelegatePartitioning(
+                context, nodes_to_separate, &params_array, &num_partitions),
+            kTfLiteOk);
 
         context->ReplaceNodeSubsetsWithDelegateKernels(
             context, simple->FakeFusedRegistration(), nodes_to_separate,
@@ -1340,10 +1380,13 @@ class TestDelegate : public ::testing::Test {
 
     TfLiteDelegate* get_tf_lite_delegate() { return &delegate_; }
 
+    int min_ops_per_subset() { return min_ops_per_subset_; }
+
    private:
     std::vector<int> nodes_;
     TfLiteDelegate delegate_;
     bool fail_delegate_node_prepare_ = false;
+    int min_ops_per_subset_ = 0;
   };
 
   std::unique_ptr<Interpreter> interpreter_;
@@ -1540,6 +1583,39 @@ TEST_F(TestDelegate, SetInvalidHandleToTensor) {
   ASSERT_EQ(status, kTfLiteError);
   EXPECT_EQ(tensor->delegate, delegate);
   EXPECT_EQ(tensor->buffer_handle, kTfLiteNullBufferHandle);
+}
+
+// We utilize delegation in such a way as to allow node subsets with a minimum
+// number of ops only.
+TEST_F(TestDelegate, TestDelegationWithPartitionPreview) {
+  // We set kTfLiteDelegateFlagsAllowDynamicTensors to ensure the second
+  // delegate can be applied.
+  // Ops 0 and 2 are delegated but end up in the same partition (based on
+  // dependency analysis). However, since min_ops_per_subset = 3, no delegation
+  // takes place.
+  delegate_ = std::unique_ptr<SimpleDelegate>(new SimpleDelegate(
+      {0, 2}, kTfLiteDelegateFlagsAllowDynamicTensors,
+      false /**fail_node_prepare**/, 3 /**min_ops_per_subset**/));
+  interpreter_->ModifyGraphWithDelegate(delegate_->get_tf_lite_delegate());
+
+  // Original execution plan remains.
+  ASSERT_EQ(interpreter_->execution_plan().size(), 3);
+  ASSERT_EQ(interpreter_->execution_plan()[0], 0);
+  ASSERT_EQ(interpreter_->execution_plan()[1], 1);
+  ASSERT_EQ(interpreter_->execution_plan()[2], 2);
+
+  // Same ops supported, but min_ops_per_subset = 2.
+  delegate2_ = std::unique_ptr<SimpleDelegate>(new SimpleDelegate(
+      {0, 2}, kTfLiteDelegateFlagsAllowDynamicTensors,
+      false /**fail_node_prepare**/, 2 /**min_ops_per_subset**/));
+  interpreter_->ModifyGraphWithDelegate(delegate2_->get_tf_lite_delegate());
+
+  ASSERT_EQ(interpreter_->execution_plan().size(), 2);
+  ASSERT_EQ(interpreter_->execution_plan()[0], 3);
+  const auto* node_and_reg = interpreter_->node_and_registration(3);
+  ASSERT_EQ(node_and_reg->second.custom_name,
+            delegate2_->FakeFusedRegistration().custom_name);
+  ASSERT_EQ(interpreter_->execution_plan()[1], 1);
 }
 
 TEST_F(TestDelegate, TestResizeInputWithNonDynamicDelegate) {

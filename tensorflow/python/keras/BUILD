@@ -661,14 +661,14 @@ tf_py_test(
     name = "add_loss_correctness_test",
     size = "medium",
     srcs = ["add_loss_correctness_test.py"],
-    additional_deps = [
-        ":keras",
-        "@absl_py//absl/testing:parameterized",
-        "//third_party/py/numpy",
-        "//tensorflow/python:client_testlib",
-    ],
     python_version = "PY3",
     shard_count = 4,
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
 )
 
 tf_py_test(
@@ -1919,7 +1919,10 @@ tf_py_test(
     srcs = ["models_test.py"],
     python_version = "PY3",
     shard_count = 8,
-    tags = ["notsan"],  # b/67509773
+    tags = [
+        "no_oss_py35",  # b/147251467
+        "notsan",  # b/67509773
+    ],
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
@@ -2032,18 +2035,6 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_py_test(
-    name = "revive_test",
-    size = "medium",
-    srcs = ["saving/saved_model/revive_test.py"],
-    additional_deps = [
-        ":keras",
-        "@absl_py//absl/testing:parameterized",
-        "//third_party/py/numpy",
-        "//tensorflow/python:client_testlib",
     ],
 )
 

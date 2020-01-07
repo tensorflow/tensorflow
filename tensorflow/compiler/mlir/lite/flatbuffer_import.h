@@ -31,11 +31,14 @@ namespace tflite {
 // on failure, and more specific errors will be emitted via the context.
 // If `use_external_constant` is true, it will create `tfl.external_const`
 // instead of `tfl.const`.
+// If `experimental_prune_unreachable_nodes_unconditionally` is true, nodes that
+// are not ancestors of the output nodes will be pruned.
 mlir::OwningModuleRef FlatBufferToMlir(
     absl::string_view buffer, mlir::MLIRContext* context,
     mlir::Location base_loc,
     const std::vector<std::string>& ordered_output_arrays,
-    bool use_external_constant = false);
+    bool use_external_constant = false,
+    bool experimental_prune_unreachable_nodes_unconditionally = false);
 }  // namespace tflite
 
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_FLATBUFFER_IMPORT_H_

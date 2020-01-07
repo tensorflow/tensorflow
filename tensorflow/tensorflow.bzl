@@ -2484,6 +2484,7 @@ def pybind_extension(
         srcs = srcs + hdrs,
         data = data,
         copts = copts + [
+            "-fno-strict-aliasing",
             "-fexceptions",
         ] + select({
             clean_dep("//tensorflow:windows"): [],

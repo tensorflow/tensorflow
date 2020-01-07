@@ -130,6 +130,27 @@ mlir::OwningModuleRef SavedModelToMlirImport(
   return module_or.ConsumeValueOrDie();
 }
 
+mlir::OwningModuleRef SavedModelV1ToMlirImport(
+    absl::string_view saved_model_dir,
+    const std::unordered_set<std::string>& tags, mlir::MLIRContext* context) {
+  tensorflow::SavedModelBundle bundle;
+  auto load_status = tensorflow::LoadSavedModel(
+      /* session_options = */ {}, /* run_options = */ {},
+      std::string(saved_model_dir), tags, &bundle);
+  if (!load_status.ok()) {
+    LOG(ERROR) << "Failed to load saved model v1 '" << saved_model_dir
+               << "': " << load_status;
+    return nullptr;
+  }
+
+  auto module_or = ConvertSavedModelV1ToMlir(bundle, context);
+  if (!module_or.status().ok()) {
+    LOG(ERROR) << "SavedModel V1 import failed: " << module_or.status();
+    return nullptr;
+  }
+  return module_or.ConsumeValueOrDie();
+}
+
 mlir::OwningModuleRef GraphdefToSplattedMlirTranslateFunction(
     llvm::StringRef input, absl::string_view debug_info_file,
     absl::string_view input_arrays, absl::string_view input_dtypes,

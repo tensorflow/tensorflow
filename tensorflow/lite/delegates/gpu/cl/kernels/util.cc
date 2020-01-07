@@ -73,6 +73,7 @@ std::string GetCommonDefines(CalculationsPrecision precision) {
 
   switch (precision) {
     case CalculationsPrecision::F32:
+      result += "#pragma OPENCL EXTENSION cl_khr_3d_image_writes : enable\n";
       result += "#define ACCUM_FLT4 float4\n";
       result += "#define FLT float\n";
       result += "#define FLT2 float2\n";
@@ -85,6 +86,7 @@ std::string GetCommonDefines(CalculationsPrecision precision) {
       result += "#define WRITE_IMAGE write_imagef\n";
       break;
     case CalculationsPrecision::F16:
+      result += "#pragma OPENCL EXTENSION cl_khr_3d_image_writes : enable\n";
       result += "#pragma OPENCL EXTENSION cl_khr_fp16 : enable\n";
       result += "#define ACCUM_FLT4 half4\n";
       result += "#define FLT half\n";
@@ -98,6 +100,7 @@ std::string GetCommonDefines(CalculationsPrecision precision) {
       result += "#define WRITE_IMAGE write_imageh\n";
       break;
     case CalculationsPrecision::F32_F16:
+      result += "#pragma OPENCL EXTENSION cl_khr_3d_image_writes : enable\n";
       result += "#pragma OPENCL EXTENSION cl_khr_fp16 : enable\n";
       result += "#define ACCUM_FLT4 float4\n";
       result += "#define FLT half\n";
@@ -125,112 +128,231 @@ std::string GetCommonDefines(CalculationsPrecision precision) {
   return result;
 }
 
-TensorCodeGenerator::SizeVariablesNames::SizeVariablesNames(
-    const std::string& width_name, const std::string& height_name,
-    const std::string& depth_name)
-    : width(width_name), height(height_name), depth(depth_name) {}
-
-TensorCodeGenerator::SizeVariablesNames::SizeVariablesNames(
-    const std::string& width_name, const std::string& height_name,
-    const std::string& depth_name, const std::string& batch_name)
-    : width(width_name),
-      height(height_name),
-      depth(depth_name),
-      batch(batch_name) {}
+TensorCodeGenerator::TensorCodeGenerator(const std::string& name,
+                                         const WHSPoint& sizes,
+                                         const TensorDescriptor& descriptor)
+    : tensor_name_(name),
+      width_name_(sizes.w_name),
+      height_name_(sizes.h_name),
+      slices_name_(sizes.s_name),
+      descriptor_(descriptor) {}
 
 TensorCodeGenerator::TensorCodeGenerator(const std::string& name,
-                                         const SizeVariablesNames& sizes,
+                                         const WHSBPoint& sizes,
                                          const TensorDescriptor& descriptor)
-    : tensor_name_(name), sizes_(sizes), descriptor_(descriptor) {}
+    : tensor_name_(name),
+      width_name_(sizes.w_name),
+      height_name_(sizes.h_name),
+      slices_name_(sizes.s_name),
+      batch_name_(sizes.b_name),
+      descriptor_(descriptor) {}
+
+TensorCodeGenerator::TensorCodeGenerator(const std::string& name,
+                                         const WHDSPoint& sizes,
+                                         const TensorDescriptor& descriptor)
+    : tensor_name_(name),
+      width_name_(sizes.w_name),
+      height_name_(sizes.h_name),
+      depth_name_(sizes.d_name),
+      slices_name_(sizes.s_name),
+      descriptor_(descriptor) {}
+
+TensorCodeGenerator::TensorCodeGenerator(const std::string& name,
+                                         const WHDSBPoint& sizes,
+                                         const TensorDescriptor& descriptor)
+    : tensor_name_(name),
+      width_name_(sizes.w_name),
+      height_name_(sizes.h_name),
+      depth_name_(sizes.d_name),
+      slices_name_(sizes.s_name),
+      batch_name_(sizes.b_name),
+      descriptor_(descriptor) {}
 
 std::string TensorCodeGenerator::GetDeclaration(AccessType access_type) const {
   return GetTensorDeclaration(access_type, tensor_name_, descriptor_);
 }
 
-std::string TensorCodeGenerator::Read3D(const std::string& x,
-                                        const std::string& y,
-                                        const std::string& z,
-                                        TextureAddressMode address_mode) const {
-  return Read(GetGlobalAddressNoDeclaration(x, y, z), address_mode);
-}
-
-std::string TensorCodeGenerator::Read4D(const std::string& x,
-                                        const std::string& y,
-                                        const std::string& z,
-                                        const std::string& b,
-                                        TextureAddressMode address_mode) const {
-  return Read(GetGlobalAddressNoDeclaration(x, y, z, b), address_mode);
-}
-
-std::string TensorCodeGenerator::ReadAsFloat3D(
-    const std::string& x, const std::string& y, const std::string& z,
+std::string TensorCodeGenerator::ReadWHS(
+    const std::string& x, const std::string& y, const std::string& s,
     TextureAddressMode address_mode) const {
-  return ReadAsFloat(GetGlobalAddressNoDeclaration(x, y, z), address_mode);
+  return Read(GetGlobalAddressNoDeclarationWHS(x, y, s), address_mode);
 }
 
-std::string TensorCodeGenerator::ReadAsFloat4D(
-    const std::string& x, const std::string& y, const std::string& z,
+std::string TensorCodeGenerator::ReadWHSB(
+    const std::string& x, const std::string& y, const std::string& s,
     const std::string& b, TextureAddressMode address_mode) const {
-  return ReadAsFloat(GetGlobalAddressNoDeclaration(x, y, z, b), address_mode);
+  return Read(GetGlobalAddressNoDeclarationWHSB(x, y, s, b), address_mode);
 }
 
-std::string TensorCodeGenerator::GetAddress(const std::string& var_name,
-                                            const std::string& x,
-                                            const std::string& y,
-                                            const std::string& z) const {
-  return DeclareAddress(var_name, GetGlobalAddressNoDeclaration(x, y, z));
+std::string TensorCodeGenerator::ReadWHDS(
+    const std::string& x, const std::string& y, const std::string& z,
+    const std::string& s, TextureAddressMode address_mode) const {
+  return Read(GetGlobalAddressNoDeclarationWHDS(x, y, z, s), address_mode);
 }
 
-std::string TensorCodeGenerator::GetAddress(const std::string& var_name,
-                                            const std::string& x,
-                                            const std::string& y,
-                                            const std::string& z,
-                                            const std::string& b) const {
-  return DeclareAddress(var_name, GetGlobalAddressNoDeclaration(x, y, z, b));
+std::string TensorCodeGenerator::ReadWHDSB(
+    const std::string& x, const std::string& y, const std::string& z,
+    const std::string& s, const std::string& b,
+    TextureAddressMode address_mode) const {
+  return Read(GetGlobalAddressNoDeclarationWHDSB(x, y, z, s, b), address_mode);
 }
 
-std::string TensorCodeGenerator::GetGlobalAddressNoDeclaration(
-    const std::string& x, const std::string& y, const std::string& z) const {
+std::string TensorCodeGenerator::ReadAsFloatWHS(
+    const std::string& x, const std::string& y, const std::string& s,
+    TextureAddressMode address_mode) const {
+  return ReadAsFloat(GetGlobalAddressNoDeclarationWHS(x, y, s), address_mode);
+}
+
+std::string TensorCodeGenerator::ReadAsFloatWHSB(
+    const std::string& x, const std::string& y, const std::string& s,
+    const std::string& b, TextureAddressMode address_mode) const {
+  return ReadAsFloat(GetGlobalAddressNoDeclarationWHSB(x, y, s, b),
+                     address_mode);
+}
+
+std::string TensorCodeGenerator::ReadAsFloatWHDS(
+    const std::string& x, const std::string& y, const std::string& z,
+    const std::string& s, TextureAddressMode address_mode) const {
+  return ReadAsFloat(GetGlobalAddressNoDeclarationWHDS(x, y, z, s),
+                     address_mode);
+}
+
+std::string TensorCodeGenerator::ReadAsFloatWHDSB(
+    const std::string& x, const std::string& y, const std::string& z,
+    const std::string& s, const std::string& b,
+    TextureAddressMode address_mode) const {
+  return ReadAsFloat(GetGlobalAddressNoDeclarationWHDSB(x, y, z, s, b),
+                     address_mode);
+}
+
+std::string TensorCodeGenerator::GetAddressWHS(const std::string& var_name,
+                                               const std::string& x,
+                                               const std::string& y,
+                                               const std::string& s) const {
+  return DeclareAddress(var_name, GetGlobalAddressNoDeclarationWHS(x, y, s));
+}
+
+std::string TensorCodeGenerator::GetAddressWHSB(const std::string& var_name,
+                                                const std::string& x,
+                                                const std::string& y,
+                                                const std::string& s,
+                                                const std::string& b) const {
+  return DeclareAddress(var_name,
+                        GetGlobalAddressNoDeclarationWHSB(x, y, s, b));
+}
+
+std::string TensorCodeGenerator::GetAddressWHDS(const std::string& var_name,
+                                                const std::string& x,
+                                                const std::string& y,
+                                                const std::string& z,
+                                                const std::string& s) const {
+  return DeclareAddress(var_name,
+                        GetGlobalAddressNoDeclarationWHDS(x, y, z, s));
+}
+
+std::string TensorCodeGenerator::GetAddressWHDSB(
+    const std::string& var_name, const std::string& x, const std::string& y,
+    const std::string& z, const std::string& s, const std::string& b) const {
+  return DeclareAddress(var_name,
+                        GetGlobalAddressNoDeclarationWHDSB(x, y, z, s, b));
+}
+
+std::string TensorCodeGenerator::GetGlobalAddressNoDeclarationWHS(
+    const std::string& x, const std::string& y, const std::string& s) const {
   switch (descriptor_.storage_type) {
     case TensorStorageType::BUFFER:
     case TensorStorageType::IMAGE_BUFFER:
-      return absl::Substitute("((($2) * $3 + ($1)) * $4 + ($0))", x, y, z,
-                              sizes_.height, sizes_.width);
+      return absl::Substitute("((($2) * $3 + ($1)) * $4 + ($0))", x, y, s,
+                              height_name_, width_name_);
     case TensorStorageType::TEXTURE_2D:
-      return absl::Substitute("(int2)(($0), ($1) * $3 + ($2))", x, y, z,
-                              sizes_.depth);
+      return absl::Substitute("(int2)(($0), ($1) * $3 + ($2))", x, y, s,
+                              slices_name_);
     case TensorStorageType::SINGLE_TEXTURE_2D:
       return absl::StrCat("(int2)(", x, ", ", y, ")");
     case TensorStorageType::TEXTURE_ARRAY:
     case TensorStorageType::TEXTURE_3D:
-      return absl::StrCat("(int4)(", x, ", ", y, ", ", z, ", 0)");
+      return absl::StrCat("(int4)(", x, ", ", y, ", ", s, ", 0)");
     case TensorStorageType::UNKNOWN:
       return "error";
   }
 }
 
-std::string TensorCodeGenerator::GetGlobalAddressNoDeclaration(
-    const std::string& x, const std::string& y, const std::string& z,
+std::string TensorCodeGenerator::GetGlobalAddressNoDeclarationWHSB(
+    const std::string& x, const std::string& y, const std::string& s,
     const std::string& b) const {
   if (b.empty()) {
-    return GetGlobalAddressNoDeclaration(x, y, z);
+    return GetGlobalAddressNoDeclarationWHS(x, y, s);
   }
   switch (descriptor_.storage_type) {
     case TensorStorageType::BUFFER:
     case TensorStorageType::IMAGE_BUFFER:
       return absl::Substitute("(((($3) * $4 + $2) * $5 + ($1)) * $6 + ($0))", b,
-                              x, y, z, sizes_.height, sizes_.width,
-                              sizes_.batch);
+                              x, y, s, height_name_, width_name_, batch_name_);
     case TensorStorageType::TEXTURE_2D:
-      return absl::Substitute("(int2)(($0) * ($4) + ($1), ($2) * $5 + ($3))", x,
-                              b, y, z, sizes_.batch, sizes_.depth);
+      return absl::Substitute("(int2)(($0) * $4 + ($1), ($2) * $5 + ($3))", x,
+                              b, y, s, batch_name_, slices_name_);
     case TensorStorageType::SINGLE_TEXTURE_2D:
-      return absl::Substitute("(int2)(($0) * ($3) + ($1), ($2))", x, b, y,
-                              sizes_.batch);
+      return absl::Substitute("(int2)(($0) * $3 + ($1), ($2))", x, b, y,
+                              batch_name_);
     case TensorStorageType::TEXTURE_ARRAY:
     case TensorStorageType::TEXTURE_3D:
-      return absl::Substitute("(int4)(($0) * ($4) + ($1), ($2), ($3), 0)", x, b,
-                              y, z, sizes_.batch);
+      return absl::Substitute("(int4)(($0) * $4 + ($1), ($2), ($3), 0)", x, b,
+                              y, s, batch_name_);
+    case TensorStorageType::UNKNOWN:
+      return "error";
+    default:
+      return "error";
+  }
+}
+
+std::string TensorCodeGenerator::GetGlobalAddressNoDeclarationWHDS(
+    const std::string& x, const std::string& y, const std::string& z,
+    const std::string& s) const {
+  switch (descriptor_.storage_type) {
+    case TensorStorageType::BUFFER:
+    case TensorStorageType::IMAGE_BUFFER:
+      return absl::Substitute("(((($3) * $4 + ($2)) * $5 + ($1)) * $6 + ($0))",
+                              x, y, s, z, slices_name_, height_name_,
+                              width_name_);
+    case TensorStorageType::TEXTURE_2D:
+      return absl::Substitute("(int2)(($0) * $4 + ($1), ($2) * $5 + ($3))", x,
+                              z, y, s, depth_name_, slices_name_);
+    case TensorStorageType::SINGLE_TEXTURE_2D:
+      return absl::Substitute("(int2)(($0) * $3 + ($1), ($2))", x, z, y,
+                              depth_name_);
+    case TensorStorageType::TEXTURE_ARRAY:
+    case TensorStorageType::TEXTURE_3D:
+      return absl::Substitute("(int4)(($0), ($1), ($2) * $4 + ($3), 0)", x, y,
+                              z, s, slices_name_);
+    case TensorStorageType::UNKNOWN:
+      return "error";
+  }
+}
+
+std::string TensorCodeGenerator::GetGlobalAddressNoDeclarationWHDSB(
+    const std::string& x, const std::string& y, const std::string& z,
+    const std::string& s, const std::string& b) const {
+  if (b.empty()) {
+    return GetGlobalAddressNoDeclarationWHDS(x, y, z, s);
+  }
+  switch (descriptor_.storage_type) {
+    case TensorStorageType::BUFFER:
+    case TensorStorageType::IMAGE_BUFFER:
+      return absl::Substitute(
+          "((((($4) * $5 + ($3)) * $6 + $2) * $7 + ($1)) * $8 + ($0))", b, x, y,
+          s, z, slices_name_, height_name_, width_name_, batch_name_);
+    case TensorStorageType::TEXTURE_2D:
+      return absl::Substitute(
+          "(int2)((($0) * $5 + ($1)) * $6 + ($2), ($3) * $7 + ($4))", x, b, z,
+          y, s, batch_name_, depth_name_, slices_name_);
+    case TensorStorageType::SINGLE_TEXTURE_2D:
+      return absl::Substitute("(int2)((($0) * $4 + ($1)) * $5 + ($2), ($3))", x,
+                              b, z, y, batch_name_, depth_name_);
+    case TensorStorageType::TEXTURE_ARRAY:
+    case TensorStorageType::TEXTURE_3D:
+      return absl::Substitute(
+          "(int4)(($0) * $5 + ($1), ($2), ($3) * $6 + ($4), 0)", x, b, y, z, s,
+          batch_name_, slices_name_);
     case TensorStorageType::UNKNOWN:
       return "error";
     default:
@@ -255,19 +377,33 @@ std::string TensorCodeGenerator::DeclareAddress(
   }
 }
 
-std::string TensorCodeGenerator::Write3D(const std::string& var_name,
-                                         const std::string& x,
-                                         const std::string& y,
-                                         const std::string& z) const {
-  return Write(var_name, GetGlobalAddressNoDeclaration(x, y, z));
+std::string TensorCodeGenerator::WriteWHS(const std::string& var_name,
+                                          const std::string& x,
+                                          const std::string& y,
+                                          const std::string& s) const {
+  return Write(var_name, GetGlobalAddressNoDeclarationWHS(x, y, s));
 }
 
-std::string TensorCodeGenerator::Write4D(const std::string& var_name,
-                                         const std::string& x,
-                                         const std::string& y,
-                                         const std::string& z,
-                                         const std::string& b) const {
-  return Write(var_name, GetGlobalAddressNoDeclaration(x, y, z, b));
+std::string TensorCodeGenerator::WriteWHSB(const std::string& var_name,
+                                           const std::string& x,
+                                           const std::string& y,
+                                           const std::string& s,
+                                           const std::string& b) const {
+  return Write(var_name, GetGlobalAddressNoDeclarationWHSB(x, y, s, b));
+}
+
+std::string TensorCodeGenerator::WriteWHDS(const std::string& var_name,
+                                           const std::string& x,
+                                           const std::string& y,
+                                           const std::string& z,
+                                           const std::string& s) const {
+  return Write(var_name, GetGlobalAddressNoDeclarationWHDS(x, y, z, s));
+}
+
+std::string TensorCodeGenerator::WriteWHDSB(
+    const std::string& var_name, const std::string& x, const std::string& y,
+    const std::string& z, const std::string& s, const std::string& b) const {
+  return Write(var_name, GetGlobalAddressNoDeclarationWHDSB(x, y, z, s, b));
 }
 
 std::string TensorCodeGenerator::Read(const std::string& global_address,

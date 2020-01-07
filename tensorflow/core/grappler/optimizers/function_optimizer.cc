@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/control_flow.h"
 #include "tensorflow/core/graph/graph_constructor.h"
+#include "tensorflow/core/graph/graph_node_util.h"
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/grappler/graph_view.h"
 #include "tensorflow/core/grappler/grappler_item.h"

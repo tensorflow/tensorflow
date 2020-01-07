@@ -43,6 +43,7 @@ OpBuilder* CreateResizeBilinearOpBuilder(GraphBuilder* graph_builder,
                                          int op_type);
 OpBuilder* CreateNegOpBuilder(GraphBuilder* graph_builder, int op_type);
 OpBuilder* CreateTransposeBuilder(GraphBuilder* graph_builder, int op_type);
+OpBuilder* CreateSpaceToDepthBuilder(GraphBuilder* graph_builder, int op_type);
 
 }  // namespace hexagon
 }  // namespace delegates

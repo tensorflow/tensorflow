@@ -783,13 +783,3 @@ class TrackableWeightHandler(object):
     for idx, tensor in enumerate(weights):
       feed_dict[self._placeholder_tensors[idx]] = tensor
     backend.get_session().run(self._assign_op, feed_dict)
-
-
-# TODO(kathywu): This is a temporary hack. When a network of layers is revived
-# from SavedModel, only the top-level layer will have losses. This causes issues
-# in eager mode because the child layers may have graph losses
-# (thus model.losses returns a mix of Eager and graph tensors). To fix this,
-# whenever eager losses are added to one layer, add eager losses to all
-# child layers. This causes `.losses` to only return eager losses.
-REVIVED_LOSS_PLACEHOLDER = (
-    'This layer\'s losses have been added to the parent layer.')

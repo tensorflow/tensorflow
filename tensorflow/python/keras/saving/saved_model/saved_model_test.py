@@ -13,13 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 # pylint: disable=protected-access
-"""Tests for saving and loading Keras models and layers from SavedModel.
-
-These should ensure that all layer properties are correctly assigned after
-loading from the SavedModel.
-
-Tests that focus on the model structure should go in revive_structure_test.py
-"""
+"""Tests for saving/loading function for keras Model."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -369,18 +363,11 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     model.save(saved_model_dir, save_format='tf')
     loaded = keras_load.load(saved_model_dir)
     self.evaluate(variables.variables_initializer(loaded.variables))
-    input_arr = array_ops.constant([[11], [12], [13]], dtype=dtypes.float32)
-    input_arr2 = array_ops.constant([[14], [15], [16]], dtype=dtypes.float32)
+    input_arr_1 = np.array([[11], [12], [13]]).astype('float32')
     self.assertAllClose(self.evaluate(loaded.layers[-1].moving_mean), [0])
-
-    self.evaluate(loaded(input_arr, training=True))
-    if not context.executing_eagerly():
-      self.evaluate(loaded.get_updates_for(input_arr))
+    self.evaluate(loaded(input_arr_1, training=True))
     self.assertAllClose(self.evaluate(loaded.layers[-1].moving_mean), [0.12])
-
-    self.evaluate(loaded(input_arr2, training=False))
-    if not context.executing_eagerly():
-      self.evaluate(loaded.get_updates_for(input_arr2))
+    self.evaluate(loaded(input_arr_1, training=False))
     self.assertAllClose(self.evaluate(loaded.layers[-1].moving_mean), [0.12])
 
   def testSaveWithSignatures(self):
@@ -608,7 +595,7 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
 
   def _testAddUpdate(self, scope):
     with scope:
-      layer_with_update = LayerWithUpdate(dtype=dtypes.int32)
+      layer_with_update = LayerWithUpdate()
       model = testing_utils.get_model_from_layers([layer_with_update],
                                                   input_shape=(3,),
                                                   input_dtype=dtypes.int32)

@@ -740,7 +740,8 @@ TEST_P(MemorySpaceAssignmentTest, Bitcast2) {
 
   AssignMemorySpace(module.get());
 
-  EXPECT_EQ(bitcast->shape().layout().memory_space(), kAlternateMemorySpace);
+  EXPECT_EQ(add->operand(0)->shape().layout().memory_space(),
+            kAlternateMemorySpace);
 }
 
 TEST_P(MemorySpaceAssignmentTest, Bitcast3) {
@@ -798,12 +799,15 @@ TEST_P(MemorySpaceAssignmentTest, Bitcast3) {
               op::Bitcast(op::AsyncCopy(kAlternateMemorySpace,
                                         kDefaultMemorySpace, op::Parameter(1))),
               op::Negate()))));
-  EXPECT_EQ(bitcast1->shape().layout().memory_space(), kAlternateMemorySpace);
+  EXPECT_EQ(add->operand(0)->shape().layout().memory_space(),
+            kAlternateMemorySpace);
   EXPECT_EQ(add->shape().layout().memory_space(), kAlternateMemorySpace);
   // bitcast2 will no longer have a consumer and should get DCE'd, so we don't
   // care about its memory space.
-  EXPECT_EQ(bitcast3->shape().layout().memory_space(), kAlternateMemorySpace);
-  EXPECT_EQ(bitcast4->shape().layout().memory_space(), kAlternateMemorySpace);
+  EXPECT_EQ(mul->operand(0)->shape().layout().memory_space(),
+            kAlternateMemorySpace);
+  EXPECT_EQ(mul->operand(1)->shape().layout().memory_space(),
+            kAlternateMemorySpace);
 }
 
 TEST_P(MemorySpaceAssignmentTest, BitcastTuple) {
@@ -855,6 +859,133 @@ TEST_P(MemorySpaceAssignmentTest, BitcastTuple) {
   TF_CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get());
+}
+
+TEST_P(MemorySpaceAssignmentTest, BitcastGetTupleElementTuple) {
+  // This test pattern was encountered in
+  // //third_party/tensorflow/compiler/xla/tests:slice_test and was causing a
+  // breakage when there is a GetTupleElement(Tuple(Bitcast())) pattern. Also
+  // added a GetTupleElement(GetTupleElement(Tuple(Tuple(Bitcast())))) pattern.
+  absl::string_view hlo_string = R"(
+  HloModule DoIt_S64_10_0_5_1.3, is_scheduled=true
+
+  ENTRY %DoIt_S64_10_0_5_1.3 (p0.1: (u32[10], u32[10])) -> (u32[5], u32[5]) {
+    %p0.1 = (u32[10]{0:T(128)}, u32[10]{0:T(128)}) parameter(0)
+    %get-tuple-element.1 = u32[10]{0:T(128)} get-tuple-element((u32[10]{0:T(128)}, u32[10]{0:T(128)}) %p0.1), index=1
+    %bitcast.1 = u32[5]{0:T(128)} bitcast(u32[10]{0:T(128)} %get-tuple-element.1)
+    %get-tuple-element = u32[10]{0:T(128)} get-tuple-element((u32[10]{0:T(128)}, u32[10]{0:T(128)}) %p0.1), index=0
+    %bitcast = u32[5]{0:T(128)} bitcast(u32[10]{0:T(128)} %get-tuple-element)
+    %tuple.1 = (u32[5]{0:T(128)}, u32[5]{0:T(128)}) tuple(u32[5]{0:T(128)} %bitcast, u32[5]{0:T(128)} %bitcast.1)
+    %tuple.3 = ((u32[5]{0:T(128)}, u32[5]{0:T(128)}), (u32[5]{0:T(128)}, u32[5]{0:T(128)})) tuple(%tuple.1, %tuple.1)
+    %get-tuple-element.4 = u32[5]{0:T(128)} get-tuple-element((u32[5]{0:T(128)}, u32[5]{0:T(128)}) %tuple.1), index=0
+    %get-tuple-element.5 = (u32[5]{0:T(128)}, u32[5]{0:T(128)}) get-tuple-element(%tuple.3), index=0
+    %get-tuple-element.6 = u32[5]{0:T(128)} get-tuple-element((u32[5]{0:T(128)}, u32[5]{0:T(128)}) %get-tuple-element.5), index=1
+    %copy.2 = u32[5]{0:T(128)} copy(u32[5]{0:T(128)} %get-tuple-element.4)
+    %copy.3 = u32[5]{0:T(128)} copy(u32[5]{0:T(128)} %get-tuple-element.6)
+    ROOT %tuple.2 = (u32[5]{0:T(128)}, u32[5]{0:T(128)}) tuple(u32[5]{0:T(128)} %copy.2, u32[5]{0:T(128)} %copy.3)
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+}
+
+TEST_P(MemorySpaceAssignmentTest, BitcastMultiUse) {
+  // When there is a pattern where a bitcast has multiple uses (negate0 and add)
+  // and one is in the default memory and the other is in alternate memory, they
+  // both need their own bitcast.
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  Shape param_shape = ShapeUtil::MakeShape(F32, {6});
+  HloInstruction* p0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, param_shape, "p1"));
+  HloInstruction* bitcast =
+      builder.AddInstruction(HloInstruction::CreateBitcast(shape, p0));
+  HloInstruction* negate0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, bitcast));
+  HloInstruction* negate1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate0));
+  HloInstruction* negate2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate1));
+  HloInstruction* negate3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate2));
+  HloInstruction* negate4 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate3));
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, bitcast, negate4));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {p0, bitcast, negate0, negate1, negate2,
+                                      negate3, negate4, add});
+  TF_CHECK_OK(module->set_schedule(schedule));
+
+  AssignMemorySpace(module.get());
+  Shape shape_in_alternate_mem = ShapeUtil::MakeShapeWithLayout(
+      F32, {2, 3},
+      /*minor_to_major=*/{1, 0}, /*tiles=*/{}, /*element_size_in_bits=*/0,
+      kAlternateMemorySpace);
+  EXPECT_THAT(negate0->operand(0), op::ShapeWithLayout(shape));
+  EXPECT_THAT(add->operand(0), op::ShapeWithLayout(shape_in_alternate_mem));
+}
+
+TEST_P(MemorySpaceAssignmentTest, BitcastMultiUseTuple) {
+  // Same as BitcastMultUse but the second use is a tuple.
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  Shape param_shape = ShapeUtil::MakeShape(F32, {6});
+  Shape tuple_shape = ShapeUtil::MakeTupleShape({shape, shape});
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation::Builder fusion_builder("fusion");
+  HloInstruction* fusion_param = fusion_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, tuple_shape, "p"));
+  HloInstruction* fusion_element0 = fusion_builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape, fusion_param, 0));
+  HloInstruction* fusion_element1 = fusion_builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape, fusion_param, 1));
+  fusion_builder.AddInstruction(HloInstruction::CreateBinary(
+      shape, HloOpcode::kAdd, fusion_element0, fusion_element1));
+  HloComputation* fusion_computation =
+      module->AddEmbeddedComputation(fusion_builder.Build());
+
+  HloInstruction* p0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, param_shape, "p1"));
+  HloInstruction* bitcast =
+      builder.AddInstruction(HloInstruction::CreateBitcast(shape, p0));
+  HloInstruction* negate0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, bitcast));
+  HloInstruction* negate1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate0));
+  HloInstruction* negate2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate1));
+  HloInstruction* negate3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate2));
+  HloInstruction* negate4 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate3));
+  HloInstruction* tuple =
+      builder.AddInstruction(HloInstruction::CreateTuple({bitcast, negate4}));
+  HloInstruction* fusion = builder.AddInstruction(HloInstruction::CreateFusion(
+      shape, HloInstruction::FusionKind::kCustom, {tuple}, fusion_computation));
+
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {p0, bitcast, negate0, negate1, negate2,
+                                      negate3, negate4, tuple, fusion});
+  TF_CHECK_OK(module->set_schedule(schedule));
+
+  AssignMemorySpace(module.get());
+  Shape shape_in_alternate_mem = ShapeUtil::MakeShapeWithLayout(
+      F32, {2, 3},
+      /*minor_to_major=*/{1, 0}, /*tiles=*/{}, /*element_size_in_bits=*/0,
+      kAlternateMemorySpace);
+  EXPECT_THAT(negate0->operand(0), op::ShapeWithLayout(shape));
+  EXPECT_THAT(fusion->operand(0)->operand(0),
+              op::ShapeWithLayout(shape_in_alternate_mem));
 }
 
 TEST_P(MemorySpaceAssignmentTest, BitcastScheduleBug) {
@@ -913,7 +1044,8 @@ TEST_P(MemorySpaceAssignmentTest, BitcastScheduleBug) {
   AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/-1,
                     /*max_prefetch_interval=*/5, /*min_prefetch_interval=*/4);
 
-  EXPECT_EQ(bitcast->shape().layout().memory_space(), kAlternateMemorySpace);
+  EXPECT_EQ(add->operand(0)->shape().layout().memory_space(),
+            kAlternateMemorySpace);
   const auto& instructions =
       module->schedule().sequence(module->entry_computation()).instructions();
   for (int i = 0; i < instructions.size(); ++i) {

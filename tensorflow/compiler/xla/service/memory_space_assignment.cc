@@ -1103,13 +1103,25 @@ void MemorySpaceAssignment::Allocation::AddUse(HloUse use) {
     }
     operand = operand->mutable_operand(index);
   }
-  // When the operand of a use is a bitcast, we place the bitcast in a separate
-  // data structure.
-  if (operand->opcode() == HloOpcode::kBitcast) {
-    bitcasts_.push_back(operand);
-  } else {
-    uses_.push_back(use);
-  }
+
+  // Look beyond GetTupleElement(Tuple()) pattern for any bitcasts.
+  std::function<HloInstruction*(HloInstruction*)> get_simplified_operand;
+  get_simplified_operand = [&](HloInstruction* instruction) {
+    if (instruction->opcode() != HloOpcode::kGetTupleElement) {
+      return instruction;
+    }
+    HloInstruction* operand =
+        get_simplified_operand(instruction->mutable_operand(0));
+    while (instruction->opcode() == HloOpcode::kGetTupleElement &&
+           operand->opcode() == HloOpcode::kTuple) {
+      instruction = operand->mutable_operand(instruction->tuple_index());
+      operand = get_simplified_operand(instruction->mutable_operand(0));
+    }
+    return instruction;
+  };
+  operand = get_simplified_operand(operand);
+
+  uses_.push_back(use);
 }
 
 Status MemorySpaceAssignment::Allocation::Process(
@@ -1142,6 +1154,13 @@ StatusOr<HloInstruction*> MemorySpaceAssignment::Allocation::ReplaceTupleWith(
                                              ShapeIndex(shape_index.begin() + 1,
                                                         shape_index.end())));
       } else {
+        if (subshape != new_instruction->shape()) {
+          VLOG(4) << "Old shape = " << subshape.ToString()
+                  << ", new shape = " << new_instruction->shape().ToString()
+                  << "; inserting a bitcast.";
+          new_instruction = computation->AddInstruction(
+              HloInstruction::CreateBitcast(subshape, new_instruction));
+        }
         tuple_args[i] = new_instruction;
       }
     } else {
@@ -1194,41 +1213,24 @@ Status MemorySpaceAssignment::CopyAllocation::Process(
     // If the operand is a tuple, we need to descend to the actual instruction
     // we want to replace.
     HloInstruction* replacement_instruction;
-    if (use.instruction->operand(use.operand_number)->shape().IsTuple()) {
+    Shape operand_shape = use.instruction->operand(use.operand_number)->shape();
+    if (operand_shape.IsTuple()) {
       TF_ASSIGN_OR_RETURN(
           replacement_instruction,
           ReplaceTupleWith(copy_done_,
                            use.instruction->mutable_operand(use.operand_number),
                            use.operand_index));
+    } else if (operand_shape != copy_done_->shape()) {
+      VLOG(4) << "Old shape = " << operand_shape.ToString()
+              << ", new shape = " << copy_done_->shape().ToString()
+              << "; inserting a bitcast.";
+      replacement_instruction = computation->AddInstruction(
+          HloInstruction::CreateBitcast(operand_shape, copy_done_));
     } else {
       replacement_instruction = copy_done_;
     }
     TF_RETURN_IF_ERROR(use.instruction->ReplaceOperandWith(
         use.operand_number, replacement_instruction));
-  }
-
-  // Replace all the bitcasts with the new copy instruction. Note that if there
-  // is a chain of bitcasts, their operands will be replaced with copy done.
-  // For example:
-  //
-  // a = Foo()
-  // b = Bitcast(a)
-  // c = Bitcast(b)
-  //
-  // If a is moved to the alternate memory asynchronously, the graph will be
-  // changed into:
-  //
-  // a = Foo()
-  // cs = CopyStart(a)
-  // cd = CopyDone(cs)
-  // b = Bitcast(cd)
-  // c = Bitcast(cd)
-  //
-  // Because of the potential shape change in the operand (b -> cd), we use
-  // ReplaceOperandWithDifferentShape.
-  for (HloInstruction* bitcast : bitcasts_) {
-    TF_RETURN_IF_ERROR(bitcast->ReplaceOperandWithDifferentShape(
-        /*operand_num=*/0, copy_done_));
   }
 
   return Status::OK();
@@ -1462,6 +1464,8 @@ Status MemorySpaceAssignment::FixSchedule() {
       if (insts_before_iter != schedule_before_.end()) {
         for (HloInstruction* new_instruction : insts_before_iter->second) {
           if (new_instruction->parent() == computation) {
+            VLOG(4) << "before " << instruction_index << ": "
+                    << new_instruction->name();
             EnsureInstructionAndOperandsInserted(new_instruction, &new_sequence,
                                                  &inserted_instructions);
           }
@@ -1477,6 +1481,7 @@ Status MemorySpaceAssignment::FixSchedule() {
           instruction->parent() == computation &&
           instruction->opcode() != HloOpcode::kBitcast &&
           instruction->opcode() != HloOpcode::kTuple) {
+        VLOG(4) << "inst " << instruction_index << ": " << instruction->name();
         EnsureInstructionAndOperandsInserted(instruction, &new_sequence,
                                              &inserted_instructions);
       }
@@ -1484,6 +1489,8 @@ Status MemorySpaceAssignment::FixSchedule() {
       if (insts_after_iter != schedule_after_.end()) {
         for (HloInstruction* new_instruction : insts_after_iter->second) {
           if (new_instruction->parent() == computation) {
+            VLOG(4) << "after " << instruction_index << ": "
+                    << new_instruction->name();
             EnsureInstructionAndOperandsInserted(new_instruction, &new_sequence,
                                                  &inserted_instructions);
           }

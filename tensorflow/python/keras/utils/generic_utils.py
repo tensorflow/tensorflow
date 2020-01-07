@@ -30,21 +30,12 @@ import numpy as np
 import six
 
 from tensorflow.python.util import nest
-from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
 
 _GLOBAL_CUSTOM_OBJECTS = {}
 _GLOBAL_CUSTOM_NAMES = {}
-
-# Flag that determines whether to skip the NotImplementedError when calling
-# get_config in custom models and layers. This is only enabled when saving to
-# SavedModel, when the config isn't required.
-_SKIP_FAILED_SERIALIZATION = False
-# If a layer does not have a defined config, then the returned config will be a
-# dictionary with the below key.
-LAYER_UNDEFINED_CONFIG_KEY = 'layer was saved without config'
 
 
 @keras_export('keras.utils.CustomObjectScope')
@@ -210,17 +201,6 @@ def get_registered_name(obj):
     return obj.__name__
 
 
-@tf_contextlib.contextmanager
-def skip_failed_serialization():
-  global _SKIP_FAILED_SERIALIZATION
-  prev = _SKIP_FAILED_SERIALIZATION
-  try:
-    _SKIP_FAILED_SERIALIZATION = True
-    yield
-  finally:
-    _SKIP_FAILED_SERIALIZATION = prev
-
-
 @keras_export('keras.utils.get_registered_object')
 def get_registered_object(name, custom_objects=None, module_objects=None):
   """Returns the class associated with `name` if it is registered with Keras.
@@ -265,14 +245,7 @@ def serialize_keras_object(instance):
     return None
 
   if hasattr(instance, 'get_config'):
-    name = get_registered_name(instance.__class__)
-    try:
-      config = instance.get_config()
-    except NotImplementedError as e:
-      if _SKIP_FAILED_SERIALIZATION:
-        return serialize_keras_class_and_config(
-            name, {LAYER_UNDEFINED_CONFIG_KEY: True})
-      raise e
+    config = instance.get_config()
     serialization_config = {}
     for key, item in config.items():
       if isinstance(item, six.string_types):
@@ -294,15 +267,6 @@ def serialize_keras_object(instance):
   if hasattr(instance, '__name__'):
     return get_registered_name(instance)
   raise ValueError('Cannot serialize', instance)
-
-
-def get_custom_objects_by_name(item, custom_objects=None):
-  """Returns the item if it is in either local or global custom objects."""
-  if item in _GLOBAL_CUSTOM_OBJECTS:
-    return _GLOBAL_CUSTOM_OBJECTS[item]
-  elif custom_objects and item in custom_objects:
-    return custom_objects[item]
-  return None
 
 
 def class_and_config_for_serialized_keras_object(

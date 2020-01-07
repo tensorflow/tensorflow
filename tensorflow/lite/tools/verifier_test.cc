@@ -654,6 +654,31 @@ TEST(VerifyModel, InvalidSparseTensorInvalidBuffer) {
                   "requires 12 bytes, but is allocated with 8 bytes buffer"));
 }
 
+TEST(VerifyModel, InvalidSparseTensorInvalidTraversalOrder) {
+  const auto model = FlatBufferModel::BuildFromFile(kSparseTensorTestModel);
+  ASSERT_TRUE(model);
+
+  std::unique_ptr<ModelT> scoped_model;
+  scoped_model.reset(model->GetModel()->UnPack());
+
+  auto* tensor = scoped_model->subgraphs[0]->tensors[0].get();
+  // Valid dimensions are (0, 1, 2, 3) in this test model.
+  tensor->sparsity->traversal_order[0] = 10;
+
+  flatbuffers::FlatBufferBuilder builder;
+  auto model_ = Model::Pack(builder, scoped_model.get());
+
+  ::tflite::FinishModelBuffer(builder, model_);
+  MockErrorReporter mock_reporter;
+  MutableOpResolver resolver;
+  TfLiteRegistration fake_op;
+  resolver.AddCustom("FakeOp", &fake_op);
+  ASSERT_FALSE(Verify(builder.GetBufferPointer(), builder.GetSize(), resolver,
+                      &mock_reporter));
+  EXPECT_THAT(mock_reporter.GetAsString(),
+              ::testing::ContainsRegex("invalid sparsity parameters"));
+}
+
 TEST(VerifyModel, ValidSparseTensorBCSC) {
   const auto model = FlatBufferModel::BuildFromFile(kSparseTensorTestModel);
   ASSERT_TRUE(model);
