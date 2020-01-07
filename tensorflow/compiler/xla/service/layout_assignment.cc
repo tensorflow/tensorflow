@@ -1072,7 +1072,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOperandLayoutFromOutputLayout(
         LayoutUtil::MinorToMajor(output_layout));
     Shape operand_shape = operand->shape();
     *operand_shape.mutable_layout() =
-        LayoutUtil::GetDefaultLayoutForShape(operand_shape);
+        LayoutUtil::MakeDescendingLayout(operand_shape.rank());
     auto aligned_operand_shape =
         ShapeUtil::AlignLayouts(output_shape_with_layout, operand_shape);
     if (aligned_operand_shape) {
@@ -1133,7 +1133,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOutputLayoutFromOperandLayout(
         LayoutUtil::MinorToMajor(operand_layout));
     Shape output_shape = user->shape();
     *output_shape.mutable_layout() =
-        LayoutUtil::GetDefaultLayoutForShape(output_shape);
+        LayoutUtil::MakeDescendingLayout(output_shape.rank());
     auto aligned_user_shape =
         ShapeUtil::AlignLayouts(operand_shape_with_layout, output_shape);
     if (aligned_user_shape) {
@@ -1871,7 +1871,7 @@ Status LayoutAssignment::RunOnComputation(
             ? ShapeUtil::GetSubshape(instruction->literal().shape(),
                                      buffer.index())
                   .layout()
-            : LayoutUtil::GetDefaultLayoutForShape(buffer.shape());
+            : GetDefaultLayoutForShape(buffer.shape());
     TF_RETURN_IF_ERROR(constraints.SetBufferLayout(new_layout, buffer,
                                                    /*mandatory=*/false));
 
