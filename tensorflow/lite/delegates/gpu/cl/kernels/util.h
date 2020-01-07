@@ -47,15 +47,15 @@ class TensorCodeGenerator {
     SizeVariablesNames() = default;
     SizeVariablesNames(const std::string& width_name,
                        const std::string& height_name,
-                       const std::string& depth_name);
+                       const std::string& slices_name);
     SizeVariablesNames(const std::string& width_name,
                        const std::string& height_name,
-                       const std::string& depth_name,
+                       const std::string& slices_name,
                        const std::string& batch_name);
 
     std::string width = "unknown";
     std::string height = "unknown";
-    std::string depth = "unknown";
+    std::string slices = "unknown";
     std::string batch = "unknown";
   };
   TensorCodeGenerator() = default;
@@ -144,18 +144,18 @@ template <DataType S, typename T>
 void RearrangeWeightsToOHWIOGroupI4O4(
     const ::tflite::gpu::Tensor<OHWI, S>& weights, int out_group_size,
     absl::Span<T> dst) {
-  const int dst_depth = IntegralDivideRoundUp(weights.shape.o, 4);
-  const int src_depth = IntegralDivideRoundUp(weights.shape.i, 4);
+  const int dst_slices = IntegralDivideRoundUp(weights.shape.o, 4);
+  const int src_slices = IntegralDivideRoundUp(weights.shape.i, 4);
   const int kernel_x = weights.shape.w;
   const int kernel_y = weights.shape.h;
 
-  const int dst_groups = IntegralDivideRoundUp(dst_depth, out_group_size);
+  const int dst_groups = IntegralDivideRoundUp(dst_slices, out_group_size);
 
   int counter = 0;
   for (int d = 0; d < dst_groups; ++d) {
     for (int y = 0; y < kernel_y; ++y) {
       for (int x = 0; x < kernel_x; ++x) {
-        for (int s = 0; s < src_depth; ++s) {
+        for (int s = 0; s < src_slices; ++s) {
           for (int d_group = 0; d_group < out_group_size; ++d_group) {
             for (int j = 0; j < 4; ++j) {
               T filter;

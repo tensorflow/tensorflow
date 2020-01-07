@@ -130,15 +130,15 @@ std::string GetCommonDefines(CalculationsPrecision precision) {
 
 TensorCodeGenerator::SizeVariablesNames::SizeVariablesNames(
     const std::string& width_name, const std::string& height_name,
-    const std::string& depth_name)
-    : width(width_name), height(height_name), depth(depth_name) {}
+    const std::string& slices_name)
+    : width(width_name), height(height_name), slices(slices_name) {}
 
 TensorCodeGenerator::SizeVariablesNames::SizeVariablesNames(
     const std::string& width_name, const std::string& height_name,
-    const std::string& depth_name, const std::string& batch_name)
+    const std::string& slices_name, const std::string& batch_name)
     : width(width_name),
       height(height_name),
-      depth(depth_name),
+      slices(slices_name),
       batch(batch_name) {}
 
 TensorCodeGenerator::TensorCodeGenerator(const std::string& name,
@@ -201,7 +201,7 @@ std::string TensorCodeGenerator::GetGlobalAddressNoDeclaration(
                               sizes_.height, sizes_.width);
     case TensorStorageType::TEXTURE_2D:
       return absl::Substitute("(int2)(($0), ($1) * $3 + ($2))", x, y, z,
-                              sizes_.depth);
+                              sizes_.slices);
     case TensorStorageType::SINGLE_TEXTURE_2D:
       return absl::StrCat("(int2)(", x, ", ", y, ")");
     case TensorStorageType::TEXTURE_ARRAY:
@@ -226,7 +226,7 @@ std::string TensorCodeGenerator::GetGlobalAddressNoDeclaration(
                               sizes_.batch);
     case TensorStorageType::TEXTURE_2D:
       return absl::Substitute("(int2)(($0) * ($4) + ($1), ($2) * $5 + ($3))", x,
-                              b, y, z, sizes_.batch, sizes_.depth);
+                              b, y, z, sizes_.batch, sizes_.slices);
     case TensorStorageType::SINGLE_TEXTURE_2D:
       return absl::Substitute("(int2)(($0) * ($3) + ($1), ($2))", x, b, y,
                               sizes_.batch);
