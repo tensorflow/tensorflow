@@ -68,6 +68,17 @@ class BASE_HLO_CeilOp {
   }];
 }
 
+class BASE_HLO_ClzOp {
+  string summary = "Count-leading-zeros (Clz) operator";
+
+  string description = [{
+    Returns the number of leading zeros in each operand element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+  }];
+}
+
 class BASE_HLO_ComplexOp {
   string summary = "Complex operator";
 
@@ -225,6 +236,18 @@ class BASE_HLO_RealOp {
 
   string description = [{
     Returns `Real(operand)` element-wise.
+  }];
+}
+
+class BASE_HLO_RoundOp {
+  string summary = "Round operator";
+
+  string description = [{
+    Returns `Round(operand)` element-wise, rounding to nearest integer with
+    half-way cases rounding away from zero.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
   }];
 }
 
@@ -465,6 +488,26 @@ class BASE_HLO_XorOp {
   }];
 }
 
+//===----------------------------------------------------------------------===//
+// XLA parallelism related op definitions.
+//===----------------------------------------------------------------------===//
+
+class BASE_HLO_ReplicaIdOp {
+  string summary = "ReplicaId operator";
+
+  string description = [{
+    Returns the unique ID (int32 scalar) of the replica.
+
+    The unique ID of each replica is an unsigned integer in the interval [0, N),
+    where N is the number of replicas. Since all the replicas are running the
+    same program, a ReplicaId() call in the program will return a different
+    value on each replica.
+
+    See https://www.tensorflow.org/xla/operation_semantics#replicaid.
+  }];
+}
+
+
 class BASE_HLO_AllReduceOp {
   string summary = "AllReduce operator";
 
@@ -626,6 +669,39 @@ class BASE_HLO_DynamicUpdateSliceOp {
 // XLA Other op definitions.
 //===----------------------------------------------------------------------===//
 
+class BASE_HLO_AllToAllOp {
+  string summary = "AllToAll";
+
+  string description = [{
+    AllToAll is a collective operation that sends data from all cores to all
+    cores. It has two phases:
+    - The scatter phase. On each core, the operand is split into `split_count`
+      number of blocks along the `split_dimensions`, and the blocks are
+      scattered to all cores, e.g., the i-th block is send to the i-th core.
+    - The gather phase. Each core concatenates the received blocks along the
+      `concat_dimension`.
+
+    The participating cores can be configured by:
+    - replica_groups: each ReplicaGroup contains a list of replica id
+      participating in the computation (replica id for the current replica can
+      be retrieved using ReplicaId op). AllToAll will be applied within
+      subgroups in the specified order. For example,
+      `replica_groups` = {{1,2,3}, {4,5,0}} means that an AllToAll will be applied
+      within replicas {1, 2, 3}, and in the gather phase, the received blocks
+      will be concatenated in the same order of 1, 2, 3. Then, another AllToAll
+      will be applied within replicas 4, 5, 0, and the concatenation order is
+      also 4, 5, 0. If `replica_groups` is empty, all replicas belong to one
+      group, in the concatenation order of their appearance.
+
+    Prerequisites:
+    - The dimension size of the operand on the split_dimension is divisible by
+      `split_count`.
+    - The operand's shape is not tuple.
+
+    See https://www.tensorflow.org/xla/operation_semantics#alltoall
+  }];
+}
+
 class BASE_HLO_BatchNormGradOp {
   string summary = "Batch Normalization Gradient";
 
@@ -707,6 +783,32 @@ class BASE_HLO_BroadcastInDimOp  {
   }];
 }
 
+class BASE_HLO_CholeskyOp {
+  string summary = "Cholesky operator";
+
+  string description = [{
+  Computes the Cholesky decomposition of a batch of symmetric (Hermitian)
+  positive definite matrices.
+
+  If lower is true, computes lower-triangular matrices l such that
+  `a=l.Transpose(l)`. If lower is false, computes upper-triangular matrices u such
+  that `a=Transpose(u).u`.
+
+  Input data is read only from the lower/upper triangle of a, depending on the
+  value of lower. Values from the other triangle are ignored. Output data is
+  returned in the same triangle; the values in the other triangle are
+  implementation-defined and may be anything.
+
+  If the rank of a is greater than 2, a is treated as a batch of matrices, where
+  all except the minor 2 dimensions are batch dimensions.
+
+  If a is not symmetric (Hermitian) positive definite, the result is
+  implementation-defined.
+
+    See https://www.tensorflow.org/xla/operation_semantics#cholesky.
+  }];
+}
+
 class BASE_HLO_ClampOp  {
   string summary = "Clamp operator";
 
@@ -721,6 +823,22 @@ class BASE_HLO_ClampOp  {
   }];
 }
 
+class BASE_HLO_CollectivePermuteOp {
+  string summary = "CollectivePermute operator";
+
+  string description = [{
+    CollectivePermute is a collective operation that sends and receives data
+    cross replicas.
+    Note that there are the following restrictions on the source_target_pair:
+    - Any two pairs should not have the same target replica id, and they should
+    not have the same source replica id.
+    - If a replica id is not a target in any pair, then the output on that
+    replica is a tensor consists of 0(s) with the same shape as the input.
+
+    See https://www.tensorflow.org/xla/operation_semantics#collectivepermute.
+
+  }];
+}
 class BASE_HLO_ConcatenateOp {
    string summary = "XLA's concatenate op";
 
@@ -846,6 +964,18 @@ class BASE_HLO_SelectAndScatterOp {
   }];
 }
 
+class BASE_HLO_SetDimensionSizeOp {
+  string summary = "SetDimensionSize operator";
+
+  string description = [{
+    Sets the dynamic size of operand's given dimension. Pass through the operand
+    as result, with dynamic dimension tracked by the compiler. Padded values
+    will be ignored by downstream reduction ops.
+
+    See https://www.tensorflow.org/xla/operation_semantics#setdimensionsize.
+  }];
+}
+
 class BASE_HLO_SortOp {
   string summary = "Sort operator";
 
@@ -895,10 +1025,25 @@ class BASE_HLO_RngUniformOp {
   string summary = "RNG with uniform distribution.";
 
   string description = [{
-    Constructs an output of a given shape with random numbers generated following
-    the uniform distribution over the interval `[a,b)`.
+    Constructs an output of a given shape with random numbers generated
+    following the uniform distribution over the interval `[a,b)`. The parameters
+    and output element type have to be a boolean type, an integral type or a
+    floating point types, and the types have to be consistent.
 
     See https://www.tensorflow.org/xla/operation_semantics#rnguniform.
+  }];
+}
+
+class BASE_HLO_RngNormalOp {
+  string summary = "RNG with normal distribution.";
+
+  string description = [{
+    Constructs an output of a given shape with random numbers generated
+    following the normal distribution with parameters `mu` and `sigma`. The
+    parameters and output shape have to have a floating point elemental type.
+    The parameters furthermore have to be scalar valued.
+
+    See https://www.tensorflow.org/xla/operation_semantics#rngnormal.
   }];
 }
 

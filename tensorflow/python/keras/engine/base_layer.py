@@ -444,8 +444,6 @@ class Layer(module.Module):
         synchronization=synchronization,
         aggregation=aggregation,
         caching_device=caching_device)
-    backend.track_variable(variable)
-
     if regularizer is not None:
       # TODO(fchollet): in the future, this should be handled at the
       # level of variable creation, and weight regularization losses
@@ -454,10 +452,19 @@ class Layer(module.Module):
       self._handle_weight_regularization(name_in_scope,
                                          variable,
                                          regularizer)
-    if trainable:
-      self._trainable_weights.append(variable)
+    if isinstance(variable, tf_variables.PartitionedVariable):
+      for v in variable:
+        backend.track_variable(v)
+        if trainable:
+          self._trainable_weights.append(v)
+        else:
+          self._non_trainable_weights.append(v)
     else:
-      self._non_trainable_weights.append(variable)
+      backend.track_variable(variable)
+      if trainable:
+        self._trainable_weights.append(variable)
+      else:
+        self._non_trainable_weights.append(variable)
     return variable
 
   @base_layer_utils.default
@@ -480,10 +487,7 @@ class Layer(module.Module):
     config = {'name': self.name, 'trainable': self.trainable}
     if hasattr(self, '_batch_input_shape'):
       config['batch_input_shape'] = self._batch_input_shape
-    # TODO(reedwm): Remove the hasattr(self, 'dtype') check. All layers have a
-    # dtype.
-    if hasattr(self, 'dtype'):
-      config['dtype'] = policy.serialize(self._dtype_policy)
+    config['dtype'] = policy.serialize(self._dtype_policy)
     if hasattr(self, 'dynamic'):
       # Only include `dynamic` in the `config` if it is `True`
       if self.dynamic:
@@ -889,20 +893,22 @@ class Layer(module.Module):
   @property
   def trainable_weights(self):
     if self.trainable:
-      nested = self._gather_children_attribute('trainable_weights')
-      return self._dedup_weights(self._trainable_weights + nested)
+      children_weights = self._gather_children_attribute('trainable_weights')
+      return self._dedup_weights(self._trainable_weights + children_weights)
     else:
       return []
 
   @property
   def non_trainable_weights(self):
     if self.trainable:
-      nested = self._gather_children_attribute('non_trainable_weights')
-      non_trainable_weights = self._non_trainable_weights + nested
+      children_weights = self._gather_children_attribute(
+          'non_trainable_weights')
+      non_trainable_weights = self._non_trainable_weights + children_weights
     else:
-      nested = self._gather_children_attribute('weights')
+      children_weights = self._gather_children_attribute('weights')
       non_trainable_weights = (
-          self._trainable_weights + self._non_trainable_weights + nested)
+          self._trainable_weights + self._non_trainable_weights +
+          children_weights)
     return self._dedup_weights(non_trainable_weights)
 
   @property
@@ -916,21 +922,23 @@ class Layer(module.Module):
 
   @property
   def updates(self):
-    if not self.trainable and not self.stateful:
-      return []
+    collected_updates = []
+    all_layers = self._gather_unique_layers()
     with backend.get_graph().as_default():
-      updates = []
-      for u in self._updates:
-        if callable(u):
-          try:
-            u = u()
-          except errors.InaccessibleTensorError:
-            base_layer_utils.check_graph_consistency(
-                method='add_update', force_raise=True)
-            raise  # check_graph_consistency may not always raise.
-        base_layer_utils.check_graph_consistency(u, method='add_update')
-        updates.append(u)
-    return updates + self._gather_children_attribute('updates')
+      for layer in all_layers:
+        if not layer.trainable and not layer.stateful:
+          continue
+        for u in layer._updates:
+          if callable(u):
+            try:
+              u = u()
+            except errors.InaccessibleTensorError:
+              base_layer_utils.check_graph_consistency(
+                  method='add_update', force_raise=True)
+              raise  # check_graph_consistency may not always raise.
+          base_layer_utils.check_graph_consistency(u, method='add_update')
+          collected_updates.append(u)
+    return collected_updates
 
   @property
   def losses(self):
@@ -944,20 +952,20 @@ class Layer(module.Module):
       A list of tensors.
     """
     collected_losses = []
-
-    # If any eager losses are present, we assume the model to be part of an
-    # eager training loop (either a custom one or the one used when
-    # `run_eagerly=True`), and so we always return just the eager losses in that
-    # case.
-    if self._eager_losses:
-      collected_losses.extend(self._eager_losses)
-    else:
-      collected_losses.extend(self._losses)
-    for regularizer in self._callable_losses:
-      loss_tensor = regularizer()
-      if loss_tensor is not None:
-        collected_losses.append(loss_tensor)
-    return collected_losses + self._gather_children_attribute('losses')
+    all_layers = self._gather_unique_layers()
+    for layer in all_layers:
+      # If any eager losses are present, we assume the model to be part of an
+      # eager training loop (either a custom one or the one used when
+      # `run_eagerly=True`) and so we always return just the eager losses.
+      if layer._eager_losses:
+        collected_losses.extend(layer._eager_losses)
+      else:
+        collected_losses.extend(layer._losses)
+      for regularizer in layer._callable_losses:
+        loss_tensor = regularizer()
+        if loss_tensor is not None:
+          collected_losses.append(loss_tensor)
+    return collected_losses
 
   @doc_controls.for_subclass_implementers
   def add_loss(self, losses, inputs=None):
@@ -1094,7 +1102,11 @@ class Layer(module.Module):
 
   @property
   def metrics(self):
-    return self._metrics + self._gather_children_attribute('metrics')
+    collected_metrics = []
+    all_layers = self._gather_unique_layers()
+    for layer in all_layers:
+      collected_metrics.extend(layer._metrics)
+    return collected_metrics
 
   @doc_controls.for_subclass_implementers
   def add_metric(self, value, aggregation=None, name=None):
@@ -2372,8 +2384,7 @@ class Layer(module.Module):
 
   def _gather_children_attribute(self, attribute):
     assert attribute in {
-        'weights', 'trainable_weights', 'non_trainable_weights', 'updates',
-        'losses', 'metrics'
+        'weights', 'trainable_weights', 'non_trainable_weights'
     }
     if hasattr(self, '_layers'):
       nested_layers = trackable_layer_utils.filter_empty_layer_containers(
@@ -2382,6 +2393,30 @@ class Layer(module.Module):
           itertools.chain.from_iterable(
               getattr(layer, attribute) for layer in nested_layers))
     return []
+
+  def _gather_unique_layers(self):
+    """Returns the current layer and all its children depth first deduped.
+
+    We are deduping after getting the layers to maintain the order.
+    """
+    all_layers = self._gather_layers()
+    unique_layers, seen_layers = [], object_identity.ObjectIdentitySet()
+    for layer in all_layers:
+      if layer not in seen_layers:
+        unique_layers.append(layer)
+        # Track the Variable's identity to avoid __eq__ issues.
+        seen_layers.add(layer)
+    return unique_layers
+
+  def _gather_layers(self):
+    """Returns the current layer and all its children depth first."""
+    all_layers = [self]
+    if hasattr(self, '_layers'):
+      child_layers = trackable_layer_utils.filter_empty_layer_containers(
+          self._layers)
+      for child_layer in child_layers:
+        all_layers.extend(child_layer._gather_layers())
+    return all_layers
 
   @property
   @tracking.cached_per_instance

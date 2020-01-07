@@ -1013,5 +1013,56 @@ TEST_F(HloVerifierTest, AllReduceVerifier) {
       HasSubstr("mix of layout constrained and unconstrained AllReduce"));
 }
 
+TEST_F(HloVerifierTest, ChannelVerifier) {
+  const char* const kModuleStr = R"(
+  HloModule test
+
+  add {
+    lhs = f32[] parameter(0)
+    rhs = f32[] parameter(1)
+    ROOT add = f32[] add(lhs, rhs)
+  }
+
+  ENTRY entry {
+    %input = f32[8,12] parameter(0)
+    %token0 = token[] after-all()
+    %send = (f32[8,12], u32[], token[]) send(%input, %token0), channel_id=1
+    %send-done = token[] send-done(%send), channel_id=1
+    %crs = f32[8,12] all-reduce(%input), replica_groups={}, to_apply=add,
+      channel_id=1
+    ROOT result = (f32[8,12]{0,1}, f32[8,12]{0,1}) tuple(%input, %crs)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr));
+  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+              HasSubstr("used for different types of channel instructions"));
+}
+
+TEST_F(HloVerifierTest, CollectiveChannelVerifier) {
+  const char* const kModuleStr = R"(
+  HloModule test
+
+  add {
+    lhs = f32[] parameter(0)
+    rhs = f32[] parameter(1)
+    ROOT add = f32[] add(lhs, rhs)
+  }
+
+  ENTRY entry {
+    %input = f32[8,12] parameter(0)
+    %permute = f32[8,12] collective-permute(%input),
+      source_target_pairs={{0,1},{1,0}}, channel_id=1
+    %crs = f32[8,12] all-reduce(%input), replica_groups={}, to_apply=add,
+      channel_id=1
+    ROOT result = (f32[8,12]{0,1}, f32[8,12]{0,1}) tuple(%permute, %crs)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr));
+  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+              HasSubstr("used for different types of channel instructions"));
+}
+
 }  // namespace
 }  // namespace xla

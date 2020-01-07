@@ -18,10 +18,10 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/IR/Operation.h"  // TF:local_config_mlir
-#include "mlir/IR/Value.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
-#include "mlir/Pass/PassRegistry.h"  // TF:local_config_mlir
+#include "mlir/IR/Operation.h"  // TF:llvm-project
+#include "mlir/IR/Value.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/Pass/PassRegistry.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 
@@ -38,8 +38,8 @@ void PruneGraph(GraphOp graph) {
 
   // Visit an op's operands if it is output of an Operation in same graph.
   auto visit_op = [&](Operation* op) {
-    for (Value* operand : op->getOperands()) {
-      Operation* def = operand->getDefiningOp();
+    for (Value operand : op->getOperands()) {
+      Operation* def = operand.getDefiningOp();
       if (def && def->getParentOp() == graph &&
           reachable_ops.insert(def).second) {
         // Op has not been visited, add to queue to visit later.
@@ -86,36 +86,17 @@ namespace {
 // This transformation pass prunes a TF graph eliminating dead-nodes.
 struct GraphPruning : public FunctionPass<GraphPruning> {
   void runOnFunction() override {
-    FuncOp func = getFunction();
-    if (func.getName() == "main" && skip_main_func) return;
-    func.walk([](tf_executor::GraphOp graph) { PruneGraph(graph); });
+    getFunction().walk([](tf_executor::GraphOp graph) { PruneGraph(graph); });
   }
-
-  struct Options : public PassOptions<Options> {
-    Option<bool> skip_main_func{
-        *this, "skip-main-func",
-        llvm::cl::desc("skip graph pruning for main function"),
-        llvm::cl::init(false)};
-  };
-
-  explicit GraphPruning(bool skip_main_func)
-      : FunctionPass<GraphPruning>(), skip_main_func(skip_main_func) {}
-
-  explicit GraphPruning(const Options& option)
-      : GraphPruning(option.skip_main_func) {}
-
- private:
-  bool skip_main_func;
 };
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<FuncOp>> CreateTFExecutorGraphPruningPass(
-    bool skip_main_func) {
-  return std::make_unique<GraphPruning>(skip_main_func);
+std::unique_ptr<OpPassBase<FuncOp>> CreateTFExecutorGraphPruningPass() {
+  return std::make_unique<GraphPruning>();
 }
 
-static PassRegistration<GraphPruning, GraphPruning::Options> pass(
+static PassRegistration<GraphPruning> pass(
     "tf-executor-graph-pruning",
     "Prune unreachable nodes in a TensorFlow Graph.");
 

@@ -155,23 +155,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "tpu_cluster_resolver_py2_test",
-    size = "small",
-    srcs = ["tpu_cluster_resolver_test.py"],
-    grpc_enabled = True,
-    main = "tpu_cluster_resolver_test.py",
-    python_version = "PY3",
-    deps = [
-        ":tpu_cluster_resolver_py",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
-        "//tensorflow/python:training_server_lib",
-    ],
-)
-
-tf_py_test(
     name = "slurm_cluster_resolver_py_test",
     size = "small",
     srcs = ["slurm_cluster_resolver_test.py"],

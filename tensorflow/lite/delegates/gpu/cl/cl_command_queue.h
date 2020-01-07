@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/time/time.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_context.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_event.h"
@@ -35,11 +36,26 @@ namespace cl {
 struct ProfilingInfo {
   struct DispatchInfo {
     std::string label;
-    uint64_t time_ns;
-    double GetTimeMs() const { return static_cast<double>(time_ns) * 1e-6; }
+    absl::Duration duration;
   };
 
   std::vector<DispatchInfo> dispatches;
+
+  absl::Duration GetTotalTime() const;
+
+  // Returns report (string of lines delimited by \n)
+  // This method uses GPU counters and measure GPU time only.
+  // Report has next structure:
+  // Per kernel timing(K kernels):
+  //   conv2d 3.2ms
+  //   ...
+  // --------------------
+  // Accumulated time per operation type:
+  //   conv2d - 14.5ms
+  //   ....
+  // --------------------
+  // Ideal total time: 23.4ms // Total time for all kernels
+  std::string GetDetailedReport() const;
 };
 
 // A wrapper around opencl command queue

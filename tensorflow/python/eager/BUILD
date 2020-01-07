@@ -56,6 +56,18 @@ cc_library(
     ],
 )
 
+filegroup(
+    name = "pywrap_eager_hdrs",
+    srcs = [
+        "pywrap_tensor_conversion.h",
+        "pywrap_tfe.h",
+    ],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/python:__pkg__",
+    ],
+)
+
 # Transitive dependencies of this target will be included in the pip package.
 py_library(
     name = "eager_pip",
@@ -90,7 +102,7 @@ py_library(
     deps = [
         ":context",
         "//tensorflow/python:errors",
-        "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:pywrap_tfe",
     ],
 )
 
@@ -100,7 +112,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
     deps = [
-        "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:pywrap_tfe",
     ],
 )
 
@@ -121,7 +133,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
     deps = [
-        "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:pywrap_tfe",
     ],
 )
 
@@ -131,13 +143,14 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
     deps = [
+        ":eager_util",
         ":executor",
         ":monitoring",
         "//tensorflow/python:device",
         "//tensorflow/python:device_spec",
         "//tensorflow/python:errors",
         "//tensorflow/python:platform",
-        "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python:tf2",
         "//tensorflow/python:util",
         "//third_party/py/numpy",
@@ -164,8 +177,8 @@ py_library(
         "//third_party/py/tf_agents:__subpackages__",
     ],
     deps = [
-        "//tensorflow/python:c_api_util",
-        "//tensorflow/python:pywrap_tensorflow",
+        ":eager_util",
+        "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python:util",
     ],
 )
@@ -187,7 +200,8 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":context",
-        "//tensorflow/python:pywrap_tensorflow",
+        ":eager_util",
+        "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python:util",
     ],
 )
@@ -209,7 +223,8 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
     deps = [
-        "//tensorflow/python:pywrap_tensorflow",
+        ":eager_util",
+        "//tensorflow/python:pywrap_tfe",
     ],
 )
 
@@ -250,7 +265,6 @@ cuda_py_test(
     srcs = ["backprop_test.py"],
     python_version = "PY3",
     tags = [
-        "no_rocm",
         "no_windows",  #TODO(b/139745667)
     ],
     deps = [
@@ -298,7 +312,7 @@ cuda_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:pywrap_tfe",
         "//third_party/py/numpy",
     ],
 )
@@ -410,7 +424,7 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:lib",
-        "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:util",
         "@six_archive//:six",
@@ -496,7 +510,7 @@ py_library(
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:unconnected_gradients",
         "//tensorflow/python:util",
@@ -524,7 +538,7 @@ py_library(
     deps = [
         ":forwardprop_util",
         "//tensorflow/python:platform",
-        "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python:util",
     ],
 )
@@ -535,7 +549,18 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
     deps = [
-        "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:pywrap_tfe",
+    ],
+)
+
+py_library(
+    name = "eager_util",
+    srcs = ["eager_util.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/python:pywrap_tfe",
+        "//tensorflow/python:util",
     ],
 )
 
@@ -552,7 +577,7 @@ cuda_py_test(
         ":remote",
         ":test",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python:random_ops",
         "//tensorflow/python/keras",
         "//third_party/py/numpy",
@@ -637,7 +662,7 @@ tf_py_test(
         ":test",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python:random_ops",
         "//tensorflow/python:test_ops",
         "//third_party/py/numpy",
@@ -649,7 +674,7 @@ py_library(
     srcs = ["imperative_grad.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python:unconnected_gradients",
         "//tensorflow/python:util",
     ],
@@ -750,6 +775,8 @@ tf_xla_py_test(
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:control_flow_util",
+        # TODO(b/145618471): Remove this transitive dependency.
+        "//tensorflow/python/distribute:input_lib",
         "//tensorflow/python:framework_ops",
     ],
 )

@@ -23,6 +23,7 @@ load(
     _tf_lib_proto_parsing_deps = "tf_lib_proto_parsing_deps",
     _tf_logging_deps = "tf_logging_deps",
     _tf_monitoring_deps = "tf_monitoring_deps",
+    _tf_platform_alias = "tf_platform_alias",
     _tf_platform_deps = "tf_platform_deps",
     _tf_proto_library = "tf_proto_library",
     _tf_proto_library_cc = "tf_proto_library_cc",
@@ -60,6 +61,7 @@ tf_legacy_srcs_no_runtime_google = _tf_legacy_srcs_no_runtime_google
 tf_lib_proto_parsing_deps = _tf_lib_proto_parsing_deps
 tf_logging_deps = _tf_logging_deps
 tf_monitoring_deps = _tf_monitoring_deps
+tf_platform_alias = _tf_platform_alias
 tf_platform_deps = _tf_platform_deps
 tf_proto_library = _tf_proto_library
 tf_proto_library_cc = _tf_proto_library_cc

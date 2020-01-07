@@ -194,11 +194,6 @@ class OpLevelCostEstimator {
   static OpInfo::TensorProperties DescribeTensor(
       DataType type, const std::vector<int64>& dims);
 
-  // This method calculates the execution time depending on whether IO can
-  // overlap with computation. It assumes the memory and the compute times have
-  // already been calculated.
-  void CombineCostsAndUpdateExecutionTime(Costs* costs) const;
-
  protected:
   std::map<string, int> elementwise_ops_;
   typedef std::function<Costs(const OpContext& op_context)> CostImpl;

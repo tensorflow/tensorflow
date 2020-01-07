@@ -1,14 +1,14 @@
 # Packaging for TensorFlow artifacts other than the Python API (pip whl).
 # This includes the C API, Java API, and protocol buffer files.
 
-package(default_visibility = ["//visibility:private"])
-
 load("@bazel_tools//tools/build_defs/pkg:pkg.bzl", "pkg_tar")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_syslibs//:build_defs.bzl", "if_not_system_lib")
 load("//tensorflow:tensorflow.bzl", "VERSION", "VERSION_MAJOR", "if_macos")
 load("//tensorflow/core/platform:build_config_root.bzl", "tf_additional_license_deps")
 load("//third_party/mkl:build_defs.bzl", "if_mkl")
+
+package(default_visibility = ["//visibility:private"])
 
 genrule(
     name = "libtensorflow_proto",
@@ -139,8 +139,10 @@ genrule(
         "//third_party/eigen3:LICENSE",
         "//third_party/fft2d:LICENSE",
         "//third_party/hadoop:LICENSE.txt",
+        "//third_party/hwloc:COPYING",
         "//third_party/icu/data:LICENSE",
         "@boringssl//:LICENSE",
+        "@com_google_protobuf//:LICENSE",
         "@com_googlesource_code_re2//:LICENSE",
         "@curl//:COPYING",
         "@double_conversion//:LICENSE",
@@ -150,19 +152,20 @@ genrule(
         "@gemmlowp//:LICENSE",
         "@gif//:COPYING",
         "@highwayhash//:LICENSE",
-        "@hwloc//:COPYING",
         "@icu//:icu4c/LICENSE",
         "@libjpeg_turbo//:LICENSE.md",
+        "@llvm-project//llvm:LICENSE.TXT",
+        "@llvm-project//mlir:LICENSE.TXT",
         "@lmdb//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
         "@local_config_tensorrt//:LICENSE",
         "@nasm//:LICENSE",
         "@nsync//:LICENSE",
         "@png//:LICENSE",
-        "@com_google_protobuf//:LICENSE",
-        "@snappy//:COPYING",
-        "@zlib_archive//:zlib.h",
         "@six_archive//:LICENSE",
+        "@snappy//:COPYING",
+        "@sobol_data//:LICENSE",
+        "@zlib_archive//:zlib.h",
     ] + select({
         "//tensorflow:android": [],
         "//tensorflow:ios": [],
@@ -210,8 +213,10 @@ genrule(
         "//third_party/eigen3:LICENSE",
         "//third_party/fft2d:LICENSE",
         "//third_party/hadoop:LICENSE.txt",
+        "//third_party/hwloc:COPYING",
         "//third_party/icu/data:LICENSE",
         "@boringssl//:LICENSE",
+        "@com_google_protobuf//:LICENSE",
         "@com_googlesource_code_re2//:LICENSE",
         "@curl//:COPYING",
         "@double_conversion//:LICENSE",
@@ -220,22 +225,23 @@ genrule(
         "@fft2d//:fft2d/readme2d.txt",
         "@gemmlowp//:LICENSE",
         "@gif//:COPYING",
+        "@grpc//:LICENSE",
+        "@grpc//third_party/address_sorting:LICENSE",
         "@highwayhash//:LICENSE",
-        "@hwloc//:COPYING",
         "@icu//:icu4j/main/shared/licenses/LICENSE",
         "@libjpeg_turbo//:LICENSE.md",
+        "@llvm-project//llvm:LICENSE.TXT",
+        "@llvm-project//mlir:LICENSE.TXT",
         "@lmdb//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
         "@local_config_tensorrt//:LICENSE",
         "@nasm//:LICENSE",
         "@nsync//:LICENSE",
         "@png//:LICENSE",
-        "@com_google_protobuf//:LICENSE",
-        "@snappy//:COPYING",
-        "@zlib_archive//:zlib.h",
-        "@grpc//:LICENSE",
-        "@grpc//third_party/address_sorting:LICENSE",
         "@six_archive//:LICENSE",
+        "@snappy//:COPYING",
+        "@sobol_data//:LICENSE",
+        "@zlib_archive//:zlib.h",
     ] + select({
         "//tensorflow:android": [],
         "//tensorflow:ios": [],

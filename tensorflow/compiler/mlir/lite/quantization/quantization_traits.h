@@ -18,8 +18,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_QUANTIZATION_TRAITS_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_QUANTIZATION_TRAITS_H_
 
-#include "mlir/Dialect/QuantOps/QuantTypes.h"  // TF:local_config_mlir
-#include "mlir/Support/LLVM.h"  // TF:local_config_mlir
+#include "mlir/Dialect/QuantOps/QuantTypes.h"  // TF:llvm-project
+#include "mlir/Support/LLVM.h"  // TF:llvm-project
 
 namespace mlir {
 namespace OpTrait {
@@ -70,7 +70,7 @@ class FixedResultUniformScale {
     QuantizedType GetResultQuantizedType(int index) {
       auto op = this->getOperation();
       auto result_type =
-          op->getResult(index)->getType().template cast<TensorType>();
+          op->getResult(index).getType().template cast<TensorType>();
       Builder builder(op->getContext());
       IntegerType storage_type = builder.getIntegerType(BitWidth);
       const double scale = static_cast<double>(ScaleMantissa) *

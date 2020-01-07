@@ -42,9 +42,9 @@ __global__ void CurtHealthKernel(const Tin* __restrict__ data, int size,
   const int32 total_thread_count = gridDim.x * blockDim.x;
 
   int32 offset = thread_id;
-
   while (offset < size) {
-    if (isinf(data[offset]) || isnan(data[offset])) {
+    if (Eigen::numext::isinf(data[offset]) ||
+        Eigen::numext::isnan(data[offset])) {
       output[0] = 1.0;
     }
     offset += total_thread_count;
@@ -63,14 +63,14 @@ __global__ void ConciseHealthKernel(const Tin* __restrict__ data, int size,
   Tout accum[3] = {0.0, 0.0, 0.0};
 
   while (offset < size) {
-    if (isinf(data[offset])) {
+    if (Eigen::numext::isinf(data[offset])) {
       if (data[offset] < static_cast<Tin>(0.f)) {
         ++accum[0];
       } else {
         ++accum[1];
       }
     }
-    if (isnan(data[offset])) {
+    if (Eigen::numext::isnan(data[offset])) {
       ++accum[2];
     }
     offset += total_thread_count;
@@ -94,13 +94,13 @@ __global__ void FullHealthKernel(const Tin* __restrict__ data, int size,
   Tout accum[6] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
 
   while (offset < size) {
-    if (isinf(data[offset])) {
+    if (Eigen::numext::isinf(data[offset])) {
       if (data[offset] < static_cast<Tin>(0.f)) {
         ++accum[0];
       } else {
         ++accum[1];
       }
-    } else if (isnan(data[offset])) {
+    } else if (Eigen::numext::isnan(data[offset])) {
       ++accum[2];
     } else {
       if (data[offset] < static_cast<Tin>(0.f)) {
@@ -136,14 +136,14 @@ __global__ void ReduceInfNanThreeSlotsKernel(const Tin* __restrict__ data,
   int32 offset = thread_id;
 
   while (offset < size) {
-    if (isinf(data[offset])) {
+    if (Eigen::numext::isinf(data[offset])) {
       if (data[offset] < static_cast<Tin>(0.f)) {
         output[0] = -std::numeric_limits<Tout>::infinity();
       } else {
         output[1] = std::numeric_limits<Tout>::infinity();
       }
     }
-    if (isnan(data[offset])) {
+    if (Eigen::numext::isnan(data[offset])) {
       output[2] = std::numeric_limits<Tout>::quiet_NaN();
     }
     offset += total_thread_count;
@@ -168,9 +168,13 @@ struct CurtHealthLaunch {
 template struct CurtHealthLaunch<Eigen::half, float>;
 template struct CurtHealthLaunch<float, float>;
 template struct CurtHealthLaunch<double, float>;
+template struct CurtHealthLaunch<int16, float>;
+template struct CurtHealthLaunch<int32, float>;
 template struct CurtHealthLaunch<Eigen::half, double>;
 template struct CurtHealthLaunch<float, double>;
 template struct CurtHealthLaunch<double, double>;
+template struct CurtHealthLaunch<int16, double>;
+template struct CurtHealthLaunch<int32, double>;
 
 template <typename Tin, typename Tout>
 struct ConciseHealthLaunch {
@@ -188,9 +192,13 @@ struct ConciseHealthLaunch {
 template struct ConciseHealthLaunch<Eigen::half, float>;
 template struct ConciseHealthLaunch<float, float>;
 template struct ConciseHealthLaunch<double, float>;
+template struct ConciseHealthLaunch<int16, float>;
+template struct ConciseHealthLaunch<int32, float>;
 template struct ConciseHealthLaunch<Eigen::half, double>;
 template struct ConciseHealthLaunch<float, double>;
 template struct ConciseHealthLaunch<double, double>;
+template struct ConciseHealthLaunch<int16, double>;
+template struct ConciseHealthLaunch<int32, double>;
 
 template <typename Tin, typename Tout>
 struct FullHealthLaunch {
@@ -208,9 +216,13 @@ struct FullHealthLaunch {
 template struct FullHealthLaunch<Eigen::half, float>;
 template struct FullHealthLaunch<float, float>;
 template struct FullHealthLaunch<double, float>;
+template struct FullHealthLaunch<int16, float>;
+template struct FullHealthLaunch<int32, float>;
 template struct FullHealthLaunch<Eigen::half, double>;
 template struct FullHealthLaunch<float, double>;
 template struct FullHealthLaunch<double, double>;
+template struct FullHealthLaunch<int16, double>;
+template struct FullHealthLaunch<int32, double>;
 
 template <typename Tin, typename Tout>
 struct ReduceInfNanThreeSlotsLaunch {
@@ -229,9 +241,13 @@ struct ReduceInfNanThreeSlotsLaunch {
 template struct ReduceInfNanThreeSlotsLaunch<Eigen::half, float>;
 template struct ReduceInfNanThreeSlotsLaunch<float, float>;
 template struct ReduceInfNanThreeSlotsLaunch<double, float>;
+template struct ReduceInfNanThreeSlotsLaunch<int16, float>;
+template struct ReduceInfNanThreeSlotsLaunch<int32, float>;
 template struct ReduceInfNanThreeSlotsLaunch<Eigen::half, double>;
 template struct ReduceInfNanThreeSlotsLaunch<float, double>;
 template struct ReduceInfNanThreeSlotsLaunch<double, double>;
+template struct ReduceInfNanThreeSlotsLaunch<int16, double>;
+template struct ReduceInfNanThreeSlotsLaunch<int32, double>;
 
 }  // namespace tensorflow
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

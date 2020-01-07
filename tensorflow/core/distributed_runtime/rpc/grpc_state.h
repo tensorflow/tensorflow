@@ -325,7 +325,7 @@ class ExchangeQueue {
                protobuf::Message* response, StatusCallback cb,
                std::string debug_string);
 
-  // Returns an exchange for which we can initiated request writing, if any.
+  // Returns an exchange for which we can initiate request writing, if any.
   // Returns nullptr if there is no such exchange.
   Exchange* GetReadyForRequestWriting();
 

@@ -41,21 +41,22 @@ limitations under the License.
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/ToolOutputFile.h"
-#include "mlir/Dialect/QuantOps/QuantTypes.h"  // TF:local_config_mlir
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/Function.h"  // TF:local_config_mlir
-#include "mlir/IR/Location.h"  // TF:local_config_mlir
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/IR/Module.h"  // TF:local_config_mlir
-#include "mlir/IR/Operation.h"  // TF:local_config_mlir
-#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
-#include "mlir/IR/Types.h"  // TF:local_config_mlir
-#include "mlir/IR/Value.h"  // TF:local_config_mlir
-#include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
-#include "mlir/Translation.h"  // TF:local_config_mlir
+#include "mlir/Dialect/QuantOps/QuantTypes.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/IR/Builders.h"  // TF:llvm-project
+#include "mlir/IR/Function.h"  // TF:llvm-project
+#include "mlir/IR/Location.h"  // TF:llvm-project
+#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
+#include "mlir/IR/Module.h"  // TF:llvm-project
+#include "mlir/IR/Operation.h"  // TF:llvm-project
+#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/IR/Types.h"  // TF:llvm-project
+#include "mlir/IR/Value.h"  // TF:llvm-project
+#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
+#include "mlir/Translation.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/lite/flatbuffer_operator.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/lite/utils/stateful_ops_utils.h"
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -230,19 +231,19 @@ static bool IsConst(Operation* op) {
 }
 
 template <typename T>
-static bool HasValidTFLiteType(Value* value, T& error_handler) {
+static bool HasValidTFLiteType(Value value, T& error_handler) {
   // None type is allowed to represent unspecified operands.
-  if (value->getType().isa<NoneType>()) return true;
+  if (value.getType().isa<NoneType>()) return true;
 
-  auto type = value->getType().dyn_cast<TensorType>();
+  auto type = value.getType().dyn_cast<TensorType>();
   if (!type) {
-    if (auto op = value->getDefiningOp()) {
+    if (auto op = value.getDefiningOp()) {
       error_handler.emitError()
           << '\'' << op << "' should produce value of tensor type instead of "
-          << value->getType();
+          << value.getType();
       return false;
     }
-    error_handler.emitError("expected tensor type, got ") << value->getType();
+    error_handler.emitError("expected tensor type, got ") << value.getType();
     return false;
   }
 
@@ -279,9 +280,9 @@ static bool IsValidTFLiteMlirModule(ModuleOp module) {
     }
     auto& bb = fn.getBlocks().front();
 
-    for (auto* arg : bb.getArguments()) {
+    for (auto arg : bb.getArguments()) {
       if (!HasValidTFLiteType(arg, fn))
-        return fn.emitError("invalid TFLite type: ") << arg->getType(), false;
+        return fn.emitError("invalid TFLite type: ") << arg.getType(), false;
     }
 
     // Verify that all operations except the terminator have exactly one
@@ -289,9 +290,9 @@ static bool IsValidTFLiteMlirModule(ModuleOp module) {
     for (auto& inst : bb) {
       if (inst.isKnownTerminator()) break;
 
-      for (auto* result : inst.getResults()) {
+      for (auto result : inst.getResults()) {
         if (!HasValidTFLiteType(result, inst))
-          return fn.emitError("invalid TFLite type: ") << result->getType(),
+          return fn.emitError("invalid TFLite type: ") << result.getType(),
                  false;
       }
     }
@@ -361,7 +362,7 @@ class Translator {
 
   // Builds TFLite tensor from the given value. `buffer_idx` is index of the
   // corresponding buffer. Emits error and returns llvm::None on failure.
-  Optional<BufferOffset<tflite::Tensor>> BuildTensor(Value* value,
+  Optional<BufferOffset<tflite::Tensor>> BuildTensor(Value value,
                                                      const std::string& name,
                                                      unsigned buffer_idx);
 
@@ -419,7 +420,7 @@ class Translator {
   bool IsStatefulOperand(mlir::Operation* op, int operand_index);
 
   // Returns a unique name for `val`.
-  std::string UniqueName(mlir::Value* val);
+  std::string UniqueName(mlir::Value val);
 
   ModuleOp module_;
 
@@ -449,7 +450,7 @@ class Translator {
   std::vector<std::string> failed_custom_ops_;
 };
 
-std::string Translator::UniqueName(mlir::Value* val) {
+std::string Translator::UniqueName(mlir::Value val) {
   return name_mapper_.GetUniqueName(val);
 }
 
@@ -502,8 +503,8 @@ Optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
 }
 
 Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
-    Value* value, const std::string& name, unsigned buffer_idx) {
-  auto type = value->getType().cast<TensorType>();
+    Value value, const std::string& name, unsigned buffer_idx) {
+  auto type = value.getType().cast<TensorType>();
 
   // TFLite requires tensor shape only for the inputs and constants.
   // However, we output all known shapes for better round-tripping
@@ -515,7 +516,7 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
 
     if (std::any_of(shape_ref.begin(), shape_ref.end(), is_out_of_range))
       return mlir::emitError(
-          value->getLoc(),
+          value.getLoc(),
           "result shape dimensions out of 32 bit int type range");
 
     return mlir::success();
@@ -527,7 +528,7 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
     if (mlir::failed(check_shape(shape_ref))) return llvm::None;
 
     shape = std::vector<int32_t>(shape_ref.begin(), shape_ref.end());
-  } else if (auto* inst = value->getDefiningOp()) {
+  } else if (auto* inst = value.getDefiningOp()) {
     if (IsConst(inst)) {
       // Const op can have a result of dynamic shaped type (e.g. due to constant
       // folding), but we can still derive the shape of a constant tensor for
@@ -570,7 +571,7 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
   // marked as a stateful. If so, set the tensor's is_variable as true
   // This is v1 ref variable semantics in the TFLite runtime.
   bool is_variable = false;
-  for (auto& use : value->getUses()) {
+  for (auto& use : value.getUses()) {
     is_variable = IsStatefulOperand(use.getOwner(), use.getOperandNumber());
     if (is_variable) {
       break;
@@ -669,6 +670,16 @@ Translator::CreateFlexBuilderWithNodeAttrs(
       case ::tensorflow::AttrValue::kS:
         flex_builder->String(key, attr.s());
         break;
+      case ::tensorflow::AttrValue::kType: {
+        auto status_or_tfl_type = tflite::TfTypeToTflType(attr.type());
+        if (status_or_tfl_type.ok()) {
+          flex_builder->Int(key, status_or_tfl_type.ValueOrDie());
+        } else {
+          emitWarning(loc, "ignoring unsupported tensorflow type: ")
+              << std::to_string(attr.type());
+        }
+        break;
+      }
       case ::tensorflow::AttrValue::kI:
         flex_builder->Int(key, attr.i());
         break;
@@ -906,13 +917,13 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(FuncOp fn) {
   bool has_input_attr = false;
   InitializeNamesFromAttribute(fn, &has_input_attr);
   std::vector<BufferOffset<tflite::Tensor>> tensors;
-  llvm::DenseMap<Value*, int> tensor_index_map;
+  llvm::DenseMap<Value, int> tensor_index_map;
 
   // Builds tensor and buffer for argument or operation result. Returns false
   // on failure.
-  auto build_tensor_and_buffer = [&](Value* value, const std::string& name) {
+  auto build_tensor_and_buffer = [&](Value value, const std::string& name) {
     // NoneType represents optional and may be skipped here.
-    if (value->getType().isa<NoneType>()) {
+    if (value.getType().isa<NoneType>()) {
       return true;
     }
 
@@ -925,7 +936,7 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(FuncOp fn) {
     // make the Buffer empty apart from setting the buffer_idx=0 in the Tensor.
     // This does not seem to affect runtime behavior for RNN/LSTM, but would be
     // good for reducing memory footprint.
-    if (auto* inst = value->getDefiningOp()) {
+    if (auto* inst = value.getDefiningOp()) {
       auto buffer_or = BuildBuffer(inst);
       if (!buffer_or) return false;
       buffers_.push_back(*buffer_or);
@@ -942,7 +953,7 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(FuncOp fn) {
   // have associated tensor and buffer. Build FlatBuffer tensor and buffer for
   // other functions.
   for (unsigned i = 0, e = bb.getNumArguments(); i < e; ++i) {
-    mlir::BlockArgument* arg = bb.getArgument(i);
+    mlir::BlockArgument arg = bb.getArgument(i);
     std::string name;
     if (has_input_attr) name = name_mapper_.GetUniqueName(arg);
     if (name.empty()) name = absl::StrCat("arg", i);
@@ -964,15 +975,15 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(FuncOp fn) {
     // Fetch operand and result tensor indices.
     std::vector<int32_t> operands;
     operands.reserve(inst.getNumOperands());
-    for (auto* operand : inst.getOperands()) {
-      if (operand->getType().isa<NoneType>())
+    for (auto operand : inst.getOperands()) {
+      if (operand.getType().isa<NoneType>())
         operands.push_back(kTfLiteOptionalTensor);
       else
         operands.push_back(tensor_index_map.lookup(operand));
     }
     std::vector<int32_t> results;
     results.reserve(inst.getNumOperands());
-    for (auto* result : inst.getResults()) {
+    for (auto result : inst.getResults()) {
       results.push_back(tensor_index_map.lookup(result));
     }
 
@@ -986,10 +997,10 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(FuncOp fn) {
 
   // Get input and output tensor indices for the subgraph.
   std::vector<int32_t> inputs, outputs;
-  for (auto* arg : bb.getArguments()) {
+  for (auto arg : bb.getArguments()) {
     inputs.push_back(tensor_index_map[arg]);
   }
-  for (auto* result : bb.getTerminator()->getOperands()) {
+  for (auto result : bb.getTerminator()->getOperands()) {
     outputs.push_back(tensor_index_map[result]);
   }
 

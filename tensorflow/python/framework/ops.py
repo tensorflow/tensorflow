@@ -36,7 +36,12 @@ from tensorflow.core.framework import node_def_pb2
 from tensorflow.core.framework import op_def_pb2
 from tensorflow.core.framework import versions_pb2
 from tensorflow.core.protobuf import config_pb2
+# pywrap_tensorflow must be imported first to avoid profobuf issues.
+# (b/143110113)
+# pylint: disable=invalid-import-order,g-bad-import-order
 from tensorflow.python import pywrap_tensorflow as c_api
+from tensorflow.python import pywrap_tfe as c_api_new
+# pylint: enable=invalid-import-order,g-bad-import-order
 from tensorflow.python import tf2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import core
@@ -249,7 +254,7 @@ def register_dense_tensor_like_type(tensor_type):
 
 def uid():
   """A unique (within this program execution) integer."""
-  return c_api.TFE_Py_UID()
+  return c_api_new.TFE_Py_UID()
 
 
 def numpy_text(tensor, is_repr=False):
@@ -850,8 +855,11 @@ class Tensor(_TensorLike):
 class _EagerTensorBase(Tensor):
   """Base class for EagerTensor."""
 
-  # __int__, __float__ and __index__ may copy the tensor to CPU and
+  # __complex__, __int__, __float__ and __index__ may copy the tensor to CPU and
   # only work for scalars; values are cast as per numpy.
+  def __complex__(self):
+    return complex(self._numpy())
+
   def __int__(self):
     return int(self._numpy())
 
@@ -1135,7 +1143,7 @@ class _EagerTensorBase(Tensor):
 
 # This call creates an EagerTensor class, as a subclass of _EagerTensorBase, and
 # registers it with the current module.
-EagerTensor = c_api.TFE_Py_InitEagerTensor(_EagerTensorBase)
+EagerTensor = c_api_new.TFE_Py_InitEagerTensor(_EagerTensorBase)
 
 
 register_dense_tensor_like_type(Tensor)
@@ -2780,6 +2788,11 @@ class Graph(object):
     # tuples: (input_shape_tuple, reduction_indices_tuple), and the values
     # are pairs of tuples: (output_shape_kept_dims, tile_scaling).
     self._reduced_shape_cache = {}
+    # In eager mode, the top level graph can still be created. This is
+    # incorrect and undesriable but currently so many places are relying on
+    # this. This is a flag indicating that, and meant to be set manually after
+    # this graph construction.
+    self._is_eager_graph = False
 
     # TODO(skyewm): fold as much of the above as possible into the C
     # implementation
@@ -3283,7 +3296,7 @@ class Graph(object):
 
     node_def = _NodeDef(op_type, name, attrs)
 
-    input_ops = set([t.op for t in inputs])
+    input_ops = set(t.op for t in inputs)
     control_inputs = self._control_dependencies_for_inputs(input_ops)
     # _create_op_helper mutates the new Operation. `_mutation_lock` ensures a
     # Session.run call cannot occur between creating and mutating the op.
@@ -4442,7 +4455,7 @@ class Graph(object):
         # Don't add a control input if we already have a data dependency on i.
         # NOTE(mrry): We do not currently track transitive data dependencies,
         #   so we may add redundant control inputs.
-        ret.extend([c for c in controller.control_inputs if c not in input_ops])
+        ret.extend(c for c in controller.control_inputs if c not in input_ops)
     return ret
 
   def _record_op_seen_by_control_dependencies(self, op):
@@ -5351,6 +5364,8 @@ class _DefaultGraphStack(_DefaultStack):  # pylint: disable=protected-access
       #   the global default graph and an explicit graph are combined in the
       #   same process.
       self._global_default_graph = Graph()
+      if context.executing_eagerly():
+        self._global_default_graph._is_eager_graph = True  # pylint: disable=protected-access
     return self._global_default_graph
 
   def reset(self):

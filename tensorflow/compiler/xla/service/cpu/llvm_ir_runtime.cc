@@ -72,7 +72,7 @@ void RewriteCalls(
   }
 
   // Other libraries using tfcompile could also have generated a function with
-  // tbe same name and body.  Tell the linker to discard all but one instance.
+  // the same name and body.  Tell the linker to discard all but one instance.
   fn->setLinkage(llvm::GlobalVariable::LinkOnceODRLinkage);
 
   llvm::LLVMContext* context = &module->getContext();
@@ -194,7 +194,7 @@ llvm::Value* GenerateVF32Exp(llvm::IRBuilder<>* b, llvm::Value* input,
   // value of n clamped to [-127, 127]. In the case where n' = 127, `a` can grow
   // up to as large as 88.8 - 127 * log(2) which is about 0.7703. Even though
   // this value of `a` is outside our previously specified range, e^a will still
-  // only have a relative error of approximetely 2^-16 at worse. In practice
+  // only have a relative error of approximately 2^-16 at worse. In practice
   // this seems to work well enough; it passes our exhaustive tests, breaking
   // only one result, and by one ulp (we return exp(88.7228394) = max-float but
   // we should return inf).

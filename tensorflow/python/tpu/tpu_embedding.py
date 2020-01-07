@@ -22,6 +22,7 @@ import collections
 import copy
 import math
 import re
+
 import six
 
 from tensorflow.core.protobuf.tpu import optimization_parameters_pb2
@@ -585,7 +586,8 @@ class TPUEmbedding(object):
                cluster_def=None,
                pipeline_execution_with_tensor_core=False,
                partition_strategy='div',
-               device_config=None):
+               device_config=None,
+               master_job_name=None):
     """API for using TPU for embedding lookups.
 
     Args:
@@ -611,6 +613,8 @@ class TPUEmbedding(object):
         `tf.nn.embedding_lookup_sparse`.
       device_config: A DeviceConfig instance, used when `master` and
         `cluster_def` are both `None`.
+      master_job_name: if set, overrides the master job name used to schedule
+        embedding ops.
 
     Raises:
       ValueError: if any input is invalid.
@@ -659,7 +663,12 @@ class TPUEmbedding(object):
         raise ValueError('TPUEmbedding needs TPUs, but master {} does not have '
                          'TPUs.'.format(master))
       self._num_hosts = tpu_system_metadata.num_hosts
-      master_job_name = tpu_system_metadata_lib.master_job(master, cluster_def)
+      if master_job_name is None:
+        try:
+          master_job_name = tpu_system_metadata_lib.master_job(master,
+                                                               cluster_def)
+        except ValueError as e:
+          raise ValueError(e.message + ' Please specify a master_job_name.')
       self._hosts = []
       for device in tpu_system_metadata.devices:
         if 'device:CPU:' in device.name and (
@@ -1010,17 +1019,11 @@ class TPUEmbedding(object):
   def _generate_enqueue_op(self, enqueue_datas, device_ordinal):
     enqueue_data0 = list(enqueue_datas.values())[0]
     with ops.colocate_with(enqueue_data0.embedding_indices):
-      (sample_indices_list, embedding_indices_list, aggregation_weights_list,
-       table_ids, max_sequence_lengths) = (
-           self._format_for_tpu_embedding_sparse_tensor_batch(enqueue_datas))
       return tpu_ops.enqueue_tpu_embedding_sparse_tensor_batch(
-          sample_indices_list,
-          embedding_indices_list,
-          aggregation_weights_list,
-          table_ids,
           device_ordinal=device_ordinal,
           combiners=self._combiners,
-          max_sequence_lengths=max_sequence_lengths)
+          **self._format_for_tpu_embedding_sparse_tensor_batch(enqueue_datas)
+      )
 
   def _format_for_tpu_embedding_sparse_tensor_batch(self, enqueue_datas):
     """Format sparse features for `enqueue_tpu_embedding_sparse_tensor_batch()`.
@@ -1030,36 +1033,37 @@ class TPUEmbedding(object):
       dense.
 
     Returns:
-      Arguments for `enqueue_tpu_embedding_sparse_tensor_batch()`.
+      Dict of arguments for `enqueue_tpu_embedding_sparse_tensor_batch()`.
     """
-
-    (sample_indices_list, embedding_indices_list, aggregation_weights_list,
-     table_ids, max_sequence_lengths) = [], [], [], [], []
+    kwargs = {
+        'sample_indices': [],
+        'embedding_indices': [],
+        'aggregation_weights': [],
+        'table_ids': [],
+        'max_sequence_lengths': [],
+    }
     for table_id, table in enumerate(self._table_to_features_dict):
       features = self._table_to_features_dict[table]
       for feature in features:
         enqueue_data = enqueue_datas[feature]
 
-        sample_indices = (
+        kwargs['sample_indices'].append(
             enqueue_data.sample_indices
             if enqueue_data.sample_indices is not None else array_ops.zeros(
                 (0,), dtype=dtypes.int64))
-        sample_indices_list.append(sample_indices)
 
-        aggregation_weights = (
+        kwargs['aggregation_weights'].append(
             enqueue_data.aggregation_weights if
             enqueue_data.aggregation_weights is not None else array_ops.zeros(
                 (0,), dtype=dtypes.float32))
-        aggregation_weights_list.append(aggregation_weights)
 
-        embedding_indices_list.append(enqueue_data.embedding_indices)
+        kwargs['embedding_indices'].append(enqueue_data.embedding_indices)
 
-        table_ids.append(table_id)
-        max_sequence_lengths.append(
+        kwargs['table_ids'].append(table_id)
+        kwargs['max_sequence_lengths'].append(
             self._feature_to_config_dict[feature].max_sequence_length)
 
-    return (sample_indices_list, embedding_indices_list,
-            aggregation_weights_list, table_ids, max_sequence_lengths)
+    return kwargs
 
   def get_activations(self):
     """Get activations for features.

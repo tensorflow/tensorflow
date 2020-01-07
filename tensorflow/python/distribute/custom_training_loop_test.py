@@ -28,8 +28,11 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.util import nest
 
 
 class InputIterationTest(test.TestCase, parameterized.TestCase):
@@ -97,6 +100,37 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations.tpu_strategy
+          ],
+          mode=["eager"]))
+  def testNestedOutput(self, distribution):
+    dataset = self._get_dataset()
+    input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
+
+    @def_function.function
+    def run(iterator):
+
+      def computation(x):
+        return [{
+            "a": x - 1,
+            "b": x + 1
+        }]
+
+      inputs = next(iterator)
+      outputs = distribution.experimental_run_v2(computation, args=(inputs,))
+      return nest.map_structure(distribution.experimental_local_results,
+                                outputs)
+
+    results = run(input_iterator)
+    for replica in range(distribution.num_replicas_in_sync):
+      # The input dataset is range(10), so the replica id is same as input.
+      self.assertAllEqual(results[0]["a"][replica], [replica - 1])
+      self.assertAllEqual(results[0]["b"][replica], [replica + 1])
+
+  @combinations.generate(
+      combinations.combine(
           distribution=strategy_combinations.all_strategies,
           mode=["eager"]
       ))
@@ -159,6 +193,135 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
     # times(10/2 where 10 is the number of dataset elements and 2 is the batch
     # size). Hence the final result is 6.
     self.assertEqual(6.0, (a.numpy()))
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.all_strategies,
+          mode=["eager"]
+      ))
+  def testDatasetAssertWithDynamicBatch(self, distribution):
+    # Regression test for github issue 33517.
+    def step_fn(data):
+      assert_op = control_flow_ops.Assert(math_ops.less_equal(
+          math_ops.reduce_max(data), 100.), [data])
+      with ops.control_dependencies([assert_op]):
+        return math_ops.square(data)
+
+    @def_function.function
+    def train(dataset):
+      results = []
+      iterator = iter(dataset)
+      # we iterate through the loop 5 times since we have 3 elements and a
+      # global batch of 2.
+      for _ in range(2):
+        elem = next(iterator)
+        output = distribution.experimental_local_results(
+            distribution.experimental_run_v2(step_fn, args=(elem,)))
+        results.append(output)
+      return results
+
+    dataset = dataset_ops.DatasetV2.from_tensor_slices([5., 6., 7.,]).batch(2)
+    # TODO(b/138326910): Remove Dataset V1 version once bug resolved.
+    if not tf2.enabled():
+      dataset = dataset_ops.Dataset.from_tensor_slices([5., 6., 7.,]).batch(2)
+    dist_dataset = distribution.experimental_distribute_dataset(dataset)
+    results = train(dist_dataset)
+
+    expected_results = [[25., 36.], [49.]]
+    self.assertEqual(len(expected_results), len(results))
+
+    # Need to expand results since output will be grouped differently depending
+    # on the number of replicas.
+    for i, expected_result in enumerate(expected_results):
+      final_result = []
+      actual_result = results[i]
+      for val in actual_result:
+        final_result.extend(val.numpy())
+      self.assertAllEqual(expected_result, final_result)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.all_strategies,
+          mode=["eager"]
+      ))
+  def testDatasetDistributeEvenlyDivisibleDrop(self, distribution):
+    # If the batch size is evenly divisible by the number of workers and we set
+    # drop_remainder=True on the dataset, then DistributedIterator will use a
+    # different (and more efficient) code path which avoids some control flow
+    # ops.
+
+    dataset = dataset_ops.DatasetV2.from_tensor_slices([5., 6.]).batch(
+        2, drop_remainder=True)
+    # TODO(b/138326910): Remove Dataset V1 version once bug resolved.
+    if not tf2.enabled():
+      dataset = dataset_ops.Dataset.from_tensor_slices([5., 6.]).batch(
+          2, drop_remainder=True)
+
+    input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
+
+    data = next(input_iterator)
+
+    expected_result = [5., 6.]
+    final_result = []
+    actual_result = distribution.experimental_local_results(data)
+    for val in actual_result:
+      final_result.extend(val)
+    self.assertAllEqual(expected_result, final_result)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.all_strategies,
+          mode=["eager"]
+      ))
+  def testDatasetDistributeNotDivisibleDrop(self, distribution):
+    # If each batch is not evenly divisible by the number of workers,
+    # the remainder will be dropped.
+
+    dataset = dataset_ops.DatasetV2.from_tensor_slices([5., 6.]).batch(
+        1, drop_remainder=True)
+    # TODO(b/138326910): Remove Dataset V1 version once bug resolved.
+    if not tf2.enabled():
+      dataset = dataset_ops.Dataset.from_tensor_slices([5., 6.]).batch(
+          1, drop_remainder=True)
+
+    input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
+
+    data = next(input_iterator)
+
+    expected_result = [5.]
+    final_result = []
+    actual_result = distribution.experimental_local_results(data)
+    for val in actual_result:
+      final_result.extend(val)
+    self.assertAllEqual(expected_result, final_result)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.all_strategies,
+          mode=["eager"]
+      ))
+  def testDatasetDistributeEvenlyDivisibleNoDrop(self, distribution):
+    # Setting drop_remainder=False on the dataset causes DistributedIterator
+    # to use get_next_as_optional(), even if the batched dataset is evenly
+    # divisible by the number of workers.
+
+    dataset = dataset_ops.DatasetV2.from_tensor_slices([5., 6.]).batch(
+        2, drop_remainder=False)
+    # TODO(b/138326910): Remove Dataset V1 version once bug resolved.
+    if not tf2.enabled():
+      dataset = dataset_ops.Dataset.from_tensor_slices([5., 6.]).batch(
+          2, drop_remainder=False)
+
+    input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
+
+    data = next(input_iterator)
+
+    expected_result = [5., 6.]
+    final_result = []
+    actual_result = distribution.experimental_local_results(data)
+    for val in actual_result:
+      final_result.extend(val)
+    self.assertAllEqual(expected_result, final_result)
 
   @combinations.generate(
       combinations.combine(

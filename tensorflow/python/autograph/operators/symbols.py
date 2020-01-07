@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Abstract representation of composite symbols that can used in staging code.
+"""Abstract representation of composite symbols that can be used in staging code.
 
 This provides a way to checkpoint the values of symbols that may be undefined
 entering staged control flow. This checkpointing is necessary to prevent some

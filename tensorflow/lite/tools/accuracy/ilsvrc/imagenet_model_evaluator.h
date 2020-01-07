@@ -108,8 +108,10 @@ class ImagenetModelEvaluator {
       : params_(params), num_threads_(num_threads) {}
 
   // Factory method to create the evaluator by parsing command line arguments.
+  // Note argc and argv will be updated accordingly as matching arguments will
+  // be removed in argv.
   static TfLiteStatus Create(
-      int argc, char* argv[], int num_threads,
+      int* argc, char* argv[], int num_threads,
       std::unique_ptr<ImagenetModelEvaluator>* evaluator);
 
   // Adds an observer that can observe evaluation events..

@@ -16,18 +16,32 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_BRIDGE_LOGGER_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_BRIDGE_LOGGER_H_
 
-#include "mlir/IR/Operation.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
-#include "mlir/Pass/PassInstrumentation.h"  // TF:local_config_mlir
+#include "mlir/IR/Operation.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/Pass/PassManager.h"  // TF:llvm-project
 
 namespace tensorflow {
 
 // Logger for logging/dumping MLIR modules before and after passes in bridge
 // targeting TPUs.
-class BridgeLogger : public mlir::PassInstrumentation {
+class BridgeLoggerConfig : public mlir::PassManager::IRPrinterConfig {
  public:
-  void runBeforePass(mlir::Pass* pass, mlir::Operation* op) override;
-  void runAfterPass(mlir::Pass* pass, mlir::Operation* op) override;
+  explicit BridgeLoggerConfig(bool print_module_scope = false,
+                              bool print_after_only_on_change = true);
+
+  // A hook that may be overridden by a derived config that checks if the IR
+  // of 'operation' should be dumped *before* the pass 'pass' has been
+  // executed. If the IR should be dumped, 'print_callback' should be invoked
+  // with the stream to dump into.
+  void printBeforeIfEnabled(mlir::Pass *pass, mlir::Operation *operation,
+                            PrintCallbackFn print_callback) override;
+
+  // A hook that may be overridden by a derived config that checks if the IR
+  // of 'operation' should be dumped *after* the pass 'pass' has been
+  // executed. If the IR should be dumped, 'print_callback' should be invoked
+  // with the stream to dump into.
+  void printAfterIfEnabled(mlir::Pass *pass, mlir::Operation *operation,
+                           PrintCallbackFn print_callback) override;
 };
 
 }  // namespace tensorflow

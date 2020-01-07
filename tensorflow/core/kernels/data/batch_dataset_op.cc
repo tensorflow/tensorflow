@@ -186,6 +186,7 @@ class BatchDatasetOp::Dataset : public DatasetBase {
       // overload that supports zero-copy, and might make sense in an
       // optimization pass.
       const size_t num_tuple_components = batch_elements[0].size();
+      out_tensors->reserve(num_tuple_components);
       const int64 num_batch_elements = batch_elements.size();
       for (size_t component_index = 0; component_index < num_tuple_components;
            ++component_index) {

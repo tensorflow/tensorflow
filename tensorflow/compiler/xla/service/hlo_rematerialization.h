@@ -49,6 +49,13 @@ class HloRematerialization : public HloModulePass {
     int64 after_bytes;
   };
 
+  // Mode in which the rematerialization algorithm should be run.
+  enum class RematerializationMode {
+    kRecomputeOnly,        // Only consider the kCompress RematStrategy.
+    kCompressOnly,         // Only consider the kRecompute RematStrategy.
+    kRecomputeAndCompress  // Consider both kRecompute and kRemat.
+  };
+
   static Shape DefaultCompactShapeFunction(const Shape& shape) { return shape; }
 
   // Constructor parameters:
@@ -69,13 +76,15 @@ class HloRematerialization : public HloModulePass {
   explicit HloRematerialization(
       const ShapeSizeFunction& size_function, int64 memory_limit_bytes,
       RematerializationSizes* sizes,
-      CompactShapeFunction compact_shape_function = nullptr)
+      CompactShapeFunction compact_shape_function = nullptr,
+      RematerializationMode mode = RematerializationMode::kRecomputeAndCompress)
       : size_function_(size_function),
         memory_limit_bytes_(memory_limit_bytes),
         sizes_(sizes),
         compact_shape_function_(compact_shape_function == nullptr
                                     ? DefaultCompactShapeFunction
-                                    : std::move(compact_shape_function)) {}
+                                    : std::move(compact_shape_function)),
+        mode_(mode) {}
   ~HloRematerialization() override = default;
 
   absl::string_view name() const override { return "rematerialization"; }
@@ -152,6 +161,8 @@ class HloRematerialization : public HloModulePass {
   // uses of the original instruction and the original instruction is
   // dead. Hence, no net instructions were added.
   int64 net_instructions_added_ = 0;
+
+  RematerializationMode mode_;
 };
 
 }  // namespace xla

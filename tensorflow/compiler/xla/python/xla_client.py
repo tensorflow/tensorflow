@@ -444,7 +444,7 @@ def shape_from_pyval(pyval):
   return convert(pyval)
 
 
-def transfer_to_infeed(value, device_ordinal=0):
+def transfer_to_infeed(value, device=None):
   """Transfers the given value into the XLA infeed queue.
 
   XLA's infeed queue is a single queue that feeds the "XLA virtual machine" with
@@ -454,29 +454,31 @@ def transfer_to_infeed(value, device_ordinal=0):
   Args:
     value: the value that the caller would like to enqueue into the XLA infeed
       queue
-    device_ordinal: the device to infeed the value to. Each device has a
+    device: the device to infeed the value to. Each device has a
       distinct infeed queue.
   """
   # TODO(phawkins): support non-default backends.
   backend = get_local_backend()
-  backend.client.TransferToInfeed(value, device_ordinal)
+  device = device or backend.local_devices()[0]
+  backend.client.TransferToInfeed(value, device)
 
 
-def transfer_from_outfeed(shape, device_ordinal=0):
-  """Transfers a literal of the given shape from `device_ordinal`'s outfeed.
+def transfer_from_outfeed(shape, device=None):
+  """Transfers a literal of the given shape from `device`'s outfeed.
 
   Args:
     shape: The shape of the value to transfer from outfeed.
-    device_ordinal: The device ordinal to transfer the outfeed value from. Each
-      device has a distinct outfeed queue..
+    device: The device from which to transfer the outfeed value. Each device has
+      a distinct outfeed queue..
 
   Returns:
     The literal value that is produced from the outfeed queue.
   """
   # TODO(phawkins): support non-default backends.
   backend = get_local_backend()
+  device = device or backend.local_devices()[0]
   return backend.client.TransferFromOutfeed(
-      shape.with_major_to_minor_layout_if_absent(), device_ordinal)
+      shape.with_major_to_minor_layout_if_absent(), device)
 
 
 DeviceAssignment = _xla.DeviceAssignment
@@ -1505,7 +1507,7 @@ class ComputationBuilder(object):
           ConvWithGeneralPadding.
       feature_group_count: number of feature groups for grouped convolution.
       batch_group_count: number of batch groups for grouped convolution.
-    Returns: a XlaOp representing the ConvGenralDilated operation.
+    Returns: a XlaOp representing the ConvGeneralDilated operation.
     """
     if dimension_numbers is None:
       dimension_numbers = self._GetConvDimensionNumbers(len(window_strides))

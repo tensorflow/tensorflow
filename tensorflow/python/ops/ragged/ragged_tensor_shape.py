@@ -126,8 +126,8 @@ class RaggedTensorDynamicShape(object):
 
       # Convert dimension size tensors to a single dtype.
       if dim_size_dtype is None:
-        dim_size_dtypes = set([p.dtype for p in partitioned_dim_sizes
-                               if p.shape.ndims == 1])
+        dim_size_dtypes = set(
+            p.dtype for p in partitioned_dim_sizes if p.shape.ndims == 1)
         if not dim_size_dtypes:
           dim_size_dtype = dtypes.int64
         elif len(dim_size_dtypes) == 1:

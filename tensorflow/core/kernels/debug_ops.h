@@ -686,7 +686,8 @@ class DebugNumericSummaryV2Op<CPUDevice, Tin, Tout> : public OpKernel {
   static constexpr int kNegInfBit = 0x01;
   static constexpr int kPosInfBit = 0x02;
   static constexpr int kNaNBit = 0x04;
-  static constexpr int64 kMaxTensorId = 1L << std::numeric_limits<Tout>::digits;
+  static constexpr int64 kMaxTensorId = 1LL
+                                        << std::numeric_limits<Tout>::digits;
 };
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM

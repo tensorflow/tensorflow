@@ -19,13 +19,13 @@ limitations under the License.
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/IR/BlockAndValueMapping.h"  // TF:local_config_mlir
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/Diagnostics.h"  // TF:local_config_mlir
-#include "mlir/IR/Module.h"  // TF:local_config_mlir
-#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
-#include "mlir/Transforms/RegionUtils.h"  // TF:local_config_mlir
+#include "mlir/IR/BlockAndValueMapping.h"  // TF:llvm-project
+#include "mlir/IR/Builders.h"  // TF:llvm-project
+#include "mlir/IR/Diagnostics.h"  // TF:llvm-project
+#include "mlir/IR/Module.h"  // TF:llvm-project
+#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/Transforms/RegionUtils.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -87,26 +87,26 @@ void ForwardStoreToLoad(tf_device::LaunchOp launch_op) {
   // resource_handle_to_last_store_op keeps track of the most recent (last)
   // store to each resource. Non-existent entry indicates that a resource has
   // not been stored to yet.
-  llvm::SmallDenseMap<Value*, TF::AssignVariableOp>
+  llvm::SmallDenseMap<Value, TF::AssignVariableOp>
       resource_handle_to_last_store_op;
 
   // Only iterate through ops directly in launch_op's body as we can't handle
   // ops nested deeper in regions.
   for (Operation& op : llvm::make_early_inc_range(launch_op.GetBody())) {
     if (auto read_variable_op = dyn_cast<TF::ReadVariableOp>(&op)) {
-      Value* resource = read_variable_op.resource();
+      Value resource = read_variable_op.resource();
       auto last_store = resource_handle_to_last_store_op[resource];
       if (!last_store) continue;
 
       // Use stored value in last_store to replace all uses of current resource
       // load's result, then erase this resource load.
-      read_variable_op.value()->replaceAllUsesWith(last_store.value());
+      read_variable_op.value().replaceAllUsesWith(last_store.value());
       read_variable_op.erase();
       continue;
     }
 
     if (auto assign_variable_op = dyn_cast<TF::AssignVariableOp>(&op)) {
-      Value* resource = assign_variable_op.resource();
+      Value resource = assign_variable_op.resource();
       auto last_store = resource_handle_to_last_store_op[resource];
       // Previous store ops to same resource can be erased.
       if (last_store) last_store.erase();
@@ -120,17 +120,17 @@ void ForwardStoreToLoad(tf_device::LaunchOp launch_op) {
 // forwarding has been performed on this launch_op such that all loads of same
 // resource are on its initial values.
 void HoistResourceLoads(tf_device::LaunchOp launch_op) {
-  llvm::SmallDenseMap<Value*, TF::ReadVariableOp> resource_to_read_ops;
+  llvm::SmallDenseMap<Value, TF::ReadVariableOp> resource_to_read_ops;
 
   // Only iterate through ops directly in launch_op's body as we can't handle
   // ops nested deeper in regions.
   for (Operation& op : llvm::make_early_inc_range(launch_op.GetBody())) {
     auto read_variable_op = dyn_cast<TF::ReadVariableOp>(&op);
     if (!read_variable_op) continue;
-    Value* resource = read_variable_op.resource();
+    Value resource = read_variable_op.resource();
 
     // Skip resources created inside of launch_op.
-    if (resource->getParentRegion() == &launch_op.body()) continue;
+    if (resource.getParentRegion() == &launch_op.body()) continue;
 
     auto p = resource_to_read_ops.insert({resource, read_variable_op});
     if (p.second) {
@@ -156,18 +156,18 @@ bool AppendResourceStoreValueToReturn(tf_device::LaunchOp launch_op) {
   Block* body = &launch_op.GetBody();
   auto old_return = body->getTerminator();
 
-  llvm::SmallVector<Value*, 4> new_return_operands(old_return->getOperands());
+  llvm::SmallVector<Value, 4> new_return_operands(old_return->getOperands());
 
   // Only iterate through ops directly in launch_op's body as we can't handle
   // ops nested deeper in regions.
   for (Operation& op : launch_op.GetBody()) {
     auto assign_variable_op = dyn_cast<TF::AssignVariableOp>(&op);
     if (!assign_variable_op) continue;
-    Value* resource = assign_variable_op.resource();
+    Value resource = assign_variable_op.resource();
     if (!resource) continue;
 
     // Skip resources created inside of launch_op.
-    if (resource->getParentRegion() == &launch_op.body()) continue;
+    if (resource.getParentRegion() == &launch_op.body()) continue;
 
     // TODO(ycao): Prevent same value from being returned multiple times.
     // TODO(ycao): Do not return resource store value if it is defined outside
@@ -202,12 +202,12 @@ void SinkResourceStores(tf_device::LaunchOp launch_op, OpBuilder* builder) {
   builder->setInsertionPoint(launch_op);
   auto new_launch_op = builder->create<tf_device::LaunchOp>(
       launch_op.getLoc(), new_launch_return_types,
-      /*operands=*/llvm::SmallVector<Value*, 4>(), launch_op.getAttrs());
+      /*operands=*/llvm::SmallVector<Value, 4>(), launch_op.getAttrs());
   new_launch_op.body().takeBody(launch_op.body());
 
   // Replace uses of old launch_op results with those of new_launch_op.
   for (auto p : llvm::zip(launch_op.getResults(), new_launch_op.getResults())) {
-    std::get<0>(p)->replaceAllUsesWith(std::get<1>(p));
+    std::get<0>(p).replaceAllUsesWith(std::get<1>(p));
   }
 
   // Create a mapping from operands of new_return_op operands to new_launch_op

@@ -109,9 +109,6 @@ const std::map<string, string>& GetKnownBrokenTests() {
       {R"(^\/floor_div.*dtype=tf\.int64)", "119126484"},
       {R"(^\/squared_difference.*dtype=tf\.int64)", "119126484"},
 
-      // Select kernel doesn't support broadcasting yet.
-      {R"(^\/where.*1,2,3,1)", "134692786"},
-
       // Strided slice doesn't support ellipsis.
       {R"(strided_slice.*Ellipsis)", "138098220"},
   });

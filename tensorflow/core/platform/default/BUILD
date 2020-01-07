@@ -277,12 +277,8 @@ cc_library(
         "@snappy",
     ] + select({
         # TF Additional NUMA dependencies
-        "//tensorflow:android": [],
-        "//tensorflow:ios": [],
-        "//tensorflow:macos": [],
-        "//conditions:default": [
-            "@hwloc",
-        ],
+        "//tensorflow:with_numa_support": ["//third_party/hwloc"],
+        "//conditions:default": [],
     }),
 )
 
@@ -461,6 +457,11 @@ bzl_library(
     name = "cuda_build_defs_bzl",
     srcs = ["cuda_build_defs.bzl"],
     visibility = ["//tensorflow:__subpackages__"],
+)
+
+filegroup(
+    name = "legacy_mobile_srcs",
+    visibility = ["//tensorflow/core/platform:__pkg__"],
 )
 
 package_group(

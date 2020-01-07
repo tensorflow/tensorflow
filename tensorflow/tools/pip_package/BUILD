@@ -45,6 +45,11 @@ py_binary(
     deps = ["//tensorflow:tensorflow_py"],
 )
 
+# Add dynamic kernel dso files here.
+DYNAMIC_LOADED_KERNELS = [
+    "//tensorflow/core/kernels:libtfkernel_sobol_op.so",
+]
+
 COMMON_PIP_DEPS = [
     ":licenses",
     "MANIFEST.in",
@@ -121,11 +126,13 @@ filegroup(
         "//third_party/eigen3:LICENSE",
         "//third_party/fft2d:LICENSE",
         "//third_party/hadoop:LICENSE.txt",
+        "//third_party/hwloc:COPYING",
         "//third_party/icu/data:LICENSE",
         "@arm_neon_2_x86_sse//:LICENSE",
         "@astor_archive//:LICENSE",
         "@boringssl//:LICENSE",
         "@com_google_absl//:LICENSE",
+        "@com_google_protobuf//:LICENSE",
         "@com_googlesource_code_re2//:LICENSE",
         "@curl//:COPYING",
         "@double_conversion//:LICENSE",
@@ -139,27 +146,27 @@ filegroup(
         "@gemmlowp//:LICENSE",
         "@gif//:COPYING",
         "@highwayhash//:LICENSE",
-        "@hwloc//:COPYING",
         "@icu//:icu4c/LICENSE",
         "@kissfft//:COPYING",
         "@libjpeg_turbo//:LICENSE.md",
+        "@llvm-project//llvm:LICENSE.TXT",
+        "@llvm-project//mlir:LICENSE.TXT",
         "@lmdb//:LICENSE",
-        "@local_config_mlir//:LICENSE.TXT",
         "@local_config_sycl//sycl:LICENSE.text",
         "@local_config_tensorrt//:LICENSE",
         "@nasm//:LICENSE",
         "@nsync//:LICENSE",
         "@opt_einsum_archive//:LICENSE",
+        "@org_python_pypi_backports_weakref//:LICENSE",
         "@pasta//:LICENSE",
         "@pcre//:LICENCE",
         "@png//:LICENSE",
-        "@com_google_protobuf//:LICENSE",
         "@six_archive//:LICENSE",
         "@snappy//:COPYING",
+        "@sobol_data//:LICENSE",
         "@swig//:LICENSE",
         "@termcolor_archive//:COPYING.txt",
         "@zlib_archive//:zlib.h",
-        "@org_python_pypi_backports_weakref//:LICENSE",
     ] + select({
         "//tensorflow:android": [],
         "//tensorflow:ios": [],
@@ -223,6 +230,10 @@ sh_binary(
                "//conditions:default": [
                    ":simple_console",
                ],
+           }) +
+           select({
+               "//tensorflow:dynamic_loaded_kernels": DYNAMIC_LOADED_KERNELS,
+               "//conditions:default": [],
            }) + if_mkl_ml(["//third_party/mkl:intel_binary_blob"]),
 )
 

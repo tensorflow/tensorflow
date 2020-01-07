@@ -95,6 +95,15 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   ROOT %call.2 = s64[] call(%arg0.1), to_apply=%call
 }
 
+// CHECK-LABEL:  func @test_cholesky
+// CHECK-SAME:  ([[ARG:%.*]]: tensor<1x291x291xf32>) -> tensor<1x291x291xf32>
+%test_cholesky (a: f32[1,291,291]) -> f32[1,291,291] {
+  %a = f32[1,291,291] parameter(0)
+  // CHECK-NEXT:  "xla_hlo.cholesky"([[ARG]]) {lower = true, name = {{.*}}} : (tensor<1x291x291xf32>) -> tensor<1x291x291xf32>
+  ROOT %out = f32[1,291,291] cholesky(f32[1,291,291] %a), lower=true
+}
+
+
 // CHECK-LABEL:  func @test_clamp(
 %test_clamp (Arg_0.1: f32[], Arg_1.2: f32[4], Arg_1.3: f32[]) -> f32[4] {
   %Arg_0.1 = f32[] parameter(0)
@@ -104,6 +113,15 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   // CHECK-NEXT:  "xla_hlo.clamp"(%arg0, %arg1, %arg2) {name = "{{.*}}"} : (tensor<f32>, tensor<4xf32>, tensor<f32>) -> tensor<4xf32>
   ROOT %clamp.3 = f32[4] clamp(f32[] %Arg_0.1, f32[4] %Arg_1.2, f32[] %Arg_2.3)
 }
+
+// CHECK-LABEL:  func @test_collective_permute
+// CHECK-SAME:  ([[ARG:%.*]]: tensor<128x32xf32>) -> tensor<128x32xf32>
+%test_collective_permute (input: f32[128,32]) -> f32[128,32] {
+  %input = f32[128,32]{0,1} parameter(0)
+  // CHECK-NEXT:  "xla_hlo.collective_permute"([[ARG]]) {name = {{.*}}, source_target_pairs = dense<{{\[\[}}0, 1], [1, 2], [2, 3]]> : tensor<3x2xi64>} : (tensor<128x32xf32>) -> tensor<128x32xf32>
+  ROOT root = f32[128,32]{0,1} collective-permute(%input), source_target_pairs={{0,1},{1,2},{2,3}}
+}
+
 
 // CHECK-LABEL:  func @test_compare(%arg0: tensor<3xf32>, %arg1: tensor<3xf32>, %arg2: tensor<1xf32>) -> tensor<3xi1> {
 %test_compare (Arg_0.1: f32[3], Arg_1.2: f32[3], Arg_2.3: f32[1]) -> pred[3] {
@@ -364,6 +382,16 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   ROOT %imag.3 = f32[4] imag(c64[4] %Arg_0.1)
 }
 
+// CHECK-LABEL:  func @test_infeed
+// CHECK-SAME: ([[TOKEN:%.*]]: !xla_hlo.token) -> tuple<tensor<3xi32>, !xla_hlo.token> {
+%test_infeed (token0: token[]) -> (s32[3], token[]) {
+  %token0 = token[] parameter(0)
+  // CHECK-NEXT:  "xla_hlo.infeed"([[TOKEN]])
+  // CHECK-SAME:  infeed_config = "foobar"
+  ROOT %infeed = (s32[3], token[]) infeed(token[] %token0), infeed_config="foobar"
+}
+
+
 // CHECK-LABEL:  func @test_iota_1() -> tensor<4xf32> {
 %test_iota_1 () -> f32[4] {
   // CHECK-NEXT:  "xla_hlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<4xf32>
@@ -444,6 +472,16 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   ROOT %or.3 = pred[4] or(pred[4] %Arg_0.1, pred[4] %Arg_1.2)
 }
 
+// CHECK-LABEL:  func @test_outfeed
+// CHECK-SAME: ([[DATA:%.*]]: tensor<3xi32>, [[TOKEN:%.*]]: !xla_hlo.token) -> !xla_hlo.token {
+%test_outfeed (Arg_0.1: s32[3], Arg_1.2: token[]) -> token[] {
+  %Arg_0.1 = s32[3] parameter(0)
+  %Arg_1.2 = token[] parameter(1)
+  // CHECK-NEXT:  "xla_hlo.outfeed"([[DATA]], [[TOKEN]])
+  // CHECK-SAME:  outfeed_config = "foobar"
+  ROOT %outfeed.3 = token[] outfeed(s32[3] %Arg_0.1, token[] %Arg_1.2), outfeed_config="foobar"
+}
+
 // CHECK-LABEL:  func @test_pad(%arg0: tensor<4xf32>, %arg1: tensor<f32>) -> tensor<4xf32> {
 %test_pad (Arg_0.1: f32[4], Arg_1.2: f32[]) -> f32[4] {
   %Arg_0.1 = f32[4] parameter(0)
@@ -486,6 +524,26 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
 
   // CHECK-NEXT:  xla_hlo.pow %arg0, %arg1 {name = "{{.*}}"} : tensor<4xf32>
   ROOT %power.3 = f32[4] power(f32[4] %Arg_0.1, f32[4] %Arg_1.2)
+}
+
+// CHECK-LABEL:  func @test_rng_normal
+// CHECK-SAME:  ([[ARG0:%.*]]: tensor<f32>, [[ARG1:%.*]]: tensor<f32>) -> tensor<2x3x5xf32>
+%test_rng_normal (Arg_0.1: f32[], Arg_1.2: f32[]) -> f32[2,3,5] {
+  %Arg_0.1 = f32[] parameter(0)
+  %Arg_1.2 = f32[] parameter(1)
+  // CHECK:  [[CST:%.*]] = constant dense<[2, 3, 5]> : tensor<3xi64>
+  // CHECK:  "xla_hlo.rng_normal"([[ARG0]], [[ARG1]], [[CST]])
+  ROOT %rng.4 = f32[2,3,5] rng(f32[] %Arg_0.1, f32[] %Arg_1.2), distribution=rng_normal
+}
+
+// CHECK-LABEL:  func @test_rng_uniform
+// CHECK-SAME:  ([[ARG0:%.*]]: tensor<f32>, [[ARG1:%.*]]: tensor<f32>) -> tensor<2x3x5xf32>
+%test_rng_uniform (Arg_0.1: f32[], Arg_1.2: f32[]) -> f32[2,3,5] {
+  %Arg_0.1 = f32[] parameter(0)
+  %Arg_1.2 = f32[] parameter(1)
+  // CHECK:  [[CST:%.*]] = constant dense<[2, 3, 5]> : tensor<3xi64>
+  // CHECK:  "xla_hlo.rng_uniform"([[ARG0]], [[ARG1]], [[CST]])
+  ROOT %rng.4 = f32[2,3,5] rng(f32[] %Arg_0.1, f32[] %Arg_1.2), distribution=rng_uniform
 }
 
 // CHECK-LABEL:  func @test_real
@@ -601,6 +659,15 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
 
   // CHECK:  "xla_hlo.select"(%arg0, %arg1, %arg2) {name = "{{.*}}"} : (tensor<2x3xi1>, tensor<2x3xi32>, tensor<2x3xi32>) -> tensor<2x3xi32>
   ROOT %select.4 = s32[2,3] select(pred[2,3] %Arg_0.1, s32[2,3] %Arg_1.2, s32[2,3] %Arg_2.3)
+}
+
+// CHECK-LABEL:  func @test_set_dimension_size
+// CHECK-SAME:  ([[ARG:%.*]]: tensor<4x4xf32>, [[SIZE:%.*]]: tensor<i32>)
+%test_set_dimension_size (Arg_0.1: f32[4,4], Arg_1.2: s32[]) -> f32[4,<=4] {
+  %Arg_0.1 = f32[4,4] parameter(0)
+  %Arg_1.2 = s32[] parameter(1)
+  // CHECK-NEXT:  "xla_hlo.set_dimension_size"([[ARG]], [[SIZE]]) {dimension = 1 : i32, name = "{{.*}}"} : (tensor<4x4xf32>, tensor<i32>) -> tensor<4x4xf32>
+  ROOT %set-dimension-size.2 = f32[4,<=4] set-dimension-size(f32[4,4] %Arg_0.1, s32[] %Arg_1.2), dimensions={1}
 }
 
 // CHECK-LABEL:  func @test_sine(%arg0: tensor<1x16x16x3xf32>) -> tensor<1x16x16x3xf32> {
