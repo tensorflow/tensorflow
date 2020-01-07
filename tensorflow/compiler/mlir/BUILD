@@ -80,6 +80,8 @@ cc_library(
         "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
         "//tensorflow/compiler/mlir/xla:xla_legalize_to_standard",
         "//tensorflow/compiler/mlir/xla:xla_lower",
+        "//tensorflow/compiler/mlir/xla:xla_materialize_broadcasts",
+        "//tensorflow/compiler/mlir/xla:xla_test_passes",
         "@llvm-project//mlir:AffineDialectRegistration",
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:QuantOpsDialectRegistration",

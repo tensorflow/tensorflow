@@ -292,6 +292,35 @@ cc_library(
 )
 
 cc_library(
+    name = "xla_materialize_broadcasts",
+    srcs = [
+        "transforms/materialize_broadcasts.cc",
+    ],
+    deps = [
+        ":hlo",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Transforms",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "xla_test_passes",
+    srcs = [
+        "transforms/materialize_broadcasts_pass.cc",
+    ],
+    deps = [
+        ":hlo",
+        ":xla_materialize_broadcasts",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Transforms",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "hlo",
     srcs = [
         "ir/hlo_ops.cc",
@@ -318,6 +347,7 @@ cc_library(
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
+        "@llvm-project//mlir:Transforms",
     ],
     alwayslink = 1,
 )
@@ -345,6 +375,7 @@ cc_library(
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
+        "@llvm-project//mlir:Transforms",
     ],
     alwayslink = 1,
 )
