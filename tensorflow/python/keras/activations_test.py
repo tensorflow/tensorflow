@@ -149,8 +149,8 @@ class KerasActivationsTest(test.TestCase):
     x = keras.backend.placeholder(ndim=2)
     f = keras.backend.function([x], [keras.activations.hard_sigmoid(x)])
     test_values = np.random.random((2, 5))
-    expected = hard_sigmoid(test_values)
     result = f([test_values])[0]
+    expected = hard_sigmoid(test_values)
     self.assertAllClose(result, expected, rtol=1e-05)
 
   def test_relu(self):
