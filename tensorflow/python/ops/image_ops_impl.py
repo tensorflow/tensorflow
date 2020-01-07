@@ -766,11 +766,11 @@ def central_crop(image, central_fraction):
 def pad_to_bounding_box(image, offset_height, offset_width, target_height,
                         target_width):
   """Pad `image` with zeros to the specified `height` and `width`.
-  
+
   Adds `offset_height` rows of zeros on top, `offset_width` columns of
   zeros on the left, and then pads the image on the bottom and right
   with zeros until it has dimensions `target_height`, `target_width`.
-  
+
   This op does nothing if `offset_*` is zero and the image already has size
   `target_height` by `target_width`.
 
