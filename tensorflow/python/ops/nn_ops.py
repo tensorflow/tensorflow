@@ -1883,6 +1883,14 @@ def conv2d_v2(input,  # pylint: disable=redefined-builtin
 
   Must have `strides[0] = strides[3] = 1`.  For the most common case of the same
   horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
+  
+  Usage Example:
+  >>> kernel_in = np.array([
+  ...  [ [[2, 0.1]],[[3, 0.2]] ],
+  ...  [ [[0, 0.3]],[[1, 0.4]] ]])
+  >>> x = tf.placeholder(tf.float32, shape=[1, 5, 5, 1])
+  >>> kernel = tf.constant(kernel_in, dtype=tf.float32)
+  <tf.Tensor 'Conv2D_1:0' shape=(1, 4, 4, 2) dtype=float32>
 
   Args:
     input: A `Tensor`. Must be one of the following types:
