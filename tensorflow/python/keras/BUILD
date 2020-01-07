@@ -1919,7 +1919,10 @@ tf_py_test(
     srcs = ["models_test.py"],
     python_version = "PY3",
     shard_count = 8,
-    tags = ["notsan"],  # b/67509773
+    tags = [
+        "no_oss_py35",  # b/147251467
+        "notsan",  # b/67509773
+    ],
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
