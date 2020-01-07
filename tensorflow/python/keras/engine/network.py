@@ -1730,7 +1730,7 @@ def _map_subgraph_network(inputs, outputs):
     A tuple of List{Node] and List[Layer].
   """
   base_layer_utils.create_keras_history(outputs)
-  # Keep only nodes and layers in the topology betweeen inputs and outputs.
+  # Keep only nodes and layers in the topology between inputs and outputs.
   _, nodes_by_depth, layers, _ = _map_graph_network(inputs, outputs)
   return nest.flatten([nodes for nodes in nodes_by_depth.values()]), layers
 
