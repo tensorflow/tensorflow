@@ -1231,6 +1231,7 @@ test_suite(
         "depth_wise_conv_test",
         "elementwise_test",
         "fully_connected_texture_test",
+        "lstm_test",
         "max_unpooling_test",
         "multiply_add_test",
         "padding_test",

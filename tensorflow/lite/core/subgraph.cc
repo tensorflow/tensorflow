@@ -315,6 +315,26 @@ TfLiteDelegateParams* CreateDelegateParams(TfLiteDelegate* delegate,
   return params;
 }
 
+// Assumes that params is not nullptr.
+void PopulatePreviewDelegateParams(const NodeSubset& node_subset,
+                                   TfLiteDelegateParams* params) {
+  // Since these params are used for previewing partitioning, params->delegate
+  // is not required.
+  params->delegate = nullptr;
+
+  params->nodes_to_replace = TfLiteIntArrayCreate(node_subset.nodes.size());
+  CopyVectorToTfLiteIntArray(node_subset.nodes, params->nodes_to_replace);
+
+  params->input_tensors =
+      TfLiteIntArrayCreate(node_subset.input_tensors.size());
+  CopyVectorToTfLiteIntArray(node_subset.input_tensors, params->input_tensors);
+
+  params->output_tensors =
+      TfLiteIntArrayCreate(node_subset.output_tensors.size());
+  CopyVectorToTfLiteIntArray(node_subset.output_tensors,
+                             params->output_tensors);
+}
+
 }  // namespace
 
 TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(
@@ -430,6 +450,57 @@ TfLiteStatus Subgraph::GetExecutionPlan(struct TfLiteContext* context,
                                         TfLiteIntArray** execution_plan) {
   return static_cast<Subgraph*>(context->impl_)
       ->GetExecutionPlan(execution_plan);
+}
+
+void Subgraph::FreeDelegatePartitioningData() {
+  for (auto& params : partitioning_preview_cache_) {
+    TfLiteIntArrayFree(params.nodes_to_replace);
+    TfLiteIntArrayFree(params.input_tensors);
+    TfLiteIntArrayFree(params.output_tensors);
+  }
+  partitioning_preview_cache_.clear();
+}
+
+TfLiteStatus Subgraph::PreviewDelegatePartitioning(
+    const TfLiteIntArray* nodes_to_replace,
+    TfLiteDelegateParams** partition_params_array, int* num_partitions) {
+  // Ensure partitioning cache is empty.
+  FreeDelegatePartitioningData();
+  // Defaults.
+  if (!partition_params_array || !num_partitions) return kTfLiteError;
+  *partition_params_array = nullptr;
+  *num_partitions = 0;
+  if (!nodes_to_replace->size) {
+    return kTfLiteOk;
+  }
+
+  // Partition the execution plan into node subsets.
+  InterpreterInfo info(this);
+  std::vector<NodeSubset> node_subsets;
+  PartitionGraphIntoIndependentNodeSubsets(&info, nodes_to_replace,
+                                           &node_subsets);
+
+  // Create one TfLiteDelegateParams per node-subset which would be delegated.
+  for (auto& node_subset : node_subsets) {
+    if (node_subset.type != NodeSubset::kTfPartition) {
+      continue;
+    }
+    partitioning_preview_cache_.emplace_back();
+    PopulatePreviewDelegateParams(node_subset,
+                                  &partitioning_preview_cache_.back());
+    ++*num_partitions;
+  }
+
+  *partition_params_array = partitioning_preview_cache_.data();
+  return kTfLiteOk;
+}
+
+TfLiteStatus Subgraph::PreviewDelegatePartitioning(
+    struct TfLiteContext* context, const TfLiteIntArray* nodes_to_replace,
+    TfLiteDelegateParams** partition_params_array, int* num_partitions) {
+  return static_cast<Subgraph*>(context->impl_)
+      ->PreviewDelegatePartitioning(nodes_to_replace, partition_params_array,
+                                    num_partitions);
 }
 
 TfLiteStatus Subgraph::SetInputs(std::vector<int> inputs) {
@@ -1083,6 +1154,7 @@ void Subgraph::SwitchToDelegateContext() {
   context_.ReplaceNodeSubsetsWithDelegateKernels =
       ReplaceNodeSubsetsWithDelegateKernels;
   context_.GetExecutionPlan = GetExecutionPlan;
+  context_.PreviewDelegatePartitioning = PreviewDelegatePartitioning;
 }
 
 void Subgraph::SwitchToKernelContext() {
@@ -1100,6 +1172,13 @@ void Subgraph::SwitchToKernelContext() {
                                  TfLiteIntArray**) {
     return ForbiddenContextFunction(context);
   };
+  context_.PreviewDelegatePartitioning =
+      [](struct TfLiteContext* context, const TfLiteIntArray* nodes_to_replace,
+         TfLiteDelegateParams** partition_params_array,
+         int* num_partitions) { return ForbiddenContextFunction(context); };
+  // Free any memory that might have been allocated by
+  // PreviewDelegatePartitioning.
+  FreeDelegatePartitioningData();
 }
 
 TfLiteStatus Subgraph::UndoAllDelegates() {

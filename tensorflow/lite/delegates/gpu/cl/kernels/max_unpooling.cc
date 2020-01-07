@@ -29,13 +29,13 @@ std::string GetMaxUnoolingKernelCode(
     const OperationDef& op_def, const CLDevice& device,
     const std::vector<ElementwiseOperation*>& linked_operations) {
   TensorCodeGenerator src("src_data",
-                          {"src_size.x", "src_size.y", "src_size.z"},
+                          WHSPoint{"src_size.x", "src_size.y", "src_size.z"},
                           op_def.src_tensors[0]);
-  TensorCodeGenerator src_ind("src_data_indices",
-                              {"src_size.x", "src_size.y", "src_size.z"},
-                              op_def.src_tensors[1]);
+  TensorCodeGenerator src_ind(
+      "src_data_indices", WHSPoint{"src_size.x", "src_size.y", "src_size.z"},
+      op_def.src_tensors[1]);
   TensorCodeGenerator dst("dst_data",
-                          {"dst_size.x", "dst_size.y", "dst_size.z"},
+                          WHSPoint{"dst_size.x", "dst_size.y", "dst_size.z"},
                           op_def.dst_tensors[0]);
 
   const auto address_mode = GetFastestZeroMode(device);
@@ -67,7 +67,7 @@ std::string GetMaxUnoolingKernelCode(
     c += "  int src_x = (X + padding.x) / stride.x;\n";
   }
   c += "  int src_y = (Y + padding.y) / stride.y;\n";
-  c += "  " + src.GetAddress("src_adr", "src_x", "src_y", "Z") + "\n";
+  c += "  " + src.GetAddressWHS("src_adr", "src_x", "src_y", "Z") + "\n";
   if (op_def.src_tensors[0].storage_type == TensorStorageType::BUFFER) {
     c += "  bool outside = src_x < 0 || src_y < 0 ||";
     c += "  src_x >= src_size.x || src_y >= src_size.y;\n";
@@ -96,7 +96,7 @@ std::string GetMaxUnoolingKernelCode(
     c += "  result" + s + "= t_index == ind" + s + "? src" + s + ": 0.0f;\n";
   }
   c += PostProcess(linked_operations, {"result", "X", "Y", "Z"});
-  c += "  " + dst.Write3D("result", "X", "Y", "Z");
+  c += "  " + dst.WriteWHS("result", "X", "Y", "Z");
   c += "}\n";
 
   return c;
@@ -144,8 +144,8 @@ Status MaxUnpooling::BindArguments() {
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[1]->GetMemoryPtr()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWBatchedHDB()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWBatchedHDB()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWBatchedHSB()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWBatchedHSB()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(kernel_size_));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(padding_));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(stride_));
@@ -156,7 +156,7 @@ Status MaxUnpooling::BindArguments() {
 int3 MaxUnpooling::GetGridSize() const {
   const int grid_x = dst_[0]->Width() * dst_[0]->Batch();
   const int grid_y = dst_[0]->Height();
-  const int grid_z = dst_[0]->Depth();
+  const int grid_z = dst_[0]->Slices();
   return int3(grid_x, grid_y, grid_z);
 }
 

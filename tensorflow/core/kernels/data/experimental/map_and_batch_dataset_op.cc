@@ -466,6 +466,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
         return Status::OK();
       }
       const size_t num_components = return_values->size();
+      result->output.reserve(num_components);
       for (size_t i = 0; i < num_components; ++i) {
         TensorShape component_shape({dataset()->batch_size_});
         component_shape.AppendShape(return_values->at(i).shape());

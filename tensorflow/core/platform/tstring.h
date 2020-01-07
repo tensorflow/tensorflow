@@ -20,7 +20,7 @@ limitations under the License.
 #include <string>
 
 // TODO(b/138799229): Used to toggle until global presubmits pass.
-// #define USE_TSTRING
+#define USE_TSTRING
 
 #ifdef USE_TSTRING
 

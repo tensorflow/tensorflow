@@ -56,18 +56,15 @@ class Tensor {
   int Width() const { return shape_.w; }
   int Height() const { return shape_.h; }
   int Channels() const { return shape_.c; }
-  int Depth() const { return IntegralDivideRoundUp(shape_.c, 4); }
+  int Slices() const { return IntegralDivideRoundUp(shape_.c, 4); }
   int Batch() const { return shape_.b; }
-  int4 GetSizeWithDepth() const {
-    return int4(shape_.w, shape_.h, shape_.c, Depth());
+
+  // returns int4(width * batch, height, slices, batch)
+  int4 GetWBatchedHSB() const {
+    return int4(shape_.w * shape_.b, shape_.h, Slices(), shape_.b);
   }
 
-  // returns int4(width * batch, height, depth, batch)
-  int4 GetWBatchedHDB() const {
-    return int4(shape_.w * shape_.b, shape_.h, Depth(), shape_.b);
-  }
-
-  int4 GetWHDB() const { return int4(shape_.w, shape_.h, Depth(), shape_.b); }
+  int4 GetWHSB() const { return int4(shape_.w, shape_.h, Slices(), shape_.b); }
 
   enum DataType DataType() const { return descriptor_.data_type; }
   TensorStorageType StorageType() const { return descriptor_.storage_type; }
@@ -106,10 +103,10 @@ class Tensor {
       case TensorStorageType::TEXTURE_ARRAY:
       case TensorStorageType::TEXTURE_3D:
         return (((d * shape_.h + y) * shape_.w + x) * shape_.b + b) * 4 +
-               sub_d;  // DHWBC4
+               sub_d;  // SHWBC4
       case TensorStorageType::TEXTURE_2D:
-        return (((y * Depth() + d) * shape_.w + x) * shape_.b + b) * 4 +
-               sub_d;  // HDWBC4
+        return (((y * Slices() + d) * shape_.w + x) * shape_.b + b) * 4 +
+               sub_d;  // HSWBC4
       case TensorStorageType::SINGLE_TEXTURE_2D:
         return ((y * shape_.w + x) * shape_.b + b) * shape_.c + sub_d;  // HWBC
       case TensorStorageType::UNKNOWN:

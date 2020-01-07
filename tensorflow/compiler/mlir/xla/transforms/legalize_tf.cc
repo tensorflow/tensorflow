@@ -2480,6 +2480,41 @@ class ConvertOneHotOp : public OpRewritePattern<TF::OneHotOp> {
   }
 };
 
+// Converts tf.OutfeedEnqueueTuple to XLA HLO tuple, after_all and outfeed ops.
+//
+// XLA HLO outfeed op expects a token, which we generate by emitting an
+// after_all op.
+//
+// For example the following IR:
+// "tf.OutfeedEnqueueTuple"(%val_1, %val_2) : (tensor<3xi32>, tensor<4xf32>) ->
+//      ()
+//
+// would be lowered to
+//
+// %tuple = "xla_hlo.tuple"(%val_1, %val_2) : (tensor<3xi32>, tensor<4xf32>) ->
+//      tuple<tensor<3xi32>, tensor<4xf32>>
+// %token = "xla_hlo.after_all"() : () -> !xla_hlo.token
+// %outfeed_token = "xla_hlo.outfeed"(%tuple, %token) {outfeed_config = ""} :
+//      (tuple<tensor<3xi32>, tensor<4xf32>>, !xla_hlo.token) -> !xla_hlo.token
+//
+class ConvertOutfeedEnqueueTupleOp
+    : public OpRewritePattern<TF::OutfeedEnqueueTupleOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(TF::OutfeedEnqueueTupleOp op,
+                                     PatternRewriter &rewriter) const override {
+    auto token_type = xla_hlo::TokenType::get(rewriter.getContext());
+    auto tuple = rewriter.create<TupleOp>(op.getLoc(), op.inputs());
+    auto afterall =
+        rewriter.create<AfterAllOp>(op.getLoc(), token_type, ValueRange());
+    rewriter.create<OutfeedOp>(op.getLoc(), token_type, tuple, afterall,
+                               /*outfeed_config=*/rewriter.getStringAttr(""));
+    rewriter.eraseOp(op);
+    return matchSuccess();
+  }
+};
+
 // Converts tf.TopKV2 to XLA HLO iota, sort, and slice ops when k is a constant.
 //
 // tf.TopKV2 sorts along last dimension of the input tensor and then returns
@@ -2770,8 +2805,8 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
       ConvertFusedBatchNormGradOp, ConvertFusedBatchNormGradV2Op,
       ConvertFusedBatchNormGradV3Op, ConvertFusedBatchNormV3Op, ConvertMaxOp,
       ConvertMaxPoolOp, ConvertMaxPoolGradOp, ConvertMeanOp, ConvertOneHotOp,
-      ConvertRangeOp, ConvertSigmoidOp, ConvertSizeOp,
-      ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
+      ConvertOutfeedEnqueueTupleOp, ConvertRangeOp, ConvertSigmoidOp,
+      ConvertSizeOp, ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
       ConvertSoftmaxOp<TF::SoftmaxOp, false>, ConvertSplitOp, ConvertSplitVOp,
       ConvertStridedSliceOp, ConvertStridedSliceGradOp, ConvertSumOp,
       ConvertTensorScatterUpdateOp, ConvertTileOp, ConvertTopKV2Op,

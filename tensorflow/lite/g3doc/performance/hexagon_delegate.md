@@ -229,19 +229,16 @@ ro.board.platform`).
         *   Add
         *   ArgMax
         *   ArgMin
-        *   AveragePool2D:
-        *   Constraints:
-        *   No Activation
+        *   AveragePool2D (without any activation)
         *   Concat
-        *   Conv2D:
-        *   Constraints:
-        *   stride width/height <= 3
-        *   DepthwiseConv2D:
-        *   Constraints:
-        *   Filter width == 3
-        *   depth_multiplier == 1
-        *   dilation only supported when stride == 1
-        *   Otherwise, stride height/width <= 3
+        *   Conv2D w/ following constraints:
+            *   stride width/height <= 3
+        *   DepthToSpace
+        *   DepthwiseConv2D w/ following constraints:
+            *   Filter width == 3
+            *   depth_multiplier == 1
+            *   dilation only supported when stride == 1
+            *   Otherwise, stride height/width <= 3
         *   FullyConnected (without any activation)
         *   L2Normalization (without any activation)
         *   Logistic (aka Sigmoid)
@@ -252,19 +249,18 @@ ro.board.platform`).
         *   Relu
         *   Relu6
         *   Reshape
-        *   Resize Bilinear:
-        *   Constraints:
-        *   Requested size <= 65
+        *   Resize Bilinear w/ following constraints:
+            *   Requested size <= 65
         *   Resize Nearest Neighbor
         *   SoftMax
+        *   SpaceToDepth
         *   Split
         *   Sub
         *   Tanh
         *   Transpose
-        *   TransposeConv2D:
-        *   Constraints:
-        *   stride height/width <= 3
-        *   dilation height/width == 1
+        *   TransposeConv2D w/ following constraints:
+            *   stride height/width <= 3
+            *   dilation height/width == 1
 *   How can I tell that the model is using the DSP when I enable the delegate?
     *   A log message will be printed whether delegate created or not, and
         another one with how many nodes are running using the delegate. \

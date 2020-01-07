@@ -387,7 +387,6 @@ class MemorySpaceAssignment {
     HloInstruction* instruction_;
     HloPosition defining_position_;
     std::vector<HloUse> uses_;
-    std::vector<HloInstruction*> bitcasts_;
     MemorySpace memory_space_;
     Chunk chunk_;
     int64 start_time_;

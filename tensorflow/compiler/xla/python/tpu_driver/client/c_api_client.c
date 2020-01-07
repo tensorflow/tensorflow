@@ -51,107 +51,15 @@ int main(int argc, char** argv) {
   fprintf(stdout, "------ Going to Open a TPU Driver ------\n");
   struct TpuDriver* driver = driver_fn.TpuDriver_Open("local://");
 
-  // An example of simple program to sum two parameters.
-  const char* hlo_module_text = R"(HloModule add_vec_module
-    ENTRY %add_vec (a: s32[256], b: s32[256]) -> s32[256] {
-      %a = s32[256] parameter(0)
-      %b = s32[256] parameter(1)
-      ROOT %sum = s32[256] add(%a, %b)
-    }
-    )";
-
-  fprintf(stdout, "------ Going to Compile a TPU program ------\n");
-  struct TpuCompiledProgramHandle* cph =
-      driver_fn.TpuDriver_CompileProgramFromText(driver, hlo_module_text,
-      /*num_replicas=*/1, /*eventc=*/0, /*eventv*/NULL);
-
-  fprintf(stdout, "------ Going to Load a TPU program ------\n");
-
-  struct TpuLoadedProgramHandle* lph =
-      driver_fn.TpuDriver_LoadProgram(driver, /*core_id=*/0, cph,
-      /*eventc=*/0, /*eventv=*/NULL);
-
-  const int size = 1024;
-
   fprintf(stdout, "------ Going to Allocate a TPU Buffer ------\n");
-  struct TpuBufferHandle* buf_a_handle =
-      driver_fn.TpuDriver_Allocate(driver, /*core-id=*/0, /*memory_region=*/1,
-        /*bytes=*/size, /*eventc=*/0, /*eventv=*/NULL);
-  fprintf(stdout, "------ Going to Allocate a TPU Buffer ------\n");
-  struct TpuBufferHandle* buf_b_handle =
-      driver_fn.TpuDriver_Allocate(driver, /*core-id=*/0, /*memory_region=*/1,
-        /*bytes=*/size, /*eventc=*/0, /*eventv=*/NULL);
-  fprintf(stdout, "------ Going to Allocate a TPU Buffer ------\n");
-  struct TpuBufferHandle* buf_sum_handle =
-      driver_fn.TpuDriver_Allocate(driver, /*core-id=*/0, /*memory_region=*/1,
-        /*bytes=*/size, /*eventc=*/0, /*eventv=*/NULL);
-
-  char a_src[size], b_src[size], sum_src[size];
-  for (int i = 0; i < size; ++i) {
-    a_src[i] = 1;
-    b_src[i] = 2;
-    sum_src[i] = 0;
-  }
-
-  TpuEvent* allocate_buf_a_events[] = {buf_a_handle->event};
-  fprintf(stdout, "------ Going to Transfer To Device ------\n");
-  struct TpuEvent* transfer_ev1 =
-      driver_fn.TpuDriver_TransferToDevice(driver, a_src, buf_a_handle,
-        /*eventc=*/1, /*eventv=*/allocate_buf_a_events);
-  TpuEvent* allocate_buf_b_events[] = {buf_a_handle->event};
-  fprintf(stdout, "------ Going to Transfer To Device ------\n");
-  struct TpuEvent* transfer_ev2 =
-      driver_fn.TpuDriver_TransferToDevice(driver, b_src, buf_b_handle,
-        /*eventc=*/1, /*eventv=*/allocate_buf_b_events);
-
-  fprintf(stdout, "------ Going to Execute a TPU program ------\n");
-  DeviceAssignment device_assignment = {1, 1};
-  TpuBufferHandle* input_buffer_handle[] = {buf_a_handle, buf_b_handle};
-  TpuBufferHandle* output_buffer_handle[] = {buf_sum_handle};
-  TpuEvent* transfer_events[] = {transfer_ev1, transfer_ev2};
-  struct TpuEvent* execute_event =
-      driver_fn.TpuDriver_ExecuteProgram(driver, lph,
-      /*inputc=*/2, /*input_buffer_handle=*/input_buffer_handle,
-      /*outputc=*/1, /*output_buffer_handle=*/output_buffer_handle,
-      device_assignment,
-      /*eventc=*/2, /*eventv*/transfer_events);
-
-  fprintf(stdout, "------ Going to Transfer From Device ------\n");
-  TpuEvent* execute_events[] = {execute_event};
-  struct TpuEvent* transfer_sum_event =
-      driver_fn.TpuDriver_TransferFromDevice(driver, buf_sum_handle, sum_src,
-        /*eventc=*/1, /*eventv=*/execute_events);
-
-  TpuStatus* status = driver_fn.TpuDriver_EventAwait(transfer_sum_event,
-                                                     10000000);
-  if (status->code != 0) {
-    fprintf(stdout, "Transfer Event Await: Code: %d, Message: %s\n",
-          status->code, status->msg);
-  }
-
-  fprintf(stdout, "------ Going to Unload a TPU program ------\n");
-  struct TpuEvent* unload_program_event = driver_fn.TpuDriver_UnloadProgram(
-      driver, lph, /*eventc=*/1, /*eventv=*/execute_events);
+  struct TpuBufferHandle* buffer_handle =
+      driver_fn.TpuDriver_Allocate(driver, 0, 1, 32 * 1024 * 1024, 0, NULL);
 
   fprintf(stdout, "------ Going to Deallocate a TPU Buffer ------\n");
-  struct TpuEvent* dealloc_ev1 = driver_fn.TpuDriver_Deallocate(driver,
-      buf_a_handle, /*eventc=*/0, /*eventv=*/NULL);
-  driver_fn.TpuDriver_FreeEvent(dealloc_ev1);
+  struct TpuEvent* tpu_event =
+      driver_fn.TpuDriver_Deallocate(driver, buffer_handle, 0, NULL);
 
-  fprintf(stdout, "------ Going to Deallocate a TPU Buffer ------\n");
-  struct TpuEvent* dealloc_ev2 = driver_fn.TpuDriver_Deallocate(driver,
-      buf_b_handle, /*eventc=*/0, /*eventv=*/NULL);
-  driver_fn.TpuDriver_FreeEvent(dealloc_ev2);
-
-  fprintf(stdout, "------ Going to Deallocate a TPU Buffer ------\n");
-  struct TpuEvent* dealloc_ev3 = driver_fn.TpuDriver_Deallocate(driver,
-      buf_sum_handle, /*eventc=*/0, /*eventv=*/NULL);
-  driver_fn.TpuDriver_FreeEvent(dealloc_ev3);
-
-  fprintf(stdout, "sum:\n");
-  for (size_t i = 0; i < size; ++i) {
-    fprintf(stdout, "%d ", sum_src[i]);
-  }
+  driver_fn.TpuDriver_FreeEvent(tpu_event);
 
   dlclose(handle);
   exit(EXIT_SUCCESS);

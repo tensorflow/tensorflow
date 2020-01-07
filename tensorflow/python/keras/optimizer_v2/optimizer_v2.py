@@ -783,7 +783,7 @@ class OptimizerV2(trackable.Trackable):
 
   # TODO(tanzheny): Maybe share this logic with base_layer.
   def set_weights(self, weights):
-    """Sett the weights of the optimizer.
+    """Set the weights of the optimizer.
 
     The weights of an optimizer are its state (ie, variables).
     This function takes the weight values associated with this

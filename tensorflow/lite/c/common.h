@@ -455,6 +455,20 @@ typedef struct {
   struct TfLiteDelegate* delegate;
 } TfLiteNode;
 
+// WARNING: This is an experimental interface that is subject to change.
+//
+// Currently, TfLiteDelegateParams has to be allocated in a way that it's
+// trivially destructable. It will be stored as `builtin_data` field in
+// `TfLiteNode` of the delegate node.
+//
+// See also the `CreateDelegateParams` function in `interpreter.cc` details.
+typedef struct {
+  struct TfLiteDelegate* delegate;
+  TfLiteIntArray* nodes_to_replace;
+  TfLiteIntArray* input_tensors;
+  TfLiteIntArray* output_tensors;
+} TfLiteDelegateParams;
+
 typedef struct TfLiteContext {
   // Number of tensors in the context.
   size_t tensors_size;
@@ -569,6 +583,30 @@ typedef struct TfLiteContext {
   TfLiteStatus (*ResizeTensorExplicit)(struct TfLiteContext* ctx,
                                        TfLiteTensor* tensor, int dims,
                                        const int* shape);
+
+  // This method provides a preview of post-delegation partitioning. Each
+  // TfLiteDelegateParams in the referenced array corresponds to one instance of
+  // the delegate kernel.
+  // Example usage:
+  //
+  // TfLiteIntArray* nodes_to_replace = ...;
+  // TfLiteDelegateParams* params_array;
+  // int num_partitions = 0;
+  // TF_LITE_ENSURE_STATUS(context->PreviewDelegatePartitioning(
+  //    context, delegate, nodes_to_replace, &params_array, &num_partitions));
+  // for (int idx = 0; idx < num_partitions; idx++) {
+  //    const auto& partition_params = params_array[idx];
+  //    ...
+  // }
+  //
+  // NOTE: The context owns the memory referenced by partition_params_array. It
+  // will be cleared with another call to PreviewDelegateParitioning, or after
+  // TfLiteDelegateParams::Prepare returns.
+  //
+  // WARNING: This is an experimental interface that is subject to change.
+  TfLiteStatus (*PreviewDelegatePartitioning)(
+      struct TfLiteContext* context, const TfLiteIntArray* nodes_to_replace,
+      TfLiteDelegateParams** partition_params_array, int* num_partitions);
 } TfLiteContext;
 
 typedef struct TfLiteRegistration {
@@ -691,20 +729,6 @@ typedef struct TfLiteDelegate {
 // Build a 'null' delegate, with all the fields properly set to their default
 // values.
 TfLiteDelegate TfLiteDelegateCreate();
-
-// WARNING: This is an experimental interface that is subject to change.
-//
-// Currently, TfLiteDelegateParams has to be allocated in a way that it's
-// trivially destructable. It will be stored as `builtin_data` field in
-// `TfLiteNode` of the delegate node.
-//
-// See also the `CreateDelegateParams` function in `interpreter.cc` details.
-typedef struct {
-  TfLiteDelegate* delegate;
-  TfLiteIntArray* nodes_to_replace;
-  TfLiteIntArray* input_tensors;
-  TfLiteIntArray* output_tensors;
-} TfLiteDelegateParams;
 
 #ifdef __cplusplus
 }  // extern "C"

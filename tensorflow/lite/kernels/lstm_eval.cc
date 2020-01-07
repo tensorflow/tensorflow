@@ -866,7 +866,7 @@ inline void LstmStepWithAuxInput(
 // Scalar values:
 //   quantized_cell_clip: quantized clip value for cell.
 //   quantized_proj_clip: quantized clip value for projection.
-//   cell_scale: the POT scale for cell state.
+//   cell_scale: the power of two scale for cell state.
 //
 // Zero points:
 //   activation_zp: zero point of activation
