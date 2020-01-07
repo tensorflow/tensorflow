@@ -823,6 +823,22 @@ class BASE_HLO_ClampOp  {
   }];
 }
 
+class BASE_HLO_CollectivePermuteOp {
+  string summary = "CollectivePermute operator";
+
+  string description = [{
+    CollectivePermute is a collective operation that sends and receives data
+    cross replicas.
+    Note that there are the following restrictions on the source_target_pair:
+    - Any two pairs should not have the same target replica id, and they should
+    not have the same source replica id.
+    - If a replica id is not a target in any pair, then the output on that
+    replica is a tensor consists of 0(s) with the same shape as the input.
+
+    See https://www.tensorflow.org/xla/operation_semantics#collectivepermute.
+
+  }];
+}
 class BASE_HLO_ConcatenateOp {
    string summary = "XLA's concatenate op";
 

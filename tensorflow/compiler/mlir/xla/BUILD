@@ -340,6 +340,7 @@ cc_library(
         ":hlo_ops_base_inc_gen",
         ":hlo_ops_inc_gen",
         ":xla_canonicalize_inc_gen",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:IR",

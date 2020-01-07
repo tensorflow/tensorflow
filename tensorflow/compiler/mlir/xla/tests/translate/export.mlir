@@ -219,6 +219,19 @@ func @callee(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> (tensor<4xi32>, tens
 // -----
 
 // CHECK:  HloModule
+func @main(%arg0: tensor<128x32xf32>) -> tensor<128x32xf32> {
+  %0 = "xla_hlo.collective_permute"(%arg0) {
+    source_target_pairs = dense<[[0, 1], [1, 2], [2, 3]]> : tensor<3x2xi64>
+  } : (tensor<128x32xf32>) -> tensor<128x32xf32>
+  return %0 : tensor<128x32xf32>
+}
+// CHECK:  ENTRY
+// CHECK:  [[ARG:%.*]] = f32[128,32] parameter(0)
+// CHECK:  ROOT [[RESULT:%.*]] = f32[128,32] collective-permute(f32[128,32] [[ARG]]), source_target_pairs={{\{\{}}0,1},{1,2},{2,3}}
+
+// -----
+
+// CHECK:  HloModule
 func @main(%arg0 : tensor<5x2xf32>,
            %arg1 : tensor<5x5xf32>,
            %arg2 : tensor<5x7xf32>) -> tensor<5x14xf32> {

@@ -849,6 +849,17 @@ def HLO_ConvOp : HLO_Op<"conv", [NoSideEffect]>, BASE_HLO_ConvOp {
 
 }
 
+def HLO_CollectivePermuteOp: HLO_Op<"collective_permute",
+    [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_CollectivePermuteOp {
+
+  let arguments = (ins
+    HLO_Tensor:$operand,
+    I64ElementsAttr:$source_target_pairs
+  );
+  let results = (outs HLO_Tensor);
+}
+
+
 def HLO_CopyOp: HLO_Op<"copy", [NoSideEffect, SameOperandsAndResultType]> {
   string summary = "Copy operator";
 
