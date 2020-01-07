@@ -50,7 +50,8 @@ XEventMetadata* XPlaneBuilder::GetOrCreateEventMetadata(
     metadata =
         XPlaneBuilder::GetOrCreateEventMetadata(++last_event_metadata_id_);
     metadata->set_name(std::string(name));
-    if (std::string event_name = TfOpEventName(name); event_name != name) {
+    std::string event_name = TfOpEventName(name);
+    if (event_name != name) {
       metadata->set_display_name(std::move(event_name));
     }
   }
