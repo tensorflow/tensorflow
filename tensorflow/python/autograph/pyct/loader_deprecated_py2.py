@@ -1,4 +1,3 @@
-# Lint as: python3
 # Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,42 +14,45 @@
 # ==============================================================================
 """Converting AST to code and Python entities.
 
+Python 2 compatibility version. Not maintained.
+
 Adapted from Tangent.
 """
+
+# TODO(mdan): Consolidate with parser and rename to parsing.py
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+# TODO(mdan): Use six for compatibility here.
 import atexit
-import importlib
+import imp
 import os
-import sys
 import tempfile
+
+import six
 
 from tensorflow.python.autograph.pyct import origin_info
 from tensorflow.python.autograph.pyct import parser
-from tensorflow.python.autograph.utils import compat_util
 
 
 def load_source(source, delete_on_exit):
   """Loads the given source code as a Python module."""
-  # TODO(mdan): Drop the linter verride once the CI stops running Py2.
-  with tempfile.NamedTemporaryFile(  # pylint:disable=unexpected-keyword-arg
-      mode='w', suffix='.py', delete=False, encoding='utf-8') as f:
+  if six.PY2:
+    source = source.encode('utf-8')
+    f = tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False)
+  else:
+    f = tempfile.NamedTemporaryFile(  # pylint:disable=unexpected-keyword-arg
+        mode='w', suffix='.py', delete=False, encoding='utf-8')
+
+  with f:
     module_name = os.path.basename(f.name[:-3])
-    file_name = f.name
     f.write(source)
 
   if delete_on_exit:
-    atexit.register(lambda: os.remove(file_name))
-
-  spec = importlib.util.spec_from_file_location(module_name, file_name)
-  module = importlib.util.module_from_spec(spec)
-  spec.loader.exec_module(module)
-  # TODO(mdan): Use our own garbage-collected cache instead of sys.modules.
-  sys.modules[module_name] = module
-  return module, file_name
+    atexit.register(lambda: os.remove(f.name))
+  return imp.load_source(module_name, f.name), f.name
 
 
 def load_ast(nodes,
@@ -89,6 +91,3 @@ def load_ast(nodes,
 
   # TODO(mdan): Return a structured object.
   return module, source, source_map
-
-
-compat_util.deprecated_py2_support(__name__)
