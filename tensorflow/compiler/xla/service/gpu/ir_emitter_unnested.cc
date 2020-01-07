@@ -2351,13 +2351,10 @@ llvm::Value* IrEmitterUnnested::EmitTilingKernel(
     const KernelMappingScheme& mapping_scheme, llvm::Type* index_ty,
     const TileElementGenerator& tile_element_generator) {
   absl::Span<const int64> dims_in_elems = mapping_scheme.GetDimsInElems();
-  std::vector<int64> dims_in_tiles = {
-      dims_in_elems[0],
+  std::vector<int64> dims_in_blocks = {
+      CeilOfRatio(dims_in_elems[0], mapping_scheme.GetTileSizeZ()),
       CeilOfRatio(dims_in_elems[1], mapping_scheme.GetTileSizeY()),
       CeilOfRatio(dims_in_elems[2], mapping_scheme.GetTileSizeX())};
-  std::vector<int64> dims_in_blocks = {
-      CeilOfRatio(dims_in_tiles[0], mapping_scheme.GetBlockSizeZ()),
-      dims_in_tiles[1], dims_in_tiles[2]};
 
   auto constant = [&](uint64 c) -> llvm::Constant* {
     return llvm::ConstantInt::get(index_ty, c);
@@ -2380,7 +2377,7 @@ llvm::Value* IrEmitterUnnested::EmitTilingKernel(
   KernelSupportLibrary ksl(&b_, llvm_ir::UnrollMode::kDefaultUnroll);
 
   // Calculate the starting tile.
-  const IrArray::Index starting_tile = [&]() {
+  const IrArray::Index starting_tile = [&] {
     llvm::Value* block_id = gpu::EmitCallToTargetIntrinsic(
         gpu::TargetIntrinsicID::kBlockIdx, {}, {}, &b_);
     llvm_ir::AddRangeMetadata(0, mapping_scheme.GetNumberOfBlocks(),
@@ -2393,12 +2390,10 @@ llvm::Value* IrEmitterUnnested::EmitTilingKernel(
                                   &b_);
 
     std::vector<llvm::Value*> multidim = {
-        b_.CreateMul(starting_block[0],
-                     llvm::ConstantInt::get(starting_block[0]->getType(),
-                                            mapping_scheme.GetBlockSizeZ()),
+        b_.CreateMul(starting_block[0], constant(mapping_scheme.GetTileSizeZ()),
                      "block_origin.z"),
         starting_block[1], starting_block[2]};
-    return IrArray::Index(multidim, dims_in_tiles, starting_block.GetType());
+    return IrArray::Index(multidim, dims_in_blocks, index_ty);
   }();
 
   auto emit_tile = [&](const IrArray::Index& tile_index) {
@@ -2408,9 +2403,9 @@ llvm::Value* IrEmitterUnnested::EmitTilingKernel(
       int64 tile_size_for_dim = mapping_scheme.GetTileSizeFor(i);
       // Only last row or column may not have full size.
       llvm::Value* is_last_row =
-          b_.CreateICmpEQ(tile_index[i], constant(dims_in_tiles[i] - 1));
+          b_.CreateICmpEQ(tile_index[i], constant(dims_in_blocks[i] - 1));
       int64 partial_row_size =
-          dims_in_elems[i] - (dims_in_tiles[i] - 1) * tile_size_for_dim;
+          dims_in_elems[i] - (dims_in_blocks[i] - 1) * tile_size_for_dim;
       output_tile_bounds[i] =
           b_.CreateSelect(is_last_row, constant(partial_row_size),
                           constant(tile_size_for_dim), "tile_bound");
@@ -2422,17 +2417,17 @@ llvm::Value* IrEmitterUnnested::EmitTilingKernel(
   };
 
   int dim_z = KernelMappingScheme::DimZ;
-  if (mapping_scheme.GetBlockSizeZ() == 1) {
+  if (mapping_scheme.GetTileSizeZ() == 1) {
     emit_tile(starting_tile);
   } else {
     llvm::Value* starting_tile_index_for_dim = starting_tile[dim_z];
-    llvm::Value* block_size_for_dim = constant(mapping_scheme.GetBlockSizeZ());
+    llvm::Value* block_size_for_dim = constant(mapping_scheme.GetTileSizeZ());
     llvm::Value* block_id_for_dim =
         b_.CreateUDiv(starting_tile_index_for_dim, block_size_for_dim);
     llvm::Value* last_block_for_dim = constant(dims_in_blocks[dim_z] - 1);
     llvm::Value* last_block_size_for_dim =
-        constant(dims_in_tiles[dim_z] -
-                 (dims_in_blocks[dim_z] - 1) * mapping_scheme.GetBlockSizeZ());
+        constant(dims_in_elems[dim_z] -
+                 (dims_in_blocks[dim_z] - 1) * mapping_scheme.GetTileSizeZ());
 
     llvm::Value* num_tiles_in_block =
         b_.CreateSelect(b_.CreateICmpEQ(last_block_for_dim, block_id_for_dim),
@@ -2478,11 +2473,11 @@ void IrEmitterUnnested::EmitHlo021Tile(
     absl::Span<const int64> reduced_output_dims,
     absl::Span<const int64> tiled_param_ids) {
   constexpr int kNumRows = 4;
-  KernelMappingScheme mapping_scheme(
-      reduced_output_dims, /*tile_size_y=*/kWarpSize,
-      /*tile_size_x=*/kWarpSize, /*block_size_z=*/1,
-      /*num_threads_y=*/kNumRows,
-      /*num_threads_x=*/kWarpSize, /*is_dilated_x=*/false);
+  KernelMappingScheme mapping_scheme(reduced_output_dims,
+                                     /*tile_sizes=*/{1, kWarpSize, kWarpSize},
+                                     /*num_threads_y=*/kNumRows,
+                                     /*num_threads_x=*/kWarpSize,
+                                     /*is_dilated_x=*/false);
   LaunchDimensions launch_dimensions(mapping_scheme.GetNumberOfBlocks(),
                                      mapping_scheme.GetThreadsPerBlock());
   llvm::Type* index_type =
@@ -2587,7 +2582,7 @@ void IrEmitterUnnested::EmitHlo021Tile(
 
         EmitTile(mapping_scheme, index, loop_name, ksl, &b_, y, x, tile_height,
                  tile_width, element_generator);
-        bool block_contains_multi_tiles = mapping_scheme.GetBlockSizeZ() > 1;
+        bool block_contains_multi_tiles = mapping_scheme.GetTileSizeZ() > 1;
 
         // If a tile block contains multiple tiles and shared memory buffers are
         // used, we need to wait for all threads to finish using the shared
@@ -2913,7 +2908,7 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
   std::array<int64, 3> reduction_tiling =
       GetReductionTiling(reduction_dimensions);
   int64 tile_size_y = reduction_tiling[1];
-  int64 block_size_z = reduction_tiling[0];
+  int64 tile_size_z = reduction_tiling[0];
   bool dilated_x =
       reduction_dimensions.is_row_reduction ||
       !IsUnrollingColumnReductionBeneficial(unnested_hlo, input_shape,
@@ -2947,7 +2942,8 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
   }
 
   KernelMappingScheme mapping_scheme(
-      reduction_dimensions.dimensions, tile_size_y, tile_size_x, block_size_z,
+      reduction_dimensions.dimensions,
+      /*tile_sizes=*/{tile_size_z, tile_size_y, tile_size_x},
       /*num_threads_y=*/1, num_threads_x, dilated_x);
   return ReductionCodegenInfo(mapping_scheme,
                               reduction_dimensions.is_row_reduction);

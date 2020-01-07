@@ -76,18 +76,16 @@ namespace gpu {
 class KernelMappingScheme {
  public:
   enum { DimZ = 0, DimY, DimX, DimTot };
-  KernelMappingScheme(absl::Span<const int64> dims_in_elems, int64 tile_size_y,
-                      int64 tile_size_x, int64 block_size_z,
-                      int64 num_threads_y, int64 num_threads_x,
-                      bool is_dilated_x)
+  KernelMappingScheme(absl::Span<const int64> dims_in_elems,
+                      absl::Span<const int64> tile_sizes, int64 num_threads_y,
+                      int64 num_threads_x, bool is_dilated_x)
       : dims_in_elems_{dims_in_elems[0], dims_in_elems[1], dims_in_elems[2]},
-        tile_sizes_{1, tile_size_y, tile_size_x},
-        block_size_z_{block_size_z},
+        tile_sizes_{tile_sizes[0], tile_sizes[1], tile_sizes[2]},
         num_threads_x_(num_threads_x),
         num_threads_y_(num_threads_y),
         dilated_x_(is_dilated_x) {
-    CHECK_EQ(tile_size_y % num_threads_y_, 0);
-    CHECK_EQ(tile_size_x % num_threads_x_, 0);
+    CHECK_EQ(tile_sizes[1] % num_threads_y_, 0);
+    CHECK_EQ(tile_sizes[2] % num_threads_x_, 0);
     VLOG(10) << "dims_in_elems_ = " << absl::StrJoin(dims_in_elems_, ",");
     if (!dilated_x_) {
       // dilated_x_=false is for the purpose of vectorization, which requires
@@ -99,10 +97,8 @@ class KernelMappingScheme {
   // Number of elements in each dimension (Z/Y/X respectively).
   absl::Span<const int64> GetDimsInElems() const { return dims_in_elems_; }
 
-  int64 GetBlockSizeZ() const { return block_size_z_; }
-
   int64 GetNumberOfBlocks() const {
-    return CeilOfRatio(dims_in_elems_[0], GetBlockSizeZ()) *
+    return CeilOfRatio(dims_in_elems_[0], GetTileSizeZ()) *
            CeilOfRatio(dims_in_elems_[1], GetTileSizeY()) *
            CeilOfRatio(dims_in_elems_[2], GetTileSizeX());
   }
@@ -111,6 +107,7 @@ class KernelMappingScheme {
   // and are processed by all threads in the block.
   int64 GetTileSizeFor(int d) const { return tile_sizes_.at(d); }
 
+  int64 GetTileSizeZ() const { return GetTileSizeFor(DimZ); }
   int64 GetTileSizeX() const { return GetTileSizeFor(DimX); }
   int64 GetTileSizeY() const { return GetTileSizeFor(DimY); }
 
@@ -129,9 +126,6 @@ class KernelMappingScheme {
 
   // The number of elements for each dimension of a tile.
   const std::array<int64, 3> tile_sizes_;
-
-  // The number of batch dimensions processed by a single block.
-  const int64 block_size_z_;
 
   // Number of threads used to process elements in the X direction of a tile.
   const int64 num_threads_x_;
