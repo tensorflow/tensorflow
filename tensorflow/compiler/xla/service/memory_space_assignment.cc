@@ -295,12 +295,16 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
     // yet they should be allocated in the same memory space, and both buffers
     // must be kept alive for the entire live range of TupleSelect. Instead,
     // just don't allocate TupleSelect in the alternate memory space.
+    // TODO(berkin): Not allocating add-dependencies either since they need to
+    // be treated specially. We should revisit this later.
     bool keep_in_default_mem = false;
     for (const HloPosition& position : interval.buffer->positions()) {
-      if (position.instruction->opcode() == HloOpcode::kTupleSelect) {
+      if (position.instruction->opcode() == HloOpcode::kTupleSelect ||
+          position.instruction->opcode() == HloOpcode::kAddDependency) {
         keep_in_default_mem = true;
         VLOG(4) << "Keeping value " << interval.buffer->ToShortString()
-                << " in default mem because it has a tuple-select position.";
+                << " in default mem because it has a tuple-select or "
+                << "add-dependency position.";
         break;
       }
     }
