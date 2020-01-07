@@ -892,24 +892,24 @@ class Layer(module.Module):
 
   @property
   def trainable_weights(self):
-    collected_weights = []
-    all_layers = self._gather_unique_layers()
-    for layer in all_layers:
-      if layer.trainable:
-        collected_weights.extend(layer._trainable_weights)
-    return self._dedup_weights(collected_weights)
+    if self.trainable:
+      children_weights = self._gather_children_attribute('trainable_weights')
+      return self._dedup_weights(self._trainable_weights + children_weights)
+    else:
+      return []
 
   @property
   def non_trainable_weights(self):
-    collected_weights = []
-    all_layers = self._gather_unique_layers()
-    for layer in all_layers:
-      if layer.trainable:
-        collected_weights.extend(layer._non_trainable_weights)
-      else:
-        collected_weights.extend(layer._trainable_weights +
-                                 layer._non_trainable_weights)
-    return self._dedup_weights(collected_weights)
+    if self.trainable:
+      children_weights = self._gather_children_attribute(
+          'non_trainable_weights')
+      non_trainable_weights = self._non_trainable_weights + children_weights
+    else:
+      children_weights = self._gather_children_attribute('weights')
+      non_trainable_weights = (
+          self._trainable_weights + self._non_trainable_weights +
+          children_weights)
+    return self._dedup_weights(non_trainable_weights)
 
   @property
   def weights(self):
@@ -2381,6 +2381,18 @@ class Layer(module.Module):
     # Skip the auto trackable from tf.Module to keep status quo. See the comment
     # at __delattr__.
     super(tracking.AutoTrackable, self).__setattr__(name, value)
+
+  def _gather_children_attribute(self, attribute):
+    assert attribute in {
+        'weights', 'trainable_weights', 'non_trainable_weights'
+    }
+    if hasattr(self, '_layers'):
+      nested_layers = trackable_layer_utils.filter_empty_layer_containers(
+          self._layers)
+      return list(
+          itertools.chain.from_iterable(
+              getattr(layer, attribute) for layer in nested_layers))
+    return []
 
   def _gather_unique_layers(self):
     """Returns the current layer and all its children depth first deduped.
