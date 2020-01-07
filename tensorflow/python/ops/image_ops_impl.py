@@ -773,25 +773,27 @@ def pad_to_bounding_box(image, offset_height, offset_width, target_height,
   
   This op does nothing if `offset_*` is zero and the image already has size
   `target_height` by `target_width`.
-  
+
   Usage example:
-    
+
     >>> x = tf.random.uniform((28, 28, 1))
     >>> tf.image.pad_to_bounding_box(x, 28, 28, 100, 100).shape
     TensorShape([100, 100, 1])
-    
+
   Args:
     image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
-      of shape `[height, width, channels]`.
+    of shape `[height, width, channels]`.
     offset_height: Number of rows of zeros to add on top.
     offset_width: Number of columns of zeros to add on the left.
     target_height: Height of output image.
     target_width: Width of output image.
+
   Returns:
     If `image` was 4-D, a 4-D float Tensor of shape
     `[batch, target_height, target_width, channels]`
     If `image` was 3-D, a 3-D float Tensor of shape
     `[target_height, target_width, channels]`
+
   Raises:
     ValueError: If the shape of `image` is incompatible with the `offset_*` or
     `target_*` arguments, or either `offset_height` or `offset_width` is
