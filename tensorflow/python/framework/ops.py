@@ -855,8 +855,11 @@ class Tensor(_TensorLike):
 class _EagerTensorBase(Tensor):
   """Base class for EagerTensor."""
 
-  # __int__, __float__ and __index__ may copy the tensor to CPU and
+  # __complex__, __int__, __float__ and __index__ may copy the tensor to CPU and
   # only work for scalars; values are cast as per numpy.
+  def __complex__(self):
+    return complex(self._numpy())
+
   def __int__(self):
     return int(self._numpy())
 
