@@ -210,9 +210,6 @@ static TfLiteStatus AllocateTemporaryTensorsIfRequired(TfLiteContext* context,
   TfLiteTensor* input = &context->tensors[node->inputs->data[0]];
   TfLiteTensor* filter = &context->tensors[node->inputs->data[1]];
 
-  int filter_width = filter->dims->data[2];
-  int filter_height = filter->dims->data[1];
-
   // If we're using the optimized multithreaded EigenTensor implementation of
   // convolution, it expects the filter weights to be transposed compared to
   // the normal TF Lite buffer format. Typical TF Lite weights are
