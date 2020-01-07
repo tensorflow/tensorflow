@@ -1094,6 +1094,22 @@ func @preventgradient(%arg0: tensor<1xi32>) -> tensor<1xi32> {
 }
 
 //===----------------------------------------------------------------------===//
+// InfeedDequeueTuple legalization
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func @infeed_dequeue_tuple
+func @infeed_dequeue_tuple() -> (tensor<3xi32>, tensor<4xf32>) {
+// CHECK: [[AFTER_ALL:%.*]] = "xla_hlo.after_all"() : () -> !xla_hlo.token
+// CHECK: [[INFEED:%.*]] = "xla_hlo.infeed"([[AFTER_ALL]]) {infeed_config = ""} : (!xla_hlo.token) -> tuple<tuple<tensor<3xi32>, tensor<4xf32>>, !xla_hlo.token>
+// CHECK: [[INFEED_VAL:%.*]] = "xla_hlo.get_tuple_element"([[INFEED]]) {index = 0 : i32} : (tuple<tuple<tensor<3xi32>, tensor<4xf32>>, !xla_hlo.token>) -> tuple<tensor<3xi32>, tensor<4xf32>>
+// CHECK: [[RES_1:%.*]] = "xla_hlo.get_tuple_element"([[INFEED_VAL]]) {index = 0 : i32} : (tuple<tensor<3xi32>, tensor<4xf32>>) -> tensor<3xi32>
+// CHECK: [[RES_2:%.*]] = "xla_hlo.get_tuple_element"([[INFEED_VAL]]) {index = 1 : i32} : (tuple<tensor<3xi32>, tensor<4xf32>>) -> tensor<4xf32>
+// CHECK: return [[RES_1]], [[RES_2]]
+  %0:2 = "tf.InfeedDequeueTuple"() : () -> (tensor<3xi32>, tensor<4xf32>)
+  return %0#0, %0#1 : tensor<3xi32>, tensor<4xf32>
+}
+
+//===----------------------------------------------------------------------===//
 // Nullary op legalizations.
 //===----------------------------------------------------------------------===//
 

@@ -2480,6 +2480,76 @@ class ConvertOneHotOp : public OpRewritePattern<TF::OneHotOp> {
   }
 };
 
+// Converts InfeedEnqueueTuple to XLA HLO after_all, infeed and
+// get_tuple_element ops.
+//
+// All HLO infeed ops expect a HLO token type operand and produce a tuple
+// containing a token. This HLO token type is used to order multiple infeed
+// operations within a computation. The token type can come from other
+// infeed/outfeed/send/recv ops or can be generated using an after_all op with
+// no operands. Here we emit an after_all op to generate the token type operand
+// of infeed.
+//
+// For example the following IR:
+// %0:2 = "tf.InfeedDequeueTuple"() : () -> (tensor<3xi32>, tensor<4xf32>)
+//
+// would be lowered to
+//
+// %token = "xla_hlo.after_all"() : () -> !xla_hlo.token
+// %data_and_token = "xla_hlo.infeed"(%token) {infeed_config = ""} :
+//      (!xla_hlo.token) -> tuple<tuple<tensor<3xi32>, tensor<4xf32>>,
+//      !xla_hlo.token>
+// %data = "xla_hlo.get_tuple_element"(%data_and_token) {index = 0}
+// %0#0 = "xla_hlo.get_tuple_element"(%data) {index = 0}
+// %0#1 = "xla_hlo.get_tuple_element"(%data) {index = 1}
+//
+class ConvertInfeedDequeueTupleOp
+    : public OpRewritePattern<TF::InfeedDequeueTupleOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(TF::InfeedDequeueTupleOp op,
+                                     PatternRewriter &rewriter) const override {
+    std::vector<Type> result_types(op.outputs().size());
+    for (auto idx_and_output : llvm::enumerate(op.outputs())) {
+      result_types[idx_and_output.index()] = (idx_and_output.value().getType());
+    }
+    // Infeed takes a single token operand. Generate the token using after_all
+    // op to pass to the infeed op.
+    auto afterall = rewriter.create<AfterAllOp>(
+        op.getLoc(), xla_hlo::TokenType::get(rewriter.getContext()),
+        ValueRange());
+
+    // Emit infeed op.
+    // The result type of infeed is a tuple(tuple(result types), token type).
+    auto data_tuple_type =
+        mlir::TupleType::get(result_types, rewriter.getContext());
+    auto data_and_token_type = mlir::TupleType::get(
+        {data_tuple_type, afterall.getType()}, rewriter.getContext());
+
+    auto data_and_token =
+        rewriter.create<InfeedOp>(op.getLoc(), data_and_token_type, afterall,
+                                  /*infeed_config=*/rewriter.getStringAttr(""));
+
+    // The infeed instruction produces a tuple of the infeed data and a token
+    // type. Emit get_tuple_element to get infeed data tuple.
+    auto data_tuple = rewriter.create<GetTupleElementOp>(
+        op.getLoc(), data_tuple_type, data_and_token,
+        rewriter.getI32IntegerAttr(0));
+
+    // Emit get_tuple_element for each result.
+    std::vector<Value> results;
+    for (auto idx_and_type : llvm::enumerate(result_types)) {
+      auto tuple_element = rewriter.create<GetTupleElementOp>(
+          op.getLoc(), idx_and_type.value(), data_tuple,
+          rewriter.getI32IntegerAttr(idx_and_type.index()));
+      results.push_back(tuple_element);
+    }
+    rewriter.replaceOp(op, ValueRange(results));
+    return matchSuccess();
+  }
+};
+
 // Converts tf.OutfeedEnqueueTuple to XLA HLO tuple, after_all and outfeed ops.
 //
 // XLA HLO outfeed op expects a token, which we generate by emitting an
@@ -2803,8 +2873,9 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
       ConvertConv2D, ConvertConv2DBackpropFilterOp,
       ConvertConv2DBackpropInputOp, ConvertEinsumOp,
       ConvertFusedBatchNormGradOp, ConvertFusedBatchNormGradV2Op,
-      ConvertFusedBatchNormGradV3Op, ConvertFusedBatchNormV3Op, ConvertMaxOp,
-      ConvertMaxPoolOp, ConvertMaxPoolGradOp, ConvertMeanOp, ConvertOneHotOp,
+      ConvertFusedBatchNormGradV3Op, ConvertFusedBatchNormV3Op,
+      ConvertInfeedDequeueTupleOp, ConvertMaxOp, ConvertMaxPoolOp,
+      ConvertMaxPoolGradOp, ConvertMeanOp, ConvertOneHotOp,
       ConvertOutfeedEnqueueTupleOp, ConvertRangeOp, ConvertSigmoidOp,
       ConvertSizeOp, ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
       ConvertSoftmaxOp<TF::SoftmaxOp, false>, ConvertSplitOp, ConvertSplitVOp,
