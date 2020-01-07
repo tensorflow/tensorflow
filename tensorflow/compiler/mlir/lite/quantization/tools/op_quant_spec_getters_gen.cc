@@ -20,7 +20,7 @@ limitations under the License.
 #include "llvm/TableGen/Main.h"
 #include "llvm/TableGen/Record.h"
 #include "llvm/TableGen/TableGenBackend.h"
-#include "mlir/TableGen/Operator.h"  // TF:local_config_mlir
+#include "mlir/TableGen/Operator.h"  // TF:llvm-project
 
 using llvm::LessRecord;
 using llvm::raw_ostream;
@@ -36,7 +36,7 @@ using mlir::tblgen::Operator;
 // NOLINTNEXTLINE
 static bool OpQuantSpecWriter(raw_ostream &os, RecordKeeper &records) {
   llvm::Regex acc_uniform_trait_regex{"AccumulatorUniformScale<([0-9]*),"};
-  llvm::Regex coeff_index_trait_regex{"AffineOpCoefficient<([0-9]*),"};
+  llvm::Regex coeff_index_trait_regex{"AffineOpCoefficient<(-?[0-9]*),"};
   llvm::Regex fixed_uniform_trait_regex{
       "FixedResultUniformScale<([0-9]+).*(true|false)>"};
   emitSourceFileHeader("Generated Ops Quant Spec Getters", os);

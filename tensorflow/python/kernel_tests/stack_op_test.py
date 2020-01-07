@@ -235,6 +235,16 @@ class StackOpTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError, r"axis = -3 not in \[-2, 2\)"):
       array_ops.stack(t, axis=-3)
 
+  def testComplex(self):
+    np.random.seed(7)
+    with self.session(use_gpu=True):
+      for shape in (2,), (3,), (2, 3), (3, 2), (4, 3, 2):
+        for dtype in [np.complex64, np.complex128]:
+          data = np.random.randn(*shape).astype(dtype)
+          xs = list(map(constant_op.constant, data))
+          c = array_ops.stack(xs)
+          self.assertAllEqual(self.evaluate(c), data)
+
 
 class AutomaticStackingTest(test.TestCase):
 

@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <memory>
 
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
 
 namespace mlir {
 
@@ -46,7 +46,8 @@ std::unique_ptr<OpPassBase<ModuleOp>> CreateTFShapeInferencePass();
 // Optimizes Tensorflow graph.
 std::unique_ptr<OpPassBase<FuncOp>> CreateTFOptimizePass();
 
-struct StandardPipelineOptions : public PassOptions<StandardPipelineOptions> {
+struct StandardPipelineOptions
+    : public PassPipelineOptions<StandardPipelineOptions> {
   Option<bool> enable_inliner{*this, "enable-inliner",
                               llvm::cl::desc("Enable inliner."),
                               llvm::cl::init(false)};
@@ -79,8 +80,7 @@ std::unique_ptr<OpPassBase<FuncOp>> CreateSwitchFoldPass();
 std::unique_ptr<OpPassBase<FuncOp>> CreateTFExecutorIslandCoarseningPass();
 
 // Create a pass to prune tf_executor.graph from dead nodes.
-std::unique_ptr<OpPassBase<FuncOp>> CreateTFExecutorGraphPruningPass(
-    bool skip_main_func = false);
+std::unique_ptr<OpPassBase<FuncOp>> CreateTFExecutorGraphPruningPass();
 
 // Prunes unreachable operations of a tf_executor.graph operation.
 void PruneGraph(GraphOp graph);

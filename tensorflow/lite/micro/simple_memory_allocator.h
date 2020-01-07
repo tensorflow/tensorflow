@@ -35,7 +35,7 @@ class SimpleMemoryAllocator {
   // in ascending order.
   uint8_t* AllocateFromTail(size_t size, size_t alignment);
 
-  int GetDataSize() const { return data_size_; }
+  size_t GetDataSize() const { return data_size_; }
 
   // Child allocator is something like a temporary allocator. Memory allocated
   // by the child allocator will be freed once the child allocator is
@@ -50,7 +50,7 @@ class SimpleMemoryAllocator {
   ~SimpleMemoryAllocator();
 
  private:
-  int data_size_ = 0;
+  size_t data_size_ = 0;
   size_t data_size_max_;
   uint8_t* data_;
   SimpleMemoryAllocator* parent_allocator_ = nullptr;

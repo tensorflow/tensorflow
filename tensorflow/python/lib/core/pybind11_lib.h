@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "pybind11/pybind11.h"
-#include "pybind11/pytypes.h"
+#include "include/pybind11/pybind11.h"
+#include "include/pybind11/pytypes.h"
 
 #ifndef TENSORFLOW_PYTHON_LIB_CORE_PYBIND11_LIB_H_
 #define TENSORFLOW_PYTHON_LIB_CORE_PYBIND11_LIB_H_
@@ -52,7 +52,7 @@ inline py::object pyo_or_throw(PyObject* ptr) {
   if (PyErr_Occurred() || ptr == nullptr) {
     throw py::error_already_set();
   }
-  return py::reinterpret_steal<py::object>(ptr);
+  return pyo(ptr);
 }
 
 void throwTypeError(const char* error_message) {

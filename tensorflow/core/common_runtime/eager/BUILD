@@ -440,6 +440,23 @@ tf_cc_test(
 )
 
 filegroup(
+    name = "pywrap_eager_hdrs",
+    srcs = [
+        "attr_builder.h",
+        "context.h",
+        "eager_executor.h",
+        "eager_operation.h",
+        "kernel_and_device.h",
+        "tensor_handle.h",
+        "tensor_handle_data.h",
+    ],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/python:__pkg__",
+    ],
+)
+
+filegroup(
     name = "srcs",
     srcs = glob(
         [

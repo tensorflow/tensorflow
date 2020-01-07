@@ -17,6 +17,7 @@ load(
     "tf_legacy_srcs_no_runtime_google",
     "tf_logging_deps",
     "tf_monitoring_deps",
+    "tf_platform_alias",
     "tf_platform_deps",
     "tf_protobuf_compiler_deps",
     "tf_protobuf_deps",
@@ -380,6 +381,10 @@ cc_library(
         "protobuf_util.cc",
     ],
     hdrs = ["protobuf.h"],
+    defines = select({
+        "//tensorflow:android": ["TENSORFLOW_LITE_PROTOS"],
+        "//conditions:default": [],
+    }),
     deps = [
         ":platform",
         ":types",
@@ -928,6 +933,16 @@ filegroup(
     visibility = ["//tensorflow/core:__pkg__"],
 )
 
+# These are the sources needed to build the target tensorflow/core:mobile_srcs_no_runtime.
+# We want to get rid of all such android targets, as described in
+# https://github.com/tensorflow/community/pull/179.
+# This temporary filegroup is allows us to remove the legacy "build_config" directories.
+filegroup(
+    name = "legacy_mobile_srcs",
+    srcs = tf_platform_alias("legacy_mobile_srcs"),
+    visibility = ["//tensorflow/core:__pkg__"],
+)
+
 bzl_library(
     name = "build_config_root_bzl",
     srcs = [
@@ -959,14 +974,15 @@ exports_files(
 
 exports_files(
     [
-        "stacktrace.h",
-        "cpu_info.h",
-        "types.h",
-        "macros.h",
         "abi.h",
-        "logging.h",
-        "platform.h",
         "byte_order.h",
+        "cpu_info.cc",
+        "cpu_info.h",
+        "logging.h",
+        "macros.h",
+        "platform.h",
+        "stacktrace.h",
+        "types.h",
     ],
     visibility = ["//tensorflow:__subpackages__"],
 )

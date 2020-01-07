@@ -1486,7 +1486,6 @@ rinfo_.push_back({csinfo_.tanh_grad,
   //           false otherwise.
   static bool FusedMatMulRewrite(const Node* n) {
     bool trans_a;
-    std::vector<string> fused_ops;
 
     // Do not rewrite with transpose attribute because reorder has performance
     // impact.

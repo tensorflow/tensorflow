@@ -90,6 +90,16 @@ TEST_F(OpenCLTest, Texture2DF16) {
       TensorTests({DataType::FLOAT16, TensorStorageType::TEXTURE_2D}, &env_));
 }
 
+TEST_F(OpenCLTest, Texture3DF32) {
+  ASSERT_OK(
+      TensorTests({DataType::FLOAT32, TensorStorageType::TEXTURE_3D}, &env_));
+}
+
+TEST_F(OpenCLTest, Texture3DF16) {
+  ASSERT_OK(
+      TensorTests({DataType::FLOAT16, TensorStorageType::TEXTURE_3D}, &env_));
+}
+
 TEST_F(OpenCLTest, TextureArrayF32) {
   ASSERT_OK(TensorTests({DataType::FLOAT32, TensorStorageType::TEXTURE_ARRAY},
                         &env_));

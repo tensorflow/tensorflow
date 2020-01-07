@@ -156,7 +156,7 @@ class Network(base_layer.Layer):
   # The key of _layer_call_argspecs is a layer. tf.Module._flatten will fail to
   # flatten the key since it is trying to convert Trackable/Layer to a string.
   _TF_MODULE_IGNORED_PROPERTIES = frozenset(itertools.chain(
-      ('_layer_call_argspecs',),
+      ('_layer_call_argspecs', '_compiled_trainable_state'),
       base_layer.Layer._TF_MODULE_IGNORED_PROPERTIES
   ))
 
@@ -330,8 +330,6 @@ class Network(base_layer.Layer):
       self._layer_call_argspecs[layer] = tf_inspect.getfullargspec(layer.call)
       layer._attribute_sentinel.add_parent(self._attribute_sentinel)
 
-    self._track_layers(layers)
-
     # Create the node linking internal inputs to internal outputs.
     node_module.Node(
         outbound_layer=self,
@@ -397,18 +395,25 @@ class Network(base_layer.Layer):
       return any(layer.dynamic for layer in self.layers)
     return self._dynamic or any(layer.dynamic for layer in self.layers)
 
-  def _track_layers(self, layers):
-    """Add Trackable dependencies on a list of Layers."""
+  @property
+  def _layer_checkpoint_dependencies(self):
+    """Dictionary of layer dependencies to be included in the checkpoint."""
+    # Use getattr becuase this function can be called from __setattr__, at which
+    # point the _is_graph_network attribute has not been created.
+    if (not getattr(self, '_is_graph_network', False) and
+        base_layer_utils.is_subclassed(self)):
+      return {}  # Only add layer dependencies for graph networks
+
     weight_layer_index = 0
-    for layer_index, layer in enumerate(layers):
+
+    dependencies = {}
+    for layer_index, layer in enumerate(self.layers):
       try:
         if layer.weights:
           # Keep a separate index for layers which have weights. This allows
           # users to insert Layers without weights anywhere in the network
           # without breaking checkpoints.
-          self._track_trackable(
-              layer, name='layer_with_weights-%d' % weight_layer_index,
-              overwrite=True)
+          dependencies['layer_with_weights-%d' % weight_layer_index] = layer
           weight_layer_index += 1
       except ValueError:
         # The layer might have weights, but may not be built yet. We just treat
@@ -417,8 +422,31 @@ class Network(base_layer.Layer):
 
       # Even if it doesn't have weights, we should still track everything in
       # case it has/will have Trackable dependencies.
-      self._track_trackable(
-          layer, name='layer-%d' % layer_index, overwrite=True)
+      dependencies['layer-%d' % layer_index] = layer
+    return dependencies
+
+  @property
+  def _checkpoint_dependencies(self):
+    dependencies = [
+        trackable.TrackableReference(name=name, ref=layer)
+        for name, layer in self._layer_checkpoint_dependencies.items()]
+    dependencies.extend(super(Network, self)._checkpoint_dependencies)
+    return dependencies
+
+  def _lookup_dependency(self, name):
+    layer_dependencies = self._layer_checkpoint_dependencies
+    if name in layer_dependencies:
+      return layer_dependencies[name]
+    return super(Network, self)._lookup_dependency(name)
+
+  def _handle_deferred_layer_dependencies(self, layers):
+    """Handles layer checkpoint dependencies that are added after init."""
+    layer_checkpoint_dependencies = self._layer_checkpoint_dependencies
+    layer_to_name = {v: k for k, v in layer_checkpoint_dependencies.items()}
+    for layer in layers:
+      if layer in layer_to_name:
+        self._handle_deferred_dependencies(name=layer_to_name[layer],
+                                           trackable=layer)
 
   def __setattr__(self, name, value):
     if not getattr(self, '_self_setattr_tracking', True):
@@ -686,8 +714,7 @@ class Network(base_layer.Layer):
                            'Instead, in order to instantiate and build your '
                            'model, `call` your model on real tensor data (of '
                            'the correct dtype).')
-    if self._layers:
-      self._track_layers(self._layers)
+
     self.built = True
 
   def call(self, inputs, training=None, mask=None):
@@ -1008,11 +1035,9 @@ class Network(base_layer.Layer):
                     signatures, options)
 
   def save_weights(self, filepath, overwrite=True, save_format=None):
-    """Saves all layer weights.
-
+     """Saves all layer weights.
     Either saves in HDF5 or in TensorFlow format based on the `save_format`
     argument.
-
     When saving in HDF5 format, the weight file has:
       - `layer_names` (attribute), a list of strings
           (ordered names of model layers).
@@ -1022,7 +1047,6 @@ class Network(base_layer.Layer):
               (ordered names of weights tensor of the layer).
           - For every weight in the layer, a dataset
               storing the weight value, named after the weight tensor.
-
     When saving in TensorFlow format, all objects referenced by the network are
     saved in the same format as `tf.train.Checkpoint`, including any `Layer`
     instances or `Optimizer` instances assigned to object attributes. For
@@ -1032,14 +1056,12 @@ class Network(base_layer.Layer):
     `Layer` instances must be assigned to object attributes, typically in the
     constructor. See the documentation of `tf.train.Checkpoint` and
     `tf.keras.Model` for details.
-
     While the formats are the same, do not mix `save_weights` and
     `tf.train.Checkpoint`. Checkpoints saved by `Model.save_weights` should be
     loaded using `Model.load_weights`. Checkpoints saved using
     `tf.train.Checkpoint.save` should be restored using the corresponding
     `tf.train.Checkpoint.restore`. Prefer `tf.train.Checkpoint` over
     `save_weights` for training checkpoints.
-
     The TensorFlow format matches objects and variables by starting at a root
     object, `self` for `save_weights`, and greedily matching attribute
     names. For `Model.save` this is the `Model`, and for `Checkpoint.save` this
@@ -1047,9 +1069,8 @@ class Network(base_layer.Layer):
     means saving a `tf.keras.Model` using `save_weights` and loading into a
     `tf.train.Checkpoint` with a `Model` attached (or vice versa) will not match
     the `Model`'s variables. See the [guide to training
-    checkpoints](https://www.tensorflow.org/guide/checkpoint) for details
+    checkpoints](https://www.tensorflow.org/alpha/guide/checkpoints) for details
     on the TensorFlow format.
-
     Arguments:
         filepath: String, path to the file to save the weights to. When saving
             in TensorFlow format, this is the prefix used for checkpoint files
@@ -1060,7 +1081,6 @@ class Network(base_layer.Layer):
         save_format: Either 'tf' or 'h5'. A `filepath` ending in '.h5' or
             '.keras' will default to HDF5 if `save_format` is `None`. Otherwise
             `None` defaults to 'tf'.
-
     Raises:
         ImportError: If h5py is not available when attempting to save in HDF5
             format.
@@ -1079,6 +1099,8 @@ class Network(base_layer.Layer):
         save_format = 'tf'
       elif user_format in ('hdf5', 'h5', 'keras'):
         save_format = 'h5'
+      elif user_format in ("JSON","json"):
+        save_format = "json"
       else:
         raise ValueError(
             'Unknown format "%s". Was expecting one of {"tf", "h5"}.' % (
@@ -1104,7 +1126,10 @@ class Network(base_layer.Layer):
         return
     if save_format == 'h5':
       with h5py.File(filepath, 'w') as f:
-        hdf5_format.save_weights_to_hdf5_group(f, self.layers)
+        saving.save_weights_to_hdf5_group(f, self.layers)
+    elif save_format == 'json':
+      with open("model.json", "w") as file:
+      file.write(self.to_json())
     else:
       if context.executing_eagerly():
         session = None
@@ -1127,7 +1152,8 @@ class Network(base_layer.Layer):
           model_checkpoint_path=filepath,
           save_relative_paths=True,
           all_model_checkpoint_paths=[filepath])
-
+      
+      
   def load_weights(self, filepath, by_name=False, skip_mismatch=False):
     """Loads all layer weights, either from a TensorFlow or an HDF5 weight file.
 
@@ -1437,15 +1463,18 @@ class Network(base_layer.Layer):
 
     # Insert layers and update other layer attrs.
     layer_set = set(self._layers)
+    deferred_layers = []
     for layer in layers:
       if layer not in layer_set:
         self._layers.append(layer)
+        deferred_layers.append(layer)
         self._layer_call_argspecs[layer] = tf_inspect.getfullargspec(layer.call)
 
         # This allows the added layer to broadcast mutations to the current
         # layer, which is necessary to ensure cache correctness.
         layer._attribute_sentinel.add_parent(self._attribute_sentinel)
         layer_set.add(layer)
+    self._handle_deferred_layer_dependencies(deferred_layers)
 
   def _assert_weights_created(self):
     """Asserts that all the weights for the network have been created.

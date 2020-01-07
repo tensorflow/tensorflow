@@ -15,7 +15,15 @@ limitations under the License.
 
 #include "tensorflow/lite/c/c_api_experimental.h"
 
+#include <stdint.h>
+
+#include <memory>
+
+#include "tensorflow/lite/builtin_ops.h"
+#include "tensorflow/lite/c/c_api.h"
 #include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/mutable_op_resolver.h"
 
 #ifdef __cplusplus
 extern "C" {

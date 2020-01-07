@@ -184,7 +184,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@llvm//:core",
+        "@llvm-project//llvm:core",
     ],
 )
 
@@ -198,8 +198,8 @@ cc_library(
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@llvm//:core",
-        "@llvm//:support",
+        "@llvm-project//llvm:core",
+        "@llvm-project//llvm:support",
     ],
 )
 
@@ -287,8 +287,8 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
-        "@llvm//:core",
-        "@llvm//:support",
+        "@llvm-project//llvm:core",
+        "@llvm-project//llvm:support",
     ],
 )
 
@@ -306,7 +306,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/compiler/xla/service/llvm_ir:loop_emitter",
         "//tensorflow/core:lib",
-        "@llvm//:core",
+        "@llvm-project//llvm:core",
     ],
 )
 
@@ -335,8 +335,8 @@ cc_library(
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@llvm//:core",
-        "@llvm//:support",
+        "@llvm-project//llvm:core",
+        "@llvm-project//llvm:support",
     ],
 )
 
@@ -594,7 +594,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/algorithm:container",
-        "@llvm//:core",
+        "@llvm-project//llvm:core",
     ],
 )
 
@@ -1068,7 +1068,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
         "@com_google_absl//absl/memory",
-        "@llvm//:core",
+        "@llvm-project//llvm:core",
     ],
     alwayslink = True,  # Contains per-platform transfer manager registration
 )
@@ -1093,7 +1093,6 @@ cc_library(
         ":gpu_copy_insertion",
         ":gpu_executable",
         ":gpu_hlo_schedule",
-        ":gpu_hlo_support_checker",
         ":gpu_layout_assignment",
         ":gpu_sanitize_constant_names",
         ":gpu_scatter_expander",
@@ -1116,6 +1115,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:call_inliner",
         "//tensorflow/compiler/xla/service:conditional_simplifier",
+        "//tensorflow/compiler/xla/service:convolution_group_converter",
         "//tensorflow/compiler/xla/service:depthwise_convolution_converter",
         "//tensorflow/compiler/xla/service:dot_decomposer",
         "//tensorflow/compiler/xla/service:dump",
@@ -1161,7 +1161,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
-        "@llvm//:core",
+        "@llvm-project//llvm:core",
     ],
 )
 
@@ -1196,6 +1196,7 @@ cc_library(
         ":gpu_conv_padding_legalization",
         ":gpu_conv_rewriter",
         ":gpu_layout_assignment",
+        ":ir_emission_utils",
         ":reduction_degenerate_dim_remover",
         ":reduction_dimension_grouper",
         ":reduction_layout_normalizer",
@@ -1250,6 +1251,7 @@ cc_library(
         "amdgpu_compiler.h",
     ],
     deps = [
+        ":gemm_rewriter",
         ":gpu_compiler",
         ":gpu_conv_algorithm_picker",
         ":gpu_conv_padding_legalization",
@@ -1414,18 +1416,6 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "gpu_hlo_support_checker",
-    srcs = ["gpu_hlo_support_checker.cc"],
-    hdrs = ["gpu_hlo_support_checker.h"],
-    deps = [
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/compiler/xla/service:hlo_pass",
-        "//tensorflow/core:lib",
-    ],
-)
-
-cc_library(
     name = "stream_executor_util",
     srcs = ["stream_executor_util.cc"],
     hdrs = ["stream_executor_util.h"],
@@ -1449,20 +1439,6 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-    ],
-)
-
-tf_cc_test(
-    name = "gpu_hlo_support_checker_test",
-    srcs = ["gpu_hlo_support_checker_test.cc"],
-    deps = [
-        ":gpu_hlo_support_checker",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:test",
-        "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
     ],
 )
 
@@ -1603,6 +1579,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service:pattern_matcher",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
     ],
 )
 

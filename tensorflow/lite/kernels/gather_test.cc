@@ -294,5 +294,16 @@ TEST(GatherOpTest, SimpleString) {
   ASSERT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
   EXPECT_THAT(m.GetStringOutput(), ElementsAreArray({"A", "C"}));
 }
+
+TEST(GatherOpTest, 2DIndexString) {
+  GatherOpModel m({TensorType_STRING, {3}}, {TensorType_INT32, {2, 3}});
+  m.SetStringInput({"A", "B", "C"});
+  m.SetPositions<int32_t>({0, 2, 1, 1, 0, 2});
+  m.Invoke();
+  ASSERT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3}));
+  EXPECT_THAT(m.GetStringOutput(),
+              ElementsAreArray({"A", "C", "B", "B", "A", "C"}));
+}
+
 }  // namespace
 }  // namespace tflite

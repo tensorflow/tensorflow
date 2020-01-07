@@ -13,18 +13,30 @@ py_library(
     ],
 )
 
+py_library(
+    name = "common_v1",
+    srcs = ["common_v1.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
 filegroup(
     name = "test_utilities",
     testonly = True,
     data = [
-        "@llvm//:FileCheck",
+        "@llvm-project//llvm:FileCheck",
     ],
 )
 
 # Drop trailing ".py" from all test file names.
 all_test_basenames = [py[:-3] for py in glob(
     ["*.py"],
-    exclude = ["common.py"],
+    exclude = [
+        "common.py",
+        "common_v1.py",
+    ],
 )]
 
 # Instantiate all the tests.

@@ -120,7 +120,7 @@ class OverrideThreadpoolTest(test_base.DatasetTestBase,
     graph = graph_pb2.GraphDef().FromString(
         self.evaluate(dataset._as_serialized_graph()))
     self.assertTrue(
-        any([node.op != "MaxIntraOpParallelismDataset" for node in graph.node]))
+        any(node.op != "MaxIntraOpParallelismDataset" for node in graph.node))
 
 
 if __name__ == "__main__":

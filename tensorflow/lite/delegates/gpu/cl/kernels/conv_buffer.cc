@@ -232,8 +232,8 @@ Status ConvBuffer::BindArguments() {
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(biases_.GetMemoryPtr()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWBatchedHDB()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWBatchedHDB()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWBatchedHSB()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWBatchedHSB()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(kernel_size_));
   RETURN_IF_ERROR(
       kernel_.SetBytesAuto(int2(dilation_.x * src_[0]->Batch(), dilation_.y)));
@@ -247,7 +247,7 @@ int3 ConvBuffer::GetGridSize() const {
   const int grid_x =
       IntegralDivideRoundUp(dst_[0]->Width() * dst_[0]->Batch(), x_elements_);
   const int grid_y = IntegralDivideRoundUp(dst_[0]->Height(), y_elements_);
-  const int grid_z = dst_[0]->Depth();
+  const int grid_z = dst_[0]->Slices();
   return int3(grid_x, grid_y, grid_z);
 }
 

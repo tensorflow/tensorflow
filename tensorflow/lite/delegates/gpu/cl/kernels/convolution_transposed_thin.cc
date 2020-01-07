@@ -87,24 +87,17 @@ std::string GenerateConvolutionTransposedCode(
     for (int x = 0; x < kernel_size.x; ++x) {
       std::string r_s =
           "  r[" + std::to_string(y) + "][" + std::to_string(x) + "]";
-      const std::string to_accum =
-          op_def.precision == CalculationsPrecision::F32_F16 ? "convert_float"
-                                                             : "";
       for (int d = 0; d < dst_channels; ++d) {
-        c += r_s + postfix[d] + " = " + to_accum + "(dot(src, filters[" +
-             std::to_string(index) + "]));\n";
+        c += r_s + postfix[d] + " = dot(src, filters[" + std::to_string(index) +
+             "]);\n";
         index++;
       }
     }
   }
   c += "  }\n";
   for (int i = 1; i < src_depth; ++i) {
-    if (op_def.precision != CalculationsPrecision::F32_F16) {
-      c += "  if (X > " + std::to_string(-i) +
-           ") {  // always true, to reduce registers usage\n";
-    } else {
-      c += "  {\n";
-    }
+    c += "  if (X > " + std::to_string(-i) +
+         ") {  // always true, to reduce registers usage\n";
     c += "  FLT4 src = " +
          src_tensor.Read4D("X", "Y", std::to_string(i), batch_id) + ";\n";
     for (int y = 0; y < kernel_size.y; ++y) {
@@ -112,8 +105,8 @@ std::string GenerateConvolutionTransposedCode(
         std::string r_s =
             "  r[" + std::to_string(y) + "][" + std::to_string(x) + "]";
         for (int d = 0; d < dst_channels; ++d) {
-          c += r_s + postfix[d] + " += TO_ACCUM_FLT(dot(src, filters[" +
-               std::to_string(index) + "]));\n";
+          c += r_s + postfix[d] + " += dot(src, filters[" +
+               std::to_string(index) + "]);\n";
           index++;
         }
       }
@@ -210,8 +203,8 @@ Status ConvolutionTransposedThin::BindArguments() {
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(weights_buf_.GetMemoryPtr()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWHDB()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWHDB()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWHSB()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWHSB()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(bias_value_));
   return OkStatus();
 }

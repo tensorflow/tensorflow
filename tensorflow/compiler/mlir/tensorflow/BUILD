@@ -1,4 +1,4 @@
-load("@local_config_mlir//:tblgen.bzl", "gentbl")
+load("//third_party/mlir:tblgen.bzl", "gentbl")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_gen_op_wrapper_py", "tf_native_cc_binary")
 
 package(
@@ -8,10 +8,10 @@ package(
 
 package_group(
     name = "friends",
-    includes = ["@local_config_mlir//:subpackages"],
+    includes = ["//third_party/mlir:subpackages"],
     packages = [
         "//tensorflow/compiler/...",
-        "//tensorflow/core/tfrt_delegate/...",
+        "//tensorflow/lite/experimental/tf_runtime/...",
         "//tensorflow/python/...",
     ],
 )
@@ -22,8 +22,8 @@ filegroup(
         "ir/tf_generated_ops.td",
         "ir/tf_op_base.td",
         "ir/tf_ops.td",
-        "@local_config_mlir//:OpBaseTdFiles",
-        "@local_config_mlir//:include/mlir/Analysis/CallInterfaces.td",
+        "@llvm-project//mlir:OpBaseTdFiles",
+        "@llvm-project//mlir:include/mlir/Analysis/CallInterfaces.td",
     ],
 )
 
@@ -43,7 +43,7 @@ gentbl(
             "g3doc/tf_ops.md",
         ),
     ],
-    tblgen = "@local_config_mlir//:mlir-tblgen",
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "ir/tf_ops.td",
     td_srcs = [
         ":tensorflow_ops_td_files",
@@ -66,11 +66,11 @@ gentbl(
             "g3doc/tf_saved_model.md",
         ),
     ],
-    tblgen = "@local_config_mlir//:mlir-tblgen",
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "ir/tf_saved_model_ops.td",
     td_srcs = [
-        "@local_config_mlir//:include/mlir/IR/OpBase.td",
-        "@local_config_mlir//:include/mlir/Dialect/StandardOps/Ops.td",
+        "@llvm-project//mlir:include/mlir/IR/OpBase.td",
+        "@llvm-project//mlir:include/mlir/Dialect/StandardOps/Ops.td",
     ],
 )
 
@@ -90,11 +90,11 @@ gentbl(
             "g3doc/tf_executor.md",
         ),
     ],
-    tblgen = "@local_config_mlir//:mlir-tblgen",
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "ir/tf_executor_ops.td",
     td_srcs = [
-        "@local_config_mlir//:include/mlir/IR/OpBase.td",
-        "@local_config_mlir//:include/mlir/Dialect/StandardOps/Ops.td",
+        "@llvm-project//mlir:include/mlir/IR/OpBase.td",
+        "@llvm-project//mlir:include/mlir/Dialect/StandardOps/Ops.td",
     ],
 )
 
@@ -114,11 +114,11 @@ gentbl(
             "g3doc/tf_device.md",
         ),
     ],
-    tblgen = "@local_config_mlir//:mlir-tblgen",
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "ir/tf_device_ops.td",
     td_srcs = [
-        "@local_config_mlir//:include/mlir/IR/OpBase.td",
-        "@local_config_mlir//:include/mlir/Dialect/StandardOps/Ops.td",
+        "@llvm-project//mlir:include/mlir/IR/OpBase.td",
+        "@llvm-project//mlir:include/mlir/Dialect/StandardOps/Ops.td",
     ],
 )
 
@@ -130,7 +130,7 @@ gentbl(
             "transforms/generated_canonicalize.inc",
         ),
     ],
-    tblgen = "@local_config_mlir//:mlir-tblgen",
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "transforms/canonicalize.td",
     td_srcs = [
         ":tensorflow_ops_td_files",
@@ -162,8 +162,8 @@ cc_library(
         "ir/tf_types.h",
         "transforms/bridge.h",
         "transforms/passes.h",
-        "@local_config_mlir//:include/mlir/Analysis/CallInterfaces.h",
-        "@local_config_mlir//:include/mlir/Transforms/InliningUtils.h",
+        "@llvm-project//mlir:include/mlir/Analysis/CallInterfaces.h",
+        "@llvm-project//mlir:include/mlir/Transforms/InliningUtils.h",
     ],
     includes = ["include"],
     deps = [
@@ -177,17 +177,17 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:logging",
-        "@llvm//:support",
-        "@local_config_mlir//:Analysis",
-        "@local_config_mlir//:CallOpInterfacesIncGen",
-        "@local_config_mlir//:Dialect",
-        "@local_config_mlir//:IR",
-        "@local_config_mlir//:Parser",
-        "@local_config_mlir//:Pass",
-        "@local_config_mlir//:StandardOps",
-        "@local_config_mlir//:Support",
-        "@local_config_mlir//:TransformUtils",
-        "@local_config_mlir//:Transforms",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:Analysis",
+        "@llvm-project//mlir:CallOpInterfacesIncGen",
+        "@llvm-project//mlir:Dialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@llvm-project//mlir:Transforms",
     ],
     # TODO(jpienaar): Merge in the dialect registration.
     alwayslink = 1,
@@ -201,11 +201,11 @@ gentbl(
             "transforms/generated_decompose_resource_ops.inc",
         ),
     ],
-    tblgen = "@local_config_mlir//:mlir-tblgen",
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "transforms/decompose_resource_ops.td",
     td_srcs = [
         ":tensorflow_ops_td_files",
-        "@local_config_mlir//:StdOpsTdFiles",
+        "@llvm-project//mlir:StdOpsTdFiles",
     ],
 )
 
@@ -220,7 +220,7 @@ cc_library(
     deps = [
         ":decompose_resource_ops_inc_gen",
         ":tensorflow",
-        "@local_config_mlir//:IR",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -290,15 +290,15 @@ cc_library(
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
         "//tensorflow/core/protobuf/tpu:dynamic_padding_proto_cc",
-        "@llvm//:support",
-        "@local_config_mlir//:Analysis",
-        "@local_config_mlir//:IR",
-        "@local_config_mlir//:Parser",
-        "@local_config_mlir//:Pass",
-        "@local_config_mlir//:StandardOps",
-        "@local_config_mlir//:Support",
-        "@local_config_mlir//:TransformUtils",
-        "@local_config_mlir//:Transforms",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:Analysis",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@llvm-project//mlir:Transforms",
     ],
     # TODO(jpienaar): Merge in the dialect registration.
     alwayslink = 1,
@@ -311,8 +311,8 @@ cc_library(
     ],
     deps = [
         ":lower_tf_lib",
-        "@local_config_mlir//:IR",
-        "@local_config_mlir//:Pass",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
     ],
     alwayslink = 1,
 )
@@ -323,7 +323,7 @@ cc_library(
     srcs = ["ir/dialect_registration.cc"],
     deps = [
         ":tensorflow",
-        "@local_config_mlir//:IR",
+        "@llvm-project//mlir:IR",
     ],
     alwayslink = 1,
 )
@@ -348,15 +348,18 @@ cc_library(
         ":tensorflow",
         ":tensorflow_passes",
         "//tensorflow/cc/saved_model:bundle_v2",
+        "//tensorflow/cc/saved_model:loader_lite",
         "//tensorflow/compiler/jit:shape_inference_helpers",
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
         "//tensorflow/compiler/tf2xla:functionalize_control_flow",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler/utils:transitive_fanin",
         "//tensorflow/core/platform:types",
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/algorithm:container",
@@ -365,12 +368,12 @@ cc_library(
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
-        "@llvm//:support",
-        "@local_config_mlir//:IR",
-        "@local_config_mlir//:Pass",
-        "@local_config_mlir//:StandardDialectRegistration",
-        "@local_config_mlir//:StandardOps",
-        "@local_config_mlir//:Support",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardDialectRegistration",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -387,7 +390,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/strings",
-        "@llvm//:support",
+        "@llvm-project//llvm:support",
     ],
 )
 
@@ -417,11 +420,11 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
-        "@llvm//:support",
-        "@local_config_mlir//:IR",
-        "@local_config_mlir//:StandardDialectRegistration",
-        "@local_config_mlir//:StandardOps",
-        "@local_config_mlir//:Support",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:StandardDialectRegistration",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -444,8 +447,8 @@ cc_library(
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
-        "@llvm//:support",
-        "@local_config_mlir//:IR",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -454,10 +457,10 @@ cc_library(
     srcs = ["translate/translate_tf_dialect_op.cc"],
     deps = [
         ":export_tf_dialect_op",
-        "@llvm//:support",
-        "@local_config_mlir//:IR",
-        "@local_config_mlir//:Support",
-        "@local_config_mlir//:Translation",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Translation",
     ],
     alwayslink = 1,
 )
@@ -474,9 +477,9 @@ cc_library(
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "@local_config_mlir//:Analysis",
-        "@local_config_mlir//:IR",
-        "@local_config_mlir//:StandardOps",
+        "@llvm-project//mlir:Analysis",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:StandardOps",
     ],
     alwayslink = 1,
 )
@@ -513,7 +516,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
-        "@llvm//:support",
+        "@llvm-project//llvm:support",
     ],
 )
 
@@ -529,9 +532,9 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/strings",
-        "@llvm//:support",
-        "@local_config_mlir//:IR",
-        "@local_config_mlir//:Support",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -546,8 +549,8 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/stream_executor/lib",
-        "@llvm//:support",
-        "@local_config_mlir//:IR",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -565,8 +568,8 @@ cc_library(
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
-        "@llvm//:support",
-        "@local_config_mlir//:IR",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -581,7 +584,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/stream_executor/lib",
-        "@local_config_mlir//:IR",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -603,8 +606,8 @@ cc_library(
     hdrs = ["utils/error_util.h"],
     deps = [
         "//tensorflow/core:lib",
-        "@llvm//:support",
-        "@local_config_mlir//:IR",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -626,13 +629,14 @@ cc_library(
         "//tensorflow/c:tf_status",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/stream_executor",
         "//tensorflow/stream_executor/lib",
-        "@llvm//:support",
-        "@local_config_mlir//:Analysis",
-        "@local_config_mlir//:IR",
-        "@local_config_mlir//:Pass",
-        "@local_config_mlir//:Support",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:Analysis",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
     ],
     alwayslink = 1,
 )
@@ -642,7 +646,7 @@ cc_library(
     deps = [
         ":tensorflow_dialect_registration",
         ":tf_dialect_passes",
-        "@local_config_mlir//:StandardDialectRegistration",
+        "@llvm-project//mlir:StandardDialectRegistration",
     ],
 )
 
@@ -661,9 +665,9 @@ cc_library(
         "//tensorflow/core:ops",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/stream_executor/lib",
-        "@llvm//:support",
-        "@local_config_mlir//:IR",
-        "@local_config_mlir//:Pass",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
     ],
     alwayslink = 1,
 )
@@ -690,26 +694,23 @@ cc_library(
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
-        "@llvm//:support",
-        "@local_config_mlir//:IR",
-        "@local_config_mlir//:Support",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
 )
 
 cc_library(
     name = "translate_lib",
-    srcs = [
-        "translate/tf_mlir_translate.cc",
-    ],
-    hdrs = [
-        "translate/tf_mlir_translate.h",
-    ],
+    srcs = ["translate/tf_mlir_translate.cc"],
+    hdrs = ["translate/tf_mlir_translate.h"],
     deps = [
         ":convert_graphdef",
         ":error_util",
         ":import_utils",
         ":mangling_util",
         ":mlir_roundtrip_flags",
+        "//tensorflow/cc/saved_model:bundle_v2",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:ops",
@@ -718,10 +719,10 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@llvm//:support",
-        "@local_config_mlir//:IR",
-        "@local_config_mlir//:Parser",
-        "@local_config_mlir//:Pass",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:Pass",
     ],
 )
 
@@ -734,7 +735,7 @@ cc_library(
         "translate/tf_mlir_translate_cl.h",
     ],
     deps = [
-        "@llvm//:support",
+        "@llvm-project//llvm:support",
     ],
     alwayslink = 1,
 )
@@ -751,9 +752,9 @@ cc_library(
         ":translate_lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/stream_executor/lib",
-        "@llvm//:support",
-        "@local_config_mlir//:IR",
-        "@local_config_mlir//:Translation",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Translation",
     ],
     alwayslink = 1,
 )
@@ -768,8 +769,8 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "@llvm//:support",
-        "@local_config_mlir//:IR",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -779,17 +780,17 @@ tf_native_cc_binary(
         "translate/derived_attr_populator_gen.cc",
     ],
     deps = [
-        "@llvm//:support",
-        "@llvm//:tablegen",
-        "@local_config_mlir//:TableGen",
+        "@llvm-project//llvm:support",
+        "@llvm-project//llvm:tablegen",
+        "@llvm-project//mlir:TableGen",
     ],
 )
 
 genrule(
     name = "derived_attr_populator_inc",
     srcs = [
-        "@local_config_mlir//:include/mlir/Analysis/CallInterfaces.td",
-        "@local_config_mlir//:include/mlir/IR/OpBase.td",
+        "@llvm-project//mlir:include/mlir/Analysis/CallInterfaces.td",
+        "@llvm-project//mlir:include/mlir/IR/OpBase.td",
         "ir/tf_generated_ops.td",
         "ir/tf_op_base.td",
         "ir/tf_ops.td",
@@ -798,7 +799,7 @@ genrule(
         "translate/derived_attr_populator.inc",
     ],
     cmd = ("$(location :derived_attr_populator_gen) " +
-           "-I external/local_config_mlir/include " +
+           "-I external/llvm-project/mlir/include " +
            "-I external/org_tensorflow " +
            "$(location //tensorflow/compiler/mlir/tensorflow:ir/tf_ops.td) " + " -o $@"),
     tools = [":derived_attr_populator_gen"],
@@ -819,11 +820,11 @@ gentbl(
             "transforms/generated_optimize.inc",
         ),
     ],
-    tblgen = "@local_config_mlir//:mlir-tblgen",
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "transforms/optimize.td",
     td_srcs = [
         ":tensorflow_ops_td_files",
-        "@local_config_mlir//:StdOpsTdFiles",
+        "@llvm-project//mlir:StdOpsTdFiles",
     ],
 )
 
@@ -846,13 +847,13 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:logging",
         "//tensorflow/stream_executor/lib",
-        "@llvm//:support",
-        "@local_config_mlir//:IR",
-        "@local_config_mlir//:Parser",
-        "@local_config_mlir//:Pass",
-        "@local_config_mlir//:StandardOps",
-        "@local_config_mlir//:TransformUtils",
-        "@local_config_mlir//:Transforms",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:TransformUtils",
+        "@llvm-project//mlir:Transforms",
     ],
 )
 
@@ -903,11 +904,11 @@ gentbl(
             "transforms/generated_lower_tf.inc",
         ),
     ],
-    tblgen = "@local_config_mlir//:mlir-tblgen",
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "transforms/lower_tf.td",
     td_srcs = [
         ":tensorflow_ops_td_files",
-        "@local_config_mlir//:StdOpsTdFiles",
+        "@llvm-project//mlir:StdOpsTdFiles",
     ],
 )
 
@@ -923,7 +924,8 @@ cc_library(
         ":lower_tf_inc_gen",
         ":tensorflow",
         "//tensorflow/core:framework",
-        "@local_config_mlir//:IR",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
     ],
     alwayslink = 1,
 )
@@ -936,7 +938,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
-        "@llvm//:support",
+        "@llvm-project//llvm:support",
     ],
 )
 
@@ -949,7 +951,7 @@ tf_cc_test(
         "//tensorflow/core:framework",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "@llvm//:support",
+        "@llvm-project//llvm:support",
     ],
 )
 
@@ -960,9 +962,9 @@ cc_library(
     deps = [
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
-        "@llvm//:support",
-        "@local_config_mlir//:IR",
-        "@local_config_mlir//:Support",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -978,9 +980,9 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "@llvm//:support",
-        "@local_config_mlir//:IR",
-        "@local_config_mlir//:Support",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -991,8 +993,8 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:logging",
-        "@llvm//:support",
-        "@local_config_mlir//:IR",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -1006,8 +1008,8 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:test",
-        "@llvm//:support",
-        "@local_config_mlir//:IR",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -1017,9 +1019,9 @@ cc_library(
     hdrs = ["utils/bridge_logger.h"],
     deps = [
         ":dump_mlir_util",
-        "@llvm//:support",
-        "@local_config_mlir//:IR",
-        "@local_config_mlir//:Pass",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
     ],
 )
 
@@ -1032,9 +1034,9 @@ cc_library(
         "//tensorflow/compiler/tf2xla:resource_operation_table",
         "//tensorflow/core:framework",
         "@com_google_absl//absl/strings",
-        "@llvm//:support",
-        "@local_config_mlir//:IR",
-        "@local_config_mlir//:Pass",
-        "@local_config_mlir//:Support",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
     ],
 )

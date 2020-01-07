@@ -396,7 +396,6 @@ Status OptimizeGraph(const GrapplerItem& item, int64 num_workers, int64 index,
   MutableGraphView graph(output);
   FunctionLibraryDefinition flib(OpRegistry::Global(), item.graph.library());
 
-  NodeDef target_node;
   absl::flat_hash_set<string> nodes_to_delete;
 
   NodeDef* sink_node;

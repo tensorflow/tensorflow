@@ -6,6 +6,9 @@ ifeq ($(TARGET), xtensa-xpg)
   TARGET_ARCH := xtensa-xpg
 
   PLATFORM_ARGS = \
+    -DTF_LITE_STATIC_MEMORY \
+    -DNDEBUG \
+    -DTF_LITE_MCU_DEBUG_LOG \
     --xtensa-core=$(XTENSA_CORE) \
     -g -O2 \
     -fmessage-length=0 \

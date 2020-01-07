@@ -59,6 +59,26 @@ class AstUtilTest(test.TestCase):
     source = parser.unparse(node, include_encoding_marker=False)
     self.assertEqual(source.strip(), 'renamed_b_c = renamed_b_c.d')
 
+  def test_rename_symbols_nonlocal(self):
+    node = parser.parse('nonlocal a, b, c')
+    node = qual_names.resolve(node)
+
+    node = ast_util.rename_symbols(
+        node, {qual_names.from_str('b'): qual_names.QN('renamed_b')})
+
+    source = parser.unparse(node, include_encoding_marker=False)
+    self.assertEqual(source.strip(), 'nonlocal a, renamed_b, c')
+
+  def test_rename_symbols_global(self):
+    node = parser.parse('global a, b, c')
+    node = qual_names.resolve(node)
+
+    node = ast_util.rename_symbols(
+        node, {qual_names.from_str('b'): qual_names.QN('renamed_b')})
+
+    source = parser.unparse(node, include_encoding_marker=False)
+    self.assertEqual(source.strip(), 'global a, renamed_b, c')
+
   def test_rename_symbols_annotations(self):
     node = parser.parse('a[i]')
     node = qual_names.resolve(node)

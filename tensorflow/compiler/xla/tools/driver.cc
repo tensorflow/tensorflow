@@ -365,6 +365,9 @@ void Fill(void* buffer, ArrayShape shape) {
 }
 
 template <typename T>
+#if defined(MEMORY_SANITIZER)
+__attribute__((no_sanitize_memory))
+#endif
 void DisplayT(void* buffer, int num_elements) {
   T* casted = static_cast<T*>(buffer);
   for (int i = 0; i < num_elements; i++) {

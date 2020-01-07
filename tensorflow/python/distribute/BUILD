@@ -172,9 +172,6 @@ py_test(
     srcs = ["distribute_lib_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
-    tags = [
-        "no_rocm",
-    ],
     deps = [
         ":combinations",
         ":distribute_lib",
@@ -268,7 +265,7 @@ py_library(
         "//tensorflow/python:device",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python:summary_ops_v2",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:training",
@@ -737,7 +734,10 @@ distribute_py_test(
     name = "input_lib_test",
     srcs = ["input_lib_test.py"],
     main = "input_lib_test.py",
-    shard_count = 10,
+    shard_count = 30,
+    tags = [
+        "no_gpu_presubmit",
+    ],
     deps = [
         ":collective_all_reduce_strategy",
         ":mirrored_strategy",
@@ -941,7 +941,6 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_oss",  # TODO(b/139815303): enable after this is fixed.
-        "no_rocm",
         "notap",  # TODO(b/139815303): enable after this is fixed.
     ],
     deps = [
@@ -995,7 +994,6 @@ distribute_py_test(
     main = "step_fn_test.py",
     tags = [
         "multi_and_single_gpu",
-        "no_rocm",
     ],
     deps = [
         ":single_loss_example",
@@ -1056,10 +1054,10 @@ cuda_py_test(
     srcs = ["mirrored_strategy_test.py"],
     shard_count = 5,
     tags = [
-        "guitar",
         "multi_and_single_gpu",
         "no_rocm",
         "no_windows_gpu",  # TODO(b/130551176)
+        "noguitar",
     ],
     deps = [
         ":combinations",
@@ -1235,9 +1233,10 @@ distribute_py_test(
     name = "ctl_correctness_test",
     srcs = ["ctl_correctness_test.py"],
     main = "ctl_correctness_test.py",
-    shard_count = 10,
+    shard_count = 30,
     tags = [
         "multi_and_single_gpu",
+        "no_gpu_presubmit",
         "noguitar",  # b/140755528
     ],
     deps = [
@@ -1258,7 +1257,7 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
     ],
-    xla_enable_strict_auto_jit = False,
+    xla_enable_strict_auto_jit = True,
     deps = [
         ":collective_all_reduce_strategy",
         ":combinations",

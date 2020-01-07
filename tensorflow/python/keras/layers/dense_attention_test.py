@@ -121,6 +121,22 @@ class BaseDenseAttentionTest(test.TestCase):
     expected = np.array([[[1.6]], [[2.6]]], dtype=np.float32)
     self.assertAllClose(expected, actual)
 
+  def test_shape_with_dropout(self):
+    # scores: Scores float tensor of shape `[batch_size, tq, tv]`.
+    # value: Value tensor of shape `[batch_size, tv, dim]`.
+    batch_size = 4
+    tq = 5
+    tv = 6
+    dim = 7
+    scores = np.ones((batch_size, tq, tv))
+    value = np.ones((batch_size, tv, dim))
+    actual = dense_attention.BaseDenseAttention(dropout=0.1)._apply_scores(
+        scores=scores, value=value, training=False)
+
+    # Expected Tensor of shape `[batch_size, tq, dim]`.
+    expected_shape = [batch_size, tq, dim]
+    self.assertAllEqual(expected_shape, array_ops.shape(actual))
+
   def test_serialization(self):
     # Test serialization with causal
     layer = dense_attention.BaseDenseAttention(causal=True)

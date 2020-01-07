@@ -768,7 +768,7 @@ class Optimizer(
       # pylint: enable=protected-access
       mirrored_slot = named_slots.get(key, None)
       if mirrored_slot is None: return None
-      return mirrored_slot.get(device=var.device)
+      return mirrored_slot._get_closest()  # pylint: disable=protected-access
 
     return named_slots.get(_var_key(var), None)
 

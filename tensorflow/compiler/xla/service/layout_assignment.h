@@ -320,6 +320,10 @@ class LayoutAssignment : public HloModulePass {
   // a tuple shape returns true iff all leaf shapes are at most rank 1.
   static bool IsAtMostRank1(const Shape& shape);
 
+  virtual Layout GetDefaultLayoutForShape(const Shape& shape) {
+    return LayoutUtil::GetDefaultLayoutForShape(shape);
+  }
+
  protected:
   // These methods, invoked by PropagateConstraints, propagate a layout
   // constraint to its neighbors (i.e. operands and users) in order to minimize
@@ -456,7 +460,7 @@ class LayoutAssignment : public HloModulePass {
   // when the instruction is a tuple, and in such case the index represents
   // the location from where the copy instruction was created from.
   // If the index is empty, the whole sharding will be propagated, even in case
-  // the intruction has a tuple sharding.
+  // the instruction has a tuple sharding.
   static void SetupCopiedInstruction(const HloInstruction& instruction,
                                      HloInstruction* copy,
                                      const ShapeIndex& index);
@@ -508,7 +512,7 @@ class LayoutAssignment : public HloModulePass {
   // instructions can be set to match the computation.
   std::map<HloComputation*, ComputationLayout> computation_layouts_;
 
-  // Map from branch computations to the result layout they shuould apply.
+  // Map from branch computations to the result layout they should apply.
   std::map<HloComputation*, ComputationLayout> conditional_mismatch_;
 
   // Every copy added to the module by the layout assignment pass is registered

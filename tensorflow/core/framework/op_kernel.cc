@@ -109,6 +109,8 @@ OpKernel::OpKernel(OpKernelConstruction* context,
                            context->output_memory_types().end()),
       input_name_map_(context->num_inputs()),
       output_name_map_(context->num_outputs()),
+      name_view_(def_->name()),
+      type_string_view_(def_->op()),
       graph_def_version_(context->graph_def_version()),
       is_deferred_(is_deferred),
       cost_estimate_(OpKernel::kInitialCostEstimateCycles) {

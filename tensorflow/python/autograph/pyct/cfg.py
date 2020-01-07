@@ -35,6 +35,7 @@ import weakref
 from enum import Enum
 
 # pylint:disable=g-bad-import-order
+
 import gast
 # pylint:enable=g-bad-import-order
 

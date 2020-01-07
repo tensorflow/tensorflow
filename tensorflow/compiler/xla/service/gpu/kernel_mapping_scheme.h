@@ -37,7 +37,7 @@ namespace gpu {
 // Currently, there are two main use cases for a tiling scheme. First, we
 // implement kernels with 0-2-1 memory transpose using shared memory to improve
 // memory access pattern. Second, we implement reduction to contiguous
-// dimensions in layout, with or without memory tranpsose, to achieve better
+// dimensions in layout, with or without memory transpose, to achieve better
 // memory access pattern as well as to reduce the need numbers of executed
 // expensive instructions, such as thread synchronization related instructions
 // and atomic operations. For both use cases, we can apply a normalization to
