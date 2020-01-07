@@ -169,12 +169,6 @@ package_group(
     ],
 )
 
-# Export the BUILD file so automated tooling can check licenses
-exports_files([
-    "BUILD",
-    "ops/ops.pbtxt",
-])
-
 package_group(name = "experimental_access")
 
 # -----------------------------------------------------------------------------
@@ -898,6 +892,12 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [":framework"],
     alwayslink = 1,
+)
+
+filegroup(
+    name = "ops_txt_pb",
+    srcs = ["ops/ops.pbtxt"],
+    visibility = ["//tensorflow/core/ops/compat:__pkg__"],
 )
 
 cc_library(
