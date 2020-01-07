@@ -52,6 +52,19 @@ struct WHSBPoint {
   std::string s_name;
   std::string b_name;
 };
+struct WHDSPoint {
+  std::string w_name;
+  std::string h_name;
+  std::string d_name;
+  std::string s_name;
+};
+struct WHDSBPoint {
+  std::string w_name;
+  std::string h_name;
+  std::string d_name;
+  std::string s_name;
+  std::string b_name;
+};
 
 class TensorCodeGenerator {
  public:
@@ -59,6 +72,10 @@ class TensorCodeGenerator {
   TensorCodeGenerator(const std::string& name, const WHSPoint& sizes,
                       const TensorDescriptor& descriptor);
   TensorCodeGenerator(const std::string& name, const WHSBPoint& sizes,
+                      const TensorDescriptor& descriptor);
+  TensorCodeGenerator(const std::string& name, const WHDSPoint& sizes,
+                      const TensorDescriptor& descriptor);
+  TensorCodeGenerator(const std::string& name, const WHDSBPoint& sizes,
                       const TensorDescriptor& descriptor);
 
   std::string GetDeclaration(AccessType access) const;
@@ -69,6 +86,14 @@ class TensorCodeGenerator {
   std::string GetAddressWHSB(const std::string& var_name, const std::string& x,
                              const std::string& y, const std::string& s,
                              const std::string& b) const;
+
+  std::string GetAddressWHDS(const std::string& var_name, const std::string& x,
+                             const std::string& y, const std::string& z,
+                             const std::string& s) const;
+
+  std::string GetAddressWHDSB(const std::string& var_name, const std::string& x,
+                              const std::string& y, const std::string& z,
+                              const std::string& s, const std::string& b) const;
 
   // This function (and functions below) accept TextureAddressMode, but this
   // argument applicable only for texture types. Buffer types ignore this
@@ -82,6 +107,16 @@ class TensorCodeGenerator {
       const std::string& b,
       TextureAddressMode address_mode = TextureAddressMode::DONT_CARE) const;
 
+  std::string ReadWHDS(
+      const std::string& x, const std::string& y, const std::string& z,
+      const std::string& s,
+      TextureAddressMode address_mode = TextureAddressMode::DONT_CARE) const;
+
+  std::string ReadWHDSB(
+      const std::string& x, const std::string& y, const std::string& z,
+      const std::string& s, const std::string& b,
+      TextureAddressMode address_mode = TextureAddressMode::DONT_CARE) const;
+
   // Optimization for textures, so as in opencl we can use read_imagef for any
   // texture type.
   std::string ReadAsFloatWHS(
@@ -93,12 +128,30 @@ class TensorCodeGenerator {
       const std::string& b,
       TextureAddressMode address_mode = TextureAddressMode::DONT_CARE) const;
 
+  std::string ReadAsFloatWHDS(
+      const std::string& x, const std::string& y, const std::string& z,
+      const std::string& s,
+      TextureAddressMode address_mode = TextureAddressMode::DONT_CARE) const;
+
+  std::string ReadAsFloatWHDSB(
+      const std::string& x, const std::string& y, const std::string& z,
+      const std::string& s, const std::string& b,
+      TextureAddressMode address_mode = TextureAddressMode::DONT_CARE) const;
+
   std::string WriteWHS(const std::string& var_name, const std::string& x,
                        const std::string& y, const std::string& s) const;
 
   std::string WriteWHSB(const std::string& var_name, const std::string& x,
                         const std::string& y, const std::string& s,
                         const std::string& b) const;
+
+  std::string WriteWHDS(const std::string& var_name, const std::string& x,
+                        const std::string& y, const std::string& z,
+                        const std::string& s) const;
+
+  std::string WriteWHDSB(const std::string& var_name, const std::string& x,
+                         const std::string& y, const std::string& z,
+                         const std::string& s, const std::string& b) const;
 
   std::string Read(
       const std::string& global_address,
@@ -119,12 +172,22 @@ class TensorCodeGenerator {
                                                 const std::string& y,
                                                 const std::string& s,
                                                 const std::string& b) const;
+  std::string GetGlobalAddressNoDeclarationWHDS(const std::string& x,
+                                                const std::string& y,
+                                                const std::string& z,
+                                                const std::string& s) const;
+  std::string GetGlobalAddressNoDeclarationWHDSB(const std::string& x,
+                                                 const std::string& y,
+                                                 const std::string& z,
+                                                 const std::string& s,
+                                                 const std::string& b) const;
   std::string DeclareAddress(const std::string& var_name,
                              const std::string& address) const;
 
   std::string tensor_name_;
   std::string width_name_ = "unknown";
   std::string height_name_ = "unknown";
+  std::string depth_name_ = "unknown";
   std::string slices_name_ = "unknown";
   std::string batch_name_ = "unknown";
   TensorDescriptor descriptor_;
