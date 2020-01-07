@@ -559,16 +559,39 @@ TfLiteStatus Subgraph::CheckTensorIndices(const char* label, const int* indices,
   return kTfLiteOk;
 }
 
+namespace {
+// Multiply two sizes and return true if overflow occurred;
+// This is based off tensorflow/overflow.h but is simpler as we already
+// have unsigned numbers. It is also generalized to work where sizeof(size_t)
+// is not 8.
+TfLiteStatus MultiplyAndCheckOverflow(size_t a, size_t b, size_t* product) {
+  constexpr size_t overflow_threshold = (8 * sizeof(size_t)) >> 1;
+  *product = a * b;
+  // If neither integers have non-zero bits past 32 bits can't overflow.
+  // Otherwise check using slow devision.
+  if (__builtin_expect((a | b) >> overflow_threshold != 0, false)) {
+    if (a != 0 && *product / a != b) return kTfLiteError;
+  }
+  return kTfLiteOk;
+}
+}  // namespace
+
 TfLiteStatus Subgraph::BytesRequired(TfLiteType type, const int* dims,
                                      size_t dims_size, size_t* bytes) {
-  // TODO(aselle): Check for overflow here using overflow.h in TensorFlow
-  // MultiplyWithoutOverflow.
   TF_LITE_ENSURE(&context_, bytes != nullptr);
   size_t count = 1;
-  for (int k = 0; k < dims_size; k++) count *= dims[k];
+  for (int k = 0; k < dims_size; k++) {
+    size_t old_count = count;
+    TF_LITE_ENSURE_MSG(
+        &context_,
+        MultiplyAndCheckOverflow(old_count, dims[k], &count) == kTfLiteOk,
+        "BytesRequired number of elements overflowed.\n");
+  }
   size_t type_size = 0;
   TF_LITE_ENSURE_OK(&context_, GetSizeOfType(&context_, type, &type_size));
-  *bytes = type_size * count;
+  TF_LITE_ENSURE_MSG(
+      &context_, MultiplyAndCheckOverflow(type_size, count, bytes) == kTfLiteOk,
+      "BytesRequired number of bytes overflowed.\n");
   return kTfLiteOk;
 }
 

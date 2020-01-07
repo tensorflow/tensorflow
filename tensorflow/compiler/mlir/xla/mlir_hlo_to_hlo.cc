@@ -126,23 +126,32 @@ static xla::FftType Convert_fft_type(llvm::StringRef fft_type_str) {
   return fft_type_enum;
 }
 
-// Convert a nx2 dense attribute to a list of tuples. This is the way padding
-// is defined in hlo.
-static std::vector<std::pair<int64, int64>> Convert_padding(
-    llvm::Optional<mlir::DenseIntElementsAttr> padding_optional) {
-  if (!padding_optional.hasValue()) return {};
-  mlir::DenseIntElementsAttr padding = *padding_optional;
-  auto it = padding.getValues<int64>().begin();
-  std::vector<std::pair<int64, int64>> out(padding.getNumElements() / 2);
+// Convert a (N, 2) dense attribute to a list of tuples. This is the way padding
+// and source-target pairs are defined in HLO.
+static std::vector<std::pair<int64, int64>> Convert_Nx2_attribute(
+    llvm::Optional<mlir::DenseIntElementsAttr> optional_attr) {
+  if (!optional_attr.hasValue()) return {};
+  mlir::DenseIntElementsAttr attr = *optional_attr;
+  auto it = attr.getValues<int64>().begin();
+  std::vector<std::pair<int64, int64>> out(attr.getNumElements() / 2);
   for (auto& item : out) {
-    int64 left_pad = *it;
+    int64 first = *it;
     ++it;
-    int64 right_pad = *it;
+    int64 second = *it;
     ++it;
-    item = {left_pad, right_pad};
+    item = {first, second};
   }
-
   return out;
+}
+
+static std::vector<std::pair<int64, int64>> Convert_padding(
+    llvm::Optional<mlir::DenseIntElementsAttr> padding) {
+  return Convert_Nx2_attribute(padding);
+}
+
+static std::vector<std::pair<int64, int64>> Convert_source_target_pairs(
+    llvm::Optional<mlir::DenseIntElementsAttr> source_target_pairs) {
+  return Convert_Nx2_attribute(source_target_pairs);
 }
 
 static std::vector<xla::ReplicaGroup> Convert_replica_groups(
@@ -560,6 +569,21 @@ LogicalResult ExportXlaOp(PadOp op, OpLoweringContext ctx) {
   }
   value_map[op] = xla::Pad(value_map[op.getOperand(0)],
                            value_map[op.getOperand(1)], padding_config);
+  return success();
+}
+
+LogicalResult ExportXlaOp(RecvOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  auto result_type = op.getType().cast<mlir::TupleType>().getType(0);
+  if (op.is_host_transfer()) {
+    value_map[op] =
+        xla::RecvFromHost(value_map[op.token()], xla::TypeToShape(result_type),
+                          Convert_channel_handle(op.channel_id()));
+    return success();
+  }
+  value_map[op] =
+      xla::RecvWithToken(value_map[op.token()], xla::TypeToShape(result_type),
+                         Convert_channel_handle(op.channel_id()));
   return success();
 }
 

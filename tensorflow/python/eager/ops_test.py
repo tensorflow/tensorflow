@@ -93,7 +93,7 @@ class OpsTest(test_util.TensorFlowTestCase):
     graph = ops.Graph()
     with graph.as_default(), context.graph_mode():
       array_ops.placeholder(dtypes.int32)
-    self.assertEqual(1, len(graph.get_operations()))
+    self.assertLen(graph.get_operations(), 1)
 
   # See comments on handling of int32 tensors on GPU in
   # EagerTensor.__init__.
@@ -107,23 +107,23 @@ class OpsTest(test_util.TensorFlowTestCase):
     split_dim = constant_op.constant(1)
     value = constant_op.constant([[0, 1, 2], [3, 4, 5]])
     result = array_ops.split(value, 1, axis=split_dim)
-    self.assertTrue(isinstance(result, list))
-    self.assertEqual(1, len(result))
+    self.assertIsInstance(result, list)
+    self.assertLen(result, 1)
     self.assertAllEqual([[0, 1, 2], [3, 4, 5]], result[0])
 
   def testExecuteListOutputLen0(self):
     empty = constant_op.constant([], dtype=dtypes.int32)
     result = array_ops.unstack(empty, 0)
-    self.assertTrue(isinstance(result, list))
-    self.assertEqual(0, len(result))
+    self.assertIsInstance(result, list)
+    self.assertEmpty(result)
 
   def testExecuteMultipleNonListOutput(self):
     x = constant_op.constant([1, 2, 3, 4, 5, 6])
     y = constant_op.constant([1, 3, 5])
     result = array_ops.listdiff(x, y)
     out, idx = result
-    self.assertTrue(out is result.out)
-    self.assertTrue(idx is result.idx)
+    self.assertIs(out, result.out)
+    self.assertIs(idx, result.idx)
     self.assertAllEqual([2, 4, 6], out)
     self.assertAllEqual([1, 3, 5], idx)
 
@@ -140,9 +140,9 @@ class OpsTest(test_util.TensorFlowTestCase):
         shape,
         num_split=2)
     output_indices, output_values, output_shape = result
-    self.assertEqual(2, len(output_indices))
-    self.assertEqual(2, len(output_values))
-    self.assertEqual(2, len(output_shape))
+    self.assertLen(output_indices, 2)
+    self.assertLen(output_values, 2)
+    self.assertLen(output_shape, 2)
     self.assertEqual(output_indices, result.output_indices)
     self.assertEqual(output_values, result.output_values)
     self.assertEqual(output_shape, result.output_shape)
@@ -161,7 +161,7 @@ class OpsTest(test_util.TensorFlowTestCase):
   def testComposition(self):
     x = constant_op.constant(1, dtype=dtypes.int32)
     three_x = x + x + x
-    self.assertEquals(dtypes.int32, three_x.dtype)
+    self.assertEqual(dtypes.int32, three_x.dtype)
     self.assertAllEqual(3, three_x)
 
   def testOperatorOverrides(self):
@@ -313,8 +313,8 @@ class OpsTest(test_util.TensorFlowTestCase):
     scalar_shape = constant_op.constant([], dtype=dtypes.int32)
 
     x = random_ops.random_uniform(scalar_shape)
-    self.assertEquals(0, x.shape.ndims)
-    self.assertEquals(dtypes.float32, x.dtype)
+    self.assertEqual(0, x.shape.ndims)
+    self.assertEqual(dtypes.float32, x.dtype)
 
     x = random_ops.random_uniform(
         scalar_shape, minval=constant_op.constant(5.),
@@ -387,7 +387,7 @@ class OpsTest(test_util.TensorFlowTestCase):
     self.assertEqual('3.14', '{:.2f}'.format(x))
 
   def testNoOpIsNone(self):
-    self.assertTrue(control_flow_ops.no_op() is None)
+    self.assertIsNone(control_flow_ops.no_op())
 
   def testEagerContextPreservedAcrossThreads(self):
     def init_fn():
@@ -395,7 +395,7 @@ class OpsTest(test_util.TensorFlowTestCase):
       with ops.init_scope():
         self.assertTrue(context.executing_eagerly())
         context_switches = context.context().context_switches
-        self.assertEqual(len(context_switches.stack), 1)
+        self.assertLen(context_switches.stack, 1)
         self.assertFalse(context_switches.stack[0].is_building_function)
         self.assertEqual(context_switches.stack[0].enter_context_fn,
                          context.eager_mode)
@@ -430,8 +430,8 @@ class OpsTest(test_util.TensorFlowTestCase):
     del strong_x, strong_x_ref
     self.assertIs(weak_x_ref(), None)
     self.assertEqual([strong_y_ref], list(weak_key_dict))
-    self.assertEqual(1, len(list(weak_key_dict)))
-    self.assertEqual(1, len(weak_key_dict))
+    self.assertLen(list(weak_key_dict), 1)
+    self.assertLen(weak_key_dict, 1)
 
     del strong_y, strong_y_ref
     self.assertEqual([], list(weak_key_dict))

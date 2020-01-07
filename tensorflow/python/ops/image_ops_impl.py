@@ -330,21 +330,20 @@ def random_flip_up_down(image, seed=None):
 
   Example usage:
 
-    Randomly flip a single image.
-    >>> import numpy as np
+  >>> import numpy as np
 
-    >>> image = np.array([[[1], [2]], [[3], [4]]])
-    >>> tf.image.random_flip_up_down(image, 3).numpy().tolist()
-    [[[3], [4]], [[1], [2]]]
+  >>> image = np.array([[[1], [2]], [[3], [4]]])
+  >>> tf.image.random_flip_up_down(image, 3).numpy().tolist()
+  [[[3], [4]], [[1], [2]]]
 
-    Randomly flip multiple images.
-    >>> images = np.array(
-    ... [
-    ...     [[[1], [2]], [[3], [4]]],
-    ...     [[[5], [6]], [[7], [8]]]
-    ... ])
-    >>> tf.image.random_flip_up_down(images, 4).numpy().tolist()
-    [[[[3], [4]], [[1], [2]]], [[[5], [6]], [[7], [8]]]]
+  Randomly flip multiple images.
+  >>> images = np.array(
+  ... [
+  ...     [[[1], [2]], [[3], [4]]],
+  ...     [[[5], [6]], [[7], [8]]]
+  ... ])
+  >>> tf.image.random_flip_up_down(images, 4).numpy().tolist()
+  [[[[3], [4]], [[1], [2]]], [[[5], [6]], [[7], [8]]]]
 
   Args:
     image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
@@ -370,21 +369,21 @@ def random_flip_left_right(image, seed=None):
   independent of other images.
 
   Example usage:
-    Randomly flip a single image.
-    >>> import numpy as np
 
-    >>> image = np.array([[[1], [2]], [[3], [4]]])
-    >>> tf.image.random_flip_left_right(image, 5).numpy().tolist()
-    [[[2], [1]], [[4], [3]]]
+  >>> import numpy as np
 
-    Randomly flip multiple images.
-    >>> images = np.array(
-    ... [
-    ...     [[[1], [2]], [[3], [4]]],
-    ...     [[[5], [6]], [[7], [8]]]
-    ... ])
-    >>> tf.image.random_flip_left_right(images, 6).numpy().tolist()
-    [[[[2], [1]], [[4], [3]]], [[[5], [6]], [[7], [8]]]]
+  >>> image = np.array([[[1], [2]], [[3], [4]]])
+  >>> tf.image.random_flip_left_right(image, 5).numpy().tolist()
+  [[[2], [1]], [[4], [3]]]
+
+  Randomly flip multiple images.
+  >>> images = np.array(
+  ... [
+  ...     [[[1], [2]], [[3], [4]]],
+  ...     [[[5], [6]], [[7], [8]]]
+  ... ])
+  >>> tf.image.random_flip_left_right(images, 6).numpy().tolist()
+  [[[[2], [1]], [[4], [3]]], [[[5], [6]], [[7], [8]]]]
 
   Args:
     image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
@@ -1973,13 +1972,10 @@ def rgb_to_grayscale(images, name=None):
   last dimension of the output is 1, containing the Grayscale value of the
   pixels.
 
-  ```python
   >>> original = tf.constant([[[1.0, 2.0, 3.0]]])
   >>> converted = tf.image.rgb_to_grayscale(original)
   >>> print(converted.numpy())
   [[[1.81...]]]
-
-  ```
 
   Args:
     images: The RGB tensor to convert. The last dimension must have size 3 and
@@ -2011,15 +2007,12 @@ def grayscale_to_rgb(images, name=None):
   last dimension of the output is 3, containing the RGB value of the pixels.
   The input images' last dimension must be size 1.
 
-  ```python
   >>> original = tf.constant([[[1.0], [2.0], [3.0]]])
   >>> converted = tf.image.grayscale_to_rgb(original)
   >>> print(converted.numpy())
   [[[1. 1. 1.]
     [2. 2. 2.]
     [3. 3. 3.]]]
-
-  ```
 
   Args:
     images: The Grayscale tensor to convert. The last dimension must be size 1.

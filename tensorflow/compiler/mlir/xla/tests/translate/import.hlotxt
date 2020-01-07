@@ -114,6 +114,15 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   ROOT %clamp.3 = f32[4] clamp(f32[] %Arg_0.1, f32[4] %Arg_1.2, f32[] %Arg_2.3)
 }
 
+// CHECK-LABEL:  func @test_collective_permute
+// CHECK-SAME:  ([[ARG:%.*]]: tensor<128x32xf32>) -> tensor<128x32xf32>
+%test_collective_permute (input: f32[128,32]) -> f32[128,32] {
+  %input = f32[128,32]{0,1} parameter(0)
+  // CHECK-NEXT:  "xla_hlo.collective_permute"([[ARG]]) {name = {{.*}}, source_target_pairs = dense<{{\[\[}}0, 1], [1, 2], [2, 3]]> : tensor<3x2xi64>} : (tensor<128x32xf32>) -> tensor<128x32xf32>
+  ROOT root = f32[128,32]{0,1} collective-permute(%input), source_target_pairs={{0,1},{1,2},{2,3}}
+}
+
+
 // CHECK-LABEL:  func @test_compare(%arg0: tensor<3xf32>, %arg1: tensor<3xf32>, %arg2: tensor<1xf32>) -> tensor<3xi1> {
 %test_compare (Arg_0.1: f32[3], Arg_1.2: f32[3], Arg_2.3: f32[1]) -> pred[3] {
   %Arg_0.1 = f32[3] parameter(0)

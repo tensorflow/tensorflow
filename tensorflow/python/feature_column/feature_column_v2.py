@@ -1392,6 +1392,7 @@ def bucketized_column(source_column, boundaries):
   features = tf.io.parse_example(
       ..., features=tf.feature_column.make_parse_example_spec(columns))
   dense_tensor = tf.keras.layers.DenseFeatures(columns)(features)
+  ```
 
   `bucketized_column` can also be crossed with another categorical column using
   `crossed_column`:

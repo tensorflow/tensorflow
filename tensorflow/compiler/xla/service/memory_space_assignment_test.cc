@@ -1060,6 +1060,34 @@ TEST_P(MemorySpaceAssignmentTest, BitcastScheduleBug) {
   }
 }
 
+TEST_P(MemorySpaceAssignmentTest, TupleSelect) {
+  // Make sure tuple-select is not optimized away.
+  absl::string_view hlo_string = R"(
+  HloModule tuple, is_scheduled=true
+
+  ENTRY %main (a: f32[2], b: f32[2], c: f32[2], d: f32[2], cond: pred[]) -> f32[2] {
+    %cond = pred[]{:T(128)E(32)} parameter(4)
+    %token0 = token[] after-all()
+    %d = f32[2]{0:T(128)} parameter(3)
+    %c = f32[2]{0:T(128)} parameter(2)
+    %b = f32[2]{0:T(128)} parameter(1)
+    %a = f32[2]{0:T(128)} parameter(0)
+    %tup0 = (f32[2]{0:T(128)}, f32[2]{0:T(128)}) tuple(f32[2]{0:T(128)} %a, f32[2]{0:T(128)} %b)
+    %tup1 = (f32[2]{0:T(128)}, f32[2]{0:T(128)}) tuple(f32[2]{0:T(128)} %c, f32[2]{0:T(128)} %d)
+    %s = (f32[2]{0:T(128)}, f32[2]{0:T(128)}) tuple-select(pred[]{:T(128)E(32)} %cond, (f32[2]{0:T(128)}, f32[2]{0:T(128)}) %tup0, (f32[2]{0:T(128)}, f32[2]{0:T(128)}) %tup1)
+    %gte = f32[2]{0:T(128)} get-tuple-element((f32[2]{0:T(128)}, f32[2]{0:T(128)}) %s), index=0
+    ROOT %negate = f32[2]{0:T(128)} negate(f32[2]{0:T(128)} %gte)
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Negate(op::GetTupleElement(op::TupleSelect())));
+}
+
 TEST_P(MemorySpaceAssignmentTest, LastUseOpt) {
   // Test that checks the last use optimization. It uses two buffers that should
   // be placed in alternate memory.
