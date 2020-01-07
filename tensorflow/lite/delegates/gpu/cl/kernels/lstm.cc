@@ -28,9 +28,9 @@ namespace {
 
 std::string GetLSTMCode(const OperationDef& op_def, const CLDevice& device) {
   const TensorCodeGenerator::SizeVariablesNames state_size(
-      "1", "1", "state_size.w", "BATCH_SIZE");
-  const TensorCodeGenerator::SizeVariablesNames src_size("1", "1", "src_size.w",
-                                                         "BATCH_SIZE");
+      "1", "1", "state_size.z", "state_size.w");
+  const TensorCodeGenerator::SizeVariablesNames src_size("1", "1", "src_size.z",
+                                                         "src_size.w");
 
   TensorCodeGenerator intermediate("src_data", src_size, op_def.src_tensors[0]);
   TensorCodeGenerator prev_state("prev_state", state_size,
@@ -52,15 +52,15 @@ std::string GetLSTMCode(const OperationDef& op_def, const CLDevice& device) {
   c += ") {\n";
   c += "  int B = get_global_id(0);\n";
   c += "  int Z = get_global_id(1);\n";
-  c += "  if (Z >= state_size.w || B >= BATCH_SIZE) return;\n";
+  c += "  if (Z >= state_size.z || B >= state_size.w) return;\n";
   c += "  FLT4 prev_st = " + prev_state.Read4D("0", "0", "Z", "B") + ";\n";
   c += "  FLT4 r0 = " + intermediate.Read4D("0", "0", "Z", "B") + ";\n";
-  c += "  FLT4 r1 = " + intermediate.Read4D("0", "0", "Z + state_size.w", "B") +
+  c += "  FLT4 r1 = " + intermediate.Read4D("0", "0", "Z + state_size.z", "B") +
        ";\n";
   c += "  FLT4 r2 = " +
-       intermediate.Read4D("0", "0", "Z + state_size.w * 2", "B") + ";\n";
+       intermediate.Read4D("0", "0", "Z + state_size.z * 2", "B") + ";\n";
   c += "  FLT4 r3 = " +
-       intermediate.Read4D("0", "0", "Z + state_size.w * 3", "B") + ";\n";
+       intermediate.Read4D("0", "0", "Z + state_size.z * 3", "B") + ";\n";
   if (op_def.precision != CalculationsPrecision::F32 && device.IsAdreno()) {
     c += "  FLT4 input_gate;\n";
     c += "  FLT4 new_input;\n";
@@ -136,8 +136,8 @@ Status LSTM::BindArguments() {
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[1]->GetMemoryPtr()));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[1]->GetMemoryPtrForWriting()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetSizeWithDepth()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetSizeWithDepth()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWHSB()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWHSB()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->Batch()));
 
   return OkStatus();
@@ -145,7 +145,7 @@ Status LSTM::BindArguments() {
 
 int3 LSTM::GetGridSize() const {
   const int grid_x = dst_[0]->Batch();
-  const int grid_y = dst_[0]->Depth();
+  const int grid_y = dst_[0]->Slices();
   const int grid_z = 1;
   return int3(grid_x, grid_y, grid_z);
 }

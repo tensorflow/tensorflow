@@ -113,6 +113,7 @@ cc_library(
     hdrs = ["proto_encode_helper.h"],
     deps = [
         "//tensorflow/core/lib/core:coding",
+        "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/platform:stringpiece",
     ],

@@ -143,11 +143,10 @@ class GeneratorDatasetOp::Dataset : public DatasetBase {
         s = Status::OK();
         *end_of_sequence = true;
 
-        // NOTE(mrry): We ignore any tensors returned by the
-        // finalize function.
+        // NOTE(mrry): We ignore any tensors returned by the finalize function.
         std::vector<Tensor> ignored;
-        TF_RETURN_IF_ERROR(
-            instantiated_finalize_func_->RunInstantiated(state_, &ignored));
+        TF_RETURN_IF_ERROR(instantiated_finalize_func_->RunWithBorrowedArgs(
+            ctx, state_, &ignored));
         finalized_ = true;
       }
       return s;

@@ -70,9 +70,9 @@ class SquareLinearOperatorBlockDiagTest(
     self._rtol[dtypes.float32] = 1e-4
     self._rtol[dtypes.complex64] = 1e-4
 
-  @property
-  def operator_shape_infos(self):
-    shape_info = linear_operator_test_util.OperatorShapeInfo
+  @staticmethod
+  def operator_shapes_infos():
+    shape_info = linear_operator_test_util.OperatorShapesInfo
     return [
         shape_info((0, 0)),
         shape_info((1, 1)),

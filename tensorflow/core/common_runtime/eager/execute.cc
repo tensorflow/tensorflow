@@ -85,30 +85,6 @@ std::vector<string> DevicesToString(const std::vector<Device*> devices) {
   return v;
 }
 
-// Initializes the step stats if needed.
-void MaybeInitializeStepStats(StepStats* step_stats, EagerContext* ctx) {
-  // Lazily initialize the RunMetadata with information about all devices if
-  // this is the first call.
-  while (step_stats->dev_stats_size() < ctx->devices()->size()) {
-    int device_idx = step_stats->dev_stats_size();
-    auto* dev_stats = step_stats->add_dev_stats();
-    dev_stats->set_device(ctx->devices()->at(device_idx)->name());
-  }
-}
-
-int StepStatsDeviceIndex(StepStats* step_stats, EagerContext* ctx,
-                         Device* device) {
-  // Find the current device's index.
-  for (int i = 0; i < ctx->devices()->size(); ++i) {
-    if (ctx->devices()->at(i) == device ||
-        ctx->devices()->at(i)->name() == device->name()) {
-      return i;
-    }
-  }
-  // TODO(apassos) do not fall back to host CPU if device is unknown.
-  return 0;
-}
-
 const string& DeviceNameOrUnspecified(Device* device) {
   static string* unspecified_string = new string("<unspecified>");
   return (device == nullptr) ? *unspecified_string : device->name();
@@ -376,8 +352,8 @@ void AppendTensorShapeToFingerprint(const PartialTensorShape& shape,
   }
 }
 
-Status ShouldCompileWithXLA(const EagerOperation* op, const EagerContext* ctx,
-                            bool* compile_with_xla) {
+Status MustCompileWithXLA(const EagerOperation* op, const EagerContext* ctx,
+                          bool* compile_with_xla) {
   if (!op->is_function()) {
     *compile_with_xla = false;
     return Status::OK();
@@ -392,7 +368,7 @@ Status ShouldCompileWithXLA(const EagerOperation* op, const EagerContext* ctx,
   }
 
   // Does node have an explicit request to compile or not?
-  Status status = op->Attrs().Get(kXlaCompileAttr, compile_with_xla);
+  Status status = op->Attrs().Get(kXlaMustCompileAttr, compile_with_xla);
   if (status.ok()) {
     DVLOG(2) << "Caller explicitly requested "
              << (*compile_with_xla ? "" : "not ")
@@ -407,7 +383,7 @@ Status ShouldCompileWithXLA(const EagerOperation* op, const EagerContext* ctx,
     return errors::NotFound("Failed to find function '", op->Name(), "'");
   }
 
-  status = GetNodeAttr(AttrSlice(&function_def->attr()), kXlaCompileAttr,
+  status = GetNodeAttr(AttrSlice(&function_def->attr()), kXlaMustCompileAttr,
                        compile_with_xla);
   if (status.ok()) {
     DVLOG(2) << "Function definition explicitly specifies "
@@ -535,12 +511,12 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
     bool run_function_with_flr = false;
     if (op->is_function()) {
       bool compile_with_xla;
-      TF_RETURN_IF_ERROR(ShouldCompileWithXLA(op, ctx, &compile_with_xla));
+      TF_RETURN_IF_ERROR(MustCompileWithXLA(op, ctx, &compile_with_xla));
       if (compile_with_xla) {
         // Note that it is not ideal, but currently correct, to set this
         // attribute after computing the kernel cache key above.
         // Note: If the attribute is already set to true, this is a noop.
-        op->MutableAttrs()->Set(kXlaCompileAttr, true);
+        op->MutableAttrs()->Set(kXlaMustCompileAttr, true);
       } else {
         run_function_with_flr = true;
       }
@@ -716,7 +692,7 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
   if (op->Device() == nullptr) {
     tensorflow::Device* device = nullptr;
     string device_name = op->GetDeviceName();
-    TF_RETURN_IF_ERROR(ctx->FindDeviceByName(device_name, &device));
+    TF_RETURN_IF_ERROR(ctx->FindDeviceFromName(device_name.c_str(), &device));
     op->SetDevice(device);
   }
 

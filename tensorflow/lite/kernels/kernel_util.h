@@ -33,6 +33,9 @@ inline const TfLiteTensor* GetInput(TfLiteContext* context,
   return &context
               ->tensors[flatbuffers::EndianScalar(node->inputs->data[index])];
 }
+// Note: You must check if result is not null:
+// TfLiteTensor* my_tensor = GetVariableInput(context, node, kMyTensorIdx);
+// TF_LITE_ENSURE(context, my_tensor != nullptr);
 inline TfLiteTensor* GetVariableInput(TfLiteContext* context,
                                       const TfLiteNode* node, int index) {
   TfLiteTensor* tensor =
@@ -74,7 +77,8 @@ inline int64_t NumElements(const TfLiteTensor* t) {
 inline const TfLiteTensor* GetOptionalInputTensor(TfLiteContext* context,
                                                   const TfLiteNode* node,
                                                   int index) {
-  const bool use_tensor = node->inputs->data[index] != kTfLiteOptionalTensor;
+  const bool use_tensor = index < node->inputs->size &&
+                          node->inputs->data[index] != kTfLiteOptionalTensor;
   if (use_tensor) {
     return &context
                 ->tensors[flatbuffers::EndianScalar(node->inputs->data[index])];
@@ -139,12 +143,7 @@ TfLiteStatus CalculateActivationRangeQuantized(TfLiteContext* context,
                                                TfLiteTensor* output,
                                                int32_t* act_min,
                                                int32_t* act_max);
-void CalculateActivationRangeUint8(TfLiteFusedActivation activation,
-                                   TfLiteTensor* output, int32_t* act_min,
-                                   int32_t* act_max);
-void CalculateActivationRangeInt8(TfLiteFusedActivation activation,
-                                  TfLiteTensor* output, int32_t* act_min,
-                                  int32_t* act_max);
+
 // Calculates the useful range of an activation layer given its activation
 // tensor.a
 template <typename T>

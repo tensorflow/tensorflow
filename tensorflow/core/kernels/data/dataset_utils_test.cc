@@ -91,6 +91,45 @@ TEST(DatasetUtilsTest, VariantTensorDataNonExistentKey) {
             reader.ReadTensor(full_name("NonExistentKey"), &val_tensor).code());
 }
 
+TEST(DatasetUtilsTest, VariantTensorDataRoundtripIteratorName) {
+  VariantTensorDataWriter writer;
+  TF_ASSERT_OK(writer.WriteScalar("Iterator", "Int64", 24));
+  Tensor input_tensor(DT_FLOAT, {1});
+  input_tensor.flat<float>()(0) = 2.0f;
+  TF_ASSERT_OK(writer.WriteTensor("Iterator", "Tensor", input_tensor));
+  std::vector<const VariantTensorData*> data;
+  writer.GetData(&data);
+
+  VariantTensorDataReader reader(data);
+  int64 val_int64;
+  TF_ASSERT_OK(reader.ReadScalar("Iterator", "Int64", &val_int64));
+  EXPECT_EQ(val_int64, 24);
+  Tensor val_tensor;
+  TF_ASSERT_OK(reader.ReadTensor("Iterator", "Tensor", &val_tensor));
+  EXPECT_EQ(input_tensor.NumElements(), val_tensor.NumElements());
+  EXPECT_EQ(input_tensor.flat<float>()(0), val_tensor.flat<float>()(0));
+}
+
+TEST(DatasetUtilsTest, VariantTensorDataNonExistentKeyIteratorName) {
+  VariantTensorData data;
+  strings::StrAppend(&data.metadata_, "key1", "@@");
+  data.tensors_.push_back(Tensor(DT_INT64, {1}));
+  std::vector<const VariantTensorData*> reader_data;
+  reader_data.push_back(&data);
+  VariantTensorDataReader reader(reader_data);
+  int64 val_int64;
+  tstring val_string;
+  Tensor val_tensor;
+  EXPECT_EQ(error::NOT_FOUND,
+            reader.ReadScalar("Iterator", "NonExistentKey", &val_int64).code());
+  EXPECT_EQ(
+      error::NOT_FOUND,
+      reader.ReadScalar("Iterator", "NonExistentKey", &val_string).code());
+  EXPECT_EQ(
+      error::NOT_FOUND,
+      reader.ReadTensor("Iterator", "NonExistentKey", &val_tensor).code());
+}
+
 TEST(DatasetUtilsTest, VariantTensorDataWriteAfterFlushing) {
   VariantTensorDataWriter writer;
   TF_ASSERT_OK(writer.WriteScalar(full_name("Int64"), 24));

@@ -23,17 +23,18 @@ limitations under the License.
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/QuantOps/FakeQuantSupport.h"  // TF:local_config_mlir
-#include "mlir/Dialect/QuantOps/QuantOps.h"  // TF:local_config_mlir
-#include "mlir/Dialect/QuantOps/QuantTypes.h"  // TF:local_config_mlir
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/BlockAndValueMapping.h"  // TF:local_config_mlir
-#include "mlir/IR/Function.h"  // TF:local_config_mlir
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
-#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
-#include "mlir/Support/LLVM.h"  // TF:local_config_mlir
+#include "mlir/Dialect/QuantOps/FakeQuantSupport.h"  // TF:llvm-project
+#include "mlir/Dialect/QuantOps/QuantOps.h"  // TF:llvm-project
+#include "mlir/Dialect/QuantOps/QuantTypes.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/BlockAndValueMapping.h"  // TF:llvm-project
+#include "mlir/IR/Function.h"  // TF:llvm-project
+#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
+#include "mlir/IR/Matchers.h"  // TF:llvm-project
+#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
+#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/Support/LLVM.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_traits.h"
 
 namespace mlir {
@@ -115,7 +116,7 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
     auto q = rewriter.create<Q>(op.getLoc(), result_type, op.arg(),
                                 TypeAttr::get(result_type));
     auto dq = rewriter.create<DQ>(op.getLoc(), op.getType(), q);
-    op.getResult()->replaceAllUsesWith(dq);
+    op.getResult().replaceAllUsesWith(dq);
     q.getOperation()->replaceUsesOfWith(dq, op.arg());
     op.erase();
 
@@ -144,20 +145,24 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
 //
 // Full integer quantization disallows "hybrid" operands or results.
 // Weight quantization allows "hybrid" operands and results.
-template <typename ConcretTy, typename Q, typename DQ>
+template <typename ConcretTy, typename Q, typename DQ, typename VERIFIER>
 struct QuantizationPattern : public RewritePattern {
-  using BaseType = QuantizationPattern<ConcretTy, Q, DQ>;
+  using BaseType = QuantizationPattern<ConcretTy, Q, DQ, VERIFIER>;
 
-  explicit QuantizationPattern(MLIRContext* context)
-      : RewritePattern(DQ::getOperationName(), 1, context) {}
+  explicit QuantizationPattern(MLIRContext* context, bool enable_verify,
+                               float error_tolerance, bool single_layer_verify)
+      : RewritePattern(DQ::getOperationName(), 1, context),
+        enable_verify(enable_verify),
+        error_tolerance(error_tolerance),
+        single_layer_verify(single_layer_verify) {}
 
   PatternMatchResult matchAndRewrite(Operation* op,
                                      PatternRewriter& rewriter) const override {
     if (op->getNumResults() != 1) {
       return matchFailure();
     }
-    Value* quantized_value = op->getResult(0);
-    for (Operation* quantized_op : quantized_value->getUsers()) {
+    Value quantized_value = op->getResult(0);
+    for (Operation* quantized_op : quantized_value.getUsers()) {
       // If it is requantize op, we shouldn't rewrite this op.
       if (llvm::isa<Q>(quantized_op) || llvm::isa<DQ>(quantized_op)) {
         return matchFailure();
@@ -171,17 +176,17 @@ struct QuantizationPattern : public RewritePattern {
 
       // Collect all the quantized inputs and "clone" the matched op by these
       // inputs.
-      SmallVector<Value*, 4> inputs;
+      SmallVector<Value, 4> inputs;
       inputs.reserve(quantized_op->getNumOperands());
       for (auto operand : quantized_op->getOperands()) {
-        Type operand_type = operand->getType();
+        Type operand_type = operand.getType();
         if (operand_type.isa<NoneType>()) {
           inputs.push_back(operand);
           continue;
         }
 
-        auto ele_type = operand->getType().cast<TensorType>().getElementType();
-        if (auto op_inst = dyn_cast_or_null<DQ>(operand->getDefiningOp())) {
+        auto ele_type = operand.getType().cast<TensorType>().getElementType();
+        if (auto op_inst = dyn_cast_or_null<DQ>(operand.getDefiningOp())) {
           inputs.push_back(op_inst.input());
         } else if (ele_type.isa<IntegerType>()) {
           // If the operand is an integer tensor, then it doesn't require the
@@ -196,13 +201,13 @@ struct QuantizationPattern : public RewritePattern {
 
       // Collect all the quantized outputs and replace them by the results of
       // the new quantized op.
-      llvm::SmallDenseMap<Value*, int> outputs_replaced;
+      llvm::SmallDenseMap<Value, int> outputs_replaced;
       SmallVector<Type, 4> output_types;
       output_types.reserve(quantized_op->getNumResults());
       for (auto enumerated_result :
            llvm::enumerate(quantized_op->getResults())) {
-        Value* result = enumerated_result.value();
-        Type result_type = result->getType();
+        Value result = enumerated_result.value();
+        Type result_type = result.getType();
         // Add this to the test coverage once we create test ops with none type
         // results.
         if (result_type.isa<NoneType>()) {
@@ -211,37 +216,92 @@ struct QuantizationPattern : public RewritePattern {
           continue;
         }
         Type result_ele_type =
-            result->getType().cast<TensorType>().getElementType();
+            result.getType().cast<TensorType>().getElementType();
         // If the user is the Quantize op, it must be the only user.
-        if (result->hasOneUse() && llvm::isa<Q>(*result->user_begin())) {
-          auto user = llvm::cast<Q>(*result->user_begin());
+        if (result.hasOneUse() && llvm::isa<Q>(*result.user_begin())) {
+          auto user = llvm::cast<Q>(*result.user_begin());
           outputs_replaced.insert({user.output(), enumerated_result.index()});
           output_types.push_back(user.getType());
         } else if (result_ele_type.template isa<IntegerType>()) {
           // If the result is an integer tensor, then it doesn't require the
           // D op in the pattern.
           outputs_replaced.insert({result, enumerated_result.index()});
-          output_types.push_back(result->getType());
+          output_types.push_back(result.getType());
         } else if (static_cast<const ConcretTy*>(this)->AllowHybridResult()) {
           outputs_replaced.insert({result, enumerated_result.index()});
-          output_types.push_back(result->getType());
+          output_types.push_back(result.getType());
         } else {
           return matchFailure();
         }
       }
 
-      rewriter.setInsertionPoint(quantized_op);
+      rewriter.setInsertionPointAfter(quantized_op);
       OperationState new_state(quantized_op->getLoc(),
                                quantized_op->getName().getStringRef(), inputs,
                                output_types, quantized_op->getAttrs());
       Operation* new_op = rewriter.createOperation(new_state);
       for (auto output : outputs_replaced) {
-        output.getFirst()->replaceAllUsesWith(
+        output.getFirst().replaceAllUsesWith(
             new_op->getResult(output.getSecond()));
+      }
+
+      // To verify the numericals, the original floating-point ops are
+      // preserved in the graph. The result of these floating-point ops are sent
+      // to a numeric verifier op as the reference.
+      if (enable_verify) {
+        // For constant operands, the floating-point constant is duplicated in
+        // case it is quantized.
+        for (int i = 0, e = new_op->getNumOperands(); i != e; ++i) {
+          auto def = new_op->getOperand(i).getDefiningOp();
+          if (auto q = llvm::dyn_cast_or_null<Q>(def)) {
+            DenseFPElementsAttr attr;
+            if (!matchPattern(q.input(), m_Constant(&attr))) {
+              continue;
+            }
+            auto cst = rewriter.create<ConstantOp>(new_op->getLoc(), attr);
+            quantized_op->setOperand(i, cst.getResult());
+          }
+        }
+
+        for (int i = 0, e = new_op->getNumResults(); i != e; ++i) {
+          if (!quantized_op->getResult(i)
+                   .getType()
+                   .cast<ShapedType>()
+                   .getElementType()
+                   .isa<FloatType>()) {
+            continue;
+          }
+          rewriter.setInsertionPointAfter(new_op);
+          FloatAttr tolerance = rewriter.getF32FloatAttr(error_tolerance);
+          // Verify the quantized value by sending the result to the verifier.
+          rewriter.create<VERIFIER>(quantized_op->getLoc(),
+                                    new_op->getResult(i),
+                                    quantized_op->getResult(i), tolerance);
+
+          if (single_layer_verify) continue;
+
+          // Find the Dequantize/Dequantize users of the new op results, and
+          // replace the usage. Then all the floating-point ops are connected.
+          // N.B. the return op will use this floating-point result.
+          for (auto user : new_op->getResult(i).getUsers()) {
+            // Skip the Requantize op, and we know it has a single user.
+            if (llvm::isa<Q>(user)) {
+              user = *user->getResult(0).getUsers().begin();
+            }
+            if (auto dequantize = llvm::dyn_cast<DQ>(user)) {
+              dequantize.getResult().replaceAllUsesWith(
+                  quantized_op->getResult(i));
+            }
+          }
+        }
       }
     }
     return matchSuccess();
   }
+
+  bool enable_verify;
+  float error_tolerance;
+  bool single_layer_verify;
 };
 
 // Converts quantize ops with unsigned quantized types to these with signed
@@ -256,7 +316,7 @@ struct ConvertUnsignedToSigned : public OpRewritePattern<Q> {
 
   PatternMatchResult matchAndRewrite(Q op,
                                      PatternRewriter& rewriter) const override {
-    Type output_type = op.output()->getType();
+    Type output_type = op.output().getType();
     auto qtype = QType::getQuantizedElementType(output_type);
     if (!qtype || qtype.isSigned()) return this->matchFailure();
 
@@ -342,14 +402,14 @@ ElementsAttr Quantize(Attribute real_value, Type tensor_type);
 // parameters in this type is based on the min and max element of the
 // attribute. When the elements in the `attr` are not in floating-point, or
 // the value range isn't straddling zero, an empty type is returned. The min/max
-// are ajusted to be symmetric if `symmetric` flag is set to True. And
+// are adjusted to be symmetric if `symmetric` flag is set to True. And
 // `symmetric` can only be set to true when it is signed and narrow_range.
 Type GetUniformQuantizedTypeForWeight(ElementsAttr attr, bool symmetric,
                                       unsigned num_bits, bool is_sign,
                                       bool narrow_range);
 
 // Returns the per channel quantized type for an element attribute.
-// `quant_dim` defines the quantization axis. The channel min/max are ajusted
+// `quant_dim` defines the quantization axis. The channel min/max are adjusted
 // to be symmetric if `symmetric` flag is set to True. And `symmetric` can only
 // be set to true when it is signed and narrow_range.
 Type GetUniformQuantizedPerAxisTypeForWeight(ElementsAttr attr, int quant_dim,

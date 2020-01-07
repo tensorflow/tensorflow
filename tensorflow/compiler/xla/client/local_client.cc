@@ -329,15 +329,14 @@ StatusOr<int> LocalClient::ReplicaNumberToDeviceOrdinal(int replica_number) {
 }
 
 StatusOr<TransferToServerResponse> LocalClient::TransferToLocalServer(
-    const ::xla::BorrowingLiteral& literal, int device_oridinal) {
+    const ::xla::BorrowingLiteral& literal, int device_ordinal) {
   const ::xla::Shape& shape = literal.shape();
 
-  TF_ASSIGN_OR_RETURN(
-      ::xla::ScopedShapedBuffer shaped_buffer,
-      backend().transfer_manager()->AllocateScopedShapedBuffer(
-          shape, backend().memory_allocator(), device_oridinal));
+  TF_ASSIGN_OR_RETURN(::xla::ScopedShapedBuffer shaped_buffer,
+                      backend().transfer_manager()->AllocateScopedShapedBuffer(
+                          shape, backend().memory_allocator(), device_ordinal));
   TF_ASSIGN_OR_RETURN(auto stream,
-                      mutable_backend()->BorrowStream(device_oridinal));
+                      mutable_backend()->BorrowStream(device_ordinal));
   TF_RETURN_IF_ERROR(backend().transfer_manager()->TransferLiteralToDevice(
       stream.get(), literal, shaped_buffer));
   std::vector<::xla::ScopedShapedBuffer> replicated_buffer;

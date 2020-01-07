@@ -523,16 +523,6 @@ Status LayoutAssignment::AddMandatoryConstraints(
             constraints->SetBufferLayout(new_shape.layout(), *buffer));
       }
     } else if (IsLayoutConstrainedAllReduce(instruction)) {
-      if (instruction->shape().IsTuple()) {
-        for (int64 i = 0; i < instruction->operand_count(); ++i) {
-          TF_RETURN_IF_ERROR(constraints->SetOperandLayout(
-              ShapeUtil::GetTupleElementShape(instruction->shape(), i),
-              instruction, i));
-        }
-      } else {
-        TF_RETURN_IF_ERROR(constraints->SetOperandLayout(instruction->shape(),
-                                                         instruction, 0));
-      }
       TF_RETURN_IF_ERROR(
           constraints->SetInstructionLayout(instruction->shape(), instruction));
     } else if (instruction->IsCrossModuleAllReduce()) {
@@ -617,7 +607,7 @@ Status LayoutAssignment::AddMandatoryConstraints(
           body_layout.result_shape(), instruction));
     } else if (instruction->opcode() == HloOpcode::kConditional) {
       // Find the conditional branch with the most instructions and force all
-      // other computations to match that layout. A potentially better decison
+      // other computations to match that layout. A potentially better decision
       // could count the number FLOPs or how constrained the layouts are.
       int64 largest_branch = 0;
       int64 largest_instruction_count =
@@ -1325,6 +1315,23 @@ Status LayoutAssignment::PropagateOperandConstraint(
   if (!operand->shape().IsArray()) {
     return Status::OK();
   }
+
+  if (user->opcode() == HloOpcode::kAllReduce) {
+    const auto shape_index =
+        user->operand_count() == 1
+            ? ShapeIndex()
+            : ShapeIndex({operand_constraint.operand_no()});
+    TF_ASSIGN_OR_RETURN(const LogicalBuffer* buffer,
+                        constraints->points_to_analysis().GetBufferDefinedAt(
+                            user, shape_index));
+    const BufferLayoutConstraint* constraint =
+        constraints->GetBufferLayoutConstraint(*buffer);
+    if (constraint == nullptr) {
+      TF_RETURN_IF_ERROR(constraints->SetBufferLayout(
+          operand_constraint.shape_layout().layout(), *buffer,
+          /*mandatory=*/false));
+    }
+  }
   if (instruction_can_change_layout_func_(user) && !user->shape().IsArray()) {
     return Status::OK();
   }
@@ -1456,6 +1463,13 @@ Status LayoutAssignment::PropagateBufferConstraintToOperands(
     return Status::OK();
   }
 
+  if (instruction->opcode() == HloOpcode::kAllReduce) {
+    TF_RETURN_IF_ERROR(constraints->SetArrayOperandLayout(
+        buffer_constraint.layout(), instruction,
+        instruction->operand_count() == 1 ? 0 : buffer.index()[0],
+        /*mandatory=*/true));
+    return Status::OK();
+  }
   for (int64 operand_no = 0; operand_no < instruction->operand_count();
        ++operand_no) {
     const HloInstruction* operand = instruction->operand(operand_no);
@@ -2189,6 +2203,9 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kTupleSelect:
     case HloOpcode::kWhile:
     case HloOpcode::kSetDimensionSize:
+    // AllReduce is variadic so it needs to be careful to assign the same layout
+    // to the corresponding input argument and Tuple index.
+    case HloOpcode::kAllReduce:
       return false;
     case HloOpcode::kBatchNormGrad:
     case HloOpcode::kBatchNormInference:
@@ -2227,8 +2244,6 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kTuple:
     case HloOpcode::kGetDimensionSize:
       return true;
-    case HloOpcode::kAllReduce:
-      return IsLayoutConstrainedAllReduce(instruction);
   }
 }
 

@@ -523,3 +523,14 @@ tf_cc_test(
         "//tensorflow/core:testlib",
     ],
 )
+
+filegroup(
+    name = "pywrap_eager_hdrs",
+    srcs = [
+        "profiler_interface.h",
+    ],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/python:__pkg__",
+    ],
+)

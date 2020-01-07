@@ -18,8 +18,8 @@ limitations under the License.
 
 #include "mlir/Dialect/Linalg/Analysis/DependenceAnalysis.h"
 #include "absl/memory/memory.h"
-#include "mlir/Dialect/Linalg/Utils/Utils.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
+#include "mlir/Dialect/Linalg/Utils/Utils.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
 
 namespace mlir {
 namespace xla_lhlo {
@@ -42,7 +42,7 @@ struct LhloFuseLinalg : public FunctionPass<LhloFuseLinalg> {
     // tiled. In order to greedily fuse the ops, we have to start from the tiled
     // root linalg ops, i.e. linalg ops that write to output buffers of the
     // function.
-    llvm::SmallDenseSet<Value*> func_args;
+    llvm::SmallDenseSet<Value> func_args;
     for (auto func_arg : func.getArguments()) {
       func_args.insert(func_arg);
     }
@@ -52,7 +52,7 @@ struct LhloFuseLinalg : public FunctionPass<LhloFuseLinalg> {
       const SmallVector<int64_t, 2> tile_sizes(
           generic_op.getNumInputsAndOutputs(), 1);
       auto op = cast<LinalgOp>(generic_op.getOperation());
-      for (const Value* result : op.getOutputs()) {
+      for (const Value result : op.getOutputs()) {
         if (!func_args.count(result)) continue;
         if (linalg::tileLinalgOp(b, op, tile_sizes, /*permutation=*/{},
                                  &folder)) {
@@ -66,12 +66,17 @@ struct LhloFuseLinalg : public FunctionPass<LhloFuseLinalg> {
     llvm::SmallDenseSet<Operation*> erase_set;
     SmallVector<Operation*, 8> linalg_ops;
     func.walk([&](LinalgOp op) { linalg_ops.push_back(op); });
-    linalg::Aliases aliases;
-    linalg::LinalgDependenceGraph graph(aliases, linalg_ops);
     for (auto* op : llvm::reverse(linalg_ops)) {
       for (unsigned id = 0, e = LinalgOp(op).getNumInputs(); id < e; ++id) {
+        linalg::Aliases aliases;
+        linalg::LinalgDependenceGraph graph(aliases, linalg_ops);
         if (auto info = fuseProducerOf(b, op, id, graph, &folder)) {
-          erase_set.insert(info->originalProducer.getOperation());
+          auto originalOp = info->originalProducer.getOperation();
+          erase_set.insert(originalOp);
+          auto originalOpInLinalgOpsVector = std::find_if(
+              linalg_ops.begin(), linalg_ops.end(),
+              [&](const Operation* op) { return op == originalOp; });
+          *originalOpInLinalgOpsVector = info->fusedProducer.getOperation();
         }
       }
     }

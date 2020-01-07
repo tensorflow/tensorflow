@@ -21,6 +21,7 @@ from __future__ import print_function
 import os
 import shutil
 import tempfile
+
 from absl.testing import parameterized
 import numpy as np
 
@@ -130,7 +131,7 @@ class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
             (None, input_dim, 4, 4, 4),
         ],
         [
-            (keras.layers.GRU(output_dim)),
+            (keras.layers.GRUV1(output_dim)),
             [np.random.random((input_dim, output_dim)),
              np.random.random((output_dim, output_dim)),
              np.random.random((output_dim,)),
@@ -143,7 +144,7 @@ class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
             (None, 4, input_dim),
         ],
         [
-            (keras.layers.LSTM(output_dim)),
+            (keras.layers.LSTMV1(output_dim)),
             [np.random.random((input_dim, output_dim)),
              np.random.random((output_dim, output_dim)),
              np.random.random((output_dim,)),
@@ -826,6 +827,20 @@ class TestWholeModelSaving(test.TestCase, parameterized.TestCase):
     self.assertNear(
         evaluation_results['sparse_categorical_crossentropy'] +
         evaluation_results['custom_loss'], evaluation_results['loss'], 1e-6)
+
+  def test_save_uncompiled_model_with_optimizer(self):
+    saved_model_dir = self._save_model_dir()
+    save_format = testing_utils.get_save_format()
+    model = keras.models.Sequential([keras.layers.Dense(1, input_shape=(3,))])
+    # Set the model's optimizer but don't compile. This can happen if the model
+    # is trained with a custom training loop.
+    model.optimizer = keras.optimizer_v2.rmsprop.RMSprop(lr=0.0001)
+    model.save(saved_model_dir, save_format=save_format)
+
+    if save_format in ['tf', 'tensorflow']:
+      loaded = keras.models.load_model(saved_model_dir)
+      self.assertIsInstance(loaded.optimizer,
+                            keras.optimizer_v2.optimizer_v2.OptimizerV2)
 
 
 # Factory functions to create models that will be serialized inside a Network.

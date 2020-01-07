@@ -68,10 +68,7 @@ Status InitializableLookupTable::Initialize(InitTableIterator& iter) {
     return iter.status();
   }
 
-  // Prevent compiler/memory reordering of is_initialized and
-  // the initialization itself.
-  std::atomic_thread_fence(std::memory_order_release);
-  is_initialized_ = true;
+  is_initialized_.store(true, std::memory_order_release);
   return Status::OK();
 }
 

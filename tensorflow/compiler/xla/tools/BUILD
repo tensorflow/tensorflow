@@ -206,6 +206,7 @@ tf_cc_test(
         ":hlo_extractor",
         "//tensorflow/compiler/xla/service:hlo_matchers",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:test",
     ],
 )
@@ -362,4 +363,13 @@ tf_cc_binary(
         "//tensorflow/core/platform:test",
         "@com_google_absl//absl/strings",
     ],
+)
+
+# This target is used to reproduce miscompiles in OSS outside of TF, and it can
+# not have any dependencies apart from the standard library.
+cc_library(
+    name = "driver",
+    srcs = ["driver.cc"],
+    tags = ["nofixdeps"],
+    deps = [],
 )

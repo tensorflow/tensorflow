@@ -370,7 +370,8 @@ class MemoryUsageTracker {
       const HloRematerialization::ShapeSizeFunction& size_function,
       const HloRematerialization::CompactShapeFunction& compact_shape_function,
       const TuplePointsToAnalysis& points_to_analysis,
-      const InstructionList& instruction_list);
+      const InstructionList& instruction_list,
+      HloRematerialization::RematerializationMode mode);
 
   // Starts the placement of the given instruction. This adds the sizes of the
   // LogicalBuffers defined by the instruction to the current memory
@@ -607,6 +608,7 @@ class MemoryUsageTracker {
   // between the calling of BeginInstruction and EndInstruction.
   Item* in_progress_item_ = nullptr;
 
+  HloRematerialization::RematerializationMode mode_;
   // All buffers in the computation.
   std::vector<Buffer> buffers_;
 };
@@ -616,11 +618,13 @@ MemoryUsageTracker::MemoryUsageTracker(
     const HloRematerialization::ShapeSizeFunction& size_function,
     const HloRematerialization::CompactShapeFunction& compact_shape_function,
     const TuplePointsToAnalysis& points_to_analysis,
-    const InstructionList& instruction_list)
+    const InstructionList& instruction_list,
+    HloRematerialization::RematerializationMode mode)
     : computation_(computation),
       instruction_list_(instruction_list),
       size_function_(size_function),
-      compact_shape_function_(compact_shape_function) {
+      compact_shape_function_(compact_shape_function),
+      mode_(mode) {
   PointsToSet::BufferSet live_out_set =
       points_to_analysis.GetPointsToSet(computation_->root_instruction())
           .CreateFlattenedSet();
@@ -1155,7 +1159,10 @@ MemoryUsageTracker::PickRematerializationCandidate(
       continue;
     }
 
-    if (item->buffers_output.size() == 1) {
+    if (item->buffers_output.size() == 1 &&
+        (mode_ == HloRematerialization::RematerializationMode::kCompressOnly ||
+         mode_ == HloRematerialization::RematerializationMode::
+                      kRecomputeAndCompress)) {
       // Only consider compressing single output instruction.
       const Buffer& output_buffer = buffers_.at(item->buffers_output[0]);
 
@@ -1193,6 +1200,11 @@ MemoryUsageTracker::PickRematerializationCandidate(
         [this](const HloInstruction* inst) { return IsPlaced(inst); });
 
     if (control_successor_placed) {
+      continue;
+    }
+
+    // Do not consider recomputation in compress-only mode.
+    if (mode_ == HloRematerialization::RematerializationMode::kCompressOnly) {
       continue;
     }
 
@@ -1370,7 +1382,7 @@ StatusOr<int64> HloRematerialization::ComputePeakMemory(
   InstructionList instruction_list(order);
   MemoryUsageTracker tracker(computation, size_function_,
                              compact_shape_function_, *points_to_analysis_,
-                             instruction_list);
+                             instruction_list, mode_);
   int64 peak_memory = tracker.memory_usage();
   for (auto* item = instruction_list.first(); item != nullptr;
        item = instruction_list.next(item)) {
@@ -1412,9 +1424,9 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
   CHECK(!ContainsKey(rematerialized_computations_, computation));
 
   InstructionList instruction_list(schedule->sequence(computation));
-  MemoryUsageTracker memory_tracker(computation, size_function_,
-                                    compact_shape_function_,
-                                    *points_to_analysis_, instruction_list);
+  MemoryUsageTracker memory_tracker(
+      computation, size_function_, compact_shape_function_,
+      *points_to_analysis_, instruction_list, mode_);
   bool changed = false;
 
   // If the rematerialization makes the source instruction dead, then the

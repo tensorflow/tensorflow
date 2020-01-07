@@ -95,15 +95,9 @@ TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteAddParams* params,
     QuantizeMultiplierSmallerThanOneExp(
         real_output_multiplier, &data->output_multiplier, &data->output_shift);
 
-    if (output->type == kTfLiteUInt8) {
-      CalculateActivationRangeUint8(params->activation, output,
-                                    &data->output_activation_min,
-                                    &data->output_activation_max);
-    } else {
-      CalculateActivationRangeInt8(params->activation, output,
-                                   &data->output_activation_min,
-                                   &data->output_activation_max);
-    }
+    TF_LITE_ENSURE_STATUS(CalculateActivationRangeQuantized(
+        context, params->activation, output, &data->output_activation_min,
+        &data->output_activation_max));
   }
 
   return kTfLiteOk;

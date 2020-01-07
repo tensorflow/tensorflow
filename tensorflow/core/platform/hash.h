@@ -93,6 +93,15 @@ struct hash<string> {
   }
 };
 
+#ifdef USE_TSTRING
+template <>
+struct hash<tstring> {
+  size_t operator()(const tstring& s) const {
+    return static_cast<size_t>(Hash64(s.data(), s.size()));
+  }
+};
+#endif  // USE_TSTRING
+
 template <>
 struct hash<StringPiece> {
   size_t operator()(StringPiece sp) const {
@@ -109,5 +118,16 @@ struct hash<std::pair<T, U>> {
 };
 
 }  // namespace tensorflow
+
+#ifdef USE_TSTRING
+namespace std {
+template <>
+struct hash<tensorflow::tstring> {
+  size_t operator()(const tensorflow::tstring& s) const {
+    return static_cast<size_t>(tensorflow::Hash64(s.data(), s.size()));
+  }
+};
+}  // namespace std
+#endif  // USE_TSTRING
 
 #endif  // TENSORFLOW_CORE_PLATFORM_HASH_H_

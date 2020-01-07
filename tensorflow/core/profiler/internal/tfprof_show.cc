@@ -170,7 +170,6 @@ string TFShow::FormatNode(ShowNode* node, const Options& opts) const {
     }
     info.push_back(fops);
   }
-  std::vector<string> attrs;
   if (opts.select.find(kShown[0]) != opts.select.end()) {
     info.push_back(FormatNodeMemory(node, node->proto().requested_bytes(),
                                     node->proto().total_requested_bytes()));

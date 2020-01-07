@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import pywrap_tfe
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -115,8 +116,8 @@ def _ConcatGradHelper(op, grad, start_value_index, end_value_index, dim_index):
       non_neg_concat_dim = (
           concat_dim._numpy().item(0) % input_values[0]._rank())  # pylint: disable=protected-access
       # All inputs are guaranteed to be EagerTensors in eager mode
-      sizes = pywrap_tensorflow.TFE_Py_TensorShapeSlice(input_values,
-                                                        non_neg_concat_dim)
+      sizes = pywrap_tfe.TFE_Py_TensorShapeSlice(input_values,
+                                                 non_neg_concat_dim)
       out_grads = array_ops.split(grad, sizes, non_neg_concat_dim)
     else:
       if constant_op.is_constant(concat_dim):

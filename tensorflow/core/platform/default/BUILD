@@ -463,6 +463,11 @@ bzl_library(
     visibility = ["//tensorflow:__subpackages__"],
 )
 
+filegroup(
+    name = "legacy_mobile_srcs",
+    visibility = ["//tensorflow/core/platform:__pkg__"],
+)
+
 package_group(
     name = "core_and_platform_packages",
     packages = [

@@ -19,7 +19,6 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:executable_build_options",
-        "//tensorflow/compiler/xla/python:device_state",
         "//tensorflow/compiler/xla/python:local_client",
         "//tensorflow/compiler/xla/python:semaphore",
         "//tensorflow/compiler/xla/python/tpu_driver",
@@ -75,4 +74,9 @@ py_library(
         "//tensorflow/compiler/xla/python:xla_extension",
         "//third_party/py/numpy",
     ],
+)
+
+cc_library(
+    name = "c_api",
+    hdrs = ["c_api.h"],
 )

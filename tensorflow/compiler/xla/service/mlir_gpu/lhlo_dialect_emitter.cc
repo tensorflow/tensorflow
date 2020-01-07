@@ -15,14 +15,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/mlir_gpu/lhlo_dialect_emitter.h"
 
-#include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // TF:local_config_mlir
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/Function.h"  // TF:local_config_mlir
-#include "mlir/IR/Identifier.h"  // TF:local_config_mlir
-#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
-#include "mlir/IR/Types.h"  // TF:local_config_mlir
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/Builders.h"  // TF:llvm-project
+#include "mlir/IR/Function.h"  // TF:llvm-project
+#include "mlir/IR/Identifier.h"  // TF:llvm-project
+#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/IR/Types.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 #include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
@@ -59,14 +59,23 @@ namespace lhlo = ::mlir::xla_lhlo;
 
 // TODO(b/137624192) Use tablegen for this.
 Status InsertMlirOp(HloOpcode opcode, OpBuilder func_builder, Location loc,
-                    ArrayRef<Type> rets, ArrayRef<Value*> args,
+                    ArrayRef<Type> rets, ArrayRef<Value> args,
                     ArrayRef<std::pair<Identifier, Attribute>> attrs) {
   switch (opcode) {
+    case HloOpcode::kAbs:
+      func_builder.create<lhlo::AbsOp>(loc, rets, args, attrs);
+      break;
     case HloOpcode::kAdd:
       func_builder.create<lhlo::AddOp>(loc, rets, args, attrs);
       break;
     case HloOpcode::kAnd:
       func_builder.create<lhlo::AndOp>(loc, rets, args, attrs);
+      break;
+    case HloOpcode::kCeil:
+      func_builder.create<lhlo::CeilOp>(loc, rets, args, attrs);
+      break;
+    case HloOpcode::kCos:
+      func_builder.create<lhlo::CosOp>(loc, rets, args, attrs);
       break;
     case HloOpcode::kDivide:
       func_builder.create<lhlo::DivOp>(loc, rets, args, attrs);
@@ -83,11 +92,23 @@ Status InsertMlirOp(HloOpcode opcode, OpBuilder func_builder, Location loc,
     case HloOpcode::kMultiply:
       func_builder.create<lhlo::MulOp>(loc, rets, args, attrs);
       break;
+    case HloOpcode::kNegate:
+      func_builder.create<lhlo::NegOp>(loc, rets, args, attrs);
+      break;
+    case HloOpcode::kRemainder:
+      func_builder.create<lhlo::RemOp>(loc, rets, args, attrs);
+      break;
     case HloOpcode::kSelect:
       func_builder.create<lhlo::SelectOp>(loc, rets, args, attrs);
       break;
+    case HloOpcode::kSign:
+      func_builder.create<lhlo::SignOp>(loc, rets, args, attrs);
+      break;
     case HloOpcode::kSubtract:
       func_builder.create<lhlo::SubOp>(loc, rets, args, attrs);
+      break;
+    case HloOpcode::kTanh:
+      func_builder.create<lhlo::TanhOp>(loc, rets, args, attrs);
       break;
     default:
       return tensorflow::errors::Internal(absl::StrCat(
@@ -168,8 +189,8 @@ StatusOr<FuncOp> LhloDialectEmitter::CreateFunction(
 Status LhloDialectEmitter::DefaultAction(HloInstruction* instr) {
   TF_ASSIGN_OR_RETURN(auto function, CreateFunction(*instr));
   OpBuilder func_builder(function.getBody());
-  llvm::SmallVector<Value*, 4> arg_values{function.args_begin(),
-                                          function.args_end()};
+  llvm::SmallVector<Value, 4> arg_values{function.args_begin(),
+                                         function.args_end()};
   TF_RETURN_IF_ERROR(InsertMlirOp(instr->opcode(), func_builder,
                                   getLocation(instr), ArrayRef<Type>{},
                                   arg_values, llvm::None));
@@ -197,7 +218,7 @@ Status LhloDialectEmitter::HandleFusion(HloInstruction* fusion) {
   // Load the HLO argument tensors from the corresponding buffers. The last
   // argument is for the result, so no need to load it.
   OpBuilder body_builder(fusion_op.region());
-  llvm::SmallVector<Value*, 4> arg_values;
+  llvm::SmallVector<Value, 4> arg_values;
   for (int i = 0, e = function.getNumArguments() - 1; i < e; ++i) {
     arg_values.push_back(body_builder.create<::mlir::TensorLoadOp>(
         getLocation(fusion), function.getArgument(i)));
@@ -211,7 +232,7 @@ Status LhloDialectEmitter::HandleFusion(HloInstruction* fusion) {
   // Insert the write-back from the HLO computation to the result argument
   // buffer.
   body_builder.setInsertionPoint(fusion_op.region().back().getTerminator());
-  Value* result_memref = function.getArgument(function.getNumArguments() - 1);
+  Value result_memref = function.getArgument(function.getNumArguments() - 1);
   body_builder.create<::mlir::TensorStoreOp>(getLocation(fusion), result,
                                              result_memref);
 
@@ -220,8 +241,8 @@ Status LhloDialectEmitter::HandleFusion(HloInstruction* fusion) {
 
 Status LhloDialectEmitter::HandleReduce(HloInstruction* reduce) {
   TF_ASSIGN_OR_RETURN(auto function, CreateFunction(*reduce));
-  llvm::SmallVector<Value*, 4> arg_values{function.args_begin(),
-                                          function.args_end()};
+  llvm::SmallVector<Value, 4> arg_values{function.args_begin(),
+                                         function.args_end()};
   OpBuilder builder(function.getBody());
   auto loc = getLocation(reduce);
   int input_count = reduce->operand_count() / 3;
@@ -239,7 +260,7 @@ Status LhloDialectEmitter::HandleReduce(HloInstruction* reduce) {
   OpBuilder body_builder(reduce_op.body());
   auto block = body_builder.getInsertionBlock();
   auto to_apply = reduce->to_apply();
-  llvm::SmallVector<Value*, 4> reduce_arg_values;
+  llvm::SmallVector<Value, 4> reduce_arg_values;
   // First map parameters to memrefs on the operation.
   for (auto param : to_apply->parameter_instructions()) {
     TF_ASSIGN_OR_RETURN(auto arg_type, ConvertShapeToType<MemRefType>(
@@ -280,8 +301,8 @@ Status LhloDialectEmitter::HandleCompare(HloInstruction* compare) {
 
   TF_ASSIGN_OR_RETURN(auto function, CreateFunction(*compare));
   OpBuilder func_builder(function.getBody());
-  llvm::SmallVector<Value*, 4> arg_values{function.args_begin(),
-                                          function.args_end()};
+  llvm::SmallVector<Value, 4> arg_values{function.args_begin(),
+                                         function.args_end()};
   func_builder.create<lhlo::CompareOp>(getLocation(compare), llvm::None,
                                        arg_values, comparison_direction_attr);
   return Status::OK();
@@ -311,6 +332,18 @@ Status LhloDialectEmitter::HandleIota(HloInstruction* iota) {
   func_builder.create<lhlo::IotaOp>(getLocation(iota), iota_dim,
                                     function.getArgument(0));
   return Status::OK();
+}
+
+Status LhloDialectEmitter::HandleTuple(HloInstruction* tuple) {
+  // For the root node of the entry computation we can elide writing the tuple
+  // buffer. We can always figure out the contents of the tuples from buffer
+  // assignment because we insert copies to ensure non-ambiguous output buffers.
+  // GpuExecutable never reads the tuple buffer.
+  if (tuple ==
+      tuple->parent()->parent()->entry_computation()->root_instruction()) {
+    return Status::OK();
+  }
+  return Unimplemented("handling of typles not yet implemented");
 }
 
 Status LhloDialectEmitter::FinishVisit(HloInstruction* root) {

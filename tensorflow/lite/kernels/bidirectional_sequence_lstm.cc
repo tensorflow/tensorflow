@@ -488,8 +488,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* fw_output = GetOutput(context, node, kFwOutputTensor);
   TfLiteTensor* fw_activation_state =
       GetVariableInput(context, node, kFwInputActivationStateTensor);
+  TF_LITE_ENSURE(context, fw_activation_state != nullptr);
   TfLiteTensor* fw_cell_state =
       GetVariableInput(context, node, kFwInputCellStateTensor);
+  TF_LITE_ENSURE(context, fw_cell_state != nullptr);
 
   // Check the shape of input state tensors.
   // These tensor may be 1D or 2D. It's fine as long as the total size is
@@ -552,8 +554,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // Get the pointer to activation_state and cell_state buffer tensors.
   TfLiteTensor* bw_activation_state =
       GetVariableInput(context, node, kBwInputActivationStateTensor);
+  TF_LITE_ENSURE(context, bw_activation_state != nullptr);
   TfLiteTensor* bw_cell_state =
       GetVariableInput(context, node, kBwInputCellStateTensor);
+  TF_LITE_ENSURE(context, bw_cell_state != nullptr);
 
   // Resize the output tensors.
   if (!params->merge_outputs) {
@@ -793,8 +797,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   TfLiteTensor* fw_activation_state =
       GetVariableInput(context, node, kFwInputActivationStateTensor);
+  TF_LITE_ENSURE(context, fw_activation_state != nullptr);
   TfLiteTensor* fw_cell_state =
       GetVariableInput(context, node, kFwInputCellStateTensor);
+  TF_LITE_ENSURE(context, fw_cell_state != nullptr);
   TfLiteTensor* fw_output = GetOutput(context, node, kFwOutputTensor);
 
   // Tensors for the backward cell.
@@ -840,8 +846,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // State tensors.
   TfLiteTensor* bw_activation_state =
       GetVariableInput(context, node, kBwInputActivationStateTensor);
+  TF_LITE_ENSURE(context, bw_activation_state != nullptr);
   TfLiteTensor* bw_cell_state =
       GetVariableInput(context, node, kBwInputCellStateTensor);
+  TF_LITE_ENSURE(context, bw_cell_state != nullptr);
   TfLiteTensor* bw_output = params->merge_outputs
                                 ? nullptr
                                 : GetOutput(context, node, kBwOutputTensor);

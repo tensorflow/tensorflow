@@ -183,15 +183,15 @@ Status StridedSlice::BindArguments() {
   RETURN_IF_ERROR(
       kernel_.SetBytesAuto(int4(attributes_.strides.w, attributes_.strides.h,
                                 attributes_.strides.c, attributes_.strides.b)));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWHDB()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWHDB()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWHSB()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWHSB()));
   return OkStatus();
 }
 
 int3 StridedSlice::GetGridSize() const {
   const int grid_x = dst_[0]->Width() * dst_[0]->Batch();
   const int grid_y = dst_[0]->Height();
-  const int grid_z = dst_[0]->Depth();
+  const int grid_z = dst_[0]->Slices();
   return int3(grid_x, grid_y, grid_z);
 }
 

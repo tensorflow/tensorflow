@@ -24,6 +24,8 @@ function install_ctpu {
   # TPUClusterResolver has a runtime dependency cloud-tpu-client when
   # resolving a Cloud TPU. It's very likely we want this installed if we're
   # using CTPU.
+  # Replace cloud-tpu-client with google-api-python-client oauth2client to test
+  # the client at head.
   "${PIP_CMD}" install --user --upgrade cloud-tpu-client
 
   wget -nv "https://dl.google.com/cloud_tpu/ctpu/latest/linux/ctpu"

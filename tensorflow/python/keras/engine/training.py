@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+
 import numpy as np
 
 from tensorflow.python.data.ops import dataset_ops
@@ -242,6 +243,12 @@ class Model(network.Network, version_utils.VersionSelector):
             You can also pass a list (len = len(outputs)) of lists of metrics
             such as `metrics=[['accuracy'], ['accuracy', 'mse']]` or
             `metrics=['accuracy', ['accuracy', 'mse']]`.
+            When you pass the strings 'accuracy' or 'acc', we convert this to
+            one of `tf.keras.metrics.BinaryAccuracy`,
+            `tf.keras.metrics.CategoricalAccuracy`,
+            `tf.keras.metrics.SparseCategoricalAccuracy` based on the loss
+            function used and the model output shape. We do a similar conversion
+            for the strings 'crossentropy' and 'ce' as well.
         loss_weights: Optional list or dictionary specifying scalar
             coefficients (Python floats) to weight the loss contributions
             of different model outputs.
@@ -249,7 +256,7 @@ class Model(network.Network, version_utils.VersionSelector):
             will then be the *weighted sum* of all individual losses,
             weighted by the `loss_weights` coefficients.
             If a list, it is expected to have a 1:1 mapping
-            to the model's outputs. If a tensor, it is expected to map
+            to the model's outputs. If a dict, it is expected to map
             output names (strings) to scalar coefficients.
         sample_weight_mode: If you need to do timestep-wise
             sample weighting (2D weights), set this to `"temporal"`.
@@ -364,8 +371,9 @@ class Model(network.Network, version_utils.VersionSelector):
     metrics = []
     if self._is_compiled:
       metrics += self._compile_metric_functions
-    metrics.extend(self._metrics)
-    metrics.extend(_get_metrics_from_layers(self._layers))
+    all_layers = self._gather_unique_layers()
+    for l in all_layers:
+      metrics.extend(l._metrics)  # pylint: disable=protected-access
     return metrics
 
   @property
@@ -542,14 +550,14 @@ class Model(network.Network, version_utils.VersionSelector):
               - tuple `(x_val, y_val)` of Numpy arrays or tensors
               - tuple `(x_val, y_val, val_sample_weights)` of Numpy arrays
               - dataset
-              
+
             For the first two cases, `batch_size` must be provided.
             For the last case, `validation_steps` could be provided.
         shuffle: Boolean (whether to shuffle the training data
-            before each epoch) or str (for 'batch').
-            'batch' is a special option for dealing with the
-            limitations of HDF5 data; it shuffles in batch-sized chunks.
-            Has no effect when `steps_per_epoch` is not `None`.
+            before each epoch) or str (for 'batch'). This argument is ignored
+            when `x` is a generator. 'batch' is a special option for dealing
+            with the limitations of HDF5 data; it shuffles in batch-sized
+            chunks. Has no effect when `steps_per_epoch` is not `None`.
         class_weight: Optional dictionary mapping class indices (integers)
             to a weight (float) value, used for weighting the loss function
             (during training only).
@@ -1313,7 +1321,7 @@ class Model(network.Network, version_utils.VersionSelector):
     """
     if not self._is_compiled:
       return
-    if sample_weights and any([s is not None for s in sample_weights]):
+    if sample_weights and any(s is not None for s in sample_weights):
       for endpoint in self._training_endpoints:
         endpoint.sample_weight_mode = (
             endpoint.sample_weight_mode or 'samplewise')
@@ -1324,8 +1332,8 @@ class Model(network.Network, version_utils.VersionSelector):
   def _recompile_weights_loss_and_weighted_metrics(self):
     if not self._is_compiled:
       return False
-    recompile = any([e.sample_weights_mismatch()
-                     for e in self._training_endpoints])
+    recompile = any(
+        e.sample_weights_mismatch() for e in self._training_endpoints)
 
     if recompile:
       self._compile_weights_loss_and_weighted_metrics()
@@ -2934,27 +2942,3 @@ def _convert_scipy_sparse_tensor(value, expected_input):
       return sparse_tensor.SparseTensor(indices, data, shape)
   else:
     return value
-
-
-def _get_metrics_from_layers(layers):
-  """Returns list of metrics from the given layers.
-
-  This will not include the `compile` metrics of a model layer.
-
-  Arguments:
-    layers: List of layers.
-
-  Returns:
-    List of metrics.
-  """
-  metrics = []
-  layers = trackable_layer_utils.filter_empty_layer_containers(layers)
-  for layer in layers:
-    if isinstance(layer, Model):
-      # We cannot call 'metrics' on the model because we do not want to
-      # include the metrics that were added in compile API of a nested model.
-      metrics.extend(layer._metrics)  # pylint: disable=protected-access
-      metrics.extend(_get_metrics_from_layers(layer.layers))
-    else:
-      metrics.extend(layer.metrics)
-  return metrics

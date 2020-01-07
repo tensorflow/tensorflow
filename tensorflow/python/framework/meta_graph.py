@@ -297,9 +297,10 @@ def _find_extraneous_saver_nodes(graph_def, saver_def):
   # but it seems unnecessarily complex given the name scope solution.
 
   # load the graph DAG in minimal form, without initializing a full Graph object
-  nodes = {node_def.name:
-           (set([_op_name(x) for x in node_def.input]), node_def.op)
-           for node_def in graph_def.node}
+  nodes = {
+      node_def.name: (set(_op_name(x) for x in node_def.input), node_def.op)
+      for node_def in graph_def.node
+  }
 
   retain_scope_save = None
   retain_scope_restore = None
@@ -313,12 +314,12 @@ def _find_extraneous_saver_nodes(graph_def, saver_def):
     retain_scope_restore = _get_scope(restore_op_name) + "/"
     retain_scope_save = _get_scope(save_op_name) + "/"
 
-  all_saver_node_names = set([name for name, (_, op) in nodes.items()
-                              if op in SAVE_AND_RESTORE_OPS])
+  all_saver_node_names = set(
+      name for name, (_, op) in nodes.items() if op in SAVE_AND_RESTORE_OPS)
 
-  all_saver_scopes = (set([_get_scope(x) for x in all_saver_node_names])
-                      - all_saver_node_names)
-  all_saver_scopes = set([x + "/" for x in all_saver_scopes])
+  all_saver_scopes = (
+      set(_get_scope(x) for x in all_saver_node_names) - all_saver_node_names)
+  all_saver_scopes = set(x + "/" for x in all_saver_scopes)
 
   extraneous_scopes = all_saver_scopes - set([retain_scope_save,
                                               retain_scope_restore])
@@ -766,9 +767,10 @@ def import_scoped_meta_graph_with_return_elements(
             sorted([compat.as_str(v) for v in field.value]) !=
             sorted(input_map)):
           raise ValueError("Graph contains unbound inputs: %s. Must "
-                           "provide these inputs through input_map." %
-                           ",".join([compat.as_str(v) for v in field.value
-                                     if not input_map or v not in input_map]))
+                           "provide these inputs through input_map." % ",".join(
+                               compat.as_str(v)
+                               for v in field.value
+                               if not input_map or v not in input_map))
         break
 
   # Sets graph to default graph if it's not passed in.

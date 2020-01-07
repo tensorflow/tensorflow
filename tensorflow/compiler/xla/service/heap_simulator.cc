@@ -31,6 +31,12 @@ namespace xla {
 using absl::flat_hash_map;
 using absl::flat_hash_set;
 
+bool HeapSimulator::Chunk::OverlapsWith(Chunk other_chunk) const {
+  CHECK_NE(size, 0);
+  CHECK_NE(other_chunk.size, 0);
+  return offset < other_chunk.chunk_end() && other_chunk.offset < chunk_end();
+}
+
 /*static*/
 StatusOr<int64> HeapSimulator::MinimumMemoryForModule(
     const HloSchedule& schedule,
@@ -591,8 +597,7 @@ void GlobalDecreasingSizeBestFitHeap::Free(const HloValue* buffer, int64 size) {
 
 using Chunk = HeapSimulator::Chunk;
 
-void GlobalDecreasingSizeBestFitHeap::BufferIntervalTree::Add(
-    int64 start, int64 end, const Chunk& chunk) {
+void BufferIntervalTree::Add(int64 start, int64 end, const Chunk& chunk) {
   node_storage_.emplace_back(
       BufferIntervalTreeNode{start, end, end, chunk, nullptr, nullptr});
 
@@ -620,8 +625,7 @@ void GlobalDecreasingSizeBestFitHeap::BufferIntervalTree::Add(
   }
 }
 
-std::vector<Chunk>
-GlobalDecreasingSizeBestFitHeap::BufferIntervalTree::ChunksOverlappingInTime(
+std::vector<Chunk> BufferIntervalTree::ChunksOverlappingInTime(
     int64 start, int64 end) const {
   std::vector<Chunk> result;
   if (node_storage_.empty()) {

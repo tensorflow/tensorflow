@@ -407,8 +407,8 @@ Status ConvTexture::BindArguments() {
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(biases_.GetMemoryPtr()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWBatchedHDB()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWBatchedHDB()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWBatchedHSB()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWBatchedHSB()));
   if (!(kernel_size_.x == 1 && kernel_size_.y == 1)) {
     RETURN_IF_ERROR(kernel_.SetBytesAuto(kernel_size_));
     RETURN_IF_ERROR(kernel_.SetBytesAuto(
@@ -424,7 +424,7 @@ int3 ConvTexture::GetGridSize() const {
   const int grid_x =
       IntegralDivideRoundUp(dst_[0]->Width() * dst_[0]->Batch(), block_size_.x);
   const int grid_y = IntegralDivideRoundUp(dst_[0]->Height(), block_size_.y);
-  const int grid_z = IntegralDivideRoundUp(dst_[0]->Depth(), block_size_.z);
+  const int grid_z = IntegralDivideRoundUp(dst_[0]->Slices(), block_size_.z);
   return int3(grid_x, grid_y, grid_z);
 }
 

@@ -26,7 +26,7 @@ from six.moves.urllib import request
 _GOOGLE_API_CLIENT_INSTALLED = True
 try:
   from apiclient import discovery  # pylint: disable=g-import-not-at-top
-  from oauth2client.client import GoogleCredentials  # pylint: disable=g-import-not-at-top
+  from oauth2client import client  # pylint: disable=g-import-not-at-top
 except ImportError:
   _GOOGLE_API_CLIENT_INSTALLED = False
 
@@ -47,7 +47,7 @@ def _request_compute_metadata(path):
       '%s/computeMetadata/v1/%s' % (_GCE_METADATA_ENDPOINT, path),
       headers={'Metadata-Flavor': 'Google'})
   resp = request.urlopen(req)
-  return resp.read()
+  return _as_text(resp.read())
 
 
 def _environment_var_to_network_endpoints(endpoints):
@@ -75,6 +75,12 @@ def _get_tpu_name(tpu):
     if e in os.environ:
       return os.environ[e]
   return None
+
+
+def _as_text(s):
+  if isinstance(s, bytes):
+    return s.decode('utf-8')
+  return s
 
 
 class Client(object):
@@ -106,9 +112,9 @@ class Client(object):
     if tpu is None:
       raise ValueError('Please provide a TPU Name to connect to.')
 
-    self._tpu = tpu
+    self._tpu = _as_text(tpu)
 
-    self._use_api = not tpu.startswith('grpc://')
+    self._use_api = not self._tpu.startswith('grpc://')
     self._service = service
 
     self._credentials = None
@@ -118,13 +124,13 @@ class Client(object):
     if self._use_api:
       if credentials != 'default':
         self._credentials = credentials
-      # Automaically detect project and zone if unspecified.
+      # Automatically detect project and zone if unspecified.
       if project:
-        self._project = project
+        self._project = _as_text(project)
       else:
         self._project = _request_compute_metadata('project/project-id')
       if zone:
-        self._zone = zone
+        self._zone = _as_text(zone)
       else:
         zone_path = _request_compute_metadata('instance/zone')
         self._zone = zone_path.split('/')[-1]
@@ -138,15 +144,21 @@ class Client(object):
     this object call this method to get a new API object whenever they need
     to communicate with the Cloud API.
 
+    Raises:
+      RuntimeError: If the dependent Python packages are missing.
+
     Returns:
       A Google Cloud TPU API object.
     """
     if self._service:
       return self._service
 
+    if not _GOOGLE_API_CLIENT_INSTALLED:
+      raise RuntimeError('Missing runtime dependency on the Google API client.')
+
     credentials = self._credentials
     if credentials is None or credentials == 'default':
-      credentials = GoogleCredentials.get_application_default()
+      credentials = client.GoogleCredentials.get_application_default()
 
     if self._discovery_url:
       return discovery.build(
@@ -159,13 +171,16 @@ class Client(object):
       return discovery.build(
           'tpu', 'v1', credentials=credentials, cache_discovery=False)
 
+  def _full_name(self):
+    """Returns the full Cloud name for this TPU."""
+    return 'projects/%s/locations/%s/nodes/%s' % (
+        self._project, self._zone, self._tpu)
+
   def _fetch_cloud_tpu_metadata(self):
     """Returns the TPU metadata object from the TPU Get API call."""
+    service = self._tpu_service()
     try:
-      full_name = 'projects/%s/locations/%s/nodes/%s' % (
-          self._project, self._zone, self._tpu)
-      service = self._tpu_service()
-      r = service.projects().locations().nodes().get(name=full_name)
+      r = service.projects().locations().nodes().get(name=self._full_name())
       return r.execute()
     except Exception as e:
       raise ValueError("Could not lookup TPU metadata from name '%s'. Please "

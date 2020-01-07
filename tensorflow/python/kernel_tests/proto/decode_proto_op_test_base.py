@@ -330,7 +330,7 @@ class DecodeProtoOpTestBase(test_base.ProtoOpTestBase, parameterized.TestCase):
     # Test against all 3! permutations of fragments, and for each permutation
     # test parsing all possible combination of 2 fields.
     for indices in itertools.permutations(range(len(fragments))):
-      proto = b''.join([fragments[i] for i in indices])
+      proto = b''.join(fragments[i] for i in indices)
       for i in indices:
         if i == 1:
           expected_message_values = [

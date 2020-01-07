@@ -17,20 +17,20 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "llvm/ADT/APInt.h"
-#include "mlir/Dialect/Linalg/IR/LinalgOps.h"  // TF:local_config_mlir
-#include "mlir/Dialect/Linalg/IR/LinalgTypes.h"  // TF:local_config_mlir
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
-#include "mlir/IR/AffineExpr.h"  // TF:local_config_mlir
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/Function.h"  // TF:local_config_mlir
-#include "mlir/IR/Location.h"  // TF:local_config_mlir
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/IR/Operation.h"  // TF:local_config_mlir
-#include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
-#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
-#include "mlir/Transforms/DialectConversion.h"  // TF:local_config_mlir
+#include "mlir/Dialect/Linalg/IR/LinalgOps.h"  // TF:llvm-project
+#include "mlir/Dialect/Linalg/IR/LinalgTypes.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/IR/AffineExpr.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/Builders.h"  // TF:llvm-project
+#include "mlir/IR/Function.h"  // TF:llvm-project
+#include "mlir/IR/Location.h"  // TF:llvm-project
+#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
+#include "mlir/IR/Operation.h"  // TF:llvm-project
+#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
+#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/Transforms/DialectConversion.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/map_lhlo_to_scalar_op.h"
 
@@ -53,11 +53,11 @@ class PointwiseToLinalgConverter : public OpConversionPattern<LhloOp> {
   using OpConversionPattern<LhloOp>::OpConversionPattern;
 
   PatternMatchResult matchAndRewrite(
-      LhloOp lhlo_op, ArrayRef<Value*> args,
+      LhloOp lhlo_op, ArrayRef<Value> args,
       ConversionPatternRewriter& rewriter) const final {
     auto loc = lhlo_op.getLoc();
     auto argType =
-        lhlo_op.getOperand(0)->getType().template dyn_cast<ShapedType>();
+        lhlo_op.getOperand(0).getType().template dyn_cast<ShapedType>();
     if (!argType || !argType.hasStaticShape()) {
       emitError(loc,
                 "lhlo to linalg conversion expects statically shaped args");
@@ -73,7 +73,7 @@ class PointwiseToLinalgConverter : public OpConversionPattern<LhloOp> {
     unsigned nloops = 0;
     int operandCount = args.size() - 1;
     for (const auto& arg : llvm::enumerate(args)) {
-      auto memrefType = arg.value()->getType().dyn_cast<MemRefType>();
+      auto memrefType = arg.value().getType().dyn_cast<MemRefType>();
       if (!memrefType) return ConversionPattern::matchFailure();
       unsigned rank = memrefType.getRank();
       if (!rank || (nloops && nloops != rank)) {
@@ -101,7 +101,7 @@ class PointwiseToLinalgConverter : public OpConversionPattern<LhloOp> {
     block->addArguments(bodyArgTypes);
     block->addArguments(bodyResultTypes);
 
-    SmallVector<Value*, 4> bodyArgs;
+    SmallVector<Value, 4> bodyArgs;
     for (int i = 0, e = bodyArgTypes.size(); i < e; ++i) {
       bodyArgs.push_back(block->getArgument(i));
     }
@@ -121,11 +121,11 @@ class ScalarPointwiseToStandardConverter : public OpConversionPattern<LhloOp> {
   using OpConversionPattern<LhloOp>::OpConversionPattern;
 
   PatternMatchResult matchAndRewrite(
-      LhloOp lhlo_op, ArrayRef<Value*> args,
+      LhloOp lhlo_op, ArrayRef<Value> args,
       ConversionPatternRewriter& rewriter) const final {
     auto loc = lhlo_op.getLoc();
     auto argType =
-        lhlo_op.getOperand(0)->getType().template dyn_cast<ShapedType>();
+        lhlo_op.getOperand(0).getType().template dyn_cast<ShapedType>();
     if (!argType || !argType.getElementType().isIntOrFloat() ||
         (argType.getRank() != 0)) {
       return ConversionPattern::matchFailure();
@@ -136,7 +136,7 @@ class ScalarPointwiseToStandardConverter : public OpConversionPattern<LhloOp> {
     auto rhs = rewriter.create<LoadOp>(loc, lhlo_op.rhs());
     Operation* op = MapLhloOpToStdScalarOp<LhloOp>(
         llvm::cast<LhloOp>(lhlo_op), argType.getElementType(),
-        llvm::ArrayRef<Value*>{lhs, rhs}, rewriter);
+        llvm::ArrayRef<Value>{lhs, rhs}, rewriter);
     rewriter.create<StoreOp>(loc, op->getResult(0), lhlo_op.out());
     rewriter.eraseOp(lhlo_op);
     return ConversionPattern::matchSuccess();
@@ -148,12 +148,12 @@ class BroadcastInDimConverter : public OpConversionPattern<BroadcastInDimOp> {
   using OpConversionPattern<BroadcastInDimOp>::OpConversionPattern;
 
   PatternMatchResult matchAndRewrite(
-      BroadcastInDimOp broadcastOp, ArrayRef<Value*> args,
+      BroadcastInDimOp broadcastOp, ArrayRef<Value> args,
       ConversionPatternRewriter& rewriter) const final {
     auto operandMemrefType =
-        broadcastOp.operand()->getType().dyn_cast<MemRefType>();
+        broadcastOp.operand().getType().dyn_cast<MemRefType>();
     auto resultMemrefType =
-        broadcastOp.output()->getType().dyn_cast<MemRefType>();
+        broadcastOp.output().getType().dyn_cast<MemRefType>();
     if (!operandMemrefType || !resultMemrefType) return matchFailure();
     auto broadcastDims = broadcastOp.broadcast_dimensions();
     if (!broadcastDims.hasValue()) return matchFailure();
@@ -167,7 +167,7 @@ class BroadcastInDimConverter : public OpConversionPattern<BroadcastInDimOp> {
 
  private:
   PatternMatchResult emitScalarBroadcast(
-      BroadcastInDimOp broadcastOp, ArrayRef<Value*> args,
+      BroadcastInDimOp broadcastOp, ArrayRef<Value> args,
       MemRefType resultMemrefType, ConversionPatternRewriter* rewriter) const {
     unsigned nloops = resultMemrefType.getRank();
     SmallVector<Attribute, 1> indexingMaps{
@@ -195,7 +195,7 @@ class BroadcastInDimConverter : public OpConversionPattern<BroadcastInDimOp> {
   }
 
   PatternMatchResult emitNonScalarBroadcast(
-      BroadcastInDimOp broadcastOp, ArrayRef<Value*> args,
+      BroadcastInDimOp broadcastOp, ArrayRef<Value> args,
       MemRefType operandMemrefType, MemRefType resultMemrefType,
       ConversionPatternRewriter* rewriter) const {
     SmallVector<Type, 4> bodyArgTypes{operandMemrefType.getElementType()};
@@ -250,10 +250,10 @@ class IotaConverter : public OpConversionPattern<IotaOp> {
   using OpConversionPattern<IotaOp>::OpConversionPattern;
 
   PatternMatchResult matchAndRewrite(
-      IotaOp iotaOp, ArrayRef<Value*> args,
+      IotaOp iotaOp, ArrayRef<Value> args,
       ConversionPatternRewriter& rewriter) const final {
     auto resultMemrefType =
-        iotaOp.getOperand()->getType().dyn_cast<MemRefType>();
+        iotaOp.getOperand().getType().dyn_cast<MemRefType>();
     if (!resultMemrefType) return matchFailure();
 
     auto resultElementType = resultMemrefType.getElementType();
@@ -296,10 +296,29 @@ class IotaConverter : public OpConversionPattern<IotaOp> {
   }
 };
 
+class ConstConverter : public OpConversionPattern<ConstOp> {
+ public:
+  using OpConversionPattern<ConstOp>::OpConversionPattern;
+
+  PatternMatchResult matchAndRewrite(
+      ConstOp constOp, ArrayRef<Value> args,
+      ConversionPatternRewriter& rewriter) const final {
+    auto loc = constOp.getLoc();
+    auto valueAttr = constOp.value().cast<DenseElementsAttr>();
+    if (valueAttr.getType().getRank() != 0) return matchFailure();
+    auto stdConstOp =
+        rewriter.create<mlir::ConstantOp>(loc, valueAttr.getValue({}));
+    rewriter.create<mlir::StoreOp>(loc, stdConstOp, constOp.getOperand());
+    rewriter.eraseOp(constOp);
+    return matchSuccess();
+  }
+};
+
 void populateLHLOToLinalgConversionPattern(MLIRContext* context,
                                            OwningRewritePatternList* patterns) {
   // clang-format off
   patterns->insert<BroadcastInDimConverter,
+                   ConstConverter,
                    IotaConverter,
                    PointwiseToLinalgConverter<xla_lhlo::AddOp>,
                    PointwiseToLinalgConverter<xla_lhlo::AndOp>,

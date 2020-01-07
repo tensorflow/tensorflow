@@ -71,6 +71,7 @@ cuda_py_test(
         ":resnet50_test_util",
         "//tensorflow:tensorflow_py_no_contrib",
         "//tensorflow/python/eager:forwardprop",
+        "@six_archive//:six",
     ],
 )
 

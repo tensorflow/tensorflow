@@ -500,7 +500,8 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib_proto_parsing",
-    ],
+        "//tensorflow/core:lib",
+    ] + if_tensorrt([":tensorrt_lib"]),
 )
 
 tf_proto_library(

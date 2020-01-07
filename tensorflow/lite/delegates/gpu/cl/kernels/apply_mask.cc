@@ -47,7 +47,9 @@ void ApplyMask::SetLinkIndex(int index) { link_index_ = index; }
 std::string ApplyMask::GetCoreCode(const LinkingContext& context) const {
   const std::string size_name = "mask_size_op" + std::to_string(link_index_);
   const std::string tensor_name = absl::StrCat("mask_data_op", link_index_);
-  TensorCodeGenerator mask(tensor_name, size_name, definition_.src_tensors[1]);
+  TensorCodeGenerator mask(
+      tensor_name, {size_name + ".x", size_name + ".y", size_name + ".z"},
+      definition_.src_tensors[1]);
   switch (mask_type_) {
     case MaskType::TENSOR:
       return context.var_name + " *= " +
@@ -66,8 +68,9 @@ std::string ApplyMask::GetCoreCode(const LinkingContext& context) const {
 std::string ApplyMask::GetArgsDeclaration() const {
   std::string args;
   const std::string tensor_name = absl::StrCat("mask_data_op", link_index_);
-  TensorCodeGenerator src_tensor(tensor_name, "", definition_.src_tensors[1]);
-  absl::StrAppend(&args, ",\n", src_tensor.GetDeclaration(AccessType::READ));
+  absl::StrAppend(&args, ",\n",
+                  GetTensorDeclaration(AccessType::READ, tensor_name,
+                                       definition_.src_tensors[1]));
   const std::string size_name = "mask_size_op" + std::to_string(link_index_);
   absl::StrAppend(&args, ",\n   int4 ", size_name);
   return args;
@@ -75,7 +78,7 @@ std::string ApplyMask::GetArgsDeclaration() const {
 
 Status ApplyMask::BindArguments(CLKernel* kernel) {
   RETURN_IF_ERROR(kernel->SetMemoryAuto(src_[1]->GetMemoryPtr()));
-  RETURN_IF_ERROR(kernel->SetBytesAuto(src_[1]->GetSizeWithDepth()));
+  RETURN_IF_ERROR(kernel->SetBytesAuto(src_[1]->GetWBatchedHSB()));
   return OkStatus();
 }
 

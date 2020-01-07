@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/internal/profiler_interface.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
@@ -126,6 +127,7 @@ TEST(HostTracerTest, CollectsTraceMeEventsAsXSpace) {
 
   ASSERT_EQ(space.planes_size(), 1);
   const auto& plane = space.planes(0);
+  ASSERT_EQ(plane.name(), kHostThreads);
   ASSERT_EQ(plane.lines_size(), 1);
   ASSERT_EQ(plane.event_metadata_size(), 6);
   ASSERT_EQ(plane.stat_metadata_size(), 2);

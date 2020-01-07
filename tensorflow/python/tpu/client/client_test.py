@@ -246,6 +246,14 @@ class CloudTpuClientTest(test.TestCase):
         tpu='tpu_name', service=self.mock_service_client(tpu_map=tpu_map))
     self.assertEqual(False, c.recoverable())
 
+  def testHandlesByteStrings(self):
+    self.assertEqual(
+        client.Client(
+            tpu='tpu_name', zone='zone', project='project')._full_name(),
+        client.Client(
+            tpu=b'tpu_name', zone=b'zone', project=b'project')._full_name(),
+    )
+
 
 if __name__ == '__main__':
   test.main()

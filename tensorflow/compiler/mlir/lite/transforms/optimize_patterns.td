@@ -18,6 +18,7 @@ limitations under the License.
 include "mlir/IR/OpBase.td"
 include "mlir/Dialect/StandardOps/Ops.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
+include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 
 def F32ElementsAttr : ElementsAttrBase<
   CPred<"$_self.cast<ElementsAttr>().getType().getElementType().isF32()">, "float constant tensor">;
@@ -53,13 +54,15 @@ foreach actFnPair = [[TFL_ReluOp, TFL_AF_Relu],
                      [TFL_Relu1Op, TFL_AF_Relu1]] in
   defm : FuseActFnIntoConvOpPat<actFnPair[0], actFnPair[1]>;
 
+// Checks if the value has only one user.
+def HasOneUse : Constraint<CPred<"$0.hasOneUse()">>;
 
 // If we see a binary op (add, sub) op adding a constant value to a convolution
 // op with constant bias, we can fuse the binary op into the convolution op by
 // constant folding the bias and the binary op's constant operand. The following
 // pattern restricts to float constant values for now.
 multiclass FuseBinaryOpToPrecedingAffine<dag binaryOp> {
-  def : Pat<(binaryOp (TFL_Conv2DOp $input, $filter,
+  def : Pat<(binaryOp (TFL_Conv2DOp:$output $input, $filter,
                           (ConstantOp F32ElementsAttr:$bias),
                           $h_factor, $w_factor, TFL_AF_None,
                           $padding, $stride_h, $stride_w),
@@ -68,8 +71,9 @@ multiclass FuseBinaryOpToPrecedingAffine<dag binaryOp> {
                         (binaryOp (ConstantOp $bias),
                                    (ConstantOp $value), TFL_AF_None),
                         $h_factor, $w_factor, $act_fn,
-                        $padding, $stride_h, $stride_w)>;
-  def : Pat<(binaryOp (TFL_DepthwiseConv2DOp $input, $filter,
+                        $padding, $stride_h, $stride_w),
+          [(HasOneUse $output)]>;
+  def : Pat<(binaryOp (TFL_DepthwiseConv2DOp:$output $input, $filter,
                           (ConstantOp F32ElementsAttr:$bias),
                           $h_factor, $w_factor, TFL_AF_None,
                           $padding, $stride_h, $stride_w,
@@ -81,7 +85,8 @@ multiclass FuseBinaryOpToPrecedingAffine<dag binaryOp> {
                                      TFL_AF_None),
                           $h_factor, $w_factor, $act_fn,
                           $padding, $stride_h, $stride_w,
-                          $multiplier)>;
+                          $multiplier),
+          [(HasOneUse $output)]>;
 }
 foreach binaryOp = [TFL_AddOp, TFL_SubOp] in
   defm : FuseBinaryOpToPrecedingAffine<binaryOp>;
@@ -101,7 +106,7 @@ def ExpandTo4DForDepthwiseConv: NativeCodeCall<
 // The following pattern restricts to float constant values for now.
 
 multiclass FuseMulOrDivWithConv2dOrDepthwiseConv2d<dag BinaryOp> {
-  def : Pat<(BinaryOp (TFL_DepthwiseConv2DOp $input,
+  def : Pat<(BinaryOp (TFL_DepthwiseConv2DOp:$output $input,
                           (ConstantOp F32ElementsAttr:$filter),
                           (ConstantOp F32ElementsAttr:$bias),
                           $h_factor, $w_factor, TFL_AF_None,
@@ -119,8 +124,9 @@ multiclass FuseMulOrDivWithConv2dOrDepthwiseConv2d<dag BinaryOp> {
                           $h_factor, $w_factor, $act_fn,
                           $padding, $stride_h, $stride_w,
                           $multiplier),
-          [(CanFuseConvOrDepthwiseConv<"true"> $filter, $value)]>;
-  def : Pat<(BinaryOp (TFL_Conv2DOp $input,
+          [(CanFuseConvOrDepthwiseConv<"true"> $filter, $value),
+           (HasOneUse $output)]>;
+  def : Pat<(BinaryOp (TFL_Conv2DOp:$conv_output $input,
                           (ConstantOp F32ElementsAttr:$filter),
                           (ConstantOp F32ElementsAttr:$bias),
                           $h_factor, $w_factor, TFL_AF_None,
@@ -135,7 +141,8 @@ multiclass FuseMulOrDivWithConv2dOrDepthwiseConv2d<dag BinaryOp> {
                                      TFL_AF_None),
                           $h_factor, $w_factor, $act_fn,
                           $padding, $stride_h, $stride_w),
-          [(CanFuseConvOrDepthwiseConv<"false"> $filter, $value)]>;
+          [(CanFuseConvOrDepthwiseConv<"false"> $filter, $value),
+           (HasOneUse $conv_output)]>;
 }
 
 foreach BinaryOp = [TFL_DivOp, TFL_MulOp] in
@@ -154,7 +161,7 @@ def EqualOperands : Constraint<CPred<"$0 == $1">>;
 
 // Checks if the operand has rank == n
 class OperandHasRank<int n> : Constraint<
-  CPred<"$0->getType().cast<ShapedType>().getRank() == " # n>>;
+  CPred<"$0.getType().cast<ShapedType>().getRank() == " # n>>;
 
 // Matching HardSwish
 def : Pat<
@@ -249,7 +256,7 @@ foreach L2NormalizePairs = [[TFL_MulOp, TFL_RsqrtOp], [TFL_DivOp, TFL_SqrtOp]]
   in defm : L2NormalizePatterns<L2NormalizePairs[0], L2NormalizePairs[1]>;
 
 def AreBroadcastableTypes : Constraint<CPred<
-  "TFL::IsBroadcastableElementsAttrAndType($0->getType(), $1->getType())">>;
+  "TFL::IsBroadcastableElementsAttrAndType($0.getType(), $1.getType())">>;
 
 // Pattern for skipping Tile if it is mainly for broadcasting and the
 // Op is already supporting broadcasting.
@@ -307,3 +314,7 @@ multiclass FusedBinaryActivationFuncOpPat<dag BinaryOp> {
 foreach BinaryOps = [TFL_AddOp, TFL_DivOp,
                      TFL_MulOp, TFL_SubOp] in
   defm : FusedBinaryActivationFuncOpPat<BinaryOps>;
+
+// The constant folding in this pass might produce constant in the tf dialect.
+// This rule is to legalize these constant to the tfl dialect.
+def : Pat<(TF_ConstOp ElementsAttr:$value), (TFL_ConstOp $value)>;

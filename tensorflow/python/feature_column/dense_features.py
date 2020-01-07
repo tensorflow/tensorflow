@@ -31,16 +31,17 @@ class DenseFeatures(fc._BaseFeaturesLayer):  # pylint: disable=protected-access
   """A layer that produces a dense `Tensor` based on given `feature_columns`.
 
   Generally a single example in training data is described with FeatureColumns.
-  At the first layer of the model, this column oriented data should be converted
+  At the first layer of the model, this column-oriented data should be converted
   to a single `Tensor`.
 
   This layer can be called multiple times with different features.
 
-  This is the V1 version of this layer that uses variable_scope's to create
-  variables which works well with PartitionedVariables. Variable scopes are
-  deprecated in V2, so the V2 version uses name_scopes instead. But currently
-  that lacks support for partitioned variables. Use this if you need
-  partitioned variables.
+  This is the V1 version of this layer that uses variable_scope's or partitioner
+  to create variables which works well with PartitionedVariables. Variable
+  scopes are deprecated in V2, so the V2 version uses name_scopes instead. But
+  currently that lacks support for partitioned variables. Use this if you need
+  partitioned variables. Use the partitioner argument if you have a Keras model
+  and uses `tf.compat.v1.keras.estimator.model_to_estimator` for training.
 
   Example:
 
@@ -50,7 +51,9 @@ class DenseFeatures(fc._BaseFeaturesLayer):  # pylint: disable=protected-access
       tf.feature_column.categorical_column_with_hash_bucket("keywords", 10K),
       dimensions=16)
   columns = [price, keywords_embedded, ...]
-  feature_layer = tf.compat.v1.keras.layers.DenseFeatures(columns)
+  partitioner = tf.compat.v1.fixed_size_partitioner(num_shards=4)
+  feature_layer = tf.compat.v1.keras.layers.DenseFeatures(
+      feature_columns=columns, partitioner=partitioner)
 
   features = tf.io.parse_example(
       ..., features=tf.feature_column.make_parse_example_spec(columns))
@@ -62,7 +65,12 @@ class DenseFeatures(fc._BaseFeaturesLayer):  # pylint: disable=protected-access
   ```
   """
 
-  def __init__(self, feature_columns, trainable=True, name=None, **kwargs):
+  def __init__(self,
+               feature_columns,
+               trainable=True,
+               name=None,
+               partitioner=None,
+               **kwargs):
     """Constructs a DenseFeatures layer.
 
     Args:
@@ -75,6 +83,7 @@ class DenseFeatures(fc._BaseFeaturesLayer):  # pylint: disable=protected-access
       trainable:  Boolean, whether the layer's variables will be updated via
         gradient descent during training.
       name: Name to give to the DenseFeatures.
+      partitioner: Partitioner for input layer. Defaults to None.
       **kwargs: Keyword arguments to construct a layer.
 
     Raises:
@@ -84,6 +93,7 @@ class DenseFeatures(fc._BaseFeaturesLayer):  # pylint: disable=protected-access
         feature_columns=feature_columns,
         trainable=trainable,
         name=name,
+        partitioner=partitioner,
         expected_column_type=fc.DenseColumn,
         **kwargs)
 

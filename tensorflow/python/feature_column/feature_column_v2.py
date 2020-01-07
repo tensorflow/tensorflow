@@ -306,8 +306,14 @@ class _StateManagerImpl(StateManager):
           # specifying a default partitioner for an entire layer. In that case,
           # the default getter for Layers should work.
           getter=variable_scope.get_variable)
-    if isinstance(var, trackable.Trackable):
-      self._layer._track_trackable(var, feature_column.name + '/' + name)  # pylint: disable=protected-access
+    if isinstance(var, variables.PartitionedVariable):
+      for v in var:
+        part_name = name + '/' + str(v._get_save_slice_info().var_offset[0])  # pylint: disable=protected-access
+        self._layer._track_trackable(v, feature_column.name + '/' + part_name)  # pylint: disable=protected-access
+    else:
+      if isinstance(var, trackable.Trackable):
+        self._layer._track_trackable(var, feature_column.name + '/' + name)  # pylint: disable=protected-access
+
     self._cols_to_vars_map[feature_column][name] = var
     return var
 
@@ -375,12 +381,19 @@ class _BaseFeaturesLayer(Layer):
     ValueError: if an item in `feature_columns` doesn't match
       `expected_column_type`.
   """
-  def __init__(self, feature_columns, expected_column_type, trainable, name,
+
+  def __init__(self,
+               feature_columns,
+               expected_column_type,
+               trainable,
+               name,
+               partitioner=None,
                **kwargs):
     super(_BaseFeaturesLayer, self).__init__(
         name=name, trainable=trainable, **kwargs)
     self._feature_columns = _normalize_feature_columns(feature_columns)
     self._state_manager = _StateManagerImpl(self, self.trainable)
+    self._partitioner = partitioner
     for column in self._feature_columns:
       if not isinstance(column, expected_column_type):
         raise ValueError(
@@ -391,7 +404,9 @@ class _BaseFeaturesLayer(Layer):
 
   def build(self, _):
     for column in self._feature_columns:
-      with variable_scope._pure_variable_scope(self.name):  # pylint: disable=protected-access
+      with variable_scope._pure_variable_scope(  # pylint: disable=protected-access
+          self.name,
+          partitioner=self._partitioner):
         with variable_scope._pure_variable_scope(column.name):  # pylint: disable=protected-access
           column.create_state(self._state_manager)
     super(_BaseFeaturesLayer, self).build(None)
@@ -438,6 +453,8 @@ class _BaseFeaturesLayer(Layer):
     column_configs = serialization.serialize_feature_columns(
         self._feature_columns)
     config = {'feature_columns': column_configs}
+    config['partitioner'] = generic_utils.serialize_keras_object(
+        self._partitioner)
 
     base_config = super(  # pylint: disable=bad-super-call
         _BaseFeaturesLayer, self).get_config()
@@ -450,6 +467,8 @@ class _BaseFeaturesLayer(Layer):
     config_cp = config.copy()
     config_cp['feature_columns'] = serialization.deserialize_feature_columns(
         config['feature_columns'], custom_objects=custom_objects)
+    config_cp['partitioner'] = generic_utils.deserialize_keras_object(
+        config['partitioner'], custom_objects)
 
     return cls(**config_cp)
 
@@ -1665,7 +1684,7 @@ def categorical_column_with_vocabulary_file_v2(key,
     if not gfile.Exists(vocabulary_file):
       raise ValueError('vocabulary_file in {} does not exist.'.format(key))
 
-    with gfile.GFile(vocabulary_file) as f:
+    with gfile.GFile(vocabulary_file, mode='rb') as f:
       vocabulary_size = sum(1 for _ in f)
     logging.info(
         'vocabulary_size = %d in %s is inferred from the number of elements '

@@ -286,7 +286,7 @@ class HloModule {
   // Returns true if the module has a schedule set.
   bool has_schedule() const { return schedule_.has_value(); }
 
-  // Returns the schedue of the module. CHECK fails if no schedule is set.
+  // Returns the schedule of the module. CHECK fails if no schedule is set.
   const HloSchedule& schedule() const { return *schedule_; }
   HloSchedule& schedule() { return *schedule_; }
 

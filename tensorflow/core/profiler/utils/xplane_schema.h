@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_XPLANE_SCHEMA_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_XPLANE_SCHEMA_H_
 
+#include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/core/platform/logging.h"
@@ -23,8 +24,45 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
+// Name of XPlane that contains TraceMe events.
+ABSL_CONST_INIT extern const absl::string_view kHostThreads;
+
+// Interesting event types (i.e., TraceMe names).
+enum HostEventType {
+  kFirstHostEventType = 0,
+  kUnknownHostEventType = kFirstHostEventType,
+  kTraceContext,
+  kSessionRun,
+  kFunctionRun,
+  kRunGraph,
+  kEagerKernelExecute,
+  kExecutorStateProcess,
+  kExecutorDoneCallback,
+  // tf.data captured function events.
+  kTfDataCapturedFunctionRun,
+  kTfDataCapturedFunctionRunWithBorrowedArgs,
+  kTfDataCapturedFunctionRunInstantiated,
+  kTfDataCapturedFunctionRunAsync,
+  // Functional ops.
+  kCallOp,
+  kParallelForOp,
+  kForeverOp,
+  kNumericalGradientOpEvalRight,
+  kNumericalGradientOpEvalLeft,
+  kSymbolicGradientOp,
+  kRemoteCallOp,
+  kIfOp,
+  kCaseOp,
+  kWhileOpEvalCond,
+  kWhileOpStartBody,
+  kForOp,
+  kPartitionedCallOp,
+  kLastHostEventType = kPartitionedCallOp,
+};
+
 enum StatType {
-  kUnknown = 0,
+  kFirstStatType = 0,
+  kUnknownStatType = kFirstStatType,
   // TraceMe arguments.
   kStepId,
   kParentStepId,
@@ -53,14 +91,23 @@ enum StatType {
   kTfOp,
   kHloOp,
   kHloModule,
+  kLastStatType = kHloModule,
 };
 
-ABSL_CONST_INIT extern const int kNumStatTypes;
+absl::Span<const absl::string_view> GetHostEventTypeStrMap();
+
+inline absl::string_view GetHostEventTypeStr(HostEventType event_type) {
+  return GetHostEventTypeStrMap()[event_type];
+}
+
+inline bool IsHostEventType(HostEventType event_type,
+                            absl::string_view event_name) {
+  return GetHostEventTypeStrMap()[event_type] == event_name;
+}
 
 absl::Span<const absl::string_view> GetStatTypeStrMap();
 
 inline absl::string_view GetStatTypeStr(StatType stat_type) {
-  DCHECK_LT(stat_type, kNumStatTypes);
   return GetStatTypeStrMap()[stat_type];
 }
 

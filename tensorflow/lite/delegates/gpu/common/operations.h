@@ -92,6 +92,20 @@ struct Padding2D {
   HW appended = HW(-1, -1);
 };
 
+struct Padding3D {
+  Padding3D() = default;
+  Padding3D& operator=(const Padding3D& value);
+  bool operator==(const Padding3D& value);
+  bool operator!=(const Padding3D& value);
+  Padding3D& operator-(const Padding3D& value);
+
+  // Padding values for every axis (if needed), where 'prepended' defines
+  // padding for the beginning of each axis and 'appended' represents end part
+  // of the corresponding axis.
+  HWD prepended = HWD(0, 0, 0);
+  HWD appended = HWD(0, 0, 0);
+};
+
 struct Crop2D : public Padding2D {};
 
 struct SpaceToBatchAttributes {
@@ -126,6 +140,18 @@ struct Pooling2DAttributes {
   bool output_indices = false;
 };
 
+struct Pooling3DAttributes {
+  PoolingType type = PoolingType::UNDEFINED;
+  // Strides for every axis.
+  HWD strides = HWD(0, 0, 0);
+  HWD kernel = HWD(0, 0, 0);
+  Padding3D padding;
+  // NOTE(akulik): technically the number of outputs from Pooling node indicates
+  // whether indices are needed or not, but I decided to keep it inside
+  // attributes to simplify processing.
+  bool output_indices = false;
+};
+
 struct MaxUnpooling2DAttributes {
   // Strides for every axis.
   HW strides = HW(-1, -1);
@@ -147,6 +173,10 @@ BHWC CalculateOutputShape(const BHWC& input,
 //         input.
 BHWC CalculateOutputShape(const BHWC& input, const Pooling2DAttributes& attr);
 
+// @return shape of a tensor after Pooling3D operation is applied to the given
+//         input.
+BHWDC CalculateOutputShape(const BHWDC& input, const Pooling3DAttributes& attr);
+
 // @return shape of a tensor after Concat operation is applied to the given
 //         input.
 Status CalculateOutputShape(const std::vector<BHWC>& input,
@@ -156,6 +186,11 @@ Status CalculateOutputShape(const std::vector<BHWC>& input,
 // as the given input.
 Padding2D CalculateSamePadding(const BHWC& input,
                                const Pooling2DAttributes& attr);
+
+// @return padding for pooling operation to make sure output keep the same shape
+// as the given input.
+Padding3D CalculateSamePadding(const BHWDC& input,
+                               const Pooling3DAttributes& attr);
 
 // @return padding for max unpooling operation to make sure output keep the same
 // shape as the given input.

@@ -41,20 +41,20 @@ py_library(
 tf_py_test(
     name = "all_reduce_test",
     srcs = ["all_reduce_test.py"],
-    additional_deps = [
+    deps = [
         ":all_reduce",
-        "//third_party/py/numpy",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python:platform",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:state_ops",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -172,9 +172,6 @@ py_test(
     srcs = ["distribute_lib_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
-    tags = [
-        "no_rocm",
-    ],
     deps = [
         ":combinations",
         ":distribute_lib",
@@ -268,7 +265,7 @@ py_library(
         "//tensorflow/python:device",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python:summary_ops_v2",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:training",
@@ -379,10 +376,11 @@ py_library(
 tf_py_test(
     name = "mirrored_function_strategy_test",
     srcs = ["mirrored_function_strategy_test.py"],
-    additional_deps = [
+    tags = ["no_pip"],
+    deps = [
         ":distribute_lib",
-        ":strategy_combinations",
         ":mirrored_function_strategy",
+        ":strategy_combinations",
         ":values",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_ops",
@@ -390,7 +388,6 @@ tf_py_test(
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
     ],
-    tags = ["no_pip"],
 )
 
 py_library(
@@ -737,7 +734,10 @@ distribute_py_test(
     name = "input_lib_test",
     srcs = ["input_lib_test.py"],
     main = "input_lib_test.py",
-    shard_count = 10,
+    shard_count = 30,
+    tags = [
+        "no_gpu_presubmit",
+    ],
     deps = [
         ":collective_all_reduce_strategy",
         ":mirrored_strategy",
@@ -830,7 +830,7 @@ tf_py_test(
     name = "sharded_variable_test",
     size = "small",
     srcs = ["sharded_variable_test.py"],
-    additional_deps = [
+    deps = [
         ":sharded_variable",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -941,7 +941,6 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_oss",  # TODO(b/139815303): enable after this is fixed.
-        "no_rocm",
         "notap",  # TODO(b/139815303): enable after this is fixed.
     ],
     deps = [
@@ -995,7 +994,6 @@ distribute_py_test(
     main = "step_fn_test.py",
     tags = [
         "multi_and_single_gpu",
-        "no_rocm",
     ],
     deps = [
         ":single_loss_example",
@@ -1056,10 +1054,10 @@ cuda_py_test(
     srcs = ["mirrored_strategy_test.py"],
     shard_count = 5,
     tags = [
-        "guitar",
         "multi_and_single_gpu",
         "no_rocm",
         "no_windows_gpu",  # TODO(b/130551176)
+        "noguitar",
     ],
     deps = [
         ":combinations",
@@ -1235,9 +1233,10 @@ distribute_py_test(
     name = "ctl_correctness_test",
     srcs = ["ctl_correctness_test.py"],
     main = "ctl_correctness_test.py",
-    shard_count = 10,
+    shard_count = 30,
     tags = [
         "multi_and_single_gpu",
+        "no_gpu_presubmit",
         "noguitar",  # b/140755528
     ],
     deps = [
@@ -1258,7 +1257,7 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
     ],
-    xla_enable_strict_auto_jit = False,
+    xla_enable_strict_auto_jit = True,
     deps = [
         ":collective_all_reduce_strategy",
         ":combinations",

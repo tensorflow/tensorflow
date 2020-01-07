@@ -246,7 +246,7 @@ def lift_to_graph(tensors,
 
   # Check that the initializer does not depend on any placeholders.
   sources = object_identity.ObjectIdentitySet(sources or [])
-  visited_ops = set([x.op for x in sources])
+  visited_ops = set(x.op for x in sources)
   op_outputs = collections.defaultdict(set)
 
   # First we extract the subgraph between init_tensors and sources.
