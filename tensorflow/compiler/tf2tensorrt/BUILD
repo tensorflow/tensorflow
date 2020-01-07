@@ -303,6 +303,21 @@ tf_cc_test(
     ],
 )
 
+tf_cuda_cc_test(
+    name = "trt_shape_optimization_profiles_test",
+    size = "small",
+    srcs = ["utils/trt_shape_optimization_profiles_test.cc"],
+    tags = [
+        "no_windows",
+        "nomac",
+    ],
+    deps = [
+        ":trt_resources",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
 tf_cuda_library(
     name = "logger_registry",
     srcs = ["convert/logger_registry.cc"],
