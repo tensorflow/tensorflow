@@ -563,6 +563,21 @@ LogicalResult ExportXlaOp(PadOp op, OpLoweringContext ctx) {
   return success();
 }
 
+LogicalResult ExportXlaOp(RecvOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  auto result_type = op.getType().cast<mlir::TupleType>().getType(0);
+  if (op.is_host_transfer()) {
+    value_map[op] =
+        xla::RecvFromHost(value_map[op.token()], xla::TypeToShape(result_type),
+                          Convert_channel_handle(op.channel_id()));
+    return success();
+  }
+  value_map[op] =
+      xla::RecvWithToken(value_map[op.token()], xla::TypeToShape(result_type),
+                         Convert_channel_handle(op.channel_id()));
+  return success();
+}
+
 LogicalResult ExportXlaOp(ReduceOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   xla::XlaComputation body;
