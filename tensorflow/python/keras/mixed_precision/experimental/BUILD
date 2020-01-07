@@ -31,6 +31,7 @@ py_library(
     srcs = ["__init__.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":get_layer_policy",
         ":loss_scale_optimizer",
         ":policy",
     ],
@@ -43,6 +44,7 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":device_compatibility_check",
         "//tensorflow/python:framework",
         "//tensorflow/python:mixed_precision_global_state",
     ],
@@ -63,6 +65,48 @@ py_test(
         "//tensorflow/python/keras",
         "//tensorflow/python/keras/mixed_precision/experimental:loss_scale_optimizer",
         "//tensorflow/python/keras/optimizer_v2",
+    ],
+)
+
+py_library(
+    name = "device_compatibility_check",
+    srcs = ["device_compatibility_check.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:device_lib",
+        "//tensorflow/python:gpu_util",
+        "//tensorflow/python/eager:context",
+    ],
+)
+
+cuda_py_test(
+    name = "device_compatibility_check_test",
+    srcs = ["device_compatibility_check_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":device_compatibility_check",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_library(
+    name = "get_layer_policy",
+    srcs = ["get_layer_policy.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python/keras:base_layer",
+    ],
+)
+
+py_test(
+    name = "get_layer_policy_test",
+    srcs = ["get_layer_policy_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":get_layer_policy",
+        ":policy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras:layers",
     ],
 )
 

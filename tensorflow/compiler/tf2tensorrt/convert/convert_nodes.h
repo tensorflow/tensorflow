@@ -42,14 +42,6 @@ namespace tensorrt {
 namespace convert {
 using ::stream_executor::port::StatusOr;
 
-#define IS_TRT_VERSION_GE(major, minor, patch, build)           \
-  ((NV_TENSORRT_MAJOR > major) ||                               \
-   (NV_TENSORRT_MAJOR == major && NV_TENSORRT_MINOR > minor) || \
-   (NV_TENSORRT_MAJOR == major && NV_TENSORRT_MINOR == minor && \
-    NV_TENSORRT_PATCH > patch) ||                               \
-   (NV_TENSORRT_MAJOR == major && NV_TENSORRT_MINOR == minor && \
-    NV_TENSORRT_PATCH == patch && NV_TENSORRT_BUILD >= build))
-
 struct EngineConnection {
   // Constructs a non-control edge.
   EngineConnection(const string& outside, int out_id, int out_port,
@@ -164,11 +156,6 @@ class OutputEdgeValidator {
   bool operator()(const Edge* out_edge) const;
 };
 
-string DebugString(const nvinfer1::DimensionType type);
-string DebugString(const nvinfer1::DataType trt_dtype);
-string DebugString(const nvinfer1::Dims& dims);
-string DebugString(const nvinfer1::Permutation& permutation, int len);
-string DebugString(const nvinfer1::ITensor& tensor);
 int64_t TrtWeightDimsNumElements(const nvinfer1::Dims& dims);
 int64_t TrtTensorDimsNumElements(const nvinfer1::Dims& dims);
 

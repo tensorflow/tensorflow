@@ -449,7 +449,9 @@ class Function(object):
     if self._implements is not None:
       attributes[function_lib.IMPLEMENTS_ATTRIBUTE_NAME] = self._implements
     if self._experimental_compile is not None:
-      attributes.update(_XlaCompile=bool(self._experimental_compile))
+      attributes.update(_XlaMustCompile=bool(self._experimental_compile))
+      if self._experimental_compile:
+        attributes.update(_noinline=True)
     if not attributes:
       attributes = None
     return function_lib.defun_with_attributes(
@@ -793,7 +795,7 @@ class Function(object):
     """Returns all concrete functions for serialization.
 
     Returns:
-      A list of instances of `Function`.
+      A list of instances of `ConcreteFunction`.
     """
     if self.input_signature is not None:
       self.get_concrete_function()

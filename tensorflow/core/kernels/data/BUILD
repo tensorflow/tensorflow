@@ -615,6 +615,7 @@ tf_cc_test(
     name = "parallel_interleave_dataset_op_test",
     size = "small",
     srcs = ["parallel_interleave_dataset_op_test.cc"],
+    tags = ["notsan"],  # TODO(b/147147071): Remove this tag once bug fix lands.
     deps = [
         ":captured_function",
         ":dataset_test_base",
@@ -1115,7 +1116,6 @@ tf_kernel_library(
     hdrs = ["iterator_ops.h"],
     deps = [
         ":captured_function",
-        ":dataset_ops",
         ":dataset_utils",
         ":optional_ops",
         ":unbounded_thread_pool",

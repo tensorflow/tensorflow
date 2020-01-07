@@ -129,7 +129,7 @@ cc_library(
         "//tensorflow/stream_executor:device_memory_allocator",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/types:span",
-        "@llvm//:support",
+        "@llvm-project//llvm:support",
     ],
 )
 
@@ -147,7 +147,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:compiler",
         "//tensorflow/core:stream_executor_no_cuda",
         "@com_google_absl//absl/memory",
-        "@llvm//:support",
+        "@llvm-project//llvm:support",
     ],
 )
 
@@ -253,6 +253,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:test",
     ],
 )

@@ -88,15 +88,29 @@ load(
     "tf_opts_nortti_if_emscripten",
     "transitive_hdrs",
 )
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "if_nccl")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tensorflow_opensource_extra_deps")
 
+# buildifier: disable=same-origin-load
 # load("//tensorflow:tensorflow.bzl", "tf_android_full_lite_protos")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_cc_tests_gpu")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 
+# buildifier: disable=same-origin-load
 # Placeholder: load("//tensorflow:tensorflow.bzl", "tf_portable_proto_lib")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_portable_proto_library")
 
 # For platform specific build config
@@ -154,12 +168,6 @@ package_group(
         "//quality/webanswers/brain/tokenization/custom_tf_ops/kernels/...",
     ],
 )
-
-# Export the BUILD file so automated tooling can check licenses
-exports_files([
-    "BUILD",
-    "ops/ops.pbtxt",
-])
 
 package_group(name = "experimental_access")
 
@@ -310,7 +318,6 @@ cc_library(
         "//tensorflow/core/platform:threadpool_interface",
         "//tensorflow/core/platform:threadpool_options",
         "//tensorflow/core/platform:types",
-        "//tensorflow/core/platform/default/build_config:base",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings",
     ],
@@ -887,6 +894,12 @@ cc_library(
     alwayslink = 1,
 )
 
+filegroup(
+    name = "ops_txt_pb",
+    srcs = ["ops/ops.pbtxt"],
+    visibility = ["//tensorflow/core/ops/compat:__pkg__"],
+)
+
 cc_library(
     name = "word2vec_ops",
     srcs = ["ops/word2vec_ops.cc"],
@@ -1125,6 +1138,7 @@ tf_cuda_library(
         "graph/graph_constructor.h",
         "graph/graph_def_builder.h",
         "graph/graph_def_builder_util.h",
+        "graph/graph_node_util.h",
         "graph/node_builder.h",
         "graph/validate.h",
         "graph/while_context.h",
@@ -1254,7 +1268,9 @@ cc_library(
 cc_library(
     name = "dynamic_kernels_impl",
     visibility = [":__subpackages__"],
-    deps = [],
+    deps = [
+        "//tensorflow/core/kernels:sobol_op",
+    ],
 )
 
 cc_library(
@@ -1430,7 +1446,7 @@ filegroup(
         "//tensorflow/core/lib/random:legacy_lib_random_all_srcs",
         "//tensorflow/core/lib/strings:legacy_lib_strings_all_headers",
         "//tensorflow/core/lib/strings:legacy_lib_strings_all_srcs",
-        "//tensorflow/core/platform/default/build_config:android_srcs",
+        "//tensorflow/core/platform:legacy_mobile_srcs",
         "//tensorflow/core/profiler:mobile_srcs",
         "//tensorflow/core/public:mobile_srcs_no_runtime",
         "//tensorflow/core/util/ctc:android_srcs",
@@ -1741,7 +1757,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":android_tensorflow_lib",
-        ":protos_cc",
+        ":protos_all_cc",
         "//tensorflow/core/platform/default/build_config:gtest",
         "//third_party/eigen3",
     ],
@@ -2234,7 +2250,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":platform_base",
-        "//tensorflow/core/platform/default/build_config:logging",
+        "//tensorflow/core/platform:logging",
     ],
 )
 
@@ -2267,8 +2283,8 @@ cc_library(
         ":core_stringpiece",
         "//tensorflow/core/platform:dynamic_annotations",
         "//tensorflow/core/platform:jpeg",
+        "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:stringpiece",
-        "//tensorflow/core/platform/default/build_config:logging",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
     ],
@@ -2302,10 +2318,10 @@ cc_library(
         "//tensorflow/core/lib/strings:strcat",
         "//tensorflow/core/platform:dynamic_annotations",
         "//tensorflow/core/platform:gif",
+        "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:numbers",
         "//tensorflow/core/platform:strcat",
         "//tensorflow/core/platform:stringpiece",
-        "//tensorflow/core/platform/default/build_config:logging",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
     ],
@@ -2369,6 +2385,7 @@ FRAMEWORK_INTERNAL_PRIVATE_HEADERS = [
     "graph/edgeset.h",
     "graph/graph.h",
     "graph/graph_def_builder.h",
+    "graph/graph_node_util.h",
     "graph/node_builder.h",
     "graph/tensor_id.h",
     "//tensorflow/core/util/sparse:framework_internal_private_headers_group",
@@ -2462,6 +2479,7 @@ tf_cuda_library(
             "graph/edgeset.cc",
             "graph/graph.cc",
             "graph/graph_def_builder.cc",
+            "graph/graph_node_util.cc",
             "graph/node_builder.cc",
             "graph/tensor_id.cc",
             "graph/while_context.h",
@@ -2505,9 +2523,15 @@ tf_cuda_library(
         "//tensorflow/core/framework:allocator",
         "//tensorflow/core/framework:allocator_registry_impl",
         "//tensorflow/core/framework:attr_value_proto_text",
+        "//tensorflow/core/framework:attr_value_util",
         "//tensorflow/core/framework:bfloat16",
+        "//tensorflow/core/framework:common_shape_fns",
+        "//tensorflow/core/framework:node_def_util",
         "//tensorflow/core/framework:numeric_types",
+        "//tensorflow/core/framework:op_def_builder",
+        "//tensorflow/core/framework:op_def_util",
         "//tensorflow/core/framework:resource_handle",
+        "//tensorflow/core/framework:shape_inference",
         "//tensorflow/core/framework:tensor",
         "//tensorflow/core/framework:tensor_shape",
         "//tensorflow/core/kernels:bounds_check",
@@ -2515,8 +2539,12 @@ tf_cuda_library(
         "//tensorflow/core/profiler/internal:annotation_stack_impl",
         "//tensorflow/core/profiler/internal:traceme_recorder_impl",
         "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/util:einsum_op_util",
+        "//tensorflow/core/util:padding",
         "//tensorflow/core/util:port",
         "//tensorflow/core/util:stats_calculator_portable",
+        "//tensorflow/core/util:tensor_format",
+        "//tensorflow/compiler/jit:common",
     ] + if_static(
         extra_deps = ["@com_google_protobuf//:protobuf"],
         otherwise = ["@com_google_protobuf//:protobuf_headers"],
@@ -2586,13 +2614,6 @@ alias(
     visibility = ["//visibility:public"],
 )
 
-# TODO(josh11b): Is this needed, or can we just use ":protos_all_cc"?
-cc_library(
-    name = "protos_cc",
-    visibility = ["//visibility:public"],
-    deps = ["//tensorflow/core/platform/default/build_config:protos_cc"],
-)
-
 # Library containing all of the graph construction code that is
 # independent of the runtime.
 #
@@ -2611,6 +2632,7 @@ GRAPH_HDRS = [
     "graph/graph_constructor.h",  # NOTE(mrry): Don't include the .cc since it depends on common_runtime.
     "graph/graph_def_builder.h",
     "graph/graph_def_builder_util.h",
+    "graph/graph_node_util.h",
     "graph/graph_partition.h",
     "graph/mkl_layout_pass.h",
     "graph/mkl_tfconversion_pass.h",

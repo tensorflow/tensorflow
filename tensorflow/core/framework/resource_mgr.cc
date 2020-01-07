@@ -38,7 +38,6 @@ ResourceHandle MakeResourceHandle(
     const std::vector<DtypeAndPartialTensorShape>& dtypes_and_shapes) {
   ResourceHandle result;
   result.set_device(device.name());
-  string actual_container;
   result.set_container(container);
   if (name == ResourceHandle::ANONYMOUS_NAME) {
     result.set_name(strings::StrCat("_AnonymousVar", current_id_.fetch_add(1)));

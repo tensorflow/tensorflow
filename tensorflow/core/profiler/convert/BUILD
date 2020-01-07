@@ -28,7 +28,6 @@ cc_library(
     srcs = ["run_metadata_to_trace_events.cc"],
     hdrs = ["run_metadata_to_trace_events.h"],
     deps = [
-        "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/strings",
@@ -76,6 +75,31 @@ cc_library(
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/core/profiler/utils:xplane_schema",
         "//tensorflow/core/profiler/utils:xplane_utils",
+    ],
+)
+
+cc_library(
+    name = "op_stats_to_input_pipeline_analysis",
+    srcs = ["op_stats_to_input_pipeline_analysis.cc"],
+    hdrs = ["op_stats_to_input_pipeline_analysis.h"],
+    deps = [
+        ":op_metrics_to_record",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/profiler/protobuf:hardware_types_proto_cc",
+        "//tensorflow/core/profiler/protobuf:input_pipeline_proto_cc",
+        "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
+        "//tensorflow/core/profiler/protobuf:op_stats_proto_cc",
+        "//tensorflow/core/profiler/protobuf:steps_db_proto_cc",
+        "//tensorflow/core/profiler/utils:event_span",
+        "//tensorflow/core/profiler/utils:math_utils",
+        "//tensorflow/core/profiler/utils:tf_op_utils",
+        "//tensorflow/core/profiler/utils:time_utils",
+        "//tensorflow/core/util:stats_calculator_portable",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
     ],
 )
 

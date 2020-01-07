@@ -125,24 +125,26 @@ struct TFE_OpInferenceContext {
 struct TFE_Op {
   TFE_Op(TFE_Context* ctx, const char* op, bool is_function,
          const tensorflow::AttrTypeMap* t,
-         TFE_OpInferenceContext* inference_ctx)
-      : operation(ctx->context, op, is_function, t),
-        inference_ctx(inference_ctx) {}
+         std::unique_ptr<TFE_OpInferenceContext> inference_ctx)
+      : ctx(ctx),
+        operation(ctx->context, op, is_function, t),
+        inference_ctx(std::move(inference_ctx)) {}
 
   void Clear() {
     operation.Clear();
     inference_ctx.reset();
   }
 
-  tensorflow::Status Reset(TFE_Context* ctx, const char* op, bool is_function,
+  tensorflow::Status Reset(const char* op, bool is_function,
                            const tensorflow::AttrTypeMap* t,
                            const char* raw_device_name,
-                           TFE_OpInferenceContext* infer_ctx) {
-    inference_ctx.reset(infer_ctx);
+                           std::unique_ptr<TFE_OpInferenceContext> infer_ctx) {
+    inference_ctx = std::move(infer_ctx);
     return operation.Reset(ctx->context, op, is_function, t, raw_device_name,
                            nullptr);
   }
 
+  TFE_Context* ctx;
   tensorflow::EagerOperation operation;
   std::unique_ptr<TFE_OpInferenceContext> inference_ctx;
 };

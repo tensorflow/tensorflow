@@ -811,7 +811,7 @@ class BaseResourceVariable(variables.VariableV1):
       it will return the `Operation` that does the assignment, and when in eager
       mode it will return `None`.
     """
-    # Note: not depending on the cached value here since this can used to
+    # Note: not depending on the cached value here since this can be used to
     # initialize the variable.
     with _handle_graph(self.handle):
       value_tensor = ops.convert_to_tensor(value, dtype=self.dtype)

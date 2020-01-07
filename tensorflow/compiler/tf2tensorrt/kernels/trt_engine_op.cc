@@ -142,7 +142,7 @@ class TRTEngineOp : public AsyncOpKernel {
   NameAttrList func_;
 
   // GraphDef representation of the segment.
-  GraphDef segment_graph_;
+  GraphDef segment_graph_def_;
 
   // Engine Precision mode.
   TrtPrecisionMode precision_mode_;
@@ -277,8 +277,8 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
     FunctionLibraryRuntime* lib = context->function_library();
     OP_REQUIRES_OK(context,
                    ConstructFunctionHandle(lib, context->device()->name()));
-    OP_REQUIRES_OK(context,
-                   FunctionDefToGraphDef(func_handle_, lib, &segment_graph_));
+    OP_REQUIRES_OK(
+        context, FunctionDefToGraphDef(func_handle_, lib, &segment_graph_def_));
   }
   // TODO(laigd): calibration_data is used in TF v1.x and we keep it only for
   // backward compatibility reasons. Remove it once all known users switch to
@@ -529,6 +529,25 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
                                    EngineContext* engine_context) {
   VLOG(1) << "Executing TRT engine: " << name();
   auto& cuda_engine = engine_context->cuda_engine;
+
+  if (VLOG_IS_ON(2)) {
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
+    VLOG(2) << "  Network name: " << cuda_engine->getName();
+#endif  // #if IS_TRT_VERSION_GE(6, 0, 0, 0)
+    VLOG(2) << "  Activation size: " << cuda_engine->getDeviceMemorySize()
+            << " bytes";
+    VLOG(2) << "  Workspace size: " << cuda_engine->getWorkspaceSize()
+            << " bytes";
+    VLOG(2) << "  Datatype of " << cuda_engine->getNbBindings()
+            << " inputs/outputs";
+    string binding_types = "";
+    for (int i = 0; i < cuda_engine->getNbBindings(); i++) {
+      binding_types += "    " + string(cuda_engine->getBindingName(i)) + ": " +
+                       DebugString(cuda_engine->getBindingDataType(i)) + "\n";
+    }
+    VLOG(2) << binding_types;
+  }
+
   const bool kRetry = true;
   // All inputs must have the same batch size, so just get it from the first
   // input.
@@ -761,7 +780,7 @@ StatusOr<EngineContext*> TRTEngineOp::GetEngine(
     // Up to this point, calibrator_ can never be empty, since otherwise it
     // means calibration_mode_ is true and this path won't get executed.
     auto status = convert::ConvertGraphDefToEngine(
-        segment_graph_, precision_mode_, batch_size, workspace_size_,
+        segment_graph_def_, precision_mode_, batch_size, workspace_size_,
         partial_shapes, &logger, allocator, calibrator_.get(), &engine,
         use_calibration_, use_implicit_batch_, &convert_successfully);
     if (!status.ok()) {
@@ -848,7 +867,7 @@ Status TRTEngineOp::AllocateCalibrationResources(
     // TODO(aaroey): maybe setting the max batch size using the python
     // calibration wrapper class.
     auto s = convert::ConvertGraphDefToEngine(
-        this->segment_graph_, TrtPrecisionMode::INT8,
+        this->segment_graph_def_, TrtPrecisionMode::INT8,
         cres->calibrator_->getBatchSize(), this->workspace_size_,
         partial_shapes, &cache_res->GetLogger(), cache_res->allocator_.get(),
         cres->calibrator_.get(), &cres->engine_,

@@ -145,8 +145,10 @@ class EagerContext : public core::RefCounted {
     return prioritized_device_type_list_;
   }
 
-  // Clears the kernel caches.
-  void ClearCaches();
+  // Clear pending nodes in thread executors and kernel caches.
+  void ClearCachesAndThreadExecutors();
+  // Clear pending nodes in default executor and kernel caches.
+  void ClearCachesAndDefaultExecutor();
 
   // Sets the device placement policy for the current thread.
   void SetThreadLocalDevicePlacementPolicy(ContextDevicePlacementPolicy policy);

@@ -262,6 +262,7 @@ cc_library(
     deps = [
         ":gpu_operation",
         ":util",
+        ":work_group_picking",
         "//tensorflow/lite/delegates/gpu/cl:buffer",
         "//tensorflow/lite/delegates/gpu/cl:cl_device",
         "//tensorflow/lite/delegates/gpu/cl:linear_storage",
@@ -379,6 +380,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:tensor",
         "//tensorflow/lite/delegates/gpu/common:types",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -446,6 +448,7 @@ cc_library(
     deps = [
         ":gpu_operation",
         ":util",
+        ":work_group_picking",
         "//tensorflow/lite/delegates/gpu/cl:buffer",
         "//tensorflow/lite/delegates/gpu/cl:linear_storage",
         "//tensorflow/lite/delegates/gpu/cl:precision",
@@ -1228,6 +1231,7 @@ test_suite(
         "depth_wise_conv_test",
         "elementwise_test",
         "fully_connected_texture_test",
+        "lstm_test",
         "max_unpooling_test",
         "multiply_add_test",
         "padding_test",

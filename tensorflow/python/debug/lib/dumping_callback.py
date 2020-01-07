@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import atexit
+import os
 import re
 import socket
 import threading
@@ -232,15 +233,16 @@ class _DumpingCallback(object):
     stack_frame_ids = []
     writer = None
     for file_path, lineno, func, _ in stack_frames:
-      if (file_path, lineno, func) in self._stack_frame_to_id:
+      abs_path = os.path.abspath(file_path)
+      if (abs_path, lineno, func) in self._stack_frame_to_id:
         stack_frame_ids.append(
-            self._stack_frame_to_id[(file_path, lineno, func)])
+            self._stack_frame_to_id[(abs_path, lineno, func)])
         continue
       with self._stack_frame_to_id_lock:
-        if (file_path, lineno, func) not in self._stack_frame_to_id:
+        if (abs_path, lineno, func) not in self._stack_frame_to_id:
           stack_frame_id = _get_id()
-          self._stack_frame_to_id[(file_path, lineno, func)] = stack_frame_id
-          file_index = self._write_source_file_content(file_path)
+          self._stack_frame_to_id[(abs_path, lineno, func)] = stack_frame_id
+          file_index = self._write_source_file_content(abs_path)
           file_line_col = graph_debug_info_pb2.GraphDebugInfo.FileLineCol(
               file_index=file_index, line=lineno, func=func)
           stack_frame_with_id = debug_event_pb2.StackFrameWithId(
@@ -248,7 +250,7 @@ class _DumpingCallback(object):
           writer = self.get_writer()
           writer.WriteStackFrameWithId(stack_frame_with_id)
         stack_frame_ids.append(
-            self._stack_frame_to_id[(file_path, lineno, func)])
+            self._stack_frame_to_id[(abs_path, lineno, func)])
 
     code_location = debug_event_pb2.CodeLocation(
         host_name=self._hostname, stack_frame_ids=stack_frame_ids)
@@ -386,6 +388,7 @@ class _DumpingCallback(object):
                           tensors,
                           op_type,
                           input_tensor_ids,
+                          output_tensor_device_ids,
                           graph_id=None):
     """Dump the value of eager tensors.
 
@@ -400,6 +403,9 @@ class _DumpingCallback(object):
         value transform.
       op_type: Type of the op that generates the tensors, as a string.
       input_tensor_ids: IDs of the input EagerTensors to the op.
+      output_tensor_device_ids: Debugged-generated IDs for the devices on which
+        the output tensors are allocated, as a `list` of `int`s. Must match
+        `tensors` in length.
       graph_id: ID of the executed graph, applicable only to eager execution of
         a FuncGraph.
 
@@ -409,6 +415,7 @@ class _DumpingCallback(object):
     tensor_debug_mode = self._tensor_debug_mode
     output_tensor_ids = [
         t._id for t in tensors]  # pylint:disable=protected-access
+    assert len(tensors) == len(output_tensor_device_ids)
     if tensor_debug_mode == debug_event_pb2.TensorDebugMode.NO_TENSOR:
       return debug_event_pb2.Execution(
           op_type=op_type,
@@ -416,6 +423,7 @@ class _DumpingCallback(object):
           num_outputs=len(tensors),
           input_tensor_ids=input_tensor_ids,
           output_tensor_ids=output_tensor_ids,
+          output_tensor_device_ids=output_tensor_device_ids,
           tensor_debug_mode=tensor_debug_mode,
           code_location=self._process_stack_frames())
     elif tensor_debug_mode in (debug_event_pb2.TensorDebugMode.CURT_HEALTH,
@@ -428,6 +436,7 @@ class _DumpingCallback(object):
           graph_id=graph_id,
           input_tensor_ids=input_tensor_ids,
           output_tensor_ids=output_tensor_ids,
+          output_tensor_device_ids=output_tensor_device_ids,
           tensor_debug_mode=tensor_debug_mode,
           code_location=self._process_stack_frames())
       for tensor in tensors:
@@ -505,8 +514,11 @@ class _DumpingCallback(object):
         return None
       context_id = self._func_graph_id_from_func_name(op_type)
       input_ids = [t._id for t in inputs]  # pylint:disable=protected-access
+      output_tensor_device_ids = [writer.RegisterDeviceAndGetId(output.device)
+                                  for output in outputs] if outputs else []
       writer.WriteExecution(self._dump_eager_tensors(
-          outputs, op_type, input_ids, graph_id=context_id))
+          outputs, op_type, input_ids, output_tensor_device_ids,
+          graph_id=context_id))
 
   def _func_graph_id_from_func_name(self, op_type):
     """Attempt to get the ID of a FuncGraph based on an op type name.

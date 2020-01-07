@@ -1446,14 +1446,15 @@ class CheckpointV1(tracking.AutoTrackable):
     """
     super(CheckpointV1, self).__init__()
     for k, v in sorted(kwargs.items(), key=lambda item: item[0]):
-      if not isinstance(v, (base.Trackable, def_function.Function)):
+      setattr(self, k, v)
+      if not isinstance(
+          getattr(self, k), (base.Trackable, def_function.Function)):
         raise ValueError(
             ("`Checkpoint` was expecting a trackable object (an object "
              "derived from `TrackableBase`), got %s. If you believe this "
              "object should be trackable (i.e. it is part of the "
              "TensorFlow Python API and manages state), please open an issue.")
             % (v,))
-      setattr(self, k, v)
     self._save_counter = None  # Created lazily for restore-on-create.
     self._save_assign_op = None
     self._saver = saver_with_op_caching(self)
@@ -1783,14 +1784,15 @@ class Checkpoint(tracking.AutoTrackable):
     """
     super(Checkpoint, self).__init__()
     for k, v in sorted(kwargs.items(), key=lambda item: item[0]):
-      if not isinstance(v, (base.Trackable, def_function.Function)):
+      setattr(self, k, v)
+      if not isinstance(
+          getattr(self, k), (base.Trackable, def_function.Function)):
         raise ValueError(
             ("`Checkpoint` was expecting a trackable object (an object "
              "derived from `TrackableBase`), got %s. If you believe this "
              "object should be trackable (i.e. it is part of the "
              "TensorFlow Python API and manages state), please open an issue.")
             % (v,))
-      setattr(self, k, v)
     self._save_counter = None  # Created lazily for restore-on-create.
     self._save_assign_op = None
     self._saver = saver_with_op_caching(self)

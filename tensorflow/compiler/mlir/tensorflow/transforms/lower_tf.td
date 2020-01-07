@@ -37,7 +37,7 @@ class GetI64ScalarElementsAttr<int value> :
 
 def GetBiasAddGradReductionIndices : NativeCodeCall<
   "GetBiasAddGradReductionIndices("
-  "$0->getType().cast<RankedTensorType>().getRank(), $1, &$_builder)">;
+  "$0.getType().cast<RankedTensorType>().getRank(), $1, &$_builder)">;
 
 def LowerBiasAddGradOp :
   Pat<(TF_BiasAddGradOp AnyRankedTensor:$out_backprop, $data_format),
@@ -82,12 +82,12 @@ def LowerSoftmaxCrossEntropyWithLogitsOp : Pattern<
 // dimension should be known.
 class GetDimSizeOfType<int dim> : NativeCodeCall<
   "GetScalarOfType(getElementTypeOrSelf($1), "
-  "$0->getType().cast<RankedTensorType>().getDimSize(" # dim # "))">;
+  "$0.getType().cast<RankedTensorType>().getDimSize(" # dim # "))">;
 
 // Same as the above with i32 element type.
 class GetDimSizeAsI32<int dim> : NativeCodeCall<
   "GetScalarOfType($_builder.getIntegerType(32), "
-  "$0->getType().cast<RankedTensorType>().getDimSize(" # dim # "))">;
+  "$0.getType().cast<RankedTensorType>().getDimSize(" # dim # "))">;
 
 // Sparse version of SoftmaxCrossEntropyWithLogits is lowered to dense by
 // expanding the sparse labels using:
@@ -160,7 +160,7 @@ def LowerFillOp : Pat<(TF_FillOp $dims, $value),
 
 def GetAllAxes : NativeCodeCall<
   "GetI64ElementsAttrForSeq("
-  "0, $0->getType().cast<RankedTensorType>().getRank(), &$_builder)">;
+  "0, $0.getType().cast<RankedTensorType>().getRank(), &$_builder)">;
 
 // L2Loss is lowered using the formula,
 // L2Loss(input) = Sum(input * input) / 2
@@ -182,6 +182,14 @@ def LowerL2LossOp :
 def : Pat<(TF_PadOp TensorOf<[AnyInteger, AnyFloat]>:$input, $paddings),
           (TF_PadV2Op $input, $paddings,
              (TF_ConstOp (GetScalarOfType<0> $input)))>;
+
+//===----------------------------------------------------------------------===//
+// Reciprocal op patterns.
+//===----------------------------------------------------------------------===//
+
+// TODO(hinsu): Support complex and unsigned input types.
+def LowerReciprocal : Pat<(TF_ReciprocalOp TF_SintOrFpTensor:$x),
+                          (TF_DivOp (TF_ConstOp (GetScalarOfType<1> $x)), $x)>;
 
 //===----------------------------------------------------------------------===//
 // Rsqrt op patterns.
@@ -212,7 +220,7 @@ def LowerTanhGradOp :
 //===----------------------------------------------------------------------===//
 
 def CreateTFShapeOp : NativeCodeCall<
-    "$_builder.create<TF::ShapeOp>($0->getLoc(), $1, $2)">;
+    "$_builder.create<TF::ShapeOp>($0.getLoc(), $1, $2)">;
 
 // TODO(hinsu): Support inputs of TensorList types.
 def LowerZerosLikeOp :

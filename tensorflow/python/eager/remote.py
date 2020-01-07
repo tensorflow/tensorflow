@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
+
 from absl import logging
 
 from tensorflow.core.protobuf.tensorflow_server_pb2 import ServerDef

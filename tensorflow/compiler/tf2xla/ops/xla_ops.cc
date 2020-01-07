@@ -665,5 +665,50 @@ REGISTER_OP("XlaReplicaId")
     })
     .Doc("Replica ID.");
 
+REGISTER_OP("XlaGather")
+    .Input("operand: T")
+    .Input("start_indices: Tindices")
+    .Input("slice_sizes: Tindices")
+    .Attr("dimension_numbers: string")
+    .Attr("indices_are_sorted: bool")
+    .Attr("T: numbertype")
+    .Attr("Tindices: {int32, int64}")
+    .Output("output: T")
+    .SetShapeFn(UnchangedRank)
+    .Doc(R"doc(
+Wraps the XLA Gather operator documented at
+  https://www.tensorflow.org/xla/operation_semantics#gather
+operand: The array we're gathering from.
+start_indices: Array containing the starting indices of the slices we gather.
+dimension_numbers: A serialized xla::GatherDimensionNumbers proto.
+slice_sizes: slice_sizes[i] is the bounds for the slice on dimension i.
+indices_are_sorted: Boolean indicating if the indices are sorted.
+)doc");
+
+REGISTER_OP("XlaScatter")
+    .Input("operand: T")
+    .Input("scatter_indices: Tindices")
+    .Input("updates: T")
+    .Attr("update_computation: func")
+    .Attr("dimension_numbers: string")
+    .Attr("indices_are_sorted: bool")
+    .Attr("T: numbertype")
+    .Attr("Tindices: {int32, int64}")
+    .Output("output: T")
+    .SetShapeFn(UnchangedRank)
+    .Doc(R"doc(
+Wraps the XLA Scatter operator documented at
+  https://www.tensorflow.org/xla/operation_semantics#scatter.
+
+operand: Array to be scattered into.
+scatter_indices: Array containing the starting indices of the slices that must
+  be scattered to.
+updates: Array containing the values that must be used for scattering.
+update_computation: Computation to be used for combining the existing values in
+  the input array and the updates during scatter.
+dimension_numbers: A serialized xla::ScatterDimensionNumbers proto.
+indices_are_sorted: Boolean indicating if the indices are sorted.
+)doc");
+
 }  // namespace
 }  // namespace tensorflow

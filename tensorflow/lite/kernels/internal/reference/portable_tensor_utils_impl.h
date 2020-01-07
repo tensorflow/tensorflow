@@ -78,17 +78,6 @@ void PortableSparseMatrixBatchVectorMultiplyAccumulate(
     const float* scaling_factors, int n_batch, float* __restrict__ result,
     int result_stride);
 
-// Cwise product of two vectors.
-void PortableVectorVectorCwiseProduct(const float* vector1,
-                                      const float* vector2, int v_size,
-                                      float* result);
-
-// Cwise product and accumulate of two vectors. Since it's a MAC opertation, the
-// assumption here is that result array is initialized to valid values.
-void PortableVectorVectorCwiseProductAccumulate(const float* vector1,
-                                                const float* vector2,
-                                                int v_size, float* result);
-
 // Dot product of two vectors.
 float PortableVectorVectorDotProduct(const float* vector1, const float* vector2,
                                      int v_size);

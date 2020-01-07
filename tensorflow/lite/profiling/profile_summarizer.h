@@ -61,6 +61,8 @@ class ProfileSummarizer {
   std::map<uint32_t, std::unique_ptr<tensorflow::StatsCalculator>>
       stats_calculator_map_;
 
+  std::unique_ptr<tensorflow::StatsCalculator> delegate_stats_calculator_;
+
   // GenerateReport returns the report of subgraphs in a string format.
   std::string GenerateReport(std::string tag, bool include_output_string);
 };
