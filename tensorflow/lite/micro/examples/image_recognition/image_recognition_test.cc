@@ -24,9 +24,6 @@ limitations under the License.
 
 #include "tensorflow/lite/micro/examples/image_recognition/first_10_cifar_images.h"
 
-#define IMAGE_ARRAY \
-  tensorflow_lite_micro_tools_make_downloads_cifar10_test_batch_bin
-
 #define IMAGE_BYTES 3072
 #define LABEL_BYTES 1
 #define ENTRY_BYTES (IMAGE_BYTES + LABEL_BYTES)
@@ -69,9 +66,13 @@ TF_LITE_MICRO_TEST(TestImageRecognitionInvoke) {
 
     uint8_t correct_label = 0;
 
-    correct_label = IMAGE_ARRAY[image_num * ENTRY_BYTES];
+    correct_label =
+        tensorflow_lite_micro_tools_make_downloads_cifar10_test_batch_bin
+            [image_num * ENTRY_BYTES];
     memcpy(input->data.uint8,
-           &IMAGE_ARRAY[image_num * ENTRY_BYTES + LABEL_BYTES], IMAGE_BYTES);
+           &tensorflow_lite_micro_tools_make_downloads_cifar10_test_batch_bin
+               [image_num * ENTRY_BYTES + LABEL_BYTES],
+           IMAGE_BYTES);
     reshape_cifar_image(input->data.uint8, IMAGE_BYTES);
 
     TfLiteStatus invoke_status = interpreter.Invoke();
