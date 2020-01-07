@@ -42,8 +42,12 @@ class Tensor {
       : memory_(nullptr), image_buffer_memory_(nullptr), memory_owner_(true) {}
   Tensor(cl_mem memory, bool memory_owner, const BHWC& shape,
          const TensorDescriptor& descriptor);
+  Tensor(cl_mem memory, bool memory_owner, const BHWDC& shape,
+         const TensorDescriptor& descriptor);
   Tensor(cl_mem memory, bool memory_owner, cl_mem image_buffer_memory,
          const BHWC& shape, const TensorDescriptor& descriptor);
+  Tensor(cl_mem memory, bool memory_owner, cl_mem image_buffer_memory,
+         const BHWDC& shape, const TensorDescriptor& descriptor);
 
   // Move only
   Tensor(Tensor&& tensor);
@@ -55,6 +59,7 @@ class Tensor {
 
   int Width() const { return shape_.w; }
   int Height() const { return shape_.h; }
+  int Depth() const { return shape_.d; }
   int Channels() const { return shape_.c; }
   int Slices() const { return IntegralDivideRoundUp(shape_.c, 4); }
   int Batch() const { return shape_.b; }
@@ -63,8 +68,12 @@ class Tensor {
   int4 GetWBatchedHSB() const {
     return int4(shape_.w * shape_.b, shape_.h, Slices(), shape_.b);
   }
+  int4 GetWBatchedHDS() const {
+    return int4(shape_.w * shape_.b, shape_.h, shape_.d, Slices());
+  }
 
   int4 GetWHSB() const { return int4(shape_.w, shape_.h, Slices(), shape_.b); }
+  int4 GetWHDS() const { return int4(shape_.w, shape_.h, shape_.d, Slices()); }
 
   enum DataType DataType() const { return descriptor_.data_type; }
   TensorStorageType StorageType() const { return descriptor_.storage_type; }
@@ -79,36 +88,46 @@ class Tensor {
   cl_mem GetMemoryPtrForWriting() const;
 
   Status WriteData(CLCommandQueue* queue, const TensorFloat32& src);
+  Status WriteData(CLCommandQueue* queue, const Tensor5DFloat32& src);
   Status ReadData(CLCommandQueue* queue, TensorFloat32* dst) const;
+  Status ReadData(CLCommandQueue* queue, Tensor5DFloat32* dst) const;
 
  private:
   Status IsValid(const BHWC& shape) const;
+  Status IsValid(const BHWDC& shape) const;
 
   int GetChannelsAlignment() const;
   int GetAlignedChannels() const;
 
-  Status WriteDataBHWC(absl::Span<const float> in, CLCommandQueue* queue);
-  Status ReadDataBHWC(absl::Span<float> out, CLCommandQueue* queue) const;
+  Status WriteDataBHWDC(absl::Span<const float> in, CLCommandQueue* queue);
+  Status ReadDataBHWDC(absl::Span<float> out, CLCommandQueue* queue) const;
 
   template <typename T>
-  void DataFromBHWC(absl::Span<const float> src, absl::Span<T> dst) const;
+  void DataFromBHWDC(absl::Span<const float> src, absl::Span<T> dst) const;
   template <typename T>
-  void DataToBHWC(absl::Span<const T> src, absl::Span<float> dst) const;
+  void DataToBHWDC(absl::Span<const T> src, absl::Span<float> dst) const;
 
   // TODO(sorokin) might be bad performance
-  int GetLinearIndex(int b, int x, int y, int d, int sub_d) const {
+  int GetLinearIndex(int b, int x, int y, int d, int s, int sub_c) const {
     switch (descriptor_.storage_type) {
       case TensorStorageType::BUFFER:
       case TensorStorageType::IMAGE_BUFFER:
       case TensorStorageType::TEXTURE_ARRAY:
       case TensorStorageType::TEXTURE_3D:
-        return (((d * shape_.h + y) * shape_.w + x) * shape_.b + b) * 4 +
-               sub_d;  // SHWBC4
+        return ((((d * Slices() + s) * shape_.h + y) * shape_.w + x) *
+                    shape_.b +
+                b) *
+                   4 +
+               sub_c;  // DSHWBC4
       case TensorStorageType::TEXTURE_2D:
-        return (((y * Slices() + d) * shape_.w + x) * shape_.b + b) * 4 +
-               sub_d;  // HSWBC4
+        return ((((y * Slices() + s) * shape_.w + x) * shape_.b + b) *
+                    shape_.d +
+                d) *
+                   4 +
+               sub_c;  // HSWBDC4
       case TensorStorageType::SINGLE_TEXTURE_2D:
-        return ((y * shape_.w + x) * shape_.b + b) * shape_.c + sub_d;  // HWBC
+        return (((y * shape_.w + x) * shape_.b + b) * shape_.d + d) * shape_.c +
+               sub_c;  // HWBDC
       case TensorStorageType::UNKNOWN:
         return -1;
     }
@@ -120,7 +139,7 @@ class Tensor {
   cl_mem memory_;
   cl_mem image_buffer_memory_;  // for TensorStorageType::IMAGE_BUFFER only
   bool memory_owner_;
-  BHWC shape_;
+  BHWDC shape_;
   TensorDescriptor descriptor_;
 };
 
@@ -130,8 +149,17 @@ bool CanCreateTensorWithShape(const CLContext& context, const CLDevice& device,
                               const BHWC& shape,
                               const TensorDescriptor& descriptor);
 
+bool CanCreateTensorWithShape(const CLContext& context, const CLDevice& device,
+                              const BHWDC& shape,
+                              const TensorDescriptor& descriptor);
+
 Status AllocateTensorMemory(const CLContext& context, const CLDevice& device,
                             const BHWC& shape,
+                            const TensorDescriptor& descriptor,
+                            CLMemory* result);
+
+Status AllocateTensorMemory(const CLContext& context, const CLDevice& device,
+                            const BHWDC& shape,
                             const TensorDescriptor& descriptor,
                             CLMemory* result);
 
@@ -139,8 +167,16 @@ Status CreateTensor(const CLContext& context, const CLDevice& device,
                     const BHWC& shape, const TensorDescriptor& descriptor,
                     Tensor* result);
 
+Status CreateTensor(const CLContext& context, const CLDevice& device,
+                    const BHWDC& shape, const TensorDescriptor& descriptor,
+                    Tensor* result);
+
 Status CreateSharedTensor(const CLContext& context, const CLDevice& device,
                           cl_mem memory, const BHWC& shape,
+                          const TensorDescriptor& descriptor, Tensor* result);
+
+Status CreateSharedTensor(const CLContext& context, const CLDevice& device,
+                          cl_mem memory, const BHWDC& shape,
                           const TensorDescriptor& descriptor, Tensor* result);
 
 }  // namespace cl
