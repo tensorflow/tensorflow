@@ -289,6 +289,25 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
       continue;
     }
 
+    // The semantics of TupleSelect are weird: TupleSelect doesn't define a
+    // buffer, but just forwards the buffers in the either left or right side.
+    // This means the the two different inputs to TupleSelect must not alias,
+    // yet they should be allocated in the same memory space, and both buffers
+    // must be kept alive for the entire live range of TupleSelect. Instead,
+    // just don't allocate TupleSelect in the alternate memory space.
+    bool keep_in_default_mem = false;
+    for (const HloPosition& position : interval.buffer->positions()) {
+      if (position.instruction->opcode() == HloOpcode::kTupleSelect) {
+        keep_in_default_mem = true;
+        VLOG(4) << "Keeping value " << interval.buffer->ToShortString()
+                << " in default mem because it has a tuple-select position.";
+        break;
+      }
+    }
+    if (keep_in_default_mem) {
+      continue;
+    }
+
     auto colocated_intervals = GetSortedColocatedIntervals(interval);
 
     if (AreIntervalsReservedInAlternateMemory(colocated_intervals)) {
