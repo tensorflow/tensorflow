@@ -237,24 +237,20 @@ std::string GetMaxPoolingKernelCode(
   if (output_indices) {
     c += "        if (src.x > maximum.x) {\n";
     c += "          indexes.x = index_counter;\n";
-    c += "          maximum.x = src.x;\n";
     c += "        }\n";
     c += "        if (src.y > maximum.y) {\n";
     c += "          indexes.y = index_counter;\n";
-    c += "          maximum.y = src.y;\n";
     c += "        }\n";
     c += "        if (src.z > maximum.z) {\n";
     c += "          indexes.z = index_counter;\n";
-    c += "          maximum.z = src.z;\n";
     c += "        }\n";
     c += "        if (src.w > maximum.w) {\n";
     c += "          indexes.w = index_counter;\n";
-    c += "          maximum.w = src.w;\n";
     c += "        }\n";
     c += "        index_counter += (FLT)(1.0f);\n";
   }
   c += "        maximum = max(src, maximum);\n";
-  c += "      };\n";
+  c += "      }\n";
   c += "    }\n";
   c += "  }\n";
   const LinkingContext context{"maximum", "X", "Y", "Z"};
@@ -265,6 +261,105 @@ std::string GetMaxPoolingKernelCode(
   }
   c += "}\n";
 
+  return c;
+}
+
+std::string GetMaxPooling3DKernelCode(
+    const OperationDef& op_def, bool stride_correction,
+    const std::vector<ElementwiseOperation*>& linked_operations,
+    bool output_indices) {
+  TensorCodeGenerator src_tensor(
+      "src_data",
+      WHDSPoint{"src_size.x", "src_size.y", "src_size.z", "src_size.w"},
+      op_def.src_tensors[0]);
+  TensorCodeGenerator dst_tensor(
+      "dst_data",
+      WHDSPoint{"dst_size.x", "dst_size.y", "dst_size.z", "dst_size.w"},
+      op_def.dst_tensors[0]);
+  TensorCodeGenerator indices_tensor(
+      "dst_indices",
+      WHDSPoint{"dst_size.x", "dst_size.y", "dst_size.z", "dst_size.w"},
+      op_def.dst_tensors[1]);
+
+  std::string c = GetCommonDefines(op_def.precision);
+
+  c += "__kernel void main_function(\n";
+  c += src_tensor.GetDeclaration(AccessType::READ);
+  c += GetArgsDeclaration(linked_operations);
+  c += dst_tensor.GetDeclaration(AccessType::WRITE) + ",\n";
+  if (output_indices) {
+    c += indices_tensor.GetDeclaration(AccessType::WRITE) + ",\n";
+  }
+  c += "    int4 src_size,             \n";
+  c += "    int4 dst_size,             \n";
+  if (op_def.batch_support) {
+    c += "    int batch_size,          \n";
+  }
+  c += "    int4 kernel_size,          \n";
+  c += "    int4 padding,              \n";
+  c += "    int4 stride                \n";
+  c += ") {\n";
+  c += "  int X = get_global_id(0);\n";
+  c += "  int Y = get_global_id(1);\n";
+  c += "  int linear_id_z = get_global_id(2);\n";
+  c += "  int S = linear_id_z % dst_size.w;\n";
+  c += "  int Z = linear_id_z / dst_size.w;\n";
+  c += "  if (X >= dst_size.x || Y >= dst_size.y || Z >= dst_size.z) return;\n";
+  c += "  FLT4 maximum = (FLT4)(-10000.0f);\n";
+  if (output_indices) {
+    c += "  FLT4 indexes = (FLT4)(0.0f);\n";
+  }
+  if (stride_correction) {
+    c += "  int xs = " +
+         GetXStrideCorrected("X", "batch_size", "stride.x", "padding.x") +
+         ";\n";
+  } else {
+    c += "  int xs = X * stride.x + padding.x;\n";
+  }
+  c += "  int ys = Y * stride.y + padding.y;\n";
+  c += "  int zs = Z * stride.z + padding.z;\n";
+  c += "  for (int kz = 0; kz < kernel_size.z; ++kz) {\n";
+  c += "    int z_c = zs + kz;\n";
+  c += "    if (z_c < 0 || z_c >= src_size.z) continue;\n";
+  c += "    for (int ky = 0; ky < kernel_size.y; ++ky) {\n";
+  c += "      int y_c = ys + ky;\n";
+  c += "      if (y_c < 0 || y_c >= src_size.y) continue;\n";
+  c += "      for (int kx = 0; kx < kernel_size.x; ++kx) {\n";
+  if (op_def.batch_support) {
+    c += "        int x_c = xs + kx * batch_size;\n";
+  } else {
+    c += "        int x_c = xs + kx;\n";
+  }
+  c += "        if (x_c < 0 || x_c >= src_size.x) continue;\n";
+  c += "        FLT4 src = " + src_tensor.ReadWHDS("x_c", "y_c", "z_c", "S") +
+       ";\n";
+  if (output_indices) {
+    c += "        FLT index_counter = (FLT)((kz * kernel_size.y + ky) * "
+         "kernel_size.x + kx) + (FLT)(0.1f);\n";
+    c += "        if (src.x > maximum.x) {\n";
+    c += "          indexes.x = index_counter;\n";
+    c += "        }\n";
+    c += "        if (src.y > maximum.y) {\n";
+    c += "          indexes.y = index_counter;\n";
+    c += "        }\n";
+    c += "        if (src.z > maximum.z) {\n";
+    c += "          indexes.z = index_counter;\n";
+    c += "        }\n";
+    c += "        if (src.w > maximum.w) {\n";
+    c += "          indexes.w = index_counter;\n";
+    c += "        }\n";
+  }
+  c += "        maximum = max(src, maximum);\n";
+  c += "      };\n";
+  c += "    }\n";
+  c += "  }\n";
+  const LinkingContext context{"maximum", "X", "Y", "Z"};
+  c += PostProcess(linked_operations, context);
+  c += "  " + dst_tensor.WriteWHDS("maximum", "X", "Y", "Z", "S");
+  if (output_indices) {
+    c += "  " + indices_tensor.WriteWHDS("indexes", "X", "Y", "Z", "S");
+  }
+  c += "}\n";
   return c;
 }
 
@@ -408,6 +503,10 @@ Status Pooling3D::Compile(const CreationContext& creation_context) {
       code = GetAveragePooling3DKernelCode(definition_, stride_correction,
                                            *creation_context.device,
                                            linked_operations_);
+      break;
+    case PoolingType::MAX:
+      code = GetMaxPooling3DKernelCode(definition_, stride_correction,
+                                       linked_operations_, output_indices_);
       break;
     default:
       return InvalidArgumentError(
