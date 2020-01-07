@@ -1035,11 +1035,9 @@ class Network(base_layer.Layer):
                     signatures, options)
 
   def save_weights(self, filepath, overwrite=True, save_format=None):
-    """Saves all layer weights.
-
+     """Saves all layer weights.
     Either saves in HDF5 or in TensorFlow format based on the `save_format`
     argument.
-
     When saving in HDF5 format, the weight file has:
       - `layer_names` (attribute), a list of strings
           (ordered names of model layers).
@@ -1049,7 +1047,6 @@ class Network(base_layer.Layer):
               (ordered names of weights tensor of the layer).
           - For every weight in the layer, a dataset
               storing the weight value, named after the weight tensor.
-
     When saving in TensorFlow format, all objects referenced by the network are
     saved in the same format as `tf.train.Checkpoint`, including any `Layer`
     instances or `Optimizer` instances assigned to object attributes. For
@@ -1059,14 +1056,12 @@ class Network(base_layer.Layer):
     `Layer` instances must be assigned to object attributes, typically in the
     constructor. See the documentation of `tf.train.Checkpoint` and
     `tf.keras.Model` for details.
-
     While the formats are the same, do not mix `save_weights` and
     `tf.train.Checkpoint`. Checkpoints saved by `Model.save_weights` should be
     loaded using `Model.load_weights`. Checkpoints saved using
     `tf.train.Checkpoint.save` should be restored using the corresponding
     `tf.train.Checkpoint.restore`. Prefer `tf.train.Checkpoint` over
     `save_weights` for training checkpoints.
-
     The TensorFlow format matches objects and variables by starting at a root
     object, `self` for `save_weights`, and greedily matching attribute
     names. For `Model.save` this is the `Model`, and for `Checkpoint.save` this
@@ -1074,9 +1069,8 @@ class Network(base_layer.Layer):
     means saving a `tf.keras.Model` using `save_weights` and loading into a
     `tf.train.Checkpoint` with a `Model` attached (or vice versa) will not match
     the `Model`'s variables. See the [guide to training
-    checkpoints](https://www.tensorflow.org/guide/checkpoint) for details
+    checkpoints](https://www.tensorflow.org/alpha/guide/checkpoints) for details
     on the TensorFlow format.
-
     Arguments:
         filepath: String, path to the file to save the weights to. When saving
             in TensorFlow format, this is the prefix used for checkpoint files
@@ -1087,7 +1081,6 @@ class Network(base_layer.Layer):
         save_format: Either 'tf' or 'h5'. A `filepath` ending in '.h5' or
             '.keras' will default to HDF5 if `save_format` is `None`. Otherwise
             `None` defaults to 'tf'.
-
     Raises:
         ImportError: If h5py is not available when attempting to save in HDF5
             format.
@@ -1106,6 +1099,8 @@ class Network(base_layer.Layer):
         save_format = 'tf'
       elif user_format in ('hdf5', 'h5', 'keras'):
         save_format = 'h5'
+      elif user_format in ("JSON","json"):
+        save_format = "json"
       else:
         raise ValueError(
             'Unknown format "%s". Was expecting one of {"tf", "h5"}.' % (
@@ -1131,7 +1126,10 @@ class Network(base_layer.Layer):
         return
     if save_format == 'h5':
       with h5py.File(filepath, 'w') as f:
-        hdf5_format.save_weights_to_hdf5_group(f, self.layers)
+        saving.save_weights_to_hdf5_group(f, self.layers)
+    elif save_format == 'json':
+      with open("model.json", "w") as file:
+      file.write(self.to_json())
     else:
       if context.executing_eagerly():
         session = None
@@ -1154,7 +1152,8 @@ class Network(base_layer.Layer):
           model_checkpoint_path=filepath,
           save_relative_paths=True,
           all_model_checkpoint_paths=[filepath])
-
+      
+      
   def load_weights(self, filepath, by_name=False, skip_mismatch=False):
     """Loads all layer weights, either from a TensorFlow or an HDF5 weight file.
 
