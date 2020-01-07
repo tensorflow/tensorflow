@@ -273,8 +273,8 @@ class ExternalTpuDriver : public TpuDriver {
 
     struct HloProto hlo;
     hlo.size = source.ByteSizeLong();
-    hlo.bytes = malloc(hlo.size);
-    if (!source.SerializeToArray(hlo.bytes, hlo.size)) {
+    hlo.buffer = malloc(hlo.size);
+    if (!source.SerializeToArray(hlo.buffer, hlo.size)) {
       LOG(ERROR) << "Unable to serialize HLO to array.";
       return nullptr;
     }
@@ -284,7 +284,7 @@ class ExternalTpuDriver : public TpuDriver {
         driver_fn_.TpuDriver_CompileProgram(driver_, hlo, num_replicas,
                                             wait_for.size(), tpu_events));
 
-    free(hlo.bytes);
+    free(hlo.buffer);
     delete tpu_events;
     return handle;
   }
@@ -325,14 +325,6 @@ class ExternalTpuDriver : public TpuDriver {
       absl::Span<Event* const> wait_for) override {
     auto tpu_events = MakeEventArray(wait_for);
 
-    struct DeviceAssignmentProto da_proto;
-    da_proto.size = device_assignment.ByteSizeLong();
-    da_proto.bytes = malloc(da_proto.size);
-    if (!device_assignment.SerializeToArray(da_proto.bytes, da_proto.size)) {
-      LOG(ERROR) << "Unable to serialize device assignment to array.";
-      return nullptr;
-    }
-
     std::vector<::TpuBufferHandle*> inputv;
     inputv.reserve(inputs.size());
     for (int i = 0; i < inputs.size(); i++) {
@@ -346,15 +338,16 @@ class ExternalTpuDriver : public TpuDriver {
           static_cast<ExternalBufferHandle* const>(outputs[i])->handle_);
     }
 
+    struct DeviceAssignment da = {device_assignment.replica_count(),
+                                  device_assignment.computation_count()};
     auto event = std::make_shared<ExternalEvent>(
         &driver_fn_,
         driver_fn_.TpuDriver_ExecuteProgram(
             driver_,
             static_cast<ExternalLoadedProgramHandle*>(program)->handle_,
-            inputs.size(), inputv.data(), outputs.size(), outputv.data(),
-            da_proto, wait_for.size(), tpu_events));
+            inputs.size(), inputv.data(), outputs.size(), outputv.data(), da,
+            wait_for.size(), tpu_events));
 
-    free(da_proto.bytes);
     return event;
   }
 
