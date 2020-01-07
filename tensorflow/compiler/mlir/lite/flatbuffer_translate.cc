@@ -71,7 +71,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/delegates/flex/whitelisted_flex_ops.h"
-#include "tensorflow/lite/kernels/internal/kernel_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/tools/versioning/op_version.h"
@@ -318,53 +317,6 @@ static std::unique_ptr<::tensorflow::NodeDef> getTensorFlowNodeDef(
   return std::move(status_or_node_def.ValueOrDie());
 }
 
-// Converts a mlir padding StringRef to TfLitePadding.
-// Returns llvm::None if conversion fails.
-static Optional<TfLitePadding> GetTflitePadding(Operation* inst,
-                                                llvm::StringRef padding) {
-  const tflite::Padding padding_attr =
-      std::move(llvm::StringSwitch<tflite::Padding>(padding)
-                    .Case("SAME", tflite::Padding_SAME)
-                    .Case("VALID", tflite::Padding_VALID));
-  if (padding_attr == tflite::Padding_SAME) {
-    return kTfLitePaddingSame;
-  }
-  if (padding_attr == tflite::Padding_VALID) {
-    return kTfLitePaddingValid;
-  }
-
-  return inst->emitOpError() << "Invalid padding attribute: " << padding,
-         llvm::None;
-}
-
-// Extracts TfLitePoolParams from a TFL custom op.
-// Template parameter, TFLOp, should be a TFL custom op containing attributes
-// generated from TfLitePoolParams.
-// Returns llvm::None if conversion fails.
-template <typename TFLOp>
-static Optional<TfLitePoolParams> GetTflitePoolParams(Operation* inst,
-                                                      TFLOp op) {
-  TfLitePoolParams pool_params;
-  pool_params.stride_height = op.stride_h().getSExtValue();
-  pool_params.stride_width = op.stride_w().getSExtValue();
-  pool_params.filter_height = op.filter_h().getSExtValue();
-  pool_params.filter_width = op.filter_w().getSExtValue();
-  const auto padding = GetTflitePadding(inst, op.padding());
-  if (padding) {
-    pool_params.padding = *padding;
-    pool_params.activation = kTfLiteActNone;
-    pool_params.computed.padding = TfLitePaddingValues{
-        .width = 0,
-        .height = 0,
-        .width_offset = 0,
-        .height_offset = 0,
-    };
-    return pool_params;
-  }
-
-  return llvm::None;
-}
-
 namespace {
 
 // Translates an MLIR module in TFLite dialect to TFLite FlatBuffer.
@@ -423,30 +375,8 @@ class Translator {
       mlir::TF::WhileOp op, const std::vector<int32_t>& operands,
       const std::vector<int32_t>& results);
 
-  // Builds custom operators.
-  // Templated on a) data type of custom_option to be stored into flatbuffer,
-  // and b) TFL custom op type.
-  template <typename CustomOptionType, typename TFLOp>
-  BufferOffset<tflite::Operator> BuildCustomOperator(
-      const CustomOptionType& custom_option, const std::string& opcode_name,
-      TFLOp op, const std::vector<int32_t>& operands,
-      const std::vector<int32_t>& results);
-
   BufferOffset<tflite::Operator> BuildNumericVerifyOperator(
       mlir::TFL::NumericVerifyOp op, const std::vector<int32_t>& operands,
-      const std::vector<int32_t>& results);
-  Optional<BufferOffset<tflite::Operator>>
-  BuildConvolution2DTransposeBiasOperator(
-      Operation* inst, mlir::TFL::Convolution2DTransposeBiasOp op,
-      const std::vector<int32_t>& operands,
-      const std::vector<int32_t>& results);
-  Optional<BufferOffset<tflite::Operator>> BuildMaxPoolingWithArgMax2DOperator(
-      Operation* inst, mlir::TFL::MaxPoolingWithArgMax2DOp op,
-      const std::vector<int32_t>& operands,
-      const std::vector<int32_t>& results);
-  Optional<BufferOffset<tflite::Operator>> BuildMaxUnpooling2DOperator(
-      Operation* inst, mlir::TFL::MaxUnpooling2DOp op,
-      const std::vector<int32_t>& operands,
       const std::vector<int32_t>& results);
 
   Optional<CustomOptionsOffset> CreateFlexOpCustomOptions(
@@ -685,72 +615,19 @@ BufferOffset<tflite::Operator> Translator::BuildWhileOperator(
                                 builtin_options);
 }
 
-template <typename CustomOptionType, typename TFLOp>
-BufferOffset<tflite::Operator> Translator::BuildCustomOperator(
-    const CustomOptionType& custom_option, const std::string& opcode_name,
-    TFLOp op, const std::vector<int32_t>& operands,
-    const std::vector<int32_t>& results) {
-  std::vector<uint8_t> custom_option_vector(sizeof(CustomOptionType));
-  memcpy(custom_option_vector.data(), &custom_option, sizeof(CustomOptionType));
-  auto opcode_index =
-      GetOpcodeIndex(opcode_name, tflite::BuiltinOperator_CUSTOM);
-  return tflite::CreateOperator(
-      builder_, opcode_index, builder_.CreateVector(operands),
-      builder_.CreateVector(results), tflite::BuiltinOptions_NONE,
-      /*builtin_options=*/0,
-      builder_.CreateVector<uint8_t>(custom_option_vector),
-      tflite::CustomOptionsFormat_FLEXBUFFERS);
-}
-
 BufferOffset<tflite::Operator> Translator::BuildNumericVerifyOperator(
     mlir::TFL::NumericVerifyOp op, const std::vector<int32_t>& operands,
     const std::vector<int32_t>& results) {
   float tolerance = op.tolerance().convertToFloat();
-  return BuildCustomOperator(tolerance, "NumericVerify", op, operands, results);
-}
-
-Optional<BufferOffset<tflite::Operator>>
-Translator::BuildConvolution2DTransposeBiasOperator(
-    Operation* inst, mlir::TFL::Convolution2DTransposeBiasOp op,
-    const std::vector<int32_t>& operands, const std::vector<int32_t>& results) {
-  TfLiteTransposeConvParams conv_params;
-  conv_params.stride_height = op.stride_h().getSExtValue();
-  conv_params.stride_width = op.stride_w().getSExtValue();
-  const auto padding = GetTflitePadding(inst, op.padding());
-  if (padding) {
-    conv_params.padding = *padding;
-    return BuildCustomOperator(conv_params, "Convolution2DTransposeBias", op,
-                               operands, results);
-  }
-
-  return llvm::None;
-}
-
-Optional<BufferOffset<tflite::Operator>>
-Translator::BuildMaxPoolingWithArgMax2DOperator(
-    Operation* inst, mlir::TFL::MaxPoolingWithArgMax2DOp op,
-    const std::vector<int32_t>& operands, const std::vector<int32_t>& results) {
-  const auto pool_params = GetTflitePoolParams(inst, op);
-  if (pool_params) {
-    return BuildCustomOperator(*pool_params, "MaxPoolingWithArgmax2D", op,
-                               operands, results);
-  }
-
-  return llvm::None;
-}
-
-Optional<BufferOffset<tflite::Operator>>
-Translator::BuildMaxUnpooling2DOperator(Operation* inst,
-                                        mlir::TFL::MaxUnpooling2DOp op,
-                                        const std::vector<int32_t>& operands,
-                                        const std::vector<int32_t>& results) {
-  const auto pool_params = GetTflitePoolParams(inst, op);
-  if (pool_params) {
-    return BuildCustomOperator(*pool_params, "MaxUnpooling2D", op, operands,
-                               results);
-  }
-
-  return llvm::None;
+  std::vector<uint8_t> custom_options(sizeof(float));
+  memcpy(custom_options.data(), &tolerance, sizeof(float));
+  auto opcode_index =
+      GetOpcodeIndex("NumericVerify", tflite::BuiltinOperator_CUSTOM);
+  return tflite::CreateOperator(
+      builder_, opcode_index, builder_.CreateVector(operands),
+      builder_.CreateVector(results), tflite::BuiltinOptions_NONE,
+      /*builtin_options=*/0, builder_.CreateVector<uint8_t>(custom_options),
+      tflite::CustomOptionsFormat_FLEXBUFFERS);
 }
 
 Optional<CustomOptionsOffset> Translator::CreateFlexOpCustomOptions(
@@ -891,20 +768,6 @@ Optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
     if (!builtin_code) {
       if (auto verify_op = dyn_cast<mlir::TFL::NumericVerifyOp>(inst)) {
         return BuildNumericVerifyOperator(verify_op, operands, results);
-      }
-      if (auto conv_transpose_bias_op =
-              dyn_cast<mlir::TFL::Convolution2DTransposeBiasOp>(inst)) {
-        return BuildConvolution2DTransposeBiasOperator(
-            inst, conv_transpose_bias_op, operands, results);
-      }
-      if (auto max_pooling_with_arg_max_op =
-              dyn_cast<mlir::TFL::MaxPoolingWithArgMax2DOp>(inst)) {
-        return BuildMaxPoolingWithArgMax2DOperator(
-            inst, max_pooling_with_arg_max_op, operands, results);
-      }
-      if (auto max_unpooling_op = dyn_cast<mlir::TFL::MaxUnpooling2DOp>(inst)) {
-        return BuildMaxUnpooling2DOperator(inst, max_unpooling_op, operands,
-                                           results);
       }
       inst->emitOpError("is not a supported TFLite op");
       return llvm::None;
