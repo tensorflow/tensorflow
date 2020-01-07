@@ -211,7 +211,12 @@ Status RuntimeGraphOptimizer(const GraphDef& graph_def_arg,
   // in order to get the correct session options and environment, and performing
   // the correct optimizations.
 
-  if (!cfg.apply_optimizations && !cfg.erase_noinline_attributes) {
+  // Return input as is if no graph-modifying config is set.
+  if (!cfg.apply_optimizations && !cfg.inline_functions &&
+      !cfg.erase_noinline_attributes) {
+    if (output_graph_def != &graph_def_arg) {
+      *output_graph_def = graph_def_arg;
+    }
     return Status::OK();
   }
 
