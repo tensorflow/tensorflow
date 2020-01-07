@@ -1887,7 +1887,7 @@ def conv2d_v2(input,  # pylint: disable=redefined-builtin
   Usage Example:
   >>> kernel_in = np.array([
   ...  [ [[2, 0.1]],[[3, 0.2]] ],
-  ...  [ [[0, 0.3]],[[1, 0.4]] ]])
+  ...  [ [[0, 0.3]],[[1, 0.4]] ], ])
   >>> x = tf.placeholder(tf.float32, shape=[1, 5, 5, 1])
   >>> kernel = tf.constant(kernel_in, dtype=tf.float32)
   <tf.Tensor 'Conv2D_1:0' shape=(1, 4, 4, 2) dtype=float32>
