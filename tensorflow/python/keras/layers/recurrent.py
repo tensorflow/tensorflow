@@ -3244,8 +3244,8 @@ class LayernormSimpleRNN(SimpleRNN):
       used for the linear transformation of the inputs. Default:
       `glorot_uniform`.
     recurrent_initializer: Initializer for the `recurrent_kernel`
-      weights matrix, used for the linear transformation of the recurrent state.
-      Default: `orthogonal`.
+      weights matrix, used for the linear transformation of the recurrent
+      state. Default: `orthogonal`.
     bias_initializer: Initializer for the bias vector (`use_bias=True`) or
        for the beta vector in layer normalization (`use_layernorm=True`).
        Default: `zeros`.
@@ -3274,8 +3274,8 @@ class LayernormSimpleRNN(SimpleRNN):
        of the layer normalization layer (`use_layernorm=True`).
        Default: `None`.
     dropout: Float between 0 and 1.
-      Fraction of the units to drop for the linear transformation of the inputs.
-      Default: 0.
+      Fraction of the units to drop for the linear transformation of the
+      inputs. Default: 0.
     recurrent_dropout: Float between 0 and 1.
       Fraction of the units to drop for the linear transformation of the
       recurrent state. Default: 0.
@@ -3351,12 +3351,8 @@ class LayernormSimpleRNN(SimpleRNN):
                stateful=False,
                unroll=False,
                **kwargs):
-    if 'implementation' in kwargs:
-      kwargs.pop('implementation')
-      logging.warning('The `implementation` argument '
-                      'in `LayernormSimpleRNN` has been deprecated. '  # TMP(!)
-                      'Please remove it from your layer call.')
-    cell = LayernormSimpleRNNCell(  # TMP(!)
+    # 'implementation' warning was never relevant for LayernormSimpleRNN
+    cell = LayernormSimpleRNNCell(
         units,
         activation=activation,
         use_bias=use_bias,
@@ -3378,7 +3374,7 @@ class LayernormSimpleRNN(SimpleRNN):
         recurrent_dropout=recurrent_dropout,
         dtype=kwargs.get('dtype'),
         trainable=kwargs.get('trainable', True))
-    super(SimpleRNN, self).__init__(  # TMP(!)
+    super(SimpleRNN, self).__init__(  # call RNN's init
         cell,
         return_sequences=return_sequences,
         return_state=return_state,
@@ -3393,26 +3389,26 @@ class LayernormSimpleRNN(SimpleRNN):
 
   @property
   def use_layernorm(self):
-    return self.cell.use_layernorm  # NEW(!)
+    return self.cell.use_layernorm
 
   @property
   def layernorm_epsilon(self):
-    return self.cell.layernorm_epsilon  # NEW(!)
+    return self.cell.layernorm_epsilon
 
   @property
   def gamma_initializer(self):
-    return self.cell.gamma_initializer  # NEW(!)
+    return self.cell.gamma_initializer
 
   @property
   def gamma_regularizer(self):
-    return self.cell.gamma_regularizer  # NEW(!)
+    return self.cell.gamma_regularizer
 
   @property
   def gamma_constraint(self):
-    return self.cell.gamma_constraint  # NEW(!)
+    return self.cell.gamma_constraint
 
   def get_config(self):
-    base_config = super(SimpleRNN, self).get_config()
+    base_config = super(SimpleRNN, self).get_config()  # get RNN's config
     del base_config['cell']
     cell_config = self.cell.get_config()
     return dict(list(base_config.items()) + list(cell_config.items()))
