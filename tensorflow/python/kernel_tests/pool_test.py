@@ -219,8 +219,6 @@ class PoolingTest(test.TestCase):
                     strides=strides)
 
   def testPool3D(self):
-    if test.is_built_with_rocm():
-      self.skipTest("Pooling with 3D tensors is not supported in ROCm")
     with self.session(use_gpu=test.is_gpu_available()):
       for padding in ["SAME", "VALID"]:
         for pooling_type in ["MAX", "AVG"]:
@@ -363,8 +361,6 @@ class PoolingTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testGradient3D(self):
-    if test.is_built_with_rocm():
-      self.skipTest("Pooling with 3D tensors is not supported in ROCm")
     with self.session(use_gpu=test.is_gpu_available()):
       for padding in ["SAME", "VALID"]:
         for pooling_type in ["AVG", "MAX"]:
