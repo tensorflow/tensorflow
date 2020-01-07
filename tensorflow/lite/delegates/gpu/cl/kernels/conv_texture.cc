@@ -35,12 +35,12 @@ std::string GenerateConvCode(
     bool adreno4xx_optimization, bool stride_correction, const CLDevice& device,
     const std::vector<ElementwiseOperation*>& linked_operations) {
   std::string c = GetCommonDefines(op_def.precision);
-  TensorCodeGenerator src_tensor("src_data",
-                                 {"src_size.x", "src_size.y", "src_size.z"},
-                                 op_def.src_tensors[0]);
-  TensorCodeGenerator dst_tensor("dst_data",
-                                 {"dst_size.x", "dst_size.y", "dst_size.z"},
-                                 op_def.dst_tensors[0]);
+  TensorCodeGenerator src_tensor(
+      "src_data", WHSPoint{"src_size.x", "src_size.y", "src_size.z"},
+      op_def.src_tensors[0]);
+  TensorCodeGenerator dst_tensor(
+      "dst_data", WHSPoint{"dst_size.x", "dst_size.y", "dst_size.z"},
+      op_def.dst_tensors[0]);
 
   const auto src_tensor_type = op_def.src_tensors[0].storage_type;
   const bool is_buffer = src_tensor_type == TensorStorageType::IMAGE_BUFFER ||
@@ -251,7 +251,7 @@ std::string GenerateConvCode(
       for (int y = 0; y < block_size.y; ++y) {
         const std::string id = std::to_string(y * block_size.x + x);
         c += "    FLT4 src" + id + " = " +
-             src_tensor.Read3D(s_x[x], s_y[y], "s", mode) + ";\n";
+             src_tensor.ReadWHS(s_x[x], s_y[y], "s", mode) + ";\n";
       }
     }
   }
@@ -295,7 +295,7 @@ std::string GenerateConvCode(
         c += "        FLT4 res = TO_FLT4(r" + id + ") + bias_val;\n";
         const LinkingContext context{"res", "xc", "yc", "Z"};
         c += PostProcess(linked_operations, context);
-        c += "        " + dst_tensor.Write3D("res", "xc", "yc", "Z") + "\n";
+        c += "        " + dst_tensor.WriteWHS("res", "xc", "yc", "Z") + "\n";
         c += "      }\n";
         c += "    }\n";
       }

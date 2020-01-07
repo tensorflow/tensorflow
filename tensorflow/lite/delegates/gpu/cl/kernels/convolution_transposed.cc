@@ -33,12 +33,14 @@ std::string GenerateConvolutionTransposedCode(
     const OperationDef& op_def, const LinearStorage& biases,
     const CLDevice& device, bool weights_are_buffer, const int3& block_size,
     const std::vector<ElementwiseOperation*>& linked_operations) {
-  const TensorCodeGenerator::SizeVariablesNames src_size(
-      "src_size.x", "src_size.y", "src_size.z", "src_size.w");
-  const TensorCodeGenerator::SizeVariablesNames dst_size(
-      "dst_size.x", "dst_size.y", "dst_size.z", "dst_size.w");
-  TensorCodeGenerator src_tensor("src_data", src_size, op_def.src_tensors[0]);
-  TensorCodeGenerator dst_tensor("dst_data", dst_size, op_def.dst_tensors[0]);
+  TensorCodeGenerator src_tensor(
+      "src_data",
+      WHSBPoint{"src_size.x", "src_size.y", "src_size.z", "src_size.w"},
+      op_def.src_tensors[0]);
+  TensorCodeGenerator dst_tensor(
+      "dst_data",
+      WHSBPoint{"dst_size.x", "dst_size.y", "dst_size.z", "dst_size.w"},
+      op_def.dst_tensors[0]);
 
   const auto src_tensor_type = op_def.src_tensors[0].storage_type;
   bool image_buffer = src_tensor_type == TensorStorageType::IMAGE_BUFFER;
@@ -188,8 +190,8 @@ std::string GenerateConvolutionTransposedCode(
       const std::string xindex = std::to_string(x);
       const std::string id = std::to_string(y * block_size.x + x);
       if (image_buffer) {
-        c += "      " + src_tensor.GetAddress("addr_" + id, "sx" + xindex,
-                                              "sy" + yindex, "0", batch_id);
+        c += "      " + src_tensor.GetAddressWHSB("addr_" + id, "sx" + xindex,
+                                                  "sy" + yindex, "0", batch_id);
         c += "      addr_" + id + " = select(-1, addr_" + id + ", (in_x" +
              xindex + " && in_y" + yindex + "));\n";
         c += absl::Substitute(
@@ -197,8 +199,8 @@ std::string GenerateConvolutionTransposedCode(
             "in_y$2));\n",
             y * block_size.x + x, x, y, layer_offset);
       } else {
-        c += "      " + src_tensor.GetAddress("addr_" + id, "sx" + xindex,
-                                              "sy" + yindex, "0", batch_id);
+        c += "      " + src_tensor.GetAddressWHSB("addr_" + id, "sx" + xindex,
+                                                  "sy" + yindex, "0", batch_id);
       }
     }
   }
@@ -232,8 +234,8 @@ std::string GenerateConvolutionTransposedCode(
              " += dz;\n";
       } else {
         c += "        FLT4 src" + id + " = " +
-             src_tensor.Read4D("sx" + xindex, "sy" + yindex, "s", batch_id,
-                               mode) +
+             src_tensor.ReadWHSB("sx" + xindex, "sy" + yindex, "s", batch_id,
+                                 mode) +
              ";\n";
       }
     }
@@ -281,7 +283,7 @@ std::string GenerateConvolutionTransposedCode(
         const LinkingContext context{"res", x_3dcoord, "yc", "dst_z"};
         c += PostProcess(linked_operations, context);
         c += "        " +
-             dst_tensor.Write4D("res", "xc", "yc", "dst_z", batch_id) + "\n";
+             dst_tensor.WriteWHSB("res", "xc", "yc", "dst_z", batch_id) + "\n";
         c += "      }\n";
         c += "    }\n";
       }

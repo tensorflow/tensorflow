@@ -29,13 +29,13 @@ std::string GetMaxUnoolingKernelCode(
     const OperationDef& op_def, const CLDevice& device,
     const std::vector<ElementwiseOperation*>& linked_operations) {
   TensorCodeGenerator src("src_data",
-                          {"src_size.x", "src_size.y", "src_size.z"},
+                          WHSPoint{"src_size.x", "src_size.y", "src_size.z"},
                           op_def.src_tensors[0]);
-  TensorCodeGenerator src_ind("src_data_indices",
-                              {"src_size.x", "src_size.y", "src_size.z"},
-                              op_def.src_tensors[1]);
+  TensorCodeGenerator src_ind(
+      "src_data_indices", WHSPoint{"src_size.x", "src_size.y", "src_size.z"},
+      op_def.src_tensors[1]);
   TensorCodeGenerator dst("dst_data",
-                          {"dst_size.x", "dst_size.y", "dst_size.z"},
+                          WHSPoint{"dst_size.x", "dst_size.y", "dst_size.z"},
                           op_def.dst_tensors[0]);
 
   const auto address_mode = GetFastestZeroMode(device);
@@ -67,7 +67,7 @@ std::string GetMaxUnoolingKernelCode(
     c += "  int src_x = (X + padding.x) / stride.x;\n";
   }
   c += "  int src_y = (Y + padding.y) / stride.y;\n";
-  c += "  " + src.GetAddress("src_adr", "src_x", "src_y", "Z") + "\n";
+  c += "  " + src.GetAddressWHS("src_adr", "src_x", "src_y", "Z") + "\n";
   if (op_def.src_tensors[0].storage_type == TensorStorageType::BUFFER) {
     c += "  bool outside = src_x < 0 || src_y < 0 ||";
     c += "  src_x >= src_size.x || src_y >= src_size.y;\n";
@@ -96,7 +96,7 @@ std::string GetMaxUnoolingKernelCode(
     c += "  result" + s + "= t_index == ind" + s + "? src" + s + ": 0.0f;\n";
   }
   c += PostProcess(linked_operations, {"result", "X", "Y", "Z"});
-  c += "  " + dst.Write3D("result", "X", "Y", "Z");
+  c += "  " + dst.WriteWHS("result", "X", "Y", "Z");
   c += "}\n";
 
   return c;

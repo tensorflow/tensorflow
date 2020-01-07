@@ -28,12 +28,12 @@ namespace {
 std::string GetAveragePoolingKernelCode(
     const OperationDef& op_def, bool stride_correction, const CLDevice& device,
     const std::vector<ElementwiseOperation*>& linked_operations) {
-  TensorCodeGenerator src_tensor("src_data",
-                                 {"src_size.x", "src_size.y", "src_size.z"},
-                                 op_def.src_tensors[0]);
-  TensorCodeGenerator dst_tensor("dst_data",
-                                 {"dst_size.x", "dst_size.y", "dst_size.z"},
-                                 op_def.dst_tensors[0]);
+  TensorCodeGenerator src_tensor(
+      "src_data", WHSPoint{"src_size.x", "src_size.y", "src_size.z"},
+      op_def.src_tensors[0]);
+  TensorCodeGenerator dst_tensor(
+      "dst_data", WHSPoint{"dst_size.x", "dst_size.y", "dst_size.z"},
+      op_def.dst_tensors[0]);
 
   const auto address_mode = GetFastestZeroMode(device);
 
@@ -78,11 +78,11 @@ std::string GetAveragePoolingKernelCode(
   }
   c += "      bool outside = outside_y || x_c < 0 || x_c >= src_size.x;\n";
   if (manual_clamp) {
-    c += "     r += !outside ? " + src_tensor.ReadAsFloat3D("x_c", "y_c", "Z") +
-         " : (float4)(0.0f);\n";
+    c += "     r += !outside ? " +
+         src_tensor.ReadAsFloatWHS("x_c", "y_c", "Z") + " : (float4)(0.0f);\n";
   } else {
     c += "      r += " +
-         src_tensor.ReadAsFloat3D("x_c", "y_c", "Z", address_mode) + ";\n";
+         src_tensor.ReadAsFloatWHS("x_c", "y_c", "Z", address_mode) + ";\n";
   }
   c += "        window_size += !outside ? 1.0 : 0.0;\n";
   c += "    }\n";
@@ -92,7 +92,7 @@ std::string GetAveragePoolingKernelCode(
   c += "  FLT4 result = TO_FLT4(r / window_size);\n";
   const LinkingContext context{"result", "X", "Y", "Z"};
   c += PostProcess(linked_operations, context);
-  c += "  " + dst_tensor.Write3D("result", "X", "Y", "Z");
+  c += "  " + dst_tensor.WriteWHS("result", "X", "Y", "Z");
   c += "}\n";
 
   return c;
@@ -102,15 +102,15 @@ std::string GetMaxPoolingKernelCode(
     const OperationDef& op_def, bool stride_correction,
     const std::vector<ElementwiseOperation*>& linked_operations,
     bool output_indices) {
-  TensorCodeGenerator src_tensor("src_data",
-                                 {"src_size.x", "src_size.y", "src_size.z"},
-                                 op_def.src_tensors[0]);
-  TensorCodeGenerator dst_tensor("dst_data",
-                                 {"dst_size.x", "dst_size.y", "dst_size.z"},
-                                 op_def.dst_tensors[0]);
-  TensorCodeGenerator indices_tensor("dst_indices",
-                                     {"dst_size.x", "dst_size.y", "dst_size.z"},
-                                     op_def.dst_tensors[1]);
+  TensorCodeGenerator src_tensor(
+      "src_data", WHSPoint{"src_size.x", "src_size.y", "src_size.z"},
+      op_def.src_tensors[0]);
+  TensorCodeGenerator dst_tensor(
+      "dst_data", WHSPoint{"dst_size.x", "dst_size.y", "dst_size.z"},
+      op_def.dst_tensors[0]);
+  TensorCodeGenerator indices_tensor(
+      "dst_indices", WHSPoint{"dst_size.x", "dst_size.y", "dst_size.z"},
+      op_def.dst_tensors[1]);
 
   std::string c = GetCommonDefines(op_def.precision);
 
@@ -156,7 +156,7 @@ std::string GetMaxPoolingKernelCode(
   }
   c += "      bool outside_x = x_c < 0 || x_c >= src_size.x;\n";
   c += "      if (!outside_x && !outside_y) {\n";
-  c += "        FLT4 src = " + src_tensor.Read3D("x_c", "y_c", "Z") + ";\n";
+  c += "        FLT4 src = " + src_tensor.ReadWHS("x_c", "y_c", "Z") + ";\n";
   if (output_indices) {
     c += "        if (src.x > maximum.x) {\n";
     c += "          indexes.x = index_counter;\n";
@@ -182,9 +182,9 @@ std::string GetMaxPoolingKernelCode(
   c += "  }\n";
   const LinkingContext context{"maximum", "X", "Y", "Z"};
   c += PostProcess(linked_operations, context);
-  c += "  " + dst_tensor.Write3D("maximum", "X", "Y", "Z");
+  c += "  " + dst_tensor.WriteWHS("maximum", "X", "Y", "Z");
   if (output_indices) {
-    c += "  " + indices_tensor.Write3D("indexes", "X", "Y", "Z");
+    c += "  " + indices_tensor.WriteWHS("indexes", "X", "Y", "Z");
   }
   c += "}\n";
 

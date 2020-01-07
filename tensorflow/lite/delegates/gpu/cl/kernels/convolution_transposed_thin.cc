@@ -32,12 +32,14 @@ std::string GenerateConvolutionTransposedCode(
     const OperationDef& op_def, int src_depth, int dst_channels,
     const int2& kernel_size, const CLDevice& device,
     const std::vector<ElementwiseOperation*>& linked_operations) {
-  const TensorCodeGenerator::SizeVariablesNames src_size(
-      "src_size.x", "src_size.y", "src_size.z", "src_size.w");
-  const TensorCodeGenerator::SizeVariablesNames dst_size(
-      "dst_size.x", "dst_size.y", "dst_size.z", "dst_size.w");
-  TensorCodeGenerator src_tensor("src_data", src_size, op_def.src_tensors[0]);
-  TensorCodeGenerator dst_tensor("dst_data", dst_size, op_def.dst_tensors[0]);
+  TensorCodeGenerator src_tensor(
+      "src_data",
+      WHSBPoint{"src_size.x", "src_size.y", "src_size.z", "src_size.w"},
+      op_def.src_tensors[0]);
+  TensorCodeGenerator dst_tensor(
+      "dst_data",
+      WHSBPoint{"dst_size.x", "dst_size.y", "dst_size.z", "dst_size.w"},
+      op_def.dst_tensors[0]);
 
   const std::string batch_id = op_def.batch_support ? "B" : "";
   std::string c = GetCommonDefines(op_def.precision);
@@ -81,7 +83,7 @@ std::string GenerateConvolutionTransposedCode(
   c += "  " + accum_type + " r[" + std::to_string(kernel_size.y) + "][" +
        std::to_string(kernel_size.x) + "];\n";
   c += "  {\n";
-  c += "  FLT4 src = " + src_tensor.Read4D("X", "Y", "0", batch_id) + ";\n";
+  c += "  FLT4 src = " + src_tensor.ReadWHSB("X", "Y", "0", batch_id) + ";\n";
   int index = 0;
   for (int y = 0; y < kernel_size.y; ++y) {
     for (int x = 0; x < kernel_size.x; ++x) {
@@ -99,7 +101,7 @@ std::string GenerateConvolutionTransposedCode(
     c += "  if (X > " + std::to_string(-i) +
          ") {  // always true, to reduce registers usage\n";
     c += "  FLT4 src = " +
-         src_tensor.Read4D("X", "Y", std::to_string(i), batch_id) + ";\n";
+         src_tensor.ReadWHSB("X", "Y", std::to_string(i), batch_id) + ";\n";
     for (int y = 0; y < kernel_size.y; ++y) {
       for (int x = 0; x < kernel_size.x; ++x) {
         std::string r_s =
@@ -131,7 +133,8 @@ std::string GenerateConvolutionTransposedCode(
       const LinkingContext context{"result", x_3dcoord, y_coord, "0"};
       c += PostProcess(linked_operations, context);
       c += "    " +
-           dst_tensor.Write4D("result", x_coord, y_coord, "0", batch_id) + "\n";
+           dst_tensor.WriteWHSB("result", x_coord, y_coord, "0", batch_id) +
+           "\n";
       c += "  }\n";
     }
   }

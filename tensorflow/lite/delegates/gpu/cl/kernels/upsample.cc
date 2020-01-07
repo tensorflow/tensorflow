@@ -27,12 +27,12 @@ namespace {
 std::string GetUpsampleCode(
     const OperationDef& op_def,
     const std::vector<ElementwiseOperation*>& linked_operations) {
-  TensorCodeGenerator src_tensor("src_data",
-                                 {"src_size.x", "src_size.y", "src_size.z"},
-                                 op_def.src_tensors[0]);
-  TensorCodeGenerator dst_tensor("dst_data",
-                                 {"dst_size.x", "dst_size.y", "dst_size.z"},
-                                 op_def.dst_tensors[0]);
+  TensorCodeGenerator src_tensor(
+      "src_data", WHSPoint{"src_size.x", "src_size.y", "src_size.z"},
+      op_def.src_tensors[0]);
+  TensorCodeGenerator dst_tensor(
+      "dst_data", WHSPoint{"dst_size.x", "dst_size.y", "dst_size.z"},
+      op_def.dst_tensors[0]);
 
   std::string c = GetCommonDefines(op_def.precision);
   c += "__kernel void main_function(\n";
@@ -67,19 +67,19 @@ std::string GetUpsampleCode(
     c += "  st.z = st.z * src_size.w + B;\n";
     c += "  X = X * dst_size.w + B;\n";
   }
-  c += "  float4 src0 = " + src_tensor.ReadAsFloat3D("st.x", "st.y", "Z") +
+  c += "  float4 src0 = " + src_tensor.ReadAsFloatWHS("st.x", "st.y", "Z") +
        ";\n";
-  c += "  float4 src1 = " + src_tensor.ReadAsFloat3D("st.z", "st.y", "Z") +
+  c += "  float4 src1 = " + src_tensor.ReadAsFloatWHS("st.z", "st.y", "Z") +
        ";\n";
-  c += "  float4 src2 = " + src_tensor.ReadAsFloat3D("st.x", "st.w", "Z") +
+  c += "  float4 src2 = " + src_tensor.ReadAsFloatWHS("st.x", "st.w", "Z") +
        ";\n";
-  c += "  float4 src3 = " + src_tensor.ReadAsFloat3D("st.z", "st.w", "Z") +
+  c += "  float4 src3 = " + src_tensor.ReadAsFloatWHS("st.z", "st.w", "Z") +
        ";\n";
   c += "  FLT4 r0 = TO_FLT4(mix(mix(src0, src1, t.x), mix(src2, src3, t.x), "
        "t.y));\n";
   const LinkingContext context{"r0", "X", "Y", "Z"};
   c += PostProcess(linked_operations, context);
-  c += "  " + dst_tensor.Write3D("r0", "X", "Y", "Z");
+  c += "  " + dst_tensor.WriteWHS("r0", "X", "Y", "Z");
   c += "}\n";
   return c;
 }
