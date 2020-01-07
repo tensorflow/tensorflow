@@ -2965,7 +2965,7 @@ def _caching_device(rnn_cell):
 
 
 @keras_export('keras.experimental.LayernormSimpleRNNCell')
-class LayernormSimpleRNNCell(DropoutRNNCellMixin, Layer):
+class LayernormSimpleRNNCell(SimpleRNNCell, LayerNormalization):
   """Cell class for LayernormSimpleRNN.
 
   Motivation:
@@ -2994,8 +2994,8 @@ class LayernormSimpleRNNCell(DropoutRNNCellMixin, Layer):
       used for the linear transformation of the inputs. Default:
       `glorot_uniform`.
     recurrent_initializer: Initializer for the `recurrent_kernel`
-      weights matrix, used for the linear transformation of the recurrent state.
-      Default: `orthogonal`.
+      weights matrix, used for the linear transformation of the recurrent
+      state. Default: `orthogonal`.
     bias_initializer: Initializer for the bias vector (`use_bias=True`) or
        for the beta vector in layer normalization (`use_layernorm=True`).
        Default: `zeros`.
@@ -3021,16 +3021,16 @@ class LayernormSimpleRNNCell(DropoutRNNCellMixin, Layer):
     gamma_constraint: Constraint function applied to the gamma vector
        of the layer normalization layer (`use_layernorm=True`).
        Default: `None`.
-    dropout: Float between 0 and 1. Fraction of the units to drop for the linear
-      transformation of the inputs. Default: 0.
+    dropout: Float between 0 and 1. Fraction of the units to drop for the
+      linear transformation of the inputs. Default: 0.
     recurrent_dropout: Float between 0 and 1. Fraction of the units to drop for
       the linear transformation of the recurrent state. Default: 0.
 
   Call arguments:
     inputs: A 2D tensor, with shape of `[batch, feature]`.
-    states: A 2D tensor with shape of `[batch, units]`, which is the state from
-      the previous time step. For timestep 0, the initial state provided by user
-      will be feed to cell.
+    states: A 2D tensor with shape of `[batch, units]`, which is the state
+      from the previous time step. For timestep 0, the initial state provided
+      by the user will be feed to cell.
     training: Python boolean indicating whether the layer should behave in
       training mode or in inference mode. Only relevant when `dropout` or
       `recurrent_dropout` is used.
@@ -3076,75 +3076,45 @@ class LayernormSimpleRNNCell(DropoutRNNCellMixin, Layer):
                dropout=0.,
                recurrent_dropout=0.,
                **kwargs):
-    self._enable_caching_device = kwargs.pop('enable_caching_device', False)
-    super(LayernormSimpleRNNCell, self).__init__(**kwargs)  # TMP(!)
-    self.units = units
-    self.activation = activations.get(activation)
-    self.use_bias = False if use_layernorm else use_bias  # NEW(!)
-    self.use_layernorm = use_layernorm  # NEW(!)
-    self.layernorm_epsilon = layernorm_epsilon  # NEW(!)
-
-    self.kernel_initializer = initializers.get(kernel_initializer)
-    self.recurrent_initializer = initializers.get(recurrent_initializer)
-    self.bias_initializer = initializers.get(bias_initializer)
-    self.gamma_initializer = initializers.get(gamma_initializer)  # NEW(!)
-
-    self.kernel_regularizer = regularizers.get(kernel_regularizer)
-    self.recurrent_regularizer = regularizers.get(recurrent_regularizer)
-    self.bias_regularizer = regularizers.get(bias_regularizer)
-    self.gamma_regularizer = regularizers.get(gamma_regularizer)  # NEW(!)
-
-    self.kernel_constraint = constraints.get(kernel_constraint)
-    self.recurrent_constraint = constraints.get(recurrent_constraint)
-    self.bias_constraint = constraints.get(bias_constraint)
-    self.gamma_constraint = constraints.get(gamma_constraint)  # NEW(!)
-
-    self.dropout = min(1., max(0., dropout))
-    self.recurrent_dropout = min(1., max(0., recurrent_dropout))
-    self.state_size = self.units
-    self.output_size = self.units
+    self.use_layernorm = use_layernorm
+    SimpleRNNCell.__init__(
+      self,
+      units,
+      activation=activation,
+      use_bias=False if use_layernorm else use_bias,
+      kernel_initializer=kernel_initializer,
+      recurrent_initializer=recurrent_initializer,
+      bias_initializer=None if use_layernorm else bias_initializer,
+      kernel_regularizer=kernel_regularizer,
+      recurrent_regularizer=recurrent_regularizer,
+      bias_regularizer=None if use_layernorm else bias_regularizer,
+      kernel_constraint=kernel_constraint,
+      recurrent_constraint=recurrent_constraint,
+      bias_constraint=None if use_layernorm else bias_constraint,
+      dropout=dropout,
+      recurrent_dropout=recurrent_dropout,
+      dtype=kwargs.get('dtype'),
+      trainable=kwargs.get('trainable', True))
+    if use_layernorm:
+      LayerNormalization.__init__(
+        self,
+        axis=-1,
+        epsilon=layernorm_epsilon,
+        center=True,
+        scale=True,
+        beta_initializer=bias_initializer,
+        gamma_initializer=gamma_initializer,
+        beta_regularizer=bias_regularizer,
+        gamma_regularizer=gamma_regularizer,
+        beta_constraint=bias_constraint,
+        gamma_constraint=gamma_constraint,
+        trainable=kwargs.get('trainable', True))
 
   @tf_utils.shape_type_conversion
   def build(self, input_shape):
-    default_caching_device = _caching_device(self)
-    self.kernel = self.add_weight(
-        shape=(input_shape[-1], self.units),
-        name='kernel',
-        initializer=self.kernel_initializer,
-        regularizer=self.kernel_regularizer,
-        constraint=self.kernel_constraint,
-        caching_device=default_caching_device)
-    self.recurrent_kernel = self.add_weight(
-        shape=(self.units, self.units),
-        name='recurrent_kernel',
-        initializer=self.recurrent_initializer,
-        regularizer=self.recurrent_regularizer,
-        constraint=self.recurrent_constraint,
-        caching_device=default_caching_device)
-    if self.use_bias:
-      self.bias = self.add_weight(
-          shape=(self.units,),
-          name='bias',
-          initializer=self.bias_initializer,
-          regularizer=self.bias_regularizer,
-          constraint=self.bias_constraint,
-          caching_device=default_caching_device)
-    else:
-      self.bias = None
-    if self.use_layernorm:  # vvv NEW(!)
-      self.layernorm = LayerNormalization(
-          axis=-1, center=True, scale=True, trainable=True,
-          name='layernorm',
-          epsilon=self.layernorm_epsilon,
-          beta_initializer=self.bias_initializer,
-          gamma_initializer=self.gamma_initializer,
-          beta_regularizer=self.bias_regularizer,
-          gamma_regularizer=self.gamma_regularizer,
-          beta_constraint=self.bias_constraint,
-          gamma_constraint=self.gamma_constraint)
-    else:
-      self.layernorm = None  # ^^^ NEW(!)
-    self.built = True
+    SimpleRNNCell.build(self, input_shape)
+    if self.use_layernorm:
+      LayerNormalization.build(self, (None, self.units))
 
   def call(self, inputs, states, training=None):
     prev_output = states[0]
@@ -3162,59 +3132,35 @@ class LayernormSimpleRNNCell(DropoutRNNCellMixin, Layer):
     if rec_dp_mask is not None:
       prev_output = prev_output * rec_dp_mask
     output = h + K.dot(prev_output, self.recurrent_kernel)
-    if self.layernorm is not None:     # NEW(!)
-      output = self.layernorm(output)  # NEW(!)
+
+    if self.use_layernorm:     # NEW(!)
+      output = LayerNormalization.call(self, output)  # NEW(!)
+
     if self.activation is not None:
       output = self.activation(output)
 
     return output, [output]
 
-  def get_initial_state(self, inputs=None, batch_size=None, dtype=None):
-    return _generate_zero_filled_state_for_cell(self, inputs, batch_size, dtype)
+  # use SimpleRNNCell's get_initial_state method
 
   def get_config(self):
     config = {
-        'units':
-            self.units,
-        'activation':
-            activations.serialize(self.activation),
-        'use_bias':
-            self.use_bias,
         'use_layernorm':
-            self.use_layernorm,  # NEW(!)
-        'layernorm_epsilon':
-            self.layernorm_epsilon,  # NEW(!)
-        'kernel_initializer':
-            initializers.serialize(self.kernel_initializer),
-        'recurrent_initializer':
-            initializers.serialize(self.recurrent_initializer),
-        'bias_initializer':
-            initializers.serialize(self.bias_initializer),
-        'gamma_initializer':
-            initializers.serialize(self.gamma_initializer),  # NEW(!)
-        'kernel_regularizer':
-            regularizers.serialize(self.kernel_regularizer),
-        'recurrent_regularizer':
-            regularizers.serialize(self.recurrent_regularizer),
-        'bias_regularizer':
-            regularizers.serialize(self.bias_regularizer),
-        'gamma_regularizer':
-            regularizers.serialize(self.gamma_regularizer),  # NEW(!)
-        'kernel_constraint':
-            constraints.serialize(self.kernel_constraint),
-        'recurrent_constraint':
-            constraints.serialize(self.recurrent_constraint),
-        'bias_constraint':
-            constraints.serialize(self.bias_constraint),
-        'gamma_constraint':
-            constraints.serialize(self.gamma_constraint),  # NEW(!)
-        'dropout':
-            self.dropout,
-        'recurrent_dropout':
-            self.recurrent_dropout
+            self.use_layernorm
     }
-    base_config = super(LayernormSimpleRNNCell, self).get_config()  # TMP(!)
-    return dict(list(base_config.items()) + list(config.items()))
+    cell_config = SimpleRNNCell.get_config(self)
+    if self.use_layernorm:
+      ln_config = LayerNormalization.get_config(self)
+      ln_config['bias_initializer'] = ln_config.pop("beta_initializer")
+      ln_config['bias_regularizer'] = ln_config.pop("beta_regularizer")
+      ln_config['bias_constraint'] = ln_config.pop("beta_constraint")
+      ln_config['layernorm_epsilon'] = ln_config.pop("epsilon")
+      del ln_config['axis']
+      del ln_config['center']
+      del ln_config['scale']
+    else:
+      ln_config = {}
+    return {**config, **cell_config, **ln_config}
 
 
 @keras_export('keras.experimental.LayernormSimpleRNN')
