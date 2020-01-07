@@ -2156,8 +2156,6 @@ void IrEmitterUnnested::EmitEpilogueForReduction(
     absl::Span<const ShapeIndex> reduction_output_shape_indices,
     absl::Span<HloComputation* const> reducers, llvm::Value* lane_id) {
   int num_reduces = reducers.size();
-  const KernelMappingScheme& mapping_scheme =
-      reduction_info.GetKernelMappingScheme();
   absl::Span<llvm::AllocaInst* const> partial_result_addresses =
       reduction_info.GetPartialResultAddresses();
   if (reduction_info.IsRowReduction()) {
@@ -2218,23 +2216,9 @@ void IrEmitterUnnested::EmitEpilogueForReduction(
                                   element_index.GetType());
       llvm::Value* output_address = output_array.EmitArrayElementAddress(
           output_index, &b_, "output_element_address");
-      // Do not emit atomic operations if each element in the reduction result
-      // is computed by one block, that is the dimension being reduced has only
-      // one block.
-      if (mapping_scheme.GetTileBlockSizeForDimension(
-              KernelMappingScheme::DimZ) == 1 &&
-          mapping_scheme.GetTileBlockSizeForDimension(
-              reduction_info.GetReducedDimensionEnum()) == 1) {
-        TF_CHECK_OK(EmitCallToNestedComputation(
-            *reducers[i],
-            {output_address,
-             InBoundsGEP(partial_result_addresses[i], {b_.getInt32(j)})},
-            output_address));
-      } else {
-        TF_CHECK_OK(EmitAtomicOperationForNestedComputation(
-            *reducers[i], output_address,
-            InBoundsGEP(partial_result_addresses[i], {b_.getInt32(j)})));
-      }
+      TF_CHECK_OK(EmitAtomicOperationForNestedComputation(
+          *reducers[i], output_address,
+          InBoundsGEP(partial_result_addresses[i], {b_.getInt32(j)})));
     }
   }
 }
