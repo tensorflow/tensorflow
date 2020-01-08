@@ -925,7 +925,7 @@ class TPUEmbedding(object):
                            slot_variables_by_table,
                            load_ops, retrieve_ops)
 
-  def generate_enqueue_ops(self, enqueue_datas_list):
+  def generate_enqueue_ops(self, enqueue_datas_list, mode_override=None):
     """Generate enqueue ops.
 
     Args:
@@ -933,15 +933,22 @@ class TPUEmbedding(object):
         of feature names to EnqueueData. Each dictionary is for one
         TPU core. Dictionaries for the same host should be contiguous
         on the list.
+      mode_override: A string input that overrides the mode specified in the
+        TPUEmbeddingConfiguration. Supported values are {'unspecified',
+        'inference', 'training', 'backward_pass_only'}. When set to
+        'unspecified', the mode set in TPUEmbeddingConfiguration is used,
+        otherwise mode_override is used (optional).
 
     Returns:
       Ops to enqueue to TPU for embedding.
     """
     self._validate_generate_enqueue_ops_enqueue_datas_list(enqueue_datas_list)
     return [
-        self._generate_enqueue_op(
-            enqueue_datas, device_ordinal=i % self._num_cores_per_host)
-        for i, enqueue_datas in enumerate(enqueue_datas_list)
+        self._generate_enqueue_op(  # pylint: disable=g-complex-comprehension
+            enqueue_datas,
+            device_ordinal=i % self._num_cores_per_host,
+            mode_override=mode_override,
+        ) for i, enqueue_datas in enumerate(enqueue_datas_list)
     ]
 
   def _validate_generate_enqueue_ops_enqueue_datas_list(self,
@@ -1016,12 +1023,14 @@ class TPUEmbedding(object):
       else:
         contiguous_device = device
 
-  def _generate_enqueue_op(self, enqueue_datas, device_ordinal):
+  def _generate_enqueue_op(
+      self, enqueue_datas, device_ordinal, mode_override=None):
     enqueue_data0 = list(enqueue_datas.values())[0]
     with ops.colocate_with(enqueue_data0.embedding_indices):
       return tpu_ops.enqueue_tpu_embedding_sparse_tensor_batch(
           device_ordinal=device_ordinal,
           combiners=self._combiners,
+          mode_override=mode_override,
           **self._format_for_tpu_embedding_sparse_tensor_batch(enqueue_datas)
       )
 
