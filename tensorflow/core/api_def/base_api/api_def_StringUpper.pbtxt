@@ -1,3 +1,12 @@
 op {
   graph_op_name: "StringUpper"
+  summary: "Converts the input string tensor to upper case"
+  description: <<END
+  Given an input tensor containing a string, it converts each letter of the
+  string into uppercase and returns a tensor which contains the string.
+  ```python
+   x = tf.constant("TensorFlow")
+   tf.strings.upper(x) ==> <tf.Tensor: shape=(), dtype=string, numpy=b'TENSORFLOW'>
+   ```
+   END
 }
