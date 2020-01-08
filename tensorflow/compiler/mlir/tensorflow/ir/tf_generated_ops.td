@@ -6345,6 +6345,29 @@ The above computation has a replicated output of two replicas.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_TPUReshardVariablesOp : TF_Op<"TPUReshardVariables", []> {
+  let summary = [{
+Op that reshards on-device TPU variables to specified state. Internal use only.
+  }];
+
+  let description = [{
+The sharding state is represented as the key of the compilation that generated
+the sharding/unsharding programs along with the main program. new_format_key
+specifies the desired state, and format_state_var is the current state of the
+variables.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_ResourceTensor>:$vars,
+    TF_StrTensor:$new_format_key,
+    TF_ResourceTensor:$format_state_var
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
+}
+
 def TF_TanhOp : TF_Op<"Tanh", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Computes hyperbolic tangent of `x` element-wise.";
 
