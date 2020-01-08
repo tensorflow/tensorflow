@@ -2127,7 +2127,7 @@ def TFL_ReverseV2Op: TFL_Op<"reverse_v2",
 
     Args:
       tensor: A Tensor. Must be one of the following types:
-      int16, int32, int64, float32 Up to 8-D.
+      uint8, int16, int32, int64, float32, bool Up to 8-D.
 
       axis: A Tensor. Must be one of the following types: int32, int64.
       with only 1 element which is the axis index.
@@ -2136,12 +2136,12 @@ def TFL_ReverseV2Op: TFL_Op<"reverse_v2",
 
   let arguments = (
     ins
-    TensorOf<[F32, I16, I32, I64]>:$input,
+    TensorOf<[F32, I16, I32, I64, TFL_Uint8, I1]>:$input,
     TensorOf<[I32, I64]>:$axis
   );
 
   let results = (outs
-  TensorOf<[F32, I16, I32, I64, I8]>:$output
+  TensorOf<[F32, I16, I32, I64, TFL_Uint8, I1]>:$output
   );
 }
 
