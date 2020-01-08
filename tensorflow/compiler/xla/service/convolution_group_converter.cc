@@ -56,8 +56,7 @@ class ConvolutionVisitor : public DfsHloVisitorWithDefault {
   // Runs the visitor on a computation.
   static bool Run(HloComputation* computation,
                   std::function<bool(HloInstruction*)> is_cost_viable,
-                  bool convert_batch_groups_only,
-                  bool canonicalize_depthwise_filter);
+                  bool convert_batch_groups_only, bool filter_expansion);
 
   // Returns whether any convolution ops were rewritten.
   const bool changed() const { return changed_; }
@@ -68,10 +67,9 @@ class ConvolutionVisitor : public DfsHloVisitorWithDefault {
   explicit ConvolutionVisitor(
       HloComputation* computation,
       std::function<bool(HloInstruction*)> is_cost_viable,
-      bool convert_batch_groups_only,
-      bool canonicalize_depthwise_filter = false)
+      bool convert_batch_groups_only, bool filter_expansion)
       : computation_(computation),
-        filter_expansion_(!canonicalize_depthwise_filter),
+        filter_expansion_(filter_expansion),
         convert_batch_groups_only_(convert_batch_groups_only),
         is_cost_viable_(is_cost_viable) {}
 
@@ -94,10 +92,9 @@ class ConvolutionVisitor : public DfsHloVisitorWithDefault {
 bool ConvolutionVisitor::Run(
     HloComputation* computation,
     std::function<bool(HloInstruction*)> is_cost_viable,
-    bool convert_batch_groups_only, bool canonicalize_depthwise_filter) {
+    bool convert_batch_groups_only, bool filter_expansion) {
   ConvolutionVisitor visitor(computation, is_cost_viable,
-                             convert_batch_groups_only,
-                             canonicalize_depthwise_filter);
+                             convert_batch_groups_only, filter_expansion);
   TF_CHECK_OK(computation->Accept(&visitor));
   return visitor.changed_;
 }
