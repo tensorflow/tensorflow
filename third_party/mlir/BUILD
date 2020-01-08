@@ -1049,7 +1049,7 @@ gentbl(
 )
 
 gentbl(
-    name = "SPIRVAvailabilityAvailGen",
+    name = "SPIRVAvailabilityIncGen",
     tbl_outs = [
         (
             "-gen-avail-interface-decls",
@@ -1068,7 +1068,6 @@ gentbl(
     td_file = "include/mlir/Dialect/SPIRV/SPIRVOps.td",
     td_srcs = [
         ":SPIRVOpsTdFiles",
-        ":StdOpsTdFiles",
     ],
 )
 
@@ -1105,6 +1104,7 @@ gentbl(
     td_file = "include/mlir/Dialect/SPIRV/SPIRVBase.td",
     td_srcs = [
         ":SPIRVOpsTdFiles",
+        ":SPIRVAvailabilityIncGen",
     ],
 )
 
@@ -1144,7 +1144,7 @@ cc_library(
         ":CommonFolders",
         ":IR",
         ":Parser",
-        ":SPIRVAvailabilityAvailGen",
+        ":SPIRVAvailabilityIncGen",
         ":SPIRVCanonicalizationIncGen",
         ":SPIRVOpUtilsIncGen",
         ":SPIRVOpsIncGen",
