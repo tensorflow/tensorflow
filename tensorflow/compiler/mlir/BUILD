@@ -44,8 +44,11 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:logging",
         "@llvm-project//llvm:support",
+        "@llvm-project//mlir:AffineDialectRegistration",
+        "@llvm-project//mlir:LoopDialectRegistration",
         "@llvm-project//mlir:MlirOptLib",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:QuantOpsDialectRegistration",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir/test:TestTransforms",
     ],
@@ -82,9 +85,8 @@ cc_library(
         "//tensorflow/compiler/mlir/xla:xla_lower",
         "//tensorflow/compiler/mlir/xla:xla_materialize_broadcasts",
         "//tensorflow/compiler/mlir/xla:xla_test_passes",
-        "@llvm-project//mlir:AffineDialectRegistration",
+        "@llvm-project//mlir:AffineOps",
         "@llvm-project//mlir:QuantOps",
-        "@llvm-project//mlir:QuantOpsDialectRegistration",
     ],
 )
 
