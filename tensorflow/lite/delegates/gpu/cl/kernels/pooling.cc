@@ -237,19 +237,24 @@ std::string GetMaxPoolingKernelCode(
   if (output_indices) {
     c += "        if (src.x > maximum.x) {\n";
     c += "          indexes.x = index_counter;\n";
+    c += "          maximum.x = src.x;\n";
     c += "        }\n";
     c += "        if (src.y > maximum.y) {\n";
     c += "          indexes.y = index_counter;\n";
+    c += "          maximum.y = src.y;\n";
     c += "        }\n";
     c += "        if (src.z > maximum.z) {\n";
     c += "          indexes.z = index_counter;\n";
+    c += "          maximum.z = src.z;\n";
     c += "        }\n";
     c += "        if (src.w > maximum.w) {\n";
     c += "          indexes.w = index_counter;\n";
+    c += "          maximum.w = src.w;\n";
     c += "        }\n";
     c += "        index_counter += (FLT)(1.0f);\n";
+  } else {
+    c += "        maximum = max(src, maximum);\n";
   }
-  c += "        maximum = max(src, maximum);\n";
   c += "      }\n";
   c += "    }\n";
   c += "  }\n";
@@ -318,38 +323,43 @@ std::string GetMaxPooling3DKernelCode(
   }
   c += "  int ys = Y * stride.y + padding.y;\n";
   c += "  int zs = Z * stride.z + padding.z;\n";
-  c += "  for (int kz = 0; kz < kernel_size.z; ++kz) {\n";
-  c += "    int z_c = zs + kz;\n";
-  c += "    if (z_c < 0 || z_c >= src_size.z) continue;\n";
-  c += "    for (int ky = 0; ky < kernel_size.y; ++ky) {\n";
-  c += "      int y_c = ys + ky;\n";
-  c += "      if (y_c < 0 || y_c >= src_size.y) continue;\n";
-  c += "      for (int kx = 0; kx < kernel_size.x; ++kx) {\n";
+  c += "  for (int ky = 0; ky < kernel_size.y; ++ky) {\n";
+  c += "    int y_c = ys + ky;\n";
+  c += "    if (y_c < 0 || y_c >= src_size.y) continue;\n";
+  c += "    for (int kx = 0; kx < kernel_size.x; ++kx) {\n";
   if (op_def.batch_support) {
-    c += "        int x_c = xs + kx * batch_size;\n";
+    c += "      int x_c = xs + kx * batch_size;\n";
   } else {
-    c += "        int x_c = xs + kx;\n";
+    c += "      int x_c = xs + kx;\n";
   }
-  c += "        if (x_c < 0 || x_c >= src_size.x) continue;\n";
+  c += "      if (x_c < 0 || x_c >= src_size.x) continue;\n";
+  c += "      for (int kz = 0; kz < kernel_size.z; ++kz) {\n";
+  c += "        int z_c = zs + kz;\n";
+  c += "        if (z_c < 0 || z_c >= src_size.z) continue;\n";
   c += "        FLT4 src = " + src_tensor.ReadWHDS("x_c", "y_c", "z_c", "S") +
        ";\n";
   if (output_indices) {
-    c += "        FLT index_counter = (FLT)((kz * kernel_size.y + ky) * "
-         "kernel_size.x + kx) + (FLT)(0.1f);\n";
+    c += "        FLT index_counter = (FLT)((ky * kernel_size.x + kx) * "
+         "kernel_size.z + kz) + (FLT)(0.1f);\n";
     c += "        if (src.x > maximum.x) {\n";
     c += "          indexes.x = index_counter;\n";
+    c += "          maximum.x = src.x;\n";
     c += "        }\n";
     c += "        if (src.y > maximum.y) {\n";
     c += "          indexes.y = index_counter;\n";
+    c += "          maximum.y = src.y;\n";
     c += "        }\n";
     c += "        if (src.z > maximum.z) {\n";
     c += "          indexes.z = index_counter;\n";
+    c += "          maximum.z = src.z;\n";
     c += "        }\n";
     c += "        if (src.w > maximum.w) {\n";
     c += "          indexes.w = index_counter;\n";
+    c += "          maximum.w = src.w;\n";
     c += "        }\n";
+  } else {
+    c += "        maximum = max(src, maximum);\n";
   }
-  c += "        maximum = max(src, maximum);\n";
   c += "      };\n";
   c += "    }\n";
   c += "  }\n";
