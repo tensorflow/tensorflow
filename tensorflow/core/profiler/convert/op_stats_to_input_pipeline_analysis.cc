@@ -256,6 +256,12 @@ InputOpDetails ConvertOpMetricsToInputOpDetails(const OpMetrics& op_metrics,
   return details;
 }
 
+string AnchorElement(absl::string_view url, absl::string_view text) {
+  return absl::StrCat("<a href=\"", url, "\" target=\"_blank\">", text, "</a>");
+}
+
+}  // namespace
+
 void GenerateHostResult(const OpMetricsDb& host_tf_metrics_db,
                         InputPipelineAnalysisResult* result) {
   InputOpMetrics input_op_metrics = SelectInputOpMetrics(host_tf_metrics_db);
@@ -320,10 +326,6 @@ void GenerateHostResult(const OpMetricsDb& host_tf_metrics_db,
       unclassified_non_enqueue_time_us);
 }
 
-string AnchorElement(absl::string_view url, absl::string_view text) {
-  return absl::StrCat("<a href=\"", url, "\" target=\"_blank\">", text, "</a>");
-}
-
 InputPipelineAnalysisRecommendation GenerateRecommendation() {
   const absl::string_view kDatasetIntro =
       "https://www.tensorflow.org/programmers_guide/datasets";
@@ -364,8 +366,6 @@ InputPipelineAnalysisRecommendation GenerateRecommendation() {
       " (if you are not using it now)");
   return recommendation;
 }
-
-}  // namespace
 
 StepSummary ComputeStepTimeSummaryInMs(
     const protobuf::RepeatedPtrField<PerCoreStepInfo>& grouped_by_step) {
