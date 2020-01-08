@@ -668,7 +668,7 @@ class TPUEmbedding(object):
           master_job_name = tpu_system_metadata_lib.master_job(master,
                                                                cluster_def)
         except ValueError as e:
-          raise ValueError(e.message + ' Please specify a master_job_name.')
+          raise ValueError(str(e) + ' Please specify a master_job_name.')
       self._hosts = []
       for device in tpu_system_metadata.devices:
         if 'device:CPU:' in device.name and (
