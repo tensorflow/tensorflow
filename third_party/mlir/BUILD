@@ -966,6 +966,7 @@ filegroup(
         "include/mlir/Analysis/CallInterfaces.td",
         "include/mlir/Dialect/SPIRV/SPIRVArithmeticOps.td",
         "include/mlir/Dialect/SPIRV/SPIRVAtomicOps.td",
+        "include/mlir/Dialect/SPIRV/SPIRVAvailability.td",
         "include/mlir/Dialect/SPIRV/SPIRVBase.td",
         "include/mlir/Dialect/SPIRV/SPIRVBitOps.td",
         "include/mlir/Dialect/SPIRV/SPIRVCastOps.td",
@@ -1048,6 +1049,30 @@ gentbl(
 )
 
 gentbl(
+    name = "SPIRVAvailabilityAvailGen",
+    tbl_outs = [
+        (
+            "-gen-avail-interface-decls",
+            "include/mlir/Dialect/SPIRV/SPIRVAvailability.h.inc",
+        ),
+        (
+            "-gen-avail-interface-defs",
+            "include/mlir/Dialect/SPIRV/SPIRVAvailability.cpp.inc",
+        ),
+        (
+            "-gen-spirv-avail-impls",
+            "include/mlir/Dialect/SPIRV/SPIRVOpAvailabilityImpl.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/SPIRV/SPIRVOps.td",
+    td_srcs = [
+        ":SPIRVOpsTdFiles",
+        ":StdOpsTdFiles",
+    ],
+)
+
+gentbl(
     name = "SPIRVLoweringStructGen",
     tbl_outs = [
         (
@@ -1119,6 +1144,7 @@ cc_library(
         ":CommonFolders",
         ":IR",
         ":Parser",
+        ":SPIRVAvailabilityAvailGen",
         ":SPIRVCanonicalizationIncGen",
         ":SPIRVOpUtilsIncGen",
         ":SPIRVOpsIncGen",
@@ -1843,6 +1869,7 @@ cc_binary(
         "@llvm-project//mlir/test:TestIR",
         "@llvm-project//mlir/test:TestPass",
         "@llvm-project//mlir/test:TestTransforms",
+        "@llvm-project//mlir/test/Dialect/SPIRV:TestPasses",
     ],
 )
 
