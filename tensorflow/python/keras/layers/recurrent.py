@@ -1323,7 +1323,7 @@ class SimpleRNNCell(DropoutRNNCellMixin, Layer):
     self.built = True
 
   def call(self, inputs, states, training=None):
-    prev_output = states[0]
+    prev_output = states[0] if nest.is_sequence(states) else states
     dp_mask = self.get_dropout_mask_for_cell(inputs, training)
     rec_dp_mask = self.get_recurrent_dropout_mask_for_cell(
         prev_output, training)
@@ -1770,7 +1770,7 @@ class GRUCell(DropoutRNNCellMixin, Layer):
     self.built = True
 
   def call(self, inputs, states, training=None):
-    h_tm1 = states[0]  # previous memory
+    h_tm1 = states[0] if nest.is_sequence(states) else states  # previous memory
 
     dp_mask = self.get_dropout_mask_for_cell(inputs, training, count=3)
     rec_dp_mask = self.get_recurrent_dropout_mask_for_cell(

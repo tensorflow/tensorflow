@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "mlir/IR/MLIRContext.h"  // TF:llvm-project
 #include "mlir/IR/PatternMatch.h"  // TF:llvm-project
+#include "mlir/Transforms/DialectConversion.h"  // TF:llvm-project
 
 namespace mlir {
 namespace xla_hlo {
@@ -39,6 +40,15 @@ void PopulateXlaToStdPatterns(OwningRewritePatternList *patterns,
 // Collection of rewrite patterns for lowering of HLO to LHLO dialect.
 void populateHLOToLHLOConversionPattern(MLIRContext *context,
                                         OwningRewritePatternList *patterns);
+
+// Sets up legality definitions for materializing broadcasts.
+void SetupMaterializeBroadcastsLegality(MLIRContext *context,
+                                        ConversionTarget *conversionTarget);
+
+// Populates a collection of rewrite patterns for materializing broadcast
+// attributes to equivalent sequences of ops.
+void PopulateMaterializeBroadcastsPatterns(MLIRContext *context,
+                                           OwningRewritePatternList *patterns);
 
 }  // namespace xla_hlo
 }  // namespace mlir

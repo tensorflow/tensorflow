@@ -230,6 +230,7 @@ string GetMinimumRuntimeVersionForModel(const Model& model) {
           {{OperatorType::kHardSwish, 1}, "1.15.0"},
           {{OperatorType::kFill, 1}, "1.13.0"},
           {{OperatorType::kReverseV2, 1}, "1.14.0"},
+          {{OperatorType::kReverseV2, 2}, kPendingReleaseOpVersion},
           {{OperatorType::kRank, 1}, "1.14.0"},
       });
 

@@ -219,6 +219,19 @@ func @callee(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> (tensor<4xi32>, tens
 // -----
 
 // CHECK:  HloModule
+func @main(%arg0: tensor<128x32xf32>) -> tensor<128x32xf32> {
+  %0 = "xla_hlo.collective_permute"(%arg0) {
+    source_target_pairs = dense<[[0, 1], [1, 2], [2, 3]]> : tensor<3x2xi64>
+  } : (tensor<128x32xf32>) -> tensor<128x32xf32>
+  return %0 : tensor<128x32xf32>
+}
+// CHECK:  ENTRY
+// CHECK:  [[ARG:%.*]] = f32[128,32] parameter(0)
+// CHECK:  ROOT [[RESULT:%.*]] = f32[128,32] collective-permute(f32[128,32] [[ARG]]), source_target_pairs={{\{\{}}0,1},{1,2},{2,3}}
+
+// -----
+
+// CHECK:  HloModule
 func @main(%arg0 : tensor<5x2xf32>,
            %arg1 : tensor<5x5xf32>,
            %arg2 : tensor<5x7xf32>) -> tensor<5x14xf32> {
@@ -457,6 +470,47 @@ func @main(%arg: tensor<4x6xf32>, %pad: tensor<f32>) -> tensor<13x19xf32> {
 // CHECK:  [[PADDING_VAL:%.*]] = f32[] parameter(1)
 // CHECK:  ROOT
 // CHECK-SAME:  f32[13,19] pad(f32[4,6] [[ARG]], f32[] [[PADDING_VAL]]), padding=2_4_1x3_5_1
+
+// -----
+
+// CHECK:  HloModule
+func @main(%token: !xla_hlo.token) -> tuple<tensor<3x4xi32>, !xla_hlo.token> {
+  %0 = "xla_hlo.recv"(%token) {
+    channel_id = {
+      handle = 5 : i64,
+      type = 3 : i64  // Host to device channel
+    },
+    is_host_transfer = true
+  } : (!xla_hlo.token) -> tuple<tensor<3x4xi32>, !xla_hlo.token>
+  return %0 : tuple<tensor<3x4xi32>, !xla_hlo.token>
+}
+
+// CHECK:  ENTRY
+// CHECK:  [[TOKEN:%.*]] = token[] parameter(0)
+// CHECK:  [[RECV:%.*]] = (s32[3,4], u32[], token[]) recv(token[] [[TOKEN]]), channel_id=5, is_host_transfer=true
+// CHECK:  ROOT
+// CHECK-SAME:  (s32[3,4], token[]) recv-done((s32[3,4], u32[], token[]) [[RECV]]), channel_id=5, is_host_transfer=true
+
+// -----
+
+// CHECK:  HloModule
+func @main(%token: !xla_hlo.token) -> tuple<tensor<3x4xi32>, !xla_hlo.token> {
+  %0 = "xla_hlo.recv"(%token) {
+    channel_id = {
+      handle = 5 : i64,
+      type = 1 : i64  // Device to device channel
+    },
+    is_host_transfer = false
+  } : (!xla_hlo.token) -> tuple<tensor<3x4xi32>, !xla_hlo.token>
+  return %0 : tuple<tensor<3x4xi32>, !xla_hlo.token>
+}
+
+// CHECK:  ENTRY
+// CHECK:  [[TOKEN:%.*]] = token[] parameter(0)
+// CHECK:  [[RECV:%.*]] = (s32[3,4], u32[], token[]) recv(token[] [[TOKEN]]), channel_id=5
+// CHECK:  ROOT
+// CHECK-SAME:  (s32[3,4], token[]) recv-done((s32[3,4], u32[], token[]) [[RECV]]), channel_id=5
+
 
 // -----
 
@@ -790,3 +844,20 @@ func @main(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi32>) {
 
 // CHECK: ENTRY %{{.*}} ([[MAIN_ARG0:.*]]: f32[16,16], [[MAIN_ARG1:.*]]: s32[16,16]) -> (f32[16,16], s32[16,16]) {
 // CHECK:   ROOT %{{.*}} = (f32[16,16], s32[16,16]) sort(f32[16,16] %[[MAIN_ARG0]], s32[16,16] %[[MAIN_ARG1]]), dimensions={1}, is_stable=true, to_apply=%[[SORT_CMP]]
+
+
+// -----
+
+// Tests that the exported HLO module keeps parameter replication annotation.
+
+// CHECK:  HloModule
+func @main(%arg0: tensor<16x16xf32>, %arg1: tensor<16x16xf32> {tf_device.is_same_data_across_replicas = true}) -> tensor<16x16xf32> {
+  %0 = "xla_hlo.add"(%arg0, %arg1) : (tensor<16x16xf32>, tensor<16x16xf32>) -> tensor<16x16xf32>
+  return %0 : tensor<16x16xf32>
+}
+
+// CHECK:  ENTRY
+// CHECK:  %[[ARG0:.*]] = f32[16,16] parameter(0)
+// CHECK-NOT: parameter_replication={true}
+// CHECK:  %[[ARG1:.*]] = f32[16,16] parameter(1), parameter_replication={true}
+// CHECK:  ROOT %[[RESULT:.*]] = f32[16,16] add(f32[16,16] %[[ARG0]], f32[16,16] %[[ARG1]])

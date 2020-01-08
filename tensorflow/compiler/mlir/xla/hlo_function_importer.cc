@@ -260,6 +260,11 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
           func_builder->create<mlir::CallOp>(loc, function, operands);
       return new_operation;
     }
+    case HloOpcode::kCollectivePermute: {
+      attributes.push_back(
+          ConvertSourceTargetPairs(instruction->source_target_pairs()));
+      MakeAndReturn(CollectivePermuteOp);
+    }
     case HloOpcode::kCompare: {
       attributes.push_back(ConvertComparisonDirection(instruction));
       MakeAndReturn(CompareOp);
@@ -759,6 +764,20 @@ mlir::NamedAttribute HloFunctionImporter::ConvertGatherDimensionNumbers(
       Convert(start_index_map),
       builder_->getI64IntegerAttr(dnums.index_vector_dim()), context_);
   return builder_->getNamedAttr("dimension_numbers", attr);
+}
+
+mlir::NamedAttribute HloFunctionImporter::ConvertSourceTargetPairs(
+    const std::vector<std::pair<tensorflow::int64, tensorflow::int64>>&
+        source_target_pairs) {
+  std::vector<int64_t> attr(source_target_pairs.size() * 2);
+  for (auto p : llvm::enumerate(source_target_pairs)) {
+    attr[2 * p.index()] = p.value().first;
+    attr[2 * p.index() + 1] = p.value().second;
+  }
+  auto type = mlir::RankedTensorType::get(
+      {static_cast<int64_t>(attr.size() / 2), 2}, builder_->getIntegerType(64));
+  return builder_->getNamedAttr("source_target_pairs",
+                                DenseIntElementsAttr::get(type, attr));
 }
 
 }  // namespace xla

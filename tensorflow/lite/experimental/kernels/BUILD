@@ -130,13 +130,14 @@ cc_library(
     name = "hashtable_op_kernels",
     srcs = [
         "hashtable.cc",
+        "hashtable_find.cc",
         "hashtable_import.cc",
-        "hashtable_lookup.cc",
         "hashtable_size.cc",
     ],
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/api",
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:op_macros",

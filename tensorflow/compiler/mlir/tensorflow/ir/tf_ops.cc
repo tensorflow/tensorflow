@@ -1255,6 +1255,20 @@ void InvertOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 }
 
 //===----------------------------------------------------------------------===//
+// InvertPermutationOp
+//===----------------------------------------------------------------------===//
+
+// Verifies that the input is 1D.
+static LogicalResult Verify(InvertPermutationOp op) {
+  auto x_type = op.x().getType().cast<TensorType>();
+  if (!x_type.hasRank()) return success();
+  if (x_type.getShape().size() != 1)
+    return op.emitOpError() << "requires input x to be 1-dimensional";
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // LeakyReluOp
 //===----------------------------------------------------------------------===//
 

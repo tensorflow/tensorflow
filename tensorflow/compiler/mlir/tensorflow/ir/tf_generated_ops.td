@@ -2493,6 +2493,42 @@ for dtype in dtype_list:
   let hasCanonicalizer = 1;
 }
 
+def TF_InvertPermutationOp : TF_Op<"InvertPermutation", [NoSideEffect]> {
+  let summary = "Computes the inverse permutation of a tensor.";
+
+  let description = [{
+This operation computes the inverse of an index permutation. It takes a 1-D
+integer tensor `x`, which represents the indices of a zero-based array, and
+swaps each value with its index position. In other words, for an output tensor
+`y` and an input tensor `x`, this operation computes the following:
+
+`y[x[i]] = i for i in [0, 1, ..., len(x) - 1]`
+
+The values must include 0. There can be no duplicate values or negative values.
+
+For example:
+
+```
+# tensor `x` is [3, 4, 0, 2, 1]
+invert_permutation(x) ==> [2, 4, 3, 0, 1]
+```
+  }];
+
+  let arguments = (ins
+    TF_I32OrI64Tensor:$x
+  );
+
+  let results = (outs
+    TF_I32OrI64Tensor:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
+}
+
 def TF_IsFiniteOp : TF_Op<"IsFinite", [NoSideEffect, SameOperandsAndResultShape]> {
   let summary = "Returns which elements of x are finite.";
 
@@ -6307,6 +6343,29 @@ The above computation has a replicated output of two replicas.
 
   TF_DerivedResultSizeAttr num_replicas = TF_DerivedResultSizeAttr<0>;
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_TPUReshardVariablesOp : TF_Op<"TPUReshardVariables", []> {
+  let summary = [{
+Op that reshards on-device TPU variables to specified state. Internal use only.
+  }];
+
+  let description = [{
+The sharding state is represented as the key of the compilation that generated
+the sharding/unsharding programs along with the main program. new_format_key
+specifies the desired state, and format_state_var is the current state of the
+variables.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_ResourceTensor>:$vars,
+    TF_StrTensor:$new_format_key,
+    TF_ResourceTensor:$format_state_var
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
 }
 
 def TF_TanhOp : TF_Op<"Tanh", [NoSideEffect, SameOperandsAndResultType]> {

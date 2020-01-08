@@ -133,6 +133,24 @@ class NameUniquifier : public OpOrArgNameMapper {
   const FunctionLibraryDefinition& flib_;
 };
 
+// Populates the tf.versions attribute on a module, given a corresponding
+// graph VersionDef proto.
+void PopulateTfVersions(mlir::ModuleOp module,
+                        const VersionDef& graph_versions) {
+  mlir::Builder b(module.getContext());
+  auto producer = b.getNamedAttr(
+      "producer", b.getI32IntegerAttr(graph_versions.producer()));
+  auto min_consumer = b.getNamedAttr(
+      "min_consumer", b.getI32IntegerAttr(graph_versions.min_consumer()));
+  auto bad_consumers = b.getNamedAttr(
+      "bad_consumers", b.getI32ArrayAttr(llvm::ArrayRef<int32_t>(
+                           graph_versions.bad_consumers().begin(),
+                           graph_versions.bad_consumers().end())));
+  module.setAttr("tf.versions",
+                 b.getDictionaryAttr(llvm::ArrayRef<mlir::NamedAttribute>(
+                     {producer, min_consumer, bad_consumers})));
+}
+
 // Stateful helper class to import a TensorFlow model into an MLIR Module.
 //
 // This is the base class that contains common utilities shared between the
@@ -1849,19 +1867,7 @@ StatusOr<mlir::OwningModuleRef> GraphDefImporter::Convert(
   }
 
   // Record version info.
-  const auto& graph_versions = graph.versions();
-  mlir::Builder b(context);
-  auto producer = b.getNamedAttr(
-      "producer", b.getI32IntegerAttr(graph_versions.producer()));
-  auto min_consumer = b.getNamedAttr(
-      "min_consumer", b.getI32IntegerAttr(graph_versions.min_consumer()));
-  auto bad_consumers = b.getNamedAttr(
-      "bad_consumers", b.getI32ArrayAttr(llvm::ArrayRef<int32_t>(
-                           graph_versions.bad_consumers().begin(),
-                           graph_versions.bad_consumers().end())));
-  module->setAttr("tf.versions",
-                  b.getDictionaryAttr(llvm::ArrayRef<mlir::NamedAttribute>(
-                      {producer, min_consumer, bad_consumers})));
+  PopulateTfVersions(module.get(), graph.versions());
 
   TF_RETURN_IF_ERROR(importer.ImporterBase::Convert(
       func_name, func_type, arg_nodes, ret_nodes, control_ret_nodes, attrs,
@@ -2720,6 +2726,8 @@ StatusOr<mlir::OwningModuleRef> SavedModelImporter::Convert(
   std::unordered_map<std::string, std::string> tf_name_to_mlir_name;
 
   const auto& graphdef = saved_model->meta_graph_def().graph_def();
+  PopulateTfVersions(module.get(), graphdef.versions());
+
   GraphConstructorOptions options;
   options.allow_internal_ops = true;
   options.add_default_attributes = add_default_attributes;
@@ -2827,6 +2835,7 @@ class SavedModelV1Importer {
 StatusOr<mlir::OwningModuleRef> SavedModelV1Importer::ConvertSignatures() {
   const auto& signatures = bundle_.GetSignatures();
   const auto& graphdef = bundle_.meta_graph_def.graph_def();
+  PopulateTfVersions(module_.get(), graphdef.versions());
 
   FunctionLibraryDefinition flib_def(OpRegistry::Global(), graphdef.library());
 

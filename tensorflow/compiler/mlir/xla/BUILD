@@ -292,6 +292,35 @@ cc_library(
 )
 
 cc_library(
+    name = "xla_materialize_broadcasts",
+    srcs = [
+        "transforms/materialize_broadcasts.cc",
+    ],
+    deps = [
+        ":hlo",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Transforms",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "xla_test_passes",
+    srcs = [
+        "transforms/materialize_broadcasts_pass.cc",
+    ],
+    deps = [
+        ":hlo",
+        ":xla_materialize_broadcasts",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Transforms",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "hlo",
     srcs = [
         "ir/hlo_ops.cc",
@@ -311,6 +340,7 @@ cc_library(
         ":hlo_ops_base_inc_gen",
         ":hlo_ops_inc_gen",
         ":xla_canonicalize_inc_gen",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:IR",
@@ -318,6 +348,7 @@ cc_library(
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
+        "@llvm-project//mlir:Transforms",
     ],
     alwayslink = 1,
 )
@@ -345,6 +376,7 @@ cc_library(
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
+        "@llvm-project//mlir:Transforms",
     ],
     alwayslink = 1,
 )
@@ -424,6 +456,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/xla:comparison_util",
         "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:xla_builder",

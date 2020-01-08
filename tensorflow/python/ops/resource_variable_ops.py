@@ -1201,10 +1201,17 @@ class BaseResourceVariable(variables.VariableV1):
               new_axis_mask=new_axis_mask,
               shrink_axis_mask=shrink_axis_mask))
 
+  def __complex__(self):
+    return complex(self.value().numpy())
+
   def __int__(self):
-    if self.dtype != dtypes.int32 and self.dtype != dtypes.int64:
-      raise TypeError("Non-integer variable can't be converted to integer.")
     return int(self.value().numpy())
+
+  def __long__(self):
+    return long(self.value().numpy())
+
+  def __float__(self):
+    return float(self.value().numpy())
 
   def _dense_var_to_tensor(self, dtype=None, name=None, as_ref=False):
     del name

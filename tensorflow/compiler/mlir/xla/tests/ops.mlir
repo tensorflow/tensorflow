@@ -164,6 +164,46 @@ func @comp_bad_direction(%arg0: tensor<3xi32>, %arg1: tensor<3xi32>) -> tensor<3
 
 // -----
 
+func @collective_permute_duplicate_sources(%arg0: tensor<128x32xf32>) -> tensor<128x32xf32> {
+  // expected-error@+1 {{duplicate sources not allowed}}
+  %0 = "xla_hlo.collective_permute"(%arg0) {
+    source_target_pairs = dense<[[0, 1], [0, 2], [2, 3]]> : tensor<3x2xi64>
+  } : (tensor<128x32xf32>) -> tensor<128x32xf32>
+  return %0 : tensor<128x32xf32>
+}
+
+// -----
+
+func @collective_permute_duplicate_targets(%arg0: tensor<128x32xf32>) -> tensor<128x32xf32> {
+  // expected-error@+1 {{duplicate targets not allowed}}
+  %0 = "xla_hlo.collective_permute"(%arg0) {
+    source_target_pairs = dense<[[0, 1], [1, 2], [2, 1]]> : tensor<3x2xi64>
+  } : (tensor<128x32xf32>) -> tensor<128x32xf32>
+  return %0 : tensor<128x32xf32>
+}
+
+// -----
+
+func @collective_permute_duplicate_sources(%arg0: tensor<128x32xf32>) -> tensor<128x32xf32> {
+  // expected-error@+1 {{expect source_target_pairs attribute to be of rank 2, but got rank 1}}
+  %0 = "xla_hlo.collective_permute"(%arg0) {
+    source_target_pairs = dense<[0, 1]> : tensor<2xi64>
+  } : (tensor<128x32xf32>) -> tensor<128x32xf32>
+  return %0 : tensor<128x32xf32>
+}
+
+// -----
+
+func @collective_permute_duplicate_sources(%arg0: tensor<128x32xf32>) -> tensor<128x32xf32> {
+  // expected-error@+1 {{expect source_target_pairs attribute of shape (N, 2), but got (2, 3)}}
+  %0 = "xla_hlo.collective_permute"(%arg0) {
+    source_target_pairs = dense<[[0, 1, 2], [3, 4, 5]]> : tensor<2x3xi64>
+  } : (tensor<128x32xf32>) -> tensor<128x32xf32>
+  return %0 : tensor<128x32xf32>
+}
+
+// -----
+
 // CHECK-LABEL: func @clamp
 func @clamp(%arg0: tensor<1xi32>) -> tensor<1xi32> {
   %0 = "xla_hlo.clamp"(%arg0, %arg0, %arg0) : (tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1xi32>

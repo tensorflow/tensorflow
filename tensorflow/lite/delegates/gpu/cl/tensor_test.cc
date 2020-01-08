@@ -59,6 +59,36 @@ Status TensorGenericTest(const BHWC& shape, const TensorDescriptor& descriptor,
   return OkStatus();
 }
 
+Status Tensor5DGenericTest(const BHWDC& shape,
+                           const TensorDescriptor& descriptor,
+                           Environment* env) {
+  Tensor5DFloat32 tensor_cpu;
+  tensor_cpu.shape = shape;
+  tensor_cpu.data.resize(shape.DimensionsProduct());
+  for (int i = 0; i < tensor_cpu.data.size(); ++i) {
+    tensor_cpu.data[i] = half(0.3f * i);
+  }
+  Tensor5DFloat32 tensor_gpu;
+  tensor_gpu.shape = shape;
+  tensor_gpu.data.resize(shape.DimensionsProduct());
+  for (int i = 0; i < tensor_gpu.data.size(); ++i) {
+    tensor_gpu.data[i] = 0.0f;
+  }
+
+  Tensor tensor;
+  RETURN_IF_ERROR(
+      CreateTensor(env->context(), env->device(), shape, descriptor, &tensor));
+  RETURN_IF_ERROR(tensor.WriteData(env->queue(), tensor_cpu));
+  RETURN_IF_ERROR(tensor.ReadData(env->queue(), &tensor_gpu));
+
+  for (int i = 0; i < tensor_gpu.data.size(); ++i) {
+    if (tensor_gpu.data[i] != tensor_cpu.data[i]) {
+      return InternalError("Wrong value.");
+    }
+  }
+  return OkStatus();
+}
+
 Status TensorTests(const TensorDescriptor& descriptor, Environment* env) {
   RETURN_IF_ERROR(TensorGenericTest(BHWC(1, 6, 7, 3), descriptor, env));
   RETURN_IF_ERROR(TensorGenericTest(BHWC(1, 1, 4, 12), descriptor, env));
@@ -69,6 +99,17 @@ Status TensorTests(const TensorDescriptor& descriptor, Environment* env) {
   RETURN_IF_ERROR(TensorGenericTest(BHWC(4, 1, 4, 12), descriptor, env));
   RETURN_IF_ERROR(TensorGenericTest(BHWC(7, 6, 1, 7), descriptor, env));
   RETURN_IF_ERROR(TensorGenericTest(BHWC(13, 7, 3, 3), descriptor, env));
+
+  // 5D tests with batch = 1
+  RETURN_IF_ERROR(Tensor5DGenericTest(BHWDC(1, 6, 7, 4, 3), descriptor, env));
+  RETURN_IF_ERROR(Tensor5DGenericTest(BHWDC(1, 1, 4, 3, 12), descriptor, env));
+  RETURN_IF_ERROR(Tensor5DGenericTest(BHWDC(1, 6, 1, 7, 7), descriptor, env));
+
+  // 5D tests
+  RETURN_IF_ERROR(Tensor5DGenericTest(BHWDC(2, 6, 7, 1, 3), descriptor, env));
+  RETURN_IF_ERROR(Tensor5DGenericTest(BHWDC(4, 1, 4, 2, 12), descriptor, env));
+  RETURN_IF_ERROR(Tensor5DGenericTest(BHWDC(7, 6, 1, 3, 7), descriptor, env));
+  RETURN_IF_ERROR(Tensor5DGenericTest(BHWDC(13, 7, 3, 4, 3), descriptor, env));
   return OkStatus();
 }
 

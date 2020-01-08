@@ -116,10 +116,14 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                                 output->type == kTfLiteInt16);
   } else {
     // Requantize use case.
-    TF_LITE_ENSURE(context,
-                   input->type == kTfLiteInt8 || input->type == kTfLiteUInt8);
-    TF_LITE_ENSURE(context,
-                   output->type == kTfLiteUInt8 || output->type == kTfLiteInt8);
+    if (input->type == kTfLiteInt16) {
+      TF_LITE_ENSURE(context, output->type == kTfLiteInt8);
+    } else {
+      TF_LITE_ENSURE(context,
+                     input->type == kTfLiteInt8 || input->type == kTfLiteUInt8);
+      TF_LITE_ENSURE(
+          context, output->type == kTfLiteUInt8 || output->type == kTfLiteInt8);
+    }
     const double effective_output_scale =
         static_cast<double>(input->params.scale) /
         static_cast<double>(output->params.scale);
@@ -163,6 +167,22 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           AffineQuantize<kernel_type>(op_params, input_shape, input_data,
                                       output_shape,
                                       GetTensorData<int16_t>(output));
+          return kTfLiteOk;
+        default:
+          ReportError(context, input->type, output->type);
+          return kTfLiteError;
+      }
+    }
+    case kTfLiteInt16: {
+      // int16 to int8.
+      switch (output->type) {
+        case kTfLiteInt8:
+          Requantize<kernel_type>(GetTensorData<int16_t>(input),
+                                  MatchingFlatSize(input_shape, output_shape),
+                                  data->output_multiplier, data->output_shift,
+                                  input->params.zero_point,
+                                  output->params.zero_point,
+                                  GetTensorData<int8_t>(output));
           return kTfLiteOk;
         default:
           ReportError(context, input->type, output->type);

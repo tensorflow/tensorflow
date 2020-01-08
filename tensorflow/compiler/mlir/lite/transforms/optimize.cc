@@ -16,6 +16,7 @@ limitations under the License.
 // This transformation pass takes operations in TensorFlowLite dialect and
 // optimizes them to resulting operations in TensorFlowLite dialect.
 
+#include <algorithm>
 #include <climits>
 #include <cstdint>
 #include <functional>
@@ -78,6 +79,18 @@ struct Optimize : public FunctionPass<Optimize> {
 // Returns whether the given type `a` is broadcast-compatible with `b`.
 bool IsBroadcastableElementsAttrAndType(Type a, Type b) {
   return OpTrait::util::getBroadcastedType(a, b) != Type();
+}
+
+// Returns whether if `type1` dimensions are the same as the ending dimensions
+// of `type2`. This is more restricted than broadcastable.
+bool IsTailOfShape(Type type1, Type type2) {
+  auto tail_type = type1.dyn_cast<ShapedType>();
+  auto full_type = type2.dyn_cast<ShapedType>();
+  if (!tail_type || !full_type || tail_type.getRank() > full_type.getRank())
+    return false;
+  auto i1 = tail_type.getShape().rbegin(), e1 = tail_type.getShape().rend();
+  auto i2 = full_type.getShape().rbegin();
+  return std::equal(i1, e1, i2);
 }
 
 bool CanFuseConvOrDepthwiseConv(Attribute filter, Attribute val,

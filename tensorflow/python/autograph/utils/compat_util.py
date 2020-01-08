@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import importlib
 import sys
-import types
 
 import six
 
@@ -36,10 +35,4 @@ def deprecated_py2_support(module_name):
   """Swaps calling module with a Py2-specific implementation. Noop in Py3."""
   if six.PY2:
     legacy_module = importlib.import_module(module_name + '_deprecated_py2')
-    current_module = sys.modules[module_name]
-    for name, target_val in legacy_module.__dict__.items():
-      if isinstance(target_val, types.FunctionType):
-        replacement = types.FunctionType(
-            target_val.__code__, current_module.__dict__, target_val.__name__,
-            target_val.__defaults__, target_val.__closure__)
-        current_module.__dict__[name] = replacement
+    sys.modules[module_name] = legacy_module

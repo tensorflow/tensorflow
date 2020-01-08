@@ -289,6 +289,29 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
       continue;
     }
 
+    // The semantics of TupleSelect are weird: TupleSelect doesn't define a
+    // buffer, but just forwards the buffers in the either left or right side.
+    // This means the the two different inputs to TupleSelect must not alias,
+    // yet they should be allocated in the same memory space, and both buffers
+    // must be kept alive for the entire live range of TupleSelect. Instead,
+    // just don't allocate TupleSelect in the alternate memory space.
+    // TODO(berkin): Not allocating add-dependencies either since they need to
+    // be treated specially. We should revisit this later.
+    bool keep_in_default_mem = false;
+    for (const HloPosition& position : interval.buffer->positions()) {
+      if (position.instruction->opcode() == HloOpcode::kTupleSelect ||
+          position.instruction->opcode() == HloOpcode::kAddDependency) {
+        keep_in_default_mem = true;
+        VLOG(4) << "Keeping value " << interval.buffer->ToShortString()
+                << " in default mem because it has a tuple-select or "
+                << "add-dependency position.";
+        break;
+      }
+    }
+    if (keep_in_default_mem) {
+      continue;
+    }
+
     auto colocated_intervals = GetSortedColocatedIntervals(interval);
 
     if (AreIntervalsReservedInAlternateMemory(colocated_intervals)) {
@@ -410,8 +433,9 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
 
         // If the use has been a sequential call (e.g. a while loop), the other
         // colocated intervals must alias with this allocation.
-        if (is_sequential_call && !allocation_sequence->empty()) {
-          aliased_allocation = allocation_sequence->back().get();
+        if (is_sequential_call) {
+          aliased_allocation =
+              GetLiveAllocationAt(*allocation_sequence, use_time);
         }
       }
     }
@@ -457,6 +481,19 @@ bool AsynchronousCopyOrdering::ViolatesOrdering(int64 start_time,
   auto copy_it = ranges_.find(
       {start_time, end_time, MemorySpaceAssignment::MemorySpace::kAlternate});
   return copy_it != ranges_.end() && copy_it->start_time != start_time;
+}
+
+/*static*/ MemorySpaceAssignment::Allocation*
+AlternateMemoryBestFitHeap::GetLiveAllocationAt(
+    const MemorySpaceAssignment::AllocationSequence& allocations, int64 time) {
+  for (auto allocation_it = allocations.rbegin();
+       allocation_it != allocations.rend(); ++allocation_it) {
+    if ((*allocation_it)->start_time() <= time &&
+        (*allocation_it)->end_time() >= time) {
+      return allocation_it->get();
+    }
+  }
+  return nullptr;
 }
 
 void AlternateMemoryBestFitHeap::AddInputAndOutputRequiredAssignments() {
@@ -764,6 +801,7 @@ bool AlternateMemoryBestFitHeap::FindAllocation(
   if (use_requires_buffer_in_default_mem) {
     VLOG(4)
         << "Not trying to prefetch because use requires buffer in default mem.";
+    prev_allocation_in_default_mem->Extend(end_time);
     prev_allocation_in_default_mem->AddUse(use);
     return true;
   }
@@ -825,6 +863,7 @@ bool AlternateMemoryBestFitHeap::FindAllocation(
 
   // If a copy wasn't inserted, then add this use to the latest allocation in
   // default memory.
+  prev_allocation_in_default_mem->Extend(end_time);
   prev_allocation_in_default_mem->AddUse(use);
   return true;
 }

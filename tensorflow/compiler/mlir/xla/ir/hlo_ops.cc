@@ -21,6 +21,7 @@ limitations under the License.
 #include <stddef.h>
 #include <stdint.h>
 
+#include "absl/container/flat_hash_set.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -215,6 +216,39 @@ void AbsOp::build(Builder* builder, OperationState& result, Value operand) {
   }
 
   return AbsOp::build(builder, result, new_type, operand);
+}
+
+//===----------------------------------------------------------------------===//
+// CollectivePermuteOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(CollectivePermuteOp op) {
+  // Check that source target pair is Nx2 tensor.
+  auto type = op.source_target_pairs().getType().dyn_cast<RankedTensorType>();
+  if (type.getRank() != 2)
+    return op.emitError() << "expect source_target_pairs attribute to be of "
+                             "rank 2, but got rank "
+                          << type.getRank();
+  if (type.getShape()[1] != 2)
+    return op.emitError()
+           << "expect source_target_pairs attribute of shape (N, 2), but got ("
+           << type.getShape() << ")";
+  // Check source target pairs for duplicate sources or targets
+  absl::flat_hash_set<int64_t> sources;
+  absl::flat_hash_set<int64_t> targets;
+  for (auto i = op.source_target_pairs().begin(),
+            e = op.source_target_pairs().end();
+       i != e; ++i) {
+    auto val = (*i).getSExtValue();
+    if (i.getIndex() % 2 == 0) {
+      bool is_unique = sources.insert(val).second;
+      if (!is_unique) return op.emitError() << "duplicate sources not allowed.";
+    } else {
+      bool is_unique = targets.insert(val).second;
+      if (!is_unique) return op.emitError() << "duplicate targets not allowed.";
+    }
+  }
+  return success();
 }
 
 //===----------------------------------------------------------------------===//

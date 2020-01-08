@@ -170,6 +170,11 @@ void TF_TensorBitcastFrom(const TF_Tensor* from, TF_DataType type,
 }
 
 // --------------------------------------------------------------------------
+void StringEncode(const char* src, size_t src_len, char* dst) {
+  dst = tensorflow::core::EncodeVarint64(dst, src_len);
+  memcpy(dst, src, src_len);
+}
+
 size_t TF_StringEncode(const char* src, size_t src_len, char* dst,
                        size_t dst_len, TF_Status* status) {
   const size_t sz = TF_StringEncodedSize(src_len);
@@ -185,8 +190,7 @@ size_t TF_StringEncode(const char* src, size_t src_len, char* dst,
                         src_len, "-byte string"));
     return 0;
   }
-  dst = tensorflow::core::EncodeVarint64(dst, src_len);
-  memcpy(dst, src, src_len);
+  StringEncode(src, src_len, dst);
   return sz;
 }
 
@@ -245,13 +249,11 @@ static TF_Tensor* EmptyTensor(TF_DataType dtype,
 namespace tensorflow {
 
 // Non-static for testing.
-TF_Tensor* TF_TensorFromTensor(const tensorflow::Tensor& src,
-                               TF_Status* status) {
-  TF_SetStatus(status, TF_OK, "");
+TF_Tensor* TF_TensorFromTensor(const tensorflow::Tensor& src, Status* status) {
+  *status = tensorflow::Status::OK();
   if (!src.IsInitialized()) {
-    Set_TF_Status_from_Status(
-        status, FailedPrecondition(
-                    "attempt to use a tensor with an uninitialized value"));
+    *status = FailedPrecondition(
+        "attempt to use a tensor with an uninitialized value");
     return nullptr;
   }
   if (src.NumElements() == 0) {
@@ -259,14 +261,13 @@ TF_Tensor* TF_TensorFromTensor(const tensorflow::Tensor& src,
   }
   if (src.dtype() == tensorflow::DT_RESOURCE) {
     if (src.shape().dims() != 0) {
-      Set_TF_Status_from_Status(
-          status, InvalidArgument(
-                      "Unexpected non-scalar DT_RESOURCE tensor seen (shape: ",
-                      src.shape().DebugString(),
-                      "). Please file a bug at "
-                      "https://github.com/tensorflow/tensorflow/issues/new, "
-                      "ideally with a "
-                      "short code snippet that reproduces this error."));
+      *status = InvalidArgument(
+          "Unexpected non-scalar DT_RESOURCE tensor seen (shape: ",
+          src.shape().DebugString(),
+          "). Please file a bug at "
+          "https://github.com/tensorflow/tensorflow/issues/new, "
+          "ideally with a "
+          "short code snippet that reproduces this error.");
       return nullptr;
     }
     const string str =
@@ -305,23 +306,15 @@ TF_Tensor* TF_TensorFromTensor(const tensorflow::Tensor& src,
     *offsets = (dst - data_start);
     offsets++;
     const string& s = srcarray(i);
-    size_t consumed = TF_StringEncode(s.data(), s.size(), dst, dst_len, status);
-    if (TF_GetCode(status) != TF_OK) {
-      Set_TF_Status_from_Status(
-          status,
-          InvalidArgument("invalid string tensor encoding (string #", i, " of ",
-                          srcarray.size(), "): ", TF_Message(status)));
-      delete[] base;
-      return nullptr;
-    }
+    const size_t consumed = TF_StringEncodedSize(s.size());
+    StringEncode(s.data(), s.size(), dst);
     dst += consumed;
     dst_len -= consumed;
   }
   if (dst != base + size) {
-    Set_TF_Status_from_Status(
-        status, InvalidArgument(
-                    "invalid string tensor encoding (decoded ", (dst - base),
-                    " bytes, but the tensor is encoded in ", size, " bytes"));
+    *status = InvalidArgument(
+        "invalid string tensor encoding (decoded ", (dst - base),
+        " bytes, but the tensor is encoded in ", size, " bytes");
     delete[] base;
     return nullptr;
   }

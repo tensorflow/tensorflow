@@ -124,9 +124,9 @@ class TensorHandle : public core::RefCounted {
   Device* DeviceOrHostCPU(EagerContext* ctx) const;
 
   Status Shape(tensorflow::TensorShape* shape);
-  Status NumDims(int* num_dims);
-  Status Dim(int dim_index, int64* dim);
-  Status NumElements(int64* num_elements);
+  Status NumDims(int* num_dims) const;
+  Status Dim(int dim_index, int64* dim) const;
+  Status NumElements(int64* num_elements) const;
 
 #if !defined(IS_MOBILE_PLATFORM)
   bool HasRemoteMirror(Device* d);
@@ -214,7 +214,7 @@ class TensorHandle : public core::RefCounted {
   // If the contents of the Tensor pointed to by this handle is yet to be
   // computed by a EagerNode, this function will block till that computation is
   // done and the handle is "ready".
-  Status WaitReady(const char* caller);
+  Status WaitReady(const char* caller) const;
 
   // TODO(b/136608821): device_ == nullptr iff Host CPU:0
   // This was expedient, but perhaps worth revisiting ('device_' should always
