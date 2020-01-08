@@ -4244,8 +4244,7 @@ def polyval(coeffs, x, name=None):
   >>> theta1 = tf.Variable(2)
   >>> theta2 = tf.Variable(1)
   >>> theta3 = tf.Variable(0)
-  >>> y = tf.math.polyval([theta1, theta2, theta3], x)
-  >>> print(y)
+  >>> tf.math.polyval([theta1, theta2, theta3], x)
   tf.Tensor(21, shape=(), dtype=int32)
 
   Args:
