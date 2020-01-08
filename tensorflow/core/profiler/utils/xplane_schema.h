@@ -74,7 +74,6 @@ enum StatType {
   kQueueAddr,
   kRequestId,
   kRunId,
-  kCorrelationId,
   kGraphType,
   kStepNum,
   kIterNum,
@@ -83,6 +82,12 @@ enum StatType {
   kBytesAllocated,
   kBytesAvailable,
   kFragmentation,
+  // Device trace arguments.
+  kDeviceId,
+  kContextId,
+  kCorrelationId,
+  kMemcpyDetails,
+  kMemallocDetails,
   kKernelDetails,
   // Stats added when processing traces.
   kGroupId,
