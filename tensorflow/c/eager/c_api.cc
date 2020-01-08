@@ -992,7 +992,7 @@ TF_Tensor* TFE_TensorHandleResolve(TFE_TensorHandle* h, TF_Status* status) {
       h_cpu->Unref();
       return nullptr;
     }
-    TF_Tensor* retval = tensorflow::TF_TensorFromTensor(*t, status);
+    TF_Tensor* retval = tensorflow::TF_TensorFromTensor(*t, &status->status);
     h_cpu->Unref();
     return retval;
   } else {
@@ -1008,7 +1008,7 @@ TF_Tensor* TFE_TensorHandleResolve(TFE_TensorHandle* h, TF_Status* status) {
       status->status = h->handle->CopyToDevice(ctx, ctx->HostCPU(), &tensor);
       if (!status->status.ok()) return nullptr;
     }
-    return tensorflow::TF_TensorFromTensor(tensor, status);
+    return tensorflow::TF_TensorFromTensor(tensor, &status->status);
   }
 }
 
