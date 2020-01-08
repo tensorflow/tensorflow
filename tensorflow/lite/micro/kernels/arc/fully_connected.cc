@@ -92,7 +92,10 @@ TfLiteStatus EvalQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
   // Run Fully Connected MLI kernel
   // MLI optimized version only supports int8 dataype and no fused Relu
   // TODO: subject to add mli_saturate kernel
-  if (input->type == kTfLiteInt8 && params->activation == kTfLiteActNone) {
+  // work around for issue #35318, mli fully connect kernel only supports zeropoint == 0 for weights.
+  // this check can be removed once issue #35318 is resolved.
+  if ((filter->params.zero_point == 0)
+     && (input->type == kTfLiteInt8 && params->activation == kTfLiteActNone)) {
     mli_tensor mli_in = {0};
     mli_tensor mli_weights = {0};
     mli_tensor mli_bias = {0};
