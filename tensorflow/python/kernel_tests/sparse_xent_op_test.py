@@ -211,7 +211,6 @@ class SparseXentTest(test.TestCase):
       self.assertNotIn("BatchMatMul", op_names)
       self.assertNotIn("BatchMatMulV2", op_names)
 
-    print("cross entropy gradient err = ", err)
     self.assertLess(err, 5e-8)
 
   @test_util.run_deprecated_v1
@@ -238,7 +237,6 @@ class SparseXentTest(test.TestCase):
       ]
       self.assertIn("BatchMatMulV2", op_names)
 
-    print("cross entropy hessian err = ", err)
     self.assertLess(err, 5e-8)
 
   def _testHighDim(self, features, labels):
