@@ -23,10 +23,6 @@ def tf_saved_model_test(name, data):
     lit_test(
         name = name + ".py",
         data = [name] + data,
-<<<<<<< HEAD
         tags = ["no_rocm"],
-        driver = "@local_config_mlir//:run_lit.sh",
-=======
         driver = "@llvm-project//mlir:run_lit.sh",
->>>>>>> upstream/master
     )

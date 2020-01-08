@@ -1890,11 +1890,7 @@ tf_py_test(
     python_version = "PY3",
     shard_count = 4,
     tags = [
-<<<<<<< HEAD
-        "no_rocm",
-=======
         "no_oss_py35",  # b/147011479
->>>>>>> upstream/master
         "no_windows",
     ],
     deps = [
@@ -1927,13 +1923,10 @@ tf_py_test(
     srcs = ["models_test.py"],
     python_version = "PY3",
     shard_count = 8,
-<<<<<<< HEAD
-    tags = ["no_rocm", "notsan"],  # b/67509773
-=======
     tags = [
+        "no_rocm",
         "notsan",  # b/67509773
     ],
->>>>>>> upstream/master
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",

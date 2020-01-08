@@ -1189,24 +1189,8 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
-<<<<<<< HEAD
-        "@llvm//:core",
-    ] + if_cuda_is_configured([
-        ":cudnn_fused_conv_rewriter",
-        ":cusolver_rewriter",
-        ":gemm_algorithm_picker",
-        ":gemm_rewriter",
-        "//tensorflow/core:cuda_libdevice_path",
-        "//tensorflow/stream_executor/cuda:cuda_diagnostics",
-        "//tensorflow/stream_executor/gpu:asm_compiler",
-    ])
-    + if_rocm_is_configured([
-        "//tensorflow/core/platform:rocm_rocdl_path",
-    ]),
-=======
         "@llvm-project//llvm:core",
     ],
->>>>>>> upstream/master
 )
 
 cc_library(
