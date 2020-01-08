@@ -218,6 +218,13 @@ static StatusOr<tflite::TensorType> GetTFLiteType(Type type,
       auto qtype = type.cast<mlir::quant::UniformQuantizedPerAxisType>();
       return GetTFLiteType(qtype.getStorageType(), qtype.isSigned());
     }
+    case mlir::TF::TensorFlowTypes::RESOURCE: {
+      // Treat tf.resource values as integer values in flatbuffer.
+      // TODO(b/146131919): Maybe need to have a detailed design for supporting
+      // other resource types beyonds hash table resources and resource
+      // variables.
+      return tflite::TensorType_INT32;
+    }
     default:
       // TFLite export fills FLOAT32 for unknown data types. Returning an error
       // for now for safety and this could be revisited when required.
