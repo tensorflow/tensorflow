@@ -138,8 +138,6 @@ class XPlaneBuilder {
     plane_->mutable_lines()->Reserve(num_lines);
   }
 
-  // TODO(profiler): remove AddLine from public API.
-  XLineBuilder AddLine() { return XLineBuilder(plane_->add_lines()); }
   XLineBuilder GetOrCreateLine(int64 line_id);
 
   XEventMetadata* GetOrCreateEventMetadata(int64 metadata_id);
