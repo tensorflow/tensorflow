@@ -29,6 +29,7 @@ to
 [announce@tensorflow.org](https://groups.google.com/a/tensorflow.org/forum/#!forum/announce).
 See all the [mailing lists](https://www.tensorflow.org/community/forums).
 
+<<<<<<< HEAD
 ## Feature Prioritization Survey
 
 The TensorFlow team is working on building/improving features, and understands
@@ -74,6 +75,8 @@ pip3 install --user tensorflow-rocm --upgrade
 ```
 For details on Tensorflow ROCm port, please take a look at the [ROCm-specific README file](README.ROCm.md).
 
+=======
+>>>>>>> upstream/master
 ## Install
 
 See the [TensorFlow install guide](https://www.tensorflow.org/install) for the
@@ -195,4 +198,3 @@ Learn more about the
 ## License
 
 [Apache License 2.0](LICENSE)
-

@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <memory>
 
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
 
 namespace mlir {
 
@@ -123,6 +123,10 @@ std::unique_ptr<OpPassBase<FuncOp>> CreateReplicateInvariantOpHoistingPass();
 // `tf_device.replicate` island.
 std::unique_ptr<OpPassBase<FuncOp>> CreateReplicateToIslandPass();
 
+// Creates a pass that annotates whether a LaunchFuncOp's parameters have the
+// same data across replicas.
+std::unique_ptr<OpPassBase<ModuleOp>> CreateAnnotateParameterReplicationPass();
+
 }  // namespace TFDevice
 
 namespace TFTPU {
@@ -142,6 +146,10 @@ std::unique_ptr<OpPassBase<ModuleOp>> CreateTPURewritePass();
 // TPUExecute node. This allows the execute node to perform in-place variable
 // updates.
 std::unique_ptr<OpPassBase<FuncOp>> CreateTPUMergeVariablesWithExecutePass();
+
+// Creates a pass that adds ops which perform formatting on variables at
+// run-time according to compilation result.
+std::unique_ptr<OpPassBase<ModuleOp>> CreateTPUVariableReformattingPass();
 
 // Populates the supplied passmanager with the passes required to run the
 // bridge. NOLINTNEXTLINE - MLIR contract is pass by mutable reference.

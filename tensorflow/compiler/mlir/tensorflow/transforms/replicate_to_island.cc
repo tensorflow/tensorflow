@@ -24,13 +24,13 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/Block.h"  // TF:local_config_mlir
-#include "mlir/IR/BlockAndValueMapping.h"  // TF:local_config_mlir
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/Diagnostics.h"  // TF:local_config_mlir
-#include "mlir/IR/Dialect.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/Block.h"  // TF:llvm-project
+#include "mlir/IR/BlockAndValueMapping.h"  // TF:llvm-project
+#include "mlir/IR/Builders.h"  // TF:llvm-project
+#include "mlir/IR/Diagnostics.h"  // TF:llvm-project
+#include "mlir/IR/Dialect.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 
@@ -83,7 +83,7 @@ llvm::SmallVector<tf_executor::IslandOp, 8> ExpandReplicateIntoReplicas(
     mapping.clear();
     for (auto& block_arg : replicate_op.GetBody().getArguments())
       mapping.map(block_arg, replicate_op.getOperand(
-                                 block_arg->getArgNumber() * num_replicas + i));
+                                 block_arg.getArgNumber() * num_replicas + i));
 
     // Copy over replicate region into replica island.
     replicate_op.body().cloneInto(&replica.body(), mapping);

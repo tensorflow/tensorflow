@@ -17,15 +17,15 @@ limitations under the License.
 // `tf_device.launch` with equivalent `tf_device.launch_func` operations.
 
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/Block.h"  // TF:local_config_mlir
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/Module.h"  // TF:local_config_mlir
-#include "mlir/IR/Operation.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
-#include "mlir/Pass/PassRegistry.h"  // TF:local_config_mlir
-#include "mlir/Transforms/RegionUtils.h"  // TF:local_config_mlir
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/Block.h"  // TF:llvm-project
+#include "mlir/IR/Builders.h"  // TF:llvm-project
+#include "mlir/IR/Module.h"  // TF:llvm-project
+#include "mlir/IR/Operation.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/Pass/PassRegistry.h"  // TF:llvm-project
+#include "mlir/Transforms/RegionUtils.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
@@ -56,7 +56,7 @@ FuncOp BuildFunction(StringRef device, llvm::ArrayRef<Value> live_ins,
                      OpBuilder* builder) {
   llvm::SmallVector<Type, 4> operand_types;
   operand_types.reserve(live_ins.size());
-  for (Value v : live_ins) operand_types.emplace_back(v->getType());
+  for (Value v : live_ins) operand_types.emplace_back(v.getType());
 
   llvm::SmallVector<Type, 4> result_types(launch_op.getResultTypes());
 

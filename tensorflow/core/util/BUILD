@@ -35,7 +35,6 @@ exports_files(
         "debug_events_writer.h",
         "device_name_utils.h",
         "dump_graph.h",
-        "einsum_op_util.h",
         "env_var.h",
         "equal_graph_def.h",
         "events_writer.h",
@@ -50,7 +49,6 @@ exports_files(
         "memmapped_file_system_writer.h",
         "mirror_pad_mode.h",
         "mkl_util.h",
-        "padding.h",
         "permutation_input_iterator.h",
         "permutation_output_iterator.h",
         "port.h",
@@ -60,7 +58,6 @@ exports_files(
         "stat_summarizer_options.h",
         "stats_calculator.h",
         "strided_slice_op.h",
-        "tensor_format.h",
         "tensor_slice_reader.h",
         "tensor_slice_reader_cache.h",
         "tensor_slice_set.h",
@@ -150,12 +147,15 @@ filegroup(
         ],
         exclude = [
             "*test*",
+            "einsum_op_util.cc",
             "env_var.cc",
             "memmapped_file_system.*",
             "memmapped_file_system_writer.*",
+            "padding.cc",
             "port.cc",
             "reporter.cc",
             "stats_calculator.cc",
+            "tensor_format.cc",
             "version_info.cc",
         ],
     ),
@@ -387,6 +387,42 @@ cc_library(
     srcs = ["version_info.cc"],
     hdrs = ["//tensorflow/core/public:version.h"],
     copts = tf_copts(),
+)
+
+cc_library(
+    name = "tensor_format",
+    srcs = ["tensor_format.cc"],
+    hdrs = ["tensor_format.h"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core/framework:tensor",
+        "//tensorflow/core/platform:types",
+    ],
+)
+
+cc_library(
+    name = "padding",
+    srcs = ["padding.cc"],
+    hdrs = ["padding.h"],
+    deps = [
+        ":tensor_format",
+        "//tensorflow/core/framework:attr_value_proto_cc",
+        "//tensorflow/core/framework:node_def_util",
+        "//tensorflow/core/lib/core:errors",
+        "//tensorflow/core/lib/core:status",
+    ],
+)
+
+cc_library(
+    name = "einsum_op_util",
+    srcs = ["einsum_op_util.cc"],
+    hdrs = ["einsum_op_util.h"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core/lib/core:errors",
+        "//tensorflow/core/lib/core:status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 # Tests.

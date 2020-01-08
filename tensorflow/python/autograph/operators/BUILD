@@ -23,6 +23,7 @@ py_library(
     srcs = [
         "__init__.py",
         "control_flow.py",
+        "control_flow_deprecated_py2.py",
         "data_structures.py",
         "exceptions.py",
         "logical.py",

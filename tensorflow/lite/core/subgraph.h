@@ -466,6 +466,28 @@ class Subgraph {
   static TfLiteStatus GetExecutionPlan(struct TfLiteContext* context,
                                        TfLiteIntArray** execution_plan);
 
+  // WARNING: This is an experimental interface that is subject to change.
+  // Provides a preview of post-delegation partitioning. Each
+  // TfLiteDelegateParams in the referenced array corresponds to one instance of
+  // the delegate kernel.
+  // nodes_to_replace should point to a valid array. partition_params_array &
+  // num_partitions should be non-null.
+  // Memory allocated by this method is automatically released with another call
+  // to PreviewDelegateParitioning, or after TfLiteDelegate::Prepare is done.
+  TfLiteStatus PreviewDelegatePartitioning(
+      const TfLiteIntArray* nodes_to_replace,
+      TfLiteDelegateParams** partition_params_array, int* num_partitions);
+
+  // WARNING: This is an experimental interface that is subject to change.
+  // Entry point for C node plugin API to preview delegation partitioning.
+  static TfLiteStatus PreviewDelegatePartitioning(
+      struct TfLiteContext* context, const TfLiteIntArray* nodes_to_replace,
+      TfLiteDelegateParams** partition_params_array, int* num_partitions);
+
+  // Used to clear partitioning_preview_cache_, in case
+  // PreviewDelegatePartitioning was called.
+  void FreeDelegatePartitioningData();
+
   // Retrieve an existing external context by type.
   TfLiteExternalContext* GetExternalContext(TfLiteExternalContextType type);
   static TfLiteExternalContext* GetExternalContext(
@@ -603,6 +625,9 @@ class Subgraph {
   // In the future, we'd like a TfLiteIntArray compatible representation.
   // TODO(aselle): replace execution_plan_ with this.
   std::unique_ptr<TfLiteIntArray, TfLiteIntArrayDeleter> plan_cache_;
+
+  // Used by PreviewDelegateParitioning.
+  std::vector<TfLiteDelegateParams> partitioning_preview_cache_;
 
   // Whether to use delegate to modify the graph.
   bool should_apply_nnapi_delegate_ = false;

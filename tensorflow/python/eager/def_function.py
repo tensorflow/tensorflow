@@ -795,7 +795,7 @@ class Function(object):
     """Returns all concrete functions for serialization.
 
     Returns:
-      A list of instances of `Function`.
+      A list of instances of `ConcreteFunction`.
     """
     if self.input_signature is not None:
       self.get_concrete_function()

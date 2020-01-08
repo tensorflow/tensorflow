@@ -590,6 +590,10 @@ class Context(object):
 
     if self._context_handle:
       server_def_str = server_def.SerializeToString()
+      # Current executor might have pending nodes that involves updated remote
+      # devices. Wait for them to finish before updating.
+      self.executor.wait()
+      self.executor.clear_error()
       pywrap_tfe.TFE_ContextUpdateServerDef(self._context_handle,
                                             keep_alive_secs, server_def_str)
       self._initialize_logical_devices()

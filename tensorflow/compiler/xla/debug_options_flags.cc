@@ -59,6 +59,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_allow_excess_precision(true);
   opts.set_xla_force_host_platform_device_count(1);
+  opts.set_xla_gpu_deterministic_reductions(false);
   return opts;
 }
 
@@ -512,6 +513,12 @@ static void AllocateFlags() {
                        flag_values->xla_gpu_algorithm_blacklist_path(),
                        "An AlgorithmBlacklist text proto file as a blacklist "
                        "of convolutions to avoid to use."),
+
+      tensorflow::Flag(
+          "xla_gpu_deterministic_reductions",
+          bool_setter_for(&DebugOptions::set_xla_gpu_deterministic_reductions),
+          flag_values->xla_gpu_deterministic_reductions(),
+          "Always run deterministic reductions on GPU"),
   });
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", *flag_objects);
 }

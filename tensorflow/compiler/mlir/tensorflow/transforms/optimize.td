@@ -21,7 +21,7 @@ def BroadcastableElements :
     Constraint<CPred<"TFL::IsBroadcastableElementsAttrs($0, $1)">>;
 def F32ElementsAttr : ElementsAttrBase<
     CPred<"$_self.cast<ElementsAttr>().getType().getElementType().isF32()">, "float constant tensor">;
-def DefinedByConv2D : Constraint<CPred<"llvm::isa_and_nonnull<mlir::TF::Conv2DOp>($0->getDefiningOp())">>;
+def DefinedByConv2D : Constraint<CPred<"llvm::isa_and_nonnull<mlir::TF::Conv2DOp>($0.getDefiningOp())">>;
 
 // If we see a Conv2D op followed by Mul, then multiply the filter
 // with the value in Mul.

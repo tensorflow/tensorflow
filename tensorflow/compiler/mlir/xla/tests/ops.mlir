@@ -13,6 +13,45 @@ func @invalid_type() -> !xla_hlo.foobar
 
 // -----
 
+// CHECK-LABEL: func @alltoall
+func @alltoall(%data: tensor<4x16xf32>) -> tensor<16x4xf32> {
+  %0 = "xla_hlo.all_to_all"(%data) {
+    split_dimension = 1 : i64,
+    concat_dimension = 0 : i64,
+    split_count = 4 : i64,
+    replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>
+  } : (tensor<4x16xf32>) -> tensor<16x4xf32>
+  return %0 : tensor<16x4xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @alltoall_unranked_input
+func @alltoall_unranked_input(%data: tensor<*xf32>) -> tensor<*xf32> {
+  %0 = "xla_hlo.all_to_all"(%data) {
+    split_dimension = 1 : i64,
+    concat_dimension = 0 : i64,
+    split_count = 5 : i64,
+    replica_groups = dense<[[0, 1, 2, 3, 4]]> : tensor<1x5xi64>
+  } : (tensor<*xf32>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+}
+
+// -----
+
+func @alltoall_invalid_split_dim_size(%data: tensor<4x16xf32>) -> tensor<16x4xf32> {
+// expected-error@+1 {{split dimension has size 16, expected to be a multiple of split_count 5}}
+  %0 = "xla_hlo.all_to_all"(%data) {
+    split_dimension = 1 : i64,
+    concat_dimension = 0 : i64,
+    split_count = 5 : i64,
+    replica_groups = dense<[[0, 1, 2, 3, 4]]> : tensor<1x5xi64>
+  } : (tensor<4x16xf32>) -> tensor<16x4xf32>
+  return %0 : tensor<16x4xf32>
+}
+
+// -----
+
 // CHECK-LABEL: func @broadcast
 func @broadcast(%arg0: tensor<3xi32>) -> tensor<1x2x3xi32> {
   %0 = "xla_hlo.broadcast"(%arg0) {broadcast_sizes = dense<[1, 2]> : tensor<2xi64>} : (tensor<3xi32>) -> tensor<1x2x3xi32>
@@ -121,6 +160,46 @@ func @comp_bad_direction(%arg0: tensor<3xi32>, %arg1: tensor<3xi32>) -> tensor<3
   // expected-error@+1 {{'comparison_direction' failed to satisfy constraint}}
   %0 = "xla_hlo.compare"(%arg0, %arg1) {comparison_direction = "FOOBAR"} : (tensor<3xi32>, tensor<3xi32>) -> tensor<3xi1>
   return %0 : tensor<3xi1>
+}
+
+// -----
+
+func @collective_permute_duplicate_sources(%arg0: tensor<128x32xf32>) -> tensor<128x32xf32> {
+  // expected-error@+1 {{duplicate sources not allowed}}
+  %0 = "xla_hlo.collective_permute"(%arg0) {
+    source_target_pairs = dense<[[0, 1], [0, 2], [2, 3]]> : tensor<3x2xi64>
+  } : (tensor<128x32xf32>) -> tensor<128x32xf32>
+  return %0 : tensor<128x32xf32>
+}
+
+// -----
+
+func @collective_permute_duplicate_targets(%arg0: tensor<128x32xf32>) -> tensor<128x32xf32> {
+  // expected-error@+1 {{duplicate targets not allowed}}
+  %0 = "xla_hlo.collective_permute"(%arg0) {
+    source_target_pairs = dense<[[0, 1], [1, 2], [2, 1]]> : tensor<3x2xi64>
+  } : (tensor<128x32xf32>) -> tensor<128x32xf32>
+  return %0 : tensor<128x32xf32>
+}
+
+// -----
+
+func @collective_permute_duplicate_sources(%arg0: tensor<128x32xf32>) -> tensor<128x32xf32> {
+  // expected-error@+1 {{expect source_target_pairs attribute to be of rank 2, but got rank 1}}
+  %0 = "xla_hlo.collective_permute"(%arg0) {
+    source_target_pairs = dense<[0, 1]> : tensor<2xi64>
+  } : (tensor<128x32xf32>) -> tensor<128x32xf32>
+  return %0 : tensor<128x32xf32>
+}
+
+// -----
+
+func @collective_permute_duplicate_sources(%arg0: tensor<128x32xf32>) -> tensor<128x32xf32> {
+  // expected-error@+1 {{expect source_target_pairs attribute of shape (N, 2), but got (2, 3)}}
+  %0 = "xla_hlo.collective_permute"(%arg0) {
+    source_target_pairs = dense<[[0, 1, 2], [3, 4, 5]]> : tensor<2x3xi64>
+  } : (tensor<128x32xf32>) -> tensor<128x32xf32>
+  return %0 : tensor<128x32xf32>
 }
 
 // -----

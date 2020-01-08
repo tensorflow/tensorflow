@@ -77,7 +77,7 @@ GenericStepTimeBreakdown ComputeGenericStepTimeBreakdownInMs(
   for (const google::protobuf::Any& step_details : analysis.step_details()) {
     PerGenericStepDetails details;
     bool success = step_details.UnpackTo(&details);
-    if (!success) {
+    if (!success && !step_details.type_url().empty()) {
       LOG(ERROR) << "Unable to unpack step_breakdown. Expected: generic"
                  << std::endl;
       return {};
@@ -134,7 +134,7 @@ InputPipelineAnalysisResult ComputeGenericInputPipelineAnalysisResult(
     details.set_step_time_ms(PicosToMillis(step_info.duration_ps()));
     GenericStepBreakdown generic;
     bool success = step_info.step_breakdown().UnpackTo(&generic);
-    if (!success) {
+    if (!success && !step_info.step_breakdown().type_url().empty()) {
       LOG(ERROR) << "Unable to unpack step_breakdown. Expected: generic"
                  << std::endl;
       return {};

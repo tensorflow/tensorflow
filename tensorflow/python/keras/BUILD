@@ -664,14 +664,14 @@ tf_py_test(
     name = "add_loss_correctness_test",
     size = "medium",
     srcs = ["add_loss_correctness_test.py"],
-    additional_deps = [
-        ":keras",
-        "@absl_py//absl/testing:parameterized",
-        "//third_party/py/numpy",
-        "//tensorflow/python:client_testlib",
-    ],
     python_version = "PY3",
     shard_count = 4,
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
 )
 
 tf_py_test(
@@ -1420,7 +1420,7 @@ cuda_py_test(
         "guitar",
         "multi_gpu",
     ],
-    xla_enable_strict_auto_jit = False,  # b/142744009
+    xla_enable_strict_auto_jit = True,
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
@@ -1890,7 +1890,11 @@ tf_py_test(
     python_version = "PY3",
     shard_count = 4,
     tags = [
+<<<<<<< HEAD
         "no_rocm",
+=======
+        "no_oss_py35",  # b/147011479
+>>>>>>> upstream/master
         "no_windows",
     ],
     deps = [
@@ -1923,7 +1927,13 @@ tf_py_test(
     srcs = ["models_test.py"],
     python_version = "PY3",
     shard_count = 8,
+<<<<<<< HEAD
     tags = ["no_rocm", "notsan"],  # b/67509773
+=======
+    tags = [
+        "notsan",  # b/67509773
+    ],
+>>>>>>> upstream/master
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",

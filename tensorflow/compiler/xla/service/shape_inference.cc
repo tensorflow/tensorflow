@@ -408,7 +408,18 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
   for (size_t i = 1; i < arg_shapes.size(); ++i) {
     new_dimensions[dimension] += arg_shapes[i]->dimensions(dimension);
   }
-  return ShapeUtil::MakeShape(element_type, new_dimensions);
+
+  Shape result = ShapeUtil::MakeShape(element_type, new_dimensions);
+
+  // Set dynamic dimensions if any input has dynamic dimension.
+  for (const Shape* shape : arg_shapes) {
+    for (int64 i = 0; i < shape->dimensions_size(); ++i) {
+      if (shape->is_dynamic_dimension(i)) {
+        result.set_dynamic_dimension(i, true);
+      }
+    }
+  }
+  return result;
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferConvertShape(

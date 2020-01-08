@@ -302,7 +302,7 @@ class WithBroadcastableBinOpBuilder {
 "Builder *builder, OperationState &result, Value  x, Value  y",
 [{
   auto resultType =
-      OpTrait::util::getBroadcastedType(x->getType(), y->getType());
+      OpTrait::util::getBroadcastedType(x.getType(), y.getType());
   if (!resultType)
     mlir::emitError(result.location, "non-broadcastable operands");
   return build(builder, result, resultType, x, y);
@@ -317,14 +317,14 @@ class WithBroadcastableCmpOpBuilder {
 "Builder *builder, OperationState &result, Value  x, Value  y",
 [{
   Type resultType;
-  if (x->getType().isa<UnrankedTensorType>() ||
-      y->getType().isa<UnrankedTensorType>()) {
+  if (x.getType().isa<UnrankedTensorType>() ||
+      y.getType().isa<UnrankedTensorType>()) {
     resultType = UnrankedTensorType::get(builder->getI1Type());
   } else {
     SmallVector<int64_t, 4> resultShape;
     if (!OpTrait::util::getBroadcastedShape(
-            x->getType().cast<ShapedType>().getShape(),
-            y->getType().cast<ShapedType>().getShape(), resultShape)) {
+            x.getType().cast<ShapedType>().getShape(),
+            y.getType().cast<ShapedType>().getShape(), resultShape)) {
       mlir::emitError(result.location,
                       "operands have no broadcastable shapes");
     }

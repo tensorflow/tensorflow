@@ -2493,6 +2493,42 @@ for dtype in dtype_list:
   let hasCanonicalizer = 1;
 }
 
+def TF_InvertPermutationOp : TF_Op<"InvertPermutation", [NoSideEffect]> {
+  let summary = "Computes the inverse permutation of a tensor.";
+
+  let description = [{
+This operation computes the inverse of an index permutation. It takes a 1-D
+integer tensor `x`, which represents the indices of a zero-based array, and
+swaps each value with its index position. In other words, for an output tensor
+`y` and an input tensor `x`, this operation computes the following:
+
+`y[x[i]] = i for i in [0, 1, ..., len(x) - 1]`
+
+The values must include 0. There can be no duplicate values or negative values.
+
+For example:
+
+```
+# tensor `x` is [3, 4, 0, 2, 1]
+invert_permutation(x) ==> [2, 4, 3, 0, 1]
+```
+  }];
+
+  let arguments = (ins
+    TF_I32OrI64Tensor:$x
+  );
+
+  let results = (outs
+    TF_I32OrI64Tensor:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
+}
+
 def TF_IsFiniteOp : TF_Op<"IsFinite", [NoSideEffect, SameOperandsAndResultShape]> {
   let summary = "Returns which elements of x are finite.";
 
@@ -3919,6 +3955,21 @@ output =
   }];
 }
 
+def TF_OutfeedEnqueueTupleOp : TF_Op<"OutfeedEnqueueTuple", []> {
+  let summary = "Enqueue multiple Tensor values on the computation outfeed.";
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$inputs
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandTypeListAttr dtypes = TF_DerivedOperandTypeListAttr<0>;
+}
+
 def TF_PackOp : TF_Op<"Pack", [NoSideEffect]> {
   let summary = [{
 Packs a list of `N` rank-`R` tensors into one rank-`(R+1)` tensor.
@@ -4993,6 +5044,212 @@ is the corresponding input gradient.
     TF_FpOrComplexTensor:$z
   );
 
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_SegmentMaxOp : TF_Op<"SegmentMax", [NoSideEffect]> {
+  let summary = "Computes the maximum along segments of a tensor.";
+
+  let description = [{
+Read
+[the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+for an explanation of segments.
+
+Computes a tensor such that
+\\(output_i = \max_j(data_j)\\) where `max` is over `j` such
+that `segment_ids[j] == i`.
+
+If the max is empty for a given segment ID `i`, `output[i] = 0`.
+
+<div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+<img style="width:100%" src="https://www.tensorflow.org/images/SegmentMax.png" alt>
+</div>
+
+For example:
+
+```
+c = tf.constant([[1,2,3,4], [4, 3, 2, 1], [5,6,7,8]])
+tf.segment_max(c, tf.constant([0, 0, 1]))
+# ==> [[4, 3, 3, 4],
+#      [5, 6, 7, 8]]
+```
+  }];
+
+  let arguments = (ins
+    TF_IntOrFpTensor:$data,
+    TF_I32OrI64Tensor:$segment_ids
+  );
+
+  let results = (outs
+    TF_IntOrFpTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_SegmentMeanOp : TF_Op<"SegmentMean", [NoSideEffect]> {
+  let summary = "Computes the mean along segments of a tensor.";
+
+  let description = [{
+Read
+[the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+for an explanation of segments.
+
+Computes a tensor such that
+\\(output_i = \frac{\sum_j data_j}{N}\\) where `mean` is
+over `j` such that `segment_ids[j] == i` and `N` is the total number of
+values summed.
+
+If the mean is empty for a given segment ID `i`, `output[i] = 0`.
+
+<div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+<img style="width:100%" src="https://www.tensorflow.org/images/SegmentMean.png" alt>
+</div>
+
+For example:
+
+```
+c = tf.constant([[1.0,2,3,4], [4, 3, 2, 1], [5,6,7,8]])
+tf.segment_mean(c, tf.constant([0, 0, 1]))
+# ==> [[2.5, 2.5, 2.5, 2.5],
+#      [5, 6, 7, 8]]
+```
+  }];
+
+  let arguments = (ins
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$data,
+    TF_I32OrI64Tensor:$segment_ids
+  );
+
+  let results = (outs
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_SegmentMinOp : TF_Op<"SegmentMin", [NoSideEffect]> {
+  let summary = "Computes the minimum along segments of a tensor.";
+
+  let description = [{
+Read
+[the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+for an explanation of segments.
+
+Computes a tensor such that
+\\(output_i = \min_j(data_j)\\) where `min` is over `j` such
+that `segment_ids[j] == i`.
+
+If the min is empty for a given segment ID `i`, `output[i] = 0`.
+
+<div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+<img style="width:100%" src="https://www.tensorflow.org/images/SegmentMin.png" alt>
+</div>
+
+For example:
+
+```
+c = tf.constant([[1,2,3,4], [4, 3, 2, 1], [5,6,7,8]])
+tf.segment_min(c, tf.constant([0, 0, 1]))
+# ==> [[1, 2, 2, 1],
+#      [5, 6, 7, 8]]
+```
+  }];
+
+  let arguments = (ins
+    TF_IntOrFpTensor:$data,
+    TF_I32OrI64Tensor:$segment_ids
+  );
+
+  let results = (outs
+    TF_IntOrFpTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_SegmentProdOp : TF_Op<"SegmentProd", [NoSideEffect]> {
+  let summary = "Computes the product along segments of a tensor.";
+
+  let description = [{
+Read
+[the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+for an explanation of segments.
+
+Computes a tensor such that
+\\(output_i = \prod_j data_j\\) where the product is over `j` such
+that `segment_ids[j] == i`.
+
+If the product is empty for a given segment ID `i`, `output[i] = 1`.
+
+<div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+<img style="width:100%" src="https://www.tensorflow.org/images/SegmentProd.png" alt>
+</div>
+
+For example:
+
+```
+c = tf.constant([[1,2,3,4], [4, 3, 2, 1], [5,6,7,8]])
+tf.segment_prod(c, tf.constant([0, 0, 1]))
+# ==> [[4, 6, 6, 4],
+#      [5, 6, 7, 8]]
+```
+  }];
+
+  let arguments = (ins
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$data,
+    TF_I32OrI64Tensor:$segment_ids
+  );
+
+  let results = (outs
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_SegmentSumOp : TF_Op<"SegmentSum", [NoSideEffect]> {
+  let summary = "Computes the sum along segments of a tensor.";
+
+  let description = [{
+Read
+[the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+for an explanation of segments.
+
+Computes a tensor such that
+\\(output_i = \sum_j data_j\\) where sum is over `j` such
+that `segment_ids[j] == i`.
+
+If the sum is empty for a given segment ID `i`, `output[i] = 0`.
+
+<div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+<img style="width:100%" src="https://www.tensorflow.org/images/SegmentSum.png" alt>
+</div>
+
+For example:
+
+```
+c = tf.constant([[1,2,3,4], [4, 3, 2, 1], [5,6,7,8]])
+tf.segment_sum(c, tf.constant([0, 0, 1]))
+# ==> [[5, 5, 5, 5],
+#      [5, 6, 7, 8]]
+```
+  }];
+
+  let arguments = (ins
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$data,
+    TF_I32OrI64Tensor:$segment_ids
+  );
+
+  let results = (outs
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<1>;
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
@@ -6086,6 +6343,29 @@ The above computation has a replicated output of two replicas.
 
   TF_DerivedResultSizeAttr num_replicas = TF_DerivedResultSizeAttr<0>;
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_TPUReshardVariablesOp : TF_Op<"TPUReshardVariables", []> {
+  let summary = [{
+Op that reshards on-device TPU variables to specified state. Internal use only.
+  }];
+
+  let description = [{
+The sharding state is represented as the key of the compilation that generated
+the sharding/unsharding programs along with the main program. new_format_key
+specifies the desired state, and format_state_var is the current state of the
+variables.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_ResourceTensor>:$vars,
+    TF_StrTensor:$new_format_key,
+    TF_ResourceTensor:$format_state_var
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
 }
 
 def TF_TanhOp : TF_Op<"Tanh", [NoSideEffect, SameOperandsAndResultType]> {

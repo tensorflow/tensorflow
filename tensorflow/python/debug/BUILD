@@ -120,6 +120,7 @@ py_library(
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework",
+        "//tensorflow/python:lib",
         "@six_archive//:six",
     ],
 )
@@ -722,6 +723,7 @@ cuda_py_test(
     xla_enable_strict_auto_jit = False,  # Node names are different with autojit
     deps = [
         ":check_numerics_callback",
+        ":debug_events_reader",
         ":debug_events_writer",
         ":dumping_callback",
         ":dumping_callback_test_lib",

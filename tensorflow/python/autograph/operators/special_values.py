@@ -46,9 +46,24 @@ class Undefined(object):
     symbol_name: Text, identifier for the undefined symbol
   """
 
+  __slots__ = ('symbol_name',)
+
   def __init__(self, symbol_name):
-    # TODO(aqj) Possibly remove this after Symbols are fully integrated.
     self.symbol_name = symbol_name
+
+  def __repr__(self):
+    return self.symbol_name
+
+  def __getattribute__(self, name):
+    try:
+      # If it's an existing attribute, return it.
+      return object.__getattribute__(self, name)
+    except AttributeError:
+      # Otherwise return Undefined.
+      return self
+
+  def __getitem__(self, i):
+    return self
 
 
 def is_undefined(value):

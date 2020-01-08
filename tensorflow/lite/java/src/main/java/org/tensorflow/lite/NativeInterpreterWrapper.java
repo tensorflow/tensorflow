@@ -37,17 +37,19 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     this(modelPath, /* options= */ null);
   }
 
+  NativeInterpreterWrapper(ByteBuffer byteBuffer) {
+    this(byteBuffer, /* options= */ null);
+  }
+
   NativeInterpreterWrapper(String modelPath, Interpreter.Options options) {
+    TensorFlowLite.init();
     long errorHandle = createErrorReporter(ERROR_BUFFER_SIZE);
     long modelHandle = createModel(modelPath, errorHandle);
     init(errorHandle, modelHandle, options);
   }
 
-  NativeInterpreterWrapper(ByteBuffer byteBuffer) {
-    this(byteBuffer, /* options= */ null);
-  }
-
   NativeInterpreterWrapper(ByteBuffer buffer, Interpreter.Options options) {
+    TensorFlowLite.init();
     if (buffer == null
         || (!(buffer instanceof MappedByteBuffer)
             && (!buffer.isDirect() || buffer.order() != ByteOrder.nativeOrder()))) {
@@ -443,8 +445,4 @@ final class NativeInterpreterWrapper implements AutoCloseable {
   private static native void resetVariableTensors(long interpreterHandle, long errorHandle);
 
   private static native void delete(long errorHandle, long modelHandle, long interpreterHandle);
-
-  static {
-    TensorFlowLite.init();
-  }
 }

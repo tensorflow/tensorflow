@@ -89,6 +89,7 @@ string GetMinimumRuntimeVersionForModel(const Model& model) {
           {{OperatorType::kGatherNd, 1}, "1.14.0"},
           {{OperatorType::kSvdf, 1}, "1.5.0"},
           {{OperatorType::kSvdf, 2}, "1.14.0"},
+          {{OperatorType::kSvdf, 3}, kPendingReleaseOpVersion},
           {{OperatorType::kL2Normalization, 1}, "1.5.0"},
           {{OperatorType::kL2Normalization, 2}, "1.14.0"},
           {{OperatorType::kL2Pool, 1}, "1.5.0"},
@@ -229,6 +230,7 @@ string GetMinimumRuntimeVersionForModel(const Model& model) {
           {{OperatorType::kHardSwish, 1}, "1.15.0"},
           {{OperatorType::kFill, 1}, "1.13.0"},
           {{OperatorType::kReverseV2, 1}, "1.14.0"},
+          {{OperatorType::kReverseV2, 2}, kPendingReleaseOpVersion},
           {{OperatorType::kRank, 1}, "1.14.0"},
       });
 

@@ -320,6 +320,10 @@ class LayoutAssignment : public HloModulePass {
   // a tuple shape returns true iff all leaf shapes are at most rank 1.
   static bool IsAtMostRank1(const Shape& shape);
 
+  virtual Layout GetDefaultLayoutForShape(const Shape& shape) {
+    return LayoutUtil::GetDefaultLayoutForShape(shape);
+  }
+
  protected:
   // These methods, invoked by PropagateConstraints, propagate a layout
   // constraint to its neighbors (i.e. operands and users) in order to minimize
