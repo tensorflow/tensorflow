@@ -575,6 +575,9 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     ]
     tf_http_archive(
         name = "llvm-project",
+        # TODO: Remove when llvm revision at https://reviews.llvm.org/rG6656e961c08393c3949412ef945ade0272b66fca is
+        # integrated into TF.
+        patch_file = clean_dep("//third_party/llvm:windows_build_fix.patch"),
         sha256 = LLVM_SHA256,
         strip_prefix = "llvm-project-" + LLVM_COMMIT,
         urls = LLVM_URLS,
