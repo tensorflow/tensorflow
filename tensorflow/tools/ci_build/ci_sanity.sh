@@ -90,7 +90,7 @@ get_py_files_to_check() {
 # Subfunctions for substeps
 # Run pylint
 do_pylint() {
-  # Usage: do_pylint (PYTHON2 | PYTHON3) [--incremental]
+  # Usage: do_pylint [--incremental]
   #
   # Options:
   #   --incremental  Performs check on only the python files changed in the
@@ -117,23 +117,15 @@ do_pylint() {
 
   echo "ERROR_WHITELIST=\"${ERROR_WHITELIST}\""
 
-  if [[ $# != "1" ]] && [[ $# != "2" ]]; then
+  if [[ $# != "0" ]]  && [[ $# != "1" ]]; then
     echo "Invalid syntax when invoking do_pylint"
-    echo "Usage: do_pylint (PYTHON2 | PYTHON3) [--incremental]"
+    echo "Usage: do_pylint [--incremental]"
     return 1
   fi
 
-  if [[ $1 == "PYTHON2" ]]; then
-    echo "do_pylint is no longer run in Python2. Returning."
-    return 0
-  elif [[ $1 == "PYTHON3" ]]; then
-    PYLINT_BIN="python3 -m pylint"
-  else
-    echo "Unrecognized python version (PYTHON2 | PYTHON3): $1"
-    return 1
-  fi
+  PYLINT_BIN="python3 -m pylint"
 
-  if [[ "$2" == "--incremental" ]]; then
+  if [[ "$1" == "--incremental" ]]; then
     PYTHON_SRC_FILES=$(get_py_files_to_check --incremental)
 
     if [[ -z "${PYTHON_SRC_FILES}" ]]; then
@@ -145,11 +137,11 @@ do_pylint() {
       # are function signature changes that affect unchanged Python files.
       PYTHON_SRC_FILES=$(get_py_files_to_check)
     fi
-  elif [[ -z "$2" ]]; then
+  elif [[ -z "$1" ]]; then
     PYTHON_SRC_FILES=$(get_py_files_to_check)
   else
     echo "Invalid syntax for invoking do_pylint"
-    echo "Usage: do_pylint (PYTHON2 | PYTHON3) [--incremental]"
+    echo "Usage: do_pylint [--incremental]"
     return 1
   fi
 
@@ -632,7 +624,7 @@ do_configure_test() {
 }
 
 # Supply all sanity step commands and descriptions
-SANITY_STEPS=("do_configure_test" "do_pylint PYTHON3" "do_check_futures_test" "do_buildifier" "do_bazel_nobuild" "do_bazel_deps_query" "do_pip_package_licenses_check" "do_lib_package_licenses_check" "do_java_package_licenses_check" "do_pip_smoke_test" "do_check_load_py_test" "do_code_link_check" "do_check_file_name_test" "do_pip_no_cuda_deps_check_ubuntu" "do_pip_no_cuda_deps_check_windows")
+SANITY_STEPS=("do_configure_test" "do_pylint" "do_check_futures_test" "do_buildifier" "do_bazel_nobuild" "do_bazel_deps_query" "do_pip_package_licenses_check" "do_lib_package_licenses_check" "do_java_package_licenses_check" "do_pip_smoke_test" "do_check_load_py_test" "do_code_link_check" "do_check_file_name_test" "do_pip_no_cuda_deps_check_ubuntu" "do_pip_no_cuda_deps_check_windows")
 SANITY_STEPS_DESC=("Run ./configure" "Python 3 pylint" "Check that python files have certain __future__ imports" "buildifier check" "bazel nobuild" "bazel query" "pip: license check for external dependencies" "C library: license check for external dependencies" "Java Native Library: license check for external dependencies" "Pip Smoke Test: Checking py_test dependencies exist in pip package" "Check load py_test: Check that BUILD files with py_test target properly load py_test" "Code Link Check: Check there are no broken links" "Check file names for cases" "Check Ubuntu gpu pip package does not depend on cuda shared libraries" "Check Windows gpu pip package does not depend on cuda shared libraries")
 
 INCREMENTAL_FLAG=""
