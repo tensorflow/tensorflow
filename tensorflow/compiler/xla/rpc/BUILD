@@ -4,10 +4,6 @@ load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library_cc",
 )
-load(
-    "//tensorflow/compiler/xla:xla.bzl",
-    "xla_py_grpc_library",
-)
 
 package(
     default_visibility = ["//tensorflow:internal"],
