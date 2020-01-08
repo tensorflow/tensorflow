@@ -17,11 +17,9 @@ limitations under the License.
 // operators using XLA via the XLA "CUDA" (GPU) backend.
 
 #include <set>
-
 #include "absl/memory/memory.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
-#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/kernels/xla_ops.h"
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/jit/xla_device_ops.h"
@@ -63,12 +61,6 @@ class XlaGpuDeviceFactory : public DeviceFactory {
 };
 
 Status XlaGpuDeviceFactory::ListPhysicalDevices(std::vector<string>* devices) {
-  XlaDeviceFlags* flags = GetXlaDeviceFlags();
-  if (!flags->tf_xla_enable_xla_devices) {
-    LOG(INFO) << "Not creating XLA devices, tf_xla_enable_xla_devices not set";
-    return Status::OK();
-  }
-
   auto platform = se::MultiPlatformManager::PlatformWithName("CUDA");
   if (!platform.ok()) {
     // Treat failures as non-fatal; there might not be a GPU in the machine.
@@ -92,12 +84,6 @@ Status XlaGpuDeviceFactory::ListPhysicalDevices(std::vector<string>* devices) {
 Status XlaGpuDeviceFactory::CreateDevices(
     const SessionOptions& session_options, const string& name_prefix,
     std::vector<std::unique_ptr<Device>>* devices) {
-  XlaDeviceFlags* flags = GetXlaDeviceFlags();
-  if (!flags->tf_xla_enable_xla_devices) {
-    LOG(INFO) << "Not creating XLA devices, tf_xla_enable_xla_devices not set";
-    return Status::OK();
-  }
-
   XlaOpRegistry::DeviceRegistration registration;
   registration.compilation_device_name = DEVICE_GPU_XLA_JIT;
   registration.autoclustering_policy =
