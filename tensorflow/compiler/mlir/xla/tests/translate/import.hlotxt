@@ -242,6 +242,15 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   ROOT %cosine.3 = f32[1,16,16,3]{3,2,1,0} cosine(f32[1,16,16,3]{3,2,1,0} %arg0.1)
 }
 
+// CHECK-LABEL:  func @test_custom_call
+// CHECK-SAME:  [[ARG_0:%.*]]: tensor<2x3xf32>, [[ARG_1:%.*]]: tensor<5x5xf32>) -> tensor<1x2x3xf32>
+%test_custom_call (arg1: f32[2,3], arg2: f32[5,5]) -> f32[1,2,3] {
+  %arg1 = f32[2,3] parameter(0)
+  %arg2 = f32[5,5] parameter(1)
+// CHECK:  "xla_hlo.custom_call"([[ARG_0]], [[ARG_1]]) {backend_config = "bar", call_target_name = "foo", has_side_effect = true, name = {{.*}}} : (tensor<2x3xf32>, tensor<5x5xf32>) -> tensor<1x2x3xf32>
+  ROOT %custom-call = f32[1,2,3]{0,2,1} custom-call(f32[2,3] %arg1, f32[5,5] %arg2), custom_call_target="foo", backend_config="bar", custom_call_has_side_effect=true
+}
+
 // CHECK-LABEL:  func @test_div(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
 %test_div (Arg_0.1: f32[4], Arg_1.2: f32[4]) -> f32[4] {
   %Arg_0.1 = f32[4] parameter(0)

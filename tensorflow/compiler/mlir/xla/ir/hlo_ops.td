@@ -871,6 +871,17 @@ def HLO_CopyOp: HLO_Op<"copy", [NoSideEffect, SameOperandsAndResultType]> {
   let results = (outs HLO_Tensor);
 }
 
+def HLO_CustomCallOp: HLO_Op<"custom_call", []>, BASE_HLO_CustomCallOp {
+  let arguments = (ins
+    Variadic<HLO_Tensor>:$args,
+    StrAttr:$call_target_name,
+    DefaultValuedAttr<BoolAttr, "false">:$has_side_effect,
+    DefaultValuedAttr<StrAttr, "">:$backend_config
+  );
+  let results = (outs HLO_Tensor);
+  let hasCustomHLOConverter = 1;
+}
+
 def HLO_DotOp: HLO_Op<"dot", [NoSideEffect]>, BASE_HLO_DotOp {
   let arguments = (
     ins HLO_Tensor:$lhs,

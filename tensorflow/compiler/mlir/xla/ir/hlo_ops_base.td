@@ -875,6 +875,24 @@ class BASE_HLO_ConvOp {
   }];
 }
 
+class BASE_HLO_CustomCallOp {
+  string summary = "CustomCall operator";
+
+  string description = [{
+    A custom call invokes code external to XLA. The `args` are passed to the
+    external code, and the external code is expected to produce a result of the
+    given type. The exact mechanism is backend-specific. For example, in the CPU
+    backend, a call instruction is emitted which targets a symbol with the name
+    `call_target_name`.
+
+    `call_target_name` and `backend_config` can be arbitrary strings, but
+    `call_target_name` should be short as it may be used in labels.
+    `backend_config` can encode arbitrarily large amounts of information.
+
+    See https://www.tensorflow.org/xla/operation_semantics#customcall.
+  }];
+}
+
 class BASE_HLO_DotOp {
   string summary = "Dot operator";
   string description = [{

@@ -265,6 +265,19 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
           ConvertSourceTargetPairs(instruction->source_target_pairs()));
       MakeAndReturn(CollectivePermuteOp);
     }
+    case HloOpcode::kCustomCall: {
+      auto custom_call = static_cast<HloCustomCallInstruction*>(instruction);
+      attributes.push_back(builder_->getNamedAttr(
+          "call_target_name",
+          builder_->getStringAttr(custom_call->custom_call_target())));
+      attributes.push_back(builder_->getNamedAttr(
+          "has_side_effect",
+          builder_->getBoolAttr(custom_call->custom_call_has_side_effect())));
+      attributes.push_back(builder_->getNamedAttr(
+          "backend_config",
+          builder_->getStringAttr(custom_call->raw_backend_config_string())));
+      MakeAndReturn(CustomCallOp);
+    }
     case HloOpcode::kCompare: {
       attributes.push_back(ConvertComparisonDirection(instruction));
       MakeAndReturn(CompareOp);

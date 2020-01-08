@@ -532,6 +532,17 @@ LogicalResult ExportXlaOp(ConvertOp op, OpLoweringContext ctx) {
   return success();
 }
 
+LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
+  // XLA client builder API does not support generating custom call instructions
+  // with side effect.
+  if (op.has_side_effect()) return failure();
+  auto& value_map = *ctx.values;
+  value_map[op] = xla::CustomCall(
+      ctx.builder, op.call_target_name(), GetTuple(op.args(), ctx),
+      xla::TypeToShape(op.getType()), op.backend_config());
+  return success();
+}
+
 LogicalResult ExportXlaOp(InfeedOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   // The shape argument expected by the xla client API is the type of the first

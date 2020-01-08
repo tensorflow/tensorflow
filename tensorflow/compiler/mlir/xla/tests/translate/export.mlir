@@ -359,6 +359,20 @@ func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
 // -----
 
 // CHECK:  HloModule
+func @main(%arg0: tensor<2x3xf32>, %arg1: tensor<5x5xf32>) -> tensor<1x2x3xf32> {
+  %0 = "xla_hlo.custom_call"(%arg0, %arg1) {backend_config = "bar", call_target_name = "foo"} : (tensor<2x3xf32>, tensor<5x5xf32>) -> tensor<1x2x3xf32>
+  return %0 : tensor<1x2x3xf32>
+}
+
+// CHECK:  ENTRY
+// CHECK:  [[VAL_1:%.*]] = f32[2,3] parameter(0)
+// CHECK:  [[VAL_2:%.*]] = f32[5,5] parameter(1)
+// CHECK:  ROOT
+// CHECK-SAME:  f32[1,2,3] custom-call(f32[2,3] [[VAL_1]], f32[5,5] [[VAL_2]]), custom_call_target="foo", backend_config="bar"
+
+// -----
+
+// CHECK:  HloModule
 func @main(%arg0: tensor<3x4xi32>, %arg1: tensor<4x5xi32>) -> tensor<3x5xi32> {
   // Simple einsum is lowered to HLO dot op.
   // CHECK:  dot(s32[3,4] %{{.*}}, s32[4,5] %{{.*}}), lhs_contracting_dims={1}, rhs_contracting_dims={0}
