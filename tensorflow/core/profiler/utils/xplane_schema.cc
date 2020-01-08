@@ -21,6 +21,7 @@ namespace tensorflow {
 namespace profiler {
 
 const absl::string_view kHostThreads = "Host Threads";
+const absl::string_view kGpuPlanePrefix = "GPU:";
 
 constexpr int kNumHostEventTypes =
     HostEventType::kLastHostEventType - HostEventType::kFirstHostEventType + 1;
