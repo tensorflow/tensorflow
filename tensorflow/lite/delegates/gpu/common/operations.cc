@@ -601,8 +601,21 @@ float CalculateResizeScale(int32_t input_size, int32_t output_size,
              : static_cast<float>(input_size) / output_size;
 }
 
+float CalculateResizeScale(int32_t input_size, int32_t output_size,
+                           const Upsample3DAttributes& attr) {
+  return attr.align_corners && input_size > 1 && output_size > 1
+             ? static_cast<float>(input_size - 1) / (output_size - 1)
+             : static_cast<float>(input_size) / output_size;
+}
+
 BHWC CalculateOutputShape(const BHWC& input, const Upsample2DAttributes& attr) {
   return BHWC(input.b, attr.new_shape.h, attr.new_shape.w, input.c);
+}
+
+BHWDC CalculateOutputShape(const BHWDC& input,
+                           const Upsample3DAttributes& attr) {
+  return BHWDC(input.b, attr.new_shape.h, attr.new_shape.w, attr.new_shape.d,
+               input.c);
 }
 
 BHWC CalculateOutputShape(const BHWC& input, const TransposeAttributes& attr) {
