@@ -2788,11 +2788,6 @@ class Graph(object):
     # tuples: (input_shape_tuple, reduction_indices_tuple), and the values
     # are pairs of tuples: (output_shape_kept_dims, tile_scaling).
     self._reduced_shape_cache = {}
-    # In eager mode, the top level graph can still be created. This is
-    # incorrect and undesriable but currently so many places are relying on
-    # this. This is a flag indicating that, and meant to be set manually after
-    # this graph construction.
-    self._is_eager_graph = False
 
     # TODO(skyewm): fold as much of the above as possible into the C
     # implementation
@@ -5364,8 +5359,6 @@ class _DefaultGraphStack(_DefaultStack):  # pylint: disable=protected-access
       #   the global default graph and an explicit graph are combined in the
       #   same process.
       self._global_default_graph = Graph()
-      if context.executing_eagerly():
-        self._global_default_graph._is_eager_graph = True  # pylint: disable=protected-access
     return self._global_default_graph
 
   def reset(self):
