@@ -194,7 +194,7 @@ class ExternalTpuDriver : public TpuDriver {
         &driver_fn_,
         driver_fn_.TpuDriver_Allocate(driver_, core_id, region, num_bytes,
                                       wait_for.size(), tpu_events));
-    delete tpu_events;
+    delete[] tpu_events;
     return bh;
   }
 
@@ -209,8 +209,22 @@ class ExternalTpuDriver : public TpuDriver {
       int32_t core_id, MemoryRegion region,
       absl::Span<BufferHandle* const> children,
       absl::Span<Event* const> wait_for) override {
-    LOG(FATAL) << "Unimplemented.";
-    return nullptr;
+    auto tpu_events = MakeEventArray(wait_for);
+
+    ::TpuBufferHandle** childbuf = new ::TpuBufferHandle*[children.size()];
+    for (int i = 0; i < children.size(); i++) {
+      childbuf[i] =
+          static_cast<ExternalBufferHandle* const>(children[i])->handle_;
+    }
+
+    auto bh = absl::make_unique<ExternalBufferHandle>(
+        &driver_fn_, driver_fn_.TpuDriver_AllocateTuple(
+                         driver_, core_id, region, children.size(), childbuf,
+                         wait_for.size(), tpu_events));
+    delete[] tpu_events;
+    delete[] childbuf;
+
+    return bh;
   }
 
   std::shared_ptr<Event> Deallocate(
@@ -222,7 +236,7 @@ class ExternalTpuDriver : public TpuDriver {
         driver_fn_.TpuDriver_Deallocate(
             driver_, static_cast<ExternalBufferHandle*>(handle.get())->handle_,
             wait_for.size(), tpu_events));
-    delete tpu_events;
+    delete[] tpu_events;
     return event;
   }
 
@@ -235,7 +249,7 @@ class ExternalTpuDriver : public TpuDriver {
         driver_fn_.TpuDriver_TransferToDevice(
             driver_, src, static_cast<ExternalBufferHandle*>(dst)->handle_,
             wait_for.size(), tpu_events));
-    delete tpu_events;
+    delete[] tpu_events;
     return event;
   }
 
@@ -248,7 +262,7 @@ class ExternalTpuDriver : public TpuDriver {
         driver_fn_.TpuDriver_TransferFromDevice(
             driver_, static_cast<const ExternalBufferHandle*>(src)->handle_,
             dst, wait_for.size(), tpu_events));
-    delete tpu_events;
+    delete[] tpu_events;
     return event;
   }
 
@@ -262,7 +276,7 @@ class ExternalTpuDriver : public TpuDriver {
             driver_, static_cast<const ExternalBufferHandle*>(src)->handle_,
             static_cast<ExternalBufferHandle*>(dst)->handle_, wait_for.size(),
             tpu_events));
-    delete tpu_events;
+    delete[] tpu_events;
     return event;
   }
 
@@ -285,7 +299,7 @@ class ExternalTpuDriver : public TpuDriver {
                                             wait_for.size(), tpu_events));
 
     free(hlo.buffer);
-    delete tpu_events;
+    delete[] tpu_events;
     return handle;
   }
   std::unique_ptr<LoadedProgramHandle> LoadProgram(
@@ -300,7 +314,7 @@ class ExternalTpuDriver : public TpuDriver {
             static_cast<const ExternalCompiledProgramHandle*>(handle)->handle_,
             wait_for.size(), tpu_events));
 
-    delete tpu_events;
+    delete[] tpu_events;
     return loaded_handle;
   }
 
@@ -314,7 +328,7 @@ class ExternalTpuDriver : public TpuDriver {
             driver_,
             static_cast<ExternalLoadedProgramHandle*>(handle.get())->handle_,
             wait_for.size(), tpu_events));
-    delete tpu_events;
+    delete[] tpu_events;
     return event;
   }
 
@@ -348,6 +362,7 @@ class ExternalTpuDriver : public TpuDriver {
             inputs.size(), inputv.data(), outputs.size(), outputv.data(), da,
             wait_for.size(), tpu_events));
 
+    delete[] tpu_events;
     return event;
   }
 
