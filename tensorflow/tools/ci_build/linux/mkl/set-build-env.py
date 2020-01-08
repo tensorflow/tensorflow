@@ -73,11 +73,12 @@ class IntelPlatform(object):
   def get_bazel_gcc_flags(self):
     raise NotImplementedError(self)
 
-  # return true or false depending on whether the host gcc version
-  # is newer or older than the gcc version in which the new
-  # march flag became available.
-  # specify the version in which the new name usage began
-  def use_old_arch_names(self, gcc_new_march_major_version, gcc_new_march_minor_version):
+  # Returns True if the host gcc version is older than the gcc version in which
+  # the new march flag became available.
+  # Specify the version in which the new name usage began
+  def use_old_arch_names(self, 
+                         gcc_new_march_major_version,
+                         gcc_new_march_minor_version):
     if self.host_gcc_major_version_ < gcc_new_march_major_version:
       return True
     elif self.host_gcc_major_version_ == gcc_new_march_major_version and \
@@ -118,7 +119,7 @@ class HaswellPlatform(IntelPlatform):
     IntelPlatform.__init__(self, 4, 8)
 
   def get_bazel_gcc_flags(self):
-    HASWELL_ARCH_OLD = "core-avx2" # Only missing the POPCNT instruction
+    HASWELL_ARCH_OLD = "core-avx2"  # Only missing the POPCNT instruction
     HASWELL_ARCH_NEW = "haswell"
     POPCNT_FLAG = "popcnt"
     if self.use_old_arch_names(4,9):
@@ -138,7 +139,7 @@ class SkylakePlatform(IntelPlatform):
     SKYLAKE_ARCH_OLD = "broadwell"  # Only missing the POPCNT instruction
     SKYLAKE_ARCH_NEW = "skylake-avx512"
     # the flags that broadwell is missing: pku, clflushopt, clwb, avx512vl,
-    # avx512bw, avx512dq. xsavec and xsaves are availalbe on 5.x
+    # avx512bw, avx512dq. xsavec and xsaves are available in gcc 5.x
     # but for now, just exclude them.
     AVX512_FLAGS = ["avx512f", "avx512cd"]
     if self.use_old_arch_names(6,1):
@@ -283,7 +284,7 @@ class BuildEnvSetter(object):
     # Validate gcc with the requested platform
     gcc_major_version, gcc_minor_version = self.get_gcc_version()
     if gcc_major_version == 0 or \
-       False == self.target_platform_.set_host_gcc_version(
+       not self.target_platform_.set_host_gcc_version(
          gcc_major_version, gcc_minor_version):
       return False
 
