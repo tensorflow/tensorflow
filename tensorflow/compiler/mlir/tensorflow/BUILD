@@ -227,6 +227,7 @@ cc_library(
 cc_library(
     name = "tensorflow_passes",
     srcs = [
+        "transforms/annotate_parameter_replication.cc",
         "transforms/bridge.cc",
         "transforms/bridge_pass.cc",
         "transforms/cluster_formation.cc",

@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
@@ -62,6 +63,7 @@ using ::tensorflow::uint8;
 constexpr char kPaddingMapAttr[] = "xla_hlo.padding_map";
 constexpr char kShapeIndicesAttr[] = "shape_indices";
 constexpr char kPaddingArgIndicesAttr[] = "padding_arg_indices";
+constexpr char kRepicationAttr[] = "tf_device.is_same_data_across_replicas";
 
 // Passes through everything except for unique_ptr, on which it calls get().
 // This exists to allow the generated code to call XLA functions that take a raw
@@ -396,10 +398,10 @@ class ConvertToHloModule {
                                          xla::XlaComputation* func);
 
   // Lower a single `Block` to a `XlaComputation`
-  LogicalResult LowerBasicBlockAsFunction(Block* block,
-                                          xla::XlaBuilder* builder,
-                                          bool is_entry_function,
-                                          xla::XlaComputation* result);
+  LogicalResult LowerBasicBlockAsFunction(
+      Block* block, xla::XlaBuilder* builder, bool is_entry_function,
+      const std::vector<bool>& entry_args_same_across_replicas,
+      xla::XlaComputation* result);
 
   ::xla::HloModuleProto ConsumeMainProto() {
     return lowered_computation_[module_.lookupSymbol<mlir::FuncOp>("main")]
@@ -885,7 +887,22 @@ LogicalResult ConvertToHloModule::RunOnFunction(mlir::FuncOp f) {
   auto& builder = entry_function ? module_builder_ : *builder_up;
 
   xla::XlaComputation computation;
+  std::vector<bool> entry_args_same_across_replicas;
+  if (entry_function) {
+    bool any_arg_replicated = false;
+    entry_args_same_across_replicas.reserve(f.getNumArguments());
+    for (int64_t i = 0; i < f.getNumArguments(); ++i) {
+      auto attr = f.getArgAttrOfType<mlir::BoolAttr>(i, kRepicationAttr);
+      entry_args_same_across_replicas.push_back(attr && attr.getValue());
+      any_arg_replicated |= entry_args_same_across_replicas.back();
+    }
+    // Do not populate this field when nothing is replicated, since empty field
+    // means no replication. This avoids the need for unrelated tests to handle
+    // this field.
+    if (!any_arg_replicated) entry_args_same_across_replicas.clear();
+  }
   if (failed(LowerBasicBlockAsFunction(&f.front(), &builder, entry_function,
+                                       entry_args_same_across_replicas,
                                        &computation))) {
     return failure();
   }
@@ -895,6 +912,7 @@ LogicalResult ConvertToHloModule::RunOnFunction(mlir::FuncOp f) {
 
 LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
     Block* block, xla::XlaBuilder* builder, bool is_entry_function,
+    const std::vector<bool>& entry_args_same_across_replicas,
     xla::XlaComputation* result) {
   auto& bb = *block;
   // Mapping from the Value to lowered XlaOp. The code below lowers in
@@ -906,10 +924,20 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
   if (is_entry_function && use_tuple_args_) {
     std::vector<xla::Shape> arg_shapes;
     arg_shapes.reserve(bb.getNumArguments());
-    for (auto& arg : bb.getArguments())
+    std::vector<bool> leaf_replication;
+    for (auto& arg : bb.getArguments()) {
       arg_shapes.push_back(xla::TypeToShape(arg.getType()));
+      if (!entry_args_same_across_replicas.empty()) {
+        for (int i = 0; i < xla::ShapeUtil::GetLeafCount(arg_shapes.back());
+             ++i) {
+          leaf_replication.push_back(
+              entry_args_same_across_replicas[arg.getArgNumber()]);
+        }
+      }
+    }
     xla::Shape input_shape = xla::ShapeUtil::MakeTupleShape(arg_shapes);
-    auto tuple = xla::Parameter(builder, 0, input_shape, "arg_tuple");
+    auto tuple =
+        xla::Parameter(builder, 0, input_shape, "arg_tuple", leaf_replication);
     for (auto& it : llvm::enumerate(bb.getArguments())) {
       lowering[it.value()] = xla::GetTupleElement(tuple, it.index());
     }
@@ -918,8 +946,15 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
       auto arg = it.value();
       auto num = it.index();
       xla::Shape shape = xla::TypeToShape(arg.getType());
-      lowering[arg] =
-          xla::Parameter(builder, num, shape, absl::StrCat("Arg_", num));
+      if (entry_args_same_across_replicas.empty()) {
+        lowering[arg] =
+            xla::Parameter(builder, num, shape, absl::StrCat("Arg_", num));
+      } else {
+        lowering[arg] = xla::Parameter(
+            builder, num, shape, absl::StrCat("Arg_", num),
+            std::vector<bool>(entry_args_same_across_replicas[num],
+                              xla::ShapeUtil::GetLeafCount(shape)));
+      }
     }
   }
 
@@ -935,7 +970,7 @@ LogicalResult ConvertToHloModule::LowerRegionAsComputation(
   std::unique_ptr<xla::XlaBuilder> builder =
       module_builder_.CreateSubBuilder(absl::StrCat("region_", region_id_++));
   return LowerBasicBlockAsFunction(&region->front(), builder.get(),
-                                   /*is_entry_function=*/false, func);
+                                   /*is_entry_function=*/false, {}, func);
 }
 
 std::string PaddingMapBadArrayAttrMsg(llvm::StringRef attr_name, int index) {
