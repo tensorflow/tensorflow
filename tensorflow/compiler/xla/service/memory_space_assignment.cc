@@ -433,8 +433,9 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
 
         // If the use has been a sequential call (e.g. a while loop), the other
         // colocated intervals must alias with this allocation.
-        if (is_sequential_call && !allocation_sequence->empty()) {
-          aliased_allocation = allocation_sequence->back().get();
+        if (is_sequential_call) {
+          aliased_allocation =
+              GetLiveAllocationAt(*allocation_sequence, use_time);
         }
       }
     }
@@ -480,6 +481,19 @@ bool AsynchronousCopyOrdering::ViolatesOrdering(int64 start_time,
   auto copy_it = ranges_.find(
       {start_time, end_time, MemorySpaceAssignment::MemorySpace::kAlternate});
   return copy_it != ranges_.end() && copy_it->start_time != start_time;
+}
+
+/*static*/ MemorySpaceAssignment::Allocation*
+AlternateMemoryBestFitHeap::GetLiveAllocationAt(
+    const MemorySpaceAssignment::AllocationSequence& allocations, int64 time) {
+  for (auto allocation_it = allocations.rbegin();
+       allocation_it != allocations.rend(); ++allocation_it) {
+    if ((*allocation_it)->start_time() <= time &&
+        (*allocation_it)->end_time() >= time) {
+      return allocation_it->get();
+    }
+  }
+  return nullptr;
 }
 
 void AlternateMemoryBestFitHeap::AddInputAndOutputRequiredAssignments() {
@@ -787,6 +801,7 @@ bool AlternateMemoryBestFitHeap::FindAllocation(
   if (use_requires_buffer_in_default_mem) {
     VLOG(4)
         << "Not trying to prefetch because use requires buffer in default mem.";
+    prev_allocation_in_default_mem->Extend(end_time);
     prev_allocation_in_default_mem->AddUse(use);
     return true;
   }
@@ -848,6 +863,7 @@ bool AlternateMemoryBestFitHeap::FindAllocation(
 
   // If a copy wasn't inserted, then add this use to the latest allocation in
   // default memory.
+  prev_allocation_in_default_mem->Extend(end_time);
   prev_allocation_in_default_mem->AddUse(use);
   return true;
 }

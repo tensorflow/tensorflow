@@ -1116,6 +1116,100 @@ TEST_P(MemorySpaceAssignmentTest, AddDependency) {
               op::Add(op::AddDependency(), op::Negate()));
 }
 
+TEST_P(MemorySpaceAssignmentTest, WhileAllocationBug) {
+  // This test is carefully crafted to include two multiply ops sized [4,3] in a
+  // while body. For testing purposes, we have provided a BufferIntervalCompare
+  // such that first multiply, then tanh, then other HloValues will be
+  // allocated. The memory is sized just enough to fit two [4,3] buffers.
+  // Because the multiplies in the while body are going to be allocated in the
+  // alternate memory first, the tanh that is fed inside the while loop should
+  // not be placed in the alternate memory. Otherwise, we will corrupt memory.
+  absl::string_view hlo_string = R"(
+  HloModule WhileAllocationBug, is_scheduled=true
+
+  %WhileBody (body_param: (f32[4,3], f32[])) -> (f32[4,3], f32[]) {
+    %body_param = (f32[4,3]{1,0}, f32[]) parameter(0)
+    %get-tuple-element.1 = f32[] get-tuple-element((f32[4,3]{1,0}, f32[]) %body_param), index=1
+    %get-tuple-element.2 = f32[4,3]{1,0} get-tuple-element((f32[4,3]{1,0}, f32[]) %body_param), index=0
+    %constant.1 = f32[] constant(1)
+    %add = f32[] add(f32[] %get-tuple-element.1, f32[] %constant.1)
+    %constant.2 = f32[4,3]{1,0} constant({ { 1, 2, 3 }, { 4, 5, 6 }, { 1, 2, 3 }, { 4, 5, 6 } })
+    %multiply = f32[4,3]{1,0} multiply(f32[4,3]{1,0} %get-tuple-element.2, f32[4,3]{1,0} %get-tuple-element.2)
+    %multiply2 = f32[4,3]{1,0} multiply(f32[4,3]{1,0} %multiply, f32[4,3]{1,0} %multiply)
+    %add.1 = f32[4,3]{1,0} add(f32[4,3]{1,0} %get-tuple-element.2, f32[4,3]{1,0} %constant.2)
+    %add.2 = f32[4,3]{1,0} add(f32[4,3]{1,0} %add.1, f32[4,3]{1,0} %multiply2)
+    ROOT %tuple = (f32[4,3]{1,0}, f32[]) tuple(f32[4,3]{1,0} %add.2, f32[] %add)
+  }
+
+  %WhileCond (cond_param: (f32[4,3], f32[])) -> pred[] {
+    %cond_param = (f32[4,3]{1,0}, f32[]) parameter(0)
+    %get-tuple-element = f32[] get-tuple-element((f32[4,3]{1,0}, f32[]) %cond_param), index=1
+    %constant = f32[] constant(50)
+    ROOT %compare = pred[] compare(f32[] %get-tuple-element, f32[] %constant), direction=LT
+  }
+
+  ENTRY %Entry (param_iter: f32[4,3], param_data: f32[], p2: f32[4,3]) -> f32[4,3] {
+    %param_data = f32[] parameter(1)
+    %param_iter = f32[4,3]{1,0} parameter(0)
+    %p2 = f32[4,3]{1,0} parameter(2)
+    %tanh = f32[4,3]{1,0} tanh(f32[4,3]{1,0} %param_iter)
+    %neg0 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %p2)
+    %neg1 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg0)
+    %neg2 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg1)
+    %neg3 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg2)
+    %neg4 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg3)
+    %neg5 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg4)
+    %neg6 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg5)
+    %add.4 = f32[4,3]{1,0} add(f32[4,3]{1,0} %neg6, f32[4,3]{1,0} %tanh)
+    %tuple.1 = (f32[4,3]{1,0}, f32[]) tuple(f32[4,3]{1,0} %tanh, f32[] %param_data)
+    %while = (f32[4,3]{1,0}, f32[]) while((f32[4,3]{1,0}, f32[]) %tuple.1), condition=%WhileCond, body=%WhileBody
+    %get-tuple-element.3 = f32[4,3]{1,0} get-tuple-element((f32[4,3]{1,0}, f32[]) %while), index=0
+    ROOT %add.3 = f32[4,3]{1,0} add(f32[4,3]{1,0} %get-tuple-element.3, f32[4,3]{1,0} %add.4)
+  }
+  )";
+
+  MemorySpaceAssignment::BufferIntervalCompare buffer_interval_compare =
+      [](const MemorySpaceAssignment::BufferInterval& a,
+         const MemorySpaceAssignment::BufferInterval& b) {
+        bool a_is_mul =
+            a.buffer->defining_instruction()->opcode() == HloOpcode::kMultiply;
+        bool b_is_mul =
+            b.buffer->defining_instruction()->opcode() == HloOpcode::kMultiply;
+        if (a_is_mul && !b_is_mul) {
+          return true;
+        }
+        if (!a_is_mul && b_is_mul) {
+          return false;
+        }
+        bool a_is_tanh =
+            a.buffer->defining_instruction()->opcode() == HloOpcode::kTanh;
+        bool b_is_tanh =
+            b.buffer->defining_instruction()->opcode() == HloOpcode::kTanh;
+        if (a_is_tanh && !b_is_tanh) {
+          return true;
+        }
+        if (!a_is_tanh && b_is_tanh) {
+          return false;
+        }
+        return a.buffer->id() < b.buffer->id();
+      };
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  InstructionCountPrefetchIntervalPicker prefetch_interval_picker(2, 10);
+  AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/-1,
+                    buffer_interval_compare, &prefetch_interval_picker);
+
+  for (const HloInstruction* instruction :
+       module->entry_computation()->instructions()) {
+    if (instruction->opcode() == HloOpcode::kWhile) {
+      const Shape& while_subshape =
+          ShapeUtil::GetSubshape(instruction->shape(), {0});
+      EXPECT_NE(while_subshape.layout().memory_space(), kAlternateMemorySpace);
+    }
+  }
+}
+
 TEST_P(MemorySpaceAssignmentTest, LastUseOpt) {
   // Test that checks the last use optimization. It uses two buffers that should
   // be placed in alternate memory.
