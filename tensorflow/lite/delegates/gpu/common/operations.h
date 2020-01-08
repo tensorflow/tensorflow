@@ -159,6 +159,13 @@ struct MaxUnpooling2DAttributes {
   Padding2D padding;
 };
 
+struct MaxUnpooling3DAttributes {
+  // Strides for every axis.
+  HWD strides = HWD(0, 0, 0);
+  HWD kernel = HWD(0, 0, 0);
+  Padding3D padding;
+};
+
 struct ConcatAttributes {
   // Defines axis by which to concat on.
   Axis axis = Axis::UNKNOWN;
@@ -168,6 +175,11 @@ struct ConcatAttributes {
 //         the given input.
 BHWC CalculateOutputShape(const BHWC& input,
                           const MaxUnpooling2DAttributes& attr);
+
+// @return shape of a tensor after MaxUnpooling3D operation is applied to
+//         the given input.
+BHWDC CalculateOutputShape(const BHWDC& input,
+                           const MaxUnpooling3DAttributes& attr);
 
 // @return shape of a tensor after Pooling2D operation is applied to the given
 //         input.
@@ -196,6 +208,11 @@ Padding3D CalculateSamePadding(const BHWDC& input,
 // shape as the given input.
 Padding2D CalculateSamePadding(const BHWC& input,
                                const MaxUnpooling2DAttributes& attr);
+
+// @return padding for max unpooling operation to make sure output keep the same
+// shape as the given input.
+Padding3D CalculateSamePadding(const BHWDC& input,
+                               const MaxUnpooling3DAttributes& attr);
 
 struct Convolution2DAttributes {
   HW strides = HW(1, 1);    // Along each axis.

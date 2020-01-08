@@ -325,6 +325,13 @@ int32_t CalculateSamePadding(const BHWC& input,
                               /*dilation=*/1, attr.strides.get<AxisT>());
 }
 
+template <Axis AxisT>
+int32_t CalculateSamePadding(const BHWDC& input,
+                             const MaxUnpooling3DAttributes& attr) {
+  return CalculateSamePadding(input.get<AxisT>(), attr.kernel.get<AxisT>(),
+                              /*dilation=*/1, attr.strides.get<AxisT>());
+}
+
 Padding2D MakeSamePadding(const BHWC& input,
                           const ConvolutionTransposedAttributes& attr) {
   int32_t padding_height = CalculateSamePadding<Axis::HEIGHT>(input, attr);
@@ -373,6 +380,18 @@ BHWC CalculateOutputShape(const BHWC& input,
               input.w * attr.strides.w - attr.padding.prepended.w -
                   attr.padding.appended.w,
               input.c);
+}
+
+BHWDC CalculateOutputShape(const BHWDC& input,
+                           const MaxUnpooling3DAttributes& attr) {
+  return BHWDC(input.b,
+               input.h * attr.strides.h - attr.padding.prepended.h -
+                   attr.padding.appended.h,
+               input.w * attr.strides.w - attr.padding.prepended.w -
+                   attr.padding.appended.w,
+               input.d * attr.strides.d - attr.padding.prepended.d -
+                   attr.padding.appended.d,
+               input.c);
 }
 
 BHWC CalculateOutputShape(const BHWC& input, const Pooling2DAttributes& attr) {
@@ -524,6 +543,11 @@ Padding3D CalculateSamePadding(const BHWDC& input,
 
 Padding2D CalculateSamePadding(const BHWC& input,
                                const MaxUnpooling2DAttributes& attr) {
+  return MakeSamePadding(input, attr);
+}
+
+Padding3D CalculateSamePadding(const BHWDC& input,
+                               const MaxUnpooling3DAttributes& attr) {
   return MakeSamePadding(input, attr);
 }
 
