@@ -35,7 +35,7 @@ namespace data {
 class UnboundedThreadPool : public thread::ThreadPoolInterface {
  public:
   UnboundedThreadPool(Env* env, const string& thread_name,
-                      const ThreadOptions thread_options = {})
+                      const ThreadOptions& thread_options = {})
       : unbounded_work_queue_(env, thread_name, thread_options) {}
   ~UnboundedThreadPool() = default;
 

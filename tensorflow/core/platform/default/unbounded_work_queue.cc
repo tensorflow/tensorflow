@@ -23,7 +23,7 @@ limitations under the License.
 namespace tensorflow {
 
 UnboundedWorkQueue::UnboundedWorkQueue(Env* env, const string& thread_name,
-                                       const ThreadOptions thread_options)
+                                       const ThreadOptions& thread_options)
     : env_(env), thread_name_(thread_name), thread_options_(thread_options) {}
 
 UnboundedWorkQueue::~UnboundedWorkQueue() {

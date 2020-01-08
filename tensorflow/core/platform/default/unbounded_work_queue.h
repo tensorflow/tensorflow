@@ -37,7 +37,7 @@ namespace tensorflow {
 class UnboundedWorkQueue {
  public:
   UnboundedWorkQueue(Env* env, const string& thread_name,
-                     const ThreadOptions thread_options = {});
+                     const ThreadOptions& thread_options = {});
   ~UnboundedWorkQueue();
 
   using WorkFunction = std::function<void()>;
