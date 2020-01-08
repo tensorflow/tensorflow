@@ -160,24 +160,29 @@ inline void LstmStepFloat(
   }
 
   // For each batch and cell: compute input_weight * input.
-  if (!use_cifg) {
+  // Skip if input is all zeros.
+  if (!tensor_utils::IsZeroVector(input_ptr, n_batch * n_input)) {
+    if (!use_cifg) {
+      tensor_utils::MatrixBatchVectorMultiplyAccumulate(
+          input_to_input_weights_ptr, n_cell, n_input, input_ptr, n_batch,
+          input_gate_scratch, /*result_stride=*/1);
+    }
+
     tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-        input_to_input_weights_ptr, n_cell, n_input, input_ptr, n_batch,
-        input_gate_scratch, /*result_stride=*/1);
+        input_to_forget_weights_ptr, n_cell, n_input, input_ptr, n_batch,
+        forget_gate_scratch, /*result_stride=*/1);
+    tensor_utils::MatrixBatchVectorMultiplyAccumulate(
+        input_to_cell_weights_ptr, n_cell, n_input, input_ptr, n_batch,
+        cell_scratch, /*result_stride=*/1);
+    tensor_utils::MatrixBatchVectorMultiplyAccumulate(
+        input_to_output_weights_ptr, n_cell, n_input, input_ptr, n_batch,
+        output_gate_scratch, /*result_stride=*/1);
   }
 
-  tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-      input_to_forget_weights_ptr, n_cell, n_input, input_ptr, n_batch,
-      forget_gate_scratch, /*result_stride=*/1);
-  tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-      input_to_cell_weights_ptr, n_cell, n_input, input_ptr, n_batch,
-      cell_scratch, /*result_stride=*/1);
-  tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-      input_to_output_weights_ptr, n_cell, n_input, input_ptr, n_batch,
-      output_gate_scratch, /*result_stride=*/1);
-
-  // If auxiliary input is available then compute aux_input_weight * aux_input
-  if (aux_input_ptr != nullptr) {
+  // For each batch and cell: compute aux_input_weight * aux_input.
+  // Skip if auxiliary input is not available or all zeros.
+  if (aux_input_ptr != nullptr &&
+      !tensor_utils::IsZeroVector(aux_input_ptr, n_batch * n_aux_input)) {
     if (!use_cifg) {
       tensor_utils::MatrixBatchVectorMultiplyAccumulate(
           aux_input_to_input_weights_ptr, n_cell, n_aux_input, aux_input_ptr,
@@ -485,8 +490,9 @@ inline void LstmStepHybrid(
                                           output_gate_scratch);
   }
 
+  // For each batch and cell: compute input_weight * input.
+  // Skip if input is all zeros.
   if (!tensor_utils::IsZeroVector(input_ptr, n_batch * n_input)) {
-    // Save quantization and matmul computation for all zero input.
     float unused_min, unused_max;
     for (int b = 0; b < n_batch; ++b) {
       const int offset = b * n_input;
@@ -494,7 +500,6 @@ inline void LstmStepHybrid(
           input_ptr + offset, n_input, quantized_input_ptr + offset,
           &unused_min, &unused_max, &scaling_factors[b]);
     }
-    // For each batch and cell: compute input_weight * input.
     if (!use_cifg) {
       for (int b = 0; b < n_batch; ++b) {
         product_scaling_factors[b] =
@@ -533,9 +538,10 @@ inline void LstmStepHybrid(
         /*result_stride=*/1);
   }
 
+  // For each batch and cell: compute aux_input_weight * aux_input.
+  // Skip if auxiliary input is not available or all zeros.
   if (aux_input_ptr != nullptr &&
       !tensor_utils::IsZeroVector(aux_input_ptr, n_batch * n_input)) {
-    // Save quantization and matmul computation for all zero input.
     float unused_min, unused_max;
     for (int b = 0; b < n_batch; ++b) {
       const int offset = b * n_input;
@@ -543,7 +549,6 @@ inline void LstmStepHybrid(
           aux_input_ptr + offset, n_input, quantized_aux_input_ptr + offset,
           &unused_min, &unused_max, &scaling_factors[b]);
     }
-    // For each batch and cell: compute input_weight * input.
     if (!use_cifg) {
       for (int b = 0; b < n_batch; ++b) {
         product_scaling_factors[b] =
