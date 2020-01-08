@@ -206,15 +206,34 @@ struct Convolution2DAttributes {
   Tensor<Linear, DataType::FLOAT32> bias;  // optional
 };
 
+struct Convolution3DAttributes {
+  HWD strides = HWD(0, 0, 0);    // Along each axis.
+  HWD dilations = HWD(0, 0, 0);  // Along each axis.
+  Padding3D padding;
+
+  Tensor<OHWDI, DataType::FLOAT32> weights;
+  Tensor<Linear, DataType::FLOAT32> bias;  // optional
+};
+
 // @return shape of a tensor after Convolution2D operation is applied to
 //         the given input.
 BHWC CalculateOutputShape(const BHWC& input,
                           const Convolution2DAttributes& attr);
 
+// @return shape of a tensor after Convolution3D operation is applied to
+//         the given input.
+BHWDC CalculateOutputShape(const BHWDC& input,
+                           const Convolution3DAttributes& attr);
+
 // @return padding for convolution operation to make sure output keep the same
 // shape as the given input.
 Padding2D CalculateSamePadding(const BHWC& input,
                                const Convolution2DAttributes& attr);
+
+// @return padding for convolution operation to make sure output keep the same
+// shape as the given input.
+Padding3D CalculateSamePadding(const BHWDC& input,
+                               const Convolution3DAttributes& attr);
 
 struct ConvolutionTransposedAttributes {
   HW stride = HW(1, 1);  // Along each axis.
@@ -234,19 +253,27 @@ BHWC CalculateOutputShape(const BHWC& input,
                           const ConvolutionTransposedAttributes& attr);
 
 struct DepthwiseConvolution2DAttributes : public Convolution2DAttributes {};
+struct DepthwiseConvolution3DAttributes : public Convolution3DAttributes {};
 
 // @return shape of a tensor after DepthwiseConvolution2D operation is applied
 //         to the given input.
 BHWC CalculateOutputShape(const BHWC& input,
                           const DepthwiseConvolution2DAttributes& attr);
 
+// @return shape of a tensor after DepthwiseConvolution3D operation is applied
+//         to the given input.
+BHWDC CalculateOutputShape(const BHWDC& input,
+                           const DepthwiseConvolution3DAttributes& attr);
+
 // @return padding for depthwise convolution operation to make sure output keep
 // the same shape as the given input.
 Padding2D CalculateSamePadding(const BHWC& input,
                                const DepthwiseConvolution2DAttributes& attr);
 
-BHWC CalculateOutputShape(const BHWC& input,
-                          const DepthwiseConvolution2DAttributes& attr);
+// @return padding for depthwise convolution operation to make sure output keep
+// the same shape as the given input.
+Padding3D CalculateSamePadding(const BHWDC& input,
+                               const DepthwiseConvolution3DAttributes& attr);
 
 // f(x):= {
 //   if x < 0  : x -> alpha * x
