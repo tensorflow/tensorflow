@@ -4,6 +4,8 @@
 load(
     "//tensorflow:tensorflow.bzl",
     "if_android",
+    "if_ios",
+    "if_mobile",
     "if_not_mobile",
     "tf_cc_test",
 )
