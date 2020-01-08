@@ -261,13 +261,30 @@ struct ConvolutionTransposedAttributes {
   Tensor<Linear, DataType::FLOAT32> bias;  // optional
 };
 
+struct ConvolutionTransposed3DAttributes {
+  HWD stride = HWD(0, 0, 0);  // Along each axis.
+  Padding3D padding;
+
+  Tensor<OHWDI, DataType::FLOAT32> weights;
+  Tensor<Linear, DataType::FLOAT32> bias;  // optional
+};
+
 Padding2D CalculateSamePadding(const BHWC& input,
                                const ConvolutionTransposedAttributes& attr);
+
+Padding3D CalculateSamePadding(const BHWDC& input,
+                               const ConvolutionTransposed3DAttributes& attr);
 
 // @return shape of a tensor after ConvolutionTransposed operation is applied to
 //         the given input.
 BHWC CalculateOutputShape(const BHWC& input,
                           const ConvolutionTransposedAttributes& attr);
+
+// @return shape of a tensor after ConvolutionTransposed3D operation is applied
+// to
+//         the given input.
+BHWDC CalculateOutputShape(const BHWDC& input,
+                           const ConvolutionTransposed3DAttributes& attr);
 
 struct DepthwiseConvolution2DAttributes : public Convolution2DAttributes {};
 struct DepthwiseConvolution3DAttributes : public Convolution3DAttributes {};
