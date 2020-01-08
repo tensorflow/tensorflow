@@ -1891,6 +1891,7 @@ tf_py_test(
     shard_count = 4,
     tags = [
         "no_oss_py35",  # b/147011479
+        "no_rocm",
         "no_windows",
     ],
     deps = [
