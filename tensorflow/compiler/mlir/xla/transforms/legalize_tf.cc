@@ -875,6 +875,11 @@ class ConvertFusedBatchNormV3Op
 
     auto scale_type_tensor = op.scale().getType().dyn_cast<TensorType>();
     auto scale_element_type = scale_type_tensor.getElementType();
+    // In the training case, dimensions of input tensors must be static.
+    if (op.is_training() && ((!input_type_tensor.hasStaticShape()) ||
+                             (!scale_type_tensor.hasStaticShape()))) {
+      return matchFailure();
+    }
 
     // TODO(b/69928690): Support mixed precision in the XLA batch
     // normalization operators. As a workaround, create a new x with the same
