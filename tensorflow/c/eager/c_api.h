@@ -206,7 +206,7 @@ typedef struct TFE_TensorDebugInfo TFE_TensorDebugInfo;
 // error and nullptr is returned. This function can block till the operation
 // that produces `handle` has completed.
 TF_CAPI_EXPORT extern TFE_TensorDebugInfo* TFE_TensorHandleTensorDebugInfo(
-    TFE_TensorHandle* handle, TF_Status* status);
+    TFE_TensorHandle* h, TF_Status* status);
 
 // Deletes `debug_info`.
 TF_CAPI_EXPORT extern void TFE_DeleteTensorDebugInfo(
