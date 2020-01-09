@@ -135,6 +135,18 @@ Environment& Environment::operator=(Environment&& environment) {
   return *this;
 }
 
+Status Environment::Init() {
+  if (device().IsAdreno() && device().SupportsTextureArray()) {
+    bool supports_one_layer;
+    RETURN_IF_ERROR(
+        CheckKernelSupportOfOneLayerTextureArray(this, &supports_one_layer));
+    if (!supports_one_layer) {
+      GetDevicePtr()->DisableOneLayerTextureArray();
+    }
+  }
+  return OkStatus();
+}
+
 void Environment::SetHighPerformance() const {
   // TODO(sorokin) use cl_perf_hint if available
 }
@@ -217,13 +229,19 @@ TensorStorageType GetFastestStorageType(const CLDevice& gpu) {
 }
 
 Status CreateEnvironment(Environment* result) {
-  return CreateEnvironment(result, false, 0, 0);
-}
+  CLDevice gpu;
+  RETURN_IF_ERROR(CreateDefaultGPUDevice(&gpu));
 
-Status CreateGLCompatibleEnvironment(cl_context_properties egl_context,
-                                     cl_context_properties egl_display,
-                                     Environment* result) {
-  return CreateEnvironment(result, true, egl_context, egl_display);
+  CLContext context;
+  RETURN_IF_ERROR(CreateCLContext(gpu, &context));
+  CLCommandQueue queue;
+  RETURN_IF_ERROR(CreateCLCommandQueue(gpu, context, &queue));
+  ProfilingCommandQueue profiling_queue;
+  RETURN_IF_ERROR(CreateProfilingCommandQueue(gpu, context, &profiling_queue));
+
+  *result = Environment(std::move(gpu), std::move(context), std::move(queue),
+                        std::move(profiling_queue));
+  return result->Init();
 }
 
 }  // namespace cl

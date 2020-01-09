@@ -30,9 +30,11 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-CLCommandQueue::CLCommandQueue(cl_command_queue queue) : queue_(queue) {}
+CLCommandQueue::CLCommandQueue(cl_command_queue queue, bool has_ownership)
+    : queue_(queue), has_ownership_(has_ownership) {}
 
-CLCommandQueue::CLCommandQueue(CLCommandQueue&& queue) : queue_(queue.queue_) {
+CLCommandQueue::CLCommandQueue(CLCommandQueue&& queue)
+    : queue_(queue.queue_), has_ownership_(queue.has_ownership_) {
   queue.queue_ = nullptr;
 }
 
@@ -40,6 +42,7 @@ CLCommandQueue& CLCommandQueue::operator=(CLCommandQueue&& queue) {
   if (this != &queue) {
     Release();
     std::swap(queue_, queue.queue_);
+    has_ownership_ = queue.has_ownership_;
   }
   return *this;
 }
@@ -47,7 +50,7 @@ CLCommandQueue& CLCommandQueue::operator=(CLCommandQueue&& queue) {
 CLCommandQueue::~CLCommandQueue() { Release(); }
 
 void CLCommandQueue::Release() {
-  if (queue_) {
+  if (has_ownership_ && queue_) {
     clReleaseCommandQueue(queue_);
     queue_ = nullptr;
   }
@@ -170,7 +173,7 @@ Status CLCommandQueue::WaitForCompletion() {
 }
 
 ProfilingCommandQueue::ProfilingCommandQueue(cl_command_queue queue)
-    : CLCommandQueue(queue) {
+    : CLCommandQueue(queue, true) {
   events_.reserve(128);
 }
 
@@ -289,7 +292,7 @@ Status CreateCLCommandQueue(const CLDevice& device, const CLContext& context,
                                      CLErrorCodeToString(error_code)));
   }
 
-  *result = CLCommandQueue(queue);
+  *result = CLCommandQueue(queue, true);
   return OkStatus();
 }
 
