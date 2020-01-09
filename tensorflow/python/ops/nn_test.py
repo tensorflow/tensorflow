@@ -358,36 +358,6 @@ class DropoutTest(test_lib.TestCase):
       print(rel_error)
       self.assertTrue(rel_error < 0.15)
 
-  @test_util.run_deprecated_v1
-  def testDropoutGradFloat16(self):
-    if not test_lib.is_built_with_rocm():
-      self.skipTest("Dropout gradient kernels are enabled only in ROCm platform")
-
-    x_dim = 40
-    y_dim = 30
-    shape = [x_dim, y_dim]
-    rate = 0.1
-    with self.cached_session(use_gpu=True):
-      t = constant_op.constant(1.0, shape=shape, dtype=dtypes.float16)
-      value = nn_ops.dropout(t, rate=rate)
-      err = gradient_checker.compute_gradient_error(t, shape, value, shape)
-      self.assertLess(err, 0.5)
-
-  @test_util.run_deprecated_v1
-  def testDropoutGradFloat32(self):
-    if not test_lib.is_built_with_rocm():
-      self.skipTest("Dropout gradient kernels are enabled only in ROCm platform")
-
-    x_dim = 40
-    y_dim = 30
-    shape = [x_dim, y_dim]
-    rate = 0.1
-    with self.cached_session(use_gpu=True):
-      t = constant_op.constant(1.0, shape=shape, dtype=dtypes.float32)
-      value = nn_ops.dropout(t, rate=rate)
-      err = gradient_checker.compute_gradient_error(t, shape, value, shape)
-      self.assertLess(err, 1e-2)
-
   def testShapedDropout(self):
     # Runs dropout with 0-1 tensor 10 times, sum the number of ones and validate
     # that it is producing approximately the right number of ones over a large

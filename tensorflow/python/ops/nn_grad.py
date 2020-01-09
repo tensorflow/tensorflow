@@ -1068,27 +1068,6 @@ def _L2LossGrad(op, grad):
   """
   return op.inputs[0] * grad
 
-def ConditionalRegister(dec, condition):
-  def decorator(func):
-    if condition:
-      return dec(func)
-    else:
-      return func
-  return decorator
-
-@ConditionalRegister(ops.RegisterGradient("Dropout"),build_info.is_rocm_build)
-def _DropoutGrad(op, grad):
-  dx = 0
-  if op.inputs[0].dtype == dtypes.float32 or op.inputs[0].dtype == dtypes.float16:
-    dx = gen_nn_ops.dropout_grad(
-          grad, op.inputs[1], op.inputs[2], op.inputs[3])
-  else:
-    keep_mask = (op.inputs[0] - op.outputs[0]) < 1e-5
-    keep_mask_val = math_ops.cast(keep_mask, op.inputs[0].dtype)
-    scale = math_ops.cast(array_ops.size(op.outputs[0]), op.inputs[0].dtype) / math_ops.reduce_sum(keep_mask_val)
-    dx = grad * scale * keep_mask_val
-  return [dx, None, None, None]
-
 @ops.RegisterGradient("TopK")
 @ops.RegisterGradient("TopKV2")
 def _TopKGrad(op, grad, _):
