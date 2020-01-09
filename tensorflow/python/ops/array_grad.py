@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.compiler.tf2xla.ops import gen_xla_ops
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python import pywrap_tfe
 from tensorflow.python.eager import context
@@ -245,9 +246,13 @@ def _SliceGrad(op, grad):
   # right dimensions.
   input_vec = op.inputs[0]
   begin_vec = op.inputs[1]
+
+  if control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph()):
+    return gen_xla_ops.xla_dynamic_update_slice(array_ops.zeros_like(input_vec),
+                                                grad, begin_vec), None, None
+
   input_rank = array_ops.rank(input_vec)
   slice_size = array_ops.shape(op.outputs[0])
-
   shape = array_ops.stack([input_rank, 1])
   before_pad = array_ops.reshape(begin_vec, shape)
   after_pad = array_ops.reshape(
@@ -268,7 +273,6 @@ def _StridedSliceGrad(op, grad):
   # We could choose any of {begin|end|strides}.dtype since they are required to
   # be the same.
   x = array_ops.shape(op.inputs[0], out_type=begin.dtype)
-
   return array_ops.strided_slice_grad(
       x,
       begin,
