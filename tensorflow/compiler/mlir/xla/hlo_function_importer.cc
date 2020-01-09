@@ -717,7 +717,7 @@ mlir::DenseIntElementsAttr HloFunctionImporter::Convert(
 mlir::NamedAttribute HloFunctionImporter::ConvertPadding(
     llvm::ArrayRef<int64_t> padding) {
   auto ty =
-      mlir::RankedTensorType::get({2, static_cast<int64_t>(padding.size()) / 2},
+      mlir::RankedTensorType::get({static_cast<int64_t>(padding.size()) / 2, 2},
                                   builder_->getIntegerType(64));
   auto attr = DenseIntElementsAttr::get(ty, padding);
   return builder_->getNamedAttr("padding", attr);

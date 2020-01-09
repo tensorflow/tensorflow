@@ -219,6 +219,16 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   ROOT %tuple.6 = (f32[256,30,30,16]{3,2,1,0}) tuple(%reshape.5), metadata={op_name="HLO_Retvals"}
 }
 
+// Test for padding attribute shape in convolution
+// CHECK-LABEL:  func @test_convolve1D_padding
+%test_convolve1D_padding (input: f32[1,2,1], filter: f32[1,1,1]) -> f32[1,5,1] {
+  %input = f32[1,2,1] parameter(0)
+  %filter = f32[1,1,1] parameter(1)
+  // CHECK:  "xla_hlo.conv"
+  // CHECK-SAME:  padding = dense<{{\[\[}}1, 2]]> : tensor<1x2xi64>
+  ROOT %convolution = f32[1,5,1] convolution(f32[1,2,1] %input, f32[1,1,1] %filter), feature_group_count=1, dim_labels=b0f_0io->b0f, window={pad=1_2 size=1}
+}
+
 // CHECK-LABEL:  func @test_convert(%arg0: tensor<4xf32>, %arg1: tensor<f32>) -> tensor<4xf64> {
 %test_convert (Arg_0.1: f32[4], Arg_1.2: f32[]) -> f64[4] {
   %Arg_0.1 = f32[4] parameter(0)
