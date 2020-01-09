@@ -38,6 +38,7 @@ load("//third_party/pasta:workspace.bzl", pasta = "repo")
 load("//third_party/psimd:workspace.bzl", psimd = "repo")
 load("//third_party/pthreadpool:workspace.bzl", pthreadpool = "repo")
 load("//third_party/sobol_data:workspace.bzl", sobol_data = "repo")
+load("//third_party/vulkan_headers:workspace.bzl", vulkan_headers = "repo")
 
 def initialize_third_party():
     """ Load third party repositories.  See above load() statements. """
@@ -59,6 +60,7 @@ def initialize_third_party():
     psimd()
     pthreadpool()
     sobol_data()
+    vulkan_headers()
 
 # Sanitize a dependency so that it works correctly from code that includes
 # TensorFlow as a submodule.

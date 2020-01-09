@@ -204,6 +204,7 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/types:variant",
         "@opencl_headers",
+        "@vulkan_headers//:vulkan_headers_no_prototypes",
     ],
 )
 
