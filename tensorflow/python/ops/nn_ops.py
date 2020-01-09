@@ -1885,6 +1885,7 @@ def conv2d_v2(input,  # pylint: disable=redefined-builtin
   horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
   
   Usage Example:
+  
   >>> kernel_in = np.array([
   ...  [ [[2, 0.1]],[[3, 0.2]] ],
   ...  [ [[0, 0.3]],[[1, 0.4]] ], ])
