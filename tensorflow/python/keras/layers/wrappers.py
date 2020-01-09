@@ -82,6 +82,8 @@ class Wrapper(Layer):
   @classmethod
   def from_config(cls, config, custom_objects=None):
     from tensorflow.python.keras.layers import deserialize as deserialize_layer  # pylint: disable=g-import-not-at-top
+    # Avoid mutating the input dict
+    config = config.copy()
     layer = deserialize_layer(
         config.pop('layer'), custom_objects=custom_objects)
     return cls(layer, **config)
