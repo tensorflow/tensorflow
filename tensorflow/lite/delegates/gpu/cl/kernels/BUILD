@@ -403,6 +403,30 @@ cc_test(
 )
 
 cc_library(
+    name = "convolution_transposed_3d",
+    srcs = ["convolution_transposed_3d.cc"],
+    hdrs = ["convolution_transposed_3d.h"],
+    deps = [
+        ":gpu_operation",
+        ":util",
+        ":work_group_picking",
+        "//tensorflow/lite/delegates/gpu/cl:buffer",
+        "//tensorflow/lite/delegates/gpu/cl:linear_storage",
+        "//tensorflow/lite/delegates/gpu/cl:tensor",
+        "//tensorflow/lite/delegates/gpu/cl:tensor_type",
+        "//tensorflow/lite/delegates/gpu/cl:texture2d",
+        "//tensorflow/lite/delegates/gpu/cl:util",
+        "//tensorflow/lite/delegates/gpu/common:data_type",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:shape",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:tensor",
+        "//tensorflow/lite/delegates/gpu/common:types",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "convolution_transposed_3x3_thin",
     srcs = ["convolution_transposed_3x3_thin.cc"],
     hdrs = ["convolution_transposed_3x3_thin.h"],
