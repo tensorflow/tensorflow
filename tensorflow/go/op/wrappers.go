@@ -26900,6 +26900,13 @@ func StringToNumberOutType(value tf.DataType) StringToNumberAttr {
 // (Note that int32 overflow results in an error while float overflow
 // results in a rounded value.)
 //
+// Example:
+//
+// >>> strings = ["5.0", "3.0", "7.0"]
+// >>> tf.strings.to_number(strings)
+// <tf.Tensor: shape=(3,), dtype=float32, numpy=array([5., 3., 7.], dtype=float32)>
+//
+//
 // Returns A Tensor of the same shape as the input `string_tensor`.
 func StringToNumber(scope *Scope, string_tensor tf.Output, optional ...StringToNumberAttr) (output tf.Output) {
 	if scope.Err() != nil {

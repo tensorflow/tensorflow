@@ -25,7 +25,6 @@ import numpy as np
 from tensorflow.core.protobuf import cluster_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
-from tensorflow.python.compat import compat as forward_compat
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
@@ -464,69 +463,68 @@ class IteratorTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.graph_only_combinations())
   def testIteratorStringHandleFuture(self):
-    with forward_compat.forward_compatibility_horizon(2018, 8, 4):
-      dataset_3 = dataset_ops.Dataset.from_tensor_slices([1, 2, 3])
-      dataset_4 = dataset_ops.Dataset.from_tensor_slices([10, 20, 30, 40])
+    dataset_3 = dataset_ops.Dataset.from_tensor_slices([1, 2, 3])
+    dataset_4 = dataset_ops.Dataset.from_tensor_slices([10, 20, 30, 40])
 
-      iterator_3 = dataset_ops.make_one_shot_iterator(dataset_3)
-      iterator_4 = dataset_ops.make_one_shot_iterator(dataset_4)
+    iterator_3 = dataset_ops.make_one_shot_iterator(dataset_3)
+    iterator_4 = dataset_ops.make_one_shot_iterator(dataset_4)
 
-      handle_placeholder = array_ops.placeholder(dtypes.string, shape=[])
-      feedable_iterator = iterator_ops.Iterator.from_string_handle(
-          handle_placeholder, dataset_ops.get_legacy_output_types(dataset_3),
-          dataset_ops.get_legacy_output_shapes(dataset_3))
-      next_element = feedable_iterator.get_next()
+    handle_placeholder = array_ops.placeholder(dtypes.string, shape=[])
+    feedable_iterator = iterator_ops.Iterator.from_string_handle(
+        handle_placeholder, dataset_ops.get_legacy_output_types(dataset_3),
+        dataset_ops.get_legacy_output_shapes(dataset_3))
+    next_element = feedable_iterator.get_next()
 
-      self.assertTrue(
-          structure.are_compatible(
-              dataset_ops.get_structure(dataset_3),
-              dataset_ops.get_structure(feedable_iterator)))
+    self.assertTrue(
+        structure.are_compatible(
+            dataset_ops.get_structure(dataset_3),
+            dataset_ops.get_structure(feedable_iterator)))
 
-      with self.cached_session() as sess:
-        iterator_3_handle = sess.run(iterator_3.string_handle())
-        iterator_4_handle = sess.run(iterator_4.string_handle())
+    with self.cached_session() as sess:
+      iterator_3_handle = sess.run(iterator_3.string_handle())
+      iterator_4_handle = sess.run(iterator_4.string_handle())
 
-        self.assertEqual(
-            10,
-            sess.run(
-                next_element,
-                feed_dict={handle_placeholder: iterator_4_handle}))
-        self.assertEqual(
-            1,
-            sess.run(
-                next_element,
-                feed_dict={handle_placeholder: iterator_3_handle}))
-        self.assertEqual(
-            20,
-            sess.run(
-                next_element,
-                feed_dict={handle_placeholder: iterator_4_handle}))
-        self.assertEqual(
-            2,
-            sess.run(
-                next_element,
-                feed_dict={handle_placeholder: iterator_3_handle}))
-        self.assertEqual(
-            30,
-            sess.run(
-                next_element,
-                feed_dict={handle_placeholder: iterator_4_handle}))
-        self.assertEqual(
-            3,
-            sess.run(
-                next_element,
-                feed_dict={handle_placeholder: iterator_3_handle}))
-        self.assertEqual(
-            40,
-            sess.run(
-                next_element,
-                feed_dict={handle_placeholder: iterator_4_handle}))
-        with self.assertRaises(errors.OutOfRangeError):
+      self.assertEqual(
+          10,
           sess.run(
-              next_element, feed_dict={handle_placeholder: iterator_3_handle})
-        with self.assertRaises(errors.OutOfRangeError):
+              next_element,
+              feed_dict={handle_placeholder: iterator_4_handle}))
+      self.assertEqual(
+          1,
           sess.run(
-              next_element, feed_dict={handle_placeholder: iterator_4_handle})
+              next_element,
+              feed_dict={handle_placeholder: iterator_3_handle}))
+      self.assertEqual(
+          20,
+          sess.run(
+              next_element,
+              feed_dict={handle_placeholder: iterator_4_handle}))
+      self.assertEqual(
+          2,
+          sess.run(
+              next_element,
+              feed_dict={handle_placeholder: iterator_3_handle}))
+      self.assertEqual(
+          30,
+          sess.run(
+              next_element,
+              feed_dict={handle_placeholder: iterator_4_handle}))
+      self.assertEqual(
+          3,
+          sess.run(
+              next_element,
+              feed_dict={handle_placeholder: iterator_3_handle}))
+      self.assertEqual(
+          40,
+          sess.run(
+              next_element,
+              feed_dict={handle_placeholder: iterator_4_handle}))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(
+            next_element, feed_dict={handle_placeholder: iterator_3_handle})
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(
+            next_element, feed_dict={handle_placeholder: iterator_4_handle})
 
   @combinations.generate(test_base.graph_only_combinations())
   def testIteratorStringHandleReuseTensorObject(self):

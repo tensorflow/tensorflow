@@ -2987,8 +2987,8 @@ static Status PostOrderDFS(HloInstruction* root, Visitor* visitor,
         visitor->GetVisitState(current_id);
     if (visit_state == Visitor::kVisited) {
       dfs_stack.pop_back();
-      VLOG(3) << "Not visiting HLO %" << current_node->name()
-              << " as it was already visited.";
+      VLOG(3) << "Not visiting HLO (id = " << current_id
+              << ") as it was already visited.";
       continue;
     }
 

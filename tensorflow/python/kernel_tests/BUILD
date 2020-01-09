@@ -1633,7 +1633,7 @@ cuda_py_test(
     name = "batch_gemm_op_test",
     size = "small",
     srcs = ["batch_gemm_op_test.py"],
-    additional_deps = [
+    deps = [
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -3789,7 +3789,7 @@ gpu_py_test(
     name = "gpu_fusion_ops_test",
     size = "small",
     srcs = ["gpu_fusion_ops_test.py"],
-    additional_deps = [
+    deps = [
         "//third_party/py/numpy",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",

@@ -131,6 +131,7 @@ import abc
 import collections
 import math
 
+import re
 import numpy as np
 import six
 
@@ -407,7 +408,8 @@ class _BaseFeaturesLayer(Layer):
       with variable_scope._pure_variable_scope(  # pylint: disable=protected-access
           self.name,
           partitioner=self._partitioner):
-        with variable_scope._pure_variable_scope(column.name):  # pylint: disable=protected-access
+        with variable_scope._pure_variable_scope(  # pylint: disable=protected-access
+            _sanitize_column_name_for_variable_scope(column.name)):
           column.create_state(self._state_manager)
     super(_BaseFeaturesLayer, self).build(None)
 
@@ -506,7 +508,8 @@ class _LinearModelLayer(Layer):
     # the ops.
     with variable_scope._pure_variable_scope(self.name):  # pylint: disable=protected-access
       for column in self._feature_columns:
-        with variable_scope._pure_variable_scope(column.name):  # pylint: disable=protected-access
+        with variable_scope._pure_variable_scope(  # pylint: disable=protected-access
+            _sanitize_column_name_for_variable_scope(column.name)):
           # Create the state for each feature column
           column.create_state(self._state_manager)
 
@@ -546,7 +549,8 @@ class _LinearModelLayer(Layer):
       transformation_cache = FeatureTransformationCache(features)
       weighted_sums = []
       for column in self._feature_columns:
-        with ops.name_scope(column.name):
+        with ops.name_scope(
+            _sanitize_column_name_for_variable_scope(column.name)):
           # All the weights used in the linear model are owned by the state
           # manager associated with this Linear Model.
           weight_var = self._state_manager.get_variable(column, 'weights')
@@ -769,7 +773,9 @@ def _transform_features_v2(features, feature_columns, state_manager):
       None, default_name='transform_features', values=features.values()):
     transformation_cache = FeatureTransformationCache(features)
     for column in feature_columns:
-      with ops.name_scope(None, default_name=column.name):
+      with ops.name_scope(
+          None,
+          default_name=_sanitize_column_name_for_variable_scope(column.name)):
         outputs[column] = transformation_cache.get(column, state_manager)
   return outputs
 
@@ -1392,6 +1398,7 @@ def bucketized_column(source_column, boundaries):
   features = tf.io.parse_example(
       ..., features=tf.feature_column.make_parse_example_spec(columns))
   dense_tensor = tf.keras.layers.DenseFeatures(columns)(features)
+  ```
 
   `bucketized_column` can also be crossed with another categorical column using
   `crossed_column`:
@@ -4642,3 +4649,9 @@ def _standardize_and_copy_config(config):
       kwargs[k] = tuple(v)
 
   return kwargs
+
+
+def _sanitize_column_name_for_variable_scope(name):
+  """Sanitizes user-provided feature names for use as variable scopes."""
+  invalid_char = re.compile('[^A-Za-z0-9_.\\-]')
+  return invalid_char.sub('_', name)

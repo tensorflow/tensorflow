@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_XPLANE_BUILDER_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_XPLANE_BUILDER_H_
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
@@ -124,9 +125,10 @@ class XLineBuilder {
 };
 
 // Provides methods to build an XPlane.
+// NOTE: avoid to use two builders to wrap the same XPlane.
 class XPlaneBuilder {
  public:
-  explicit XPlaneBuilder(XPlane* plane) : plane_(plane) {}
+  explicit XPlaneBuilder(XPlane* plane);
 
   void SetId(int64 id) { plane_->set_id(id); }
 
@@ -136,17 +138,27 @@ class XPlaneBuilder {
     plane_->mutable_lines()->Reserve(num_lines);
   }
 
-  XLineBuilder AddLine() { return XLineBuilder(plane_->add_lines()); }
+  XLineBuilder GetOrCreateLine(int64 line_id);
 
   XEventMetadata* GetOrCreateEventMetadata(int64 metadata_id);
+  XEventMetadata* GetOrCreateEventMetadata(absl::string_view name);
 
   XStatMetadata* GetOrCreateStatMetadata(int64 metadata_id);
+  XStatMetadata* GetOrCreateStatMetadata(absl::string_view name);
 
  protected:
   XPlane* RawPlane() const { return plane_; }
+  XLine* AddLine(int64 line_id);
 
  private:
   XPlane* plane_;
+
+  // Artifacts to accelerate the builders.
+  int64 last_event_metadata_id_ = 0LL;
+  int64 last_stat_metadata_id_ = 0LL;
+  absl::flat_hash_map<std::string, XEventMetadata*> event_metadata_by_name_;
+  absl::flat_hash_map<std::string, XStatMetadata*> stat_metadata_by_name_;
+  absl::flat_hash_map<int64, XLine*> lines_by_id_;
 };
 
 }  // namespace profiler

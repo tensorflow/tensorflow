@@ -21,10 +21,10 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/CommandLine.h"
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
-#include "mlir/IR/Value.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
+#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
+#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
+#include "mlir/IR/Value.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
@@ -153,7 +153,7 @@ bool PrepareQuantizePass::SetInputNodesQuantizationParams(FuncOp func) {
                                                     params);
         auto dq_op =
             builder.create<TFL::DequantizeOp>(loc, input_type, q_op.output());
-        arg->replaceAllUsesWith(dq_op.output());
+        arg.replaceAllUsesWith(dq_op.output());
         q_op.setOperand(arg);
       }
     }
@@ -161,8 +161,8 @@ bool PrepareQuantizePass::SetInputNodesQuantizationParams(FuncOp func) {
 
   for (int i = 0, e = func.getNumArguments(); i != e; ++i) {
     BlockArgument arg = func.getArgument(i);
-    auto* arg_block = arg->getOwner();
-    add_quantize_op(arg->getLoc(), arg->getType(), arg_block,
+    auto* arg_block = arg.getOwner();
+    add_quantize_op(arg.getLoc(), arg.getType(), arg_block,
                     std::next(arg_block->begin(), i), arg, i);
   }
 

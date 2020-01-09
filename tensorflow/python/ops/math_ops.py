@@ -1713,7 +1713,8 @@ def reduce_euclidean_norm(input_tensor, axis=None, keepdims=False, name=None):
                              "keep_dims is deprecated, use keepdims instead",
                              "keep_dims")
 @deprecation.deprecated_args(
-    None, "reduction_indices is deprecated, use axis instead", "axis")
+    None, "reduction_indices is deprecated, use axis instead",
+    "reduction_indices")
 def count_nonzero(input_tensor=None,
                   axis=None,
                   keepdims=None,

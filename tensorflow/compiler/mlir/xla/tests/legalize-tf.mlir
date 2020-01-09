@@ -1094,6 +1094,22 @@ func @preventgradient(%arg0: tensor<1xi32>) -> tensor<1xi32> {
 }
 
 //===----------------------------------------------------------------------===//
+// InfeedDequeueTuple legalization
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func @infeed_dequeue_tuple
+func @infeed_dequeue_tuple() -> (tensor<3xi32>, tensor<4xf32>) {
+// CHECK: [[AFTER_ALL:%.*]] = "xla_hlo.after_all"() : () -> !xla_hlo.token
+// CHECK: [[INFEED:%.*]] = "xla_hlo.infeed"([[AFTER_ALL]]) {infeed_config = ""} : (!xla_hlo.token) -> tuple<tuple<tensor<3xi32>, tensor<4xf32>>, !xla_hlo.token>
+// CHECK: [[INFEED_VAL:%.*]] = "xla_hlo.get_tuple_element"([[INFEED]]) {index = 0 : i32} : (tuple<tuple<tensor<3xi32>, tensor<4xf32>>, !xla_hlo.token>) -> tuple<tensor<3xi32>, tensor<4xf32>>
+// CHECK: [[RES_1:%.*]] = "xla_hlo.get_tuple_element"([[INFEED_VAL]]) {index = 0 : i32} : (tuple<tensor<3xi32>, tensor<4xf32>>) -> tensor<3xi32>
+// CHECK: [[RES_2:%.*]] = "xla_hlo.get_tuple_element"([[INFEED_VAL]]) {index = 1 : i32} : (tuple<tensor<3xi32>, tensor<4xf32>>) -> tensor<4xf32>
+// CHECK: return [[RES_1]], [[RES_2]]
+  %0:2 = "tf.InfeedDequeueTuple"() : () -> (tensor<3xi32>, tensor<4xf32>)
+  return %0#0, %0#1 : tensor<3xi32>, tensor<4xf32>
+}
+
+//===----------------------------------------------------------------------===//
 // Nullary op legalizations.
 //===----------------------------------------------------------------------===//
 
@@ -1251,6 +1267,20 @@ func @one_hot(%indices: tensor<3xi32>, %on_value: tensor<f32>, %off_value: tenso
   %depth = "tf.Const"() { value = dense<5> : tensor<i64> } : () -> tensor<i32>
   %result = "tf.OneHot"(%indices, %depth, %on_value, %off_value) {axis = -1 : i64} : (tensor<3xi32>, tensor<i32>, tensor<f32>, tensor<f32>) -> tensor<3x5xf32>
   return %result : tensor<3x5xf32>
+}
+
+//===----------------------------------------------------------------------===//
+// tf.OutfeedEnqueueTuple legalization
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func @outfeed_enqueue_tuple
+// CHECK-SAME: [[VAL_0:%.*]]: tensor<3xi32>, [[VAL_1:%.*]]: tensor<4xf32>)
+func @outfeed_enqueue_tuple(%data_1: tensor<3xi32>, %data_2: tensor<4xf32>) -> () {
+// CHECK: [[TUPLE:%.*]] = "xla_hlo.tuple"([[VAL_0]], [[VAL_1]]) : (tensor<3xi32>, tensor<4xf32>) -> tuple<tensor<3xi32>, tensor<4xf32>>
+// CHECK: [[AFTER_ALL:%.*]] = "xla_hlo.after_all"() : () -> !xla_hlo.token
+// CHECK: "xla_hlo.outfeed"([[TUPLE]], [[AFTER_ALL]]) {outfeed_config = ""} : (tuple<tensor<3xi32>, tensor<4xf32>>, !xla_hlo.token) -> !xla_hlo.token
+  "tf.OutfeedEnqueueTuple"(%data_1, %data_2) : (tensor<3xi32>, tensor<4xf32>) -> ()
+  return
 }
 
 //===----------------------------------------------------------------------===//

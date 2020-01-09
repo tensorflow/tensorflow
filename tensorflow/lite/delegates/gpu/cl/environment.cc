@@ -173,7 +173,8 @@ std::vector<TensorStorageType> Environment::GetSupportedStorages() const {
   std::vector<TensorStorageType> storage_types;
   for (auto storage_type :
        {TensorStorageType::TEXTURE_2D, TensorStorageType::BUFFER,
-        TensorStorageType::TEXTURE_ARRAY, TensorStorageType::IMAGE_BUFFER}) {
+        TensorStorageType::TEXTURE_ARRAY, TensorStorageType::IMAGE_BUFFER,
+        TensorStorageType::TEXTURE_3D}) {
     if (IsSupported(storage_type)) {
       storage_types.push_back(storage_type);
     }
@@ -190,6 +191,8 @@ bool Environment::IsSupported(TensorStorageType storage_type) const {
       return device_.SupportsTextureArray();
     case TensorStorageType::IMAGE_BUFFER:
       return device_.IsAdreno() && device_.SupportsImageBuffer();
+    case TensorStorageType::TEXTURE_3D:
+      return device_.SupportsImage3D();
     case TensorStorageType::SINGLE_TEXTURE_2D:
       return false;
     case TensorStorageType::UNKNOWN:

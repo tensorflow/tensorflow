@@ -258,7 +258,8 @@ TfLiteStatus MicroAllocator::FinishTensorAllocation() {
     for (size_t n = 0; n < op->inputs()->size(); ++n) {
       const int tensor_index = op->inputs()->Get(n);
       TensorInfo* current = &tensor_info[tensor_index];
-      if ((current->last_used == -1) || (current->last_used > i)) {
+      if (!current->flatbuffer_tensor->is_variable() &&
+          ((current->last_used == -1) || (current->last_used > i))) {
         current->last_used = i;
       }
     }

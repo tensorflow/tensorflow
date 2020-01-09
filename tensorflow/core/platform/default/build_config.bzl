@@ -395,6 +395,13 @@ def tf_proto_library_cc(
         )
 
         native.alias(
+            name = cc_name + "_genproto",
+            actual = name + "_genproto",
+            testonly = testonly,
+            visibility = visibility,
+        )
+
+        native.alias(
             name = cc_name + "_headers_only",
             actual = cc_name,
             testonly = testonly,

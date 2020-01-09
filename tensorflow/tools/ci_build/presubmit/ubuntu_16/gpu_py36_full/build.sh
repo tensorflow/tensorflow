@@ -45,7 +45,7 @@ function run_build () {
   export ACTION_PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
   export PYTHON_BIN_PATH="/usr/bin/python3"
   export TF2_BEHAVIOR=1
-  tag_filters="gpu,-no_gpu,-nogpu,-benchmark-test,-no_oss,-oss_serial""$(maybe_skip_v1)"
+  tag_filters="gpu,-no_gpu,-nogpu,-benchmark-test,-no_oss,-oss_serial,-no_gpu_presubmit""$(maybe_skip_v1)"
 
   # Get the default test targets for bazel.
   source tensorflow/tools/ci_build/build_scripts/PRESUBMIT_BUILD_TARGETS.sh

@@ -586,7 +586,8 @@ class TPUEmbedding(object):
                cluster_def=None,
                pipeline_execution_with_tensor_core=False,
                partition_strategy='div',
-               device_config=None):
+               device_config=None,
+               master_job_name=None):
     """API for using TPU for embedding lookups.
 
     Args:
@@ -612,6 +613,8 @@ class TPUEmbedding(object):
         `tf.nn.embedding_lookup_sparse`.
       device_config: A DeviceConfig instance, used when `master` and
         `cluster_def` are both `None`.
+      master_job_name: if set, overrides the master job name used to schedule
+        embedding ops.
 
     Raises:
       ValueError: if any input is invalid.
@@ -660,7 +663,12 @@ class TPUEmbedding(object):
         raise ValueError('TPUEmbedding needs TPUs, but master {} does not have '
                          'TPUs.'.format(master))
       self._num_hosts = tpu_system_metadata.num_hosts
-      master_job_name = tpu_system_metadata_lib.master_job(master, cluster_def)
+      if master_job_name is None:
+        try:
+          master_job_name = tpu_system_metadata_lib.master_job(master,
+                                                               cluster_def)
+        except ValueError as e:
+          raise ValueError(str(e) + ' Please specify a master_job_name.')
       self._hosts = []
       for device in tpu_system_metadata.devices:
         if 'device:CPU:' in device.name and (

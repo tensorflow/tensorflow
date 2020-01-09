@@ -17,16 +17,18 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
+
 from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.framework import test_util
+from tensorflow.python.framework import combinations
 from tensorflow.python.platform import test
 
 
-@test_util.run_all_in_graph_and_eager_modes
-class NonSerializableTest(test_base.DatasetTestBase):
+class NonSerializableTest(test_base.DatasetTestBase, parameterized.TestCase):
 
+  @combinations.generate(test_base.default_test_combinations())
   def testNonSerializable(self):
     dataset = dataset_ops.Dataset.from_tensors(0)
     dataset = dataset.apply(testing.assert_next(["FiniteSkip"]))
@@ -41,6 +43,7 @@ class NonSerializableTest(test_base.DatasetTestBase):
     dataset = dataset.with_options(options)
     self.assertDatasetProduces(dataset, expected_output=[0])
 
+  @combinations.generate(test_base.default_test_combinations())
   def testNonSerializableAsDirectInput(self):
     """Tests that non-serializable dataset can be OptimizeDataset's input."""
     dataset = dataset_ops.Dataset.from_tensors(0)

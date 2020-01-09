@@ -86,6 +86,8 @@ public class NnApiDelegate implements Delegate, AutoCloseable {
   }
 
   public NnApiDelegate(Options options) {
+    // Ensure the native TensorFlow Lite libraries are available.
+    TensorFlowLite.init();
     delegateHandle =
         createDelegate(
             options.executionPreference,
@@ -120,9 +122,4 @@ public class NnApiDelegate implements Delegate, AutoCloseable {
       int preference, String device_name, String cache_dir, String model_token);
 
   private static native void deleteDelegate(long delegateHandle);
-
-  static {
-    // Ensure the native TensorFlow Lite libraries are available.
-    TensorFlowLite.init();
-  }
 }

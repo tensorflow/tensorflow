@@ -262,6 +262,7 @@ cc_library(
     deps = [
         ":gpu_operation",
         ":util",
+        ":work_group_picking",
         "//tensorflow/lite/delegates/gpu/cl:buffer",
         "//tensorflow/lite/delegates/gpu/cl:cl_device",
         "//tensorflow/lite/delegates/gpu/cl:linear_storage",
@@ -447,6 +448,7 @@ cc_library(
     deps = [
         ":gpu_operation",
         ":util",
+        ":work_group_picking",
         "//tensorflow/lite/delegates/gpu/cl:buffer",
         "//tensorflow/lite/delegates/gpu/cl:linear_storage",
         "//tensorflow/lite/delegates/gpu/cl:precision",
@@ -525,6 +527,29 @@ cc_library(
     name = "depth_wise_conv",
     srcs = ["depth_wise_conv.cc"],
     hdrs = ["depth_wise_conv.h"],
+    deps = [
+        ":gpu_operation",
+        ":util",
+        ":work_group_picking",
+        "//tensorflow/lite/delegates/gpu/cl:buffer",
+        "//tensorflow/lite/delegates/gpu/cl:cl_device",
+        "//tensorflow/lite/delegates/gpu/cl:linear_storage",
+        "//tensorflow/lite/delegates/gpu/cl:tensor",
+        "//tensorflow/lite/delegates/gpu/cl:texture2d",
+        "//tensorflow/lite/delegates/gpu/cl:util",
+        "//tensorflow/lite/delegates/gpu/common:data_type",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:shape",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:tensor",
+        "//tensorflow/lite/delegates/gpu/common:types",
+    ],
+)
+
+cc_library(
+    name = "depth_wise_conv_3d",
+    srcs = ["depth_wise_conv_3d.cc"],
+    hdrs = ["depth_wise_conv_3d.h"],
     deps = [
         ":gpu_operation",
         ":util",
@@ -1229,6 +1254,7 @@ test_suite(
         "depth_wise_conv_test",
         "elementwise_test",
         "fully_connected_texture_test",
+        "lstm_test",
         "max_unpooling_test",
         "multiply_add_test",
         "padding_test",

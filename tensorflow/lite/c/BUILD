@@ -9,7 +9,7 @@ load(
 )
 
 package(
-    default_visibility = [":experimental"],
+    default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
 )
 
@@ -65,9 +65,6 @@ cc_library(
     srcs = ["c_api.cc"],
     hdrs = ["c_api.h"],
     copts = tflite_copts(),
-    visibility = [
-        ":experimental",
-    ],
     deps = [
         ":c_api_internal",
         ":common",
@@ -133,10 +130,6 @@ cc_library(
         "common.h",
     ],
     build_for_embedded = True,
-    visibility = [
-        "//speech/micro/nn:__pkg__",
-        "//tensorflow/lite:__subpackages__",
-    ],
     alwayslink = 1,
 )
 

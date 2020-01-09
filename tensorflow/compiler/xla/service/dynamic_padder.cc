@@ -21,16 +21,21 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_format.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/dynamic_dimension_inference.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace xla {
@@ -569,6 +574,7 @@ Status RewriteDynamicReshapeSingleDim(
   }
   return Status::OK();
 }
+
 StatusOr<bool> RewriteDynamicConcat(
     HloInstruction* concat,
     DynamicDimensionInference* dynamic_dimension_inference) {
@@ -618,6 +624,100 @@ StatusOr<bool> RewriteDynamicConcat(
       concat, rewritten_concat, {}));
   return true;
 }
+
+StatusOr<bool> RewriteDynamicSort(
+    HloInstruction* hlo,
+    DynamicDimensionInference* dynamic_dimension_inference) {
+  HloInstruction* dynamic_size = nullptr;
+  HloSortInstruction* sort = Cast<HloSortInstruction>(hlo);
+  HloComputation* comp = hlo->parent();
+  int64 sort_dim = sort->sort_dimension();
+  // Find the dynamic dimension in the operand.
+  for (auto* operand : sort->operands()) {
+    if (dynamic_size == nullptr) {
+      dynamic_size =
+          dynamic_dimension_inference->GetDynamicSize(operand, {}, sort_dim);
+    }
+  }
+
+  if (dynamic_size == nullptr) {
+    // Not a dynamic sort, ignore.
+    return false;
+  }
+
+  Shape operand_shape =
+      ShapeUtil::ChangeElementType(sort->operand(0)->shape(), S32);
+  HloInstruction* iota =
+      comp->AddInstruction(HloInstruction::CreateIota(operand_shape, sort_dim));
+  HloInstruction* dynamic_size_broadcasted = comp->AddInstruction(
+      HloInstruction::CreateBroadcast(operand_shape, dynamic_size, {}));
+  HloInstruction* lt = comp->AddInstruction(HloInstruction::CreateCompare(
+      ShapeUtil::ChangeElementType(operand_shape, PRED), iota,
+      dynamic_size_broadcasted, ComparisonDirection::kLt));
+  sort->AppendOperand(lt);
+
+  const int64 param_number_before_rewritten =
+      sort->called_computations()[0]->num_parameters();
+  auto new_param_0 = HloInstruction::CreateParameter(
+      param_number_before_rewritten, ShapeUtil::MakeScalarShape(PRED),
+      "inbound_lhs");
+  auto new_param_1 = HloInstruction::CreateParameter(
+      param_number_before_rewritten + 1, ShapeUtil::MakeScalarShape(PRED),
+      "inbound_rhs");
+  std::vector<const HloInstruction*> extra_parameters{new_param_0.get(),
+                                                      new_param_1.get()};
+  HloComputation* sort_comp = sort->parent()->parent()->AddEmbeddedComputation(
+      sort->called_computations()[0]->CloneWithReplacements(
+          /*replacements=*/absl::flat_hash_map<
+              const HloInstruction*, std::unique_ptr<HloInstruction>>(),
+          extra_parameters));
+  auto inbound_lhs =
+      sort_comp->parameter_instruction(param_number_before_rewritten);
+  auto inbound_rhs =
+      sort_comp->parameter_instruction(param_number_before_rewritten + 1);
+  sort->ReplaceCalledComputations(
+      [&](HloComputation* comp) { return sort_comp; });
+
+  // inbound_lhs & (sort_comp | !in_bound_rhs)
+  // Select the lhs if it is in bounds and the rhs is out of bounds or the
+  // sort_comp returns true.
+  auto out_of_bound_rhs = sort_comp->AddInstruction(HloInstruction::CreateUnary(
+      ShapeUtil::MakeScalarShape(PRED), HloOpcode::kNot, inbound_rhs));
+  auto sort_comp_or_out_of_bound_rhs =
+      sort_comp->AddInstruction(HloInstruction::CreateBinary(
+          ShapeUtil::MakeScalarShape(PRED), HloOpcode::kOr,
+          sort_comp->root_instruction(), out_of_bound_rhs));
+
+  auto new_root = sort_comp->AddInstruction(HloInstruction::CreateBinary(
+      ShapeUtil::MakeScalarShape(PRED), HloOpcode::kAnd, inbound_lhs,
+      sort_comp_or_out_of_bound_rhs));
+  sort_comp->set_root_instruction(new_root);
+  Shape compare_shape =
+      ShapeUtil::ChangeElementType(sort->operand(0)->shape(), PRED);
+  if (sort->shape().IsTuple()) {
+    // For sort that is already tuple, simply add another result to the tuple.
+    *sort->mutable_shape()->add_tuple_shapes() =
+        ShapeUtil::ChangeElementType(operand_shape, PRED);
+  } else {
+    auto sort_users = sort->users();
+    auto sort_clone = comp->AddInstruction(sort->Clone());
+    *sort_clone->mutable_shape() = ShapeUtil::MakeTupleShape(
+        {sort->shape(), ShapeUtil::ChangeElementType(operand_shape, PRED)});
+    auto rewritten_sort = comp->AddInstruction(
+        HloInstruction::CreateGetTupleElement(sort->shape(), sort_clone, 0));
+    for (HloInstruction* user : sort_users) {
+      TF_RETURN_IF_ERROR(sort->ReplaceUseWith(user, rewritten_sort));
+    }
+    TF_RETURN_IF_ERROR(dynamic_dimension_inference->ForwardDynamicSize(
+        sort, rewritten_sort, {}));
+    if (comp->root_instruction() == sort) {
+      comp->set_root_instruction(rewritten_sort);
+    }
+  }
+
+  return true;
+}
+
 StatusOr<bool> RewriteDynamicReshape(
     HloInstruction* reshape,
     DynamicDimensionInference* dynamic_dimension_inference) {
@@ -735,7 +835,6 @@ Status InsertSliceToDynamicBeforeModuleOutputs(
           }
         }
       });
-  int64 dynamic_index = 0;
   if (!dynamic_outputs.empty()) {
     if (root->shape().IsTuple()) {
       std::vector<HloInstruction*> new_root_operands;
@@ -774,18 +873,8 @@ Status InsertSliceToDynamicBeforeModuleOutputs(
             }
           }
           // This is a dynamic output, add slice operation.
-          //
-          // Write the backend config in the format of
-          // 'dynamic_index'-'output_index'.
-          //
-          // dynamic_index indicates the position of this output in all dynamic
-          // outputs.
-          //
-          // output_index indicates the position of this output in all outputs
-          // (including static inputs).
           auto slice = HloInstruction::CreateCustomCall(
-              dynamic_subshape, slice_operands, "SliceToDynamic",
-              absl::StrFormat("%d-%d", dynamic_index++, index[0]));
+              dynamic_subshape, slice_operands, "SliceToDynamic");
           new_root_operands.push_back(
               module->entry_computation()->AddInstruction(std::move(slice)));
         } else {
@@ -920,10 +1009,15 @@ StatusOr<bool> DynamicPadder::Run(HloModule* module) {
                       DynamicDimensionInference::Run(module));
 
   for (HloComputation* computation : module->computations()) {
-    for (HloInstruction* inst : computation->instructions()) {
+    for (HloInstruction* inst : computation->MakeInstructionPostOrder()) {
       if (inst->opcode() == HloOpcode::kConcatenate) {
         TF_ASSIGN_OR_RETURN(
             changed, RewriteDynamicConcat(inst, &dynamic_dimension_inference));
+        continue;
+      }
+      if (inst->opcode() == HloOpcode::kSort) {
+        TF_ASSIGN_OR_RETURN(
+            changed, RewriteDynamicSort(inst, &dynamic_dimension_inference));
         continue;
       }
       for (int64 operand_num = 0; operand_num < inst->operand_count();

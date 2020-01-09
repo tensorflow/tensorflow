@@ -26,9 +26,9 @@ import threading
 import six
 
 from tensorflow.core.protobuf import debug_event_pb2
-from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.lib.io import tf_record
 from tensorflow.python.util import compat
 
 
@@ -61,6 +61,8 @@ class DebugEventsReader(object):
     self._graph_execution_traces_path = compat.as_bytes(
         "%s.graph_execution_traces" % prefix)
     self._readers = dict()  # A map from file path to reader.
+    # A map from file path to current reading offset.
+    self._reader_offsets = dict()
     self._readers_lock = threading.Lock()
 
     self._offsets = dict()
@@ -85,36 +87,32 @@ class DebugEventsReader(object):
     Yields:
       A tuple of (offset, debug_event_proto) on each `next()` call.
     """
+    reader = self._get_reader(file_path)
+    while True:
+      current_offset = self._reader_offsets[file_path]
+      try:
+        record, self._reader_offsets[file_path] = reader.read(current_offset)
+      except (errors.DataLossError, IndexError):
+        # We ignore partial read exceptions, because a record may be truncated.
+        # The PyRandomRecordReader throws an `IndexError` when offset goes out
+        # of bound.
+        break
+      yield DebugEventWithOffset(
+          debug_event=debug_event_pb2.DebugEvent.FromString(record),
+          offset=current_offset)
+
+  def _get_reader(self, file_path):
+    """Get a random-access reader for TFRecords file at file_path."""
+    file_path = compat.as_bytes(file_path)
     # The following code uses the double-checked locking pattern to optimize
     # the common case (where the reader is already initialized).
     if file_path not in self._readers:  # 1st check, without lock.
       with self._readers_lock:
         if file_path not in self._readers:  # 2nd check, with lock.
-          with errors.raise_exception_on_not_ok_status() as status:
-            # TODO(b/136474806): Use tf_record.tf_record_iterator() once it
-            # supports offset.
-            self._readers[file_path] = pywrap_tensorflow.PyRecordReader_New(
-                compat.as_bytes(file_path), 0, b"", status)
-    reader = self._readers[file_path]
-    while True:
-      offset = reader.offset()
-      try:
-        reader.GetNext()
-      except (errors.DataLossError, errors.OutOfRangeError):
-        # We ignore partial read exceptions, because a record may be truncated.
-        # PyRecordReader holds the offset prior to the failed read, so retrying
-        # will succeed.
-        break
-      yield DebugEventWithOffset(
-          debug_event=debug_event_pb2.DebugEvent.FromString(reader.record()),
-          offset=offset)
-
-  def _create_offset_reader(self, file_path, offset):
-    with errors.raise_exception_on_not_ok_status() as status:
-      # TODO(b/136474806): Use tf_record.tf_record_iterator() once it
-      # supports ofset.
-      return pywrap_tensorflow.PyRecordReader_New(
-          file_path, offset, b"", status)
+          self._readers[file_path] = tf_record.tf_record_random_reader(
+              file_path)
+          self._reader_offsets[file_path] = 0
+    return self._readers[file_path]
 
   def metadata_iterator(self):
     return self._generic_iterator(self._metadata_path)
@@ -128,6 +126,11 @@ class DebugEventsReader(object):
   def graphs_iterator(self):
     return self._generic_iterator(self._graphs_path)
 
+  def read_source_files_event(self, offset):
+    """Read a DebugEvent proto at given offset from the .source_files file."""
+    return debug_event_pb2.DebugEvent.FromString(
+        self._get_reader(self._source_files_path).read(offset)[0])
+
   def read_graphs_event(self, offset):
     """Read a DebugEvent proto at a given offset from the .graphs file.
 
@@ -139,15 +142,10 @@ class DebugEventsReader(object):
 
     Raises:
       `errors.DataLossError` if offset is at a wrong location.
-      `errors.OutOfRangeError` if offset is out of range of the file.
+      `IndexError` if offset is out of range of the file.
     """
-    # TODO(cais): After switching to new Python wrapper of tfrecord reader,
-    # use seeking instead of repeated file opening. Same below.
-    reader = self._create_offset_reader(self._graphs_path, offset)
-    reader.GetNext()
-    debug_event = debug_event_pb2.DebugEvent.FromString(reader.record())
-    reader.Close()
-    return debug_event
+    return debug_event_pb2.DebugEvent.FromString(
+        self._get_reader(self._graphs_path).read(offset)[0])
 
   def execution_iterator(self):
     return self._generic_iterator(self._execution_path)
@@ -163,13 +161,10 @@ class DebugEventsReader(object):
 
     Raises:
       `errors.DataLossError` if offset is at a wrong location.
-      `errors.OutOfRangeError` if offset is out of range of the file.
+      `IndexError` if offset is out of range of the file.
     """
-    reader = self._create_offset_reader(self._execution_path, offset)
-    reader.GetNext()
-    debug_event = debug_event_pb2.DebugEvent.FromString(reader.record())
-    reader.Close()
-    return debug_event
+    return debug_event_pb2.DebugEvent.FromString(
+        self._get_reader(self._execution_path).read(offset)[0])
 
   def graph_execution_traces_iterator(self):
     return self._generic_iterator(self._graph_execution_traces_path)
@@ -185,18 +180,17 @@ class DebugEventsReader(object):
 
     Raises:
       `errors.DataLossError` if offset is at a wrong location.
-      `errors.OutOfRangeError` if offset is out of range of the file.
+      `IndexError` if offset is out of range of the file.
     """
-    reader = self._create_offset_reader(
-        self._graph_execution_traces_path, offset)
-    reader.GetNext()
-    debug_event = debug_event_pb2.DebugEvent.FromString(reader.record())
-    reader.Close()
-    return debug_event
+    return debug_event_pb2.DebugEvent.FromString(
+        self._get_reader(self._graph_execution_traces_path).read(offset)[0])
 
   def close(self):
-    for reader in self._readers.values():
-      reader.Close()
+    with self._readers_lock:
+      file_paths = list(self._readers.keys())
+      for file_path in file_paths:
+        self._readers[file_path].close()
+        del self._readers[file_path]
 
 
 class BaseDigest(object):
@@ -638,11 +632,13 @@ class DebugDataReader(object):
 
   def __init__(self, dump_root):
     self._reader = DebugEventsReader(dump_root)
+    self._load_metadata()
+
     # TODO(cais): Implement pagination for memory constraints.
     self._execution_digests = []
 
-    # A list of (host_name, file_path) tuples.
-    self._host_name_file_paths = []
+    # Mapping (host_name, file_path) tuple to offset in the .source_files file.
+    self._host_name_file_path_to_offset = collections.OrderedDict()
     # A dict mapping id to (host_name, file_path, lineno, func) tuple.
     self._stack_frame_by_id = dict()
     # Stores unprocessed stack frame IDs. This is necessary to handle the
@@ -657,23 +653,19 @@ class DebugDataReader(object):
     # TODO(cais): Implement pagination for memory constraints.
     self._graph_execution_trace_digests = []
 
-    # The following timestamps keep track where we've reached in each
-    # file of the DebugEvent source file, so that we don't run into race
-    # conditions with the writer.
-    self._source_files_timestamp = 0
-    # Temporary object used to hold DebugEvent protos with stack_frames
-    # field that has been read beyond max_wall_time.
-    # self._last_successful_stack_frames_offset = -1  # TODO(cais): Fix.
+  def _load_metadata(self):
+    metadata_iter = self._reader.metadata_iterator()
+    debug_event = next(metadata_iter).debug_event
+    self._starting_wall_time = debug_event.wall_time
+    self._tensorflow_version = debug_event.debug_metadata.tensorflow_version
 
-  # TODO(cais): Read metadata.
   def _load_source_files(self):
     """Incrementally read the .source_files DebugEvent file."""
     source_files_iter = self._reader.source_files_iterator()
-    for debug_event, _ in source_files_iter:
+    for debug_event, offset in source_files_iter:
       source_file = debug_event.source_file
-      self._host_name_file_paths.append(
-          (source_file.host_name, source_file.file_path))
-      self._source_file_timestamp = debug_event.wall_time
+      self._host_name_file_path_to_offset[
+          (source_file.host_name, source_file.file_path)] = offset
 
   def _load_stack_frames(self):
     """Incrementally read the .stack_frames file.
@@ -695,12 +687,11 @@ class DebugDataReader(object):
     unprocessed_stack_frame_ids = tuple(self._unprocessed_stack_frames.keys())
     for stack_frame_id in unprocessed_stack_frame_ids:
       file_line_col = self._unprocessed_stack_frames[stack_frame_id]
-      if len(self._host_name_file_paths) > file_line_col.file_index:
+      if len(self._host_name_file_path_to_offset) > file_line_col.file_index:
+        host_name, file_path = list(self._host_name_file_path_to_offset.keys())[
+            file_line_col.file_index]
         self._stack_frame_by_id[stack_frame_id] = (
-            self._host_name_file_paths[file_line_col.file_index][0],
-            self._host_name_file_paths[file_line_col.file_index][1],
-            file_line_col.line,
-            file_line_col.func)
+            host_name, file_path, file_line_col.line, file_line_col.func)
       del self._unprocessed_stack_frames[stack_frame_id]
 
   def _load_graphs(self):
@@ -782,6 +773,38 @@ class DebugDataReader(object):
     self._load_graphs()
     self._load_graph_execution_traces()
     self._load_execution()
+
+  def source_lines(self, host_name, file_path):
+    """Read the line-by-line content of a source file.
+
+    Args:
+      host_name: Host name on which the source file is located.
+      file_path: File path at which the source file is located.
+
+    Returns:
+      Lines of the source file as a `list` of `str`s.
+    """
+    offset = self._host_name_file_path_to_offset[(host_name, file_path)]
+    return list(self._reader.read_source_files_event(offset).source_file.lines)
+
+  def starting_wall_time(self):
+    """Wall timestamp for when the debugged TensorFlow program started.
+
+    Returns:
+      Stating wall time as seconds since the epoch, as a `float`.
+    """
+    return self._starting_wall_time
+
+  def tensorflow_version(self):
+    """TensorFlow version used in the debugged TensorFlow program.
+
+    Note: this is not necessarily the same as the version of TensorFlow used to
+    load the DebugEvent file set.
+
+    Returns:
+      TensorFlow version used by the debugged program, as a `str`.
+    """
+    return self._tensorflow_version
 
   def outermost_graphs(self):
     """Get the number of outer most graphs read so far."""

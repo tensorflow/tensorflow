@@ -50,15 +50,15 @@ std::vector<int64> TensorShapeAsVector(TFE_TensorHandle* handle,
 extern "C" {
 
 TF_CAPI_EXPORT extern TFE_TensorDebugInfo* TFE_TensorHandleTensorDebugInfo(
-    TFE_TensorHandle* handle, TF_Status* status) {
+    TFE_TensorHandle* h, TF_Status* status) {
   const tensorflow::Tensor* tensor;
-  status->status = handle->handle->Tensor(&tensor);
+  status->status = h->handle->Tensor(&tensor);
   if (TF_GetCode(status) != TF_OK) {
     return nullptr;
   }
 
 #ifdef TENSORFLOW_EAGER_USE_XLA
-  tensorflow::Device* device = handle->handle->device();
+  tensorflow::Device* device = h->handle->device();
 
   // If tensor resides on an XLA device, use XLA device's PaddedShapeFn.
   tensorflow::XlaDevice* xla_device =
@@ -72,7 +72,7 @@ TF_CAPI_EXPORT extern TFE_TensorDebugInfo* TFE_TensorHandleTensorDebugInfo(
       return nullptr;
     }
     if (VLOG_IS_ON(3)) {
-      std::vector<int64> shape_to_log = TensorShapeAsVector(handle, status);
+      std::vector<int64> shape_to_log = TensorShapeAsVector(h, status);
       if (!status->status.ok()) {
         // Ignore the status here as we are simply logging.
         status->status = tensorflow::Status::OK();
@@ -138,7 +138,7 @@ TF_CAPI_EXPORT extern TFE_TensorDebugInfo* TFE_TensorHandleTensorDebugInfo(
 
   // If the tensor is not an XLA tensor, the device shape is
   // the same as regular tensor shape.
-  std::vector<int64> dev_dims = TensorShapeAsVector(handle, status);
+  std::vector<int64> dev_dims = TensorShapeAsVector(h, status);
   if (TF_GetCode(status) != TF_OK) {
     return nullptr;
   }
