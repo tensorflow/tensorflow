@@ -2860,6 +2860,106 @@ class ConvertUnsortedSegmentSumOp
   }
 };
 
+class ConvertRandomShuffleOp : public OpRewritePattern<TF::RandomShuffleOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(TF::RandomShuffleOp op,
+                                     PatternRewriter &rewriter) const override {
+    auto input_type = op.value().getType().dyn_cast<RankedTensorType>();
+    if (!input_type) return matchFailure();
+
+    int64_t input_rank = input_type.getRank();
+    int64_t first_dim_size = input_type.getDimSize(0);
+    if (ShapedType::isDynamic(first_dim_size)) return matchFailure();
+
+    // We are shuffling along the first dimension. If its size is <= 1, then
+    // shuffling is a no-op.
+    if (first_dim_size <= 1) {
+      rewriter.replaceOp(op, op.value());
+      return matchSuccess();
+    }
+
+    // For vectors, shuffle values by sorting instead of the obvious
+    // Fisher-Yates algorithm. Fisher-Yates is simple to implement and correct,
+    // but not easily parallelizable. For a sufficiently parallel architecture,
+    // it is faster to sort many times, than Fisher-Yates shuffle once.
+    if (input_rank == 1) {
+      // Shuffle values by assigning each value a random key and sorting the
+      // keys. Keys can collide causing detectable patterns in the shuffled
+      // output. Collisions translates into more ascending sub-sequences in the
+      // shuffled output than would be expected by chance. To avoid collisions,
+      // the number of possible key values must be sufficiently large.
+
+      // How are more than 2^32 keys created? In each loop iteration, the
+      // algorithm sorts by random keys. Conceptually, the earlier iterations
+      // are sorting on the lower-order bits of larger keys that are never
+      // actually assembled.
+
+      // The expected number of collisions is n - d + d(1 - 1/d)^n, where d is
+      // the number of possible keys and n is the number of values. If d = n^2,
+      // then the limit as n goes to infinity is 1/2. If d = n^3, then the limit
+      // as n goes to infinity is zero.
+
+      // This implementation ensures that the key-space is greater than or equal
+      // to the cube of the number of values. The risk of collisions can be
+      // further reduced by increasing Exponent at the expense of
+      // performance.
+
+      // For Exponent = 2, the expected number of collisions per shuffle is
+      // maximized at n = floor((2^32-1)^(1/2)) = 65535 where the expectation is
+      // about 1/2.
+
+      // For Exponent = 3, the expected number of collisions per shuffle is
+      // maximized at n = floor((2^32-1)^(1/3)) = 1625 where the expectation is
+      // about 1/3255.
+
+      // For Exponent = 4, the expected number of collisions per shuffle is
+      // maximized at n = floor((2^32-1)^(1/4)) = 255 where the expectation is
+      // about 1/132622.
+      constexpr int exponent = 3;
+      int64_t num_elements = input_type.getNumElements();
+      uint32_t u32_max = std::numeric_limits<uint32_t>::max();
+      int rounds =
+          std::ceil(exponent * std::log(num_elements) / std::log(u32_max));
+
+      auto i32_type = rewriter.getIntegerType(32);
+      auto key_type = RankedTensorType::get({num_elements}, i32_type);
+      auto shape_tensor = rewriter.create<xla_hlo::ConstOp>(
+          op.getLoc(), GetI64ElementsAttr({num_elements}, &rewriter));
+
+      auto lower_limit = rewriter.create<xla_hlo::ConstOp>(
+          op.getLoc(), rewriter.getI32IntegerAttr(0));
+      // Unfortunately, xla::RngUniform gives values in the half open interval
+      // rather than the closed interval, so instead of 2^32 possible keys there
+      // are only 2^32 - 1 (kuint32max).
+      auto upper_limit = rewriter.create<xla_hlo::ConstOp>(
+          op.getLoc(), rewriter.getI32IntegerAttr(u32_max));
+
+      Value current = op.value();
+      for (int i = 0; i < rounds; ++i) {
+        auto keys = rewriter.create<xla_hlo::RngUniformOp>(
+            op.getLoc(), key_type, lower_limit, upper_limit, shape_tensor);
+        auto sorted = rewriter.create<xla_hlo::SortOp>(
+            op.getLoc(), llvm::ArrayRef<Value>{keys, current});
+        BuildSortComparisonBody({i32_type, input_type.getElementType()},
+                                /*direction=*/"LT", &sorted.comparator(),
+                                &rewriter);
+        current = rewriter.create<GetTupleElementOp>(op.getLoc(),
+                                                     sorted.getResult(), 1);
+      }
+      rewriter.replaceOp(op, current);
+      return matchSuccess();
+    }
+
+    // The Fisher-Yates algorithm.
+
+    // TODO(b/147215441): implement this.
+
+    return matchFailure();
+  }
+};
+
 #include "tensorflow/compiler/mlir/xla/transforms/generated_legalize_tf.inc"
 
 LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
@@ -2887,8 +2987,8 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
       ConvertStridedSliceOp, ConvertStridedSliceGradOp, ConvertSumOp,
       ConvertTensorScatterUpdateOp, ConvertTileOp, ConvertTopKV2Op,
       ConvertUnpackOp, ConvertUnsortedSegmentMaxOp, ConvertUnsortedSegmentMinOp,
-      ConvertUnsortedSegmentProdOp, ConvertUnsortedSegmentSumOp>(
-      op->getContext());
+      ConvertUnsortedSegmentProdOp, ConvertUnsortedSegmentSumOp,
+      ConvertRandomShuffleOp>(op->getContext());
 
   ConversionTarget target(*context);
   target.addLegalDialect<XlaHloDialect>();

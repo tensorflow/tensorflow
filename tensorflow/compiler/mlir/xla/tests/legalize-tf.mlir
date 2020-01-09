@@ -2879,3 +2879,44 @@ func @tensor_scatter_update(%tensor: tensor<?x?x?xf32>, %indices: tensor<?x2xi32
   %0 = "tf.TensorScatterUpdate"(%tensor, %indices, %updates) : (tensor<?x?x?xf32>, tensor<?x2xi32>, tensor<?x?xf32>) -> tensor<?x?x?xf32>
   return %0 : tensor<?x?x?xf32>
 }
+
+//===----------------------------------------------------------------------===//
+// tf.RandomShuffle legalization
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: @random_shuffle_first_dim_1
+// CHECK-SAME: [[INPUT:%.*]]: tensor<1x?xf32>
+func @random_shuffle_first_dim_1(%input: tensor<1x?xf32>) -> tensor<1x?xf32> {
+  %0 = "tf.RandomShuffle"(%input) : (tensor<1x?xf32>) -> (tensor<1x?xf32>)
+  // CHECK-NEXT: return [[INPUT]]
+  return %0: tensor<1x?xf32>
+}
+
+// CHECK-LABEL: @random_shuffle_1D_16
+// CHECK-SAME: [[INPUT:%.*]]: tensor<16xf32>
+func @random_shuffle_1D_16(%input: tensor<16xf32>) -> tensor<16xf32> {
+  // CHECK: [[SHAPE:%.*]] = xla_hlo.constant dense<16> : tensor<1xi64>
+  // CHECK: [[LOWER:%.*]] = xla_hlo.constant dense<0> : tensor<i32>
+  // CHECK: [[UPPER:%.*]] = xla_hlo.constant dense<-1> : tensor<i32>
+  // CHECK: [[RNG:%.*]] = "xla_hlo.rng_uniform"([[LOWER]], [[UPPER]], [[SHAPE]])
+  // CHECK: [[SORT:%.*]] = "xla_hlo.sort"([[RNG]], [[INPUT]]) ( {
+  // CHECK: ^{{.*}}([[ARG1:%.*]]: tensor<i32>, [[ARG2:%.*]]: tensor<i32>, {{.*}}: tensor<f32>, {{.*}}: tensor<f32>):
+  // CHECK:   "xla_hlo.compare"([[ARG1]], [[ARG2]]) {comparison_direction = "LT"}
+  // CHECK: }) {dimension = -1 : i64, is_stable = true} : (tensor<16xi32>, tensor<16xf32>) -> tuple<tensor<16xi32>, tensor<16xf32>>
+  // CHECK: [[RES:%.*]] = "xla_hlo.get_tuple_element"([[SORT]]) {index = 1 : i32}
+  // CHECK: return [[RES]]
+  %0 = "tf.RandomShuffle"(%input) : (tensor<16xf32>) -> (tensor<16xf32>)
+  return %0: tensor<16xf32>
+}
+
+// CHECK-LABEL: @random_shuffle_1D_10240
+func @random_shuffle_1D_10240(%input: tensor<10240xf32>) -> tensor<10240xf32> {
+  // CHECK: xla_hlo.rng_uniform
+  // CHECK: xla_hlo.sort
+  // CHECK: xla_hlo.get_tuple_element
+  // CHECK: xla_hlo.rng_uniform
+  // CHECK: xla_hlo.sort
+  // CHECK: xla_hlo.get_tuple_element
+  %0 = "tf.RandomShuffle"(%input) : (tensor<10240xf32>) -> (tensor<10240xf32>)
+  return %0: tensor<10240xf32>
+}

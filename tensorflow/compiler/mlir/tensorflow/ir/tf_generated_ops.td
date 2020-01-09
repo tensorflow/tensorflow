@@ -4338,6 +4338,35 @@ the dimension is padded with zeros.
   TF_DerivedResultTypeAttr Tcomplex = TF_DerivedResultTypeAttr<0>;
 }
 
+def TF_RandomShuffleOp : TF_Op<"RandomShuffle", [SameOperandsAndResultType]> {
+  let summary = "Randomly shuffles a tensor along its first dimension.";
+
+  let description = [{
+The tensor is shuffled along dimension 0, such that each `value[j]` is mapped
+  to one and only one `output[i]`. For example, a mapping that might occur for a
+  3x2 tensor is:
+
+```
+[[1, 2],       [[5, 6],
+ [3, 4],  ==>   [1, 2],
+ [5, 6]]        [3, 4]]
+```
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$value,
+
+    DefaultValuedAttr<I64Attr, "0">:$seed,
+    DefaultValuedAttr<I64Attr, "0">:$seed2
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_RandomUniformOp : TF_Op<"RandomUniform", []> {
   let summary = "Outputs random values from a uniform distribution.";
 

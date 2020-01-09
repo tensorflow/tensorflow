@@ -1088,7 +1088,7 @@ def HLO_SortOp : HLO_Op<"sort", [NoSideEffect]>, BASE_HLO_SortOp {
 
   let builders = [OpBuilder<
     "Builder *builder, OperationState &state, ValueRange operands, "
-    "int64_t dimension, bool is_stable"
+    "int64_t dimension = -1, bool is_stable = false"
   >];
 
   // TODO(b/129422361): SortOp has special conversion logic to HLO.
