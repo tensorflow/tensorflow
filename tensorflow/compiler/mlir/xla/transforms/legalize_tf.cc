@@ -997,11 +997,11 @@ static DenseIntElementsAttr GetReduceWindowPadding(
   int64_t rank = paddings.size();
   llvm::SmallVector<int64_t, 8> flatten_paddings(rank * 2);
   for (int i = 0; i < rank; i++) {
-    flatten_paddings[i] = paddings[i].first;
-    flatten_paddings[rank + i] = paddings[i].second;
+    flatten_paddings[2 * i] = paddings[i].first;
+    flatten_paddings[2 * i + 1] = paddings[i].second;
   }
   return DenseIntElementsAttr::get(
-      RankedTensorType::get({2, rank}, builder->getIntegerType(64)),
+      RankedTensorType::get({rank, 2}, builder->getIntegerType(64)),
       flatten_paddings);
 }
 
