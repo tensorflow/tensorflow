@@ -660,7 +660,7 @@ def HLO_SliceOp: HLO_Op<
 
 def HLO_DynamicSliceOp: HLO_Op<"dynamic-slice",
       [NoSideEffect, AllElementTypesMatch<["operand", "result"]>,
-       AllTypesMatch<["start_indices", "slice_sizes"]>]> {
+       AllShapesMatch<["start_indices", "slice_sizes"]>]> {
   let arguments = (ins
     HLO_Tensor:$operand,
     HLO_Tensor:$start_indices,

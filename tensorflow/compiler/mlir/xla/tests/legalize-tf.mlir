@@ -2920,3 +2920,52 @@ func @random_shuffle_1D_10240(%input: tensor<10240xf32>) -> tensor<10240xf32> {
   %0 = "tf.RandomShuffle"(%input) : (tensor<10240xf32>) -> (tensor<10240xf32>)
   return %0: tensor<10240xf32>
 }
+
+// CHECK-LABEL: @random_shuffle_3D
+// CHECK-SAME: [[INPUT:%.*]]: tensor<4x?x16xf32>
+func @random_shuffle_3D(%input: tensor<4x?x16xf32>) -> tensor<4x?x16xf32> {
+  // CHECK: [[INDICES:%.*]] = "xla_hlo.iota"() {iota_dimension = 4 : i64} : () -> tensor<4xi32>
+
+  // CHECK: [[RNG_SHAPE:%.*]] = xla_hlo.constant dense<4> : tensor<1xi64>
+  // CHECK: [[RNG_LOWER:%.*]] = xla_hlo.constant dense<0> : tensor<i32>
+  // CHECK: [[RNG_UPPER:%.*]] = xla_hlo.constant dense<4> : tensor<i32>
+  // CHECK: [[SWAPS:%.*]] = "xla_hlo.rng_uniform"([[RNG_LOWER]], [[RNG_UPPER]], [[RNG_SHAPE]])
+
+  // CHECK: [[IV_INIT:%.*]] = xla_hlo.constant dense<0> : tensor<i32>
+  // CHECK: [[WHILE_INIT:%.*]] = "xla_hlo.tuple"([[IV_INIT]], [[SWAPS]], [[INDICES]])
+
+  // CHECK: [[WHILE_OUT:%.*]] = "xla_hlo.while"([[WHILE_INIT]]) ( {
+  // CHECK: ^{{.*}}([[COND_ARG:%.*]]: tuple<tensor<i32>, tensor<4xi32>, tensor<4xi32>>):
+  // CHECK:   [[IV:%.*]] = "xla_hlo.get_tuple_element"([[COND_ARG]]) {index = 0 : i32}
+  // CHECK:   [[LIMIT:%.*]] = xla_hlo.constant dense<4> : tensor<i32>
+  // CHECK:   [[CMP:%.*]] = "xla_hlo.compare"([[IV]], [[LIMIT]]) {comparison_direction = "LT"}
+  // CHECK:   "xla_hlo.return"([[CMP]])
+  // CHECK: },  {
+  // CHECK: ^{{.*}}([[BODY_ARG:%.*]]: tuple<tensor<i32>, tensor<4xi32>, tensor<4xi32>>):
+  // CHECK:   [[IV:%.*]] = "xla_hlo.get_tuple_element"([[BODY_ARG]]) {index = 0 : i32}
+  // CHECK:   [[SWAPS:%.*]] = "xla_hlo.get_tuple_element"([[BODY_ARG]]) {index = 1 : i32}
+  // CHECK:   [[INDICES:%.*]] = "xla_hlo.get_tuple_element"([[BODY_ARG]]) {index = 2 : i32}
+  // CHECK:   [[SRC_IDX:%.*]] = "xla_hlo.dynamic-slice"([[INDICES]], [[IV]]) {slice_sizes = dense<1> : tensor<i64>} : (tensor<4xi32>, tensor<i32>) -> tensor<1xi32>
+  // CHECK:   [[SWP_IDX:%.*]] = "xla_hlo.dynamic-slice"([[SWAPS]], [[IV]]) {slice_sizes = dense<1> : tensor<i64>} : (tensor<4xi32>, tensor<i32>) -> tensor<1xi32>
+  // CHECK:   [[SWP:%.*]] = "xla_hlo.reshape"([[SWP_IDX]]) : (tensor<1xi32>) -> tensor<i32>
+  // CHECK:   [[TGT_IDX:%.*]] = "xla_hlo.dynamic-slice"([[INDICES]], [[SWP]]) {slice_sizes = dense<1> : tensor<i64>}
+  // CHECK:   [[INDICES1:%.*]] = "xla_hlo.dynamic-update-slice"([[INDICES]], [[TGT_IDX]], [[IV]]) : (tensor<4xi32>, tensor<1xi32>, tensor<i32>) -> tensor<4xi32>
+  // CHECK:   [[INDICES2:%.*]] = "xla_hlo.dynamic-update-slice"([[INDICES1]], [[SRC_IDX]], [[SWP]]) : (tensor<4xi32>, tensor<1xi32>, tensor<i32>) -> tensor<4xi32>
+  // CHECK:   [[ONE:%.*]] = xla_hlo.constant dense<1> : tensor<i32>
+  // CHECK:   [[NEW_IV:%.*]] = xla_hlo.add [[IV]], [[ONE]]
+  // CHECK:   [[NEW_TUPLE:%.*]] = "xla_hlo.tuple"([[NEW_IV]], [[SWAPS]], [[INDICES2]])
+  // CHECK:   "xla_hlo.return"([[NEW_TUPLE]])
+  // CHECK: }) : (tuple<tensor<i32>, tensor<4xi32>, tensor<4xi32>>) -> tuple<tensor<i32>, tensor<4xi32>, tensor<4xi32>>
+
+  // CHECK: [[SWAPED_INDICES:%.*]] = "xla_hlo.get_tuple_element"([[WHILE_OUT]]) {index = 2 : i32} : (tuple<tensor<i32>, tensor<4xi32>, tensor<4xi32>>) -> tensor<4xi32>
+  // CHECK: [[GATHER:%.*]] = "xla_hlo.gather"([[INPUT]], [[SWAPED_INDICES]])
+	// CHECK-SAME: dimension_numbers = {collapsed_slice_dims = dense<0> : tensor<1xi64>, index_vector_dim = 1 : i64, offset_dims = dense<[1, 2, 3]> : tensor<3xi64>, start_index_map = dense<0> : tensor<1xi64>}
+	// CHECK-SAME: indices_are_sorted = false
+	// CHECK-SAME: slice_sizes = dense<[1, -1, 16]> : tensor<3xi64>
+	// CHECK: (tensor<4x?x16xf32>, tensor<4xi32>) -> tensor<4x?x16xf32>
+
+  // CHECK: return [[GATHER]]
+
+  %0 = "tf.RandomShuffle"(%input) : (tensor<4x?x16xf32>) -> (tensor<4x?x16xf32>)
+  return %0: tensor<4x?x16xf32>
+}

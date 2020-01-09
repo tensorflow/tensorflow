@@ -460,8 +460,16 @@ func @dynamic_slice(%arg0: tensor<3x4xi32>, %arg1: tensor<2xi64>) -> tensor<1x4x
 // -----
 
 func @dynamic_slice_mismatch_indices(%arg0: tensor<3x4xi32>, %arg1: tensor<2xi64>) -> tensor<1x4xi32> {
-  // expected-error@+1 {{failed to verify that all of {start_indices, slice_sizes} have same type}}
+  // expected-error@+1 {{failed to verify that all of {start_indices, slice_sizes} have same shape}}
   %0 = "xla_hlo.dynamic-slice"(%arg0, %arg1) {slice_sizes = dense<[4]> : tensor<1xi64>} : (tensor<3x4xi32>, tensor<2xi64>) -> tensor<1x4xi32>
+  return %0 : tensor<1x4xi32>
+}
+
+// -----
+
+// CHECK-LABEL: @dynamic_slice_different_indice_element_type
+func @dynamic_slice_different_indice_element_type(%arg0: tensor<3x4xi32>, %arg1: tensor<1xi32>) -> tensor<1x4xi32> {
+  %0 = "xla_hlo.dynamic-slice"(%arg0, %arg1) {slice_sizes = dense<[4]> : tensor<1xi64>} : (tensor<3x4xi32>, tensor<1xi32>) -> tensor<1x4xi32>
   return %0 : tensor<1x4xi32>
 }
 
