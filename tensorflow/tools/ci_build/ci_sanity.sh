@@ -461,7 +461,9 @@ do_bazel_deps_query() {
   # default in TF WORKSPACE file.
   local BUILD_TARGET="${BUILD_TARGET}"' - kind("android_*", //tensorflow/...)'
 
-  bazel query ${BAZEL_FLAGS} -- "deps($BUILD_TARGET)" > /dev/null
+  # We've set the flag noimplicit_deps as a workaround for
+  # https://github.com/bazelbuild/bazel/issues/10544
+  bazel query ${BAZEL_FLAGS} --noimplicit_deps -- "deps($BUILD_TARGET)" > /dev/null
 
   cmd_status \
     "This is due to invalid BUILD files."
