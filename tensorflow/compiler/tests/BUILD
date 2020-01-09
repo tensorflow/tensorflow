@@ -240,7 +240,10 @@ tf_xla_py_test(
     size = "medium",
     srcs = ["cholesky_op_test.py"],
     python_version = "PY3",
-    tags = ["optonly", "no_rocm"],
+    tags = [
+        "no_rocm",
+        "optonly",
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -297,7 +300,10 @@ tf_xla_py_test(
         "cpu_ondemand",
     ],
     python_version = "PY3",
-    tags = ["optonly", "no_rocm"],
+    tags = [
+        "no_rocm",
+        "optonly",
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -352,9 +358,7 @@ tf_xla_py_test(
     timeout = "moderate",
     srcs = ["matrix_triangular_solve_op_test.py"],
     python_version = "PY3",
-    tags = [
-        "optonly",
-    ],
+    tags = ["optonly"],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -448,7 +452,6 @@ tf_xla_py_test(
         "nomsan",
         "notsan",
         "optonly",  # Times out frequently in fastbuild mode.
-        "no_rocm",
     ],
     deps = [
         ":xla_test",
@@ -574,7 +577,10 @@ tf_xla_py_test(
     srcs = ["fft_test.py"],
     python_version = "PY3",
     shard_count = 6,
-    tags = ["optonly", "no_rocm"],
+    tags = [
+        "no_rocm",
+        "optonly",
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -1075,9 +1081,7 @@ tf_xla_py_test(
     # TensorArray ops are not implemented in the on-demand compilation model yet.
     disabled_backends = ["cpu_ondemand"],
     python_version = "PY3",
-    tags = [
-        "config-cuda-only",
-    ],
+    tags = ["config-cuda-only"],
     use_xla_device = False,
     deps = [
         ":xla_test",

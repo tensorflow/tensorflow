@@ -112,7 +112,6 @@ void RngSkip_Philox<GPUDevice>::operator()(const GPUDevice& d, int64 delta,
 
 // clang-format off
 // NVCC cannot handle ">>" properly
-
 template struct UpdateVariableAndFill_Philox<
     GPUDevice, random::NormalDistribution<random::PhiloxRandom, Eigen::half> >;
 template struct UpdateVariableAndFill_Philox<

@@ -888,6 +888,7 @@ py_test(
     srcs = ["wrappers/framework_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
+    tags = ["no_rocm"],
     deps = [
         ":debug_data",
         ":framework",
@@ -904,10 +905,6 @@ py_test(
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
-    ],
-    tags = [
-        "no_cuda",
-        "no_rocm",
     ],
 )
 
@@ -1112,6 +1109,7 @@ py_test(
     srcs = ["cli/debugger_cli_common_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
+    tags = ["no_rocm"],
     deps = [
         ":debugger_cli_common",
         "//tensorflow/python:framework_test_lib",

@@ -109,10 +109,9 @@ tf_py_test(
     name = "feature_column_test",
     srcs = ["feature_column_test.py"],
     tags = [
-        "no_rocm",
-        "no_cuda",
         "no_cuda_on_cpu_tap",
         "no_pip",
+        "no_rocm",
         "no_windows",
     ],
     deps = [
@@ -163,10 +162,9 @@ tf_py_test(
     srcs = ["feature_column_v2_test.py"],
     shard_count = 5,
     tags = [
-        "no_rocm",
-        "no_cuda",
         "no_cuda_on_cpu_tap",
         "no_pip",
+        "no_rocm",
         "no_windows",
     ],
     deps = [":feature_column_v2_test_main_lib"],

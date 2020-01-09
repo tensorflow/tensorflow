@@ -85,7 +85,6 @@ class CSRSparseMatrixGradTest(test.TestCase):
       return
 
     if test.is_built_with_rocm():
-      # sparse-matrix-add op is not yet supported on the ROCm platform
       self.skipTest("sparse-matrix-add op not supported on ROCm")
 
     sparsify = lambda m: m * (m > 0)
