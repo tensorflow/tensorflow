@@ -233,43 +233,4 @@ TfLiteTensor* MicroInterpreter::tensor(size_t index) {
   return &context_.tensors[index];
 }
 
-struct pairTfLiteNodeAndRegistration MicroInterpreter::node_and_registration(
-    int node_index) {
-  TfLiteStatus status = kTfLiteOk;
-  struct pairTfLiteNodeAndRegistration tfNodeRegiPair;
-  auto opcodes = model_->operator_codes();
-  {
-    const auto* op = operators_->Get(node_index);
-    size_t index = op->opcode_index();
-    if (index < 0 || index >= opcodes->size()) {
-      error_reporter_->Report("Missing registration for opcode_index %d\n",
-                              index);
-    }
-    auto opcode = (*opcodes)[index];
-    const TfLiteRegistration* registration = nullptr;
-    status = GetRegistrationFromOpCode(opcode, op_resolver_, error_reporter_,
-                                       &registration);
-    if (status != kTfLiteOk) {
-      error_reporter_->Report("Missing registration for opcode_index %d\n",
-                              index);
-    }
-    if (registration == nullptr) {
-      error_reporter_->Report("Skipping op for opcode_index %d\n", index);
-    }
-
-    // Disregard const qualifier to workaround with existing API.
-    TfLiteIntArray* inputs_array = const_cast<TfLiteIntArray*>(
-        reinterpret_cast<const TfLiteIntArray*>(op->inputs()));
-    TfLiteIntArray* outputs_array = const_cast<TfLiteIntArray*>(
-        reinterpret_cast<const TfLiteIntArray*>(op->outputs()));
-
-    TfLiteNode node;
-    node.inputs = inputs_array;
-    node.outputs = outputs_array;
-    tfNodeRegiPair.node = node;
-    tfNodeRegiPair.registration = registration;
-  }
-  return tfNodeRegiPair;
-}
-
 }  // namespace tflite
