@@ -337,6 +337,7 @@ class PyLocalExecutable {
   void Delete() { executable_ = nullptr; }
 
   LocalExecutable* executable() const { return executable_.get(); }
+  const string& name() const;
 
  private:
   StatusOr<std::unique_ptr<PyLocalBuffer>> ExecuteHelper(

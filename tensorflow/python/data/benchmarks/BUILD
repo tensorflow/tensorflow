@@ -56,6 +56,7 @@ tf_py_test(
     srcs = ["from_tensor_slices_benchmark.py"],
     deps = [
         ":benchmark_base",
+        "//tensorflow/python/data/experimental/ops:get_single_element",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
     ],

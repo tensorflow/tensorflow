@@ -775,6 +775,8 @@ tf_xla_py_test(
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:control_flow_util",
+        # TODO(b/145618471): Remove this transitive dependency.
+        "//tensorflow/python/distribute:input_lib",
         "//tensorflow/python:framework_ops",
     ],
 )

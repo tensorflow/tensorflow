@@ -154,7 +154,7 @@ Flag CreateFlag(const char* name, BenchmarkParams* params,
                 const std::string& usage) {
   return Flag(
       name, [params, name](const T& val) { params->Set<T>(name, val); },
-      params->Get<T>(name), usage);
+      params->Get<T>(name), usage, Flag::OPTIONAL);
 }
 
 // Benchmarks a model.

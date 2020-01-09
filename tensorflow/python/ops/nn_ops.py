@@ -3299,7 +3299,7 @@ def softmax_cross_entropy_with_logits_v2_helper(
 
     # Do the actual op computation.
     # The second output tensor contains the gradients.  We use it in
-    # _CrossEntropyGrad() in nn_grad but not here.
+    # CrossEntropyGrad() in nn_grad but not here.
     cost, unused_backprop = gen_nn_ops.softmax_cross_entropy_with_logits(
         precise_logits, labels, name=name)
 

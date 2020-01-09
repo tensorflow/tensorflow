@@ -86,6 +86,7 @@ class RandomDatasetOp::Dataset : public DatasetBase {
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
+      out_tensors->reserve(1);
       mutex_lock l(mu_);
       out_tensors->emplace_back(ctx->allocator({}), DT_INT64, TensorShape({}));
       out_tensors->back().scalar<int64>()() = Random();

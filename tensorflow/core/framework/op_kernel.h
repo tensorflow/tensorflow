@@ -169,7 +169,9 @@ class OpKernel {
   // Accessors.
   const NodeDef& def() const { return *def_; }
   const string& name() const;              // Same as def().name()
+  absl::string_view name_view() const { return name_view_; }
   const string& type_string() const;       // Same as def().op()
+  absl::string_view type_string_view() const { return type_string_view_; }
   const string& requested_device() const;  // Same as def().device()
 
   int num_inputs() const { return input_types_.size(); }
@@ -228,6 +230,8 @@ class OpKernel {
   const MemoryTypeVector output_memory_types_;
   NameRangeMap input_name_map_;
   NameRangeMap output_name_map_;
+  const absl::string_view name_view_;
+  const absl::string_view type_string_view_;
   const int graph_def_version_;
   const bool is_deferred_;
   bool expensive_;
@@ -258,10 +262,10 @@ class AsyncOpKernel : public OpKernel {
   typedef std::function<void()> DoneCallback;
   virtual void ComputeAsync(OpKernelContext* context, DoneCallback done) = 0;
 
-  AsyncOpKernel* AsAsync() final { return this; }
-  const AsyncOpKernel* AsAsync() const final { return this; }
+  AsyncOpKernel* AsAsync() override { return this; }
+  const AsyncOpKernel* AsAsync() const override { return this; }
 
-  void Compute(OpKernelContext* context) final;
+  void Compute(OpKernelContext* context) override;
 };
 
 // Wraps a tensor that is held by an Op across calls to Compute(). For memory

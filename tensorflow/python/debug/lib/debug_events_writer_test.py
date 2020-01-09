@@ -21,12 +21,14 @@ from __future__ import print_function
 import glob
 import os
 import threading
+import time
 
 from tensorflow.core.protobuf import debug_event_pb2
 from tensorflow.python.debug.lib import debug_events_reader
 from tensorflow.python.debug.lib import debug_events_writer
 from tensorflow.python.debug.lib import dumping_callback_test_lib
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import versions
 from tensorflow.python.platform import googletest
 
 
@@ -192,6 +194,15 @@ class DebugEventsWriterTest(dumping_callback_test_lib.DumpingCallbackTestBase):
     graph_op_names = sorted([actual.op_name for actual in actuals])
     self.assertEqual(graph_op_names, ["Op0", "Op1", "Op2"])
 
+  def testWriteAndReadMetadata(self):
+    t0 = time.time()
+    writer = debug_events_writer.DebugEventsWriter(self.dump_root)
+    writer.Close()
+    with debug_events_reader.DebugDataReader(self.dump_root) as reader:
+      self.assertIsInstance(reader.starting_wall_time(), float)
+      self.assertGreaterEqual(reader.starting_wall_time(), t0)
+      self.assertEqual(reader.tensorflow_version(), versions.__version__)
+
   def testWriteExecutionEventsWithCircularBuffer(self):
     writer = debug_events_writer.DebugEventsWriter(self.dump_root)
     num_execution_events = debug_events_writer.DEFAULT_CIRCULAR_BUFFER_SIZE * 2
@@ -200,17 +211,19 @@ class DebugEventsWriterTest(dumping_callback_test_lib.DumpingCallbackTestBase):
       execution.op_type = "OpType%d" % i
       writer.WriteExecution(execution)
 
-    # Before FlushExecutionFiles() is called. No data should have been written
-    # to the file.
-    executed_op_types, _, _, _, _, _ = self._readAndCheckExecutionFile()
-    self.assertFalse(executed_op_types)
+    with debug_events_reader.DebugDataReader(self.dump_root) as reader:
+      # Before FlushExecutionFiles() is called. No data should have been written
+      # to the file.
+      reader.update()
+      self.assertFalse(reader.executions())
 
-    writer.FlushExecutionFiles()
-    executed_op_types, _, _, _, _, _ = self._readAndCheckExecutionFile()
-    for i, executed_op_type in enumerate(executed_op_types):
-      self.assertEqual(
-          executed_op_type,
-          "OpType%d" % (i + debug_events_writer.DEFAULT_CIRCULAR_BUFFER_SIZE))
+      writer.FlushExecutionFiles()
+      reader.update()
+      executions = reader.executions()
+      for i, execution in enumerate(executions):
+        self.assertEqual(
+            execution.op_type,
+            "OpType%d" % (i + debug_events_writer.DEFAULT_CIRCULAR_BUFFER_SIZE))
 
   def testWriteExecutionEventsWithoutCircularBufferBehavior(self):
     # A circular buffer size of 0 abolishes the circular buffer behavior.
@@ -222,10 +235,12 @@ class DebugEventsWriterTest(dumping_callback_test_lib.DumpingCallbackTestBase):
       writer.WriteExecution(execution)
     writer.FlushExecutionFiles()
 
-    executed_op_types, _, _, _, _, _ = self._readAndCheckExecutionFile()
-    self.assertLen(executed_op_types, num_execution_events)
-    for i, executed_op_type in enumerate(executed_op_types):
-      self.assertEqual(executed_op_type, "OpType%d" % i)
+    with debug_events_reader.DebugDataReader(self.dump_root) as reader:
+      reader.update()
+      executions = reader.executions()
+      self.assertLen(executions, num_execution_events)
+      for i, execution in enumerate(executions):
+        self.assertEqual(execution.op_type, "OpType%d" % i)
 
   def testWriteGraphExecutionTraceEventsWithCircularBuffer(self):
     writer = debug_events_writer.DebugEventsWriter(self.dump_root)
@@ -271,6 +286,9 @@ class DebugEventsWriterTest(dumping_callback_test_lib.DumpingCallbackTestBase):
     circular_buffer_size = 5
     writer = debug_events_writer.DebugEventsWriter(self.dump_root,
                                                    circular_buffer_size)
+    debugged_graph = debug_event_pb2.DebuggedGraph(graph_id="graph1",
+                                                   graph_name="graph1")
+    writer.WriteDebuggedGraph(debugged_graph)
 
     execution_state = {"counter": 0, "lock": threading.Lock()}
 
@@ -284,10 +302,14 @@ class DebugEventsWriterTest(dumping_callback_test_lib.DumpingCallbackTestBase):
     graph_execution_trace_state = {"counter": 0, "lock": threading.Lock()}
 
     def WriteGraphExecutionTrace():
-      trace = debug_event_pb2.GraphExecutionTrace()
       with graph_execution_trace_state["lock"]:
-        trace.op_name = "Op%d" % graph_execution_trace_state["counter"]
+        op_name = "Op%d" % graph_execution_trace_state["counter"]
+        graph_op_creation = debug_event_pb2.GraphOpCreation(
+            op_type="FooOp", op_name=op_name, graph_id="graph1")
+        trace = debug_event_pb2.GraphExecutionTrace(
+            op_name=op_name, tfdbg_context_id="graph1")
         graph_execution_trace_state["counter"] += 1
+      writer.WriteGraphOpCreation(graph_op_creation)
       writer.WriteGraphExecutionTrace(trace)
 
     threads = []
@@ -301,18 +323,19 @@ class DebugEventsWriterTest(dumping_callback_test_lib.DumpingCallbackTestBase):
       threads.append(thread)
     for thread in threads:
       thread.join()
+    writer.FlushNonExecutionFiles()
     writer.FlushExecutionFiles()
 
-    # Verify the content of the .execution file.
-    executed_op_types, _, _, _, _, _ = self._readAndCheckExecutionFile()
-    self.assertLen(executed_op_types, circular_buffer_size)
-    self.assertLen(executed_op_types, len(set(executed_op_types)))
+    with debug_events_reader.DebugDataReader(self.dump_root) as reader:
+      reader.update()
+      # Verify the content of the .execution file.
+      executions = reader.executions()
+      executed_op_types = [execution.op_type for execution in executions]
+      self.assertLen(executed_op_types, circular_buffer_size)
+      self.assertLen(executed_op_types, len(set(executed_op_types)))
 
-    # Verify the content of the .execution file.
-    with debug_events_reader.DebugEventsReader(self.dump_root) as reader:
-      actuals = list(item.debug_event.graph_execution_trace
-                     for item in reader.graph_execution_traces_iterator())
-      op_names = sorted([actual.op_name for actual in actuals])
+      # Verify the content of the .graph_execution_traces file.
+      op_names = [trace.op_name for trace in reader.graph_execution_traces()]
       self.assertLen(op_names, circular_buffer_size)
       self.assertLen(op_names, len(set(op_names)))
 

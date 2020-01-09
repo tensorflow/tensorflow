@@ -66,6 +66,7 @@ import numpy as np
 from tensorflow.python.autograph.operators import py_builtins
 from tensorflow.python.autograph.operators import special_values
 from tensorflow.python.autograph.utils import ag_logging
+from tensorflow.python.autograph.utils import compat_util
 from tensorflow.python.autograph.utils import misc
 from tensorflow.python.autograph.utils import tensors
 from tensorflow.python.data.experimental.ops import scan_ops
@@ -82,8 +83,15 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.util import lazy_loader
 from tensorflow.python.util import nest
 
+
+# TODO(b/145618471): Remove this dependency.
+# Lazy import to work around circular dependencies
+input_lib = lazy_loader.LazyLoader(
+    'input_lib', globals(),
+    'tensorflow.python.distribute.input_lib')
 
 LIMIT_PYTHON_ITERATIONS = True
 PYTHON_MAX_ITERATIONS = 100000000  # Fails in about one minute for empty loops.
@@ -341,6 +349,11 @@ def for_stmt(iter_,
     return _tf_ragged_for_stmt(iter_, extra_test, body, get_state, set_state,
                                init_vars, basic_symbol_names,
                                composite_symbol_names, opts)
+
+  if isinstance(iter_, input_lib.DistributedIterator):
+    raise NotImplementedError(
+        'distributed iterators not supported yet, use the distributed dataset'
+        ' directly')
 
   # Note: This experimental interface is subject to change.
   custom_handler = getattr(iter_, '_autograph_for_loop', None)
@@ -1121,3 +1134,6 @@ def _wrap_disallow_undefs_from_cond(func, branch_name):
 def _py_if_stmt(cond, body, orelse):
   """Overload of if_stmt that executes a Python if statement."""
   return body() if cond else orelse()
+
+
+compat_util.deprecated_py2_support(__name__)

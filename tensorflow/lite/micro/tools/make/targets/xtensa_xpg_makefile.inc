@@ -1,19 +1,22 @@
 # Settings for Xtensa XPG toolchain.
 # REQUIRED:
+#   - RI2019.2 Toolkit (for xt-clang/xt-clang++).
 #   - XTENSA_CORE: The name of the core to use, will cause a compiler exception
 #                  without providing a core.
 ifeq ($(TARGET), xtensa-xpg)
   TARGET_ARCH := xtensa-xpg
 
   PLATFORM_ARGS = \
+    -DTF_LITE_STATIC_MEMORY \
+    -DNDEBUG \
+    -DTF_LITE_MCU_DEBUG_LOG \
     --xtensa-core=$(XTENSA_CORE) \
     -g -O2 \
-    -fmessage-length=0 \
-    -clang
+    -fmessage-length=0
 
   TARGET_TOOLCHAIN_PREFIX := xt-
-  CXX_TOOL := xc++
-  CC_TOOL := xcc
+  CXX_TOOL := clang++
+  CC_TOOL := clang
 
   CXXFLAGS = $(PLATFORM_ARGS) -std=c++11
   CCFLAGS = $(PLATFORM_ARGS) -std=c11

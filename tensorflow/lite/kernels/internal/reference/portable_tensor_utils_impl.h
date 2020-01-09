@@ -32,9 +32,15 @@ namespace tensor_utils {
 // Limit a float input f between +abs_limit and -abs_limit.
 float PortableClip(float f, float abs_limit);
 
-bool PortableIsZeroVector(const float* vector, int v_size);
-
-bool PortableIsZeroVector(const int8_t* vector, int v_size);
+template <typename T>
+bool PortableIsZeroVector(const T* vector, int v_size) {
+  for (int i = 0; i < v_size; ++i) {
+    if (vector[i] != 0) {
+      return false;
+    }
+  }
+  return true;
+}
 
 void PortableSymmetricQuantizeFloats(const float* values, const int size,
                                      int8_t* quantized_values, float* min_value,

@@ -77,6 +77,10 @@ bool MatchBinaryInstructionOperandOpcode(HloOpcode opcode,
 // layout.
 bool ContainsLayoutConstrainedAllReduce(const HloModule& module);
 
+// Returns the next available channel id that can be used in the given module
+// (for HloChannelInstructions).
+int64 NextChannelId(const HloModule& module);
+
 }  // namespace hlo_query
 }  // namespace xla
 

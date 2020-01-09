@@ -23,6 +23,7 @@ py_library(
     srcs = [
         "__init__.py",
         "control_flow.py",
+        "control_flow_deprecated_py2.py",
         "data_structures.py",
         "exceptions.py",
         "logical.py",
@@ -73,6 +74,8 @@ py_test(
     deps = [
         ":operators",
         "//tensorflow/python:client_testlib",
+        # TODO(b/145618471): Remove this transitive dependency.
+        "//tensorflow/python/distribute:input_lib",
     ],
 )
 
@@ -108,6 +111,8 @@ py_test(
         ":operators",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/autograph/core",
+        # TODO(b/145618471): Remove this transitive dependency.
+        "//tensorflow/python/distribute:input_lib",
     ],
 )
 

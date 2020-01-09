@@ -27,7 +27,7 @@ limitations under the License.
 #include "llvm/TableGen/Main.h"
 #include "llvm/TableGen/Record.h"
 #include "llvm/TableGen/TableGenBackend.h"
-#include "mlir/TableGen/Attribute.h"  // TF:local_config_mlir
+#include "mlir/TableGen/Attribute.h"  // TF:llvm-project
 
 using llvm::DefInit;
 using llvm::dyn_cast;

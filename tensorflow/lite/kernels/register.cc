@@ -260,7 +260,9 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_FILL, Register_FILL());
   AddBuiltin(BuiltinOperator_MIRROR_PAD, Register_MIRROR_PAD());
   AddBuiltin(BuiltinOperator_UNIQUE, Register_UNIQUE());
-  AddBuiltin(BuiltinOperator_REVERSE_V2, Register_REVERSE_V2());
+  AddBuiltin(BuiltinOperator_REVERSE_V2, Register_REVERSE_V2(),
+             /* min_version */ 1,
+             /* max_version */ 2);
   AddBuiltin(BuiltinOperator_ADD_N, Register_ADD_N());
   AddBuiltin(BuiltinOperator_GATHER_ND, Register_GATHER_ND());
   AddBuiltin(BuiltinOperator_WHERE, Register_WHERE());

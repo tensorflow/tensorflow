@@ -57,7 +57,7 @@ class TF_TensorListInitOp<string mnemonic> : TF_Op<mnemonic, [NoSideEffect]> {
     // Returns data type of the result handle. Returned type contains type of
     // the TensorList element as a subtype.
     VariantType handle_dtype() {
-      return getElementTypeOrSelf(handle()->getType()).cast<TF::VariantType>();
+      return getElementTypeOrSelf(handle().getType()).cast<TF::VariantType>();
     }
   }];
 }
@@ -170,6 +170,24 @@ else_branch: A function that takes 'inputs' and returns a list of
   let verifier = [{
     return Verify(*this);
   }];
+}
+
+def TF_InfeedDequeueTupleOp : TF_Op<"InfeedDequeueTuple", []> {
+  let summary = "Fetches multiple values from infeed as a tuple.";
+
+  let description = [{
+  }];
+
+  let arguments = (ins);
+
+  let results = (outs
+    Variadic<TF_Tensor>:$outputs
+  );
+
+  TF_DerivedResultTypeListAttr dtypes = TF_DerivedResultTypeListAttr<0>;
+  // TODO(b/147021512): This op also has an attribute shapes : list(shape),
+  // which is a derived attribute from result types. Support for derived
+  // attributes of list(shape) kind is not yet present in ODS and mlir.
 }
 
 def TF_MeanOp : TF_Op<"Mean", [NoSideEffect]> {

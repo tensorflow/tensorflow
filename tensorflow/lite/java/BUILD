@@ -143,6 +143,35 @@ java_test(
 )
 
 java_test(
+    name = "TensorFlowLiteNoNativeLibTest",
+    size = "small",
+    srcs = JAVA_SRCS + ["src/test/java/org/tensorflow/lite/TensorFlowLiteNoNativeLibTest.java"],
+    javacopts = JAVACOPTS,
+    test_class = "org.tensorflow.lite.TensorFlowLiteNoNativeLibTest",
+    visibility = ["//visibility:private"],
+    deps = [
+        "@com_google_truth",
+        "@junit",
+        "@org_checkerframework_qual",
+    ],
+)
+
+java_test(
+    name = "TensorFlowLiteInvalidNativeLibTest",
+    size = "small",
+    srcs = JAVA_SRCS + ["src/test/java/org/tensorflow/lite/TensorFlowLiteInvalidNativeLibTest.java"],
+    javacopts = JAVACOPTS,
+    test_class = "org.tensorflow.lite.TensorFlowLiteInvalidNativeLibTest",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//tensorflow/lite/java/src/test/native:libtensorflowlite_jni.so",
+        "@com_google_truth",
+        "@junit",
+        "@org_checkerframework_qual",
+    ],
+)
+
+java_test(
     name = "DataTypeTest",
     size = "small",
     srcs = ["src/test/java/org/tensorflow/lite/DataTypeTest.java"],

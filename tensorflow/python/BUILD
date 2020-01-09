@@ -2414,7 +2414,6 @@ tf_gen_op_wrapper_private_py(
     visibility = [
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
-        "//tensorflow/contrib/quantization:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
     ],
     deps = [
@@ -2457,10 +2456,7 @@ tf_gen_op_wrapper_private_py(
 
 tf_gen_op_wrapper_private_py(
     name = "audio_ops_gen",
-    visibility = [
-        "//learning/brain/python/ops:__pkg__",
-        "//tensorflow/contrib/framework:__pkg__",
-    ],
+    visibility = ["//learning/brain/python/ops:__pkg__"],
 )
 
 tf_gen_op_wrapper_private_py(
@@ -2477,10 +2473,7 @@ tf_gen_op_wrapper_private_py(
 
 tf_gen_op_wrapper_private_py(
     name = "checkpoint_ops_gen",
-    visibility = [
-        "//tensorflow/contrib/framework:__pkg__",
-        "//tensorflow/python/kernel_tests:__pkg__",
-    ],
+    visibility = ["//tensorflow/python/kernel_tests:__pkg__"],
 )
 
 tf_gen_op_wrapper_private_py(
@@ -2572,7 +2565,6 @@ tf_gen_op_wrapper_private_py(
     name = "lookup_ops_gen",
     visibility = [
         "//learning/brain/python/ops:__pkg__",
-        "//tensorflow/contrib/lookup:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
     ],
 )
@@ -2631,7 +2623,6 @@ tf_gen_op_wrapper_private_py(
         "//learning/brain/google/python/ops:__pkg__",
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
-        "//tensorflow/contrib/quantization:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
     ],
 )
@@ -2641,7 +2632,6 @@ tf_gen_op_wrapper_private_py(
     visibility = [
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
-        "//tensorflow/contrib/quantization:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
         "//tensorflow/python/tools:__pkg__",
     ],
@@ -2688,10 +2678,7 @@ tf_gen_op_wrapper_private_py(
 
 tf_gen_op_wrapper_private_py(
     name = "sdca_ops_gen",
-    visibility = [
-        "//tensorflow/contrib/linear_optimizer:__pkg__",
-        "//tensorflow_estimator/python/estimator/canned/linear_optimizer:__pkg__",
-    ],
+    visibility = ["//tensorflow_estimator/python/estimator/canned/linear_optimizer:__pkg__"],
 )
 
 tf_gen_op_wrapper_private_py(
@@ -2702,7 +2689,6 @@ tf_gen_op_wrapper_private_py(
     name = "state_ops_gen",
     visibility = [
         "//learning/brain/python/ops:__pkg__",
-        "//tensorflow/contrib/framework:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
     ],
 )
@@ -2744,10 +2730,7 @@ tf_gen_op_wrapper_private_py(
     visibility = ["//tensorflow/python/ops/ragged:__pkg__"],
 )
 
-tf_gen_op_wrapper_private_py(
-    name = "rnn_ops_gen",
-    visibility = ["//tensorflow/contrib/rnn:__pkg__"],
-)
+tf_gen_op_wrapper_private_py(name = "rnn_ops_gen")
 
 tf_gen_op_wrapper_private_py(
     name = "sendrecv_ops_gen",
@@ -3684,6 +3667,7 @@ cuda_py_test(
     name = "loss_scaling_gradient_tape_test",
     size = "medium",
     srcs = ["training/experimental/loss_scaling_gradient_tape_test.py"],
+    shard_count = 2,
     deps = [
         ":client_testlib",
         ":constant_op",
@@ -4847,17 +4831,17 @@ cuda_py_test(
     name = "sobol_ops_test",
     size = "small",
     srcs = ["ops/sobol_ops_test.py"],
-    additional_deps = [
+    kernels = [
+        "//tensorflow/core/kernels:libtfkernel_sobol_op.so",
+    ],
+    tags = ["no_windows_gpu"],
+    deps = [
         ":framework_for_generated_wrappers",
         ":framework_test_lib",
         ":math_ops",
         ":platform_test",
         "//third_party/py/numpy",
     ],
-    kernels = [
-        "//tensorflow/core/kernels:libtfkernel_sobol_op.so",
-    ],
-    tags = ["no_windows_gpu"],
 )
 
 cuda_py_test(

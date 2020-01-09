@@ -135,7 +135,7 @@ def TFL_FpOrI32OrI64Tensor : TensorOf<[AnyFloat, TFL_Int32Or64]>;
 //===----------------------------------------------------------------------===//
 
 class TFL_OperandIsUnrankedPred<int n> :
-  CPred<"$_op.getOperand(" # n # ")->getType().isa<UnrankedTensorType>()">;
+  CPred<"$_op.getOperand(" # n # ").getType().isa<UnrankedTensorType>()">;
 
 // TODO: Some of these could be generalized and/or moved to more general
 // location.
@@ -144,38 +144,38 @@ class TFL_OperandHasRank<int n, int m> :
   PredOpTrait<"operand " # n # " is " # m # "-D",
     Or<[TFL_OperandIsUnrankedPred<n>,
       CPred<"$_op.getOperand(" # n #
-      ")->getType().cast<ShapedType>().getRank() == " # m>]>>;
+      ").getType().cast<ShapedType>().getRank() == " # m>]>>;
 
 // Returns true if the n-th operand is ranked and has rank dim.
 class TFL_OperandHasKnownRank<int n, int dim> : And<[
-  CPred<"$_op.getOperand(" # n # ")->getType().isa<RankedTensorType>()">,
-  CPred<"$_op.getOperand(" # n # ")->getType().cast<ShapedType>().getRank() == "
+  CPred<"$_op.getOperand(" # n # ").getType().isa<RankedTensorType>()">,
+  CPred<"$_op.getOperand(" # n # ").getType().cast<ShapedType>().getRank() == "
     # dim>]>;
 
 // True if operand n is ranked and has a rank > dim.
 class TFL_OperandIsRankedAndHasDimPred<int n, int dim> : And<[
-  CPred<"$_op.getOperand(" # n # ")->getType().isa<RankedTensorType>()">,
-  CPred<"$_op.getOperand(" # n # ")->getType().cast<ShapedType>().getRank() > "
+  CPred<"$_op.getOperand(" # n # ").getType().isa<RankedTensorType>()">,
+  CPred<"$_op.getOperand(" # n # ").getType().cast<ShapedType>().getRank() > "
   # dim>]>;
 
 class TFL_OperandDimEquals<int n, int dim, int size> : And<[
   TFL_OperandIsRankedAndHasDimPred<n, dim>,
-  CPred<"$_op.getOperand(" # n # ")->getType().cast<ShapedType>()"
+  CPred<"$_op.getOperand(" # n # ").getType().cast<ShapedType>()"
       ".getShape()[" # dim # " ] == " # size>]>;
 
 // Returns true if the n-th operand has unknown rank or at least rank m.
 class TFL_OperandHasAtleastRank<int n, int m> :
   PredOpTrait<"operand " # n # " is " # m # "-D",
-    Or<[CPred<"$_op.getOperand(" # n # ")->getType().isa<UnrankedTensorType>()">,
+    Or<[CPred<"$_op.getOperand(" # n # ").getType().isa<UnrankedTensorType>()">,
       CPred<"$_op.getOperand(" # n #
-        ")->getType().cast<ShapedType>().getRank() >= " # m>]>>;
+        ").getType().cast<ShapedType>().getRank() >= " # m>]>>;
 
 class TFL_OperandRankEquals1DimOfOperand<int x, int y> :
   PredOpTrait<"operand " # x # "'s rank equals operand " # y # "'s size",
     CPred<"$_op.getOperand(" # x #
-      ")->getType().cast<ShapedType>().getRank() == "
+      ").getType().cast<ShapedType>().getRank() == "
       "$_op.getOperand(" # y #
-      ")->getType().cast<ShapedType>().getShape()[0]">>;
+      ").getType().cast<ShapedType>().getShape()[0]">>;
 
 class TFL_Operand0DOr1ElementTensor<int x> :
   PredOpTrait<"operand #" # x # " is an 0-d tensor or 1-d tensor w/ 1 element",
@@ -195,7 +195,7 @@ class TFL_OperandHasRankLessThan<int n, int m> :
   PredOpTrait<"operand " # n # " is maximum " # m # "-D",
     Or<[TFL_OperandIsUnrankedPred<n>,
       CPred<"$_op.getOperand(" # n #
-      ")->getType().cast<ShapedType>().getRank() <= " # m>]>>;
+      ").getType().cast<ShapedType>().getRank() <= " # m>]>>;
 
 // This is a quantization-aware version of TCresVTEtIsSameAsOp
 class TFL_TCresVTEtIsSameAsOp<int i, int j> : And<[
@@ -227,7 +227,7 @@ def TFL_BroadcastableBinaryBuilder : OpBuilder<
   "Builder *builder, OperationState &result, Value lhs, Value rhs",
   [{
     auto resultType =
-      OpTrait::util::getBroadcastedType(lhs->getType(), rhs->getType());
+      OpTrait::util::getBroadcastedType(lhs.getType(), rhs.getType());
     if (!resultType)
       mlir::emitError(result.location, "non-broadcastable operands");
     result.addOperands({lhs, rhs});
@@ -427,6 +427,33 @@ def TFL_TransposeConvOp:
   let verifier = [{ return Verify(*this); }];
 }
 
+def TFL_Convolution2DTransposeBiasOp :
+  Op<TFL_Dialect, "convolution_2d_transpose_bias", [NoSideEffect]> {
+  let summary = " Transpose convolution with bias operator";
+
+  let description = [{
+Performs transpose convolution operation on inputs,
+with the option of adding a bias.
+Note this is a custom op that is not supported in the standard runtime.
+
+    Inputs:
+      `inputs[0]`: required: the input activation tensor
+      `inputs[1]`: required: the filter weight tensor
+      `inputs[2]`: optional: the bias tensor
+  }];
+
+  let arguments = (
+    ins AnyTensor:$input,
+    AnyTensor:$filter,
+    TFL_TensorOfOrNone<[AnyType]>:$bias,
+    TFL_PaddingAttr:$padding,
+    I32Attr:$stride_h,
+    I32Attr:$stride_w
+  );
+
+  let results = (outs AnyTensor:$output);
+}
+
 def TFL_AveragePool2DOp:
     TFL_Op<"average_pool_2d", [NoSideEffect, SameOperandsAndResultsScale]> {
   let summary = "Average_pool_2d operator";
@@ -471,7 +498,7 @@ def TFL_ArgMaxOp : TFL_Op<"arg_max", [NoSideEffect]> {
   let hasOptions = 1;
 
   DerivedTFLiteTypeAttr output_type = DerivedTFLiteTypeAttr<[{
-    return getResult()->getType().cast<TensorType>().getElementType().
+    return getResult().getType().cast<TensorType>().getElementType().
         cast<IntegerType>().getWidth() > 32 ? tflite::TensorType_INT64 :
             tflite::TensorType_INT32;
     }]>;
@@ -500,7 +527,7 @@ def TFL_ArgMinOp : TFL_Op<"arg_min", [NoSideEffect]> {
   let hasOptions = 1;
 
   DerivedTFLiteTypeAttr output_type = DerivedTFLiteTypeAttr<[{
-    return getResult()->getType().cast<TensorType>().getElementType().
+    return getResult().getType().cast<TensorType>().getElementType().
         cast<IntegerType>().getWidth() > 32 ? tflite::TensorType_INT64 :
             tflite::TensorType_INT32;
     }]>;
@@ -1181,7 +1208,8 @@ def TFL_FloorModOp : TFL_Op<"floor_mod", [Broadcastable, NoSideEffect]> {
   let builders = [TFL_BroadcastableBinaryBuilder];
 }
 
-def TFL_GreaterOp : TFL_Op<"greater", [NoSideEffect, NoQuantizableResult]> {
+def TFL_GreaterOp : TFL_Op<"greater", [
+    Broadcastable, NoSideEffect, NoQuantizableResult]> {
   let summary = "Greater operator";
 
   let description = [{
@@ -1193,6 +1221,8 @@ def TFL_GreaterOp : TFL_Op<"greater", [NoSideEffect, NoQuantizableResult]> {
     AnyTensor:$rhs);
 
   let results = (outs AnyTensor:$output);
+
+  let builders = [TFL_ComparisonBinaryBuilder];
 
   let parser = [{ return mlir::impl::parseOneResultSameOperandTypeOp(parser, result); }];
 
@@ -1260,7 +1290,8 @@ def TFL_LeakyReluOp: TFL_Op<"leaky_relu", [NoSideEffect, SameOperandsAndResultTy
   let hasOptions = 0b1;
 }
 
-def TFL_LessOp : TFL_Op<"less", [NoSideEffect, NoQuantizableResult]> {
+def TFL_LessOp : TFL_Op<"less", [
+    Broadcastable, NoSideEffect, NoQuantizableResult]> {
   let summary = "Less operator";
 
   let description = [{
@@ -1425,6 +1456,63 @@ def TFL_MaxPool2DOp : TFL_Op<"max_pool_2d", [
   let hasOptions = 1;
 
   let customOption = "Pool2DOptions";
+}
+
+def TFL_MaxPoolingWithArgMax2DOp :
+    Op<TFL_Dialect, "max_pooling_with_argmax_2d", [NoSideEffect]> {
+  let summary = "Max Pool 2D with argmax op";
+
+  let description = [{
+    Performs max pooling on the input and outputs both max values and indices.
+    Each index is a flatten index in a sub-array of "filter_w" x "filter_h" size
+    Note this is a custom op that is not supported in the standard runtime.
+
+    Inputs:
+      `inputs[0]`: required: the input activation tensor
+  }];
+
+  let arguments = (
+    ins AnyTensor:$input,
+    TFL_PaddingAttr:$padding,
+    I32Attr:$stride_w,
+    I32Attr:$stride_h,
+    I32Attr:$filter_w,
+    I32Attr:$filter_h
+  );
+
+  let results = (outs
+    AnyTensor:$value,
+    AnyTensor:$indices
+  );
+}
+
+def TFL_MaxUnpooling2DOp :
+    Op<TFL_Dialect, "max_unpooling_2d", [NoSideEffect]> {
+  let summary = "Max Unpool 2D";
+
+  let description = [{
+    Performs max unpool operation.
+    To some extent this is the reverse operation of max pooling:
+    the elements in the input activation tensor is stored into the position
+    specified by the input indices.
+    Note this is a custom op that is not supported in the standard runtime.
+
+    Inputs:
+      `inputs[0]`: required: the input activation tensor
+      `inputs[1]`: required: the input indices
+  }];
+
+  let arguments = (
+    ins AnyTensor:$input,
+    AnyTensor:$indices,
+    TFL_PaddingAttr:$padding,
+    I32Attr:$stride_w,
+    I32Attr:$stride_h,
+    I32Attr:$filter_w,
+    I32Attr:$filter_h
+  );
+
+  let results = (outs AnyTensor:$outputs);
 }
 
 def TFL_MaximumOp : TFL_Op<"maximum", [
@@ -1996,7 +2084,7 @@ def TFL_ShapeOp: TFL_Op<"shape", [NoSideEffect]> {
   let results = (outs AnyTensor:$output);
 
   DerivedTypeAttr out_type = DerivedTypeAttr<[{
-    return getResult()->getType().cast<TensorType>().getElementType();
+    return getResult().getType().cast<TensorType>().getElementType();
   }]>;
 
   let hasOptions = 1;
@@ -2039,7 +2127,7 @@ def TFL_ReverseV2Op: TFL_Op<"reverse_v2",
 
     Args:
       tensor: A Tensor. Must be one of the following types:
-      int16, int32, int64, float32 Up to 8-D.
+      uint8, int16, int32, int64, float32, bool Up to 8-D.
 
       axis: A Tensor. Must be one of the following types: int32, int64.
       with only 1 element which is the axis index.
@@ -2048,12 +2136,12 @@ def TFL_ReverseV2Op: TFL_Op<"reverse_v2",
 
   let arguments = (
     ins
-    TensorOf<[F32, I16, I32, I64]>:$input,
+    TensorOf<[F32, I16, I32, I64, TFL_Uint8, I1]>:$input,
     TensorOf<[I32, I64]>:$axis
   );
 
   let results = (outs
-  TensorOf<[F32, I16, I32, I64, I8]>:$output
+  TensorOf<[F32, I16, I32, I64, TFL_Uint8, I1]>:$output
   );
 }
 
@@ -2083,7 +2171,7 @@ def TFL_SelectOp : TFL_Op<"select", [NoSideEffect,
   let builders = [OpBuilder<"Builder *builder, OperationState &result, "
                             "Value condition, Value x, Value y",
   [{
-    auto resultType = x->getType();
+    auto resultType = x.getType();
     result.addOperands({condition, x, y});
     result.types.push_back(resultType);
   }]>];
@@ -2733,7 +2821,7 @@ in the unique output `y`. In other words:
   );
 
   DerivedTFLiteTypeAttr idx_out_type = DerivedTFLiteTypeAttr<[{
-    return getResult(1)->getType().cast<TensorType>().getElementType().
+    return getResult(1).getType().cast<TensorType>().getElementType().
         cast<IntegerType>().getWidth() > 32 ? tflite::TensorType_INT64 :
             tflite::TensorType_INT32;
     }]>;

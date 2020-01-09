@@ -299,6 +299,10 @@ class MemorySpaceAssignment {
     // If true, tries allocating buffers across (e.g., before and inside a while
     // loop body) sequential calls (kWhile, kCall, and kConditional).
     bool allocate_across_sequential_calls = false;
+
+    // If true, verifies the memory space assignment against overlapping
+    // buffers.
+    bool verify = false;
   };
 
   // This class represents an allocation that might either be in the default or
@@ -383,7 +387,6 @@ class MemorySpaceAssignment {
     HloInstruction* instruction_;
     HloPosition defining_position_;
     std::vector<HloUse> uses_;
-    std::vector<HloInstruction*> bitcasts_;
     MemorySpace memory_space_;
     Chunk chunk_;
     int64 start_time_;
@@ -470,6 +473,9 @@ class MemorySpaceAssignment {
 
   static BufferIntervalCompare GetMemoryBoundednessBufferIntervalCompare(
       const MemorySpaceAssignmentCostAnalysis& cost_analysis);
+
+  // Verify that the memory space assignment is free of overlapping buffers.
+  Status Verify() const;
 
  private:
   MemorySpaceAssignment(HloModule* module, int64 alternate_memory_space,
@@ -604,6 +610,12 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   HeapSimulator::Result Finish() override;
 
  private:
+  // Given an allocation sequence, returns the live allocation at time with a
+  // preference towards allocations in alternate memory. Returns nullptr if no
+  // allocation is alive at that time.
+  static MemorySpaceAssignment::Allocation* GetLiveAllocationAt(
+      const MemorySpaceAssignment::AllocationSequence& allocations, int64 time);
+
   // Finds an allocation for the given interval. Internally, it will attempt to
   // find a suitable chunk candidate within the heap size and prefetch interval
   // limits, and append the new allocation(s) to allocations. The new

@@ -322,6 +322,15 @@ TfLiteDriver::TfLiteDriver(DelegateType delegate_type, bool reference_kernel)
         reinterpret_cast<ops::builtin::BuiltinOpResolver*>(resolver_.get());
     buildinop_resolver_->AddCustom("RFFT2D",
                                    tflite::ops::custom::Register_RFFT2D());
+    buildinop_resolver_->AddCustom("HashTableV2",
+                                   tflite::ops::custom::Register_HASHTABLE());
+    buildinop_resolver_->AddCustom(
+        "LookupTableFindV2", tflite::ops::custom::Register_HASHTABLE_FIND());
+    buildinop_resolver_->AddCustom(
+        "LookupTableImportV2",
+        tflite::ops::custom::Register_HASHTABLE_IMPORT());
+    buildinop_resolver_->AddCustom(
+        "LookupTableSizeV2", tflite::ops::custom::Register_HASHTABLE_SIZE());
   }
 
   switch (delegate_type) {

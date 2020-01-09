@@ -116,6 +116,10 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_SVDF:
+      // Fully integer SVDF has int8 as input and is of version 3.
+      if (op_sig.input_types.at(0) == TensorType_INT8) {
+        return 3;
+      }
       // If the op is a signed int8 hybrid operation, we need to return
       // version 2.
       if (op_sig.input_types.at(0) == TensorType_FLOAT32 &&
@@ -260,6 +264,11 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
         return 3;
       }
       if (op_sig.input_types.at(0) == TensorType_INT8) {
+        return 2;
+      }
+      return 1;
+    case BuiltinOperator_REVERSE_V2:
+      if (op_sig.input_types.at(0) == TensorType_BOOL) {
         return 2;
       }
       return 1;

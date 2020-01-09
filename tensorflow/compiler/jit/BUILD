@@ -4,12 +4,7 @@ load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library", "tf_jit_compilati
 load("//tensorflow/core/platform:build_config.bzl", "tf_additional_all_protos", "tf_proto_library")
 
 package(
-    default_visibility = [
-        ":internal",
-        # BEGIN-GOOGLE-INTERNAL
-        "//learning/brain/contrib/tpu_modeling/exp/tpu_inference_converter:__pkg__",
-        # END-GOOGLE-INTERNAL
-    ],
+    default_visibility = [":internal"],
     licenses = ["notice"],  # Apache 2.0
 )
 
@@ -500,6 +495,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
     ],
 )
 

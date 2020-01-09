@@ -27,11 +27,18 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/util/command_line_flags.h"
 
-// TODO(b/143949264): Testing is not yet supported on Windows. Will implement
-// testing on Windows when implementing modular filesystems on Windows.
 #if defined(PLATFORM_WINDOWS)
-#error Windows is not yet supported.  Need mkdir().
-#endif
+// Make mkdir resolve to _mkdir to create the test temporary directory.
+#include <direct.h>
+#define mkdir(name, mode) _mkdir(name)
+
+// Windows defines the following macros to convert foo to fooA or fooW,
+// depending on the type of the string argument. We don't use these macros, so
+// undefine them here.
+#undef LoadLibrary
+#undef CopyFile
+#undef DeleteFile
+#endif  // defined(PLATFORM_WINDOWS)
 
 // The tests defined here test the compliance of filesystems with the API
 // defined by `filesystem_interface.h`.
@@ -86,9 +93,6 @@ class ModularFileSystemTest : public ::testing::TestWithParam<std::string> {
   }
 
   void SetUp() override {
-    // TODO(b/143949264): Testing is not yet supported on Windows. Will
-    // implement testing on Windows when implementing modular filesystems on
-    // Windows.
     if (mkdir(root_dir_.c_str(), 0755) != 0) {
       int error_code = errno;
       GTEST_SKIP() << "Cannot create working directory: "
@@ -1668,30 +1672,40 @@ static std::vector<std::string>* SchemeVector() {
   return schemes;
 }
 
-static std::vector<std::string> GetSchemes() {
-  std::vector<std::string>* user_schemes = SchemeVector();
-  std::vector<std::string> all_schemes;
+// `INSTANTIATE_TEST_SUITE_P` is called once for every `TEST_P`. However, we
+// only want to analyze the user provided schemes and those that are registered
+// only once. Hence, this function keeping another static pointer to a vector
+// which contains only the schemes under test.
+//
+// Without this additional step, when there are schemes available but the user
+// only requests schemes that don't exist, first instantiation of the test would
+// filter out all the user provided schemes (as they are not registered) but
+// subsequent instantiations would return all registered schemes (since the
+// vector with the user provided schemes is cleared).
+static std::vector<std::string>* GetSchemesFromUserOrEnv() {
+  std::vector<std::string>* all_schemes = new std::vector<std::string>;
   tensorflow::Status status =
-      tensorflow::Env::Default()->GetRegisteredFileSystemSchemes(&all_schemes);
+      tensorflow::Env::Default()->GetRegisteredFileSystemSchemes(all_schemes);
 
   if (status.ok()) {
+    std::vector<std::string>* user_schemes = SchemeVector();
     if (!user_schemes->empty()) {
-      auto is_registered_scheme = [&all_schemes](const auto& scheme) {
-        return std::find(all_schemes.begin(), all_schemes.end(), scheme) ==
-               all_schemes.end();
+      auto is_requested_scheme = [user_schemes](const auto& scheme) {
+        return std::find(user_schemes->begin(), user_schemes->end(), scheme) ==
+               user_schemes->end();
       };
-      auto end = std::remove_if(user_schemes->begin(), user_schemes->end(),
-                                is_registered_scheme);
-      user_schemes->erase(end, user_schemes->end());
-      return *user_schemes;
+      auto end = std::remove_if(all_schemes->begin(), all_schemes->end(),
+                                is_requested_scheme);
+      all_schemes->erase(end, all_schemes->end());
     }
-
-    // Next, try all schemes available
-    if (!all_schemes.empty()) return all_schemes;
   }
 
-  // Fallback: no filesystems present, hence no tests
-  return std::vector<std::string>();
+  return all_schemes;
+}
+
+static std::vector<std::string> GetSchemes() {
+  static std::vector<std::string>* schemes = GetSchemesFromUserOrEnv();
+  return *schemes;
 }
 
 INSTANTIATE_TEST_SUITE_P(ModularFileSystem, ModularFileSystemTest,
