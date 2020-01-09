@@ -25,7 +25,7 @@ import weakref
 
 import numpy as np
 
-from tensorflow.python.autograph.core import ag_ctx
+from tensorflow.python.autograph.core import ag_ctx as autograph_ctx
 from tensorflow.python.autograph.impl import api as autograph
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import device_util
@@ -163,7 +163,7 @@ class TPUStrategy(distribute_lib.Strategy):
 
     # Note: the target function is converted to graph even when in Eager mode,
     # so autograph is on by default here.
-    fn = autograph.tf_convert(fn, ag_ctx.control_status_ctx())
+    fn = autograph.tf_convert(fn, autograph_ctx.control_status_ctx())
     return self.extended.tpu_run(fn, args, kwargs)
 
 
@@ -209,7 +209,7 @@ class TPUStrategyV1(distribute_lib.StrategyV1):
     """See base class."""
     validate_experimental_run_function(fn)
 
-    fn = autograph.tf_convert(fn, ag_ctx.control_status_ctx())
+    fn = autograph.tf_convert(fn, autograph_ctx.control_status_ctx())
     return self.extended.tpu_run(fn, args, kwargs)
 
 
@@ -560,6 +560,8 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
 
   def _reduce_to(self, reduce_op, value, destinations):
     if values._enclosing_tpu_context() is not None:  # pylint: disable=protected-access
+      if not tensor_util.is_tensor(value):
+        value = ops.convert_to_tensor(value, dtype=dtypes.float32)
       if reduce_op == reduce_util.ReduceOp.MEAN:
         # TODO(jhseu):  Revisit once we support model-parallelism.
         value *= (1. / self._num_replicas_in_sync)

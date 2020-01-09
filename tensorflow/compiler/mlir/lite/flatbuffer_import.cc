@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
 #include <iostream>
 #include <sstream>
 #include <string>
@@ -43,24 +44,24 @@ limitations under the License.
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/QuantOps/QuantOps.h"  // TF:local_config_mlir
-#include "mlir/Dialect/QuantOps/QuantTypes.h"  // TF:local_config_mlir
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/Diagnostics.h"  // TF:local_config_mlir
-#include "mlir/IR/Function.h"  // TF:local_config_mlir
-#include "mlir/IR/Location.h"  // TF:local_config_mlir
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/IR/Module.h"  // TF:local_config_mlir
-#include "mlir/IR/Operation.h"  // TF:local_config_mlir
-#include "mlir/IR/OperationSupport.h"  // TF:local_config_mlir
-#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
-#include "mlir/IR/Types.h"  // TF:local_config_mlir
-#include "mlir/IR/Value.h"  // TF:local_config_mlir
-#include "mlir/Support/Functional.h"  // TF:local_config_mlir
-#include "mlir/Support/LLVM.h"  // TF:local_config_mlir
-#include "mlir/Translation.h"  // TF:local_config_mlir
+#include "mlir/Dialect/QuantOps/QuantOps.h"  // TF:llvm-project
+#include "mlir/Dialect/QuantOps/QuantTypes.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/Builders.h"  // TF:llvm-project
+#include "mlir/IR/Diagnostics.h"  // TF:llvm-project
+#include "mlir/IR/Function.h"  // TF:llvm-project
+#include "mlir/IR/Location.h"  // TF:llvm-project
+#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
+#include "mlir/IR/Module.h"  // TF:llvm-project
+#include "mlir/IR/Operation.h"  // TF:llvm-project
+#include "mlir/IR/OperationSupport.h"  // TF:llvm-project
+#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/IR/Types.h"  // TF:llvm-project
+#include "mlir/IR/Value.h"  // TF:llvm-project
+#include "mlir/Support/Functional.h"  // TF:llvm-project
+#include "mlir/Support/LLVM.h"  // TF:llvm-project
+#include "mlir/Translation.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/lite/flatbuffer_operator.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_translate.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_translate_flags.h"
@@ -103,11 +104,25 @@ using llvm::cl::opt;
 // Commandline flag to enable the control of flatbuffer import.
 bool use_external_constant;
 
+// Commandline flag to enable graph pruning.
+bool experimental_prune_unreachable_nodes_unconditionally;
+
 // NOLINTNEXTLINE
 static opt<bool, true> use_external_constant_flag(
     "use-external-constant",
     llvm::cl::desc("Use external constant during flatbuffer import"),
     llvm::cl::location(use_external_constant), llvm::cl::init(false));
+
+// TODO(b/147111261): After the importer supports generic custom ops, we should
+// change the flag to a more lightwise flag, e.g.
+// "import_custom_ops_as_side_effect_free_ops", and let the MLIR DCE to prune
+// the operations.
+// NOLINTNEXTLINE
+static opt<bool, true> experimental_prune_unreachable_nodes_unconditionally_flg(
+    "experimental-prune-unreachable-nodes-unconditionally",
+    llvm::cl::desc("Prune nodes that are not ancestors of the output nodes."),
+    llvm::cl::location(experimental_prune_unreachable_nodes_unconditionally),
+    llvm::cl::init(false));
 
 namespace {
 bool IsScalar(const TensorT& tensor) {
@@ -217,7 +232,7 @@ mlir::Operation* ConvertMinMaxToStatsOp(const TensorT& tensor, OpBuilder b,
   // min/max stats is just for comments, so ignore it.
   if (!tensor.quantization || IsQuantized(tensor)) return nullptr;
   // If the result isn't float and unquantizable, the min/max is ignored.
-  if (!res->getType()
+  if (!res.getType()
            .cast<mlir::ShapedType>()
            .getElementType()
            .isa<mlir::FloatType>()) {
@@ -255,10 +270,23 @@ mlir::Operation* ConvertMinMaxToStatsOp(const TensorT& tensor, OpBuilder b,
 }
 
 StatusOr<std::string> OpNameForOpCode(const tflite::OperatorCodeT opcode) {
-  // TODO(krzysd) Support custom ops
+  // TODO(b/143872630): Support custom ops
   if (opcode.builtin_code == tflite::BuiltinOperator_CUSTOM) {
-    return errors::Unimplemented("unsupported custom operation: ",
-                                 opcode.custom_code);
+    // Adding some custom op supported on GPU.
+    const absl::string_view custom_name = opcode.custom_code;
+    if (custom_name == "MaxPoolingWithArgmax2D") {
+      return std::string("tfl.max_pooling_with_argmax_2d");
+    }
+    if (custom_name == "Convolution2DTransposeBias") {
+      return std::string("tfl.convolution_2d_transpose_bias");
+    }
+    if (custom_name == "MaxUnpooling2D") {
+      return std::string("tfl.max_unpooling_2d");
+    }
+    // Use an unsupported op name instead of throwing an error here in case the
+    // op is pruned during the import.
+    return std::string(
+        llvm::Twine("tfl.UNSUPPORTED_custom_", opcode.custom_code).str());
   }
   if (opcode.builtin_code == tflite::BuiltinOperator_IF) {
     return std::string("tf.If");
@@ -495,6 +523,13 @@ bool IsBasicLSTMOp(tflite::BuiltinOptionsUnion op_union) {
   }
 }
 
+// Returns true if this is a custom op.
+bool IsCustomOp(const std::string& op_name) {
+  return op_name == "tfl.max_pooling_with_argmax_2d" ||
+         op_name == "tfl.max_unpooling_2d" ||
+         op_name == "tfl.convolution_2d_transpose_bias";
+}
+
 // TODO(krzysd) Handle function calls
 StatusOr<Operation*> ConvertOp(
     const tflite::OperatorT& op, const std::vector<Value>& vals_map,
@@ -557,7 +592,15 @@ StatusOr<Operation*> ConvertOp(
   }
 
   llvm::SmallVector<mlir::NamedAttribute, 2> attrs;
-  mlir::BuiltinOptionsToAttributes(op.builtin_options, builder, attrs);
+  if (IsCustomOp(op_name)) {
+    auto status = mlir::CustomOptionsToAttributes(op_name, op.custom_options,
+                                                  builder, loc, &attrs);
+    if (!status.ok()) {
+      return emitError(loc, status.ToString()), status;
+    }
+  } else {
+    mlir::BuiltinOptionsToAttributes(op.builtin_options, builder, attrs);
+  }
   op_state.addAttributes(attrs);
 
   // Handle the conversion from subgraph index to functions for If and While
@@ -619,6 +662,49 @@ mlir::NamedAttribute BuildTFEntryFunctionAttribute(
       name, builder->getStringAttr(llvm::join(tensor_names, ",")));
 }
 
+// Given a list of output indices, traverses the subgraph and returns the set of
+// ops that are ancestors of the output tensors.
+StatusOr<absl::flat_hash_set<const tflite::OperatorT*>> PruneSubgraph(
+    const tflite::SubGraphT& subgraph, ArrayRef<int32_t> output_indices) {
+  // Create a map from tensor index to defining op.
+  absl::flat_hash_map<int32_t, const tflite::OperatorT*> defining_op;
+  for (const auto& op : subgraph.operators) {
+    for (int32_t output : op->outputs) {
+      defining_op[output] = op.get();
+    }
+  }
+
+  std::vector<const tflite::OperatorT*> queue;
+  for (int32_t output : output_indices) {
+    if (auto& op = defining_op[output]) {
+      queue.push_back(op);
+    } else {
+      return errors::InvalidArgument("Output tensor doesn't have defining op");
+    }
+  }
+
+  // Traverse the graph towards inputs.
+  absl::flat_hash_set<const tflite::OperatorT*> visited;
+  while (!queue.empty()) {
+    const tflite::OperatorT* op = queue.back();
+    queue.pop_back();
+    if (!visited.insert(op).second) {
+      // The node has already been visited.
+      continue;
+    }
+
+    for (int32_t input : op->inputs) {
+      // Input tensor may not have a defining op in case it is a subgraph input
+      // or a constant tensor.
+      if (auto& op = defining_op[input]) {
+        queue.push_back(op);
+      }
+    }
+  }
+
+  return visited;
+}
+
 // Build a FuncOp from a tflite SubGraph
 // The op_names are a mapping from indexes into the TFLite operators array to
 // the operator name MLIR expects (tfl.foo_op). The buffers are directly taken
@@ -635,7 +721,8 @@ StatusOr<FuncOp> ConvertSubgraph(
     const std::vector<std::unique_ptr<tflite::BufferT>>& buffers,
     Location base_loc, Builder builder,
     const std::vector<std::string>& ordered_output_arrays, bool is_entry_point,
-    bool use_external_constant) {
+    bool use_external_constant,
+    bool experimental_prune_unreachable_nodes_unconditionally) {
   llvm::SmallVector<mlir::Type, 2> ret_types;
   llvm::SmallVector<mlir::Type, 4> input_types;
 
@@ -731,8 +818,19 @@ StatusOr<FuncOp> ConvertSubgraph(
     func.setAttr("tf.entry_function", builder.getDictionaryAttr(attributes));
   }
 
+  absl::flat_hash_set<const tflite::OperatorT*> pruned_subgraph_ops;
+  if (experimental_prune_unreachable_nodes_unconditionally) {
+    TF_ASSIGN_OR_RETURN(pruned_subgraph_ops,
+                        PruneSubgraph(subgraph, func_outputs));
+  }
+
   // Construct MLIR operators from TFLite operators
   for (auto& op : subgraph.operators) {
+    if (experimental_prune_unreachable_nodes_unconditionally &&
+        !pruned_subgraph_ops.contains(op)) {
+      continue;
+    }
+
     for (auto input_num : op->inputs) {
       // The operators in a graph are topologically sorted
       // and so if no previous operation has produced a tensor
@@ -837,7 +935,8 @@ std::string SubgraphName(unsigned index, const tflite::SubGraphT& subgraph) {
 OwningModuleRef tflite::FlatBufferToMlir(
     absl::string_view buffer, MLIRContext* context, Location base_loc,
     const std::vector<std::string>& ordered_output_arrays,
-    bool use_external_constant) {
+    bool use_external_constant,
+    bool experimental_prune_unreachable_nodes_unconditionally) {
   auto model_ptr =
       FlatBufferModel::VerifyAndBuildFromBuffer(buffer.data(), buffer.length());
   if (nullptr == model_ptr) {
@@ -892,7 +991,8 @@ OwningModuleRef tflite::FlatBufferToMlir(
         // TODO(b/131175224,b/132239787) Support multiple entry points
         builder, ordered_output_arrays,
         /*is_entry_point=*/e.index() == 0,
-        /*use_external_constant=*/use_external_constant);
+        /*use_external_constant=*/use_external_constant,
+        experimental_prune_unreachable_nodes_unconditionally);
     if (!func_or_error.ok()) {
       return emitError(base_loc, "could not translate function ")
                  << subgraph->name,
@@ -905,9 +1005,10 @@ OwningModuleRef tflite::FlatBufferToMlir(
   return OwningModuleRef(module);
 }
 
-static OwningModuleRef FlatBufferFileToMlirTrans(llvm::SourceMgr* source_mgr,
-                                                 MLIRContext* context,
-                                                 bool use_external_constant) {
+static OwningModuleRef FlatBufferFileToMlirTrans(
+    llvm::SourceMgr* source_mgr, MLIRContext* context,
+    bool use_external_constant,
+    bool experimental_prune_unreachable_nodes_unconditionally) {
   const llvm::MemoryBuffer* input =
       source_mgr->getMemoryBuffer(source_mgr->getMainFileID());
   std::string error;
@@ -924,12 +1025,14 @@ static OwningModuleRef FlatBufferFileToMlirTrans(llvm::SourceMgr* source_mgr,
 
   return tflite::FlatBufferToMlir(
       absl::string_view(input->getBufferStart(), input->getBufferSize()),
-      context, loc, outputs, use_external_constant);
+      context, loc, outputs, use_external_constant,
+      experimental_prune_unreachable_nodes_unconditionally);
 }
 
 static mlir::TranslateToMLIRRegistration FlatBufferFileToMlirTransReg(
     "tflite-flatbuffer-to-mlir",
     [](llvm::SourceMgr& source_mgr, MLIRContext* context) {
-      return FlatBufferFileToMlirTrans(&source_mgr, context,
-                                       use_external_constant);
+      return FlatBufferFileToMlirTrans(
+          &source_mgr, context, use_external_constant,
+          experimental_prune_unreachable_nodes_unconditionally);
     });

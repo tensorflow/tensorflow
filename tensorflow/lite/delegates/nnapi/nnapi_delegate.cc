@@ -2185,27 +2185,18 @@ TfLiteStatus NNAPIDelegateKernel::Map(
     case kTfLiteBuiltinConv2d: {
       auto builtin =
           reinterpret_cast<TfLiteConvParams*>(mapping_args.node->builtin_data);
+      mapping_args.builder->AddScalarInt32Operand(builtin->padding);
+      mapping_args.builder->AddScalarInt32Operand(builtin->stride_width);
+      mapping_args.builder->AddScalarInt32Operand(builtin->stride_height);
+      mapping_args.builder->AddScalarInt32Operand(builtin->activation);
       // NNAPI supports dilated Conv2D since NNAPI 1.2.
       if (builtin->dilation_width_factor != 1 ||
           builtin->dilation_height_factor != 1) {
-        auto builtin = reinterpret_cast<TfLiteConvParams*>(
-            mapping_args.node->builtin_data);
-        mapping_args.builder->AddScalarInt32Operand(builtin->padding);
-        mapping_args.builder->AddScalarInt32Operand(builtin->stride_width);
-        mapping_args.builder->AddScalarInt32Operand(builtin->stride_height);
-        mapping_args.builder->AddScalarInt32Operand(builtin->activation);
         mapping_args.builder->AddScalarBoolOperand(false);  // Use NHWC format
         mapping_args.builder->AddScalarInt32Operand(
             builtin->dilation_width_factor);
         mapping_args.builder->AddScalarInt32Operand(
             builtin->dilation_height_factor);
-      } else {
-        auto builtin = reinterpret_cast<TfLiteConvParams*>(
-            mapping_args.node->builtin_data);
-        mapping_args.builder->AddScalarInt32Operand(builtin->padding);
-        mapping_args.builder->AddScalarInt32Operand(builtin->stride_width);
-        mapping_args.builder->AddScalarInt32Operand(builtin->stride_height);
-        mapping_args.builder->AddScalarInt32Operand(builtin->activation);
       }
       *nn_op_type = ANEURALNETWORKS_CONV_2D;
     } break;
@@ -2437,8 +2428,10 @@ TfLiteStatus NNAPIDelegateKernel::Map(
     case kTfLiteBuiltinTransposeConv: {
       const bool hybrid_op = IsHybridOperator(
           mapping_args.context, kTfLiteBuiltinTransposeConv, mapping_args.node);
-      mapping_args.builder->AddTensorInput(/*kDataInputTensor*/ 2, hybrid_op);
-      mapping_args.builder->AddTensorInput(/*kWeightsTensor*/ 1, hybrid_op);
+      mapping_args.builder->AddTensorInput(
+          mapping_args.node->inputs->data[/*kDataInputTensor*/ 2], hybrid_op);
+      mapping_args.builder->AddTensorInput(
+          mapping_args.node->inputs->data[/*kWeightsTensor*/ 1], hybrid_op);
 
       // NNAPI requires a bias tensor, so we allocate a new tensor to fill
       // it with zeroes. It is deleted with other tensors in the context
@@ -2494,7 +2487,8 @@ TfLiteStatus NNAPIDelegateKernel::Map(
             /*zero_point=*/0);
       }
 
-      mapping_args.builder->AddTensorInput(/*kOutputShapeTensor*/ 0, hybrid_op);
+      mapping_args.builder->AddTensorInput(
+          mapping_args.node->inputs->data[/*kOutputShapeTensor*/ 0], hybrid_op);
 
       auto builtin = reinterpret_cast<TfLiteTransposeConvParams*>(
           mapping_args.node->builtin_data);

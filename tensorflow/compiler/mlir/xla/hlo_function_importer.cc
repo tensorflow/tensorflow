@@ -19,14 +19,14 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/BlockAndValueMapping.h"  // TF:local_config_mlir
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/Identifier.h"  // TF:local_config_mlir
-#include "mlir/IR/Location.h"  // TF:local_config_mlir
-#include "mlir/IR/Region.h"  // TF:local_config_mlir
-#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/BlockAndValueMapping.h"  // TF:llvm-project
+#include "mlir/IR/Builders.h"  // TF:llvm-project
+#include "mlir/IR/Identifier.h"  // TF:llvm-project
+#include "mlir/IR/Location.h"  // TF:llvm-project
+#include "mlir/IR/Region.h"  // TF:llvm-project
+#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
@@ -260,6 +260,24 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
           func_builder->create<mlir::CallOp>(loc, function, operands);
       return new_operation;
     }
+    case HloOpcode::kCollectivePermute: {
+      attributes.push_back(
+          ConvertSourceTargetPairs(instruction->source_target_pairs()));
+      MakeAndReturn(CollectivePermuteOp);
+    }
+    case HloOpcode::kCustomCall: {
+      auto custom_call = static_cast<HloCustomCallInstruction*>(instruction);
+      attributes.push_back(builder_->getNamedAttr(
+          "call_target_name",
+          builder_->getStringAttr(custom_call->custom_call_target())));
+      attributes.push_back(builder_->getNamedAttr(
+          "has_side_effect",
+          builder_->getBoolAttr(custom_call->custom_call_has_side_effect())));
+      attributes.push_back(builder_->getNamedAttr(
+          "backend_config",
+          builder_->getStringAttr(custom_call->raw_backend_config_string())));
+      MakeAndReturn(CustomCallOp);
+    }
     case HloOpcode::kCompare: {
       attributes.push_back(ConvertComparisonDirection(instruction));
       MakeAndReturn(CompareOp);
@@ -326,6 +344,12 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
                                          Convert(edge_padding_high),
                                          Convert(interior_padding))
           .getOperation();
+    }
+    case HloOpcode::kSetDimensionSize: {
+      attributes.push_back(builder_->getNamedAttr(
+          "dimension", builder_->getIntegerAttr(builder_->getIntegerType(32),
+                                                instruction->dimension())));
+      MakeAndReturn(SetDimensionSizeOp);
     }
     case HloOpcode::kSlice: {
       return func_builder
@@ -401,7 +425,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
     }
     case HloOpcode::kWhile: {
       auto op = func_builder->create<mlir::xla_hlo::WhileOp>(
-          loc, operands[0]->getType(), operands[0]);
+          loc, operands[0].getType(), operands[0]);
       TF_RETURN_IF_ERROR(
           ImportComputation(instruction->while_condition(), &op.cond()));
       TF_RETURN_IF_ERROR(
@@ -753,6 +777,20 @@ mlir::NamedAttribute HloFunctionImporter::ConvertGatherDimensionNumbers(
       Convert(start_index_map),
       builder_->getI64IntegerAttr(dnums.index_vector_dim()), context_);
   return builder_->getNamedAttr("dimension_numbers", attr);
+}
+
+mlir::NamedAttribute HloFunctionImporter::ConvertSourceTargetPairs(
+    const std::vector<std::pair<tensorflow::int64, tensorflow::int64>>&
+        source_target_pairs) {
+  std::vector<int64_t> attr(source_target_pairs.size() * 2);
+  for (auto p : llvm::enumerate(source_target_pairs)) {
+    attr[2 * p.index()] = p.value().first;
+    attr[2 * p.index() + 1] = p.value().second;
+  }
+  auto type = mlir::RankedTensorType::get(
+      {static_cast<int64_t>(attr.size() / 2), 2}, builder_->getIntegerType(64));
+  return builder_->getNamedAttr("source_target_pairs",
+                                DenseIntElementsAttr::get(type, attr));
 }
 
 }  // namespace xla

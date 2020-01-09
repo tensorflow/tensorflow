@@ -175,7 +175,8 @@ struct ReductionDimensions {
   std::array<int64, 3> dimensions;
 };
 
-// Given the reduction operation, returns ReductionDimensions.
+// Given the input shape and dimensions to reduce for a reduction, returns
+// ReductionDimensions.
 //
 // Prerequisite: the reduction instruction passes the check
 // IsReductionFromOrToContiguousDimensions, which guarantees either the

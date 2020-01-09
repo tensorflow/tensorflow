@@ -21,6 +21,7 @@ namespace tensorflow {
 namespace profiler {
 
 const absl::string_view kHostThreads = "Host Threads";
+const absl::string_view kGpuPlanePrefix = "GPU:";
 
 constexpr int kNumHostEventTypes =
     HostEventType::kLastHostEventType - HostEventType::kFirstHostEventType + 1;
@@ -68,11 +69,13 @@ static const absl::string_view kStatTypeStrMap[] = {
     "device_ordinal",  "chip_ordinal",
     "node_ordinal",    "model_id",
     "queue_addr",      "request_id",
-    "run_id",          "correlation_id",
-    "graph_type",      "step_num",
-    "iter_num",        "index_on_host",
-    "bytes_reserved",  "bytes_allocated",
-    "bytes_available", "fragmentation",
+    "run_id",          "graph_type",
+    "step_num",        "iter_num",
+    "index_on_host",   "bytes_reserved",
+    "bytes_allocated", "bytes_available",
+    "fragmentation",   "device_id",
+    "context_id",      "correlation_id",
+    "memcpy_details",  "memalloc_details",
     "kernel_details",  "group_id",
     "step_name",       "level 0",
     "tf_op",           "hlo_op",

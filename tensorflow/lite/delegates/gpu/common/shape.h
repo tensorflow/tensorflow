@@ -40,6 +40,7 @@ enum class Axis {
   WIDTH = 5,
   BATCH = 6,
   VALUE = 7,
+  DEPTH = 8,
 };
 
 std::string ToString(Axis t);
@@ -57,6 +58,10 @@ enum class Layout {
   IHWO = 8,
   IOHW = 9,
   BHWC = 10,
+  HWDC = 11,
+  BHWDC = 12,
+  HWD = 13,
+  OHWDI = 14,
 };
 
 std::string ToString(Layout l);
@@ -176,17 +181,23 @@ struct StrongShape;
 using Scalar = StrongShape<Layout::SCALAR>;
 using Linear = StrongShape<Layout::LINEAR>;
 using HW = StrongShape<Layout::HW>;
+using HWD = StrongShape<Layout::HWD>;
 
 // Common tensor shape for CNN models working with images.
 using CHW = StrongShape<Layout::CHW>;
 using HWC = StrongShape<Layout::HWC>;
+using HWDC = StrongShape<Layout::HWDC>;
 using BHWC = StrongShape<Layout::BHWC>;
+using BHWDC = StrongShape<Layout::BHWDC>;
 
 // Tensor shape used in convolution_2d weights.
 using OIHW = StrongShape<Layout::OIHW>;
 using OHWI = StrongShape<Layout::OHWI>;
 using IHWO = StrongShape<Layout::IHWO>;
 using IOHW = StrongShape<Layout::IOHW>;
+
+// Tensor shape used in convolution_3d weights.
+using OHWDI = StrongShape<Layout::OHWDI>;
 
 // -----------------------------------------------------------------------------
 // Everything below are internal implementation details.
@@ -218,6 +229,7 @@ TFLITE_GPU_AXIS_TRAITS(INPUT_CHANNELS, i);
 TFLITE_GPU_AXIS_TRAITS(OUTPUT_CHANNELS, o);
 TFLITE_GPU_AXIS_TRAITS(BATCH, b);
 TFLITE_GPU_AXIS_TRAITS(VALUE, v);
+TFLITE_GPU_AXIS_TRAITS(DEPTH, d);
 
 #undef TFLITE_GPU_AXIS_TRAITS
 
@@ -326,6 +338,7 @@ struct LayoutTraits;
   }
 
 TFLITE_GPU_LAYOUT_TRAITS(HW, Axis::HEIGHT, Axis::WIDTH);
+TFLITE_GPU_LAYOUT_TRAITS(HWD, Axis::HEIGHT, Axis::WIDTH, Axis::DEPTH);
 TFLITE_GPU_LAYOUT_TRAITS(OHWI, Axis::OUTPUT_CHANNELS, Axis::HEIGHT, Axis::WIDTH,
                          Axis::INPUT_CHANNELS);
 TFLITE_GPU_LAYOUT_TRAITS(OIHW, Axis::OUTPUT_CHANNELS, Axis::INPUT_CHANNELS,
@@ -336,10 +349,16 @@ TFLITE_GPU_LAYOUT_TRAITS(IHWO, Axis::INPUT_CHANNELS, Axis::HEIGHT, Axis::WIDTH,
                          Axis::OUTPUT_CHANNELS);
 TFLITE_GPU_LAYOUT_TRAITS(CHW, Axis::CHANNELS, Axis::HEIGHT, Axis::WIDTH);
 TFLITE_GPU_LAYOUT_TRAITS(HWC, Axis::HEIGHT, Axis::WIDTH, Axis::CHANNELS);
+TFLITE_GPU_LAYOUT_TRAITS(HWDC, Axis::HEIGHT, Axis::WIDTH, Axis::DEPTH,
+                         Axis::CHANNELS);
 TFLITE_GPU_LAYOUT_TRAITS(LINEAR, Axis::VALUE);
 TFLITE_GPU_LAYOUT_TRAITS(SCALAR, Axis::VALUE);
 TFLITE_GPU_LAYOUT_TRAITS(BHWC, Axis::BATCH, Axis::HEIGHT, Axis::WIDTH,
                          Axis::CHANNELS);
+TFLITE_GPU_LAYOUT_TRAITS(BHWDC, Axis::BATCH, Axis::HEIGHT, Axis::WIDTH,
+                         Axis::DEPTH, Axis::CHANNELS);
+TFLITE_GPU_LAYOUT_TRAITS(OHWDI, Axis::OUTPUT_CHANNELS, Axis::HEIGHT,
+                         Axis::WIDTH, Axis::DEPTH, Axis::INPUT_CHANNELS);
 
 #undef TFLITE_GPU_LAYOUT_TRAITS
 
@@ -559,8 +578,12 @@ auto DispatchByLayout(Layout type, F f)
   switch (type) {
     case Layout::HW:
       return f.template operator()<Layout::HW>();
+    case Layout::HWD:
+      return f.template operator()<Layout::HWD>();
     case Layout::HWC:
       return f.template operator()<Layout::HWC>();
+    case Layout::HWDC:
+      return f.template operator()<Layout::HWDC>();
     case Layout::CHW:
       return f.template operator()<Layout::CHW>();
     case Layout::OIHW:
@@ -577,6 +600,10 @@ auto DispatchByLayout(Layout type, F f)
       return f.template operator()<Layout::SCALAR>();
     case Layout::BHWC:
       return f.template operator()<Layout::BHWC>();
+    case Layout::BHWDC:
+      return f.template operator()<Layout::BHWDC>();
+    case Layout::OHWDI:
+      return f.template operator()<Layout::OHWDI>();
     case Layout::UNKNOWN:
       return f.template operator()<Layout::UNKNOWN>();
   }

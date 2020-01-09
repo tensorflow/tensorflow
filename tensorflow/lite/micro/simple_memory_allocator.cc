@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/micro/simple_memory_allocator.h"
 
+#include <cstddef>
+
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
 #include "tensorflow/lite/micro/memory_helpers.h"
 
@@ -29,7 +31,7 @@ uint8_t* SimpleMemoryAllocator::AllocateFromTail(size_t size,
   uint8_t* previous_free = (data_ + data_size_max_) - data_size_;
   uint8_t* current_data = previous_free - size;
   uint8_t* aligned_result = AlignPointerDown(current_data, alignment);
-  size_t aligned_size = (previous_free - aligned_result);
+  std::ptrdiff_t aligned_size = (previous_free - aligned_result);
   if ((data_size_ + aligned_size) > data_size_max_) {
     // TODO(petewarden): Add error reporting beyond returning null!
     return nullptr;

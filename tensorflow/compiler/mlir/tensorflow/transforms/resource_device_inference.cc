@@ -26,16 +26,16 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/Function.h"  // TF:local_config_mlir
-#include "mlir/IR/Operation.h"  // TF:local_config_mlir
-#include "mlir/IR/Types.h"  // TF:local_config_mlir
-#include "mlir/IR/Value.h"  // TF:local_config_mlir
-#include "mlir/IR/Visitors.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
-#include "mlir/Pass/PassRegistry.h"  // TF:local_config_mlir
-#include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/Builders.h"  // TF:llvm-project
+#include "mlir/IR/Function.h"  // TF:llvm-project
+#include "mlir/IR/Operation.h"  // TF:llvm-project
+#include "mlir/IR/Types.h"  // TF:llvm-project
+#include "mlir/IR/Value.h"  // TF:llvm-project
+#include "mlir/IR/Visitors.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/Pass/PassRegistry.h"  // TF:llvm-project
+#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/analysis/side_effect_analysis.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -127,16 +127,16 @@ LogicalResult ComputeResourceDevicesInComputation(FuncOp func_op,
   OpBuilder builder(func_op);
   // Function arguments.
   for (auto arg : func_op.getArguments()) {
-    if (!mlir::getElementTypeOrSelf(arg->getType()).isa<TF::ResourceType>()) {
+    if (!mlir::getElementTypeOrSelf(arg.getType()).isa<TF::ResourceType>()) {
       continue;
     }
     auto device_attr = func_op.getArgAttrOfType<mlir::StringAttr>(
-        arg->getArgNumber(), kFuncDeviceAttr);
+        arg.getArgNumber(), kFuncDeviceAttr);
     if (!device_attr || device_attr.getValue() == "") {
       // If device_attr does not exist, try to construct it from any recorded
       // assignment.
       if (auto device = result->DeviceForResource(arg)) {
-        func_op.setArgAttr(arg->getArgNumber(), kFuncDeviceAttr,
+        func_op.setArgAttr(arg.getArgNumber(), kFuncDeviceAttr,
                            builder.getStringAttr(*device));
       }
       continue;
@@ -160,7 +160,7 @@ LogicalResult ComputeResourceDevicesInComputation(FuncOp func_op,
     }
     if (auto identity = llvm::dyn_cast<TF::IdentityOp>(op)) {
       // Try to construct IdentityOp's attribute from recorded assignment.
-      if (!mlir::getElementTypeOrSelf(identity.output()->getType())
+      if (!mlir::getElementTypeOrSelf(identity.output().getType())
                .isa<TF::ResourceType>()) {
         return WalkResult::advance();
       }
@@ -176,7 +176,7 @@ LogicalResult ComputeResourceDevicesInComputation(FuncOp func_op,
     // Propagate and record output device assignment for other ops based on
     // existing recording. E.g., IdentityN.
     for (auto output : op->getResults()) {
-      if (!mlir::getElementTypeOrSelf(output->getType())
+      if (!mlir::getElementTypeOrSelf(output.getType())
                .isa<TF::ResourceType>()) {
         continue;
       }
@@ -212,7 +212,7 @@ void ResourceDeviceInference::runOnModule() {
         for (auto operand_and_argument :
              llvm::zip(caller_operands, callee.getArguments())) {
           if (!mlir::getElementTypeOrSelf(
-                   std::get<0>(operand_and_argument)->getType())
+                   std::get<0>(operand_and_argument).getType())
                    .isa<TF::ResourceType>()) {
             continue;
           }

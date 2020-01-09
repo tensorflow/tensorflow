@@ -1405,6 +1405,9 @@ class VariablesGradientTest(test_util.TensorFlowTestCase):
     def TestFn(inputs, input_vars):
       return inputs * input_vars
 
+    def TestFnSeq(inputs, input_vars):
+      return (inputs * input_vars, inputs * input_vars * 2.0)
+
     with variable_scope.variable_scope("test", use_resource=True):
       test_var = variable_scope.get_variable(
           name="test_var",
@@ -1423,6 +1426,21 @@ class VariablesGradientTest(test_util.TensorFlowTestCase):
         self.assertAllClose(g, g_re)
 
       grads_re, grads = self._TestFnVariablesGradient(test_input, TestFn,
+                                                      test_var)
+      grads_re = self.evaluate(grads_re)
+      grads = self.evaluate(grads)
+      for g, g_re in zip(grads, grads_re):
+        self.assertAllClose(g, g_re)
+
+      # Regression test for wrapping sequence outputting functions.
+      grads_re, grads = self._TestFnVariablesGradient(test_input, TestFnSeq,
+                                                      test_input)
+      grads_re = self.evaluate(grads_re)
+      grads = self.evaluate(grads)
+      for g, g_re in zip(grads, grads_re):
+        self.assertAllClose(g, g_re)
+
+      grads_re, grads = self._TestFnVariablesGradient(test_input, TestFnSeq,
                                                       test_var)
       grads_re = self.evaluate(grads_re)
       grads = self.evaluate(grads)

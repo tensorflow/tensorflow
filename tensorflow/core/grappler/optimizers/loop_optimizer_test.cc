@@ -60,13 +60,6 @@ class LoopOptimizerTest : public GrapplerTest {
     AddNode(name, op, inputs, attributes, graph);
   }
 
-  void DisableAllStages(LoopOptimizer* optimizer) {
-    LoopOptimizer::LoopOptimizerOptions options;
-    options.enable_loop_invariant_node_motion = false;
-    options.enable_stack_push_removal = false;
-    optimizer->options_ = options;
-  }
-
   void EnableOnlyLoopInvariantNodeMotion(LoopOptimizer* optimizer) {
     DisableAllStages(optimizer);
     optimizer->options_.enable_loop_invariant_node_motion = true;
@@ -75,6 +68,14 @@ class LoopOptimizerTest : public GrapplerTest {
   void EnableOnlyStackPushRemoval(LoopOptimizer* optimizer) {
     DisableAllStages(optimizer);
     optimizer->options_.enable_stack_push_removal = true;
+  }
+
+ private:
+  void DisableAllStages(LoopOptimizer* optimizer) {
+    LoopOptimizer::LoopOptimizerOptions options;
+    options.enable_loop_invariant_node_motion = false;
+    options.enable_stack_push_removal = false;
+    optimizer->options_ = options;
   }
 };
 

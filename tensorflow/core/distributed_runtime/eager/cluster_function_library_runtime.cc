@@ -131,7 +131,7 @@ void EagerClusterFunctionLibraryRuntime::Run(
     function_data = &function_data_[handle];
   }
 
-  EagerClient* eager_client = function_data->eager_client;
+  EagerClient* eager_client = function_data->eager_client.get();
   if (eager_client == nullptr) {
     done(errors::Internal("Could not find eager client"));
     return;
@@ -195,7 +195,7 @@ void EagerClusterFunctionLibraryRuntime::CleanUp(
     function_data = &function_data_[handle];
   }
 
-  EagerClient* eager_client = function_data->eager_client;
+  EagerClient* eager_client = function_data->eager_client.get();
   if (eager_client == nullptr) {
     done(errors::Internal("Could not find eager client"));
     return;

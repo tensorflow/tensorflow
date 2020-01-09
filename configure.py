@@ -49,8 +49,8 @@ _TF_BAZELRC_FILENAME = '.tf_configure.bazelrc'
 _TF_WORKSPACE_ROOT = ''
 _TF_BAZELRC = ''
 _TF_CURRENT_BAZEL_VERSION = None
-_TF_MIN_BAZEL_VERSION = '1.0.0'
-_TF_MAX_BAZEL_VERSION = '1.1.0'
+_TF_MIN_BAZEL_VERSION = '1.2.1'
+_TF_MAX_BAZEL_VERSION = '1.2.1'
 
 NCCL_LIB_PATHS = [
     'lib64/', 'lib/powerpc64le-linux-gnu/', 'lib/x86_64-linux-gnu/', ''
@@ -147,14 +147,16 @@ def write_action_env_to_bazelrc(var_name, var):
   write_to_bazelrc('build --action_env %s="%s"' % (var_name, str(var)))
 
 
-def run_shell(cmd, allow_non_zero=False):
+def run_shell(cmd, allow_non_zero=False, stderr=None):
+  if stderr is None:
+    stderr = sys.stdout
   if allow_non_zero:
     try:
-      output = subprocess.check_output(cmd)
+      output = subprocess.check_output(cmd, stderr=stderr)
     except subprocess.CalledProcessError as e:
       output = e.output
   else:
-    output = subprocess.check_output(cmd)
+    output = subprocess.check_output(cmd, stderr=stderr)
   return output.decode('UTF-8').strip()
 
 
@@ -169,10 +171,12 @@ def get_python_path(environ_cp, python_bin_path):
   if environ_cp.get('PYTHONPATH'):
     python_paths = environ_cp.get('PYTHONPATH').split(':')
   try:
+    stderr = open(os.devnull, 'wb')
     library_paths = run_shell([
         python_bin_path, '-c',
         'import site; print("\\n".join(site.getsitepackages()))'
-    ]).split('\n')
+    ],
+                              stderr=stderr).split('\n')
   except subprocess.CalledProcessError:
     library_paths = [
         run_shell([

@@ -114,6 +114,15 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   ROOT %clamp.3 = f32[4] clamp(f32[] %Arg_0.1, f32[4] %Arg_1.2, f32[] %Arg_2.3)
 }
 
+// CHECK-LABEL:  func @test_collective_permute
+// CHECK-SAME:  ([[ARG:%.*]]: tensor<128x32xf32>) -> tensor<128x32xf32>
+%test_collective_permute (input: f32[128,32]) -> f32[128,32] {
+  %input = f32[128,32]{0,1} parameter(0)
+  // CHECK-NEXT:  "xla_hlo.collective_permute"([[ARG]]) {name = {{.*}}, source_target_pairs = dense<{{\[\[}}0, 1], [1, 2], [2, 3]]> : tensor<3x2xi64>} : (tensor<128x32xf32>) -> tensor<128x32xf32>
+  ROOT root = f32[128,32]{0,1} collective-permute(%input), source_target_pairs={{0,1},{1,2},{2,3}}
+}
+
+
 // CHECK-LABEL:  func @test_compare(%arg0: tensor<3xf32>, %arg1: tensor<3xf32>, %arg2: tensor<1xf32>) -> tensor<3xi1> {
 %test_compare (Arg_0.1: f32[3], Arg_1.2: f32[3], Arg_2.3: f32[1]) -> pred[3] {
   %Arg_0.1 = f32[3] parameter(0)
@@ -231,6 +240,15 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
 
   // CHECK-NEXT:  "xla_hlo.cos"(%arg0) {name = "{{.*}}"} : (tensor<1x16x16x3xf32>) -> tensor<1x16x16x3xf32>
   ROOT %cosine.3 = f32[1,16,16,3]{3,2,1,0} cosine(f32[1,16,16,3]{3,2,1,0} %arg0.1)
+}
+
+// CHECK-LABEL:  func @test_custom_call
+// CHECK-SAME:  [[ARG_0:%.*]]: tensor<2x3xf32>, [[ARG_1:%.*]]: tensor<5x5xf32>) -> tensor<1x2x3xf32>
+%test_custom_call (arg1: f32[2,3], arg2: f32[5,5]) -> f32[1,2,3] {
+  %arg1 = f32[2,3] parameter(0)
+  %arg2 = f32[5,5] parameter(1)
+// CHECK:  "xla_hlo.custom_call"([[ARG_0]], [[ARG_1]]) {backend_config = "bar", call_target_name = "foo", has_side_effect = true, name = {{.*}}} : (tensor<2x3xf32>, tensor<5x5xf32>) -> tensor<1x2x3xf32>
+  ROOT %custom-call = f32[1,2,3]{0,2,1} custom-call(f32[2,3] %arg1, f32[5,5] %arg2), custom_call_target="foo", backend_config="bar", custom_call_has_side_effect=true
 }
 
 // CHECK-LABEL:  func @test_div(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
@@ -650,6 +668,15 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
 
   // CHECK:  "xla_hlo.select"(%arg0, %arg1, %arg2) {name = "{{.*}}"} : (tensor<2x3xi1>, tensor<2x3xi32>, tensor<2x3xi32>) -> tensor<2x3xi32>
   ROOT %select.4 = s32[2,3] select(pred[2,3] %Arg_0.1, s32[2,3] %Arg_1.2, s32[2,3] %Arg_2.3)
+}
+
+// CHECK-LABEL:  func @test_set_dimension_size
+// CHECK-SAME:  ([[ARG:%.*]]: tensor<4x4xf32>, [[SIZE:%.*]]: tensor<i32>)
+%test_set_dimension_size (Arg_0.1: f32[4,4], Arg_1.2: s32[]) -> f32[4,<=4] {
+  %Arg_0.1 = f32[4,4] parameter(0)
+  %Arg_1.2 = s32[] parameter(1)
+  // CHECK-NEXT:  "xla_hlo.set_dimension_size"([[ARG]], [[SIZE]]) {dimension = 1 : i32, name = "{{.*}}"} : (tensor<4x4xf32>, tensor<i32>) -> tensor<4x4xf32>
+  ROOT %set-dimension-size.2 = f32[4,<=4] set-dimension-size(f32[4,4] %Arg_0.1, s32[] %Arg_1.2), dimensions={1}
 }
 
 // CHECK-LABEL:  func @test_sine(%arg0: tensor<1x16x16x3xf32>) -> tensor<1x16x16x3xf32> {

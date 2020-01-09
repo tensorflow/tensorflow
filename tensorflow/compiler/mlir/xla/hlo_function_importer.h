@@ -18,12 +18,12 @@ limitations under the License.
 
 #include <unordered_map>
 
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/Function.h"  // TF:local_config_mlir
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/IR/Module.h"  // TF:local_config_mlir
-#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/Builders.h"  // TF:llvm-project
+#include "mlir/IR/Function.h"  // TF:llvm-project
+#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
+#include "mlir/IR/Module.h"  // TF:llvm-project
+#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/xla/status.h"
@@ -120,6 +120,11 @@ class HloFunctionImporter {
   // Converts the gather dimensions to attributes.
   mlir::NamedAttribute ConvertGatherDimensionNumbers(
       const xla::GatherDimensionNumbers& dnums);
+
+  // Converts XLA instruction source target pairs to MLIR attribute.
+  mlir::NamedAttribute ConvertSourceTargetPairs(
+      const std::vector<std::pair<tensorflow::int64, tensorflow::int64>>&
+          source_target_pairs);
 
   mlir::MLIRContext* context_;
   mlir::ModuleOp module_;

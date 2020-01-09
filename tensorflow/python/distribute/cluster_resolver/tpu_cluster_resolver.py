@@ -31,9 +31,9 @@ from tensorflow.python.util.tf_export import tf_export
 try:
   from cloud_tpu_client import client  # pylint: disable=g-import-not-at-top
 except ImportError:
-  logging.warning(
-      'Falling back to tensorflow client, its recommended to install the cloud '
-      'tpu client directly with pip install cloud-tpu-client .')
+  logging.debug(
+      'Falling back to TensorFlow client; we recommended you install the Cloud '
+      'TPU client directly with pip install cloud-tpu-client.')
   from tensorflow.python.tpu.client import client
 
 def is_running_in_gce():

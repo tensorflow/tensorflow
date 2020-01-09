@@ -27,6 +27,7 @@ from tensorflow.python.autograph.pyct import ast_util
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.pyct import templates
 from tensorflow.python.autograph.pyct.static_analysis import annos
+from tensorflow.python.autograph.utils import compat_util
 
 
 # TODO(mdan): Refactor functions to make them smaller.
@@ -604,3 +605,6 @@ class ControlFlowTransformer(converter.Base):
 def transform(node, ctx):
   node = ControlFlowTransformer(ctx).visit(node)
   return node
+
+
+compat_util.deprecated_py2_support(__name__)

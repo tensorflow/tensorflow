@@ -96,7 +96,9 @@ tensorflow::StatSummarizerOptions GetProfileSummarizerOptions() {
 
 }  // namespace
 
-ProfileSummarizer::ProfileSummarizer() {
+ProfileSummarizer::ProfileSummarizer()
+    : delegate_stats_calculator_(
+          new tensorflow::StatsCalculator(GetProfileSummarizerOptions())) {
   // Create stats calculator for the primary graph.
   stats_calculator_map_[0] = std::unique_ptr<tensorflow::StatsCalculator>(
       new tensorflow::StatsCalculator(GetProfileSummarizerOptions()));
@@ -126,6 +128,7 @@ void ProfileSummarizer::ProcessProfiles(
 
   // Total time will be accumulated per subgraph.
   std::map<uint32_t, int64_t> total_us_per_subgraph_map;
+  int64_t delegate_internal_total_us = 0;
 
   for (auto event : events) {
     const auto subgraph_index = event->event_subgraph_index;
@@ -164,9 +167,9 @@ void ProfileSummarizer::ProcessProfiles(
       const auto node_name_in_stats =
           "Delegate/" + node_name + ":" + std::to_string(event->event_metadata);
 
-      stats_calculator->AddNodeStats(node_name_in_stats, "DelegateOpInvoke",
-                                     node_num, start_us, node_exec_time,
-                                     0 /*memory */);
+      delegate_stats_calculator_->AddNodeStats(
+          node_name_in_stats, "DelegateOpInvoke", node_num, start_us,
+          node_exec_time, 0 /*memory */);
     } else {
       // TODO(b/139812778) consider use a different stats_calculator to record
       // non-op-invoke events so that these could be separated from
@@ -185,6 +188,8 @@ void ProfileSummarizer::ProcessProfiles(
     if (event->event_type !=
         Profiler::EventType::DELEGATE_OPERATOR_INVOKE_EVENT) {
       total_us_per_subgraph_map[subgraph_index] += node_exec_time;
+    } else {
+      delegate_internal_total_us += node_exec_time;
     }
     ++node_num;
   }
@@ -193,6 +198,9 @@ void ProfileSummarizer::ProcessProfiles(
     auto stats_calculator =
         GetStatsCalculator(total_us_per_subgraph_pair.first);
     stats_calculator->UpdateRunTotalUs(total_us_per_subgraph_pair.second);
+  }
+  if (delegate_internal_total_us > 0) {
+    delegate_stats_calculator_->UpdateRunTotalUs(delegate_internal_total_us);
   }
 }
 
@@ -229,6 +237,15 @@ std::string ProfileSummarizer::GenerateReport(std::string tag,
     }
     stream << subgraph_stats->GetShortSummary() << std::endl;
   }
+
+  if (delegate_stats_calculator_->num_runs() > 0) {
+    stream << "Delegate internal: " << std::endl;
+    if (include_output_string) {
+      stream << delegate_stats_calculator_->GetOutputString();
+    }
+    stream << delegate_stats_calculator_->GetShortSummary() << std::endl;
+  }
+
   return stream.str();
 }
 

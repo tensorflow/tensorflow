@@ -37,4 +37,4 @@ yes "" | /usr/local/bin/python configure.py
 # Build the pip package and import
 bazel build --config=cuda --cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0" --config=opt --config=v2 tensorflow/tools/pip_package:build_pip_package
 ./bazel-bin/tensorflow/tools/pip_package/build_pip_package pip_pkg --gpu --nightly_flag
-pip --no-cache-dir install --upgrade /tmp/pip/tensorflow-*.whl
+pip --no-cache-dir install --upgrade /tmp/pip_pkg/tensorflow-*.whl

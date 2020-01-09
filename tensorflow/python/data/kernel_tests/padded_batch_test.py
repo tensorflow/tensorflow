@@ -99,6 +99,33 @@ class PaddedBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
                 batch_size=4, padded_shapes=[-1]))
     self.assertDatasetProduces(dataset, expected_output=[[[], [], [], []]])
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testDefaultPaddedShapes(self):
+
+    def fill(x):
+      return array_ops.fill([x], x)
+
+    dataset = (
+        dataset_ops.Dataset.from_tensor_slices(
+            [1, 2, 3, 4]).map(fill).padded_batch(batch_size=2))
+    self.assertDatasetProduces(
+        dataset,
+        expected_output=[[[1, 0], [2, 2]], [[3, 3, 3, 0], [4, 4, 4, 4]]])
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testNestedDefaultPaddedShapes(self):
+
+    def fill_tuple(x):
+      return (x, array_ops.fill([x], x))
+
+    dataset = (
+        dataset_ops.Dataset.from_tensor_slices(
+            [1, 2, 3, 4]).map(fill_tuple).padded_batch(batch_size=2))
+    self.assertDatasetProduces(
+        dataset,
+        expected_output=[([1, 2], [[1, 0], [2, 2]]),
+                         ([3, 4], [[3, 3, 3, 0], [4, 4, 4, 4]])])
+
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
@@ -205,36 +232,51 @@ class PaddedBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       _ = dataset_ops.Dataset.range(10).map(_map_fn).padded_batch(10)
 
   @combinations.generate(test_base.default_test_combinations())
-  def testPaddedBatchShapeError(self):
+  def testPaddedBatchShapeErrorWrongRank(self):
     with self.assertRaisesRegexp(
         ValueError, r'The padded shape \(1,\) is not compatible with the '
         r'corresponding input component shape \(\).'):
       _ = dataset_ops.Dataset.range(10).padded_batch(5, padded_shapes=[1])
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testPaddedBatchShapeErrorTooSmall(self):
     with self.assertRaisesRegexp(
         ValueError, r'The padded shape \(1,\) is not compatible with the '
         r'corresponding input component shape \(3,\).'):
       _ = dataset_ops.Dataset.from_tensors([1, 2, 3]).padded_batch(
           5, padded_shapes=[1])
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testPaddedBatchShapeErrorShapeNotRank1(self):
     with self.assertRaisesRegexp(
         ValueError, r'Padded shape .* must be a 1-D tensor '
         r'of tf.int64 values, but its shape was \(2, 2\).'):
       _ = dataset_ops.Dataset.from_tensors([1, 2, 3]).padded_batch(
           5, padded_shapes=[[1, 1], [1, 1]])
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testPaddedBatchShapeErrorShapeNotInt(self):
     with self.assertRaisesRegexp(
         TypeError, r'Padded shape .* must be a 1-D tensor '
         r'of tf.int64 values, but its element type was float32.'):
       _ = dataset_ops.Dataset.from_tensors([1, 2, 3]).padded_batch(
           5, padded_shapes=constant_op.constant([1.5, 2., 3.]))
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testPaddedBatchShapeErrorWrongRankFromTensor(self):
     with self.assertRaisesRegexp(
         ValueError, r'The padded shape \(1,\) is not compatible with the '
         r'corresponding input component shape \(\).'):
       shape_as_tensor = constant_op.constant([1], dtype=dtypes.int64)
       _ = dataset_ops.Dataset.range(10).padded_batch(
           5, padded_shapes=shape_as_tensor)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testPaddedBatchShapeErrorDefaultShapeWithUnknownRank(self):
+    with self.assertRaisesRegexp(ValueError, r'`padded_shapes`.*unknown rank'):
+      ds = dataset_ops.Dataset.from_generator(
+          lambda: iter([1, 2, 3]), output_types=dtypes.int32)
+      ds.padded_batch(2)
 
   @combinations.generate(test_base.graph_only_combinations())
   def testPaddedBatchShapeErrorPlaceholder(self):
@@ -245,7 +287,6 @@ class PaddedBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       shape_as_tensor = array_ops.placeholder(dtypes.int64, shape=[2])
       _ = dataset_ops.Dataset.range(10).padded_batch(
           5, padded_shapes=shape_as_tensor)
-
 
 if __name__ == '__main__':
   test.main()

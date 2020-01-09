@@ -21,26 +21,26 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Analysis/LoopAnalysis.h"  // TF:local_config_mlir
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/Block.h"  // TF:local_config_mlir
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/Function.h"  // TF:local_config_mlir
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/IR/Module.h"  // TF:local_config_mlir
-#include "mlir/IR/Operation.h"  // TF:local_config_mlir
-#include "mlir/IR/OperationSupport.h"  // TF:local_config_mlir
-#include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
-#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
-#include "mlir/IR/SymbolTable.h"  // TF:local_config_mlir
-#include "mlir/IR/Types.h"  // TF:local_config_mlir
-#include "mlir/IR/Value.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
-#include "mlir/Pass/PassRegistry.h"  // TF:local_config_mlir
-#include "mlir/Support/Functional.h"  // TF:local_config_mlir
-#include "mlir/Support/LLVM.h"  // TF:local_config_mlir
-#include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
+#include "mlir/Analysis/LoopAnalysis.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/Block.h"  // TF:llvm-project
+#include "mlir/IR/Builders.h"  // TF:llvm-project
+#include "mlir/IR/Function.h"  // TF:llvm-project
+#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
+#include "mlir/IR/Module.h"  // TF:llvm-project
+#include "mlir/IR/Operation.h"  // TF:llvm-project
+#include "mlir/IR/OperationSupport.h"  // TF:llvm-project
+#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
+#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/IR/SymbolTable.h"  // TF:llvm-project
+#include "mlir/IR/Types.h"  // TF:llvm-project
+#include "mlir/IR/Value.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/Pass/PassRegistry.h"  // TF:llvm-project
+#include "mlir/Support/Functional.h"  // TF:llvm-project
+#include "mlir/Support/LLVM.h"  // TF:llvm-project
+#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
@@ -205,7 +205,7 @@ struct OphintCompositeOp {
           Operation* current_identity_op = operand.ops.begin()->second;
           Value input = current_identity_op->getOperand(0);
           RankedTensorType input_type =
-              input->getType().cast<RankedTensorType>();
+              input.getType().cast<RankedTensorType>();
           // The Reshape will be {1, (original_shape)}
           SmallVector<int64_t, 4> reshape_op_shape;
           reshape_op_shape.push_back(1);
@@ -242,13 +242,13 @@ struct OphintCompositeOp {
           }
           // Find the first op that consumes the last value of the aggregated
           // inputs.
-          Operation* first_use = *(packed_input_consumers.back()->user_begin());
+          Operation* first_use = *(packed_input_consumers.back().user_begin());
           // The pack reshape will be {N, (original_shape)}
           SmallVector<int64_t, 4> pack_shape;
           pack_shape.push_back(pack_input_operands.size());
           RankedTensorType type = operand.ops.at(0)
                                       ->getResult(0)
-                                      ->getType()
+                                      .getType()
                                       .cast<RankedTensorType>();
           for (const auto& dim : type.getShape()) {
             pack_shape.push_back(dim);
@@ -290,7 +290,7 @@ struct OphintCompositeOp {
         const int output_numer = operand.ops.size();
         Value first_output = operand.ops.at(0)->getOperand(0);
         RankedTensorType first_output_type =
-            first_output->getType().cast<RankedTensorType>();
+            first_output.getType().cast<RankedTensorType>();
         // The aggregated output shape will be {N, original_shape}.
         SmallVector<int64_t, 4> shape;
         shape.push_back(output_numer);
@@ -302,10 +302,10 @@ struct OphintCompositeOp {
       } else if (operand.aggregation == kStrategyLast) {
         Value last_output =
             operand.ops.at(operand.ops.size() - 1)->getOperand(0);
-        aggregated_output_types[kv.first] = last_output->getType();
+        aggregated_output_types[kv.first] = last_output.getType();
       } else {
         Value first_output = operand.ops.at(0)->getOperand(0);
-        aggregated_output_types[kv.first] = first_output->getType();
+        aggregated_output_types[kv.first] = first_output.getType();
       }
     }
     return aggregated_output_types;
@@ -329,7 +329,7 @@ struct OphintCompositeOp {
         Operation* first_output = operand.ops.at(0);
         Location insert_loc = first_output->getLoc();
         SmallVector<Type, 4> unpack_output_types(
-            output_number, first_output->getOperand(0)->getType());
+            output_number, first_output->getOperand(0).getType());
 
         builder->setInsertionPoint(first_output);
         Operation* unpack_op = builder->create<TFL::UnpackOp>(
@@ -404,7 +404,7 @@ void PreprocessTopoSortGraph(
       // should only count as one.
       llvm::DenseSet<Operation*> input_ops;
       for (int i = 0; i < op.getNumOperands(); ++i) {
-        Operation* input_op = op.getOperand(i)->getDefiningOp();
+        Operation* input_op = op.getOperand(i).getDefiningOp();
         if (input_op) input_ops.insert(input_op);
       }
       if (input_ops.empty()) {
@@ -515,7 +515,7 @@ Operation* BuildFusedFuncOp(StringRef func_name, StringRef fused_func_type,
   SmallVector<int, 4> input_indexes;
   for (const auto& kv : inputs) {
     Value input = kv.second;
-    input_types.push_back(input->getType());
+    input_types.push_back(input.getType());
     input_values.push_back(input);
     input_indexes.push_back(kv.first);
   }
@@ -589,7 +589,7 @@ llvm::DenseSet<Operation*> BfsForReachableOps(ArrayRef<Operation*> input_ops) {
   std::queue<Operation*> ops_queue;
   for (auto& input_op : input_ops) {
     for (Value value : input_op->getOperands()) {
-      Operation* op = value->getDefiningOp();
+      Operation* op = value.getDefiningOp();
       if (op != nullptr) ops_queue.push(op);
     }
   }
@@ -599,7 +599,7 @@ llvm::DenseSet<Operation*> BfsForReachableOps(ArrayRef<Operation*> input_ops) {
     ops_queue.pop();
     reachable_ops.insert(current_op);
     for (Value value : current_op->getOperands()) {
-      Operation* upstream_op = value->getDefiningOp();
+      Operation* upstream_op = value.getDefiningOp();
       // Not visited, put it into the queue.
       if (upstream_op != nullptr &&
           !llvm::is_contained(reachable_ops, upstream_op)) {
@@ -642,7 +642,7 @@ LogicalResult ConvertOphintToStub(StringRef stub_name,
       aggregated_inputs, aggregated_output_types, builder, module_op);
 
   for (const auto& kv : aggregated_inputs) {
-    Operation* op = kv.second->getDefiningOp();
+    Operation* op = kv.second.getDefiningOp();
     if (op == nullptr) return failure();
     op->moveBefore(fused_op);
   }

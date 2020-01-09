@@ -15,14 +15,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/mlir_gpu/lhlo_dialect_emitter.h"
 
-#include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // TF:local_config_mlir
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/Function.h"  // TF:local_config_mlir
-#include "mlir/IR/Identifier.h"  // TF:local_config_mlir
-#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
-#include "mlir/IR/Types.h"  // TF:local_config_mlir
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/Builders.h"  // TF:llvm-project
+#include "mlir/IR/Function.h"  // TF:llvm-project
+#include "mlir/IR/Identifier.h"  // TF:llvm-project
+#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/IR/Types.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 #include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"

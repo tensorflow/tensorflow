@@ -460,7 +460,7 @@ def TfExecutor_NextIterationSourceOp : TfExecutor_Op<"NextIteration.Source",
 
   let extraClassDeclaration = [{
     NextIterationSinkOp GetSink() {
-      return cast<NextIterationSinkOp>(*token()->user_begin());
+      return cast<NextIterationSinkOp>(*token().user_begin());
     }
   }];
 

@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
@@ -495,24 +496,31 @@ Status AnonymousIteratorHandleOp::CreateResource(
   return Status::OK();
 }
 
-void MakeIteratorOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
+HybridAsyncOpKernel::HybridAsyncOpKernel(OpKernelConstruction* ctx,
+                                         const char* background_worker_name)
+    : AsyncOpKernel(ctx),
+      background_worker_(ctx->env(), background_worker_name) {}
+
+void HybridAsyncOpKernel::ComputeAsync(OpKernelContext* ctx,
+                                       DoneCallback done) {
+  background_worker_.Schedule([this, ctx, done = std::move(done)]() {
+    ctx->SetStatus(DoCompute(ctx));
+    done();
+  });
+}
+
+void HybridAsyncOpKernel::Compute(OpKernelContext* ctx) {
+  ctx->SetStatus(DoCompute(ctx));
+}
+
+Status MakeIteratorOp::DoCompute(OpKernelContext* ctx) {
   DatasetBase* dataset;
-  OP_REQUIRES_OK_ASYNC(
-      ctx, GetDatasetFromVariantTensor(ctx->input(0), &dataset), done);
+  TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(ctx->input(0), &dataset));
   IteratorResource* iterator_resource;
-  OP_REQUIRES_OK_ASYNC(
-      ctx, LookupResource(ctx, HandleFromInput(ctx, 1), &iterator_resource),
-      done);
-  background_worker_.Schedule(std::bind(
-      [ctx, iterator_resource, dataset](DoneCallback done) {
-        Status s = iterator_resource->SetIteratorFromDataset(ctx, dataset);
-        iterator_resource->Unref();
-        if (!s.ok()) {
-          ctx->SetStatus(s);
-        }
-        done();
-      },
-      std::move(done)));
+  TF_RETURN_IF_ERROR(
+      LookupResource(ctx, HandleFromInput(ctx, 1), &iterator_resource));
+  core::ScopedUnref unref_iterator(iterator_resource);
+  return iterator_resource->SetIteratorFromDataset(ctx, dataset);
 }
 
 void DeleteIteratorOp::Compute(OpKernelContext* ctx) {
@@ -525,24 +533,13 @@ void DeleteIteratorOp::Compute(OpKernelContext* ctx) {
 
 namespace {
 
-class ToSingleElementOp : public AsyncOpKernel {
+class ToSingleElementOp : public HybridAsyncOpKernel {
  public:
   explicit ToSingleElementOp(OpKernelConstruction* ctx)
-      : AsyncOpKernel(ctx),
-        background_worker_(ctx->env(), "tf_data_to_single_element") {}
+      : HybridAsyncOpKernel(ctx, "tf_data_to_single_element") {}
 
-  void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
-    // The call to `iterator->GetNext()` may block and depend on an
-    // inter-op thread pool thread, so we issue the call from the
-    // owned thread pool.
-    background_worker_.Schedule([this, ctx, done = std::move(done)]() {
-      OP_REQUIRES_OK_ASYNC(ctx, DoCompute(ctx), done);
-      done();
-    });
-  }
-
- private:
-  Status DoCompute(OpKernelContext* ctx) {
+ protected:
+  Status DoCompute(OpKernelContext* ctx) override {
     DatasetBase* dataset;
     TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(ctx->input(0), &dataset));
 
@@ -582,15 +579,12 @@ class ToSingleElementOp : public AsyncOpKernel {
     }
     return Status::OK();
   }
-
-  BackgroundWorker background_worker_;
 };
 
-class ReduceDatasetOp : public AsyncOpKernel {
+class ReduceDatasetOp : public HybridAsyncOpKernel {
  public:
   explicit ReduceDatasetOp(OpKernelConstruction* ctx)
-      : AsyncOpKernel(ctx),
-        background_worker_(ctx->env(), "tf_data_reduce_dataset") {
+      : HybridAsyncOpKernel(ctx, "tf_data_reduce_dataset") {
     FunctionMetadata::Params params;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("use_inter_op_parallelism",
                                      &params.use_inter_op_parallelism));
@@ -601,18 +595,8 @@ class ReduceDatasetOp : public AsyncOpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputShapes, &output_shapes_));
   }
 
-  void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
-    // The call to `iterator->GetNext()` may block and depend on an
-    // inter-op thread pool thread, so we issue the call from the
-    // owned thread pool.
-    background_worker_.Schedule([this, ctx, done = std::move(done)]() {
-      OP_REQUIRES_OK_ASYNC(ctx, DoCompute(ctx), done);
-      done();
-    });
-  }
-
- private:
-  Status DoCompute(OpKernelContext* ctx) {
+ protected:
+  Status DoCompute(OpKernelContext* ctx) override {
     DatasetBase* dataset;
     TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(ctx->input(0), &dataset));
     OpInputList inputs;
@@ -709,7 +693,6 @@ class ReduceDatasetOp : public AsyncOpKernel {
   std::shared_ptr<FunctionMetadata> func_metadata_ = nullptr;
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
-  BackgroundWorker background_worker_;
 };
 
 class OneShotIteratorOp : public AsyncOpKernel {
@@ -898,104 +881,61 @@ class OneShotIteratorOp : public AsyncOpKernel {
 
 }  // namespace
 
-void IteratorGetNextOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
-  IteratorResource* iterator;
-  OP_REQUIRES_OK_ASYNC(
-      ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &iterator), done);
-  // The call to `iterator->GetNext()` may block and depend on an
-  // inter-op thread pool thread, so we issue the call from the
-  // owned thread pool.
-  background_worker_.Schedule(std::bind(
-      [ctx, iterator](DoneCallback done) {
-        std::vector<Tensor> components;
-        bool end_of_sequence = false;
-
-        Status s = iterator->GetNext(ctx, &components, &end_of_sequence);
-        // NOTE(mrry): We must unref the iterator before calling `done()`, to
-        // avoid destruction races.
-        iterator->Unref();
-
-        if (!s.ok()) {
-          ctx->SetStatus(s);
-        } else if (end_of_sequence) {
-          ctx->SetStatus(errors::OutOfRange("End of sequence"));
-        } else {
-          for (int i = 0; i < components.size(); ++i) {
-            // TODO(mrry): Check that the shapes match the shape attrs.
-            ctx->set_output(i, components[i]);
-          }
-        }
-        done();
-      },
-      std::move(done)));
+AsyncOpKernel* IteratorGetNextOp::AsAsync() {
+  return type_string() == "IteratorGetNextSync" ? nullptr : this;
+}
+const AsyncOpKernel* IteratorGetNextOp::AsAsync() const {
+  return type_string() == "IteratorGetNextSync" ? nullptr : this;
 }
 
-void IteratorGetNextSyncOp::Compute(OpKernelContext* ctx) {
+Status IteratorGetNextOp::DoCompute(OpKernelContext* ctx) {
   IteratorResource* iterator;
-  OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &iterator));
+  TF_RETURN_IF_ERROR(LookupResource(ctx, HandleFromInput(ctx, 0), &iterator));
   core::ScopedUnref unref_iterator(iterator);
   std::vector<Tensor> components;
   bool end_of_sequence = false;
 
-  OP_REQUIRES_OK(ctx, iterator->GetNext(ctx, &components, &end_of_sequence));
-  OP_REQUIRES(ctx, !end_of_sequence, errors::OutOfRange("End of sequence"));
-
+  TF_RETURN_IF_ERROR(iterator->GetNext(ctx, &components, &end_of_sequence));
+  if (end_of_sequence) {
+    return errors::OutOfRange("End of sequence");
+  }
   for (int i = 0; i < components.size(); ++i) {
     // TODO(mrry): Check that the shapes match the shape attrs.
     ctx->set_output(i, components[i]);
   }
+  return Status::OK();
 }
 
-void IteratorGetNextAsOptionalOp::ComputeAsync(OpKernelContext* ctx,
-                                               DoneCallback done) {
+Status IteratorGetNextAsOptionalOp::DoCompute(OpKernelContext* ctx) {
   IteratorResource* iterator;
-  OP_REQUIRES_OK_ASYNC(
-      ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &iterator), done);
-  // The call to `iterator->GetNext()` may block and depend on an
-  // inter-op thread pool thread, so we issue the call from the
-  // owned thread pool.
-  background_worker_.Schedule(std::bind(
-      [this, ctx, iterator](DoneCallback done) {
-        std::vector<Tensor> components;
-        bool end_of_sequence = false;
+  TF_RETURN_IF_ERROR(LookupResource(ctx, HandleFromInput(ctx, 0), &iterator));
+  core::ScopedUnref unref_iterator(iterator);
+  std::vector<Tensor> components;
+  bool end_of_sequence = false;
 
-        Status s = iterator->GetNext(ctx, &components, &end_of_sequence);
-        // NOTE(mrry): We must unref the iterator before calling `done()`, to
-        // avoid destruction races.
-        iterator->Unref();
+  TF_RETURN_IF_ERROR(iterator->GetNext(ctx, &components, &end_of_sequence));
 
-        if (!s.ok()) {
-          ctx->SetStatus(s);
-        } else if (end_of_sequence) {
-          OP_REQUIRES_OK_ASYNC(ctx, WriteOptionalNoneToOutput(ctx, 0), done);
-        } else {
-          for (int i = 0; i < components.size(); ++i) {
-            OP_REQUIRES_ASYNC(
-                ctx, components[i].dtype() == output_types_[i],
-                errors::InvalidArgument(
-                    "The given optional does not match the expected type for "
-                    "component ",
-                    i, ". Expected: ", DataTypeString(output_types_[i]),
-                    ". Actual: ", DataTypeString(components[i].dtype()), "."),
-                done);
-            OP_REQUIRES_ASYNC(
-                ctx, output_shapes_[i].IsCompatibleWith(components[i].shape()),
-                errors::InvalidArgument(
-                    "The given optional does not match the expected shape "
-                    "for component ",
-                    i, ". Expected: ", output_shapes_[i].DebugString(),
-                    ". Actual: ", components[i].shape().DebugString(), "."),
-                done);
-          }
-
-          OP_REQUIRES_OK_ASYNC(
-              ctx,
-              WriteOptionalWithValueToOutput(ctx, 0, std::move(components)),
-              done);
-        }
-        done();
-      },
-      std::move(done)));
+  if (end_of_sequence) {
+    return WriteOptionalNoneToOutput(ctx, 0);
+  } else {
+    for (int i = 0; i < components.size(); ++i) {
+      if (components[i].dtype() != output_types_[i]) {
+        return errors::InvalidArgument(
+            "The given optional does not match the expected type for "
+            "component ",
+            i, ". Expected: ", DataTypeString(output_types_[i]),
+            ". Actual: ", DataTypeString(components[i].dtype()), ".");
+      }
+      if (!output_shapes_[i].IsCompatibleWith(components[i].shape())) {
+        return errors::InvalidArgument(
+            "The given optional does not match the expected shape "
+            "for component ",
+            i, ". Expected: ", output_shapes_[i].DebugString(),
+            ". Actual: ", components[i].shape().DebugString(), ".");
+      }
+    }
+    return WriteOptionalWithValueToOutput(ctx, 0, std::move(components));
+  }
 }
 
 void IteratorToStringHandleOp::Compute(OpKernelContext* ctx) {
@@ -1160,10 +1100,10 @@ REGISTER_KERNEL_BUILDER(Name("IteratorGetNext").Device(DEVICE_GPU).Priority(1),
                         IteratorGetNextOp);
 REGISTER_KERNEL_BUILDER(
     Name("IteratorGetNextSync").Device(DEVICE_CPU).Priority(2),
-    IteratorGetNextSyncOp);
+    IteratorGetNextOp);
 REGISTER_KERNEL_BUILDER(
     Name("IteratorGetNextSync").Device(DEVICE_GPU).Priority(1),
-    IteratorGetNextSyncOp);
+    IteratorGetNextOp);
 REGISTER_KERNEL_BUILDER(
     Name("IteratorGetNextAsOptional").Device(DEVICE_CPU).Priority(2),
     IteratorGetNextAsOptionalOp);

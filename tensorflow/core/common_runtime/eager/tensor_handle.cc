@@ -276,7 +276,7 @@ bool TensorHandle::IsReady() const {
   return is_ready_;
 }
 
-Status TensorHandle::WaitReady(const char* caller) {
+Status TensorHandle::WaitReady(const char* caller) const {
   if (!IsReady()) {
     profiler::TraceMe activity(absl::StrCat(caller, " WaitReady"),
                                profiler::TraceMeLevel::kInfo);
@@ -375,7 +375,7 @@ Status TensorHandle::CopyInferenceShape(TensorHandle* other) {
   return Status::OK();
 }
 
-Status TensorHandle::NumDims(int* num_dims) {
+Status TensorHandle::NumDims(int* num_dims) const {
   DCHECK(num_dims != nullptr);
   if (!IsReady() && !inference_shape_.unknown_rank()) {
     *num_dims = inference_shape_.dims();
@@ -386,7 +386,7 @@ Status TensorHandle::NumDims(int* num_dims) {
   }
 }
 
-Status TensorHandle::Dim(int dim_index, int64* dim) {
+Status TensorHandle::Dim(int dim_index, int64* dim) const {
   DCHECK(dim != nullptr);
   if (!IsReady() && !inference_shape_.unknown_rank() &&
       inference_shape_.dim_size(dim_index) != -1) {
@@ -398,7 +398,7 @@ Status TensorHandle::Dim(int dim_index, int64* dim) {
   }
 }
 
-Status TensorHandle::NumElements(int64* num_elements) {
+Status TensorHandle::NumElements(int64* num_elements) const {
   DCHECK(num_elements != nullptr);
   if (!IsReady() && inference_shape_.IsFullyDefined()) {
     *num_elements = inference_shape_.num_elements();

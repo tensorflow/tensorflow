@@ -27,12 +27,12 @@ namespace {
 std::string GetUpsampleCode(
     const OperationDef& op_def,
     const std::vector<ElementwiseOperation*>& linked_operations) {
-  TensorCodeGenerator src_tensor("src_data",
-                                 {"src_size.x", "src_size.y", "src_size.z"},
-                                 op_def.src_tensors[0]);
-  TensorCodeGenerator dst_tensor("dst_data",
-                                 {"dst_size.x", "dst_size.y", "dst_size.z"},
-                                 op_def.dst_tensors[0]);
+  TensorCodeGenerator src_tensor(
+      "src_data", WHSPoint{"src_size.x", "src_size.y", "src_size.z"},
+      op_def.src_tensors[0]);
+  TensorCodeGenerator dst_tensor(
+      "dst_data", WHSPoint{"dst_size.x", "dst_size.y", "dst_size.z"},
+      op_def.dst_tensors[0]);
 
   std::string c = GetCommonDefines(op_def.precision);
   c += "__kernel void main_function(\n";
@@ -67,19 +67,19 @@ std::string GetUpsampleCode(
     c += "  st.z = st.z * src_size.w + B;\n";
     c += "  X = X * dst_size.w + B;\n";
   }
-  c += "  float4 src0 = " + src_tensor.ReadAsFloat3D("st.x", "st.y", "Z") +
+  c += "  float4 src0 = " + src_tensor.ReadAsFloatWHS("st.x", "st.y", "Z") +
        ";\n";
-  c += "  float4 src1 = " + src_tensor.ReadAsFloat3D("st.z", "st.y", "Z") +
+  c += "  float4 src1 = " + src_tensor.ReadAsFloatWHS("st.z", "st.y", "Z") +
        ";\n";
-  c += "  float4 src2 = " + src_tensor.ReadAsFloat3D("st.x", "st.w", "Z") +
+  c += "  float4 src2 = " + src_tensor.ReadAsFloatWHS("st.x", "st.w", "Z") +
        ";\n";
-  c += "  float4 src3 = " + src_tensor.ReadAsFloat3D("st.z", "st.w", "Z") +
+  c += "  float4 src3 = " + src_tensor.ReadAsFloatWHS("st.z", "st.w", "Z") +
        ";\n";
   c += "  FLT4 r0 = TO_FLT4(mix(mix(src0, src1, t.x), mix(src2, src3, t.x), "
        "t.y));\n";
   const LinkingContext context{"r0", "X", "Y", "Z"};
   c += PostProcess(linked_operations, context);
-  c += "  " + dst_tensor.Write3D("r0", "X", "Y", "Z");
+  c += "  " + dst_tensor.WriteWHS("r0", "X", "Y", "Z");
   c += "}\n";
   return c;
 }
@@ -114,8 +114,8 @@ Status Upsample::BindArguments() {
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWBatchedHDB()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWBatchedHDB()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWBatchedHSB()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWBatchedHSB()));
   RETURN_IF_ERROR(
       kernel_.SetBytesAuto(int2(src_[0]->Width() - 1, src_[0]->Height() - 1)));
   float2 scale_factor =
@@ -128,7 +128,7 @@ Status Upsample::BindArguments() {
 int3 Upsample::GetGridSize() const {
   const int grid_x = dst_[0]->Width() * dst_[0]->Batch();
   const int grid_y = dst_[0]->Height();
-  const int grid_z = dst_[0]->Depth();
+  const int grid_z = dst_[0]->Slices();
   return int3(grid_x, grid_y, grid_z);
 }
 
