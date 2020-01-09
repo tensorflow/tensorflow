@@ -191,7 +191,7 @@ extern tflite::ErrorReporter* reporter;
 
 #define TF_LITE_MICRO_EXPECT_TRUE(x)                                   \
   do {                                                                 \
-    if (!x) {                                                          \
+    if (!(x)) {                                                          \
       micro_test::reporter->Report(#x " was not true failed at %s:%d", \
                                    __FILE__, __LINE__);                \
       micro_test::did_test_fail = true;                                \
