@@ -28,8 +28,6 @@ py_library(
         "utils/multi_gpu_utils.py",
         "utils/np_utils.py",
         "utils/vis_utils.py",
-        "wrappers/__init__.py",
-        "wrappers/scikit_learn.py",
     ],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
@@ -45,6 +43,7 @@ py_library(
         "//tensorflow/python/keras/mixed_precision/experimental:mixed_precision_experimental",
         "//tensorflow/python/keras/optimizer_v2",
         "//tensorflow/python/keras/premade",
+        "//tensorflow/python/keras/wrappers",
         "//tensorflow/python/saved_model",
     ],
 )
@@ -1272,20 +1271,6 @@ tf_py_test(
         ":keras",
         "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
-    ],
-)
-
-tf_py_test(
-    name = "scikit_learn_test",
-    size = "small",
-    srcs = ["wrappers/scikit_learn_test.py"],
-    python_version = "PY3",
-    tags = ["notsan"],
-    deps = [
-        ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
     ],
 )
 
