@@ -28,7 +28,6 @@ CCFLAGS += %{CC_FLAGS}%
 
 LDFLAGS += %{LINKER_FLAGS}%
 
-
 # library to be generated
 MICROLITE_LIB = libtensorflow-microlite.a
 

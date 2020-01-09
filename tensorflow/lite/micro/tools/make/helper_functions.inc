@@ -112,6 +112,8 @@ list_$(3)_$(1)_files:
 ALL_PROJECT_TARGETS += generate_$(3)_$(1)_project
 endef
 
+
+
 # Creates a set of rules to build a standalone makefile project for the ARC platform
 # including all of the source and header files required in a
 # separate folder and a simple makefile.
