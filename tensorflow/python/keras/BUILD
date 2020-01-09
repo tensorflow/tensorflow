@@ -552,7 +552,7 @@ tf_py_test(
     shard_count = 16,
     tags = [
         "no_rocm",
-        "notsan"
+        "notsan",
     ],
     deps = [
         ":keras",
@@ -1840,7 +1840,6 @@ tf_py_test(
     python_version = "PY3",
     shard_count = 8,
     tags = [
-        "no_cuda",
         "no_rocm",
         "nomac",  # TODO(mihaimaruseac): b/127695564
     ],

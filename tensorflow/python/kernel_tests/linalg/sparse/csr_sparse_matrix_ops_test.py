@@ -433,7 +433,6 @@ class CSRSparseMatrixOpsTest(test.TestCase):
       return
 
     if test.is_built_with_rocm():
-      # sparse-matrix-add op is not yet supported on the ROCm platform
       self.skipTest("sparse-matrix-add op not supported on ROCm")
 
     a_indices = np.array([[0, 0], [2, 3]])
@@ -474,7 +473,6 @@ class CSRSparseMatrixOpsTest(test.TestCase):
       return
 
     if test.is_built_with_rocm():
-      # sparse-matrix-add op is not yet supported on the ROCm platform
       self.skipTest("sparse-matrix-add op not supported on ROCm")
 
     sparsify = lambda m: m * (m > 0)
@@ -520,7 +518,6 @@ class CSRSparseMatrixOpsTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def testSparseMatrixMatMulConjugateOutput(self):
     if test.is_built_with_rocm():
-      # complex types are not yet supported on the ROCm platform
       self.skipTest("complex type not supported on ROCm")
 
     for shapes in [[(5, 6), (6, 1)], [(5, 6), (6, 2)]]:
@@ -552,6 +549,8 @@ class CSRSparseMatrixOpsTest(test.TestCase):
 
     if test.is_built_with_rocm():
       # TODO(rocm): fix this
+      # This test is currently failing on the ROCm platform
+      # Ren-enable it once the fix is available
       self.skipTest("hipSPARSE all failure on the ROCm platform")
 
     sparsify = lambda m: m * (m > 0)
@@ -612,6 +611,8 @@ class CSRSparseMatrixOpsTest(test.TestCase):
 
     if test.is_built_with_rocm():
       # TODO(rocm): fix this
+      # This test is currently failing on the ROCm platform
+      # Ren-enable it once the fix is available
       self.skipTest("hipSPARSE all failure on the ROCm platform")
 
     sparsify = lambda m: m * (m > 0)
