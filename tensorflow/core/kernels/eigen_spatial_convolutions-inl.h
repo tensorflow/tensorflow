@@ -129,6 +129,7 @@ class TensorContractionInputMapper<
     m_colStride = patch_rows;
 
     m_outputRows = tensor.impl().outputRows();
+    m_outputCols = tensor.impl().outputCols();
     m_row_strides = tensor.impl().userRowStride();
     m_col_strides = tensor.impl().userColStride();
 
@@ -187,6 +188,7 @@ class TensorContractionInputMapper<
     m_inputCols = base_mapper.m_inputCols;
 
     m_outputRows = base_mapper.m_outputRows;
+    m_outputCols = base_mapper.m_outputCols;
     m_row_strides = base_mapper.m_row_strides;
     m_col_strides = base_mapper.m_col_strides;
 
@@ -652,7 +654,8 @@ class TensorContractionInputMapper<
   Index m_inputRows;  // Number of rows in the input tensor
   Index m_inputCols;  // Number of cols in the input tensor
 
-  Index m_outputRows;  // Number of patch rows
+  Index m_outputRows;  // Number of convolution output rows
+  Index m_outputCols;  // Number of convolution output column
 
   Index m_row_strides;  // User specified row stride
   Index m_col_strides;  // User specified col stride
@@ -870,6 +873,23 @@ class TensorContractionSubMapper<
     const Index inputIndex = depth + baseIndex;
     return m_base_mapper.m_impl.template partialPacket<PacketT>(
         inputIndex, mask<PacketT>(0, num_coeffs));
+  }
+  EIGEN_DEVICE_FUNC
+  EIGEN_ALWAYS_INLINE bool hasPadding() const {
+    // TODO(ezhulenev): It does seems that for inflated filter it's still
+    // possible to guarantee "no padding or skipping" for non-standard packing.
+    if (nonStandardPatches()) return true;
+
+    // Check if output rows and columns matches the PADDING_VALID case. If they
+    // are it means that there is no padding for the input tensor.
+    const bool match_rows = m_base_mapper.m_outputRows ==
+                            divup(m_base_mapper.m_inputRows - patchRows() + 1,
+                                  m_base_mapper.m_row_strides);
+    const bool match_cols = m_base_mapper.m_outputCols ==
+                            divup(m_base_mapper.m_inputCols - patchCols() + 1,
+                                  m_base_mapper.m_col_strides);
+
+    return !match_rows || !match_cols;
   }
   EIGEN_DEVICE_FUNC
   EIGEN_ALWAYS_INLINE bool padRow(const Index row) const {
@@ -1629,16 +1649,14 @@ EIGEN_DEVICE_FUNC
     case PADDING_VALID: {
       const TensorIndex InputRowsEff = InputRows + padding_top + padding_bottom;
       const TensorIndex InputColsEff = InputCols + padding_left + padding_right;
-      out_height = numext::ceil((InputRowsEff - kernelRowsEff + 1.f) /
-                                static_cast<float>(row_stride));
-      out_width = numext::ceil((InputColsEff - kernelColsEff + 1.f) /
-                               static_cast<float>(col_stride));
+      out_height = divup(InputRowsEff - kernelRowsEff + 1, row_stride);
+      out_width = divup(InputColsEff - kernelColsEff + 1, col_stride);
       break;
     }
     case PADDING_SAME: {
       eigen_assert(!padding_explicit);
-      out_height = numext::ceil(InputRows / static_cast<float>(row_stride));
-      out_width = numext::ceil(InputCols / static_cast<float>(col_stride));
+      out_height = divup(InputRows, row_stride);
+      out_width = divup(InputCols, col_stride);
       break;
     }
     default: {
