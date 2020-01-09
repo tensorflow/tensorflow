@@ -461,6 +461,31 @@ func @main() -> tensor<1x10xf32> {
 // -----
 
 // CHECK:  HloModule
+func @main(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
+  %0 = "xla_hlo.map"(%arg0, %arg1) ( {
+    ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):       // no predecessors
+    %1 = xla_hlo.add %arg2, %arg3 {name = "add"} : tensor<f32>
+    "xla_hlo.return"(%1) : (tensor<f32>) -> ()
+  }) {dimensions = dense<0> : tensor<1xi64>} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+  return %0 : tensor<4xf32>
+}
+
+// CHECK:  [[COMPUTATION:%.*]] ({{.*}}: f32[], {{.*}}: f32[]) -> f32[] {
+// CHECK:  [[ARG_0:%.*]] = f32[] parameter(0)
+// CHECK:  [[ARG_1:%.*]] = f32[] parameter(1)
+// CHECK:  ROOT
+// CHECK-SAME:  f32[] add(f32[] [[ARG_0]], f32[] [[ARG_1]])
+// CHECK:  }
+
+// CHECK:  ENTRY
+// CHECK:  [[ARG_2:%.*]] = f32[4] parameter(0)
+// CHECK:  [[ARG_3:%.*]] = f32[4] parameter(1)
+// CHECK:  ROOT
+// CHECK-SAME:  f32[4] map(f32[4] [[ARG_2]], f32[4] [[ARG_3]]), dimensions={0}, to_apply=[[COMPUTATION]]
+
+// -----
+
+// CHECK:  HloModule
 func @main(%data: tensor<3xi32>, %token: !xla_hlo.token) -> !xla_hlo.token {
   %0 = "xla_hlo.outfeed"(%data, %token) {outfeed_config = "foobar"} : (tensor<3xi32>, !xla_hlo.token) -> !xla_hlo.token
   return %0 : !xla_hlo.token

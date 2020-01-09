@@ -449,6 +449,14 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
           "permutation", ConvertDimensions(instruction->dimensions())));
       MakeAndReturn(TransposeOp);
     }
+    case HloOpcode::kMap: {
+      auto op = func_builder->create<mlir::xla_hlo::MapOp>(
+          loc, result_type, operands,
+          ConvertDimensions(instruction->dimensions()));
+      TF_RETURN_IF_ERROR(
+          ImportComputation(instruction->to_apply(), &op.computation()));
+      return op.getOperation();
+    }
     case HloOpcode::kConvolution: {
       llvm::SmallVector<int64_t, 4> strides, lhs_dilations, rhs_dilations;
       llvm::SmallVector<int64_t, 8> paddings;

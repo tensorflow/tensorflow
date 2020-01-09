@@ -600,6 +600,90 @@ void DynamicSliceOp::getCanonicalizationPatterns(
 }
 
 //===----------------------------------------------------------------------===//
+// MapOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(MapOp op) {
+  // Checks if the number of `operands` match the arity of the map `computation`
+  // region.
+  auto& computation_block = op.computation().front();
+  auto computation_args = computation_block.getArguments();
+  if (op.operands().size() != computation_args.size())
+    return op.emitOpError()
+           << "expects number of operands to match the arity "
+              "of map computation, but got: "
+           << op.operands().size() << " and " << computation_args.size();
+
+  // The parameters of computation should all be scalars and match the element
+  // type of operands.
+  auto operand_type = op.operands()[0].getType().cast<TensorType>();
+  auto operand_elem_ty = operand_type.getElementType();
+
+  for (auto indexed_arg : llvm::enumerate(computation_args)) {
+    auto arg_type = indexed_arg.value().getType().dyn_cast<TensorType>();
+    if (!arg_type || arg_type.getRank() != 0)
+      return op.emitOpError()
+             << "computation arguments must be 0-rank tensor, but got: arg #"
+             << indexed_arg.index() << " of type "
+             << indexed_arg.value().getType();
+    if (arg_type.getElementType() != operand_elem_ty) {
+      return op.emitOpError()
+             << "element type of operands and computation arguments must "
+                "match, but got: "
+             << operand_elem_ty << " and " << arg_type.getElementType();
+    }
+  }
+
+  // Mapped computation must return single output
+  auto computation_outputs = computation_block.getTerminator()->getOperands();
+  if (computation_outputs.size() != 1)
+    return op.emitOpError()
+           << "computation must return single output, but got: "
+           << computation_outputs.size();
+
+  // The output of computation must be scalar and have the same element type
+  // as op result.
+  auto computation_output_type =
+      computation_outputs[0].getType().dyn_cast<TensorType>();
+  if (!computation_output_type || computation_output_type.getRank() != 0)
+    return op.emitOpError()
+           << "computation must return 0-rank tensor, but got: "
+           << computation_outputs[0].getType();
+
+  auto result_type = op.getType().cast<TensorType>();
+  if (computation_output_type.getElementType() != result_type.getElementType())
+    return op.emitOpError() << "element type of result and computation output "
+                               "must match, but got: "
+                            << result_type.getElementType() << " and "
+                            << computation_output_type.getElementType();
+
+  // Checks that the requested map dimension numbers are monotonically
+  // increasing.
+  auto values = op.dimensions().getValues<int64_t>();
+  auto dimensions = std::vector<int64_t>{values.begin(), values.end()};
+  for (int i = 0; i < dimensions.size(); ++i) {
+    if (dimensions[i] != i)
+      return op.emitOpError() << "requires monotonically increasing dimension "
+                                 "numbers, but got: "
+                              << op.dimensions();
+  }
+
+  // Checks that number of dimensions of operands matches the size of
+  // `dimensions` since we currently only support mapping across all
+  // dimensions: i.e., scalar map functions.
+  if (operand_type.hasRank()) {
+    if (dimensions.size() != operand_type.getShape().size())
+      return op.emitOpError()
+             << "applied to a subset of dimensions currently not supported: "
+                "operand dimensions = "
+             << operand_type.getShape().size()
+             << ", requested map dimensions size = " << dimensions.size();
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // ReshapeOp
 //===----------------------------------------------------------------------===//
 

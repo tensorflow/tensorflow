@@ -268,6 +268,114 @@ func @dot_bad_precision_config(%arg0: tensor<2x2xi32>, %arg1: tensor<2x2xi32>) -
 
 // -----
 
+func @map_mismatched_args(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
+  // expected-error@+1 {{expects number of operands to match the arity of map computation, but got: 2 and 1}}
+  %0 = "xla_hlo.map"(%arg0, %arg1) ( {
+    ^bb0(%arg: tensor<f32>):
+    %1 = xla_hlo.add %arg, %arg {name = "add"} : tensor<f32>
+    "xla_hlo.return"(%1) : (tensor<f32>) -> ()
+  }) {dimensions = dense<0> : tensor<1xi64>} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+  return %0 : tensor<4xf32>
+}
+
+// -----
+
+func @map_non_scalar_computation_operand(%arg0: tensor<4x5xf32>, %arg1: tensor<4x5xf32>) -> tensor<4x5xf32> {
+  // expected-error@+1 {{computation arguments must be 0-rank tensor, but got: arg #1 of type 'tensor<5xf32>'}}
+  %0 = "xla_hlo.map"(%arg0, %arg1) ( {
+    ^bb0(%arg2: tensor<f32>, %arg3: tensor<5xf32>):
+    %1 = xla_hlo.constant {value = dense<2.0> : tensor<f32>} : tensor<f32>
+    "xla_hlo.return"(%1) : (tensor<f32>) -> ()
+  }) {dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<4x5xf32>, tensor<4x5xf32>) -> tensor<4x5xf32>
+  return %0 : tensor<4x5xf32>
+}
+
+// -----
+
+func @map_mismatch_operand_and_computation_args(%arg0: tensor<4x5xf32>, %arg1: tensor<4x5xf32>) -> tensor<4x5xf32> {
+  // expected-error@+1 {{element type of operands and computation arguments must match, but got: 'f32' and 'i32'}}
+  %0 = "xla_hlo.map"(%arg0, %arg1) ( {
+    ^bb0(%arg2: tensor<i32>, %arg3: tensor<i32>):
+    %1 = xla_hlo.constant {value = dense<2.0> : tensor<f32>} : tensor<f32>
+    "xla_hlo.return"(%1) : (tensor<f32>) -> ()
+  }) {dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<4x5xf32>, tensor<4x5xf32>) -> tensor<4x5xf32>
+  return %0 : tensor<4x5xf32>
+}
+
+// -----
+
+func @map_invalid_number_of_computation_output(%arg0: tensor<4x5xf32>, %arg1: tensor<4x5xf32>) -> tensor<4x5xf32> {
+  // expected-error@+1 {{computation must return single output, but got: 0}}
+  %0 = "xla_hlo.map"(%arg0, %arg1) ( {
+    ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
+    %1 = xla_hlo.constant {value = dense<2.0> : tensor<f32>} : tensor<f32>
+    "xla_hlo.return"() : () -> ()
+  }) {dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<4x5xf32>, tensor<4x5xf32>) -> tensor<4x5xf32>
+  return %0 : tensor<4x5xf32>
+}
+
+// -----
+
+func @main_non_scalar_computation_output(%arg0: tensor<4x5xf32>, %arg1: tensor<4x5xf32>) -> tensor<4x5xf32> {
+  // expected-error@+1 {{computation must return 0-rank tensor, but got: 'tensor<5xf32>'}}
+  %0 = "xla_hlo.map"(%arg0, %arg1) ( {
+    ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
+    %1 = xla_hlo.constant {value = dense<2.0> : tensor<f32>} : tensor<5xf32>
+    "xla_hlo.return"(%1) : (tensor<5xf32>) -> ()
+  }) {dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<4x5xf32>, tensor<4x5xf32>) -> tensor<4x5xf32>
+  return %0 : tensor<4x5xf32>
+}
+
+// -----
+
+func @mismatch_computation_output_type(%arg0: tensor<4x5xf32>, %arg1: tensor<4x5xf32>) -> tensor<4x5xf32> {
+  // expected-error@+1 {{element type of result and computation output must match, but got: 'f32' and 'i32'}}
+  %0 = "xla_hlo.map"(%arg0, %arg1) ( {
+    ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
+    %1 = xla_hlo.constant {value = dense<2> : tensor<i32>} : tensor<i32>
+    "xla_hlo.return"(%1) : (tensor<i32>) -> ()
+  }) {dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<4x5xf32>, tensor<4x5xf32>) -> tensor<4x5xf32>
+  return %0 : tensor<4x5xf32>
+}
+
+// -----
+
+func @map_invalid_dimension_numbers(%arg0: tensor<4x5xf32>, %arg1: tensor<4x5xf32>) -> tensor<4x5xf32> {
+  // expected-error@+1 {{requires monotonically increasing dimension numbers, but got: dense<[1, 0]> : tensor<2xi64>}}
+  %0 = "xla_hlo.map"(%arg0, %arg1) ( {
+    ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
+    %1 = xla_hlo.add %arg2, %arg3 {name = "add"} : tensor<f32>
+    "xla_hlo.return"(%1) : (tensor<f32>) -> ()
+  }) {dimensions = dense<[1, 0]> : tensor<2xi64>} : (tensor<4x5xf32>, tensor<4x5xf32>) -> tensor<4x5xf32>
+  return %0 : tensor<4x5xf32>
+}
+
+// -----
+
+func @map_mismatch_arguments_and_dimensions(%arg0: tensor<4x5xf32>, %arg1: tensor<4x5xf32>) -> tensor<4x5xf32> {
+  // expected-error@+1 {{applied to a subset of dimensions currently not supported: operand dimensions = 2, requested map dimensions size = 3}}
+  %0 = "xla_hlo.map"(%arg0, %arg1) ( {
+    ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
+    %1 = xla_hlo.add %arg2, %arg3 {name = "add"} : tensor<f32>
+    "xla_hlo.return"(%1) : (tensor<f32>) -> ()
+  }) {dimensions = dense<[0, 1, 2]> : tensor<3xi64>} : (tensor<4x5xf32>, tensor<4x5xf32>) -> tensor<4x5xf32>
+  return %0 : tensor<4x5xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @map_unranked
+func @map_unranked(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
+  %0 = "xla_hlo.map"(%arg0, %arg1) ( {
+    ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
+    %1 = xla_hlo.add %arg2, %arg3 {name = "add"} : tensor<f32>
+    "xla_hlo.return"(%1) : (tensor<f32>) -> ()
+  }) {dimensions = dense<0> : tensor<1xi64>} : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+}
+
+// -----
+
 func @rng_uniform_invalid_type(%mu: tensor<complex<f32>>, %sigma: tensor<f32>) -> tensor<2x3x5xf32> {
   %shape = xla_hlo.constant dense<[2, 3, 5]> : tensor<3xi64>
   // expected-error@+1 {{must be tensor of pred (AKA boolean or 1-bit integer) or 8/16/32/64-bit integer or floating-point values, but got 'tensor<complex<f32>>'}}

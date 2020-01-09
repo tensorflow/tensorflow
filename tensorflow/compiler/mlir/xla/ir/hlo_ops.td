@@ -988,6 +988,19 @@ def HLO_GetDimensionSizeOp: HLO_Op<"get_dimension_size", [NoSideEffect]>,
   let results = (outs HLO_IntTensor);
 }
 
+def HLO_MapOp: HLO_Op<"map",
+      [NoSideEffect, SameOperandsElementType, SameOperandsAndResultShape,
+        SingleBlockImplicitTerminator<"ReturnOp">]>,
+      BASE_HLO_MapOp {
+  let arguments = (ins
+    Variadic<HLO_Tensor>:$operands,
+    I64ElementsAttr:$dimensions
+  );
+  let regions = (region SizedRegion<1>:$computation);
+  let results = (outs HLO_Tensor);
+  let hasCustomHLOConverter = 1;
+}
+
 def HLO_ReshapeOp: HLO_Op<"reshape",
       [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_ReshapeOp {
   let arguments = (ins HLO_Tensor:$operand);

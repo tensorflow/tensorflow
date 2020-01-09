@@ -934,6 +934,23 @@ class BASE_HLO_GatherOp{
   }];
 }
 
+class BASE_HLO_MapOp {
+  string summary = "Map operator";
+
+  string description = [{
+  Applies a scalar function over the given operands arrays, producing an array
+  of the same dimensions where each element is the result of the mapped function
+  applied to the corresponding elements in the input arrays.
+
+  The mapped function is an arbitrary computation with the restriction that it
+  has N inputs of scalar type T and a single output with type S. The output has
+  the same dimensions as the operands except that the element type T is replaced
+  with S.
+
+  See https://www.tensorflow.org/xla/operation_semantics#map.
+  }];
+}
+
 class BASE_HLO_ReshapeOp {
   string summary = "Reshape operator";
 

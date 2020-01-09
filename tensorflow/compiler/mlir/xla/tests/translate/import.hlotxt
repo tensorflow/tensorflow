@@ -429,6 +429,28 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   ROOT %log1p.2 = f32[16] log-plus-one(f32[16] %arg0.1)
 }
 
+// Test xla_hlo.map
+%map_computation {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+// CHECK-LABEL:  func @test_map
+// CHECK-SAME:  [[ARG_0:%.*]]: tensor<4xf32>, [[ARG_1:%.*]]: tensor<4xf32>) -> tensor<4xf32>
+%test_map {
+  param0 = f32[4]{0} parameter(0)
+  param1 = f32[4]{0} parameter(1)
+// CHECK:  "xla_hlo.map"([[ARG_0]], [[ARG_1]]) ( {
+// CHECK:    ^bb0([[ARG_2:%.*]]: tensor<f32>, [[ARG_3:%.*]]: tensor<f32>):
+// CHECK:    [[ADD:%.*]] = xla_hlo.add [[ARG_2]], [[ARG_3]]
+// CHECK:    "xla_hlo.return"([[ADD]]) : (tensor<f32>) -> ()
+// CHECK:  }) {dimensions = dense<0> : tensor<1xi64>} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+  ROOT map = f32[4]{0} map(param0, param1), dimensions={0}, to_apply=%map_computation
+}
+
+
+
 // CHECK-LABEL:  func @test_maximum(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
 %test_maximum (Arg_0.1: f32[4], Arg_1.2: f32[4]) -> f32[4] {
   %Arg_0.1 = f32[4] parameter(0)
