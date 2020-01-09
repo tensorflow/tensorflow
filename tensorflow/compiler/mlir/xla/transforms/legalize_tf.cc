@@ -25,6 +25,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/Dialect/Traits.h"  // TF:llvm-project
 #include "mlir/IR/Attributes.h"  // TF:llvm-project
 #include "mlir/IR/Diagnostics.h"  // TF:llvm-project
 #include "mlir/IR/MLIRContext.h"  // TF:llvm-project
@@ -1168,6 +1169,84 @@ class ConvertMaxPoolOp : public OpRewritePattern<TF::MaxPoolOp> {
     rewriter.replaceOp(op, reduce.getResult());
     return matchSuccess();
   }
+};
+
+// Converts SelectV2 to HLO Select op and necessary BroadcastInDim ops on
+// operands.
+//
+// For example, the following source IR:
+//
+//   %select = "tf.SelectV2"(%condition, %t, %e) :
+//               (tensor<1xi1>, tensor<2xi32>, tensor<1xi32>) -> tensor<2xi32>
+//
+// will be converted into:
+//
+//   %pred = "xla_hlo.broadcast_in_dim"(%cond)
+//             {broadcast_dimensions = dense<[0]> : tensor<1xi64>} :
+//               (tensor<1xi1>) -> tensor<2xi1>
+//   %on_false = "xla_hlo.broadcast_in_dim"(%e)
+//                 {broadcast_dimensions = dense<[0]> : tensor<1xi64>} :
+//                   (tensor<1xi32>) -> tensor<2xi32>
+//   %select = "xla_hlo.select"(%pred, %t, %on_false) :
+//               (tensor<2xi1>, tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
+class ConvertSelectV2Op : public OpRewritePattern<TF::SelectV2Op> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(TF::SelectV2Op op,
+                                     PatternRewriter &rewriter) const override {
+    llvm::SmallVector<int64_t, 4> broadcast_then_else_shape;
+    auto ranked_then_type = op.t()->getType().dyn_cast<RankedTensorType>();
+    auto ranked_else_type = op.e()->getType().dyn_cast<RankedTensorType>();
+    auto ranked_cond_type =
+        op.condition()->getType().dyn_cast<RankedTensorType>();
+    if (!ranked_then_type || !ranked_then_type.hasStaticShape() ||
+        !ranked_else_type || !ranked_else_type.hasStaticShape() ||
+        !ranked_cond_type || !ranked_cond_type.hasStaticShape())
+      return matchFailure();
+
+    if (!OpTrait::util::getBroadcastedShape(ranked_then_type.getShape(),
+                                            ranked_else_type.getShape(),
+                                            broadcast_then_else_shape))
+      return matchFailure();
+
+    llvm::SmallVector<int64_t, 4> broadcast_shape;
+    if (!OpTrait::util::getBroadcastedShape(broadcast_then_else_shape,
+                                            ranked_cond_type.getShape(),
+                                            broadcast_shape))
+      return matchFailure();
+
+    auto broadcast_or_self = [&](Value value) {
+      RankedTensorType type = value->getType().cast<RankedTensorType>();
+      auto output_type =
+          RankedTensorType::get(broadcast_shape, type.getElementType());
+      if (output_type == type) return value;
+
+      int64_t rank = type.getRank();
+      SmallVector<int64_t, 4> broadcast_dimensions(rank);
+      std::iota(broadcast_dimensions.begin(), broadcast_dimensions.end(),
+                broadcast_shape.size() - rank);
+
+      return rewriter
+          .create<BroadcastInDimOp>(
+              op.getLoc(), output_type, value,
+              GetI64ElementsAttr(broadcast_dimensions, &rewriter))
+          .getResult();
+    };
+
+    // HLO SelectOp supports broadcasting for predicate/condition if
+    // predicate/condition is a scalar.
+    Value pred = ranked_cond_type.getRank() == 0
+                     ? op.condition()
+                     : broadcast_or_self(op.condition());
+    Value on_true = broadcast_or_self(op.t());
+    Value on_false = broadcast_or_self(op.e());
+
+    rewriter.replaceOpWithNewOp<SelectOp>(op, on_true->getType(), pred, on_true,
+                                          on_false);
+
+    return matchSuccess();
+  };
 };
 
 // Converts Sigmoid op to HLO ops computing sigmoid with the following formula:
@@ -3175,8 +3254,8 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
       ConvertFusedBatchNormGradV3Op, ConvertFusedBatchNormV3Op,
       ConvertInfeedDequeueTupleOp, ConvertMaxOp, ConvertMaxPoolOp,
       ConvertMaxPoolGradOp, ConvertMeanOp, ConvertOneHotOp,
-      ConvertOutfeedEnqueueTupleOp, ConvertRangeOp, ConvertSigmoidOp,
-      ConvertSizeOp, ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
+      ConvertOutfeedEnqueueTupleOp, ConvertRangeOp, ConvertSelectV2Op,
+      ConvertSigmoidOp, ConvertSizeOp, ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
       ConvertSoftmaxOp<TF::SoftmaxOp, false>, ConvertSplitOp, ConvertSplitVOp,
       ConvertStridedSliceOp, ConvertStridedSliceGradOp, ConvertSumOp,
       ConvertTensorScatterUpdateOp, ConvertTileOp, ConvertTopKV2Op,

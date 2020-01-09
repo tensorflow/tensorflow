@@ -408,11 +408,10 @@ def : Pat<(TF_SliceOp:$op HLO_Tensor:$input, HLO_Tensor:$starting_indices,
 def BothTypesMatch : Constraint<CPred<"$0.getType() == $1.getType()">,
    "types must be equal">;
 
-foreach src = [TF_SelectOp, TF_SelectV2Op] in
-  def : Pat<(src $cond, $t, $e), (HLO_SelectOp $cond, $t, $e),
-    // TODO(jpienaar): This restriction is to avoid creating a currently
-    // unsupported HLO select.
-    [(BothTypesMatch $t, $e)]>;
+def : Pat<(TF_SelectOp $cond, $t, $e), (HLO_SelectOp $cond, $t, $e),
+  // TODO(jpienaar): This restriction is to avoid creating a currently
+  // unsupported HLO select.
+  [(BothTypesMatch $t, $e)]>;
 
 //===----------------------------------------------------------------------===//
 // Unary op patterns.
