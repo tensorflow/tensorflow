@@ -46,8 +46,6 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
-import os
-
 _DEFUN_API_NAME_ATTRIBUTE = 'api_implements'
 _DEFUN_DEVICE_ATTRIBUTE = 'api_preferred_device'
 _CPU_DEVICE_NAME = 'CPU'
