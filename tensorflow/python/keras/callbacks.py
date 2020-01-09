@@ -1461,7 +1461,7 @@ class TensorBoard(Callback):
   [here](https://www.tensorflow.org/get_started/summaries_and_tensorboard).
 
   Example:
-  ```
+  ```python
   tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir="./logs")
   model.fit(x_train, y_train, epochs=2, callbacks=[tensorboard_callback])
   #run the tensorboard command to view the visualizations
