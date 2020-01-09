@@ -371,6 +371,7 @@ test_$(1): $$($(1)_BINARY)
 	$$(TEST_SCRIPT) $$($(1)_BINARY) '~~~ALL TESTS PASSED~~~'
 ifneq (,$(findstring _test,$(1)))
   MICROLITE_TEST_TARGETS += test_$(1)
+  MICROLITE_BUILD_TARGETS += $$($(1)_BINARY)
 endif
 $(eval $(call generate_microlite_projects,$(1),$(call specialize,$(2)),$(3)))
 endef

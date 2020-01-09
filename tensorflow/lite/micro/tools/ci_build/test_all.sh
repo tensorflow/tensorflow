@@ -49,4 +49,7 @@ tensorflow/lite/micro/tools/ci_build/test_sparkfun.sh
 echo "Running x86 tests at `date`"
 tensorflow/lite/micro/tools/ci_build/test_x86.sh
 
+echo "Running stm32f4 tests at `date`"
+tensorflow/lite/micro/tools/ci_build/test_stm32f4.sh
+
 echo "Finished all micro tests at `date`"
