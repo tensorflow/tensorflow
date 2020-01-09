@@ -336,6 +336,30 @@ tf_library(
 )
 
 tf_library(
+    name = "test_graph_tfassert_eq_mlir_bridge",
+    testonly = 1,
+    config = "test_graph_tfassert_eq.config.pbtxt",
+    cpp_class = "AssertComp",
+    graph = "test_graph_tfassert_eq.pb",
+    mlir_components = "Bridge",
+    tags = [
+        "manual",
+    ],
+)
+
+tf_library(
+    name = "test_graph_tfgather_mlir_bridge",
+    testonly = 1,
+    config = "test_graph_tfgather.config.pbtxt",
+    cpp_class = "GatherComp",
+    graph = "test_graph_tfgather.pb",
+    mlir_components = "Bridge",
+    tags = [
+        "manual",
+    ],
+)
+
+tf_library(
     name = "test_graph_tfmatmul_mlir_bridge",
     testonly = 1,
     config = "test_graph_tfmatmul.config.pbtxt",
@@ -373,6 +397,30 @@ tf_library(
     ],
 )
 
+tf_library(
+    name = "test_graph_tfsplits_mlir_bridge",
+    testonly = 1,
+    config = "test_graph_tfsplits.config.pbtxt",
+    cpp_class = "SplitsComp",
+    graph = "test_graph_tfsplits.pb",
+    mlir_components = "Bridge",
+    tags = [
+        "manual",
+    ],
+)
+
+tf_library(
+    name = "test_graph_tftop_k_mlir_bridge",
+    testonly = 1,
+    config = "test_graph_tftop_k.config.pbtxt",
+    cpp_class = "TopKComp",
+    graph = "test_graph_tftop_k.pb",
+    mlir_components = "Bridge",
+    tags = [
+        "manual",
+    ],
+)
+
 tf_cc_test(
     name = "tfcompile_test_mlir_bridge",
     srcs = ["tfcompile_test.cc"],
@@ -384,10 +432,14 @@ tf_cc_test(
         ":test_graph_tfadd_mlir_bridge",
         ":test_graph_tfadd_with_ckpt_mlir_bridge",
         ":test_graph_tfadd_with_ckpt_saver_mlir_bridge",
+        ":test_graph_tfassert_eq_mlir_bridge",
         ":test_graph_tfcond_mlir_bridge",
+        ":test_graph_tfgather_mlir_bridge",
         ":test_graph_tfmatmul_mlir_bridge",
         ":test_graph_tfmatmulandadd_mlir_bridge",
         ":test_graph_tfmatmulandadd_with_profiling_mlir_bridge",
+        ":test_graph_tfsplits_mlir_bridge",
+        ":test_graph_tftop_k_mlir_bridge",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
