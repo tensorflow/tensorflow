@@ -372,7 +372,7 @@ class BFCAllocator : public VisitableAllocator {
   size_t BinNumToSize(BinNum index) {
     return static_cast<size_t>(256) << index;
   }
-  inline BinNum BinNumForSize(size_t bytes) {
+  BinNum BinNumForSize(size_t bytes) {
     uint64 v = std::max<size_t>(bytes, 256) >> kMinAllocationBits;
     int b = std::min(kNumBins - 1, Log2FloorNonZero(v));
     return b;
