@@ -264,7 +264,7 @@ class TimeDistributed(Wrapper):
         # Shape: (num_samples, timesteps, ...)
         output_shape = self.compute_output_shape(input_shape).as_list()
         output_shape = self._get_shape_tuple((-1, input_length), y, 1, 
-                                              output_shape[2:])
+                                             output_shape[2:])
 
         y = array_ops.reshape(y, output_shape)
 
