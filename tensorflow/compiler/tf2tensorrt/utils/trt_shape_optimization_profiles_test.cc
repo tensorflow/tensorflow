@@ -103,12 +103,12 @@ class TrtShapeOptimizationProfileTest : public ::testing::Test {
     network->markOutput(*output);
   }
 
+  Logger logger_;
   TrtUniquePtrType<nvinfer1::IBuilder> builder_;
   TrtUniquePtrType<nvinfer1::INetworkDefinition> network_;
   TrtUniquePtrType<nvinfer1::IBuilderConfig> builder_config_;
   std::vector<TrtUniquePtrType<nvinfer1::IExecutionContext>> exec_context_;
 
-  Logger logger_;
   const uint32_t flags_ =
       1U << static_cast<int>(
           nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
@@ -138,7 +138,9 @@ TEST_F(TrtShapeOptimizationProfileTest, Basic) {
       builder_->buildEngineWithConfig(*network_.get(), *builder_config_.get()));
   EXPECT_NE(nullptr, engine);
 
+
   profile.createExcecutionContexts(engine.get(), exec_context_);
+
   // Each profile has an associated execution context
   // This test depends on the profile creation strategy:
   // e.g. if we have a default context, then the sizes will not match
@@ -163,6 +165,7 @@ TEST_F(TrtShapeOptimizationProfileTest, Basic) {
       EXPECT_TRUE(dimsEqual(dimvec[j], opt));
     }
   }
+  exec_context_.clear();
 }
 
 }  // namespace tensorrt
