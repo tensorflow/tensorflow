@@ -265,7 +265,7 @@ func {{$.Op.Name}}{{CamelCase .RenameTo}}(value {{GoType .Type}}) {{$.Op.Name}}A
 {{- else }}
 {{- if .DescribeOutputs}}
 //
-{{- if ((len .OutArgs) eq 1) }}
+{{- if eq (len .OutArgs) 1 }}
 // Returns {{range .OutArgs}}{{MakeComment .Description}}{{end}}
 {{- else }}
 // Returns:

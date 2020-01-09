@@ -25,15 +25,23 @@ from six.moves.urllib.error import URLError
 
 from tensorflow.python import framework
 from tensorflow.python.client import session
-from tensorflow.python.distribute.cluster_resolver import cloud_tpu_client
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver as resolver
 from tensorflow.python.eager.context import LogicalDevice
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
 from tensorflow.python.util import compat
 mock = test.mock
+
+try:
+  from cloud_tpu_client import client  # pylint: disable=g-import-not-at-top
+except ImportError:
+  logging.debug(
+      'Falling back to TensorFlow client; we recommended you install the Cloud '
+      'TPU client directly with pip install cloud-tpu-client.')
+  from tensorflow.python.tpu.client import client
 
 
 class MockRequestClass(object):
@@ -141,7 +149,7 @@ class TPUClusterResolverTest(test.TestCase):
   def testIsRunningInGce(self):
     self.assertTrue(resolver.is_running_in_gce())
 
-  @mock.patch.object(cloud_tpu_client, '_request_compute_metadata',
+  @mock.patch.object(client, '_request_compute_metadata',
                      mock_request_compute_metadata)
   def testRetrieveProjectAndZoneFromMetadata(self):
     tpu_map = {
@@ -174,7 +182,7 @@ class TPUClusterResolverTest(test.TestCase):
     self._verifyClusterSpecEquality(actual_cluster_spec, str(expected_proto))
     self.assertEqual(cluster_resolver.master(), 'grpc://10.1.2.3:8470')
 
-  @mock.patch.object(cloud_tpu_client, '_request_compute_metadata',
+  @mock.patch.object(client, '_request_compute_metadata',
                      mock_request_compute_metadata)
   def testRetrieveProjectAndZoneFromMetadataNoCoordinator(self):
     tpu_map = {
@@ -200,7 +208,7 @@ class TPUClusterResolverTest(test.TestCase):
     self._verifyClusterSpecEquality(actual_cluster_spec, expected_proto)
     self.assertEqual(cluster_resolver.master(), 'grpc://10.1.2.3:8470')
 
-  @mock.patch.object(cloud_tpu_client, '_request_compute_metadata',
+  @mock.patch.object(client, '_request_compute_metadata',
                      mock_request_compute_metadata)
   def testNotReadyCloudTpu(self):
     tpu_map = {
@@ -299,7 +307,7 @@ class TPUClusterResolverTest(test.TestCase):
     self._verifyClusterSpecEquality(actual_cluster_spec, expected_proto)
     self.assertEqual('grpc://10.2.3.4:8470', cluster_resolver.master())
 
-  @mock.patch.object(cloud_tpu_client, '_request_compute_metadata',
+  @mock.patch.object(client, '_request_compute_metadata',
                      mock_request_compute_metadata)
   def testPodResolution(self):
     tpu_map = {

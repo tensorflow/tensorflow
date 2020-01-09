@@ -17,6 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
+
 from absl.testing import parameterized
 
 from tensorflow.python.data.experimental.ops import testing
@@ -26,9 +28,44 @@ from tensorflow.python.framework import combinations
 from tensorflow.python.platform import test
 
 
+def _test_combinations():
+  cases = []
+
+  identity = lambda x: x
+  increment = lambda x: x + 1
+
+  def increment_and_square(x):
+    y = x + 1
+    return y * y
+
+  functions = [identity, increment, increment_and_square]
+
+  for i, x in enumerate(functions):
+    for j, y in enumerate(functions):
+      cases.append(("Scalar{}{}".format(i, j), [x, y]))
+      for k, z in enumerate(functions):
+        cases.append(("Scalar{}{}{}".format(i, j, k), [x, y, z]))
+
+  with_42 = lambda x: (x, 42)
+  swap = lambda x, y: (y, x)
+
+  cases.append(("Tuple1", [with_42, swap]))
+  cases.append(("Tuple2", [with_42, swap, swap]))
+
+  def reduce_fn(x, y):
+    name, functions = y
+    return x + combinations.combine(
+        functions=combinations.NamedObject(name, functions))
+
+  return functools.reduce(reduce_fn, cases, [])
+
+
 class MapFusionTest(test_base.DatasetTestBase, parameterized.TestCase):
 
-  def _testMapFusion(self, functions):
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         _test_combinations()))
+  def testMapFusion(self, functions):
     dataset = dataset_ops.Dataset.range(5).apply(
         testing.assert_next(["Map", "MemoryCacheImpl"]))
     for function in functions:
@@ -49,31 +86,6 @@ class MapFusionTest(test_base.DatasetTestBase, parameterized.TestCase):
           r = function(r)
       expected_output.append(r)
     self.assertDatasetProduces(dataset, expected_output=expected_output)
-
-  @combinations.generate(test_base.default_test_combinations())
-  def testMapFusionScalar(self):
-    identity = lambda x: x
-    increment = lambda x: x + 1
-
-    def increment_and_square(x):
-      y = x + 1
-      return y * y
-
-    functions = [identity, increment, increment_and_square]
-
-    for x in functions:
-      for y in functions:
-        self._testMapFusion([x, y])
-        for z in functions:
-          self._testMapFusion([x, y, z])
-
-  @combinations.generate(test_base.default_test_combinations())
-  def testMapAndFilterFusionTuple(self):
-    with_42 = lambda x: (x, 42)
-    swap = lambda x, y: (y, x)
-
-    self._testMapFusion([with_42, swap])
-    self._testMapFusion([with_42, swap, swap])
 
 
 if __name__ == "__main__":

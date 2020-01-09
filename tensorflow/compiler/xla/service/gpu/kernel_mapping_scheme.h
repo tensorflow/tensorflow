@@ -37,7 +37,7 @@ namespace gpu {
 // Currently, there are two main use cases for a tiling scheme. First, we
 // implement kernels with 0-2-1 memory transpose using shared memory to improve
 // memory access pattern. Second, we implement reduction to contiguous
-// dimensions in layout, with or without memory tranpsose, to achieve better
+// dimensions in layout, with or without memory transpose, to achieve better
 // memory access pattern as well as to reduce the need numbers of executed
 // expensive instructions, such as thread synchronization related instructions
 // and atomic operations. For both use cases, we can apply a normalization to
@@ -76,77 +76,46 @@ namespace gpu {
 class KernelMappingScheme {
  public:
   enum { DimZ = 0, DimY, DimX, DimTot };
-  KernelMappingScheme(absl::Span<const int64> dims_in_elems, int64 tile_size_y,
-                      int64 tile_size_x, int64 block_size_z,
-                      int64 num_threads_y, int64 num_threads_x,
-                      bool is_dilated_x)
+  KernelMappingScheme(absl::Span<const int64> dims_in_elems,
+                      absl::Span<const int64> tile_sizes, int64 num_threads_y,
+                      int64 num_threads_x, bool is_dilated_x)
       : dims_in_elems_{dims_in_elems[0], dims_in_elems[1], dims_in_elems[2]},
-        tile_sizes_{1, tile_size_y, tile_size_x},
-        dims_in_tiles_{dims_in_elems[0],
-                       CeilOfRatio<int64>(dims_in_elems[1], tile_size_y),
-                       CeilOfRatio<int64>(dims_in_elems[2], tile_size_x)},
-        dims_in_blocks_{CeilOfRatio<int64>(dims_in_tiles_[0], block_size_z),
-                        dims_in_tiles_[1], dims_in_tiles_[2]},
-        block_size_z_{block_size_z},
+        tile_sizes_{tile_sizes[0], tile_sizes[1], tile_sizes[2]},
         num_threads_x_(num_threads_x),
         num_threads_y_(num_threads_y),
         dilated_x_(is_dilated_x) {
-    CHECK_EQ(tile_size_y % num_threads_y_, 0);
-    CHECK_EQ(tile_size_x % num_threads_x_, 0);
+    CHECK_EQ(tile_sizes[1] % num_threads_y_, 0);
+    CHECK_EQ(tile_sizes[2] % num_threads_x_, 0);
     VLOG(10) << "dims_in_elems_ = " << absl::StrJoin(dims_in_elems_, ",");
-    VLOG(10) << "dims_in_tiles_ = " << absl::StrJoin(dims_in_tiles_, ",");
-    VLOG(10) << "dims_in_blocks_ = " << absl::StrJoin(dims_in_blocks_, ",");
     if (!dilated_x_) {
       // dilated_x_=false is for the purpose of vectorization, which requires
-      // GetTileSizeForDimension(DimX) to be a multiplier of num_threads_x_.
-      CHECK_EQ(GetTileSizeForDimension(DimX) % num_threads_x_, 0);
+      // GetTileSizeFor(DimX) to be a multiplier of num_threads_x_.
+      CHECK_EQ(GetTileSizeFor(DimX) % num_threads_x_, 0);
     }
   }
 
   // Number of elements in each dimension (Z/Y/X respectively).
-  absl::Span<const int64> GetDimensionsInElements() const {
-    return dims_in_elems_;
-  }
-
-  // Number of tiles required to cover the input tensor in each dimension (Z/Y/X
-  // respectively).
-  absl::Span<const int64> GetDimensionsInTiles() const {
-    return dims_in_tiles_;
-  }
-
-  // Ratio of dimensions per tile over block sizes.
-  absl::Span<const int64> GetDimensionsInBlocks() const {
-    return dims_in_blocks_;
-  }
-
-  int64 GetNumberOfTilesInOneBlock() const { return block_size_z_; }
-
-  int64 BlockSizeZ() const { return block_size_z_; }
+  absl::Span<const int64> GetDimsInElems() const { return dims_in_elems_; }
 
   int64 GetNumberOfBlocks() const {
-    return absl::c_accumulate(dims_in_blocks_, 1, std::multiplies<int64>());
+    return CeilOfRatio(dims_in_elems_[0], GetTileSizeZ()) *
+           CeilOfRatio(dims_in_elems_[1], GetTileSizeY()) *
+           CeilOfRatio(dims_in_elems_[2], GetTileSizeX());
   }
 
   // Tile size for a given dimensions. Tiles are assigned per thread block,
   // and are processed by all threads in the block.
-  int64 GetTileSizeForDimension(int d) const { return tile_sizes_.at(d); }
-  int64 GetTileSizeForDimensionX() const {
-    return GetTileSizeForDimension(DimX);
-  }
-  int64 GetTileSizeForDimensionY() const {
-    return GetTileSizeForDimension(DimY);
-  }
+  int64 GetTileSizeFor(int d) const { return tile_sizes_.at(d); }
 
-  int64 GetTileBlockSizeForDimension(int d) const {
-    return dims_in_blocks_.at(d);
-  }
+  int64 GetTileSizeZ() const { return GetTileSizeFor(DimZ); }
+  int64 GetTileSizeX() const { return GetTileSizeFor(DimX); }
+  int64 GetTileSizeY() const { return GetTileSizeFor(DimY); }
 
-  int64 GetNumberOfThreadsForDimensionX() const { return num_threads_x_; }
-  int64 GetNumberOfThreadsForDimensionY() const { return num_threads_y_; }
+  int64 GetNumThreadsX() const { return num_threads_x_; }
+  int64 GetNumThreadsY() const { return num_threads_y_; }
 
   int64 GetThreadsPerBlock() const {
-    return GetNumberOfThreadsForDimensionX() *
-           GetNumberOfThreadsForDimensionY();
+    return GetNumThreadsX() * GetNumThreadsY();
   }
 
   bool DilatedX() const { return dilated_x_; }
@@ -157,18 +126,10 @@ class KernelMappingScheme {
 
   // The number of elements for each dimension of a tile.
   const std::array<int64, 3> tile_sizes_;
-  // The number of tiles in each dimension. It is computed from dims_in_elem_
-  // and tile_sizes_.
-  const std::array<int64, 3> dims_in_tiles_;
-
-  // The number of blocks in each dimension. It is computed from dims_in_tile_
-  // and block_size_z_.
-  const std::array<int64, 3> dims_in_blocks_;
-
-  const int64 block_size_z_;
 
   // Number of threads used to process elements in the X direction of a tile.
   const int64 num_threads_x_;
+
   // Number of threads used to process elements in the Y direction of a tile.
   const int64 num_threads_y_;
 

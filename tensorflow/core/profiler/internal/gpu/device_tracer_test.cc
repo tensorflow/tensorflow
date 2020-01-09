@@ -35,18 +35,21 @@ limitations under the License.
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/profiler/internal/profiler_interface.h"
+#include "tensorflow/core/profiler/utils/xplane_schema.h"
+#include "tensorflow/core/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
+namespace profiler {
 
 #if GOOGLE_CUDA
-std::unique_ptr<profiler::ProfilerInterface> CreateGpuTracer(
-    const profiler::ProfilerOptions& options);
+std::unique_ptr<ProfilerInterface> CreateGpuTracer(
+    const ProfilerOptions& options);
 #else
 // We don't have device tracer for non-cuda case.
-std::unique_ptr<profiler::ProfilerInterface> CreateGpuTracer(
-    const profiler::ProfilerOptions& options) {
+std::unique_ptr<ProfilerInterface> CreateGpuTracer(
+    const ProfilerOptions& options) {
   return nullptr;
 }
 #endif
@@ -242,5 +245,34 @@ TEST_F(DeviceTracerTest, RunWithTraceOption) {
   EXPECT_GE(run_metadata.step_stats().dev_stats_size(), 1);
 }
 
+TEST_F(DeviceTracerTest, TraceToXSpace) {
+  profiler::ProfilerOptions options;
+  auto tracer = CreateGpuTracer(options);
+  if (!tracer) return;
+
+  Initialize({3, 2, -1, 0});
+  auto session = CreateSession();
+  ASSERT_TRUE(session != nullptr);
+  TF_ASSERT_OK(session->Create(def_));
+  std::vector<std::pair<string, Tensor>> inputs;
+
+  // Request two targets: one fetch output and one non-fetched output.
+  std::vector<string> output_names = {y_ + ":0"};
+  std::vector<string> target_nodes = {y_neg_};
+  std::vector<Tensor> outputs;
+
+  TF_ASSERT_OK(tracer->Start());
+  Status s = session->Run(inputs, output_names, target_nodes, &outputs);
+  TF_ASSERT_OK(s);
+
+  TF_ASSERT_OK(tracer->Stop());
+  XSpace space;
+  TF_ASSERT_OK(tracer->CollectData(&space));
+  // At least one gpu plane and one host plane for launching events.
+  EXPECT_NE(FindPlaneWithName(space, kHostThreads), nullptr);
+  EXPECT_NE(FindPlaneWithName(space, StrCat(kGpuPlanePrefix, 0)), nullptr);
+}
+
 }  // namespace
+}  // namespace profiler
 }  // namespace tensorflow

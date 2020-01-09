@@ -16,22 +16,15 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_TF_OP_UTILS_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_TF_OP_UTILS_H_
 
-#include <utility>
-
 #include "absl/strings/match.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
-#include "absl/strings/strip.h"
 
 namespace tensorflow {
 namespace profiler {
 
 // Special op types.
-constexpr absl::string_view kUnknownOp = "";  // op types are non-empty strings
-constexpr absl::string_view kDatasetOp = "Dataset";
-constexpr absl::string_view kIterator = "Iterator";
-constexpr absl::string_view kSeparator = "::";
+ABSL_CONST_INIT extern const absl::string_view kUnknownOp;
+ABSL_CONST_INIT extern const absl::string_view kDatasetOp;
 
 // Breaks a TensorFlow op fullname into name and type.
 struct TfOp {
@@ -54,6 +47,17 @@ inline bool IsUnknownOp(absl::string_view tf_op_type) {
 inline bool IsDatasetOp(absl::string_view tf_op_type) {
   return tf_op_type == kDatasetOp;
 }
+
+// Returns true if the given name is a TensorFlow Infeed Enqueue Op.
+inline bool IsInfeedEnqueueOp(absl::string_view tf_op_type) {
+  return tf_op_type == "InfeedEnqueue" || tf_op_type == "InfeedEnqueueTuple";
+}
+
+// Returns true if the given name is a TensorFlow embedding op.
+inline bool IsEmbeddingOp(absl::string_view tf_op_fullname) {
+  return absl::StrContains(tf_op_fullname, "Embedding");
+}
+
 }  // namespace profiler
 }  // namespace tensorflow
 

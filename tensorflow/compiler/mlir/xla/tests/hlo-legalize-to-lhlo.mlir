@@ -1,4 +1,4 @@
-// RUN: tf-opt -hlo-legalize-to-lhlo %s -o - | FileCheck %s
+// RUN: tf-opt -hlo-legalize-to-lhlo %s -o - | FileCheck %s --dump-input=always
 
 // CHECK-LABEL: func @attrs
 func @attrs_copy(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
@@ -110,7 +110,7 @@ func @convert(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
   %tensor_operand = tensor_load %operand : memref<2x2xf32>
   %tensor_result = "xla_hlo.convert"(%tensor_operand)
       : (tensor<2x2xf32>) -> tensor<2x2xf32>
-  // CHECK-NEXT: "xla_lhlo.convert"(%{{.*}}, %{{.*}})
+  // CHECK-NEXT: return
   tensor_store %tensor_result, %result : memref<2x2xf32>
   return
 }

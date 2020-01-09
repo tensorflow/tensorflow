@@ -40,6 +40,15 @@ struct TfLiteQuantizationDeleter {
 using ScopedTfLiteQuantization =
     std::unique_ptr<TfLiteQuantization, TfLiteQuantizationDeleter>;
 
+struct TfLiteSparsityDeleter {
+  void operator()(TfLiteSparsity* s) {
+    if (s) TfLiteSparsityFree(s);
+  }
+};
+
+using ScopedTfLiteSparsity =
+    std::unique_ptr<TfLiteSparsity, TfLiteSparsityDeleter>;
+
 TfLiteStatus ReportOpError(TfLiteContext* context, const TfLiteNode& node,
                            const TfLiteRegistration& registration,
                            int node_index, const char* message) {
@@ -114,6 +123,18 @@ TfLiteQuantizationParams GetLegacyQuantization(
   legacy_quantization.scale = affine_quantization->scale->data[0];
   legacy_quantization.zero_point = affine_quantization->zero_point->data[0];
   return legacy_quantization;
+}
+
+static constexpr const char kUnknownCustomOpName[] = "UnknownCustomOp";
+const char* GetTFLiteOpName(const TfLiteRegistration& op_reg) {
+  const char* op_name = nullptr;
+  if (op_reg.builtin_code == tflite::BuiltinOperator_CUSTOM) {
+    const char* const custom_name = op_reg.custom_name;
+    op_name = custom_name ? custom_name : kUnknownCustomOpName;
+  } else {
+    op_name = tflite::EnumNamesBuiltinOperator()[op_reg.builtin_code];
+  }
+  return op_name;
 }
 
 }  // namespace
@@ -294,6 +315,26 @@ TfLiteDelegateParams* CreateDelegateParams(TfLiteDelegate* delegate,
   return params;
 }
 
+// Assumes that params is not nullptr.
+void PopulatePreviewDelegateParams(const NodeSubset& node_subset,
+                                   TfLiteDelegateParams* params) {
+  // Since these params are used for previewing partitioning, params->delegate
+  // is not required.
+  params->delegate = nullptr;
+
+  params->nodes_to_replace = TfLiteIntArrayCreate(node_subset.nodes.size());
+  CopyVectorToTfLiteIntArray(node_subset.nodes, params->nodes_to_replace);
+
+  params->input_tensors =
+      TfLiteIntArrayCreate(node_subset.input_tensors.size());
+  CopyVectorToTfLiteIntArray(node_subset.input_tensors, params->input_tensors);
+
+  params->output_tensors =
+      TfLiteIntArrayCreate(node_subset.output_tensors.size());
+  CopyVectorToTfLiteIntArray(node_subset.output_tensors,
+                             params->output_tensors);
+}
+
 }  // namespace
 
 TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(
@@ -409,6 +450,57 @@ TfLiteStatus Subgraph::GetExecutionPlan(struct TfLiteContext* context,
                                         TfLiteIntArray** execution_plan) {
   return static_cast<Subgraph*>(context->impl_)
       ->GetExecutionPlan(execution_plan);
+}
+
+void Subgraph::FreeDelegatePartitioningData() {
+  for (auto& params : partitioning_preview_cache_) {
+    TfLiteIntArrayFree(params.nodes_to_replace);
+    TfLiteIntArrayFree(params.input_tensors);
+    TfLiteIntArrayFree(params.output_tensors);
+  }
+  partitioning_preview_cache_.clear();
+}
+
+TfLiteStatus Subgraph::PreviewDelegatePartitioning(
+    const TfLiteIntArray* nodes_to_replace,
+    TfLiteDelegateParams** partition_params_array, int* num_partitions) {
+  // Ensure partitioning cache is empty.
+  FreeDelegatePartitioningData();
+  // Defaults.
+  if (!partition_params_array || !num_partitions) return kTfLiteError;
+  *partition_params_array = nullptr;
+  *num_partitions = 0;
+  if (!nodes_to_replace->size) {
+    return kTfLiteOk;
+  }
+
+  // Partition the execution plan into node subsets.
+  InterpreterInfo info(this);
+  std::vector<NodeSubset> node_subsets;
+  PartitionGraphIntoIndependentNodeSubsets(&info, nodes_to_replace,
+                                           &node_subsets);
+
+  // Create one TfLiteDelegateParams per node-subset which would be delegated.
+  for (auto& node_subset : node_subsets) {
+    if (node_subset.type != NodeSubset::kTfPartition) {
+      continue;
+    }
+    partitioning_preview_cache_.emplace_back();
+    PopulatePreviewDelegateParams(node_subset,
+                                  &partitioning_preview_cache_.back());
+    ++*num_partitions;
+  }
+
+  *partition_params_array = partitioning_preview_cache_.data();
+  return kTfLiteOk;
+}
+
+TfLiteStatus Subgraph::PreviewDelegatePartitioning(
+    struct TfLiteContext* context, const TfLiteIntArray* nodes_to_replace,
+    TfLiteDelegateParams** partition_params_array, int* num_partitions) {
+  return static_cast<Subgraph*>(context->impl_)
+      ->PreviewDelegatePartitioning(nodes_to_replace, partition_params_array,
+                                    num_partitions);
 }
 
 TfLiteStatus Subgraph::SetInputs(std::vector<int> inputs) {
@@ -760,14 +852,7 @@ TfLiteStatus Subgraph::Invoke() {
         nodes_and_registration_[node_index].second;
 
     const char* op_name = nullptr;
-    if (profiler_) {
-      if (registration.builtin_code == tflite::BuiltinOperator_CUSTOM) {
-        const char* const custom_name = registration.custom_name;
-        op_name = custom_name ? custom_name : "UnknownCustomOp";
-      } else {
-        op_name = tflite::EnumNamesBuiltinOperator()[registration.builtin_code];
-      }
-    }
+    if (profiler_) op_name = GetTFLiteOpName(registration);
     TFLITE_SCOPED_TAGGED_OPERATOR_PROFILE(profiler_.get(), op_name, node_index);
 
     // TODO(ycling): This is an extra loop through inputs to check if the data
@@ -908,9 +993,10 @@ TfLiteStatus Subgraph::GetNodeAndRegistration(
 TfLiteStatus Subgraph::SetTensorParametersReadOnly(
     int tensor_index, TfLiteType type, const char* name, const size_t rank,
     const int* dims, TfLiteQuantization quantization, const char* buffer,
-    size_t bytes, const Allocation* allocation) {
+    size_t bytes, const Allocation* allocation, TfLiteSparsity* sparsity) {
   // Ensure quantization cleanup on failure.
   ScopedTfLiteQuantization scoped_quantization(&quantization);
+  ScopedTfLiteSparsity scoped_sparsity(sparsity);
   if (state_ == kStateInvokableAndImmutable) {
     ReportError(
         "SetTensorParametersReadOnly is disallowed when graph is immutable.");
@@ -919,10 +1005,12 @@ TfLiteStatus Subgraph::SetTensorParametersReadOnly(
 
   TF_LITE_ENSURE(&context_,
                  tensor_index < context_.tensors_size && tensor_index >= 0);
+
   // For most tensors we know exactly how much memory is necessary so we can
   // ensure the buffer is large enough. However, we need to skip string tensors
-  // because their sizes change with the contents of the individual strings.
-  if (type != kTfLiteString) {
+  // and sparse tensors because their sizes change with the contents.
+  // TODO(b/145615516): Extend BytesRequired to check sparse tensors.
+  if (type != kTfLiteString && sparsity == nullptr) {
     size_t required_bytes;
     TF_LITE_ENSURE_OK(&context_,
                       BytesRequired(type, dims, rank, &required_bytes));
@@ -939,6 +1027,7 @@ TfLiteStatus Subgraph::SetTensorParametersReadOnly(
     if (!tensor.dims) tensor.dims = ConvertArrayToTfLiteIntArray(rank, dims);
     tensor.params = GetLegacyQuantization(quantization);
     tensor.quantization = *scoped_quantization.release();
+    tensor.sparsity = scoped_sparsity.release();
     tensor.allocation_type = kTfLiteMmapRo;
     tensor.allocation = allocation;
   } else {
@@ -950,6 +1039,7 @@ TfLiteStatus Subgraph::SetTensorParametersReadOnly(
     // TODO(suharshs): Update TfLiteTensorReset to include the new quantization
     // if there are other required callers.
     tensor.quantization = *scoped_quantization.release();
+    tensor.sparsity = scoped_sparsity.release();
   }
   return kTfLiteOk;
 }
@@ -1064,6 +1154,7 @@ void Subgraph::SwitchToDelegateContext() {
   context_.ReplaceNodeSubsetsWithDelegateKernels =
       ReplaceNodeSubsetsWithDelegateKernels;
   context_.GetExecutionPlan = GetExecutionPlan;
+  context_.PreviewDelegatePartitioning = PreviewDelegatePartitioning;
 }
 
 void Subgraph::SwitchToKernelContext() {
@@ -1081,6 +1172,13 @@ void Subgraph::SwitchToKernelContext() {
                                  TfLiteIntArray**) {
     return ForbiddenContextFunction(context);
   };
+  context_.PreviewDelegatePartitioning =
+      [](struct TfLiteContext* context, const TfLiteIntArray* nodes_to_replace,
+         TfLiteDelegateParams** partition_params_array,
+         int* num_partitions) { return ForbiddenContextFunction(context); };
+  // Free any memory that might have been allocated by
+  // PreviewDelegatePartitioning.
+  FreeDelegatePartitioningData();
 }
 
 TfLiteStatus Subgraph::UndoAllDelegates() {
@@ -1142,6 +1240,9 @@ TfLiteStatus Subgraph::EnsureMemoryAllocations() {
 }
 
 TfLiteStatus Subgraph::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
+  TFLITE_SCOPED_TAGGED_DEFAULT_PROFILE(profiler_.get(),
+                                       "ModifyGraphWithDelegate");
+
   // Restore delegation state if applicable.
   TF_LITE_ENSURE_STATUS(RedoAllDelegates());
 

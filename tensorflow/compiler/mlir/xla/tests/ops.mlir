@@ -1,6 +1,56 @@
 // RUN: tf-opt %s -verify-diagnostics -split-input-file | tf-opt | FileCheck %s
 
-// Tests for ops with custom constraints, verifiers, printer or parser methods.
+// Tests for types, ops with custom constraints, verifiers, printer or parser
+// methods.
+
+// CHECK-LABEL: func @token_type() -> !xla_hlo.token
+func @token_type() -> !xla_hlo.token
+
+// -----
+
+// expected-error@+1 {{unknown xla_hlo type: foobar}}
+func @invalid_type() -> !xla_hlo.foobar
+
+// -----
+
+// CHECK-LABEL: func @alltoall
+func @alltoall(%data: tensor<4x16xf32>) -> tensor<16x4xf32> {
+  %0 = "xla_hlo.all_to_all"(%data) {
+    split_dimension = 1 : i64,
+    concat_dimension = 0 : i64,
+    split_count = 4 : i64,
+    replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>
+  } : (tensor<4x16xf32>) -> tensor<16x4xf32>
+  return %0 : tensor<16x4xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @alltoall_unranked_input
+func @alltoall_unranked_input(%data: tensor<*xf32>) -> tensor<*xf32> {
+  %0 = "xla_hlo.all_to_all"(%data) {
+    split_dimension = 1 : i64,
+    concat_dimension = 0 : i64,
+    split_count = 5 : i64,
+    replica_groups = dense<[[0, 1, 2, 3, 4]]> : tensor<1x5xi64>
+  } : (tensor<*xf32>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+}
+
+// -----
+
+func @alltoall_invalid_split_dim_size(%data: tensor<4x16xf32>) -> tensor<16x4xf32> {
+// expected-error@+1 {{split dimension has size 16, expected to be a multiple of split_count 5}}
+  %0 = "xla_hlo.all_to_all"(%data) {
+    split_dimension = 1 : i64,
+    concat_dimension = 0 : i64,
+    split_count = 5 : i64,
+    replica_groups = dense<[[0, 1, 2, 3, 4]]> : tensor<1x5xi64>
+  } : (tensor<4x16xf32>) -> tensor<16x4xf32>
+  return %0 : tensor<16x4xf32>
+}
+
+// -----
 
 // CHECK-LABEL: func @broadcast
 func @broadcast(%arg0: tensor<3xi32>) -> tensor<1x2x3xi32> {
@@ -114,6 +164,46 @@ func @comp_bad_direction(%arg0: tensor<3xi32>, %arg1: tensor<3xi32>) -> tensor<3
 
 // -----
 
+func @collective_permute_duplicate_sources(%arg0: tensor<128x32xf32>) -> tensor<128x32xf32> {
+  // expected-error@+1 {{duplicate sources not allowed}}
+  %0 = "xla_hlo.collective_permute"(%arg0) {
+    source_target_pairs = dense<[[0, 1], [0, 2], [2, 3]]> : tensor<3x2xi64>
+  } : (tensor<128x32xf32>) -> tensor<128x32xf32>
+  return %0 : tensor<128x32xf32>
+}
+
+// -----
+
+func @collective_permute_duplicate_targets(%arg0: tensor<128x32xf32>) -> tensor<128x32xf32> {
+  // expected-error@+1 {{duplicate targets not allowed}}
+  %0 = "xla_hlo.collective_permute"(%arg0) {
+    source_target_pairs = dense<[[0, 1], [1, 2], [2, 1]]> : tensor<3x2xi64>
+  } : (tensor<128x32xf32>) -> tensor<128x32xf32>
+  return %0 : tensor<128x32xf32>
+}
+
+// -----
+
+func @collective_permute_duplicate_sources(%arg0: tensor<128x32xf32>) -> tensor<128x32xf32> {
+  // expected-error@+1 {{expect source_target_pairs attribute to be of rank 2, but got rank 1}}
+  %0 = "xla_hlo.collective_permute"(%arg0) {
+    source_target_pairs = dense<[0, 1]> : tensor<2xi64>
+  } : (tensor<128x32xf32>) -> tensor<128x32xf32>
+  return %0 : tensor<128x32xf32>
+}
+
+// -----
+
+func @collective_permute_duplicate_sources(%arg0: tensor<128x32xf32>) -> tensor<128x32xf32> {
+  // expected-error@+1 {{expect source_target_pairs attribute of shape (N, 2), but got (2, 3)}}
+  %0 = "xla_hlo.collective_permute"(%arg0) {
+    source_target_pairs = dense<[[0, 1, 2], [3, 4, 5]]> : tensor<2x3xi64>
+  } : (tensor<128x32xf32>) -> tensor<128x32xf32>
+  return %0 : tensor<128x32xf32>
+}
+
+// -----
+
 // CHECK-LABEL: func @clamp
 func @clamp(%arg0: tensor<1xi32>) -> tensor<1xi32> {
   %0 = "xla_hlo.clamp"(%arg0, %arg0, %arg0) : (tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1xi32>
@@ -174,6 +264,15 @@ func @dot_bad_precision_config(%arg0: tensor<2x2xi32>, %arg1: tensor<2x2xi32>) -
   // expected-error@+1 {{'precision_config' failed to satisfy constraint}}
   %0 = "xla_hlo.dot"(%arg0, %arg1) {precision_config = ["FOO", "HIGHEST"]} : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
   return %0: tensor<2x2xi32>
+}
+
+// -----
+
+func @rng_uniform_invalid_type(%mu: tensor<complex<f32>>, %sigma: tensor<f32>) -> tensor<2x3x5xf32> {
+  %shape = xla_hlo.constant dense<[2, 3, 5]> : tensor<3xi64>
+  // expected-error@+1 {{must be tensor of pred (AKA boolean or 1-bit integer) or 8/16/32/64-bit integer or floating-point values, but got 'tensor<complex<f32>>'}}
+  %0 = "xla_hlo.rng_uniform"(%mu, %sigma, %shape) : (tensor<complex<f32>>, tensor<f32>, tensor<3xi64>) -> tensor<2x3x5xf32>
+  return %0 : tensor<2x3x5xf32>
 }
 
 // -----

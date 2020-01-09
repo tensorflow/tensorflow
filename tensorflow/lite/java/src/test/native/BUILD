@@ -27,3 +27,9 @@ tflite_jni_binary(
     testonly = 1,
     deps = [":native"],
 )
+
+# Dummy native library which doesn't actually contain the TFLite implementation.
+tflite_jni_binary(
+    name = "libtensorflowlite_jni.so",
+    testonly = 1,
+)

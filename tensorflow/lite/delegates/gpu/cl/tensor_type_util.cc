@@ -27,6 +27,7 @@ ObjectType ToObjectType(TensorStorageType type) {
     case TensorStorageType::SINGLE_TEXTURE_2D:
     case TensorStorageType::TEXTURE_2D:
     case TensorStorageType::TEXTURE_ARRAY:
+    case TensorStorageType::TEXTURE_3D:
       return ObjectType::OPENCL_TEXTURE;
     default:
       return ObjectType::UNKNOWN;
@@ -44,6 +45,8 @@ DataLayout ToDataLayout(TensorStorageType type) {
     case TensorStorageType::TEXTURE_2D:
       return DataLayout::HDWC4;
     case TensorStorageType::TEXTURE_ARRAY:
+      return DataLayout::DHWC4;
+    case TensorStorageType::TEXTURE_3D:
       return DataLayout::DHWC4;
     default:
       return DataLayout::UNKNOWN;

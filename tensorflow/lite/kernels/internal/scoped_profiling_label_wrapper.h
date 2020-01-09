@@ -15,25 +15,19 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_SCOPED_PROFILING_LABEL_WRAPPER_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_SCOPED_PROFILING_LABEL_WRAPPER_H_
 
-// We are using TF_LITE_STATIC_MEMORY to inform if we are building for micro or
-// not.  This is set for all micro builds (host and target) via the Makefile but
-// not so for a bazel build.
+// gemmlowp itself defines an empty class for ScopedProfilingLabel when
+// GEMMLOWP_PROFILING is not defined. However, that does not work for embedded
+// builds because instrumentation.h depends on pthread and defines a few Mutex
+// classes independent of GEMMLOWP_PROFILING.
 //
-// TODO(b/142948705): Ideally we would have a micro-specific bazel build too.
+// As a result, we are using GEMMLOWP_PROFILING to either pull in the
+// gemmlowp implementation or use our own empty class.
 //
-// We need to additionally check for ARDUINO because library specific defines
-// are not supported by the Aruino IDE. See b/145161069 for more details.
+// The downside with this approach is that we are using a gemmlowp macro from
+// the TFLite codebase. The upside is that it is much simpler than the
+// alternatives (see history of this file).
 
-#if defined(TF_LITE_STATIC_MEMORY) || defined(ARDUINO)
-
-namespace tflite {
-class ScopedProfilingLabelWrapper {
- public:
-  explicit ScopedProfilingLabelWrapper(const char* label) {}
-};
-}  // namespace tflite
-
-#else
+#ifdef GEMMLOWP_PROFILING
 
 #include "profiling/instrumentation.h"
 
@@ -48,6 +42,15 @@ class ScopedProfilingLabelWrapper {
 };
 }  // namespace tflite
 
-#endif
+#else  // GEMMLOWP_PROFILING
+
+namespace tflite {
+class ScopedProfilingLabelWrapper {
+ public:
+  explicit ScopedProfilingLabelWrapper(const char* label) {}
+};
+}  // namespace tflite
+
+#endif  // GEMMLOWP_PROFILING
 
 #endif  // TENSORFLOW_LITE_KERNELS_INTERNAL_SCOPED_PROFILING_LABEL_WRAPPER_H_

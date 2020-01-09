@@ -1153,8 +1153,6 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
   TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
 
-  (void)im2col_data;
-  (void)im2col_shape;
   gemmlowp::ScopedProfilingLabel label("Conv");
 
   // NB: the float 0.0f value is represented by all zero bytes.
@@ -5637,8 +5635,6 @@ inline void Quantize(const int32_t* multiplier, const int32_t* shift,
   const int32x4_t output_offset_vec = vdupq_n_s32(output_zp);
   const int32x4_t output_activation_min_vec = vdupq_n_s32(output_min);
   const int32x4_t output_activation_max_vec = vdupq_n_s32(output_max);
-  const int32x4_t ones = vdupq_n_s32(1);
-  const int32x4_t minus_ones = vdupq_n_s32(-1);
   const int32x4_t zeros = vdupq_n_s32(0);
 #endif
 
@@ -5647,80 +5643,65 @@ inline void Quantize(const int32_t* multiplier, const int32_t* shift,
 
   int c = 0;
 
-  while (c < channel_size) {
-    int target_output_depth = channel_size;
 #ifdef USE_NEON
-    using gemmlowp::RoundingDivideByPOT;
-    for (; c <= channel_size - 4; c += 4) {
-      int32x4_t out_shift = vld1q_s32(shift + c);
-      const bool out_shift_all_less_than_zero =
-          (vgetq_lane_s32(out_shift, 0) < 0) &&
-          (vgetq_lane_s32(out_shift, 1) < 0) &&
-          (vgetq_lane_s32(out_shift, 2) < 0) &&
-          (vgetq_lane_s32(out_shift, 3) < 0);
-      const bool out_shift_all_greater_equal_than_zero =
-          (vgetq_lane_s32(out_shift, 0) >= 0) &&
-          (vgetq_lane_s32(out_shift, 1) >= 0) &&
-          (vgetq_lane_s32(out_shift, 2) >= 0) &&
-          (vgetq_lane_s32(out_shift, 3) >= 0);
-      if (!out_shift_all_less_than_zero &&
-          !out_shift_all_greater_equal_than_zero) {
-        // Fallback to general path.
-        // Then go ahead for next 4.
-        target_output_depth = c + 4;
-        break;
-      }
-      int32x4_t out_mul = vld1q_s32(multiplier + c);
-      for (int n = 0; n < rows; ++n) {
-        int loc = n * channel_size + c;
-        int32x4_t acc = vld1q_s32(scratch + loc);
-        if (out_shift_all_less_than_zero) {  // output_shift all < 0 case.
-          acc = vqrdmulhq_s32(acc, out_mul);
-          int32x4_t negative_out_shift = vmulq_n_s32(out_shift, -1);
-          int32x4_t mask =
-              vaddq_s32(vshlq_s32(ones, negative_out_shift), minus_ones);
-          int32x4_t remainder = vandq_s32(acc, mask);
-          int32x4_t shifted_right_mask = vshlq_s32(mask, minus_ones);
-          int32x4_t temp =
-              vandq_s32(vreinterpretq_s32_u32(vcltq_s32(acc, zeros)), ones);
-          int32x4_t threshold = vaddq_s32(shifted_right_mask, temp);
-          temp = vandq_s32(
-              vreinterpretq_s32_u32(vcgtq_s32(remainder, threshold)), ones);
-          int32x4_t shifted_right_acc = vshlq_s32(acc, out_shift);
-          acc = vaddq_s32(shifted_right_acc, temp);
-        } else {  // output_shift all > 0 case.
-          int32x4_t multiplier_power_of_two = vshlq_s32(ones, out_shift);
-          acc = vmulq_s32(acc, multiplier_power_of_two);
-          acc = vqrdmulhq_s32(acc, out_mul);
-        }
-        // Add the output offset.
-        acc = vaddq_s32(acc, output_offset_vec);
-        // Apply the activation function.
-        acc = vmaxq_s32(acc, output_activation_min_vec);
-        acc = vminq_s32(acc, output_activation_max_vec);
-        // Saturating cast to int8 and store to destination.
-        const int16x4_t acc_s16 = vqmovn_s32(acc);
-        const int16x8_t res_s16 = vcombine_s16(acc_s16, acc_s16);
-        const int8x8_t res_s8 = vqmovn_s16(res_s16);
-        vst1_lane_s8(output + loc + 0, res_s8, 0);
-        vst1_lane_s8(output + loc + 1, res_s8, 1);
-        vst1_lane_s8(output + loc + 2, res_s8, 2);
-        vst1_lane_s8(output + loc + 3, res_s8, 3);
-      }
+  using gemmlowp::RoundingDivideByPOT;
+  for (; c <= channel_size - 8; c += 8) {
+    int32x4_t out_shift_1 = vld1q_s32(shift + c);
+    int32x4_t out_shift_2 = vld1q_s32(shift + c + 4);
+    int32x4_t left_shift_1 = vmaxq_s32(out_shift_1, zeros);
+    int32x4_t left_shift_2 = vmaxq_s32(out_shift_2, zeros);
+
+    // Right shift will be performed as left shift with negative values.
+    int32x4_t right_shift_1 = vminq_s32(out_shift_1, zeros);
+    int32x4_t right_shift_2 = vminq_s32(out_shift_2, zeros);
+
+    int32x4_t out_mul_1 = vld1q_s32(multiplier + c);
+    int32x4_t out_mul_2 = vld1q_s32(multiplier + c + 4);
+    for (int n = 0; n < rows; ++n) {
+      int loc = n * channel_size + c;
+      int32x4_t acc_1 = vld1q_s32(scratch + loc);
+      int32x4_t acc_2 = vld1q_s32(scratch + loc + 4);
+
+      // Saturating Rounding Doubling High Mul.
+      acc_1 = vshlq_s32(acc_1, left_shift_1);
+      acc_1 = vqrdmulhq_s32(acc_1, out_mul_1);
+      acc_2 = vshlq_s32(acc_2, left_shift_2);
+      acc_2 = vqrdmulhq_s32(acc_2, out_mul_2);
+
+      // Rounding Dividing By POT.
+      acc_1 = vrshlq_s32(acc_1, right_shift_1);
+      acc_2 = vrshlq_s32(acc_2, right_shift_2);
+
+      // Add the output offset.
+      acc_1 = vaddq_s32(acc_1, output_offset_vec);
+      acc_2 = vaddq_s32(acc_2, output_offset_vec);
+
+      // Apply the activation function.
+      acc_1 = vmaxq_s32(acc_1, output_activation_min_vec);
+      acc_1 = vminq_s32(acc_1, output_activation_max_vec);
+      acc_2 = vmaxq_s32(acc_2, output_activation_min_vec);
+      acc_2 = vminq_s32(acc_2, output_activation_max_vec);
+
+      // Saturating cast to int8 and store to destination.
+      const int16x4_t acc_s16_1 = vqmovn_s32(acc_1);
+      const int16x4_t acc_s16_2 = vqmovn_s32(acc_2);
+      const int16x8_t res_s16 = vcombine_s16(acc_s16_1, acc_s16_2);
+      const int8x8_t res_s8 = vqmovn_s16(res_s16);
+      vst1_s8(output + loc, res_s8);
     }
+  }
 
 #endif  // USE_NEON
-    // Handle leftover values, one by one. This is very slow.
-    for (; c < target_output_depth; c++) {
-      for (int n = 0; n < rows; ++n) {
-        int loc = n * channel_size + c;
-        int32 acc = scratch[loc];
-        acc = MultiplyByQuantizedMultiplier(acc, multiplier[c], shift[c]);
-        acc += output_zp;
-        acc = std::max(acc, output_min);
-        acc = std::min(acc, output_max);
-        output[loc] = static_cast<int8>(acc);
-      }
+  // Handle leftover values, one by one. This is very slow.
+  for (; c < channel_size; c++) {
+    for (int n = 0; n < rows; ++n) {
+      int loc = n * channel_size + c;
+      int32 acc = scratch[loc];
+      acc = MultiplyByQuantizedMultiplier(acc, multiplier[c], shift[c]);
+      acc += output_zp;
+      acc = std::max(acc, output_min);
+      acc = std::min(acc, output_max);
+      output[loc] = static_cast<int8>(acc);
     }
   }
 }

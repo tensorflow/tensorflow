@@ -108,6 +108,45 @@ string ExperimentalConvertSavedModelToMlir(
   return MlirModuleToString(*module_or.ConsumeValueOrDie(), show_debug_info);
 }
 
+// Load a SavedModel V1 and return a textual MLIR string corresponding to it.
+//
+// Args:
+//   saved_model_path: File path from which to load the SavedModel.
+//   tags: Tags to identify MetaGraphDef that need to be loaded.
+//
+// Returns:
+//   A string of textual MLIR representing the raw imported SavedModel.
+string ExperimentalConvertSavedModelV1ToMlir(
+    const string &saved_model_path,
+    const string &tags,
+    bool show_debug_info,
+    TF_Status* status) {
+  // Load the saved model into a SavedModelBundle.
+
+  std::unordered_set<string> tag_set
+      = absl::StrSplit(tags, ',', absl::SkipEmpty());
+
+  tensorflow::SavedModelBundle bundle;
+  auto load_status = tensorflow::LoadSavedModel(
+      {}, {},
+      saved_model_path, tag_set, &bundle);
+  if (!load_status.ok()) {
+    Set_TF_Status_from_Status(status, load_status);
+    return "// error";
+  }
+
+  // Convert the SavedModelBundle to an MLIR module.
+
+  mlir::MLIRContext context;
+  auto module_or = ConvertSavedModelV1ToMlir(bundle, &context);
+  if (!module_or.status().ok()) {
+    Set_TF_Status_from_Status(status, module_or.status());
+    return "// error";
+  }
+
+  return MlirModuleToString(*module_or.ConsumeValueOrDie(), show_debug_info);
+}
+
 
 string ExperimentalRunPassPipeline(
     const string &mlir_txt,
@@ -154,6 +193,7 @@ string ExperimentalRunPassPipeline(
 %unignore tensorflow::swig;
 %unignore tensorflow::swig::ImportGraphDef;
 %unignore tensorflow::swig::ExperimentalConvertSavedModelToMlir;
+%unignore tensorflow::swig::ExperimentalConvertSavedModelV1ToMlir;
 %unignore tensorflow::swig::ExperimentalRunPassPipeline;
 
 // Wrap this function
@@ -165,6 +205,11 @@ static string ImportGraphDef(const string &graphdef,
 static string ExperimentalConvertSavedModelToMlir(
     const string &saved_model_path,
     const string &exported_names,
+    bool show_debug_info,
+    TF_Status* status);
+static string ExperimentalConvertSavedModelV1ToMlir(
+    const string &saved_model_path,
+    const string &tags,
     bool show_debug_info,
     TF_Status* status);
 static string ExperimentalRunPassPipeline(
@@ -185,6 +230,14 @@ def experimental_convert_saved_model_to_mlir(saved_model_path,
   return ExperimentalConvertSavedModelToMlir(
     str(saved_model_path).encode('utf-8'),
     str(exported_names).encode('utf-8'),
+    show_debug_info
+  ).decode('utf-8');
+
+def experimental_convert_saved_model_v1_to_mlir(saved_model_path,
+                                                tags, show_debug_info):
+  return ExperimentalConvertSavedModelV1ToMlir(
+    str(saved_model_path).encode('utf-8'),
+    str(tags).encode('utf-8'),
     show_debug_info
   ).decode('utf-8');
 

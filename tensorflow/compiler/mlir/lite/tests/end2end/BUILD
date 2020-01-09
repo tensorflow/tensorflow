@@ -7,7 +7,7 @@ glob_lit_tests(
         ":quant_stats_files",
         ":test_utilities",
     ],
-    driver = "@local_config_mlir//:run_lit.sh",
+    driver = "@llvm-project//mlir:run_lit.sh",
     test_file_exts = [
         "pbtxt",
     ],
@@ -20,7 +20,7 @@ filegroup(
     data = [
         "//tensorflow/compiler/mlir/lite:flatbuffer_to_string",
         "//tensorflow/compiler/mlir/lite:tf_tfl_translate",
-        "@llvm//:FileCheck",
+        "@llvm-project//llvm:FileCheck",
     ],
 )
 

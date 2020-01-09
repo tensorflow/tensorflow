@@ -11,21 +11,17 @@ load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_lib_hdrs",
-    "tf_additional_lib_srcs",
-    "tf_additional_monitoring_srcs",
-    "tf_additional_proto_hdrs",
     "tf_additional_tensor_coding_deps",
     "tf_additional_test_srcs",
     "tf_fingerprint_deps",
+    "tf_legacy_srcs_no_runtime_google",
+    "tf_logging_deps",
+    "tf_monitoring_deps",
+    "tf_platform_alias",
+    "tf_platform_deps",
     "tf_protobuf_compiler_deps",
     "tf_protobuf_deps",
-)
-load(
-    "//tensorflow/core/platform:default/build_refactor.bzl",
-    "tf_instantiate_platform_libraries",
-    "tf_logging_deps",
-    "tf_mobile_aware_deps",
-    "tf_platform_helper_deps",
+    "tf_windows_aware_platform_deps",
 )
 load(
     "//tensorflow:tensorflow.bzl",
@@ -44,38 +40,6 @@ package(
     ],
     licenses = ["notice"],  # Apache 2.0
 )
-
-# Note(bmzhao): These are temporary BUILD rule helpers for
-# platform-specific library dependencies. These temporarily
-# exist to allow us incrementally add granular targets
-# to tf/core/platform/BUILD. We will remove these helpers,
-# after we finish refactoring tf/core/platform/BUILD.
-tf_instantiate_platform_libraries(names = [
-    "context",
-    "cord",
-    "cuda_libdevice_path",
-    "dynamic_annotations",
-    "env",
-    "env_time",
-    "human_readable_json",
-    "logging",
-    "load_library",
-    "mutex",
-    "net",
-    "notification",
-    "platform_port",
-    "rocm_rocdl_path",
-    "stacktrace",
-    "stacktrace_handler",
-    "strong_hash",
-    "subprocess",
-    "test",
-    "test_benchmark",
-    "tracing",
-    "types",
-    "unbounded_work_queue",
-    "wide_char",
-])
 
 cc_library(
     name = "abi",
@@ -123,8 +87,7 @@ cc_library(
 cc_library(
     name = "context",
     textual_hdrs = ["context.h"],
-    # See call to tf_instantiate_platform_libraries() above.
-    deps = tf_mobile_aware_deps("context_impl"),
+    deps = tf_platform_deps("context"),
 )
 
 cc_library(
@@ -132,7 +95,7 @@ cc_library(
     hdrs = ["cord.h"],
     deps = [
         ":platform",
-    ] + tf_mobile_aware_deps("cord_impl"),
+    ] + tf_platform_deps("cord"),
 )
 
 cc_library(
@@ -158,7 +121,7 @@ cc_library(
 cc_library(
     name = "cuda_libdevice_path",
     textual_hdrs = ["cuda_libdevice_path.h"],
-    deps = tf_mobile_aware_deps("cuda_libdevice_path_impl"),
+    deps = tf_platform_deps("cuda_libdevice_path"),
 )
 
 cc_library(
@@ -179,7 +142,7 @@ cc_library(
     hdrs = ["dynamic_annotations.h"],
     deps = [
         ":platform",
-    ] + tf_mobile_aware_deps("dynamic_annotations_impl"),
+    ] + tf_platform_deps("dynamic_annotations"),
 )
 
 cc_library(
@@ -190,13 +153,13 @@ cc_library(
         "file_system_helper.h",
         "threadpool.h",
     ],
-    deps = tf_platform_helper_deps("env_impl"),
+    deps = tf_windows_aware_platform_deps("env"),
 )
 
 cc_library(
     name = "env_time",
     textual_hdrs = ["env_time.h"],
-    deps = tf_platform_helper_deps("env_time_impl"),
+    deps = tf_windows_aware_platform_deps("env_time"),
 )
 
 cc_library(
@@ -262,7 +225,7 @@ cc_library(
 cc_library(
     name = "human_readable_json",
     textual_hdrs = ["human_readable_json.h"],
-    deps = tf_mobile_aware_deps("human_readable_json_impl"),
+    deps = tf_platform_deps("human_readable_json"),
 )
 
 cc_library(
@@ -276,7 +239,7 @@ cc_library(
 cc_library(
     name = "load_library",
     textual_hdrs = ["load_library.h"],
-    deps = tf_platform_helper_deps("load_library_impl"),
+    deps = tf_windows_aware_platform_deps("load_library"),
 )
 
 cc_library(
@@ -300,6 +263,12 @@ cc_library(
 )
 
 cc_library(
+    name = "monitoring",
+    textual_hdrs = ["monitoring.h"],
+    deps = tf_monitoring_deps(),
+)
+
+cc_library(
     name = "macros",
     hdrs = ["macros.h"],
 )
@@ -307,13 +276,13 @@ cc_library(
 cc_library(
     name = "mutex",
     textual_hdrs = ["mutex.h"],
-    deps = tf_mobile_aware_deps("mutex_impl"),
+    deps = tf_platform_deps("mutex"),
 )
 
 cc_library(
     name = "net",
     textual_hdrs = ["net.h"],
-    deps = tf_platform_helper_deps("net_impl"),
+    deps = tf_windows_aware_platform_deps("net"),
 )
 
 cc_library(
@@ -321,7 +290,7 @@ cc_library(
     hdrs = ["notification.h"],
     deps = [
         ":platform",
-    ] + tf_mobile_aware_deps("notification_impl"),
+    ] + tf_platform_deps("notification"),
 )
 
 cc_library(
@@ -378,7 +347,7 @@ cc_library(
         "numa.h",
         "snappy.h",
     ],
-    deps = tf_platform_helper_deps("platform_port_impl"),
+    deps = tf_windows_aware_platform_deps("platform_port"),
 )
 
 cc_library(
@@ -412,6 +381,10 @@ cc_library(
         "protobuf_util.cc",
     ],
     hdrs = ["protobuf.h"],
+    defines = select({
+        "//tensorflow:android": ["TENSORFLOW_LITE_PROTOS"],
+        "//conditions:default": [],
+    }),
     deps = [
         ":platform",
         ":types",
@@ -476,7 +449,7 @@ cc_library(
 cc_library(
     name = "rocm_rocdl_path",
     textual_hdrs = ["rocm_rocdl_path.h"],
-    deps = tf_mobile_aware_deps("rocm_rocdl_path_impl"),
+    deps = tf_platform_deps("rocm_rocdl_path"),
 )
 
 cc_library(
@@ -514,7 +487,7 @@ cc_library(
     hdrs = ["stacktrace.h"],
     deps = [
         ":platform",
-    ] + tf_platform_helper_deps("stacktrace_impl"),
+    ] + tf_windows_aware_platform_deps("stacktrace"),
 )
 
 filegroup(
@@ -531,7 +504,7 @@ filegroup(
 cc_library(
     name = "stacktrace_handler",
     textual_hdrs = ["stacktrace_handler.h"],
-    deps = tf_platform_helper_deps("stacktrace_handler_impl"),
+    deps = tf_windows_aware_platform_deps("stacktrace_handler"),
 )
 
 cc_library(
@@ -542,6 +515,7 @@ cc_library(
         ":logging",
         ":macros",
         ":mutex",
+        ":stacktrace",
         ":str_util",
         ":strcat",
         ":stringpiece",
@@ -603,7 +577,7 @@ cc_library(
     deps = [
         ":platform",
         ":types",
-    ] + tf_mobile_aware_deps("strong_hash_impl"),
+    ] + tf_platform_deps("strong_hash"),
 )
 
 cc_library(
@@ -611,7 +585,7 @@ cc_library(
     textual_hdrs = [
         "subprocess.h",
     ],
-    deps = tf_platform_helper_deps("subprocess_impl"),
+    deps = tf_windows_aware_platform_deps("subprocess"),
 )
 
 cc_library(
@@ -633,7 +607,7 @@ cc_library(
     name = "test",
     testonly = True,
     textual_hdrs = ["test.h"],
-    deps = tf_mobile_aware_deps("test_impl"),
+    deps = tf_platform_deps("test"),
 )
 
 cc_library(
@@ -642,8 +616,7 @@ cc_library(
     hdrs = ["test_benchmark.h"],
     deps = [
         ":platform",
-        ":test_benchmark_impl",
-    ],
+    ] + tf_platform_deps("test_benchmark"),
 )
 
 cc_library(
@@ -672,7 +645,7 @@ cc_library(
 cc_library(
     name = "tracing",
     textual_hdrs = ["tracing.h"],
-    deps = tf_mobile_aware_deps("tracing_impl"),
+    deps = tf_platform_deps("tracing"),
 )
 
 cc_library(
@@ -686,7 +659,7 @@ cc_library(
     deps = [
         ":platform",
         ":tstring",
-    ] + tf_mobile_aware_deps("types_impl"),
+    ] + tf_platform_deps("types"),
 )
 
 cc_library(
@@ -694,7 +667,7 @@ cc_library(
     hdrs = ["unbounded_work_queue.h"],
     deps = [
         ":platform",
-    ] + tf_mobile_aware_deps("unbounded_work_queue_impl"),
+    ] + tf_platform_deps("unbounded_work_queue"),
 )
 
 # This is a hacky, do-nothing, binary that makes it easy to verify ability to
@@ -761,131 +734,160 @@ filegroup(
     visibility = ["//tensorflow/core:__pkg__"],
 )
 
+# These are the files in common between :legacy_srcs_no_runtime
+# and :legacy_srcs_no_runtime_google
+# These files as basically all the headers + cc files under tensorflow/core/platform,
+# excluding any test sources, testing utilities, cuda, rocm, stream_executor,
+# image headers (gif.h, jpeg.h, png.h), and certain translation units (
+# env_time.cc, logging.cc, logger.cc, mutex.cc) that would cause collisions
+# with :platform_base, a common dependency for downstream targets.
 filegroup(
-    name = "legacy_platform_lib_srcs",
-    srcs = tf_additional_lib_srcs(
-        exclude = [
-            "*test*",
-            "**/*test*",
-            "**/cuda.h",
-            "**/cuda_libdevice_path.cc",
-            "**/rocm.h",
-            "**/monitoring.cc",
-            "**/stream_executor.h",
-            "**/env.cc",
-            "**/env_time.cc",
-            "**/load_library.cc",
-            "**/mutex.cc",
-            "**/net.cc",
-            "**/logging.cc",
-            "**/port.cc",
-            "**/posix_file_system.cc",
-            "**/human_readable_json.cc",
-            "**/rocm.h",
-            "**/rocm_rocdl_path.cc",
-            "**/subprocess.cc",
-            "**/tracing.cc",
-            "**/unbounded_work_queue.cc",
-            "**/windows_file_system.cc",
-            "abi.cc",
-            "coding.cc",
-            "cpu_info.cc",
-            "hash.cc",
-            "numbers.cc",
-            "path.cc",
-            "platform_strings.cc",
-            "protobuf.cc",
-            "random.cc",
-            "scanner.cc",
-            "strcat.cc",
-            "stringprintf.cc",
-        ],
-    ),
-    visibility = ["//tensorflow/core:__pkg__"],
-)
-
-filegroup(
-    name = "legacy_proto_hdrs",
-    srcs = tf_additional_proto_hdrs(),
-    visibility = ["//tensorflow/core:__pkg__"],
+    name = "legacy_srcs_common",
+    srcs = [
+        "//tensorflow/core/platform:abi.cc",
+        "//tensorflow/core/platform:abi.h",
+        "//tensorflow/core/platform:base64.cc",
+        "//tensorflow/core/platform:base64.h",
+        "//tensorflow/core/platform:blocking_counter.h",
+        "//tensorflow/core/platform:byte_order.h",
+        "//tensorflow/core/platform:coding.cc",
+        "//tensorflow/core/platform:coding.h",
+        "//tensorflow/core/platform:context.h",
+        "//tensorflow/core/platform:cord.h",
+        "//tensorflow/core/platform:cpu_feature_guard.cc",
+        "//tensorflow/core/platform:cpu_feature_guard.h",
+        "//tensorflow/core/platform:cpu_info.cc",
+        "//tensorflow/core/platform:cpu_info.h",
+        "//tensorflow/core/platform:demangle.h",
+        "//tensorflow/core/platform:denormal.cc",
+        "//tensorflow/core/platform:denormal.h",
+        "//tensorflow/core/platform:dynamic_annotations.h",
+        "//tensorflow/core/platform:env.cc",
+        "//tensorflow/core/platform:env.h",
+        "//tensorflow/core/platform:env_time.h",
+        "//tensorflow/core/platform:error.cc",
+        "//tensorflow/core/platform:error.h",
+        "//tensorflow/core/platform:errors.h",
+        "//tensorflow/core/platform:file_statistics.h",
+        "//tensorflow/core/platform:file_system.cc",
+        "//tensorflow/core/platform:file_system.h",
+        "//tensorflow/core/platform:file_system_helper.cc",
+        "//tensorflow/core/platform:file_system_helper.h",
+        "//tensorflow/core/platform:fingerprint.h",
+        "//tensorflow/core/platform:hash.cc",
+        "//tensorflow/core/platform:hash.h",
+        "//tensorflow/core/platform:host_info.h",
+        "//tensorflow/core/platform:human_readable_json.h",
+        "//tensorflow/core/platform:init_main.h",
+        "//tensorflow/core/platform:load_library.h",
+        "//tensorflow/core/platform:logger.h",
+        "//tensorflow/core/platform:logging.h",
+        "//tensorflow/core/platform:macros.h",
+        "//tensorflow/core/platform:mem.h",
+        "//tensorflow/core/platform:monitoring.h",
+        "//tensorflow/core/platform:mutex.h",
+        "//tensorflow/core/platform:net.h",
+        "//tensorflow/core/platform:notification.h",
+        "//tensorflow/core/platform:null_file_system.h",
+        "//tensorflow/core/platform:numa.h",
+        "//tensorflow/core/platform:numbers.cc",
+        "//tensorflow/core/platform:numbers.h",
+        "//tensorflow/core/platform:path.cc",
+        "//tensorflow/core/platform:path.h",
+        "//tensorflow/core/platform:platform.h",
+        "//tensorflow/core/platform:platform_strings.cc",
+        "//tensorflow/core/platform:platform_strings.h",
+        "//tensorflow/core/platform:platform_strings_computed.h",
+        "//tensorflow/core/platform:prefetch.h",
+        "//tensorflow/core/platform:profile_utils/android_armv7a_cpu_utils_helper.cc",
+        "//tensorflow/core/platform:profile_utils/android_armv7a_cpu_utils_helper.h",
+        "//tensorflow/core/platform:profile_utils/clock_cycle_profiler.cc",
+        "//tensorflow/core/platform:profile_utils/clock_cycle_profiler.h",
+        "//tensorflow/core/platform:profile_utils/cpu_utils.cc",
+        "//tensorflow/core/platform:profile_utils/cpu_utils.h",
+        "//tensorflow/core/platform:profile_utils/i_cpu_utils_helper.h",
+        "//tensorflow/core/platform:protobuf.cc",
+        "//tensorflow/core/platform:protobuf.h",
+        "//tensorflow/core/platform:protobuf_compiler.h",
+        "//tensorflow/core/platform:protobuf_internal.h",
+        "//tensorflow/core/platform:protobuf_util.cc",
+        "//tensorflow/core/platform:random.cc",
+        "//tensorflow/core/platform:random.h",
+        "//tensorflow/core/platform:raw_coding.h",
+        "//tensorflow/core/platform:refcount.h",
+        "//tensorflow/core/platform:regexp.h",
+        "//tensorflow/core/platform:scanner.cc",
+        "//tensorflow/core/platform:scanner.h",
+        "//tensorflow/core/platform:setround.cc",
+        "//tensorflow/core/platform:setround.h",
+        "//tensorflow/core/platform:snappy.h",
+        "//tensorflow/core/platform:stacktrace.h",
+        "//tensorflow/core/platform:stacktrace_handler.h",
+        "//tensorflow/core/platform:status.cc",
+        "//tensorflow/core/platform:status.h",
+        "//tensorflow/core/platform:str_util.cc",
+        "//tensorflow/core/platform:str_util.h",
+        "//tensorflow/core/platform:strcat.cc",
+        "//tensorflow/core/platform:strcat.h",
+        "//tensorflow/core/platform:stream_executor_no_cuda.h",
+        "//tensorflow/core/platform:stringpiece.h",
+        "//tensorflow/core/platform:stringprintf.cc",
+        "//tensorflow/core/platform:stringprintf.h",
+        "//tensorflow/core/platform:strong_hash.h",
+        "//tensorflow/core/platform:subprocess.h",
+        "//tensorflow/core/platform:tensor_coding.cc",
+        "//tensorflow/core/platform:tensor_coding.h",
+        "//tensorflow/core/platform:test_benchmark.h",
+        "//tensorflow/core/platform:thread_annotations.h",
+        "//tensorflow/core/platform:threadpool.cc",
+        "//tensorflow/core/platform:threadpool.h",
+        "//tensorflow/core/platform:threadpool_interface.h",
+        "//tensorflow/core/platform:threadpool_options.h",
+        "//tensorflow/core/platform:tracing.cc",
+        "//tensorflow/core/platform:tracing.h",
+        "//tensorflow/core/platform:tstring.h",
+        "//tensorflow/core/platform:types.h",
+        "//tensorflow/core/platform:unbounded_work_queue.h",
+    ],
+    visibility = ["//visibility:private"],
 )
 
 filegroup(
     name = "legacy_srcs_no_runtime",
-    srcs = glob(
-        [
-            "**/*.h",
-            "**/*.cc",
-        ],
-        exclude = [
-            "*test.*",
-            "*testutil*",
-            "*testlib*",
-            "*main.cc",
-            "**/*test.*",
-            "**/*testutil*",
-            "**/*testlib*",
-            "**/*main.cc",
-            "**/cuda_libdevice_path.*",
-            # Exclude env_time and logging to avoid collisions with
-            # :platform_base, a common dependency for downstream targets.
-            "**/env_time.cc",
-            "**/logging.cc",
-            "**/mutex.cc",
-            "**/rocm_rocdl_path.*",
-            "default/test_benchmark.*",
-            "cuda.h",
-            "rocm.h",
-            "google/**/*",
-            "hadoop/**/*",
-            "gif.h",
-            "jpeg.h",
-            "png.h",
-            "logger.cc",
-            "stream_executor.*",
-            "windows/**/*",
-        ],
-    ),
+    srcs = [
+        ":legacy_srcs_common",
+        "//tensorflow/core/platform/default:context.h",
+        "//tensorflow/core/platform/default:cord.h",
+        "//tensorflow/core/platform/default:dynamic_annotations.h",
+        "//tensorflow/core/platform/default:env.cc",
+        "//tensorflow/core/platform/default:human_readable_json.cc",
+        "//tensorflow/core/platform/default:integral_types.h",
+        "//tensorflow/core/platform/default:load_library.cc",
+        "//tensorflow/core/platform/default:logging.h",
+        "//tensorflow/core/platform/default:monitoring.cc",
+        "//tensorflow/core/platform/default:mutex.h",
+        "//tensorflow/core/platform/default:mutex_data.h",
+        "//tensorflow/core/platform/default:net.cc",
+        "//tensorflow/core/platform/default:notification.h",
+        "//tensorflow/core/platform/default:port.cc",
+        "//tensorflow/core/platform/default:posix_file_system.cc",
+        "//tensorflow/core/platform/default:posix_file_system.h",
+        "//tensorflow/core/platform/default:stacktrace.h",
+        "//tensorflow/core/platform/default:stacktrace_handler.cc",
+        "//tensorflow/core/platform/default:strong_hash.h",
+        "//tensorflow/core/platform/default:subprocess.cc",
+        "//tensorflow/core/platform/default:subprocess.h",
+        "//tensorflow/core/platform/default:tracing.cc",
+        "//tensorflow/core/platform/default:tracing_impl.h",
+        "//tensorflow/core/platform/default:unbounded_work_queue.cc",
+        "//tensorflow/core/platform/default:unbounded_work_queue.h",
+    ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
 
 filegroup(
     name = "legacy_srcs_no_runtime_google",
-    srcs = glob(
-        [
-            "**/*.h",
-            "**/*.cc",
-        ],
-        exclude = [
-            "*test.*",
-            "*testutil*",
-            "*testlib*",
-            "*main.cc",
-            "**/*test.*",
-            "**/*testutil*",
-            "**/*testlib*",
-            "**/*main.cc",
-            "**/cuda_libdevice_path.*",
-            # Exclude env_time and logging to avoid collisions with
-            # :platform_base, a common dependency for downstream targets.
-            "**/env_time.cc",
-            "**/logging.cc",
-            "**/mutex.cc",
-            "**/rocm_rocdl_path.*",
-            "google/test_benchmark.*",
-            "google/monitoring.*",
-            "cuda.h",
-            "rocm.h",
-            "default/**/*",
-            "hadoop/**/*",
-            "gif.h",
-            "jpeg.h",
-            "png.h",
-            "logger.cc",
-            "stream_executor.*",
-            "windows/**/*",
-        ],
-    ),
+    srcs = [":legacy_srcs_common"] + tf_legacy_srcs_no_runtime_google(),
     visibility = ["//tensorflow/core:__pkg__"],
 )
 
@@ -917,51 +919,11 @@ filegroup(
 
 filegroup(
     name = "legacy_lib_internal_srcs",
-    srcs = glob(
-        [
-            "*.cc",
-            "profile_utils/**/*.cc",
-        ],
-        exclude = [
-            "*test*",
-            "**/*test*",
-            "**/env_time.cc",
-            "**/monitoring.cc",
-            "**/cuda_libdevice_path.cc",
-            "**/load_library.cc",
-            "**/mutex.cc",
-            "**/logging.cc",
-            "**/port.cc",
-            "**/human_readable_json.cc",
-            "**/rocm_rocdl_path.cc",
-            "abi.cc",
-            "coding.cc",
-            "cpu_info.cc",
-            "cpu_feature_guard.cc",
-            "denormal.cc",
-            "env.cc",
-            "error.cc",
-            "file_system.cc",
-            "file_system_helper.cc",
-            "hash.cc",
-            "logger.cc",
-            "numbers.cc",
-            "path.cc",
-            "platform_strings.cc",
-            "protobuf.cc",
-            "protobuf_util.cc",
-            "random.cc",
-            "scanner.cc",
-            "setround.cc",
-            "status.cc",
-            "strcat.cc",
-            "stringprintf.cc",
-            "str_util.cc",
-            "tensor_coding.cc",
-            "threadpool.cc",
-            "tracing.cc",
-        ],
-    ),
+    srcs = [
+        "//tensorflow/core/platform:profile_utils/android_armv7a_cpu_utils_helper.cc",
+        "//tensorflow/core/platform:profile_utils/clock_cycle_profiler.cc",
+        "//tensorflow/core/platform:profile_utils/cpu_utils.cc",
+    ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
 
@@ -971,10 +933,22 @@ filegroup(
     visibility = ["//tensorflow/core:__pkg__"],
 )
 
+# These are the sources needed to build the target tensorflow/core:mobile_srcs_no_runtime.
+# We want to get rid of all such android targets, as described in
+# https://github.com/tensorflow/community/pull/179.
+# This temporary filegroup is allows us to remove the legacy "build_config" directories.
 filegroup(
-    name = "legacy_monitoring_srcs",
-    srcs = tf_additional_monitoring_srcs(),
+    name = "legacy_mobile_srcs",
+    srcs = tf_platform_alias("legacy_mobile_srcs"),
     visibility = ["//tensorflow/core:__pkg__"],
+)
+
+bzl_library(
+    name = "build_config_root_bzl",
+    srcs = [
+        "build_config_root.bzl",
+        "//tensorflow/core/platform/default:build_config_root.bzl",
+    ],
 )
 
 # TODO(gunan): Remove the following once references in core/BUILD is removed.
@@ -998,29 +972,17 @@ exports_files(
     ),
 )
 
-bzl_library(
-    name = "build_config_root_bzl",
-    srcs = [
-        "build_config_root.bzl",
-        "default/build_config_root.bzl",
-    ],
-)
-
-bzl_library(
-    name = "cuda_build_defs_bzl",
-    srcs = ["default/cuda_build_defs.bzl"],
-)
-
 exports_files(
     [
-        "stacktrace.h",
-        "cpu_info.h",
-        "types.h",
-        "macros.h",
         "abi.h",
-        "logging.h",
-        "platform.h",
         "byte_order.h",
+        "cpu_info.cc",
+        "cpu_info.h",
+        "logging.h",
+        "macros.h",
+        "platform.h",
+        "stacktrace.h",
+        "types.h",
     ],
     visibility = ["//tensorflow:__subpackages__"],
 )

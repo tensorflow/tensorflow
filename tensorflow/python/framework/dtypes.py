@@ -633,5 +633,11 @@ def as_dtype(type_value):
   except KeyError:
     pass
 
+  if hasattr(type_value, "dtype"):
+    try:
+      return _NP_TO_TF[np.dtype(type_value.dtype).type]
+    except (KeyError, TypeError):
+      pass
+
   raise TypeError("Cannot convert value %r to a TensorFlow DType." %
                   (type_value,))

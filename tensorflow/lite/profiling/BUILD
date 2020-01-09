@@ -95,7 +95,7 @@ cc_library(
     deps = [
         ":memory_info",
         ":profile_buffer",
-        "//tensorflow/core:stats_calculator_portable",
+        "//tensorflow/core/util:stats_calculator_portable",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/schema:schema_fbs",
     ],

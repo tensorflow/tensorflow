@@ -95,8 +95,11 @@ def batch_jacobian(output, inp, use_pfor=True, parallel_iterations=None):
     inp: A tensor with shape [b, x1, ..., x_m]
     use_pfor: If true, uses pfor for computing the Jacobian. Else uses a
       tf.while_loop.
-    parallel_iterations: A knob to control how many iterations and dispatched in
-      parallel. This knob can be used to control the total memory usage.
+    parallel_iterations: A knob to control how many iterations are vectorized
+      and dispatched in parallel. The default value of None, when use_pfor is
+      true, corresponds to vectorizing all the iterations. When use_pfor is
+      false, the default value of None corresponds to parallel_iterations=10.
+      This knob can be used to control the total memory usage.
 
   Returns:
     A tensor `t` with shape [b, y_1, ..., y_n, x1, ..., x_m] where `t[i, ...]`

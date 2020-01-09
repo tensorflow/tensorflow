@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from functools import partial
+
 import numpy as np
 
 from tensorflow.python.framework import errors

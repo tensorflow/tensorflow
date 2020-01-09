@@ -41,4 +41,6 @@ OP_CALLBACK_SKIP_OPS = (
     b"TPUCompilationResult",
     b"TPUReplicatedOutput",
     b"ConfigureDistributedTPU",
+    # Other special ops used by TensorFlow internally.
+    b"DestroyResourceOp",
 )

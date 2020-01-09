@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstring>
 
+#include "absl/strings/match.h"
 #include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/lite/testing/split.h"
 #include "tensorflow/lite/testing/tflite_diff_util.h"
@@ -76,11 +77,11 @@ DiffOptions ParseTfliteDiffFlags(int* argc, char** argv) {
 
   TfLiteDriver::DelegateType delegate = TfLiteDriver::DelegateType::kNone;
   if (!values.delegate_name.empty()) {
-    if (delegate_name == "NNAPI") {
+    if (absl::EqualsIgnoreCase(values.delegate_name, "nnapi")) {
       delegate = TfLiteDriver::DelegateType::kNnapi;
-    } else if (values.delegate_name == "GPU") {
+    } else if (absl::EqualsIgnoreCase(values.delegate_name, "gpu")) {
       delegate = TfLiteDriver::DelegateType::kGpu;
-    } else if (values.delegate_name == "FLEX") {
+    } else if (absl::EqualsIgnoreCase(values.delegate_name, "flex")) {
       delegate = TfLiteDriver::DelegateType::kFlex;
     } else {
       fprintf(stderr, "%s", tensorflow::Flags::Usage(argv[0], flags).c_str());

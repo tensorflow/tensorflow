@@ -33,6 +33,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/profiler:op_profile_proto_cc",
         "//tensorflow/core/profiler:profiler_service_proto_cc",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -43,6 +44,8 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@jsoncpp_git//:jsoncpp",
     ],
 )

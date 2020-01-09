@@ -22,6 +22,7 @@
 #include <fstream>
 #include <iostream>
 #include <queue>
+#include <vector>
 
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
@@ -357,11 +358,11 @@ void ProcessInputWithQuantizedModel(
     uint8_t* quantized_output = interpreter->typed_output_tensor<uint8_t>(0);
     int32_t zero_point = input_tensor->params.zero_point;
     float scale = input_tensor->params.scale;
-    float output[output_size];
+    std::vector<float> output(output_size);
     for (int i = 0; i < output_size; ++i) {
       output[i] = (quantized_output[i] - zero_point) * scale;
     }
-    GetTopN(output, output_size, kNumResults, kThreshold, &top_results);
+    GetTopN(output.data(), output_size, kNumResults, kThreshold, &top_results);
   } else {
     float* output = interpreter->typed_output_tensor<float>(0);
     GetTopN(output, output_size, kNumResults, kThreshold, &top_results);

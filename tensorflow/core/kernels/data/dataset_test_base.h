@@ -172,6 +172,9 @@ class RangeDatasetParams : public DatasetParams {
 
   RangeDatasetParams(int64 start, int64 stop, int64 step);
 
+  RangeDatasetParams(int64 start, int64 stop, int64 step,
+                     DataTypeVector output_dtypes);
+
   std::vector<Tensor> GetInputTensors() const override;
 
   Status GetInputNames(std::vector<string>* input_names) const override;

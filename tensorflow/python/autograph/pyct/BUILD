@@ -27,8 +27,10 @@ py_library(
         "cfg.py",
         "error_utils.py",
         "errors.py",
+        "gast_util.py",
         "inspect_utils.py",
         "loader.py",
+        "loader_deprecated_py2.py",
         "origin_info.py",
         "parser.py",
         "pretty_printer.py",
@@ -63,6 +65,9 @@ py_test(
     srcs = ["ast_util_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
+    tags = [
+        "no_oss_py2",
+    ],
     deps = [
         ":pyct",
         "//tensorflow/python:client_testlib",

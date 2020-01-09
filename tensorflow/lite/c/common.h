@@ -91,9 +91,11 @@ typedef struct {
 // in bytes.
 int TfLiteIntArrayGetSizeInBytes(int size);
 
+#ifndef TF_LITE_STATIC_MEMORY
 // Create a array of a given `size` (uninitialized entries).
 // This returns a pointer, that you must free using TfLiteIntArrayFree().
 TfLiteIntArray* TfLiteIntArrayCreate(int size);
+#endif
 
 // Check if two intarrays are equal. Returns 1 if they are equal, 0 otherwise.
 int TfLiteIntArrayEqual(const TfLiteIntArray* a, const TfLiteIntArray* b);
@@ -102,12 +104,14 @@ int TfLiteIntArrayEqual(const TfLiteIntArray* a, const TfLiteIntArray* b);
 int TfLiteIntArrayEqualsArray(const TfLiteIntArray* a, int b_size,
                               const int b_data[]);
 
+#ifndef TF_LITE_STATIC_MEMORY
 // Create a copy of an array passed as `src`.
 // You are expected to free memory with TfLiteIntArrayFree
 TfLiteIntArray* TfLiteIntArrayCopy(const TfLiteIntArray* src);
 
 // Free memory of array `a`.
 void TfLiteIntArrayFree(TfLiteIntArray* a);
+#endif  // TF_LITE_STATIC_MEMORY
 
 // Fixed size list of floats. Used for per-channel quantization.
 typedef struct {
@@ -126,12 +130,14 @@ typedef struct {
 // in bytes.
 int TfLiteFloatArrayGetSizeInBytes(int size);
 
+#ifndef TF_LITE_STATIC_MEMORY
 // Create a array of a given `size` (uninitialized entries).
 // This returns a pointer, that you must free using TfLiteFloatArrayFree().
 TfLiteFloatArray* TfLiteFloatArrayCreate(int size);
 
 // Free memory of array `a`.
 void TfLiteFloatArrayFree(TfLiteFloatArray* a);
+#endif  // TF_LITE_STATIC_MEMORY
 
 // Since we must not depend on any libraries, define a minimal subset of
 // error macros while avoiding names that have pre-conceived meanings like
@@ -303,6 +309,29 @@ enum {
   kTfLiteNullBufferHandle = -1,
 };
 
+// Storage format of each dimension in a sparse tensor.
+typedef enum {
+  kTfLiteDimDense = 0,
+  kTfLiteDimSparseCSR,
+} TfLiteDimensionType;
+
+// Metadata to encode each dimension in a sparse tensor.
+typedef struct {
+  TfLiteDimensionType format;
+  int dense_size;
+  TfLiteIntArray* array_segments;
+  TfLiteIntArray* array_indices;
+} TfLiteDimensionMetadata;
+
+// Parameters used to encode a sparse tensor. For detailed explanation of each
+// field please refer to lite/schema/schema.fbs.
+typedef struct {
+  TfLiteIntArray* traversal_order;
+  TfLiteIntArray* block_map;
+  TfLiteDimensionMetadata* dim_metadata;
+  int dim_metadata_size;
+} TfLiteSparsity;
+
 // An tensor in the interpreter system which is a wrapper around a buffer of
 // data including a dimensionality (or NULL if not currently defined).
 typedef struct {
@@ -357,13 +386,22 @@ typedef struct {
 
   // Quantization information. Replaces params field above.
   TfLiteQuantization quantization;
+
+  // Parameters used to encode a sparse tensor.
+  // This is optional. The field is NULL if a tensor is dense.
+  // WARNING: This is an experimental interface that is subject to change.
+  TfLiteSparsity* sparsity;
 } TfLiteTensor;
 
+#ifndef TF_LITE_STATIC_MEMORY
 // Free data memory of tensor `t`.
 void TfLiteTensorDataFree(TfLiteTensor* t);
 
 // Free quantization data.
 void TfLiteQuantizationFree(TfLiteQuantization* quantization);
+
+// Free sparsity parameters.
+void TfLiteSparsityFree(TfLiteSparsity* sparsity);
 
 // Free memory of tensor `t`.
 void TfLiteTensorFree(TfLiteTensor* t);
@@ -378,6 +416,7 @@ void TfLiteTensorReset(TfLiteType type, const char* name, TfLiteIntArray* dims,
 // Resize the allocated data of a (dynamic) tensor. Tensors with allocation
 // types other than kTfLiteDynamic will be ignored.
 void TfLiteTensorRealloc(size_t num_bytes, TfLiteTensor* tensor);
+#endif  // TF_LITE_STATIC_MEMORY
 
 // A structure representing an instance of a node.
 // This structure only exhibits the inputs, outputs and user defined data, not
@@ -415,6 +454,20 @@ typedef struct {
   // WARNING: This is an experimental interface that is subject to change.
   struct TfLiteDelegate* delegate;
 } TfLiteNode;
+
+// WARNING: This is an experimental interface that is subject to change.
+//
+// Currently, TfLiteDelegateParams has to be allocated in a way that it's
+// trivially destructable. It will be stored as `builtin_data` field in
+// `TfLiteNode` of the delegate node.
+//
+// See also the `CreateDelegateParams` function in `interpreter.cc` details.
+typedef struct {
+  struct TfLiteDelegate* delegate;
+  TfLiteIntArray* nodes_to_replace;
+  TfLiteIntArray* input_tensors;
+  TfLiteIntArray* output_tensors;
+} TfLiteDelegateParams;
 
 typedef struct TfLiteContext {
   // Number of tensors in the context.
@@ -530,6 +583,30 @@ typedef struct TfLiteContext {
   TfLiteStatus (*ResizeTensorExplicit)(struct TfLiteContext* ctx,
                                        TfLiteTensor* tensor, int dims,
                                        const int* shape);
+
+  // This method provides a preview of post-delegation partitioning. Each
+  // TfLiteDelegateParams in the referenced array corresponds to one instance of
+  // the delegate kernel.
+  // Example usage:
+  //
+  // TfLiteIntArray* nodes_to_replace = ...;
+  // TfLiteDelegateParams* params_array;
+  // int num_partitions = 0;
+  // TF_LITE_ENSURE_STATUS(context->PreviewDelegatePartitioning(
+  //    context, delegate, nodes_to_replace, &params_array, &num_partitions));
+  // for (int idx = 0; idx < num_partitions; idx++) {
+  //    const auto& partition_params = params_array[idx];
+  //    ...
+  // }
+  //
+  // NOTE: The context owns the memory referenced by partition_params_array. It
+  // will be cleared with another call to PreviewDelegateParitioning, or after
+  // TfLiteDelegateParams::Prepare returns.
+  //
+  // WARNING: This is an experimental interface that is subject to change.
+  TfLiteStatus (*PreviewDelegatePartitioning)(
+      struct TfLiteContext* context, const TfLiteIntArray* nodes_to_replace,
+      TfLiteDelegateParams** partition_params_array, int* num_partitions);
 } TfLiteContext;
 
 typedef struct TfLiteRegistration {
@@ -652,20 +729,6 @@ typedef struct TfLiteDelegate {
 // Build a 'null' delegate, with all the fields properly set to their default
 // values.
 TfLiteDelegate TfLiteDelegateCreate();
-
-// WARNING: This is an experimental interface that is subject to change.
-//
-// Currently, TfLiteDelegateParams has to be allocated in a way that it's
-// trivially destructable. It will be stored as `builtin_data` field in
-// `TfLiteNode` of the delegate node.
-//
-// See also the `CreateDelegateParams` function in `interpreter.cc` details.
-typedef struct {
-  TfLiteDelegate* delegate;
-  TfLiteIntArray* nodes_to_replace;
-  TfLiteIntArray* input_tensors;
-  TfLiteIntArray* output_tensors;
-} TfLiteDelegateParams;
 
 #ifdef __cplusplus
 }  // extern "C"

@@ -255,10 +255,10 @@ def build_toco_convert_protos(input_tensors,
       `foo.shape` and `foo.dtype`.
     output_tensors: List of output tensors (only .name is used from this).
     inference_type: Target data type of real-number arrays in the output file.
-      Must be `{tf.float32, tf.uint8}`.  (default tf.float32)
-      Must be `{tf.float32, tf.uint8}`. (default `inference_type`)
+      Must be `{tf.float32, tf.uint8, tf.int8}`.  (default tf.float32)
     inference_input_type: Target data type of real-number input arrays. Allows
       for a different type for input arrays in the case of quantization.
+      Must be `{tf.float32, tf.uint8, tf.int8}`. (default `inference_type`)
     input_format: Type of data to read Currently must be
       `{TENSORFLOW_GRAPHDEF}`. (default TENSORFLOW_GRAPHDEF)
     input_shapes: Input array shape. It needs to be a list of the same length
@@ -267,7 +267,7 @@ def build_toco_convert_protos(input_tensors,
       GRAPHVIZ_DOT}`. (default TFLITE)
     quantized_input_stats: List of tuples of floats representing the mean and
       standard deviation. Each tuple maps to the corresponding input tensor.
-      Only need if `inference_input_type` is `QUANTIZED_UINT8`.
+      Only need if `inference_input_type` is `QUANTIZED_UINT8` or `INT8`.
       real_input_value = (quantized_input_value - mean_value) / std_dev_value.
       (default None)
     default_ranges_stats: Tuple of integers representing (min, max) range values
@@ -363,11 +363,10 @@ def build_toco_convert_protos(input_tensors,
     input_array.data_type = util.convert_dtype_to_tflite_type(
         input_tensor.dtype)
 
-    if toco.inference_input_type in \
-        [_types_pb2.QUANTIZED_UINT8, _types_pb2.INT8]:
-      if not quantized_input_stats:
-        raise ValueError("std_dev and mean must be defined when "
-                         "inference_input_type is QUANTIZED_UINT8.")
+    if toco.inference_type in [_types_pb2.QUANTIZED_UINT8, _types_pb2.INT8]:
+      if not quantized_input_stats and not post_training_quantize:
+        raise ValueError("std_dev and mean must be defined when inference_type "
+                         "is QUANTIZED_UINT8 or INT8.")
       input_array.mean_value, input_array.std_value = quantized_input_stats[idx]
     if input_shapes is None:
       shape = input_tensor.shape
@@ -418,11 +417,13 @@ def toco_convert_graph_def(input_data, input_arrays_with_shape, output_arrays,
 
   for idx, (name, shape) in enumerate(input_arrays_with_shape):
     input_array = model_flags.input_arrays.add()
-    if toco_flags.inference_input_type == _types_pb2.QUANTIZED_UINT8:
-      if (("quantized_input_stats" not in kwargs) or
-          (not kwargs["quantized_input_stats"])):
+    if toco_flags.inference_type in (
+        [_types_pb2.QUANTIZED_UINT8, _types_pb2.INT8]):
+      if ((("quantized_input_stats" not in kwargs) or
+           (not kwargs["quantized_input_stats"])) and
+          not toco_flags.post_training_quantize):
         raise ValueError("std_dev and mean must be defined when "
-                         "inference_input_type is QUANTIZED_UINT8.")
+                         "inference_type is QUANTIZED_UINT8 or INT8.")
       input_array.mean_value, input_array.std_value = kwargs[
           "quantized_input_stats"][idx]
     input_array.name = name

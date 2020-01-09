@@ -59,6 +59,38 @@ class Pooling : public GPUOperation {
 Pooling CreatePooling(const OperationDef& definition,
                       const Pooling2DAttributes& attr);
 
+class Pooling3D : public GPUOperation {
+ public:
+  Pooling3D(const OperationDef& definition, const Pooling3DAttributes& attr);
+  Status AddToQueue(CLCommandQueue* queue) override;
+  Status Tune(const TuningParameters& params) override;
+
+  Status Compile(const CreationContext& creation_context) override;
+
+  // Move only
+  Pooling3D(Pooling3D&& kernel);
+  Pooling3D& operator=(Pooling3D&& kernel);
+  Pooling3D(const Pooling3D&) = delete;
+  Pooling3D& operator=(const Pooling3D&) = delete;
+
+ private:
+  Status BindArguments();
+  int3 GetGridSize() const;
+
+  int3 stride_;
+  int3 padding_;
+  int3 kernel_size_;
+
+  PoolingType type_;
+  bool output_indices_;
+
+  CLKernel kernel_;
+  int3 work_group_size_ = int3(8, 4, 1);
+};
+
+Pooling3D CreatePooling3D(const OperationDef& definition,
+                          const Pooling3DAttributes& attr);
+
 }  // namespace cl
 }  // namespace gpu
 }  // namespace tflite

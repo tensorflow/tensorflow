@@ -45,7 +45,7 @@ namespace gpu {
 // Examples of things that are not unnested computations:
 //
 //  - The reducer of a kReduce HLO.  This is emitted using IrEmitterNested.
-//  - The body of a fusion node.  IrEmitterUnenested emits the relevant code
+//  - The body of a fusion node.  IrEmitterUnnested emits the relevant code
 //    within a kernel function using FusedIrEmitter.  (FusedIrEmitter is not
 //    really an IrEmitter, but is more an "IR generator generator".)
 //
@@ -184,6 +184,19 @@ class IrEmitterUnnested : public IrEmitter,
   ReductionCodegenInfo ComputeReductionCodegenInfo(
       const HloInstruction* unnested_hlo, const HloInstruction* first_reduce);
 
+  // Generates code for input-fusible slices.
+  //
+  // Prerequisite: ROOT is either a slice or a tuple of slices. The input shapes
+  // of all ROOT slices need to be the same while their output shapes can be
+  // different. On the other hand, the input ranges of slices can be
+  // overlapping. Further generalization/specialization when the needs are seen
+  // in the future.
+  Status EmitInputFusibleNonStridedSlices(HloInstruction* unnested_hlo);
+
+  void EmitElementForInputFusibleSlices(
+      HloInstruction* unnested_hlo,
+      const llvm_ir::IrArray::Index& slice_input_index);
+
   // Emits code for an in-place scatter, modifying `thunk`s launch dimensions in
   // the process. `scatter` may be fused, scatter indices are taken from
   // `scatter_indices_gen`, updates from`updates_gen`. The output buffer is
@@ -210,11 +223,9 @@ class IrEmitterUnnested : public IrEmitter,
 
   // Emits a kernel for the hlo instruction using the given kernel mapping
   // scheme.
-  //
-  // Returns lane_id as an LLVM value.
-  llvm::Value* EmitTilingKernel(
-      const KernelMappingScheme& mapping_scheme, llvm::Type* index_ty,
-      const TileElementGenerator& tile_element_generator);
+  void EmitTilingKernel(const KernelMappingScheme& mapping_scheme,
+                        llvm::Type* index_ty,
+                        const TileElementGenerator& tile_element_generator);
 
   // Emits code to process a tensor element in a tile for the given kCopy HLO
   // that performs a 0-2-1 transpose.
@@ -264,7 +275,7 @@ class IrEmitterUnnested : public IrEmitter,
       HloInstruction* unnested_hlo, const ReductionCodegenInfo& reduction_info,
       absl::Span<const HloInstruction* const> reduce_instructions,
       absl::Span<const ShapeIndex> reduction_output_shape_indices,
-      absl::Span<HloComputation* const> reducers, llvm::Value* lane_id);
+      absl::Span<HloComputation* const> reducers);
 
   // For each reducer, emits the shuffle-down loop to accumulate the partial
   // result to the global result.
@@ -300,6 +311,11 @@ class IrEmitterUnnested : public IrEmitter,
   // 'branch_computation' corresponding to the predicate/branch_index of the
   // given conditional instruction.
   std::unique_ptr<Thunk> BuildConditionalThunk(const HloInstruction* hlo);
+
+  // Emits current thread id with the given type.
+  //
+  // Sets the return value range to [0, threads_per_block).
+  llvm::Value* EmitThreadId(int64 threads_per_block, llvm::Type* index_ty);
 
   Status Postprocess(HloInstruction* hlo) override;
 

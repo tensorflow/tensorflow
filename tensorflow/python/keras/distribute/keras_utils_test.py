@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import collections
 import tempfile
+
 from absl.testing import parameterized
 import numpy as np
 from tensorflow.python import keras
@@ -197,9 +198,8 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
     with self.cached_session():
       a = constant_op.constant([1, 2], shape=(1, 2))
       b = constant_op.constant([[1, 2], [1, 2]], shape=(2, 2))
-      device_map = values.ReplicaDeviceMap(('/device:CPU:0', '/device:GPU:0'))
-      x = values.DistributedValues(device_map, (a, b))
-      y = values.DistributedValues(device_map, (a, a))
+      x = values.DistributedValues((a, b))
+      y = values.DistributedValues((a, a))
       # Removed device and input tensor shape details from the error message
       # since the order of the device and the corresponding input tensor shape
       # is not deterministic over different runs.
@@ -222,9 +222,8 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
     with self.cached_session():
       a = constant_op.constant([1, 2], shape=(1, 2), dtype=dtypes.int32)
       b = constant_op.constant([1, 2], shape=(1, 2), dtype=dtypes.float64)
-      device_map = values.ReplicaDeviceMap(('/device:CPU:0', '/device:GPU:0'))
-      x = values.DistributedValues(device_map, (a, b))
-      y = values.DistributedValues(device_map, (a, a))
+      x = values.DistributedValues((a, b))
+      y = values.DistributedValues((a, a))
       # Removed device and input tensor dtype details from the error message
       # since the order of the device and the corresponding input tensor dtype
       # is not deterministic over different runs.
@@ -348,32 +347,6 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
             steps_per_epoch=2,
             verbose=0,
             callbacks=[keras.callbacks.ReduceLROnPlateau()])
-
-  @combinations.generate(
-      combinations.combine(
-          distribution=[strategy_combinations.one_device_strategy],
-          mode=['eager'],
-          experimental_run_tf_function=[True, False]))
-  def test_distribution_strategy_with_run_eagerly(self, distribution,
-                                                  experimental_run_tf_function):
-    with distribution.scope():
-      x = keras.layers.Input(shape=(1,))
-      y = keras.layers.Dense(1, kernel_initializer='ones')(x)
-      model = keras.models.Model(x, y)
-
-      if experimental_run_tf_function:
-        model.compile(
-            'sgd',
-            run_eagerly=True,
-            experimental_run_tf_function=experimental_run_tf_function)
-      else:
-        err_msg = ('We currently do not support enabling `run_eagerly` with '
-                   'distribution strategy.')
-        with self.assertRaisesRegex(ValueError, err_msg):
-          model.compile(
-              'sgd',
-              run_eagerly=True,
-              experimental_run_tf_function=experimental_run_tf_function)
 
   @combinations.generate(
       combinations.combine(
@@ -631,11 +604,8 @@ class TestDistributionStrategyValidation(test.TestCase, parameterized.TestCase):
               experimental_run_tf_function=experimental_run_tf_function)
 
   @combinations.generate(
-      combinations.times(
-          keras_test_lib.all_strategy_combinations_minus_default(),
-          combinations.combine(experimental_run_tf_function=[True, False])))
-  def test_model_outside_scope(self, distribution,
-                               experimental_run_tf_function):
+      keras_test_lib.all_strategy_combinations_minus_default())
+  def test_model_outside_scope(self, distribution):
     with self.cached_session():
       with self.assertRaisesRegexp(
           ValueError, 'was not created in the distribution strategy'):
@@ -646,11 +616,7 @@ class TestDistributionStrategyValidation(test.TestCase, parameterized.TestCase):
           optimizer = gradient_descent.GradientDescentOptimizer(0.001)
           loss = 'mse'
           metrics = ['mae', keras.metrics.CategoricalAccuracy()]
-          model.compile(
-              optimizer,
-              loss,
-              metrics=metrics,
-              experimental_run_tf_function=experimental_run_tf_function)
+          model.compile(optimizer, loss, metrics=metrics)
 
 
 class TestDistributionStrategyWithStaticShapes(test.TestCase,

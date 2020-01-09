@@ -17,6 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
+
 from absl.testing import parameterized
 
 from tensorflow.python.data.experimental.ops import testing
@@ -32,9 +34,33 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
+def _test_combinations():
+  def assert_greater(x):
+    assert_op = control_flow_ops.Assert(math_ops.greater(x, -1), [x])
+    with ops.control_dependencies([assert_op]):
+      return x
+
+  cases = [
+      ("Identity", lambda x: x, True),
+      ("Increment", lambda x: x + 1, True),
+      ("AssertGreater", assert_greater, True),
+  ]
+
+  def reduce_fn(x, y):
+    name, function, should_optimize = y
+    return x + combinations.combine(
+        function=combinations.NamedObject(name, function),
+        should_optimize=should_optimize)
+
+  return functools.reduce(reduce_fn, cases, [])
+
+
 class MapParallelizationTest(test_base.DatasetTestBase, parameterized.TestCase):
 
-  def _testMapParallelization(self, function, should_optimize):
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         _test_combinations()))
+  def testMapParallelization(self, function, should_optimize):
     next_nodes = ["ParallelMap"] if should_optimize else ["Map"]
     dataset = dataset_ops.Dataset.range(5).apply(
         testing.assert_next(next_nodes)).map(function)
@@ -44,24 +70,6 @@ class MapParallelizationTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset.with_options(options)
     self.assertDatasetProduces(
         dataset, expected_output=[function(x) for x in range(5)])
-
-  @combinations.generate(test_base.default_test_combinations())
-  def testIdentity(self):
-    self._testMapParallelization(lambda x: x, should_optimize=True)
-
-  @combinations.generate(test_base.default_test_combinations())
-  def testIncrement(self):
-    self._testMapParallelization(lambda x: x + 1, should_optimize=True)
-
-  @combinations.generate(test_base.default_test_combinations())
-  def testAssert(self):
-
-    def assert_greater(x):
-      assert_op = control_flow_ops.Assert(math_ops.greater(x, -1), [x])
-      with ops.control_dependencies([assert_op]):
-        return x
-
-    self._testMapParallelization(assert_greater, should_optimize=True)
 
   @combinations.generate(test_base.default_test_combinations())
   def testCapturedConstant(self):

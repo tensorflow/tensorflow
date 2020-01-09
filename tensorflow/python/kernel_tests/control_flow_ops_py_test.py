@@ -3456,7 +3456,6 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       r = gradients_impl.gradients([rx], x)
       self.assertAllClose(1024.0, r[0])
 
-  @test_util.disable_control_flow_v2("b/116355153 (back_prop flag)")
   @test_util.run_v1_only("b/120545219")
   def testWhileGrad_NoGradient(self):
     with self.cached_session():
