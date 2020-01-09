@@ -1476,25 +1476,19 @@ cc_library(
 
 cc_library(
     name = "buffer_comparator",
-    srcs = [] + if_cuda_is_configured([
-        "buffer_comparator_cuda.cc",
-    ]) + if_rocm_is_configured([
-        "buffer_comparator_rocm.cc",
-    ]),
+    srcs = ["buffer_comparator.cc"],
     hdrs = ["buffer_comparator.h"],
     deps = [
+        ":partition_assignment",
         ":stream_executor_util",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/stream_executor:stream_executor_headers",
         "@com_google_absl//absl/strings",
-    ] + if_cuda_is_configured([
-        ":partition_assignment",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla/service:hlo_module_config",
-        "//tensorflow/stream_executor/gpu:asm_compiler",
-    ]),
+    ],
 )
 
 tf_cc_test(
