@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import argparse
 import os
-import sys
 import subprocess
 
 BASIC_BUILD_OPTS = ["--cxxopt=-D_GLIBCXX_USE_CXX11_ABI=0", "--copt=-O3"]
@@ -53,15 +52,15 @@ class IntelPlatform(object):
     if gcc_major_version < self.min_gcc_major_version_:
       print("Your MAJOR version of GCC is too old: {}; "
             "it must be at least {}.{}".format(gcc_major_version,
-                                                self.min_gcc_major_version_,
-                                                self.min_gcc_minor_version_))
+                                               self.min_gcc_major_version_,
+                                               self.min_gcc_minor_version_))
       return False
     elif gcc_major_version == self.min_gcc_major_version_ and \
           gcc_minor_version < self.min_gcc_minor_version_:
       print("Your MINOR version of GCC is too old: {}; "
-        "it must be at least {}.{}".format(gcc_minor_version,
-                                            self.min_gcc_major_version_,
-                                            self.min_gcc_minor_version_))
+            "it must be at least {}.{}".format(gcc_minor_version,
+                                               self.min_gcc_major_version_,
+                                               self.min_gcc_minor_version_))
       return False
     print("gcc version OK: {}.{}".format(gcc_major_version, gcc_minor_version))
     self.host_gcc_major_version_ = gcc_major_version
@@ -86,19 +85,19 @@ class IntelPlatform(object):
       return True
     return False
 
-class NehalemPlatform (IntelPlatform):
+class NehalemPlatform(IntelPlatform):
   def __init__(self):
     IntelPlatform.__init__(self, 4, 8)
 
   def get_bazel_gcc_flags(self):
     NEHALEM_ARCH_OLD = "corei7"
     NEHALEM_ARCH_NEW = "nehalem"
-    if self.use_old_arch_names(4,9):
+    if self.use_old_arch_names(4, 9):
       return self.BAZEL_PREFIX_ + self.ARCH_PREFIX_ + \
-        NEHALEM_ARCH_OLD + " "
+             NEHALEM_ARCH_OLD + " "
     else:
       return self.BAZEL_PREFIX_ + self.ARCH_PREFIX_ + \
-        NEHALEM_ARCH_NEW + " "
+             NEHALEM_ARCH_NEW + " "
 
 class SandyBridgePlatform(IntelPlatform):
   def __init__(self):
@@ -107,12 +106,12 @@ class SandyBridgePlatform(IntelPlatform):
   def get_bazel_gcc_flags(self):
     SANDYBRIDGE_ARCH_OLD = "corei7-avx"
     SANDYBRIDGE_ARCH_NEW = "sandybridge"
-    if self.use_old_arch_names(4,9):
+    if self.use_old_arch_names(4, 9):
       return self.BAZEL_PREFIX_ + self.ARCH_PREFIX_ + \
-        SANDYBRIDGE_ARCH_OLD + " "
+             SANDYBRIDGE_ARCH_OLD + " "
     else:
       return self.BAZEL_PREFIX_ + self.ARCH_PREFIX_ + \
-        SANDYBRIDGE_ARCH_NEW + " "
+             SANDYBRIDGE_ARCH_NEW + " "
 
 class HaswellPlatform(IntelPlatform):
   def __init__(self):
@@ -122,14 +121,14 @@ class HaswellPlatform(IntelPlatform):
     HASWELL_ARCH_OLD = "core-avx2"  # Only missing the POPCNT instruction
     HASWELL_ARCH_NEW = "haswell"
     POPCNT_FLAG = "popcnt"
-    if self.use_old_arch_names(4,9):
+    if self.use_old_arch_names(4, 9):
       ret_val = self.BAZEL_PREFIX_ + self.ARCH_PREFIX_ + \
-        HASWELL_ARCH_OLD + " "
+                HASWELL_ARCH_OLD + " "
       return ret_val + self.BAZEL_PREFIX_ + self.FLAG_PREFIX_ + \
-        POPCNT_FLAG + " "
+             POPCNT_FLAG + " "
     else:
       return self.BAZEL_PREFIX_ + self.ARCH_PREFIX_ + \
-        HASWELL_ARCH_NEW + " "
+             HASWELL_ARCH_NEW + " "
 
 class SkylakePlatform(IntelPlatform):
   def __init__(self):
@@ -142,15 +141,15 @@ class SkylakePlatform(IntelPlatform):
     # avx512bw, avx512dq. xsavec and xsaves are available in gcc 5.x
     # but for now, just exclude them.
     AVX512_FLAGS = ["avx512f", "avx512cd"]
-    if self.use_old_arch_names(6,1):
+    if self.use_old_arch_names(6, 1):
       ret_val = self.BAZEL_PREFIX_ + self.ARCH_PREFIX_ + \
-        SKYLAKE_ARCH_OLD + " "
+                SKYLAKE_ARCH_OLD + " "
       for flag in AVX512_FLAGS:
         ret_val += self.BAZEL_PREFIX_ + self.FLAG_PREFIX_ + flag + " "
       return ret_val
     else:
       return self.BAZEL_PREFIX_ + self.ARCH_PREFIX_ + \
-        SKYLAKE_ARCH_NEW + " "
+             SKYLAKE_ARCH_NEW + " "
 
 class CascadelakePlatform(IntelPlatform):
   def __init__(self):
@@ -165,10 +164,10 @@ class CascadelakePlatform(IntelPlatform):
       ret_val = self.BAZEL_PREFIX_ + self.ARCH_PREFIX_ + \
         CASCADELAKE_ARCH_OLD + " "
       return ret_val + self.BAZEL_PREFIX_ + slef.FLAG_PREFIX_ + \
-        VNNI_FLAG + " "
+             VNNI_FLAG + " "
     else:
       return self.BAZEL_PREFIX_ + self.ARCH_PREFIX_ + \
-        CASCADELAKE_ARCH_NEW + " "
+             CASCADELAKE_ARCH_NEW + " "
 
 
 class BuildEnvSetter(object):
@@ -176,11 +175,11 @@ class BuildEnvSetter(object):
   default_platform_ = "haswell"
 
   PLATFORMS_ = {
-    "nehalem": NehalemPlatform(),
-    "sandybridge": SandyBridgePlatform(),
-    "haswell": HaswellPlatform(),
-    "skylake": SkylakePlatform(),
-    "cascadelake": CascadelakePlatform()
+      "nehalem": NehalemPlatform(),
+      "sandybridge": SandyBridgePlatform(),
+      "haswell": HaswellPlatform(),
+      "skylake": SkylakePlatform(),
+      "cascadelake": CascadelakePlatform()
   }
 
   def __init__(self):
@@ -277,15 +276,15 @@ class BuildEnvSetter(object):
             self.args.bazelrc_file))
       elif os.path.isdir(self.args.bazelrc_file):
         print ("You can't write bazel config to \"{}\" "
-          "because it is a directory".format(
-            self.args.bazelrc_file))
+               "because it is a directory".format(
+               self.args.bazelrc_file))
         return False
 
     # Validate gcc with the requested platform
     gcc_major_version, gcc_minor_version = self.get_gcc_version()
     if gcc_major_version == 0 or \
        not self.target_platform_.set_host_gcc_version(
-         gcc_major_version, gcc_minor_version):
+           gcc_major_version, gcc_minor_version):
       return False
 
     return True
