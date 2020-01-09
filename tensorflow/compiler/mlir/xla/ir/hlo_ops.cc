@@ -1010,9 +1010,11 @@ static LogicalResult Verify(SortOp op) {
         }))
       return op.emitOpError("requires all inputs to have the same dimensions");
 
-    if (op.dimension().getSExtValue() >= input_shape.size())
-      return op.emitOpError(
-          "dimension attribute value must be less than input rank");
+    int64_t rank = input_shape.size();
+    int64_t cmp_dim = op.dimension().getSExtValue();
+    if (cmp_dim < -rank || cmp_dim >= rank)
+      return op.emitOpError("dimension attribute value must be in range [-")
+             << rank << ", " << rank << "), but found " << cmp_dim;
   }
 
   Block& block = op.comparator().front();

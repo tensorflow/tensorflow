@@ -686,12 +686,24 @@ func @sort_different_dims(%input0: tensor<16x8xf32>, %input1: tensor<16x16xi32>)
 // -----
 
 func @sort_dim_out_of_range(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi32>) {
-  // expected-error @+1 {{op dimension attribute value must be less than input rank}}
+  // expected-error @+1 {{dimension attribute value must be in range [-2, 2), but found 10}}
   %0 = "xla_hlo.sort"(%input0, %input1) ( {
   ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<i32>, %arg3: tensor<i32>):
     %7 = "xla_hlo.compare"(%arg0, %arg1) {comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "xla_hlo.return"(%7) : (tensor<i1>) -> ()
   }) {dimension = 10 : i64, is_stable = true} : (tensor<16x16xf32>, tensor<16x16xi32>) -> tuple<tensor<16x16xf32>, tensor<16x16xi32>>
+  return
+}
+
+// -----
+
+func @sort_dim_out_of_range(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi32>) {
+  // expected-error @+1 {{dimension attribute value must be in range [-2, 2), but found -3}}
+  %0 = "xla_hlo.sort"(%input0, %input1) ( {
+  ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<i32>, %arg3: tensor<i32>):
+    %7 = "xla_hlo.compare"(%arg0, %arg1) {comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    "xla_hlo.return"(%7) : (tensor<i1>) -> ()
+  }) {dimension = -3 : i64, is_stable = true} : (tensor<16x16xf32>, tensor<16x16xi32>) -> tuple<tensor<16x16xf32>, tensor<16x16xi32>>
   return
 }
 
