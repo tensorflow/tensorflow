@@ -324,6 +324,18 @@ tf_library(
 )
 
 tf_library(
+    name = "test_graph_tfcond_mlir_bridge",
+    testonly = 1,
+    config = "test_graph_tfcond.config.pbtxt",
+    cpp_class = "CondComp",
+    graph = "test_graph_tfcond.pb",
+    mlir_components = "Bridge",
+    tags = [
+        "manual",
+    ],
+)
+
+tf_library(
     name = "test_graph_tfmatmul_mlir_bridge",
     testonly = 1,
     config = "test_graph_tfmatmul.config.pbtxt",
@@ -372,6 +384,7 @@ tf_cc_test(
         ":test_graph_tfadd_mlir_bridge",
         ":test_graph_tfadd_with_ckpt_mlir_bridge",
         ":test_graph_tfadd_with_ckpt_saver_mlir_bridge",
+        ":test_graph_tfcond_mlir_bridge",
         ":test_graph_tfmatmul_mlir_bridge",
         ":test_graph_tfmatmulandadd_mlir_bridge",
         ":test_graph_tfmatmulandadd_with_profiling_mlir_bridge",

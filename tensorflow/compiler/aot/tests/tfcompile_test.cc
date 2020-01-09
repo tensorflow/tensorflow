@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/aot/tests/test_graph_tfadd_mlir_bridge.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfadd_with_ckpt_mlir_bridge.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfadd_with_ckpt_saver_mlir_bridge.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfcond_mlir_bridge.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfmatmul_mlir_bridge.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfmatmulandadd_mlir_bridge.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfmatmulandadd_with_profiling_mlir_bridge.h"
@@ -167,8 +168,6 @@ TEST(TFCompileTest, AddWithCkptSaver) {
   EXPECT_EQ(add_const.result0_data(), add_const.results()[0]);
 }
 
-// TODO(bixia): the following tests failed with MLIR bridge.
-#if !defined(ENABLE_MLIR_BRIDGE_TEST)
 TEST(TFCompileTest, Cond) {
   CondComp cond;
   EXPECT_EQ(cond.arg0_data(), cond.arg_data(0));
@@ -194,6 +193,8 @@ TEST(TFCompileTest, Cond) {
   }
 }
 
+// TODO(bixia): the following tests failed with MLIR bridge.
+#if !defined(ENABLE_MLIR_BRIDGE_TEST)
 TEST(TFCompileTest, Gather) {
   GatherComp gather;
   EXPECT_EQ(gather.arg0_data(), gather.arg_data(0));
