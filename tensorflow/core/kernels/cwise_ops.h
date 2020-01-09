@@ -1017,26 +1017,8 @@ struct round : base<T, Eigen::internal::scalar_round_half_to_even_op<T>> {};
 template <typename T>
 struct ceil : base<T, Eigen::internal::scalar_ceil_op<T>> {};
 
-/** TODO(tokarip): This should go in Eigen
- * \brief Template functor to compute the round to int value of a scalar
- */
-template <typename Scalar>
-struct scalar_rint_op {
-  EIGEN_EMPTY_STRUCT_CTOR(scalar_rint_op)
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
-  operator()(const Scalar& a) const {
-#if defined(__CUDACC__) || defined(__HIPCC__)
-    return ::rint(a);
-#elif defined(__ANDROID__)
-    return rint(a);
-#else
-    return std::rint(a);
-#endif
-  }
-};
-
 template <typename T>
-struct rint : base<T, scalar_rint_op<T>> {};
+struct rint : base<T, Eigen::internal::scalar_rint_op<T>> {};
 
 ////////////////////////////////////////////////////////////////////////////////
 // Binary functors
