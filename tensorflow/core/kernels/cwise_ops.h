@@ -704,6 +704,41 @@ struct functor_traits<xlogy_op<Scalar>> {
 };
 
 template <typename Scalar>
+struct xlog1py_op {
+  EIGEN_EMPTY_STRUCT_CTOR(xlog1py_op)
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
+  operator()(const Scalar& x, const Scalar& y) const {
+    if (x == Scalar(0.)) {
+      return Scalar(0.);
+    }
+    return x * numext::log1p(y);
+  }
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& x,
+                                                        const Packet& y) const {
+    Packet zeros = pzero(x);
+    Packet mask = pcmp_eq(x, zeros);
+    scalar_log1p_op<Scalar> log1p_op;
+    Packet log1p_y = log1p_op.packetOp(y);
+    Packet x_log1p_y = pmul(x, log1p_y);
+    return pselect(mask, x, x_log1p_y);
+  }
+};
+
+template <typename Scalar>
+struct functor_traits<xlog1py_op<Scalar>> {
+  enum {
+    Cost = functor_traits<scalar_log1p_op<Scalar>>::Cost +
+           Eigen::NumTraits<Scalar>::MulCost,
+#if TENSORFLOW_USE_ROCM
+    PacketAccess = false,
+#else
+    PacketAccess = functor_traits<scalar_log1p_op<Scalar>>::PacketAccess
+#endif
+  };
+};
+
+template <typename Scalar>
 struct xdivy_op {
   EIGEN_EMPTY_STRUCT_CTOR(xdivy_op)
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
@@ -1140,6 +1175,9 @@ struct xdivy : base<T, Eigen::internal::xdivy_op<T>> {};
 
 template <typename T>
 struct xlogy : base<T, Eigen::internal::xlogy_op<T>> {};
+
+template <typename T>
+struct xlog1py : base<T, Eigen::internal::xlog1py_op<T>> {};
 
 template <typename T>
 struct less : base<T, Eigen::internal::less<T>, bool> {};

@@ -151,6 +151,15 @@ xla::XlaOp XlogyImpl(xla::XlaOp x, xla::XlaOp y,
 }
 XLA_MAKE_BINARY(Xlogy, XlogyImpl(lhs, rhs, broadcast_helper));
 
+xla::XlaOp Xlog1pyImpl(xla::XlaOp x, xla::XlaOp y,
+                       const BCast& broadcast_helper) {
+  auto non_zero = xla::Mul(x, xla::Log1p(y));
+  auto zero = xla::ZerosLike(x);
+  auto x_is_zero = xla::Eq(x, zero);
+  return xla::Select(x_is_zero, zero, non_zero);
+}
+XLA_MAKE_BINARY(Xlog1py, Xlog1pyImpl(lhs, rhs, broadcast_helper));
+
 xla::XlaOp XdivyImpl(xla::XlaOp x, xla::XlaOp y,
                      const BCast& broadcast_helper) {
   std::tie(x, y) = XlaBinaryOp::Broadcast(x, y, broadcast_helper);

@@ -2564,6 +2564,7 @@ def _convert_cast(pfor_input):
 @RegisterPForWithArgs("TruncateMod", math_ops.truncate_mod)
 @RegisterPForWithArgs("Xdivy", math_ops.xdivy)
 @RegisterPForWithArgs("Xlogy", math_ops.xlogy)
+@RegisterPForWithArgs("Xlog1py", math_ops.xlog1py)
 @RegisterPForWithArgs("Zeta", math_ops.zeta)
 def _convert_cwise(pfor_input, op_type, op_func):
   # Note that ops handled here do not have attributes except those listed below
