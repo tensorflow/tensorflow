@@ -41,13 +41,13 @@ limitations under the License.
 extern "C" {
 #endif  // __cplusplus
 
-typedef enum { kTfLiteOk = 0, kTfLiteError = 1 } TfLiteStatus;
+typedef enum TfLiteStatus { kTfLiteOk = 0, kTfLiteError = 1 } TfLiteStatus;
 
 // The list of external context types known to TF Lite. This list exists solely
 // to avoid conflicts and to ensure ops can share the external contexts they
 // need. Access to the external contexts is controled by one of the
 // corresponding support files.
-typedef enum {
+typedef enum TfLiteExternalContextType {
   kTfLiteEigenContext = 0,       // include eigen_support.h to use.
   kTfLiteGemmLowpContext = 1,    // include gemm_support.h to use.
   kTfLiteEdgeTpuContext = 2,     // Placeholder for Edge TPU support.
@@ -66,7 +66,7 @@ struct TfLiteRegistration;
 // about about the actual contexts, but it keeps a list of them, and is able to
 // refresh them if configurations like the number of recommended threads
 // change.
-typedef struct {
+typedef struct TfLiteExternalContext {
   TfLiteExternalContextType type;
   TfLiteStatus (*Refresh)(struct TfLiteContext* context);
 } TfLiteExternalContext;
@@ -75,7 +75,7 @@ typedef struct {
 
 // Fixed size list of integers. Used for dimensions and inputs/outputs tensor
 // indices
-typedef struct {
+typedef struct TfLiteIntArray {
   int size;
 // gcc 6.1+ have a bug where flexible members aren't properly handled
 // https://github.com/google/re2/commit/b94b7cd42e9f02673cd748c1ac1d16db4052514c
@@ -114,7 +114,7 @@ void TfLiteIntArrayFree(TfLiteIntArray* a);
 #endif  // TF_LITE_STATIC_MEMORY
 
 // Fixed size list of floats. Used for per-channel quantization.
-typedef struct {
+typedef struct TfLiteFloatArray {
   int size;
 // gcc 6.1+ have a bug where flexible members aren't properly handled
 // https://github.com/google/re2/commit/b94b7cd42e9f02673cd748c1ac1d16db4052514c
@@ -202,12 +202,12 @@ void TfLiteFloatArrayFree(TfLiteFloatArray* a);
   } while (0)
 
 // Single-precision complex data type compatible with the C99 definition.
-typedef struct {
+typedef struct TfLiteComplex64 {
   float re, im;  // real and imaginary parts, respectively.
 } TfLiteComplex64;
 
 // Half precision data type compatible with the C99 definition.
-typedef struct {
+typedef struct TfLiteFloat16 {
   uint16_t data;
 } TfLiteFloat16;
 
@@ -230,7 +230,7 @@ typedef enum {
 const char* TfLiteTypeGetName(TfLiteType type);
 
 // SupportedQuantizationTypes.
-typedef enum {
+typedef enum TfLiteQuantizationType {
   // No quantization.
   kTfLiteNoQuantization = 0,
   // Affine quantization (with support for per-channel quantization).
@@ -239,7 +239,7 @@ typedef enum {
 } TfLiteQuantizationType;
 
 // Structure specifying the quantization used by the tensor, if-any.
-typedef struct {
+typedef struct TfLiteQuantization {
   // The type of quantization held by params.
   TfLiteQuantizationType type;
   // Holds a reference to one of the quantization param structures specified
@@ -253,7 +253,7 @@ typedef struct {
 // Parameters for asymmetric quantization. Quantized values can be converted
 // back to float using:
 //     real_value = scale * (quantized_value - zero_point)
-typedef struct {
+typedef struct TfLiteQuantizationParams {
   float scale;
   int32_t zero_point;
 } TfLiteQuantizationParams;
@@ -265,14 +265,14 @@ typedef struct {
 // For a particular value in quantized_dimension, quantized values can be
 // converted back to float using:
 //     real_value = scale * (quantized_value - zero_point)
-typedef struct {
+typedef struct TfLiteAffineQuantization {
   TfLiteFloatArray* scale;
   TfLiteIntArray* zero_point;
   int32_t quantized_dimension;
 } TfLiteAffineQuantization;
 
 /* A union of pointers that points to memory for a given tensor. */
-typedef union {
+typedef union TfLitePtrUnion {
   /* Do not access these members directly, if possible, use
    * GetTensorData<TYPE>(tensor) instead, otherwise only access .data, as other
    * members are deprecated. */
@@ -294,7 +294,7 @@ typedef union {
 // Memory allocation strategies. kTfLiteMmapRo is for read-only memory-mapped
 // data (or data externally allocated). kTfLiteArenaRw is arena allocated
 // data. kTfLiteDynamic is for tensors that are allocated during evaluation.
-typedef enum {
+typedef enum TfLiteAllocationType {
   kTfLiteMemNone = 0,
   kTfLiteMmapRo,
   kTfLiteArenaRw,
@@ -310,13 +310,13 @@ enum {
 };
 
 // Storage format of each dimension in a sparse tensor.
-typedef enum {
+typedef enum TfLiteDimensionType {
   kTfLiteDimDense = 0,
   kTfLiteDimSparseCSR,
 } TfLiteDimensionType;
 
 // Metadata to encode each dimension in a sparse tensor.
-typedef struct {
+typedef struct TfLiteDimensionMetadata {
   TfLiteDimensionType format;
   int dense_size;
   TfLiteIntArray* array_segments;
@@ -325,7 +325,7 @@ typedef struct {
 
 // Parameters used to encode a sparse tensor. For detailed explanation of each
 // field please refer to lite/schema/schema.fbs.
-typedef struct {
+typedef struct TfLiteSparsity {
   TfLiteIntArray* traversal_order;
   TfLiteIntArray* block_map;
   TfLiteDimensionMetadata* dim_metadata;
@@ -334,7 +334,7 @@ typedef struct {
 
 // An tensor in the interpreter system which is a wrapper around a buffer of
 // data including a dimensionality (or NULL if not currently defined).
-typedef struct {
+typedef struct TfLiteTensor {
   // The data type specification for data stored in `data`. This affects
   // what member of `data` union should be used.
   TfLiteType type;
@@ -421,7 +421,7 @@ void TfLiteTensorRealloc(size_t num_bytes, TfLiteTensor* tensor);
 // A structure representing an instance of a node.
 // This structure only exhibits the inputs, outputs and user defined data, not
 // other features like the type.
-typedef struct {
+typedef struct TfLiteNode {
   // Inputs to this node expressed as indices into the simulator's tensors.
   TfLiteIntArray* inputs;
 
@@ -462,7 +462,7 @@ typedef struct {
 // `TfLiteNode` of the delegate node.
 //
 // See also the `CreateDelegateParams` function in `interpreter.cc` details.
-typedef struct {
+typedef struct TfLiteDelegateParams {
   struct TfLiteDelegate* delegate;
   TfLiteIntArray* nodes_to_replace;
   TfLiteIntArray* input_tensors;
@@ -670,7 +670,7 @@ typedef struct TfLiteRegistration {
 
 // The flags used in `TfLiteDelegate`. Note that this is a bitmask, so the
 // values should be 1, 2, 4, 8, ...etc.
-typedef enum {
+typedef enum TfLiteDelegateFlags {
   kTfLiteDelegateFlagsNone = 0,
   // The flag is set if the delegate can handle dynamic sized tensors.
   // For example, the output shape of a `Resize` op with non-constant shape
