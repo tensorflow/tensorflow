@@ -21,25 +21,6 @@ limitations under the License.
 
 namespace tflite {
 namespace {
-const size_t kStackDataAllocatorSize = 128;
-class StackDataAllocator : public BuiltinDataAllocator {
- public:
-  void* Allocate(size_t size) override {
-    if (size > kStackDataAllocatorSize) {
-      return nullptr;
-    } else {
-      return data_;
-    }
-  }
-  void Deallocate(void* data) override {
-    // Do nothing.
-  }
-
- private:
-  uint8_t data_[kStackDataAllocatorSize];
-
-  TF_LITE_REMOVE_VIRTUAL_DELETE
-};
 
 const char* OpNameFromRegistration(const TfLiteRegistration* registration) {
   if (registration->builtin_code == BuiltinOperator_CUSTOM) {
