@@ -1728,6 +1728,7 @@ static LogicalResult Verify(TransposeOp op) {
 // TableGen'd op method definitions
 //===----------------------------------------------------------------------===//
 
+#include "tensorflow/compiler/mlir/lite/ir/tfl_ops_interface.cc.inc"
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.cc.inc"
 

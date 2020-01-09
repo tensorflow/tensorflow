@@ -24,23 +24,8 @@ namespace mlir {
 namespace TFL {
 
 bool IsStatefulOp(Operation* op, std::vector<int>* stateful_operand_indices) {
-  if (auto tfl = dyn_cast_or_null<TFL::LSTMOp>(op)) {
-    *stateful_operand_indices = tfl.GetStatefulOperands();
-    return true;
-  }
-
-  if (auto tfl = dyn_cast_or_null<TFL::UnidirectionalSequenceLSTMOp>(op)) {
-    *stateful_operand_indices = tfl.GetStatefulOperands();
-    return true;
-  }
-
-  if (auto tfl = dyn_cast_or_null<TFL::UnidirectionalSequenceRNNOp>(op)) {
-    *stateful_operand_indices = tfl.GetStatefulOperands();
-    return true;
-  }
-
-  if (auto tfl = dyn_cast_or_null<TFL::SVDFOp>(op)) {
-    *stateful_operand_indices = tfl.GetStatefulOperands();
+  if (auto stateful_op = dyn_cast_or_null<StatefulOpInterface>(op)) {
+    *stateful_operand_indices = stateful_op.GetStatefulOperands();
     return true;
   }
 
