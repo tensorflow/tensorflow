@@ -147,10 +147,10 @@ class Dropout(Layer):
       training mode (adding dropout) or in inference mode (doing nothing).
       
   Usage Example:
-    >>> import tensorflow as tf
-    >>> model = tf.keras.models.Sequential()
-    >>> model.add(tf.keras.layers.Dropout(0.2, input_shape=(16,)))
-    >>> model.add(tf.keras.layers.Dense(1))
+     import tensorflow as tf
+     model = tf.keras.models.Sequential()
+     model.add(tf.keras.layers.Dropout(0.2, input_shape=(16,)))
+     model.add(tf.keras.layers.Dense(1))
   """
 
   def __init__(self, rate, noise_shape=None, seed=None, **kwargs):
