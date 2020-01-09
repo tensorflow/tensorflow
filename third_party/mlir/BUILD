@@ -959,6 +959,14 @@ gentbl(
             "-gen-enum-defs",
             "include/mlir/Dialect/SPIRV/SPIRVEnums.cpp.inc",
         ),
+        (
+            "-gen-spirv-enum-avail-decls",
+            "include/mlir/Dialect/SPIRV/SPIRVEnumAvailability.h.inc",
+        ),
+        (
+            "-gen-spirv-enum-avail-defs",
+            "include/mlir/Dialect/SPIRV/SPIRVEnumAvailability.cpp.inc",
+        ),
     ],
     tblgen = ":mlir-tblgen",
     td_file = "include/mlir/Dialect/SPIRV/SPIRVOps.td",
@@ -1026,19 +1034,19 @@ gentbl(
 )
 
 gentbl(
-    name = "SPIRVLoweringStructGen",
+    name = "SPIRVTargetAndABIStructGen",
     tbl_outs = [
         (
             "-gen-struct-attr-decls",
-            "include/mlir/Dialect/SPIRV/SPIRVLowering.h.inc",
+            "include/mlir/Dialect/SPIRV/TargetAndABI.h.inc",
         ),
         (
             "-gen-struct-attr-defs",
-            "include/mlir/Dialect/SPIRV/SPIRVLowering.cpp.inc",
+            "include/mlir/Dialect/SPIRV/TargetAndABI.cpp.inc",
         ),
     ],
     tblgen = ":mlir-tblgen",
-    td_file = "include/mlir/Dialect/SPIRV/SPIRVLowering.td",
+    td_file = "include/mlir/Dialect/SPIRV/TargetAndABI.td",
     td_srcs = [
         ":SPIRVOpsTdFiles",
         ":StdOpsTdFiles",
@@ -1112,6 +1120,7 @@ cc_library(
         ":SPIRVOpUtilsIncGen",
         ":SPIRVOpsIncGen",
         ":SPIRVSerializationGen",
+        ":SPIRVTargetAndABIStructGen",
         ":Support",
         ":Transforms",
         "@llvm-project//llvm:support",
@@ -1129,6 +1138,7 @@ cc_library(
     hdrs = [
         "include/mlir/Dialect/SPIRV/Passes.h",
         "include/mlir/Dialect/SPIRV/SPIRVLowering.h",
+        "include/mlir/Dialect/SPIRV/TargetAndABI.h",
     ],
     includes = [
         "include",
@@ -1137,7 +1147,7 @@ cc_library(
         ":IR",
         ":Pass",
         ":SPIRVDialect",
-        ":SPIRVLoweringStructGen",
+        ":SPIRVTargetAndABIStructGen",
         ":StandardOps",
         ":Support",
         ":Transforms",
