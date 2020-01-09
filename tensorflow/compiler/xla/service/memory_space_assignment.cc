@@ -760,11 +760,11 @@ bool AlternateMemoryBestFitHeap::FindAllocation(
       // this interval.
       bool eviction_scheduled = false;
       for (int64 time = eviction_start_time; time < eviction_end_time; ++time) {
-        VLOG(3) << "Try evicting (" << time << ", " << time << ")";
-        if (!ViolatesMaximumOutstandingAsyncCopies(time, time)) {
+        VLOG(3) << "Try evicting (" << time << ", " << time + 1 << ")";
+        if (!ViolatesMaximumOutstandingAsyncCopies(time, time + 1)) {
           VLOG(3) << "Eviction successful.";
           AddAsyncCopy(*prev_allocation, MemorySpace::kDefault, kDummyChunk,
-                       time, time, time, allocations);
+                       time, time + 1, time + 1, allocations);
           eviction_scheduled = true;
           break;
         }
