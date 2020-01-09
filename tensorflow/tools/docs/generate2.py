@@ -35,7 +35,7 @@ import textwrap
 from absl import app
 from absl import flags
 
-import tensorflow.compat.v2 as tf
+import tensorflow as tf
 
 from tensorflow_docs.api_generator import doc_controls
 from tensorflow_docs.api_generator import doc_generator_visitor
@@ -73,7 +73,7 @@ flags.DEFINE_string(
     "`_toc.yaml` and `_redirects.yaml` files")
 
 _PRIVATE_MAP = {
-    "tf": ["python", "core", "compiler", "examples", "tools"],
+    "tf": ["python", "core", "compiler", "examples", "tools", "contrib"],
     # There's some aliasing between the compats and v1/2s, so it's easier to
     # block by name and location than by deleting, or hiding objects.
     "tf.compat.v1.compat": ["v1", "v2"],
@@ -184,7 +184,7 @@ def build_docs(output_dir, code_url_prefix, search_hints=True):
   )
 
   doc_generator = generate_lib.DocGenerator(
-      root_title="TensorFlow 2.0",
+      root_title="TensorFlow 2",
       py_modules=[("tf", tf)],
       base_dir=base_dirs,
       search_hints=search_hints,
