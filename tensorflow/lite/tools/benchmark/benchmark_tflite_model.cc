@@ -668,7 +668,7 @@ BenchmarkTfLiteModel::TfLiteDelegatePtrMap BenchmarkTfLiteModel::GetDelegates()
           TFLITE_GPU_INFERENCE_PRIORITY_MAX_PRECISION;
     }
     Interpreter::TfLiteDelegatePtr delegate =
-        evaluation::CreateGPUDelegate(model_.get(), &gpu_opts);
+        evaluation::CreateGPUDelegate(&gpu_opts);
 #elif defined(REAL_IPHONE_DEVICE)
     TFLGpuDelegateOptions gpu_opts = {0};
     gpu_opts.allow_precision_loss =
@@ -694,8 +694,7 @@ BenchmarkTfLiteModel::TfLiteDelegatePtrMap BenchmarkTfLiteModel::GetDelegates()
 #else
     TFLITE_LOG(WARN) << "The GPU delegate compile options are only supported "
                         "to be benchmarked on Android or iOS platforms.";
-    Interpreter::TfLiteDelegatePtr delegate =
-        evaluation::CreateGPUDelegate(model_.get());
+    Interpreter::TfLiteDelegatePtr delegate = evaluation::CreateGPUDelegate();
 #endif
 
     if (!delegate) {
