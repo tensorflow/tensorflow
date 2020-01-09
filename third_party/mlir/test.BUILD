@@ -7,7 +7,6 @@ package(default_visibility = [":test_friends"])
 # Please only depend on this from MLIR tests.
 package_group(
     name = "test_friends",
-    includes = ["@org_tensorflow//tensorflow/compiler/mlir:subpackages"],
     packages = ["//..."],
 )
 

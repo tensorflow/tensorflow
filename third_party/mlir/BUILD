@@ -12,12 +12,8 @@ package_group(
     packages = ["//..."],
 )
 
-# In particular the OWNERS file of the dependent project should be updated.
-# TODO(b/140669524): Use proper MLIR tests instead of end-to-end tests for
-# tf_runtime and tf_runtime_google.
 package_group(
     name = "friends",
-    includes = ["@org_tensorflow//tensorflow/compiler/mlir:subpackages"],
     packages = ["//..."],
 )
 
