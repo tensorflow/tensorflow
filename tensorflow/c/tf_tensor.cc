@@ -103,9 +103,9 @@ TF_Tensor* TF_NewTensor(TF_DataType dtype, const int64_t* dims, int num_dims,
     buf = new TF_ManagedBuffer(data, len, deallocator, deallocator_arg);
   }
 
-  TF_Tensor* ret =
-      new TF_Tensor{Tensor(static_cast<tensorflow::DataType>(dtype),
-                           tensorflow::TensorShape(dimvec), buf)};
+  TF_Tensor* ret = new TF_Tensor{tensorflow::TensorInterface(
+      Tensor(static_cast<tensorflow::DataType>(dtype),
+             tensorflow::TensorShape(dimvec), buf))};
   buf->Unref();
   size_t elem_size = TF_DataTypeSize(dtype);
   if (elem_size > 0 && len < (elem_size * ret->tensor.NumElements())) {
@@ -115,37 +115,23 @@ TF_Tensor* TF_NewTensor(TF_DataType dtype, const int64_t* dims, int num_dims,
   return ret;
 }
 
-TF_Tensor* TF_TensorMaybeMove(TF_Tensor* tensor) {
-  // It is safe to move the Tensor if and only if we own the unique reference to
-  // it. In that case, we might as well not delete and reallocate, but a future
-  // implementation might need to do so.
-  TensorBuffer* buf = tensorflow::TensorCApi::Buffer(tensor->tensor);
-  if (buf->RefCountIsOne() && buf->root_buffer()->RefCountIsOne() &&
-      buf->OwnsMemory()) {
-    return tensor;
-  }
-  return nullptr;
+TF_Tensor* TF_TensorMaybeMove(TF_Tensor* t) {
+  return t->tensor.CanMove() ? t : nullptr;
 }
 
 void TF_DeleteTensor(TF_Tensor* t) { delete t; }
 
-TF_DataType TF_TensorType(const TF_Tensor* t) {
-  return static_cast<TF_DataType>(t->tensor.dtype());
-}
+TF_DataType TF_TensorType(const TF_Tensor* t) { return t->tensor.Type(); }
 
-int TF_NumDims(const TF_Tensor* t) { return t->tensor.dims(); }
+int TF_NumDims(const TF_Tensor* t) { return t->tensor.NumDims(); }
 
 int64_t TF_Dim(const TF_Tensor* t, int dim_index) {
-  return static_cast<int64_t>(t->tensor.dim_size(dim_index));
+  return t->tensor.Dim(dim_index);
 }
 
-size_t TF_TensorByteSize(const TF_Tensor* t) {
-  return tensorflow::TensorCApi::Buffer(t->tensor)->size();
-}
+size_t TF_TensorByteSize(const TF_Tensor* t) { return t->tensor.ByteSize(); }
 
-void* TF_TensorData(const TF_Tensor* t) {
-  return tensorflow::TensorCApi::Buffer(t->tensor)->data();
-}
+void* TF_TensorData(const TF_Tensor* t) { return t->tensor.Data(); }
 
 int64_t TF_TensorElementCount(const TF_Tensor* t) {
   int64_t result = 1;
@@ -160,14 +146,59 @@ void TF_TensorBitcastFrom(const TF_Tensor* from, TF_DataType type,
                           TF_Tensor* to, const int64_t* new_dims,
                           int num_new_dims, TF_Status* status) {
   TF_SetStatus(status, TF_OK, "");
+  Status cc_status(
+      to->tensor.BitcastFrom(from->tensor, type, new_dims, num_new_dims));
+  Set_TF_Status_from_Status(status, cc_status);
+}
+
+namespace tensorflow {
+
+bool TensorInterface::CanMove() const {
+  // It is safe to move the Tensor if and only if we own the unique reference to
+  // it. In that case, we might as well not delete and reallocate, but a future
+  // implementation might need to do so.
+  TensorBuffer* buf = tensorflow::TensorCApi::Buffer(tensor_);
+  if (buf->RefCountIsOne() && buf->root_buffer()->RefCountIsOne() &&
+      buf->OwnsMemory()) {
+    return true;
+  }
+  return false;
+}
+
+TF_DataType TensorInterface::Type() const {
+  return static_cast<TF_DataType>(tensor_.dtype());
+}
+
+int TensorInterface::NumDims() const { return tensor_.dims(); }
+
+int64_t TensorInterface::Dim(int dim_index) const {
+  return static_cast<int64_t>(tensor_.dim_size(dim_index));
+}
+
+int64_t TensorInterface::NumElements() const {
+  return static_cast<int64_t>(tensor_.NumElements());
+}
+
+size_t TensorInterface::ByteSize() const {
+  return tensorflow::TensorCApi::Buffer(tensor_)->size();
+}
+
+void* TensorInterface::Data() const {
+  return tensorflow::TensorCApi::Buffer(tensor_)->data();
+}
+
+Status TensorInterface::BitcastFrom(const TensorInterface& from,
+                                    TF_DataType type, const int64_t* new_dims,
+                                    int num_new_dims) {
   tensorflow::TensorShape s;
   for (int i = 0; i < num_new_dims; ++i) {
     s.AddDim(new_dims[i]);
   }
-  Status cc_status(to->tensor.BitcastFrom(
-      from->tensor, static_cast<tensorflow::DataType>(type), s));
-  Set_TF_Status_from_Status(status, cc_status);
+  return tensor_.BitcastFrom(from.tensor_,
+                             static_cast<tensorflow::DataType>(type), s);
 }
+
+}  // namespace tensorflow
 
 // --------------------------------------------------------------------------
 void StringEncode(const char* src, size_t src_len, char* dst) {
@@ -332,31 +363,34 @@ TF_Tensor* TF_TensorFromTensor(const tensorflow::Tensor& src, Status* status) {
 }
 
 Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst) {
-  if (src->tensor.dtype() == DT_RESOURCE) {
-    if (src->tensor.dims() != 0) {
+  return src->tensor.ToTensor(dst);
+}
+
+Status TensorInterface::ToTensor(Tensor* dst) const {
+  if (tensor_.dtype() == DT_RESOURCE) {
+    if (tensor_.dims() != 0) {
       return InvalidArgument(
           "Malformed TF_RESOURCE tensor: expected a scalar, got a tensor with "
           "shape ",
-          src->tensor.shape().DebugString());
+          tensor_.shape().DebugString());
     }
-    *dst = Tensor(tensorflow::DT_RESOURCE, src->tensor.shape());
+    *dst = Tensor(tensorflow::DT_RESOURCE, tensor_.shape());
     if (!dst->scalar<tensorflow::ResourceHandle>()().ParseFromString(
-            string(static_cast<const char*>(TF_TensorData(src)),
-                   TF_TensorByteSize(src)))) {
+            string(static_cast<const char*>(Data()), ByteSize()))) {
       return InvalidArgument(
           "Malformed TF_RESOUCE tensor: unable to parse resource handle");
     }
     return Status::OK();
   }
-  if (src->tensor.dtype() != DT_STRING) {
-    *dst = src->tensor;
+  if (tensor_.dtype() != DT_STRING) {
+    *dst = tensor_;
     return Status::OK();
   }
   // TF_STRING tensors require copying since Tensor class expects a sequence of
   // string objects.
-  const tensorflow::int64 num_elements = src->tensor.NumElements();
-  const char* input = reinterpret_cast<const char*>(TF_TensorData(src));
-  const size_t src_size = TF_TensorByteSize(src);
+  const tensorflow::int64 num_elements = tensor_.NumElements();
+  const char* input = reinterpret_cast<const char*>(Data());
+  const size_t src_size = ByteSize();
   if (static_cast<tensorflow::int64>(src_size / sizeof(tensorflow::uint64)) <
       num_elements) {
     return InvalidArgument(
@@ -365,7 +399,7 @@ Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst) {
   const char* data_start = input + sizeof(tensorflow::uint64) * num_elements;
   const char* limit = input + src_size;
 
-  *dst = Tensor(src->tensor.dtype(), src->tensor.shape());
+  *dst = Tensor(tensor_.dtype(), tensor_.shape());
   auto dstarray = dst->flat<tstring>();
   for (tensorflow::int64 i = 0; i < num_elements; ++i) {
     tensorflow::uint64 offset =
@@ -384,8 +418,12 @@ Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst) {
   return Status::OK();
 }
 
+bool TensorInterface::CopyFrom(const Tensor& other, const TensorShape& shape) {
+  return tensor_.CopyFrom(other, shape);
+}
+
+bool TensorInterface::IsAligned() const { return tensor_.IsAligned(); }
+
 }  // namespace tensorflow
 
-bool TF_TensorIsAligned(const TF_Tensor* tensor) {
-  return tensor->tensor.IsAligned();
-}
+bool TF_TensorIsAligned(const TF_Tensor* t) { return t->tensor.IsAligned(); }

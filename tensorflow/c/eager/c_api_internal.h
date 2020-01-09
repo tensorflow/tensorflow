@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
+#include "tensorflow/c/eager/tensor_handle_interface.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
@@ -91,7 +92,6 @@ struct TFE_Context {
 };
 
 struct TFE_TensorHandle {
-  explicit TFE_TensorHandle(tensorflow::TensorHandle* h) : handle(h) {}
   static TFE_TensorHandle* CreateLocalHandle(const class tensorflow::Tensor& t,
                                              TF_Status* s) {
     tensorflow::TensorHandle* handle;
@@ -99,10 +99,10 @@ struct TFE_TensorHandle {
     if (!s->status.ok()) {
       return nullptr;
     }
-    return new TFE_TensorHandle(handle);
+    return new TFE_TensorHandle{tensorflow::TensorHandleInterface(handle)};
   }
 
-  tensorflow::TensorHandle* handle;
+  tensorflow::TensorHandleInterface handle;
 };
 
 struct TFE_TensorDebugInfo {
@@ -143,6 +143,9 @@ struct TFE_Op {
     return operation.Reset(ctx->context, op, is_function, t, raw_device_name,
                            nullptr);
   }
+
+  void AddInput(TFE_TensorHandle* input, TF_Status* status);
+  void Execute(TFE_TensorHandle** retvals, int* num_retvals, TF_Status* status);
 
   TFE_Context* ctx;
   tensorflow::EagerOperation operation;

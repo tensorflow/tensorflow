@@ -90,7 +90,7 @@ TFE_TensorHandle* NumpyToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj) {
                         .c_str());
     return nullptr;
   }
-  return new TFE_TensorHandle(handle);
+  return new TFE_TensorHandle{tensorflow::TensorHandleInterface(handle)};
 }
 
 // Convert a TFE_TensorHandle to a Python numpy.ndarray object.
@@ -268,7 +268,7 @@ TFE_TensorHandle* PySeqToTFE_TensorHandle(TFE_Context* ctx, PyObject* value,
     return nullptr;
   }
   CHECK_NE(handle, nullptr);
-  return new TFE_TensorHandle(handle);
+  return new TFE_TensorHandle{tensorflow::TensorHandleInterface(handle)};
 }
 
 TFE_TensorHandle* ConvertToEagerTensorUncached(TFE_Context* ctx,

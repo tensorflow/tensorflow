@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_interface.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 
 // Internal structures used by the C API. These are likely to change and should
@@ -28,7 +29,7 @@ limitations under the License.
 // passed to or returned from C functions *by pointer*. Otherwise, changes to
 // its internal structure will break the C API's binary interface.
 typedef struct TF_Tensor {
-  ::tensorflow::Tensor tensor;
+  tensorflow::TensorInterface tensor;
 } TF_Tensor;
 
 class TF_ManagedBuffer : public tensorflow::TensorBuffer {
@@ -83,4 +84,5 @@ void* allocate_tensor(const char* operation, size_t len, Allocator* allocator);
 // a different Allocator as `arg`.
 void deallocate_buffer(void* data, size_t len, void* arg);
 }  // namespace tensorflow
+
 #endif  // TENSORFLOW_C_TF_TENSOR_INTERNAL_H_

@@ -388,6 +388,14 @@ std::vector<const FunctionDef*> EagerContext::ListRegisteredFunctions() {
 
 void EagerContext::ClearRunMetadata() { run_metadata_.Clear(); }
 
+void EagerContext::ListDevices(
+    std::vector<tensorflow::DeviceAttributes>* devices) {
+  local_device_mgr()->ListDeviceAttributes(devices);
+  if (remote_device_mgr()) {
+    remote_device_mgr()->ListDeviceAttributes(devices);
+  }
+}
+
 void EagerContext::StartStep() {
   mutex_lock ml(metadata_mu_);
   num_active_steps_++;
