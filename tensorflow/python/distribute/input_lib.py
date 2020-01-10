@@ -574,30 +574,6 @@ class _IterableInput(object):
   def __iter__(self):
     raise NotImplementedError("must be implemented in descendants")
 
-  def _autograph_for_loop(self, extra_test, body, init_state):
-    """Overload of for..in statement that iterates over the input."""
-
-    if extra_test is not None:
-      raise NotImplementedError(
-          "break and return statements are not yet supported in "
-          "for ... in distributed input loops.")
-
-    def reduce_body(state, iterate):
-      new_state = body(iterate, *state)
-      return new_state
-
-    if init_state:
-      return self.reduce(init_state, reduce_body)
-
-    # TODO(anjalisridhar): This is a workaround for Dataset.reduce not allowing
-    # empty state tensors - create a dummy state variable that remains unused.
-    # Identify if we need this workaround and remove if unnecessary.
-    def reduce_body_with_dummy_state(state, iterate):
-      reduce_body((), iterate)
-      return state
-    self.reduce((constant_op.constant(0),), reduce_body_with_dummy_state)
-    return ()
-
   def reduce(self, initial_state, reduce_fn):
     """Execute a `reduce_fn` over all the elements of the input."""
     iterator = iter(self)
