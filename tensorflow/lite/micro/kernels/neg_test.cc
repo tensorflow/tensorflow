@@ -71,24 +71,37 @@ void TestNegFloat(std::initializer_list<int> input_dims_data,
   }
 }
 
-void TestNegInt8(std::initializer_list<int> input_dims_data,
-                 std::initializer_list<int8_t> input_data,
-                 std::initializer_list<int8_t> expected_output_data,
-                 std::initializer_list<int> output_dims_data,
-                 int8_t* output_data) {
-  TfLiteIntArray* input_dims = IntArrayFromInitializer(input_dims_data);
-  TfLiteIntArray* output_dims = IntArrayFromInitializer(output_dims_data);
-  const int output_dims_count = ElementCount(*output_dims);
+// input_quantization_buffer: buffer used for the quantization data
+void TestNegQuantizedInt8(float* input, int8_t* quantized_input_data,
+                          float input_min, float input_max,
+                          float* expected_output,
+                          int8_t* quantized_expected_output_data,
+                          int8_t* quantized_output_data, float output_min,
+                          float output_max,
+                          std::initializer_list<int> dimension_data) {
+  TfLiteIntArray* tensor_dims = IntArrayFromInitializer(dimension_data);
+  const int element_count = ElementCount(*tensor_dims);
   constexpr int inputs_size = 1;
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
 
+  // quantize input
+  std::transform(input, input + element_count, quantized_input_data,
+                 std::bind(tflite::testing::F2QS, std::placeholders::_1,
+                           input_min, input_max));
+
+  // quantize expected_output since there'll be loss of precision and
+  // comparision in floating point will be inaccurate
+  std::transform(expected_output, expected_output + element_count,
+                 quantized_expected_output_data,
+                 std::bind(tflite::testing::F2QS, std::placeholders::_1,
+                           output_min, output_max));
+
   TfLiteTensor tensors[tensors_size] = {
-      CreateQuantizedTensor(input_data, input_dims, "input_tensor", -1.0f,
-                            1.0f),
-      CreateQuantizedTensor(output_data, output_dims, "output_tensor", -1.0f,
-                            1.0f),
-  };
+      CreateQuantizedTensor(quantized_input_data, tensor_dims,
+                            "quantized_input_tensor", input_min, input_max),
+      CreateQuantizedTensor(quantized_output_data, tensor_dims,
+                            "quantized_output_tensor", output_min, output_max)};
 
   TfLiteContext context;
   PopulateContext(tensors, tensors_size, &context);
@@ -116,9 +129,11 @@ void TestNegInt8(std::initializer_list<int> input_dims_data,
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration->invoke);
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->invoke(&context, &node));
 
-  TF_LITE_MICRO_EXPECT_EQ(expected_output_data.begin()[0], output_data[0]);
-  for (int i = 0; i < output_dims_count; ++i) {
-    TF_LITE_MICRO_EXPECT_EQ(expected_output_data.begin()[i], output_data[i]);
+  TF_LITE_MICRO_EXPECT_EQ(quantized_expected_output_data[0],
+                          quantized_output_data[0]);
+  for (int i = 0; i < element_count; ++i) {
+    TF_LITE_MICRO_EXPECT_EQ(quantized_expected_output_data[i],
+                            quantized_output_data[i]);
   }
 }
 
@@ -137,15 +152,6 @@ TF_LITE_MICRO_TEST(NegOpSingleFloat) {
                                 /*output_data=*/output_data);
 }
 
-TF_LITE_MICRO_TEST(NegOpSingleInt8) {
-  int8_t output_data[2];
-  tflite::testing::TestNegInt8(/*input_dims_data=*/{1, 2},
-                               /*input_data=*/{8, 0},
-                               /*expected_output_data=*/{-8, 0},
-                               /*output_dims_data*/ {1, 2},
-                               /*output_data=*/output_data);
-}
-
 TF_LITE_MICRO_TEST(NegOpFloat) {
   float output_data[6];
   tflite::testing::TestNegFloat(/*input_dims_data=*/{2, 2, 3},
@@ -157,15 +163,74 @@ TF_LITE_MICRO_TEST(NegOpFloat) {
                                 /*output_data=*/output_data);
 }
 
-TF_LITE_MICRO_TEST(NegOpInt8) {
-  int8_t output_data[6];
-  tflite::testing::TestNegInt8(/*input_dims_data=*/{2, 2, 3},
-                               /*input_data=*/
-                               {-2, -1, 0, 1, 2, 3},
-                               /*expected_output_data=*/
-                               {2, 1, 0, -1, -2, -3},
-                               /*output_dims_data=*/{2, 2, 3},
-                               /*output_data=*/output_data);
+TF_LITE_MICRO_TEST(NegOpQuantizedInt8DifferentZeroPoints) {
+  // setup input and output data
+
+  // same scale, different zero points
+  constexpr auto input_min = -12.f;
+  constexpr auto input_max = 24.f;
+  constexpr auto output_min = -20.f;
+  constexpr auto output_max = 16.f;
+
+  float input[] = {-2.f, -1.f, 0.f, 1.f, 2.f, 3.f};
+
+  constexpr auto kTensorSize = sizeof(input) / sizeof(float);
+
+  float expected_output[kTensorSize];
+  // direct negation
+  std::transform(input, input + kTensorSize, expected_output,
+                 [](float value) { return -value; });
+
+  std::initializer_list<int> dimension_data = {
+      // number of elements in shape
+      2,
+      // shape data
+      2, 3};  // multiply reduce of shape data should yield kTensorSize
+
+  // used by helper
+  int8_t quantized_input[kTensorSize] = {};
+  int8_t quantized_expected_output[kTensorSize] = {};
+  int8_t quantized_output[kTensorSize] = {};
+
+  tflite::testing::TestNegQuantizedInt8(
+      input, quantized_input, input_min, input_max, expected_output,
+      quantized_expected_output, quantized_output, output_min, output_max,
+      dimension_data);
+}
+
+TF_LITE_MICRO_TEST(NegOpQuantizedInt8SameZeroPoints) {
+  // setup input and output data
+
+  // same scale, different zero points
+  constexpr auto input_min = -12.f;
+  constexpr auto input_max = 24.f;
+  constexpr auto output_min = -12.f;
+  constexpr auto output_max = 24.f;
+
+  float input[] = {-2.f, -1.f, 0.f, 1.f, 2.f, 3.f};
+
+  constexpr auto kTensorSize = sizeof(input) / sizeof(float);
+
+  float expected_output[kTensorSize];
+  // direct negation
+  std::transform(input, input + kTensorSize, expected_output,
+                 [](float value) { return -value; });
+
+  std::initializer_list<int> dimension_data = {
+      // number of elements in shape
+      2,
+      // shape data
+      2, 3};  // multiply reduce of shape data should yield kTensorSize
+
+  // used by helper
+  int8_t quantized_input[kTensorSize] = {};
+  int8_t quantized_expected_output[kTensorSize] = {};
+  int8_t quantized_output[kTensorSize] = {};
+
+  tflite::testing::TestNegQuantizedInt8(
+      input, quantized_input, input_min, input_max, expected_output,
+      quantized_expected_output, quantized_output, output_min, output_max,
+      dimension_data);
 }
 
 TF_LITE_MICRO_TESTS_END
