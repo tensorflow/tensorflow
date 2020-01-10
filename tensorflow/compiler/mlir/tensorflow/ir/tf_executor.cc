@@ -1162,12 +1162,7 @@ struct DropEmptyIslandNoOperandOneDataResult
         !HasSingleOpInBlock<YieldOp>(&op.GetBody()))
       return matchFailure();
 
-    // TODO(jpienaar): Revert this, this accounts for an intermediate bug that
-    // has already been fixed upstream but has not been integrated yet. The
-    // second result is unused here and so should be removed, but just using
-    // the same result in both places (which should not matter as unused).
-    rewriter.replaceOp(
-        op, {op.GetYield().getOperand(0), op.GetYield().getOperand(0)});
+    rewriter.replaceOp(op, {op.GetYield().getOperand(0), nullptr});
 
     return matchSuccess();
   }
