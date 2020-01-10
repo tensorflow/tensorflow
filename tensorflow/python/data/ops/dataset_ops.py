@@ -18,7 +18,6 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
-import enum
 import functools
 import sys
 import threading
@@ -31,7 +30,6 @@ from six.moves import queue as Queue  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python import tf2
-from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.experimental.ops import optimization_options
 from tensorflow.python.data.experimental.ops import stats_options
@@ -94,12 +92,6 @@ AUTOTUNE = -1
 tf_export("data.experimental.AUTOTUNE").export_constant(__name__, "AUTOTUNE")
 
 
-class ExternalStatePolicy(enum.Enum):
-  WARN = 0
-  IGNORE = 1
-  FAIL = 2
-
-
 @tf_export("data.Dataset", v1=[])
 @six.add_metaclass(abc.ABCMeta)
 class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
@@ -115,7 +107,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
   Iteration happens in a streaming fashion, so the full dataset does not need to
   fit into memory.
 
-  # Source Datasets
+  Source Datasets:
 
   The simplest way to create a dataset is to create it from a python `list`:
 
@@ -142,7 +134,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
   See `tf.data.FixedLengthRecordDataset` and `tf.data.Dataset.from_generator`
   for more ways to create datasets.
 
-  # Transformations
+  Transformations:
 
   Once you have a dataset, you can apply transformations to prepare the data for
   your model:
@@ -152,7 +144,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
   >>> list(dataset.as_numpy_iterator())
   [2, 4, 6]
 
-  # Common Terms
+  Common Terms:
 
   **Element**: A single output from calling `next()` on a dataset iterator.
     Elements may be nested structures containing multiple components. For
@@ -160,7 +152,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     tuple. The components are `1`, `3`, and `"apple"`.
   **Component**: The leaf in the nested structure of an element.
 
-  # Supported types
+  Supported types:
 
   Elements can be nested structures of tuples, named tuples, and dictionaries.
   Element components can be of any type representable by `tf.TypeSpec`,
@@ -174,6 +166,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
   >>> Point = collections.namedtuple("Point", ["x", "y"]) # doctest: +SKIP
   >>> e = Point(1, 2) # Named tuple # doctest: +SKIP
   >>> f = tf.data.Dataset.range(10) # Dataset element
+
   """
 
   def __init__(self, variant_tensor):
@@ -209,10 +202,11 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
 
   @deprecation.deprecated_args(None, "Use external_state_policy instead",
                                "allow_stateful")
-  def _as_serialized_graph(self,
-                           allow_stateful=None,
-                           strip_device_assignment=None,
-                           external_state_policy=ExternalStatePolicy.WARN):
+  def _as_serialized_graph(
+      self,
+      allow_stateful=None,
+      strip_device_assignment=None,
+      external_state_policy=distribute_options.ExternalStatePolicy.WARN):
     """Produces serialized graph representation of the dataset.
 
     Args:
@@ -228,7 +222,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
       A scalar `tf.Tensor` of `tf.string` type, representing this dataset as a
       serialized graph.
     """
-    if compat.forward_compatible(2019, 11, 25) or external_state_policy:
+    if external_state_policy:
       policy = None
       if external_state_policy:
         policy = external_state_policy.value
@@ -236,7 +230,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
           self._variant_tensor,
           external_state_policy=policy,
           strip_device_assignment=strip_device_assignment)
-    if compat.forward_compatible(2019, 11, 16) or strip_device_assignment:
+    if strip_device_assignment:
       return gen_dataset_ops.dataset_to_graph(
           self._variant_tensor,
           allow_stateful=allow_stateful,
@@ -259,8 +253,10 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
           "Can only export Datasets which were created executing eagerly. "
           "Please file a feature request if this is important to you.")
     with context.eager_mode(), ops.device("CPU"):
+      # pylint: disable=protected-access
       graph_def = graph_pb2.GraphDef().FromString(
-          self._as_serialized_graph().numpy())  # pylint: disable=protected-access
+          self._as_serialized_graph(external_state_policy=distribute_options
+                                    .ExternalStatePolicy.FAIL).numpy())
     output_node_name = None
     for node in graph_def.node:
       if node.op == "_Retval":
@@ -311,10 +307,10 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
       # If the captured tensor is an eager tensor, we cannot trace its inputs.
       if isinstance(tensor, ops._EagerTensorBase):  # pylint: disable=protected-access
         return False
-      return any([is_tensor_or_parent_ref(x) for x in tensor.op.inputs])
+      return any(is_tensor_or_parent_ref(x) for x in tensor.op.inputs)
 
     for fn in self._functions():
-      if any([is_tensor_or_parent_ref(t) for t in fn.function.captured_inputs]):
+      if any(is_tensor_or_parent_ref(t) for t in fn.function.captured_inputs):
         return True
 
     return any(
@@ -869,7 +865,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     return id_dataset.flat_map(flat_map_fn)
 
   @staticmethod
-  def range(*args):
+  def range(*args, **kwargs):
     """Creates a `Dataset` of a step-separated range of values.
 
     >>> list(Dataset.range(5).as_numpy_iterator())
@@ -884,12 +880,18 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     []
     >>> list(Dataset.range(5, 1, -2).as_numpy_iterator())
     [5, 3]
+    >>> list(Dataset.range(2, 5, output_type=tf.int32).as_numpy_iterator())
+    [2, 3, 4]
+    >>> list(Dataset.range(1, 5, 2, output_type=tf.float32).as_numpy_iterator())
+    [1.0, 3.0]
 
     Args:
       *args: follows the same semantics as python's xrange.
         len(args) == 1 -> start = 0, stop = args[0], step = 1
         len(args) == 2 -> start = args[0], stop = args[1], step = 1
         len(args) == 3 -> start = args[0], stop = args[1, stop = args[2]
+      **kwargs:
+        - output_type: Its expected dtype. (Optional, default: `tf.int64`).
 
     Returns:
       Dataset: A `RangeDataset`.
@@ -897,7 +899,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     Raises:
       ValueError: if len(args) == 0.
     """
-    return RangeDataset(*args)
+    return RangeDataset(*args, **kwargs)
 
   @staticmethod
   def zip(datasets):
@@ -1165,7 +1167,6 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     [1, 0, 2]
     >>> list(dataset.as_numpy_iterator())  # doctest: +SKIP
     [1, 0, 2]
-    ```
 
     Args:
       buffer_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
@@ -1372,7 +1373,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
 
   def padded_batch(self,
                    batch_size,
-                   padded_shapes,
+                   padded_shapes=None,
                    padding_values=None,
                    drop_remainder=False):
     """Combines consecutive elements of this dataset into padded batches.
@@ -1390,7 +1391,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
 
     Unlike `tf.data.Dataset.batch`, the input elements to be batched may have
     different shapes, and this transformation will pad each component to the
-    respective shape in `padding_shapes`. The `padding_shapes` argument
+    respective shape in `padded_shapes`. The `padded_shapes` argument
     determines the resulting shape for each dimension of each component in an
     output element:
 
@@ -1400,35 +1401,33 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     component will be padded out to the maximum length of all elements in that
     dimension.
 
-    >>> elements = [[1, 2],
-    ...             [3, 4, 5],
-    ...             [6, 7],
-    ...             [8]]
-    >>> A = tf.data.Dataset.from_generator(lambda: iter(elements), tf.int32)
+    >>> A = (tf.data.Dataset
+    ...      .range(1, 5, output_type=tf.int32)
+    ...      .map(lambda x: tf.fill([x], x)))
     >>> # Pad to the smallest per-batch size that fits all elements.
-    >>> B = A.padded_batch(2, padded_shapes=[None])
+    >>> B = A.padded_batch(2)
     >>> for element in B.as_numpy_iterator():
     ...   print(element)
-    [[1 2 0]
-     [3 4 5]]
-    [[6 7]
-     [8 0]]
+    [[1 0]
+     [2 2]]
+    [[3 3 3 0]
+     [4 4 4 4]]
     >>> # Pad to a fixed size.
-    >>> C = A.padded_batch(2, padded_shapes=3)
+    >>> C = A.padded_batch(2, padded_shapes=5)
     >>> for element in C.as_numpy_iterator():
     ...   print(element)
-    [[1 2 0]
-     [3 4 5]]
-    [[6 7 0]
-     [8 0 0]]
+    [[1 0 0 0 0]
+     [2 2 0 0 0]]
+    [[3 3 3 0 0]
+     [4 4 4 4 0]]
     >>> # Pad with a custom value.
-    >>> D = A.padded_batch(2, padded_shapes=3, padding_values=-1)
+    >>> D = A.padded_batch(2, padded_shapes=5, padding_values=-1)
     >>> for element in D.as_numpy_iterator():
     ...   print(element)
-    [[ 1  2 -1]
-     [ 3  4  5]]
-    [[ 6  7 -1]
-     [ 8 -1 -1]]
+    [[ 1 -1 -1 -1 -1]
+     [ 2  2 -1 -1 -1]]
+    [[ 3  3  3 -1 -1]
+     [ 4  4  4  4 -1]]
     >>> # Components of nested elements can be padded independently.
     >>> elements = [([1, 2, 3], [10]),
     ...             ([4, 5], [11, 12])]
@@ -1449,16 +1448,19 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     Args:
       batch_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
         consecutive elements of this dataset to combine in a single batch.
-      padded_shapes: A nested structure of `tf.TensorShape` or `tf.int64` vector
-        tensor-like objects representing the shape to which the respective
-        component of each input element should be padded prior to batching. Any
-        unknown dimensions (e.g. `tf.compat.v1.Dimension(None)` in a
-        `tf.TensorShape` or `-1` in a tensor-like object) will be padded to the
-        maximum size of that dimension in each batch.
+      padded_shapes: (Optional.) A nested structure of `tf.TensorShape` or
+        `tf.int64` vector tensor-like objects representing the shape to which
+        the respective component of each input element should be padded prior
+        to batching. Any unknown dimensions (e.g. `tf.compat.v1.Dimension(None)`
+        in a `tf.TensorShape` or `-1` in a tensor-like object) will be padded to
+        the maximum size of that dimension in each batch. If unset all
+        dimensions of all components are padded to the maximum size in the
+        batch. `padded_shapes` must be set if any component has an unknown rank.
       padding_values: (Optional.) A nested structure of scalar-shaped
         `tf.Tensor`, representing the padding values to use for the respective
-        components.  Defaults are `0` for numeric types and the empty string for
-        string types.
+        components. None represents that the nested structure should be padded
+        with default values.  Defaults are `0` for numeric types and the empty
+        string for string types.
       drop_remainder: (Optional.) A `tf.bool` scalar `tf.Tensor`, representing
         whether the last batch should be dropped in the case it has fewer than
         `batch_size` elements; the default behavior is not to drop the smaller
@@ -1466,7 +1468,19 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
 
     Returns:
       Dataset: A `Dataset`.
+
+    Raises:
+      ValueError: If a component has an unknown rank, and  the `padded_shapes`
+        argument is not set.
     """
+    if padded_shapes is None:
+      padded_shapes = get_legacy_output_shapes(self)
+      # A `tf.TensorShape` only is only falsey if its *rank* is unknown:
+      # bool(tf.TensorShape(None)) is False
+      if not all(nest.flatten(padded_shapes)):
+        raise ValueError("You must set the `padded_shapes` argument to "
+                         "`Dataset.padded_batch` if any component of its input"
+                         "has an unknown rank")
     return PaddedBatchDataset(self, batch_size, padded_shapes, padding_values,
                               drop_remainder)
 
@@ -1644,16 +1658,16 @@ name=None))
     ...     lambda x: Dataset.from_tensors(x).repeat(6),
     ...     cycle_length=2, block_length=4)
     >>> list(dataset.as_numpy_iterator())
-    [1, 1, 1, 1, \
-2, 2, 2, 2, \
-1, 1, \
-2, 2, \
-3, 3, 3, 3, \
-4, 4, 4, 4, \
-3, 3, \
-4, 4, \
-5, 5, 5, 5, \
-5, 5]
+    [1, 1, 1, 1,
+     2, 2, 2, 2,
+     1, 1,
+     2, 2,
+     3, 3, 3, 3,
+     4, 4, 4, 4,
+     3, 3,
+     4, 4,
+     5, 5, 5, 5,
+     5, 5]
 
     NOTE: The order of elements yielded by this transformation is
     deterministic, as long as `map_func` is a pure function. If
@@ -2227,8 +2241,8 @@ class DatasetV1(DatasetV2):
 
   @staticmethod
   @functools.wraps(DatasetV2.range)
-  def range(*args):
-    return DatasetV1Adapter(DatasetV2.range(*args))
+  def range(*args, **kwargs):
+    return DatasetV1Adapter(DatasetV2.range(*args, **kwargs))
 
   @staticmethod
   @functools.wraps(DatasetV2.zip)
@@ -2281,7 +2295,7 @@ class DatasetV1(DatasetV2):
   @functools.wraps(DatasetV2.padded_batch)
   def padded_batch(self,
                    batch_size,
-                   padded_shapes,
+                   padded_shapes=None,
                    padding_values=None,
                    drop_remainder=False):
     return DatasetV1Adapter(super(DatasetV1, self).padded_batch(
@@ -2654,7 +2668,7 @@ class Options(options_lib.OptionsBase):
 
   experimental_external_state_policy = options_lib.create_option(
       name="experimental_external_state_policy",
-      ty=ExternalStatePolicy,
+      ty=distribute_options.ExternalStatePolicy,
       docstring="By default, tf.data will refuse to serialize a dataset or "
       "checkpoint its iterator if the dataset contains a stateful op as the "
       "serialization / checkpointing won't be able to capture its state. "
@@ -2663,7 +2677,7 @@ class Options(options_lib.OptionsBase):
       "in these ops. There are three settings available - IGNORE: in which we"
       "completely ignore any state; WARN: We warn the user that some state "
       "might be thrown away; FAIL: We fail if any state is being captured.",
-      default_factory=lambda: ExternalStatePolicy.WARN)
+      default_factory=lambda: distribute_options.ExternalStatePolicy.WARN)
 
   def _graph_rewrites(self):
     """Produces the list of enabled static graph rewrites."""
@@ -3343,10 +3357,10 @@ class RepeatDataset(UnaryUnchangedStructureDataset):
 class RangeDataset(DatasetSource):
   """A `Dataset` of a step separated range of values."""
 
-  def __init__(self, *args):
+  def __init__(self, *args, **kwargs):
     """See `Dataset.range()` for details."""
-    self._parse_args(*args)
-    self._structure = tensor_spec.TensorSpec([], dtypes.int64)
+    self._parse_args(*args, **kwargs)
+    self._structure = tensor_spec.TensorSpec([], self._output_type)
     variant_tensor = gen_dataset_ops.range_dataset(
         start=self._start,
         stop=self._stop,
@@ -3354,7 +3368,7 @@ class RangeDataset(DatasetSource):
         **self._flat_structure)
     super(RangeDataset, self).__init__(variant_tensor)
 
-  def _parse_args(self, *args):
+  def _parse_args(self, *args, **kwargs):
     """Parse arguments according to the same rules as the `range()` builtin."""
     if len(args) == 1:
       self._start = self._build_tensor(0, "start")
@@ -3370,6 +3384,10 @@ class RangeDataset(DatasetSource):
       self._step = self._build_tensor(args[2], "step")
     else:
       raise ValueError("Invalid arguments to RangeDataset: %s" % str(args))
+    if "output_type" in kwargs:
+      self._output_type = kwargs["output_type"]
+    else:
+      self._output_type = dtypes.int64
 
   def _build_tensor(self, int64_value, name):
     return ops.convert_to_tensor(int64_value, dtype=dtypes.int64, name=name)
@@ -3765,8 +3783,8 @@ def _padding_value_to_tensor(value, output_type):
   return value
 
 
-def _default_padding(input_dataset):
-  """Returns default padding tensors in a structure matching `input_dataset`."""
+def _padding_values_or_default(padding_values, input_dataset):
+  """Returns padding values with None elements replaced with default values."""
   def make_zero(t):
     if t.base_dtype == dtypes.string:
       return ""
@@ -3778,9 +3796,13 @@ def _default_padding(input_dataset):
       raise TypeError(error_msg)
     else:
       return np.zeros_like(t.as_numpy_dtype())
+  def value_or_default(value, default):
+    return default if value is None else value
 
-  return nest.map_structure(
-      make_zero, get_legacy_output_types(input_dataset))
+  default_padding = nest.map_structure(make_zero,
+                                       get_legacy_output_types(input_dataset))
+  return nest.map_structure_up_to(padding_values, value_or_default,
+                                  padding_values, default_padding)
 
 
 class PaddedBatchDataset(UnaryDataset):
@@ -3797,9 +3819,7 @@ class PaddedBatchDataset(UnaryDataset):
     self._input_dataset = input_dataset
     self._batch_size = ops.convert_to_tensor(
         batch_size, dtype=dtypes.int64, name="batch_size")
-    padding_values = (
-        padding_values
-        if padding_values is not None else _default_padding(input_dataset))
+    padding_values = _padding_values_or_default(padding_values, input_dataset)
 
     input_shapes = get_legacy_output_shapes(input_dataset)
     flat_padded_shapes = nest.flatten_up_to(input_shapes, padded_shapes)

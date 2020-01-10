@@ -21,6 +21,7 @@ from __future__ import print_function
 import os
 import shutil
 import tempfile
+
 from absl.testing import parameterized
 import numpy as np
 
@@ -827,6 +828,20 @@ class TestWholeModelSaving(test.TestCase, parameterized.TestCase):
         evaluation_results['sparse_categorical_crossentropy'] +
         evaluation_results['custom_loss'], evaluation_results['loss'], 1e-6)
 
+  def test_save_uncompiled_model_with_optimizer(self):
+    saved_model_dir = self._save_model_dir()
+    save_format = testing_utils.get_save_format()
+    model = keras.models.Sequential([keras.layers.Dense(1, input_shape=(3,))])
+    # Set the model's optimizer but don't compile. This can happen if the model
+    # is trained with a custom training loop.
+    model.optimizer = keras.optimizer_v2.rmsprop.RMSprop(lr=0.0001)
+    model.save(saved_model_dir, save_format=save_format)
+
+    if save_format in ['tf', 'tensorflow']:
+      loaded = keras.models.load_model(saved_model_dir)
+      self.assertIsInstance(loaded.optimizer,
+                            keras.optimizer_v2.optimizer_v2.OptimizerV2)
+
 
 # Factory functions to create models that will be serialized inside a Network.
 def _make_graph_network(input_size, output_size):
@@ -1084,7 +1099,7 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase):
     self._weight_loading_test_template(SubclassedModel)
 
   def _new_layer_weight_loading_test_template(
-      self, first_model_fn, second_model_fn, restore_init_fn):
+      self, first_model_fn, second_model_fn):
     with self.cached_session() as session:
       model = first_model_fn()
       temp_dir = self.get_temp_dir()
@@ -1107,12 +1122,13 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase):
       self.addCleanup(shutil.rmtree, temp_dir)
 
       second_model = second_model_fn()
-      second_model.load_weights(prefix)
+      status = second_model.load_weights(prefix)
       second_model(x)
-      self.evaluate(restore_init_fn(second_model))
+      status.run_restore_ops()
       second_model.save_weights(prefix)
       # Check that the second model's checkpoint loads into the original model
-      model.load_weights(prefix)
+      status = model.load_weights(prefix)
+      status.run_restore_ops(session)
       y = self.evaluate(model(x))
       self.assertAllClose(ref_y, y)
 
@@ -1129,12 +1145,9 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase):
       y = keras.layers.Dense(1, name='second')(x)
       b = keras.layers.Dense(3, name='secondjr')(y)
       return keras.models.Model(a, b)
-    def _restore_init_fn(restore_model):
-      return [v.initializer for v in restore_model.layers[-1].variables]
 
     self._new_layer_weight_loading_test_template(
-        _save_graph_model, _restore_graph_model,
-        _restore_init_fn)
+        _save_graph_model, _restore_graph_model)
 
   @test_util.run_in_graph_and_eager_modes
   def test_weight_loading_graph_model_added_no_weight_layer(self):
@@ -1146,16 +1159,12 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase):
     def _restore_graph_model():
       a = keras.layers.Input(shape=(2,))
       x = keras.layers.Dense(3, name='first')(a)
-      y = keras.layers.Dropout(rate=0.1)(x)
-      b = keras.layers.Dense(1, name='second')(y)
-      return keras.models.Model(a, b)
-    def _restore_init_fn(restore_model):
-      del restore_model  # unused
-      return []
+      b = keras.layers.Dense(1, name='second')(x)
+      y = keras.layers.Dropout(rate=0.1)(b)
+      return keras.models.Model(a, y)
 
     self._new_layer_weight_loading_test_template(
-        _save_graph_model, _restore_graph_model,
-        _restore_init_fn)
+        _save_graph_model, _restore_graph_model)
 
   @test_util.run_in_graph_and_eager_modes
   def test_weight_loading_subclassed_model_added_layer(self):
@@ -1171,12 +1180,8 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase):
       def call(self, a):
         return self.b_layer(self.y_layer(self.x_layer(a)))
 
-    def _restore_init_fn(restore_model):
-      return [v.initializer for v in restore_model.y_layer.variables]
-
     self._new_layer_weight_loading_test_template(
-        SubclassedModel, SubclassedModelRestore,
-        _restore_init_fn)
+        SubclassedModel, SubclassedModelRestore)
 
   @test_util.run_in_graph_and_eager_modes
   def test_incompatible_checkpoint(self):

@@ -18,7 +18,9 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import shutil
 import time
+
 from absl.testing import parameterized
 
 from tensorflow.python.data.experimental.kernel_tests import reader_dataset_ops_test_base
@@ -27,6 +29,7 @@ from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers as core_readers
 from tensorflow.python.framework import combinations
+from tensorflow.python.framework import errors
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import test
@@ -164,6 +167,93 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
 
     self.assertSnapshotDirectoryContains(tmpdir, 1, 1, 1)
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testSpecifySnapshotNameWriteAndRead(self):
+    tmpdir = self.makeSnapshotDirectory()
+
+    dataset = dataset_ops.Dataset.range(10)
+    dataset = dataset.apply(
+        snapshot.snapshot(tmpdir, snapshot_name="my_custom_snapshot"))
+    dataset = dataset.repeat(10)
+    self.assertDatasetProduces(dataset, list(range(10)) * 10)
+
+    self.assertSnapshotDirectoryContains(tmpdir, 1, 1, 1)
+    self.assertTrue(
+        os.path.exists(os.path.join(tmpdir, "custom-my_custom_snapshot")))
+    self.assertTrue(
+        os.path.exists(
+            os.path.join(tmpdir, "custom-my_custom_snapshot", "custom")))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testForcePassthroughMode(self):
+    tmpdir = self.makeSnapshotDirectory()
+
+    dataset = dataset_ops.Dataset.range(10)
+    dataset = dataset.apply(snapshot.snapshot(tmpdir, mode="passthrough"))
+    dataset = dataset.repeat(10)
+    self.assertDatasetProduces(dataset, list(range(10)) * 10)
+
+    self.assertSnapshotDirectoryContains(tmpdir, 0, 0, 0)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testForceWriteMode(self):
+    tmpdir = self.makeSnapshotDirectory()
+
+    dataset = dataset_ops.Dataset.range(10)
+    dataset = dataset.apply(snapshot.snapshot(tmpdir, mode="write"))
+    dataset = dataset.repeat(10)
+    self.assertDatasetProduces(dataset, list(range(10)) * 10)
+
+    # We will end up writing 10 different runs.
+    self.assertSnapshotDirectoryContains(tmpdir, 1, 10, 1)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testForceReadMode(self):
+    tmpdir = self.makeSnapshotDirectory()
+
+    # We write a copy of the snapshot first.
+    dataset = dataset_ops.Dataset.range(10)
+    dataset = dataset.apply(
+        snapshot.snapshot(
+            tmpdir, mode="write", snapshot_name="my_custom_snapshot"))
+    self.assertDatasetProduces(dataset, list(range(10)))
+
+    # We move the run to a new name.
+    shutil.move(
+        os.path.join(tmpdir, "custom-my_custom_snapshot"),
+        os.path.join(tmpdir, "custom-my_custom_snapshot_2"))
+
+    # Even though the snapshot.metadata is pointing to the old run that no
+    # longer exists after we moved, we force it to read from the run we specify.
+    dataset = dataset_ops.Dataset.range(10)
+    dataset = dataset.apply(
+        snapshot.snapshot(
+            tmpdir, mode="read", snapshot_name="my_custom_snapshot_2"))
+    self.assertDatasetProduces(dataset, list(range(10)))
+
+    # We should still have one snapshot and one run.
+    self.assertSnapshotDirectoryContains(tmpdir, 1, 1, 1)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testForceReadNonexistentSnapshot(self):
+    tmpdir = self.makeSnapshotDirectory()
+    dataset = dataset_ops.Dataset.range(10)
+    with self.assertRaises(errors.NotFoundError):
+      dataset = dataset.apply(snapshot.snapshot(tmpdir, mode="read"))
+      get_next = self.getNext(dataset)
+      self.evaluate(get_next())
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testForceReadNonexistentNamedSnapshot(self):
+    tmpdir = self.makeSnapshotDirectory()
+    dataset = dataset_ops.Dataset.range(10)
+    with self.assertRaises(errors.NotFoundError):
+      dataset = dataset.apply(
+          snapshot.snapshot(
+              tmpdir, mode="read", snapshot_name="my_nonexistent_snapshot"))
+      get_next = self.getNext(dataset)
+      self.evaluate(get_next())
+
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
@@ -230,6 +320,41 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
     dataset3 = core_readers._TFRecordDataset(filenames)
     dataset3 = dataset3.apply(snapshot.snapshot(tmpdir, shuffle_on_read=True))
     self.assertDatasetProduces(dataset3, expected, assert_items_equal=True)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testReadShuffledSnapshotWithSeedAfterWrite(self):
+    self.setUpTFRecord(num_files=10, num_records=50)
+    filenames = self.test_filenames
+
+    expected = [
+        b"Record %d of file %d" % (r, f)  # pylint:disable=g-complex-comprehension
+        for f in range(0, 10)
+        for r in range(0, 50)
+    ]
+
+    tmpdir = self.makeSnapshotDirectory()
+    dataset = core_readers._TFRecordDataset(filenames)
+    dataset = dataset.apply(snapshot.snapshot(tmpdir, shard_size_bytes=10))
+    self.assertDatasetProduces(dataset, expected)
+
+    # remove the original files and try to read the data back only from snapshot
+    self.removeTFRecords()
+
+    dataset2 = core_readers._TFRecordDataset(filenames)
+    dataset2 = dataset2.apply(
+        snapshot.snapshot(tmpdir, shuffle_on_read=True, shuffle_seed=123456))
+    next2 = self.getNext(dataset2)
+
+    dataset3 = core_readers._TFRecordDataset(filenames)
+    dataset3 = dataset3.apply(
+        snapshot.snapshot(tmpdir, shuffle_on_read=True, shuffle_seed=123456))
+    next3 = self.getNext(dataset3)
+
+    # make sure that the items are read back in the same order for both datasets
+    for _ in range(500):
+      res2 = self.evaluate(next2())
+      res3 = self.evaluate(next3())
+      self.assertEqual(res2, res3)
 
   @combinations.generate(test_base.default_test_combinations())
   def testReadSnapshotParallelAfterWrite(self):

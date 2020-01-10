@@ -223,7 +223,6 @@ TfLiteStatus PopulateInputLayerInfo(
 
   // Populate input value range if it's specified.
   std::vector<std::string> value_ranges = Split(value_ranges_string, ':');
-  std::vector<int> tmp_range;
   for (const auto val : value_ranges) {
     std::vector<std::string> name_range = Split(val, ',');
     if (name_range.size() != 3) {
@@ -669,7 +668,7 @@ BenchmarkTfLiteModel::TfLiteDelegatePtrMap BenchmarkTfLiteModel::GetDelegates()
           TFLITE_GPU_INFERENCE_PRIORITY_MAX_PRECISION;
     }
     Interpreter::TfLiteDelegatePtr delegate =
-        evaluation::CreateGPUDelegate(model_.get(), &gpu_opts);
+        evaluation::CreateGPUDelegate(&gpu_opts);
 #elif defined(REAL_IPHONE_DEVICE)
     TFLGpuDelegateOptions gpu_opts = {0};
     gpu_opts.allow_precision_loss =
@@ -695,8 +694,7 @@ BenchmarkTfLiteModel::TfLiteDelegatePtrMap BenchmarkTfLiteModel::GetDelegates()
 #else
     TFLITE_LOG(WARN) << "The GPU delegate compile options are only supported "
                         "to be benchmarked on Android or iOS platforms.";
-    Interpreter::TfLiteDelegatePtr delegate =
-        evaluation::CreateGPUDelegate(model_.get());
+    Interpreter::TfLiteDelegatePtr delegate = evaluation::CreateGPUDelegate();
 #endif
 
     if (!delegate) {

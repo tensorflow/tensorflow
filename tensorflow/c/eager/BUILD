@@ -28,6 +28,7 @@ tf_cuda_library(
         "c_api_experimental.h",
         "c_api_internal.cc",
         "c_api_internal.h",
+        "tensor_handle_interface.h",
     ],
     hdrs = ["c_api.h"],
     copts = tf_copts() + tfe_xla_copts(),
@@ -88,9 +89,25 @@ tf_cuda_library(
     alwayslink = 1,
 )
 
+filegroup(
+    name = "pywrap_eager_hdrs",
+    srcs = [
+        "c_api_experimental.h",
+        "c_api_internal.h",
+        "tensor_handle_interface.h",
+    ],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/python:__pkg__",
+    ],
+)
+
 tf_cuda_library(
     name = "c_api_internal",
-    srcs = ["c_api_experimental.h"],
+    srcs = [
+        "c_api_experimental.h",
+        "tensor_handle_interface.h",
+    ],
     hdrs = ["c_api_internal.h"],
     visibility = [
         "//learning/deepmind/courier:__subpackages__",

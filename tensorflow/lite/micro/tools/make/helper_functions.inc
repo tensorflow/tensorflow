@@ -99,6 +99,40 @@ list_$(3)_$(1)_files:
 ALL_PROJECT_TARGETS += generate_$(3)_$(1)_project
 endef
 
+# Creates a set of rules to build a standalone makefile project for the ARC platform
+# including all of the source and header files required in a
+# separate folder and a simple makefile.
+# Arguments are:
+# 1 - Project type (make, mbed, etc).
+# 2 - Project file template name.
+# 3 - Name of executable.
+# 4 - List of C/C++ source files needed to build the target.
+# 5 - List of C/C++ header files needed to build the target.
+# 6 - Linker flags required.
+# 7 - C++ compilation flags needed.
+# 8 - C compilation flags needed.
+# Calling eval on the output will create a <Name>_makefile target that you
+# can invoke to create the standalone project.
+define generate_arc_project
+
+ifeq ($(TARGET_ARCH), arc)
+$(PRJDIR)$(3)/$(1)/Makefile: tensorflow/lite/micro/tools/make/templates/Makefile.tpl
+	@mkdir -p $$(dir $$@)
+	@sed -E 's#\%\{SRCS\}\%#$(4)#g' $$< | \
+	sed -E '1 i\CC = ccac\nCXX = ccac\nLD = ccac\n' | \
+	sed -E 's#\%\{EXECUTABLE\}\%#$(3).elf#g' | \
+	sed -E 's#\%\{LINKER_FLAGS\}\%#$(6)#g' | \
+	sed -E 's#\%\{CXX_FLAGS\}\%#$(7)#g' | \
+	sed -E 's#\%\{CC_FLAGS\}\%#$(8)#g' > $$@
+
+# Special rule to copy TCF in case the local filesystem file name has been defined
+ifneq ($(TCF_FILE_NAME), )
+$(PRJDIR)$(3)/$(1)/$(TCF_FILE_NAME): $(TCF_FILE)
+	@cp $$< $$@
+endif
+endif
+endef
+
 # Creates a set of rules to build a standalone Arduino project for an
 # executable, including all of the source and header files required in a
 # separate folder and a simple makefile.
@@ -303,6 +337,7 @@ endef
 # generate the standalone project.
 define generate_microlite_projects
 $(call generate_project,make,$(MAKE_PROJECT_FILES),$(1),$(MICROLITE_CC_SRCS) $(THIRD_PARTY_CC_SRCS) $(2),$(MICROLITE_CC_HDRS) $(THIRD_PARTY_CC_HDRS) $(MICROLITE_TEST_HDRS) $(3),$(LDFLAGS) $(MICROLITE_LIBS),$(CXXFLAGS) $(GENERATED_PROJECT_INCLUDES), $(CCFLAGS) $(GENERATED_PROJECT_INCLUDES))
+$(call generate_arc_project,make,$(MAKE_PROJECT_FILES),$(1),$(MICROLITE_CC_SRCS) $(THIRD_PARTY_CC_SRCS) $(2),$(MICROLITE_CC_HDRS) $(THIRD_PARTY_CC_HDRS) $(MICROLITE_TEST_HDRS) $(3),$(LDFLAGS) $(GENERATED_PROJECT_LIBS),$(CXXFLAGS) $(GENERATED_PROJECT_INCLUDES), $(CCFLAGS) $(GENERATED_PROJECT_INCLUDES))
 $(call generate_project,mbed,$(MBED_PROJECT_FILES),$(1),$(MICROLITE_CC_SRCS) $(THIRD_PARTY_CC_SRCS) $(2),$(MICROLITE_CC_HDRS) $(THIRD_PARTY_CC_HDRS) $(MICROLITE_TEST_HDRS) $(3),$(MICROLITE_LIBS),$(CXXFLAGS),$(CCFLAGS))
 $(call generate_project,keil,$(KEIL_PROJECT_FILES),$(1),$(MICROLITE_CC_SRCS) $(THIRD_PARTY_CC_SRCS) $(2),$(MICROLITE_CC_HDRS) $(THIRD_PARTY_CC_HDRS) $(MICROLITE_TEST_HDRS) $(3),$(MICROLITE_LIBS),$(CXXFLAGS),$(CCFLAGS))
 $(call generate_arduino_project,$(ARDUINO_PROJECT_FILES),$(1),$(MICROLITE_CC_SRCS) $(THIRD_PARTY_CC_SRCS) $(2),$(MICROLITE_CC_HDRS) $(THIRD_PARTY_CC_HDRS) $(MICROLITE_TEST_HDRS) $(3),$(MICROLITE_LIBS),$(CXXFLAGS),$(CCFLAGS))
@@ -347,10 +382,11 @@ endef
 # 2 - MD5 sum of archive, to check integrity. Use md5sum tool to generate.
 # 3 - Folder name to unpack library into, inside tf/l/x/m/t/downloads root.
 # 4 - Optional patching action, must match clause in download_and_extract.sh.
+# 5 - Optional patching action parameter
 # These arguments are packed into a single '!' separated string, so no element
 # can contain a '!'.
 define add_third_party_download
-THIRD_PARTY_DOWNLOADS += $(1)!$(2)!tensorflow/lite/micro/tools/make/downloads/$(3)!$(4)
+THIRD_PARTY_DOWNLOADS += $(1)!$(2)!tensorflow/lite/micro/tools/make/downloads/$(3)!$(4)!$(5)
 endef
 
 # Unpacks an entry in a list of strings created by add_third_party_download, and

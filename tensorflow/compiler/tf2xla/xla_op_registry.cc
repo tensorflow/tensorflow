@@ -140,7 +140,7 @@ XlaOpRegistry::~XlaOpRegistry() = default;
 
   // Lazily register the CPU and GPU JIT devices the first time
   // GetCompilationDevice is called.
-  static void* registration_init = [&registry]() {
+  {
     MarkForCompilationPassFlags* flags = GetMarkForCompilationPassFlags();
     bool cpu_global_jit = flags->tf_xla_cpu_global_jit;
     VLOG(2) << "tf_xla_cpu_global_jit = " << cpu_global_jit;
@@ -162,9 +162,7 @@ XlaOpRegistry::~XlaOpRegistry() = default;
       registration.autoclustering_policy =
           XlaOpRegistry::AutoclusteringPolicy::kIfEnabledGlobally;
     }
-    return nullptr;
-  }();
-  (void)registration_init;
+  }
 
   mutex_lock lock(registry.mutex_);
   auto it = registry.compilation_devices_.find(device_name);

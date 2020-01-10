@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <Python.h>
 
-#include "pybind11/pybind11.h"
+#include "include/pybind11/pybind11.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
@@ -28,7 +28,7 @@ namespace tensorflow {
 
 namespace internal {
 
-PyObject* CodeToPyExc(const int code) {
+inline PyObject* CodeToPyExc(const int code) {
   switch (code) {
     case error::Code::INVALID_ARGUMENT:
       return PyExc_ValueError;
@@ -41,11 +41,11 @@ PyObject* CodeToPyExc(const int code) {
   }
 }
 
-PyObject* StatusToPyExc(const Status& status) {
+inline PyObject* StatusToPyExc(const Status& status) {
   return CodeToPyExc(status.code());
 }
 
-PyObject* TFStatusToPyExc(const TF_Status* status) {
+inline PyObject* TFStatusToPyExc(const TF_Status* status) {
   return CodeToPyExc(TF_GetCode(status));
 }
 

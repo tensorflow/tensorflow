@@ -121,7 +121,7 @@ func @ref_tf_executor_ops(%arg0: tensor<4x!tf.f32ref>, %arg1: tensor<4x!tf.f32re
 
 // -----
 
-// Tests if empty island with just control dependency inputs and output is
+// Tests if empty island with just one control dependency input and output is
 // handled correctly.
 // CHECK-LABEL: func @empty_island_control_dep_only
 func @empty_island_control_dep_only() -> tensor<i32> {
@@ -138,15 +138,50 @@ func @empty_island_control_dep_only() -> tensor<i32> {
     }
     // CHECK-NEXT: %[[CONST2:[0-9]*]]:2 = "_tf.Const"()
     // CHECK-SAME: () -> (tensor<i32>, !_tf.control)
-    %2 = tf_executor.island(%0#1, %1#1) {
+    %2 = tf_executor.island(%0#1) {
       tf_executor.yield
     }
-    %3:2 = tf_executor.island(%2) {
+    %3:2 = tf_executor.island(%2, %1#1) {
       %6 = "tf.Add"(%0#0, %1#0) : (tensor<i32>, tensor<i32>) -> tensor<i32>
       tf_executor.yield %6 : tensor<i32>
     }
     // CHECK-NEXT: %[[ADD:[0-9]*]]:2 = "_tf.Add"(%[[CONST1]]#0, %[[CONST2]]#0, %[[CONST1]]#1, %[[CONST2]]#1)
     // CHECK-SAME: (tensor<i32>, tensor<i32>, !_tf.control, !_tf.control) -> (tensor<i32>, !_tf.control)
+    tf_executor.fetch %3#0 : tensor<i32>
+  }
+  return %fetch : tensor<i32>
+}
+
+// -----
+
+// Tests if empty island with multiple control inputs will be replaced with a
+// no-op.
+// CHECK-LABEL: func @empty_island_multi_control_inputs
+func @empty_island_multi_control_inputs() -> tensor<i32> {
+  %fetch = tf_executor.graph {
+    %0:2 = tf_executor.island {
+      %4 = "tf.Const"() {device = "", dtype = "tfdtype$DT_INT32", name = "Const", value = dense<1> : tensor<i32>} : () -> tensor<i32>
+      tf_executor.yield %4 : tensor<i32>
+    }
+    // CHECK-NEXT: %[[CONST1:[0-9]*]]:2 = "_tf.Const"()
+    // CHECK-SAME: () -> (tensor<i32>, !_tf.control)
+    %1:2 = tf_executor.island {
+      %5 = "tf.Const"() {device = "", dtype = "tfdtype$DT_INT32", name = "Const", value = dense<1> : tensor<i32>} : () -> tensor<i32>
+      tf_executor.yield %5 : tensor<i32>
+    }
+    // CHECK-NEXT: %[[CONST2:[0-9]*]]:2 = "_tf.Const"()
+    // CHECK-SAME: () -> (tensor<i32>, !_tf.control)
+    %2 = tf_executor.island(%0#1, %1#1) {
+      tf_executor.yield
+    }
+    // CHECK-NEXT: %[[NOOP:[0-9]*]] = "_tf.NoOp"(%[[CONST1]]#1, %[[CONST2]]#1)
+    // CHECK-SAME: (!_tf.control, !_tf.control) -> !_tf.control
+    %3:2 = tf_executor.island(%2) {
+      %6 = "tf.Add"(%0#0, %1#0) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+      tf_executor.yield %6 : tensor<i32>
+    }
+    // CHECK-NEXT: %[[ADD:[0-9]*]]:2 = "_tf.Add"(%[[CONST1]]#0, %[[CONST2]]#0, %[[NOOP]])
+    // CHECK-SAME: (tensor<i32>, tensor<i32>, !_tf.control) -> (tensor<i32>, !_tf.control)
     tf_executor.fetch %3#0 : tensor<i32>
   }
   return %fetch : tensor<i32>

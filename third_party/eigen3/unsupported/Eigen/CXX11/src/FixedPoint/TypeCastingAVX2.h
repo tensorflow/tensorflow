@@ -44,6 +44,25 @@ pcast<Packet8q32i, Packet32q8i>(const Packet8q32i& a, const Packet8q32i& b,
 }
 
 template <>
+struct type_casting_traits<float, QInt8> {
+  enum { VectorizedCast = 1, SrcCoeffRatio = 4, TgtCoeffRatio = 1 };
+};
+
+template <>
+EIGEN_STRONG_INLINE Packet32q8i
+pcast<Packet8f, Packet32q8i>(const Packet8f& a, const Packet8f& b,
+                                const Packet8f& c, const Packet8f& d) {
+  const __m256i a_conv = _mm256_cvtps_epi32(a);
+  const __m256i b_conv = _mm256_cvtps_epi32(b);
+  const __m256i c_conv = _mm256_cvtps_epi32(c);
+  const __m256i d_conv = _mm256_cvtps_epi32(d);
+  __m256i converted = _mm256_packs_epi16(_mm256_packs_epi32(a_conv, b_conv),
+                                         _mm256_packs_epi32(c_conv, d_conv));
+  const __m256i permute_mask = _mm256_set_epi32(7, 3, 6, 2, 5, 1, 4, 0);
+  return _mm256_permutevar8x32_epi32(converted, permute_mask);
+}
+
+template <>
 struct type_casting_traits<QInt32, QUInt8> {
   enum { VectorizedCast = 1, SrcCoeffRatio = 4, TgtCoeffRatio = 1 };
 };

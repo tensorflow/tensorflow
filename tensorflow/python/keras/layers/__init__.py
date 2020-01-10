@@ -44,6 +44,7 @@ else:
   from tensorflow.python.keras.layers.preprocessing.text_vectorization_v1 import TextVectorization
   from tensorflow.python.keras.layers.preprocessing.text_vectorization import TextVectorization as TextVectorizationV2
   TextVectorizationV1 = TextVectorization
+from tensorflow.python.keras.layers.preprocessing.image_preprocessing import Rescaling
 
 # Advanced activations.
 from tensorflow.python.keras.layers.advanced_activations import LeakyReLU

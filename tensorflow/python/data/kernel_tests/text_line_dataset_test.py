@@ -103,13 +103,13 @@ class TextLineDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     # Basic test: read from both files.
     expected_output = [self._lineText(0, i) for i in range(5)]
-    expected_output.extend([self._lineText(1, i) for i in range(5)])
+    expected_output.extend(self._lineText(1, i) for i in range(5))
     self.assertDatasetProduces(
         dataset_fn(test_filenames, 1), expected_output=expected_output)
 
     # Test repeated iteration through both files.
     expected_output = [self._lineText(0, i) for i in range(5)]
-    expected_output.extend([self._lineText(1, i) for i in range(5)])
+    expected_output.extend(self._lineText(1, i) for i in range(5))
     self.assertDatasetProduces(
         dataset_fn(test_filenames, 10), expected_output=expected_output * 10)
 
@@ -125,7 +125,7 @@ class TextLineDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     files = dataset_ops.Dataset.from_tensor_slices(test_filenames).repeat(10)
     expected_output = []
     for j in range(10):
-      expected_output.extend([self._lineText(j, i) for i in range(10)])
+      expected_output.extend(self._lineText(j, i) for i in range(10))
     dataset = readers.TextLineDataset(files, num_parallel_reads=4)
     self.assertDatasetProduces(
         dataset, expected_output=expected_output * 10, assert_items_equal=True)

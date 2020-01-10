@@ -366,4 +366,35 @@ TEST(OpVersionTest, VersioningTransposeConvOperatorTest) {
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
 }
 
+TEST(OpVersionTest, VersioningSVDFOperatorTest) {
+  OpSignature fake_op_sig = {
+      .op = BuiltinOperator_SVDF,
+      .input_types =
+          std::vector<TensorType>{TensorType_FLOAT32, TensorType_FLOAT32,
+                                  TensorType_FLOAT32, TensorType_FLOAT32,
+                                  TensorType_FLOAT32},
+      .output_types = std::vector<TensorType>{TensorType_FLOAT32},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
+
+  fake_op_sig = {
+      .op = BuiltinOperator_SVDF,
+      .input_types =
+          std::vector<TensorType>{TensorType_FLOAT32, TensorType_INT8,
+                                  TensorType_FLOAT32, TensorType_FLOAT32,
+                                  TensorType_FLOAT32},
+      .output_types = std::vector<TensorType>{TensorType_FLOAT32},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+
+  fake_op_sig = {
+      .op = BuiltinOperator_SVDF,
+      .input_types = std::vector<TensorType>{TensorType_INT8, TensorType_INT8,
+                                             TensorType_INT16, TensorType_INT32,
+                                             TensorType_INT16},
+      .output_types = std::vector<TensorType>{TensorType_INT8},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
+}
+
 }  // namespace tflite

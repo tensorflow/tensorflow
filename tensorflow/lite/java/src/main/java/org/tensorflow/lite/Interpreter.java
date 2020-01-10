@@ -98,7 +98,8 @@ public final class Interpreter implements AutoCloseable {
     /**
      * Sets whether to allow float16 precision for FP32 calculation when possible. Defaults to false
      * (disallow).
-     * WARNING: This is an experimental API and subject to change.
+     *
+     * <p>WARNING: This is an experimental API and subject to change.
      */
     public Options setAllowFp16PrecisionForFp32(boolean allow) {
       this.allowFp16PrecisionForFp32 = allow;
@@ -142,6 +143,8 @@ public final class Interpreter implements AutoCloseable {
    * Initializes a {@code Interpreter}
    *
    * @param modelFile: a File of a pre-trained TF Lite model.
+   * @throws IllegalArgumentException if {@code modelFile} does not encode a valid TensorFlow Lite
+   *     model.
    */
   public Interpreter(@NonNull File modelFile) {
     this(modelFile, /*options = */ null);
@@ -165,6 +168,8 @@ public final class Interpreter implements AutoCloseable {
    *
    * @param modelFile: a file of a pre-trained TF Lite model
    * @param options: a set of options for customizing interpreter behavior
+   * @throws IllegalArgumentException if {@code modelFile} does not encode a valid TensorFlow Lite
+   *     model.
    */
   public Interpreter(@NonNull File modelFile, Options options) {
     wrapper = new NativeInterpreterWrapper(modelFile.getAbsolutePath(), options);
@@ -176,6 +181,9 @@ public final class Interpreter implements AutoCloseable {
    * <p>The ByteBuffer should not be modified after the construction of a {@code Interpreter}. The
    * {@code ByteBuffer} can be either a {@code MappedByteBuffer} that memory-maps a model file, or a
    * direct {@code ByteBuffer} of nativeOrder() that contains the bytes content of a model.
+   *
+   * @throws IllegalArgumentException if {@code byteBuffer} is not a {@link MappedByteBuffer} nor a
+   *     direct {@link Bytebuffer} of nativeOrder.
    */
   public Interpreter(@NonNull ByteBuffer byteBuffer) {
     this(byteBuffer, /* options= */ null);
@@ -216,8 +224,11 @@ public final class Interpreter implements AutoCloseable {
    * {@link #Options}.
    *
    * <p>The ByteBuffer should not be modified after the construction of a {@code Interpreter}. The
-   * {@code ByteBuffer} can be either a {@code MappedByteBuffer} that memory-maps a model file, or a
-   * direct {@code ByteBuffer} of nativeOrder() that contains the bytes content of a model.
+   * {@code ByteBuffer} can be either a {@link MappedByteBuffer} that memory-maps a model file, or a
+   * direct {@link ByteBuffer} of nativeOrder() that contains the bytes content of a model.
+   *
+   * @throws IllegalArgumentException if {@code byteBuffer} is not a {@link MappedByteBuffer} nor a
+   *     direct {@link Bytebuffer} of nativeOrder.
    */
   public Interpreter(@NonNull ByteBuffer byteBuffer, Options options) {
     wrapper = new NativeInterpreterWrapper(byteBuffer, options);
@@ -251,6 +262,8 @@ public final class Interpreter implements AutoCloseable {
    *     that it is set the appropriate write position. A null value is allowed only if the caller
    *     is using a {@link Delegate} that allows buffer handle interop, and such a buffer has been
    *     bound to the output {@link Tensor}. See {@link Options#setAllowBufferHandleOutput()}.
+   * @throws IllegalArgumentException if {@code input} or {@code output} is null or empty, or if
+   *     error occurs when running the inference.
    */
   public void run(Object input, Object output) {
     Object[] inputs = {input};
@@ -289,6 +302,8 @@ public final class Interpreter implements AutoCloseable {
    *     Buffer}s of primitive types including int, float, long, and byte. It only needs to keep
    *     entries for the outputs to be used. When a {@link Buffer} is used, the caller must ensure
    *     that it is set the appropriate write position.
+   * @throws IllegalArgumentException if {@code inputs} or {@code outputs} is null or empty, or if
+   *     error occurs when running the inference.
    */
   public void runForMultipleInputsOutputs(
       @NonNull Object[] inputs, @NonNull Map<Integer, Object> outputs) {
@@ -299,7 +314,8 @@ public final class Interpreter implements AutoCloseable {
   /**
    * Resizes idx-th input of the native model to the given dims.
    *
-   * <p>IllegalArgumentException will be thrown if it fails to resize.
+   * @throws IllegalArgumentException if {@code idx} is negtive or is not smaller than the number of
+   *     model inputs; or if error occurs when resizing the idx-th input.
    */
   public void resizeInput(int idx, @NonNull int[] dims) {
     checkNotClosed();
@@ -315,8 +331,8 @@ public final class Interpreter implements AutoCloseable {
   /**
    * Gets index of an input given the op name of the input.
    *
-   * <p>IllegalArgumentException will be thrown if the op name does not exist in the model file used
-   * to initialize the {@link Interpreter}.
+   * @throws IllegalArgumentException if {@code opName} does not match any input in the model used
+   *     to initialize the {@link Interpreter}.
    */
   public int getInputIndex(String opName) {
     checkNotClosed();
@@ -326,7 +342,8 @@ public final class Interpreter implements AutoCloseable {
   /**
    * Gets the Tensor associated with the provdied input index.
    *
-   * <p>IllegalArgumentException will be thrown if the provided index is invalid.
+   * @throws IllegalArgumentException if {@code inputIndex} is negtive or is not smaller than the
+   *     number of model inputs.
    */
   public Tensor getInputTensor(int inputIndex) {
     checkNotClosed();
@@ -342,8 +359,8 @@ public final class Interpreter implements AutoCloseable {
   /**
    * Gets index of an output given the op name of the output.
    *
-   * <p>IllegalArgumentException will be thrown if the op name does not exist in the model file used
-   * to initialize the {@link Interpreter}.
+   * @throws IllegalArgumentException if {@code opName} does not match any output in the model used
+   *     to initialize the {@link Interpreter}.
    */
   public int getOutputIndex(String opName) {
     checkNotClosed();
@@ -353,7 +370,8 @@ public final class Interpreter implements AutoCloseable {
   /**
    * Gets the Tensor associated with the provdied output index.
    *
-   * <p>IllegalArgumentException will be thrown if the provided index is invalid.
+   * @throws IllegalArgumentException if {@code outputIndex} is negtive or is not smaller than the
+   *     number of model outputs.
    */
   public Tensor getOutputTensor(int outputIndex) {
     checkNotClosed();
@@ -363,8 +381,7 @@ public final class Interpreter implements AutoCloseable {
   /**
    * Returns native inference timing.
    *
-   * <p>IllegalArgumentException will be thrown if the model is not initialized by the {@link
-   * Interpreter}.
+   * @throws IllegalArgumentException if the model is not initialized by the {@link Interpreter}.
    */
   public Long getLastNativeInferenceDurationNanoseconds() {
     checkNotClosed();
@@ -403,6 +420,8 @@ public final class Interpreter implements AutoCloseable {
    * interaction between Interpeter creation and delegate application.
    *
    * <p>WARNING: This is an experimental API and subject to change.
+   *
+   * @throws IllegalArgumentException if error occurs when modifying graph with {@code delegate}.
    */
   public void modifyGraphWithDelegate(Delegate delegate) {
     checkNotClosed();

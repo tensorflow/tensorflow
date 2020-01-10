@@ -679,7 +679,10 @@ Status MutableGraphView::SwapNodeNames(absl::string_view from_node_name,
       [this](NodeDef* node, const FanoutsMap::iterator& control_fanouts) {
         if (CanDedupControlWithRegularInput(*this, *node) &&
             control_fanouts != fanouts().end()) {
-          for (const auto& control_fanout : control_fanouts->second) {
+          for (auto it = control_fanouts->second.begin();
+               it != control_fanouts->second.end();) {
+            // Advance `it` before invalidation from removal.
+            const auto& control_fanout = *it++;
             if (HasRegularFaninNode(*this, *control_fanout.node,
                                     node->name())) {
               RemoveControllingFaninInternal(control_fanout.node, node);

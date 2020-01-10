@@ -71,8 +71,7 @@ void ConvertCompleteEventsToXPlane(uint64 start_timestamp_ns,
   absl::flat_hash_map<string, XEventMetadata*> xevent_metadata_by_name;
   absl::flat_hash_map<string, XStatMetadata*> xstat_metadata_by_name;
   for (const auto& thread : events) {
-    XLineBuilder xline = xplane.AddLine();
-    xline.SetId(thread.thread.tid);
+    XLineBuilder xline = xplane.GetOrCreateLine(thread.thread.tid);
     xline.SetName(thread.thread.name);
     xline.SetTimestampNs(start_timestamp_ns);
     xline.ReserveEvents(thread.events.size());

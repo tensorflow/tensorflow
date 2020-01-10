@@ -37,23 +37,26 @@ See the [TensorFlow install guide](https://www.tensorflow.org/install) for the
 [Docker container](https://www.tensorflow.org/install/docker), and
 [build from source](https://www.tensorflow.org/install/source).
 
-To install the current release for CPU-only:
+To install the current release, which includes support for
+[CUDA-enabled GPU cards](https://www.tensorflow.org/install/gpu) *(Ubuntu and
+Windows)*:
 
 ```
 $ pip install tensorflow
 ```
 
-Use the GPU package for
-[CUDA-enabled GPU cards](https://www.tensorflow.org/install/gpu) *(Ubuntu and
-Windows)*:
+A smaller CPU-only package is also available:
 
 ```
-$ pip install tensorflow-gpu
+$ pip install tensorflow-cpu
 ```
+
+To update TensorFlow to the latest version, add `--upgrade` flag to the above
+commands.
 
 *Nightly binaries are available for testing using the
 [tf-nightly](https://pypi.python.org/pypi/tf-nightly) and
-[tf-nightly-gpu](https://pypi.python.org/pypi/tf-nightly-gpu) packages on PyPi.*
+[tf-nightly-cpu](https://pypi.python.org/pypi/tf-nightly-cpu) packages on PyPi.*
 
 #### *Try your first TensorFlow program*
 
@@ -147,17 +150,3 @@ Learn more about the
 ## License
 
 [Apache License 2.0](LICENSE)
-
-## Feature Prioritization Survey
-
-The TensorFlow team is working on building/improving features, and understands
-that it is very important to prioritize these efforts based on what TF users
-need.
-
-The goal of this short, < 5min
-[survey](https://google.qualtrics.com/jfe/form/SV_d5nqhCEbkDkQ7ad), is to help
-the TensorFlow team better understand what features to prioritize based on your
-feedback. Participation is of course optional.
-
-Take the survey
-[HERE](https://google.qualtrics.com/jfe/form/SV_d5nqhCEbkDkQ7ad).

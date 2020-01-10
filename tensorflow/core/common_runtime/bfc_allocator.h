@@ -405,10 +405,6 @@ class BFCAllocator : public Allocator {
   // contiguous in their allocation.
   void Merge(ChunkHandle h, ChunkHandle h2) EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
-  // Frees the memory represented by 'h', coalescing the chunk if
-  // possible.
-  void FreeAndMaybeCoalesce(ChunkHandle h) EXCLUSIVE_LOCKS_REQUIRED(lock_);
-
   // Adds the chunk 'h' to the proper free bin.
   void InsertFreeChunkIntoBin(ChunkHandle h) EXCLUSIVE_LOCKS_REQUIRED(lock_);
 

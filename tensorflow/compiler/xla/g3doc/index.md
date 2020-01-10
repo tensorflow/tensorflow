@@ -81,32 +81,19 @@ For a detailed usage example, see the
 ### Explicit compilation
 
 Explicit compilation API offers a more fine-grained control for choosing which
-functions should be compiled with XLA. However, it requires restructuring source
-code, as not all TensorFlow operations can be represented in XLA. That is, using
-explicit compilation on API on functions which can not be represented in XLA
-results in an exception.
+functions should be compiled with XLA. However, it might require restructuring
+of the source code, as not all TensorFlow operations can be represented in XLA.
 
-#### TF2: Use `@tf.function(experimental_compile=True)`
+Note: Using the explicit compilation on API on functions which can not be
+represented in XLA results in an exception.
 
 Optimizing sections of the program using
 [`tf.function`](https://www.tensorflow.org/api_docs/python/tf/function) is a
-standard approach for
-[improving performance](https://www.tensorflow.org/tutorials/customization/performance)
-of TF2 programs. You can enable compilation with XLA by setting the
-`experimental_compile` argument of `tf.function` to `True`.
-
-Note: `experimental_compile` only works in
-[eager](https://www.tensorflow.org/guide/eager) mode.
-
-#### TF1: Use `xla.compile`
-
-If you are using TF1, you can use the `xla.compile` API for explicit compilation
-using XLA. See the [tutorial colab](./tutorials/xla_compile.ipynb) for usage
-examples.
-
-Note: Gradient computation of graph in `xla.compile()` is prohibited because it
-can cause performance degradation. To avoid this issue, move gradient
-computation inside `xla.compile()`.
+standard approach for [improving
+performance](https://www.tensorflow.org/tutorials/customization/performance) of
+TF2 programs. You can enable compilation with XLA by setting the
+`experimental_compile` argument of `tf.function` to `True`. See the [tutorial
+colab](./tutorials/experimental_compile.ipynb) for usage examples.
 
 ### AOT (Ahead-of-time) compilation for CPU with `tfcompile`
 

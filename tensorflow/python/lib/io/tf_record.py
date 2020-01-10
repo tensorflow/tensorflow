@@ -19,8 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python import pywrap_tensorflow
-from tensorflow.python.framework import errors
+from tensorflow.python import _pywrap_record_io
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
@@ -127,7 +126,7 @@ class TFRecordOptions(object):
 
   def _as_record_writer_options(self):
     """Convert to RecordWriterOptions for use with PyRecordWriter."""
-    options = pywrap_tensorflow.RecordWriterOptions_CreateRecordWriterOptions(
+    options = _pywrap_record_io.RecordWriterOptions(
         compat.as_bytes(
             self.get_compression_type_string(self.compression_type)))
 
@@ -162,34 +161,61 @@ def tf_record_iterator(path, options=None):
     path: The path to the TFRecords file.
     options: (optional) A TFRecordOptions object.
 
-  Yields:
-    Strings.
+  Returns:
+    An iterator of serialized TFRecords.
 
   Raises:
     IOError: If `path` cannot be opened for reading.
   """
   compression_type = TFRecordOptions.get_compression_type_string(options)
-  with errors.raise_exception_on_not_ok_status() as status:
-    reader = pywrap_tensorflow.PyRecordReader_New(
-        compat.as_bytes(path), 0, compat.as_bytes(compression_type), status)
+  return _pywrap_record_io.RecordIterator(path, compression_type)
 
-  if reader is None:
-    raise IOError("Could not open %s." % path)
-  try:
-    while True:
-      try:
-        reader.GetNext()
-      except errors.OutOfRangeError:
-        break
-      yield reader.record()
-  finally:
-    reader.Close()
+
+def tf_record_random_reader(path):
+  """Creates a reader that allows random-access reads from a TFRecords file.
+
+  The created reader object has the following method:
+
+    - `read(offset)`, which returns a tuple of `(record, ending_offset)`, where
+      `record` is the TFRecord read at the offset, and
+      `ending_offset` is the ending offset of the read record.
+
+      The method throws a `tf.errors.DataLossError` if data is corrupted at
+      the given offset. The method throws `IndexError` if the offset is out of
+      range for the TFRecords file.
+
+
+  Usage example:
+  ```py
+  reader = tf_record_random_reader(file_path)
+
+  record_1, offset_1 = reader.read(0)  # 0 is the initial offset.
+  # offset_1 is the ending offset of the 1st record and the starting offset of
+  # the next.
+
+  record_2, offset_2 = reader.read(offset_1)
+  # offset_2 is the ending offset of the 2nd record and the starting offset of
+  # the next.
+  # We can jump back and read the first record again if so desired.
+  reader.read(0)
+  ```
+
+  Args:
+    path: The path to the TFRecords file.
+
+  Returns:
+    An object that supports random-access reading of the serialized TFRecords.
+
+  Raises:
+    IOError: If `path` cannot be opened for reading.
+  """
+  return _pywrap_record_io.RandomRecordReader(path)
 
 
 @tf_export(
     "io.TFRecordWriter", v1=["io.TFRecordWriter", "python_io.TFRecordWriter"])
 @deprecation.deprecated_endpoints("python_io.TFRecordWriter")
-class TFRecordWriter(object):
+class TFRecordWriter(_pywrap_record_io.RecordWriter):
   """A class to write records to a TFRecords file.
 
   [TFRecords tutorial](https://www.tensorflow.org/tutorials/load_data/tfrecord)
@@ -268,35 +294,29 @@ class TFRecordWriter(object):
     if not isinstance(options, TFRecordOptions):
       options = TFRecordOptions(compression_type=options)
 
-    with errors.raise_exception_on_not_ok_status() as status:
-      # pylint: disable=protected-access
-      self._writer = pywrap_tensorflow.PyRecordWriter_New(
-          compat.as_bytes(path), options._as_record_writer_options(), status)
-      # pylint: enable=protected-access
+    # pylint: disable=protected-access
+    super(TFRecordWriter, self).__init__(
+        compat.as_bytes(path), options._as_record_writer_options())
+    # pylint: enable=protected-access
 
-  def __enter__(self):
-    """Enter a `with` block."""
-    return self
-
-  def __exit__(self, unused_type, unused_value, unused_traceback):
-    """Exit a `with` block, closing the file."""
-    self.close()
-
+  # TODO(slebedev): The following wrapper methods are there to compensate
+  # for lack of signatures in pybind11-generated classes. Switch to
+  # __text_signature__ when TensorFlow drops Python 2.X support.
+  # See https://github.com/pybind/pybind11/issues/945
+  # pylint: disable=useless-super-delegation
   def write(self, record):
     """Write a string record to the file.
 
     Args:
       record: str
     """
-    with errors.raise_exception_on_not_ok_status() as status:
-      self._writer.WriteRecord(record, status)
+    super(TFRecordWriter, self).write(record)
 
   def flush(self):
     """Flush the file."""
-    with errors.raise_exception_on_not_ok_status() as status:
-      self._writer.Flush(status)
+    super(TFRecordWriter, self).flush()
 
   def close(self):
     """Close the file."""
-    with errors.raise_exception_on_not_ok_status() as status:
-      self._writer.Close(status)
+    super(TFRecordWriter, self).close()
+  # pylint: enable=useless-super-delegation

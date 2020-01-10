@@ -15,29 +15,80 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 
+#include "absl/strings/string_view.h"
+
 namespace tensorflow {
 namespace profiler {
 
 const absl::string_view kHostThreads = "Host Threads";
+const absl::string_view kGpuPlanePrefix = "GPU:";
 
-const int kNumStatTypes = static_cast<int>(StatType::kHloModule) + 1;
+constexpr int kNumHostEventTypes =
+    HostEventType::kLastHostEventType - HostEventType::kFirstHostEventType + 1;
 
-static const absl::string_view kStatTypeStrMap[kNumStatTypes] = {
-    "unknown",         "id",
+constexpr int kNumStatTypes =
+    StatType::kLastStatType - StatType::kFirstStatType + 1;
+
+static const absl::string_view kHostEventTypeMetadataMap[] = {
+    "UnknownHostEventType",
+    "TraceContext",
+    "SessionRun",
+    "FunctionRun",
+    "RunGraph",
+    "EagerKernelExecute",
+    "ExecutorState::Process",
+    "ExecutorDoneCallback",
+    // tf data captured function events.
+    "InstantiatedCapturedFunction::Run",
+    "InstantiatedCapturedFunction::RunWithBorrowedArgs",
+    "InstantiatedCapturedFunction::RunInstantiated",
+    "InstantiatedCapturedFunction::RunAsync",
+    // Functional ops.
+    "CallOp",
+    "ParallelForOp",
+    "ForeverOp",
+    "NumericalGradientOp-EvalRight",
+    "NumericalGradientOp-EvalLeft",
+    "SymbolicGradientOp",
+    "RemoteCallOp",
+    "IfOp",
+    "CaseOp",
+    "WhileOp-EvalCond",
+    "WhileOp-StartBody",
+    "ForOp",
+    "PartitionedCallOp",
+};
+
+static_assert(sizeof(kHostEventTypeMetadataMap) / sizeof(absl::string_view) ==
+                  kNumHostEventTypes,
+              "Mismatch between enum and string map.");
+
+static const absl::string_view kStatTypeStrMap[] = {
+    "UnknownStatType", "id",
     "parent_step_id",  "function_step_id",
     "device_ordinal",  "chip_ordinal",
     "node_ordinal",    "model_id",
     "queue_addr",      "request_id",
-    "run_id",          "correlation_id",
-    "graph_type",      "step_num",
-    "iter_num",        "index_on_host",
-    "bytes_reserved",  "bytes_allocated",
-    "bytes_available", "fragmentation",
+    "run_id",          "graph_type",
+    "step_num",        "iter_num",
+    "index_on_host",   "bytes_reserved",
+    "bytes_allocated", "bytes_available",
+    "fragmentation",   "device_id",
+    "context_id",      "correlation_id",
+    "memcpy_details",  "memalloc_details",
     "kernel_details",  "group_id",
     "step_name",       "level 0",
     "tf_op",           "hlo_op",
     "hlo_module",
 };
+
+static_assert(sizeof(kStatTypeStrMap) / sizeof(absl::string_view) ==
+                  kNumStatTypes,
+              "Mismatch between enum and string map.");
+
+absl::Span<const absl::string_view> GetHostEventTypeStrMap() {
+  return absl::MakeConstSpan(kHostEventTypeMetadataMap, kNumHostEventTypes);
+}
 
 absl::Span<const absl::string_view> GetStatTypeStrMap() {
   return absl::MakeConstSpan(kStatTypeStrMap, kNumStatTypes);

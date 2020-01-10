@@ -247,7 +247,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_LOGICAL_NOT, Register_LOGICAL_NOT());
   AddBuiltin(BuiltinOperator_UNPACK, Register_UNPACK(),
              /* min_version */ 1,
-             /* max_version */ 2);
+             /* max_version */ 3);
   AddBuiltin(BuiltinOperator_FLOOR_DIV, Register_FLOOR_DIV(),
              /* min_version */ 1,
              /* max_version */ 2);
@@ -260,7 +260,9 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_FILL, Register_FILL());
   AddBuiltin(BuiltinOperator_MIRROR_PAD, Register_MIRROR_PAD());
   AddBuiltin(BuiltinOperator_UNIQUE, Register_UNIQUE());
-  AddBuiltin(BuiltinOperator_REVERSE_V2, Register_REVERSE_V2());
+  AddBuiltin(BuiltinOperator_REVERSE_V2, Register_REVERSE_V2(),
+             /* min_version */ 1,
+             /* max_version */ 2);
   AddBuiltin(BuiltinOperator_ADD_N, Register_ADD_N());
   AddBuiltin(BuiltinOperator_GATHER_ND, Register_GATHER_ND());
   AddBuiltin(BuiltinOperator_WHERE, Register_WHERE());
@@ -278,6 +280,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_NON_MAX_SUPPRESSION_V5,
              Register_NON_MAX_SUPPRESSION_V5());
   AddBuiltin(BuiltinOperator_SCATTER_ND, Register_SCATTER_ND());
+  AddBuiltin(BuiltinOperator_DENSIFY, Register_DENSIFY());
   AddCustom("NumericVerify", tflite::ops::custom::Register_NUMERIC_VERIFY());
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that
   // custom ops aren't always included by default.

@@ -225,7 +225,7 @@ Memory (bytes): count=0
 31 nodes observed
 
 
-Average inference timings in us: Warmup: 83235, Init: 38467, no stats: 79760.9
+Average inference timings in us: Warmup: 83235, Init: 38467, Inference: 79760.9
 ```
 
 ## Benchmark multiple performance options in a single run

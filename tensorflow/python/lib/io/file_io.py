@@ -12,11 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""File IO methods that wrap the C++ FileSystem API.
-
-The C++ FileSystem API is SWIG wrapped in file_io.i. These functions call those
-to accomplish basic File IO operations.
-"""
+"""File IO methods that wrap the C++ FileSystem API."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -27,8 +23,7 @@ import uuid
 
 import six
 
-from tensorflow.python import pywrap_tensorflow
-from tensorflow.python.framework import c_api_util
+from tensorflow.python import _pywrap_file_io
 from tensorflow.python.framework import errors
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
@@ -80,15 +75,15 @@ class FileIO(object):
       if not self._read_check_passed:
         raise errors.PermissionDeniedError(None, None,
                                            "File isn't open for reading")
-      self._read_buf = pywrap_tensorflow.CreateBufferedInputStream(
-          compat.as_bytes(self.__name), 1024 * 512)
+      self._read_buf = _pywrap_file_io.BufferedInputStream(
+          self.__name, 1024 * 512)
 
   def _prewrite_check(self):
     if not self._writable_file:
       if not self._write_check_passed:
         raise errors.PermissionDeniedError(None, None,
                                            "File isn't open for writing")
-      self._writable_file = pywrap_tensorflow.CreateWritableFile(
+      self._writable_file = _pywrap_file_io.WritableFile(
           compat.as_bytes(self.__name), compat.as_bytes(self.__mode))
 
   def _prepare_value(self, val):
@@ -104,8 +99,7 @@ class FileIO(object):
   def write(self, file_content):
     """Writes file_content to the file. Appends to the end of the file."""
     self._prewrite_check()
-    pywrap_tensorflow.AppendToFile(
-        compat.as_bytes(file_content), self._writable_file)
+    self._writable_file.append(compat.as_bytes(file_content))
 
   def read(self, n=-1):
     """Returns the contents of a file as a string.
@@ -124,8 +118,7 @@ class FileIO(object):
       length = self.size() - self.tell()
     else:
       length = n
-    return self._prepare_value(
-        pywrap_tensorflow.ReadFromStream(self._read_buf, length))
+    return self._prepare_value(self._read_buf.read(length))
 
   @deprecation.deprecated_args(
       None, "position is deprecated in favor of the offset argument.",
@@ -158,25 +151,23 @@ class FileIO(object):
     if position is not None:
       offset = position
 
-    with errors.raise_exception_on_not_ok_status() as status:
-      if whence == 0:
-        pass
-      elif whence == 1:
-        offset += self.tell()
-      elif whence == 2:
-        offset += self.size()
-      else:
-        raise errors.InvalidArgumentError(
-            None, None,
-            "Invalid whence argument: {}. Valid values are 0, 1, or 2.".format(
-                whence))
-      ret_status = self._read_buf.Seek(offset)
-      pywrap_tensorflow.Set_TF_Status_from_Status(status, ret_status)
+    if whence == 0:
+      pass
+    elif whence == 1:
+      offset += self.tell()
+    elif whence == 2:
+      offset += self.size()
+    else:
+      raise errors.InvalidArgumentError(
+          None, None,
+          "Invalid whence argument: {}. Valid values are 0, 1, or 2.".format(
+              whence))
+    self._read_buf.seek(offset)
 
   def readline(self):
     r"""Reads the next line from the file. Leaves the '\n' at the end."""
     self._preread_check()
-    return self._prepare_value(self._read_buf.ReadLineAsString())
+    return self._prepare_value(self._read_buf.readline())
 
   def readlines(self):
     """Returns all lines from the file in a list."""
@@ -193,11 +184,11 @@ class FileIO(object):
     """Returns the current position in the file."""
     if self._read_check_passed:
       self._preread_check()
-      return self._read_buf.Tell()
+      return self._read_buf.tell()
     else:
       self._prewrite_check()
 
-      return pywrap_tensorflow.TellFile(self._writable_file)
+      return self._writable_file.tell()
 
   def __enter__(self):
     """Make usable with "with" statement."""
@@ -227,18 +218,14 @@ class FileIO(object):
     data would survive an application crash but not necessarily an OS crash.
     """
     if self._writable_file:
-      with errors.raise_exception_on_not_ok_status() as status:
-        ret_status = self._writable_file.Flush()
-        pywrap_tensorflow.Set_TF_Status_from_Status(status, ret_status)
+      self._writable_file.flush()
 
   def close(self):
     """Closes FileIO. Should be called for the WritableFile to be flushed."""
     self._read_buf = None
     if self._writable_file:
-      with errors.raise_exception_on_not_ok_status() as status:
-        ret_status = self._writable_file.Close()
-        pywrap_tensorflow.Set_TF_Status_from_Status(status, ret_status)
-    self._writable_file = None
+      self._writable_file.close()
+      self._writable_file = None
 
   def seekable(self):
     """Returns True as FileIO supports random access ops of seek()/tell()"""
@@ -277,7 +264,7 @@ def file_exists_v2(path):
     errors.OpError: Propagates any errors reported by the FileSystem API.
   """
   try:
-    pywrap_tensorflow.FileExists(compat.as_bytes(path))
+    _pywrap_file_io.FileExists(compat.as_bytes(path))
   except errors.NotFoundError:
     return False
   return True
@@ -308,7 +295,7 @@ def delete_file_v2(path):
     errors.OpError: Propagates any errors reported by the FileSystem API.  E.g.,
     `NotFoundError` if the path does not exist.
   """
-  pywrap_tensorflow.DeleteFile(compat.as_bytes(path))
+  _pywrap_file_io.DeleteFile(compat.as_bytes(path))
 
 
 def read_file_to_string(filename, binary_mode=False):
@@ -380,7 +367,7 @@ def get_matching_files_v2(pattern):
     return [
         # Convert the filenames to string from bytes.
         compat.as_str_any(matching_filename)
-        for matching_filename in pywrap_tensorflow.GetMatchingFiles(
+        for matching_filename in _pywrap_file_io.GetMatchingFiles(
             compat.as_bytes(pattern))
     ]
   else:
@@ -388,7 +375,7 @@ def get_matching_files_v2(pattern):
         # Convert the filenames to string from bytes.
         compat.as_str_any(matching_filename)  # pylint: disable=g-complex-comprehension
         for single_filename in pattern
-        for matching_filename in pywrap_tensorflow.GetMatchingFiles(
+        for matching_filename in _pywrap_file_io.GetMatchingFiles(
             compat.as_bytes(single_filename))
     ]
 
@@ -422,7 +409,7 @@ def create_dir_v2(path):
   Raises:
     errors.OpError: If the operation fails.
   """
-  pywrap_tensorflow.CreateDir(compat.as_bytes(path))
+  _pywrap_file_io.CreateDir(compat.as_bytes(path))
 
 
 @tf_export(v1=["gfile.MakeDirs"])
@@ -452,7 +439,7 @@ def recursive_create_dir_v2(path):
   Raises:
     errors.OpError: If the operation fails.
   """
-  pywrap_tensorflow.RecursivelyCreateDir(compat.as_bytes(path))
+  _pywrap_file_io.RecursivelyCreateDir(compat.as_bytes(path))
 
 
 @tf_export(v1=["gfile.Copy"])
@@ -484,7 +471,7 @@ def copy_v2(src, dst, overwrite=False):
   Raises:
     errors.OpError: If the operation fails.
   """
-  pywrap_tensorflow.CopyFile(
+  _pywrap_file_io.CopyFile(
       compat.as_bytes(src), compat.as_bytes(dst), overwrite)
 
 
@@ -517,7 +504,7 @@ def rename_v2(src, dst, overwrite=False):
   Raises:
     errors.OpError: If the operation fails.
   """
-  pywrap_tensorflow.RenameFile(
+  _pywrap_file_io.RenameFile(
       compat.as_bytes(src), compat.as_bytes(dst), overwrite)
 
 
@@ -568,7 +555,7 @@ def delete_recursively_v2(path):
   Raises:
     errors.OpError: If the operation fails.
   """
-  pywrap_tensorflow.DeleteRecursively(compat.as_bytes(path))
+  _pywrap_file_io.DeleteRecursively(compat.as_bytes(path))
 
 
 @tf_export(v1=["gfile.IsDirectory"])
@@ -594,8 +581,10 @@ def is_directory_v2(path):
   Returns:
     True, if the path is a directory; False otherwise
   """
-  status = c_api_util.ScopedTFStatus()
-  return pywrap_tensorflow.IsDirectory(compat.as_bytes(path), status)
+  try:
+    return _pywrap_file_io.IsDirectory(compat.as_bytes(path))
+  except errors.OpError:
+    return False
 
 
 @tf_export(v1=["gfile.ListDirectory"])
@@ -643,7 +632,7 @@ def list_directory_v2(path):
   # vector of string should be interpreted as strings, not bytes.
   return [
       compat.as_str_any(filename)
-      for filename in pywrap_tensorflow.GetChildren(compat.as_bytes(path))
+      for filename in _pywrap_file_io.GetChildren(compat.as_bytes(path))
   ]
 
 
@@ -742,9 +731,7 @@ def stat_v2(path):
   Raises:
     errors.OpError: If the operation fails.
   """
-  file_statistics = pywrap_tensorflow.FileStatistics()
-  pywrap_tensorflow.Stat(compat.as_bytes(path), file_statistics)
-  return file_statistics
+  return _pywrap_file_io.Stat(path)
 
 
 def filecmp(filename_a, filename_b):

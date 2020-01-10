@@ -43,6 +43,7 @@ TfLiteRegistration* Register_CEIL();
 TfLiteRegistration* Register_CONCATENATION();
 TfLiteRegistration* Register_CONV_2D();
 TfLiteRegistration* Register_COS();
+TfLiteRegistration* Register_DENSIFY();
 TfLiteRegistration* Register_DEPTH_TO_SPACE();
 TfLiteRegistration* Register_DEPTHWISE_CONV_2D();
 TfLiteRegistration* Register_DEQUANTIZE();

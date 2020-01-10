@@ -17,6 +17,8 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 
 namespace tensorflow {
 namespace tensorrt {
@@ -49,6 +51,102 @@ Status TrtPrecisionModeFromName(const string& name, TrtPrecisionMode* mode) {
     return errors::InvalidArgument("Invalid precision mode name: ", name);
   }
   return Status::OK();
+}
+
+#if GOOGLE_CUDA && GOOGLE_TENSORRT
+using absl::StrAppend;
+using absl::StrCat;
+
+string DebugString(const nvinfer1::DimensionType type) {
+  switch (type) {
+    case nvinfer1::DimensionType::kSPATIAL:
+      return "kSPATIAL";
+    case nvinfer1::DimensionType::kCHANNEL:
+      return "kCHANNEL";
+    case nvinfer1::DimensionType::kINDEX:
+      return "kINDEX";
+    case nvinfer1::DimensionType::kSEQUENCE:
+      return "kSEQUENCE";
+    default:
+      return StrCat(static_cast<int>(type), "=unknown");
+  }
+}
+
+string DebugString(const nvinfer1::Dims& dims) {
+  string out = StrCat("nvinfer1::Dims(nbDims=", dims.nbDims, ", d=");
+  for (int i = 0; i < dims.nbDims; ++i) {
+    StrAppend(&out, dims.d[i]);
+    if (VLOG_IS_ON(2)) {
+      StrAppend(&out, "[", DebugString(dims.type[i]), "],");
+    } else {
+      StrAppend(&out, ",");
+    }
+  }
+  StrAppend(&out, ")");
+  return out;
+}
+
+string DebugString(const nvinfer1::DataType trt_dtype) {
+  switch (trt_dtype) {
+    case nvinfer1::DataType::kFLOAT:
+      return "kFLOAT";
+    case nvinfer1::DataType::kHALF:
+      return "kHALF";
+    case nvinfer1::DataType::kINT8:
+      return "kINT8";
+    case nvinfer1::DataType::kINT32:
+      return "kINT32";
+    default:
+      return "Invalid TRT data type";
+  }
+}
+
+string DebugString(const nvinfer1::Permutation& permutation, int len) {
+  string out = "nvinfer1::Permutation(";
+  for (int i = 0; i < len; ++i) {
+    StrAppend(&out, permutation.order[i], ",");
+  }
+  StrAppend(&out, ")");
+  return out;
+}
+
+string DebugString(const nvinfer1::ITensor& tensor) {
+  return StrCat("nvinfer1::ITensor(@", reinterpret_cast<uintptr_t>(&tensor),
+                ", name=", tensor.getName(),
+                ", dtype=", DebugString(tensor.getType()),
+                ", dims=", DebugString(tensor.getDimensions()), ")");
+}
+
+#endif
+
+string GetLinkedTensorRTVersion() {
+  int major, minor, patch;
+#if GOOGLE_CUDA && GOOGLE_TENSORRT
+  major = NV_TENSORRT_MAJOR;
+  minor = NV_TENSORRT_MINOR;
+  patch = NV_TENSORRT_PATCH;
+#else
+  major = 0;
+  minor = 0;
+  patch = 0;
+#endif
+  return absl::StrCat(major, ".", minor, ".", patch);
+}
+
+string GetLoadedTensorRTVersion() {
+  int major, minor, patch;
+#if GOOGLE_CUDA && GOOGLE_TENSORRT
+  int ver = getInferLibVersion();
+  major = ver / 1000;
+  ver = ver - major * 1000;
+  minor = ver / 100;
+  patch = ver - minor * 100;
+#else
+  major = 0;
+  minor = 0;
+  patch = 0;
+#endif
+  return absl::StrCat(major, ".", minor, ".", patch);
 }
 
 }  // namespace tensorrt

@@ -53,6 +53,20 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
+filegroup(
+    name = "pywrap_eager_hdrs",
+    srcs = [
+        "c_api_internal.h",
+        "tf_status_helper.h",
+        "tf_status_internal.h",
+        "tf_tensor_internal.h",
+    ],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/python:__pkg__",
+    ],
+)
+
 tf_cuda_library(
     name = "c_api_internal",
     hdrs = [

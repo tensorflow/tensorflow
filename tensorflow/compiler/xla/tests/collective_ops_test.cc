@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 
-// Tests cross-GPU operatons.
+// Tests cross-GPU operations.
 //
 // This test requires at least four GPUs.  For instructions on running this
 // within Google, see go/multi-gpu-unit-test.

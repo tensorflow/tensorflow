@@ -27,14 +27,9 @@ The sample has been tested with the following devices:
 
 ### Install the Arduino_TensorFlowLite library
 
-Download the current nightly build of the library:
-[magic_wand.zip](https://storage.googleapis.com/tensorflow-nightly/github/tensorflow/tensorflow/lite/micro/tools/make/gen/arduino_x86_64/prj/magic_wand/magic_wand.zip)
-
-Next, import this zip file into the Arduino Desktop IDE by going to `Sketch
-->Include Library -> Add .ZIP Library...`. This example application is included
-as part of the official TensorFlow Lite Arduino library. To install it, open the
-Arduino library manager in `Tools -> Manage Libraries...` and search for
-`Arduino_TensorFlowLite`.
+This example application is included as part of the official TensorFlow Lite
+Arduino library. To install it, open the Arduino library manager in
+`Tools -> Manage Libraries...` and search for `Arduino_TensorFlowLite`.
 
 ### Install and patch the accelerometer driver
 
@@ -179,14 +174,14 @@ Enter the following command to set up some dummy cryptographic keys we can use
 for development:
 
 ```
-cp tensorflow/lite/micro/tools/make/downloads/AmbiqSuite-Rel2.0.0/tools/apollo3_scripts/keys_info0.py \
-tensorflow/lite/micro/tools/make/downloads/AmbiqSuite-Rel2.0.0/tools/apollo3_scripts/keys_info.py
+cp tensorflow/lite/micro/tools/make/downloads/AmbiqSuite-Rel2.2.0/tools/apollo3_scripts/keys_info0.py \
+tensorflow/lite/micro/tools/make/downloads/AmbiqSuite-Rel2.2.0/tools/apollo3_scripts/keys_info.py
 ```
 
 Next, run the following command to create a signed binary:
 
 ```
-python3 tensorflow/lite/micro/tools/make/downloads/AmbiqSuite-Rel2.0.0/tools/apollo3_scripts/create_cust_image_blob.py \
+python3 tensorflow/lite/micro/tools/make/downloads/AmbiqSuite-Rel2.2.0/tools/apollo3_scripts/create_cust_image_blob.py \
 --bin tensorflow/lite/micro/tools/make/gen/sparkfun_edge_cortex-m4/bin/magic_wand.bin \
 --load-address 0xC000 \
 --magic-num 0xCB \
@@ -199,7 +194,7 @@ command to create a final version of the file that can be used to flash our
 device with the bootloader script we will use in the next step:
 
 ```
-python3 tensorflow/lite/micro/tools/make/downloads/AmbiqSuite-Rel2.0.0/tools/apollo3_scripts/create_cust_wireupdate_blob.py \
+python3 tensorflow/lite/micro/tools/make/downloads/AmbiqSuite-Rel2.2.0/tools/apollo3_scripts/create_cust_wireupdate_blob.py \
 --load-address 0x20000 \
 --bin main_nonsecure_ota.bin \
 -i 6 \
@@ -237,7 +232,7 @@ hit the button marked `RST`. Continue holding the button marked `14` while
 running the following command:
 
 ```
-python3 tensorflow/lite/micro/tools/make/downloads/AmbiqSuite-Rel2.0.0/tools/apollo3_scripts/uart_wired_update.py \
+python3 tensorflow/lite/micro/tools/make/downloads/AmbiqSuite-Rel2.2.0/tools/apollo3_scripts/uart_wired_update.py \
 -b ${BAUD_RATE} ${DEVICENAME} \
 -r 1 \
 -f main_nonsecure_wire.bin \
@@ -354,4 +349,4 @@ with the model and sample inputs.
 ## Train your own model
 
 To train your own model, or create a new model for a new set of gestures,
-follow the instructions in [magic_wand/train/README.md](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/micro/examples/magic_wand/train/README.md).
+follow the instructions in [magic_wand/train/README.md](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/examples/magic_wand/train/README.md).

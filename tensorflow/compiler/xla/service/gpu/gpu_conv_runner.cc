@@ -223,17 +223,7 @@ Status RunGpuConvImpl(const GpuConvParams& params,
   auto output_buf = se::DeviceMemory<OutputType>(params.output_buf);
   AlgorithmConfig algorithm = params.algorithm;
 
-  // in ROCm mode, the first call to run the convolution needs to trigger the
-  // code that calls miopenFind* API. That triggger is implicit, it is based
-  // on whether or not the AlgorithmConfig::algorithm is empty! So for the
-  // first call we need to ensure that the AlgorithmConfig::algorithm is
-  // empty. For all subsequent calls, we should use the value retrieved from
-  // the backend_config
-  if ((stream->parent()->platform_kind() == se::PlatformKind::kROCm) &&
-      (options.algo_override.has_value()) &&
-      (*options.algo_override == se::dnn::AlgorithmDesc())) {
-    algorithm = AlgorithmConfig();
-  } else if (options.algo_override.has_value()) {
+  if (options.algo_override.has_value()) {
     algorithm = AlgorithmConfig(*options.algo_override);
   }
 

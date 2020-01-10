@@ -151,8 +151,11 @@ class Loss(object):
     """Invokes the `Loss` instance.
 
     Args:
-      y_true: Ground truth values, with the same shape as 'y_pred'.
-      y_pred: The predicted values.
+      y_true: Ground truth values. shape = `[batch_size, d0, .. dN]`
+      y_pred: The predicted values. shape = `[batch_size, d0, .. dN]`
+
+    Returns:
+      Loss values with the shape `[batch_size, d0, .. dN-1]`.
     """
     NotImplementedError('Must be implemented in subclasses.')
 

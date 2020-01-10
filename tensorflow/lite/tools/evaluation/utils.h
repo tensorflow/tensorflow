@@ -52,10 +52,10 @@ Interpreter::TfLiteDelegatePtr CreateNNAPIDelegate();
 Interpreter::TfLiteDelegatePtr CreateNNAPIDelegate(
     StatefulNnApiDelegate::Options options);
 
-Interpreter::TfLiteDelegatePtr CreateGPUDelegate(FlatBufferModel* model);
+Interpreter::TfLiteDelegatePtr CreateGPUDelegate();
 #if defined(__ANDROID__)
 Interpreter::TfLiteDelegatePtr CreateGPUDelegate(
-    FlatBufferModel* model, TfLiteGpuDelegateOptionsV2* options);
+    TfLiteGpuDelegateOptionsV2* options);
 #endif
 
 }  // namespace evaluation

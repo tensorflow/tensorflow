@@ -656,7 +656,7 @@ def main(argv):
                 eprint('>>> No test standard out.')
               if err:
                 eprint('>>> Output stderr:')
-                eprint(out.decode('utf-8'))
+                eprint(err.decode('utf-8'))
               else:
                 eprint('>>> No test standard err.')
               if code != 0:
