@@ -1852,12 +1852,19 @@ def conv2d_v2(input,  # pylint: disable=redefined-builtin
   
   Usage Example:
   
+  >>> x_in = np.array([[
+  ...   [[2], [1], [2], [0], [1]],
+  ...   [[1], [3], [2], [2], [3]],
+  ...   [[1], [1], [3], [3], [0]],
+  ...   [[2], [2], [0], [1], [1]],
+  ...   [[0], [0], [3], [1], [2]], ]])  
   >>> kernel_in = np.array([
   ...  [ [[2, 0.1]], [[3, 0.2]] ],
   ...  [ [[0, 0.3]],[[1, 0.4]] ], ])
-  >>> x = tf.compat.v1.placeholder(dtype=tf.float32, shape=[1, 5, 5, 1])
+  >>> x = tf.constant(x_in, dtype=tf.float32)
   >>> kernel = tf.constant(kernel_in, dtype=tf.float32)
-  <tf.Tensor 'Conv2D_1:0' shape=(1, 4, 4, 2) dtype=float32>
+  >>> tf.nn.conv2d(x, kernel, strides=[1, 1, 1, 1], padding='VALID')
+  <tf.Tensor: shape=(1, 4, 4, 2), dtype=float32, numpy=..., dtype=float32)>
 
   Args:
     input: A `Tensor`. Must be one of the following types:
