@@ -77,7 +77,7 @@ class RandomDatasetParams : public DatasetParams {
   Tensor seed2_;
 };
 
-class RandomDatasetOpTest : public DatasetOpsTestBaseV2 {};
+class RandomDatasetOpTest : public DatasetOpsTestBase {};
 
 RandomDatasetParams FortyTwo() {
   return {/*seed=*/42,

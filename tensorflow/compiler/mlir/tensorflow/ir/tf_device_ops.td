@@ -18,9 +18,7 @@ limitations under the License.
 #ifndef TF_DEVICE_DIALECT
 #define TF_DEVICE_DIALECT
 
-#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
-#endif // OP_BASE
 
 //===----------------------------------------------------------------------===//
 // TensorFlow Device Dialect definitions
@@ -187,7 +185,7 @@ For example:
   let builders = [
     OpBuilder<"Builder* builder, OperationState& state, int n, "
               "llvm::ArrayRef<llvm::StringRef> devices, "
-              "llvm::ArrayRef<std::pair<llvm::ArrayRef<Value*>, Type>>"
+              "llvm::ArrayRef<std::pair<llvm::ArrayRef<Value>, Type>>"
               "    replicated_inputs, "
               "llvm::ArrayRef<Type> replica_output_types">,
     OpBuilder<"Builder* builder, OperationState& state, int n, "

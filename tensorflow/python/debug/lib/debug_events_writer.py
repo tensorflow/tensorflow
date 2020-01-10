@@ -128,6 +128,10 @@ class DebugEventsWriter(object):
     _pywrap_debug_events_writer.WriteGraphExecutionTrace(
         self._dump_root, debug_event)
 
+  def RegisterDeviceAndGetId(self, device_name):
+    return _pywrap_debug_events_writer.RegisterDeviceAndGetId(
+        self._dump_root, device_name)
+
   def FlushNonExecutionFiles(self):
     """Flush the non-execution debug event files."""
     _pywrap_debug_events_writer.FlushNonExecutionFiles(self._dump_root)

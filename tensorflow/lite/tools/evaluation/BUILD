@@ -29,7 +29,7 @@ cc_library(
     hdrs = ["evaluation_stage.h"],
     copts = tflite_copts(),
     deps = [
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
     ],
 )

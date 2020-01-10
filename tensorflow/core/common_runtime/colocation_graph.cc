@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/graph/graph_node_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -1333,7 +1334,7 @@ Status ColocationGraph::InitializeMember(const Node& node, Member* member) {
       return errors::InvalidArgument(
           "No OpKernel was registered to support Op '", node.type_string(),
           "' used by ", errors::FormatNodeNameForError(node.name()),
-          "with these attrs: [", node.attrs().DebugString(),
+          " with these attrs: [", node.attrs().DebugString(),
           "]\n"
           "Registered devices: [",
           absl::StrJoin(registered_device_types, ", "), "]\n",

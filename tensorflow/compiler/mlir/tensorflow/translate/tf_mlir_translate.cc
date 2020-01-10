@@ -17,14 +17,15 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/Function.h"  // TF:local_config_mlir
-#include "mlir/IR/Identifier.h"  // TF:local_config_mlir
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/IR/Module.h"  // TF:local_config_mlir
-#include "mlir/IR/Operation.h"  // TF:local_config_mlir
-#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
-#include "mlir/Parser.h"  // TF:local_config_mlir
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/Function.h"  // TF:llvm-project
+#include "mlir/IR/Identifier.h"  // TF:llvm-project
+#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
+#include "mlir/IR/Module.h"  // TF:llvm-project
+#include "mlir/IR/Operation.h"  // TF:llvm-project
+#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/Parser.h"  // TF:llvm-project
+#include "tensorflow/cc/saved_model/bundle_v2.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
+#include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/grappler/utils/transitive_fanin.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/protobuf/graph_debug_info.pb.h"
@@ -63,16 +65,18 @@ static StatusOr<mlir::OwningModuleRef> GraphdefToMlirImport(
   specs.upgrade_legacy = upgrade_legacy;
   TF_RETURN_IF_ERROR(ParseInputArrayInfo(input_arrays, input_dtypes,
                                          input_shapes, &specs.inputs));
-  TF_RETURN_IF_ERROR(ParseOutputArrayInfo(output_arrays, &specs.output_arrays,
-                                          &specs.output_arrays_order));
+  TF_RETURN_IF_ERROR(ParseOutputArrayInfo(output_arrays, &specs.outputs));
   // TODO(b/142828368): Pruning should not be needed when TF import
   // supports importing graphs w/ unregistered ops natively.
   GraphDef pruned_graph_def;
   if (specs.prune_unused_nodes) {
-    std::vector<string> terminal_nodes(specs.output_arrays.begin(),
-                                       specs.output_arrays.end());
-    for (const auto entry : specs.inputs) {
-      terminal_nodes.push_back(entry.first);
+    std::vector<std::string> terminal_nodes;
+    terminal_nodes.reserve(specs.outputs.size() + specs.inputs.size());
+    for (const auto& output : specs.outputs) {
+      terminal_nodes.push_back(std::string(ParseTensorName(output).node()));
+    }
+    for (const auto& input : specs.inputs) {
+      terminal_nodes.push_back(input.first);
     }
     TF_RETURN_IF_ERROR(tensorflow::grappler::SetTransitiveFaninGraph(
         graphdef, &pruned_graph_def, terminal_nodes));
@@ -109,22 +113,39 @@ mlir::OwningModuleRef SavedModelToMlirImport(
     absl::string_view saved_model_dir,
     const std::unordered_set<std::string>& tags,
     absl::Span<std::string> exported_names, mlir::MLIRContext* context) {
-  SessionOptions session_options;
-  RunOptions run_options;
-  tensorflow::SavedModelBundle bundle;
-  auto load_status = LoadSavedModel(
-      session_options, run_options,
-      std::string(saved_model_dir.data(), saved_model_dir.length()), tags,
-      &bundle);
+  tensorflow::SavedModelV2Bundle bundle;
+  auto load_status = tensorflow::SavedModelV2Bundle::Load(
+      std::string(saved_model_dir.data(), saved_model_dir.length()), &bundle);
   if (!load_status.ok()) {
     LOG(ERROR) << "Failed to load saved model '" << saved_model_dir
                << "': " << load_status;
     return nullptr;
   }
 
-  auto module_or = ConvertSavedModelToMlir(bundle, context, exported_names);
+  auto module_or = ConvertSavedModelToMlir(&bundle, context, exported_names);
   if (!module_or.status().ok()) {
     LOG(ERROR) << "SavedModel import failed: " << module_or.status();
+    return nullptr;
+  }
+  return module_or.ConsumeValueOrDie();
+}
+
+mlir::OwningModuleRef SavedModelV1ToMlirImport(
+    absl::string_view saved_model_dir,
+    const std::unordered_set<std::string>& tags, mlir::MLIRContext* context) {
+  tensorflow::SavedModelBundle bundle;
+  auto load_status = tensorflow::LoadSavedModel(
+      /* session_options = */ {}, /* run_options = */ {},
+      std::string(saved_model_dir), tags, &bundle);
+  if (!load_status.ok()) {
+    LOG(ERROR) << "Failed to load saved model v1 '" << saved_model_dir
+               << "': " << load_status;
+    return nullptr;
+  }
+
+  auto module_or = ConvertSavedModelV1ToMlir(bundle, context);
+  if (!module_or.status().ok()) {
+    LOG(ERROR) << "SavedModel V1 import failed: " << module_or.status();
     return nullptr;
   }
   return module_or.ConsumeValueOrDie();

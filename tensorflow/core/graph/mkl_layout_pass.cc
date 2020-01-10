@@ -328,6 +328,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
         "QuantizedMatMulWithBiasAndRelu";
     csinfo_.quantized_matmul_with_bias_and_relu_and_requantize =
         "QuantizedMatMulWithBiasAndReluAndRequantize";
+    csinfo_.quantized_matmul_with_bias_and_requantize =
+        "QuantizedMatMulWithBiasAndRequantize";
     csinfo_.quantized_depthwise_conv2d = "QuantizedDepthwiseConv2D";
     csinfo_.quantized_depthwise_conv2d_with_bias =
         "QuantizedDepthwiseConv2DWithBias";
@@ -621,6 +623,10 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
          mkl_op_registry::GetMklOpName(
              csinfo_.quantized_matmul_with_bias_and_relu_and_requantize),
          CopyAttrsQuantizedMatMulWithBias, AlwaysRewrite});
+    rinfo_.push_back({csinfo_.quantized_matmul_with_bias_and_requantize,
+                      mkl_op_registry::GetMklOpName(
+                          csinfo_.quantized_matmul_with_bias_and_requantize),
+                      CopyAttrsQuantizedMatMulWithBias, AlwaysRewrite});
     rinfo_.push_back(
         {csinfo_.quantized_depthwise_conv2d,
          mkl_op_registry::GetMklOpName(csinfo_.quantized_depthwise_conv2d),
@@ -967,6 +973,7 @@ rinfo_.push_back({csinfo_.tanh_grad,
     string quantized_matmul_with_bias;
     string quantized_matmul_with_bias_and_relu;
     string quantized_matmul_with_bias_and_relu_and_requantize;
+    string quantized_matmul_with_bias_and_requantize;
     string quantized_depthwise_conv2d;
     string quantized_depthwise_conv2d_with_bias;
     string quantized_depthwise_conv2d_with_bias_and_relu;
@@ -1475,19 +1482,16 @@ rinfo_.push_back({csinfo_.tanh_grad,
   }
 
   // Rewrite rule for _FusedMatMul.
-  // @return - true (no transpose attribute for input 1 and only has 1 post op);
+  // @return - true (no transpose attribute for input 1);
   //           false otherwise.
   static bool FusedMatMulRewrite(const Node* n) {
     bool trans_a;
-    std::vector<string> fused_ops;
 
     // Do not rewrite with transpose attribute because reorder has performance
     // impact.
     TF_CHECK_OK(GetNodeAttr(n->def(), "transpose_a", &trans_a));
-    // Do not rewrite with more than 1 post op because MKL-DNN doesn't support.
-    TF_CHECK_OK(GetNodeAttr(n->def(), "fused_ops", &fused_ops));
 
-    return (!trans_a) && (fused_ops.size() == 1);
+    return !trans_a;
   }
 
   // Check if we are performing pooling on depth or batch. If it is, then we
@@ -2245,6 +2249,7 @@ Status MklLayoutRewritePass::SetUpInputs(
       "QuantizedConv2DWithBiasSumAndReluAndRequantize",
       "QuantizedConv2DWithBiasSignedSumAndReluAndRequantize",
       "QuantizedMatMulWithBias",
+      "QuantizedMatMulWithBiasAndRequantize",
       "QuantizedMatMulWithBiasAndRelu",
       "QuantizedMatMulWithBiasAndReluAndRequantize",
       "QuantizedDepthwiseConv2D",

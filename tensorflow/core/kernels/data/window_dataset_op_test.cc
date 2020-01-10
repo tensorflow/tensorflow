@@ -72,7 +72,7 @@ class WindowDatasetParams : public DatasetParams {
   bool drop_remainder_;
 };
 
-class WindowDatasetOpTest : public DatasetOpsTestBaseV2 {};
+class WindowDatasetOpTest : public DatasetOpsTestBase {};
 
 // Test case 1: size=2, shift=2, stride=1, drop_remainder=false.
 WindowDatasetParams WindowDatasetParams1() {
@@ -471,11 +471,11 @@ TEST_P(ParameterizedIteratorSaveAndRestoreTest, IteratorSaveAndRestore) {
   auto expected_outputs_it = test_case.expected_outputs.begin();
   int cur_iteration = 0;
   for (int breakpoint : test_case.breakpoints) {
-    VariantTensorData data;
-    VariantTensorDataWriter writer(&data);
+    VariantTensorDataWriter writer;
     TF_EXPECT_OK(iterator_->Save(serialization_ctx.get(), &writer));
-    TF_EXPECT_OK(writer.Flush());
-    VariantTensorDataReader reader(&data);
+    std::vector<const VariantTensorData*> data;
+    writer.GetData(&data);
+    VariantTensorDataReader reader(data);
     TF_EXPECT_OK(RestoreIterator(iterator_ctx_.get(), &reader,
                                  test_case.dataset_params.iterator_prefix(),
                                  *dataset_, &iterator_));

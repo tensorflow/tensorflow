@@ -19,7 +19,7 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/java/src/main/native/jni_utils.h"
 #include "tensorflow/lite/model.h"
@@ -349,7 +349,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createModel(
   if (!model) {
     ThrowException(env, kIllegalArgumentException,
                    "Contents of %s does not encode a valid "
-                   "TensorFlowLite model: %s",
+                   "TensorFlow Lite model: %s",
                    path, error_reporter->CachedErrorMessage());
     env->ReleaseStringUTFChars(model_file, path);
     return 0;

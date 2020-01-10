@@ -21,6 +21,7 @@ from __future__ import print_function
 import collections
 import functools
 import imp
+import inspect
 import sys
 import threading
 import types
@@ -51,7 +52,7 @@ from tensorflow.python.autograph.core import naming
 from tensorflow.python.autograph.core import unsupported_features_checker
 from tensorflow.python.autograph.lang import special_functions
 from tensorflow.python.autograph.pyct import ast_util
-from tensorflow.python.autograph.pyct import compiler
+from tensorflow.python.autograph.pyct import loader
 from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.autograph.pyct import origin_info
 from tensorflow.python.autograph.pyct import parser
@@ -96,7 +97,7 @@ class _ConvertedEntityFactoryInfo(
 
 
 # TODO(mdan): Add a garbage collection hook for cleaning up modules.
-class _ConversionCache(object):
+class _FunctionCache(object):
   """A hierarchical cache that uses the converted entity as weak key.
 
   The keys soft references (i.e. they are discarded when the key is
@@ -106,20 +107,62 @@ class _ConversionCache(object):
   defined.
   """
 
+  __slots__ = ('_cache',)
+
   def __init__(self):
     self._cache = weakref.WeakKeyDictionary()
 
-  def has(self, key, subkey):
+  def _get_key(self, entity):
+    raise NotImplementedError('subclasses will override')
+
+  def has(self, entity, subkey):
+    key = self._get_key(entity)
     if key not in self._cache:
       return False
     return subkey in self._cache[key]
 
-  def __getitem__(self, key):
+  def __getitem__(self, entity):
+    key = self._get_key(entity)
     if key not in self._cache:
       # The bucket needs to be initialized to support this usage:
       #   cache[key][subkey] = value
       self._cache[key] = {}
     return self._cache[key]
+
+  def __len__(self):
+    return len(self._cache)
+
+
+class _CodeObjectCache(_FunctionCache):
+  """A function cache based on code objects (i.e., the source code).
+
+  Multiple functions may share the same code object, but they may share the
+  cache because we know they have the exact source code. This properly handles
+  functions defined in a loop, bound methods, etc.
+
+  Falls back to the function object, if it doesn't have a code object.
+  """
+
+  def _get_key(self, entity):
+    if hasattr(entity, '__code__'):
+      return entity.__code__
+    else:
+      return entity
+
+
+class _UnboundInstanceCache(_FunctionCache):
+  """A function cache based on unbound function objects.
+
+  Unlike the _CodeObjectCache, this discriminates between different functions
+  even if they have the same code. This properly handles decorators that may
+  masquerade as various functions. Bound functions are not discriminated by
+  the object they're bound to.
+  """
+
+  def _get_key(self, entity):
+    if inspect.ismethod(entity):
+      return entity.__func__
+    return entity
 
 
 # Using a re-entrant lock to guard against the unlikely possibility that the
@@ -127,8 +170,8 @@ class _ConversionCache(object):
 _CACHE_LOCK = threading.RLock()
 
 
-_CACHE = _ConversionCache()
-_WHITELIST_CACHE = _ConversionCache()
+_CACHE = _CodeObjectCache()
+_WHITELIST_CACHE = _UnboundInstanceCache()
 
 
 # Note: strictly speaking, a simple factory might have been sufficient for
@@ -193,7 +236,7 @@ def _wrap_into_dynamic_factory(nodes, entity_name, factory_factory_name,
         entity_defs
         entity_name.ag_source_map = ag_source_map__
         entity_name.ag_module = ag_module__
-        entity_name.autograph_info__ = {}
+        entity_name = ag__.autograph_artifact(entity_name)
         return entity_name
       return factory_name
   """
@@ -209,14 +252,6 @@ def _wrap_into_dynamic_factory(nodes, entity_name, factory_factory_name,
 
 def _convert_with_cache(entity, program_ctx, free_nonglobal_var_names):
   """Returns a (possibly cached) factory for the converted result of entity."""
-  # The cache key is the entity's code object if it defined one, otherwise it's
-  # the entity itself. Keying by the code object allows caching of functions
-  # that are dynamically created e.g. in a loop.
-  if hasattr(entity, '__code__'):
-    key = entity.__code__
-  else:
-    key = entity
-
   # The cache subkey encompases any conversion options on which the generated
   # code may depend.
   # The cached factory includes the necessary definitions to distinguish
@@ -226,15 +261,14 @@ def _convert_with_cache(entity, program_ctx, free_nonglobal_var_names):
 
   with _CACHE_LOCK:
     # The cache values are _ConvertedEntityFactoryInfo objects.
-    if _CACHE.has(key, subkey):
+    if _CACHE.has(entity, subkey):
       # TODO(mdan): Check whether the module is still loaded.
-      converted_entity_info = _CACHE[key][subkey]
-      logging.log(3, 'Cache hit for entity %s key %s subkey %s: %s', entity,
-                  key, subkey, converted_entity_info)
+      converted_entity_info = _CACHE[entity][subkey]
+      logging.log(3, 'Cache hit for entity %s subkey %s: %s', entity, subkey,
+                  converted_entity_info)
       return converted_entity_info
 
-    logging.log(1, 'Entity %s is not cached for key %s subkey %s', entity, key,
-                subkey)
+    logging.log(1, 'Entity %s is not cached for subkey %s', entity, subkey)
 
     nodes, converted_name, entity_info = convert_entity_to_ast(
         entity, program_ctx)
@@ -248,8 +282,7 @@ def _convert_with_cache(entity, program_ctx, free_nonglobal_var_names):
                                        free_nonglobal_var_names,
                                        entity_info.future_features)
 
-    module, _, source_map = compiler.ast_to_object(
-        nodes, include_source_map=True)
+    module, _, source_map = loader.load_ast(nodes, include_source_map=True)
     module_name = module.__name__
 
     converted_entity_info = _ConvertedEntityFactoryInfo(
@@ -257,7 +290,7 @@ def _convert_with_cache(entity, program_ctx, free_nonglobal_var_names):
         converted_name=converted_name,
         factory_factory_name=factory_factory_name,
         source_map=source_map)
-    _CACHE[key][subkey] = converted_entity_info
+    _CACHE[entity][subkey] = converted_entity_info
     return converted_entity_info
 
 
@@ -463,7 +496,7 @@ def convert_entity_to_ast(o, program_ctx):
             keyed by their symbol name.
 
   Raises:
-    ValueError: if the entity type is not supported.
+    NotImplementedError: if entity is of a type that is not yet supported.
   """
   logging.log(1, 'Converting %s', o)
 
@@ -480,13 +513,12 @@ def convert_entity_to_ast(o, program_ctx):
         'cannot convert entity "{}": object conversion is not yet'
         ' supported.'.format(o))
   else:
-    raise ValueError(
+    raise NotImplementedError(
         'Entity "%s" has unsupported type "%s". Only functions and classes are '
         'supported for now.' % (o, type(o)))
 
   if logging.has_verbosity(2):
-    logging.log(2, 'Compiled output of %s:\n\n%s\n', o,
-                compiler.ast_to_source(nodes))
+    logging.log(2, 'Compiled output of %s:\n\n%s\n', o, parser.unparse(nodes))
   if logging.has_verbosity(4):
     for n in nodes:
       logging.log(4, 'Compiled AST of %s:\n\n%s\n\n', o,

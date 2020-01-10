@@ -22,7 +22,7 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/core/util/stats_calculator.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #if defined(__ANDROID__)
 #include "tensorflow/lite/delegates/gpu/delegate.h"
 #include "tensorflow/lite/nnapi/nnapi_util.h"
@@ -51,14 +51,10 @@ void MultiRunStatsRecorder::OnBenchmarkStart(const BenchmarkParams& params) {
 
   if (params.Get<bool>("use_gpu")) {
 #if defined(__ANDROID__)
-    const bool allow_precision_loss =
-        params.Get<bool>("gpu_precision_loss_allowed");
-    const std::string precision_tag = allow_precision_loss ? "fp16" : "fp32";
-    current_run_name_ = "gpu(" + precision_tag + ")";
-
-    const auto default_opts = TfLiteGpuDelegateOptionsV2Default();
-    if (default_opts.is_precision_loss_allowed == allow_precision_loss) {
-      current_run_name_ += "-default";
+    if (params.Get<bool>("gpu_precision_loss_allowed")) {
+      current_run_name_ = "gpu-fp16";
+    } else {
+      current_run_name_ = "gpu-default";
     }
 #else
     current_run_name_ = "gpu-default";
@@ -271,6 +267,36 @@ void BenchmarkPerformanceOptions::CreatePerformanceOptions() {
 #endif
 }
 
+void BenchmarkPerformanceOptions::Run() {
+  CreatePerformanceOptions();
+
+  if (params_.Get<bool>("random_shuffle_benchmark_runs")) {
+    std::random_shuffle(all_run_params_.begin(), all_run_params_.end());
+  }
+
+  // We need to clean *internally* created benchmark listeners, like the
+  // profiling listener etc. in each Run() invoke because such listeners may be
+  // reset and become invalid in the next Run(). As a result, we record the
+  // number of externally-added listeners here to prevent they're cleared later.
+  const int num_external_listners = single_option_run_->NumListeners();
+
+  // Now perform all runs, each with different performance-affecting parameters.
+  for (const auto& run_params : all_run_params_) {
+    // Reset all performance-related options before any runs.
+    ResetPerformanceOptions();
+    single_option_run_params_->Set(run_params);
+    util::SleepForSeconds(params_.Get<float>("option_benchmark_run_delay"));
+
+    // Clear internally created listeners before each run but keep externally
+    // created ones.
+    single_option_run_->RemoveListeners(num_external_listners);
+
+    single_option_run_->Run();
+  }
+
+  all_run_stats_->OutputStats();
+}
+
 void BenchmarkPerformanceOptions::Run(int argc, char** argv) {
   // We first parse flags for single-option runs to get information like
   // parameters of the input model etc.
@@ -284,22 +310,7 @@ void BenchmarkPerformanceOptions::Run(int argc, char** argv) {
     TFLITE_LOG(WARN) << "WARNING: unrecognized commandline flag: " << argv[i];
   }
 
-  CreatePerformanceOptions();
-
-  if (params_.Get<bool>("random_shuffle_benchmark_runs")) {
-    std::random_shuffle(all_run_params_.begin(), all_run_params_.end());
-  }
-
-  // Now perform all runs, each with different performance-affecting parameters.
-  for (const auto& run_params : all_run_params_) {
-    // Reset all performance-related options before any runs.
-    ResetPerformanceOptions();
-    single_option_run_params_->Set(run_params);
-    util::SleepForSeconds(params_.Get<float>("option_benchmark_run_delay"));
-    single_option_run_->Run();
-  }
-
-  all_run_stats_->OutputStats();
+  Run();
 }
 }  // namespace benchmark
 }  // namespace tflite

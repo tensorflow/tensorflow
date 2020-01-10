@@ -21,10 +21,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env_time.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/host_info.h"
+#include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/stringprintf.h"
@@ -322,9 +322,9 @@ string Env::GetExecutablePath() {
 #ifdef __APPLE__
   uint32_t buffer_size(0U);
   _NSGetExecutablePath(nullptr, &buffer_size);
-  char unresolved_path[buffer_size];
-  _NSGetExecutablePath(unresolved_path, &buffer_size);
-  CHECK(realpath(unresolved_path, exe_path));
+  std::vector<char> unresolved_path(buffer_size);
+  _NSGetExecutablePath(unresolved_path.data(), &buffer_size);
+  CHECK(realpath(unresolved_path.data(), exe_path));
 #elif defined(__FreeBSD__)
   int mib[4] = {CTL_KERN, KERN_PROC, KERN_PROC_PATHNAME, -1};
   size_t exe_path_size = PATH_MAX;

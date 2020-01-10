@@ -17,15 +17,15 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/BlockAndValueMapping.h"  // TF:local_config_mlir
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/IR/Module.h"  // TF:local_config_mlir
-#include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
-#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
-#include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
-#include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/BlockAndValueMapping.h"  // TF:llvm-project
+#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
+#include "mlir/IR/Module.h"  // TF:llvm-project
+#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
+#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/IR/TypeUtilities.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 namespace mlir {
@@ -98,13 +98,13 @@ class FoldIfOp : public OpRewritePattern<TF::IfOp> {
     for (int i = 0, e = func.getNumArguments(); i != e; ++i)
       mapper.map(func.getArgument(i), op.getOperand(i + 1));
 
-    llvm::SmallVector<Value*, 4> updated_results;
+    llvm::SmallVector<Value, 4> updated_results;
     for (auto& op_to_inline : func.getBody().front()) {
       // If this is a terminator, identify the values to use to replace the
       // original If op.
       if (op_to_inline.isKnownTerminator()) {
         updated_results.reserve(op_to_inline.getNumOperands());
-        for (Value* operand : op_to_inline.getOperands())
+        for (Value operand : op_to_inline.getOperands())
           updated_results.push_back(mapper.lookup(operand));
         break;
       }
@@ -132,24 +132,24 @@ class FoldIfOp : public OpRewritePattern<TF::IfOp> {
 
 // Erases functions from the given candidates that are not referenced by any of
 // the ops in the module.
-static void EraseDeadFuncs(const FuncSet& candiate_funcs, ModuleOp module) {
-  if (candiate_funcs.empty()) return;
+static void EraseDeadFuncs(const FuncSet& candidate_funcs, ModuleOp module) {
+  if (candidate_funcs.empty()) return;
 
-  ModuleManager manager(module);
+  SymbolTable manager(module);
 
   // Identify the functions that are used as symbols in the module and shouldn't
   // be erased.
   FuncSet in_use_funcs;
-  manager.getModule().walk([&](Operation* op) {
+  manager.getOp()->walk([&](Operation* op) {
     for (auto attr : op->getAttrs()) {
       if (auto symbol = attr.second.dyn_cast<FlatSymbolRefAttr>()) {
-        auto func = manager.lookupSymbol<FuncOp>(symbol.getValue());
+        auto func = manager.lookup<FuncOp>(symbol.getValue());
         in_use_funcs.insert(func);
       }
     }
   });
 
-  for (FuncOp func : candiate_funcs) {
+  for (FuncOp func : candidate_funcs) {
     if (!in_use_funcs.count(func)) manager.erase(func);
   }
 }

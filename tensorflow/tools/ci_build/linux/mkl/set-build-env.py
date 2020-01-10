@@ -155,6 +155,12 @@ class BuildEnvSetter(object):
         " compiler flag --config=v2 is enabled.",
         action="store_true")
     arg_parser.add_argument(
+        "--enable-bfloat16",
+        dest="enable_bfloat16",
+        help="Enable bfloat16 build. By default it is "
+        " disabled if no parameter is passed.",
+        action="store_true")
+    arg_parser.add_argument(
         "-s",
         "--secure-build",
         dest="secure_build",
@@ -202,6 +208,8 @@ class BuildEnvSetter(object):
       self.bazel_flags_ += "--config=mkl "
     if not self.args.disable_v2:
       self.bazel_flags_ += "--config=v2 "
+    if self.args.enable_bfloat16:
+      self.bazel_flags_ += "--copt=-DENABLE_INTEL_MKL_BFLOAT16 "
 
   def write_build_args(self):
     self._debug("Writing build flags: {}".format(self.bazel_flags_))

@@ -32,6 +32,21 @@ PYBIND11_MODULE(tpu_client_extension, m) {
       .def("devices", &PyTpuClient::devices)
       .def("local_devices", &PyTpuClient::local_devices)
       .def("host_id", &PyTpuClient::host_id)
+      .def("GetDefaultDeviceAssignment",
+           [](PyTpuClient* client, int num_replicas)
+               -> StatusOr<std::vector<std::shared_ptr<Device>>> {
+             TF_ASSIGN_OR_RETURN(
+                 DeviceAssignment device_assignment,
+                 client->GetDefaultDeviceAssignment(num_replicas));
+             std::vector<std::shared_ptr<Device>> result;
+             for (int i = 0; i < num_replicas; ++i) {
+               int device_id = device_assignment(i, 0);
+               auto iter = client->id_to_device().find(device_id);
+               CHECK(iter != client->id_to_device().end()) << device_id;
+               result.push_back(iter->second);
+             }
+             return result;
+           })
       .def("TransferToInfeed",
            [](PyTpuClient* client, const LiteralSlice& literal,
               int device_ordinal) {
@@ -81,9 +96,9 @@ PYBIND11_MODULE(tpu_client_extension, m) {
                           std::make_move_iterator(tree.leaves.end()));
 
             py::gil_scoped_release gil_release;
-            return PyTpuBuffer::FromLiterals(
-                std::move(leaves), tree.shape, std::move(py_buffer_ref),
-                std::move(client), device->local_device_ordinal());
+            return PyTpuBuffer::FromLiterals(std::move(leaves), tree.shape,
+                                             std::move(py_buffer_ref),
+                                             std::move(client), device->id());
           })
       .def_static(
           "from_python",
@@ -120,8 +135,8 @@ PYBIND11_MODULE(tpu_client_extension, m) {
                           "Cannot make tuple on device '%s' with '%s' backend",
                           device->DebugString(), client->platform_name());
                     }
-                    return PyTpuBuffer::MakeTuple(
-                        buffers, client, device->local_device_ordinal());
+                    return PyTpuBuffer::MakeTuple(buffers, client,
+                                                  device->id());
                   })
       .def_static("make_tuple", &PyTpuBuffer::MakeTuple)
       .def("copy_to_device",
@@ -129,7 +144,7 @@ PYBIND11_MODULE(tpu_client_extension, m) {
              CHECK(dst_device != nullptr);
              GlobalPyRefManager()->CollectGarbage();
              py::gil_scoped_release gil_release;
-             return buffer->CopyToDevice(dst_device->local_device_ordinal());
+             return buffer->CopyToDevice(dst_device->id());
            })
       .def("copy_to_device",
            [](PyTpuBuffer* buffer, int dst_device_ordinal) {
@@ -178,7 +193,7 @@ PYBIND11_MODULE(tpu_client_extension, m) {
            [](const PyTpuExecutable& executable) {
              std::vector<int> device_ordinals;
              for (std::shared_ptr<Device> device : executable.local_devices()) {
-               device_ordinals.push_back(device->local_device_ordinal());
+               device_ordinals.push_back(device->id());
              }
              return device_ordinals;
            })
@@ -189,6 +204,11 @@ PYBIND11_MODULE(tpu_client_extension, m) {
            py::call_guard<py::gil_scoped_release>(), py::arg("arguments"))
       .def("ExecutePerReplica", &PyTpuExecutable::ExecutePerReplica,
            py::call_guard<py::gil_scoped_release>(), py::arg("arguments"));
+
+  py::class_<TpuDevice, Device, std::shared_ptr<TpuDevice>>(m, "TpuDevice")
+      .def("__repr__", [](const TpuDevice& device) {
+        return absl::StrFormat("TpuDevice(id=%i)", device.id());
+      });
 }  // NOLINT(readability/fn_size)
 
 }  // namespace xla

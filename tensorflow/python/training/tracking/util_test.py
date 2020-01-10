@@ -1055,9 +1055,9 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def testEmptyContainersIgnored(self):
     checkpoint_directory = self.get_temp_dir()
-    save_root = trackable_utils.Checkpoint()
+    save_root = trackable_utils.Checkpoint(a=[])
     path = save_root.save(checkpoint_directory)
-    load_root = trackable_utils.Checkpoint()
+    load_root = trackable_utils.Checkpoint(b=[])
     load_root.dep = []
     load_root.dep.append([])
     status = load_root.restore(path)
@@ -1395,6 +1395,20 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     self.evaluate(save_checkpoint.v.assign(0.))
     load_checkpoint.restore(checkpoint_prefix).run_restore_ops()
     self.assertEqual(3., self.evaluate(load_checkpoint.v))
+
+  def test_inititialize_with_data_structures(self):
+    checkpoint = trackable_utils.Checkpoint(
+        a=[variables_lib.Variable(0.), variables_lib.Variable(1.)],
+        b={"a": variables_lib.Variable(2.), "b": variables_lib.Variable(3.)})
+    checkpoint_directory = self.get_temp_dir()
+    checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
+    save_path = checkpoint.save(checkpoint_prefix)
+    load_checkpoint = trackable_utils.Checkpoint(
+        a=[variables_lib.Variable(4.), variables_lib.Variable(5.)],
+        b={"a": variables_lib.Variable(6.), "b": variables_lib.Variable(7.)})
+    load_checkpoint.restore(save_path)
+    self.assertAllClose(self.evaluate(load_checkpoint.a), [0, 1])
+    self.assertAllClose(self.evaluate(load_checkpoint.b), {"a": 2, "b": 3})
 
 
 class _ManualScope(tracking.AutoTrackable):

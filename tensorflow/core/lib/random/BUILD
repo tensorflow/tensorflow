@@ -64,11 +64,18 @@ cc_library(
 
 cc_library(
     name = "random",
-    srcs = ["random.cc"],
     hdrs = ["random.h"],
+    visibility = [
+        "//tensorflow/c/eager:__pkg__",
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/lib/core:__pkg__",
+        "//tensorflow/core/lib/gtl:__pkg__",
+        "//tensorflow/core/lib/io:__pkg__",
+        "//tensorflow/core/lib/strings:__pkg__",
+        "//tensorflow/core/platform:__subpackages__",
+    ],
     deps = [
-        "//tensorflow/core/platform:mutex",
-        "//tensorflow/core/platform:types",
+        "//tensorflow/core/platform:random",
     ],
 )
 
@@ -133,7 +140,6 @@ filegroup(
     name = "legacy_lib_random_all_srcs",
     srcs = [
         "distribution_sampler.cc",
-        "random.cc",
         "random_distributions.cc",
         "simple_philox.cc",
         "weighted_picker.cc",

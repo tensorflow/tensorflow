@@ -54,9 +54,9 @@ class ParseExampleOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     const Tensor* names;
     const Tensor* serialized;
-    std::vector<string> dense_keys_t;
-    std::vector<string> sparse_keys_t;
-    std::vector<string> ragged_keys_t;
+    std::vector<StringPiece> dense_keys_t;
+    std::vector<StringPiece> sparse_keys_t;
+    std::vector<StringPiece> ragged_keys_t;
     OpInputList dense_defaults;
 
     // Grab the inputs.
@@ -97,8 +97,8 @@ class ParseExampleOp : public OpKernel {
 
  protected:
   // Copies keys from tensor to std::vector<string>.
-  Status GetTensorKeys(OpKernelContext* ctx, const string& input_name,
-                       std::vector<string>* keys) const {
+  Status GetTensorKeys(OpKernelContext* ctx, StringPiece input_name,
+                       std::vector<StringPiece>* keys) const {
     const Tensor* key_t;
     TF_RETURN_IF_ERROR(ctx->input(input_name, &key_t));
     keys->reserve(key_t->NumElements());
@@ -110,8 +110,8 @@ class ParseExampleOp : public OpKernel {
   }
 
   // Copies keys from OpInputList of scalar to std::vector<string>.
-  Status GetInputListKeys(OpKernelContext* ctx, const string& input_name,
-                          std::vector<string>* keys) const {
+  Status GetInputListKeys(OpKernelContext* ctx, StringPiece input_name,
+                          std::vector<StringPiece>* keys) const {
     OpInputList key_list;
     TF_RETURN_IF_ERROR(ctx->input_list(input_name, &key_list));
     keys->reserve(key_list.size());
@@ -124,9 +124,9 @@ class ParseExampleOp : public OpKernel {
   // Validates the shapes of input tensors.
   Status CheckInputShapes(const Tensor* serialized, const Tensor* names,
                           const OpInputList& dense_defaults,
-                          const std::vector<string>& dense_keys_t,
-                          const std::vector<string>& sparse_keys_t,
-                          const std::vector<string>& ragged_keys_t) const {
+                          const std::vector<StringPiece>& dense_keys_t,
+                          const std::vector<StringPiece>& sparse_keys_t,
+                          const std::vector<StringPiece>& ragged_keys_t) const {
     if (op_version_ == 2) {
       if (TensorShapeUtils::IsMatrixOrHigher(serialized->shape())) {
         return errors::InvalidArgument(
@@ -205,23 +205,26 @@ class ParseExampleOp : public OpKernel {
 
   // Populates the FastParseExampleConfig from keys & defaults.
   example::FastParseExampleConfig MakeConfig(
-      const std::vector<string>& dense_keys_t,
-      const std::vector<string>& sparse_keys_t,
-      const std::vector<string>& ragged_keys_t,
+      const std::vector<StringPiece>& dense_keys_t,
+      const std::vector<StringPiece>& sparse_keys_t,
+      const std::vector<StringPiece>& ragged_keys_t,
       const OpInputList& dense_defaults) const {
     example::FastParseExampleConfig config;
+    config.dense.reserve(attrs_.num_dense);
     for (int d = 0; d < attrs_.num_dense; ++d) {
-      config.dense.push_back({dense_keys_t[d], attrs_.dense_types[d],
-                              attrs_.dense_shapes[d], dense_defaults[d],
-                              attrs_.variable_length[d],
-                              attrs_.elements_per_stride[d]});
+      config.dense.emplace_back(dense_keys_t[d], attrs_.dense_types[d],
+                                attrs_.dense_shapes[d], dense_defaults[d],
+                                attrs_.variable_length[d],
+                                attrs_.elements_per_stride[d]);
     }
+    config.sparse.reserve(attrs_.num_sparse);
     for (int d = 0; d < attrs_.num_sparse; ++d) {
-      config.sparse.push_back({sparse_keys_t[d], attrs_.sparse_types[d]});
+      config.sparse.emplace_back(sparse_keys_t[d], attrs_.sparse_types[d]);
     }
+    config.sparse.reserve(attrs_.num_ragged);
     for (int d = 0; d < attrs_.num_ragged; ++d) {
-      config.ragged.push_back({ragged_keys_t[d], attrs_.ragged_value_types[d],
-                               attrs_.ragged_split_types[d]});
+      config.ragged.emplace_back(ragged_keys_t[d], attrs_.ragged_value_types[d],
+                                 attrs_.ragged_split_types[d]);
     }
     return config;
   }
@@ -230,7 +233,7 @@ class ParseExampleOp : public OpKernel {
   Status ParseExampleScalar(const example::FastParseExampleConfig& config,
                             const Tensor* serialized, OpKernelContext* ctx,
                             example::Result* result) const {
-    const string& serialized_proto = serialized->scalar<tstring>()();
+    const tstring& serialized_proto = serialized->scalar<tstring>()();
     return FastParseSingleExample(config, serialized_proto, result);
   }
 
@@ -357,7 +360,7 @@ class ParseSingleExampleOp : public OpKernel {
       config.sparse.push_back({attrs_.sparse_keys[d], attrs_.sparse_types[d]});
     }
 
-    const string& serialized_proto = serialized->scalar<tstring>()();
+    const tstring& serialized_proto = serialized->scalar<tstring>()();
 
     OP_REQUIRES_OK(ctx,
                    FastParseSingleExample(config, serialized_proto, &result));
@@ -567,8 +570,8 @@ class ParseSequenceExampleOp : public OpKernel {
       const OpInputList& context_dense_defaults) const {
     example::FastParseExampleConfig config;
     for (int d = 0; d < attrs_.num_context_dense; ++d) {
-      const string& key = dense_keys ? dense_keys->flat<tstring>()(d)
-                                     : attrs_.context_dense_keys[d];
+      const tstring& key = dense_keys ? dense_keys->flat<tstring>()(d)
+                                      : attrs_.context_dense_keys[d];
       config.dense.push_back({key, attrs_.context_dense_types[d],
                               attrs_.context_dense_shapes[d],
                               context_dense_defaults[d],
@@ -576,8 +579,8 @@ class ParseSequenceExampleOp : public OpKernel {
                               0 /*attrs_.context_elements_per_stride[d] */});
     }
     for (int d = 0; d < attrs_.num_context_sparse; ++d) {
-      const string& key = sparse_keys ? sparse_keys->flat<tstring>()(d)
-                                      : attrs_.context_sparse_keys[d];
+      const tstring& key = sparse_keys ? sparse_keys->flat<tstring>()(d)
+                                       : attrs_.context_sparse_keys[d];
       config.sparse.push_back({key, attrs_.context_sparse_types[d]});
     }
     for (int d = 0; d < attrs_.num_context_ragged; ++d) {
@@ -594,8 +597,8 @@ class ParseSequenceExampleOp : public OpKernel {
       const Tensor* feature_list_dense_missing_assumed_empty) const {
     example::FastParseExampleConfig config;
     for (int d = 0; d < attrs_.num_feature_list_dense; ++d) {
-      const string& key = dense_keys ? dense_keys->flat<tstring>()(d)
-                                     : attrs_.feature_list_dense_keys[d];
+      const tstring& key = dense_keys ? dense_keys->flat<tstring>()(d)
+                                      : attrs_.feature_list_dense_keys[d];
       bool missing_assumed_empty =
           feature_list_dense_missing_assumed_empty
               ? feature_list_dense_missing_assumed_empty->flat<bool>()(d)
@@ -608,8 +611,8 @@ class ParseSequenceExampleOp : public OpKernel {
            0 /*attrs_.feature_list_elements_per_stride[d] */});
     }
     for (int d = 0; d < attrs_.num_feature_list_sparse; ++d) {
-      const string& key = sparse_keys ? sparse_keys->flat<tstring>()(d)
-                                      : attrs_.feature_list_sparse_keys[d];
+      const tstring& key = sparse_keys ? sparse_keys->flat<tstring>()(d)
+                                       : attrs_.feature_list_sparse_keys[d];
       config.sparse.push_back({key, attrs_.feature_list_sparse_types[d]});
     }
     for (int d = 0; d < attrs_.num_feature_list_ragged; ++d) {
@@ -909,7 +912,7 @@ class ParseSingleSequenceExampleOp : public OpKernel {
         errors::InvalidArgument("Could not parse example input, value: '",
                                 serialized_t(), "'"));
 
-    const string& name = (has_debug_name) ? debug_name_t() : "<unknown>";
+    const tstring& name = (has_debug_name) ? debug_name_t() : "<unknown>";
     const Features& context = ex.context();
     const auto& context_dict = context.feature();
 
@@ -925,7 +928,7 @@ class ParseSingleSequenceExampleOp : public OpKernel {
     }
 
     for (int d = 0; d < attrs_.num_context_dense; ++d) {
-      const string& key = context_dense_keys_t[d];
+      const tstring& key = context_dense_keys_t[d];
       const DataType& dtype = attrs_.context_dense_types[d];
       const TensorShape& shape = attrs_.context_dense_shapes[d];
 
@@ -955,7 +958,7 @@ class ParseSingleSequenceExampleOp : public OpKernel {
 
     // Context Sparse ----------------------------------------------------------
     for (int d = 0; d < attrs_.num_context_sparse; ++d) {
-      const string& key = context_sparse_keys_t[d];
+      const tstring& key = context_sparse_keys_t[d];
       const DataType& dtype = attrs_.context_sparse_types[d];
 
       const auto& feature_found = context_dict.find(key);
@@ -1014,7 +1017,7 @@ class ParseSingleSequenceExampleOp : public OpKernel {
     FeatureList empty_feature_list;  // Placeholder for missing FLs
 
     for (int d = 0; d < attrs_.num_feature_list_dense; ++d) {
-      const string& key = feature_list_dense_keys_t[d];
+      const tstring& key = feature_list_dense_keys_t[d];
       const DataType& dtype = attrs_.feature_list_dense_types[d];
       const TensorShape& shape = attrs_.feature_list_dense_shapes[d];
 
@@ -1061,7 +1064,7 @@ class ParseSingleSequenceExampleOp : public OpKernel {
 
     // Feature List Sparse -----------------------------------------------------
     for (int d = 0; d < attrs_.num_feature_list_sparse; ++d) {
-      const string& key = feature_list_sparse_keys_t[d];
+      const tstring& key = feature_list_sparse_keys_t[d];
       const DataType& dtype = attrs_.feature_list_sparse_types[d];
 
       const auto& feature_list_found = feature_list_dict.find(key);

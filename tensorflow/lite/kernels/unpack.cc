@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -43,7 +43,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   }
   TF_LITE_ENSURE(context, 0 <= axis && axis < NumDimensions(input));
   if (input->type != kTfLiteInt32 && input->type != kTfLiteFloat32 &&
-      input->type != kTfLiteUInt8 && input->type != kTfLiteInt8) {
+      input->type != kTfLiteUInt8 && input->type != kTfLiteInt8 &&
+      input->type != kTfLiteBool) {
     context->ReportError(context, "Type '%s' is not supported by unpack.",
                          TfLiteTypeGetName(input->type));
     return kTfLiteError;
@@ -110,6 +111,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     }
     case kTfLiteInt8: {
       UnpackImpl<int8_t>(context, node, input, data->num, data->axis);
+      break;
+    }
+    case kTfLiteBool: {
+      UnpackImpl<bool>(context, node, input, data->num, data->axis);
       break;
     }
     default: {

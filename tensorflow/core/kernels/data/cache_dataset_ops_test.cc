@@ -62,10 +62,10 @@ class CacheDatasetParams : public DatasetParams {
   string filename_;
 };
 
-class CacheDatasetOpTest : public DatasetOpsTestBaseV2 {
+class CacheDatasetOpTest : public DatasetOpsTestBase {
  public:
   Status Initialize(const DatasetParams& dataset_params) {
-    TF_RETURN_IF_ERROR(DatasetOpsTestBaseV2::Initialize(dataset_params));
+    TF_RETURN_IF_ERROR(DatasetOpsTestBase::Initialize(dataset_params));
     auto params = static_cast<const CacheDatasetParams&>(dataset_params);
     cache_filename_ = params.filename();
     return Status::OK();
@@ -329,11 +329,11 @@ TEST_P(ParameterizedIteratorSaveAndRestoreTest, SaveAndRestore) {
   int cur_iteration = 0;
   auto expected_outputs_it = test_case.expected_outputs.begin();
   for (int breakpoint : test_case.breakpoints) {
-    VariantTensorData data;
-    VariantTensorDataWriter writer(&data);
+    VariantTensorDataWriter writer;
     TF_EXPECT_OK(iterator_->Save(serialization_ctx.get(), &writer));
-    TF_EXPECT_OK(writer.Flush());
-    VariantTensorDataReader reader(&data);
+    std::vector<const VariantTensorData*> data;
+    writer.GetData(&data);
+    VariantTensorDataReader reader(data);
     TF_EXPECT_OK(RestoreIterator(iterator_ctx_.get(), &reader,
                                  test_case.dataset_params.iterator_prefix(),
                                  *dataset_, &iterator_));

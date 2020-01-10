@@ -463,7 +463,8 @@ class ValidatorTest : public ::testing::Test {
     TF_EXPECT_OK(graph_properties.InferStatically(true));
 
     TrtNodeValidator validator(graph_properties, TrtPrecisionMode::FP32,
-                               /*use_calibration=*/false);
+                               /*use_calibration=*/false,
+                               /*use_implicit_batch=*/true);
     return validator.ConvertToTensorOrWeights(node->def(), output_port,
                                               tensor_or_weights);
   }
@@ -477,7 +478,8 @@ TEST_F(ValidatorTest, QuantizeOpsAreRegistered) {
   grappler::GrapplerItem item;
   grappler::GraphProperties graph_properties(item);
   TrtNodeValidator validator(graph_properties, TrtPrecisionMode::FP32,
-                             /*use_calibration=*/false);
+                             /*use_calibration=*/false,
+                             /*use_implicit_batch=*/true);
   for (const string& quantize_op : *GetQuantizeOps(&validator)) {
     QCHECK(op_validators(&validator).count(quantize_op));
   }
@@ -521,7 +523,7 @@ TEST_F(ValidatorTest, ConvertToTensorOrWeights) {
         "Scalar input tensor is not supported since the first dimension "
         "is treated as batch dimension by TRT");
   }
-  // Convert non-Const. We test the case where the non-batch dimemsion is
+  // Convert non-Const. We test the case where the non-batch dimension is
   // unknown as well, to make sure the validator allows that.
   for (const int32 non_batch_dim : {-1, 2}) {
     const int32 batch_size = 12;
@@ -547,7 +549,8 @@ TEST_F(ValidatorTest, IsTensorRTCandidate_Basics) {
   grappler::GraphProperties graph_properties(item);
   TF_EXPECT_OK(graph_properties.InferStatically(true));
   TrtNodeValidator validator(graph_properties, TrtPrecisionMode::FP32,
-                             /*use_calibration=*/false);
+                             /*use_calibration=*/false,
+                             /*use_implicit_batch=*/true);
 
   bool start_conversion = false;
   bool should_fail = false;
@@ -626,7 +629,8 @@ TEST(TrtNodeValidator, IsTensorRTCandidate) {
   for (const TrtPrecisionMode precision_mode :
        {TrtPrecisionMode::FP32, TrtPrecisionMode::INT8}) {
     TrtNodeValidator validator(graph_properties, precision_mode,
-                               /*use_calibration=*/false);
+                               /*use_calibration=*/false,
+                               /*use_implicit_batch=*/true);
     TF_EXPECT_OK(validator.IsTensorRTCandidate(matmul.operation.node()));
     ExpectStatus(
         validator.IsTensorRTCandidate(incompatible_matmul.operation.node()),
@@ -654,10 +658,10 @@ class ConverterTest : public ::testing::Test {
   ConverterTest() { Reset(); }
 
   void Reset() {
-    builder_.reset(nvinfer1::createInferBuilder(logger_));
     converter_ =
-        std::move(Converter::Create(builder_.get(), TrtPrecisionMode::FP32,
-                                    /*use_calibration=*/false, &logger_)
+        std::move(Converter::Create(TrtPrecisionMode::FP32,
+                                    /*use_calibration=*/false, &logger_,
+                                    /*use_implicit_batch=*/true)
                       .ValueOrDie());
     weight_store_ = &converter_->weight_store_;
   }
@@ -702,9 +706,6 @@ class ConverterTest : public ::testing::Test {
 
  private:
   Logger logger_;
-  // These members are ordered in a way such that the destruction order is:
-  // converter_ -> builder_
-  TrtUniquePtrType<nvinfer1::IBuilder> builder_;
 
  protected:
   std::unique_ptr<Converter> converter_;
@@ -977,7 +978,7 @@ TEST_F(ConverterTest, GetWeightRange) {
 
 TEST_F(ConverterTest, ProvideQuantizationRange) {
   FakeITensor fake_tensor;
-  // Assymetric range
+  // Asymmetric range
   converter_->ProvideQuantizationRange(&fake_tensor, 0.0f, 6.0f);
   EXPECT_EQ(6.0f, quantization_ranges()[&fake_tensor]);
   converter_->ProvideQuantizationRange(&fake_tensor, 1.0f, 6.0f);
@@ -996,10 +997,9 @@ TEST_F(ConverterTest, MaybeApplyQuantizationRanges) {
   FakeITensor input, infer_1, infer_2, infer_3;
   FakeITensor not_infer;
   Logger logger;
-  TrtUniquePtrType<nvinfer1::IBuilder> builder(
-      nvinfer1::createInferBuilder(logger));
-  auto int8_converter = Converter::Create(builder.get(), TrtPrecisionMode::INT8,
-                                          /*use_calibration=*/true, &logger)
+  auto int8_converter = Converter::Create(TrtPrecisionMode::INT8,
+                                          /*use_calibration=*/true, &logger,
+                                          /*use_implicit_batch=*/true)
                             .ValueOrDie();
   int8_converter->ProvideQuantizationRange(&input, -5.0f, 5.0f);
   int8_converter->ProvideQuantizationRange(&not_infer, -100.0f, 100.0f);
@@ -1073,7 +1073,8 @@ TEST_F(ConverterTest, GetTrtBroadcastShape) {
     // operand_1 broadcast operand_2
     ExpectStatus(
         GetTrtBroadcastShape(operand_1, operand_2, /*check_feasibility=*/true,
-                             &operand_1_new_dims, &operand_2_new_dims),
+                             /*use_implicit_batch=*/true, &operand_1_new_dims,
+                             &operand_2_new_dims),
         expected_code, expected_error_msg_substr);
     if (expected_code == error::OK) {
       ExpectTrtDimsEqualsArray(expected_operand_1_shape, operand_1_new_dims);
@@ -1082,7 +1083,8 @@ TEST_F(ConverterTest, GetTrtBroadcastShape) {
     // operand_2 broadcast operand_1
     ExpectStatus(
         GetTrtBroadcastShape(operand_2, operand_1, /*check_feasibility=*/true,
-                             &operand_2_new_dims, &operand_1_new_dims),
+                             /*use_implicit_batch=*/true, &operand_2_new_dims,
+                             &operand_1_new_dims),
         expected_code, expected_error_msg_substr);
     if (expected_code == error::OK) {
       ExpectTrtDimsEqualsArray(expected_operand_1_shape, operand_1_new_dims);
@@ -1182,7 +1184,8 @@ class ConvertGraphDefToEngineTest : public ::testing::Test {
         gdef, TrtPrecisionMode::FP32, /*max_batch_size=*/1,
         /*max_workspace_size_bytes=*/64 << 20, input_shapes, &logger_,
         /*allocator=*/nullptr, /*calibrator=*/nullptr, &engine_,
-        /*use_calibration=*/false, /*convert_successfully=*/nullptr);
+        /*use_calibration=*/false, /*use_implicit_batch=*/true,
+        /*convert_successfully=*/nullptr);
   }
 
  protected:
@@ -1255,13 +1258,10 @@ class OpConverterTest : public ::testing::Test {
     engine_.reset(nullptr);
 
     // Re-create them in proper order.
-    builder_.reset(nvinfer1::createInferBuilder(logger_));
-    builder_->setMaxWorkspaceSize(1 << 26);
-
-    // Reset the converter.
     converter_ =
-        std::move(Converter::Create(builder_.get(), precision_mode_to_test_,
-                                    /*use_calibration=*/false, &logger_)
+        std::move(Converter::Create(precision_mode_to_test_,
+                                    /*use_calibration=*/false, &logger_,
+                                    /*use_implicit_batch=*/true)
                       .ValueOrDie());
 
     // Reset other related artifacts.
@@ -1294,18 +1294,13 @@ class OpConverterTest : public ::testing::Test {
     TF_EXPECT_OK(converter_->RenameAndMarkOutputTensors(output_info));
 
     // Build the TRT engine.
-    if (precision_mode == TrtPrecisionMode::FP16) {
-      builder_->setFp16Mode(true);
-    } else if (precision_mode == TrtPrecisionMode::INT8) {
-      // Setting FP16 mode as well allows TRT to also consider FP16 kernels and
-      // use them in situations where they are faster than INT8 or where INT8 is
-      // not supported for a given layer.
-      builder_->setFp16Mode(true);
-      builder_->setInt8Mode(true);
-    }
     ASSERT_EQ(nullptr, engine_.get());
-    builder_->setMaxBatchSize(batch_size);
-    TF_ASSERT_OK(converter_->BuildCudaEngine(&engine_));
+    TF_ASSERT_OK(
+        converter_->BuildCudaEngine(&engine_,
+                                    /*max_batch_size=*/batch_size,
+                                    /*max_workspace_size_bytes=*/1 << 26,
+                                    /*allocator=*/nullptr,
+                                    /*calibrator=*/nullptr));
     CHECK_NOTNULL(engine_.get());
     CheckDataTypeMatches(input_data);
     CheckDataTypeMatches(*output_data);
@@ -1418,7 +1413,8 @@ class OpConverterTest : public ::testing::Test {
     TF_EXPECT_OK(graph_properties.InferStatically(true));
 
     TrtNodeValidator validator(graph_properties, precision_mode_to_test_,
-                               /*use_calibration=*/false);
+                               /*use_calibration=*/false,
+                               /*use_implicit_batch=*/true);
     ExpectStatus(validator.IsTensorRTCandidate(node), expected_code,
                  expected_msg_substr);
   }
@@ -1473,7 +1469,6 @@ class OpConverterTest : public ::testing::Test {
 
  private:
   Logger logger_;
-  TrtUniquePtrType<nvinfer1::IBuilder> builder_;
   TrtUniquePtrType<nvinfer1::ICudaEngine> engine_;
   cudaStream_t stream_;
   // Used to create placeholders with shape and data type information. The
@@ -1719,15 +1714,14 @@ TEST_F(OpConverterTest, ConvertReshape) {
   };
 
   // Reshape at batch dimension, should fail.
-  const int kReshapeBatchDimsCases = 5;
-  TestParams params[kReshapeBatchDimsCases] = {
+  std::vector<TestParams> params = {
       TestParams{1, {1, 2, 3}, {3, 1, 1, 2}},
       TestParams{1, {1, 2, -1}, {-1, 1, 1, 2}},
       TestParams{1, {1, 2, 3}, {-1, 1, 1, 2}},
       TestParams{-1, {1, 2, 3}, {1, 1, 1, 2}},
       TestParams{-1, {-1, 2, 3}, {1, 1, 1, 6}},  // TODO(laigd): it should pass.
   };
-  for (int i = 0; i < kReshapeBatchDimsCases; ++i) {
+  for (int i = 0; i < params.size(); ++i) {
     Reset();
     const std::vector<int>& dims = params[i].tensor_dims;
     AddTestTensor("input", dims, params[i].batch_size);
@@ -1739,8 +1733,7 @@ TEST_F(OpConverterTest, ConvertReshape) {
   }
 
   // Reshape on non batch dimensions, ok.
-  const int kReshapeOKCases = 8;
-  TestParams ok_params[kReshapeOKCases] = {
+  std::vector<TestParams> ok_params = {
       TestParams{-1, {1, 2, 3}, {-1, 1, 3, 2}},
       TestParams{1, {1, 2, 3}, {-1, 1, 3, 2}},
       TestParams{1, {1, 2, 3}, {1, 1, 3, 2}},
@@ -1750,7 +1743,7 @@ TEST_F(OpConverterTest, ConvertReshape) {
       TestParams{2, {1, 1}, {2}},
       TestParams{2, {}, {2, 1}},
   };
-  for (int i = 0; i < kReshapeOKCases; ++i) {
+  for (int i = 0; i < ok_params.size(); ++i) {
     const int batch_size = std::max(1, ok_params[i].batch_size);
     const auto& shape = ok_params[i].shape;
     Reset();
@@ -2554,14 +2547,13 @@ TEST_F(OpConverterTest, ConvertCombinedNMS) {
   };
 
   // Ok.
-  const int kCombinedNMSOKCases = 1;
-  TestParams ok_params[kCombinedNMSOKCases] = {
+  std::vector<TestParams> ok_params = {
       // TODO(aaroey): there is a bug in TRT's CombinedNonMaxSuppression
       // implementation that, the extra output classes that are outside of the
       // range specified by valid_detections[i] are not zeros but -1s.
       TestParams{{1, 1, 4}, {1, 3}, 3, 2, .5f, 0, {2, 4}, {2}, {2}}};
 
-  for (int i = 0; i < kCombinedNMSOKCases; ++i) {
+  for (int i = 0; i < ok_params.size(); ++i) {
     Reset();
 
     AddTestTensor("boxes", ok_params[i].boxes_tensor_dims);
@@ -2819,14 +2811,13 @@ TEST_F(OpConverterTest, ConvertExpandDims) {
   };
 
   // Ok.
-  const int kExpandDimsOKCases = 8;
-  TestParams ok_params[kExpandDimsOKCases] = {
+  std::vector<TestParams> ok_params = {
       TestParams{{2, 3}, 1, {1, 2, 3}}, TestParams{{2, 3}, -3, {1, 2, 3}},
       TestParams{{2, 3}, 3, {2, 3, 1}}, TestParams{{2, 3}, -1, {2, 3, 1}},
       TestParams{{2, 3}, 2, {2, 1, 3}}, TestParams{{2, 3}, -2, {2, 1, 3}},
       TestParams{{6}, 1, {1, 6}},       TestParams{{6}, -1, {6, 1}},
   };
-  for (int i = 0; i < kExpandDimsOKCases; ++i) {
+  for (int i = 0; i < ok_params.size(); ++i) {
     Reset();
     AddTestTensor("input", ok_params[i].input_dims);
     AddTestWeights<int32>("weights", {1}, {ok_params[i].axis});
@@ -2936,8 +2927,7 @@ TEST_F(OpConverterTest, ConvertSqueeze) {
   };
 
   // Ok.
-  const int kSqueezeOKCases = 10;
-  TestParams ok_params[kSqueezeOKCases] = {
+  std::vector<TestParams> ok_params = {
       TestParams{{1, 2, 3}, {1}, {2, 3}},
       TestParams{{1, 2, 3}, {-3}, {2, 3}},
       TestParams{{2, 3, 1}, {3}, {2, 3}},
@@ -2949,7 +2939,7 @@ TEST_F(OpConverterTest, ConvertSqueeze) {
       TestParams{{1, 6}, {1}, {6}},
       TestParams{{6, 1}, {2}, {6}},
   };
-  for (int i = 0; i < kSqueezeOKCases; ++i) {
+  for (int i = 0; i < ok_params.size(); ++i) {
     Reset();
     NodeDef node_def = get_squeeze_nodedef(ok_params[i].axis);
     AddTestTensor("input", ok_params[i].input_dims);
@@ -3119,13 +3109,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
   // Same input is used for all tests.
   const std::vector<float> ok_input = {1, 2, 3, 4, 5, 6};
 
-#if IS_TRT_VERSION_GE(5, 1, 3, 1)
-  const int kStridedSliceOKCases = 31;
-#else
-  const int kStridedSliceOKCases = 27;
-#endif
   // Ok.
-  TestParams ok_params[kStridedSliceOKCases] = {
+  std::vector<TestParams> ok_params = {
     // 2D Crop.
     TestParams{
         /*input_dims=*/{1, 2, 3},
@@ -3489,6 +3474,7 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
         /*expected_output_dims=*/{1, 2, 1},
         /*expected_output=*/{2, 5},
     },
+#if IS_TRT_VERSION_GE(5, 1, 3, 1)
     TestParams{
         /*input_dims=*/{1, 2, 3},
         /*begin=*/{0, 0, 0, 0, 1},
@@ -3542,9 +3528,10 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
         /*expected_output_dims=*/{},
         /*expected_output=*/{1},
     },
+#endif  // IS_TRT_VERSION_GE(5, 1, 3, 1)
   };
 
-  for (int i = 0; i < kStridedSliceOKCases; i++) {
+  for (int i = 0; i < ok_params.size(); i++) {
     Reset();
     NodeDef node_def = get_strided_slice_nodedef(
         ok_params[i].begin_mask, ok_params[i].end_mask,
@@ -3677,8 +3664,7 @@ TEST_F(OpConverterTest, ConvertSlice) {
   };
 
   // Ok.
-  const int kSliceOKCases = 5;
-  TestParams ok_params[kSliceOKCases] = {
+  std::vector<TestParams> ok_params = {
       TestParams{{1, 2, 3},
                  {0, 0, 0, 0},
                  {-1, -1, -1, -1},
@@ -3692,7 +3678,7 @@ TEST_F(OpConverterTest, ConvertSlice) {
       TestParams{{6}, {0, 1}, {-1, 3}, {3}, {2, 3, 4}},
   };
 
-  for (int i = 0; i < kSliceOKCases; i++) {
+  for (int i = 0; i < ok_params.size(); i++) {
     Reset();
     NodeDef node_def = get_slice_nodedef();
     AddTestTensor("input", ok_params[i].input_dims);
@@ -3861,8 +3847,7 @@ TEST_F(OpConverterTest, ConvertConv2D) {
   };
 
   // Ok.
-  const int kConv2DOKCases = 7;
-  TestParams ok_params[kConv2DOKCases] = {
+  std::vector<TestParams> ok_params = {
       // Basic
       TestParams{/*input_dims=*/{1, 2, 3},
                  /*input=*/{0, 1, 2, 3, 3, 4},
@@ -3947,9 +3932,34 @@ TEST_F(OpConverterTest, ConvertConv2D) {
                  /*is_conv2d_backprop_input=*/true,
                  /*expected_output_dims=*/{1, 2, 4},
                  /*expected_output=*/{0, 0, -1, 1, -2, 2, -3, 3}},
+      // Transpose Strided NHWC
+      TestParams{/*input_dims=*/{2, 2, 1},
+                 /*input=*/{0, 1, 2, 3},
+                 /*filter_dims=*/{1, 2, 1, 1},
+                 /*filter=*/{-1, 1},
+                 /*strides=*/{1, 1, 2, 1},
+                 /*padding=*/"SAME",
+                 /*data_format=*/"NHWC",
+                 /*dilations=*/{1, 1, 1, 1},
+                 /*is_conv2d_backprop_input=*/true,
+                 /*expected_output_dims=*/{2, 4, 1},
+                 /*expected_output=*/{0, 0, -1, 1, -2, 2, -3, 3}},
+      // Transpose Strided NHWC with VALID padding
+      TestParams{/*input_dims=*/{3, 1, 1},
+                 /*input=*/{0, 1, 2},
+                 /*filter_dims=*/{2, 1, 1, 1},
+                 /*filter=*/{-1, 1},
+                 /*strides=*/{1, 2, 1, 1},
+                 /*padding=*/"VALID",
+                 /*data_format=*/"NHWC",
+                 /*dilations=*/{1, 1, 1, 1},
+                 /*is_conv2d_backprop_input=*/true,
+                 /*expected_output_dims=*/{7, 1, 1},
+                 /*expected_output=*/{0, 0, -1, 1, -2, 2, 0}},
+
   };
 
-  for (int i = 0; i < kConv2DOKCases; i++) {
+  for (int i = 0; i < ok_params.size(); i++) {
     Reset();
     NodeDef node_def = get_conv2d_nodedef(
         ok_params[i].strides, ok_params[i].padding, ok_params[i].data_format,
@@ -3958,10 +3968,10 @@ TEST_F(OpConverterTest, ConvertConv2D) {
     AddTestWeights<float>("weights", ok_params[i].filter_dims,
                           ok_params[i].filter);
     if (ok_params[i].is_conv2d_backprop_input) {
-      AddTestWeights<float>(
-          "input_sizes",
-          {static_cast<int>(ok_params[i].expected_output.size())},
-          ok_params[i].expected_output);
+      std::vector<int> tf_input_sizes = ok_params[i].expected_output_dims;
+      tf_input_sizes.insert(tf_input_sizes.begin(), 1);  // Add batch dimension.
+      QCHECK_EQ(4, tf_input_sizes.size());
+      AddTestWeights<int>("input_sizes", {4}, tf_input_sizes);
     }
     RunValidationAndConversion(node_def);
     TRT_TensorOrWeights output;
@@ -4146,8 +4156,7 @@ TEST_F(OpConverterTest, ConvertConv3D) {
   };
 
   // Start here
-  const int kConv3DOKCases = 8;
-  TestParams ok_params[kConv3DOKCases] = {
+  std::vector<TestParams> ok_params = {
       // Basic - just 1x1 conv - input = output
       TestParams{
           /*input_dims=*/{1, 3, 3, 3},  // CDHW
@@ -4282,7 +4291,7 @@ TEST_F(OpConverterTest, ConvertConv3D) {
 
   };
 
-  for (int i = 0; i < kConv3DOKCases; i++) {
+  for (int i = 0; i < ok_params.size(); i++) {
     Reset();
     NodeDef node_def = get_conv3d_nodedef(
         ok_params[i].strides, ok_params[i].padding, ok_params[i].data_format,
@@ -4366,8 +4375,7 @@ TEST_F(OpConverterTest, ConvertPool3D) {
   const std::vector<float> common_array{-4, 2,  15, 3, 6,   -3, 22, 1,   88,
                                         56, 36, 1,  1, 105, 1,  16, -28, 1,
                                         42, 9,  3,  1, 7,   1,  11, 61,  5};
-  const int kPool3DOKCases = 10;
-  TestParams ok_params[kPool3DOKCases] = {
+  std::vector<TestParams> ok_params = {
       // Basic - just 1x1 max pooling - input = output
       TestParams{/*input_dims=*/{1, 3, 3, 3},
                  /*input=*/common_array,
@@ -4477,7 +4485,7 @@ TEST_F(OpConverterTest, ConvertPool3D) {
                                                         // the corners
       }};
 
-  for (int i = 0; i < kPool3DOKCases; i++) {
+  for (int i = 0; i < ok_params.size(); i++) {
     Reset();
     NodeDef node_def = get_pool3d_nodedef(
         ok_params[i].ksize, ok_params[i].strides, ok_params[i].padding,
@@ -4577,10 +4585,9 @@ void TestConvertGather(OpConverterTest* test) {
   };
 
   // Input is the same {1, 2, 3, 4, 5, 6} for all cases.
-  const int kGatherOKCases = 11;
   const std::vector<CType> params_input = {CType(1), CType(2), CType(3),
                                            CType(4), CType(5), CType(6)};
-  TestParams ok_params[kGatherOKCases] = {
+  std::vector<TestParams> ok_params = {
       // Vector indices, and output rank is rank(params).
       TestParams{
           /*params_shape=*/{1, 1, 2, 3},
@@ -4685,7 +4692,7 @@ void TestConvertGather(OpConverterTest* test) {
   };
 
   // Ok.
-  for (int i = 0; i < kGatherOKCases; i++) {
+  for (int i = 0; i < ok_params.size(); i++) {
     test->Reset();
     const auto& params_shape = ok_params[i].params_shape;
     if (ok_params[i].params_is_tensor) {
@@ -4998,8 +5005,7 @@ void TestConvertConcat(OpConverterTest* test) {
       InitTestVector<CType>(6, /*start_value=*/CType(6))};
   // TODO(hinsu): Use std::vector instead of an array to avoid use of explicit
   // size.
-  const int kConcatOKCases = 4;
-  TestParams ok_params[kConcatOKCases] = {
+  std::vector<TestParams> ok_params = {
       {
           /*input_shapes=*/{{1, 2, 3}, {1, 2, 3}},
           /*input_values=*/common_input,
@@ -5039,7 +5045,7 @@ void TestConvertConcat(OpConverterTest* test) {
       },
   };
 
-  for (int i = 0; i < kConcatOKCases; ++i) {
+  for (int i = 0; i < ok_params.size(); ++i) {
     test->Reset();
     const int num_inputs = ok_params[i].input_shapes.size();
     EXPECT_EQ(num_inputs, ok_params[i].input_values.size());
@@ -5172,8 +5178,7 @@ void TestConvertSplit(OpConverterTest* test) {
   };
 
   const std::vector<CType> common_input = InitTestVector<CType>(6);
-  const int kSplitOKCases = 4;
-  TestParams ok_params[kSplitOKCases] = {
+  std::vector<TestParams> ok_params = {
       // Identity (num_split = 1)
       {/*input_shape=*/{1, 2, 3}, /*value=*/common_input, /*axis=*/1,
        /*num_split=*/1, /*expected_output_dims=*/{1, 2, 3},
@@ -5206,7 +5211,7 @@ void TestConvertSplit(OpConverterTest* test) {
        {InitTestVector<CType>(3), InitTestVector<CType>(3, CType(3))}},
   };
 
-  for (int i = 0; i < kSplitOKCases; ++i) {
+  for (int i = 0; i < ok_params.size(); ++i) {
     test->Reset();
     NodeDef node_def = get_split_nodedef(dtype, ok_params[i].num_split);
     // Create inputs.
@@ -5348,8 +5353,7 @@ void TestConvertUnpack(OpConverterTest* test) {
   };
 
   const std::vector<CType> common_input = InitTestVector<CType>(6);
-  const int kUnpackOKCases = 4;
-  TestParams ok_params[kUnpackOKCases] = {
+  std::vector<TestParams> ok_params = {
       {/*input_shape=*/{1, 2, 3}, /*value=*/common_input, /*axis=*/1,
        /*num=*/1, /*expected_output_dims=*/{2, 3},
        /*expected_outputs=*/{InitTestVector<CType>(6)}},
@@ -5386,7 +5390,7 @@ void TestConvertUnpack(OpConverterTest* test) {
         {CType(5)}}},
   };
 
-  for (int i = 0; i < kUnpackOKCases; ++i) {
+  for (int i = 0; i < ok_params.size(); ++i) {
     test->Reset();
     NodeDef node_def =
         get_unpack_nodedef(dtype, ok_params[i].num, ok_params[i].axis);

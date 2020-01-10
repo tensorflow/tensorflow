@@ -93,7 +93,7 @@ std::pair<XlaOp, XlaOp> CholeskyUnblocked(
           Zeros(body_builder,
                 ShapeUtil::MakeShape(a_shape.element_type(), matrix_dims));
       // L * L.T, This matrix has of a lot of multiplying with zero
-      // (namely, L[:, j:] = 0) and redudant computation, but it is faster
+      // (namely, L[:, j:] = 0) and redundant computation, but it is faster
       // than slice.
       auto l_square = BatchDot(body_l, false, body_l, true, precision);
 

@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
+#include "tensorflow/c/eager/tensor_handle_interface.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
@@ -58,7 +59,7 @@ struct TFE_ContextOptions {
       TFE_DEVICE_PLACEMENT_SILENT};
   TFE_ContextMirroringPolicy mirroring_policy{TFE_MIRRORING_NONE};
   // If true, lazily copy the remote inputs of a function to the target devices.
-  bool lazy_remote_inputs_copy = false;
+  bool lazy_remote_inputs_copy = true;
 };
 
 struct TFE_Context {
@@ -91,7 +92,6 @@ struct TFE_Context {
 };
 
 struct TFE_TensorHandle {
-  explicit TFE_TensorHandle(tensorflow::TensorHandle* h) : handle(h) {}
   static TFE_TensorHandle* CreateLocalHandle(const class tensorflow::Tensor& t,
                                              TF_Status* s) {
     tensorflow::TensorHandle* handle;
@@ -99,10 +99,10 @@ struct TFE_TensorHandle {
     if (!s->status.ok()) {
       return nullptr;
     }
-    return new TFE_TensorHandle(handle);
+    return new TFE_TensorHandle{tensorflow::TensorHandleInterface(handle)};
   }
 
-  tensorflow::TensorHandle* handle;
+  tensorflow::TensorHandleInterface handle;
 };
 
 struct TFE_TensorDebugInfo {
@@ -125,28 +125,36 @@ struct TFE_OpInferenceContext {
 struct TFE_Op {
   TFE_Op(TFE_Context* ctx, const char* op, bool is_function,
          const tensorflow::AttrTypeMap* t,
-         TFE_OpInferenceContext* inference_ctx)
-      : operation(ctx->context, op, is_function, t),
-        inference_ctx(inference_ctx) {}
+         std::unique_ptr<TFE_OpInferenceContext> inference_ctx)
+      : ctx(ctx),
+        operation(ctx->context, op, is_function, t),
+        inference_ctx(std::move(inference_ctx)) {}
 
   void Clear() {
     operation.Clear();
     inference_ctx.reset();
   }
 
-  void Reset(TFE_Context* ctx, const char* op, bool is_function,
-             const tensorflow::AttrTypeMap* t,
-             TFE_OpInferenceContext* infer_ctx) {
-    operation.Reset(ctx->context, op, is_function, t, nullptr);
-    inference_ctx.reset(infer_ctx);
+  tensorflow::Status Reset(const char* op, bool is_function,
+                           const tensorflow::AttrTypeMap* t,
+                           const char* raw_device_name,
+                           std::unique_ptr<TFE_OpInferenceContext> infer_ctx) {
+    inference_ctx = std::move(infer_ctx);
+    return operation.Reset(ctx->context, op, is_function, t, raw_device_name,
+                           nullptr);
   }
 
+  void AddInput(TFE_TensorHandle* input, TF_Status* status);
+  void Execute(TFE_TensorHandle** retvals, int* num_retvals, TF_Status* status);
+
+  TFE_Context* ctx;
   tensorflow::EagerOperation operation;
   std::unique_ptr<TFE_OpInferenceContext> inference_ctx;
 };
 
 TFE_Op* NewOrResetOp(TFE_Context* ctx, const char* op_or_function_name,
-                     TF_Status* status, TFE_Op* op_to_reset = nullptr);
+                     const char* raw_device_name, TF_Status* status,
+                     TFE_Op* op_to_reset = nullptr);
 
 struct TFE_Profiler {
   explicit TFE_Profiler() { profiler = tensorflow::ProfilerSession::Create(); }

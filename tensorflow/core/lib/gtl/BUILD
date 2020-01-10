@@ -6,6 +6,10 @@ package(
         "//tensorflow/core/lib/random:__pkg__",
         # tensorflow/core/lib/strings:proto_serialization uses on gtl:inlined_vector
         "//tensorflow/core/lib/strings:__pkg__",
+        # tensorflow/core/lib/histogram uses array_slice
+        "//tensorflow/core/lib/histogram:__pkg__",
+        # tensorflow/core/framework uses array_slice, map_util, and flatmap
+        "//tensorflow/core/framework:__pkg__",
     ],
     licenses = ["notice"],  # Apache 2.0
 )
@@ -45,6 +49,14 @@ cc_library(
 cc_library(
     name = "flatmap",
     hdrs = ["flatmap.h"],
+    visibility = [
+        "//tensorflow/c/eager:__pkg__",
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/framework:__pkg__",
+        "//tensorflow/core/lib/histogram:__pkg__",
+        "//tensorflow/core/lib/random:__pkg__",
+        "//tensorflow/core/lib/strings:__pkg__",
+    ],
     deps = [
         "//tensorflow/core/lib/gtl:flatrep",
         "//tensorflow/core/lib/hash",

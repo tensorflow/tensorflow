@@ -22,17 +22,17 @@ within various embedded development environments.
 The most important files for using the TensorFlow Lite for Microcontrollers
 interpreter are located in the root of the project, accompanied by tests:
 
--   [`all_ops_resolver.h`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/micro/kernels/all_ops_resolver.h)
+-   [`all_ops_resolver.h`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/kernels/all_ops_resolver.h)
     or
-    [`micro_mutable_op_resolver.h`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/micro/micro_mutable_op_resolver.h)
+    [`micro_mutable_op_resolver.h`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/micro_mutable_op_resolver.h)
     can be used to provide the operations used by the interpreter to run the
     model. Since `all_ops_resolver.h` pulls in every available operation, it
     uses a lot of memory. In production applications, you should use
     `micro_mutable_op_resolver.h` to pull in only the operations your model
     needs.
--   [`micro_error_reporter.h`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/micro/micro_error_reporter.h)
+-   [`micro_error_reporter.h`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/micro_error_reporter.h)
     outputs debug information.
--   [`micro_interpreter.h`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/micro/micro_interpreter.h)
+-   [`micro_interpreter.h`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/micro_interpreter.h)
     contains code to handle and run models.
 
 See [Get started with microcontrollers](get_started.md) for a walkthrough of
@@ -40,15 +40,15 @@ typical usage.
 
 The build system provides for platform-specific implementations of certain
 files. These are located in a directory with the platform name, for example
-[`sparkfun_edge`](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/micro/sparkfun_edge).
+[`sparkfun_edge`](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/sparkfun_edge).
 
 Several other directories exist, including:
 
--   [`kernel`](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/micro/kernels),
+-   [`kernel`](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/kernels),
     which contains operation implementations and the associated code.
--   [`tools`](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/micro/tools),
+-   [`tools`](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/tools),
     which contains build tools and their output.
--   [`examples`](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/micro/examples),
+-   [`examples`](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/examples),
     which contains sample code.
 
 ## Start a new project
@@ -79,33 +79,32 @@ To generate these projects with Make, clone the
 following command:
 
 ```bash
-make -f tensorflow/lite/experimental/micro/tools/make/Makefile generate_projects
+make -f tensorflow/lite/micro/tools/make/Makefile generate_projects
 ```
 
 This will take a few minutes, since it has to download some large toolchains for
 the dependencies. Once it has finished, you should see some folders created
-inside a path like
-`tensorflow/lite/experimental/micro/tools/make/gen/linux_x86_64/prj/` (the exact
-path depends on your host operating system). These folders contain the generated
-project and source files.
+inside a path like `tensorflow/lite/micro/tools/make/gen/linux_x86_64/prj/` (the
+exact path depends on your host operating system). These folders contain the
+generated project and source files.
 
 After running the command, you'll be able to find the *Hello World* projects in
-`tensorflow/lite/experimental/micro/tools/make/gen/linux_x86_64/prj/hello_world`.
-For example, `hello_world/keil` will contain the Keil project.
+`tensorflow/lite/micro/tools/make/gen/linux_x86_64/prj/hello_world`. For
+example, `hello_world/keil` will contain the Keil project.
 
 ## Run the tests
 
 To build the library and run all of its unit tests, use the following command:
 
 ```bash
-make -f tensorflow/lite/experimental/micro/tools/make/Makefile test
+make -f tensorflow/lite/micro/tools/make/Makefile test
 ```
 
 To run an individual test, use the following command, replacing `<test_name>`
 with the name of the test:
 
 ```bash
-make -f tensorflow/lite/experimental/micro/tools/make/Makefile test_<test_name>
+make -f tensorflow/lite/micro/tools/make/Makefile test_<test_name>
 ```
 
 You can find the test names in the project's Makefiles. For example,
@@ -119,14 +118,14 @@ use the following command, replacing `<project_name>` with the project you wish
 to build:
 
 ```bash
-make -f tensorflow/lite/experimental/micro/tools/make/Makefile <project_name>_bin
+make -f tensorflow/lite/micro/tools/make/Makefile <project_name>_bin
 ```
 
 For example, the following command will build a binary for the *Hello World*
 application:
 
 ```bash
-make -f tensorflow/lite/experimental/micro/tools/make/Makefile hello_world_bin
+make -f tensorflow/lite/micro/tools/make/Makefile hello_world_bin
 ```
 
 By default, the project will be compiled for the host operating system. To
@@ -134,7 +133,7 @@ specify a different target architecture, use `TARGET=`. The following example
 shows how to build the *Hello World* example for the SparkFun Edge:
 
 ```bash
-make -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=sparkfun_edge hello_world_bin
+make -f tensorflow/lite/micro/tools/make/Makefile TARGET=sparkfun_edge hello_world_bin
 ```
 
 When a target is specified, any available target-specific source files will be
@@ -149,9 +148,9 @@ World* example.
 
 ## Optimized kernels
 
-The reference kernels in the root of
-`tensorflow/lite/experimental/micro/kernels` are implemented in pure C/C++, and
-do not include platform-specific hardware optimizations.
+The reference kernels in the root of `tensorflow/lite/micro/kernels` are
+implemented in pure C/C++, and do not include platform-specific hardware
+optimizations.
 
 Optimized versions of kernels are provided in subdirectories. For example,
 `kernels/cmsis-nn` contains several optimized kernels that make use of Arm's
@@ -162,7 +161,7 @@ replacing `<subdirectory_name>` with the name of the subdirectory containing the
 optimizations:
 
 ```bash
-make -f tensorflow/lite/experimental/micro/tools/make/Makefile TAGS=<subdirectory_name> generate_projects
+make -f tensorflow/lite/micro/tools/make/Makefile TAGS=<subdirectory_name> generate_projects
 ```
 
 You can add your own optimizations by creating a new subfolder for them. We
@@ -177,14 +176,14 @@ If you need to generate a new build of the library, you can run the following
 script from the TensorFlow repository:
 
 ```bash
-./tensorflow/lite/experimental/micro/tools/ci_build/test_arduino.sh
+./tensorflow/lite/micro/tools/ci_build/test_arduino.sh
 ```
 
 The resulting library can be found in
-`tensorflow/lite/experimental/micro/tools/make/gen/arduino_x86_64/prj/tensorflow_lite.zip`.
+`tensorflow/lite/micro/tools/make/gen/arduino_x86_64/prj/tensorflow_lite.zip`.
 
 ## Port to new devices
 
 Guidance on porting TensorFlow Lite for Microcontrollers to new platforms and
 devices can be found in
-[`micro/README.md`](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/micro/README.md).
+[`micro/README.md`](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/README.md).

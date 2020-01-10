@@ -1194,7 +1194,11 @@ tensorflow::Status ConvertSoftmaxOperator(
   softmax->outputs.push_back(node.name());
   // TensorFlow's Softmax doesn't seem to admit a 'beta' parameter.
   CHECK(!node.attr().count("beta"));  // Stab in the dark, just in case.
-  softmax->beta = 1.f;
+  if (node.attr().count("_softmax_beta")) {
+    softmax->beta = GetFloatAttr(node, "_softmax_beta");
+  } else {
+    softmax->beta = 1.f;
+  }
   model->operators.emplace_back(softmax);
   return tensorflow::Status::OK();
 }
@@ -2235,7 +2239,6 @@ bool InlineAllFunctions(GraphDef* graphdef) {
   tensorflow::FunctionLibraryDefinition fld(tensorflow::OpRegistry::Global(),
                                             graphdef_copy.library());
   tensorflow::StaticDeviceMgr device_mgr(std::move(devices));
-  tensorflow::OptimizerOptions o_opts;
   tensorflow::ProcessFunctionLibraryRuntime pflr(
       &device_mgr, tensorflow::Env::Default(), &options.config,
       TF_GRAPH_DEF_VERSION, &fld,

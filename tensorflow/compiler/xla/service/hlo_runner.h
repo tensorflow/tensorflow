@@ -80,7 +80,7 @@ class HloRunner {
     bool run_hlo_passes = false;
 
     // If true, executes on multiple threads using se::Stream::ExecuteOnStream.
-    // Othewise, executes using xla::Executable::ExecuteOnStreams.
+    // Otherwise, executes using xla::Executable::ExecuteOnStreams.
     bool use_threads = false;
   };
 

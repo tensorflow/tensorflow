@@ -28,19 +28,19 @@ limitations under the License.
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/iterator_range.h"
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/BlockAndValueMapping.h"  // TF:local_config_mlir
-#include "mlir/IR/Function.h"  // TF:local_config_mlir
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/IR/Module.h"  // TF:local_config_mlir
-#include "mlir/IR/Operation.h"  // TF:local_config_mlir
-#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
-#include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
-#include "mlir/IR/Types.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
-#include "mlir/Pass/PassRegistry.h"  // TF:local_config_mlir
-#include "mlir/Transforms/DialectConversion.h"  // TF:local_config_mlir
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/BlockAndValueMapping.h"  // TF:llvm-project
+#include "mlir/IR/Function.h"  // TF:llvm-project
+#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
+#include "mlir/IR/Module.h"  // TF:llvm-project
+#include "mlir/IR/Operation.h"  // TF:llvm-project
+#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/IR/TypeUtilities.h"  // TF:llvm-project
+#include "mlir/IR/Types.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/Pass/PassRegistry.h"  // TF:llvm-project
+#include "mlir/Transforms/DialectConversion.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
@@ -64,13 +64,12 @@ createLegalizeTFControlFlowPass() {
 
 namespace {
 
-void Detuple(Value* tuple, llvm::iterator_range<ResultIterator> replace,
-             OpBuilder* builder) {
+void Detuple(Value tuple, Operation::result_range replace, OpBuilder* builder) {
   // De-tuple the results of the xla hlo conditional result.
   for (auto result_it : llvm::enumerate(replace)) {
     auto get_tuple_value = builder->create<xla_hlo::GetTupleElementOp>(
-        result_it.value()->getLoc(), tuple, result_it.index());
-    result_it.value()->replaceAllUsesWith(get_tuple_value);
+        result_it.value().getLoc(), tuple, result_it.index());
+    result_it.value().replaceAllUsesWith(get_tuple_value);
   }
 }
 
@@ -87,7 +86,7 @@ void ImportXlaRegion(mlir::FuncOp func, Region* dest_region, Location loc,
   auto entry_block = builder.createBlock(dest_region);
   auto tuple_arg = entry_block->addArgument(
       builder.getTupleType(func.getType().getInputs()));
-  llvm::SmallVector<Value*, 4> detupled_args;
+  llvm::SmallVector<Value, 4> detupled_args;
   detupled_args.reserve(func.getNumArguments());
 
   for (int64_t i = 0, s = func.getNumArguments(); i < s; i++) {
@@ -95,8 +94,7 @@ void ImportXlaRegion(mlir::FuncOp func, Region* dest_region, Location loc,
     detupled_args.push_back(extract);
   }
 
-  llvm::SmallVector<Value*, 4> result(
-      builder.create<CallOp>(loc, func, detupled_args).getResults());
+  auto result = builder.create<CallOp>(loc, func, detupled_args).getResults();
   if (!tuple_return) {
     builder.create<xla_hlo::ReturnOp>(loc, result);
   } else {
@@ -111,12 +109,12 @@ void LowerIf(TF::IfOp op, ModuleOp module) {
 
   // XLA prefers tuple arguments for control flow due to XLA not supporting
   // multiple return values.
-  SmallVector<Value*, 3> inputs(op.input());
+  SmallVector<Value, 3> inputs(op.input());
   builder.setInsertionPoint(op);
   auto tuple_input = builder.create<xla_hlo::TupleOp>(loc, inputs);
 
   // Create the new conditional op with tuple inputs.
-  SmallVector<Value*, 3> operands(op.getOperands());
+  SmallVector<Value, 3> operands(op.getOperands());
   SmallVector<Type, 4> types(op.getResultTypes());
   auto result_type = builder.getTupleType(types);
   auto conditional = builder.create<xla_hlo::ConditionalOp>(
@@ -143,12 +141,12 @@ void LowerWhile(TF::WhileOp op, ModuleOp module) {
 
   // XLA prefers tuple arguments for control flow due to XLA not supporting
   // multiple return values.
-  SmallVector<Value*, 3> inputs(op.input());
+  SmallVector<Value, 3> inputs(op.input());
   builder.setInsertionPoint(op);
-  Value* tuple_input = builder.create<xla_hlo::TupleOp>(loc, inputs);
+  Value tuple_input = builder.create<xla_hlo::TupleOp>(loc, inputs);
 
   // Create the new while op with tuple inputs.
-  SmallVector<Value*, 3> operands(op.getOperands());
+  SmallVector<Value, 3> operands(op.getOperands());
   SmallVector<Type, 4> types(op.getResultTypes());
   auto while_op = builder.create<xla_hlo::WhileOp>(
       loc, builder.getTupleType(types), tuple_input);

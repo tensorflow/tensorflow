@@ -167,7 +167,8 @@ class EagerExecutor {
 
   const char* StateStringLocked() EXCLUSIVE_LOCKS_REQUIRED(node_queue_mutex_);
 
-  void NodeDone(const core::RefCountPtr<NodeItem>& item, const Status& status);
+  void NodeDone(const core::RefCountPtr<NodeItem>& item, const Status& status,
+                bool from_queue);
   void NotifyWaiters(uint64 id) EXCLUSIVE_LOCKS_REQUIRED(node_queue_mutex_);
 
   // Starts execution of pending EagerNodes. This function loops till
@@ -176,7 +177,8 @@ class EagerExecutor {
   // `status_` is not ok.
   void Run();
 
-  Status RunItem(core::RefCountPtr<NodeItem> item);
+  Status RunItem(core::RefCountPtr<NodeItem> item, bool from_queue);
+  Status MoveToUnfinished(core::RefCountPtr<NodeItem> item, bool from_queue);
 
   // The impl of WaitForAllPendingNodes
   // `lock` is the lock that holds node_queue_mutex_.

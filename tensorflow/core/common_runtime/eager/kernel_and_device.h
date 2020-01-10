@@ -59,6 +59,8 @@ class EagerKernelArgs : public FunctionArgsInterface {
  public:
   EagerKernelArgs() {}
 
+  explicit EagerKernelArgs(int count) : tensor_args_(count) {}
+
   explicit EagerKernelArgs(gtl::InlinedVector<TensorValue, 4>&& tensor_args)
       : tensor_args_(std::move(tensor_args)) {}
 
@@ -170,12 +172,11 @@ class KernelAndDeviceOp final : public KernelAndDevice {
       FunctionLibraryRuntime* flr,
       std::function<void(std::function<void()>)>* runner,
       std::unique_ptr<CollectiveExecutor::Handle> collective_executor,
-      Device* host_cpu_device, const bool compile_with_xla = false)
+      Device* host_cpu_device)
       : KernelAndDevice(flr, runner, std::move(collective_executor),
                         host_cpu_device),
         rendez_(rendez),
         log_memory_(log_memory),
-        compile_with_xla_(compile_with_xla),
         step_container_(0, [this](const string& name) {
           device_->resource_manager()->Cleanup(name).IgnoreError();
         }) {}
@@ -211,11 +212,11 @@ class KernelAndDeviceOp final : public KernelAndDevice {
 
  private:
   std::unique_ptr<OpKernel> kernel_;
+  gtl::InlinedVector<AllocatorAttributes, 4> input_alloc_attrs_;
+  gtl::InlinedVector<AllocatorAttributes, 1> output_alloc_attrs_;
   Rendezvous* const rendez_;
   checkpoint::TensorSliceReaderCacheWrapper slice_reader_cache_;
   const bool log_memory_;
-  const bool compile_with_xla_;
-
   ScopedStepContainer step_container_;
 };
 

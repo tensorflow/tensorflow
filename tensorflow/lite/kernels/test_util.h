@@ -165,12 +165,15 @@ class SingleOpModel {
   }
   int AddInput(const TensorData& t, bool is_variable = false);
 
+  int AddIntermediate(TensorType type, const std::vector<float>& scale,
+                      const std::vector<int64_t>& zero_point);
+
   // Templated version of AddConstInput().
   template <typename T>
   int AddConstInput(const TensorData& t, std::initializer_list<T> data) {
     int id = 0;
     if (t.per_channel_quantization) {
-      id = AddTensorPerChannelQuant(t);
+      id = AddTensorPerChannelQuant(t, data);
     } else {
       id = AddTensor(t, data);
     }
@@ -183,7 +186,7 @@ class SingleOpModel {
     return AddConstInput(TensorData{type, shape}, data);
   }
 
-  // Add a null input tensor (optional input) and return kOptionalTensor.
+  // Add a null input tensor (optional input) and return kTfLiteOptionalTensor.
   int AddNullInput();
 
   // Add a TensorType output tensor and return its index.
@@ -450,7 +453,14 @@ class SingleOpModel {
     return {scale, zero_point};
   }
 
-  int AddTensorPerChannelQuant(TensorData t) {
+  int AddTensorPerChannelQuant(const TensorData& t) {
+    // type does not matter when adding empty data.
+    return AddTensorPerChannelQuant<uint8_t>(t, {});
+  }
+
+  template <typename T>
+  int AddTensorPerChannelQuant(const TensorData& t,
+                               const std::initializer_list<T>& data) {
     const int id = tensors_.size();
     flatbuffers::Offset<QuantizationParameters> q_params = 0;
     q_params = CreateQuantizationParameters(
@@ -460,9 +470,26 @@ class SingleOpModel {
         /*zero point=*/
         builder_.CreateVector<int64_t>(t.per_channel_quantization_offsets),
         QuantizationDetails_NONE, 0, t.channel_index);
+
+    int buffer_id = 0;
+    if (data.size()) {
+      // Initialize buffers list with empty buffer to allow for non-const
+      // tensors.
+      if (buffers_.empty()) {
+        buffers_.push_back(CreateBuffer(builder_, builder_.CreateVector({})));
+      }
+
+      // Add data as a Buffer to buffers list.
+      buffer_id = buffers_.size();
+      auto data_buffer =
+          builder_.CreateVector(reinterpret_cast<const uint8_t*>(data.begin()),
+                                sizeof(T) * data.size());
+      buffers_.push_back(CreateBuffer(builder_, data_buffer));
+    }
+
     tensors_.push_back(
         CreateTensor(builder_, builder_.CreateVector<int>(t.shape), t.type,
-                     /*buffer=*/0,
+                     /*buffer=*/buffer_id,
                      /*name=*/0, q_params, /*is_variable=*/false));
     tensor_data_[id] = t;
     return id;
@@ -587,6 +614,7 @@ class SingleOpModel {
 
   std::map<int, TensorData> tensor_data_;
   std::vector<int32_t> inputs_;
+  std::vector<int32_t> intermediates_;
   std::vector<int32_t> outputs_;
   std::vector<flatbuffers::Offset<Tensor>> tensors_;
   std::vector<flatbuffers::Offset<OperatorCode>> opcodes_;

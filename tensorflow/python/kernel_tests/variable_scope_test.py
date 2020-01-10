@@ -118,7 +118,7 @@ class VariableScopeTest(test.TestCase):
     vs.get_variable("v2", [2])
     expected_names = ["%s:0" % name for name in ["v1", "v2"]]
     self.assertEqual(
-        set(expected_names), set([v.name for v in vs._vars.values()]))
+        set(expected_names), set(v.name for v in vs._vars.values()))
 
   # TODO(mihaimaruseac): Not converted to use wrap_function because of
   # TypeError: Expected tf.group() expected Tensor arguments not 'None' with

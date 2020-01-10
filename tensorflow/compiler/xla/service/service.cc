@@ -660,7 +660,7 @@ Status Service::ExecuteGraphParallel(const ExecuteGraphParallelRequest* arg,
     const ExecuteGraphRequest& request = arg->requests(i);
     TF_RET_CHECK(request.has_computation()) << "computations may not be empty";
     TF_RET_CHECK(request.computation().has_host_program_shape())
-        << "programe shape may not be empty";
+        << "program shape may not be empty";
 
     // Get the executors.
     TF_ASSIGN_OR_RETURN(auto executors, GetExecutors(execution_options,
@@ -837,7 +837,7 @@ Status Service::Compile(const CompileRequest* arg, CompileResponse* result) {
     return InvalidArgument("computations may not be empty");
   }
   if (!arg->computation().has_host_program_shape()) {
-    return InvalidArgument("programe shape may not be empty");
+    return InvalidArgument("program shape may not be empty");
   }
 
   if (arg->execution_options().device_handles_size() > 1) {
@@ -887,7 +887,7 @@ Status Service::Execute(const ExecuteRequest* arg, ExecuteResponse* result) {
       ResolveAndValidateArguments(arg->arguments(), replicas));
 
   // Check that the replicated_arguments has the same shape and layout as the
-  // module config used when creating the exectuable.
+  // module config used when creating the executable.
   const int64 num_module_args =
       executable->module_config().entry_computation_layout().parameter_count();
   if (num_module_args != arg->arguments_size()) {
@@ -902,7 +902,7 @@ Status Service::Execute(const ExecuteRequest* arg, ExecuteResponse* result) {
     const Shape& shape_arg = replicated_arguments.front()[i]->on_host_shape();
     if (!ShapeUtil::Equal(shape_module, shape_arg)) {
       return InvalidArgumentStrCat(
-          "The executable exepcts the ", i, "th argument in shape ",
+          "The executable expects the ", i, "th argument in shape ",
           ShapeUtil::HumanStringWithLayout(shape_module), " but sees ",
           ShapeUtil::HumanStringWithLayout(shape_arg));
     }

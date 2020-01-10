@@ -19,21 +19,41 @@ limitations under the License.
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
-#include "mlir/Dialect/QuantOps/QuantTypes.h"  // TF:local_config_mlir
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/IR/Matchers.h"  // TF:local_config_mlir
-#include "mlir/IR/Module.h"  // TF:local_config_mlir
-#include "mlir/IR/Operation.h"  // TF:local_config_mlir
-#include "mlir/IR/OperationSupport.h"  // TF:local_config_mlir
-#include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
-#include "mlir/Support/Functional.h"  // TF:local_config_mlir
+#include "mlir/Dialect/QuantOps/QuantTypes.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/Builders.h"  // TF:llvm-project
+#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
+#include "mlir/IR/Matchers.h"  // TF:llvm-project
+#include "mlir/IR/Module.h"  // TF:llvm-project
+#include "mlir/IR/Operation.h"  // TF:llvm-project
+#include "mlir/IR/OperationSupport.h"  // TF:llvm-project
+#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/Support/Functional.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
+
+// NOLINTNEXTLINE
+static llvm::cl::opt<bool> enable_numeric_verify(
+    "tfl-numeric-verify", llvm::cl::value_desc("bool"),
+    llvm::cl::desc("Whether verify numericals at runtime."),
+    llvm::cl::init(false));
+
+// NOLINTNEXTLINE
+static llvm::cl::opt<float> error_tolerance(
+    "tfl-error-tolerance", llvm::cl::value_desc("float"),
+    llvm::cl::desc("Error tolerance for numeric verify. Valid when "
+                   "`-tfl-numeric-verify` is set."),
+    llvm::cl::init(1e-1f));
+
+// NOLINTNEXTLINE
+static llvm::cl::opt<bool> enable_single_layer_verify(
+    "tfl-single-layer-verify", llvm::cl::value_desc("bool"),
+    llvm::cl::desc("Whether verify numericals layer by layer. Valid when "
+                   "`-tfl-numeric-verify` is set."),
+    llvm::cl::init(false));
 
 namespace mlir {
 namespace TFL {
@@ -45,9 +65,11 @@ namespace {
 
 // Full integer quantization rewrite pattern for TFLite.
 struct TFLFullQuantization
-    : public QuantizationPattern<TFLFullQuantization, QuantizeOp,
-                                 DequantizeOp> {
-  explicit TFLFullQuantization(MLIRContext* ctx) : BaseType(ctx) {}
+    : public QuantizationPattern<TFLFullQuantization, QuantizeOp, DequantizeOp,
+                                 NumericVerifyOp> {
+  explicit TFLFullQuantization(MLIRContext* ctx, bool verify_numeric,
+                               float tolerance, bool verify_single_layer)
+      : BaseType(ctx, verify_numeric, tolerance, verify_single_layer) {}
   static bool AllowHybridOperand() { return false; }
   static bool AllowHybridResult() { return false; }
 };
@@ -64,7 +86,8 @@ void QuantizePass::runOnFunction() {
   auto func = getFunction();
   auto* ctx = func.getContext();
   TFL::populateWithGenerated(ctx, &patterns);
-  patterns.insert<TFLFullQuantization>(ctx);
+  patterns.insert<TFLFullQuantization>(
+      ctx, enable_numeric_verify, error_tolerance, enable_single_layer_verify);
   applyPatternsGreedily(func, patterns);
 }
 }  // namespace

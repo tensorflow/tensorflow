@@ -59,6 +59,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_allow_excess_precision(true);
   opts.set_xla_force_host_platform_device_count(1);
+  opts.set_xla_gpu_deterministic_reductions(false);
   return opts;
 }
 
@@ -328,7 +329,7 @@ static void AllocateFlags() {
           "use multi-threaded Eigen mode."),
       tensorflow::Flag("xla_gpu_cuda_data_dir",
                        flag_values->mutable_xla_gpu_cuda_data_dir(),
-                       "If non-empty, speficies a local directory containing "
+                       "If non-empty, specifies a local directory containing "
                        "ptxas and nvvm libdevice files; otherwise we use "
                        "those from runfile directories."),
       tensorflow::Flag("xla_gpu_ftz",
@@ -347,7 +348,7 @@ static void AllocateFlags() {
           flag_values->xla_gpu_max_kernel_unroll_factor(),
           "Specify the maximum kernel unroll factor for the GPU backend."),
       tensorflow::Flag("xla_gpu_ptx_file", setter_for_xla_gpu_ptx_file, "",
-                       "If non-empty, speficies a file containing ptx to use. "
+                       "If non-empty, specifies a file containing ptx to use. "
                        "The filename prefix must have the same pattern as PTX "
                        "dumped by XLA. This allows to match one specific "
                        "module. General workflow. Get the generated module "
@@ -512,6 +513,12 @@ static void AllocateFlags() {
                        flag_values->xla_gpu_algorithm_blacklist_path(),
                        "An AlgorithmBlacklist text proto file as a blacklist "
                        "of convolutions to avoid to use."),
+
+      tensorflow::Flag(
+          "xla_gpu_deterministic_reductions",
+          bool_setter_for(&DebugOptions::set_xla_gpu_deterministic_reductions),
+          flag_values->xla_gpu_deterministic_reductions(),
+          "Always run deterministic reductions on GPU"),
   });
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", *flag_objects);
 }

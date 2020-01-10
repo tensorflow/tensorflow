@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_BRIDGE_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_BRIDGE_H_
 
-#include "mlir/IR/Module.h"  // TF:local_config_mlir
+#include "mlir/IR/Module.h"  // TF:llvm-project
 #include "tensorflow/core/lib/core/status.h"
 
 namespace mlir {
@@ -31,11 +31,13 @@ tensorflow::Status TPUBridge(ModuleOp module, bool enable_logging);
 
 namespace TF {
 
-// Run all passes involved in transforming or optimizing an MLIR graph without
+// Runs all passes involved in transforming or optimizing an MLIR graph without
 // any target specialization. When enable_logging is true, enables
-// tensorflow::BridgeLogger.
+// tensorflow::BridgeLogger. When enable_inliner is true, enables the inliner
+// pass.
 tensorflow::Status RunBridgeWithStandardPipeline(ModuleOp module,
-                                                 bool enable_logging);
+                                                 bool enable_logging,
+                                                 bool enable_inliner);
 
 }  // namespace TF
 

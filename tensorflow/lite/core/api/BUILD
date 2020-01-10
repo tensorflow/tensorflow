@@ -1,4 +1,5 @@
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
+load("//tensorflow/lite/micro:build_def.bzl", "cc_library")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -20,9 +21,10 @@ cc_library(
         "profiler.h",
         "tensor_utils.h",
     ],
+    build_for_embedded = True,
     copts = tflite_copts(),
     deps = [
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/schema:schema_fbs",
     ],
 )
@@ -54,7 +56,7 @@ cc_test(
     deps = [
         ":api",
         "//tensorflow/lite:string",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "@com_google_googletest//:gtest",
     ],
 )

@@ -22,14 +22,14 @@ from tensorflow.python.keras import activations
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import layers as layer_module
 from tensorflow.python.keras.engine import base_layer
-from tensorflow.python.keras.engine import training
+from tensorflow.python.keras.engine import training as keras_training
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
 
 
 @keras_export('keras.experimental.WideDeepModel')
-class WideDeepModel(training.Model):
+class WideDeepModel(keras_training.Model):
   r"""Wide & Deep Model for regression and classification problems.
 
   This model jointly train a linear and a dnn model.
@@ -88,15 +88,20 @@ class WideDeepModel(training.Model):
     self.dnn_model = dnn_model
     self.activation = activations.get(activation)
 
-  def call(self, inputs):
+  def call(self, inputs, training=None):
     if not isinstance(inputs, (tuple, list)) or len(inputs) != 2:
       linear_inputs = dnn_inputs = inputs
     else:
       linear_inputs, dnn_inputs = inputs
     linear_output = self.linear_model(linear_inputs)
-    dnn_output = self.dnn_model(dnn_inputs)
-    output = nest.map_structure(lambda x, y: 0.5 * (x + y), linear_output,
-                                dnn_output)
+    # pylint: disable=protected-access
+    if self.dnn_model._expects_training_arg:
+      if training is None:
+        training = K.learning_phase()
+      dnn_output = self.dnn_model(dnn_inputs, training=training)
+    else:
+      dnn_output = self.dnn_model(dnn_inputs)
+    output = nest.map_structure(lambda x, y: (x + y), linear_output, dnn_output)
     if self.activation:
       return nest.map_structure(self.activation, output)
     return output
