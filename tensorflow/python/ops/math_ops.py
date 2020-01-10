@@ -4231,8 +4231,7 @@ def polyval(coeffs, x, name=None):
 
   Usage Example:
 
-  >>> y = tf.math.polyval([2, 1, 0], 3) # evaluates 2 * (3**2) + 1 * (3**1) + 0 * (3**0)
-  >>> print(y)
+  >>> tf.math.polyval([2, 1, 0], 3) # evaluates 2 * (3**2) + 1 * (3**1) + 0 * (3**0)
   tf.Tensor(21, shape=(), dtype=int32)
 
   `tf.math.polyval` can also be used in polynomial regression. Taking
