@@ -616,6 +616,11 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   static MemorySpaceAssignment::Allocation* GetLiveAllocationAt(
       const MemorySpaceAssignment::AllocationSequence& allocations, int64 time);
 
+  // Returns true if a buffer is required to be in default memory at a
+  // particular time. A buffer may be required to be in default memory because
+  // it is a parameter in default memory or an ouput in default memory.
+  bool RequiredInDefaultMemory(const HloValue* buffer, int64 time) const;
+
   // Finds an allocation for the given interval. Internally, it will attempt to
   // find a suitable chunk candidate within the heap size and prefetch interval
   // limits, and append the new allocation(s) to allocations. The new

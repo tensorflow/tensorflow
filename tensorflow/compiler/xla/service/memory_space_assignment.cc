@@ -610,6 +610,19 @@ void AlternateMemoryBestFitHeap::AddToPendingChunks(
   pending_chunks_.emplace_back(buffer_interval, chunk_candidate);
 }
 
+bool AlternateMemoryBestFitHeap::RequiredInDefaultMemory(const HloValue* buffer,
+                                                         int64 time) const {
+  auto required_assignment_it = required_assignments_.find(buffer);
+  return required_assignment_it != required_assignments_.end() &&
+         absl::c_any_of(
+             required_assignment_it->second,
+             [&](const RequiredMemoryAssignment& required_assignment) {
+               return required_assignment.memory_space ==
+                          MemorySpace::kDefault &&
+                      required_assignment.time == time;
+             });
+}
+
 bool AlternateMemoryBestFitHeap::FindAllocation(
     int64 start_time, int64 end_time, int64 last_use_time,
     int64 latest_prefetch_time, HloPosition defining_position, HloUse use,
@@ -643,39 +656,16 @@ bool AlternateMemoryBestFitHeap::FindAllocation(
                   : "");
   CHECK_LE(start_time, end_time);
 
-  // There could be a requirement to pin this buffer to default memory either at
-  // the definition site (e.g., parameters) or at the use site (e.g., outputs).
-  // If there is a definition requirement, then we're allowed to prefetch, but
-  // if it's a use requirement, we cannot prefetch the buffer. If the use
-  // expects the buffer to be in default memory, we cannot prefetch it because
-  // if we did, it would be in alternate memory instead.
-  bool definition_requires_buffer_in_default_mem = false;
-  bool use_requires_buffer_in_default_mem = false;
-  auto required_assignment_it = required_assignments_.find(buffer);
-  if (required_assignment_it != required_assignments_.end()) {
-    for (const RequiredMemoryAssignment& required_assignment :
-         required_assignment_it->second) {
-      VLOG(3) << "Required assignment at time = " << required_assignment.time
-              << " space = "
-              << (required_assignment.memory_space == MemorySpace::kDefault
-                      ? "def"
-                      : "alt");
-      if (required_assignment.memory_space == MemorySpace::kDefault) {
-        if (required_assignment.time == start_time) {
-          definition_requires_buffer_in_default_mem = true;
-          VLOG(3) << "Definition requires buffer in default memory.";
-        }
-        if (required_assignment.time == end_time) {
-          use_requires_buffer_in_default_mem = true;
-          VLOG(3) << "Use requires buffer in default memory.";
-        }
-      }
-    }
-  }
+  // There could be a requirement to pin this buffer to default memory either
+  // because it is a parameter or an output.  If the buffer is a parameter, then
+  // we're allowed to prefetch. If the use expects the ouput to be in default
+  // memory, we cannot prefetch it because if we did, it would be in alternate
+  // memory instead.
+  bool in_default_mem_at_start = RequiredInDefaultMemory(buffer, start_time);
+  bool in_default_mem_at_end = RequiredInDefaultMemory(buffer, end_time);
 
   // First try keeping the allocation entirely in the alternate memory.
-  if (!definition_requires_buffer_in_default_mem &&
-      !use_requires_buffer_in_default_mem &&
+  if (!in_default_mem_at_start && !in_default_mem_at_end &&
       TryAllocatingInAlternateMemoryNoCopy(
           start_time, end_time, last_use_time, defining_position, use,
           alternate_mem_interval, non_bitcast_operand, allocations)) {
@@ -796,9 +786,8 @@ bool AlternateMemoryBestFitHeap::FindAllocation(
   CHECK(prev_allocation_in_default_mem->memory_space() ==
         MemorySpace::kDefault);
 
-  // If the use requires the buffer to be in default memory, don't try to
-  // prefetch.
-  if (use_requires_buffer_in_default_mem) {
+  // If the buffer must be in default memory at the end_time, don't prefetch.
+  if (in_default_mem_at_end) {
     VLOG(4)
         << "Not trying to prefetch because use requires buffer in default mem.";
     prev_allocation_in_default_mem->Extend(end_time);
