@@ -14,7 +14,6 @@ cc_library(
     copts = [
         "-std=c++11",
         "-mfpu=neon",
-        "-O2",
     ],
     linkopts = ["-llog -landroid -lm -ljnigraphics"],
     tags = [

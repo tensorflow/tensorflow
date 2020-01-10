@@ -1,18 +1,3 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-==============================================================================*/
-
 // Wrapper functions to provide a scripting-language-friendly interface
 // to our string libraries.
 //
@@ -35,23 +20,6 @@ limitations under the License.
 
 %{
 #include "tensorflow/core/lib/core/stringpiece.h"
-
-// Handles str in Python 2, bytes in Python 3.
-// Returns true on success, false on failure.
-bool _BytesToStringPiece(PyObject* obj, tensorflow::StringPiece* result) {
-  if (obj == Py_None) {
-    result->clear();
-  } else {
-    char* ptr;
-    Py_ssize_t len;
-    if (PyBytes_AsStringAndSize(obj, &ptr, &len) == -1) {
-      // Python has raised an error (likely TypeError or UnicodeEncodeError).
-      return false;
-    }
-    result->set(ptr, len);
-  }
-  return true;
-}
 %}
 
 %typemap(typecheck) tensorflow::StringPiece = char *;
@@ -59,13 +27,29 @@ bool _BytesToStringPiece(PyObject* obj, tensorflow::StringPiece* result) {
 
 // "tensorflow::StringPiece" arguments must be specified as a 'str' or 'bytes' object.
 %typemap(in) tensorflow::StringPiece {
-  if (!_BytesToStringPiece($input, &$1)) SWIG_fail;
+  if ($input != Py_None) {
+    char * buf;
+    Py_ssize_t len;
+    if (PyBytes_AsStringAndSize($input, &buf, &len) == -1) {
+      // Python has raised an error (likely TypeError or UnicodeEncodeError).
+      SWIG_fail;
+    }
+    $1.set(buf, len);
+  }
 }
 
 // "const tensorflow::StringPiece&" arguments can be provided the same as
 // "tensorflow::StringPiece", whose typemap is defined above.
 %typemap(in) const tensorflow::StringPiece & (tensorflow::StringPiece temp) {
-  if (!_BytesToStringPiece($input, &temp)) SWIG_fail;
+  if ($input != Py_None) {
+    char * buf;
+    Py_ssize_t len;
+    if (PyBytes_AsStringAndSize($input, &buf, &len) == -1) {
+      // Python has raised an error (likely TypeError).
+      SWIG_fail;
+    }
+    temp.set(buf, len);
+  }
   $1 = &temp;
 }
 

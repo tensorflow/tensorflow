@@ -245,10 +245,12 @@ class TileTest(tf.test.TestCase):
         "uint8": (tf.uint8, int),
         "int32": (tf.int32, int),
         "int64": (tf.int64, int),
-        bytes: (tf.string, bytes)
+        "string": (tf.string, str)
     }
-    for dtype_np, (dtype_tf, cast) in types_to_test.items():
+    for dtype_np, v in types_to_test.items():
       with self.test_session():
+        dtype_tf = v[0]
+        cast = v[1]
         inp = np.random.rand(4, 1).astype(dtype_np)
         a = tf.constant([cast(x) for x in inp.ravel(order="C")],
                      shape=[4, 1],
@@ -257,7 +259,7 @@ class TileTest(tf.test.TestCase):
         result = tiled.eval()
       self.assertEqual(result.shape, (4, 4))
       self.assertEqual([4, 4], tiled.get_shape())
-      self.assertAllEqual(result, np.tile(inp, (1, 4)))
+      self.assertTrue((result == np.tile(inp, (1, 4))).all())
 
   def testInvalidDim(self):
     with self.test_session():

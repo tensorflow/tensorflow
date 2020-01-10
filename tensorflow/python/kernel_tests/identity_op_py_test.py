@@ -40,10 +40,9 @@ class IdentityOpTest(tf.test.TestCase):
     self.assertAllEqual(np.array([[10, 20, 30], [40, 50, 60]]), value)
 
   def testString(self):
-    source = [b"A", b"b", b"C", b"d", b"E", b"f"]
     with self.test_session():
-      value = tf.identity(source).eval()
-    self.assertAllEqual(source, value)
+      value = tf.identity(["A", "b", "C", "d", "E", "f"]).eval()
+    self.assertAllEqual(["A", "b", "C", "d", "E", "f"], value)
 
   def testIdentityShape(self):
     with self.test_session():

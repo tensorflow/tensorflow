@@ -26,8 +26,6 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
-from tensorflow.python.util import compat
-
 
 class MatchFilenamesOnceTest(tf.test.TestCase):
 
@@ -38,7 +36,7 @@ class MatchFilenamesOnceTest(tf.test.TestCase):
                   for i in range(3)]
     for name in additional:
       open(name, "w").write("Some contents")
-    filenames = list(set(filenames + additional))
+    filenames += additional
     with self.test_session():
       star = tf.train.match_filenames_once(
           os.path.join(self.get_temp_dir(), "*"))
@@ -46,9 +44,9 @@ class MatchFilenamesOnceTest(tf.test.TestCase):
           os.path.join(self.get_temp_dir(), "match_filenames.?"))
       one = tf.train.match_filenames_once(additional[1])
       tf.initialize_all_variables().run()
-      self.assertItemsEqual(map(compat.as_bytes, filenames), star.eval())
-      self.assertItemsEqual(map(compat.as_bytes, additional), question.eval())
-      self.assertItemsEqual([compat.as_bytes(additional[1])], one.eval())
+      self.assertItemsEqual(filenames, star.eval())
+      self.assertItemsEqual(additional, question.eval())
+      self.assertItemsEqual([additional[1]], one.eval())
 
 
 class LimitEpochsTest(tf.test.TestCase):
@@ -66,8 +64,8 @@ class LimitEpochsTest(tf.test.TestCase):
       love_me = tf.constant("Love Me")
       love_me_two_times = tf.train.limit_epochs(love_me, num_epochs=2)
       tf.initialize_all_variables().run()
-      self.assertEqual(b"Love Me", love_me_two_times.eval())
-      self.assertEqual(b"Love Me", love_me_two_times.eval())
+      self.assertEqual("Love Me", love_me_two_times.eval())
+      self.assertEqual("Love Me", love_me_two_times.eval())
       with self.assertRaises(tf.errors.OutOfRangeError):
         love_me_two_times.eval()
 
@@ -76,7 +74,7 @@ class StringInputProducerTest(tf.test.TestCase):
 
   def testNoShuffle(self):
     with self.test_session():
-      strings = [b"to", b"be", b"or", b"not", b"to", b"be"]
+      strings = ["to", "be", "or", "not", "to", "be"]
       num_epochs = 3
       queue = tf.train.string_input_producer(
           strings, num_epochs=num_epochs, shuffle=False)
@@ -97,7 +95,7 @@ class StringInputProducerTest(tf.test.TestCase):
 
   def testShuffle(self):
     with self.test_session():
-      strings = [b"a", b"b", b"c"]
+      strings = ["a", "b", "c"]
       num_epochs = 600
       queue = tf.train.string_input_producer(
           strings, num_epochs=num_epochs, shuffle=True, seed=271828)
@@ -108,13 +106,13 @@ class StringInputProducerTest(tf.test.TestCase):
 
       # Validate that we only shuffle the strings within an epoch and
       # count how often each possible order appears.
-      expected = [b"abc", b"acb", b"bac", b"bca", b"cab", b"cba"]
+      expected = ["abc", "acb", "bac", "bca", "cab", "cba"]
       frequency = {}
       for e in expected:
         frequency[e] = 0
       for _ in range(num_epochs):
         output = dequeue_many.eval()
-        key = b"".join(output)
+        key = "".join(output)
         self.assertIn(key, expected)
         frequency[key] += 1
 
@@ -201,7 +199,7 @@ class SliceInputProducerTest(tf.test.TestCase):
   def testNoShuffle(self):
     with self.test_session() as sess:
       num_epochs = 3
-      source_strings = [b"Alpha", b"Beta", b"Delta", b"Gamma"]
+      source_strings = ["Alpha", "Beta", "Delta", "Gamma"]
       source_ints = [2, 3, 5, 7]
       slices = tf.train.slice_input_producer(
           [source_strings, source_ints], num_epochs=num_epochs, shuffle=False)
@@ -234,14 +232,14 @@ class SliceInputProducerTest(tf.test.TestCase):
 
       # Validate that we only shuffle the integers within an epoch and
       # count how often each possible order appears.
-      expected = [b",".join(x) for x in
-                  itertools.permutations([b"A7", b"B3", b"D5", b"G2"])]
+      expected = [",".join(x) for x in
+                  itertools.permutations(["A7", "B3", "D5", "G2"])]
       frequency = {}
       for e in expected:
         frequency[e] = 0
       for _ in range(num_epochs):
         output = [sess.run(slices) for _ in range(len(source_strings))]
-        key = b",".join([s + compat.as_bytes(str(i)) for s, i in output])
+        key = ",".join([s + str(i) for s, i in output])
         self.assertIn(key, expected)
         frequency[key] += 1
 
@@ -278,7 +276,7 @@ class BatchTest(tf.test.TestCase):
         results = sess.run(batched)
         self.assertAllEqual(results[0], np.arange(i * batch_size,
                                                   (i + 1) * batch_size))
-        self.assertAllEqual(results[1], [b"string"] * batch_size)
+        self.assertAllEqual(results[1], ["string"] * batch_size)
 
       # Reached the limit.
       with self.assertRaises(tf.errors.OutOfRangeError):
@@ -303,7 +301,7 @@ class BatchTest(tf.test.TestCase):
         results = sess.run(batched)
         self.assertAllEqual(results[0], np.arange(i * batch_size,
                                                   (i + 1) * batch_size))
-        self.assertAllEqual(results[1], [b"string"] * batch_size)
+        self.assertAllEqual(results[1], ["string"] * batch_size)
 
       # Reached the limit.
       with self.assertRaises(tf.errors.OutOfRangeError):
@@ -329,7 +327,7 @@ class BatchTest(tf.test.TestCase):
         tf.logging.info("Batch %d: %s", i, results[0])
         self.assertEqual(len(results[0]), batch_size)
         all_counts.extend(results[0])
-        self.assertAllEqual(results[1], [b"string"] * batch_size)
+        self.assertAllEqual(results[1], ["string"] * batch_size)
       self.assertItemsEqual(all_counts, range(num_batches * batch_size))
 
       # Reached the limit.
@@ -371,8 +369,8 @@ class BatchJoinTest(tf.test.TestCase):
         tf.logging.info("Batch %d: %s", i, results[0])
         self.assertEqual(len(results[0]), batch_size)
         self.assertEqual(len(results[1]), batch_size)
-        which_a = [i for i, s in enumerate(results[1]) if s == b"a"]
-        which_b = [i for i, s in enumerate(results[1]) if s == b"b"]
+        which_a = [i for i, s in enumerate(results[1]) if s == "a"]
+        which_b = [i for i, s in enumerate(results[1]) if s == "b"]
         self.assertEqual(len(which_a) + len(which_b), batch_size)
         if len(which_a) > 0 and len(which_b) > 0: saw_both += 1
         all_a.extend([results[0][i] for i in which_a])
@@ -414,7 +412,7 @@ class ShuffleBatchTest(tf.test.TestCase):
         results = sess.run(batched)
         self.assertEqual(len(results[0]), batch_size)
         all_counts.extend(results[0])
-        self.assertAllEqual(results[1], [b"string"] * batch_size)
+        self.assertAllEqual(results[1], ["string"] * batch_size)
       # Results scrambled, but include all the expected numbers.
       deltas = [all_counts[i + 1] - all_counts[i]
                 for i in range(len(all_counts) - 1)]
@@ -446,7 +444,7 @@ class ShuffleBatchTest(tf.test.TestCase):
         tf.logging.info("Batch %d: %s", i, results[0])
         self.assertEqual(len(results[0]), batch_size)
         all_counts.extend(results[0])
-        self.assertAllEqual(results[1], [b"string"] * batch_size)
+        self.assertAllEqual(results[1], ["string"] * batch_size)
       # Results scrambled, but include all the expected numbers.
       deltas = [all_counts[i + 1] - all_counts[i]
                 for i in range(len(all_counts) - 1)]
@@ -494,8 +492,8 @@ class ShuffleBatchJoinTest(tf.test.TestCase):
         tf.logging.info("Batch %d: %s", i, results[0])
         self.assertEqual(len(results[0]), batch_size)
         self.assertEqual(len(results[1]), batch_size)
-        which_a = [i for i, s in enumerate(results[1]) if s == b"a"]
-        which_b = [i for i, s in enumerate(results[1]) if s == b"b"]
+        which_a = [i for i, s in enumerate(results[1]) if s == "a"]
+        which_b = [i for i, s in enumerate(results[1]) if s == "b"]
         self.assertEqual(len(which_a) + len(which_b), batch_size)
         if len(which_a) > 0 and len(which_b) > 0: saw_both += 1
         all_a.extend([results[0][i] for i in which_a])

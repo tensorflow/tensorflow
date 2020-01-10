@@ -91,7 +91,6 @@ The indices of non-zero values in the represented dense tensor.
   A 2-D Tensor of int64 with shape `[N, ndims]`, where `N` is the
     number of non-zero values in the tensor, and `ndims` is the rank.
 
-
 - - -
 
 #### `tf.SparseTensor.values` {#SparseTensor.values}
@@ -102,13 +101,11 @@ The non-zero values in the represented dense tensor.
 
   A 1-D Tensor of any data type.
 
-
 - - -
 
 #### `tf.SparseTensor.dtype` {#SparseTensor.dtype}
 
 The `DType` of elements in this tensor.
-
 
 - - -
 
@@ -116,13 +113,11 @@ The `DType` of elements in this tensor.
 
 A 1-D Tensor of int64 representing the shape of the dense tensor.
 
-
 - - -
 
 #### `tf.SparseTensor.graph` {#SparseTensor.graph}
 
 The `Graph` that contains the index, value, and shape tensors.
-
 
 
 - - -
@@ -136,20 +131,17 @@ SparseTensorValue(indices, values, shape)
 
 Alias for field number 0
 
-
 - - -
 
 #### `tf.SparseTensorValue.shape` {#SparseTensorValue.shape}
 
 Alias for field number 2
 
-
 - - -
 
 #### `tf.SparseTensorValue.values` {#SparseTensorValue.values}
 
 Alias for field number 1
-
 
 
 
@@ -371,7 +363,7 @@ is during manual manipulation of the indices and values to add entries.
 
 Reordering does not affect the shape of the `SparseTensor`.
 
-For example, if `sp_input` has shape `[4, 5]` and `indices` / `values`:
+For example, if sp_input has shape `[4, 5]` and `indices` / `values`:
 
     [0, 3]: b
     [0, 1]: a

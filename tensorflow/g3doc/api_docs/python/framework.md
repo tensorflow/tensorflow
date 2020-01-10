@@ -119,7 +119,7 @@ This method is thread-safe.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: If the `graph_def` would be too large.
+*  <b>`ValueError`</b>: If the graph_def would be too large.
 
 
 - - -
@@ -139,7 +139,6 @@ when using a [`QueueRunner`](../../api_docs/python/train.md#QueueRunner).
 #### `tf.Graph.finalized` {#Graph.finalized}
 
 True if this graph has been finalized.
-
 
 
 - - -
@@ -512,7 +511,6 @@ Returns the default device.
 
 
 
-
 - - -
 
 #### `tf.Graph.unique_name(name)` {#Graph.unique_name}
@@ -545,7 +543,6 @@ TensorBoard.
 #### `tf.Graph.version` {#Graph.version}
 
 Returns a version number that increases as ops are added to the graph.
-
 
 
 - - -
@@ -661,20 +658,17 @@ be executed by passing it to
 
 The full name of this operation.
 
-
 - - -
 
 #### `tf.Operation.type` {#Operation.type}
 
 The type of the op (e.g. `"MatMul"`).
 
-
 - - -
 
 #### `tf.Operation.inputs` {#Operation.inputs}
 
 The list of `Tensor` objects representing the data inputs of this op.
-
 
 - - -
 
@@ -692,13 +686,11 @@ in the correct order.
 
   A list of `Operation` objects.
 
-
 - - -
 
 #### `tf.Operation.outputs` {#Operation.outputs}
 
 The list of `Tensor` objects representing the outputs of this op.
-
 
 - - -
 
@@ -711,13 +703,11 @@ The name of the device to which this op has been assigned, if any.
   The string name of the device to which this op has been
   assigned, or None if it has not been assigned to a device.
 
-
 - - -
 
 #### `tf.Operation.graph` {#Operation.graph}
 
 The `Graph` that contains this operation.
-
 
 
 - - -
@@ -772,7 +762,6 @@ Returns the value of the attr of this op with the given `name`.
 Returns the call stack from when this operation was constructed.
 
 
-
 #### Other Methods
 - - -
 
@@ -814,11 +803,11 @@ regular expression:
 
 
 *  <b>`TypeError`</b>: if control inputs are not Operations or Tensors,
-    or if `node_def` is not a `NodeDef`,
-    or if `g` is not a `Graph`,
-    or if `inputs` are not tensors,
-    or if `inputs` and `input_types` are incompatible.
-*  <b>`ValueError`</b>: if the `node_def` name is not valid.
+    or if node_def is not a `NodeDef`,
+    or if g is not a `Graph`,
+    or if inputs are not tensors,
+    or if inputs and input_types are incompatible.
+*  <b>`ValueError`</b>: if the node_def name is not valid.
 
 
 - - -
@@ -833,7 +822,6 @@ Returns a serialized `NodeDef` representation of this operation.
   [`NodeDef`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/graph.proto)
   protocol buffer.
 
-
 - - -
 
 #### `tf.Operation.op_def` {#Operation.op_def}
@@ -845,7 +833,6 @@ Returns the `OpDef` proto that represents the type of this op.
   An
   [`OpDef`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/op_def.proto)
   protocol buffer.
-
 
 - - -
 
@@ -902,13 +889,11 @@ result = sess.run(e)
 
 The `DType` of elements in this tensor.
 
-
 - - -
 
 #### `tf.Tensor.name` {#Tensor.name}
 
 The string name of this tensor.
-
 
 - - -
 
@@ -916,20 +901,17 @@ The string name of this tensor.
 
 The index of this tensor in the outputs of its `Operation`.
 
-
 - - -
 
 #### `tf.Tensor.graph` {#Tensor.graph}
 
 The `Graph` that contains this tensor.
 
-
 - - -
 
 #### `tf.Tensor.op` {#Tensor.op}
 
 The `Operation` that produces this tensor as an output.
-
 
 - - -
 
@@ -1088,7 +1070,6 @@ The name of the device on which this tensor will be produced, or None.
 
 
 
-
 ## Tensor types
 
 - - -
@@ -1155,13 +1136,11 @@ DType(T).as_ref.is_compatible_with(DType(T).as_ref) == True
 
 Returns the string name for this `DType`.
 
-
 - - -
 
 #### `tf.DType.base_dtype` {#DType.base_dtype}
 
 Returns a non-reference `DType` based on this `DType`.
-
 
 - - -
 
@@ -1169,20 +1148,17 @@ Returns a non-reference `DType` based on this `DType`.
 
 Returns `True` if this `DType` represents a reference type.
 
-
 - - -
 
 #### `tf.DType.as_ref` {#DType.as_ref}
 
 Returns a reference `DType` based on this `DType`.
 
-
 - - -
 
 #### `tf.DType.is_integer` {#DType.is_integer}
 
 Returns whether this is a (non-quantized) integer type.
-
 
 - - -
 
@@ -1191,20 +1167,17 @@ Returns whether this is a (non-quantized) integer type.
 Returns whether this is a quantized data type.
 
 
-
 - - -
 
 #### `tf.DType.as_numpy_dtype` {#DType.as_numpy_dtype}
 
 Returns a `numpy.dtype` based on this `DType`.
 
-
 - - -
 
 #### `tf.DType.as_datatype_enum` {#DType.as_datatype_enum}
 
 Returns a `types_pb2.DataType` enum value based on this `DType`.
-
 
 
 #### Other Methods
@@ -1215,8 +1188,8 @@ Returns a `types_pb2.DataType` enum value based on this `DType`.
 Creates a new `DataType`.
 
 NOTE(mrry): In normal circumstances, you should not need to
-construct a `DataType` object directly. Instead, use the
-`tf.as_dtype()` function.
+construct a DataType object directly. Instead, use the
+types.as_dtype() function.
 
 ##### Args:
 
@@ -1235,7 +1208,6 @@ construct a `DataType` object directly. Instead, use the
 
 Returns whether this is a (real) floating point type.
 
-
 - - -
 
 #### `tf.DType.max` {#DType.max}
@@ -1247,7 +1219,6 @@ Returns the maximum representable value in this data type.
 
 *  <b>`TypeError`</b>: if this is a non-numeric, unordered, or quantized type.
 
-
 - - -
 
 #### `tf.DType.min` {#DType.min}
@@ -1258,7 +1229,6 @@ Returns the minimum representable value in this data type.
 
 
 *  <b>`TypeError`</b>: if this is a non-numeric, unordered, or quantized type.
-
 
 
 - - -
@@ -1455,13 +1425,13 @@ protocol buffer, and extract individual objects in the `GraphDef` as
 ##### Returns:
 
   A list of `Operation` and/or `Tensor` objects from the imported graph,
-  corresponding to the names in `return_elements`.
+  corresponding to the names in `return_elements'.
 
 ##### Raises:
 
 
 *  <b>`TypeError`</b>: If `graph_def` is not a `GraphDef` proto,
-    `input_map` is not a dictionary mapping strings to `Tensor` objects,
+    `input_map' is not a dictionary mapping strings to `Tensor` objects,
     or `return_elements` is not a list of strings.
 *  <b>`ValueError`</b>: If `input_map`, or `return_elements` contains names that
     do not appear in `graph_def`, or `graph_def` is not well-formed (e.g.
@@ -1643,7 +1613,7 @@ that defines the operation.
 
 #### `tf.RegisterShape.__init__(op_type)` {#RegisterShape.__init__}
 
-Saves the `op_type` as the `Operation` type.
+Saves the "op_type" as the Operation type.
 
 
 
@@ -1724,13 +1694,11 @@ information for use with slicing.
 
 Returns the rank of this shape, or None if it is unspecified.
 
-
 - - -
 
 #### `tf.TensorShape.dims` {#TensorShape.dims}
 
 Returns a list of Dimensions, or None if the shape is unspecified.
-
 
 - - -
 
@@ -1948,7 +1916,7 @@ Creates a new TensorShape with the given dimensions.
 
 #### `tf.TensorShape.as_dimension_list()` {#TensorShape.as_dimension_list}
 
-DEPRECATED: use `as_list()`.
+DEPRECATED: use as_list().
 
 
 - - -
@@ -2044,7 +2012,6 @@ Dimensions are combined as follows:
 #### `tf.Dimension.value` {#Dimension.value}
 
 The value of this dimension, or None if it is unknown.
-
 
 
 - - -

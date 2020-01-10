@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os.path
+import Queue
 import threading
 import time
 
@@ -30,7 +31,6 @@ from tensorflow.core.util import event_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.lib.io import tf_record
 from tensorflow.python.platform import gfile
-from tensorflow.python.util import compat
 
 
 class SummaryWriter(object):
@@ -93,9 +93,9 @@ class SummaryWriter(object):
     self._logdir = logdir
     if not gfile.IsDirectory(self._logdir):
       gfile.MakeDirs(self._logdir)
-    self._event_queue = six.moves.queue.Queue(max_queue)
+    self._event_queue = Queue.Queue(max_queue)
     self._ev_writer = pywrap_tensorflow.EventsWriter(
-        compat.as_bytes(os.path.join(self._logdir, "events")))
+        os.path.join(self._logdir, "events"))
     self._worker = _EventLoggerThread(self._event_queue, self._ev_writer,
                                       flush_secs)
     self._worker.start()
@@ -120,7 +120,7 @@ class SummaryWriter(object):
       global_step: Number. Optional global step value to record with the
         summary.
     """
-    if isinstance(summary, bytes):
+    if isinstance(summary, six.binary_type):
       summ = summary_pb2.Summary()
       summ.ParseFromString(summary)
       summary = summ

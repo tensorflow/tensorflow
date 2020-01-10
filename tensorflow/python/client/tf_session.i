@@ -1,21 +1,8 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-==============================================================================*/
-
 %include "tensorflow/python/platform/base.i"
 
 %{
+
+#include "numpy/arrayobject.h"
 
 #include "tensorflow/python/client/tf_session_helper.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -29,7 +16,7 @@ limitations under the License.
 // Required to use PyArray_* functions.
 %include "tensorflow/python/platform/numpy.i"
 %init %{
-tensorflow::ImportNumpy();
+import_array();
 %}
 
 // Release the Python GIL for the duration of most methods.
@@ -173,7 +160,7 @@ tensorflow::ImportNumpy();
     SWIG_fail;
   } else {
     tensorflow::Safe_PyObjectVector out_values_safe;
-    for (size_t i = 0; i < $2->size(); ++i) {
+    for (int i = 0; i < $2->size(); ++i) {
       out_values_safe.emplace_back(tensorflow::make_safe($2->at(i)));
     }
 
@@ -182,7 +169,7 @@ tensorflow::ImportNumpy();
       SWIG_fail;
     }
 
-    for (size_t i = 0; i < $2->size(); ++i) {
+    for (int i = 0; i < $2->size(); ++i) {
       PyList_SET_ITEM($result, i, $2->at(i));
       out_values_safe[i].release();
     }

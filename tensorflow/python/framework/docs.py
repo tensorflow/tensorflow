@@ -238,12 +238,10 @@ class Library(Document):
       name, member tuples.
     """
     for name, member in inspect.getmembers(cls):
-      # Only show methods and properties presently.  In Python 3,
-      # methods register as isfunction.
-      is_method = inspect.ismethod(member) or inspect.isfunction(member)
-      if not (is_method or isinstance(member, property)):
+      # Only show methods and properties presently.
+      if not (inspect.ismethod(member) or isinstance(member, property)):
         continue
-      if ((is_method and member.__name__ == "__init__")
+      if ((inspect.ismethod(member) and member.__name__ == "__init__")
           or self._should_include_member(name, member)):
         yield name, ("%s.%s" % (cls_name, name), member)
 
@@ -373,19 +371,27 @@ class Library(Document):
     self._print_formatted_docstring(inspect.getdoc(func), f)
     print("", file=f)
 
-  def _write_member_markdown_to_file(self, f, prefix, name, member):
+  def _write_member_markdown_to_file(self, f, name, member):
     """Print `member` to `f`."""
-    if (inspect.isfunction(member) or inspect.ismethod(member) or
-        isinstance(member, property)):
+    if inspect.isfunction(member):
       print("- - -", file=f)
       print("", file=f)
-      self._print_function(f, prefix, name, member)
+      self._print_function(f, "###", name, member)
       print("", file=f)
+    elif inspect.ismethod(member):
+      print("- - -", file=f)
+      print("", file=f)
+      self._print_function(f, "####", name, member)
+      print("", file=f)
+    elif isinstance(member, property):
+      print("- - -", file=f)
+      print("", file=f)
+      self._print_function(f, "####", name, member)
     elif inspect.isclass(member):
       print("- - -", file=f)
       print("", file=f)
-      print("%s `class %s` {#%s}" % (prefix, name,
-                                     _get_anchor(self._module_to_name, name)),
+      print("### `class %s` {#%s}" % (name,
+                                      _get_anchor(self._module_to_name, name)),
             file=f)
       print("", file=f)
       self._write_class_markdown_to_file(f, name, member)
@@ -393,15 +399,14 @@ class Library(Document):
     else:
       raise RuntimeError("Member %s has unknown type %s" % (name, type(member)))
 
-  def _write_docstring_markdown_to_file(self, f, prefix, docstring, members,
-                                        imports):
+  def _write_docstring_markdown_to_file(self, f, docstring, members, imports):
     for l in self._remove_docstring_indent(docstring):
       if l.startswith(_member_mark):
         name = l[len(_member_mark):].strip(" \t")
         if name in members:
           self._documented.add(name)
           self._mentioned.add(name)
-          self._write_member_markdown_to_file(f, prefix, *members[name])
+          self._write_member_markdown_to_file(f, *members[name])
           del members[name]
         elif name in imports:
           self._write_module_markdown_to_file(f, imports[name])
@@ -424,11 +429,7 @@ class Library(Document):
     # Used later to check if any methods were called out in the class
     # docstring.
     num_methods = len(methods)
-    try:
-      self._write_docstring_markdown_to_file(f, "####", inspect.getdoc(cls),
-                                             methods, {})
-    except ValueError as e:
-      raise ValueError(str(e) + " in class `%s`" % cls.__name__)
+    self._write_docstring_markdown_to_file(f, inspect.getdoc(cls), methods, {})
 
     # If some methods were not described, describe them now if they are
     # defined by the class itself (not inherited).  If NO methods were
@@ -444,11 +445,11 @@ class Library(Document):
     else:
       other_methods = methods
     for name in sorted(other_methods):
-      self._write_member_markdown_to_file(f, "####", *other_methods[name])
+      self._write_member_markdown_to_file(f, *other_methods[name])
 
   def _write_module_markdown_to_file(self, f, module):
     imports = dict(self.get_imported_modules(module))
-    self._write_docstring_markdown_to_file(f, "###", inspect.getdoc(module),
+    self._write_docstring_markdown_to_file(f, inspect.getdoc(module),
                                            self._members, imports)
 
   def write_markdown_to_file(self, f):
@@ -495,7 +496,7 @@ class Library(Document):
         print("  %s" % name)
         self._documented.add(name)
         self._mentioned.add(name)
-        self._write_member_markdown_to_file(f, "###", *self._members[name])
+        self._write_member_markdown_to_file(f, *self._members[name])
 
   def assert_no_leftovers(self):
     """Generate an error if there are leftover members."""

@@ -27,10 +27,10 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 from google.protobuf import text_format
 
 from tensorflow.core.framework import graph_pb2
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.framework import types
 from tensorflow.python.platform import googletest
 from tensorflow.python.ops import logging_ops
 
@@ -83,7 +83,8 @@ class TestUtilTest(test_util.TensorFlowTestCase):
     t.start()
     with self.assertRaises(self.failureException) as fe:
       t.join()
-    self.assertTrue("integer division or modulo by zero" in str(fe.exception))
+    self.assertTrue("integer division or modulo by zero"
+                    in fe.exception.message)
 
   def testCheckedThreadWithWrongAssertionFails(self):
     x = 37
@@ -95,7 +96,7 @@ class TestUtilTest(test_util.TensorFlowTestCase):
     t.start()
     with self.assertRaises(self.failureException) as fe:
       t.join()
-    self.assertTrue("False is not true" in str(fe.exception))
+    self.assertTrue("False is not true" in fe.exception.message)
 
   def testMultipleThreadsWithOneFailure(self):
     def err_func(i):

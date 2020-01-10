@@ -26,7 +26,6 @@ from __future__ import print_function
 import traceback
 
 from tensorflow.python.platform import logging
-from tensorflow.python.util import compat
 
 
 # Registry mechanism below is based on mapreduce.python.mrpython.Register.
@@ -46,8 +45,8 @@ class Registry(object):
     """Registers a Python object "candidate" for the given "name".
 
     Args:
-      candidate: The candidate object to add to the registry.
-      name: An optional string specifying the registry key for the candidate.
+      candidate: the candidate object to add to the registry.
+      name: an optional string specifying the registry key for the candidate.
             If None, candidate.__name__ will be used.
     Raises:
       KeyError: If same name is used twice.
@@ -77,7 +76,6 @@ class Registry(object):
     Raises:
       LookupError: if "name" has not been registered.
     """
-    name = compat.as_str(name)
     if name in self._registry:
       return self._registry[name][_TYPE_TAG]
     else:

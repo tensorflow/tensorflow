@@ -178,7 +178,6 @@ Calling this method frees all resources associated with the session.
 The graph that was launched in this session.
 
 
-
 - - -
 
 #### `tf.Session.as_default()` {#Session.as_default}
@@ -355,13 +354,11 @@ discover information about the op.
 
   The `Operation` that failed, or None.
 
-
 - - -
 
 #### `tf.OpError.node_def` {#OpError.node_def}
 
 The `NodeDef` proto representing the op that failed.
-
 
 
 #### Other Methods
@@ -386,13 +383,11 @@ Creates a new `OpError` indicating that a particular op failed.
 
 The integer error code that describes the error.
 
-
 - - -
 
 #### `tf.OpError.message` {#OpError.message}
 
 The error message that describes the error.
-
 
 
 - - -

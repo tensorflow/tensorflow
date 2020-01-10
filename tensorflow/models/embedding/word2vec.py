@@ -45,7 +45,6 @@ import numpy as np
 import tensorflow as tf
 
 from tensorflow.models.embedding import gen_word2vec as word2vec
-from tensorflow.python.util import compat
 
 flags = tf.app.flags
 
@@ -179,11 +178,11 @@ class Word2Vec(object):
     """
     questions = []
     questions_skipped = 0
-    with open(self._options.eval_data, "rb") as analogy_f:
+    with open(self._options.eval_data) as analogy_f:
       for line in analogy_f:
-        if line.startswith(b":"):  # Skip comments.
+        if line.startswith(":"):  # Skip comments.
           continue
-        words = line.strip().lower().split(b" ")
+        words = line.strip().lower().split(" ")
         ids = [self._word2id.get(w.strip()) for w in words]
         if None in ids or len(ids) != 4:
           questions_skipped += 1
@@ -381,8 +380,7 @@ class Word2Vec(object):
     opts = self._options
     with open(os.path.join(opts.save_path, "vocab.txt"), "w") as f:
       for i in xrange(opts.vocab_size):
-        f.write("%s %d\n" % (compat.as_text(opts.vocab_words[i]),
-                             opts.vocab_counts[i]))
+        f.write(opts.vocab_words[i] + " " + str(opts.vocab_counts[i]) + "\n")
 
   def _train_thread_body(self):
     initial_epoch, = self._session.run([self._epoch])

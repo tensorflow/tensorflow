@@ -81,7 +81,7 @@ class DecodeCSVOpTest(tf.test.TestCase):
         "record_defaults": [["1"]]
     }
 
-    expected_out = [[b"1.0", b"ab , c", b"a\nbc", b'ab"c', b" abc "]]
+    expected_out = [["1.0", "ab , c", "a\nbc", 'ab"c', " abc "]]
 
     self._test(args, expected_out)
 
@@ -91,7 +91,7 @@ class DecodeCSVOpTest(tf.test.TestCase):
         "record_defaults": [[1.0], [1], ["aa"]]
     }
 
-    expected_out = [[1.0, 0.2, 3], [4, 5, 6], [b"aa", b"bb", b"cc"]]
+    expected_out = [[1.0, 0.2, 3], [4, 5, 6], ["aa", "bb", "cc"]]
 
     self._test(args, expected_out)
 
@@ -101,7 +101,7 @@ class DecodeCSVOpTest(tf.test.TestCase):
         "record_defaults": [[1.0], [0], ["a"]]
     }
 
-    expected_out = [[1.0, 0.2, 3.0], [1, 3, 0], [b"a", b"bcd", b"a"]]
+    expected_out = [[1.0, 0.2, 3.0], [1, 3, 0], ["a", "bcd", "a"]]
 
     self._test(args, expected_out)
 

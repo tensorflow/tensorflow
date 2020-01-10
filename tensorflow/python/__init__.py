@@ -28,17 +28,14 @@ import tensorflow as tf
 
 """
 
-import traceback
-
 try:
-  # pylint: disable=g-import-not-at-top
   import tensorflow.python.platform
   from tensorflow.core.framework.graph_pb2 import *
-except ImportError:
-  msg = """%s\n\nError importing tensorflow.  Unless you are using bazel,
-you should not try to import tensorflow from its source directory;
-please exit the tensorflow source tree, and relaunch your python interpreter
-from there.""" % traceback.format_exc()
+except ImportError as e:
+  msg = """Error importing tensorflow: you should not try to import
+  tensorflow from its source directory; please exit the tensorflow source tree,
+  and relaunch your python interpreter from there.
+  Original ImportError: %s""" % str(e)
   raise ImportError(msg)
 
 from tensorflow.core.framework.summary_pb2 import *

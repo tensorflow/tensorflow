@@ -24,7 +24,6 @@ import numpy as np
 import tensorflow as tf
 
 from tensorflow.python.ops import gen_array_ops
-from tensorflow.python.util import compat
 
 
 class ConstantTest(tf.test.TestCase):
@@ -85,21 +84,21 @@ class ConstantTest(tf.test.TestCase):
     self._testAll(np.empty((2, 0, 5)).astype(np.complex64))
 
   def testString(self):
-    self._testCpu(np.array([compat.as_bytes(str(x))
-                            for x in np.arange(-15, 15)]).reshape([2, 3, 5]))
+    self._testCpu(np.array([str(x) for x in np.arange(-15, 15)]).reshape(
+        [2, 3, 5]))
     self._testCpu(np.empty((2, 0, 5)).astype(np.str_))
 
   def testStringWithNulls(self):
     with self.test_session():
-      val = tf.convert_to_tensor(b"\0\0\0\0").eval()
+      val = tf.convert_to_tensor("\0\0\0\0").eval()
     self.assertEqual(len(val), 4)
-    self.assertEqual(val, b"\0\0\0\0")
+    self.assertEqual(val, "\0\0\0\0")
 
     with self.test_session():
-      val = tf.convert_to_tensor(b"xx\0xx").eval()
+      val = tf.convert_to_tensor("xx\0xx").eval()
     self.assertEqual(len(val), 5)
-    self.assertAllEqual(val, b"xx\0xx")
-    nested = [[b"\0\0\0\0", b"xx\0xx"], [b"\0_\0_\0_\0", b"\0"]]
+    self.assertAllEqual(val, "xx\0xx")
+    nested = [["\0\0\0\0", "xx\0xx"], ["\0_\0_\0_\0", "\0"]]
 
     with self.test_session():
       val = tf.convert_to_tensor(nested).eval()
@@ -285,21 +284,21 @@ class ZerosTest(tf.test.TestCase):
       self.assertEqual(d.get_shape(), [2, 3])
       # Test default type for both constant size and dynamic size
       z = tf.zeros([2, 3])
-      self.assertEqual(z.dtype, tf.float32)
+      self.assertEquals(z.dtype, tf.float32)
       self.assertEqual([2, 3], z.get_shape())
       z = tf.zeros(tf.shape(d))
-      self.assertEqual(z.dtype, tf.float32)
+      self.assertEquals(z.dtype, tf.float32)
       self.assertEqual([2, 3], z.get_shape())
       # Test explicit type control
       for dtype in [tf.float32, tf.float64, tf.int32,
                     tf.uint8, tf.int16, tf.int8,
                     tf.complex64, tf.int64]:
         z = tf.zeros([2, 3], dtype=dtype)
-        self.assertEqual(z.dtype, dtype)
-        self.assertEqual([2, 3], z.get_shape())
+        self.assertEquals(z.dtype, dtype)
+        self.assertEquals([2, 3], z.get_shape())
         z = tf.zeros(tf.shape(d), dtype=dtype)
-        self.assertEqual(z.dtype, dtype)
-        self.assertEqual([2, 3], z.get_shape())
+        self.assertEquals(z.dtype, dtype)
+        self.assertEquals([2, 3], z.get_shape())
 
 
 class ZerosLikeTest(tf.test.TestCase):
@@ -315,7 +314,7 @@ class ZerosLikeTest(tf.test.TestCase):
         # Constructs a tensor of zeros of the same dimensions and type as "d".
         z_var = tf.zeros_like(d)
         # Test that the type is correct
-        self.assertEqual(z_var.dtype, dtype)
+        self.assertEquals(z_var.dtype, dtype)
         z_value = z_var.eval()
 
       # Test that the value is correct
@@ -333,7 +332,7 @@ class ZerosLikeTest(tf.test.TestCase):
         # Constructs a tensor of zeros of the same dimensions and type as "d".
         z_var = gen_array_ops._zeros_like(d)
         # Test that the type is correct
-        self.assertEqual(z_var.dtype, dtype)
+        self.assertEquals(z_var.dtype, dtype)
         z_value = z_var.eval()
 
       # Test that the value is correct
@@ -370,20 +369,20 @@ class OnesTest(tf.test.TestCase):
       self.assertEqual(d.get_shape(), [2, 3])
       # Test default type for both constant size and dynamic size
       z = tf.ones([2, 3])
-      self.assertEqual(z.dtype, tf.float32)
+      self.assertEquals(z.dtype, tf.float32)
       self.assertEqual([2, 3], z.get_shape())
       z = tf.ones(tf.shape(d))
-      self.assertEqual(z.dtype, tf.float32)
+      self.assertEquals(z.dtype, tf.float32)
       self.assertEqual([2, 3], z.get_shape())
       # Test explicit type control
       for dtype in [tf.float32, tf.float64, tf.int32,
                     tf.uint8, tf.int16, tf.int8,
                     tf.complex64, tf.int64]:
         z = tf.ones([2, 3], dtype=dtype)
-        self.assertEqual(z.dtype, dtype)
+        self.assertEquals(z.dtype, dtype)
         self.assertEqual([2, 3], z.get_shape())
         z = tf.ones(tf.shape(d), dtype=dtype)
-        self.assertEqual(z.dtype, dtype)
+        self.assertEquals(z.dtype, dtype)
         self.assertEqual([2, 3], z.get_shape())
 
 
@@ -400,7 +399,7 @@ class OnesLikeTest(tf.test.TestCase):
         # Constructs a tensor of zeros of the same dimensions and type as "d".
         z_var = tf.ones_like(d)
         # Test that the type is correct
-        self.assertEqual(z_var.dtype, dtype)
+        self.assertEquals(z_var.dtype, dtype)
         z_value = z_var.eval()
 
       # Test that the value is correct
@@ -418,7 +417,7 @@ class OnesLikeTest(tf.test.TestCase):
         # Constructs a tensor of zeros of the same dimensions and type as "d".
         z_var = tf.ones_like(d)
         # Test that the type is correct
-        self.assertEqual(z_var.dtype, dtype)
+        self.assertEquals(z_var.dtype, dtype)
         z_value = z_var.eval()
 
       # Test that the value is correct
@@ -461,7 +460,7 @@ class FillTest(tf.test.TestCase):
     self._compare([2, 3], np_ans[0][0], np_ans, use_gpu=False)
 
   def testFillString(self):
-    np_ans = np.array([[b"yolo"] * 3] * 2)
+    np_ans = np.array([["yolo"] * 3] * 2)
     with self.test_session(use_gpu=False):
       tf_ans = tf.fill([2, 3], np_ans[0][0], name="fill").eval()
     self.assertAllEqual(np_ans, tf_ans)
@@ -509,7 +508,7 @@ class PlaceholderTest(tf.test.TestCase):
         p_identity.eval()
 
       with self.assertRaisesWithPredicateMatch(
-          ValueError, lambda e: "Cannot feed value of shape" in str(e)):
+          ValueError, lambda e: "Cannot feed value of shape" in e.message):
         p_identity.eval(feed_dict={p: feed_array[:5, :5]})
 
   def testPartialShape(self):
@@ -521,7 +520,7 @@ class PlaceholderTest(tf.test.TestCase):
                           feed_array)
 
       with self.assertRaisesWithPredicateMatch(
-          ValueError, lambda e: "Cannot feed value of shape" in str(e)):
+          ValueError, lambda e: "Cannot feed value of shape" in e.message):
         p_identity.eval(feed_dict={p: feed_array[:5, :2]})
 
   def testControlDependency(self):

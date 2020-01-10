@@ -35,8 +35,7 @@ class PackOpTest(tf.test.TestCase):
         for shape in (2,), (3,), (2, 3), (3, 2), (4, 3, 2):
           data = np.random.randn(*shape)
           # Convert [data[0], data[1], ...] separately to tensorflow
-          # TODO(irving): Remove list() once we handle maps correctly
-          xs = list(map(tf.constant, data))
+          xs = map(tf.constant, data)
           # Pack back into a single tensorflow tensor
           c = tf.pack(xs)
           self.assertAllEqual(c.eval(), data)
@@ -48,8 +47,7 @@ class PackOpTest(tf.test.TestCase):
         data = np.random.randn(*shape)
         shapes = [shape[1:]] * shape[0]
         with self.test_session(use_gpu=use_gpu):
-          # TODO(irving): Remove list() once we handle maps correctly
-          xs = list(map(tf.constant, data))
+          xs = map(tf.constant, data)
           c = tf.pack(xs)
           err = gradient_checker.ComputeGradientError(xs, shapes, c, shape)
           self.assertLess(err, 1e-6)

@@ -144,8 +144,8 @@ tf_cuda_library(
     name = "gpu_runtime",
     srcs = glob(
         [
-            "common_runtime/gpu/*.h",
-            "common_runtime/gpu/*.cc",
+            "common_runtime/gpu/**/*.h",
+            "common_runtime/gpu/**/*.cc",
         ],
         exclude = [
             "**/*main.cc",
@@ -628,7 +628,6 @@ filegroup(
         "//tensorflow/core:kernels/relu_op.h",
         "//tensorflow/core:kernels/softplus_op.cc",
         "//tensorflow/core:kernels/softplus_op.h",
-        "//tensorflow/core:kernels/stack_ops.cc",
         "//tensorflow/core:kernels/transpose_op.cc",
         "//tensorflow/core:kernels/transpose_op.h",
         "//tensorflow/core:kernels/transpose_op_functor.h",
@@ -674,7 +673,6 @@ cc_library(
     copts = [
         "-mfpu=neon",
         "-std=c++11",
-        "-O2",
     ],
     tags = [
         "manual",

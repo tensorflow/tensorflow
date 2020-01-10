@@ -20,12 +20,11 @@ from __future__ import print_function
 import tensorflow.python.platform
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
-import tensorflow as tf
-
+from tensorflow.python.platform import googletest
 from tensorflow.python.summary.impl import reservoir
 
 
-class ReservoirTest(tf.test.TestCase):
+class ReservoirTest(googletest.TestCase):
 
   def testEmptyReservoir(self):
     r = reservoir.Reservoir(1)
@@ -95,7 +94,7 @@ class ReservoirTest(tf.test.TestCase):
     self.assertNotEqual(r1.Items(key), r2.Items(key))
 
 
-class ReservoirBucketTest(tf.test.TestCase):
+class ReservoirBucketTest(googletest.TestCase):
 
   def testEmptyBucket(self):
     b = reservoir._ReservoirBucket(1)
@@ -120,7 +119,7 @@ class ReservoirBucketTest(tf.test.TestCase):
     for i in xrange(10000):
       b.AddItem(i)
     items = b.Items()
-    prev = -1
+    prev = None
     for item in items:
       self.assertTrue(item > prev)
       prev = item
@@ -176,7 +175,7 @@ class ReservoirBucketTest(tf.test.TestCase):
                      int(round(10000 * (1 - float(num_removed) / 100))))
 
 
-class ReservoirBucketStatisticalDistributionTest(tf.test.TestCase):
+class ReservoirBucketStatisticalDistributionTest(googletest.TestCase):
 
   def setUp(self):
     self.total = 1000000
@@ -223,4 +222,4 @@ class ReservoirBucketStatisticalDistributionTest(tf.test.TestCase):
 
 
 if __name__ == '__main__':
-  tf.test.main()
+  googletest.main()

@@ -51,10 +51,6 @@ class Dimension(object):
   def __int__(self):
     return self._value
 
-  def __index__(self):
-    # Allow use in Python 3 range
-    return self._value
-
   @property
   def value(self):
     """The value of this dimension, or None if it is unknown."""
@@ -709,7 +705,7 @@ class TensorShape(object):
       raise ValueError("Shape %s is not fully defined" % self)
 
   def as_dimension_list(self):
-    """DEPRECATED: use `as_list()`."""
+    """DEPRECATED: use as_list()."""
     self.assert_is_fully_defined()
     return self.as_list()
 

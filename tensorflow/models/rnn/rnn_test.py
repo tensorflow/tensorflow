@@ -50,10 +50,10 @@ class TestStateSaver(object):
     self._batch_size = batch_size
     self._state_size = state_size
 
-  def state(self, _):
+  def State(self, _):
     return tf.zeros(tf.pack([self._batch_size, self._state_size]))
 
-  def save_state(self, _, state):
+  def SaveState(self, _, state):
     self.saved_state = state
     return tf.identity(state)
 
@@ -379,7 +379,7 @@ class LSTMTest(tf.test.TestCase):
       self.assertEqual(len(outputs), len(inputs))
       self.assertEqual(len(outputs), len(states))
 
-      tf.initialize_all_variables().run(feed_dict={sequence_length: [2, 3]})
+      tf.initialize_all_variables().run()
       input_value = np.asarray(np.random.randn(batch_size, input_size),
                                dtype=np.float64)
       values = sess.run(outputs, feed_dict={inputs[0]: input_value,
