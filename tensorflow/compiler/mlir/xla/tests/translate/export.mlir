@@ -837,6 +837,19 @@ func @main(%arg0: tensor<1x2x3x4xi32>) -> tensor<2x1x4x3xi32> {
 // -----
 
 // CHECK:  HloModule
+func @main(%arg0: tensor<4x4xf32>, %arg1: tensor<4x3xf32>) -> tensor<4x3xf32> {
+  %0 = "xla_hlo.triangular_solve"(%arg0, %arg1) {left_side = true, lower = true, transpose_a = "NO_TRANSPOSE", unit_diagonal = true} : (tensor<4x4xf32>, tensor<4x3xf32>) -> tensor<4x3xf32>
+  return %0 : tensor<4x3xf32>
+}
+
+// CHECK:  [[ARG_A:%.*]] = f32[4,4] parameter(0)
+// CHECK:  [[ARG_B:%.*]] = f32[4,3] parameter(1)
+// CHECK:  ROOT
+// CHECK-SAME:  f32[4,3] triangular-solve(f32[4,4] [[ARG_A]], f32[4,3] [[ARG_B]]), left_side=true, lower=true, unit_diagonal=true, transpose_a=NO_TRANSPOSE
+
+// -----
+
+// CHECK:  HloModule
 func @main(%arg0: tensor<f32>, %arg1 : tensor<i32>) -> tuple<tensor<f32>, tensor<i32>> {
   %result = "xla_hlo.tuple"(%arg0, %arg1) {} : (tensor<f32>, tensor<i32>) -> tuple<tensor<f32>, tensor<i32>>
   return %result : tuple<tensor<f32>, tensor<i32>>

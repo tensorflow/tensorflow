@@ -449,6 +449,24 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
           "permutation", ConvertDimensions(instruction->dimensions())));
       MakeAndReturn(TransposeOp);
     }
+    case HloOpcode::kTriangularSolve: {
+      attributes.push_back(builder_->getNamedAttr(
+          "left_side",
+          builder_->getBoolAttr(
+              instruction->triangular_solve_options().left_side())));
+      attributes.push_back(builder_->getNamedAttr(
+          "lower", builder_->getBoolAttr(
+                       instruction->triangular_solve_options().lower())));
+      attributes.push_back(builder_->getNamedAttr(
+          "unit_diagonal",
+          builder_->getBoolAttr(
+              instruction->triangular_solve_options().unit_diagonal())));
+      auto transpose_a =
+          builder_->getStringAttr(TriangularSolveOptions::Transpose_Name(
+              instruction->triangular_solve_options().transpose_a()));
+      attributes.push_back(builder_->getNamedAttr("transpose_a", transpose_a));
+      MakeAndReturn(TriangularSolveOp);
+    }
     case HloOpcode::kMap: {
       auto op = func_builder->create<mlir::xla_hlo::MapOp>(
           loc, result_type, operands,

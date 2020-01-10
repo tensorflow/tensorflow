@@ -1146,6 +1146,20 @@ def HLO_TransposeOp: HLO_Op<"transpose",
   let hasFolder = 1;
 }
 
+def HLO_TriangularSolveOp: HLO_Op<"triangular_solve",
+    [NoSideEffect, SameOperandsAndResultElementType]>,
+    BASE_HLO_TriangularSolveOp {
+  let arguments = (ins
+    HLO_FpOrComplexTensor:$a,
+    HLO_FpOrComplexTensor:$b,
+    BoolAttr:$left_side,
+    BoolAttr:$lower,
+    BoolAttr:$unit_diagonal,
+    HLO_TransposeAttr:$transpose_a
+  );
+  let results = (outs HLO_FpOrComplexTensor);
+}
+
 def HLO_ReduceWindowOp: HLO_Op<"reduce_window", [
       NoSideEffect,
       SingleBlockImplicitTerminator<"ReturnOp">
