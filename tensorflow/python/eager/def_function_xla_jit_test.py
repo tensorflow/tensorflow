@@ -183,6 +183,35 @@ class DefFunctionTest(test.TestCase):
     self.assertAllClose(40.0, f(2.0))
     self.assertAllClose([40.0, 28.0], g(2.0))
 
+  def testMethodCompilation(self):
+    if test.is_built_with_rocm():
+      return
+
+    class C(object):
+
+      @def_function.function(experimental_compile=True)
+      def f1(self, x, a):
+        return x + a
+
+    inputs = constant_op.constant([1, 2, 2, 3, 3])
+    c = C()
+    self.assertAllClose([2, 3, 3, 4, 4], c.f1(inputs, 1))
+
+  def testMethodCompilationUnsupportedFunc(self):
+    if test.is_built_with_rocm():
+      return
+
+    class C(object):
+
+      @def_function.function(experimental_compile=True)
+      def f1(self, x):
+        return array_ops.unique(x).y
+
+    inputs = constant_op.constant([1, 2, 2, 3, 3])
+    c = C()
+    with self.assertRaisesRegexp(errors.InvalidArgumentError, 'not compilable'):
+      c.f1(inputs)
+
 
 if __name__ == '__main__':
   ops.enable_eager_execution()

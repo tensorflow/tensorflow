@@ -460,6 +460,7 @@ class Function(object):
         attributes=attributes,
         autograph=self._autograph,
         experimental_autograph_options=self._experimental_autograph_options,
+        experimental_compile=self._experimental_compile,
         experimental_relax_shapes=self._experimental_relax_shapes)
 
   def _initialize(self, args, kwds, add_initializers_to=None):
