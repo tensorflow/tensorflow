@@ -603,14 +603,23 @@ cc_library(
 
 cc_library(
     name = "GPUTransforms",
-    srcs = ["lib/Dialect/GPU/Transforms/KernelOutlining.cpp"],
+    srcs = glob(
+        [
+            "lib/Dialect/GPU/Transforms/*.cpp",
+            "lib/Dialect/GPU/Transforms/*.h",
+        ],
+        exclude = ["lib/Dialect/**/DialectRegistration.cpp"],
+    ),
     hdrs = ["include/mlir/Dialect/GPU/Passes.h"],
     includes = ["include"],
     deps = [
+        ":EDSC",
         ":GPUDialect",
         ":IR",
+        ":LoopOps",
         ":Pass",
         ":StandardOps",
+        ":Support",
         ":Transforms",
     ],
     alwayslink = 1,

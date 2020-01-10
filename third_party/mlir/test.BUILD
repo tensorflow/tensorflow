@@ -142,21 +142,9 @@ cc_library(
 
 cc_library(
     name = "TestTransforms",
-    srcs = [
-        "lib/Transforms/TestCallGraph.cpp",
-        "lib/Transforms/TestConstantFold.cpp",
-        "lib/Transforms/TestInlining.cpp",
-        "lib/Transforms/TestLinalgTransforms.cpp",
-        "lib/Transforms/TestLiveness.cpp",
-        "lib/Transforms/TestLoopFusion.cpp",
-        "lib/Transforms/TestLoopMapping.cpp",
-        "lib/Transforms/TestLoopParametricTiling.cpp",
-        "lib/Transforms/TestMemRefStrideCalculation.cpp",
-        "lib/Transforms/TestOpaqueLoc.cpp",
-        "lib/Transforms/TestVectorToLoopsConversion.cpp",
-        "lib/Transforms/TestVectorTransforms.cpp",
-        "lib/Transforms/TestVectorizationUtils.cpp",
-    ],
+    srcs = glob([
+        "lib/Transforms/*.cpp",
+    ]),
     includes = ["lib/TestDialect"],
     deps = [
         ":TestDialect",
@@ -166,6 +154,7 @@ cc_library(
         "@llvm-project//mlir:AffineOps",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:EDSC",
+        "@llvm-project//mlir:GPUDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Linalg",
         "@llvm-project//mlir:LoopOps",
