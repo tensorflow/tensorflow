@@ -109,7 +109,7 @@ cc_library(
     srcs = ["command_line_flags.cc"],
     hdrs = ["command_line_flags.h"],
     copts = tflite_copts(),
-    deps = ["//tensorflow/core:tflite_portable_logging"],
+    deps = ["//tensorflow/lite:minimal_logging"],
 )
 
 cc_test(
