@@ -14,7 +14,6 @@ py_library(
     srcs = [
         "linear.py",
     ],
-    srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
     ],
@@ -24,7 +23,6 @@ py_test(
     name = "linear_test",
     size = "small",
     srcs = ["linear_test.py"],
-    srcs_version = "PY2AND3",
     deps = [
         ":linear",
         "//tensorflow:tensorflow_py",
@@ -36,7 +34,6 @@ py_library(
     srcs = [
         "rnn_cell.py",
     ],
-    srcs_version = "PY2AND3",
     deps = [
         ":linear",
         "//tensorflow:tensorflow_py",
@@ -47,7 +44,6 @@ py_test(
     name = "rnn_cell_test",
     size = "small",
     srcs = ["rnn_cell_test.py"],
-    srcs_version = "PY2AND3",
     deps = [
         ":rnn_cell",
         "//tensorflow:tensorflow_py",
@@ -59,7 +55,6 @@ py_library(
     srcs = [
         "__init__.py",
     ],
-    srcs_version = "PY2AND3",
     deps = [
         ":rnn",
         ":rnn_cell",
@@ -72,7 +67,6 @@ py_library(
     srcs = [
         "rnn.py",
     ],
-    srcs_version = "PY2AND3",
     deps = [
         ":rnn_cell",
         "//tensorflow:tensorflow_py",
@@ -94,7 +88,6 @@ py_library(
     srcs = [
         "seq2seq.py",
     ],
-    srcs_version = "PY2AND3",
     deps = [
         ":rnn",
         "//tensorflow:tensorflow_py",
@@ -106,7 +99,6 @@ py_test(
     srcs = [
         "seq2seq_test.py",
     ],
-    srcs_version = "PY2AND3",
     deps = [
         ":seq2seq",
         "//tensorflow:tensorflow_py",

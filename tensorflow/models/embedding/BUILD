@@ -12,7 +12,6 @@ py_binary(
     srcs = [
         "word2vec.py",
     ],
-    srcs_version = "PY2AND3",
     deps = [
         ":gen_word2vec",
         "//tensorflow:tensorflow_py",
@@ -25,7 +24,6 @@ py_binary(
     srcs = [
         "word2vec_optimized.py",
     ],
-    srcs_version = "PY2AND3",
     deps = [
         ":gen_word2vec",
         "//tensorflow:tensorflow_py",
@@ -37,7 +35,6 @@ py_test(
     name = "word2vec_test",
     size = "small",
     srcs = ["word2vec_test.py"],
-    srcs_version = "PY2AND3",
     deps = [
         ":word2vec",
         "//tensorflow:tensorflow_py",
@@ -48,7 +45,6 @@ py_test(
     name = "word2vec_optimized_test",
     size = "small",
     srcs = ["word2vec_optimized_test.py"],
-    srcs_version = "PY2AND3",
     deps = [
         ":word2vec_optimized",
         "//tensorflow:tensorflow_py",

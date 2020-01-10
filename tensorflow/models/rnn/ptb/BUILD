@@ -10,14 +10,12 @@ exports_files(["LICENSE"])
 py_library(
     name = "reader",
     srcs = ["reader.py"],
-    srcs_version = "PY2AND3",
     deps = ["//tensorflow:tensorflow_py"],
 )
 
 py_test(
     name = "reader_test",
     srcs = ["reader_test.py"],
-    srcs_version = "PY2AND3",
     deps = [
         ":reader",
         "//tensorflow:tensorflow_py",
@@ -29,7 +27,6 @@ py_binary(
     srcs = [
         "ptb_word_lm.py",
     ],
-    srcs_version = "PY2AND3",
     deps = [
         ":reader",
         "//tensorflow:tensorflow_py",
