@@ -128,15 +128,13 @@ class EventMultiplexer(object):
     return self
 
   def AddRunsFromDirectory(self, path, name=None):
-    """Load runs from a directory; recursively walks subdirectories.
+    """Load runs from a directory, assuming each subdirectory is a run.
 
     If path doesn't exist, no-op. This ensures that it is safe to call
       `AddRunsFromDirectory` multiple times, even before the directory is made.
 
-    If path is a directory, load event files in the directory (if any exist) and
-      recursively call AddRunsFromDirectory on any subdirectories. This mean you
-      can call AddRunsFromDirectory at the root of a tree of event logs and
-      TensorBoard will load them all.
+    If the directory contains TensorFlow event files, it is itself treated as a
+      run.
 
     If the `EventMultiplexer` is already loaded or autoupdating, this will cause
     the newly created accumulators to also `Reload()` or `AutoUpdate()`.
@@ -158,16 +156,25 @@ class EventMultiplexer(object):
     if not gfile.Exists(path):
       return  # Maybe it hasn't been created yet, fail silently to retry later
     if not gfile.IsDirectory(path):
-      raise ValueError('AddRunsFromDirectory: path exists and is not a '
-                       'directory, %s'  % path)
+      raise ValueError('Path exists and is not a directory, %s'  % path)
+    paths = gfile.ListDirectory(path)
+    is_directory = lambda x: gfile.IsDirectory(os.path.join(path, x))
+    subdirectories = filter(is_directory, paths)
+    for s in subdirectories:
+      if name:
+        subname = '/'.join([name, s])
+      else:
+        subname = s
+      self.AddRun(os.path.join(path, s), subname)
 
-    for (subdir, _, files) in os.walk(path):
-      if list(filter(event_accumulator.IsTensorFlowEventsFile, files)):
-        logging.info('Adding events from directory %s', subdir)
-        rpath = os.path.relpath(subdir, path)
-        subname = os.path.join(name, rpath) if name else rpath
-        self.AddRun(subdir, name=subname)
-
+    if list(filter(event_accumulator.IsTensorFlowEventsFile, paths)):
+      directory_name = os.path.split(path)[1]
+      logging.info('Directory %s has event files; loading', directory_name)
+      if name:
+        dname = name
+      else:
+        dname = directory_name
+      self.AddRun(path, dname)
     return self
 
   def Reload(self):

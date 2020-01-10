@@ -39,13 +39,13 @@ export class SlimGraph {
   }
 }
 
-export interface NormalizedInput {
+interface NormalizedInput {
   name: string;
   hasNumberPart: boolean;
   isControlDependency: boolean;
 }
 
-export interface BuildParams {
+interface BuildParams {
   enableEmbedding: boolean;
   inEmbeddingTypes: string[];
   outEmbeddingTypes: string[];
@@ -352,7 +352,7 @@ export function joinStatsInfoWithGraph(graph: SlimGraph,
 /**
  * Execution stats for the node.
  */
-export class NodeStats {
+class NodeStats {
   constructor(totalBytes: number, totalMicros: number, outputSize: number[][]) {
     this.totalBytes = totalBytes;
     this.totalMicros = totalMicros;

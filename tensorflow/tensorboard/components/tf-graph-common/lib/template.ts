@@ -28,7 +28,7 @@ export function detect(h, verifyTemplate): {[templateId: string]: string[]} {
   // Sort the templates by minimum level in the graph at which they appear,
   // as this leads to optimal setting of the colors of each template for
   // maximum differentiation.
-  return <{[templateId: string]: string[]}> _(templates).pairs()
+  return _(templates).pairs()
       .sortBy(function(pair) {
         return pair[1].level;
       })
@@ -101,7 +101,6 @@ function clusterSimilarSubgraphs(h: hierarchy.Hierarchy) {
 function groupTemplateAndAssignId(nnGroups, verifyTemplate) {
   // For each metanode, compare its subgraph (starting from shallower groups)
   // and assign template id.
-  let result: {[templateId: string]: {level: number, nodes: string[]}} = {};
   return _.reduce(nnGroups, function(templates, nnGroupPair) {
     let signature = nnGroupPair[0],
       nnGroup = nnGroupPair[1].nodes,
@@ -138,7 +137,7 @@ function groupTemplateAndAssignId(nnGroups, verifyTemplate) {
       };
     });
     return templates;
-  }, result);
+  }, {});
 }
 
 function sortNodes(names: string[], graph: graphlib.Graph<Metanode|OpNode, Metaedge>,

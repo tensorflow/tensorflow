@@ -86,10 +86,11 @@ class LinearAlgebraOp : public LinearAlgebraOpBase {
   explicit LinearAlgebraOp(OpKernelConstruction* context)
       : LinearAlgebraOpBase(context) {}
 
-  using Matrix =
-      Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
-  using ConstMatrixMap = Eigen::Map<const Matrix>;
-  using MatrixMap = Eigen::Map<Matrix>;
+  using ConstMatrixMap =
+      Eigen::Map<const Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic,
+                                     Eigen::RowMajor>>;
+  using MatrixMap = Eigen::Map<
+      Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>;
 
   // Perform the actual computation on the input matrix, and store the results
   // in the output. This will be called repeatedly for a single call to

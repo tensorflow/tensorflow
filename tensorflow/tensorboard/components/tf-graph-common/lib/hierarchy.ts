@@ -11,7 +11,7 @@ const LOG_PREFIX_MSG = "Graph hierarchy: ";
 /**
  * Class used as output for getPredecessors and getSuccessors methods
  */
-export interface Edges {
+interface Edges {
   control: string[];
   regular: string[];
 }
@@ -370,7 +370,7 @@ function findEdgeTargetsInGraph(
   });
 }
 
-export interface HierarchyParams {
+interface HierarchyParams {
   verifyTemplate: boolean;
   seriesNodeMinSize: number;
 }
@@ -640,7 +640,7 @@ function detectSeries(clusters: {[clusterId: string]: string[]},
      * which is an array that contains objects with name, id, prefix, suffix,
      * and parent properties.
      */
-    let candidatesDict: {[seriesName: string]: SeriesNode[]} = {};
+    let candidatesDict = {};
 
     // Group all nodes that have the same name, with the exception of a
     // number at the end of the name after an underscore, which is allowed to

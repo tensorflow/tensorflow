@@ -1,4 +1,3 @@
-#include <string>
 #include <unordered_set>
 #include <utility>
 
@@ -71,7 +70,6 @@ class ListDiffOp : public OpKernel {
       ListDiffOp<type>)
 
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_LISTDIFF);
-REGISTER_LISTDIFF(string);
 #undef REGISTER_LISTDIFF
 
 }  // namespace tensorflow

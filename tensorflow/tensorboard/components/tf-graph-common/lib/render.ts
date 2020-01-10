@@ -65,7 +65,7 @@ export let SeriesNodeColors = {
 /**
  * Parameters that affect how the graph is rendered on the screen.
  */
-export interface RenderGraphParams {
+interface RenderGraphParams {
   /**
    * Whether to extract high degree nodes from the core part of the graph.
    */
