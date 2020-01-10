@@ -55,6 +55,7 @@ from tensorflow.python.keras.mixed_precision.experimental import autocast_variab
 from tensorflow.python.keras.mixed_precision.experimental import policy
 from tensorflow.python.keras.saving.saved_model import layer_serialization
 from tensorflow.python.keras.utils import generic_utils
+from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.keras.utils import tf_utils
 # A module that only depends on `keras.layers` import these from here.
 from tensorflow.python.keras.utils.generic_utils import to_snake_case  # pylint: disable=unused-import
@@ -296,15 +297,14 @@ class Layer(module.Module):
         "non_trainable_variables" (e.g. BatchNorm mean and variance).
 
     Returns:
-      The tf.tracking.Trackable object.
+      The TrackableWeightHandler used to track this object.
     """
+    handler = base_layer_utils.TrackableWeightHandler(trackable_object)
     if trainable:
-      self._trainable_weights.append(
-          base_layer_utils.TrackableWeightHandler(trackable_object))
+      self._trainable_weights.append(handler)
     else:
-      self._non_trainable_weights.append(
-          base_layer_utils.TrackableWeightHandler(trackable_object))
-    return trackable_object
+      self._non_trainable_weights.append(handler)
+    return handler
 
   @doc_controls.for_subclass_implementers
   def add_weight(self,
@@ -1675,7 +1675,7 @@ class Layer(module.Module):
                          ', but the layer isn\'t built. '
                          'You can build it manually via: `' + self.name +
                          '.build(batch_input_shape)`.')
-    return int(sum(np.prod(w.shape.as_list()) for w in self.weights))
+    return layer_utils.count_params(self.weights)
 
   @property
   def output_shape(self):
