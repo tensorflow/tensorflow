@@ -683,29 +683,23 @@ bool AlternateMemoryBestFitHeap::FindAllocation(
     return true;
   }
 
-  MemorySpaceAssignment::Allocation* prev_allocation = nullptr;
-  if (!allocations->empty()) {
-    prev_allocation = allocations->back().get();
-  }
+  auto prev_allocation_it = allocations->rbegin();
   // Find a previous allocation that is in the default memory space (not
   // necessarily the very last allocation).
-  MemorySpaceAssignment::Allocation* prev_allocation_in_default_mem = nullptr;
-  for (auto allocation_it = allocations->rbegin();
-       allocation_it != allocations->rend(); ++allocation_it) {
-    if ((*allocation_it)->memory_space() == MemorySpace::kDefault &&
-        (*allocation_it)->defining_position() == defining_position) {
-      prev_allocation_in_default_mem = allocation_it->get();
-      break;
-    }
-  }
+  auto prev_allocation_in_default_mem_it = std::find_if(
+      allocations->rbegin(), allocations->rend(), [&](const auto& allocation) {
+        return allocation->memory_space() == MemorySpace::kDefault &&
+               allocation->defining_position() == defining_position;
+      });
 
-  if (prev_allocation_in_default_mem == nullptr && prev_allocation != nullptr &&
-      prev_allocation->memory_space() == MemorySpace::kAlternate &&
-      prev_allocation->defining_position() == defining_position) {
+  if (prev_allocation_in_default_mem_it == allocations->rend() &&
+      prev_allocation_it != allocations->rend() &&
+      (*prev_allocation_it)->memory_space() == MemorySpace::kAlternate &&
+      (*prev_allocation_it)->defining_position() == defining_position) {
     // If there was an allocation for this HloValue that was in the alternate
     // memory space, we also need to perform an eviction.
-    int64 eviction_start_time = prev_allocation->start_time();
-    int64 eviction_end_time = prev_allocation->end_time();
+    int64 eviction_start_time = (*prev_allocation_it)->start_time();
+    int64 eviction_end_time = (*prev_allocation_it)->end_time();
     CHECK(eviction_start_time <= eviction_end_time);
 
     int64 preferred_eviction_end_time = std::max(
@@ -718,25 +712,25 @@ bool AlternateMemoryBestFitHeap::FindAllocation(
     eviction_mem_interval.size = size;
     // Try to reserve a buffer from the end of the previous allocation to the
     // preferred eviction end time.
-    eviction_mem_interval.start = prev_allocation->end_time() + 1;
+    eviction_mem_interval.start = eviction_end_time + 1;
     eviction_mem_interval.end = preferred_eviction_end_time;
-    int64 preferred_offset = prev_allocation->chunk().offset;
+    int64 preferred_offset = (*prev_allocation_it)->chunk().offset;
     VLOG(4) << "Eviction (" << eviction_start_time << ", " << eviction_end_time
-            << ") preferred end time = " << preferred_eviction_end_time;
+            << ") preferred end time = " << eviction_mem_interval.end;
 
-    while (preferred_eviction_end_time > eviction_end_time) {
+    for (; eviction_mem_interval.end > eviction_end_time;
+         --eviction_mem_interval.end) {
       ChunkCandidate chunk_candidate =
           FindChunkCandidate(eviction_mem_interval, preferred_offset);
       if (chunk_candidate.chunk.offset == preferred_offset) {
-        eviction_end_time = preferred_eviction_end_time;
         AddToPendingChunks(eviction_mem_interval, chunk_candidate);
         break;
       }
-      eviction_mem_interval.end = --preferred_eviction_end_time;
     }
+    eviction_end_time = eviction_mem_interval.end;
 
-    VLOG(3) << "Evicting buffer at " << prev_allocation->chunk().offset << " ("
-            << eviction_start_time << ", " << eviction_end_time << ")";
+    VLOG(3) << "Evicting buffer at " << (*prev_allocation_it)->chunk().offset
+            << " (" << eviction_start_time << ", " << eviction_end_time << ")";
 
     bool eviction_interval_too_short =
         (eviction_start_time == eviction_end_time);
@@ -746,9 +740,9 @@ bool AlternateMemoryBestFitHeap::FindAllocation(
 
     // See if this interval would violate the asynchronous copy limit.
     if (!eviction_interval_too_short && !eviction_violates_outstanding_copies) {
-      prev_allocation->Extend(eviction_end_time);
-      AddAsyncCopy(*prev_allocation, MemorySpace::kDefault, kDummyChunk,
-                   eviction_start_time, prev_allocation->end_time(),
+      (*prev_allocation_it)->Extend(eviction_end_time);
+      AddAsyncCopy(**prev_allocation_it, MemorySpace::kDefault, kDummyChunk,
+                   eviction_start_time, (*prev_allocation_it)->end_time(),
                    eviction_end_time, allocations);
     } else {
       if (eviction_violates_outstanding_copies) {
@@ -764,7 +758,7 @@ bool AlternateMemoryBestFitHeap::FindAllocation(
         VLOG(3) << "Try evicting (" << time << ", " << time + 1 << ")";
         if (!ViolatesMaximumOutstandingAsyncCopies(time, time + 1)) {
           VLOG(3) << "Eviction successful.";
-          AddAsyncCopy(*prev_allocation, MemorySpace::kDefault, kDummyChunk,
+          AddAsyncCopy(**prev_allocation_it, MemorySpace::kDefault, kDummyChunk,
                        time, time + 1, time + 1, allocations);
           eviction_scheduled = true;
           break;
@@ -785,24 +779,24 @@ bool AlternateMemoryBestFitHeap::FindAllocation(
         return false;
       }
     }
-    prev_allocation_in_default_mem = allocations->back().get();
-  } else if (prev_allocation_in_default_mem == nullptr) {
+    prev_allocation_in_default_mem_it = allocations->rbegin();
+  } else if (prev_allocation_in_default_mem_it == allocations->rend()) {
     allocations->push_back(absl::make_unique<MemorySpaceAssignment::Allocation>(
         non_bitcast_operand, defining_position, MemorySpace::kDefault,
         kDummyChunk, start_time, end_time));
-    prev_allocation_in_default_mem = allocations->back().get();
+    prev_allocation_in_default_mem_it = allocations->rbegin();
   }
 
-  CHECK_NE(prev_allocation_in_default_mem, nullptr);
-  CHECK(prev_allocation_in_default_mem->memory_space() ==
+  CHECK(prev_allocation_in_default_mem_it != allocations->rend());
+  CHECK((*prev_allocation_in_default_mem_it)->memory_space() ==
         MemorySpace::kDefault);
 
   // If the buffer must be in default memory at the end_time, don't prefetch.
   if (in_default_mem_at_end) {
     VLOG(4)
         << "Not trying to prefetch because use requires buffer in default mem.";
-    prev_allocation_in_default_mem->Extend(end_time);
-    prev_allocation_in_default_mem->AddUse(use);
+    (*prev_allocation_in_default_mem_it)->Extend(end_time);
+    (*prev_allocation_in_default_mem_it)->AddUse(use);
     return true;
   }
 
@@ -852,7 +846,7 @@ bool AlternateMemoryBestFitHeap::FindAllocation(
               << options_.prefetch_interval_picker->ToDebugString();
       AddToPendingChunks(alternate_mem_interval, chunk_candidate);
 
-      AddAsyncCopy(*prev_allocation_in_default_mem, MemorySpace::kAlternate,
+      AddAsyncCopy(**prev_allocation_in_default_mem_it, MemorySpace::kAlternate,
                    chunk_candidate.chunk, alternate_mem_interval.start,
                    end_time, latest_prefetch_time, allocations);
 
@@ -863,8 +857,8 @@ bool AlternateMemoryBestFitHeap::FindAllocation(
 
   // If a copy wasn't inserted, then add this use to the latest allocation in
   // default memory.
-  prev_allocation_in_default_mem->Extend(end_time);
-  prev_allocation_in_default_mem->AddUse(use);
+  (*prev_allocation_in_default_mem_it)->Extend(end_time);
+  (*prev_allocation_in_default_mem_it)->AddUse(use);
   return true;
 }
 
