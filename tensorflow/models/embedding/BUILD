@@ -49,9 +49,6 @@ py_test(
     size = "small",
     srcs = ["word2vec_optimized_test.py"],
     srcs_version = "PY2AND3",
-    tags = [
-        "notsan",
-    ],
     deps = [
         ":word2vec_optimized",
         "//tensorflow:tensorflow_py",

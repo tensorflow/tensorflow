@@ -49,7 +49,6 @@ class OpCompatibilityTest : public OpsTestBase {
                                 &new_out_types));
     ASSERT_EQ(new_in_types, old_in_types);
     ASSERT_EQ(new_out_types, old_out_types);
-    ASSERT_OK(OpDefCompatible(old_op_def, *new_op_def));
 
     // Verify the Op actually runs.  Result() will return the output.
     ASSERT_OK(InitOp());
@@ -58,21 +57,7 @@ class OpCompatibilityTest : public OpsTestBase {
 
   string Result() { return GetOutput(0)->scalar<string>()(); }
 
-  void ExpectIncompatible(const OpDef& old_op_def, const OpDef& new_op_def,
-                          const string& error) {
-    // Test OpDefCompatible gives the same answer without the node_def.
-    Status status = OpDefCompatible(old_op_def, new_op_def);
-    if (status.ok()) {
-      ADD_FAILURE() << SummarizeOpDef(old_op_def) << " vs. "
-                    << SummarizeOpDef(new_op_def);
-    } else {
-      EXPECT_TRUE(StringPiece(status.error_message()).contains(error))
-          << status << " does not contain " << error;
-    }
-  }
-
-  void ExpectInvalid(const OpDef& old_op_def, const string& validation_error,
-                     const string& compatibility_error) {
+  void ExpectInvalid(const OpDef& old_op_def, string error) {
     // Record the original signature before we change *node_def().
     DataTypeVector old_in_types, old_out_types;
     ASSERT_OK(InOutTypesForNode(*node_def(), old_op_def, &old_in_types,
@@ -87,16 +72,12 @@ class OpCompatibilityTest : public OpsTestBase {
     if (status.ok()) {
       ADD_FAILURE() << SummarizeNodeDef(*node_def());
     } else {
-      EXPECT_TRUE(
-          StringPiece(status.error_message()).contains(validation_error))
-          << status << " does not contain " << validation_error;
+      EXPECT_TRUE(StringPiece(status.error_message()).contains(error))
+          << status << " does not contain " << error;
     }
-
-    ExpectIncompatible(old_op_def, *new_op_def, compatibility_error);
   }
 
-  void ExpectTypeMismatch(const OpDef& old_op_def,
-                          const string& compatibility_error) {
+  void ExpectTypeMismatch(const OpDef& old_op_def) {
     // Record the original signature before we change *node_def().
     DataTypeVector old_in_types, old_out_types;
     ASSERT_OK(InOutTypesForNode(*node_def(), old_op_def, &old_in_types,
@@ -117,8 +98,6 @@ class OpCompatibilityTest : public OpsTestBase {
                     << DataTypeVectorString(new_in_types) << " -> "
                     << DataTypeVectorString(new_out_types);
     }
-
-    ExpectIncompatible(old_op_def, *new_op_def, compatibility_error);
   }
 };
 
@@ -359,57 +338,6 @@ TEST_F(OpCompatibilityTest, PolyIntoList) {
   EXPECT_EQ("poly_into_list = PolyIntoList[N=1, T=DT_INT32](a)", Result());
 }
 
-// Should be able to make a multiple inputs/outputs into a list with
-// the default types matching the inputs/outputs being replaced.
-
-// Changing from int32, int32 -> N * int32 (where N: int = 2 by default).
-REGISTER_OP("MakeMultipleSameList")
-    .Input("a: N * int32")
-    .Output("ndef: string")
-    .Attr("N: int = 2");
-REGISTER_KERNEL_BUILDER(Name("MakeMultipleSameList").Device(DEVICE_CPU),
-                        TestKernel);
-
-TEST_F(OpCompatibilityTest, MakeMultipleSameList) {
-  OpDef old_op_def;
-  ASSERT_OK(OpDefBuilder("MakeMultipleSameList")
-                .Input("a: int32")
-                .Input("b: int32")
-                .Output("ndef: string")
-                .Finalize(&old_op_def));
-  ASSERT_OK(NodeDefBuilder("make_list", &old_op_def)
-                .Input(FakeInput())
-                .Input(FakeInput())
-                .Finalize(node_def()));
-  ExpectSuccess(old_op_def);
-  EXPECT_EQ("make_list = MakeMultipleSameList[N=2](a, b)", Result());
-}
-
-// Changing from int32, float -> T
-// (where T: list(type) = [int32, float] by default).
-REGISTER_OP("MakeMultipleAnyList")
-    .Input("a: T")
-    .Output("ndef: string")
-    .Attr("T: list(type) = [DT_INT32, DT_FLOAT]");
-REGISTER_KERNEL_BUILDER(Name("MakeMultipleAnyList").Device(DEVICE_CPU),
-                        TestKernel);
-
-TEST_F(OpCompatibilityTest, MakeMultipleAnyList) {
-  OpDef old_op_def;
-  ASSERT_OK(OpDefBuilder("MakeMultipleAnyList")
-                .Input("a: int32")
-                .Input("b: float")
-                .Output("ndef: string")
-                .Finalize(&old_op_def));
-  ASSERT_OK(NodeDefBuilder("make_list", &old_op_def)
-                .Input(FakeInput())
-                .Input(FakeInput())
-                .Finalize(node_def()));
-  ExpectSuccess(old_op_def);
-  EXPECT_EQ("make_list = MakeMultipleAnyList[T=[DT_INT32, DT_FLOAT]](a, b)",
-            Result());
-}
-
 // Should be able to change the name of an input/output.
 REGISTER_OP("ChangeName").Input("y: int32").Output("ndef: string");
 REGISTER_KERNEL_BUILDER(Name("ChangeName").Device(DEVICE_CPU), TestKernel);
@@ -549,18 +477,6 @@ TEST_F(OpCompatibilityTest, ShorterSameList) {
 
 // Negative tests -------------------------------------------------------------
 
-// Can't remove an attr.
-REGISTER_OP("RemoveAttr");
-
-TEST_F(OpCompatibilityTest, RemoveAttrFails) {
-  OpDef old_op_def;
-  ASSERT_OK(OpDefBuilder("RemoveAttr").Attr("a: int").Finalize(&old_op_def));
-  ASSERT_OK(
-      NodeDefBuilder("fails", &old_op_def).Attr("a", 3).Finalize(node_def()));
-  ExpectInvalid(old_op_def, "NodeDef mentions attr 'a' not in",
-                "Attr 'a' removed");
-}
-
 // Can't add an attr without a default.
 REGISTER_OP("AddAttrNoDefault").Attr("a: int");
 
@@ -568,8 +484,7 @@ TEST_F(OpCompatibilityTest, AddAttrNoDefaultFails) {
   OpDef old_op_def;
   ASSERT_OK(OpDefBuilder("AddAttrNoDefault").Finalize(&old_op_def));
   ASSERT_OK(NodeDefBuilder("fails", &old_op_def).Finalize(node_def()));
-  ExpectInvalid(old_op_def, "NodeDef missing attr 'a'",
-                "Attr 'a' added without default");
+  ExpectInvalid(old_op_def, "NodeDef missing attr 'a'");
 }
 
 // Can't add a non-list input/output.
@@ -580,8 +495,7 @@ TEST_F(OpCompatibilityTest, AddSingleInputFails) {
   ASSERT_OK(OpDefBuilder("AddSingleInput").Finalize(&old_op_def));
   ASSERT_OK(NodeDefBuilder("fails", &old_op_def).Finalize(node_def()));
   ExpectInvalid(old_op_def,
-                "expected inputs 'int32' do not match 0 inputs specified",
-                "Input signature mismatch '' vs. 'int32'");
+                "expected inputs 'int32' do not match 0 inputs specified");
 }
 
 // Can't add a list input/output without an empty default.
@@ -600,8 +514,7 @@ TEST_F(OpCompatibilityTest, AddNIntsBigDefaultFails) {
   ASSERT_OK(OpDefBuilder("AddNIntsBigDefault").Finalize(&old_op_def));
   ASSERT_OK(NodeDefBuilder("fails", &old_op_def).Finalize(node_def()));
   ExpectInvalid(old_op_def,
-                "expected inputs 'int32' do not match 0 inputs specified",
-                "Input signature mismatch '' vs. 'int32'");
+                "expected inputs 'int32' do not match 0 inputs specified");
 }
 
 TEST_F(OpCompatibilityTest, AddNSameBigDefaultFails) {
@@ -609,8 +522,7 @@ TEST_F(OpCompatibilityTest, AddNSameBigDefaultFails) {
   ASSERT_OK(OpDefBuilder("AddNSameBigDefault").Finalize(&old_op_def));
   ASSERT_OK(NodeDefBuilder("fails", &old_op_def).Finalize(node_def()));
   ExpectInvalid(old_op_def,
-                "expected inputs 'int32' do not match 0 inputs specified",
-                "Input signature mismatch '' vs. 'int32'");
+                "expected inputs 'int32' do not match 0 inputs specified");
 }
 
 TEST_F(OpCompatibilityTest, AddListBigDefaultFails) {
@@ -618,8 +530,7 @@ TEST_F(OpCompatibilityTest, AddListBigDefaultFails) {
   ASSERT_OK(OpDefBuilder("AddListBigDefault").Finalize(&old_op_def));
   ASSERT_OK(NodeDefBuilder("fails", &old_op_def).Finalize(node_def()));
   ExpectInvalid(old_op_def,
-                "expected inputs 'int32' do not match 0 inputs specified",
-                "Input signature mismatch '' vs. 'int32'");
+                "expected inputs 'int32' do not match 0 inputs specified");
 }
 
 // Can't change the type of an input/output.
@@ -632,8 +543,7 @@ TEST_F(OpCompatibilityTest, ChangeTypeFails) {
   ASSERT_OK(NodeDefBuilder("fails", &old_op_def)
                 .Input(FakeInput())
                 .Finalize(node_def()));
-  ExpectTypeMismatch(old_op_def,
-                     "Input signature mismatch 'int32' vs. 'float'");
+  ExpectTypeMismatch(old_op_def);
 }
 
 // Can't change the order of inputs/outputs.
@@ -650,24 +560,7 @@ TEST_F(OpCompatibilityTest, ChangeOrderFails) {
                 .Input(FakeInput())
                 .Input(FakeInput())
                 .Finalize(node_def()));
-  ExpectTypeMismatch(
-      old_op_def, "Input signature mismatch 'int32, float' vs. 'float, int32'");
-}
-
-// Can't remove inputs/outputs.
-
-REGISTER_OP("RemoveInput");
-
-TEST_F(OpCompatibilityTest, RemoveInputFails) {
-  OpDef old_op_def;
-  ASSERT_OK(
-      OpDefBuilder("RemoveInput").Input("a: float").Finalize(&old_op_def));
-  ASSERT_OK(NodeDefBuilder("fails", &old_op_def)
-                .Input(FakeInput())
-                .Finalize(node_def()));
-  ExpectInvalid(old_op_def,
-                "expected inputs '' do not match 1 inputs specified",
-                "Input signature mismatch 'float' vs. ''");
+  ExpectTypeMismatch(old_op_def);
 }
 
 // Can't change the type of an attr.
@@ -681,8 +574,7 @@ TEST_F(OpCompatibilityTest, ChangeAttrTypeFails) {
   ASSERT_OK(NodeDefBuilder("fails", &old_op_def)
                 .Attr("a", true)
                 .Finalize(node_def()));
-  ExpectInvalid(old_op_def, "value with type 'bool' when 'int' expected",
-                "Attr 'a' changed type 'bool' -> 'int'");
+  ExpectInvalid(old_op_def, "value with type 'bool' when 'int' expected");
 }
 
 // Can't change an attr from a list.
@@ -695,8 +587,7 @@ TEST_F(OpCompatibilityTest, AttrFromListFails) {
       OpDefBuilder("AttrFromList").Attr("a: list(int)").Finalize(&old_op_def));
   ASSERT_OK(
       NodeDefBuilder("fails", &old_op_def).Attr("a", {5}).Finalize(node_def()));
-  ExpectInvalid(old_op_def, "value with type 'list(int)' when 'int' expected",
-                "Attr 'a' changed type 'list(int)' -> 'int'");
+  ExpectInvalid(old_op_def, "value with type 'list(int)' when 'int' expected");
 }
 
 // Can't change an attr to a list.
@@ -708,8 +599,7 @@ TEST_F(OpCompatibilityTest, AttrToListFails) {
   ASSERT_OK(OpDefBuilder("AttrToList").Attr("a: int").Finalize(&old_op_def));
   ASSERT_OK(
       NodeDefBuilder("fails", &old_op_def).Attr("a", 5).Finalize(node_def()));
-  ExpectInvalid(old_op_def, "value with type 'int' when 'list(int)' expected",
-                "Attr 'a' changed type 'int' -> 'list(int)'");
+  ExpectInvalid(old_op_def, "value with type 'int' when 'list(int)' expected");
 }
 
 // Can't change an input from polymorphic to a list of any type.
@@ -725,8 +615,8 @@ TEST_F(OpCompatibilityTest, PolymorphicToAnyListFails) {
   ASSERT_OK(NodeDefBuilder("fails", &old_op_def)
                 .Input(FakeInput(DT_INT32))
                 .Finalize(node_def()));
-  ExpectInvalid(old_op_def, "value with type 'type' when 'list(type)' expected",
-                "Attr 'T' changed type 'type' -> 'list(type)'");
+  ExpectInvalid(old_op_def,
+                "value with type 'type' when 'list(type)' expected");
 }
 
 // Can't change an input from a list of the same type to a list of any type.
@@ -746,8 +636,8 @@ TEST_F(OpCompatibilityTest, SameToAnyListFails) {
   ASSERT_OK(NodeDefBuilder("fails", &old_op_def)
                 .Input(FakeInput(1, DT_INT32))
                 .Finalize(node_def()));
-  ExpectInvalid(old_op_def, "value with type 'type' when 'list(type)' expected",
-                "Attr 'T' changed type 'type' -> 'list(type)'");
+  ExpectInvalid(old_op_def,
+                "value with type 'type' when 'list(type)' expected");
 }
 
 // Changing an attr's default is not technically illegal, but should

@@ -372,7 +372,7 @@ function findEdgeTargetsInGraph(
 
 interface HierarchyParams {
   verifyTemplate: boolean;
-  seriesNodeMinSize: number;
+  groupSeries: boolean;
 }
 
 /**
@@ -396,8 +396,8 @@ export function build(graph: tf.graph.SlimGraph, params: HierarchyParams,
   }, tracker)
   .then(() => {
     return runAsyncTask("Detect series", 20, () => {
-      if (params.seriesNodeMinSize > 0) {
-        groupSeries(h.root, h, seriesNames, params.seriesNodeMinSize);
+      if (params.groupSeries) {
+        groupSeries(h.root, h, seriesNames);
       }
     }, tracker);
   })
@@ -550,17 +550,15 @@ function addEdges(h: Hierarchy, graph: SlimGraph,
  *
  * @param metanode
  * @param hierarchy
- * @param threshold If the series has this many nodes or more, then group them
- *     into a series.
  * @return A dictionary from node name to series node name that contains the node
  */
 function groupSeries(metanode: Metanode, hierarchy: Hierarchy,
-    seriesNames: { [name: string]: string }, threshold: number) {
+    seriesNames: { [name: string]: string }) {
   let metagraph = metanode.metagraph;
   _.each(metagraph.nodes(), n => {
     let child = metagraph.node(n);
     if (child.type === tf.graph.NodeType.META) {
-      groupSeries(<Metanode>child, hierarchy, seriesNames, threshold);
+      groupSeries(<Metanode>child, hierarchy, seriesNames);
     }
   });
 
@@ -571,9 +569,6 @@ function groupSeries(metanode: Metanode, hierarchy: Hierarchy,
   // metagraph.
   _.each(seriesDict, function(seriesNode: SeriesNode, seriesName: string) {
     let nodeMemberNames = seriesNode.metagraph.nodes();
-    if (nodeMemberNames.length < threshold) {
-      return;
-    }
     let firstMember = seriesNode.metagraph.node(nodeMemberNames[0]);
     let seriesType = firstMember.type;
 
