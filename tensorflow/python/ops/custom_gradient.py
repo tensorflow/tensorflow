@@ -483,17 +483,18 @@ def recompute_grad(f):
       """Gradient function calculation for inner function."""
       variables = grad_kwargs.get("variables")
       with backprop.GradientTape() as t:
-        t.watch(args)
+        id_args = [gen_array_ops.identity(x) for x in args]
+        t.watch(id_args)
         if variables is not None:
           t.watch(variables)
         with ops.control_dependencies(dresult):
-          result = f(*args, **kwargs)
+          result = f(*id_args, **kwargs)
       kw_vars = []
       if variables is not None:
         kw_vars = list(variables)
       grads = t.gradient(
-          result, list(args) + kw_vars, output_gradients=dresult)
-      return grads[:len(args)], grads[len(args):]
+          result, list(id_args) + kw_vars, output_gradients=dresult)
+      return grads[:len(id_args)], grads[len(id_args):]
 
     return result, grad
 
