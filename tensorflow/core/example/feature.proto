@@ -14,41 +14,41 @@
 // Example Features for a movie recommendation application:
 //   feature {
 //     key: "age"
-//     value { float_list {
+//     float_list {
 //       value: 29.0
-//     }}
+//     }
 //   }
 //   feature {
 //     key: "movie"
-//     value { bytes_list {
+//     bytes_list {
 //       value: "The Shawshank Redemption"
 //       value: "Fight Club"
-//     }}
+//     }
 //   }
 //   feature {
 //     key: "movie_ratings"
-//     value { float_list {
+//     float_list {
 //       value: 9.0
 //       value: 9.7
-//     }}
+//     }
 //   }
 //   feature {
 //     key: "suggestion"
-//     value { bytes_list {
+//     bytes_list {
 //       value: "Inception"
-//     }}
+//     }
 //   }
 //   feature {
 //     key: "suggestion_purchased"
-//     value { int64_list {
+//     int64_list {
 //       value: 1
-//     }}
+//     }
 //   }
 //   feature {
 //     key: "purchase_price"
-//     value { float_list {
+//     float_list {
 //       value: 9.99
-//     }}
+//     }
 //   }
 
 syntax = "proto3";

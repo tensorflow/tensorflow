@@ -36,10 +36,9 @@ Status TypedQueue<SubQueue>::Initialize() {
   }
   if (!component_shapes_.empty() &&
       component_dtypes_.size() != component_shapes_.size()) {
-    return errors::InvalidArgument(
-        "Different number of component types.  ", "Types: ",
-        DataTypeSliceString(component_dtypes_), ", Shapes: ",
-        ShapeListString(component_shapes_));
+    return errors::InvalidArgument("Different number of component types (",
+                                   component_dtypes_.size(), ") vs. shapes (",
+                                   component_shapes_.size(), ").");
   }
 
   mutex_lock lock(mu_);

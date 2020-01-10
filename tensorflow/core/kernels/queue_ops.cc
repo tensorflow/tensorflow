@@ -111,8 +111,7 @@ class EnqueueManyOp : public QueueAccessOpKernel {
     for (DataType dt : queue->component_dtypes()) {
       expected_inputs.push_back(dt);
     }
-    OP_REQUIRES_OK_ASYNC(ctx, ctx->MatchSignature(expected_inputs, {}),
-                         callback);
+    OP_REQUIRES_OK(ctx, ctx->MatchSignature(expected_inputs, {}));
 
     QueueInterface::Tuple tuple;
     OpInputList components;

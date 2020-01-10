@@ -23,9 +23,8 @@ summary: Scalar.  Serialized `Summary` protocol buffer.
 
 REGISTER_OP("HistogramSummary")
     .Input("tag: string")
-    .Input("values: T")
+    .Input("values: float")
     .Output("summary: string")
-    .Attr("T: {float, double} = DT_FLOAT")
     .Doc(R"doc(
 Outputs a `Summary` protocol buffer with a histogram.
 

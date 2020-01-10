@@ -16,11 +16,10 @@
 namespace tensorflow {
 
 template <class Scalar, bool SupportsBatchOperationT>
-class CholeskyOp
-    : public UnaryLinearAlgebraOp<Scalar, SupportsBatchOperationT> {
+class CholeskyOp : public LinearAlgebraOp<Scalar, SupportsBatchOperationT> {
  public:
   explicit CholeskyOp(OpKernelConstruction* context)
-      : UnaryLinearAlgebraOp<Scalar, SupportsBatchOperationT>(context) {}
+      : LinearAlgebraOp<Scalar, SupportsBatchOperationT>(context) {}
 
   TensorShape GetOutputMatrixShape(
       const TensorShape& input_matrix_shape) override {
@@ -37,10 +36,9 @@ class CholeskyOp
     }
   }
 
+  using typename LinearAlgebraOp<Scalar, SupportsBatchOperationT>::MatrixMap;
   using
-      typename UnaryLinearAlgebraOp<Scalar, SupportsBatchOperationT>::MatrixMap;
-  using typename UnaryLinearAlgebraOp<Scalar,
-                                      SupportsBatchOperationT>::ConstMatrixMap;
+      typename LinearAlgebraOp<Scalar, SupportsBatchOperationT>::ConstMatrixMap;
 
   void ComputeMatrix(OpKernelContext* context, const ConstMatrixMap& input,
                      MatrixMap* output) override {

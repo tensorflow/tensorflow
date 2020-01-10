@@ -15,10 +15,10 @@ namespace tensorflow {
 
 template <class Scalar, bool SupportsBatchOperationT>
 class MatrixInverseOp
-    : public UnaryLinearAlgebraOp<Scalar, SupportsBatchOperationT> {
+    : public LinearAlgebraOp<Scalar, SupportsBatchOperationT> {
  public:
   explicit MatrixInverseOp(OpKernelConstruction* context)
-      : UnaryLinearAlgebraOp<Scalar, SupportsBatchOperationT>(context) {}
+      : LinearAlgebraOp<Scalar, SupportsBatchOperationT>(context) {}
   ~MatrixInverseOp() override {}
 
   TensorShape GetOutputMatrixShape(
@@ -36,11 +36,10 @@ class MatrixInverseOp
     }
   }
 
-  using typename UnaryLinearAlgebraOp<Scalar, SupportsBatchOperationT>::Matrix;
+  using typename LinearAlgebraOp<Scalar, SupportsBatchOperationT>::Matrix;
+  using typename LinearAlgebraOp<Scalar, SupportsBatchOperationT>::MatrixMap;
   using
-      typename UnaryLinearAlgebraOp<Scalar, SupportsBatchOperationT>::MatrixMap;
-  using typename UnaryLinearAlgebraOp<Scalar,
-                                      SupportsBatchOperationT>::ConstMatrixMap;
+      typename LinearAlgebraOp<Scalar, SupportsBatchOperationT>::ConstMatrixMap;
 
   void ComputeMatrix(OpKernelContext* context, const ConstMatrixMap& input,
                      MatrixMap* output) override {
