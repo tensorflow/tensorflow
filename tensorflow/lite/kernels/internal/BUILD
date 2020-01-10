@@ -2,7 +2,6 @@ load("//tensorflow:tensorflow.bzl", "transitive_hdrs")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite/micro:build_def.bzl", "cc_library")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite_combined")
-load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 
 package(
     default_visibility = [
@@ -375,7 +374,6 @@ cc_library(
 cc_test(
     name = "quantization_util_test",
     srcs = ["quantization_util_test.cc"],
-    linkopts = if_rocm(["-lm"]),
     deps = [
         ":common",
         ":quantization_util",
