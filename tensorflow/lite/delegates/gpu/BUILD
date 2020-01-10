@@ -241,7 +241,6 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:model_builder",
         "//tensorflow/lite/delegates/gpu/common:model_transformer",
         "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common/transformations:general_transformations",
         "//tensorflow/lite/delegates/gpu/gl:api2",
         "@com_google_absl//absl/types:span",
     ],
