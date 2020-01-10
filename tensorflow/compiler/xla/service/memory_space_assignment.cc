@@ -643,6 +643,17 @@ bool AlternateMemoryBestFitHeap::FindAllocation(
   alternate_mem_interval.size = size;
   alternate_mem_interval.end = end_time;
 
+  // start_time == end_time is a special case where the value is consumed
+  // multiple times by the same instruction. We can just find the previous
+  // allocation and use that allocation.
+  if (start_time == end_time) {
+    MemorySpaceAssignment::Allocation* allocation =
+        GetLiveAllocationAt(*allocations, end_time);
+    CHECK_NE(allocation, nullptr);
+    allocation->AddUse(use);
+    return true;
+  }
+
   VLOG(2) << "Finding allocation for " << buffer->ToShortString() << " ("
           << start_time << ", " << end_time
           << ") latest prefetch = " << latest_prefetch_time
