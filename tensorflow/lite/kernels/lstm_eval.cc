@@ -645,13 +645,9 @@ inline void LstmStepHybrid(
         output_gate_scratch, /*result_stride=*/1);
   }
 
-  // Save quantization and matmul computation for all zero input.
-  bool is_cell_state_all_zeros =
-      tensor_utils::IsZeroVector(cell_state_ptr, n_batch * n_cell);
-
   // For each batch and cell: update input gate.
   if (!use_cifg) {
-    if (use_peephole && !is_cell_state_all_zeros) {
+    if (use_peephole) {
       tensor_utils::VectorScalarMultiply(cell_to_input_weights_ptr, n_cell,
                                          cell_to_input_weights_scale,
                                          recovered_cell_weights);
@@ -673,7 +669,7 @@ inline void LstmStepHybrid(
   }
 
   // For each batch and cell: update forget gate.
-  if (use_peephole && !is_cell_state_all_zeros) {
+  if (use_peephole) {
     tensor_utils::VectorScalarMultiply(cell_to_forget_weights_ptr, n_cell,
                                        cell_to_forget_weights_scale,
                                        recovered_cell_weights);
@@ -694,10 +690,8 @@ inline void LstmStepHybrid(
                                      forget_gate_scratch);
 
   // For each batch and cell: update the cell.
-  if (!is_cell_state_all_zeros) {
-    tensor_utils::VectorVectorCwiseProduct(forget_gate_scratch, cell_state_ptr,
-                                           n_batch * n_cell, cell_state_ptr);
-  }
+  tensor_utils::VectorVectorCwiseProduct(forget_gate_scratch, cell_state_ptr,
+                                         n_batch * n_cell, cell_state_ptr);
   if (use_layer_norm_lstm) {
     tensor_utils::MeanStddevNormalization(cell_scratch, cell_scratch, n_cell,
                                           n_batch);
@@ -723,10 +717,8 @@ inline void LstmStepHybrid(
                              params->cell_clip, cell_state_ptr);
   }
 
-  is_cell_state_all_zeros =
-      tensor_utils::IsZeroVector(cell_state_ptr, n_batch * n_cell);
   // For each batch and cell: update the output gate.
-  if (use_peephole && !is_cell_state_all_zeros) {
+  if (use_peephole) {
     tensor_utils::VectorScalarMultiply(cell_to_output_weights_ptr, n_cell,
                                        cell_to_output_weights_scale,
                                        recovered_cell_weights);
@@ -810,7 +802,7 @@ inline void LstmStepHybrid(
 
 // Fully quantized lstm kernel. Currently supports both cifg and non-cifg.
 //
-// Input activatoin of size n_batch * n_input:
+// Input activation of size n_batch * n_input:
 //   input_ptr
 //
 // LSTM weights:
