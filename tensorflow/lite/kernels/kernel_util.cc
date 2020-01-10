@@ -84,6 +84,8 @@ TfLiteStatus PopulateConvolutionQuantizationParams(
     // Populate quantization parameteters with multiplier and shift.
     QuantizeMultiplier(real_multiplier, multiplier, &exponent);
     *shift = -exponent;
+  }
+  if (input->type == kTfLiteInt8 || input->type == kTfLiteUInt8) {
     TF_LITE_ENSURE_STATUS(CalculateActivationRangeQuantized(
         context, activation, output, output_activation_min,
         output_activation_max));
