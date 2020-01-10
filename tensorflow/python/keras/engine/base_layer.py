@@ -554,10 +554,7 @@ class Layer(module.Module):
           inputs = nest.map_structure(
               base_layer_utils.generate_placeholders_from_shape, input_shape)
           try:
-            if self._expects_training_arg:
-              outputs = self(inputs, training=False)
-            else:
-              outputs = self(inputs)
+            outputs = self(inputs, training=False)
           except TypeError:
             raise NotImplementedError('We could not automatically infer '
                                       'the static shape of the layer\'s output.'
