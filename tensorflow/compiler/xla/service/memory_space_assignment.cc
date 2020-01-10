@@ -1140,15 +1140,14 @@ void MemorySpaceAssignment::Allocation::AddUse(HloUse use) {
   // Look beyond GetTupleElement(Tuple()) pattern for any bitcasts.
   std::function<HloInstruction*(HloInstruction*)> get_simplified_operand;
   get_simplified_operand = [&](HloInstruction* instruction) {
-    if (instruction->opcode() != HloOpcode::kGetTupleElement) {
-      return instruction;
-    }
-    HloInstruction* operand =
-        get_simplified_operand(instruction->mutable_operand(0));
-    while (instruction->opcode() == HloOpcode::kGetTupleElement &&
-           operand->opcode() == HloOpcode::kTuple) {
-      instruction = operand->mutable_operand(instruction->tuple_index());
-      operand = get_simplified_operand(instruction->mutable_operand(0));
+    while (instruction->opcode() == HloOpcode::kGetTupleElement) {
+      HloInstruction* operand =
+          get_simplified_operand(instruction->mutable_operand(0));
+      if (operand->opcode() == HloOpcode::kTuple) {
+        instruction = operand->mutable_operand(instruction->tuple_index());
+      } else {
+        return instruction;
+      }
     }
     return instruction;
   };
