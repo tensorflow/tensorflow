@@ -749,7 +749,10 @@ class InferenceEnvironmentImpl : public InferenceEnvironment {
     } else {
       RETURN_IF_ERROR(CreateCLCommandQueue(device, context, &queue));
     }
-    ProfilingCommandQueue profiling_queue;  // default empty instance
+    // Profiling queue is used for workgroup size tuning.
+    ProfilingCommandQueue profiling_queue;
+    RETURN_IF_ERROR(
+        CreateProfilingCommandQueue(device, context, &profiling_queue));
     environment_ = Environment(std::move(device), std::move(context),
                                std::move(queue), std::move(profiling_queue));
     return environment_.Init();
