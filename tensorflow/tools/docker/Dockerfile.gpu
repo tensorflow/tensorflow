@@ -1,8 +1,0 @@
-FROM b.gcr.io/tensorflow-testing/tensorflow-gpu-flat
-
-MAINTAINER Craig Citro <craigcitro@google.com>
-
-WORKDIR /root
-EXPOSE 6006
-EXPOSE 8888
-RUN ["/bin/bash"]

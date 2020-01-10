@@ -75,4 +75,3 @@ Hello, TensorFlow!
 ##For more information
 
 * [TensorFlow website](http://tensorflow.org)
-* [TensorFlow whitepaper](http://download.tensorflow.org/paper/whitepaper2015.pdf)
