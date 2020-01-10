@@ -105,6 +105,11 @@ cc_library(
 )
 
 cc_library(
+    name = "trace_utils",
+    hdrs = ["trace_utils.h"],
+)
+
+cc_library(
     name = "xplane_builder",
     srcs = ["xplane_builder.cc"],
     hdrs = ["xplane_builder.h"],
