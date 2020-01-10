@@ -11,8 +11,6 @@ exports_files([
     "ACKNOWLEDGMENTS",
 ])
 
-# open source marker; do not remove
-
 package_group(
     name = "internal",
     packages = ["//tensorflow/..."],

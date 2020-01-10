@@ -385,25 +385,21 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
     auto* out_backprop_data = out_backprop.template flat<T>().data();
     auto* input_backprop_data = in_backprop->template flat<T>().data();
 
-    typedef Eigen::TensorMap<Eigen::Tensor<T, 2, Eigen::RowMajor>,
-                             Eigen::Unaligned> TensorMap;
-    typedef Eigen::TensorMap<Eigen::Tensor<const T, 2, Eigen::RowMajor>,
-                             Eigen::Unaligned> ConstTensorMap;
-
-    // Initialize contraction dims (we need to transpose 'B' below).
-    Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1> contract_dims;
-    contract_dims[0].first = 1;
-    contract_dims[0].second = 1;
+    typedef Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic,
+                                     Eigen::RowMajor>> MatrixMap;
+    typedef Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic,
+                                           Eigen::RowMajor>> ConstMatrixMap;
 
     for (int image_id = 0; image_id < batch; ++image_id) {
       // Compute gradient into col_buffer.
-      TensorMap C(col_buffer_data, output_image_size, filter_total_size);
+      MatrixMap C(col_buffer_data, output_image_size, filter_total_size);
 
-      ConstTensorMap A(out_backprop_data + output_offset * image_id,
+      ConstMatrixMap A(out_backprop_data + output_offset * image_id,
                        output_image_size, out_depth);
-      ConstTensorMap B(filter_data, filter_total_size, out_depth);
+      ConstMatrixMap B(filter_data, filter_total_size, out_depth);
 
-      C.device(context->eigen_cpu_device()) = A.contract(B, contract_dims);
+      // TODO(andydavis) Use a multi-threaded matmul implementation here.
+      C.noalias() = A * B.transpose();
 
       Col2im<T>(col_buffer_data, in_depth, input_rows, input_cols, filter_rows,
                 filter_cols, pad_top, pad_left, pad_bottom, pad_right, stride,
@@ -558,19 +554,14 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
     auto* out_backprop_data = out_backprop.template flat<T>().data();
     auto* filter_backprop_data = filter_backprop->template flat<T>().data();
 
-    typedef Eigen::TensorMap<Eigen::Tensor<T, 2, Eigen::RowMajor>,
-                             Eigen::Unaligned> TensorMap;
-    typedef Eigen::TensorMap<Eigen::Tensor<const T, 2, Eigen::RowMajor>,
-                             Eigen::Unaligned> ConstTensorMap;
+    typedef Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic,
+                                     Eigen::RowMajor>> MatrixMap;
+    typedef Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic,
+                                           Eigen::RowMajor>> ConstMatrixMap;
 
-    TensorMap C(filter_backprop_data, filter_total_size, out_depth);
+    MatrixMap C(filter_backprop_data, filter_total_size, out_depth);
+
     C.setZero();
-
-    // Initialize contraction dims (we need to transpose 'A' below).
-    Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1> contract_dims;
-    contract_dims[0].first = 0;
-    contract_dims[0].second = 0;
-
     for (int image_id = 0; image_id < batch; ++image_id) {
       // When we compute the gradient with respect to the filters, we need to do
       // im2col to allow gemm-type computation.
@@ -578,12 +569,13 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
                 filter_cols, pad_top, pad_left, pad_bottom, pad_right, stride,
                 stride, col_buffer_data);
 
-      ConstTensorMap A(col_buffer_data, output_image_size, filter_total_size);
-      ConstTensorMap B(out_backprop_data + output_offset * image_id,
+      ConstMatrixMap A(col_buffer_data, output_image_size, filter_total_size);
+      ConstMatrixMap B(out_backprop_data + output_offset * image_id,
                        output_image_size, out_depth);
 
-      // Gradient with respect to filter.
-      C.device(context->eigen_cpu_device()) += A.contract(B, contract_dims);
+      // Compute gradient with respect to filter.
+      // TODO(andydavis) Use a multi-threaded matmul implementation here.
+      C.noalias() += A.transpose() * B;
 
       input_data += input_offset;
     }

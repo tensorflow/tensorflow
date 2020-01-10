@@ -426,8 +426,7 @@ void FIFOQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
                       attempt->context->SetStatus(
                           errors::DataLoss("Failed to restore element from "
                                            "partially-dequeued batch "
-                                           "to FIFOQueue: ",
-                                           s.error_message()));
+                                           "to FIFOQueue"));
                     }
                     queues_[j].push_front(element);
                   }

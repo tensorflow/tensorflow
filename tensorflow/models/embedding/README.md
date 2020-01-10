@@ -7,7 +7,7 @@ ICLR 2013.
 Detailed instructions on how to get started and use them are available in the
 tutorials. Brief instructions are below.
 
-* [Word2Vec Tutorial](http://tensorflow.org/tutorials/word2vec/index.md)
+* [Word2Vec Tutorial](http://tensorflow.org/tutorials/word2vec/)
 
 To download the example text and evaluation data:
 
