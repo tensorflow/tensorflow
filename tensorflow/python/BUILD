@@ -7538,6 +7538,7 @@ py_library(
     visibility = visibility + [
         "//learning/deepmind/tensorflow:__subpackages__",
         "//third_party/car/deep_nets/tensorflow:__subpackages__",
+        "//waymo/ml:__subpackages__",
     ],
     deps = [
         ":framework_for_generated_wrappers",
