@@ -1365,6 +1365,12 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
     using se::dnn::AlgorithmConfig;
     using se::dnn::AlgorithmDesc;
     using se::dnn::ProfileResult;
+#if TENSORFLOW_USE_ROCM
+    // cudnn_use_autotune is applicable only the CUDA flow
+    // for ROCm/MIOpen, we need to call GetMIOpenConvolveAlgorithms explicitly
+    // if we do not have a cached algorithm_config for this conv_parameters
+    cudnn_use_autotune_ = true;
+#endif
     AlgorithmConfig algorithm_config;
     if (cudnn_use_autotune_ && !AutoTuneConv3dBwdData::GetInstance()->Find(
                                    conv_parameters, &algorithm_config)) {
@@ -1854,6 +1860,12 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
     using se::dnn::AlgorithmConfig;
     using se::dnn::AlgorithmDesc;
     using se::dnn::ProfileResult;
+#if TENSORFLOW_USE_ROCM
+    // cudnn_use_autotune is applicable only the CUDA flow
+    // for ROCm/MIOpen, we need to call GetMIOpenConvolveAlgorithms explicitly
+    // if we do not have a cached algorithm_config for this conv_parameters
+    cudnn_use_autotune_ = true;
+#endif
     AlgorithmConfig algorithm_config;
     if (cudnn_use_autotune_ && !AutoTuneConv3dBwdFilter::GetInstance()->Find(
                                    conv_parameters, &algorithm_config)) {
