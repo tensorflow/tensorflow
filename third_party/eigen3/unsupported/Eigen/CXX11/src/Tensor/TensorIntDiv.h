@@ -115,7 +115,7 @@ namespace {
 }
 
 
-template <typename T, bool div_gt_one = false>
+template <typename T>
 struct TensorIntDivisor {
  public:
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE TensorIntDivisor() {
@@ -166,7 +166,7 @@ struct TensorIntDivisor {
 // Optimized version for signed 32 bit integers.
 // Derived from Hacker's Delight.
 template <>
-class TensorIntDivisor<int32_t, true> {
+class TensorIntDivisor<int32_t> {
  public:
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE TensorIntDivisor() {
     magic = 0;
@@ -225,15 +225,15 @@ private:
 };
 
 
-template <typename T, bool div_gt_one>
-static EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator / (const T& numerator, const TensorIntDivisor<T, div_gt_one>& divisor) {
+template <typename T>
+static EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator / (const T& numerator, const TensorIntDivisor<T>& divisor) {
   return divisor.divide(numerator);
 }
 
 
 #else
 // Reverse to the old code since gcudacc doesn't support the code above.
-template <typename T, bool div_gt_one = false>
+template <typename T>
 struct TensorIntDivisor {
  public:
    EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE TensorIntDivisor() {
@@ -285,7 +285,7 @@ struct TensorIntDivisor {
 // Optimized version for signed 32 bit integers.
 // Derived from Hacker's Delight.
 template <>
-class TensorIntDivisor<int, true> {
+class TensorIntDivisor<int> {
  public:
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE TensorIntDivisor() {
     magic = 0;
@@ -344,8 +344,8 @@ private:
 };
 
 
-template <typename T, bool div_gt_one>
-static EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator / (const T& numerator, const TensorIntDivisor<T, div_gt_one>& divisor) {
+template <typename T>
+static EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator / (const T& numerator, const TensorIntDivisor<T>& divisor) {
   return divisor.divide(numerator);
 }
 
