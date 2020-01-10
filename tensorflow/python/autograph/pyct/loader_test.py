@@ -51,21 +51,30 @@ class LoaderTest(test.TestCase):
     node = gast.FunctionDef(
         name='f',
         args=gast.arguments(
-            args=[gast.Name('a', gast.Param(), None)],
+            args=[
+                gast.Name(
+                    'a', ctx=gast.Param(), annotation=None, type_comment=None)
+            ],
+            posonlyargs=[],
             vararg=None,
             kwonlyargs=[],
+            kw_defaults=[],
             kwarg=None,
-            defaults=[],
-            kw_defaults=[]),
+            defaults=[]),
         body=[
             gast.Return(
                 gast.BinOp(
                     op=gast.Add(),
-                    left=gast.Name('a', gast.Load(), None),
-                    right=gast.Num(1)))
+                    left=gast.Name(
+                        'a',
+                        ctx=gast.Load(),
+                        annotation=None,
+                        type_comment=None),
+                    right=gast.Constant(1, kind=None)))
         ],
         decorator_list=[],
-        returns=None)
+        returns=None,
+        type_comment=None)
 
     module, source, _ = loader.load_ast(node)
 

@@ -42,7 +42,7 @@ IF "%PYTHON_DIRECTORY%"=="Python37" (
     %PIP_EXE% install absl-py==0.5.0
     %PIP_EXE% install colorama==0.3.9
     %PIP_EXE% install cycler==0.10.0
-    %PIP_EXE% install gast==0.2.0
+    %PIP_EXE% install gast==0.3.2
     %PIP_EXE% install jedi==0.11.1
     %PIP_EXE% install oauth2client==4.1.2
     %PIP_EXE% install portpicker==1.2.0

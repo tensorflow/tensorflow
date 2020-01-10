@@ -163,7 +163,7 @@ class ControlFlowTransformer(converter.Base):
 
     opts_dict = loop_directives[directives.set_loop_options]
     str_keys, values = zip(*opts_dict.items())
-    keys = [gast.Str(s) for s in str_keys]
+    keys = [gast.Constant(s, kind=None) for s in str_keys]
     values = list(values)  # ast and gast don't play well with tuples.
     return gast.Dict(keys, values)
 
@@ -176,7 +176,7 @@ class ControlFlowTransformer(converter.Base):
       assignments += templates.replace(
           template,
           var=s,
-          symbol_name=gast.Str(s.ssf()))
+          symbol_name=gast.Constant(s.ssf(), kind=None))
     return assignments
 
   def visit_If(self, node):
@@ -297,9 +297,9 @@ class ControlFlowTransformer(converter.Base):
         composites, state_getter_name, state_setter_name)
 
     basic_symbol_names = tuple(
-        gast.Str(str(symbol)) for symbol in returned_from_cond)
+        gast.Constant(str(symbol), kind=None) for symbol in returned_from_cond)
     composite_symbol_names = tuple(
-        gast.Str(str(symbol)) for symbol in composites)
+        gast.Constant(str(symbol), kind=None) for symbol in composites)
 
     cond_expr = self._create_cond_expr(cond_results, cond_var_name, body_name,
                                        orelse_name, state_getter_name,
@@ -395,9 +395,9 @@ class ControlFlowTransformer(converter.Base):
         composite_loop_vars, state_getter_name, state_setter_name)
 
     basic_symbol_names = tuple(
-        gast.Str(str(symbol)) for symbol in basic_loop_vars)
+        gast.Constant(str(symbol), kind=None) for symbol in basic_loop_vars)
     composite_symbol_names = tuple(
-        gast.Str(str(symbol)) for symbol in composite_loop_vars)
+        gast.Constant(str(symbol), kind=None) for symbol in composite_loop_vars)
 
     opts = self._create_loop_options(node)
 
@@ -518,9 +518,9 @@ class ControlFlowTransformer(converter.Base):
     undefined_assigns = self._create_undefined_assigns(possibly_undefs)
 
     basic_symbol_names = tuple(
-        gast.Str(str(symbol)) for symbol in basic_loop_vars)
+        gast.Constant(str(symbol), kind=None) for symbol in basic_loop_vars)
     composite_symbol_names = tuple(
-        gast.Str(str(symbol)) for symbol in composite_loop_vars)
+        gast.Constant(str(symbol), kind=None) for symbol in composite_loop_vars)
 
     opts = self._create_loop_options(node)
 
