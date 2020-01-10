@@ -2388,7 +2388,7 @@ def TFL_TileOp: TFL_Op<"tile", [NoSideEffect,
 // TODO(jpienaar): Check that k is less or equal the internal dimension
 def TFL_TopKV2Op: TFL_Op<"topk_v2", [NoSideEffect, TFL_OperandHasRank<1,0>,
     PredOpTrait<"result and input element type match",
-                TCresVTEtIsSameAsOp<0,0>>]> {
+                TCresVTEtIsSameAsOp<0,0>>, SameOperandsAndResultsScale]> {
   let summary = "TopK operator";
 
   let description = [{
@@ -2398,11 +2398,11 @@ def TFL_TopKV2Op: TFL_Op<"topk_v2", [NoSideEffect, TFL_OperandHasRank<1,0>,
   }];
 
   let arguments = (ins
-    TensorOf<[F32, I8, I32, I64, TFL_Uint8]>:$input,
+    TensorOf<[F32, I8, I32, I64, TFL_Uint8, QI8, QUI8]>:$input,
     I32Tensor:$k);
 
   let results = (outs
-    AnyTensor:$values,
+    TensorOf<[F32, I8, I32, I64, TFL_Uint8, QI8, QUI8]>:$values,
     I32Tensor:$indices);
 
   let builders = [OpBuilder<"Builder *builder, OperationState &result, "
