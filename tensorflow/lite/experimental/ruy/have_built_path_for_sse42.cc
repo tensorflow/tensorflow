@@ -13,37 +13,27 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_RUY_DETECT_X86_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_RUY_DETECT_X86_H_
-
-#include "tensorflow/lite/experimental/ruy/platform.h"
+#include "tensorflow/lite/experimental/ruy/have_built_path_for.h"
+#include "tensorflow/lite/experimental/ruy/opt_set.h"
 
 namespace ruy {
 
 #if RUY_PLATFORM(X86)
-#if RUY_PLATFORM(X86_ENHANCEMENTS)
+// IMPORTANT:
+// These patterns must match those in the pack and kernel cc files.
+#if !(RUY_PLATFORM(SSE42) && RUY_OPT_ENABLED(RUY_OPT_ASM))
 
-// This also checks ABM support, which implies LZCNT and POPCNT.
-bool DetectCpuSse42();
-bool DetectCpuAvx2();
-bool DetectCpuAvx512();
+bool HaveBuiltPathForSse42() { return false; }
+
+#else  // RUY_PLATFORM(SSE42) && RUY_OPT_ENABLED(RUY_OPT_ASM)
+
 // TODO(b/147376783): SSE 4.2 and AVX-VNNI support is incomplete / placeholder.
 // Optimization is not finished. In particular the dimensions of the kernel
 // blocks can be changed as desired.
 //
-// TODO(b/146646451): Introduce and activate.
-inline bool DetectCpuAvxVnni() { return false; }
+bool HaveBuiltPathForSse42() { return true; }
 
-#else  // RUY_PLATFORM(X86_ENHANCEMENTS)
-
-inline bool DetectCpuSse42() { return false; }
-inline bool DetectCpuAvx2() { return false; }
-inline bool DetectCpuAvx512() { return false; }
-inline bool DetectCpuAvxVnni() { return false; }
-
-#endif  // !RUY_PLATFORM(X86_ENHANCEMENTS)
+#endif  // RUY_PLATFORM(SSE42) && RUY_OPT_ENABLED(RUY_OPT_ASM)
 #endif  // RUY_PLATFORM(X86)
 
 }  // namespace ruy
-
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_RUY_DETECT_X86_H_
