@@ -696,6 +696,7 @@ def _ctc_loss_shape(op):
   return [op.inputs[2].get_shape(), op.inputs[0].get_shape()]
 
 
+# pylint: disable=protected-access, invalid-name
 @tf_export(v1=["nn.ctc_loss_v2"])
 def ctc_loss_v2(labels,
                 logits,
@@ -790,7 +791,7 @@ def ctc_loss_v2(labels,
       name=name)
 
 
-@tf_export("nn.ctc_loss")
+@tf_export("nn.ctc_loss", v1=[])
 def ctc_loss_v3(labels,
                 logits,
                 label_length,

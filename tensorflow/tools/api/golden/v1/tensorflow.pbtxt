@@ -549,10 +549,6 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
-    name: "pywrap_tensorflow"
-    mtype: "<type \'module\'>"
-  }
-  member {
     name: "qint16"
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
@@ -1067,10 +1063,6 @@ tf_module {
   member_method {
     name: "cross"
     argspec: "args=[\'a\', \'b\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
-    name: "ctc_loss_v2"
-    argspec: "args=[\'inputs\', \'labels_indices\', \'labels_values\', \'sequence_length\', \'preprocess_collapse_repeated\', \'ctc_merge_repeated\', \'ignore_longer_outputs_than_inputs\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'True\', \'False\', \'None\'], "
   }
   member_method {
     name: "cumprod"
