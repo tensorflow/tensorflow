@@ -130,6 +130,12 @@ class Dropout(Layer):
   Dropout consists in randomly setting
   a fraction `rate` of input units to 0 at each update during training time,
   which helps prevent overfitting.
+  
+  Usage Example:
+     import tensorflow as tf
+     model = tf.keras.models.Sequential()
+     model.add(tf.keras.layers.Dropout(0.2, input_shape=(16,)))
+     model.add(tf.keras.layers.Dense(1))
 
   Arguments:
     rate: Float between 0 and 1. Fraction of the input units to drop.
@@ -145,12 +151,6 @@ class Dropout(Layer):
     inputs: Input tensor (of any rank).
     training: Python boolean indicating whether the layer should behave in
       training mode (adding dropout) or in inference mode (doing nothing).
-      
-  Usage Example:
-     import tensorflow as tf
-     model = tf.keras.models.Sequential()
-     model.add(tf.keras.layers.Dropout(0.2, input_shape=(16,)))
-     model.add(tf.keras.layers.Dense(1))
   """
 
   def __init__(self, rate, noise_shape=None, seed=None, **kwargs):
