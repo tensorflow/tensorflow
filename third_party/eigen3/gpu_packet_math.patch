@@ -22,3 +22,28 @@
      return res;
    }
  };
+--- a/Eigen/src/Core/MathFunctions.h	2020-01-09 14:22:30.000000000 -0800
++++ b/Eigen/src/Core/MathFunctions.h	2020-01-09 16:35:29.000000000 -0800
+@@ -442,9 +442,11 @@
+   {
+     EIGEN_STATIC_ASSERT((!NumTraits<Scalar>::IsComplex), NUMERIC_TYPE_MUST_BE_REAL)
+ #if EIGEN_HAS_CXX11_MATH
+-      EIGEN_USING_STD_MATH(rint);
+-#endif
++    EIGEN_USING_STD_MATH(rint);
+     return rint(x);
++#else
++    return ::rint(x);
++#endif
+   }
+ };
+ 
+@@ -454,7 +456,7 @@
+   EIGEN_DEVICE_FUNC
+   static inline float run(const float& x)
+   {
+-    return rintf(x);
++    return ::rintf(x);
+   }
+ };
+ #endif
