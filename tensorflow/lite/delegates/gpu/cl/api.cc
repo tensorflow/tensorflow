@@ -714,6 +714,15 @@ class InferenceEnvironmentImpl : public InferenceEnvironment {
       RETURN_IF_ERROR(CreateDefaultGPUDevice(&device));
     }
 
+    properties_.is_gl_sharing_supported = IsGlSharingSupported(device);
+    properties_.is_gl_to_cl_fast_sync_supported =
+        IsClEventFromEglSyncSupported(device);
+    properties_.is_cl_to_gl_fast_sync_supported =
+        IsEglSyncFromClEventSupported();
+    if (options_.IsGlAware() && !properties_.is_gl_sharing_supported) {
+      return UnavailableError("GL sharing is not supported");
+    }
+
     CLContext context;
     if (options_.context) {
       if (options_.IsGlAware()) {
@@ -743,17 +752,7 @@ class InferenceEnvironmentImpl : public InferenceEnvironment {
     ProfilingCommandQueue profiling_queue;  // default empty instance
     environment_ = Environment(std::move(device), std::move(context),
                                std::move(queue), std::move(profiling_queue));
-    RETURN_IF_ERROR(environment_.Init());
-
-    properties_.is_gl_sharing_supported = IsGlSharingSupported(device);
-    properties_.is_gl_to_cl_fast_sync_supported =
-        IsClEventFromEglSyncSupported(device);
-    properties_.is_cl_to_gl_fast_sync_supported =
-        IsEglSyncFromClEventSupported();
-    if (options_.IsGlAware() && !properties_.is_gl_sharing_supported) {
-      return UnavailableError("GL sharing is not supported");
-    }
-    return OkStatus();
+    return environment_.Init();
   }
 
   Status NewInferenceBuilder(const InferenceOptions& options,
