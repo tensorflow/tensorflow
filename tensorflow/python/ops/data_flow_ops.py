@@ -412,9 +412,10 @@ class LookupTableBase(object):
     """Construct a table object from a table reference.
 
     Args:
-      key_dtype:  The table key type.
-      value_dtype:  The table value type.
-      default_value: The value to use if a key is missing in the table.
+      key_dtype:  The key data type of the table.
+      value_dtype:  The kvalue data type of the table.
+      default_value: The scalar tensor to be used when a key is not present in
+        the table.
       table_ref: The table reference, i.e. the output of the lookup table ops.
     """
     self._key_dtype = types.as_dtype(key_dtype)
@@ -433,12 +434,12 @@ class LookupTableBase(object):
 
   @property
   def key_dtype(self):
-    """The table key dtype."""
+    """The key dtype supported by the table."""
     return self._key_dtype
 
   @property
   def value_dtype(self):
-    """The table value dtype."""
+    """The value dtype supported by the table."""
     return self._value_dtype
 
   @property
@@ -465,19 +466,20 @@ class LookupTableBase(object):
     return gen_data_flow_ops._lookup_table_size(self._table_ref, name=name)
 
   def lookup(self, keys, name=None):
-    """Looks up `keys` in a table, outputs the corresponding values.
+    """Returns the values for the given 'keys' tensor.
 
-    The `default_value` is use for keys not present in the table.
+    If an element on the key tensor is not found in the table, the default_value
+    is used.
 
     Args:
-      keys: Keys to look up.
+      keys: The tensor for the keys.
       name: Optional name for the op.
 
     Returns:
       The operation that looks up the keys.
 
     Raises:
-      TypeError: when `keys` or `default_value` doesn't match the table data
+      TypeError: when 'keys' or 'default_value' doesn't match the table data
         types.
     """
     if name is None:
@@ -491,7 +493,7 @@ class LookupTableBase(object):
         self._table_ref, keys, self._default_value, name=name)
 
   def initialize_from(self, keys, values, name=None):
-    """Initialize the table with the provided keys and values tensors.
+    """Initialize the lookup table with the provided keys and values tensors.
 
     Construct an initializer object from keys and value tensors.
 
@@ -501,10 +503,10 @@ class LookupTableBase(object):
       name: Optional name for the op.
 
     Returns:
-      The operation that initializes the table.
+      The operation that initializes a lookup table.
 
     Raises:
-      TypeError: when the keys and values data types do not match the table
+      TypeError: when the 'keys' and 'values' data type do not match the table
       key and value data types.
     """
     if name is None:
@@ -543,23 +545,22 @@ class HashTable(LookupTableBase):
 
   def __init__(self, key_dtype, value_dtype, default_value, shared_name=None,
                name="hash_table"):
-    """Creates a non-initialized hash table.
+    """Create a generic hash table.
 
-    This op creates a hash table, specifying the type of its keys and values.
-    Before using the table you will have to initialize it.  After initialization
-    the table will be immutable.
+    A table holds a key-value pairs. The key and value types are
+    described by key_dtype and value_dtype respectively.
 
     Args:
-      key_dtype:  Type of the table keys.
-      value_dtype:  Type of the table values.
-      default_value: The scalar tensor to be used when a key is missing in the
-        table.
+      key_dtype:  The key data type of the table.
+      value_dtype:  The kvalue data type of the table.
+      default_value: The scalar tensor to be used when a key is not present in
+        the table.
       shared_name: Optional. If non-empty, this table will be shared under
         the given name across multiple sessions.
       name: Optional name for the hash table op.
 
     Returns:
-      A `HashTable` object.
+      A table object that can be used to lookup data.
     """
     table_ref = gen_data_flow_ops._hash_table(
         shared_name=shared_name, key_dtype=key_dtype,

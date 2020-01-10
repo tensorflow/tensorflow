@@ -83,9 +83,7 @@ You're now all set to visualize this data using TensorBoard.
 
 To run TensorBoard, use the command
 
-```bash
-python tensorflow/tensorboard/tensorboard.py --logdir=path/to/log-directory
-```
+    python tensorflow/tensorboard/tensorboard.py --logdir=path/to/log-directory
 
 where `logdir` points to the directory where the `SummaryWriter` serialized its
 data.  If this `logdir` directory contains subdirectories which contain
@@ -93,12 +91,9 @@ serialized data from separate runs, then TensorBoard will visualize the data
 from all of those runs. Once TensorBoard is running, navigate your web browser
 to `localhost:6006` to view the TensorBoard.
 
-If you have pip installed TensorFlow, `tensorboard` is installed into
-the system path, so you can use the simpler command
+If you have pip installed TensorBoard, you can use the simpler command
 
-```bash
-tensorboard --logdir=/path/to/log-directory
-```
+    tensorboard --logdir=/path/to/log-directory
 
 When looking at TensorBoard, you will see the navigation tabs in the top right
 corner. Each tab represents a set of serialized data that can be visualized.
