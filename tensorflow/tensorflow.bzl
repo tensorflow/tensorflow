@@ -12,12 +12,6 @@ load(
     "tf_sycl_tests_tags",
 )
 load(
-    "//tensorflow/core/platform:rules_cc.bzl",
-    "cc_binary",
-    "cc_library",
-    "cc_test",
-)
-load(
     "@local_config_tensorrt//:build_defs.bzl",
     "if_tensorrt",
 )
@@ -117,7 +111,7 @@ def tf_android_core_proto_headers(core_proto_sources_relative):
 # Wrapper for portable protos which currently just creates an empty rule.
 def tf_portable_proto_library(name, proto_deps, deps = [], **kwargs):
     _ignore = [kwargs]
-    cc_library(name = name, deps = deps + [dep + "_cc" for dep in proto_deps])
+    native.cc_library(name = name, deps = deps + [dep + "_cc" for dep in proto_deps])
 
 # Sanitize a dependency so that it works correctly from code that includes
 # TensorFlow as a submodule.
@@ -366,7 +360,7 @@ def tf_gen_op_libs(op_lib_names, deps = None, is_external = True):
     if not deps:
         deps = []
     for n in op_lib_names:
-        cc_library(
+        native.cc_library(
             name = n + "_op_lib",
             copts = tf_copts(is_external = is_external),
             srcs = ["ops/" + n + ".cc"],
@@ -570,7 +564,7 @@ def tf_cc_shared_object(
         if framework_so != []:
             data_extra = tf_binary_additional_data_deps()
 
-        cc_binary(
+        native.cc_binary(
             name = name_os_full,
             srcs = srcs + framework_so,
             deps = deps,
@@ -631,7 +625,7 @@ def tf_cc_binary(
     else:
         names = [name]
     for name_os in names:
-        cc_binary(
+        native.cc_binary(
             name = name_os,
             copts = copts,
             srcs = srcs + tf_binary_additional_srcs(),
@@ -674,7 +668,7 @@ def tf_native_cc_binary(
         copts = tf_copts(),
         linkopts = [],
         **kwargs):
-    cc_binary(
+    native.cc_binary(
         name = name,
         copts = copts,
         linkopts = select({
@@ -814,7 +808,7 @@ def tf_gen_op_wrappers_cc(
         internalsrcs += ["ops/" + n + "_internal.cc"]
         internalhdrs += ["ops/" + n + "_internal.h"]
 
-    cc_library(
+    native.cc_library(
         name = name,
         srcs = subsrcs,
         hdrs = subhdrs,
@@ -831,7 +825,7 @@ def tf_gen_op_wrappers_cc(
         alwayslink = 1,
         visibility = visibility,
     )
-    cc_library(
+    native.cc_library(
         name = name + "_internal",
         srcs = internalsrcs,
         hdrs = internalhdrs,
@@ -995,7 +989,7 @@ def tf_cc_test(
         linkopts = [],
         kernels = [],
         **kwargs):
-    cc_test(
+    native.cc_test(
         name = "%s%s" % (name, suffix),
         srcs = srcs + tf_binary_additional_srcs(),
         copts = tf_copts() + extra_copts,
@@ -1152,7 +1146,7 @@ def tf_gpu_only_cc_test(
         deps = deps,
         testonly = 1,
     )
-    cc_test(
+    native.cc_test(
         name = "%s%s" % (name, "_gpu"),
         size = size,
         args = args,
@@ -1239,7 +1233,7 @@ def tf_cc_test_mkl(
     disable_header_modules = ["-use_header_modules"]
 
     for src in srcs:
-        cc_test(
+        native.cc_test(
             name = src_to_test_name(src),
             srcs = if_mkl([src]) + tf_binary_additional_srcs(),
             copts = tf_copts(allow_exceptions = True) + tf_openmp_copts(),
@@ -1401,7 +1395,7 @@ def tf_gpu_library(deps = None, cuda_deps = None, copts = tf_copts(), **kwargs):
         cuda_deps = []
 
     kwargs["features"] = kwargs.get("features", []) + ["-use_header_modules"]
-    cc_library(
+    native.cc_library(
         deps = deps + if_cuda_is_configured_compat(cuda_deps + [
             clean_dep("//tensorflow/stream_executor/cuda:cudart_stub"),
             "@local_config_cuda//cuda:cuda_headers",
@@ -1569,7 +1563,7 @@ def tf_mkl_kernel_library(
     # -fno-exceptions in nocopts breaks compilation if header modules are enabled.
     disable_header_modules = ["-use_header_modules"]
 
-    cc_library(
+    native.cc_library(
         name = name,
         srcs = if_mkl(srcs),
         hdrs = hdrs,
@@ -1722,7 +1716,7 @@ def transitive_hdrs(name, deps = [], **kwargs):
 # the libraries in deps.
 def cc_header_only_library(name, deps = [], includes = [], extra_deps = [], **kwargs):
     _transitive_hdrs(name = name + "_gather", deps = deps)
-    cc_library(
+    native.cc_library(
         name = name,
         hdrs = [":" + name + "_gather"],
         includes = includes,
@@ -2370,7 +2364,7 @@ def tf_generate_proto_text_sources(name, srcs_relative_dir, srcs, protodeps = []
         visibility = visibility,
     )
 
-    cc_library(
+    native.cc_library(
         name = name,
         srcs = out_srcs,
         hdrs = out_hdrs,
@@ -2426,7 +2420,7 @@ def cc_library_with_android_deps(
         copts = tf_copts(),
         **kwargs):
     deps = if_not_android(deps) + if_android(android_deps) + common_deps
-    cc_library(deps = deps, copts = copts, **kwargs)
+    native.cc_library(deps = deps, copts = copts, **kwargs)
 
 register_extension_info(
     extension_name = "cc_library_with_android_deps",
@@ -2487,7 +2481,7 @@ def pybind_extension(
         visibility = ["//visibility:private"],
         testonly = testonly,
     )
-    cc_binary(
+    native.cc_binary(
         name = so_file,
         srcs = srcs + hdrs,
         data = data,
