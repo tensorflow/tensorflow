@@ -1,7 +1,6 @@
 """A very simple MNIST classifer.
 
-See extensive documentation at
-http://tensorflow.org/tutorials/mnist/beginners/index.md
+See extensive documentation at ??????? (insert public URL)
 """
 from __future__ import print_function
 
