@@ -53,11 +53,21 @@ double GetTimeInMs(const Collection& type_ps, EventType event_type) {
 
 StepSummary GetStepSummaryForSampleStats(const Stat<double>& sample_stats) {
   StepSummary step_time_summary;
-  step_time_summary.set_average(sample_stats.avg());
-  step_time_summary.set_standard_deviation(
-      std::sqrt(sample_stats.sample_variance()));
-  step_time_summary.set_minimum(sample_stats.min());
-  step_time_summary.set_maximum(sample_stats.max());
+  double avg, sdv, min, max;
+  if (sample_stats.empty()) {
+    // If sample_stats is empty, sample_stats.avg() will return NaN. However, we
+    // prefer to show an 0 instead.
+    avg = sdv = min = max = 0.0;
+  } else {
+    avg = sample_stats.avg();
+    sdv = std::sqrt(sample_stats.sample_variance());
+    min = sample_stats.min();
+    max = sample_stats.max();
+  }
+  step_time_summary.set_average(avg);
+  step_time_summary.set_standard_deviation(sdv);
+  step_time_summary.set_minimum(min);
+  step_time_summary.set_maximum(max);
   return step_time_summary;
 }
 
