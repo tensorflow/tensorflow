@@ -1,13 +1,8 @@
 """Tests for tensorflow.kernels.listdiff_op."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import tensorflow.python.platform
 
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 
@@ -74,7 +69,9 @@ class ListDiffTest(tf.test.TestCase):
       y = np.random.randint(int_low, int_high, size=y_size)
       out_idx = [(entry, pos) for pos, entry in enumerate(x) if entry not in y]
       if out_idx:
-        out, idx = map(list, zip(*out_idx))
+        out_idx = map(list, zip(*out_idx))
+        out = out_idx[0]
+        idx = out_idx[1]
       else:
         out = []
         idx = []
@@ -92,7 +89,7 @@ class ListDiffTest(tf.test.TestCase):
     x = [1, 2, 3, 4]
     y = [5, 6]
     out = x
-    idx = np.arange(len(x))
+    idx = range(len(x))
     self._testListDiff(x, y, out, idx)
 
   def testInt32EmptyX(self):
@@ -106,7 +103,7 @@ class ListDiffTest(tf.test.TestCase):
     x = [1, 2, 3, 4]
     y = []
     out = x
-    idx = np.arange(len(x))
+    idx = range(len(x))
     self._testListDiff(x, y, out, idx)
 
   def testInt32EmptyXY(self):

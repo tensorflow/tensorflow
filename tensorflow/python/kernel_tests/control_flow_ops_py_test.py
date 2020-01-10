@@ -1,15 +1,10 @@
 # pylint: disable=g-long-lambda
 """Tests for tensorflow.ops.control_flow_ops."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import math
 
 import tensorflow.python.platform
 
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 from tensorflow.python.ops import control_flow_ops
@@ -34,7 +29,7 @@ def check_consumers(graph):
     for v in op.inputs:
       cnt = consumer_count.get(v, 0)
       consumer_count[v] = cnt + 1
-  for k, v in consumer_count.items():
+  for k, v in consumer_count.iteritems():
     if len(k.consumers()) != v:
       return False
   return True

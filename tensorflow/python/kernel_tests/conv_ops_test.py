@@ -1,7 +1,6 @@
 """Functional tests for convolutional operations."""
-from __future__ import absolute_import
-from __future__ import division
 from __future__ import print_function
+import math
 
 import tensorflow.python.platform
 
@@ -373,11 +372,11 @@ class Conv2DTest(tf.test.TestCase):
     filter_shape = [filter_rows, filter_cols, in_depth, out_depth]
     # TODO(yangke): re-factor the computation of output shape.
     if padding == "VALID":
-      output_rows = (input_rows - filter_rows + stride) // stride
-      output_cols = (input_cols - filter_cols + stride) // stride
+      output_rows = int(math.ceil((input_rows - filter_rows + 1.0) / stride))
+      output_cols = int(math.ceil((input_cols - filter_cols + 1.0) / stride))
     else:
-      output_rows = (input_rows + stride - 1) // stride
-      output_cols = (input_cols + stride - 1) // stride
+      output_rows = int(math.ceil(float(input_rows) / stride))
+      output_cols = int(math.ceil(float(input_cols) / stride))
     output_shape = [batch, output_rows, output_cols, out_depth]
     input_size = 1
     for x in input_shape:

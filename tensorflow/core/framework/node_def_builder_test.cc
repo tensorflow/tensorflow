@@ -252,12 +252,11 @@ TEST_F(NodeDefBuilderTest, PolymorphicOut) {
   ExpectInvalid(Builder(), "NodeDef missing attr 'T' from");
 
   // Attr has the wrong type
-  ExpectInvalid(
-      Builder().Attr("T", {DT_INT32, DT_BOOL}),
-      "AttrValue had value with type 'list(type)' when 'type' expected");
+  ExpectInvalid(Builder().Attr("T", {DT_INT32, DT_BOOL}),
+                "AttrValue had value with type list(type) when type expected");
 
   ExpectInvalid(Builder().Attr("T", 12),
-                "AttrValue had value with type 'int' when 'type' expected");
+                "AttrValue had value with type int when type expected");
 }
 
 TEST_F(NodeDefBuilderTest, PolymorphicDefaultOut) {
@@ -406,9 +405,8 @@ TEST_F(NodeDefBuilderTest, OutTypeList) {
       op: "OutTypeList"
       attr { key: "T" value { list { } } } )proto");
 
-  ExpectInvalid(
-      Builder().Attr("T", DT_FLOAT),
-      "AttrValue had value with type 'type' when 'list(type)' expected");
+  ExpectInvalid(Builder().Attr("T", DT_FLOAT),
+                "AttrValue had value with type type when list(type) expected");
 }
 
 TEST_F(NodeDefBuilderTest, TypeListRestrict) {
@@ -449,11 +447,10 @@ TEST_F(NodeDefBuilderTest, Attr) {
 
   // Attr has wrong type
   ExpectInvalid(Builder().Attr("a", "bad"),
-                "AttrValue had value with type 'string' when 'int' expected");
+                "AttrValue had value with type string when int expected");
 
-  ExpectInvalid(
-      Builder().Attr("a", {12}),
-      "AttrValue had value with type 'list(int)' when 'int' expected");
+  ExpectInvalid(Builder().Attr("a", {12}),
+                "AttrValue had value with type list(int) when int expected");
 
   // Missing attr
   ExpectInvalid(Builder(), "NodeDef missing attr 'a' from Op<");
@@ -480,7 +477,7 @@ TEST_F(NodeDefBuilderTest, AttrFloat) {
 
   // Won't automatically cast int to float
   ExpectInvalid(Builder().Attr("a", 12),
-                "AttrValue had value with type 'int' when 'float' expected");
+                "AttrValue had value with type int when float expected");
 }
 
 TEST_F(NodeDefBuilderTest, AttrBoolList) {
@@ -497,7 +494,7 @@ TEST_F(NodeDefBuilderTest, AttrBoolList) {
 
   // Won't cast int -> bool.
   ExpectInvalid(Builder().Attr("a", {0}),
-                "AttrValue had value with type 'list(int)' when 'list(bool)' "
+                "AttrValue had value with type list(int) when list(bool) "
                 "expected");
 }
 
@@ -895,9 +892,8 @@ TEST_F(NodeDefBuilderTest, NIntsOut) {
   ExpectInvalid(Builder().Attr("N", 1),
                 "Value for attr 'N' of 1 must be at least minimum 2");
 
-  ExpectInvalid(
-      Builder().Attr("N", {3}),
-      "AttrValue had value with type 'list(int)' when 'int' expected");
+  ExpectInvalid(Builder().Attr("N", {3}),
+                "AttrValue had value with type list(int) when int expected");
 
   ExpectInvalid(Builder(), "NodeDef missing attr 'N' from");
 }
@@ -937,9 +933,8 @@ TEST_F(NodeDefBuilderTest, NPolymorphicOut) {
   ExpectInvalid(Builder().Attr("N", 1).Attr("T", DT_STRING),
                 "Value for attr 'N' of 1 must be at least minimum 2");
 
-  ExpectInvalid(
-      Builder().Attr("N", 3).Attr("T", {DT_STRING}),
-      "AttrValue had value with type 'list(type)' when 'type' expected");
+  ExpectInvalid(Builder().Attr("N", 3).Attr("T", {DT_STRING}),
+                "AttrValue had value with type list(type) when type expected");
 }
 
 TEST_F(NodeDefBuilderTest, NPolymorphicOutDefault) {

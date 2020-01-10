@@ -1229,12 +1229,6 @@ types.as_dtype() function.
 
 - - -
 
-#### `tf.DType.is_floating` <a class="md-anchor" id="DType.is_floating"></a>
-
-Returns whether this is a (real) floating point type.
-
-- - -
-
 #### `tf.DType.max` <a class="md-anchor" id="DType.max"></a>
 
 Returns the maximum representable value in this data type.

@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import shutil
 
@@ -28,8 +24,8 @@ class _BaseTest(object):
     try:
       shutil.rmtree(self._tmp_dir)
     except OSError:
-      logging.warn("[%s] Post-test directory cleanup failed: %s",
-                   self, self._tmp_dir)
+      logging.warn("[%s] Post-test directory cleanup failed: %s"
+                   % (self, self._tmp_dir))
 
 
 class _GFileBaseTest(_BaseTest):

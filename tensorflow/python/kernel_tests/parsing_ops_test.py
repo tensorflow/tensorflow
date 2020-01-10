@@ -1,9 +1,5 @@
 """Tests for tensorflow.ops.parsing_ops."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import itertools
 
 import tensorflow.python.platform
@@ -37,7 +33,7 @@ def _compare_output_to_expected(
   tester.assertEqual(set(dict_tensors.keys()), set(expected_tensors.keys()))
 
   i = 0  # Index into the flattened output of session.run()
-  for k, v in dict_tensors.items():
+  for k, v in dict_tensors.iteritems():
     expected_v = expected_tensors[k]
     tf.logging.info("Comparing key: %s", k)
     if isinstance(v, tf.SparseTensor):

@@ -1,9 +1,5 @@
 """Wrappers for primitive Neural Net (NN) Operations."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import tensorflow.python.platform
 import numpy as np
 
@@ -78,7 +74,6 @@ def deconv2d(value, filter, output_shape, strides, padding="SAME",
                                             strides=strides,
                                             padding=padding,
                                             name=name)
-
 
 # pylint: disable=protected-access
 def bias_add(value, bias, name=None):

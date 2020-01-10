@@ -1,9 +1,5 @@
 """Classes and functions used to construct graphs."""
 # pylint: disable=g-bad-name
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import contextlib
 import copy
@@ -15,7 +11,6 @@ import weakref
 
 import tensorflow.python.platform
 
-import six
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python.framework import device as pydev
@@ -133,36 +128,21 @@ class Tensor(object):
   # List of Python operators that we allow to override.
   OVERLOADABLE_OPERATORS = {
       # Binary.
-      "__add__",
-      "__radd__",
-      "__sub__",
-      "__rsub__",
-      "__mul__",
-      "__rmul__",
-      "__div__",
-      "__rdiv__",
-      "__truediv__",
-      "__rtruediv__",
-      "__floordiv__",
-      "__rfloordiv__",
-      "__mod__",
-      "__rmod__",
-      "__lt__",
-      "__le__",
-      "__gt__",
-      "__ge__",
-      "__and__",
-      "__rand__",
-      "__or__",
-      "__ror__",
-      "__xor__",
-      "__rxor__",
+      "__add__", "__radd__",
+      "__sub__", "__rsub__",
+      "__mul__", "__rmul__",
+      "__div__", "__rdiv__",
+      "__truediv__", "__rtruediv__",
+      "__mod__", "__rmod__",
+      "__lt__", "__le__",
+      "__gt__", "__ge__",
+      "__and__", "__rand__",
+      "__or__", "__ror__",
+      "__xor__", "__rxor__",
       "__getitem__",
       # Unary.
       "__invert__",
-      "__neg__",
-      "__abs__"
-  }
+      "__neg__", "__abs__"}
 
   def __init__(self, op, value_index, dtype):
     """Creates a new `Tensor`.
@@ -868,7 +848,7 @@ def _NodeDef(op_type, name, device=None, attrs=None):
   node_def.op = str(op_type)
   node_def.name = str(name)
   if attrs is not None:
-    for k, v in six.iteritems(attrs):
+    for k, v in attrs.iteritems():
       node_def.attr[k].CopyFrom(v)
   if device is not None:
     if callable(device):
@@ -979,8 +959,8 @@ class Operation(object):
     if output_types is None:
       output_types = []
     self._output_types = output_types
-    self._outputs = [Tensor(self, i, output_type)
-                     for i, output_type in enumerate(output_types)]
+    self._outputs = [Tensor(self, i, output_types[i])
+                     for i in xrange(len(output_types))]
     if input_types is None:
       input_types = [i.dtype.base_dtype for i in self._inputs]
     else:
@@ -1169,9 +1149,6 @@ class Operation(object):
 
     def __bool__(self):
       return bool(self._op._inputs)
-
-    # Python 3 wants __bool__, Python 2.7 wants __nonzero__
-    __nonzero__ = __bool__
 
     def __getitem__(self, i):
       return self._op._inputs[i]
@@ -1868,7 +1845,7 @@ class Graph(object):
     Returns:
       A list of Operations.
     """
-    return list(self._nodes_by_id.values())
+    return self._nodes_by_id.values()
 
   def get_operation_by_name(self, name):
     """Returns the `Operation` with the given `name`.

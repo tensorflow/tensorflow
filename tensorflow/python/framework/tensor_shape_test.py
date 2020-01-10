@@ -1,8 +1,4 @@
 """Functional tests for shape inference helper classes."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import tensorflow.python.platform
 
 from tensorflow.python.framework import tensor_shape
@@ -23,9 +19,8 @@ class DimensionTest(test_util.TensorFlowTestCase):
     self.assertEqual(tensor_shape.Dimension(24),
                      dim * tensor_shape.Dimension(2))
     self.assertEqual(tensor_shape.Dimension(24), dim * 2)
-    self.assertEqual(
-        tensor_shape.Dimension(6), dim // tensor_shape.Dimension(2))
-    self.assertEqual(tensor_shape.Dimension(6), dim // 2)
+    self.assertEqual(tensor_shape.Dimension(6), dim / tensor_shape.Dimension(2))
+    self.assertEqual(tensor_shape.Dimension(6), dim / 2)
     self.assertEqual(tensor_shape.Dimension(12),
                      dim.merge_with(tensor_shape.Dimension(12)))
     self.assertEqual(tensor_shape.Dimension(12), dim.merge_with(12))
@@ -49,9 +44,8 @@ class DimensionTest(test_util.TensorFlowTestCase):
                      (dim + tensor_shape.Dimension(None)).value)
     self.assertEqual(tensor_shape.Dimension(None).value,
                      (dim * tensor_shape.Dimension(None)).value)
-    self.assertEqual(
-        tensor_shape.Dimension(None).value,
-        (dim // tensor_shape.Dimension(None)).value)
+    self.assertEqual(tensor_shape.Dimension(None).value,
+                     (dim / tensor_shape.Dimension(None)).value)
     self.assertEqual(tensor_shape.Dimension(None).value,
                      dim.merge_with(tensor_shape.Dimension(None)).value)
     self.assertIs(None,
@@ -75,9 +69,9 @@ class DimensionTest(test_util.TensorFlowTestCase):
     self.assertEqual(
         tensor_shape.Dimension(None).value, (unknown * known).value)
     self.assertEqual(
-        tensor_shape.Dimension(None).value, (known // unknown).value)
+        tensor_shape.Dimension(None).value, (known / unknown).value)
     self.assertEqual(
-        tensor_shape.Dimension(None).value, (unknown // known).value)
+        tensor_shape.Dimension(None).value, (unknown / known).value)
     self.assertEqual(
         tensor_shape.Dimension(12), known.merge_with(unknown))
     self.assertEqual(

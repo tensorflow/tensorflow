@@ -3,8 +3,6 @@
 Both updates the files in the file-system and executes g4 commands to
 make sure any changes are ready to be submitted.
 """
-from __future__ import absolute_import
-from __future__ import division
 from __future__ import print_function
 
 import inspect
@@ -35,8 +33,7 @@ class Document(object):
 class Index(Document):
   """An automatically generated index for a collection of documents."""
 
-  def __init__(self, module_to_name, members, filename_to_library_map,
-               path_prefix):
+  def __init__(self, module_to_name, members, filename_to_library_map):
     """Creates a new Index.
 
     Args:
@@ -44,12 +41,10 @@ class Index(Document):
       members: Dictionary mapping member name to (fullname, member).
       filename_to_library_map: A list of (filename, Library) pairs. The order
         corresponds to the order in which the libraries appear in the index.
-      path_prefix: Prefix to add to links in the index.
     """
     self._module_to_name = module_to_name
     self._members = members
     self._filename_to_library_map = filename_to_library_map
-    self._path_prefix = path_prefix
 
   def write_markdown_to_file(self, f):
     """Writes this index to file `f`.
@@ -70,11 +65,11 @@ class Index(Document):
     anchor_f = lambda name: _get_anchor(self._module_to_name, fullname_f(name))
 
     for filename, library in self._filename_to_library_map:
-      sorted_names = sorted(library.mentioned, key=lambda x: (str.lower(x), x))
+      sorted_names = sorted(library.mentioned, key=str.lower)
       member_names = [n for n in sorted_names if n in self._members]
       # TODO: This is a hack that should be removed as soon as the website code
       # allows it.
-      full_filename = self._path_prefix + filename
+      full_filename = '../../api_docs/python/' + filename
       links = ["[`%s`](%s#%s)" % (name, full_filename, anchor_f(name))
                for name in member_names]
       if links:
@@ -99,7 +94,7 @@ def collect_members(module_to_name):
     Dictionary mapping name to (fullname, member) pairs.
   """
   members = {}
-  for module, module_name in module_to_name.items():
+  for module, module_name in module_to_name.iteritems():
     for name, member in inspect.getmembers(module):
       if ((inspect.isfunction(member) or inspect.isclass(member)) and
           not _always_drop_symbol_re.match(name)):
@@ -136,7 +131,7 @@ def _get_anchor(module_to_name, fullname):
   if not _anchor_re.match(fullname):
     raise ValueError("'%s' is not a valid anchor" % fullname)
   anchor = fullname
-  for module_name in module_to_name.values():
+  for module_name in module_to_name.itervalues():
     if fullname.startswith(module_name + "."):
       rest = fullname[len(module_name)+1:]
       # Use this prefix iff it is longer than any found before
@@ -424,7 +419,8 @@ class Library(Document):
     # if some methods are not categorized.
     any_method_called_out = (len(methods) != num_methods)
     if any_method_called_out:
-      other_methods = {n: m for n, m in methods.items() if n in cls.__dict__}
+      other_methods = {n: m for n, m in methods.iteritems()
+                       if n in cls.__dict__}
       if other_methods:
         print("\n#### Other Methods", file=f)
     else:
@@ -467,7 +463,7 @@ class Library(Document):
         Otherwise, document missing symbols from just this module.
     """
     if catch_all:
-      names = self._members.items()
+      names = self._members.iteritems()
     else:
       names = inspect.getmembers(self._module)
     leftovers = []
@@ -486,7 +482,7 @@ class Library(Document):
   def assert_no_leftovers(self):
     """Generate an error if there are leftover members."""
     leftovers = []
-    for name in self._members.keys():
+    for name in self._members.iterkeys():
       if name in self._members and name not in self._documented:
         leftovers.append(name)
     if leftovers:

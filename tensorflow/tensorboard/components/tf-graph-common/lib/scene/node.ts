@@ -411,27 +411,31 @@ function position(nodeGroup, d: render.RenderNodeInformation, sceneBehavior) {
 };
 
 /** Enum specifying the options to color nodes by */
-export enum ColorBy { STRUCTURE, DEVICE, COMPUTE_TIME, MEMORY };
+let ColorBy = {
+  STRUCTURE: 0,
+  DEVICE: 1,
+  COMPUTE_TIME: 2,
+  MEMORY: 3
+};
 
 /**
  * Returns the fill color for the node given its state and the "color by"
  * option.
  */
-export function getFillForNode(templateIndex, colorBy,
+function getFillForNode(sceneBehavior, colorBy,
     renderInfo: render.RenderNodeInformation, isExpanded: boolean): string {
   let colorParams = tf.graph.render.MetanodeColors;
   switch (colorBy) {
     case ColorBy.STRUCTURE:
       if (renderInfo.node.type === tf.graph.NodeType.META) {
         let tid = (<Metanode>renderInfo.node).templateId;
-        return tid === null ?
-          colorParams.UNKNOWN :
-          colorParams.STRUCTURE_PALETTE(templateIndex(tid), isExpanded);
+        return tid === null ? colorParams.UNKNOWN : colorParams.STRUCTURE_PALETTE(
+        sceneBehavior.templateIndex(tid), renderInfo.expanded);
       } else if (renderInfo.node.type === tf.graph.NodeType.SERIES) {
         // If expanded, we're showing the background rect, which we want to
         // appear gray. Otherwise we're showing a stack of ellipses which we
         // want to show white.
-        return isExpanded ? colorParams.EXPANDED_COLOR : "white";
+        return renderInfo.expanded ? colorParams.EXPANDED_COLOR : "white";
       } else if (renderInfo.node.type === NodeType.BRIDGE) {
         return renderInfo.structural ? "#f0e" :
           (<BridgeNode>renderInfo.node).inbound ? "#0ef" : "#fe0";
@@ -500,24 +504,22 @@ export function stylize(nodeGroup, renderInfo: render.RenderNodeInformation,
   // Main node always exists here and it will be reached before subscene,
   // so d3 selection is fine here.
   let node = nodeGroup.select("." + nodeClass + " ." + Class.Node.COLOR_TARGET);
-  let fillColor = getFillForNode(sceneBehavior.templateIndex,
+  let fillColor = getFillForNode(sceneBehavior,
     ColorBy[sceneBehavior.colorBy.toUpperCase()],
     renderInfo, isExpanded);
   node.style("fill", fillColor);
 
   // Choose outline to be darker version of node color if the node is a single
   // color and is not selected.
-  node.style("stroke", isSelected ? null : getStrokeForFill(fillColor));
+  if (isSelected) {
+    node.style("stroke", null);
+  } else {
+    // If node is colored by a gradient, then use a dark gray outline.
+    let outlineColor = fillColor.substring(0, 3) === "url" ?
+      tf.graph.render.MetanodeColors.GRADIENT_OUTLINE :
+      d3.rgb(fillColor).darker().toString();
+    node.style("stroke", outlineColor);
+  }
 };
-
-/**
- * Given a node's fill color/gradient, determine the stroke for the node.
- */
-export function getStrokeForFill(fill: string) {
-  // If node is colored by a gradient, then use a dark gray outline.
-  return fill.substring(0, 3) === "url" ?
-    tf.graph.render.MetanodeColors.GRADIENT_OUTLINE :
-    d3.rgb(fill).darker().toString();
-}
 
 } // close module

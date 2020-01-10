@@ -2,10 +2,6 @@
 
 """Tests for python.util.protobuf.compare."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import copy
 import re
 import textwrap
@@ -13,7 +9,6 @@ import textwrap
 from tensorflow.python.platform import googletest
 from tensorflow.python.util.protobuf import compare
 from tensorflow.python.util.protobuf import compare_test_pb2
-import six
 
 from google.protobuf import text_format
 
@@ -287,23 +282,23 @@ class NormalizeNumbersTest(googletest.TestCase):
     pb = compare_test_pb2.Large()
     pb.int64_ = 4
     compare.NormalizeNumberFields(pb)
-    self.assertTrue(isinstance(pb.int64_, six.integer_types))
+    self.assertTrue(isinstance(pb.int64_, long))
 
     pb.int64_ = 4
     compare.NormalizeNumberFields(pb)
-    self.assertTrue(isinstance(pb.int64_, six.integer_types))
+    self.assertTrue(isinstance(pb.int64_, long))
 
     pb.int64_ = 9999999999999999
     compare.NormalizeNumberFields(pb)
-    self.assertTrue(isinstance(pb.int64_, six.integer_types))
+    self.assertTrue(isinstance(pb.int64_, long))
 
   def testNormalizesRepeatedInts(self):
     pb = compare_test_pb2.Large()
     pb.int64s.extend([1, 400, 999999999999999])
     compare.NormalizeNumberFields(pb)
-    self.assertTrue(isinstance(pb.int64s[0], six.integer_types))
-    self.assertTrue(isinstance(pb.int64s[1], six.integer_types))
-    self.assertTrue(isinstance(pb.int64s[2], six.integer_types))
+    self.assertTrue(isinstance(pb.int64s[0], long))
+    self.assertTrue(isinstance(pb.int64s[1], long))
+    self.assertTrue(isinstance(pb.int64s[2], long))
 
   def testNormalizesFloats(self):
     pb1 = compare_test_pb2.Large()

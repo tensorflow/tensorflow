@@ -8,7 +8,8 @@
 namespace tensorflow {
 namespace testing {
 
-#if defined(PLATFORM_GOOGLE) || defined(__ANDROID__)
+#if defined(PLATFORM_GOOGLE) || defined(PLATFORM_POSIX_ANDROID) || \
+    defined(PLATFORM_GOOGLE_ANDROID)
 string TmpDir() { return FLAGS_test_tmpdir; }
 int RandomSeed() { return FLAGS_test_random_seed; }
 #else

@@ -1,12 +1,7 @@
 """Utilities to create TensorProtos."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numbers
 import tensorflow.python.platform
 import numpy as np
-import six
 
 from tensorflow.core.framework import tensor_pb2
 from tensorflow.core.framework import tensor_shape_pb2
@@ -38,11 +33,12 @@ if _FAST_TENSOR_UTIL_AVAILABLE:
       np.complex128: fast_tensor_util.AppendComplex128ArrayToTensorProto,
       np.object: fast_tensor_util.AppendObjectArrayToTensorProto,
       np.bool: fast_tensor_util.AppendBoolArrayToTensorProto,
-      types.qint8.as_numpy_dtype: fast_tensor_util.AppendInt8ArrayToTensorProto,
+      types.qint8.as_numpy_dtype:
+      fast_tensor_util.AppendInt8ArrayToTensorProto,
       types.quint8.as_numpy_dtype:
-          fast_tensor_util.AppendUInt8ArrayToTensorProto,
+      fast_tensor_util.AppendUInt8ArrayToTensorProto,
       types.qint32.as_numpy_dtype:
-          fast_tensor_util.AppendInt32ArrayToTensorProto,
+      fast_tensor_util.AppendInt32ArrayToTensorProto,
       # NOTE(touts): Intentionally no way to feed a DT_BFLOAT16.
   }
 else:
@@ -91,7 +87,7 @@ else:
 
 def GetFromNumpyDTypeDict(dtype_dict, dtype):
   # NOTE: dtype_dict.get(dtype) always returns None.
-  for key, val in six.iteritems(dtype_dict):
+  for key, val in dtype_dict.iteritems():
     if key == dtype:
       return val
   return None
@@ -528,6 +524,7 @@ def ConstantValue(tensor):
     delta = ConstantValue(tensor.op.inputs[2])
     if delta is None:
       return None
-    return np.arange(start, limit, delta, dtype=tensor.dtype.as_numpy_dtype)
+    return np.array(range(start, limit, delta),
+                    dtype=tensor.dtype.as_numpy_dtype)
   else:
     return None

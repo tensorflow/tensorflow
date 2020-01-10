@@ -1,8 +1,4 @@
 """Functional tests for tensor_util."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import tensorflow.python.platform
 
 import numpy as np

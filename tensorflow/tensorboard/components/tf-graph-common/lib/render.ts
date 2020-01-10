@@ -8,23 +8,10 @@
 module tf.graph.render {
 
 /**
- * Color parameters for op nodes.
- */
-export let OpNodeColors = {
-  DEFAULT_FILL: "white",
-  DEFAULT_STROKE: "#b2b2b2"
-};
-
-/**
  * Color parameters for node encoding.
  * @type {Object}
  */
 export let MetanodeColors = {
-  /**
-   * Default fill and stroke to use when no other information is available.
-   */
-  DEFAULT_FILL: "#d9d9d9",
-  DEFAULT_STROKE: "#a6a6a6",
   SATURATION: 0.6,
   LIGHTNESS: 0.85,
   /**
@@ -52,14 +39,6 @@ export let MetanodeColors = {
   },
   UNKNOWN: "#eee",
   GRADIENT_OUTLINE: "#888"
-};
-
-/**
- * Color parameters for op nodes.
- */
-export let SeriesNodeColors = {
-  DEFAULT_FILL: "white",
-  DEFAULT_STROKE: "#b2b2b2"
 };
 
 /**
@@ -190,62 +169,7 @@ export class RenderGraphInformation {
     this.root.expanded = true;
   }
 
-  /**
-   * Get a previously created RenderNodeInformation by its node name.
-   */
   getRenderNodeByName(nodeName: string): RenderNodeInformation {
-    return this.index[nodeName];
-  }
-
-  /**
-   * Get a previously created RenderNodeInformation for the specified node name,
-   * or create one if it hasn't been created yet.
-   */
-  getOrCreateRenderNodeByName(nodeName: string): RenderNodeInformation {
-    // Polymer may invoke this with null.
-    if (!nodeName) {
-      return null;
-    }
-
-    if (nodeName in this.index) {
-      return this.index[nodeName];
-    }
-
-    let node = this.hierarchy.node(nodeName);
-    let renderInfo = node.isGroupNode ?
-        new RenderGroupNodeInformation(<GroupNode>node) :
-        new RenderNodeInformation(node);
-    this.index[nodeName] = renderInfo;
-
-    if (node.stats) {
-      renderInfo.memoryColor = this.memoryUsageScale(node.stats.totalBytes);
-      renderInfo.computeTimeColor =
-        this.computeTimeScale(node.stats.totalMicros);
-    }
-
-    if (node.isGroupNode) {
-      // Make a list of tuples (device, proportion), where proportion
-      // is the fraction of op nodes that have that device.
-      let pairs = _.pairs((<GroupNode>node).deviceHistogram);
-      if (pairs.length > 0) {
-        // Compute the total # of devices.
-        let numDevices = _.sum(pairs, _.last);
-        renderInfo.deviceColors = _.map(pairs, pair => ({
-              color: this.deviceColorMap(pair[0]),
-              // Normalize to a proportion of total # of devices.
-              proportion: pair[1] / numDevices
-            }));
-      }
-    } else {
-      let device = (<OpNode>renderInfo.node).device;
-      if (device) {
-        renderInfo.deviceColors = [{
-          color: this.deviceColorMap(device),
-          proportion: 1.0
-        }];
-      }
-    }
-
     return this.index[nodeName];
   }
 
@@ -299,10 +223,19 @@ export class RenderGraphInformation {
     // groups between which there is no visible path (other than annotations).
     _.each(metagraph.nodes(), childName => {
 
-      let childRenderInfo = this.getOrCreateRenderNodeByName(childName);
-      let childNode = childRenderInfo.node;
-
+      let childNode = metagraph.node(childName);
+      let childRenderInfo = childNode.isGroupNode ?
+          new RenderGroupNodeInformation(<GroupNode>childNode) :
+          new RenderNodeInformation(childNode);
+      this.index[childName] = childRenderInfo;
       coreGraph.setNode(childName, childRenderInfo);
+
+      if (childRenderInfo.node.stats != null) {
+        childRenderInfo.memoryColor =
+          this.memoryUsageScale(childRenderInfo.node.stats.totalBytes);
+        childRenderInfo.computeTimeColor =
+          this.computeTimeScale(childRenderInfo.node.stats.totalMicros);
+      }
 
       if (!childNode.isGroupNode) {
         _.each((<OpNode>childNode).inEmbeddings, embedding => {
@@ -317,8 +250,29 @@ export class RenderGraphInformation {
               AnnotationType.SUMMARY, this.params);
           this.index[embedding.name] = new RenderNodeInformation(embedding);
         });
+        let device = (<OpNode>childRenderInfo.node).device;
+        if (device != null) {
+          childRenderInfo.deviceColors = [{
+            color: this.deviceColorMap(device),
+            proportion: 1.0
+          }];
+        }
+      } else {
+        // Make a list of tuples (device, proportion), where proportion
+        // is the fraction of op nodes that have that device.
+        let pairs = _.pairs((<GroupNode> childNode).deviceHistogram);
+        if (pairs.length > 0) {
+          // Compute the total # of devices.
+          let numDevices = _.sum(pairs, _.last);
+          childRenderInfo.deviceColors = _.map(pairs, pair => {
+            return {
+              color: this.deviceColorMap(pair[0]),
+              // Normalize to a proportion of total # of devices.
+              proportion: pair[1] / numDevices
+            };
+          });
+        }
       }
-
     });
 
     // Add render metaedge info for edges in the metagraph.

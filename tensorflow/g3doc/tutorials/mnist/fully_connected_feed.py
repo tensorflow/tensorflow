@@ -7,17 +7,13 @@ MNIST tutorial:
 https://tensorflow.org/tutorials/mnist/tf/index.html
 
 """
-# pylint: disable=missing-docstring
-from __future__ import absolute_import
-from __future__ import division
 from __future__ import print_function
-
+# pylint: disable=missing-docstring
 import os.path
 import time
 
 import tensorflow.python.platform
 import numpy
-from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 from tensorflow.g3doc.tutorials.mnist import input_data
@@ -105,14 +101,14 @@ def do_eval(sess,
   """
   # And run one epoch of eval.
   true_count = 0  # Counts the number of correct predictions.
-  steps_per_epoch = data_set.num_examples // FLAGS.batch_size
+  steps_per_epoch = int(data_set.num_examples / FLAGS.batch_size)
   num_examples = steps_per_epoch * FLAGS.batch_size
   for step in xrange(steps_per_epoch):
     feed_dict = fill_feed_dict(data_set,
                                images_placeholder,
                                labels_placeholder)
     true_count += sess.run(eval_correct, feed_dict=feed_dict)
-  precision = true_count / num_examples
+  precision = float(true_count) / float(num_examples)
   print('  Num examples: %d  Num correct: %d  Precision @ 1: %0.04f' %
         (num_examples, true_count, precision))
 

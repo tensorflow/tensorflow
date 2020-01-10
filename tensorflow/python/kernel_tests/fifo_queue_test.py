@@ -1,8 +1,4 @@
 """Tests for tensorflow.ops.data_flow_ops.FIFOQueue."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import random
 import re
 import time
@@ -10,7 +6,6 @@ import time
 import tensorflow.python.platform
 
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 
@@ -453,9 +448,7 @@ class FIFOQueueTest(tf.test.TestCase):
           elements_enqueued += 1
         else:
           count = random.randint(0, min(20, 250 - elements_enqueued))
-          range_to_enqueue = np.arange(elements_enqueued,
-                                       elements_enqueued + count,
-                                       dtype=np.int32)
+          range_to_enqueue = range(elements_enqueued, elements_enqueued + count)
           enqueuemany_op.run({enqueuemany_placeholder: range_to_enqueue})
           elements_enqueued += count
 
@@ -466,7 +459,7 @@ class FIFOQueueTest(tf.test.TestCase):
   def testMixtureOfDequeueAndDequeueMany(self):
     with self.test_session() as sess:
       q = tf.FIFOQueue(10, tf.int32, shapes=())
-      enqueue_op = q.enqueue_many((np.arange(250, dtype=np.int32),))
+      enqueue_op = q.enqueue_many((range(250),))
       dequeued_t = q.dequeue()
       count_placeholder = tf.placeholder(tf.int32, shape=())
       dequeuemany_t = q.dequeue_many(count_placeholder)
@@ -484,9 +477,7 @@ class FIFOQueueTest(tf.test.TestCase):
           elements_dequeued += 1
         else:
           count = random.randint(0, min(20, 250 - elements_dequeued))
-          expected_range = np.arange(elements_dequeued,
-                                     elements_dequeued + count,
-                                     dtype=np.int32)
+          expected_range = range(elements_dequeued, elements_dequeued + count)
           self.assertAllEqual(
               expected_range, dequeuemany_t.eval({count_placeholder: count}))
           elements_dequeued += count
@@ -1054,7 +1045,7 @@ class FIFOQueueTest(tf.test.TestCase):
   def testBigDequeueMany(self):
     with self.test_session() as sess:
       q = tf.FIFOQueue(2, tf.int32, ((),))
-      elem = np.arange(4, dtype=np.int32)
+      elem = range(4)
       enq_list = [q.enqueue((e,)) for e in elem]
       deq = q.dequeue_many(4)
 

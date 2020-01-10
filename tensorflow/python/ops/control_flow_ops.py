@@ -47,12 +47,6 @@ debug your graph.
 @@Assert
 @@Print
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-import six
-from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import types
@@ -1236,12 +1230,12 @@ def group(*inputs, **kwargs):
         ops_on_device[dev] = [inp]
     if len(ops_on_device) == 1:
       # 1-level tree. The root node is the returned NoOp node.
-      (dev, deps), = ops_on_device.items()
+      dev, deps = ops_on_device.items()[0]
       return _GroupControlDeps(dev, deps, name=name)
     # 2-level tree. The root node is the returned NoOp node.
     # deps contains 1 NoOp node for each device.
     deps = []
-    for dev in sorted(six.iterkeys(ops_on_device)):
+    for dev in sorted(ops_on_device.iterkeys()):
       deps.append(_GroupControlDeps(dev, ops_on_device[dev]))
     return _GroupControlDeps(None, deps, name=name)
 
@@ -1415,7 +1409,7 @@ def case(pred_fn_pairs, default, exclusive=False, name="Case"):
     if not exclusive:
       logging.warn("%s: Provided dictionary of predicate/fn pairs, but "
                    "exclusive=False.  Order of conditional tests is "
-                   "not guaranteed.", name)
+                   "not guaranteed." % name)
   for tup in pfp:
     if not isinstance(tup, _basetuple) or len(tup) != 2:
       raise TypeError("Each entry in pred_fn_pairs must be a 2-tuple")

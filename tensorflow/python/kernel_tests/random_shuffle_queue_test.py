@@ -1,8 +1,4 @@
 """Tests for tensorflow.ops.data_flow_ops.Queue."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import random
 import re
 import time
@@ -10,7 +6,6 @@ import time
 import tensorflow.python.platform
 
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 
@@ -269,7 +264,7 @@ class RandomShuffleQueueTest(tf.test.TestCase):
       for _ in range(8):
         float_val, int_val = sess.run(dequeued_t)
         results.append((float_val, [int_val[0], int_val[1]]))
-      expected = list(zip(float_elems, int_elems)) * 2
+      expected = zip(float_elems, int_elems) + zip(float_elems, int_elems)
       self.assertItemsEqual(expected, results)
 
   def testDequeueMany(self):
@@ -1033,7 +1028,7 @@ class RandomShuffleQueueTest(tf.test.TestCase):
   def testBigDequeueMany(self):
     with self.test_session() as sess:
       q = tf.RandomShuffleQueue(2, 0, tf.int32, ((),))
-      elem = np.arange(4, dtype=np.int32)
+      elem = range(4)
       enq_list = [q.enqueue((e,)) for e in elem]
       deq = q.dequeue_many(4)
 
