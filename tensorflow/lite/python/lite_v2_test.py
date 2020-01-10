@@ -115,7 +115,7 @@ class FromConcreteFunctionTest(TestModels):
     root = self._getSimpleVariableModel()
     with self.assertRaises(ValueError) as error:
       _ = lite.TFLiteConverterV2.from_concrete_functions([root.f])
-    self.assertIn('call from_concrete_function', str(error.exception))
+    self.assertIn('call get_concrete_function', str(error.exception))
 
   @parameterized.named_parameters(
       ('EnableMlirConverter', True),  # enable mlir
