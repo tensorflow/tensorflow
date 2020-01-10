@@ -84,7 +84,7 @@ class TrtShapeOptimizationProfileTest : public ::testing::Test {
   }
 
   // define a simple network: output = input1 + input2
-  void defineNetwork(nvinfer1::INetworkDefinition* network,
+  void DefineNetwork(nvinfer1::INetworkDefinition* network,
                      nvinfer1::Dims3& dims) {
     nvinfer1::ITensor* input1 =
         network->addInput("input1", nvinfer1::DataType::kFLOAT, dims);
@@ -107,16 +107,45 @@ class TrtShapeOptimizationProfileTest : public ::testing::Test {
   TrtUniquePtrType<nvinfer1::IBuilder> builder_;
   TrtUniquePtrType<nvinfer1::INetworkDefinition> network_;
   TrtUniquePtrType<nvinfer1::IBuilderConfig> builder_config_;
+  TrtUniquePtrType<nvinfer1::ICudaEngine> engine;
   std::vector<TrtUniquePtrType<nvinfer1::IExecutionContext>> exec_context_;
+  // The order is important: exec_context_ must be destroyed first, and logger
+  // at last.
 
   const uint32_t flags_ =
       1U << static_cast<int>(
           nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
 };
 
-TEST_F(TrtShapeOptimizationProfileTest, Basic) {
+TEST_F(TrtShapeOptimizationProfileTest, Static) {
+  // Network with static input shape
+  nvinfer1::Dims3 dims(8, 8, 10);
+  DefineNetwork(network_.get(), dims);
+
+  TrtShapeOptimizationProfile profile;
+
+  // Configure and build engine - should be a no-op
+  profile.configureBuilder(builder_.get(), builder_config_.get(),
+                           network_.get());
+
+  engine = TrtUniquePtrType<nvinfer1::ICudaEngine>(
+      builder_->buildEngineWithConfig(*network_.get(), *builder_config_.get()));
+  EXPECT_NE(nullptr, engine);
+
+  profile.createExcecutionContexts(engine.get(), exec_context_);
+  // A single execution context should be created for a graph with static input
+  ASSERT_EQ(exec_context_.size(), 1);
+  EXPECT_NE(nullptr, exec_context_[0]);
+
+  std::vector<nvinfer1::Dims3> dim_vec(2, dims);
+  std::vector<TensorShape> shape_vec = dimvec2shapevec(dim_vec);
+  EXPECT_EQ(0, profile.getProfileNumber(shape_vec));
+}
+
+TEST_F(TrtShapeOptimizationProfileTest, Dynamic) {
+  // Network with dynamic input shapes
   nvinfer1::Dims3 dims(-1, -1, 10);
-  defineNetwork(network_.get(), dims);
+  DefineNetwork(network_.get(), dims);
 
   TrtShapeOptimizationProfile profile;
   std::vector<std::vector<nvinfer1::Dims3>> input_profiles{
@@ -134,10 +163,9 @@ TEST_F(TrtShapeOptimizationProfileTest, Basic) {
   // Configure and build engine
   profile.configureBuilder(builder_.get(), builder_config_.get(),
                            network_.get());
-  TrtUniquePtrType<nvinfer1::ICudaEngine> engine(
+  engine = TrtUniquePtrType<nvinfer1::ICudaEngine>(
       builder_->buildEngineWithConfig(*network_.get(), *builder_config_.get()));
   EXPECT_NE(nullptr, engine);
-
 
   profile.createExcecutionContexts(engine.get(), exec_context_);
 
@@ -165,7 +193,6 @@ TEST_F(TrtShapeOptimizationProfileTest, Basic) {
       EXPECT_TRUE(dimsEqual(dimvec[j], opt));
     }
   }
-  exec_context_.clear();
 }
 
 }  // namespace tensorrt
