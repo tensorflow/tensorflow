@@ -880,16 +880,21 @@ class TensorContractionSubMapper<
     // possible to guarantee "no padding or skipping" for non-standard packing.
     if (nonStandardPatches()) return true;
 
-    // Check if output rows and columns matches the PADDING_VALID case. If they
-    // are it means that there is no padding for the input tensor.
-    const bool match_rows = m_base_mapper.m_outputRows ==
-                            divup(m_base_mapper.m_inputRows - patchRows() + 1,
-                                  m_base_mapper.m_row_strides);
-    const bool match_cols = m_base_mapper.m_outputCols ==
-                            divup(m_base_mapper.m_inputCols - patchCols() + 1,
-                                  m_base_mapper.m_col_strides);
+    // Non zero padding before.
+    if (m_base_mapper.m_rowPaddingTop > 0) return true;
+    if (m_base_mapper.m_colPaddingLeft > 0) return true;
 
-    return !match_rows || !match_cols;
+    // Non zero padding after in rows.
+    const Index last_row =
+        (m_base_mapper.m_outputRows - 1) * m_base_mapper.m_row_strides;
+    if (last_row + (patchRows() - 1) >= m_base_mapper.m_inputRows) return true;
+
+    // Non zero padding after in cols.
+    const Index last_col =
+        (m_base_mapper.m_outputCols - 1) * m_base_mapper.m_col_strides;
+    if (last_col + (patchCols() - 1) >= m_base_mapper.m_inputCols) return true;
+
+    return false;
   }
   EIGEN_DEVICE_FUNC
   EIGEN_ALWAYS_INLINE bool padRow(const Index row) const {

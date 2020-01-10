@@ -1506,7 +1506,7 @@ static void PackRhsHelper(int iters,
       output_rows =
           numext::ceil((input_rows_eff - filter_rows + 1.f) / row_strides);
       output_cols =
-          numext::ceil((input_cols_eff - filter_cols + 1.f) / row_strides);
+          numext::ceil((input_cols_eff - filter_cols + 1.f) / col_strides);
     } else {
       eigen_assert(false && "not supported");
     }
