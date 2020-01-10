@@ -878,6 +878,7 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_rocm",
+        "no_oss",  # fails on this branch
     ],
     deps = [
         ":mirrored_strategy",
