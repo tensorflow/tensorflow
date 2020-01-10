@@ -342,6 +342,21 @@ class TracingCallbackTest(
         self.assertAllClose(
             trace.debug_tensor_value, [tensor_id, 10, 2, 4, 2, 2, 0, 0, 0, 0])
 
+  def testListingSourceFiles(self):
+    writer = dumping_callback.enable_dump_debug_info(self.dump_root)
+    # Run a simple eager execution event, so that the source files are dumped.
+    self.assertAllClose(math_ops.truediv(7.0, 1.0 / 6.0), 42.0)
+    writer.FlushNonExecutionFiles()
+    writer.FlushExecutionFiles()
+    with debug_events_reader.DebugDataReader(self.dump_root) as reader:
+      reader.update()
+      source_file_list = reader.source_file_list()
+      self.assertIsInstance(source_file_list, tuple)
+      for item in source_file_list:
+        self.assertIsInstance(item, tuple)
+        self.assertLen(item, 2)
+      self.assertIn((_host_name, _current_file_full_path), source_file_list)
+
   def testReadingSourceLines(self):
     writer = dumping_callback.enable_dump_debug_info(self.dump_root)
     # Run a simple eager execution event, so that the source-file contents are
@@ -405,7 +420,8 @@ class TracingCallbackTest(
         self.assertEqual(
             reader.device_name_by_id(executions[0].output_tensor_device_ids[0]),
             self._expectedDefaultDeviceName())
-        self.assertIn(self._expectedDefaultDeviceName(), reader.device_names())
+        self.assertIn(self._expectedDefaultDeviceName(),
+                      set(reader.device_name_map().values()))
 
       # Verify the recorded graph-building history.
       add_op_digests = reader.graph_op_digests(op_type="AddV2")
@@ -463,7 +479,7 @@ class TracingCallbackTest(
         # Under the default NO_TENSOR tensor-debug mode, the tensor_proto ought
         # to be an empty float32 tensor.
         for trace in graph_exec_traces:
-          self.assertEqual(trace.debug_tensor_value, [])
+          self.assertIsNone(trace.debug_tensor_value)
       elif tensor_debug_mode == "CURT_HEALTH":
         # Test the association between graph exec and prior graph building.
         # In each case, the 1st element of debug_tensor_value is the ID of the
