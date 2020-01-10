@@ -1,0 +1,195 @@
+op {
+  name: "ParseSequenceExample"
+  input_arg {
+    name: "serialized"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "debug_name"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "context_dense_defaults"
+    type_list_attr: "Tcontext_dense"
+  }
+  output_arg {
+    name: "context_sparse_indices"
+    type: DT_INT64
+    number_attr: "Ncontext_sparse"
+  }
+  output_arg {
+    name: "context_sparse_values"
+    type_list_attr: "context_sparse_types"
+  }
+  output_arg {
+    name: "context_sparse_shapes"
+    type: DT_INT64
+    number_attr: "Ncontext_sparse"
+  }
+  output_arg {
+    name: "context_dense_values"
+    type_list_attr: "Tcontext_dense"
+  }
+  output_arg {
+    name: "feature_list_sparse_indices"
+    type: DT_INT64
+    number_attr: "Nfeature_list_sparse"
+  }
+  output_arg {
+    name: "feature_list_sparse_values"
+    type_list_attr: "feature_list_sparse_types"
+  }
+  output_arg {
+    name: "feature_list_sparse_shapes"
+    type: DT_INT64
+    number_attr: "Nfeature_list_sparse"
+  }
+  output_arg {
+    name: "feature_list_dense_values"
+    type_list_attr: "feature_list_dense_types"
+  }
+  output_arg {
+    name: "feature_list_dense_lengths"
+    type: DT_INT64
+    number_attr: "Nfeature_list_dense"
+  }
+  attr {
+    name: "feature_list_dense_missing_assumed_empty"
+    type: "list(string)"
+    has_minimum: true
+  }
+  attr {
+    name: "context_sparse_keys"
+    type: "list(string)"
+    has_minimum: true
+  }
+  attr {
+    name: "context_dense_keys"
+    type: "list(string)"
+    has_minimum: true
+  }
+  attr {
+    name: "feature_list_sparse_keys"
+    type: "list(string)"
+    has_minimum: true
+  }
+  attr {
+    name: "feature_list_dense_keys"
+    type: "list(string)"
+    has_minimum: true
+  }
+  attr {
+    name: "Ncontext_sparse"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "Ncontext_dense"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "Nfeature_list_sparse"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "Nfeature_list_dense"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "context_sparse_types"
+    type: "list(type)"
+    default_value {
+      list {
+      }
+    }
+    has_minimum: true
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_INT64
+        type: DT_STRING
+      }
+    }
+  }
+  attr {
+    name: "Tcontext_dense"
+    type: "list(type)"
+    default_value {
+      list {
+      }
+    }
+    has_minimum: true
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_INT64
+        type: DT_STRING
+      }
+    }
+  }
+  attr {
+    name: "feature_list_dense_types"
+    type: "list(type)"
+    default_value {
+      list {
+      }
+    }
+    has_minimum: true
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_INT64
+        type: DT_STRING
+      }
+    }
+  }
+  attr {
+    name: "context_dense_shapes"
+    type: "list(shape)"
+    default_value {
+      list {
+      }
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "feature_list_sparse_types"
+    type: "list(type)"
+    default_value {
+      list {
+      }
+    }
+    has_minimum: true
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_INT64
+        type: DT_STRING
+      }
+    }
+  }
+  attr {
+    name: "feature_list_dense_shapes"
+    type: "list(shape)"
+    default_value {
+      list {
+      }
+    }
+    has_minimum: true
+  }
+}

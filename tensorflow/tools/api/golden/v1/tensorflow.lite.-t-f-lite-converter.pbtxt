@@ -1,0 +1,34 @@
+path: "tensorflow.lite.TFLiteConverter"
+tf_class {
+  is_instance: "<class \'tensorflow.lite.python.lite.TFLiteConverter\'>"
+  is_instance: "<class \'tensorflow.lite.python.lite.TFLiteConverterBase\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'graph_def\', \'input_tensors\', \'output_tensors\', \'input_arrays_with_shape\', \'output_arrays\', \'experimental_debug_info_func\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "convert"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "from_frozen_graph"
+    argspec: "args=[\'cls\', \'graph_def_file\', \'input_arrays\', \'output_arrays\', \'input_shapes\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "from_keras_model_file"
+    argspec: "args=[\'cls\', \'model_file\', \'input_arrays\', \'input_shapes\', \'output_arrays\', \'custom_objects\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "from_saved_model"
+    argspec: "args=[\'cls\', \'saved_model_dir\', \'input_arrays\', \'input_shapes\', \'output_arrays\', \'tag_set\', \'signature_key\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "from_session"
+    argspec: "args=[\'cls\', \'sess\', \'input_tensors\', \'output_tensors\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_input_arrays"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+}

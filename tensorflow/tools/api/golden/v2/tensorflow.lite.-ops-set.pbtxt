@@ -1,0 +1,16 @@
+path: "tensorflow.lite.OpsSet"
+tf_class {
+  is_instance: "<enum \'OpsSet\'>"
+  member {
+    name: "SELECT_TF_OPS"
+    mtype: "<enum \'OpsSet\'>"
+  }
+  member {
+    name: "TFLITE_BUILTINS"
+    mtype: "<enum \'OpsSet\'>"
+  }
+  member {
+    name: "TFLITE_BUILTINS_INT8"
+    mtype: "<enum \'OpsSet\'>"
+  }
+}

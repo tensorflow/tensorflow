@@ -1,0 +1,46 @@
+syntax = "proto3";
+
+package tensorflow;
+option cc_enable_arenas = true;
+option java_outer_classname = "KernelDefProtos";
+option java_multiple_files = true;
+option java_package = "org.tensorflow.framework";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework";
+import "tensorflow/core/framework/attr_value.proto";
+
+message KernelDef {
+  // Must match the name of an Op.
+  string op = 1;
+
+  // Type of device this kernel runs on.
+  string device_type = 2;
+
+  message AttrConstraint {
+    // Name of an attr from the Op.
+    string name = 1;
+
+    // A list of values that this kernel supports for this attr.
+    // Like OpDef.AttrDef.allowed_values, except for kernels instead of Ops.
+    AttrValue allowed_values = 2;
+  }
+  repeated AttrConstraint constraint = 3;
+
+  // Names of the Op's input_/output_args that reside in host memory
+  // instead of device memory.
+  repeated string host_memory_arg = 4;
+
+  // This allows experimental kernels to be registered for an op that
+  // won't be used unless the user specifies a "_kernel" attr with
+  // value matching this.
+  string label = 5;
+
+  // Prioritization of kernel amongst different devices. By default we assume
+  // priority is 0. The higher the priority the better. By default (i.e. if
+  // this is not set), we prefer GPU kernels over CPU.
+  int32 priority = 6;
+}
+
+// A collection of KernelDefs
+message KernelList {
+  repeated KernelDef kernel = 1;
+};

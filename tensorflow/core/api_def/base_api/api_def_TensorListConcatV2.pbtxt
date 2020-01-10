@@ -1,0 +1,18 @@
+op {
+  graph_op_name: "TensorListConcatV2"
+  summary: "Concats all tensors in the list along the 0th dimension."
+  description: <<END
+Requires that all tensors have the same shape except the first dimension.
+
+input_handle: The input list.
+element_shape: The shape of the uninitialized elements in the list. If the first
+  dimension is not -1, it is assumed that all list elements have the same
+  leading dim.
+leading_dims: The list of leading dims of uninitialized list elements. Used if
+  the leading dim of input_handle.element_shape or the element_shape input arg
+  is not already set.
+tensor: The concated result.
+lengths: Output tensor containing sizes of the 0th dimension of tensors in the list, used for computing the gradient.
+
+END
+}

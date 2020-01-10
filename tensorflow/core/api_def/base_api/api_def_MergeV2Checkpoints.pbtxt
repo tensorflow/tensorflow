@@ -1,0 +1,33 @@
+op {
+  graph_op_name: "MergeV2Checkpoints"
+  in_arg {
+    name: "checkpoint_prefixes"
+    description: <<END
+prefixes of V2 checkpoints to merge.
+END
+  }
+  in_arg {
+    name: "destination_prefix"
+    description: <<END
+scalar.  The desired final prefix.  Allowed to be the same
+as one of the checkpoint_prefixes.
+END
+  }
+  attr {
+    name: "delete_old_dirs"
+    description: <<END
+see above.
+END
+  }
+  summary: "V2 format specific: merges the metadata files of sharded checkpoints.  The"
+  description: <<END
+result is one logical checkpoint, with one physical metadata file and renamed
+data files.
+
+Intended for "grouping" multiple checkpoints in a sharded checkpoint setup.
+
+If delete_old_dirs is true, attempts to delete recursively the dirname of each
+path in the input checkpoint_prefixes.  This is useful when those paths are non
+user-facing temporary locations.
+END
+}

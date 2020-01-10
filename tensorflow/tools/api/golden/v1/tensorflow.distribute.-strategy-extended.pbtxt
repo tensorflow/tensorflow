@@ -1,0 +1,90 @@
+path: "tensorflow.distribute.StrategyExtended"
+tf_class {
+  is_instance: "<class \'tensorflow.python.distribute.distribute_lib.StrategyExtendedV1\'>"
+  is_instance: "<class \'tensorflow.python.distribute.distribute_lib.StrategyExtendedV2\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "experimental_between_graph"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "experimental_require_static_shapes"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "experimental_should_init"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "parameter_devices"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "should_checkpoint"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "should_save_summary"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "worker_devices"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'container_strategy\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "batch_reduce_to"
+    argspec: "args=[\'self\', \'reduce_op\', \'value_destination_pairs\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "broadcast_to"
+    argspec: "args=[\'self\', \'tensor\', \'destinations\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "call_for_each_replica"
+    argspec: "args=[\'self\', \'fn\', \'args\', \'kwargs\'], varargs=None, keywords=None, defaults=[\'()\', \'None\'], "
+  }
+  member_method {
+    name: "colocate_vars_with"
+    argspec: "args=[\'self\', \'colocate_with_variable\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "experimental_make_numpy_dataset"
+    argspec: "args=[\'self\', \'numpy_input\', \'session\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "experimental_run_steps_on_iterator"
+    argspec: "args=[\'self\', \'fn\', \'iterator\', \'iterations\', \'initial_loop_values\'], varargs=None, keywords=None, defaults=[\'1\', \'None\'], "
+  }
+  member_method {
+    name: "non_slot_devices"
+    argspec: "args=[\'self\', \'var_list\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "read_var"
+    argspec: "args=[\'self\', \'v\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "reduce_to"
+    argspec: "args=[\'self\', \'reduce_op\', \'value\', \'destinations\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "update"
+    argspec: "args=[\'self\', \'var\', \'fn\', \'args\', \'kwargs\', \'group\'], varargs=None, keywords=None, defaults=[\'()\', \'None\', \'True\'], "
+  }
+  member_method {
+    name: "update_non_slot"
+    argspec: "args=[\'self\', \'colocate_with\', \'fn\', \'args\', \'kwargs\', \'group\'], varargs=None, keywords=None, defaults=[\'()\', \'None\', \'True\'], "
+  }
+  member_method {
+    name: "value_container"
+    argspec: "args=[\'self\', \'value\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "variable_created_in_scope"
+    argspec: "args=[\'self\', \'v\'], varargs=None, keywords=None, defaults=None"
+  }
+}

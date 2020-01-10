@@ -1,0 +1,4 @@
+op {
+  graph_op_name: "StackPopV2"
+  visibility: HIDDEN
+}

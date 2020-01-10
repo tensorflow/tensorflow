@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package tensorflow;
+option cc_enable_arenas = true;
+option java_outer_classname = "AllocationDescriptionProtos";
+option java_multiple_files = true;
+option java_package = "org.tensorflow.framework";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework";
+
+message AllocationDescription {
+  // Total number of bytes requested
+  int64 requested_bytes = 1;
+
+  // Total number of bytes allocated if known
+  int64 allocated_bytes = 2;
+
+  // Name of the allocator used
+  string allocator_name = 3;
+
+  // Identifier of the allocated buffer if known
+  int64 allocation_id = 4;
+
+  // Set if this tensor only has one remaining reference
+  bool has_single_reference = 5;
+
+  // Address of the allocation.
+  uint64 ptr = 6;
+};

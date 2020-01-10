@@ -1,0 +1,115 @@
+op {
+  name: "UnicodeDecodeWithOffsets"
+  input_arg {
+    name: "input"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "row_splits"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "char_values"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "char_to_byte_starts"
+    type: DT_INT64
+  }
+  attr {
+    name: "input_encoding"
+    type: "string"
+  }
+  attr {
+    name: "errors"
+    type: "string"
+    default_value {
+      s: "replace"
+    }
+    allowed_values {
+      list {
+        s: "strict"
+        s: "replace"
+        s: "ignore"
+      }
+    }
+  }
+  attr {
+    name: "replacement_char"
+    type: "int"
+    default_value {
+      i: 65533
+    }
+  }
+  attr {
+    name: "replace_control_characters"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}
+op {
+  name: "UnicodeDecodeWithOffsets"
+  input_arg {
+    name: "input"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "row_splits"
+    type_attr: "Tsplits"
+  }
+  output_arg {
+    name: "char_values"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "char_to_byte_starts"
+    type: DT_INT64
+  }
+  attr {
+    name: "input_encoding"
+    type: "string"
+  }
+  attr {
+    name: "errors"
+    type: "string"
+    default_value {
+      s: "replace"
+    }
+    allowed_values {
+      list {
+        s: "strict"
+        s: "replace"
+        s: "ignore"
+      }
+    }
+  }
+  attr {
+    name: "replacement_char"
+    type: "int"
+    default_value {
+      i: 65533
+    }
+  }
+  attr {
+    name: "replace_control_characters"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "Tsplits"
+    type: "type"
+    default_value {
+      type: DT_INT64
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+}

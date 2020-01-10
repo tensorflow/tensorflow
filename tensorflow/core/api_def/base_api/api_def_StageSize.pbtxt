@@ -1,0 +1,4 @@
+op {
+  graph_op_name: "StageSize"
+  summary: "Op returns the number of elements in the underlying container."
+}

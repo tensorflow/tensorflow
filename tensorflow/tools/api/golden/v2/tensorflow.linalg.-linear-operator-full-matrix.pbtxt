@@ -1,0 +1,177 @@
+path: "tensorflow.linalg.LinearOperatorFullMatrix"
+tf_class {
+  is_instance: "<class \'tensorflow.python.ops.linalg.linear_operator_full_matrix.LinearOperatorFullMatrix\'>"
+  is_instance: "<class \'tensorflow.python.ops.linalg.linear_operator.LinearOperator\'>"
+  is_instance: "<class \'tensorflow.python.module.module.Module\'>"
+  is_instance: "<class \'tensorflow.python.training.tracking.tracking.AutoTrackable\'>"
+  is_instance: "<class \'tensorflow.python.training.tracking.base.Trackable\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "H"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "batch_shape"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "domain_dimension"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "dtype"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "graph_parents"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "is_non_singular"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "is_positive_definite"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "is_self_adjoint"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "is_square"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "name"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "name_scope"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "range_dimension"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "shape"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "submodules"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "tensor_rank"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "trainable_variables"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "variables"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'matrix\', \'is_non_singular\', \'is_self_adjoint\', \'is_positive_definite\', \'is_square\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'LinearOperatorFullMatrix\'], "
+  }
+  member_method {
+    name: "add_to_tensor"
+    argspec: "args=[\'self\', \'x\', \'name\'], varargs=None, keywords=None, defaults=[\'add_to_tensor\'], "
+  }
+  member_method {
+    name: "adjoint"
+    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'adjoint\'], "
+  }
+  member_method {
+    name: "assert_non_singular"
+    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'assert_non_singular\'], "
+  }
+  member_method {
+    name: "assert_positive_definite"
+    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'assert_positive_definite\'], "
+  }
+  member_method {
+    name: "assert_self_adjoint"
+    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'assert_self_adjoint\'], "
+  }
+  member_method {
+    name: "batch_shape_tensor"
+    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'batch_shape_tensor\'], "
+  }
+  member_method {
+    name: "cholesky"
+    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'cholesky\'], "
+  }
+  member_method {
+    name: "cond"
+    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'cond\'], "
+  }
+  member_method {
+    name: "determinant"
+    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'det\'], "
+  }
+  member_method {
+    name: "diag_part"
+    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'diag_part\'], "
+  }
+  member_method {
+    name: "domain_dimension_tensor"
+    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'domain_dimension_tensor\'], "
+  }
+  member_method {
+    name: "eigvals"
+    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'eigvals\'], "
+  }
+  member_method {
+    name: "inverse"
+    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'inverse\'], "
+  }
+  member_method {
+    name: "log_abs_determinant"
+    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'log_abs_det\'], "
+  }
+  member_method {
+    name: "matmul"
+    argspec: "args=[\'self\', \'x\', \'adjoint\', \'adjoint_arg\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'matmul\'], "
+  }
+  member_method {
+    name: "matvec"
+    argspec: "args=[\'self\', \'x\', \'adjoint\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'matvec\'], "
+  }
+  member_method {
+    name: "range_dimension_tensor"
+    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'range_dimension_tensor\'], "
+  }
+  member_method {
+    name: "shape_tensor"
+    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'shape_tensor\'], "
+  }
+  member_method {
+    name: "solve"
+    argspec: "args=[\'self\', \'rhs\', \'adjoint\', \'adjoint_arg\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'solve\'], "
+  }
+  member_method {
+    name: "solvevec"
+    argspec: "args=[\'self\', \'rhs\', \'adjoint\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'solve\'], "
+  }
+  member_method {
+    name: "tensor_rank_tensor"
+    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'tensor_rank_tensor\'], "
+  }
+  member_method {
+    name: "to_dense"
+    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'to_dense\'], "
+  }
+  member_method {
+    name: "trace"
+    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'trace\'], "
+  }
+  member_method {
+    name: "with_name_scope"
+    argspec: "args=[\'cls\', \'method\'], varargs=None, keywords=None, defaults=None"
+  }
+}

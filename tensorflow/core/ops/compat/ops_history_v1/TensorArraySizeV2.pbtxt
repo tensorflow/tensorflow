@@ -1,0 +1,33 @@
+op {
+  name: "TensorArraySizeV2"
+  input_arg {
+    name: "handle"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "size"
+    type: DT_INT32
+  }
+}
+op {
+  name: "TensorArraySizeV2"
+  input_arg {
+    name: "handle"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "size"
+    type: DT_INT32
+  }
+  deprecation {
+    version: 26
+  }
+}

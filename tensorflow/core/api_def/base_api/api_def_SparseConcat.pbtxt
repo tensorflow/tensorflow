@@ -1,0 +1,90 @@
+op {
+  graph_op_name: "SparseConcat"
+  in_arg {
+    name: "indices"
+    description: <<END
+2-D.  Indices of each input `SparseTensor`.
+END
+  }
+  in_arg {
+    name: "values"
+    description: <<END
+1-D.  Non-empty values of each `SparseTensor`.
+END
+  }
+  in_arg {
+    name: "shapes"
+    description: <<END
+1-D.  Shapes of each `SparseTensor`.
+END
+  }
+  out_arg {
+    name: "output_indices"
+    description: <<END
+2-D.  Indices of the concatenated `SparseTensor`.
+END
+  }
+  out_arg {
+    name: "output_values"
+    description: <<END
+1-D.  Non-empty values of the concatenated `SparseTensor`.
+END
+  }
+  out_arg {
+    name: "output_shape"
+    description: <<END
+1-D.  Shape of the concatenated `SparseTensor`.
+END
+  }
+  attr {
+    name: "concat_dim"
+    description: <<END
+Dimension to concatenate along. Must be in range [-rank, rank),
+where rank is the number of dimensions in each input `SparseTensor`.
+END
+  }
+  summary: "Concatenates a list of `SparseTensor` along the specified dimension."
+  description: <<END
+Concatenation is with respect to the dense versions of these sparse tensors.
+It is assumed that each input is a `SparseTensor` whose elements are ordered
+along increasing dimension number.
+
+All inputs' shapes must match, except for the concat dimension.  The
+`indices`, `values`, and `shapes` lists must have the same length.
+
+The output shape is identical to the inputs', except along the concat
+dimension, where it is the sum of the inputs' sizes along that dimension.
+
+The output elements will be resorted to preserve the sort order along
+increasing dimension number.
+
+This op runs in `O(M log M)` time, where `M` is the total number of non-empty
+values across all inputs. This is due to the need for an internal sort in
+order to concatenate efficiently across an arbitrary dimension.
+
+For example, if `concat_dim = 1` and the inputs are
+
+    sp_inputs[0]: shape = [2, 3]
+    [0, 2]: "a"
+    [1, 0]: "b"
+    [1, 1]: "c"
+
+    sp_inputs[1]: shape = [2, 4]
+    [0, 1]: "d"
+    [0, 2]: "e"
+
+then the output will be
+
+    shape = [2, 7]
+    [0, 2]: "a"
+    [0, 4]: "d"
+    [0, 5]: "e"
+    [1, 0]: "b"
+    [1, 1]: "c"
+
+Graphically this is equivalent to doing
+
+    [    a] concat [  d e  ] = [    a   d e  ]
+    [b c  ]        [       ]   [b c          ]
+END
+}

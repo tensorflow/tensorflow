@@ -1,0 +1,28 @@
+op {
+  name: "BoostedTreesGetEnsembleStates"
+  input_arg {
+    name: "tree_ensemble_handle"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "stamp_token"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "num_trees"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "num_finalized_trees"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "num_attempted_layers"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "last_layer_nodes_range"
+    type: DT_INT32
+  }
+  is_stateful: true
+}

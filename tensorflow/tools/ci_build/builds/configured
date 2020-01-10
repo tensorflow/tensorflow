@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
+# This script is a wrapper to run any build inside the docker container
+# when running ci_build.sh. It's purpose is to automate the call of ./configure.
+# Yes, this script is a workaround of a workaround.
+#
+# Usage: configured <CONTAINER_TYPE> [--disable-gcp] <COMMAND>
+#
+# The optional flag --disable-gcp disabled support for Google Cloud Platform
+# (GCP) in the builds.
+
+set -e
+
+CONTAINER_TYPE=$( echo "$1" | tr '[:upper:]' '[:lower:]' )
+shift 1
+
+COMMAND=("$@")
+
+export CI_BUILD_PYTHON="${CI_BUILD_PYTHON:-python}"
+export PYTHON_BIN_PATH="${PYTHON_BIN_PATH:-$(which ${CI_BUILD_PYTHON})}"
+# XLA currently does not build under Android, so disable it for now.
+if [[ "${CONTAINER_TYPE}" == 'android' ]]; then
+  export TF_ENABLE_XLA=0
+fi
+
+pushd "${CI_TENSORFLOW_SUBMODULE_PATH:-.}"
+yes "" | $PYTHON_BIN_PATH configure.py
+popd
+
+# Gather and print build information
+SCRIPT_DIR=$( cd ${0%/*} && pwd -P )
+${SCRIPT_DIR}/print_build_info.sh ${CONTAINER_TYPE} ${COMMAND[@]}
+
+${COMMAND[@]}

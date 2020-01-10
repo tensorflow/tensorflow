@@ -1,0 +1,15 @@
+path: "tensorflow.lite.experimental.nn"
+tf_module {
+  member {
+    name: "TFLiteLSTMCell"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "TfLiteRNNCell"
+    mtype: "<type \'type\'>"
+  }
+  member_method {
+    name: "dynamic_rnn"
+    argspec: "args=[\'cell\', \'inputs\', \'sequence_length\', \'initial_state\', \'dtype\', \'parallel_iterations\', \'swap_memory\', \'time_major\', \'scope\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'False\', \'True\', \'None\'], "
+  }
+}

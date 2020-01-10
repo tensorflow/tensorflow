@@ -1,0 +1,11 @@
+op {
+  graph_op_name: "HostConst"
+  attr {
+    name: "value"
+    description: <<END
+Attr `value` is the tensor to return.
+END
+  }
+  visibility: SKIP
+  summary: "Returns a constant tensor on the host. Only for writing C++ tests."
+}

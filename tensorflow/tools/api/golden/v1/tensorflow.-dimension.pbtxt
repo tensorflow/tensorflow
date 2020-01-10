@@ -1,0 +1,25 @@
+path: "tensorflow.Dimension"
+tf_class {
+  is_instance: "<class \'tensorflow.python.framework.tensor_shape.Dimension\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "value"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'value\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "assert_is_compatible_with"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "is_compatible_with"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "merge_with"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
+  }
+}

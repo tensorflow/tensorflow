@@ -1,0 +1,111 @@
+node {
+  name: "Const"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+          dim {
+            size: 1
+          }
+          dim {
+            size: 2
+          }
+        }
+        float_val: 2.0
+      }
+    }
+  }
+}
+node {
+  name: "Const_1"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+          dim {
+            size: 1
+          }
+          dim {
+            size: 2
+          }
+        }
+        float_val: 2.0
+      }
+    }
+  }
+}
+node {
+  name: "MyAdd_55e046a8"
+  op: "MyAdd_55e046a8"
+  input: "Const"
+  input: "Const_1"
+}
+node {
+  name: "MyAdd_55e046a8_1"
+  op: "MyAdd_55e046a8"
+  input: "Const"
+  input: "MyAdd_55e046a8"
+}
+library {
+  function {
+    signature {
+      name: "MyAdd_55e046a8"
+      input_arg {
+        name: "x"
+        type: DT_FLOAT
+      }
+      input_arg {
+        name: "y"
+        type: DT_FLOAT
+      }
+      output_arg {
+        name: "Add"
+        type: DT_FLOAT
+      }
+    }
+    node_def {
+      name: "Add"
+      op: "Add"
+      input: "x"
+      input: "y"
+      attr {
+        key: "T"
+        value {
+          type: DT_FLOAT
+        }
+      }
+    }
+    ret {
+      key: "Add"
+      value: "Add:z:0"
+    }
+    attr {
+      key: "_noinline"
+      value {
+        b: true
+      }
+    }
+  }
+}
+versions {
+  producer: 24
+  min_consumer: 12
+}

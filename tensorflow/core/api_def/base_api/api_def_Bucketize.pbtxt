@@ -1,0 +1,38 @@
+op {
+  graph_op_name: "Bucketize"
+  in_arg {
+    name: "input"
+    description: <<END
+Any shape of Tensor contains with int or float type.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+Same shape with 'input', each value of input replaced with bucket index.
+
+@compatibility(numpy)
+Equivalent to np.digitize.
+@end_compatibility
+END
+  }
+  attr {
+    name: "boundaries"
+    description: <<END
+A sorted list of floats gives the boundary of the buckets.
+END
+  }
+  summary: "Bucketizes \'input\' based on \'boundaries\'."
+  description: <<END
+For example, if the inputs are
+    boundaries = [0, 10, 100]
+    input = [[-5, 10000]
+             [150,   10]
+             [5,    100]]
+
+then the output will be
+    output = [[0, 3]
+              [3, 2]
+              [1, 3]]
+END
+}

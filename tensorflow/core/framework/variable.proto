@@ -1,0 +1,85 @@
+syntax = "proto3";
+
+package tensorflow;
+
+option cc_enable_arenas = true;
+option java_outer_classname = "VariableProtos";
+option java_multiple_files = true;
+option java_package = "org.tensorflow.framework";
+
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework";
+
+// Indicates when a distributed variable will be synced.
+enum VariableSynchronization {
+  // `AUTO`: Indicates that the synchronization will be determined by the
+  // current `DistributionStrategy` (eg. With `MirroredStrategy` this would be
+  // `ON_WRITE`).
+  VARIABLE_SYNCHRONIZATION_AUTO = 0;
+  // `NONE`: Indicates that there will only be one copy of the variable, so
+  // there is no need to sync.
+  VARIABLE_SYNCHRONIZATION_NONE = 1;
+  // `ON_WRITE`: Indicates that the variable will be updated across devices
+  // every time it is written.
+  VARIABLE_SYNCHRONIZATION_ON_WRITE = 2;
+  // `ON_READ`: Indicates that the variable will be aggregated across devices
+  // when it is read (eg. when checkpointing or when evaluating an op that uses
+  // the variable).
+  VARIABLE_SYNCHRONIZATION_ON_READ = 3;
+}
+
+// Indicates how a distributed variable will be aggregated.
+enum VariableAggregation {
+  // `NONE`: This is the default, giving an error if you use a
+  // variable-update operation with multiple replicas.
+  VARIABLE_AGGREGATION_NONE = 0;
+  // `SUM`: Add the updates across replicas.
+  VARIABLE_AGGREGATION_SUM = 1;
+  // `MEAN`: Take the arithmetic mean ("average") of the updates across
+  // replicas.
+  VARIABLE_AGGREGATION_MEAN = 2;
+  // `ONLY_FIRST_REPLICA`: This is for when every replica is performing the same
+  // update, but we only want to perform the update once. Used, e.g., for the
+  // global step counter.
+  VARIABLE_AGGREGATION_ONLY_FIRST_REPLICA = 3;
+}
+
+// Protocol buffer representing a Variable.
+message VariableDef {
+  // Name of the variable tensor.
+  string variable_name = 1;
+
+  // Name of the tensor holding the variable's initial value.
+  string initial_value_name = 6;
+
+  // Name of the initializer op.
+  string initializer_name = 2;
+
+  // Name of the snapshot tensor.
+  string snapshot_name = 3;
+
+  // Support for saving variables as slices of a larger variable.
+  SaveSliceInfoDef save_slice_info_def = 4;
+
+  // Whether to represent this as a ResourceVariable.
+  bool is_resource = 5;
+
+  // Whether this variable should be trained.
+  bool trainable = 7;
+
+  // Indicates when a distributed variable will be synced.
+  VariableSynchronization synchronization = 8;
+
+  // Indicates how a distributed variable will be aggregated.
+  VariableAggregation aggregation = 9;
+}
+
+message SaveSliceInfoDef {
+  // Name of the full variable of which this is a slice.
+  string full_name = 1;
+  // Shape of the full variable.
+  repeated int64 full_shape = 2;
+  // Offset of this variable into the full variable.
+  repeated int64 var_offset = 3;
+  // Shape of this variable.
+  repeated int64 var_shape = 4;
+}

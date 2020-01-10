@@ -1,0 +1,37 @@
+op {
+  graph_op_name: "LeftShift"
+  summary: "Elementwise computes the bitwise left-shift of `x` and `y`."
+  description: <<END
+If `y` is negative, or greater than or equal to the width of `x` in bits the
+result is implementation defined.
+
+Example:
+
+```python
+import tensorflow as tf
+from tensorflow.python.ops import bitwise_ops
+import numpy as np
+dtype_list = [tf.int8, tf.int16, tf.int32, tf.int64]
+
+for dtype in dtype_list:
+  lhs = tf.constant([-1, -5, -3, -14], dtype=dtype)
+  rhs = tf.constant([5, 0, 7, 11], dtype=dtype)
+
+  left_shift_result = bitwise_ops.left_shift(lhs, rhs)
+
+  print(left_shift_result)
+
+# This will print:
+# tf.Tensor([ -32   -5 -128    0], shape=(4,), dtype=int8)
+# tf.Tensor([   -32     -5   -384 -28672], shape=(4,), dtype=int16)
+# tf.Tensor([   -32     -5   -384 -28672], shape=(4,), dtype=int32)
+# tf.Tensor([   -32     -5   -384 -28672], shape=(4,), dtype=int64)
+
+lhs = np.array([-2, 64, 101, 32], dtype=np.int8)
+rhs = np.array([-1, -5, -3, -14], dtype=np.int8)
+bitwise_ops.left_shift(lhs, rhs)
+# <tf.Tensor: shape=(4,), dtype=int8, numpy=array([ -2,  64, 101,  32], dtype=int8)>
+```
+
+END
+}

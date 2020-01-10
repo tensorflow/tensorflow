@@ -1,0 +1,123 @@
+syntax = "proto3";
+
+package tensorflow;
+
+import "tensorflow/core/framework/summary.proto";
+
+option cc_enable_arenas = true;
+option java_outer_classname = "EventProtos";
+option java_multiple_files = true;
+option java_package = "org.tensorflow.util";
+
+// Protocol buffer representing an event that happened during
+// the execution of a Brain model.
+message Event {
+  // Timestamp of the event.
+  double wall_time = 1;
+
+  // Global step of the event.
+  int64 step = 2;
+
+  oneof what {
+    // An event file was started, with the specified version.
+    // This is use to identify the contents of the record IO files
+    // easily.  Current version is "brain.Event:2".  All versions
+    // start with "brain.Event:".
+    string file_version = 3;
+    // An encoded version of a GraphDef.
+    bytes graph_def = 4;
+    // A summary was generated.
+    Summary summary = 5;
+    // The user output a log message. Not all messages are logged, only ones
+    // generated via the Python tensorboard_logging module.
+    LogMessage log_message = 6;
+    // The state of the session which can be used for restarting after crashes.
+    SessionLog session_log = 7;
+    // The metadata returned by running a session.run() call.
+    TaggedRunMetadata tagged_run_metadata = 8;
+    // An encoded version of a MetaGraphDef.
+    bytes meta_graph_def = 9;
+  }
+}
+
+// Protocol buffer used for logging messages to the events file.
+message LogMessage {
+  enum Level {
+    UNKNOWN = 0;
+    // Note: The logging level 10 cannot be named DEBUG. Some software
+    // projects compile their C/C++ code with -DDEBUG in debug builds. So the
+    // C++ code generated from this file should not have an identifier named
+    // DEBUG.
+    DEBUGGING = 10;
+    INFO = 20;
+    WARN = 30;
+    ERROR = 40;
+    FATAL = 50;
+  }
+  Level level = 1;
+  string message = 2;
+}
+
+// Protocol buffer used for logging session state.
+message SessionLog {
+  enum SessionStatus {
+    STATUS_UNSPECIFIED = 0;
+    START = 1;
+    STOP = 2;
+    CHECKPOINT = 3;
+  }
+
+  SessionStatus status = 1;
+  // This checkpoint_path contains both the path and filename.
+  string checkpoint_path = 2;
+  string msg = 3;
+}
+
+// For logging the metadata output for a single session.run() call.
+message TaggedRunMetadata {
+  // Tag name associated with this metadata.
+  string tag = 1;
+  // Byte-encoded version of the `RunMetadata` proto in order to allow lazy
+  // deserialization.
+  bytes run_metadata = 2;
+}
+
+// Worker heartbeat messages.  Support for these operations is currently
+// internal and expected to change.
+
+// Current health status of a worker.
+enum WorkerHealth {
+  OK = 0;  // By default a worker is healthy.
+  RECEIVED_SHUTDOWN_SIGNAL = 1;
+  INTERNAL_ERROR = 2;
+  SHUTTING_DOWN = 3;  // Worker has been instructed to shutdown after a timeout.
+}
+
+// Indicates the behavior of the worker when an internal error or shutdown
+// signal is received.
+enum WorkerShutdownMode {
+  DEFAULT = 0;
+  NOT_CONFIGURED = 1;
+  WAIT_FOR_COORDINATOR = 2;
+  SHUTDOWN_AFTER_TIMEOUT = 3;
+}
+
+message WatchdogConfig {
+  int64 timeout_ms = 1;
+}
+
+message RequestedExitCode {
+  int32 exit_code = 1;
+}
+
+message WorkerHeartbeatRequest {
+  WorkerShutdownMode shutdown_mode = 1;
+  WatchdogConfig watchdog_config = 2;
+  RequestedExitCode exit_code = 3;
+}
+
+message WorkerHeartbeatResponse {
+  WorkerHealth health_status = 1;
+  repeated Event worker_log = 2;
+  string hostname = 3;
+}

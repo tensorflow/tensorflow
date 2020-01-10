@@ -1,0 +1,35 @@
+op {
+  name: "Send"
+  input_arg {
+    name: "tensor"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "tensor_name"
+    type: "string"
+  }
+  attr {
+    name: "send_device"
+    type: "string"
+  }
+  attr {
+    name: "send_device_incarnation"
+    type: "int"
+  }
+  attr {
+    name: "recv_device"
+    type: "string"
+  }
+  attr {
+    name: "client_terminated"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  is_stateful: true
+}

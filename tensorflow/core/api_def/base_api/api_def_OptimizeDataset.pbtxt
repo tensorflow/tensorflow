@@ -1,0 +1,20 @@
+op {
+  graph_op_name: "OptimizeDataset"
+  visibility: HIDDEN
+  in_arg {
+    name: "input_dataset"
+    description: <<END
+A variant tensor representing the input dataset.
+END
+  }
+  in_arg {
+    name: "optimizations"
+    description: <<END
+A `tf.string` vector `tf.Tensor` identifying optimizations to use.
+END
+  }
+  summary: "Creates a dataset by applying optimizations to `input_dataset`."
+  description: <<END
+Creates a dataset by applying optimizations to `input_dataset`.
+END
+}

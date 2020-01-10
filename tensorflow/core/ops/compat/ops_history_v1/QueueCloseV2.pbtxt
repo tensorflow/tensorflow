@@ -1,0 +1,15 @@
+op {
+  name: "QueueCloseV2"
+  input_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "cancel_pending_enqueues"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  is_stateful: true
+}

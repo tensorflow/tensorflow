@@ -1,0 +1,49 @@
+op {
+  graph_op_name: "QuantizedBiasAdd"
+  in_arg {
+    name: "bias"
+    description: <<END
+A 1D bias Tensor with size matching the last dimension of 'input'.
+END
+  }
+  in_arg {
+    name: "min_input"
+    description: <<END
+The float value that the lowest quantized input value represents.
+END
+  }
+  in_arg {
+    name: "max_input"
+    description: <<END
+The float value that the highest quantized input value represents.
+END
+  }
+  in_arg {
+    name: "min_bias"
+    description: <<END
+The float value that the lowest quantized bias value represents.
+END
+  }
+  in_arg {
+    name: "max_bias"
+    description: <<END
+The float value that the highest quantized bias value represents.
+END
+  }
+  out_arg {
+    name: "min_out"
+    description: <<END
+The float value that the lowest quantized output value represents.
+END
+  }
+  out_arg {
+    name: "max_out"
+    description: <<END
+The float value that the highest quantized output value represents.
+END
+  }
+  summary: "Adds Tensor \'bias\' to Tensor \'input\' for Quantized types."
+  description: <<END
+Broadcasts the values of bias on dimensions 0..N-2 of 'input'.
+END
+}

@@ -1,0 +1,54 @@
+path: "tensorflow.HistogramProto"
+tf_proto {
+  descriptor {
+    name: "HistogramProto"
+    field {
+      name: "min"
+      number: 1
+      label: LABEL_OPTIONAL
+      type: TYPE_DOUBLE
+    }
+    field {
+      name: "max"
+      number: 2
+      label: LABEL_OPTIONAL
+      type: TYPE_DOUBLE
+    }
+    field {
+      name: "num"
+      number: 3
+      label: LABEL_OPTIONAL
+      type: TYPE_DOUBLE
+    }
+    field {
+      name: "sum"
+      number: 4
+      label: LABEL_OPTIONAL
+      type: TYPE_DOUBLE
+    }
+    field {
+      name: "sum_squares"
+      number: 5
+      label: LABEL_OPTIONAL
+      type: TYPE_DOUBLE
+    }
+    field {
+      name: "bucket_limit"
+      number: 6
+      label: LABEL_REPEATED
+      type: TYPE_DOUBLE
+      options {
+        packed: true
+      }
+    }
+    field {
+      name: "bucket"
+      number: 7
+      label: LABEL_REPEATED
+      type: TYPE_DOUBLE
+      options {
+        packed: true
+      }
+    }
+  }
+}

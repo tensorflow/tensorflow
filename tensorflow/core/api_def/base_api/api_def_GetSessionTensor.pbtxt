@@ -1,0 +1,22 @@
+op {
+  graph_op_name: "GetSessionTensor"
+  in_arg {
+    name: "handle"
+    description: <<END
+The handle for a tensor stored in the session state.
+END
+  }
+  out_arg {
+    name: "value"
+    description: <<END
+The tensor for the given handle.
+END
+  }
+  attr {
+    name: "dtype"
+    description: <<END
+The type of the output value.
+END
+  }
+  summary: "Get the value of the tensor specified by its handle."
+}

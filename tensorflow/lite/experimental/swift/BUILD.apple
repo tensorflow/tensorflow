@@ -1,0 +1,84 @@
+# TensorFlow Lite for Swift
+
+load("//tensorflow/lite:special_rules.bzl", "ios_visibility_whitelist")
+load("//tensorflow/lite/experimental/ios:ios.bzl", "TFL_DEFAULT_TAGS", "TFL_DISABLED_SANITIZER_TAGS", "TFL_MINIMUM_OS_VERSION")
+load("@build_bazel_rules_apple//apple:ios.bzl", "ios_application", "ios_unit_test")
+load("@build_bazel_rules_swift//swift:swift.bzl", "swift_library")
+
+package(
+    default_visibility = ["//visibility:private"],
+    licenses = ["notice"],  # Apache 2.0
+)
+
+swift_library(
+    name = "TensorFlowLite",
+    srcs = glob(["Sources/*.swift"]),
+    module_name = "TensorFlowLite",
+    tags = TFL_DEFAULT_TAGS,
+    visibility = ios_visibility_whitelist(),
+    deps = [
+        "//tensorflow/lite/experimental/ios:TensorFlowLiteC",
+    ],
+)
+
+ios_unit_test(
+    name = "Tests",
+    size = "small",
+    minimum_os_version = TFL_MINIMUM_OS_VERSION,
+    tags = TFL_DEFAULT_TAGS + TFL_DISABLED_SANITIZER_TAGS,
+    deps = [
+        ":TestsLibrary",
+    ],
+)
+
+swift_library(
+    name = "TestsLibrary",
+    testonly = 1,
+    srcs = glob(["Tests/*.swift"]),
+    tags = TFL_DEFAULT_TAGS,
+    deps = [
+        ":Resources",
+        ":TensorFlowLite",
+    ],
+)
+
+ios_application(
+    name = "TestApp",
+    app_icons = glob(["TestApp/TestApp/Assets.xcassets/AppIcon.appiconset/**"]),
+    bundle_id = "com.tensorflow.lite.swift.TestApp",
+    families = [
+        "ipad",
+        "iphone",
+    ],
+    infoplists = ["TestApp/TestApp/Info.plist"],
+    minimum_os_version = TFL_MINIMUM_OS_VERSION,
+    sdk_frameworks = [
+        "CoreGraphics",
+    ],
+    tags = TFL_DEFAULT_TAGS,
+    deps = [
+        ":TestAppLibrary",
+    ],
+)
+
+swift_library(
+    name = "TestAppLibrary",
+    srcs = glob(["TestApp/TestApp/*.swift"]),
+    data = glob(["TestApp/TestApp/Base.lproj/*.storyboard"]),
+    module_name = "TestApp",
+    tags = TFL_DEFAULT_TAGS + ["manual"],
+    deps = [
+        ":Resources",
+        ":TensorFlowLite",
+    ],
+)
+
+objc_library(
+    name = "Resources",
+    data = [
+        "//tensorflow/lite:testdata/add.bin",
+        "//tensorflow/lite:testdata/add_quantized.bin",
+        "//tensorflow/lite:testdata/multi_add.bin",
+    ],
+    tags = TFL_DEFAULT_TAGS,
+)

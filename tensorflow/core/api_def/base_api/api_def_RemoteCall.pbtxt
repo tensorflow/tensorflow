@@ -1,0 +1,40 @@
+op {
+  graph_op_name: "RemoteCall"
+  in_arg {
+    name: "target"
+    description: <<END
+A fully specified device name where we want to run the function.
+END
+  }
+  in_arg {
+    name: "args"
+    description: <<END
+A list of arguments for the function.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+A list of return values.
+END
+  }
+  attr {
+    name: "Tin"
+    description: <<END
+The type list for the arguments.
+END
+  }
+  attr {
+    name: "Tout"
+    description: <<END
+The type list for the return values.
+END
+  }
+  attr {
+    name: "f"
+    description: <<END
+The function to run remotely.
+END
+  }
+  summary: "Runs function `f` on a remote device indicated by `target`."
+}

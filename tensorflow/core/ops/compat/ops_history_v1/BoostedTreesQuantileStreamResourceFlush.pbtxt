@@ -1,0 +1,19 @@
+op {
+  name: "BoostedTreesQuantileStreamResourceFlush"
+  input_arg {
+    name: "quantile_stream_resource_handle"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "num_buckets"
+    type: DT_INT64
+  }
+  attr {
+    name: "generate_quantiles"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  is_stateful: true
+}

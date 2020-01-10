@@ -1,0 +1,46 @@
+syntax = "proto3";
+
+package tensorflow;
+
+import "tensorflow/core/protobuf/master.proto";
+
+option cc_enable_arenas = true;
+
+// Records the creation of a new replay session.  We record the device listing
+// here to capture the state of the cluster.
+message NewReplaySession {
+  ListDevicesResponse devices = 1;
+  string session_handle = 2;
+}
+
+message ReplayOp {
+  double start_time_us = 31;
+  double end_time_us = 32;
+
+  oneof op {
+    CreateSessionRequest create_session = 1;
+    ExtendSessionRequest extend_session = 2;
+    PartialRunSetupRequest partial_run_setup = 3;
+    RunStepRequest run_step = 4;
+    CloseSessionRequest close_session = 5;
+    ListDevicesRequest list_devices = 6;
+    ResetRequest reset_request = 7;
+    MakeCallableRequest make_callable = 8;
+    RunCallableRequest run_callable = 9;
+    ReleaseCallableRequest release_callable = 10;
+    NewReplaySession new_replay_session = 11;
+  }
+
+  oneof response {
+    CreateSessionResponse create_session_response = 21;
+    ExtendSessionResponse extend_session_response = 22;
+    PartialRunSetupResponse partial_run_setup_response = 23;
+    RunStepResponse run_step_response = 24;
+    CloseSessionResponse close_session_response = 25;
+    ListDevicesResponse list_devices_response = 26;
+    ResetResponse reset_request_response = 27;
+    MakeCallableResponse make_callable_response = 28;
+    RunCallableResponse run_callable_response = 29;
+    ReleaseCallableResponse release_callable_response = 30;
+  }
+}

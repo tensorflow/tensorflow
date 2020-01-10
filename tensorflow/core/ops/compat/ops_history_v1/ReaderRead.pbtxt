@@ -1,0 +1,21 @@
+op {
+  name: "ReaderRead"
+  input_arg {
+    name: "reader_handle"
+    type: DT_STRING
+    is_ref: true
+  }
+  input_arg {
+    name: "queue_handle"
+    type: DT_STRING
+    is_ref: true
+  }
+  output_arg {
+    name: "key"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "value"
+    type: DT_STRING
+  }
+}

@@ -1,0 +1,56 @@
+node {
+  name  : "x_const"
+  op    : "Const"
+  attr {
+    key: "value"
+    value {
+      tensor { dtype: DT_INT32 tensor_shape { dim { size: 1 } } int_val: 1 }
+    }
+  }
+  attr {
+    key  : "dtype"
+    value {
+      type       : DT_INT32
+    }
+  }
+}
+node {
+  name  : "y_const"
+  op    : "Const"
+  attr {
+    key: "value"
+    value {
+      tensor { dtype: DT_INT32 tensor_shape { dim { size: 1 } } int_val: 2 }
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name  : "y_reshape"
+  op    : "Reshape"
+  input : "y_const"
+  input : "y_shape"
+  attr { key: "T" value { type: DT_INT32 } }
+  # Attribute TShape not specified; needs to be set to its default
+  # by tfcompile.
+}
+node {
+  name  : "x_y_sum"
+  op    : "Add"
+  input : "x_const"
+  input : "y_reshape"
+  attr {
+    key  : "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+versions {
+  producer: 15
+}

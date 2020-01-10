@@ -1,0 +1,58 @@
+node {
+  name  : "x_const"
+  op    : "Const"
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape { dim { size: 1 } }
+        int_val: 1
+      }
+    }
+  }
+  attr { key  : "dtype" value { type: DT_INT32 } }
+}
+node {
+  name  : "y_const"
+  op    : "Const"
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape { dim { size: 1 } }
+        int_val: 2
+      }
+    }
+  }
+  attr { key: "dtype" value { type: DT_INT32 } }
+}
+node {
+  name  : "x_y_sum"
+  op    : "Add"
+  input : "x_const"
+  input : "y_const"
+  attr { key  : "T" value { type: DT_INT32 } }
+}
+node {
+  name  : "z"
+  op    : "SomeUnknownOp"
+  input : "x_const"
+}
+node {
+  name  : "z_identity"
+  op    : "Identity"
+  input : "z:1"
+  attr { key  : "T" value { type: DT_INT32 } }
+}
+node {
+  name  : "x_z_sum"
+  op    : "Add"
+  input : "x_const"
+  input : "z_identity"
+  attr { key  : "T" value { type: DT_INT32 } }
+}
+versions {
+  producer: 15
+}

@@ -1,0 +1,239 @@
+op {
+  name: "DecodeCSV"
+  input_arg {
+    name: "records"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "record_defaults"
+    type_list_attr: "OUT_TYPE"
+  }
+  output_arg {
+    name: "output"
+    type_list_attr: "OUT_TYPE"
+  }
+  attr {
+    name: "OUT_TYPE"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_STRING
+      }
+    }
+  }
+  attr {
+    name: "field_delim"
+    type: "string"
+    default_value {
+      s: ","
+    }
+  }
+}
+op {
+  name: "DecodeCSV"
+  input_arg {
+    name: "records"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "record_defaults"
+    type_list_attr: "OUT_TYPE"
+  }
+  output_arg {
+    name: "output"
+    type_list_attr: "OUT_TYPE"
+  }
+  attr {
+    name: "OUT_TYPE"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_STRING
+      }
+    }
+  }
+  attr {
+    name: "field_delim"
+    type: "string"
+    default_value {
+      s: ","
+    }
+  }
+  attr {
+    name: "use_quote_delim"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+}
+op {
+  name: "DecodeCSV"
+  input_arg {
+    name: "records"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "record_defaults"
+    type_list_attr: "OUT_TYPE"
+  }
+  output_arg {
+    name: "output"
+    type_list_attr: "OUT_TYPE"
+  }
+  attr {
+    name: "OUT_TYPE"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_STRING
+      }
+    }
+  }
+  attr {
+    name: "field_delim"
+    type: "string"
+    default_value {
+      s: ","
+    }
+  }
+  attr {
+    name: "use_quote_delim"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "na_value"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+}
+op {
+  name: "DecodeCSV"
+  input_arg {
+    name: "records"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "record_defaults"
+    type_list_attr: "OUT_TYPE"
+  }
+  output_arg {
+    name: "output"
+    type_list_attr: "OUT_TYPE"
+  }
+  attr {
+    name: "OUT_TYPE"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_STRING
+      }
+    }
+  }
+  attr {
+    name: "field_delim"
+    type: "string"
+    default_value {
+      s: ","
+    }
+  }
+  attr {
+    name: "use_quote_delim"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "na_value"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+}
+op {
+  name: "DecodeCSV"
+  input_arg {
+    name: "records"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "record_defaults"
+    type_list_attr: "OUT_TYPE"
+  }
+  output_arg {
+    name: "output"
+    type_list_attr: "OUT_TYPE"
+  }
+  attr {
+    name: "OUT_TYPE"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_STRING
+      }
+    }
+  }
+  attr {
+    name: "field_delim"
+    type: "string"
+    default_value {
+      s: ","
+    }
+  }
+  attr {
+    name: "use_quote_delim"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "na_value"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "select_cols"
+    type: "list(int)"
+    default_value {
+      list {
+      }
+    }
+  }
+}

@@ -1,0 +1,93 @@
+# TensorFlow Lite for iOS
+
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
+load("//tensorflow/lite/experimental/ios:ios.bzl", "TFL_MINIMUM_OS_VERSION")
+load("@build_bazel_rules_apple//apple:ios.bzl", "ios_static_framework")
+
+package(
+    default_visibility = [
+        "//tensorflow/lite:__subpackages__",
+    ],
+    licenses = ["notice"],  # Apache 2.0
+)
+
+TFL_LIBRARY_HDRS = [
+    "//tensorflow/lite/delegates/gpu:metal_delegate.h",
+    "//tensorflow/lite/c:c_api.h",
+    "//tensorflow/lite/c:common.h",
+]
+
+# bazel build -c opt --config=ios_fat //tensorflow/lite/experimental/ios:TensorFlowLiteC_framework
+ios_static_framework(
+    name = "TensorFlowLiteC_framework",
+    hdrs = TFL_LIBRARY_HDRS,
+    bundle_name = "TensorFlowLiteC",
+    minimum_os_version = TFL_MINIMUM_OS_VERSION,
+    deps = [
+        ":TensorFlowLiteC",
+    ],
+)
+
+objc_library(
+    name = "TensorFlowLiteC",
+    hdrs = TFL_LIBRARY_HDRS,
+    module_name = "TensorFlowLiteC",
+    weak_sdk_frameworks = [
+        "Metal",
+    ],
+    deps = [
+        ":tensorflow_lite_c",
+    ],
+)
+
+# This target builds the flex delegate as a separate static framework, which
+# does not include the TensorFlow Lite runtime. As this target does not contain
+# TensorFlow Lite runtime, it is intended to be linked along with the
+# TensorFlowLiteC framework above in a composable way.
+#
+# The flex delegate cannot be built for i386, so it can't be built with ios_fat
+# config.
+#
+# bazel build -c opt --config=ios --ios_multi_cpus=armv7,arm64,x86_64 //tensorflow/lite/experimental/ios:TensorFlowLiteSelectTfOps_framework
+ios_static_framework(
+    name = "TensorFlowLiteSelectTfOps_framework",
+    bundle_name = "TensorFlowLiteSelectTfOps",
+    minimum_os_version = TFL_MINIMUM_OS_VERSION,
+    deps = [
+        "//tensorflow/lite/delegates/flex:delegate",
+    ],
+)
+
+# Using this intermediate target is a workaround for a bug in bazel build rules
+# involving mixed objc_library & cc_library deps mentioned in (b/74809458).
+# When these dependencies are declared directly under the "TensorFlowLiteC"
+# target above, the resulting static library incorrectly contains duplicate
+# symbols from some ObjC code in the transitive dependencies.
+#
+# When a new dependency should be added to the TensorFlowLiteC framework, the
+# dependency should be added under this target instead.
+# When a new header file needs to be exposed, the header should be added to the
+# TFL_LIBRARY_HDRS list above.
+cc_library(
+    name = "tensorflow_lite_c",
+    hdrs = TFL_LIBRARY_HDRS,
+    tags = ["nobuilder"],
+    deps = [
+        "//tensorflow/lite/c:c_api",
+        "//tensorflow/lite/delegates/gpu:metal_delegate",
+    ],
+)
+
+# Used for building TensorFlowLiteC framework.
+build_test(
+    name = "framework_build_test",
+    tags = [
+        "noasan",  # b/147230742
+        "nomsan",  # b/145205324
+        "notsan",  # b/145205324
+    ],
+    targets = [
+        ":TensorFlowLiteC_framework",
+        ":TensorFlowLiteSelectTfOps_framework",
+    ],
+)

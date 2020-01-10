@@ -1,0 +1,1 @@
+Contents are unused. See gen_proto_functions.cc for details.

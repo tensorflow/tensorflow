@@ -1,0 +1,41 @@
+op {
+  graph_op_name: "Range"
+  in_arg {
+    name: "start"
+    description: <<END
+0-D (scalar). First entry in the sequence.
+END
+  }
+  in_arg {
+    name: "limit"
+    description: <<END
+0-D (scalar). Upper limit of sequence, exclusive.
+END
+  }
+  in_arg {
+    name: "delta"
+    description: <<END
+0-D (scalar). Optional. Default is 1. Number that increments `start`.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+1-D.
+END
+  }
+  summary: "Creates a sequence of numbers."
+  description: <<END
+This operation creates a sequence of numbers that begins at `start` and
+extends by increments of `delta` up to but not including `limit`.
+
+For example:
+
+```
+# 'start' is 3
+# 'limit' is 18
+# 'delta' is 3
+tf.range(start, limit, delta) ==> [3, 6, 9, 12, 15]
+```
+END
+}

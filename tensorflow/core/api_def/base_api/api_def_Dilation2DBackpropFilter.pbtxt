@@ -1,0 +1,48 @@
+op {
+  graph_op_name: "Dilation2DBackpropFilter"
+  in_arg {
+    name: "input"
+    description: <<END
+4-D with shape `[batch, in_height, in_width, depth]`.
+END
+  }
+  in_arg {
+    name: "filter"
+    description: <<END
+3-D with shape `[filter_height, filter_width, depth]`.
+END
+  }
+  in_arg {
+    name: "out_backprop"
+    description: <<END
+4-D with shape `[batch, out_height, out_width, depth]`.
+END
+  }
+  out_arg {
+    name: "filter_backprop"
+    description: <<END
+3-D with shape `[filter_height, filter_width, depth]`.
+END
+  }
+  attr {
+    name: "strides"
+    description: <<END
+1-D of length 4. The stride of the sliding window for each dimension of
+the input tensor. Must be: `[1, stride_height, stride_width, 1]`.
+END
+  }
+  attr {
+    name: "rates"
+    description: <<END
+1-D of length 4. The input stride for atrous morphological dilation.
+Must be: `[1, rate_height, rate_width, 1]`.
+END
+  }
+  attr {
+    name: "padding"
+    description: <<END
+The type of padding algorithm to use.
+END
+  }
+  summary: "Computes the gradient of morphological 2-D dilation with respect to the filter."
+}

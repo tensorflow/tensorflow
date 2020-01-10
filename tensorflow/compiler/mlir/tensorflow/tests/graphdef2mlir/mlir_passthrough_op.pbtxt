@@ -1,0 +1,101 @@
+# RUN: tf-mlir-translate -graphdef-to-mlir %s | FileCheck %s
+
+# CHECK:"tf.MlirPassthroughOp"
+# CHECK: mlir_module = "\0Afunc @main(%arg0 : tensor<10xf32>, %arg1 : tensor<10xf32>) -> tensor<10x10xf32> {\0A   %add = \22tf.Add\22(%arg0, %arg1) : (tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>\0A   %ret = \22magic.op\22(%add, %add) : (tensor<10xf32>, tensor<10xf32>) -> tensor<10x10xf32>\0A   return %ret : tensor<10x10xf32>\0A}\0A"} : (tensor<10xf32>, tensor<10xf32>) -> tensor<*xf32>
+
+node {
+  name: "x"
+  op: "Placeholder"
+  attr {
+    key: "_user_specified_name"
+    value {
+      s: "x"
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+        dim {
+          size: 10
+        }
+      }
+    }
+  }
+}
+node {
+  name: "y"
+  op: "Placeholder"
+  attr {
+    key: "_user_specified_name"
+    value {
+      s: "y"
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+        dim {
+          size: 10
+        }
+      }
+    }
+  }
+}
+node {
+  name: "MlirPassthroughOp"
+  op: "MlirPassthroughOp"
+  input: "x"
+  input: "y"
+  attr {
+    key: "Tinputs"
+    value {
+      list {
+        type: DT_FLOAT
+        type: DT_FLOAT
+      }
+    }
+  }
+  attr {
+    key: "Toutputs"
+    value {
+      list {
+        type: DT_FLOAT
+      }
+    }
+  }
+  attr {
+    key: "mlir_module"
+    value {
+      s: "\nfunc @main(%arg0 : tensor<10xf32>, %arg1 : tensor<10xf32>) -> tensor<10x10xf32> {\n   %add = \"tf.Add\"(%arg0, %arg1) : (tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>\n   %ret = \"magic.op\"(%add, %add) : (tensor<10xf32>, tensor<10xf32>) -> tensor<10x10xf32>\n   return %ret : tensor<10x10xf32>\n}\n"
+    }
+  }
+}
+node {
+  name: "Identity"
+  op: "Identity"
+  input: "MlirPassthroughOp"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+versions {
+  producer: 148
+}
+

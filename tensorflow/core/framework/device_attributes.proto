@@ -1,0 +1,52 @@
+syntax = "proto3";
+
+package tensorflow;
+option cc_enable_arenas = true;
+option java_outer_classname = "DeviceAttributesProtos";
+option java_multiple_files = true;
+option java_package = "org.tensorflow.framework";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework";
+
+message InterconnectLink {
+  int32 device_id = 1;
+  string type = 2;
+  int32 strength = 3;
+};
+
+message LocalLinks {
+  repeated InterconnectLink link = 1;
+};
+
+message DeviceLocality {
+  // Optional bus locality of device.  Default value of 0 means
+  // no specific locality.  Specific localities are indexed from 1.
+  int32 bus_id = 1;
+
+  // Optional NUMA locality of device.
+  int32 numa_node = 2;
+
+  // Optional local interconnect links to other devices.
+  LocalLinks links = 3;
+};
+
+message DeviceAttributes {
+  // Fully specified name of the device within a cluster.
+  string name = 1;
+
+  // String representation of device_type.
+  string device_type = 2;
+
+  // Memory capacity of device in bytes.
+  int64 memory_limit = 4;
+
+  // Platform-specific data about device that may be useful
+  // for supporting efficient data transfers.
+  DeviceLocality locality = 5;
+
+  // A device is assigned a global unique number each time it is
+  // initialized. "incarnation" should never be 0.
+  fixed64 incarnation = 6;
+
+  // String representation of the physical device that this device maps to.
+  string physical_device_desc = 7;
+}

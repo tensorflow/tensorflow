@@ -1,0 +1,9 @@
+op {
+  graph_op_name: "Sin"
+  endpoint {
+    name: "math.sin"
+  }
+  endpoint {
+    name: "sin"
+  }
+}

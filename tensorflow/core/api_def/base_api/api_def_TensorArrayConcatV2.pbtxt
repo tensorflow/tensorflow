@@ -1,0 +1,5 @@
+op {
+  graph_op_name: "TensorArrayConcatV2"
+  visibility: SKIP
+  summary: "Deprecated. Use TensorArrayConcatV3"
+}

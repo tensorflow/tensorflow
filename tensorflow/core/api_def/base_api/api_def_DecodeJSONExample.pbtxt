@@ -1,0 +1,26 @@
+op {
+  graph_op_name: "DecodeJSONExample"
+  in_arg {
+    name: "json_examples"
+    description: <<END
+Each string is a JSON object serialized according to the JSON
+mapping of the Example proto.
+END
+  }
+  out_arg {
+    name: "binary_examples"
+    description: <<END
+Each string is a binary Example protocol buffer corresponding
+to the respective element of `json_examples`.
+END
+  }
+  summary: "Convert JSON-encoded Example records to binary protocol buffer strings."
+  description: <<END
+This op translates a tensor containing Example records, encoded using
+the [standard JSON
+mapping](https://developers.google.com/protocol-buffers/docs/proto3#json),
+into a tensor containing the same records encoded as binary protocol
+buffers. The resulting tensor can then be fed to any of the other
+Example-parsing ops.
+END
+}
