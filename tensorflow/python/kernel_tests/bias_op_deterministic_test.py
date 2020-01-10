@@ -83,7 +83,7 @@ class BiasAddDeterministicTest(bias_op_base.BiasAddTestBase,
       # the iteration loops for the parameter combinations, and so was re-used.
       seed = (
           hash(data_layout) % 256 + hash(data_rank) % 256 + hash(data_type) %
-               256)
+          256)
       np.random.seed(seed)
       batch_size = 10
       channel_count = 8
