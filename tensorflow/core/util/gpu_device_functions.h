@@ -130,14 +130,11 @@ __device__ detail::GpuGridRange<T> GpuGridRangeZ(T count) {
 }
 CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuGridRangeZ, CudaGridRangeZ);
 
-#if GOOGLE_CUDA
 // Mask for all 32 threads in a warp.
 __device__ const unsigned kCudaWarpAll = 0xffffffff;
-#elif TENSORFLOW_USE_ROCM
 // ROCM TODO add ROCM implementation
 // Mask for all 64 threads in a wavefront.
-__device__ const unsigned kCudaWarpAll = 0xffffffff;
-#endif
+__device__ const unsigned kGpuWarpAll = 0xffffffff;
 
 // Returns the warp lane ID of the calling thread
 __device__ inline unsigned GpuLaneId() {
