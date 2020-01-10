@@ -97,6 +97,14 @@ static DenseIntElementsAttr GetI64ElementsAttr(ArrayAttr attr) {
   return DenseIntElementsAttr::get(ty, attr.getValue());
 }
 
+// Returns 1D 32-bit dense elements attribute with the given values.
+static DenseIntElementsAttr GetI32ElementsAttr(ArrayRef<int32_t> values,
+                                               Builder *builder) {
+  RankedTensorType ty = RankedTensorType::get(
+      {static_cast<int32_t>(values.size())}, builder->getIntegerType(32));
+  return DenseIntElementsAttr::get(ty, values);
+}
+
 // Returns axis in HLO format from TF elements attr with exactly one element
 // containing axis in the TensorFlow format. TensorFlow format supports negative
 // indexing unlike HLO.
@@ -3233,6 +3241,45 @@ class ConvertRandomShuffleOp : public OpRewritePattern<TF::RandomShuffleOp> {
   }
 };
 
+// Converts tf.VariableShape op to a XLA HLO constant representing the variable
+// shape.
+class ConvertVariableShapeOp : public OpRewritePattern<TF::VariableShapeOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(TF::VariableShapeOp op,
+                                     PatternRewriter &rewriter) const override {
+    // The input type should be a tensor<!tf.resource<resource-type>>. We need
+    // to get the inner resource type.
+    auto input_type = op.input().getType().cast<TensorType>();
+    auto subtypes =
+        input_type.getElementType().cast<TF::ResourceType>().getSubtypes();
+    // It can be missing; then we cannot convert.
+    if (subtypes.empty()) return matchFailure();
+
+    auto resource_type = subtypes[0].cast<TensorType>();
+    if (!resource_type.hasStaticShape()) return matchFailure();
+
+    auto resource_shape = resource_type.getShape();
+    Attribute const_attr;
+
+    // We need to match the original op result's element type.
+    auto element_type = op.getType().cast<TensorType>().getElementType();
+    unsigned bitwidth = element_type.cast<IntegerType>().getWidth();
+    if (bitwidth == 32) {
+      SmallVector<int32_t, 4> shape(resource_shape.begin(),
+                                    resource_shape.end());
+      const_attr = GetI32ElementsAttr(shape, &rewriter);
+    } else {
+      assert(bitwidth == 64);
+      const_attr = GetI64ElementsAttr(resource_shape, &rewriter);
+    }
+
+    rewriter.replaceOpWithNewOp<xla_hlo::ConstOp>(op, const_attr);
+    return matchSuccess();
+  }
+};
+
 #include "tensorflow/compiler/mlir/xla/transforms/generated_legalize_tf.inc"
 
 LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
@@ -3261,7 +3308,7 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
       ConvertTensorScatterUpdateOp, ConvertTileOp, ConvertTopKV2Op,
       ConvertUnpackOp, ConvertUnsortedSegmentMaxOp, ConvertUnsortedSegmentMinOp,
       ConvertUnsortedSegmentProdOp, ConvertUnsortedSegmentSumOp,
-      ConvertRandomShuffleOp>(op->getContext());
+      ConvertRandomShuffleOp, ConvertVariableShapeOp>(op->getContext());
 
   ConversionTarget target(*context);
   target.addLegalDialect<XlaHloDialect>();

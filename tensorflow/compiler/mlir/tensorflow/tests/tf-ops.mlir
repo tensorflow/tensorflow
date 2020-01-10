@@ -1278,6 +1278,14 @@ func @testVariableShapeWrongResultDimDynamic(%arg0: tensor<*x!tf.resource<tensor
 
 // -----
 
+func @testVariableShapeWrongNumResources(%arg0: tensor<1x2x!tf.resource<tensor<1x32x32x16xf32>>>) -> tensor<4xi32> {
+  // expected-error @+1 {{requires input to have one resource}}
+  %0 = "tf.VariableShape"(%arg0)  : (tensor<1x2x!tf.resource<tensor<1x32x32x16xf32>>>) -> tensor<4xi32>
+  return %0 : tensor<4xi32>
+}
+
+// -----
+
 // Test invalid tf.Const
 func @testConst() -> tensor<f32> {
   // expected-error @+1 {{attribute 'value' failed to satisfy constraint: constant vector/tensor}}
