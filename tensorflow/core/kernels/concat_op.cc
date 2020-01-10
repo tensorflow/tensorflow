@@ -135,7 +135,6 @@ REGISTER_CONCAT(bfloat16);
                           ConcatOp<GPUDevice, type>)
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
-REGISTER_GPU(bfloat16);
 #undef REGISTER_GPU
 
 // A special GPU kernel for int32.

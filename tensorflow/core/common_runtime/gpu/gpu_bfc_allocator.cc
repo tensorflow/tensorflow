@@ -65,7 +65,7 @@ GPUBFCAllocator::GPUBFCAllocator(int device_id, size_t total_memory)
   ptr_to_chunk_map_.insert(std::make_pair(c->ptr, c));
 
   // Insert the chunk into the right bin.
-  InsertFreeChunkIntoBin(c);
+  ReassignChunkToBin(c);
 }
 
 GPUBFCAllocator::~GPUBFCAllocator() {
@@ -76,7 +76,6 @@ GPUBFCAllocator::~GPUBFCAllocator() {
   }
 
   gtl::STLDeleteValues(&bins_);
-  gtl::STLDeleteValues(&ptr_to_chunk_map_);
 }
 
 void* GPUBFCAllocator::AllocateRaw(size_t unused_alignment, size_t num_bytes) {
@@ -116,12 +115,10 @@ void* GPUBFCAllocator::AllocateRawInternal(size_t unused_alignment,
     // Start searching from the first bin for the smallest chunk that fits
     // rounded_bytes.
     Bin* b = it->second;
-    for (GPUBFCAllocator::Chunk* chunk : b->free_chunks) {
-      DCHECK(!chunk->in_use);
-      if (chunk->size >= rounded_bytes) {
-        // We found an existing chunk that fits us that wasn't in use, so remove
-        // it from the free bin structure prior to using.
-        RemoveFreeChunkFromBin(chunk);
+    for (GPUBFCAllocator::Chunk* chunk : b->chunks) {
+      if (!chunk->in_use && chunk->size > rounded_bytes) {
+        // We found an existing chunk that fits us that wasn't in use.
+        chunk->in_use = true;
 
         // If we can break the size of the chunk into two reasonably
         // large pieces, do so.
@@ -135,7 +132,6 @@ void* GPUBFCAllocator::AllocateRawInternal(size_t unused_alignment,
         // The requested size of the returned chunk is what the user
         // has allocated.
         chunk->requested_size = num_bytes;
-        chunk->in_use = true;
 
         VLOG(4) << "Returning: " << chunk->ptr;
         return chunk->ptr;
@@ -156,8 +152,6 @@ void* GPUBFCAllocator::AllocateRawInternal(size_t unused_alignment,
 }
 
 void GPUBFCAllocator::SplitChunk(GPUBFCAllocator::Chunk* c, size_t num_bytes) {
-  CHECK(!c->in_use && !c->bin);
-
   // Create a new chunk starting num_bytes after c
   GPUBFCAllocator::Chunk* new_chunk = new GPUBFCAllocator::Chunk();
   new_chunk->ptr = static_cast<void*>(static_cast<char*>(c->ptr) + num_bytes);
@@ -182,8 +176,9 @@ void GPUBFCAllocator::SplitChunk(GPUBFCAllocator::Chunk* c, size_t num_bytes) {
     c_neighbor->prev = new_chunk;
   }
 
-  // Add the newly free chunk to the free bin.
-  InsertFreeChunkIntoBin(new_chunk);
+  // Maintain the bins
+  ReassignChunkToBin(new_chunk);
+  ReassignChunkToBin(c);
 }
 
 void GPUBFCAllocator::DeallocateRaw(void* ptr) {
@@ -205,9 +200,11 @@ void GPUBFCAllocator::DeallocateRawInternal(void* ptr) {
 
   GPUBFCAllocator::Chunk* c = it->second;
   VLOG(6) << "Chunk at " << c->ptr << " no longer in use";
+  // Mark the chunk as no longer in use
+  c->in_use = false;
 
   // Consider coalescing it.
-  FreeAndMaybeCoalesce(c);
+  MaybeCoalesce(c);
 }
 
 // Merges c1 and c2 when c1->next is c2 and c2->prev is c1.
@@ -215,7 +212,7 @@ void GPUBFCAllocator::DeallocateRawInternal(void* ptr) {
 void GPUBFCAllocator::Merge(GPUBFCAllocator::Chunk* c1,
                             GPUBFCAllocator::Chunk* c2) {
   // We can only merge chunks that are not in use.
-  CHECK(!c1->in_use && !c2->in_use);
+  DCHECK(!c1->in_use && !c2->in_use);
 
   // c1's prev doesn't change, still points to the same ptr, and is
   // still not in use.
@@ -234,42 +231,62 @@ void GPUBFCAllocator::Merge(GPUBFCAllocator::Chunk* c1,
   // Set the new size
   c1->size += c2->size;
 
-  DeleteChunk(c2);
-}
-
-void GPUBFCAllocator::DeleteChunk(Chunk* c) {
   // Delete c2 and cleanup all state
-  VLOG(4) << "Removing: " << c->ptr;
-  ptr_to_chunk_map_.erase(c->ptr);
-  delete c;
+  RemoveChunkFromBin(c2);
 }
 
-void GPUBFCAllocator::InsertFreeChunkIntoBin(GPUBFCAllocator::Chunk* c) {
-  CHECK(!c->in_use && !c->bin);
+void GPUBFCAllocator::ReassignChunkToBin(GPUBFCAllocator::Chunk* c) {
   auto it = bins_.lower_bound(c->size);
   CHECK(it != bins_.end()) << " Tried to reassign to non-existent bin for size "
                            << c->size;
+
   Bin* new_bin = it->second;
+
+  // If the bin has not changed, do nothing.
+  Bin* old_bin = c->bin;
+  if (old_bin != nullptr && new_bin == old_bin) {
+    return;
+  }
+
+  // The bin has changed.  Add the chunk to the new bin and remove
+  // the chunk from the old bin.
+  new_bin->chunks.insert(c);
   c->bin = new_bin;
-  new_bin->free_chunks.insert(c);
+
+  if (old_bin == nullptr) {
+    return;
+  }
+
+  // Remove chunk from old bin
+  for (auto it = old_bin->chunks.begin(); it != old_bin->chunks.end(); ++it) {
+    if (*it == c) {
+      old_bin->chunks.erase(it);
+      return;
+    }
+  }
+  CHECK(false) << "Could not find chunk in old bin";
 }
 
-void GPUBFCAllocator::RemoveFreeChunkFromBin(GPUBFCAllocator::Chunk* c) {
-  CHECK(!c->in_use && c->bin);
-  int count = c->bin->free_chunks.erase(c);
-  CHECK(count > 0) << "Could not find chunk in bin";
-  c->bin = nullptr;
+void GPUBFCAllocator::RemoveChunkFromBin(GPUBFCAllocator::Chunk* c) {
+  Bin* b = c->bin;
+  for (auto it = b->chunks.begin(); it != b->chunks.end(); ++it) {
+    Chunk* other_c = *it;
+    if (other_c->ptr == c->ptr) {
+      b->chunks.erase(it);
+      VLOG(4) << "Removing: " << c->ptr;
+      ptr_to_chunk_map_.erase(c->ptr);
+      delete c;
+      return;
+    }
+  }
+
+  CHECK(false) << "Could not find chunk in bin";
 }
 
-void GPUBFCAllocator::FreeAndMaybeCoalesce(GPUBFCAllocator::Chunk* c) {
-  CHECK(c->in_use && !c->bin);
-
-  // Mark the chunk as no longer in use
-  c->in_use = false;
-
+void GPUBFCAllocator::MaybeCoalesce(GPUBFCAllocator::Chunk* c) {
   // This chunk is no longer in-use, consider coalescing the chunk
   // with adjacent chunks.
-  Chunk* chunk_to_reassign = c;
+  Chunk* chunk_to_reassign = nullptr;
 
   // If the next chunk is free, coalesce the two, if the result would
   // fit in an existing bin.
@@ -279,7 +296,6 @@ void GPUBFCAllocator::FreeAndMaybeCoalesce(GPUBFCAllocator::Chunk* c) {
     chunk_to_reassign = c;
 
     // Deletes c->next
-    RemoveFreeChunkFromBin(c->next);
     Merge(c, c->next);
   }
 
@@ -291,11 +307,13 @@ void GPUBFCAllocator::FreeAndMaybeCoalesce(GPUBFCAllocator::Chunk* c) {
     chunk_to_reassign = c->prev;
 
     // Deletes c
-    RemoveFreeChunkFromBin(c->prev);
     Merge(c->prev, c);
   }
 
-  InsertFreeChunkIntoBin(chunk_to_reassign);
+  // Reassign the final merged chunk into the right bin.
+  if (chunk_to_reassign) {
+    ReassignChunkToBin(chunk_to_reassign);
+  }
 }
 
 void GPUBFCAllocator::AddAllocVisitor(Visitor visitor) {
@@ -336,7 +354,7 @@ void GPUBFCAllocator::DumpMemoryLog(size_t num_bytes) {
     size_t total_requested_bytes_in_bin = 0;
     size_t total_chunks_in_use = 0;
     size_t total_chunks_in_bin = 0;
-    for (Chunk* c : b->free_chunks) {
+    for (Chunk* c : b->chunks) {
       total_bytes_in_bin += c->size;
       total_requested_bytes_in_bin += c->requested_size;
       ++total_chunks_in_bin;
@@ -370,7 +388,7 @@ void GPUBFCAllocator::DumpMemoryLog(size_t num_bytes) {
               << " was " << strings::HumanReadableNumBytes(b->bin_size)
               << ", Chunk State: ";
 
-    for (Chunk* c : b->free_chunks) {
+    for (Chunk* c : b->chunks) {
       LOG(INFO) << c->DebugString(true);
     }
   }

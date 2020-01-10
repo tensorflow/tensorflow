@@ -173,7 +173,6 @@ from __future__ import print_function
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import types
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import candidate_sampling_ops
@@ -348,8 +347,7 @@ def dropout(x, keep_prob, noise_shape=None, seed=None, name=None):
 
   Args:
     x: A tensor.
-    keep_prob: A scalar `Tensor` with the same type as x. The probability
-      that each element is kept.
+    keep_prob: A Python float. The probability that each element is kept.
     noise_shape: A 1-D `Tensor` of type `int32`, representing the
       shape for randomly generated keep/drop flags.
     seed: A Python integer. Used to create random seeds. See
@@ -363,15 +361,10 @@ def dropout(x, keep_prob, noise_shape=None, seed=None, name=None):
   Raises:
     ValueError: If `keep_prob` is not in `(0, 1]`.
   """
+  if not (0 < keep_prob <= 1):
+    raise ValueError("Expected keep_prob in (0, 1], got %g" % keep_prob)
   with ops.op_scope([x], name, "dropout") as name:
     x = ops.convert_to_tensor(x, name="x")
-    if isinstance(keep_prob, float) and not(0 < keep_prob <= 1):
-      raise ValueError("keep_prob must be a scalar tensor or a float in the "
-                       "range (0, 1], got %g" % keep_prob)
-    keep_prob = ops.convert_to_tensor(
-        keep_prob, dtype=x.dtype, name="keep_prob")
-    keep_prob.get_shape().assert_is_compatible_with(tensor_shape.scalar())
-
     noise_shape = noise_shape or array_ops.shape(x)
     # uniform [keep_prob, 1.0 + keep_prob)
     random_tensor = keep_prob
@@ -379,9 +372,7 @@ def dropout(x, keep_prob, noise_shape=None, seed=None, name=None):
         noise_shape, seed=seed, dtype=x.dtype)
     # 0. if [keep_prob, 1.0) and 1. if [1.0, 1.0 + keep_prob)
     binary_tensor = math_ops.floor(random_tensor)
-    ret = x * math_ops.inv(keep_prob) * binary_tensor
-    ret.set_shape(x.get_shape())
-    return ret
+    return x * (1.0 / keep_prob) * binary_tensor
 
 
 def depthwise_conv2d(input, filter, strides, padding, name=None):

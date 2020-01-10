@@ -75,28 +75,18 @@ class ConcatOpTest(tf.test.TestCase):
     # Random dim to concat on
     concat_dim = np.random.randint(5)
     params = {}
-    if dtype == tf.bfloat16:
-      dtype_feed = tf.float32
-    else:
-      dtype_feed = dtype
     with self.test_session(use_gpu=use_gpu):
       p = []
       for i in np.arange(num_tensors):
         input_shape = shape
         input_shape[concat_dim] = np.random.randint(1, 5)
-        placeholder = tf.placeholder(dtype_feed, shape=input_shape)
+        placeholder = tf.placeholder(dtype, shape=input_shape)
         p.append(placeholder)
 
-        t = dtype_feed.as_numpy_dtype
+        t = dtype.as_numpy_dtype
         params[placeholder] = np.random.rand(*input_shape).astype(t)
 
-      if dtype != dtype_feed:
-        concat_inputs = [tf.cast(p_i, dtype) for p_i in p]
-      else:
-        concat_inputs = p
-      c = tf.concat(concat_dim, concat_inputs)
-      if dtype != dtype_feed:
-        c = tf.cast(c, dtype_feed)
+      c = tf.concat(concat_dim, p)
       result = c.eval(feed_dict=params)
 
     self.assertEqual(result.shape, c.get_shape())
@@ -110,17 +100,15 @@ class ConcatOpTest(tf.test.TestCase):
       ind[concat_dim] = slice(cur_offset,
                               cur_offset + params[p[i]].shape[concat_dim])
       cur_offset += params[p[i]].shape[concat_dim]
-      if dtype == dtype_feed:
-        self.assertAllEqual(result[ind], params[p[i]])
-      else:
-        self.assertAllClose(result[ind], params[p[i]], 0.01)
+      self.assertAllEqual(result[ind], params[p[i]])
 
   def testRandom(self):
     self._testRandom(tf.float32)
     self._testRandom(tf.int16)
     self._testRandom(tf.int32, use_gpu=True)
-    self._testRandom(tf.bfloat16)
-    self._testRandom(tf.bfloat16, use_gpu=True)
+    # Note that the following does not work since bfloat16 is not supported in
+    # numpy.
+    # self._testRandom(tf.bfloat16)
 
   def _testGradientsSimple(self, use_gpu):
     with self.test_session(use_gpu=use_gpu):
