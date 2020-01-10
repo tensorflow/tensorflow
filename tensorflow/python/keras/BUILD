@@ -30,7 +30,6 @@ py_library(
         ":backend",
         ":engine",
         ":layers",
-        ":saving",
         "//tensorflow/python:training",
         "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/keras/applications",
@@ -38,6 +37,7 @@ py_library(
         "//tensorflow/python/keras/mixed_precision/experimental:mixed_precision_experimental",
         "//tensorflow/python/keras/optimizer_v2",
         "//tensorflow/python/keras/premade",
+        "//tensorflow/python/keras/saving",
         "//tensorflow/python/keras/utils",
         "//tensorflow/python/keras/wrappers",
         "//tensorflow/python/saved_model",
@@ -158,7 +158,6 @@ py_library(
         ":losses",
         ":optimizers",
         ":regularizers",
-        ":saving",
         "//tensorflow/python:composite_tensor_utils",
         "//tensorflow/python:py_checkpoint_reader",
         "//tensorflow/python/data",
@@ -171,6 +170,7 @@ py_library(
         "//tensorflow/python/keras/mixed_precision/experimental:autocast_variable",
         "//tensorflow/python/keras/mixed_precision/experimental:loss_scale_optimizer",
         "//tensorflow/python/keras/mixed_precision/experimental:policy",
+        "//tensorflow/python/keras/saving",
         "//tensorflow/python/keras/utils:engine_utils",
         "//tensorflow/python/keras/utils:metrics_utils",
         "//tensorflow/python/keras/utils:mode_keys",
@@ -255,45 +255,6 @@ py_library(
         "//tensorflow/python/data",
         "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/module",
-    ],
-)
-
-py_library(
-    name = "saving",
-    srcs = [
-        "saving/__init__.py",
-        "saving/hdf5_format.py",
-        "saving/model_config.py",
-        "saving/save.py",
-        "saving/saved_model/base_serialization.py",
-        "saving/saved_model/constants.py",
-        "saving/saved_model/layer_serialization.py",
-        "saving/saved_model/load.py",
-        "saving/saved_model/model_serialization.py",
-        "saving/saved_model/network_serialization.py",
-        "saving/saved_model/save.py",
-        "saving/saved_model/save_impl.py",
-        "saving/saved_model/serialized_attributes.py",
-        "saving/saved_model/utils.py",
-        "saving/saved_model_experimental.py",
-        "saving/saving_utils.py",
-    ],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":backend",
-        ":input_spec",
-        ":optimizers",
-        ":regularizers",
-        "//tensorflow/python:lib",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:saver",
-        "//tensorflow/python:tensor_spec",
-        "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/keras/utils:engine_utils",
-        "//tensorflow/python/keras/utils:mode_keys",
-        "//tensorflow/python/saved_model",
-        "//tensorflow/python/saved_model/model_utils",
-        "//tensorflow/python/training/tracking",
     ],
 )
 
@@ -677,34 +638,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "metrics_serialization_test",
-    size = "medium",
-    srcs = ["saving/metrics_serialization_test.py"],
-    python_version = "PY3",
-    shard_count = 8,
-    deps = [
-        ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_py_test(
-    name = "losses_serialization_test",
-    size = "medium",
-    srcs = ["saving/losses_serialization_test.py"],
-    python_version = "PY3",
-    shard_count = 4,
-    deps = [
-        ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_py_test(
     name = "advanced_activations_test",
     size = "medium",
     srcs = ["layers/advanced_activations_test.py"],
@@ -724,11 +657,11 @@ tf_py_test(
     shard_count = 3,
     deps = [
         ":keras",
-        ":saving",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/keras/saving",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -1641,24 +1574,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "hdf5_format_test",
-    size = "medium",
-    srcs = ["saving/hdf5_format_test.py"],
-    python_version = "PY3",
-    shard_count = 4,
-    tags = [
-        "no_oss_py35",  # b/147011479
-        "no_windows",
-    ],
-    deps = [
-        ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_py_test(
     name = "sequential_test",
     size = "medium",
     srcs = ["engine/sequential_test.py"],
@@ -1724,70 +1639,6 @@ tf_py_test(
     name = "keras_parameterized_test",
     size = "small",
     srcs = ["keras_parameterized_test.py"],
-    python_version = "PY3",
-    tags = ["notsan"],
-    deps = [
-        ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_py_test(
-    name = "save_test",
-    size = "medium",
-    srcs = ["saving/save_test.py"],
-    python_version = "PY3",
-    deps = [
-        ":keras",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/feature_column:feature_column_v2",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_py_test(
-    name = "saved_model_experimental_test",
-    size = "medium",
-    srcs = ["saving/saved_model_experimental_test.py"],
-    python_version = "PY3",
-    shard_count = 4,
-    tags = [
-        "no_oss",  # TODO(b/119349471): Re-enable
-        "no_windows",
-    ],
-    deps = [
-        ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_py_test(
-    name = "saved_model_test",
-    size = "medium",
-    srcs = ["saving/saved_model/saved_model_test.py"],
-    python_version = "PY3",
-    shard_count = 4,
-    tags = [
-        "no_windows",
-    ],
-    deps = [
-        ":keras",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/distribute:mirrored_strategy",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_py_test(
-    name = "saving_utils_test",
-    size = "medium",
-    srcs = ["saving/saving_utils_test.py"],
     python_version = "PY3",
     tags = ["notsan"],
     deps = [

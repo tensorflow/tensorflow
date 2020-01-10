@@ -1211,7 +1211,7 @@ distribute_py_test(
     shard_count = 5,
     deps = [
         ":saved_model_test_base",
-        "//tensorflow/python/keras:saving",
+        "//tensorflow/python/keras/saving",
     ],
 )
 
@@ -1224,7 +1224,7 @@ distribute_py_test(
     shard_count = 5,
     deps = [
         ":saved_model_test_base",
-        "//tensorflow/python/keras:saving",
+        "//tensorflow/python/keras/saving",
         "//tensorflow/python/saved_model",
     ],
 )
