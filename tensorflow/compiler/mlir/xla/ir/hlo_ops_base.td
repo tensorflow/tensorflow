@@ -1044,6 +1044,14 @@ class BASE_HLO_PadOp {
   }];
 }
 
+class BASE_HLO_TraceOp {
+  string summary = "Trace operator";
+
+  string description = [{
+    Emits a logging message `tag` with the `operand`.
+  }];
+}
+
 class BASE_HLO_TransposeOp {
   string summary = "Transpose operator";
 

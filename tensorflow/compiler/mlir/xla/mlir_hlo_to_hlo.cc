@@ -740,6 +740,12 @@ LogicalResult ExportXlaOp(SortOp op, OpLoweringContext ctx) {
   return success();
 }
 
+LogicalResult ExportXlaOp(TraceOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  xla::Trace(op.tag(), value_map[op.operand()]);
+  return success();
+}
+
 LogicalResult ExportXlaOp(UnaryEinsumOp op, OpLoweringContext ctx) {
   // Intentional as UnaryEinsumOp is always lowered to the EinsumOp with two
   // operands.

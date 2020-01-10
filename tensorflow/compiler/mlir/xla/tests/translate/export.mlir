@@ -813,6 +813,19 @@ func @main(%arg: tensor<3x4xi32>) -> tensor<1x2xi32> {
 // -----
 
 // CHECK:  HloModule
+func @main(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+  "xla_hlo.trace"(%arg0) {tag = "This is a random test"} : (tensor<2xi32>) -> ()
+  %0 = "xla_hlo.copy"(%arg0) : (tensor<2xi32>) -> tensor<2xi32>
+  return %0: tensor<2xi32>
+}
+
+// CHECK:  ENTRY
+// CHECK:  [[VAL_1:%.*]] = s32[2] parameter(0)
+// CHECK:  () trace(s32[2] [[VAL_1]])
+
+// -----
+
+// CHECK:  HloModule
 func @main(%arg0: tensor<1x2x3x4xi32>) -> tensor<2x1x4x3xi32> {
   // CHECK:  [[ARG:%.*]] = s32[1,2,3,4] parameter(0)
 
