@@ -10,7 +10,7 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
-# limitations under the License.
+# limitations under the License..
 # ==============================================================================
 """TensorFlow is an open source machine learning framework for everyone.
 
@@ -47,7 +47,7 @@ DOCLINES = __doc__.split('\n')
 # result for pip.
 # Also update tensorflow/tensorflow.bzl and
 # tensorflow/core/public/version.h
-_VERSION = '2.0.0'
+_VERSION = '2.1.0'
 
 REQUIRED_PACKAGES = [
     'absl-py >= 0.7.0',
@@ -62,7 +62,7 @@ REQUIRED_PACKAGES = [
     'opt_einsum >= 2.3.2',
     'protobuf >= 3.8.0',
     'tensorboard >= 2.1.0, < 2.2.0',
-    'tensorflow_estimator >= 2.0.0, < 2.1.0',
+    'tensorflow_estimator >= 2.1.0, < 2.2.0',
     'termcolor >= 1.1.0',
     'wrapt >= 1.11.1',
     # python3 requires wheel 0.26
