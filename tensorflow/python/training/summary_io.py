@@ -9,8 +9,6 @@ import Queue
 import threading
 import time
 
-import six
-
 from tensorflow.core.framework import summary_pb2
 from tensorflow.core.util import event_pb2
 from tensorflow.python import pywrap_tensorflow
@@ -105,7 +103,7 @@ class SummaryWriter(object):
       global_step: Number. Optional global step value to record with the
         summary.
     """
-    if isinstance(summary, six.binary_type):
+    if isinstance(summary, basestring):
       summ = summary_pb2.Summary()
       summ.ParseFromString(summary)
       summary = summ

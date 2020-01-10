@@ -9,8 +9,6 @@ import numbers
 import os.path
 import time
 
-import six
-
 from google.protobuf import text_format
 
 from tensorflow.python.client import graph_util
@@ -301,7 +299,7 @@ class BaseSaverBuilder(object):
     vars_to_save = []
     seen_variables = set()
     for name in sorted(names_to_variables.keys()):
-      if not isinstance(name, six.string_types):
+      if not isinstance(name, basestring):
         raise TypeError("names_to_variables must be a dict mapping string "
                         "names to variable Tensors. Name is not a string: %s" %
                         name)
