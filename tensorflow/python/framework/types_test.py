@@ -1,5 +1,4 @@
 """Tests for tensorflow.python.framework.importer."""
-from __future__ import print_function
 import tensorflow.python.platform
 
 import numpy as np
@@ -131,7 +130,7 @@ class TypesTest(test_util.TensorFlowTestCase):
           dtype.base_dtype == types.complex64):
         continue
 
-      print("%s: %s - %s" % (dtype, dtype.min, dtype.max))
+      print "%s: %s - %s" % (dtype, dtype.min, dtype.max)
 
       # check some values that are known
       if numpy_dtype == np.bool_:

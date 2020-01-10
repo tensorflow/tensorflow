@@ -1,5 +1,6 @@
 """Base class for optimizers."""
 # pylint: disable=g-bad-name
+import types
 
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import types as tf_types
@@ -233,7 +234,7 @@ class Optimizer(object):
     # by most optimizers.  It relies on the subclass implementing the following
     # methods: _create_slots(), _prepare(), _apply_dense(), and _apply_sparse().
     for g, v in grads_and_vars:
-      if not isinstance(g, (ops.Tensor, ops.IndexedSlices, type(None))):
+      if not isinstance(g, (ops.Tensor, ops.IndexedSlices, types.NoneType)):
         raise TypeError(
             "Gradient must be a Tensor, IndexedSlices, or None: %s" % g)
       if not isinstance(v, variables.Variable):

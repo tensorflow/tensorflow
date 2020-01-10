@@ -26,13 +26,13 @@ class _GFileBase(object):
     def wrap(self, *args, **kwargs):
       try:
         return fn(self, *args, **kwargs)
-      except ValueError as e:
+      except ValueError, e:
         # Sometimes a ValueError is raised, e.g., a read() on a closed file.
         raise FileError(errno.EIO, e.message, self._name)
-      except IOError as e:
+      except IOError, e:
         e.filename = self._name
         raise FileError(e)
-      except OSError as e:
+      except OSError, e:
         raise GOSError(e)
     return wrap
 
@@ -187,7 +187,7 @@ class _GFileBase(object):
       # read a file's lines by consuming the iterator with a list
       with open("filename", "r") as fp: lines = list(fp)
     """
-    return next(self._fp)
+    return self._fp.next()
 
   @_error_wrapper
   @_synchronized
@@ -271,11 +271,11 @@ def _func_error_wrapper(fn):
   def wrap(*args, **kwargs):
     try:
       return fn(*args, **kwargs)
-    except ValueError as e:
+    except ValueError, e:
       raise FileError(errno.EIO, e.message)
-    except IOError as e:
+    except IOError, e:
       raise FileError(e)
-    except OSError as e:
+    except OSError, e:
       raise GOSError(e)
   return wrap
 
@@ -299,7 +299,7 @@ def Glob(glob):   # pylint: disable=invalid-name
 
 
 @_func_error_wrapper
-def MkDir(path, mode=0o755):  # pylint: disable=invalid-name
+def MkDir(path, mode=0755):   # pylint: disable=invalid-name
   """Create the directory "path" with the given mode.
 
   Args:
@@ -316,7 +316,7 @@ def MkDir(path, mode=0o755):  # pylint: disable=invalid-name
 
 
 @_func_error_wrapper
-def MakeDirs(path, mode=0o755):  # pylint: disable=invalid-name
+def MakeDirs(path, mode=0755):   # pylint: disable=invalid-name
   """Recursively create the directory "path" with the given mode.
 
   Args:

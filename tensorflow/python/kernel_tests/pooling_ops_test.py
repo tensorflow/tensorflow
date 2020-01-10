@@ -1,5 +1,4 @@
 """Functional tests for pooling operations."""
-from __future__ import print_function
 import tensorflow.python.platform
 
 import numpy as np
@@ -421,7 +420,7 @@ class PoolingTest(tf.test.TestCase):
       err = gc.ComputeGradientError(
           input_tensor, input_sizes, t, output_sizes,
           x_init_value=x_init_value, delta=1e-2)
-    print("%s gradient error = " % func_name, err)
+    print "%s gradient error = " % func_name, err
     self.assertLess(err, err_margin)
 
   def _testMaxPoolGradValidPadding1_1(self, use_gpu):
