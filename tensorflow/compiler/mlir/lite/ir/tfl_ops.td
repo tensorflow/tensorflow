@@ -2926,6 +2926,20 @@ def TFL_QuantizeOp: TFL_Op<"quantize", [
   let results = (outs AnyTensor:$output);
 }
 
+def TFL_DensifyOp: TFL_Op<"densify", [NoSideEffect,
+                                      SameOperandsAndResultType,
+                                      NoQuantizableResult]> {
+  let summary = "Densify operator";
+
+  let description = [{
+    Converts sparse tensor to dense format.
+  }];
+
+  let arguments = (ins AnyTensor:$input);
+
+  let results = (outs AnyTensor:$output);
+}
+
 //===----------------------------------------------------------------------===//
 // LSTM Ops
 //===----------------------------------------------------------------------===//
