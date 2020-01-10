@@ -2968,9 +2968,12 @@ cuda_py_test(
     srcs = ["ops/collective_ops_gpu_test.py"],
     python_version = "PY3",
     tags = [
-        "no_cuda_on_cpu_tap",
+        "guitar",
+        "manual",
+        "multi_gpu",
+        "no_oss",
         "no_rocm",
-        "no_windows",
+        "notap",
     ],
     deps = [
         ":client_testlib",
