@@ -55,6 +55,8 @@ namespace tensorflow {
 #define MKLDNN_SIZE_DTYPE int
 #endif  // ENABLE_MKLDNN_V1
 
+using ConvFwdPd = mkldnn::convolution_forward::primitive_desc;
+
 class MklDnnConvUtil {
  protected:
   OpKernelContext* context_;  // We don't own this.
@@ -79,7 +81,7 @@ class MklDnnConvUtil {
   virtual inline void GetStridesInMklOrder(memory::dims* strides) {
     // For now we take the stride from the second and third dimensions only
     // (we do not support striding on the batch or depth dimension).
-    CHECK_NOTNULL(strides);
+    DCHECK(strides);
     if (strides_.size() == 4) {
       int stride_rows = GetTensorDim(strides_, data_format_, 'H');
       int stride_cols = GetTensorDim(strides_, data_format_, 'W');
@@ -96,7 +98,7 @@ class MklDnnConvUtil {
   virtual inline void GetDilationsInMklOrder(memory::dims* dilations) {
     // For now we take the dilation from the second and third dimensions only
     // (we do not support dilation on the batch or depth dimension).
-    CHECK_NOTNULL(dilations);
+    DCHECK(dilations);
     if (dilations_.size() == 4) {
       int dilations_rows = GetTensorDim(dilations_, data_format_, 'H');
       int dilations_cols = GetTensorDim(dilations_, data_format_, 'W');
@@ -122,7 +124,7 @@ class MklDnnConvUtil {
                 errors::InvalidArgument(err_msg));                     \
   } while (0)
 
-    CHECK_NOTNULL(input_dims);
+    DCHECK(input_dims);
 
     // Input channel
     int64 input_depth_raw = GetTensorDim(input_shape, data_format_, 'C');
@@ -195,7 +197,7 @@ class MklDnnConvUtil {
                                               const TensorShape& filter_shape,
                                               memory::dims* filter_dims,
                                               bool is_depthwise) {
-    CHECK_NOTNULL(filter_dims);
+    DCHECK(filter_dims);
 
     OP_REQUIRES(context_, filter_shape.dims() == strides_.size(),
                 errors::InvalidArgument((strides_.size() == 4)
@@ -204,9 +206,8 @@ class MklDnnConvUtil {
                                         filter_shape.DebugString()));
 
     for (int i = 0; i < ((strides_.size() == 4) ? 3 : 5); i++) {
-      OP_REQUIRES(context_,
-                  FastBoundsCheck(filter_shape.dim_size(i),
-                                  std::numeric_limits<int>::max()),
+      OP_REQUIRES(context_, FastBoundsCheck(filter_shape.dim_size(i),
+                                            std::numeric_limits<int>::max()),
                   errors::InvalidArgument("filter too large"));
     }
 
@@ -289,7 +290,7 @@ class MklDnnConvUtil {
                                               size_t filter_index,
                                               memory::dims* filter_dims,
                                               bool is_depthwise) {
-    CHECK_NOTNULL(filter_dims);
+    DCHECK(filter_dims);
     GetFilterSizeInMklOrder(GetTfShape(context_, src_index),
                             GetTfShape(context_, filter_index), filter_dims,
                             is_depthwise);
@@ -323,10 +324,10 @@ class MklDnnConvUtil {
       memory::dims* output_dims_tf_order, memory::dims* output_dims_mkl_order,
       memory::dims* pad_l, memory::dims* pad_r, bool pad_enabled = false,
       bool is_depthwise = false) {
-    CHECK_NOTNULL(output_dims_tf_order);
-    CHECK_NOTNULL(output_dims_mkl_order);
-    CHECK_NOTNULL(pad_l);
-    CHECK_NOTNULL(pad_r);
+    DCHECK(output_dims_tf_order);
+    DCHECK(output_dims_mkl_order);
+    DCHECK(pad_l);
+    DCHECK(pad_r);
 
     bool is_conv2d = (strides_.size() == 4);
     int input_planes, input_rows, input_cols;
@@ -489,10 +490,10 @@ class MklDnnConvUtil {
       const memory::dims& dilations, memory::dims* output_dims_tf_order,
       memory::dims* output_dims_mkl_order, memory::dims* pad_l,
       memory::dims* pad_r, bool is_depthwise) {
-    CHECK_NOTNULL(output_dims_tf_order);
-    CHECK_NOTNULL(output_dims_mkl_order);
-    CHECK_NOTNULL(pad_l);
-    CHECK_NOTNULL(pad_r);
+    DCHECK(output_dims_tf_order);
+    DCHECK(output_dims_mkl_order);
+    DCHECK(pad_l);
+    DCHECK(pad_r);
 
     auto input_tf_shape = GetTfShape(context_, src_index);
     auto filter_tf_shape = GetTfShape(context_, filter_index);
@@ -530,14 +531,14 @@ class MklDnnConvUtil {
       memory::dims* output_dims_tf_order, memory::dims* output_dims_mkl_order,
       memory::dims* pad_l, memory::dims* pad_r, bool pad_enabled = false,
       bool is_depthwise = false) {
-    CHECK_NOTNULL(input_dims);
-    CHECK_NOTNULL(filter_dims);
-    CHECK_NOTNULL(strides);
-    CHECK_NOTNULL(dilations);
-    CHECK_NOTNULL(output_dims_tf_order);
-    CHECK_NOTNULL(output_dims_mkl_order);
-    CHECK_NOTNULL(pad_l);
-    CHECK_NOTNULL(pad_r);
+    DCHECK(input_dims);
+    DCHECK(filter_dims);
+    DCHECK(strides);
+    DCHECK(dilations);
+    DCHECK(output_dims_tf_order);
+    DCHECK(output_dims_mkl_order);
+    DCHECK(pad_l);
+    DCHECK(pad_r);
 
     GetInputSizeInMklOrder(input_shape, input_dims);
     if (!context_->status().ok()) return;
