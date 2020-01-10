@@ -330,6 +330,10 @@ void EagerContext::WaitForAndCloseRemoteContexts() {
 }
 
 EagerContext::~EagerContext() {
+  // TODO(iga): Add a separate API method to shutdown EagerContext so that we
+  // don't send RPCs and block in destructor.
+  WaitForAndCloseRemoteContexts();
+
   ClearCachesAndThreadExecutors();
   for (auto& entry : registered_functions_) {
     while (!entry.second->Unref()) {

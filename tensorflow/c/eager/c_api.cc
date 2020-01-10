@@ -723,12 +723,14 @@ TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
   tensorflow::Rendezvous* r =
       new tensorflow::IntraProcessRendezvous(device_mgr.get());
 
-  return new TFE_Context(opts->session_options.options,
-                         opts->device_placement_policy, opts->mirroring_policy,
-                         opts->async, opts->lazy_remote_inputs_copy,
-                         device_mgr.release(),
-                         /*device_mgr_owned*/ true, r,
-                         tensorflow::GetDefaultCustomKernelCreator());
+  return new TFE_Context{new tensorflow::EagerContext(
+      opts->session_options.options,
+      static_cast<tensorflow::ContextDevicePlacementPolicy>(
+          opts->device_placement_policy),
+      static_cast<tensorflow::ContextMirroringPolicy>(opts->mirroring_policy),
+      opts->async, opts->lazy_remote_inputs_copy, device_mgr.release(),
+      /*device_mgr_owned*/ true, r,
+      tensorflow::GetDefaultCustomKernelCreator())};
 }
 
 TFE_Context* TFE_NewContextFromSession(const TFE_ContextOptions* opts,
@@ -739,14 +741,23 @@ TFE_Context* TFE_NewContextFromSession(const TFE_ContextOptions* opts,
   tensorflow::Rendezvous* r =
       new tensorflow::IntraProcessRendezvous(device_mgr);
 
-  return new TFE_Context(opts->session_options.options,
-                         opts->device_placement_policy, opts->mirroring_policy,
-                         opts->async, opts->lazy_remote_inputs_copy, device_mgr,
-                         /*device_mgr_owned*/ false, r,
-                         tensorflow::GetDefaultCustomKernelCreator());
+  return new TFE_Context{new tensorflow::EagerContext(
+      opts->session_options.options,
+      static_cast<tensorflow::ContextDevicePlacementPolicy>(
+          opts->device_placement_policy),
+      static_cast<tensorflow::ContextMirroringPolicy>(opts->mirroring_policy),
+      opts->async, opts->lazy_remote_inputs_copy, device_mgr,
+      /*device_mgr_owned*/ false, r,
+      tensorflow::GetDefaultCustomKernelCreator())};
 }
 
-void TFE_DeleteContext(TFE_Context* ctx) { delete ctx; }
+void TFE_DeleteContext(TFE_Context* ctx) {
+  // context->RefCountIsOne() should be true here.
+  // TODO(iga): Remove EagerContext refcounting.
+  ctx->context->Unref();
+
+  delete ctx;
+}
 
 TF_DeviceList* TFE_ContextListDevices(TFE_Context* ctx, TF_Status* status) {
   TF_DeviceList* l = new TF_DeviceList;

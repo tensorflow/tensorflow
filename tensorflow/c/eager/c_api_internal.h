@@ -63,31 +63,6 @@ struct TFE_ContextOptions {
 };
 
 struct TFE_Context {
-  TFE_Context(const tensorflow::SessionOptions& opts,
-              TFE_ContextDevicePlacementPolicy default_device_placement_policy,
-              TFE_ContextMirroringPolicy default_mirroring_policy, bool async,
-              const bool lazy_remote_inputs_copy,
-              const tensorflow::DeviceMgr* device_mgr, bool device_mgr_owned,
-              tensorflow::Rendezvous* rendezvous,
-              const tensorflow::CustomKernelCreator* custom_kernel_creator)
-      : context(new tensorflow::EagerContext(
-            opts,
-            static_cast<tensorflow::ContextDevicePlacementPolicy>(
-                default_device_placement_policy),
-            static_cast<tensorflow::ContextMirroringPolicy>(
-                default_mirroring_policy),
-            async, lazy_remote_inputs_copy, device_mgr, device_mgr_owned,
-            rendezvous, custom_kernel_creator)) {}
-
-  ~TFE_Context() {
-    // TODO(iga): Add a separate API method to shutdown TFE_Context so that we
-    // don't send RPCs and block in destructor.
-    context->WaitForAndCloseRemoteContexts();
-    // context->RefCountIsOne() should be true here.
-    // TODO(iga): Remove EagerContext refcounting.
-    context->Unref();
-  }
-
   tensorflow::EagerContext* context;
 };
 
