@@ -1,7 +1,7 @@
 #include "tensorflow/core/framework/bfloat16.h"
 
-#include <gtest/gtest.h>
 #include "tensorflow/core/platform/test_benchmark.h"
+#include <gtest/gtest.h>
 
 namespace tensorflow {
 namespace {

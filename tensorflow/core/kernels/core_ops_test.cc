@@ -9,7 +9,6 @@
 #include <unordered_map>
 #include <vector>
 
-#include <gtest/gtest.h>
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/nn_ops.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
@@ -28,12 +27,13 @@
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/tensor.h"
-#include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/port.h"
+#include <gtest/gtest.h>
 
 namespace tensorflow {
 

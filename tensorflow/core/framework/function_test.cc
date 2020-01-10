@@ -1,5 +1,4 @@
 #include "tensorflow/core/framework/function.h"
-#include <gtest/gtest.h>
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -11,6 +10,7 @@
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/port.h"
+#include <gtest/gtest.h>
 
 namespace tensorflow {
 

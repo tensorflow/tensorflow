@@ -1,9 +1,9 @@
 #ifndef TENSORFLOW_UTIL_SPARSE_DIM_COMPARATOR_H_
 #define TENSORFLOW_UTIL_SPARSE_DIM_COMPARATOR_H_
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/logging.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 namespace sparse {

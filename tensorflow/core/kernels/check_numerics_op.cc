@@ -8,8 +8,8 @@
 #include "tensorflow/core/public/tensor.h"
 
 #if GOOGLE_CUDA
-#include "tensorflow/stream_executor/stream.h"
 #include "tensorflow/core/common_runtime/gpu_device_context.h"
+#include "tensorflow/stream_executor/stream.h"
 #endif  // GOOGLE_CUDA
 namespace tensorflow {
 
