@@ -44,6 +44,7 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import sort_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
@@ -1351,14 +1352,40 @@ class PadTest(test_util.TensorFlowTestCase):
 
 class InvertPermutationTest(test_util.TensorFlowTestCase):
 
-  @test_util.run_deprecated_v1
   def testInvertPermutation(self):
     for dtype in [dtypes.int32, dtypes.int64]:
-      with self.cached_session(use_gpu=True):
-        x = constant_op.constant([3, 4, 0, 2, 1], dtype=dtype)
-        y = array_ops.invert_permutation(x)
-        self.assertAllEqual(y.get_shape(), [5])
-        self.assertAllEqual(y.eval(), [2, 4, 3, 0, 1])
+      x = constant_op.constant([3, 4, 0, 2, 1], dtype=dtype)
+      y = array_ops.invert_permutation(x)
+      self.assertAllEqual(y.shape, [5])
+      self.assertAllEqual(self.evaluate(y), [2, 4, 3, 0, 1])
+
+  def testInvertPermutationCheckRank(self):
+    for dtype in [dtypes.int32, dtypes.int64]:
+      x = constant_op.constant(3, dtype=dtype)
+      with self.assertRaisesRegexp(Exception, "at least rank 1"):
+        self.evaluate(array_ops.invert_permutation(x))
+
+  def testInvertPermutationBatch(self):
+    for dtype in [dtypes.int32, dtypes.int64]:
+      x = constant_op.constant([[[3, 4, 0, 2, 1], [2, 3, 4, 0, 1]]],
+                               dtype=dtype)
+      y = array_ops.invert_permutation(x)
+      self.assertAllEqual(y.shape, [1, 2, 5])
+      self.assertAllEqual(
+          self.evaluate(y), [[[2, 4, 3, 0, 1], [3, 4, 0, 1, 2]]])
+
+  @test_util.run_deprecated_v1
+  def testInvertPermutationLargerBatch(self):
+    perm = np.array([np.random.permutation(20) for _ in range(10)],
+                    dtype=np.int32)
+
+    for dtype in [dtypes.int32, dtypes.int64]:
+      x = constant_op.constant(perm, dtype=dtype)
+      y = array_ops.invert_permutation(x)
+      # Argsort should be equivalent to invert permutation.
+      z = sort_ops.argsort(x, axis=-1)
+      self.assertAllEqual(y.shape, [10, 20])
+      self.assertAllEqual(self.evaluate(y), self.evaluate(z))
 
 
 class UnravelIndexTest(test_util.TensorFlowTestCase):

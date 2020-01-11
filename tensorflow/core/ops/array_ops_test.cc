@@ -399,9 +399,9 @@ TEST(ArrayOpsTest, UniqueWithCounts_ShapeFn) {
 
 TEST(ArrayOpsTest, InvertPermutation_ShapeFn) {
   ShapeInferenceTestOp op("InvertPermutation");
-  INFER_OK(op, "?", "[?]");
   INFER_OK(op, "[1]", "in0");
-  INFER_ERROR("Shape must be rank 1 but is rank 0", op, "[]");
+  INFER_OK(op, "[1,2,3]", "in0");
+  INFER_ERROR("Shape must be at least rank 1 but is rank 0", op, "[]");
 }
 
 TEST(ArrayOpsTest, PadD_ShapeFn) {
