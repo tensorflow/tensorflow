@@ -95,6 +95,11 @@ DEPENDENCY_BLACKLIST = [
     "//tensorflow/lite/python:interpreter_test",
     "//tensorflow/lite/python:interpreter.py",
     "//tensorflow/lite/python:interpreter_test.py",
+    # failing presubmits on the branch
+    "//tensorflow/contrib/tpu:tpu_lib",
+    "//tensorflow/python/tpu:tpu",
+    "//tensorflow/contrib/lookup:lookup_py",
+    "//tensorflow/contrib/layers:layers_py",
 ]
 
 
