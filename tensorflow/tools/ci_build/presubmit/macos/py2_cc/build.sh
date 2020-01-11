@@ -54,7 +54,7 @@ function run_build () {
     --strategy=Javac=standalone \
     --strategy=Closure=standalone \
     --genrule_strategy=standalone \
-    -- ${DEFAULT_BAZEL_TARGETS} -//tensorflow/lite/... -//tensorflow/contrib/...
+    -- ${DEFAULT_BAZEL_TARGETS} -//tensorflow/lite/... -//tensorflow/python:contrib_test -//tensorflow/examples/adding_an_op/...
 
   # Copy log to output to be available to GitHub
   ls -la "$(bazel info output_base)/java.log"
