@@ -1204,10 +1204,10 @@ class ConvertSelectV2Op : public OpRewritePattern<TF::SelectV2Op> {
   PatternMatchResult matchAndRewrite(TF::SelectV2Op op,
                                      PatternRewriter &rewriter) const override {
     llvm::SmallVector<int64_t, 4> broadcast_then_else_shape;
-    auto ranked_then_type = op.t()->getType().dyn_cast<RankedTensorType>();
-    auto ranked_else_type = op.e()->getType().dyn_cast<RankedTensorType>();
+    auto ranked_then_type = op.t().getType().dyn_cast<RankedTensorType>();
+    auto ranked_else_type = op.e().getType().dyn_cast<RankedTensorType>();
     auto ranked_cond_type =
-        op.condition()->getType().dyn_cast<RankedTensorType>();
+        op.condition().getType().dyn_cast<RankedTensorType>();
     if (!ranked_then_type || !ranked_then_type.hasStaticShape() ||
         !ranked_else_type || !ranked_else_type.hasStaticShape() ||
         !ranked_cond_type || !ranked_cond_type.hasStaticShape())
@@ -1225,7 +1225,7 @@ class ConvertSelectV2Op : public OpRewritePattern<TF::SelectV2Op> {
       return matchFailure();
 
     auto broadcast_or_self = [&](Value value) {
-      RankedTensorType type = value->getType().cast<RankedTensorType>();
+      RankedTensorType type = value.getType().cast<RankedTensorType>();
       auto output_type =
           RankedTensorType::get(broadcast_shape, type.getElementType());
       if (output_type == type) return value;
@@ -1250,7 +1250,7 @@ class ConvertSelectV2Op : public OpRewritePattern<TF::SelectV2Op> {
     Value on_true = broadcast_or_self(op.t());
     Value on_false = broadcast_or_self(op.e());
 
-    rewriter.replaceOpWithNewOp<SelectOp>(op, on_true->getType(), pred, on_true,
+    rewriter.replaceOpWithNewOp<SelectOp>(op, on_true.getType(), pred, on_true,
                                           on_false);
 
     return matchSuccess();

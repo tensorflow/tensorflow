@@ -2983,7 +2983,7 @@ void SavedModelV1Importer::LiftVariable(mlir::TF::VarHandleOp op) {
   // Create the new function type by adding variable type to the arguments.
   llvm::SmallVector<mlir::Type, 4> new_input_types(
       func_type.getInputs().begin(), func_type.getInputs().end());
-  new_input_types.push_back(op.resource()->getType());
+  new_input_types.push_back(op.resource().getType());
   auto new_func_type =
       builder.getFunctionType(new_input_types, func_type.getResults());
 
@@ -3004,7 +3004,7 @@ void SavedModelV1Importer::LiftVariable(mlir::TF::VarHandleOp op) {
   func_op.getOperation()->erase();
 
   auto& new_block = new_region.front();
-  auto new_value = new_block.addArgument(op.resource()->getType());
+  auto new_value = new_block.addArgument(op.resource().getType());
 
   op.getOperation()->replaceAllUsesWith(llvm::ArrayRef<mlir::Value>(new_value));
 
