@@ -1,9 +1,3 @@
 op {
   graph_op_name: "StringUpper"
-  description: <<END
-
-Examples:
->>> tf.strings.upper(["hello", "TensorFlow"]).numpy()
-array([b'HELLO', b'TENSORFLOW'], dtype=object)
-END
 }

@@ -16,11 +16,5 @@ END
   description: <<END
 (Note that int32 overflow results in an error while float overflow
 results in a rounded value.)
-
-Examples:
->>> tf.strings.to_number("1.55")
-<tf.Tensor: shape=(), dtype=float32, numpy=1.55>
->>> tf.strings.to_number("3", tf.int32)
-<tf.Tensor: shape=(), dtype=int32, numpy=3>
 END
 }

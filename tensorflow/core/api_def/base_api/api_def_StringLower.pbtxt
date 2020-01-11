@@ -1,9 +1,3 @@
 op {
   graph_op_name: "StringLower"
-  description: <<END
-
-Examples:
->>> tf.strings.lower(["HELLO", "TensorFlow"]).numpy()
-array([b'hello', b'tensorflow'], dtype=object)
-END
 }
