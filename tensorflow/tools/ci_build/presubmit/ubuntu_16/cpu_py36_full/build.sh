@@ -83,7 +83,7 @@ function run_build () {
     --remote_timeout=3600 \
     --platforms=@org_tensorflow//third_party/toolchains:rbe_ubuntu16.04-manylinux2010 \
     -- \
-    ${DEFAULT_BAZEL_TARGETS} -//tensorflow/lite/...
+    ${DEFAULT_BAZEL_TARGETS} -//tensorflow/lite/... -//tensorflow/contrib/...
 
   # Copy log to output to be available to GitHub
   ls -la "$(bazel info output_base)/java.log"
