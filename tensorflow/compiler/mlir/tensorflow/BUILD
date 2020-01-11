@@ -13,6 +13,7 @@ package_group(
         "//tensorflow/compiler/...",
         "//tensorflow/lite/experimental/tf_runtime/...",
         "//tensorflow/python/...",
+        "//third_party/tf_runtime_google/...",
     ],
 )
 
