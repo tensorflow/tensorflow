@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python import keras
+from tensorflow.python import tf2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -1877,6 +1878,49 @@ class CacheCorrectnessTest(keras_parameterized.TestCase):
     sub_network.sub_layers.pop()
     self.assertEqual(network.dynamic, False)
     self.assertEqual(network.stateful, False)
+
+
+class SaveFormatValidationTest(keras_parameterized.TestCase):
+
+  def test_save_format_validation(self):
+    filepath = 'file/path'
+    h5_filepath = 'h5_filepath.h5'
+    h5_filepath_2 = 'h5_filepath.hdf5'
+    h5_filepath_3 = 'h5_filepath.keras'
+
+    tf2.disable()
+    self.assertEqual(network_lib.validate_save_format(filepath, None), 'h5')
+
+    tf2.enable()
+    self.assertEqual(network_lib.validate_save_format(filepath, None), 'tf')
+
+    self.assertEqual(network_lib.validate_save_format(filepath, 'h5'), 'h5')
+    self.assertEqual(network_lib.validate_save_format(h5_filepath, None), 'h5')
+    self.assertEqual(
+        network_lib.validate_save_format(h5_filepath_2, None), 'h5')
+    self.assertEqual(
+        network_lib.validate_save_format(h5_filepath_3, None), 'h5')
+    self.assertEqual(
+        network_lib.validate_save_format(h5_filepath, 'hdf5'), 'h5')
+    self.assertEqual(
+        network_lib.validate_save_format(h5_filepath, 'keras'), 'h5')
+
+    self.assertEqual(network_lib.validate_save_format(filepath, 'tf'), 'tf')
+    self.assertEqual(
+        network_lib.validate_save_format(filepath, 'tensorflow'), 'tf')
+
+    with self.assertRaisesRegex(ValueError, 'Expected `filepath` to be a String\
+     or h5py.File object. Got unsupported value 42 of type int'):
+      network_lib.validate_save_format(42, 'h5')
+
+    with self.assertRaisesRegex(ValueError, 'Unknown format "%s". Was expecting\
+     one of {"tf", "h5"}.'):
+      network_lib.validate_save_format(filepath, 'unknown_format')
+
+    with self.assertRaisesRegex(ValueError, 'Got save_format="tf"/"tensorflow",\
+     but the filepath ("%s") looks like an HDF5 file. Omit the ".h5"/".keras"\
+     when saving in TensorFlow format.'.format(h5_filepath)):
+      network_lib.validate_save_format(h5_filepath, 'tf')
 
 
 
