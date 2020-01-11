@@ -28,6 +28,14 @@ limitations under the License.
 namespace tflite {
 namespace evaluation {
 
+namespace {
+
+Interpreter::TfLiteDelegatePtr CreateNullDelegate() {
+  return Interpreter::TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
+}
+
+}  // namespace
+
 std::string StripTrailingSlashes(const std::string& path) {
   int end = path.size();
   while (end > 0 && path[end - 1] == '/') {
@@ -105,7 +113,7 @@ Interpreter::TfLiteDelegatePtr CreateNNAPIDelegate(
         delete reinterpret_cast<StatefulNnApiDelegate*>(delegate);
       });
 #else
-  return Interpreter::TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
+  return CreateNullDelegate();
 #endif  // defined(__ANDROID__)
 }
 
@@ -126,7 +134,28 @@ Interpreter::TfLiteDelegatePtr CreateGPUDelegate() {
 
   return CreateGPUDelegate(&options);
 #else
-  return Interpreter::TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
+  return CreateNullDelegate();
+#endif  // defined(__ANDROID__)
+}
+
+Interpreter::TfLiteDelegatePtr CreateHexagonDelegate(
+    const std::string& library_directory_path) {
+#if defined(__ANDROID__)
+  const TfLiteHexagonDelegateOptions options = {0, 0, false, false};
+  TfLiteDelegate* delegate = TfLiteHexagonDelegateCreate(&options);
+  if (delegate) {
+    if (library_directory_path.empty()) {
+      TfLiteHexagonInit();
+    } else {
+      TfLiteHexagonInitWithPath(library_directory_path.c_str());
+    }
+  }
+  return Interpreter::TfLiteDelegatePtr(delegate, [](TfLiteDelegate* delegate) {
+    TfLiteHexagonTearDown();
+    TfLiteHexagonDelegateDelete(delegate);
+  });
+#else
+  return CreateNullDelegate();
 #endif  // defined(__ANDROID__)
 }
 

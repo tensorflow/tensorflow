@@ -22,6 +22,7 @@ limitations under the License.
 
 #if defined(__ANDROID__)
 #include "tensorflow/lite/delegates/gpu/delegate.h"
+#include "tensorflow/lite/experimental/delegates/hexagon/hexagon_delegate.h"
 #endif
 
 #include "tensorflow/lite/context.h"
@@ -57,6 +58,9 @@ Interpreter::TfLiteDelegatePtr CreateGPUDelegate();
 Interpreter::TfLiteDelegatePtr CreateGPUDelegate(
     TfLiteGpuDelegateOptionsV2* options);
 #endif
+
+Interpreter::TfLiteDelegatePtr CreateHexagonDelegate(
+    const std::string& library_directory_path);
 
 }  // namespace evaluation
 }  // namespace tflite
