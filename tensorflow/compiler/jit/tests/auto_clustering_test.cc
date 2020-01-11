@@ -16,9 +16,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/jit/tests/auto_clustering_test_helper.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/io/random_inputstream.h"
-#include "tensorflow/core/lib/io/zlib_compression_options.h"
-#include "tensorflow/core/lib/io/zlib_inputstream.h"
 
 namespace tensorflow {
 namespace {

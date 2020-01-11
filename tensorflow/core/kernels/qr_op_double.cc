@@ -19,7 +19,7 @@ namespace tensorflow {
 
 REGISTER_LINALG_OP("Qr", (QrOp<double>), double);
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if GOOGLE_CUDA
 // We temporarily disable QR on GPU due to a bug in the QR implementation in
 // cuSolver affecting older hardware. The cuSolver team is tracking the issue
 // (https://partners.nvidia.com/bug/viewbug/2171459) and we will re-enable
