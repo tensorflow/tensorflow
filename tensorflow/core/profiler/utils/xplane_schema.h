@@ -98,7 +98,14 @@ enum StatType {
   kTfOp,
   kHloOp,
   kHloModule,
-  kLastStatType = kHloModule,
+  // Device capability related.
+  kDevCapClockRateKHz,
+  kDevCapCoreCount,
+  kDevCapMemoryBandwidth,
+  kDevCapMemorySize,
+  kDevCapComputeCapMajor,
+  kDevCapComputeCapMinor,
+  kLastStatType = kDevCapComputeCapMinor,
 };
 
 absl::Span<const absl::string_view> GetHostEventTypeStrMap();
