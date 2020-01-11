@@ -1914,7 +1914,7 @@ class SaveFormatValidationTest(keras_parameterized.TestCase):
       network_lib.validate_save_format(42, 'h5')
 
     with self.assertRaisesRegex(ValueError, 'Unknown format "%s". Was expecting\
-     one of {"tf", "h5"}.'):
+     one of {"tf", "h5"}.' % 'unknown_format'):
       network_lib.validate_save_format(filepath, 'unknown_format')
 
     with self.assertRaisesRegex(ValueError, 'Got save_format="tf"/"tensorflow",\
