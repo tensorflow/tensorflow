@@ -127,7 +127,6 @@ cuda_py_test(
     name = "xla_control_flow_ops_test",
     srcs = ["xla_control_flow_ops_test.py"],
     tags = [
-        "no_rocm",
         # XLA is not enabled by default on Mac or Windows.
         "no_mac",
         "no_windows",
