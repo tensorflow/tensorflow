@@ -37,16 +37,13 @@ function run_build () {
   export TF_NEED_CUDA=0
   export PYTHON_BIN_PATH=$(which python2)
   yes "" | $PYTHON_BIN_PATH configure.py
-  tag_filters="-no_oss,-no_oss_py2,-gpu,-tpu,-benchmark-test,-nomac,-no_mac,-v2only"
+  tag_filters="-no_oss,-no_oss_py2,-gpu,-tpu,-benchmark-test,-nomac,-no_mac,-v1only"
 
   # Get the default test targets for bazel.
   source tensorflow/tools/ci_build/build_scripts/PRESUBMIT_BUILD_TARGETS.sh
 
-  cat || true
-
   "${BAZEL_WRAPPER_PATH}" \
     test \
-    --config=v1 \
     --build_tag_filters="${tag_filters}" \
     --test_tag_filters="${tag_filters}" \
     --action_env=PATH \
@@ -57,8 +54,7 @@ function run_build () {
     --strategy=Javac=standalone \
     --strategy=Closure=standalone \
     --genrule_strategy=standalone \
-    -- //tensorflow/tools/api/tests:api_compatibility_test
-    #-- ${DEFAULT_BAZEL_TARGETS} -//tensorflow/lite/... -//tensorflow/python:contrib_test -//tensorflow/examples/...
+    -- ${DEFAULT_BAZEL_TARGETS} -//tensorflow/lite/... -//tensorflow/python:contrib_test -//tensorflow/examples/...
 
   # Copy log to output to be available to GitHub
   ls -la "$(bazel info output_base)/java.log"
