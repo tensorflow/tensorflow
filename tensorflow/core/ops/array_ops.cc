@@ -1391,7 +1391,7 @@ REGISTER_OP("InvertPermutation")
     .Attr("T: {int32, int64} = DT_INT32")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle x;
-      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &x));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &x));
       c->set_output(0, x);
       return Status::OK();
     });
