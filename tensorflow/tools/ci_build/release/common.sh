@@ -222,9 +222,9 @@ function install_macos_pip_deps {
   ${SUDO_CMD} ${PIP_CMD} install gast==0.2.2
   ${SUDO_CMD} ${PIP_CMD} install h5py==2.8.0
   ${SUDO_CMD} ${PIP_CMD} install --upgrade grpcio
-  ${SUDO_CMD} ${PIP_CMD} install --upgrade tb-nightly
+  ${SUDO_CMD} ${PIP_CMD} install --upgrade tensorboard==1.15
   ${PIP_CMD} install --user --upgrade attrs
-  ${PIP_CMD} install --user --upgrade tf-estimator-nightly
+  ${PIP_CMD} install --user --upgrade tensorflow_estimator==1.15
   ${PIP_CMD} install --user --upgrade "future>=0.17.1"
 }
 
