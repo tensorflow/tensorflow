@@ -1,0 +1,25 @@
+import tensorflow as tf
+tf.compat.v1.disable_eager_execution()
+def my_fun():
+    '''
+    >>> a = 1
+    >>> b = 2
+    >>> c = 3
+    >>> data = tf.tuple([a,b,c])
+    >>> for element in data:
+    ...  print(element)
+    '''
+import doctest
+doctest.run_docstring_examples(my_fun, globals())
+
+#result::
+
+WARNING:tensorflow:From /srv/conda/envs/notebook/lib/python3.7/site-packages/tensorflow/python/ops/control_flow_ops.py:3632: colocate_with (from tensorflow.python.framework.ops) is deprecated and will be removed in a future version.
+Instructions for updating:
+Colocations handled automatically by placer.
+**********************************************************************
+Expected nothing
+Got:
+    Tensor("tuple/control_dependency:0", shape=(), dtype=int32)
+    Tensor("tuple/control_dependency_1:0", shape=(), dtype=int32)
+    Tensor("tuple/control_dependency_2:0", shape=(), dtype=int32)
