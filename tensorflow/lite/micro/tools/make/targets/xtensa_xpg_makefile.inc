@@ -11,7 +11,9 @@ ifeq ($(TARGET), xtensa-xpg)
     -DNDEBUG \
     -DTF_LITE_MCU_DEBUG_LOG \
     --xtensa-core=$(XTENSA_CORE) \
-    -g -O2 \
+    -mcoproc \
+    -O3 \
+    -DXTENSA -DMAX_RFFT_PWR=9 -DMIN_RFFT_PWR=MAX_RFFT_PWR -fdata-sections \
     -fmessage-length=0
 
   TARGET_TOOLCHAIN_PREFIX := xt-
