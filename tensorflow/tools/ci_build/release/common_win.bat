@@ -53,6 +53,11 @@ IF "%PYTHON_DIRECTORY%"=="Python37" (
     %PIP_EXE% install termcolor==1.1.0
 )
 
+@REM TODO(amitpatankar): this is just a quick fix so that windows build doesn't
+@REM break with gast upgrade to 0.3.2. Need to figure out the right way to
+@REM handle this case.
+%PIP_EXE% install gast==0.3.2
+
 :: Set cuda related environment variables. If we are not using CUDA, these are not used.
 IF NOT DEFINED TF_CUDA_VERSION (
   SET TF_CUDA_VERSION=10.1
