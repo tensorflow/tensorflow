@@ -750,12 +750,13 @@ def convert_with_tensorrt(args):
   from tensorflow.python.compiler.tensorrt import trt_convert as trt  # pylint: disable=g-import-not-at-top
 
   params = trt.DEFAULT_TRT_CONVERSION_PARAMS._replace(
-        max_workspace_size_bytes=args.max_workspace_size_bytes,
-        precision_mode=args.precision_mode,
-        minimum_segment_size=args.minimum_segment_size)
-  converter = trt.TrtGraphConverterV2(input_saved_model_dir=args.dir,
-                                      input_saved_model_tags=args.tag_set.split(','),
-                                      conversion_params=params)
+      max_workspace_size_bytes=args.max_workspace_size_bytes,
+      precision_mode=args.precision_mode,
+      minimum_segment_size=args.minimum_segment_size)
+  converter = trt.TrtGraphConverterV2(
+      input_saved_model_dir=args.dir,
+      input_saved_model_tags=args.tag_set.split(','),
+      conversion_params=params)
   converter.convert()
   converter.save(output_saved_model_dir=args.output_dir)
 
