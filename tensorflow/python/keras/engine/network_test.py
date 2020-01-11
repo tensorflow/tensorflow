@@ -1919,7 +1919,7 @@ class SaveFormatValidationTest(keras_parameterized.TestCase):
 
     with self.assertRaisesRegex(ValueError, 'Got save_format="tf"/"tensorflow",\
      but the filepath ("%s") looks like an HDF5 file. Omit the ".h5"/".keras"\
-     when saving in TensorFlow format.'.format(h5_filepath)):
+     when saving in TensorFlow format.' % h5_filepath):
       network_lib.validate_save_format(h5_filepath, 'tf')
 
 
