@@ -1201,8 +1201,9 @@ class FullyConnectedOperationParser : public TFLiteOperationParser {
     int batch_size = input->tensor.shape.b;
     if (input->tensor.shape.DimensionsProduct() / batch_size !=
         weights.shape.w) {
-      return UnimplementedError(
-          "Amount of input data should match weights width");
+      char msg[256];
+      sprintf(msg, "Amount of input data should match weights width %d / %d != %d", input->tensor.shape.DimensionsProduct(),batch_size, weights.shape.w);
+      return UnimplementedError(msg);
     }
 
     Node* conv = node;
