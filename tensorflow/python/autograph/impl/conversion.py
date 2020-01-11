@@ -52,7 +52,7 @@ from tensorflow.python.autograph.core import naming
 from tensorflow.python.autograph.core import unsupported_features_checker
 from tensorflow.python.autograph.lang import special_functions
 from tensorflow.python.autograph.pyct import ast_util
-from tensorflow.python.autograph.pyct import compiler
+from tensorflow.python.autograph.pyct import loader
 from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.autograph.pyct import origin_info
 from tensorflow.python.autograph.pyct import parser
@@ -282,8 +282,7 @@ def _convert_with_cache(entity, program_ctx, free_nonglobal_var_names):
                                        free_nonglobal_var_names,
                                        entity_info.future_features)
 
-    module, _, source_map = compiler.ast_to_object(
-        nodes, include_source_map=True)
+    module, _, source_map = loader.load_ast(nodes, include_source_map=True)
     module_name = module.__name__
 
     converted_entity_info = _ConvertedEntityFactoryInfo(
@@ -497,7 +496,7 @@ def convert_entity_to_ast(o, program_ctx):
             keyed by their symbol name.
 
   Raises:
-    ValueError: if the entity type is not supported.
+    NotImplementedError: if entity is of a type that is not yet supported.
   """
   logging.log(1, 'Converting %s', o)
 
@@ -514,13 +513,12 @@ def convert_entity_to_ast(o, program_ctx):
         'cannot convert entity "{}": object conversion is not yet'
         ' supported.'.format(o))
   else:
-    raise ValueError(
+    raise NotImplementedError(
         'Entity "%s" has unsupported type "%s". Only functions and classes are '
         'supported for now.' % (o, type(o)))
 
   if logging.has_verbosity(2):
-    logging.log(2, 'Compiled output of %s:\n\n%s\n', o,
-                compiler.ast_to_source(nodes))
+    logging.log(2, 'Compiled output of %s:\n\n%s\n', o, parser.unparse(nodes))
   if logging.has_verbosity(4):
     for n in nodes:
       logging.log(4, 'Compiled AST of %s:\n\n%s\n\n', o,
@@ -601,7 +599,9 @@ def convert_class_to_ast(c, program_ctx):
     renames[qual_names.QN(base.__name__)] = qual_names.QN(alias)
 
   # Generate the definition of the converted class.
-  bases = [gast.Name(n, gast.Load(), None) for n in base_names]
+  bases = [
+      gast.Name(n, ctx=gast.Load(), annotation=None, type_comment=None)
+      for n in base_names]
   class_def = gast.ClassDef(
       class_name,
       bases=bases,
@@ -708,7 +708,11 @@ def convert_func_to_ast(f, program_ctx, do_rename=True):
 
   if isinstance(node, gast.Lambda):
     node = gast.Assign(
-        targets=[gast.Name(new_name, gast.Store(), None)], value=node)
+        targets=[
+            gast.Name(
+                new_name, ctx=gast.Store(), annotation=None, type_comment=None)
+        ],
+        value=node)
   elif do_rename:
     node.name = new_name
   else:

@@ -95,8 +95,6 @@ TfLiteStatus TfliteInferenceStage::Init() {
   }
   interpreter_->SetNumThreads(params.num_threads());
 
-  // TODO(b/122482115): Add support for multiple delegates in
-  // TfLiteInferenceParams.
   if (params.delegate() == TfliteInferenceParams::NNAPI) {
     Interpreter::TfLiteDelegatePtr delegate = CreateNNAPIDelegate();
     if (delegate) {
@@ -105,7 +103,7 @@ TfLiteStatus TfliteInferenceStage::Init() {
       LOG(WARNING) << "NNAPI not supported";
     }
   } else if (params.delegate() == TfliteInferenceParams::GPU) {
-    Interpreter::TfLiteDelegatePtr delegate = CreateGPUDelegate(model_.get());
+    Interpreter::TfLiteDelegatePtr delegate = CreateGPUDelegate();
     if (delegate) {
       delegates_.push_back(std::move(delegate));
     } else {
@@ -115,7 +113,7 @@ TfLiteStatus TfliteInferenceStage::Init() {
   for (int i = 0; i < delegates_.size(); ++i) {
     if (interpreter_->ModifyGraphWithDelegate(delegates_[i].get()) !=
         kTfLiteOk) {
-      LOG(FATAL) << "Failed to apply delegate %d" << i;
+      LOG(FATAL) << "Failed to apply delegate " << i;
     }
   }
   interpreter_->AllocateTensors();

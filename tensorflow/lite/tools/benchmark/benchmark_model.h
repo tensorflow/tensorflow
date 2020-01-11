@@ -105,6 +105,14 @@ class BenchmarkListeners : public BenchmarkListener {
     listeners_.push_back(listener);
   }
 
+  // Remove all listeners after [index] including the one at 'index'.
+  void RemoveListeners(int index) {
+    if (index >= NumListeners()) return;
+    listeners_.resize(index);
+  }
+
+  int NumListeners() const { return listeners_.size(); }
+
   void OnBenchmarkStart(const BenchmarkParams& params) override {
     for (auto listener : listeners_) {
       listener->OnBenchmarkStart(params);
@@ -146,7 +154,7 @@ Flag CreateFlag(const char* name, BenchmarkParams* params,
                 const std::string& usage) {
   return Flag(
       name, [params, name](const T& val) { params->Set<T>(name, val); },
-      params->Get<T>(name), usage);
+      params->Get<T>(name), usage, Flag::OPTIONAL);
 }
 
 // Benchmarks a model.
@@ -165,6 +173,9 @@ class BenchmarkModel {
   void AddListener(BenchmarkListener* listener) {
     listeners_.AddListener(listener);
   }
+  // Remove all listeners after [index] including the one at 'index'.
+  void RemoveListeners(int index) { listeners_.RemoveListeners(index); }
+  int NumListeners() const { return listeners_.NumListeners(); }
 
   BenchmarkParams* mutable_params() { return &params_; }
 

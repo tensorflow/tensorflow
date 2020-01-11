@@ -634,7 +634,7 @@ TF_Tensor* TF_CheckpointReaderGetTensor(TF_CheckpointReader* reader,
   std::unique_ptr<tensorflow::Tensor> tensor;
   reader->GetTensor(name, &tensor, status);
   if (!status->status.ok()) return nullptr;
-  return tensorflow::TF_TensorFromTensor(*tensor, status);
+  return tensorflow::TF_TensorFromTensor(*tensor, &status->status);
 }
 
 void TF_CheckpointReaderGetVariableShape(TF_CheckpointReader* reader,

@@ -1200,12 +1200,12 @@ class DebugAnalyzer(object):
       return debugger_cli_common.rich_text_lines_from_rich_line_list(lines)
 
     path_column_width = max(
-        max([len(item[0]) for item in source_list]), len(path_head)) + 1
+        max(len(item[0]) for item in source_list), len(path_head)) + 1
     num_nodes_column_width = max(
-        max([len(str(item[2])) for item in source_list]),
+        max(len(str(item[2])) for item in source_list),
         len(num_nodes_head)) + 1
     num_tensors_column_width = max(
-        max([len(str(item[3])) for item in source_list]),
+        max(len(str(item[3])) for item in source_list),
         len(num_tensors_head)) + 1
 
     head = RL(path_head + " " * (path_column_width - len(path_head)), color)

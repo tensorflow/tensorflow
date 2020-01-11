@@ -11,7 +11,7 @@ package(
 py_library(
     name = "xla_client",
     srcs = ["xla_client.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [":xla_extension"],
 )
@@ -27,7 +27,7 @@ py_test(
     srcs = ["xla_client_test.py"],
     main = "xla_client_test.py",
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = ["no_oss"],  # TODO(phawkins): This test passes, but requires --config=monolithic.
     deps = [
         ":custom_call_for_test",
@@ -141,9 +141,9 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "device_state",
-    srcs = ["device_state.cc"],
-    hdrs = ["device_state.h"],
+    name = "local_device_state",
+    srcs = ["local_device_state.cc"],
+    hdrs = ["local_device_state.h"],
     deps = [
         ":event_pool",
         ":semaphore",
@@ -162,7 +162,7 @@ cc_library(
     srcs = ["local_client.cc"],
     hdrs = ["local_client.h"],
     deps = [
-        ":device_state",
+        ":local_device_state",
         ":shared_device_buffer",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:literal",

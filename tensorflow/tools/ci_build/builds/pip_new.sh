@@ -273,7 +273,7 @@ PYTHON_BIN_PATH_INIT=${PYTHON_BIN_PATH}
 PIP_BIN_PATH="$(which pip${PY_MAJOR_MINOR_VER})"
 
 # PIP packages
-INSTALL_EXTRA_PIP_PACKAGES="portpicker scipy scikit-learn ${TF_BUILD_INSTALL_EXTRA_PIP_PACKAGES}"
+INSTALL_EXTRA_PIP_PACKAGES="h5py portpicker scipy scikit-learn ${TF_BUILD_INSTALL_EXTRA_PIP_PACKAGES}"
 
 ###########################################################################
 # Build TF PIP Package
@@ -477,7 +477,7 @@ install_tensorflow_pip() {
 
   # Install the gast package in the virtualenv. Installing it in user system
   # packages does not appear to port it over when creating a virtualenv.
-  ${PIP_BIN_PATH} install --upgrade "gast==0.2.2" || \
+  ${PIP_BIN_PATH} install --upgrade "gast==0.3.2" || \
     die "Error: gast install, upgrade FAILED"
 
 }

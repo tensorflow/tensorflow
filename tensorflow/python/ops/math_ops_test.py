@@ -443,6 +443,16 @@ class DivAndModTest(test_util.TensorFlowTestCase):
     np_result = np.divide(nums, divs)
     self.assertAllClose(tf_result, np_result)
 
+  def testDivideType(self):
+    a = array_ops.constant([2], dtype=dtypes.int32)
+    # Since __future__.division is effect, we should always upgrade to float64
+    b = math_ops.divide(a, 1)
+    self.assertEqual(b.dtype, dtypes.float64)
+    self.assertEqual(2.0, self.evaluate(b))
+    c = math_ops.divide(a, 4)
+    self.assertEqual(c.dtype, dtypes.float64)
+    self.assertEqual(0.5, self.evaluate(c))
+
   def testComplexDiv(self):
     foo = array_ops.constant([1. + 3.j])
     _ = math_ops.divide(foo, 1.)
@@ -548,6 +558,40 @@ class XlogyTest(test_util.TensorFlowTestCase):
         xtimes_logy = self.evaluate(math_ops.log(y[1]))
         self.assertAllClose(zeros_np, xlogy_tf_np[0])
         self.assertAllClose(xtimes_logy, xlogy_tf_np[1])
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class Xlog1pyTest(test_util.TensorFlowTestCase):
+
+  def testXlog1pyNoNeg1(self):
+    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
+      x = constant_op.constant([[0.1, 0.2, 3.5], [-2., -5., 30.]], dtype=dtype)
+      y = constant_op.constant([[-0.1, -0.2, 3.5], [3.1, -0.9, 2.]],
+                               dtype=dtype)
+      with test_util.use_gpu():
+        xlog1py = self.evaluate(math_ops.xlog1py(x, y))
+        xtimeslog1py = self.evaluate(x * math_ops.log1p(y))
+        self.assertAllClose(xlog1py, xtimeslog1py)
+
+  def testXlog1pyWithNegOne(self):
+    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
+      x = constant_op.constant(np.zeros((2, 3)), dtype=dtype)
+      y = constant_op.constant([[0.1, 0.2, 3.5], [-1., 1., 2.]], dtype=dtype)
+      with test_util.use_gpu():
+        xlog1py_tf_np = self.evaluate(math_ops.xlog1py(x, y))
+        zeros_np = self.evaluate(array_ops.zeros_like(y))
+        self.assertAllClose(xlog1py_tf_np, zeros_np)
+
+  def testXlog1pyWithZeroBroadcast(self):
+    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
+      x = constant_op.constant([[0.], [1.]], dtype=dtype)
+      y = constant_op.constant([[-0.1, -0.2, -1.], [0., 1., 2.]], dtype=dtype)
+      with test_util.use_gpu():
+        xlog1py_tf_np = self.evaluate(math_ops.xlog1py(x, y))
+        zeros_np = self.evaluate(array_ops.zeros_like(y[0]))
+        xtimes_log1py = self.evaluate(math_ops.log1p(y[1]))
+        self.assertAllClose(zeros_np, xlog1py_tf_np[0])
+        self.assertAllClose(xtimes_log1py, xlog1py_tf_np[1])
 
 
 @test_util.run_all_in_graph_and_eager_modes

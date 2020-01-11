@@ -84,9 +84,9 @@ VariableInfo::~VariableInfo() {
   }
 }
 
-// Returns a vector of VaribleInfo instances for the resource variable inputs to
-// the kernel with context `ctx`.  The input indices for the resource variable
-// inputs are in `variable_indices`.
+// Returns a vector of VariableInfo instances for the resource variable inputs
+// to the kernel with context `ctx`.  The input indices for the resource
+// variable inputs are in `variable_indices`.
 static Status GetVariableInfosFromCtxInputs(
     OpKernelContext* ctx, absl::Span<const int> variable_indices,
     std::vector<VariableInfo>* result) {

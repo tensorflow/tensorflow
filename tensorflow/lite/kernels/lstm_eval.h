@@ -29,8 +29,8 @@ namespace builtin {
 namespace lstm_eval {
 
 // Pamameters for quantized lstm.
-struct QuantizedLstmParameter {
-  QuantizedLstmParameter() : inv_large_value(4) {}
+struct IntegerLstmParameter {
+  IntegerLstmParameter() : inv_large_value(4) {}
   int32_t effective_input_to_input_scale_a;
   int32_t effective_input_to_input_scale_b;
   int32_t effective_recurrent_to_input_scale_a;
@@ -153,7 +153,7 @@ TfLiteStatus EvalHybrid(
     TfLiteTensor* cell_state_quantized, TfLiteTensor* output_state,
     TfLiteTensor* cell_state, TfLiteTensor* output);
 
-TfLiteStatus EvalQuantized(
+TfLiteStatus EvalInteger(
     const TfLiteTensor* input, const TfLiteTensor* input_to_input_weights,
     const TfLiteTensor* input_to_forget_weights,
     const TfLiteTensor* input_to_cell_weights,
@@ -173,7 +173,7 @@ TfLiteStatus EvalQuantized(
     const TfLiteTensor* cell_bias, const TfLiteTensor* output_gate_bias,
     const TfLiteTensor* projection_weights, const TfLiteTensor* projection_bias,
     const TfLiteLSTMParams* params,
-    const lstm_eval::QuantizedLstmParameter* quantized_lstm_param,
+    const lstm_eval::IntegerLstmParameter* integer_lstm_param,
     TfLiteTensor* activation_state, TfLiteTensor* cell_state,
     TfLiteTensor* output, TfLiteTensor* scratch0, TfLiteTensor* scratch1,
     TfLiteTensor* scratch2, TfLiteTensor* scratch3, TfLiteTensor* scratch4,

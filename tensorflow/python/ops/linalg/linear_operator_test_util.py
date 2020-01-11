@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import abc
 import itertools
+
 import numpy as np
 import six
 
@@ -450,6 +451,11 @@ def _test_cond(use_placeholder, shapes_info, dtype):
       # svd does not work with zero dimensional matrices, so we'll
       # skip
       if 0 in shapes_info.shape[-2:]:
+        return
+
+      # ROCm platform does not yet support complex types
+      if test.is_built_with_rocm() and \
+         ((dtype == dtypes.complex64) or (dtype == dtypes.complex128)):
         return
 
       sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED

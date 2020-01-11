@@ -1,6 +1,54 @@
 # RUN: tf-mlir-translate -graphdef-to-mlir %s -o - | FileCheck %s
 
 node {
+  name: "bf16_scalar"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_BFLOAT16
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_BFLOAT16
+        tensor_shape {
+        }
+        half_val: 0
+        # CHECK: value = dense<0.000000e+00> : tensor<bf16>
+      }
+    }
+  }
+}
+node {
+  name: "bf16_vector"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_BFLOAT16
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_BFLOAT16
+        tensor_shape {
+          dim {
+            size: 2
+          }
+        }
+        half_val: 16964
+        half_val: 17485
+        # CHECK: value = dense<[4.900000e+01, 8.200000e+02]> : tensor<2xbf16>
+      }
+    }
+  }
+}
+node {
   name: "double"
   op: "Const"
   device: "/device:CPU:0"

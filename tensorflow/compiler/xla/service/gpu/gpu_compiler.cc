@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/conditional_simplifier.h"
+#include "tensorflow/compiler/xla/service/convolution_group_converter.h"
 #include "tensorflow/compiler/xla/service/depthwise_convolution_converter.h"
 #include "tensorflow/compiler/xla/service/dot_decomposer.h"
 #include "tensorflow/compiler/xla/service/dump.h"
@@ -48,7 +49,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_copy_insertion.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_hlo_schedule.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_hlo_support_checker.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_layout_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_sanitize_constant_names.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_scatter_expander.h"
@@ -134,15 +134,31 @@ Status GpuCompiler::OptimizeHloModule(
     pipeline.AddPass<GpuScatterExpander>();
 
     pipeline.AddPass<DynamicIndexSplitter>();
-    pipeline.AddPass<GpuHloSupportChecker>();
 
     // TODO(b/64094172): make Call work on GPU instead of inlining.
     pipeline.AddPass<CallInliner>();
+
+    pipeline.AddPass<DotDecomposer>();
+
+    // We use the ConvolutionGroupConverter to convert backprops of filter
+    // grouped convolutions into non-grouped equivalents.
+    auto batch_group_cost_model = [](HloInstruction* conv) {
+      auto dim_numbers = conv->convolution_dimension_numbers();
+      const int64 input_batch_size = conv->operand(0)->shape().dimensions(
+          dim_numbers.input_batch_dimension());
+      return conv->batch_group_count() != input_batch_size;
+    };
+
+    pipeline.AddPass<ConvolutionGroupConverter>(
+        batch_group_cost_model,
+        /*convert_batch_groups_only=*/true,
+        /*filter_expansion=*/true);
+
     auto cost_model = [](HloInstruction* conv) {
       // We need a cost model for GPUs. Currently, do nothing.
       return false;
     };
-    pipeline.AddPass<DotDecomposer>();
+
     pipeline.AddPass<DepthwiseConvolutionConverter>(cost_model);
     // Expand the sort op to support stable sorting if required.
     pipeline.AddPass<StableSortExpander>();
@@ -161,6 +177,12 @@ Status GpuCompiler::OptimizeHloModule(
       // where possible.  Not every batchnorm op can be implemented as a call to
       // cudnn, so decompose any remaining batchnorm ops into a soup of HLOs.
       if (hlo_module->config().debug_options().xla_gpu_use_cudnn_batchnorm()) {
+        // Since BatchNorm inference is essentially pointwise operations, it is
+        // always advantageous to use kernel fusion rather than cudnn.
+        pass.AddPass<BatchNormExpander>(
+            /*rewrite_training_op=*/false,
+            /*rewrite_inference_op=*/true,
+            /*rewrite_grad_op=*/false);
         pass.AddPass<CudnnBatchNormRewriter>();
       }
       pass.AddPass<BatchNormExpander>(

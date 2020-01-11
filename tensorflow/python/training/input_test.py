@@ -401,7 +401,7 @@ class SliceInputProducerTest(test_lib.TestCase):
         frequency[e] = 0
       for _ in range(num_epochs):
         output = [self.evaluate(slices) for _ in range(len(source_strings))]
-        key = b",".join([s + compat.as_bytes(str(i)) for s, i in output])
+        key = b",".join(s + compat.as_bytes(str(i)) for s, i in output)
         self.assertIn(key, expected)
         frequency[key] += 1
 
@@ -1083,7 +1083,7 @@ class BatchJoinTest(test_lib.TestCase):
         self.assertEqual(len(which_a) + len(which_b), batch_size)
         if which_a and which_b:
           saw_both += 1
-        all_a.extend([results[0][i] for i in which_a])
+        all_a.extend(results[0][i] for i in which_a)
         seen_b += len(which_b)
         self.assertAllEqual([99] * len(which_b),
                             [results[0][i] for i in which_b])
@@ -1185,7 +1185,7 @@ class BatchJoinTest(test_lib.TestCase):
         self.assertEqual(len(which_a) + len(which_b), batch_size)
         if which_a and which_b:
           saw_both += 1
-        all_a.extend([results[0][i] for i in which_a])
+        all_a.extend(results[0][i] for i in which_a)
         seen_b += len(which_b)
         self.assertAllEqual([99] * len(which_b),
                             [results[0][i] for i in which_b])
@@ -1271,7 +1271,7 @@ class BatchJoinTest(test_lib.TestCase):
         self.assertEqual(len(which_a) + len(which_b), batch_size)
         if which_a and which_b:
           saw_both += 1
-        all_a.extend([results[0][i] for i in which_a])
+        all_a.extend(results[0][i] for i in which_a)
         seen_b += len(which_b)
         self.assertAllEqual([99] * len(which_b),
                             [results[0][i] for i in which_b])
@@ -1291,7 +1291,7 @@ class BatchJoinTest(test_lib.TestCase):
       self.assertEqual(len(which_a) + len(which_b), 2 * extra_elements)
       if which_a and which_b:
         saw_both += 1
-      all_a.extend([results[0][i] for i in which_a])
+      all_a.extend(results[0][i] for i in which_a)
       seen_b += len(which_b)
 
       # We'd like to see some minimum level of mixing of the results of both
@@ -1369,7 +1369,7 @@ class BatchJoinTest(test_lib.TestCase):
         self.assertEqual(len(which_a) + len(which_b), batch_size)
         if which_a and which_b:
           saw_both += 1
-        all_a.extend([results[0][i] for i in which_a])
+        all_a.extend(results[0][i] for i in which_a)
         seen_b += len(which_b)
         self.assertAllEqual([99] * len(which_b),
                             [results[0][i] for i in which_b])
@@ -1389,7 +1389,7 @@ class BatchJoinTest(test_lib.TestCase):
       self.assertEqual(len(which_a) + len(which_b), 2 * extra_elements)
       if which_a and which_b:
         saw_both += 1
-      all_a.extend([results[0][i] for i in which_a])
+      all_a.extend(results[0][i] for i in which_a)
       seen_b += len(which_b)
 
       # We'd like to see some minimum level of mixing of the results of both
@@ -2099,7 +2099,7 @@ class ShuffleBatchJoinTest(test_lib.TestCase):
         self.assertEqual(len(which_a) + len(which_b), batch_size)
         if which_a and which_b:
           saw_both += 1
-        all_a.extend([results[0][i] for i in which_a])
+        all_a.extend(results[0][i] for i in which_a)
         seen_b += len(which_b)
         self.assertAllEqual([99] * len(which_b),
                             [results[0][i] for i in which_b])
@@ -2194,7 +2194,7 @@ class ShuffleBatchJoinTest(test_lib.TestCase):
         self.assertEqual(len(which_a) + len(which_b), batch_size)
         if which_a and which_b:
           saw_both += 1
-        all_a.extend([results[0][i] for i in which_a])
+        all_a.extend(results[0][i] for i in which_a)
         seen_b += len(which_b)
         self.assertAllEqual([99] * len(which_b),
                             [results[0][i] for i in which_b])
@@ -2213,7 +2213,7 @@ class ShuffleBatchJoinTest(test_lib.TestCase):
       self.assertEqual(len(which_a) + len(which_b), 2 * extra_elements)
       if which_a and which_b:
         saw_both += 1
-      all_a.extend([results[0][i] for i in which_a])
+      all_a.extend(results[0][i] for i in which_a)
       seen_b += len(which_b)
 
       # Some minimum level of mixing of the results of both threads.

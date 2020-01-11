@@ -80,8 +80,10 @@ inline const char* PathName(Path path) {
     RUY_PATHNAME_CASE(kNeon)
     RUY_PATHNAME_CASE(kNeonDotprod)
 #elif RUY_PLATFORM(X86)
+    RUY_PATHNAME_CASE(kSse42)
     RUY_PATHNAME_CASE(kAvx2)
     RUY_PATHNAME_CASE(kAvx512)
+    RUY_PATHNAME_CASE(kAvxVnni)
 #endif
     default:
       RUY_CHECK(false);

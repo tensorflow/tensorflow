@@ -65,6 +65,7 @@ cc_library(
     deps = [
         "//tensorflow/core:eager_service_proto_cc",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
     ],
 )
 
@@ -213,5 +214,18 @@ cc_library(
         "//tensorflow/core/common_runtime/eager:eager_operation",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
         "@com_google_absl//absl/types:optional",
+    ],
+)
+
+filegroup(
+    name = "pywrap_eager_hdrs",
+    srcs = [
+        "eager_client.h",
+        "remote_tensor_handle.h",
+        "remote_tensor_handle_data.h",
+    ],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/python:__pkg__",
     ],
 )

@@ -44,8 +44,8 @@ class ConvolutionTransposed : public GPUOperation {
   Status Compile(const CreationContext& creation_context) override;
 
   // Move only
-  ConvolutionTransposed(ConvolutionTransposed&& kernel);
-  ConvolutionTransposed& operator=(ConvolutionTransposed&& kernel);
+  ConvolutionTransposed(ConvolutionTransposed&& operation);
+  ConvolutionTransposed& operator=(ConvolutionTransposed&& operation);
   ConvolutionTransposed(const ConvolutionTransposed&) = delete;
   ConvolutionTransposed& operator=(const ConvolutionTransposed&) = delete;
 
@@ -55,7 +55,8 @@ class ConvolutionTransposed : public GPUOperation {
       const ConvolutionTransposedAttributes& attr,
       ConvolutionTransposed* result);
   explicit ConvolutionTransposed(const OperationDef& definition,
-                                 const ConvolutionTransposedAttributes& attr);
+                                 const ConvolutionTransposedAttributes& attr,
+                                 const CLDevice& device);
   template <DataType T>
   Status UploadWeights(const ::tflite::gpu::Tensor<OHWI, T>& weights,
                        CLContext* context);
@@ -69,17 +70,18 @@ class ConvolutionTransposed : public GPUOperation {
 
   LinearStorage biases_;
 
-  Texture2D weights_tex2d_;
+  Texture2D weights_0_;
+  Texture2D weights_1_;
+  Texture2D weights_2_;
+  Texture2D weights_3_;
   Buffer weights_buf_;
-  cl_mem weights_;
+  bool weights_are_buffer_;
 
   int2 kernel_size_;
   int2 stride_;
   int2 padding_;
-  int2 kernel_offset_;
-  int2 inner_size_;
-  int src_channels_;
-  int dst_channels_;
+
+  int3 block_size_ = int3(1, 1, 1);
 
   CLKernel kernel_;
   int3 work_group_size_ = int3(8, 4, 1);
@@ -88,48 +90,67 @@ class ConvolutionTransposed : public GPUOperation {
 template <DataType T>
 Status ConvolutionTransposed::UploadWeights(
     const ::tflite::gpu::Tensor<OHWI, T>& weights, CLContext* context) {
-  const int dst_depth = IntegralDivideRoundUp(dst_channels_, 4);
-  const int src_depth = IntegralDivideRoundUp(src_channels_, 4);
+  const int dst_depth =
+      AlignByN(IntegralDivideRoundUp(weights.shape.o, 4), block_size_.z);
+  const int src_depth = IntegralDivideRoundUp(weights.shape.i, 4);
   const int kernel_x = kernel_size_.x;
   const int kernel_y = kernel_size_.y;
+  int texture_width = dst_depth;
+  int texture_height = src_depth * kernel_x * kernel_y;
 
   const int elements_count = kernel_x * kernel_y * src_depth * dst_depth * 4;
-  bool is_buffer_storage =
-      definition_.GetPrimaryStorageType() == TensorStorageType::BUFFER;
+  const bool f32_weights = definition_.precision == CalculationsPrecision::F32;
 
-  const int float4_size =
-      definition_.precision == CalculationsPrecision::F32 ? 16 : 8;
+  const int float4_size = f32_weights ? 16 : 8;
 
-  if (definition_.GetDataType() == DataType::FLOAT32) {
+  if (f32_weights) {
     std::vector<float4> gpu_data(elements_count);
     RearrangeWeightsData(weights, absl::MakeSpan(gpu_data));
-    if (is_buffer_storage) {
+    if (weights_are_buffer_) {
       RETURN_IF_ERROR(CreateReadOnlyBuffer(float4_size * elements_count,
                                            gpu_data.data(), context,
                                            &weights_buf_));
     } else {
       RETURN_IF_ERROR(CreateTexture2DRGBA(
-          definition_.GetDataType(), src_depth * kernel_x * kernel_y * 4,
-          dst_depth, gpu_data.data(), context, &weights_tex2d_));
+          definition_.GetDataType(), dst_depth, src_depth * kernel_x * kernel_y,
+          gpu_data.data(), context, &weights_0_));
+      RETURN_IF_ERROR(CreateTexture2DRGBA(
+          definition_.GetDataType(), dst_depth, src_depth * kernel_x * kernel_y,
+          gpu_data.data() + texture_width * texture_height, context,
+          &weights_1_));
+      RETURN_IF_ERROR(CreateTexture2DRGBA(
+          definition_.GetDataType(), dst_depth, src_depth * kernel_x * kernel_y,
+          gpu_data.data() + texture_width * texture_height * 2, context,
+          &weights_2_));
+      RETURN_IF_ERROR(CreateTexture2DRGBA(
+          definition_.GetDataType(), dst_depth, src_depth * kernel_x * kernel_y,
+          gpu_data.data() + texture_width * texture_height * 3, context,
+          &weights_3_));
     }
   } else {
     std::vector<half4> gpu_data(elements_count);
     RearrangeWeightsData(weights, absl::MakeSpan(gpu_data));
-    if (is_buffer_storage) {
+    if (weights_are_buffer_) {
       RETURN_IF_ERROR(CreateReadOnlyBuffer(float4_size * elements_count,
                                            gpu_data.data(), context,
                                            &weights_buf_));
     } else {
       RETURN_IF_ERROR(CreateTexture2DRGBA(
-          definition_.GetDataType(), src_depth * kernel_x * kernel_y * 4,
-          dst_depth, gpu_data.data(), context, &weights_tex2d_));
+          definition_.GetDataType(), dst_depth, src_depth * kernel_x * kernel_y,
+          gpu_data.data(), context, &weights_0_));
+      RETURN_IF_ERROR(CreateTexture2DRGBA(
+          definition_.GetDataType(), dst_depth, src_depth * kernel_x * kernel_y,
+          gpu_data.data() + texture_width * texture_height, context,
+          &weights_1_));
+      RETURN_IF_ERROR(CreateTexture2DRGBA(
+          definition_.GetDataType(), dst_depth, src_depth * kernel_x * kernel_y,
+          gpu_data.data() + texture_width * texture_height * 2, context,
+          &weights_2_));
+      RETURN_IF_ERROR(CreateTexture2DRGBA(
+          definition_.GetDataType(), dst_depth, src_depth * kernel_x * kernel_y,
+          gpu_data.data() + texture_width * texture_height * 3, context,
+          &weights_3_));
     }
-  }
-
-  if (is_buffer_storage) {
-    weights_ = weights_buf_.GetMemoryPtr();
-  } else {
-    weights_ = weights_tex2d_.GetMemoryPtr();
   }
 
   return OkStatus();
@@ -138,40 +159,49 @@ Status ConvolutionTransposed::UploadWeights(
 template <DataType S, typename T>
 void ConvolutionTransposed::RearrangeWeightsData(
     const ::tflite::gpu::Tensor<OHWI, S>& weights, absl::Span<T> dst) {
-  const int dst_depth = IntegralDivideRoundUp(dst_channels_, 4);
-  const int src_depth = IntegralDivideRoundUp(src_channels_, 4);
+  const int dst_depth =
+      AlignByN(IntegralDivideRoundUp(weights.shape.o, 4), block_size_.z);
+  const int src_depth = IntegralDivideRoundUp(weights.shape.i, 4);
   const int kernel_x = kernel_size_.x;
   const int kernel_y = kernel_size_.y;
+  int texture_width = dst_depth;
+  int texture_height = src_depth * kernel_x * kernel_y;
 
   int counter = 0;
-  for (int d = 0; d < dst_depth; ++d) {
+  for (int d = 0; d < dst_depth / block_size_.z; ++d) {
     for (int y = 0; y < kernel_y; ++y) {
       for (int x = 0; x < kernel_x; ++x) {
         for (int s = 0; s < src_depth; ++s) {
-          T filters[4];
-          for (int j = 0; j < 4; ++j) {
+          for (int sub_d = 0; sub_d < block_size_.z; ++sub_d) {
+            T filters[4];
             for (int i = 0; i < 4; ++i) {
-              const int s_ch = s * 4 + j;
-              const int d_ch = d * 4 + i;
-              if (s_ch < src_channels_ && d_ch < dst_channels_) {
-                const int f_index =
-                    weights.shape.LinearIndex({d_ch, y, x, s_ch});
-                filters[i][j] = weights.data[f_index];
-              } else {
-                filters[i][j] = 0.0f;
+              for (int j = 0; j < 4; ++j) {
+                const int s_ch = s * 4 + j;
+                const int d_ch = (d * block_size_.z + sub_d) * 4 + i;
+                if (s_ch < weights.shape.i && d_ch < weights.shape.o) {
+                  const int f_index =
+                      weights.shape.LinearIndex({d_ch, y, x, s_ch});
+                  filters[j][i] = weights.data[f_index];
+                } else {
+                  filters[j][i] = 0.0f;
+                }
               }
             }
-          }
-          T filters_new[4];
-          for (int i = 0; i < 4; ++i) {
-            for (int j = 0; j < 4; ++j) {
-              filters_new[i][j] = filters[j][i];
+            if (weights_are_buffer_) {
+              dst[counter++] = filters[0];
+              dst[counter++] = filters[1];
+              dst[counter++] = filters[2];
+              dst[counter++] = filters[3];
+            } else {
+              int x_coord = d * block_size_.z + sub_d;
+              int y_coord = (y * kernel_x + x) * src_depth + s;
+              int offset = y_coord * dst_depth + x_coord;
+              dst[offset + texture_width * texture_height * 0] = filters[0];
+              dst[offset + texture_width * texture_height * 1] = filters[1];
+              dst[offset + texture_width * texture_height * 2] = filters[2];
+              dst[offset + texture_width * texture_height * 3] = filters[3];
             }
           }
-          dst[counter++] = filters_new[0];
-          dst[counter++] = filters_new[1];
-          dst[counter++] = filters_new[2];
-          dst[counter++] = filters_new[3];
         }
       }
     }

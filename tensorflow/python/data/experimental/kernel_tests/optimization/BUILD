@@ -11,18 +11,18 @@ tf_py_test(
     name = "choose_fastest_dataset_test",
     size = "small",
     srcs = ["choose_fastest_dataset_test.py"],
-    additional_deps = [
-        "@absl_py//absl/testing:parameterized",
+    tags = [
+        "no_oss",
+        "no_pip",
+        "no_windows",
+    ],
+    deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
         "//tensorflow/python/data/experimental/ops:optimization",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
-    ],
-    tags = [
-        "no_oss",
-        "no_pip",
-        "no_windows",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -30,8 +30,12 @@ tf_py_test(
     name = "filter_fusion_test",
     size = "medium",
     srcs = ["filter_fusion_test.py"],
-    additional_deps = [
-        "@absl_py//absl/testing:parameterized",
+    tags = [
+        "no_oss",
+        "no_pip",
+        "no_windows",
+    ],
+    deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
@@ -41,11 +45,7 @@ tf_py_test(
         "//tensorflow/python/data/experimental/ops:testing",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
-    ],
-    tags = [
-        "no_oss",
-        "no_pip",
-        "no_windows",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -53,8 +53,14 @@ tf_py_test(
     name = "filter_with_random_uniform_fusion_test",
     size = "medium",
     srcs = ["filter_with_random_uniform_fusion_test.py"],
-    additional_deps = [
-        "@absl_py//absl/testing:parameterized",
+    tags = [
+        "manual",
+        "no_oss",
+        "no_pip",
+        "no_windows",
+        "notap",  # TODO(b/131229793)
+    ],
+    deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
@@ -64,13 +70,7 @@ tf_py_test(
         "//tensorflow/python/data/experimental/ops:testing",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
-    ],
-    tags = [
-        "manual",
-        "no_oss",
-        "no_pip",
-        "no_windows",
-        "notap",  # TODO(b/131229793)
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -78,8 +78,12 @@ tf_py_test(
     name = "hoist_random_uniform_test",
     size = "small",
     srcs = ["hoist_random_uniform_test.py"],
-    additional_deps = [
-        "@absl_py//absl/testing:parameterized",
+    tags = [
+        "no_oss",
+        "no_pip",
+        "no_windows",
+    ],
+    deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
@@ -92,11 +96,25 @@ tf_py_test(
         "//tensorflow/python/data/experimental/ops:testing",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
+        "@absl_py//absl/testing:parameterized",
     ],
+)
+
+tf_py_test(
+    name = "inject_prefetch_test",
+    size = "small",
+    srcs = ["inject_prefetch_test.py"],
     tags = [
         "no_oss",
         "no_pip",
         "no_windows",
+    ],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python/data/experimental/ops:testing",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
     ],
 )
 
@@ -104,7 +122,12 @@ tf_py_test(
     name = "latency_all_edges_test",
     size = "small",
     srcs = ["latency_all_edges_test.py"],
-    additional_deps = [
+    tags = [
+        "no_oss",
+        "no_pip",
+        "no_windows",
+    ],
+    deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
         "//tensorflow/python/data/experimental/kernel_tests:stats_dataset_test_base",
@@ -113,17 +136,17 @@ tf_py_test(
         "//tensorflow/python/data/experimental/ops:testing",
         "//tensorflow/python/data/ops:dataset_ops",
     ],
-    tags = [
-        "no_oss",
-        "no_pip",
-        "no_windows",
-    ],
 )
 
 tf_py_test(
     name = "map_and_batch_fusion_test",
     srcs = ["map_and_batch_fusion_test.py"],
-    additional_deps = [
+    tags = [
+        "no_oss",
+        "no_pip",
+        "no_windows",
+    ],
+    deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
         "//tensorflow/python/data/experimental/ops:optimization_options",
@@ -131,18 +154,17 @@ tf_py_test(
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
     ],
-    tags = [
-        "no_oss",
-        "no_pip",
-        "no_windows",
-    ],
 )
 
 tf_py_test(
     name = "map_and_filter_fusion_test",
     srcs = ["map_and_filter_fusion_test.py"],
-    additional_deps = [
-        "@absl_py//absl/testing:parameterized",
+    tags = [
+        "no_oss",
+        "no_pip",
+        "no_windows",
+    ],
+    deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
@@ -152,30 +174,26 @@ tf_py_test(
         "//tensorflow/python/data/experimental/ops:testing",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
-    ],
-    tags = [
-        "no_oss",
-        "no_pip",
-        "no_windows",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
 tf_py_test(
     name = "map_fusion_test",
     srcs = ["map_fusion_test.py"],
-    additional_deps = [
-        "@absl_py//absl/testing:parameterized",
+    tags = [
+        "no_oss",
+        "no_pip",
+        "no_windows",
+    ],
+    deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
         "//tensorflow/python/data/experimental/ops:optimization_options",
         "//tensorflow/python/data/experimental/ops:testing",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
-    ],
-    tags = [
-        "no_oss",
-        "no_pip",
-        "no_windows",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -183,8 +201,12 @@ tf_py_test(
     name = "map_parallelization_test",
     size = "small",
     srcs = ["map_parallelization_test.py"],
-    additional_deps = [
-        "@absl_py//absl/testing:parameterized",
+    tags = [
+        "no_oss",
+        "no_pip",
+        "no_windows",
+    ],
+    deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
@@ -197,11 +219,7 @@ tf_py_test(
         "//tensorflow/python/data/experimental/ops:testing",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
-    ],
-    tags = [
-        "no_oss",
-        "no_pip",
-        "no_windows",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -209,9 +227,13 @@ tf_py_test(
     name = "map_vectorization_test",
     size = "small",
     srcs = ["map_vectorization_test.py"],
-    additional_deps = [
-        "@absl_py//absl/testing:parameterized",
-        "//third_party/py/numpy",
+    shard_count = 8,
+    tags = [
+        "no_oss",
+        "no_pip",
+        "no_windows",
+    ],
+    deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:bitwise_ops",
@@ -233,12 +255,8 @@ tf_py_test(
         "//tensorflow/python/data/experimental/ops:testing",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
-    ],
-    shard_count = 8,
-    tags = [
-        "no_oss",
-        "no_pip",
-        "no_windows",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -246,7 +264,12 @@ tf_py_test(
     name = "noop_elimination_test",
     size = "small",
     srcs = ["noop_elimination_test.py"],
-    additional_deps = [
+    tags = [
+        "no_oss",
+        "no_pip",
+        "no_windows",
+    ],
+    deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
@@ -256,27 +279,22 @@ tf_py_test(
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
     ],
-    tags = [
-        "no_oss",
-        "no_pip",
-        "no_windows",
-    ],
 )
 
 tf_py_test(
     name = "shuffle_and_repeat_fusion_test",
     srcs = ["shuffle_and_repeat_fusion_test.py"],
-    additional_deps = [
+    tags = [
+        "no_oss",
+        "no_pip",
+        "no_windows",
+    ],
+    deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
         "//tensorflow/python/data/experimental/ops:optimization_options",
         "//tensorflow/python/data/experimental/ops:testing",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
-    ],
-    tags = [
-        "no_oss",
-        "no_pip",
-        "no_windows",
     ],
 )

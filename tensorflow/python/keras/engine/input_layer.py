@@ -237,7 +237,11 @@ def Input(  # pylint: disable=invalid-name
   ```
 
   Raises:
-    ValueError: in case of invalid arguments.
+    ValueError: If both `sparse` and `ragged` are provided.
+    ValueError: If both `shape` and (`batch_input_shape` or `batch_shape`) are
+      provided.
+    ValueError: If both `shape` and `tensor` are None.
+    ValueError: if any unrecognized parameters are provided.
   """
   if sparse and ragged:
     raise ValueError(

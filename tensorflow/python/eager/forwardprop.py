@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import threading
 
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import pywrap_tfe
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import def_function
@@ -166,7 +166,8 @@ def _jvp_dispatch(op_name, attr_tuple, inputs, outputs, tangents):
     return _jvp_relaxed_shapes(
         op_name, attr_tuple, inputs, outputs, tangents)
 
-pywrap_tensorflow.TFE_Py_RegisterJVPFunction(_jvp_dispatch)
+
+pywrap_tfe.TFE_Py_RegisterJVPFunction(_jvp_dispatch)
 
 
 @tf_export("autodiff.ForwardAccumulator", v1=[])
@@ -250,9 +251,9 @@ class ForwardAccumulator(object):
   ...     primal_out = primal ** tf.constant(3.5)
   >>> inner_jvp = inner.jvp(primal_out)
   >>> inner_jvp  # 3.5 * 1.1 ** 2.5
-  <tf.Tensor: shape=(), dtype=float32, numpy=4.441...>
+  <tf.Tensor: shape=(), dtype=float32, numpy=4.4417057>
   >>> outer.jvp(inner_jvp)  # 3.5 * 2.5 * 1.1 ** 1.5
-  <tf.Tensor: shape=(), dtype=float32, numpy=10.094...>
+  <tf.Tensor: shape=(), dtype=float32, numpy=10.094786>
 
   Reversing the collection in the last line to instead retrieve
   `inner.jvp(outer.jvp(primal_out))` will not work.
@@ -300,7 +301,7 @@ class ForwardAccumulator(object):
       ValueError: If the same tensor or variable is specified multiple times in
         `primals`.
     """
-    self._accumulator = pywrap_tensorflow.TFE_Py_ForwardAccumulatorNew()
+    self._accumulator = pywrap_tfe.TFE_Py_ForwardAccumulatorNew()
     self._recording = False
     primal_ids = set()
     for primal in nest.flatten(primals):
@@ -323,13 +324,13 @@ class ForwardAccumulator(object):
   def _push_accumulator(self):
     if self._recording:
       raise ValueError("Accumulator is already recording.")
-    pywrap_tensorflow.TFE_Py_ForwardAccumulatorSetAdd(self._accumulator)
+    pywrap_tfe.TFE_Py_ForwardAccumulatorSetAdd(self._accumulator)
     self._recording = True
 
   def _pop_accumulator(self):
     if not self._recording:
       raise ValueError("Accumulator is not recording.")
-    pywrap_tensorflow.TFE_Py_ForwardAccumulatorSetRemove(self._accumulator)
+    pywrap_tfe.TFE_Py_ForwardAccumulatorSetRemove(self._accumulator)
     self._recording = False
 
   def _watch(self, primals, tangents):
@@ -358,7 +359,7 @@ class ForwardAccumulator(object):
         # Run convert_to_tensor to get the captured handle from whichever
         # function we're running if necessary.
         t = ops.convert_to_tensor(t.handle)
-      pywrap_tensorflow.TFE_Py_ForwardAccumulatorWatch(self._accumulator, t, g)
+      pywrap_tfe.TFE_Py_ForwardAccumulatorWatch(self._accumulator, t, g)
 
   def jvp(self, primals, unconnected_gradients=UnconnectedGradients.NONE):
     """Fetches the Jacobian-vector product computed for `primals`.
@@ -384,8 +385,8 @@ class ForwardAccumulator(object):
     def _fetch_jvp(tensor):
       if hasattr(tensor, "handle"):
         tensor = ops.convert_to_tensor(tensor.handle)
-      result = pywrap_tensorflow.TFE_Py_ForwardAccumulatorJVP(
-          self._accumulator, tensor)
+      result = pywrap_tfe.TFE_Py_ForwardAccumulatorJVP(self._accumulator,
+                                                       tensor)
       if result is None and unconnected_gradients == UnconnectedGradients.ZERO:
         return array_ops.zeros_like(tensor)
       return result

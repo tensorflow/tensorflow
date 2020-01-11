@@ -834,9 +834,9 @@ def _LogOpGradients(op, out_grads, in_grads):
       return True
 
   logging.vlog(1, "  in  --> %s",
-               ", ".join([x.name for x in out_grads if _FilterGrad(x)]))
+               ", ".join(x.name for x in out_grads if _FilterGrad(x)))
   logging.vlog(1, "  out --> %s",
-               ", ".join([x.name for x in in_grads if _FilterGrad(x)]))
+               ", ".join(x.name for x in in_grads if _FilterGrad(x)))
 
 
 def _MultiDeviceAddN(tensor_list, gradient_uid):

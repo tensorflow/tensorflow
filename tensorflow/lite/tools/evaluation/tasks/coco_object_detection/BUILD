@@ -10,7 +10,7 @@ load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_linkopts")
 py_binary(
     name = "preprocess_coco_minival",
     srcs = ["preprocess_coco_minival.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = ["//tensorflow/lite/tools/evaluation/proto:evaluation_stages_py"],

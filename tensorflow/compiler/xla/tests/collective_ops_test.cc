@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 
-// Tests cross-GPU operatons.
+// Tests cross-GPU operations.
 //
 // This test requires at least four GPUs.  For instructions on running this
 // within Google, see go/multi-gpu-unit-test.
@@ -41,7 +41,7 @@ using ::testing::UnorderedElementsAre;
 class CollectiveOpsTest : public HloTestBase {
  protected:
   std::unique_ptr<HloModule> MakeCrsModule(
-      int64 num_elems, std::vector<std::vector<int64>> replica_groups,
+      const Shape& shape, std::vector<std::vector<int64>> replica_groups,
       const HloModuleConfig& config, std::string op = "add",
       std::string datatype = "f32") {
     std::string hlo_template = R"(
@@ -54,11 +54,11 @@ class CollectiveOpsTest : public HloTestBase {
       }
 
       ENTRY test_computation {
-        p = DATATYPE[NUM_ELEMS] parameter(0)
-        p2 = DATATYPE[NUM_ELEMS] bitcast(p)
-        crs = DATATYPE[NUM_ELEMS] all-reduce(p2), replica_groups=REPLICA_GROUPS, to_apply=apply_op
-        copy = DATATYPE[NUM_ELEMS] copy(crs)
-        ROOT out = DATATYPE[NUM_ELEMS] bitcast(copy)
+        p = SHAPE parameter(0)
+        p2 = SHAPE bitcast(p)
+        crs = SHAPE all-reduce(p2), replica_groups=REPLICA_GROUPS, to_apply=apply_op
+        copy = SHAPE copy(crs)
+        ROOT out = SHAPE bitcast(copy)
       }
     )";
     std::vector<string> replica_group_strs;
@@ -66,71 +66,70 @@ class CollectiveOpsTest : public HloTestBase {
       replica_group_strs.push_back(
           absl::StrFormat("{%s}", absl::StrJoin(g, ",")));
     }
-    if (num_elems == 1) {
+    std::string shape_str = shape.ToString(/*print_layout=*/false);
+    if (shape_str == "f32[1]") {
       // Exercise the scalar codepath.
       hlo_template = absl::StrReplaceAll(
           hlo_template,
-          {{"DATATYPE[NUM_ELEMS] bitcast(p)", "DATATYPE[] bitcast(p)"},
-           {"DATATYPE[NUM_ELEMS] all-reduce", "DATATYPE[] all-reduce"},
-           {"DATATYPE[NUM_ELEMS] copy", "DATATYPE[] copy"}});
+          {{"DATATYPE[SHAPE] bitcast(p)", "DATATYPE[] bitcast(p)"},
+           {"DATATYPE[SHAPE] all-reduce", "DATATYPE[] all-reduce"},
+           {"DATATYPE[SHAPE] copy", "DATATYPE[] copy"}});
     }
-    return ParseAndReturnVerifiedModule(
-               absl::StrReplaceAll(
-                   hlo_template,
-                   {{"NUM_ELEMS", absl::StrCat(num_elems)},
-                    {"REPLICA_GROUPS",
-                     absl::StrFormat("{%s}",
-                                     absl::StrJoin(replica_group_strs, ", "))},
-                    {"OP", op},
-                    {"DATATYPE", datatype}}),
-               config)
-        .ValueOrDie();
+    std::string parameterized_hlo = absl::StrReplaceAll(
+        hlo_template,
+        {{"SHAPE", shape_str},
+         {"REPLICA_GROUPS",
+          absl::StrFormat("{%s}", absl::StrJoin(replica_group_strs, ", "))},
+         {"OP", op},
+         {"DATATYPE", datatype}});
+    return ParseAndReturnVerifiedModule(parameterized_hlo, config).ValueOrDie();
   }
 
   template <typename LiteralType>
-  void TestTwoReplicasOneOperand(std::string op,
-                                 std::vector<LiteralType> input_value,
-                                 std::vector<LiteralType> expected_value) {
+  void TestTwoReplicasOneOperand(std::string op, Literal input_value,
+                                 Literal expected_value) {
     const int kNumReplicas = 2;
     std::string dtype = primitive_util::LowercasePrimitiveTypeName(
         primitive_util::NativeToPrimitiveType<LiteralType>());
     auto config = GetModuleConfigForTest();
     config.set_replica_count(kNumReplicas);
-    auto module = MakeCrsModule(/*num_elems=*/input_value.size(),
-                                /*replica_groups=*/{}, config,
-                                /*op=*/op, /*datatype=*/dtype);
-    auto literal = LiteralUtil::CreateR1<LiteralType>(input_value);
-    auto expected = LiteralUtil::CreateR1<LiteralType>(expected_value);
+    auto module = MakeCrsModule(
+        /*shape_str=*/input_value.shape(),
+        /*replica_groups=*/{}, config,
+        /*op=*/op, /*datatype=*/dtype);
     TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                            ExecuteReplicated(std::move(module), {&literal},
+                            ExecuteReplicated(std::move(module), {&input_value},
                                               /*num_replicas=*/kNumReplicas,
                                               /*use_threads=*/true));
     for (int replica_idx = 0; replica_idx < kNumReplicas; replica_idx++) {
-      EXPECT_TRUE(LiteralTestUtil::NearOrEqual(expected, results[replica_idx],
-                                               ErrorSpec{1e-5, 1e-5}));
+      EXPECT_TRUE(LiteralTestUtil::NearOrEqual(
+          expected_value, results[replica_idx], ErrorSpec{1e-5, 1e-5}));
     }
   }
 
   template <typename LiteralType>
   void TestAllOps() {
     auto cast = [&](int value) { return static_cast<LiteralType>(value); };
-    std::vector<LiteralType> input_value = {cast(1), cast(2), cast(3)};
+    auto to_literal = [&](absl::Span<const LiteralType> values) {
+      return LiteralUtil::CreateR1<LiteralType>(values);
+    };
+    Literal input_value = to_literal({cast(1), cast(2), cast(3)});
     TestTwoReplicasOneOperand<LiteralType>(
         "add",
-        /*input_value=*/input_value,
-        /*expected_value=*/{cast(2), cast(4), cast(6)});
+        /*input_value=*/input_value.Clone(),
+        /*expected_value=*/to_literal({cast(2), cast(4), cast(6)}));
     TestTwoReplicasOneOperand<LiteralType>(
         "multiply",
-        /*input_value=*/input_value,
-        /*expected_value=*/{cast(1), cast(4), cast(9)});
+        /*input_value=*/input_value.Clone(),
+        /*expected_value=*/to_literal({cast(1), cast(4), cast(9)}));
     TestTwoReplicasOneOperand<LiteralType>(
         "maximum",
-        /*input_value=*/input_value,
-        /*expected_value=*/{cast(1), cast(2), cast(3)});
+        /*input_value=*/input_value.Clone(),
+        /*expected_value=*/to_literal({cast(1), cast(2), cast(3)}));
     TestTwoReplicasOneOperand<LiteralType>(
         "minimum",
-        /*input_value=*/input_value,
-        /*expected_value=*/{cast(1), cast(2), cast(3)});
+        /*input_value=*/input_value.Clone(),
+        /*expected_value=*/to_literal({cast(1), cast(2), cast(3)}));
   }
 };
 
@@ -169,10 +168,18 @@ static Eigen::half ToHalf(T value) {
   return static_cast<Eigen::half>(value);
 }
 
+XLA_TEST_F(CollectiveOpsTest, AllReduce_sum_float32_2D) {
+  TestTwoReplicasOneOperand<float>(
+      "add",
+      /*input_value=*/LiteralUtil::CreateR2<float>({{1, 2}, {3, 4}}),
+      /*expected_value=*/LiteralUtil::CreateR2<float>({{2, 4}, {6, 8}}));
+}
+
 XLA_TEST_F(CollectiveOpsTest, AllReduceSingleOutput_float32) {
-  TestTwoReplicasOneOperand<float>("add",
-                                   /*input_value=*/{1},
-                                   /*expected_value=*/{2});
+  TestTwoReplicasOneOperand<float>(
+      "add",
+      /*input_value=*/LiteralUtil::CreateR1<float>({1}),
+      /*expected_value=*/LiteralUtil::CreateR1<float>({2}));
 }
 
 XLA_TEST_F(CollectiveOpsTest, AllReduceTwoReplicasOneOperand_int8) {
@@ -227,11 +234,12 @@ XLA_TEST_F(CollectiveOpsTest, AllReduce_AllCombinations) {
     config.set_replica_count(devices.size());
     config.set_static_device_assignment(device_assn);
 
-    auto module = MakeCrsModule(kNumElems, /*replica_groups=*/{}, config);
-
     std::vector<float> input_vec(kNumElems);
     absl::c_iota(input_vec, 0);
     auto input_literal = LiteralUtil::CreateR1<float>(input_vec);
+
+    auto module = MakeCrsModule(input_literal.shape(),
+                                /*replica_groups=*/{}, config);
 
     TF_ASSERT_OK_AND_ASSIGN(
         std::vector<Literal> results,
@@ -270,7 +278,8 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AllReduce_NcclChannelCaching)) {
     auto config = GetModuleConfigForTest();
     config.set_replica_count(devices.size());
     config.set_static_device_assignment(e.device_assn);
-    auto module = MakeCrsModule(kNumElems, /*replica_groups=*/{}, config);
+    auto module = MakeCrsModule(input_literal.shape(),
+                                /*replica_groups=*/{}, config);
     e.executable =
         test_runner_
             .CreateExecutable(std::move(module), /*run_hlo_passes=*/true)
@@ -325,20 +334,21 @@ XLA_TEST_F(CollectiveOpsTest, AllReduce_ManyConcurrentAllReduces) {
   const int64 kNumThreads = 200;
   const int64 kRunsPerThread = 10;
 
+  std::vector<float> input_vec(kNumElems);
+  absl::c_iota(input_vec, 0);
+  auto input_literal = LiteralUtil::CreateR1<float>(input_vec);
+
   auto config = GetModuleConfigForTest();
   config.set_replica_count(2);
   auto executable =
       test_runner_
-          .CreateExecutable(
-              MakeCrsModule(kNumElems, /*replica_groups=*/{}, config),
-              /*run_hlo_passes=*/true)
+          .CreateExecutable(MakeCrsModule(input_literal.shape(),
+                                          /*replica_groups=*/{}, config),
+                            /*run_hlo_passes=*/true)
           .ValueOrDie();
   std::vector<int64> devices = {0, 1};
   auto device_assn = MakeDeviceAssn(devices);
 
-  std::vector<float> input_vec(kNumElems);
-  absl::c_iota(input_vec, 0);
-  auto input_literal = LiteralUtil::CreateR1<float>(input_vec);
   HloRunner::ReplicatedExecuteOptions opts;
   opts.num_replicas = devices.size();
   opts.use_threads = true;
@@ -368,11 +378,12 @@ XLA_TEST_F(CollectiveOpsTest, AllReduce_ThreeReplicaGroups) {
 
   auto config = GetModuleConfigForTest();
   config.set_replica_count(4);
-  auto module = MakeCrsModule(/*num_elems=*/kNumElems,
-                              /*replica_groups=*/{{0}, {1, 2}, {3}}, config);
   std::vector<float> input_vec(kNumElems);
   absl::c_iota(input_vec, 0);
   auto input_literal = LiteralUtil::CreateR1<float>(input_vec);
+  auto module = MakeCrsModule(
+      /*shape_str=*/input_literal.shape(),
+      /*replica_groups=*/{{0}, {1, 2}, {3}}, config);
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,

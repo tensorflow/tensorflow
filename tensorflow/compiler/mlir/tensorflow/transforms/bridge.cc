@@ -17,8 +17,8 @@ limitations under the License.
 
 #include <memory>
 
-#include "mlir/Pass/PassManager.h"  // TF:local_config_mlir
-#include "mlir/Transforms/Passes.h"  // TF:local_config_mlir
+#include "mlir/Pass/PassManager.h"  // TF:llvm-project
+#include "mlir/Transforms/Passes.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/bridge_logger.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
@@ -27,18 +27,35 @@ namespace mlir {
 namespace TFTPU {
 
 void CreateTPUBridge(OpPassManager &pm) {
+  // Run shape inference so that tf_executor/tf_device ops created later will
+  // likely to inherit more concrete types.
+  pm.addPass(TF::CreateTFShapeInferencePass());
   OpPassManager &func_pm = pm.nest<FuncOp>();
   func_pm.addPass(tf_executor::CreateTFExecutorIslandCoarseningPass());
   func_pm.addPass(CreateTPUClusterFormationPass());
   func_pm.addPass(createCanonicalizerPass());
-  func_pm.addPass(tf_executor::CreateTFExecutorConstantSinkingPass());
-  func_pm.addPass(TFDevice::CreateResourceOpLiftingPass());
+  // Place DecomposeResourceOpsPass before TFExecutorConstantSinking pass
+  // because DecomposeResourceOpsPass uses pattern rewriter which hoists
+  // changed constants out of tf_device.Launch.
+  func_pm.addPass(TFDevice::CreateDecomposeResourceOpsPass());
 
+  // Run another shape inference pass because resource ecomposition might have
+  // created new partial types.
+  pm.addPass(TF::CreateTFShapeInferencePass());
+  OpPassManager &func_pm2 = pm.nest<FuncOp>();
+  func_pm2.addPass(tf_executor::CreateTFExecutorConstantSinkingPass());
+  func_pm2.addPass(TFDevice::CreateResourceOpLiftingPass());
+
+  pm.addPass(TF::CreateResourceDeviceInferencePass());
   pm.addPass(TFDevice::CreateClusterOutliningPass());
+  pm.addPass(CreateTPUDynamicPaddingMapperPass());
+  pm.addPass(TFDevice::CreateAnnotateParameterReplicationPass());
   pm.addPass(CreateTPURewritePass());
   pm.addNestedPass<FuncOp>(TFDevice::CreateReplicateInvariantOpHoistingPass());
-  pm.addNestedPass<FuncOp>(CreateFunctionalToExecutorDialectConversionPass());
   pm.addNestedPass<FuncOp>(CreateTPUMergeVariablesWithExecutePass());
+  // TODO(b/147020076): Enable this pass.
+  // pm.addPass(CreateTPUVariableReformattingPass());
+  pm.addNestedPass<FuncOp>(CreateFunctionalToExecutorDialectConversionPass());
   pm.addNestedPass<FuncOp>(CreateBreakUpIslandsPass());
   pm.addNestedPass<FuncOp>(TFDevice::CreateReplicateToIslandPass());
   pm.addNestedPass<FuncOp>(CreateBreakUpIslandsPass());
@@ -50,7 +67,7 @@ tensorflow::Status TPUBridge(ModuleOp module, bool enable_logging) {
 
   // Add logger to bridge passmanager.
   if (enable_logging)
-    bridge.addInstrumentation(std::make_unique<tensorflow::BridgeLogger>());
+    bridge.enableIRPrinting(std::make_unique<tensorflow::BridgeLoggerConfig>());
 
   // Populate a passmanager with the list of passes that implement the bridge.
   CreateTPUBridge(bridge);
@@ -68,14 +85,17 @@ tensorflow::Status TPUBridge(ModuleOp module, bool enable_logging) {
 namespace TF {
 
 tensorflow::Status RunBridgeWithStandardPipeline(ModuleOp module,
-                                                 bool enable_logging) {
+                                                 bool enable_logging,
+                                                 bool enable_inliner) {
   PassManager bridge(module.getContext());
 
   // Add logger to bridge passmanager.
   if (enable_logging)
-    bridge.addInstrumentation(std::make_unique<tensorflow::BridgeLogger>());
+    bridge.enableIRPrinting(std::make_unique<tensorflow::BridgeLoggerConfig>());
 
-  CreateTFStandardPipeline(bridge);
+  StandardPipelineOptions pipeline_options;
+  pipeline_options.enable_inliner.setValue(enable_inliner);
+  CreateTFStandardPipeline(bridge, pipeline_options);
   mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
   LogicalResult result = bridge.run(module);
   (void)result;

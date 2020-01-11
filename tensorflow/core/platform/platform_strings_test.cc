@@ -25,10 +25,10 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/str_util.h"
 
 // Embed the platform strings in this binary.

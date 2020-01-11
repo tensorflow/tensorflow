@@ -28,7 +28,9 @@ limitations under the License.
 namespace xla {
 
 StatusOr<bool> AllReduceSimplifier::Run(HloModule* module) {
-  TF_ASSIGN_OR_RETURN(auto replication, HloReplicationAnalysis::Run(module));
+  TF_ASSIGN_OR_RETURN(
+      auto replication,
+      HloReplicationAnalysis::Run(module, /*cross_partition_spmd=*/false));
   std::vector<HloInstruction*> all_reduces_to_replace;
   for (auto computation : module->computations()) {
     for (HloInstruction* inst : computation->MakeInstructionPostOrder()) {

@@ -30,7 +30,7 @@ opt<std::string> output_file_name("o", llvm::cl::desc("<output file>"),
 opt<bool> use_splatted_constant(
     "use-splatted-constant",
     llvm::cl::desc(
-        "Replace constants with randonmly generated splatted tensors"),
+        "Replace constants with randomly generated splatted tensors"),
     llvm::cl::init(false), llvm::cl::Hidden);
 // NOLINTNEXTLINE
 opt<bool> input_mlir(

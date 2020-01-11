@@ -417,7 +417,6 @@ cc_library(
         ":array3d",
         ":array4d",
         ":shape_util",
-        ":sparse_index_array",
         ":status_macros",
         ":types",
         ":util",
@@ -463,7 +462,6 @@ cc_library(
         ":array4d",
         ":literal",
         ":shape_util",
-        ":sparse_index_array",
         ":status_macros",
         ":types",
         ":util",
@@ -522,6 +520,7 @@ cc_library(
 
 cc_library(
     name = "array",
+    srcs = ["array.cc"],
     hdrs = ["array.h"],
     deps = [
         ":status",
@@ -836,29 +835,6 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/core:test_main",
         "@com_google_absl//absl/memory",
-    ],
-)
-
-cc_library(
-    name = "sparse_index_array",
-    srcs = ["sparse_index_array.cc"],
-    hdrs = ["sparse_index_array.h"],
-    deps = [
-        ":array2d",
-        ":shape_util",
-        ":xla_data_proto_cc",
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-tf_cc_test(
-    name = "sparse_index_array_test",
-    srcs = ["sparse_index_array_test.cc"],
-    deps = [
-        ":sparse_index_array",
-        ":test",
-        "//tensorflow/core:test_main",
     ],
 )
 

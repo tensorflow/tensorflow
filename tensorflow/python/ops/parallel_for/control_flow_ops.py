@@ -22,7 +22,7 @@ from __future__ import print_function
 import functools
 
 from tensorflow.python.eager import context
-from tensorflow.python.eager import function
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -74,7 +74,7 @@ def for_loop(loop_fn, loop_fn_dtypes, iters, parallel_iterations=None):
                                                 len(fn_output)))
     outputs = []
     del is_none_list[:]
-    is_none_list.extend([x is None for x in fn_output])
+    is_none_list.extend(x is None for x in fn_output)
     for out, ta in zip(fn_output, ta_list):
       # TODO(agarwal): support returning Operation objects from loop_fn.
       if out is not None:
@@ -184,9 +184,21 @@ def pfor(loop_fn, iters, parallel_iterations=None):
   # Note that we wrap into a tf.function if in eager execution mode or under
   # XLA compilation. The latter is so that we don't compile operations like
   # tf.placeholder that are created by the loop body.
+  functions_run_eagerly = None
   if context.executing_eagerly() or _is_under_xla_context():
-    f = function.defun(f)
-  return f()
+    functions_run_eagerly = def_function.functions_run_eagerly()
+    if functions_run_eagerly:
+      logging.warning(
+          "It looks like tf.function behavior was disabled, perhaps using "
+          "tf.config.experimental_run_functions_eagerly. Vectorization "
+          "primitives (e.g. tf.vectorized_map) require tf.function to work. "
+          "These primitives will override the disable.")
+      def_function.run_functions_eagerly(False)
+    f = def_function.function(f)
+  outputs = f()
+  if functions_run_eagerly is not None:
+    def_function.run_functions_eagerly(functions_run_eagerly)
+  return outputs
 
 
 def _loop_fn_has_config(loop_fn):
@@ -209,6 +221,7 @@ def _loop_fn_has_config(loop_fn):
 
 def _pfor_impl(loop_fn, iters, parallel_iterations=None, pfor_config=None):
   """Implementation of pfor."""
+  assert not context.executing_eagerly()
   loop_fn_has_config = _loop_fn_has_config(loop_fn)
   existing_ops = set(ops.get_default_graph().get_operations())
   # Run the loop body

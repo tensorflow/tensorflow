@@ -34,7 +34,6 @@ SET PATH=%PATH%;C:\%PYTHON_DIRECTORY%
 %PIP_EXE% install opt_einsum --upgrade
 %PIP_EXE% install pandas --upgrade --no-deps
 %PIP_EXE% install protobuf --upgrade --no-deps
-%PIP_EXE% install keras_applications==1.0.8 --upgrade --no-deps
 %PIP_EXE% install keras_preprocessing==1.1.0 --upgrade --no-deps
 %PIP_EXE% install wrapt --upgrade --no-deps
 
@@ -43,7 +42,7 @@ IF "%PYTHON_DIRECTORY%"=="Python37" (
     %PIP_EXE% install absl-py==0.5.0
     %PIP_EXE% install colorama==0.3.9
     %PIP_EXE% install cycler==0.10.0
-    %PIP_EXE% install gast==0.2.0
+    %PIP_EXE% install gast==0.3.2
     %PIP_EXE% install jedi==0.11.1
     %PIP_EXE% install oauth2client==4.1.2
     %PIP_EXE% install portpicker==1.2.0
@@ -70,7 +69,7 @@ SET PATH=%CUDNN_INSTALL_PATH%\bin;%PATH%
 @REM Setup Bazel
 @REM
 :: Download Bazel from github and make sure its found in PATH.
-SET BAZEL_VERSION=1.1.0
+SET BAZEL_VERSION=1.2.1
 md C:\tools\bazel\
 wget -q https://github.com/bazelbuild/bazel/releases/download/%BAZEL_VERSION%/bazel-%BAZEL_VERSION%-windows-x86_64.exe -O C:/tools/bazel/bazel.exe
 SET PATH=C:\tools\bazel;%PATH%

@@ -10,6 +10,26 @@ load(
     "if_mkl_ml",
 )
 
+def well_known_proto_libs():
+    """Set of standard protobuf protos, like Any and Timestamp.
+
+    This list should be provided by protobuf.bzl, but it's not.
+    """
+    return [
+        "@com_google_protobuf//:any_proto",
+        "@com_google_protobuf//:api_proto",
+        "@com_google_protobuf//:compiler_plugin_proto",
+        "@com_google_protobuf//:descriptor_proto",
+        "@com_google_protobuf//:duration_proto",
+        "@com_google_protobuf//:empty_proto",
+        "@com_google_protobuf//:field_mask_proto",
+        "@com_google_protobuf//:source_context_proto",
+        "@com_google_protobuf//:struct_proto",
+        "@com_google_protobuf//:timestamp_proto",
+        "@com_google_protobuf//:type_proto",
+        "@com_google_protobuf//:wrappers_proto",
+    ]
+
 # Appends a suffix to a list of deps.
 def tf_deps(deps, suffix):
     tf_deps = []
@@ -259,18 +279,6 @@ def cc_proto_library(
         **kargs
     )
 
-    # Temporarily also add an alias with the 'protolib_name'. So far we relied
-    # on copybara to switch dependencies to the _cc dependencies. Now that these
-    # copybara rules are removed, we need to first change the internal BUILD
-    # files to depend on the correct targets instead, then this can be removed.
-    # TODO(b/143648532): Remove this once all reverse dependencies are migrated.
-    if protolib_name != name:
-        native.alias(
-            name = protolib_name,
-            actual = name,
-            visibility = kargs["visibility"],
-        )
-
 # Re-defined protocol buffer rule to bring in the change introduced in commit
 # https://github.com/google/protobuf/commit/294b5758c373cbab4b72f35f4cb62dc1d8332b68
 # which was not part of a stable protobuf release in 04/2018.
@@ -386,15 +394,9 @@ def tf_proto_library_cc(
             deps = [s + "_genproto" for s in protolib_deps],
         )
 
-        # Temporarily also add an alias with 'name'. So far we relied on
-        # copybara to switch dependencies to the _cc dependencies. Now that these
-        # copybara rules are removed, we need to change the internal BUILD files to
-        # depend on the correct targets instead.
-        # TODO(b/143648532): Remove this once all reverse dependencies are
-        # migrated.
         native.alias(
-            name = name,
-            actual = cc_name,
+            name = cc_name + "_genproto",
+            actual = name + "_genproto",
             testonly = testonly,
             visibility = visibility,
         )
@@ -485,9 +487,6 @@ def tf_proto_library_py(
 def tf_jspb_proto_library(**kwargs):
     pass
 
-def tf_nano_proto_library(**kwargs):
-    pass
-
 def tf_proto_library(
         name,
         srcs = [],
@@ -504,7 +503,19 @@ def tf_proto_library(
         make_default_target_header_only = False,
         exports = []):
     """Make a proto library, possibly depending on other proto libraries."""
+
+    # TODO(b/145545130): Add docstring explaining what rules this creates and how
+    # opensource projects importing TF in bazel can use them safely (i.e. w/o ODR or
+    # ABI violations).
     _ignore = (js_codegen, exports)
+
+    native.proto_library(
+        name = name,
+        srcs = srcs,
+        deps = protodeps + well_known_proto_libs(),
+        visibility = visibility,
+        testonly = testonly,
+    )
 
     tf_proto_library_cc(
         name = name,
@@ -528,76 +539,40 @@ def tf_proto_library(
         visibility = visibility,
     )
 
-# A list of all files under platform matching the pattern in 'files'. In
-# contrast with 'tf_platform_srcs' below, which seletive collects files that
-# must be compiled in the 'default' platform, this is a list of all headers
-# mentioned in the platform/* files.
-def tf_platform_hdrs(files):
-    return native.glob(["*/" + f for f in files])
-
-def tf_platform_srcs(files):
-    base_set = ["default/" + f for f in files]
-    windows_set = base_set + ["windows/" + f for f in files]
-    posix_set = base_set + ["posix/" + f for f in files]
-
-    return select({
-        clean_dep("//tensorflow:windows"): native.glob(windows_set),
-        "//conditions:default": native.glob(posix_set),
-    })
-
-def tf_additional_lib_hdrs(exclude = []):
-    windows_hdrs = native.glob([
-        "default/*.h",
-        "windows/*.h",
-        "posix/error.h",
-    ], exclude = exclude + [
-        "default/subprocess.h",
-        "default/posix_file_system.h",
-    ])
-    return select({
-        clean_dep("//tensorflow:windows"): windows_hdrs,
-        "//conditions:default": native.glob([
-            "default/*.h",
-            "posix/*.h",
-        ], exclude = exclude),
-    })
-
-def tf_additional_lib_srcs(exclude = []):
-    windows_srcs = native.glob([
-        "default/*.cc",
-        "windows/*.cc",
-        "posix/error.cc",
-    ], exclude = exclude + [
-        "default/env.cc",
-        "default/env_time.cc",
-        "default/load_library.cc",
-        "default/net.cc",
-        "default/port.cc",
-        "default/posix_file_system.cc",
-        "default/subprocess.cc",
-        "default/stacktrace_handler.cc",
-    ])
-    return select({
-        clean_dep("//tensorflow:windows"): windows_srcs,
-        "//conditions:default": native.glob([
-            "default/*.cc",
-            "posix/*.cc",
-        ], exclude = exclude),
+def tf_additional_lib_hdrs():
+    return [
+        "//tensorflow/core/platform/default:context.h",
+        "//tensorflow/core/platform/default:cord.h",
+        "//tensorflow/core/platform/default:dynamic_annotations.h",
+        "//tensorflow/core/platform/default:integral_types.h",
+        "//tensorflow/core/platform/default:logging.h",
+        "//tensorflow/core/platform/default:mutex.h",
+        "//tensorflow/core/platform/default:mutex_data.h",
+        "//tensorflow/core/platform/default:notification.h",
+        "//tensorflow/core/platform/default:stacktrace.h",
+        "//tensorflow/core/platform/default:strong_hash.h",
+        "//tensorflow/core/platform/default:test_benchmark.h",
+        "//tensorflow/core/platform/default:tracing_impl.h",
+        "//tensorflow/core/platform/default:unbounded_work_queue.h",
+    ] + select({
+        "//tensorflow:windows": [
+            "//tensorflow/core/platform/windows:intrinsics_port.h",
+            "//tensorflow/core/platform/windows:stacktrace.h",
+            "//tensorflow/core/platform/windows:subprocess.h",
+            "//tensorflow/core/platform/windows:wide_char.h",
+            "//tensorflow/core/platform/windows:windows_file_system.h",
+        ],
+        "//conditions:default": [
+            "//tensorflow/core/platform/default:posix_file_system.h",
+            "//tensorflow/core/platform/default:subprocess.h",
+        ],
     })
 
 def tf_additional_monitoring_hdrs():
     return []
 
-def tf_additional_monitoring_srcs():
-    return [
-        "default/monitoring.cc",
-    ]
-
-def tf_additional_proto_hdrs():
-    return [
-        "default/integral_types.h",
-        "default/logging.h",
-    ]
+def tf_additional_env_hdrs():
+    return []
 
 def tf_additional_all_protos():
     return [clean_dep("//tensorflow/core:protos_all")]
@@ -633,16 +608,13 @@ def tf_additional_device_tracer_srcs():
 def tf_additional_cupti_utils_cuda_deps():
     return []
 
-def tf_additional_cupti_test_flags():
-    return []
-
 def tf_additional_test_deps():
     return []
 
 def tf_additional_test_srcs():
     return [
-        "default/test.cc",
-        "default/test_benchmark.cc",
+        "//tensorflow/core/platform/default:test.cc",
+        "//tensorflow/core/platform/default:test_benchmark.cc",
     ]
 
 def tf_kernel_tests_linkstatic():
@@ -757,3 +729,28 @@ def tf_protobuf_compiler_deps():
         ],
         otherwise = [clean_dep("@com_google_protobuf//:protobuf_headers")],
     )
+
+def tf_windows_aware_platform_deps(name):
+    return select({
+        "//tensorflow:windows": [
+            "//tensorflow/core/platform/windows:" + name,
+        ],
+        "//conditions:default": [
+            "//tensorflow/core/platform/default:" + name,
+        ],
+    })
+
+def tf_platform_deps(name, platform_dir = "//tensorflow/core/platform/"):
+    return [platform_dir + "default:" + name]
+
+def tf_platform_alias(name):
+    return ["//tensorflow/core/platform/default:" + name]
+
+def tf_logging_deps():
+    return ["//tensorflow/core/platform/default:logging"]
+
+def tf_monitoring_deps():
+    return ["//tensorflow/core/platform/default:monitoring"]
+
+def tf_legacy_srcs_no_runtime_google():
+    return []

@@ -1,4 +1,5 @@
 load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
+load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -55,6 +56,7 @@ cc_test(
     tags = [
         "linux",
         "local",
+        "tflite_not_portable_ios",
     ],
     deps = [
         ":buffer",
@@ -89,6 +91,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:types",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
     ],
 )
 
@@ -408,6 +411,7 @@ cc_test(
     tags = [
         "linux",
         "local",
+        "tflite_not_portable_ios",
     ],
     deps = [
         ":cl_test",
@@ -463,6 +467,7 @@ cc_test(
     tags = [
         "linux",
         "local",
+        "tflite_not_portable_ios",
     ],
     deps = [
         ":cl_test",
@@ -486,3 +491,5 @@ cc_library(
         "@com_google_absl//absl/types:span",
     ],
 )
+
+tflite_portable_test_suite()

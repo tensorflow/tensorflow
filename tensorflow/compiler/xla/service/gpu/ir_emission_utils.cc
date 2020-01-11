@@ -19,6 +19,7 @@ limitations under the License.
 #include <array>
 #include <vector>
 
+#include "llvm/IR/IntrinsicsNVPTX.h"
 #include "llvm/IR/Module.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/gpu/target_util.h"
@@ -124,6 +125,24 @@ bool IsCublasGemm(const HloInstruction& hlo) {
          hlo.custom_call_target() == kGemmCallTarget;
 }
 
+std::array<int64, 3> GetReductionTiling(
+    const ReductionDimensions& reduction_dimensions) {
+  if (reduction_dimensions.is_row_reduction) {
+    int64 tile_z = std::min(reduction_dimensions.dimensions[0], 8LL);
+    if (reduction_dimensions.dimensions[1] == 1) {
+      CHECK_EQ(reduction_dimensions.dimensions[0], 1);
+      return {tile_z, 1, 16};
+    }
+    if (reduction_dimensions.dimensions[2] % (kWarpSize * 64) == 0) {
+      return {tile_z, 1, 64};
+    }
+    return {tile_z, 1, 8};
+  }
+
+  // Column reduction.
+  return {1, 128, 1};
+}
+
 const char* const kCudnnBatchNormForwardInferenceCallTarget =
     "__cudnn$batchNormalizationForwardInference";
 const char* const kCudnnBatchNormForwardTrainingCallTarget =
@@ -201,8 +220,7 @@ bool IsReductionFromOrToContiguousDimensions(const HloInstruction& reduce) {
   }
 
   ReductionDimensions reduction_dimensions =
-      GetReductionKindAndContiguousComponents(input->shape(),
-                                              reduce.dimensions());
+      GetReductionKindAndContiguousComponents(reduce);
 
   if (reduction_dimensions.is_row_reduction) {
     // For row reduction, the tile block is 1 x tile_size_x, and we are reducing
@@ -217,8 +235,35 @@ bool IsReductionFromOrToContiguousDimensions(const HloInstruction& reduce) {
   return reduction_dimensions.dimensions[1] >= kWarpSize;
 }
 
+bool IsInputFusibleSlices(const HloInstruction& unnested_hlo,
+                          bool verify_no_strides) {
+  if (!unnested_hlo.IsInputFusion()) {
+    return false;
+  }
+
+  auto is_non_strided = [](const std::vector<int64>& strides) -> bool {
+    return absl::c_all_of(strides, [](int stride) { return stride == 1; });
+  };
+
+  const HloInstruction* root = unnested_hlo.fused_expression_root();
+  if (root->opcode() == HloOpcode::kSlice) {
+    return !verify_no_strides || is_non_strided(root->slice_strides());
+  }
+
+  if (root->opcode() != HloOpcode::kTuple) {
+    return false;
+  }
+
+  return absl::c_all_of(root->operands(), [&](const HloInstruction* instr) {
+    return instr->opcode() == HloOpcode::kSlice &&
+           (!verify_no_strides || is_non_strided(instr->slice_strides()));
+  });
+}
+
 ReductionDimensions GetReductionKindAndContiguousComponents(
-    const Shape& input_shape, absl::Span<const int64> dims_to_reduce) {
+    const HloInstruction& reduce) {
+  const Shape& input_shape = reduce.operand(0)->shape();
+  absl::Span<const int64> dims_to_reduce = reduce.dimensions();
   DimensionVector dims_to_keep;
   for (int64 dim = 0; dim < input_shape.rank(); ++dim) {
     if (!absl::c_linear_search(dims_to_reduce, dim)) {
@@ -382,6 +427,39 @@ StatusOr<CudnnConvKind> GetCudnnConvKind(
   return InternalError("Unexpected call target: %s", target);
 }
 
+StatusOr<se::dnn::ConvolutionKind> GetDnnConvolutionKind(
+    const HloCustomCallInstruction* instr) {
+  absl::string_view target = instr->custom_call_target();
+  if (target == kCudnnConvForwardCallTarget) {
+    return se::dnn::ConvolutionKind::FORWARD;
+  }
+  if (target == kCudnnConvBackwardInputCallTarget) {
+    return se::dnn::ConvolutionKind::BACKWARD_DATA;
+  }
+  if (target == kCudnnConvBackwardFilterCallTarget) {
+    return se::dnn::ConvolutionKind::BACKWARD_FILTER;
+  }
+  return InternalError("Unexpected call target: %s", target);
+}
+
+StatusOr<se::dnn::DataType> GetDnnDataType(
+    const HloCustomCallInstruction* conv) {
+  PrimitiveType output_primitive_type =
+      conv->shape().tuple_shapes(0).element_type();
+  switch (output_primitive_type) {
+    case F16:
+      return se::dnn::ToDataType<Eigen::half>::value;
+    case F32:
+      return se::dnn::ToDataType<float>::value;
+    case F64:
+      return se::dnn::ToDataType<double>::value;
+    default:
+      break;
+  }
+  return InternalError("Unsupported convolution datatype : %s",
+                       conv->ToString());
+}
+
 string CudnnConvKindToString(CudnnConvKind kind) {
   switch (kind) {
     case CudnnConvKind::kForward:
@@ -403,6 +481,34 @@ llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b) {
       b->CreateICmpEQ(
           b->getInt32(0),
           EmitCallToTargetIntrinsic(TargetIntrinsicID::kThreadIdx, {}, {}, b)));
+}
+
+bool AreFusedReductionOutputsConsistent(
+    absl::Span<const HloInstruction* const> output_instructions,
+    const HloInstruction* first_reduce) {
+  for (const HloInstruction* inst : output_instructions) {
+    if (IsReductionFromOrToContiguousDimensions(*inst)) {
+      // Shapes, layouts and dimensions must be the same for all reduces
+      // inside of this fusion.
+      // TODO(tjoerg): Relax the shape constraint. The datatype does not matter.
+      if (!(ShapeUtil::Equal(first_reduce->shape(), inst->shape()) &&
+            ShapeUtil::Equal(first_reduce->operand(0)->shape(),
+                             inst->operand(0)->shape()) &&
+            ShapeUtil::Equal(first_reduce->operand(1)->shape(),
+                             inst->operand(1)->shape()) &&
+            first_reduce->dimensions() == inst->dimensions())) {
+        return false;
+      }
+    } else {
+      if (!(ShapeUtil::CompatibleIgnoringElementType(
+                first_reduce->operand(0)->shape(), inst->shape()) &&
+            LayoutUtil::Equal(first_reduce->operand(0)->shape().layout(),
+                              inst->shape().layout()))) {
+        return false;
+      }
+    }
+  }
+  return true;
 }
 
 }  // namespace gpu

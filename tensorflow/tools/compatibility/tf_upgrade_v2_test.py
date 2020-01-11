@@ -515,68 +515,69 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
         initializers, ns_prefix="keras.initializers")
 
   def testContribXavierInitializer(self):
-    text = "tf.contrib.layers.xavier_initializer()\n"
-    _, unused_report, unused_errors, new_text = self._upgrade(text)
-    self.assertEqual(
-        new_text,
-        "tf.compat.v1.keras.initializers.VarianceScaling(scale=1.0, "
-        "mode=\"fan_avg\", "
-        "distribution=\"uniform\")\n",
-    )
+    for contrib_alias in ["tf.contrib.", "contrib_"]:
+      text = contrib_alias + "layers.xavier_initializer()\n"
+      _, unused_report, unused_errors, new_text = self._upgrade(text)
+      self.assertEqual(
+          new_text,
+          "tf.compat.v1.keras.initializers.VarianceScaling(scale=1.0, "
+          "mode=\"fan_avg\", "
+          "distribution=\"uniform\")\n",
+      )
 
-    text = "slim.xavier_initializer(True or False)\n"
-    _, unused_report, unused_errors, new_text = self._upgrade(text)
-    self.assertEqual(
-        new_text,
-        "tf.compat.v1.keras.initializers.VarianceScaling(scale=1.0, "
-        "mode=\"fan_avg\", "
-        "distribution=(\"uniform\" if True or False else "
-        "\"truncated_normal\"))\n",
-    )
+      text = "slim.xavier_initializer(True or False)\n"
+      _, unused_report, unused_errors, new_text = self._upgrade(text)
+      self.assertEqual(
+          new_text,
+          "tf.compat.v1.keras.initializers.VarianceScaling(scale=1.0, "
+          "mode=\"fan_avg\", "
+          "distribution=(\"uniform\" if True or False else "
+          "\"truncated_normal\"))\n",
+      )
 
-    text = "slim.xavier_initializer(uniform=(True or False))\n"
-    _, unused_report, unused_errors, new_text = self._upgrade(text)
-    self.assertEqual(
-        new_text,
-        "tf.compat.v1.keras.initializers.VarianceScaling(scale=1.0, "
-        "mode=\"fan_avg\", "
-        "distribution=(\"uniform\" if True or False else "
-        "\"truncated_normal\"))\n",
-    )
+      text = "slim.xavier_initializer(uniform=(True or False))\n"
+      _, unused_report, unused_errors, new_text = self._upgrade(text)
+      self.assertEqual(
+          new_text,
+          "tf.compat.v1.keras.initializers.VarianceScaling(scale=1.0, "
+          "mode=\"fan_avg\", "
+          "distribution=(\"uniform\" if True or False else "
+          "\"truncated_normal\"))\n",
+      )
 
-    text = "tf.contrib.layers.xavier_initializer_conv2d(False, 12)\n"
-    _, unused_report, unused_errors, new_text = self._upgrade(text)
-    self.assertEqual(
-        new_text,
-        "tf.compat.v1.keras.initializers.VarianceScaling(scale=1.0, "
-        "mode=\"fan_avg\", "
-        "distribution=(\"uniform\" if False else \"truncated_normal\"), "
-        "seed=12)\n",
-    )
+      text = contrib_alias + "layers.xavier_initializer_conv2d(False, 12)\n"
+      _, unused_report, unused_errors, new_text = self._upgrade(text)
+      self.assertEqual(
+          new_text,
+          "tf.compat.v1.keras.initializers.VarianceScaling(scale=1.0, "
+          "mode=\"fan_avg\", "
+          "distribution=(\"uniform\" if False else \"truncated_normal\"), "
+          "seed=12)\n",
+      )
 
-    text = ("tf.contrib.layers.xavier_initializer_conv2d("
-            "False, 12, tf.float32)\n")
-    _, unused_report, unused_errors, new_text = self._upgrade(text)
-    self.assertEqual(
-        new_text,
-        "tf.compat.v1.keras.initializers.VarianceScaling(scale=1.0, "
-        "mode=\"fan_avg\", "
-        "distribution=(\"uniform\" if False else \"truncated_normal\"), "
-        "seed=12, "
-        "dtype=tf.float32)\n",
-    )
+      text = (contrib_alias + "layers.xavier_initializer_conv2d("
+              "False, 12, tf.float32)\n")
+      _, unused_report, unused_errors, new_text = self._upgrade(text)
+      self.assertEqual(
+          new_text,
+          "tf.compat.v1.keras.initializers.VarianceScaling(scale=1.0, "
+          "mode=\"fan_avg\", "
+          "distribution=(\"uniform\" if False else \"truncated_normal\"), "
+          "seed=12, "
+          "dtype=tf.float32)\n",
+      )
 
-    text = ("tf.contrib.layers.xavier_initializer("
-            "False, 12, dtypes=tf.float32)\n")
-    _, unused_report, unused_errors, new_text = self._upgrade(text)
-    self.assertEqual(
-        new_text,
-        "tf.compat.v1.keras.initializers.VarianceScaling(scale=1.0, "
-        "mode=\"fan_avg\", "
-        "distribution=(\"uniform\" if False else \"truncated_normal\"), "
-        "seed=12, "
-        "dtypes=tf.float32)\n",
-    )
+      text = (contrib_alias + "layers.xavier_initializer("
+              "False, 12, dtypes=tf.float32)\n")
+      _, unused_report, unused_errors, new_text = self._upgrade(text)
+      self.assertEqual(
+          new_text,
+          "tf.compat.v1.keras.initializers.VarianceScaling(scale=1.0, "
+          "mode=\"fan_avg\", "
+          "distribution=(\"uniform\" if False else \"truncated_normal\"), "
+          "seed=12, "
+          "dtypes=tf.float32)\n",
+      )
 
   def testVarianceScalingInitializer(self):
     text = ("tf.contrib.layers.variance_scaling_initializer("
@@ -1638,6 +1639,12 @@ def _log_prob(self, x):
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(expected, new_text)
 
+  def test_is_tensor_direct_import_upgrade(self):
+    text = "contrib_framework.is_tensor(x)"
+    expected = "tf.is_tensor(x)"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected, new_text)
+
   def test_CriticalSection_upgrade(self):
     text = "tf.contrib.framework.CriticalSection(shared_name='blah')"
     expected = "tf.CriticalSection(shared_name='blah')"
@@ -1674,17 +1681,21 @@ def _log_prob(self, x):
     self.assertIn("tf.flags and tf.app.flags have been removed", errors[0])
 
   def test_contrib_estimator_head_deprecation(self):
-    api_symbols = ["binary_classification_head", "logistic_regression_head",
-                   "multi_class_head", "multi_head", "multi_label_head",
-                   "poisson_regression_head", "regression_head"]
-    for symbol in api_symbols:
-      text = "tf.contrib.estimator." + symbol
-      _, report, _, _ = self._upgrade(text)
-      self.assertIn("`tf.contrib.estimator.*_head` has been deprecated", report)
+    for contrib_alias in ["tf.contrib.", "contrib_"]:
+      api_symbols = ["binary_classification_head", "logistic_regression_head",
+                     "multi_class_head", "multi_head", "multi_label_head",
+                     "poisson_regression_head", "regression_head"]
+      for symbol in api_symbols:
+        text = contrib_alias + "estimator." + symbol
+        _, report, _, _ = self._upgrade(text)
+        self.assertIn("`tf.contrib.estimator.*_head` has been deprecated",
+                      report)
 
   def test_contrib_layers_layer_norm_deprecation(self):
-    _, report, _, _ = self._upgrade("tf.contrib.layers.layer_norm")
-    self.assertIn("`tf.contrib.layers.layer_norm` has been deprecated", report)
+    for contrib_alias in ["tf.contrib.", "contrib_"]:
+      _, report, _, _ = self._upgrade(contrib_alias + "layers.layer_norm")
+      self.assertIn(
+          "`tf.contrib.layers.layer_norm` has been deprecated", report)
 
   def test_contrib_rnn_deprecation(self):
     _, report, _, _ = self._upgrade("tf.contrib.rnn")
@@ -1701,15 +1712,17 @@ def _log_prob(self, x):
     self.assertEqual(expected_text, new_text)
 
   def test_contrib_estimator_early_stopping(self):
-    api_symbols = [
-        "make_early_stopping_hook", "stop_if_higher_hook", "stop_if_lower_hook",
-        "stop_if_no_decrease_hook", "stop_if_no_increase_hook"
-    ]
-    for symbol in api_symbols:
-      text = "tf.contrib.estimator." + symbol
-      expected_text = "tf.estimator.experimental." + symbol
-      _, _, _, new_text = self._upgrade(text)
-      self.assertEqual(expected_text, new_text)
+    for contrib_alias in ["tf.contrib.", "contrib_"]:
+      api_symbols = [
+          "make_early_stopping_hook", "stop_if_higher_hook",
+          "stop_if_lower_hook",
+          "stop_if_no_decrease_hook", "stop_if_no_increase_hook"
+      ]
+      for symbol in api_symbols:
+        text = contrib_alias + "estimator." + symbol
+        expected_text = "tf.estimator.experimental." + symbol
+        _, _, _, new_text = self._upgrade(text)
+        self.assertEqual(expected_text, new_text)
 
   def test_contrib_rnn_cell(self):
     api_symbols = ["RNNCell", "BasicLSTMCell", "BasicRNNCell", "GRUCell",
@@ -2345,6 +2358,31 @@ class TestUpgradeFiles(test_util.TensorFlowTestCase):
     temp_file = tempfile.NamedTemporaryFile("w", delete=False)
     original = "tf.conj(a)\n"
     upgraded = "tf.math.conj(a)\n"
+    temp_file.write(original)
+    temp_file.close()
+    upgrader = ast_edits.ASTCodeUpgrader(tf_upgrade_v2.TFAPIChangeSpec())
+    upgrader.process_file(temp_file.name, temp_file.name)
+    self.assertAllEqual(open(temp_file.name).read(), upgraded)
+    os.unlink(temp_file.name)
+
+  def testInplaceNoOutputChangeOnErrorHandling(self):
+    """In place file should not be modified when parsing error is handled."""
+    temp_file = tempfile.NamedTemporaryFile("w", delete=False)
+    original = "print 'a' \n"
+    upgraded = "print 'a' \n"
+    temp_file.write(original)
+    temp_file.close()
+    upgrader = ast_edits.ASTCodeUpgrader(tf_upgrade_v2.TFAPIChangeSpec())
+    upgrader.process_file(
+        temp_file.name, temp_file.name, no_change_to_outfile_on_error=True)
+    self.assertAllEqual(open(temp_file.name).read(), upgraded)
+    os.unlink(temp_file.name)
+
+  def testInplaceEmptyOutputOnError(self):
+    """In place file becomes empty when parsing error is not handled."""
+    temp_file = tempfile.NamedTemporaryFile("w", delete=False)
+    original = "print 'a' \n"
+    upgraded = ""
     temp_file.write(original)
     temp_file.close()
     upgrader = ast_edits.ASTCodeUpgrader(tf_upgrade_v2.TFAPIChangeSpec())
