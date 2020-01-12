@@ -2222,6 +2222,11 @@ def reduce_min(input_tensor, axis=None, keepdims=False, name=None):
   Returns:
     The reduced tensor.
 
+  For example:
+    >>> a = tf.constant([[1, 2], [3, 4]])
+    >>> tf.reduce_min(a)
+    <tf.Tensor: id=2, shape=(), dtype=int32, numpy=1>
+
   @compatibility(numpy)
   Equivalent to np.min
   @end_compatibility
