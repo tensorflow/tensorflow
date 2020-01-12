@@ -2126,6 +2126,10 @@ def ensure_shape(x, shape, name=None):
   ...   return tf.ensure_shape(tensor, [3, 3])
   >>>
   >>> f(tf.zeros([3, 3])) # Passes
+  <tf.Tensor: shape=(3, 3), dtype=float32, numpy=
+  array([[0., 0., 0.],
+         [0., 0., 0.],
+         [0., 0., 0.]], dtype=float32)>
   >>> f([1, 2, 3]) # fails
   Traceback (most recent call last):
   ...
