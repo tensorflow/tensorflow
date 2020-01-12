@@ -26,8 +26,6 @@ limitations under the License.
 
 #undef ERROR
 
-#pragma comment(lib, "Ws2_32.lib")
-
 namespace tensorflow {
 namespace internal {
 
