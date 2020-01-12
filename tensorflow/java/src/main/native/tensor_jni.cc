@@ -450,7 +450,10 @@ JNIEXPORT jlong JNICALL Java_org_tensorflow_Tensor_allocateNonScalarBytes(
   }
   const size_t encoded_size =
       nonScalarTF_STRINGTensorSize(env, value, num_dims);
-  if (env->ExceptionCheck()) return 0;
+  if (env->ExceptionCheck()) {
+	  delete[] dims;
+	  return 0;
+  }
   TF_Tensor* t = TF_AllocateTensor(TF_STRING, dims, num_dims,
                                    8 * num_elements + encoded_size);
   if (t == nullptr) {
