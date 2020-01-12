@@ -179,7 +179,7 @@ def reshape(tensor, shape, name=None):  # pylint: disable=redefined-outer-name
            [[4, 4, 4],
             [5, 5, 5],
             [6, 6, 6]]], dtype=int32)>
-
+  
   Args:
     tensor: A `Tensor`.
     shape: A `Tensor`. Must be one of the following types: `int32`, `int64`.
@@ -189,6 +189,7 @@ def reshape(tensor, shape, name=None):  # pylint: disable=redefined-outer-name
   Returns:
     A `Tensor`. Has the same type as `tensor`.
   """
+  
   result = gen_array_ops.reshape(tensor, shape, name)
   tensor_util.maybe_set_static_shape(result, shape)
   return result
@@ -560,6 +561,31 @@ def shape_v2(input, out_type=dtypes.int32, name=None):
   `tf.shape` and `Tensor.shape` should be identical in eager mode.  Within
   `tf.function` or within a `compat.v1` context, not all dimensions may be
   known until execution time.
+  
+  Usage example:
+  >>> import tensorflow as tf
+  >>> a = tf.Variable([5])
+  >>> b = tf.Variable([6])
+  >>> c = a+b
+  >>> d = a*b
+  >>> e = a/b
+  >>> ops = tf.tuple([c,d,e])
+  >>> with tf.Session() as sess:
+   >>> sess.run(tf.global_variables_initializer())
+   >>> ee = sess.run(ops)
+   >>> print(ee)
+ [array([11], dtype=int32), array([30], dtype=int32), array([0.83333333])]
+ 
+ 
+    >>> a = 1
+    >>> b = 2
+    >>> c = 3
+    >>> data = tf.tuple([a,b,c])
+    >>> for element in data:
+    ...  print(element) 
+   Tensor("tuple/control_dependency:0", shape=(), dtype=int32)
+   Tensor("tuple/control_dependency_1:0", shape=(), dtype=int32)
+   Tensor("tuple/control_dependency_2:0", shape=(), dtype=int32)
 
   Args:
     input: A `Tensor` or `SparseTensor`.
