@@ -1117,7 +1117,7 @@ def function(func=None,
   the graphs traced. The input signature specifies the shape and type of each
   Tensor argument to the function using a `tf.TensorSpec` object. More general
   shapes can be used. This is useful to avoid creating multiple graphs when
-  Tensors have dynamic shapes. It also restricts the dhape and datatype of
+  Tensors have dynamic shapes. It also restricts the shape and datatype of
   Tensors that can be used:
 
   >>> @tf.function(
