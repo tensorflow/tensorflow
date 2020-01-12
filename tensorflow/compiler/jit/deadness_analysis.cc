@@ -250,7 +250,7 @@ class NotPredicate : public Predicate {
 class AndRecurrencePredicate : public Predicate {
  public:
   explicit AndRecurrencePredicate(int64 id, Predicate* start, Predicate* step,
-                                  std::vector<string> frame)
+                                  std::vector<string> &frame)
       : Predicate(id), operands_({start, step}), frame_(std::move(frame)) {}
 
   Predicate* start() const { return operands_[0]; }
@@ -397,7 +397,7 @@ class PredicateFactory {
   }
 
   Predicate* MakeAndRecurrencePredicate(Predicate* start, Predicate* step,
-                                        std::vector<string> frame) {
+                                        std::vector<string> &frame) {
     SignatureForAndRec signature(start, step, std::move(frame));
     auto it = interned_and_rec_instances_.find(signature);
     if (it != interned_and_rec_instances_.end()) {
@@ -1584,7 +1584,6 @@ DeadnessAnalysis::~DeadnessAnalysis() {}
 absl::flat_hash_map<TensorId, string, TensorId::Hasher>
 DeadnessAnalysisImpl::PredicateMapAsString() const {
   absl::flat_hash_map<TensorId, string, TensorId::Hasher> result;
-  std::vector<TensorId> tensor_ids;
   for (const auto& kv_pair : predicate_map_) {
     CHECK(result.insert({kv_pair.first, kv_pair.second->ToString()}).second);
   }
