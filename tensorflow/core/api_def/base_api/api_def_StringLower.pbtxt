@@ -1,4 +1,7 @@
 op {
   graph_op_name: "StringLower"
   description: "Converts each string in the input Tensor to lowercase."
+  ```python
+  x = tf.constant("TensorFLOW")
+  tf.strings.lower(x) ==> <tf.Tensor numpy="tensorflow", dtype=string, shape=()>  
 }
