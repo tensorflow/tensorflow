@@ -19,7 +19,7 @@ To compile and test this example on a desktop Linux or MacOS machine, download
 into the source directory from a terminal, and then run the following command:
 
 ```
-make -f tensorflow/lite/experimental/micro/tools/make/Makefile
+make -f tensorflow/lite/micro/tools/make/Makefile
 ```
 
 You only need to do this once, it will take a few minutes to download the
@@ -29,33 +29,28 @@ frameworks the code uses such as
 finished, you can build the MNIST demo with the command below:
 
 ```
-make -f tensorflow/lite/experimental/micro/tools/make/Makefile mnist_demo
+make -f tensorflow/lite/micro/tools/make/Makefile micro_mnist
 ```
 
 This will have produced a native binary in the location:
 
 ```
-tensorflow/lite/experimental/micro/tools/make/gen/<your platform>/bin
+tensorflow/lite/micro/tools/make/gen/<your platform>/bin
 ```
 
 Executing this binary should produce the output below, testing and evaluating
 the MNIST classifier on a set of compiled in test data:
 
 ```
-Parsing MNIST classifier model FlatBuffer.
-Model parsed.
-
-Build interpreter.
-Done.
-
+Parsing MNIST classifier model FlatBuffer, size 83708 bytes.
 Details of input tensor:
-Type [Float32] Shape :
+Type [FLOAT32] Shape :
 0 [ 1]
 1 [ 28]
 2 [ 28]
 
 Details of output tensor:
-Type [Int32] Shape :
+Type [INT32] Shape :
 0 [ 1]
 
 Model estimate [7] training label [7]
@@ -67,7 +62,6 @@ Model estimate [4] training label [4]
 Test set accuracy was 96 percent
 
 MNIST classifier example completed successfully.
-
 ```
 
 This example code loads the MNIST classifier, logs the sizes and datatimes of

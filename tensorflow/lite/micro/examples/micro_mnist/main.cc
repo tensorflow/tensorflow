@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/experimental/micro/examples/mnist_demo/model/mnist_model.h"
-#include "tensorflow/lite/experimental/micro/examples/mnist_demo/model/mnist_test_data.h"
-#include "tensorflow/lite/experimental/micro/kernels/all_ops_resolver.h"
-#include "tensorflow/lite/experimental/micro/micro_error_reporter.h"
-#include "tensorflow/lite/experimental/micro/micro_interpreter.h"
+#include "tensorflow/lite/micro/examples/micro_mnist/model/mnist_model.h"
+#include "tensorflow/lite/micro/examples/micro_mnist/model/mnist_test_data.h"
+#include "tensorflow/lite/micro/kernels/all_ops_resolver.h"
+#include "tensorflow/lite/micro/micro_error_reporter.h"
+#include "tensorflow/lite/micro/micro_interpreter.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/version.h"
 
 // Helper fn to log the shape and datatype of a tensor
@@ -96,11 +96,11 @@ int main(int argc, char* argv[]) {
     }
   }
 
-  error_reporter->Report("Test set accuracy was %d percent\n\n",
+  error_reporter->Report("Test set accuracy was %d percent\n",
                          ((accurateCount * 100) / mnistSampleCount));
 
   error_reporter->Report(
-      "\nMNIST classifier example completed successfully.\n");
+      "MNIST classifier example completed successfully.\n");
 
   return 0;
 }
