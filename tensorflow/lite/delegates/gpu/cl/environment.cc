@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/cl_kernel.h"
 #include "tensorflow/lite/delegates/gpu/cl/util.h"
+#include "tensorflow/lite/delegates/gpu/common/shape.h"
 
 namespace tflite {
 namespace gpu {
@@ -58,7 +59,8 @@ Status CheckKernelSupportOfOneLayerTextureArray(Environment* env,
   const BHWC shape(1, 4, 4, 4);
   RETURN_IF_ERROR(CreateTensor(
       env->context(), env->device(), shape,
-      {DataType::FLOAT32, TensorStorageType::TEXTURE_ARRAY}, &tensor));
+      {DataType::FLOAT32, TensorStorageType::TEXTURE_ARRAY, Layout::HWC},
+      &tensor));
   RETURN_IF_ERROR(kernel.SetMemory(0, tensor.GetMemoryPtr()));
   RETURN_IF_ERROR(env->queue()->DispatchImplicit(kernel, {4, 4, 1}, {4, 4, 1}));
   TensorFloat32 tensor_gpu;

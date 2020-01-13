@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor_type_util.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
+#include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 
 namespace tflite {
@@ -157,7 +158,8 @@ class DefaultTensorTie : public TensorTie {
         const TensorDescriptor desc{
             d.object_def.data_type,
             ToTensorStorageType(d.object_def.object_type,
-                                d.object_def.data_layout)};
+                                d.object_def.data_layout),
+            Layout::BHWC};
         RETURN_IF_ERROR(AllocateTensorMemory(env->context(), env->device(),
                                              shape, desc, &cl_memory_));
         if (d.object_def.object_type == ObjectType::OPENCL_TEXTURE) {
