@@ -1526,9 +1526,12 @@ def range(start, limit=None, delta=1, dtype=None, name="range"):  # pylint: disa
     start, limit = 0, start
 
   with ops.name_scope(name, "Range", [start, limit, delta]) as name:
-    start = ops.convert_to_tensor(start, dtype=dtype, name="start")
-    limit = ops.convert_to_tensor(limit, dtype=dtype, name="limit")
-    delta = ops.convert_to_tensor(delta, dtype=dtype, name="delta")
+    if not isinstance(start, ops.Tensor):
+      start = ops.convert_to_tensor(start, dtype=dtype, name="start")
+    if not isinstance(limit, ops.Tensor):
+      limit = ops.convert_to_tensor(limit, dtype=dtype, name="limit")
+    if not isinstance(delta, ops.Tensor):
+      delta = ops.convert_to_tensor(delta, dtype=dtype, name="delta")
 
     # infer dtype if not explicitly provided
     if dtype is None:
@@ -1538,10 +1541,14 @@ def range(start, limit=None, delta=1, dtype=None, name="range"):  # pylint: disa
       assert all(arg.dtype in dtype_hierarchy for arg in [start, limit, delta])
       inferred_dtype = max([arg.dtype for arg in [start, limit, delta]],
                            key=dtype_hierarchy.index)
-
-      start = cast(start, inferred_dtype)
-      limit = cast(limit, inferred_dtype)
-      delta = cast(delta, inferred_dtype)
+    else:
+      inferred_dtype = dtype
+    # Always try perform a cast even start/limit/delta are already tensors.
+    # This will revole the case where start/limit/delta's original's dtype
+    # is different from provided dtype.
+    start = cast(start, inferred_dtype)
+    limit = cast(limit, inferred_dtype)
+    delta = cast(delta, inferred_dtype)
 
     return gen_math_ops._range(start, limit, delta, name=name)
 
