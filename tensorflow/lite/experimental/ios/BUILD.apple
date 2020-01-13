@@ -82,6 +82,7 @@ cc_library(
 build_test(
     name = "framework_build_test",
     tags = [
+        "noasan",  # b/147230742
         "nomsan",  # b/145205324
         "notsan",  # b/145205324
     ],

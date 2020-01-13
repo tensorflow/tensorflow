@@ -118,9 +118,7 @@ load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_all_protos",
     "tf_additional_core_deps",
-    "tf_additional_env_hdrs",
     "tf_additional_lib_deps",
-    "tf_additional_monitoring_hdrs",
     "tf_additional_test_deps",
     "tf_jspb_proto_library",
     "tf_kernel_tests_linkstatic",
@@ -139,7 +137,6 @@ load(
     "if_dynamic_kernels",
     "if_static",
     "tf_cuda_tests_tags",
-    "tf_gpu_tests_tags",
 )
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
@@ -290,27 +287,9 @@ closure_proto_library(
     deps = [":example_protos"],
 )
 
-filegroup(
-    name = "platform_base_hdrs",
-    srcs = [
-        "//tensorflow/core/platform:byte_order.h",
-        "//tensorflow/core/platform:cord.h",
-        "//tensorflow/core/platform:env_time.h",
-        "//tensorflow/core/platform:logging.h",
-        "//tensorflow/core/platform:macros.h",
-        "//tensorflow/core/platform:platform_strings.h",
-        "//tensorflow/core/platform:threadpool.h",
-        "//tensorflow/core/platform:threadpool_interface.h",
-        "//tensorflow/core/platform:threadpool_options.h",
-        "//tensorflow/core/platform:tstring.h",
-        "//tensorflow/core/platform:types.h",
-    ],
-    visibility = ["//visibility:private"],
-)
-
 cc_library(
     name = "platform_base",
-    hdrs = [":platform_base_hdrs"],
+    hdrs = ["//tensorflow/core/platform:base_hdrs"],
     copts = tf_copts(),
     tags = ["avoid_dep"],
     visibility = [":__subpackages__"],
@@ -346,95 +325,9 @@ filegroup(
     ],
 )
 
-filegroup(
-    name = "platform_port_hdrs",
-    srcs = [
-        "//tensorflow/core/platform:cpu_info.h",
-        "//tensorflow/core/platform:dynamic_annotations.h",
-        "//tensorflow/core/platform:init_main.h",
-        "//tensorflow/core/platform:mem.h",
-        "//tensorflow/core/platform:mutex.h",
-        "//tensorflow/core/platform:numa.h",
-        "//tensorflow/core/platform:thread_annotations.h",
-    ],
-    visibility = ["//visibility:private"],
-)
-
-filegroup(
-    name = "platform_protobuf_hdrs",
-    srcs = [
-        "//tensorflow/core/platform:protobuf.h",
-    ],
-    visibility = ["//visibility:private"],
-)
-
 alias(
     name = "human_readable_json",
     actual = "//tensorflow/core/platform:human_readable_json",
-)
-
-filegroup(
-    name = "platform_env_hdrs",
-    srcs = [
-        "//tensorflow/core/platform:env.h",
-        "//tensorflow/core/platform:file_statistics.h",
-        "//tensorflow/core/platform:file_system.h",
-        "//tensorflow/core/platform:path.h",
-    ] + tf_additional_env_hdrs(),
-    visibility = ["//visibility:private"],
-)
-
-filegroup(
-    name = "platform_file_system_hdrs",
-    srcs = [
-        "//tensorflow/core/platform:file_system_helper.h",
-        "//tensorflow/core/platform:null_file_system.h",
-    ],
-    visibility = ["//visibility:private"],
-)
-
-filegroup(
-    name = "platform_other_hdrs",
-    srcs = [
-        "//tensorflow/core/platform:abi.h",
-        "//tensorflow/core/platform:context.h",
-        "//tensorflow/core/platform:cpu_feature_guard.h",
-        "//tensorflow/core/platform:error.h",
-        "//tensorflow/core/platform:fingerprint.h",
-        "//tensorflow/core/platform:logger.h",
-        "//tensorflow/core/platform:monitoring.h",
-        "//tensorflow/core/platform:net.h",
-        "//tensorflow/core/platform:notification.h",
-        "//tensorflow/core/platform:prefetch.h",
-        "//tensorflow/core/platform:profile_utils/android_armv7a_cpu_utils_helper.h",
-        "//tensorflow/core/platform:profile_utils/clock_cycle_profiler.h",
-        "//tensorflow/core/platform:profile_utils/cpu_utils.h",
-        "//tensorflow/core/platform:profile_utils/i_cpu_utils_helper.h",
-        "//tensorflow/core/platform:stacktrace.h",
-        "//tensorflow/core/platform:stacktrace_handler.h",
-        "//tensorflow/core/platform:status.h",
-        "//tensorflow/core/platform:stringpiece.h",
-        "//tensorflow/core/platform:stringprintf.h",
-        "//tensorflow/core/platform:strcat.h",
-        "//tensorflow/core/platform:str_util.h",
-        "//tensorflow/core/platform:strong_hash.h",
-        "//tensorflow/core/platform:subprocess.h",
-    ] + tf_additional_monitoring_hdrs(),
-    visibility = ["//visibility:private"],
-)
-
-tf_cc_test(
-    name = "platform_unbounded_work_queue_test",
-    srcs = ["//tensorflow/core/platform:unbounded_work_queue_test.cc"],
-    deps = [
-        ":framework",
-        ":lib",
-        ":lib_internal",
-        ":lib_test_internal",
-        ":test",
-        ":test_main",
-        "@com_google_absl//absl/memory",
-    ],
 )
 
 # Minimal lib so that tools used for mobile compilation
@@ -445,14 +338,7 @@ cc_library(
         "//tensorflow/core/lib/bfloat16:bfloat16.h",
         "//tensorflow/core/lib/core:legacy_lib_proto_parsing_headers",
         "//tensorflow/core/lib/strings:legacy_lib_proto_parsing_headers",
-        "//tensorflow/core/platform:init_main.h",
-        "//tensorflow/core/platform:logging.h",
-        "//tensorflow/core/platform:macros.h",
-        "//tensorflow/core/platform:platform.h",
-        "//tensorflow/core/platform:protobuf.h",
-        "//tensorflow/core/platform:stringpiece.h",
-        "//tensorflow/core/platform:tstring.h",
-        "//tensorflow/core/platform:types.h",
+        "//tensorflow/core/platform:lib_proto_parsing_hdrs",
     ],
     copts = tf_copts(),
     deps = tf_lib_proto_parsing_deps() + [
@@ -484,12 +370,6 @@ cc_library(
 cc_library(
     name = "lib",
     hdrs = [
-        ":platform_base_hdrs",
-        ":platform_env_hdrs",
-        ":platform_file_system_hdrs",
-        ":platform_other_hdrs",
-        ":platform_port_hdrs",
-        ":platform_protobuf_hdrs",
         "//tensorflow/core/lib/bfloat16:bfloat16.h",
         "//tensorflow/core/lib/core:legacy_lib_core_headers",
         "//tensorflow/core/lib/gtl:legacy_lib_gtl_headers",
@@ -500,6 +380,7 @@ cc_library(
         "//tensorflow/core/lib/monitoring:legacy_lib_monitoring_lib_headers",
         "//tensorflow/core/lib/random:legacy_lib_random_headers",
         "//tensorflow/core/lib/strings:legacy_lib_string_headers",
+        "//tensorflow/core/platform:lib_hdrs",
         "//tensorflow/core/util:lib_hdrs",
     ],
     visibility = ["//visibility:public"],
@@ -562,8 +443,7 @@ cc_library(
     ],
     hdrs = [
         "//tensorflow/core/lib/core:legacy_lib_core_status_test_util_header",
-        "//tensorflow/core/platform:test.h",
-        "//tensorflow/core/platform:test_benchmark.h",
+        "//tensorflow/core/platform:test_hdrs",
         "//tensorflow/core/util:test_hdrs",
     ],
     copts = tf_copts(),
@@ -637,6 +517,7 @@ tf_cuda_library(
         "//tensorflow/core/framework:shared_ptr_variant.h",
         "//tensorflow/core/framework:stats_aggregator.h",
         "//tensorflow/core/framework:tensor.h",
+        "//tensorflow/core/framework:tensor_interface.h",
         "//tensorflow/core/framework:tensor_shape.h",
         "//tensorflow/core/framework:tensor_slice.h",
         "//tensorflow/core/framework:tensor_types.h",
@@ -729,17 +610,7 @@ cc_library(
         "//tensorflow/core/framework:tensor_types.h",
         "//tensorflow/core/framework:type_traits.h",
         "//tensorflow/core/lib/bfloat16:bfloat16.h",
-        "//tensorflow/core/platform:byte_order.h",
-        "//tensorflow/core/platform:cpu_info.h",
-        "//tensorflow/core/platform:dynamic_annotations.h",
-        "//tensorflow/core/platform:macros.h",
-        "//tensorflow/core/platform:mutex.h",
-        "//tensorflow/core/platform:platform.h",
-        "//tensorflow/core/platform:prefetch.h",
-        "//tensorflow/core/platform:protobuf.h",
-        "//tensorflow/core/platform:thread_annotations.h",
-        "//tensorflow/core/platform:tstring.h",
-        "//tensorflow/core/platform:types.h",
+        "//tensorflow/core/platform:framework_lite_hdrs",
         "//tensorflow/core/platform/default:integral_types.h",
         "//tensorflow/core/platform/default:logging.h",
     ],
@@ -1722,7 +1593,7 @@ filegroup(
     srcs = [
         "//tensorflow/core/framework:android_test_hdrs",
         "//tensorflow/core/framework:android_test_srcs",
-        "//tensorflow/core/platform:test.h",
+        "//tensorflow/core/platform:android_test_srcs",
         "//tensorflow/core/util:android_test_srcs",
     ],
     visibility = ["//visibility:public"],
@@ -1734,7 +1605,7 @@ filegroup(
     srcs = [
         "//tensorflow/core/framework:android_test_hdrs",
         "//tensorflow/core/framework:android_test_srcs_no_core",
-        "//tensorflow/core/platform:test.h",
+        "//tensorflow/core/platform:android_test_srcs",
         "//tensorflow/core/util:android_test_srcs",
     ],
     visibility = ["//visibility:public"],
@@ -1938,9 +1809,7 @@ tf_proto_library_cc(
 LIB_INTERNAL_PRIVATE_HEADERS = [
     "//tensorflow/core/framework:resource_handle.h",
     "//tensorflow/core/platform:legacy_lib_internal_headers",
-    "//tensorflow/core/platform:raw_coding.h",
-    "//tensorflow/core/platform:scanner.h",
-    "//tensorflow/core/platform:str_util.h",
+    "//tensorflow/core/platform:lib_internal_private_hdrs",
     "//tensorflow/core/lib/bfloat16:bfloat16.h",
     "//tensorflow/core/lib/core:legacy_lib_core_all_headers",
     "//tensorflow/core/lib/gtl:legacy_lib_gtl_all_headers",
@@ -1972,19 +1841,7 @@ LIB_INTERNAL_PUBLIC_HEADERS = [
     "//tensorflow/core/lib/random:legacy_lib_internal_public_random_headers",
     "//tensorflow/core/lib/strings:legacy_lib_internal_public_string_headers",
     "lib/wav/wav_io.h",
-    "//tensorflow/core/platform:blocking_counter.h",
-    "//tensorflow/core/platform:demangle.h",
-    "//tensorflow/core/platform:denormal.h",
-    "//tensorflow/core/platform:host_info.h",
-    "//tensorflow/core/platform:platform.h",
-    "//tensorflow/core/platform:monitoring.h",
-    "//tensorflow/core/platform:protobuf_internal.h",
-    "//tensorflow/core/platform:refcount.h",
-    "//tensorflow/core/platform:setround.h",
-    "//tensorflow/core/platform:snappy.h",
-    "//tensorflow/core/platform:tensor_coding.h",
-    "//tensorflow/core/platform:tracing.h",
-    "//tensorflow/core/platform:unbounded_work_queue.h",
+    "//tensorflow/core/platform:lib_internal_public_hdrs",
     "//tensorflow/core/platform:legacy_platform_lib_hdrs",
     "//tensorflow/core/util:lib_internal_public_hdrs",
 ]
@@ -2096,7 +1953,9 @@ cc_library(
         "//tensorflow/core/lib/monitoring:metric_def",
         "//tensorflow/core/lib/monitoring:mobile_counter",
         "//tensorflow/core/lib/monitoring:mobile_gauge",
+        "//tensorflow/core/lib/monitoring:mobile_percentile_sampler",
         "//tensorflow/core/lib/monitoring:mobile_sampler",
+        "//tensorflow/core/lib/monitoring:percentile_sampler",
         "//tensorflow/core/lib/monitoring:sampler",
         "//tensorflow/core/lib/random:exact_uniform_int",
         "//tensorflow/core/lib/random:philox",
@@ -2183,7 +2042,7 @@ cc_library(
     name = "gif_internal",
     srcs = [
         "lib/gif/gif_io.cc",
-        "//tensorflow/core/platform:gif.h",
+        "//tensorflow/core/platform:gif_hdrs",
     ],
     hdrs = ["lib/gif/gif_io.h"],
     copts = tf_copts(),
@@ -2204,7 +2063,7 @@ cc_library(
     srcs = [
         "lib/jpeg/jpeg_handle.cc",
         "lib/jpeg/jpeg_mem.cc",
-        "//tensorflow/core/platform:jpeg.h",
+        "//tensorflow/core/platform:jpeg_hdrs",
     ],
     hdrs = [
         "lib/jpeg/jpeg_handle.h",
@@ -2237,11 +2096,7 @@ cc_library(
     name = "tflite_portable_logging",
     hdrs = [
         "//tensorflow/core/lib/bfloat16:bfloat16.h",
-        "//tensorflow/core/platform:logging.h",
-        "//tensorflow/core/platform:macros.h",
-        "//tensorflow/core/platform:platform.h",
-        "//tensorflow/core/platform:tstring.h",
-        "//tensorflow/core/platform:types.h",
+        "//tensorflow/core/platform:tflite_portable_logging_hdrs",
         "//tensorflow/core/platform/default:integral_types.h",
         "//tensorflow/core/platform/default:logging.h",
     ],
@@ -2259,21 +2114,14 @@ cc_library(
     srcs = if_android([
         "lib/jpeg/jpeg_handle.cc",
         "lib/jpeg/jpeg_mem.cc",
-        "//tensorflow/core/platform:jpeg.h",
+        "//tensorflow/core/platform:jpeg_hdrs",
     ]),
     hdrs = [
         "lib/jpeg/jpeg_handle.h",
         "lib/jpeg/jpeg_mem.h",
         "//tensorflow/core/lib/bfloat16:bfloat16.h",
         "//tensorflow/core/lib/core:legacy_lib_core_stringpiece_header",
-        "//tensorflow/core/platform:dynamic_annotations.h",
-        "//tensorflow/core/platform:logging.h",
-        "//tensorflow/core/platform:macros.h",
-        "//tensorflow/core/platform:mem.h",
-        "//tensorflow/core/platform:platform.h",
-        "//tensorflow/core/platform:stringpiece.h",
-        "//tensorflow/core/platform:tstring.h",
-        "//tensorflow/core/platform:types.h",
+        "//tensorflow/core/platform:jpeg_internal_hdrs",
         "//tensorflow/core/platform/default:integral_types.h",
         "//tensorflow/core/platform/default:logging.h",
     ],
@@ -2294,20 +2142,14 @@ cc_library(
     name = "android_gif_internal",
     srcs = if_android([
         "lib/gif/gif_io.cc",
-        "//tensorflow/core/platform:gif.h",
+        "//tensorflow/core/platform:gif_hdrs",
     ]),
     hdrs = [
         "lib/gif/gif_io.h",
         "//tensorflow/core/lib/bfloat16:bfloat16.h",
         "//tensorflow/core/lib/core:legacy_lib_core_stringpiece_header",
         "//tensorflow/core/lib/gtl:legacy_android_gif_internal_headers",
-        "//tensorflow/core/platform:dynamic_annotations.h",
-        "//tensorflow/core/platform:logging.h",
-        "//tensorflow/core/platform:macros.h",
-        "//tensorflow/core/platform:mem.h",
-        "//tensorflow/core/platform:platform.h",
-        "//tensorflow/core/platform:tstring.h",
-        "//tensorflow/core/platform:types.h",
+        "//tensorflow/core/platform:gif_internal_hdrs",
         "//tensorflow/core/platform/default:integral_types.h",
         "//tensorflow/core/platform/default:logging.h",
     ],
@@ -2581,31 +2423,17 @@ cc_header_only_library(
     ],
 )
 
-tf_cuda_library(
+alias(
     name = "stream_executor",
-    srcs = ["//tensorflow/core/platform:stream_executor.h"],
-    hdrs = [
-        "//tensorflow/core/platform:cuda.h",
-        "//tensorflow/core/platform:rocm.h",
-        "//tensorflow/core/platform:stream_executor.h",
-    ],
-    deps = [
-        "//tensorflow/core/platform/default/build_config:stream_executor",
-    ],
+    actual = "//tensorflow/core/platform:stream_executor",
 )
 
 # Like stream_executor library, but compiles without --config=cuda
 # and does not include any cuda dependencies.
-cc_library(
+alias(
     name = "stream_executor_no_cuda",
-    srcs = ["//tensorflow/core/platform:stream_executor.h"],
-    hdrs = [
-        "//tensorflow/core/platform:stream_executor_no_cuda.h",
-    ],
+    actual = "//tensorflow/core/platform:stream_executor_no_cuda",
     visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/core/platform/default/build_config:stream_executor_no_cuda",
-    ],
 )
 
 alias(
@@ -2965,18 +2793,16 @@ cc_library(
     ],
 )
 
-cc_library(
+alias(
     name = "regexp_internal",
-    hdrs = [
-        "//tensorflow/core/platform:regexp.h",
-    ],
+    actual =
+        "//tensorflow/core/platform:regexp",
     visibility = [
         "//tensorflow/compiler:__subpackages__",
         "//tensorflow/core/kernels:__subpackages__",
         "//tensorflow/core/profiler:__subpackages__",
         "//tensorflow/stream_executor:__subpackages__",
     ],
-    deps = ["//tensorflow/core/platform:regexp"],
 )
 
 tf_cuda_library(
@@ -3266,23 +3092,18 @@ alias(
 )
 
 # Main program for tests
-cc_library(
+alias(
     name = "test_main",
-    testonly = 1,
-    srcs = ["//tensorflow/core/platform:test_main.cc"],
-    copts = tf_copts(),
-    linkopts = select({
-        "//tensorflow:windows": [],
-        "//conditions:default": ["-lm"],
-    }),
+    actual = "//tensorflow/core/platform:test_main",
     visibility = ["//tensorflow:internal"],
-    deps = [
-        ":lib",
-        ":lib_internal",
-        ":test",  # buildcleaner: keep
-        "//tensorflow/core/platform/default/build_config:test_main",
+)
+
+test_suite(
+    name = "low_level_tests",
+    tests = [
+        ":low_level_library_tests",
+        "//tensorflow/core/platform:low_level_library_tests",
     ],
-    alwayslink = 1,
 )
 
 tf_cc_tests(
@@ -3300,26 +3121,12 @@ tf_cc_tests(
         "//tensorflow/core/lib/monitoring:counter_test.cc",
         "//tensorflow/core/lib/monitoring:gauge_test.cc",
         "//tensorflow/core/lib/monitoring:metric_def_test.cc",
+        "//tensorflow/core/lib/monitoring:percentile_sampler_test.cc",
         "//tensorflow/core/lib/monitoring:sampler_test.cc",
         "//tensorflow/core/lib/random:legacy_lib_random_tests",
         "//tensorflow/core/lib/strings:legacy_low_level_library_tests",
-        "//tensorflow/core/platform:fingerprint_test.cc",
-        "//tensorflow/core/platform:integral_types_test.cc",
-        "//tensorflow/core/platform:logging_test.cc",
-        "//tensorflow/core/platform:mutex_test.cc",
-        "//tensorflow/core/platform:net_test.cc",
-        "//tensorflow/core/platform:port_test.cc",
-        "//tensorflow/core/platform:profile_utils/cpu_utils_test.cc",
-        "//tensorflow/core/platform:scanner_test.cc",
-        "//tensorflow/core/platform:stacktrace_handler_test.cc",
-        "//tensorflow/core/platform:stacktrace_test.cc",
-        "//tensorflow/core/platform:str_util_test.cc",
-        "//tensorflow/core/platform:strcat_test.cc",
-        "//tensorflow/core/platform:stringpiece_test.cc",
-        "//tensorflow/core/platform:stringprintf_test.cc",
-        "//tensorflow/core/platform:subprocess_test.cc",
-        "//tensorflow/core/platform:vmodule_benchmark_test.cc",
     ],
+    create_named_test_suite = True,
     deps = [
         ":core_cpu_internal",
         ":lib",
@@ -3342,21 +3149,6 @@ tf_cc_tests(
 )
 
 tf_cc_test(
-    name = "vmodule_test",
-    srcs = ["//tensorflow/core/platform:vmodule_test.cc"],
-    tags = ["optonly"],
-    deps = [
-        ":lib",
-        ":lib_internal",
-        ":lib_test_internal",
-        ":protos_all_cc",
-        ":test",
-        "//third_party/eigen3",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-tf_cc_test(
     name = "lib_random_random_distributions_test",
     srcs = ["//tensorflow/core/lib/random:legacy_lib_random_random_distributions_test"],
     tags = ["optonly"],
@@ -3371,123 +3163,19 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
-    name = "platform_strings_test",
-    size = "small",
-    srcs = ["//tensorflow/core/platform:platform_strings_test.cc"],
-    features = ["-dynamic_link_test_srcs"],  # see go/dynamic_link_test_srcs
-    deps = [
-        ":lib",
-        "//tensorflow/core/platform:platform_strings",
-    ],
-)
-
-tf_cc_test(
-    name = "platform_env_test",
-    size = "small",
-    srcs = ["//tensorflow/core/platform:env_test.cc"],
-    deps = [
-        ":lib",
-        ":lib_internal",
-        ":lib_test_internal",
-        ":protos_all_cc",
-        ":test",
-        ":test_main",
-        "//third_party/eigen3",
-    ],
-)
-
-tf_cc_test(
-    name = "platform_fake_python_env_test",
-    size = "small",
-    srcs = ["//tensorflow/core/platform:fake_python_env_test.cc"],
-    args = [
-        "/some/path/to/pythontest.runfiles/org_tensorflow/stuff/to/run.py",
-    ],
-    tags = [
-        "local",
-        "no_gpu",
-        "no_windows",
-        "nomac",
-        "notap",
-    ],
-    deps = [
-        ":lib",
-        ":lib_internal",
-        ":lib_test_internal",
-        ":test",
-        ":test_main",
-    ],
-)
-
-tf_cc_test(
-    name = "platform_abi_test",
-    size = "small",
-    srcs = ["//tensorflow/core/platform:abi_test.cc"],
-    deps = [
-        ":framework",
-        ":lib",
-        ":lib_internal",
-        ":lib_test_internal",
-        ":protos_all_cc",
-        ":test",
-        ":test_main",
-        "//third_party/eigen3",
-    ],
-)
-
-tf_cc_test(
-    name = "platform_numa_test",
-    size = "small",
-    srcs = ["//tensorflow/core/platform:numa_test.cc"],
-    tags = [
-        # This test will not pass unless it has access to all NUMA nodes
-        # on the executing machine.
-        "manual",
-        "notap",
-    ],
-    deps = [
-        ":framework",
-        ":lib",
-        ":lib_internal",
-        ":lib_test_internal",
-        ":protos_all_cc",
-        ":test",
-        ":test_main",
-        "//third_party/eigen3",
-    ],
-)
-
-tf_cc_test(
-    name = "platform_setround_test",
-    size = "small",
-    srcs = ["//tensorflow/core/platform:setround_test.cc"],
-    tags = [
-        "noasan",
-        "noclang",
-        "nomsan",
-        "notsan",
-    ],
-    deps = [
-        ":lib",
-        ":lib_internal",
-        ":lib_test_internal",
-        ":test",
-        ":test_main",
-    ],
-)
-
-tf_cc_test(
-    name = "platform_file_system_test",
-    size = "small",
-    srcs = ["//tensorflow/core/platform:file_system_test.cc"],
-    deps = [
-        ":lib",
-        ":lib_internal",
-        ":lib_test_internal",
-        ":protos_all_cc",
-        ":test",
-        ":test_main",
+test_suite(
+    name = "platform_tests",
+    tests = [
+        "//tensorflow/core/platform:abi_test",
+        "//tensorflow/core/platform:env_test",
+        "//tensorflow/core/platform:fake_python_env_test",
+        "//tensorflow/core/platform:file_system_test",
+        "//tensorflow/core/platform:numa_test",
+        "//tensorflow/core/platform:platform_strings_test",
+        "//tensorflow/core/platform:rocm_rocdl_path_test",
+        "//tensorflow/core/platform:setround_test",
+        "//tensorflow/core/platform:unbounded_work_queue_test",
+        "//tensorflow/core/platform:vmodule_test",
     ],
 )
 
@@ -3978,20 +3666,6 @@ tf_cuda_cc_test(
         ":testlib",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core/kernels:ops_util",
-    ],
-)
-
-tf_cc_test_gpu(
-    name = "rocm_rocdl_path_test",
-    size = "small",
-    srcs = ["//tensorflow/core/platform:rocm_rocdl_path_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_gpu_tests_tags(),
-    deps = [
-        ":lib",
-        ":test",
-        ":test_main",
-        "//tensorflow/core/platform:rocm_rocdl_path",
     ],
 )
 

@@ -825,6 +825,7 @@ cc_library(
         ":numpy_lib",
         ":py_util",
         ":safe_ptr",
+        "//tensorflow/c/eager:c_api_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//third_party/python_runtime:headers",
@@ -2967,9 +2968,12 @@ cuda_py_test(
     srcs = ["ops/collective_ops_gpu_test.py"],
     python_version = "PY3",
     tags = [
-        "no_cuda_on_cpu_tap",
+        "guitar",
+        "manual",
+        "multi_gpu",
+        "no_oss",
         "no_rocm",
-        "no_windows",
+        "notap",
     ],
     deps = [
         ":client_testlib",
@@ -7538,6 +7542,7 @@ py_library(
     visibility = visibility + [
         "//learning/deepmind/tensorflow:__subpackages__",
         "//third_party/car/deep_nets/tensorflow:__subpackages__",
+        "//waymo/ml:__subpackages__",
     ],
     deps = [
         ":framework_for_generated_wrappers",

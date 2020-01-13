@@ -1859,9 +1859,15 @@ void NeonSub1Vector(const int16_t* vector, int v_size, int16_t* result) {
 namespace {
 
 #if __aarch64__
-inline bool IsAllZero(const uint32x4_t u32x4) {
-  const uint32_t u32 = vmaxvq_u32(u32x4);
+inline bool IsAllZero(const int8x16_t v_s8x16) {
+  const uint32_t u32 = vmaxvq_u32(vreinterpretq_u32_s8(v_s8x16));
   return !u32;
+}
+
+inline bool IsAllZero(const float32x4_t v_f32x4) {
+  const uint32x4_t cmp_result = vceqzq_f32(v_f32x4);
+  const uint32_t u32 = vminvq_u32(cmp_result);
+  return u32;
 }
 #else
 inline bool IsAllZero(const uint32x4_t u32x4) {
@@ -1869,7 +1875,6 @@ inline bool IsAllZero(const uint32x4_t u32x4) {
   const uint64x1_t u64 = vreinterpret_u64_u32(u32x2);
   return !vget_lane_u64(u64, 0);
 }
-#endif
 
 #ifndef __SSE__
 // With Intel NEON-2-SSE translator library, this is a redefinition..
@@ -1884,6 +1889,7 @@ inline bool IsAllZero(const float32x4_t v_f32x4) {
   const uint32x4_t cmp_result = vcagtq_f32(v_f32x4, zero_f32x4);
   return IsAllZero(cmp_result);
 }
+#endif
 
 }  // namespace
 

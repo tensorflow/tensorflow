@@ -704,6 +704,41 @@ struct functor_traits<xlogy_op<Scalar>> {
 };
 
 template <typename Scalar>
+struct xlog1py_op {
+  EIGEN_EMPTY_STRUCT_CTOR(xlog1py_op)
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
+  operator()(const Scalar& x, const Scalar& y) const {
+    if (x == Scalar(0.)) {
+      return Scalar(0.);
+    }
+    return x * numext::log1p(y);
+  }
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& x,
+                                                        const Packet& y) const {
+    Packet zeros = pzero(x);
+    Packet mask = pcmp_eq(x, zeros);
+    scalar_log1p_op<Scalar> log1p_op;
+    Packet log1p_y = log1p_op.packetOp(y);
+    Packet x_log1p_y = pmul(x, log1p_y);
+    return pselect(mask, x, x_log1p_y);
+  }
+};
+
+template <typename Scalar>
+struct functor_traits<xlog1py_op<Scalar>> {
+  enum {
+    Cost = functor_traits<scalar_log1p_op<Scalar>>::Cost +
+           Eigen::NumTraits<Scalar>::MulCost,
+#if TENSORFLOW_USE_ROCM
+    PacketAccess = false,
+#else
+    PacketAccess = functor_traits<scalar_log1p_op<Scalar>>::PacketAccess
+#endif
+  };
+};
+
+template <typename Scalar>
 struct xdivy_op {
   EIGEN_EMPTY_STRUCT_CTOR(xdivy_op)
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
@@ -982,26 +1017,8 @@ struct round : base<T, Eigen::internal::scalar_round_half_to_even_op<T>> {};
 template <typename T>
 struct ceil : base<T, Eigen::internal::scalar_ceil_op<T>> {};
 
-/** TODO(tokarip): This should go in Eigen
- * \brief Template functor to compute the round to int value of a scalar
- */
-template <typename Scalar>
-struct scalar_rint_op {
-  EIGEN_EMPTY_STRUCT_CTOR(scalar_rint_op)
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
-  operator()(const Scalar& a) const {
-#if defined(__CUDACC__) || defined(__HIPCC__)
-    return ::rint(a);
-#elif defined(__ANDROID__)
-    return rint(a);
-#else
-    return std::rint(a);
-#endif
-  }
-};
-
 template <typename T>
-struct rint : base<T, scalar_rint_op<T>> {};
+struct rint : base<T, Eigen::internal::scalar_rint_op<T>> {};
 
 ////////////////////////////////////////////////////////////////////////////////
 // Binary functors
@@ -1140,6 +1157,9 @@ struct xdivy : base<T, Eigen::internal::xdivy_op<T>> {};
 
 template <typename T>
 struct xlogy : base<T, Eigen::internal::xlogy_op<T>> {};
+
+template <typename T>
+struct xlog1py : base<T, Eigen::internal::xlog1py_op<T>> {};
 
 template <typename T>
 struct less : base<T, Eigen::internal::less<T>, bool> {};

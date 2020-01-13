@@ -130,7 +130,9 @@ std::vector<Flag> BenchmarkPerformanceOptions::GetFlags() {
       CreateFlag<std::string>(
           "perf_options_list", &params_,
           "A comma-separated list of TFLite performance options to benchmark. "
-          "By default, all performance options are benchmarked."),
+          "By default, all performance options are benchmarked. Note if it's "
+          "set to 'none', then the tool simply benchmark the model against the "
+          "specified benchmark parameters."),
       CreateFlag<float>("option_benchmark_run_delay", &params_,
                         "The delay between two consecutive runs of "
                         "benchmarking performance options in seconds."),
@@ -188,12 +190,19 @@ bool BenchmarkPerformanceOptions::ParsePerfOptions() {
     perf_options_.clear();
     return false;
   }
+
+  if (HasOption("none") && perf_options_.size() > 1) {
+    TFLITE_LOG(ERROR) << "The 'none' option can not be used together with "
+                         "other perf options in --perf_options_list!";
+    perf_options_.clear();
+    return false;
+  }
   return true;
 }
 
 std::vector<std::string> BenchmarkPerformanceOptions::GetValidPerfOptions()
     const {
-  return {"all", "cpu", "gpu", "nnapi"};
+  return {"all", "cpu", "gpu", "nnapi", "none"};
 }
 
 bool BenchmarkPerformanceOptions::HasOption(const std::string& option) const {
@@ -216,6 +225,12 @@ void BenchmarkPerformanceOptions::CreatePerformanceOptions() {
                    << params_.Get<std::string>("perf_options_list") << "]";
 
   const bool benchmark_all = HasOption("all");
+
+  if (HasOption("none")) {
+    // Just add an empty BenchmarkParams instance.
+    BenchmarkParams params;
+    all_run_params_.emplace_back(std::move(params));
+  }
 
   if (benchmark_all || HasOption("cpu")) {
     const std::vector<int> num_threads = {1, 2, 4};
@@ -282,9 +297,13 @@ void BenchmarkPerformanceOptions::Run() {
 
   // Now perform all runs, each with different performance-affecting parameters.
   for (const auto& run_params : all_run_params_) {
-    // Reset all performance-related options before any runs.
-    ResetPerformanceOptions();
-    single_option_run_params_->Set(run_params);
+    // If the run_params is empty, then it means "none" is set for
+    // --perf_options_list.
+    if (!run_params.Empty()) {
+      // Reset all performance-related options before any runs.
+      ResetPerformanceOptions();
+      single_option_run_params_->Set(run_params);
+    }
     util::SleepForSeconds(params_.Get<float>("option_benchmark_run_delay"));
 
     // Clear internally created listeners before each run but keep externally

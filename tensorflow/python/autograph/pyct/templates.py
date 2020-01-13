@@ -221,7 +221,7 @@ def _convert_to_ast(n):
   # unknown. ctx must be filled in according to the template being used.
   # See ReplaceTransformer.visit_Name.
   if isinstance(n, str):
-    return gast.Name(id=n, ctx=None, annotation=None)
+    return gast.Name(id=n, ctx=None, annotation=None, type_comment=None)
   if isinstance(n, qual_names.QN):
     return n.ast()
   if isinstance(n, list):

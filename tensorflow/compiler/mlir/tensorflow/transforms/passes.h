@@ -112,9 +112,10 @@ std::unique_ptr<OpPassBase<FuncOp>> CreateDecomposeResourceOpsPass();
 // device computation no longer interacts with external resource variables.
 std::unique_ptr<OpPassBase<FuncOp>> CreateResourceOpLiftingPass();
 
-// Lifts resource variable operations from tf_device.launch_func ops nested in
-// `op`.
-void LiftResourceOps(Operation* op);
+// Lifts resource operations from tf_device.launch_func ops nested in `op`
+// outside. Returns a failure if there are remaining resource-type values that
+// can not be lifted.
+LogicalResult LiftResourceOps(Operation* op);
 
 // Creates a pass that hoists invariant operations in a `tf_device.replicate`.
 std::unique_ptr<OpPassBase<FuncOp>> CreateReplicateInvariantOpHoistingPass();

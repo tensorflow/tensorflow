@@ -340,7 +340,7 @@ TfLiteDriver::TfLiteDriver(DelegateType delegate_type, bool reference_kernel)
       delegate_ = evaluation::CreateNNAPIDelegate();
       break;
     case DelegateType::kGpu:
-      delegate_ = evaluation::CreateGPUDelegate(/*model=*/nullptr);
+      delegate_ = evaluation::CreateGPUDelegate();
       break;
     case DelegateType::kFlex:
 #if !defined(__APPLE__)

@@ -655,8 +655,8 @@ class Strategy(object):
     worker, and each worker will do redundant work. We will print a warning
     if this method of sharding is selected.
 
-    You can disable dataset sharding across workers using the `auto_shard`
-    option in `tf.data.experimental.DistributeOptions`.
+    You can disable dataset sharding across workers using the
+    `auto_shard_policy` option in `tf.data.experimental.DistributeOptions`.
 
     Within each worker, we will also split the data among all the worker
     devices (if more than one a present), and this will happen even if
@@ -671,7 +671,7 @@ class Strategy(object):
     by the iterator. This can be used to set the `input_signature` property
     of a `tf.function`.
 
-     ```python
+    ```python
     strategy = tf.distribute.MirroredStrategy()
 
     # Create a dataset

@@ -4982,7 +4982,8 @@ def dequantize(  # pylint: disable=missing-docstring
     mode="MIN_COMBINED",
     name=None,
     axis=None,
-    narrow_range=False):
+    narrow_range=False,
+    dtype=dtypes.float32):
   if axis is None:
     axis = -1
   elif axis < 0:
@@ -4992,10 +4993,17 @@ def dequantize(  # pylint: disable=missing-docstring
 
   if axis >= 0 or narrow_range:
     return gen_array_ops.dequantize(
-        input, min_range, max_range, mode=mode, name=name,
-        narrow_range=narrow_range, axis=axis)
+        input,
+        min_range,
+        max_range,
+        mode=mode,
+        name=name,
+        narrow_range=narrow_range,
+        axis=axis,
+        dtype=dtype)
   return gen_array_ops.dequantize(
-      input, min_range, max_range, mode=mode, name=name)
+      input, min_range, max_range, mode=mode, name=name, dtype=dtype)
+
 
 dequantize.__doc__ = gen_array_ops.dequantize.__doc__
 

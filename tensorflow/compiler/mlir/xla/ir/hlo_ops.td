@@ -660,7 +660,7 @@ def HLO_SliceOp: HLO_Op<
 
 def HLO_DynamicSliceOp: HLO_Op<"dynamic-slice",
       [NoSideEffect, AllElementTypesMatch<["operand", "result"]>,
-       AllTypesMatch<["start_indices", "slice_sizes"]>]> {
+       AllShapesMatch<["start_indices", "slice_sizes"]>]> {
   let arguments = (ins
     HLO_Tensor:$operand,
     HLO_Tensor:$start_indices,
@@ -871,6 +871,17 @@ def HLO_CopyOp: HLO_Op<"copy", [NoSideEffect, SameOperandsAndResultType]> {
   let results = (outs HLO_Tensor);
 }
 
+def HLO_CustomCallOp: HLO_Op<"custom_call", []>, BASE_HLO_CustomCallOp {
+  let arguments = (ins
+    Variadic<HLO_Tensor>:$args,
+    StrAttr:$call_target_name,
+    DefaultValuedAttr<BoolAttr, "false">:$has_side_effect,
+    DefaultValuedAttr<StrAttr, "">:$backend_config
+  );
+  let results = (outs HLO_Tensor);
+  let hasCustomHLOConverter = 1;
+}
+
 def HLO_DotOp: HLO_Op<"dot", [NoSideEffect]>, BASE_HLO_DotOp {
   let arguments = (
     ins HLO_Tensor:$lhs,
@@ -977,6 +988,19 @@ def HLO_GetDimensionSizeOp: HLO_Op<"get_dimension_size", [NoSideEffect]>,
   let results = (outs HLO_IntTensor);
 }
 
+def HLO_MapOp: HLO_Op<"map",
+      [NoSideEffect, SameOperandsElementType, SameOperandsAndResultShape,
+        SingleBlockImplicitTerminator<"ReturnOp">]>,
+      BASE_HLO_MapOp {
+  let arguments = (ins
+    Variadic<HLO_Tensor>:$operands,
+    I64ElementsAttr:$dimensions
+  );
+  let regions = (region SizedRegion<1>:$computation);
+  let results = (outs HLO_Tensor);
+  let hasCustomHLOConverter = 1;
+}
+
 def HLO_ReshapeOp: HLO_Op<"reshape",
       [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_ReshapeOp {
   let arguments = (ins HLO_Tensor:$operand);
@@ -1064,7 +1088,7 @@ def HLO_SortOp : HLO_Op<"sort", [NoSideEffect]>, BASE_HLO_SortOp {
 
   let builders = [OpBuilder<
     "Builder *builder, OperationState &state, ValueRange operands, "
-    "int64_t dimension, bool is_stable"
+    "int64_t dimension = -1, bool is_stable = false"
   >];
 
   // TODO(b/129422361): SortOp has special conversion logic to HLO.
@@ -1103,6 +1127,14 @@ def HLO_PadOp: HLO_Op<"pad",
   let hasCustomHLOConverter = 1;
 }
 
+def HLO_TraceOp: HLO_Op<"trace", [NoSideEffect]>, BASE_HLO_TraceOp {
+  let arguments = (ins
+    HLO_Tensor:$operand,
+    StrAttr:$tag
+  );
+  let hasCustomHLOConverter = 1;
+}
+
 def HLO_TransposeOp: HLO_Op<"transpose",
       [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_TransposeOp {
   let arguments = (ins
@@ -1112,6 +1144,20 @@ def HLO_TransposeOp: HLO_Op<"transpose",
   let results = (outs HLO_Tensor);
 
   let hasFolder = 1;
+}
+
+def HLO_TriangularSolveOp: HLO_Op<"triangular_solve",
+    [NoSideEffect, SameOperandsAndResultElementType]>,
+    BASE_HLO_TriangularSolveOp {
+  let arguments = (ins
+    HLO_FpOrComplexTensor:$a,
+    HLO_FpOrComplexTensor:$b,
+    BoolAttr:$left_side,
+    BoolAttr:$lower,
+    BoolAttr:$unit_diagonal,
+    HLO_TransposeAttr:$transpose_a
+  );
+  let results = (outs HLO_FpOrComplexTensor);
 }
 
 def HLO_ReduceWindowOp: HLO_Op<"reduce_window", [

@@ -499,6 +499,8 @@ void Kernel8bitAvx2(const KernelParams8bit<8, 8>& params) {
         _mm256_storeu_si256(reinterpret_cast<__m256i*>(rhs_data + 8),
                             rhs_16_bit_dup_high);
 
+        // NOTE: There may be opportunities for permuting the data in the
+        // packing code instead of here.
         const __m256i lhs_data_split =
             _mm256_shuffle_epi8(lhs_data, splitter_idx);
         const __m256i lhs_data_split_expand_bottom =
@@ -1244,6 +1246,8 @@ void Kernel8bitAvx2SingleCol(const KernelParams8bit<8, 8>& params) {
       // can be separately loaded in the accumulation loop.
       _mm_storeu_si64(reinterpret_cast<__m128i*>(rhs_data), rhs_16_bit_dup);
 
+      // NOTE: There may be opportunities for permuting the data in the packing
+      // code instead of here.
       const __m256i lhs_data_split =
           _mm256_shuffle_epi8(lhs_data, splitter_idx);
       const __m256i lhs_data_split_expand_bottom =

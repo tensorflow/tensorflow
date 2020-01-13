@@ -42,7 +42,7 @@ IF "%PYTHON_DIRECTORY%"=="Python37" (
     %PIP_EXE% install absl-py==0.5.0
     %PIP_EXE% install colorama==0.3.9
     %PIP_EXE% install cycler==0.10.0
-    %PIP_EXE% install gast==0.2.0
+    %PIP_EXE% install gast==0.3.2
     %PIP_EXE% install jedi==0.11.1
     %PIP_EXE% install oauth2client==4.1.2
     %PIP_EXE% install portpicker==1.2.0
@@ -52,6 +52,11 @@ IF "%PYTHON_DIRECTORY%"=="Python37" (
     %PIP_EXE% install scipy==1.1.0
     %PIP_EXE% install termcolor==1.1.0
 )
+
+@REM TODO(amitpatankar): this is just a quick fix so that windows build doesn't
+@REM break with gast upgrade to 0.3.2. Need to figure out the right way to
+@REM handle this case.
+%PIP_EXE% install gast==0.3.2
 
 :: Set cuda related environment variables. If we are not using CUDA, these are not used.
 IF NOT DEFINED TF_CUDA_VERSION (
@@ -69,7 +74,7 @@ SET PATH=%CUDNN_INSTALL_PATH%\bin;%PATH%
 @REM Setup Bazel
 @REM
 :: Download Bazel from github and make sure its found in PATH.
-SET BAZEL_VERSION=1.1.0
+SET BAZEL_VERSION=1.2.1
 md C:\tools\bazel\
 wget -q https://github.com/bazelbuild/bazel/releases/download/%BAZEL_VERSION%/bazel-%BAZEL_VERSION%-windows-x86_64.exe -O C:/tools/bazel/bazel.exe
 SET PATH=C:\tools\bazel;%PATH%

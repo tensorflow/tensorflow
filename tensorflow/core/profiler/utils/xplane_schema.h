@@ -26,6 +26,8 @@ namespace profiler {
 
 // Name of XPlane that contains TraceMe events.
 ABSL_CONST_INIT extern const absl::string_view kHostThreads;
+// Name prefix of XPlane that contains GPU events.
+ABSL_CONST_INIT extern const absl::string_view kGpuPlanePrefix;
 
 // Interesting event types (i.e., TraceMe names).
 enum HostEventType {
@@ -96,7 +98,14 @@ enum StatType {
   kTfOp,
   kHloOp,
   kHloModule,
-  kLastStatType = kHloModule,
+  // Device capability related.
+  kDevCapClockRateKHz,
+  kDevCapCoreCount,
+  kDevCapMemoryBandwidth,
+  kDevCapMemorySize,
+  kDevCapComputeCapMajor,
+  kDevCapComputeCapMinor,
+  kLastStatType = kDevCapComputeCapMinor,
 };
 
 absl::Span<const absl::string_view> GetHostEventTypeStrMap();

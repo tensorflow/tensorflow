@@ -146,6 +146,8 @@ T GetDeviceInfo(cl_device_id id, cl_device_info info) {
   return result;
 }
 
+bool FindPlatform(cl_device_id device, cl_platform_id* platform);
+
 }  // namespace cl
 }  // namespace gpu
 }  // namespace tflite

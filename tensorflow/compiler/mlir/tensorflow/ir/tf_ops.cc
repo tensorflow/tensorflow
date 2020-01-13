@@ -2621,16 +2621,16 @@ static LogicalResult VerifyUnsortedSegmentReduction(Op op) {
 //===----------------------------------------------------------------------===//
 
 static LogicalResult Verify(VariableShapeOp op) {
-  auto resource_operand_type = op.input()
-                                   .getType()
-                                   .cast<TensorType>()
-                                   .getElementType()
-                                   .cast<TF::ResourceType>();
-  auto subtypes = resource_operand_type.getSubtypes();
+  auto input_type = op.input().getType().cast<TensorType>();
+  if (input_type.hasStaticShape() && input_type.getNumElements() != 1)
+    return op.emitOpError("requires input to have one resource");
+
+  auto resource_type = input_type.getElementType().cast<TF::ResourceType>();
+  auto subtypes = resource_type.getSubtypes();
   switch (subtypes.size()) {
     case 1:
       return VerifyShapeOperandAndResult(
-          op, resource_operand_type.getSubtypes().front(), op.getType());
+          op, resource_type.getSubtypes().front(), op.getType());
     case 0:
       return VerifyShapeOperandAndResult(op, Type(), op.getType());
     default:

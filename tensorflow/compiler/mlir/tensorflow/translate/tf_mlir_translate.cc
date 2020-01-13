@@ -47,8 +47,9 @@ static StatusOr<mlir::OwningModuleRef> GraphdefToMlirImport(
     llvm::StringRef input, absl::string_view debug_info_file,
     absl::string_view input_arrays, absl::string_view input_dtypes,
     absl::string_view input_shapes, absl::string_view output_arrays,
-    bool prune_unused_nodes, bool convert_legacy_fed_inputs,
-    bool graph_as_function, bool upgrade_legacy, mlir::MLIRContext* context) {
+    absl::string_view control_output_arrays, bool prune_unused_nodes,
+    bool convert_legacy_fed_inputs, bool graph_as_function, bool upgrade_legacy,
+    mlir::MLIRContext* context) {
   GraphDef graphdef;
   TF_RETURN_IF_ERROR(
       tensorflow::LoadProtoFromBuffer({input.data(), input.size()}, &graphdef));
@@ -66,6 +67,8 @@ static StatusOr<mlir::OwningModuleRef> GraphdefToMlirImport(
   TF_RETURN_IF_ERROR(ParseInputArrayInfo(input_arrays, input_dtypes,
                                          input_shapes, &specs.inputs));
   TF_RETURN_IF_ERROR(ParseOutputArrayInfo(output_arrays, &specs.outputs));
+  TF_RETURN_IF_ERROR(
+      ParseOutputArrayInfo(control_output_arrays, &specs.control_outputs));
   // TODO(b/142828368): Pruning should not be needed when TF import
   // supports importing graphs w/ unregistered ops natively.
   GraphDef pruned_graph_def;
@@ -74,6 +77,9 @@ static StatusOr<mlir::OwningModuleRef> GraphdefToMlirImport(
     terminal_nodes.reserve(specs.outputs.size() + specs.inputs.size());
     for (const auto& output : specs.outputs) {
       terminal_nodes.push_back(std::string(ParseTensorName(output).node()));
+    }
+    for (const auto& control_output : specs.control_outputs) {
+      terminal_nodes.push_back(std::string(control_output));
     }
     for (const auto& input : specs.inputs) {
       terminal_nodes.push_back(input.first);
@@ -95,12 +101,13 @@ mlir::OwningModuleRef GraphdefToMlirTranslateFunction(
     llvm::StringRef input, absl::string_view debug_info_file,
     absl::string_view input_arrays, absl::string_view input_dtypes,
     absl::string_view input_shapes, absl::string_view output_arrays,
-    bool prune_unused_nodes, bool convert_legacy_fed_inputs,
-    bool graph_as_function, bool upgrade_legacy, mlir::MLIRContext* context) {
+    absl::string_view control_output_arrays, bool prune_unused_nodes,
+    bool convert_legacy_fed_inputs, bool graph_as_function, bool upgrade_legacy,
+    mlir::MLIRContext* context) {
   auto module_or = GraphdefToMlirImport(
       input, debug_info_file, input_arrays, input_dtypes, input_shapes,
-      output_arrays, prune_unused_nodes, convert_legacy_fed_inputs,
-      graph_as_function, upgrade_legacy, context);
+      output_arrays, control_output_arrays, prune_unused_nodes,
+      convert_legacy_fed_inputs, graph_as_function, upgrade_legacy, context);
   if (!module_or.status().ok()) {
     LOG(ERROR) << "Graph import failed: " << module_or.status();
     return nullptr;
@@ -155,12 +162,13 @@ mlir::OwningModuleRef GraphdefToSplattedMlirTranslateFunction(
     llvm::StringRef input, absl::string_view debug_info_file,
     absl::string_view input_arrays, absl::string_view input_dtypes,
     absl::string_view input_shapes, absl::string_view output_arrays,
-    bool prune_unused_nodes, bool convert_legacy_fed_inputs,
-    bool graph_as_function, bool upgrade_legacy, mlir::MLIRContext* context) {
+    absl::string_view control_output_arrays, bool prune_unused_nodes,
+    bool convert_legacy_fed_inputs, bool graph_as_function, bool upgrade_legacy,
+    mlir::MLIRContext* context) {
   auto module_or = GraphdefToMlirImport(
       input, debug_info_file, input_arrays, input_dtypes, input_shapes,
-      output_arrays, prune_unused_nodes, convert_legacy_fed_inputs,
-      graph_as_function, upgrade_legacy, context);
+      output_arrays, control_output_arrays, prune_unused_nodes,
+      convert_legacy_fed_inputs, graph_as_function, upgrade_legacy, context);
   if (!module_or.status().ok()) {
     LOG(ERROR) << "Graph import failed: " << module_or.status();
     return nullptr;

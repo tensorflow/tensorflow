@@ -148,7 +148,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:loss_scale",
-        "//tensorflow/python/keras:generic_utils",
+        "//tensorflow/python/keras/utils:generic_utils",
     ],
 )
 

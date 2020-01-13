@@ -121,7 +121,7 @@ void AddCastBackForUnsupportedNonTFUses(Operation* op, Value result,
                                      /*truncate=*/builder.getBoolAttr(false));
     return mlir::Value(cast_op);
   };
-  for (OpOperand& use : llvm::make_early_inc_range(result->getUses())) {
+  for (OpOperand& use : llvm::make_early_inc_range(result.getUses())) {
     if (use.getOwner()->getDialect() != tf_dialect &&
         !IsSupportedNonTFOp(use.getOwner()))
       use.set(get_cast_op());

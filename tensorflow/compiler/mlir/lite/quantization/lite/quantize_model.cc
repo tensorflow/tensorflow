@@ -73,19 +73,19 @@ TfLiteStatus QuantizeModel(
 
   // Apply quantization passes
   PassManager pm(module->getContext());
-  TFL::QuantizationSpecs pass_config;
-  pass_config.inference_type = tensorflow::DT_QINT8;
-  pass_config.post_training_quantization = true;
+  TFL::QuantizationSpecs quant_specs;
+  quant_specs.inference_type = tensorflow::DT_QINT8;
+  quant_specs.post_training_quantization = true;
 
   bool emit_adaptor = false;
   auto input_tf_type = tflite::TflTypeToTfType(input_type);
   if (input_tf_type == tensorflow::DT_FLOAT) {
     emit_adaptor = true;
   } else if (input_tf_type == tensorflow::DT_UINT8) {
-    pass_config.inference_type = tensorflow::DT_QUINT8;
+    quant_specs.inference_type = tensorflow::DT_QUINT8;
   }
 
-  pm.addPass(TFL::CreatePrepareQuantizePass(pass_config));
+  pm.addPass(TFL::CreatePrepareQuantizePass(quant_specs));
   pm.addPass(TFL::CreateQuantizePass());
   pm.addPass(TFL::CreatePostQuantizePass(emit_adaptor));
 

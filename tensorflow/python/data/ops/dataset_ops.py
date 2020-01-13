@@ -253,8 +253,10 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
           "Can only export Datasets which were created executing eagerly. "
           "Please file a feature request if this is important to you.")
     with context.eager_mode(), ops.device("CPU"):
+      # pylint: disable=protected-access
       graph_def = graph_pb2.GraphDef().FromString(
-          self._as_serialized_graph().numpy())  # pylint: disable=protected-access
+          self._as_serialized_graph(external_state_policy=distribute_options
+                                    .ExternalStatePolicy.FAIL).numpy())
     output_node_name = None
     for node in graph_def.node:
       if node.op == "_Retval":

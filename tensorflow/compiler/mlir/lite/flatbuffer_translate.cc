@@ -1043,11 +1043,6 @@ void Translator::InitializeNamesFromAttribute(FuncOp fn, bool* has_input_attr) {
 
 bool Translator::IsStatefulOperand(mlir::Operation* op, int operand_index) {
   std::vector<int> operand_indices;
-  // TODO(b/138254427): When the bug is addressed, we'll be able to inspect
-  // for the presence of a specific OpTrait using mlir::Operation, without
-  // having to cast it to specific ops like below.
-  // Until then, when a new RNN/LSTM op is added to TFLite and has stateful
-  // tensors as operands, they will need to be added here as well.
   if (!mlir::TFL::IsStatefulOp(op, &operand_indices)) return false;
   return absl::c_find(operand_indices, operand_index) != operand_indices.end();
 }

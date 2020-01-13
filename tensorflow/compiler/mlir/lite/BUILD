@@ -47,6 +47,14 @@ gentbl(
             "-gen-op-doc",
             "g3doc/tfl_ops.md",
         ),
+        (
+            "-gen-op-interface-decls",
+            "ir/tfl_ops_interface.h.inc",
+        ),
+        (
+            "-gen-op-interface-defs",
+            "ir/tfl_ops_interface.cc.inc",
+        ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "ir/tfl_ops.td",
@@ -177,6 +185,8 @@ cc_library(
         "ir/tfl_ops.cc",
         "ir/tfl_ops.cc.inc",
         "ir/tfl_ops.h.inc",
+        "ir/tfl_ops_interface.cc.inc",
+        "ir/tfl_ops_interface.h.inc",
         "utils/attribute_utils.cc",
     ],
     hdrs = [
@@ -330,6 +340,7 @@ cc_library(
 cc_library(
     name = "tensorflow_lite_quantize",
     srcs = [
+        "transforms/default_quant_params.cc",
         "transforms/generated_post_quantize.inc",
         "transforms/generated_quantize.inc",
         "transforms/load_quantization_recipe.cc",

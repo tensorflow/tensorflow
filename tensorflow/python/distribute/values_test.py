@@ -534,8 +534,6 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
   def testAssignOutOfScope_mirrored(self, distribution):
     with distribution.scope():
       mirrored = variables_lib.Variable(1.)
-    if not isinstance(mirrored, values.MirroredVariable):
-      self.assertIsInstance(mirrored, values.TPUMirroredVariable)
     self.evaluate(mirrored.assign(3.))
     self.assertEqual(self.evaluate(mirrored.read_value()), 3.)
     for component in mirrored.values:
@@ -708,6 +706,30 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(
         array_ops.zeros(distribution.num_replicas_in_sync, dtypes.float32),
         per_replica_results)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations.tpu_strategy,
+              strategy_combinations.central_storage_strategy_with_two_gpus,
+          ],
+          mode=["graph", "eager"]))
+  def testAssignAdd(self, distribution):
+    with distribution.scope():
+      v = variable_scope.variable(
+          1, aggregation=variables_lib.VariableAggregation.MEAN)
+    self.evaluate(variables_lib.global_variables_initializer())
+
+    @def_function.function
+    def assign():
+      return v.assign_add(2)
+
+    per_replica_results = self.evaluate(
+        distribution.experimental_local_results(
+            distribution.experimental_run_v2(assign)))
+    # The per-replica values should always match the first replicas value.
+    self.assertAllEqual([3, 3], per_replica_results)
 
 
 _TPU_STRATEGIES = (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1)
