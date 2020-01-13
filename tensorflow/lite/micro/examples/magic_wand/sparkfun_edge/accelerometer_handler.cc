@@ -13,6 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#if defined(ARDUINO) && !defined(ARDUINO_SFE_EDGE)
+#define ARDUINO_EXCLUDE_CODE
+#endif // defined(ARDUINO) && !defined(ARDUINO_SFE_EDGE)
+
+#ifndef ARDUINO_EXCLUDE_CODE
+
 #include "tensorflow/lite/micro/examples/magic_wand/accelerometer_handler.h"
 
 // These are headers from Ambiq's Apollo3 SDK.
@@ -215,3 +221,5 @@ bool ReadAccelerometer(tflite::ErrorReporter* error_reporter, float* input,
   }
   return true;
 }
+
+#endif // ARDUINO_EXCLUDE_CODE
