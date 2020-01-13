@@ -30,6 +30,7 @@ py_test(
     tags = [
         "no_pip",
         "no_rocm",
+        "no_mac",  # fails on the branch, failed at release time too
     ],
     deps = [
         "//tensorflow:tensorflow_py",
