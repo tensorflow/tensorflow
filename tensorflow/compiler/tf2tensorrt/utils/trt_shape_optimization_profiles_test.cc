@@ -139,7 +139,7 @@ TEST_F(TrtShapeOptimizationProfileTest, Static) {
 
   std::vector<nvinfer1::Dims3> dim_vec(2, dims);
   std::vector<TensorShape> shape_vec = dimvec2shapevec(dim_vec);
-  EXPECT_EQ(0, profile.getProfileNumber(shape_vec));
+  EXPECT_EQ(-1, profile.getProfileNumber(shape_vec));
 }
 
 TEST_F(TrtShapeOptimizationProfileTest, Dynamic) {
@@ -159,13 +159,14 @@ TEST_F(TrtShapeOptimizationProfileTest, Dynamic) {
     std::vector<TensorShape> shape_vec = dimvec2shapevec(dim_vec);
     profile.addShape(shape_vec);
   }
+  profile.initProfiles();
 
   // Configure and build engine
   profile.configureBuilder(builder_.get(), builder_config_.get(),
                            network_.get());
   engine = TrtUniquePtrType<nvinfer1::ICudaEngine>(
       builder_->buildEngineWithConfig(*network_.get(), *builder_config_.get()));
-  EXPECT_NE(nullptr, engine);
+  ASSERT_NE(nullptr, engine);
 
   profile.createExcecutionContexts(engine.get(), exec_context_);
 
