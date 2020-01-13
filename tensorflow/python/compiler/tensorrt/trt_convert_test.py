@@ -165,6 +165,56 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertEqual(False, trt_optimizer.parameter_map["use_calibration"].b)
     self.assertEqual(True, trt_optimizer.parameter_map["use_implicit_batch"].b)
 
+  def testProfiles(self):
+    """Test case for TrtGraphConverter.get_tensorrt_rewriter_config()."""
+    if not is_tensorrt_enabled():
+      return
+
+    def graph_fn(x):
+      x = gen_math_ops.log(x)
+      return gen_math_ops.exp(x)
+    root = tracking.AutoTrackable()
+    input_specs=[tensor_spec.TensorSpec([None, None], dtypes.float32, "input_0")]
+    root.run = def_function.function(graph_fn, input_signature=input_specs)
+    input_saved_model_dir = "test_profiles_saved_model_dir"
+    save.save(root, input_saved_model_dir,
+              {signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY: root.run})
+
+    rewriter_config_with_trt = rewriter_config_pb2.RewriterConfig()
+    rewriter_config_with_trt.optimizers.extend(
+        ["constfold", "layout", "constfold"])
+    rewriter_config_with_trt.meta_optimizer_iterations = (
+        rewriter_config_pb2.RewriterConfig.ONE)
+    optimizer = rewriter_config_with_trt.custom_optimizers.add()
+    rewriter_config_with_trt.custom_optimizers.add().name = "constfold"
+    optimizer.name = "TensorRTOptimizer"
+    optimizer.parameter_map["minimum_segment_size"].i = 1
+    optimizer.parameter_map["is_dynamic_op"].b = True
+    optimizer.parameter_map["maximum_cached_engines"].i = 1
+    optimizer.parameter_map["use_implicit_batch"].b = False
+
+    conversion_params = trt_convert.DEFAULT_TRT_CONVERSION_PARAMS._replace(
+        rewriter_config_template=rewriter_config_with_trt)
+    converter = trt_convert.TrtGraphConverterV2(input_saved_model_dir=input_saved_model_dir,
+                                    conversion_params=conversion_params)
+    converter.convert()
+
+    def my_input_fn():
+      inp1 = np.random.normal(size=(2, 4)).astype(np.float32)
+      yield inp1,
+    converter.build(input_fn=my_input_fn)
+
+    output_saved_model_dir = "test_profiles_output_saved_model_dir"
+    converter.save(output_saved_model_dir=output_saved_model_dir)
+
+    saved_model_loaded = load.load(
+        output_saved_model_dir, tags=[tag_constants.SERVING])
+    graph_func = saved_model_loaded.signatures[
+        signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY]
+    input = ops.convert_to_tensor(
+        np.random.normal(size=(2, 4)).astype(np.float32))
+    graph_func(input)
+
   def _GetConfigProto(self, rewriter_config=None):
     """Get ConfigProto for session creation."""
     config = config_pb2.ConfigProto(

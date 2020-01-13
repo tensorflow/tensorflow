@@ -33,26 +33,18 @@ bool isAnyInputDynamic(const nvinfer1::INetworkDefinition *network) {
 
 /// Create optimization profiles for a list of input shapes.
 /// The list of input shapes are stored in shapes_.
-void TrtShapeOptimizationProfile::initProfiles(int n_profiles) {
-  // Can it happen that we call build twice? In that case we should decide
-  // whether we want to append the new profiles, or start again?
-  // profiles_.clear();
-  if (n_profiles != 0) {
-    VLOG(1) << "Strategy for n_profiles != 0 is not yet implemented, using "
-               "default strategy";
-    n_profiles = input_shapes_.size();
-  }
-  VLOG(1) << "Default startegy: one optimization profile for each input shape."
-          <<  "We have " << input_shapes_.size() << " input shapes";
-
+void TrtShapeOptimizationProfile::initProfiles() {
+  VLOG(1) << "Creating profiles with startegy of one profile "
+          << "for each input shape (min=opt=max).";
   for (auto& shape_vec: input_shapes_) {
     std::vector<nvinfer1::Dims> dimvec;
     for (auto& shape: shape_vec) {
        dimvec.push_back(TensorShapeToTrtDims(shape, false));
      }
-    // We set min=opt=max
+    // We set min=opt=max.
     OptimizationProfileConfig profConfig {dimvec, dimvec, dimvec};
     profiles_.push_back(std::move(profConfig));
+    VLOG(1) << "Created profile " << profConfig.DebugString();
   }
 }
 
@@ -61,12 +53,11 @@ Status TrtShapeOptimizationProfile::addProfiles(
     const nvinfer1::INetworkDefinition *network) {
   // Create a vector of optimization profiles
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
-  VLOG(1) << "Adding an optimization profile to TRT network configuration";
   profile_map_.clear();
   auto shape_vec = input_shapes_.begin();
-  for (auto& profile: profiles_) {
+  for (int i = 0; i < profiles_.size(); i++) {
     auto* optProfile = builder->createOptimizationProfile();
-    Status status = profile.setDimensions(network, optProfile);
+    Status status = profiles_[i].setDimensions(network, optProfile);
     if (!status.ok()) {
       return status;
     }
@@ -75,11 +66,18 @@ Status TrtShapeOptimizationProfile::addProfiles(
       idx = config->addOptimizationProfile(optProfile);
     }
     if (idx >= 0) {
-      VLOG(1) << "Optimization profile added ", profile.DebugString();
+      if (i != idx) {
+        return errors::Internal(
+            "Profile index of engine config is different from resource profile index: ",
+            i, " != ", idx);
+      }
+      VLOG(1) << "Added optimization profile " << profiles_[i].DebugString()
+              << " to builder config.";
       profile_map_.emplace(std::make_pair(*shape_vec, idx));
     } else {
-      VLOG(1) << "Failed to add optimization profile, ignoring config"
-              << profile.DebugString();
+      VLOG(ERROR) << "Failed to add optimization profile "
+                  << profiles_[i].DebugString()
+                  << ". This usually happens when profile is invalid.";
     }
     shape_vec++;
   }
@@ -93,37 +91,38 @@ Status TrtShapeOptimizationProfile::addProfiles(
 
 Status TrtShapeOptimizationProfile::configureBuilder(
   nvinfer1::IBuilder* builder, nvinfer1::IBuilderConfig* config,
-  const nvinfer1::INetworkDefinition* network, int n_profiles) {
+  const nvinfer1::INetworkDefinition* network) {
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
-  if (!isAnyInputDynamic(network)) {
-    // we do not need profiles for static input
-    return Status::OK();
-  }
-  //
-  if (input_shapes_.size() == 0) {
-    // This should not happen. If we did not have build mode, then a single
-    // profile is added by GetEngine
-    return errors::Internal("No TRT optimization profile found");
-  }
-  initProfiles(n_profiles);
+//  if (!isAnyInputDynamic(network)) {
+//    // we do not need profiles for static input
+//    return Status::OK();
+//  }
+//  if (input_shapes_.size() == 0) {
+//    // This should not happen. If we did not have build mode, then a single
+//    // profile is added by GetEngine
+//    return errors::Internal("No TRT optimization profile found");
+//  }
+//  initProfiles();
   addProfiles(builder, config, network);
 #endif
   return Status::OK();
 }
 
 int TrtShapeOptimizationProfile::getProfileNumber(std::vector<TensorShape> shapes) {
-  if (profile_map_.size() == 0) {
-    // No optimization profiles, we just return 0, the default profile number
-    return 0;
+  for (int i = 0; i < profiles_.size(); i++) {
+    if (profiles_[i].IncludesShapes(shapes)) {
+      return i;
+    }
   }
-  auto it = profile_map_.find(shapes);
-  if (it != profile_map_.end()) {
-    return it->second;
-  } else {
-    VLOG(1) << "Profile not found for input " <<  DebugString(shapes);
-    // TODO probably just abort TRT execution.
-    return 0;
-  }
+  VLOG(1) << "Profile not found for input shapes " <<  DebugString(shapes) << ".";
+  return -1;
+//  auto it = profile_map_.find(shapes);
+//  if (it != profile_map_.end()) {
+//    return it->second;
+//  } else {
+//    VLOG(1) << "Profile not found for input shapes " <<  DebugString(shapes) << ".";
+//    return -1;
+//  }
 }
 
 Status TrtShapeOptimizationProfile::createExcecutionContexts(
@@ -158,6 +157,10 @@ Status TrtShapeOptimizationProfile::createExcecutionContexts(
   } while (i<profile_map_.size());
 
   return Status::OK();
+}
+
+int TrtShapeOptimizationProfile::GetNumProfiles() const {
+  return profiles_.size();
 }
 
 }  // namespace tensorrt

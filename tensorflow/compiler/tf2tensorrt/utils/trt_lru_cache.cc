@@ -97,6 +97,47 @@ string TRTEngineCacheResource::DebugString() const {
   return oss.str();
 }
 
+EngineContext* TRTEngineCacheResource::GetEngineContext(
+    const std::vector<TensorShape>& input_shapes) {
+  EngineContext* engine_context = nullptr;
+  int64 min_matched_batch_size = kint64max;
+  for (const auto& pair : cache_) {
+    const std::vector<TensorShape>& cached_input_shapes = pair.first;
+    // This should not happen, but just for safety.
+    if (input_shapes.size() != cached_input_shapes.size()) {
+      LOG(ERROR) << "Input shape list size mismatch"
+                 << ", cached size: " << cached_input_shapes.size()
+                 << " vs. input size: " << input_shapes.size();
+    }
+    if (AreShapesCompatible(input_shapes, cached_input_shapes)) {
+      const int cached_batch_size = cached_input_shapes[0].dim_size(0);
+      if (min_matched_batch_size > cached_batch_size) {
+        min_matched_batch_size = cached_batch_size;
+        engine_context = pair.second.get();
+      }
+    }
+  }
+  return engine_context;
+}
+
+EngineContext* TRTEngineCacheResource::GetEngineContext(const int profile_id) {
+  if (profile_id >= profiles_.GetNumProfiles()) {
+    LOG(ERROR) << "Out of range: profile_id " << profile_id
+               << " is larger than number of profiles "
+               << profiles_.GetNumProfiles();
+    return nullptr;
+  }
+  if (cache_.size() > 1) {
+    LOG(ERROR) << "Cache is expected to have at most "
+               << "1 engine in explicit batch mode where profiles are used.";
+    return nullptr;
+  }
+  if (cache_.size() == 0) {
+    return nullptr;
+  }
+  return cache_.begin()->second.get();
+}
+
 }  // namespace tensorrt
 }  // namespace tensorflow
 

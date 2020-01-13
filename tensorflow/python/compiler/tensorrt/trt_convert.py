@@ -1125,9 +1125,12 @@ class TrtGraphConverterV2(object):
                               partial(_set_profile_generation_mode, True))
       _rebuild_func()
 
-    # Run inference to build engines and optimization profiles depending
-    # on self._need_trt_profiles
+    # Run inference
+    #   - Builds TRT engines if self._need_trt_profiles is False
+    #   - Builds TRT optimization profiles if self._need_trt_profiles is True
+    inputs = []
     for inp in input_fn():
+      inputs.append(inp)
       self._converted_func(*map(ops.convert_to_tensor, inp))
 
     # Disable profile generation if needed
@@ -1135,6 +1138,11 @@ class TrtGraphConverterV2(object):
       self._for_each_trt_node(self._converted_graph_def,
                               partial(_set_profile_generation_mode, False))
       _rebuild_func()
+      # Run inference to build TRT engines out of generated optimization
+      # profiles. Any of the inputs can be used here because the shape of this
+      # input does not determine the engine but the shapes collected in
+      # profiles determine the engine.
+      self._converted_func(*map(ops.convert_to_tensor, inputs[0]))
 
 
   def save(self, output_saved_model_dir):

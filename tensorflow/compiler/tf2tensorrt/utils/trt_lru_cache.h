@@ -181,6 +181,16 @@ class TRTEngineCacheResource : public ResourceBase {
 
   string DebugString() const override;
 
+  // Returns the EngineContext that is compatible with input_shapes.
+  // Returns nullptr if no compatible EngineContexts is found in cache.
+  EngineContext* GetEngineContext(const std::vector<TensorShape>& input_shapes);
+
+  // Returns the EngineContext that is compatible with profile_id.
+  // This function should be only called in explicit batch mode where
+  // cache size is expected to be at most one.
+  // Returns nullptr if no compatible EngineContexts is found in cache.
+  EngineContext* GetEngineContext(const int profile_id);
+
   // Keep device allocator for TRT.
   std::unique_ptr<TRTBaseAllocator> allocator_;
 

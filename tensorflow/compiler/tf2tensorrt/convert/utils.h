@@ -110,6 +110,9 @@ string GetLinkedTensorRTVersion();
 // TensorRT library version information {Maj, Min, Patch}.
 string GetLoadedTensorRTVersion();
 
+bool AreShapesCompatible(const std::vector<TensorShape>& actual_shapes,
+                         const std::vector<TensorShape>& cached_shapes);
+
 #endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
 
 }  // namespace tensorrt

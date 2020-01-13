@@ -166,5 +166,27 @@ string GetLoadedTensorRTVersion() {
   return absl::StrCat(major, ".", minor, ".", patch);
 }
 
+bool AreShapesCompatible(const std::vector<TensorShape>& actual_shapes,
+                         const std::vector<TensorShape>& cached_shapes) {
+  auto match_shape = [](const TensorShape& actual_shape,
+                        const TensorShape& cached_shape) {
+    // Match the rank.
+    if (actual_shape.dims() != cached_shape.dims()) return false;
+    // Match the batch size.
+    if (actual_shape.dim_size(0) > cached_shape.dim_size(0)) return false;
+    // Match remaining dimensions.
+    for (int i = 1; i < actual_shape.dims(); ++i) {
+      if (actual_shape.dim_size(i) != cached_shape.dim_size(i)) return false;
+    }
+    return true;
+  };
+  for (int i = 0; i < actual_shapes.size(); ++i) {
+    if (!match_shape(actual_shapes[i], cached_shapes[i])) {
+      return false;
+    }
+  }
+  return true;
+}
+
 }  // namespace tensorrt
 }  // namespace tensorflow
