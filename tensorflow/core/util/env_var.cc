@@ -60,6 +60,21 @@ Status ReadInt64FromEnvVar(StringPiece env_var_name, int64 default_val,
       tf_env_var_val, ". Use the default value: ", default_val));
 }
 
+Status ReadFloatFromEnvVar(StringPiece env_var_name, float default_val,
+                           float* value) {
+  *value = default_val;
+  const char* tf_env_var_val = getenv(string(env_var_name).c_str());
+  if (tf_env_var_val == nullptr) {
+    return Status::OK();
+  }
+  if (strings::safe_strtof(tf_env_var_val, value)) {
+    return Status::OK();
+  }
+  return errors::InvalidArgument(strings::StrCat(
+      "Failed to parse the env-var ${", env_var_name, "} into float: ",
+      tf_env_var_val, ". Use the default value: ", default_val));
+}
+
 Status ReadStringFromEnvVar(StringPiece env_var_name, StringPiece default_val,
                             string* value) {
   const char* tf_env_var_val = getenv(string(env_var_name).c_str());
