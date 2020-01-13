@@ -63,6 +63,8 @@ class BenchmarkTfLiteModel : public BenchmarkModel {
   TfLiteStatus PrepareInputData() override;
   TfLiteStatus ResetInputsAndOutputs() override;
 
+  int64_t GetModelFileSize() override;
+
   // Allow subclasses to create custom delegates to be applied during init.
   using TfLiteDelegatePtr = tflite::Interpreter::TfLiteDelegatePtr;
   using TfLiteDelegatePtrMap = std::map<std::string, TfLiteDelegatePtr>;
