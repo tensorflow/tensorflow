@@ -1959,6 +1959,12 @@ void IrEmitterUnnested::EmitTile(
   auto ceil_of_ratio = [&](llvm::Value* a, llvm::Value* b) {
     return b_.CreateUDiv(b_.CreateAdd(b_.CreateAdd(a, b), constant(-1)), b);
   };
+  int vec_stride = 1;
+  char* env = getenv("VEC_STRIDE");
+  if (env)
+    vec_stride = atoi(env);
+  std::cout << 'VEC_STRIDE ' << vec_stride << std::endl;
+  std::cout << "num_threads_x " << num_threads_x << " num_threads_y " << num_threads_y << " tile_size_x " << tile_size_x << std::endl;
 
   // True iff all threads always execute all instructions in the tiling
   // dimension X.
@@ -1978,32 +1984,62 @@ void IrEmitterUnnested::EmitTile(
   //
   // TODO(cheshire): Once ptxas is fixed and TF switches to it, remove the
   // workaround.
-  ksl->For(loop_name + "_y_in_tile",
-           /*start=*/constant(0),
-           /*end=*/
-           ceil_of_ratio(b_.CreateSub(tile_height, thread_id_info.thread_id_y),
-                         num_threads_y),
-           /*step=*/constant(1), [&](llvm::Value* y_indvar) {
-             llvm::Value* y_loc =
-                 b_.CreateAdd(thread_id_info.thread_id_y,
-                              b_.CreateMul(y_indvar, num_threads_y));
-             for (int64 j = 0; j < x_num_steps; j++) {
-               llvm::Value* x_loc =
-                   b_.CreateAdd(constant(j * step_x), start_offset_x, "x_loc");
-               IrArray::Index source_idx_x =
-                   source_idx.AddOffsetToDim(y_loc, kDimY, &b_)
-                       .AddOffsetToDim(constant(j * step_x), kDimX, &b_);
-               auto emit_element = [&] {
-                 return emit_elem_function(source_idx_x, y_loc, x_loc, j);
-               };
-               if (!x_tile_fits) {
-                 ksl->If(loop_name + "_x_in_tile",
-                         b_.CreateICmpULT(x_loc, tile_width), emit_element);
-               } else {
-                 emit_element();
-               }
-             }
-           });
+  ksl->For(
+      loop_name + "_y_in_tile",
+      /*start=*/constant(0),
+      /*end=*/
+      ceil_of_ratio(b_.CreateSub(tile_height, thread_id_info.thread_id_y),
+                    num_threads_y),
+      /*step=*/constant(1), [&](llvm::Value* y_indvar) {
+
+
+        
+        llvm::Value* y_loc = b_.CreateAdd(
+            thread_id_info.thread_id_y, b_.CreateMul(y_indvar, num_threads_y));
+        if (vec_stride == 1) {
+          for (int64 j = 0; j < x_num_steps; j++) {
+            llvm::Value* x_loc =
+                b_.CreateAdd(constant(j * step_x), start_offset_x, "x_loc");
+            IrArray::Index source_idx_x =
+                source_idx.AddOffsetToDim(y_loc, kDimY, &b_)
+                    .AddOffsetToDim(constant(j * step_x), kDimX, &b_);
+            auto emit_element = [&] {
+              return emit_elem_function(source_idx_x, y_loc, x_loc, j);
+            };
+            if (!x_tile_fits) {
+              ksl->If(loop_name + "_x_in_tile",
+                      b_.CreateICmpULT(x_loc, tile_width), emit_element);
+            } else {
+              emit_element();
+            }
+          }
+        } else {
+	  for (int64 j = 0; j < x_num_steps/vec_stride; j++) {
+            //Prep some values. If we do not do this, LLVM doesn't vectorize.
+            llvm::Value* x_loc_base =
+	        b_.CreateAdd(constant(j * step_x * vec_stride), start_offset_x, "x_loc_base");
+            IrArray::Index source_idx_x_base =
+                source_idx.AddOffsetToDim(y_loc, kDimY, &b_)
+                  .AddOffsetToDim(constant(j * step_x * vec_stride), kDimX, &b_);
+
+	    for (int i = 0; i < vec_stride; i++) {
+              int old_j = j * vec_stride + i;
+	      llvm::Value* x_loc = b_.CreateAdd(constant(i), x_loc_base, "x_loc");
+	      IrArray::Index source_idx_x = source_idx_x_base.AddOffsetToDim(
+                  constant(i), kDimX, &b_);
+              auto emit_element = [&] {
+                return emit_elem_function(source_idx_x, y_loc, x_loc, j);
+              };
+              if (!x_tile_fits) {
+                ksl->If(loop_name + "_x_in_tile",
+                        b_.CreateICmpULT(x_loc, tile_width), emit_element);
+              } else {
+                emit_element();
+              }
+            }
+          }
+        }
+      });
 }
 
 // Emits code to process a tensor element in a tile for the given kCopy HLO that
