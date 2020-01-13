@@ -20,6 +20,8 @@ limitations under the License.
 #include <functional>
 #include <queue>
 
+#include "tensorflow/lite/c/common.h"
+
 namespace tflite {
 namespace label_image {
 
