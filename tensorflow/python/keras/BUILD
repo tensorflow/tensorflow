@@ -18,10 +18,6 @@ py_library(
         "estimator/__init__.py",
         "keras_parameterized.py",
         "ops.py",
-        "preprocessing/__init__.py",
-        "preprocessing/image.py",
-        "preprocessing/sequence.py",
-        "preprocessing/text.py",
         "testing_utils.py",
     ],
     srcs_version = "PY2AND3",
@@ -37,6 +33,7 @@ py_library(
         "//tensorflow/python/keras/mixed_precision/experimental:mixed_precision_experimental",
         "//tensorflow/python/keras/optimizer_v2",
         "//tensorflow/python/keras/premade",
+        "//tensorflow/python/keras/preprocessing",
         "//tensorflow/python/keras/saving",
         "//tensorflow/python/keras/utils",
         "//tensorflow/python/keras/wrappers",
@@ -1154,45 +1151,6 @@ cuda_py_test(
     tags = [
         "nomac",  # TODO(mihaimaruseac): b/127695564
     ],
-    deps = [
-        ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_py_test(
-    name = "image_test",
-    size = "medium",
-    srcs = ["preprocessing/image_test.py"],
-    python_version = "PY3",
-    deps = [
-        ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_py_test(
-    name = "sequence_test",
-    size = "small",
-    srcs = ["preprocessing/sequence_test.py"],
-    python_version = "PY3",
-    deps = [
-        ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_py_test(
-    name = "text_test",
-    size = "small",
-    srcs = ["preprocessing/text_test.py"],
-    python_version = "PY3",
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
