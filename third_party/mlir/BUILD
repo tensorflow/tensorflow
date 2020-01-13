@@ -1870,35 +1870,8 @@ cc_binary(
 
 cc_library(
     name = "TableGen",
-    srcs = [
-        "lib/TableGen/Argument.cpp",
-        "lib/TableGen/Attribute.cpp",
-        "lib/TableGen/Constraint.cpp",
-        "lib/TableGen/Dialect.cpp",
-        "lib/TableGen/Format.cpp",
-        "lib/TableGen/OpInterfaces.cpp",
-        "lib/TableGen/OpTrait.cpp",
-        "lib/TableGen/Operator.cpp",
-        "lib/TableGen/Pattern.cpp",
-        "lib/TableGen/Predicate.cpp",
-        "lib/TableGen/Type.cpp",
-    ],
-    hdrs = [
-        "include/mlir/TableGen/Argument.h",
-        "include/mlir/TableGen/Attribute.h",
-        "include/mlir/TableGen/Constraint.h",
-        "include/mlir/TableGen/Dialect.h",
-        "include/mlir/TableGen/Format.h",
-        "include/mlir/TableGen/GenInfo.h",
-        "include/mlir/TableGen/GenNameParser.h",
-        "include/mlir/TableGen/OpInterfaces.h",
-        "include/mlir/TableGen/OpTrait.h",
-        "include/mlir/TableGen/Operator.h",
-        "include/mlir/TableGen/Pattern.h",
-        "include/mlir/TableGen/Predicate.h",
-        "include/mlir/TableGen/Region.h",
-        "include/mlir/TableGen/Type.h",
-    ],
+    srcs = glob(["lib/TableGen/*.cpp"]),
+    hdrs = glob(["include/mlir/TableGen/*.h"]),
     includes = ["include"],
     deps = [
         ":Support",
@@ -1924,18 +1897,10 @@ cc_library(
 
 cc_binary(
     name = "mlir-tblgen",
-    srcs = [
-        "tools/mlir-tblgen/DocGenUtilities.h",
-        "tools/mlir-tblgen/EnumsGen.cpp",
-        "tools/mlir-tblgen/LLVMIRConversionGen.cpp",
-        "tools/mlir-tblgen/OpDefinitionsGen.cpp",
-        "tools/mlir-tblgen/OpDocGen.cpp",
-        "tools/mlir-tblgen/OpInterfacesGen.cpp",
-        "tools/mlir-tblgen/ReferenceImplGen.cpp",
-        "tools/mlir-tblgen/RewriterGen.cpp",
-        "tools/mlir-tblgen/SPIRVUtilsGen.cpp",
-        "tools/mlir-tblgen/StructsGen.cpp",
-    ],
+    srcs = glob([
+        "tools/mlir-tblgen/*.h",
+        "tools/mlir-tblgen/*.cpp",
+    ]),
     linkopts = [
         "-lm",
         "-lpthread",
