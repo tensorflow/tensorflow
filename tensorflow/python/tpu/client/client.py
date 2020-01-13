@@ -154,7 +154,8 @@ class Client(object):
       return self._service
 
     if not _GOOGLE_API_CLIENT_INSTALLED:
-      raise RuntimeError('Missing runtime dependency on the Google API client.')
+      raise RuntimeError('Missing runtime dependency on the Google API client. '
+                         'Run `pip install cloud-tpu-client` to fix.')
 
     credentials = self._credentials
     if credentials is None or credentials == 'default':
