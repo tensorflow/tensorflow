@@ -18,7 +18,6 @@ limitations under the License.
 #include <cstdarg>
 #include <cstdint>
 #include <cstdlib>
-#include <fstream>
 #include <iostream>
 #include <memory>
 #include <random>
@@ -440,12 +439,6 @@ uint64_t BenchmarkTfLiteModel::ComputeInputBytes() {
     total_input_bytes += t->bytes;
   }
   return total_input_bytes;
-}
-
-int64_t BenchmarkTfLiteModel::GetModelFileSize() {
-  std::ifstream in_file(params_.Get<std::string>("graph"),
-                        std::ios::binary | std::ios::ate);
-  return in_file.tellg();
 }
 
 TfLiteStatus BenchmarkTfLiteModel::PrepareInputData() {
