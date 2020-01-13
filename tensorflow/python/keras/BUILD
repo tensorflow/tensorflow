@@ -1042,22 +1042,6 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
-    name = "time_distributed_learning_phase_test",
-    size = "small",
-    srcs = ["layers/time_distributed_learning_phase_test.py"],
-    python_version = "PY3",
-    tags = [
-        "noasan",  # http://b/78599823
-        "notsan",
-    ],
-    deps = [
-        ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
-    ],
-)
-
 cuda_py_test(
     name = "training_gpu_test",
     size = "small",
