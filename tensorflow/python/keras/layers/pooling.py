@@ -283,10 +283,10 @@ class MaxPooling2D(Pooling2D):
   """Max pooling operation for spatial data.
   
   Usage Example:
-    import tensorflow as tf
-    model = tf.keras.models.Sequential()
-    model.add(tf.keras.layers.Conv2D(32, kernel_size=(3, 3), input_shape=(28,28,1)))
-    model.add(tf.keras.layers.MaxPooling2D(pool_size=(2, 2)))
+  
+  >>> model = tf.keras.models.Sequential()
+  >>> model.add(tf.keras.layers.Conv2D(32, kernel_size=(3, 3), input_shape=(28,28,1)))
+  >>> model.add(tf.keras.layers.MaxPooling2D(pool_size=(2, 2)))
 
   Arguments:
     pool_size: integer or tuple of 2 integers,
