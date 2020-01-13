@@ -2431,16 +2431,16 @@ def matrix_diag_part(
                      [5, 6, 7, 8]]])
 
   # A main diagonal from each batch.
-  tf.matrix_diag_part(input) ==> [[1, 6, 7],  # Output shape: (2, 3)
+  tf.linalg.diag_part(input) ==> [[1, 6, 7],  # Output shape: (2, 3)
                                   [5, 2, 7]]
 
   # A superdiagonal from each batch.
-  tf.matrix_diag_part(input, k = 1)
+  tf.linalg.diag_part(input, k = 1)
     ==> [[2, 7, 6],  # Output shape: (2, 3)
          [4, 3, 8]]
 
   # A band from each batch.
-  tf.matrix_diag_part(input, k = (-1, 2))
+  tf.linalg.diag_part(input, k = (-1, 2))
     ==> [[[3, 8, 0],  # Output shape: (2, 4, 3)
           [2, 7, 6],
           [1, 6, 7],
@@ -2451,7 +2451,7 @@ def matrix_diag_part(
           [0, 1, 6]]]
 
   # RIGHT_LEFT alignment.
-  tf.matrix_diag_part(input, k = (-1, 2), align="RIGHT_LEFT")
+  tf.linalg.diag_part(input, k = (-1, 2), align="RIGHT_LEFT")
     ==> [[[0, 3, 8],  # Output shape: (2, 4, 3)
           [2, 7, 6],
           [1, 6, 7],
@@ -2462,14 +2462,14 @@ def matrix_diag_part(
           [1, 6, 0]]]
 
   # max_diag_len can be shorter than the main diagonal.
-  tf.matrix_diag_part(input, k = (-2, -1))
+  tf.linalg.diag_part(input, k = (-2, -1))
     ==> [[[5, 8],
           [0, 9]],
          [[1, 6],
           [0, 5]]]
 
   # padding_value = 9
-  tf.matrix_diag_part(input, k = (1, 3), padding_value = 9)
+  tf.linalg.diag_part(input, k = (1, 3), padding_value = 9)
     ==> [[[4, 9, 9],  # Output shape: (2, 3, 3)
           [3, 8, 9],
           [2, 7, 6]],
