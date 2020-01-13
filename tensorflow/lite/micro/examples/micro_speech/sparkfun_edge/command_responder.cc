@@ -13,6 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#if defined(ARDUINO) && !defined(ARDUINO_SFE_EDGE)
+#define ARDUINO_EXCLUDE_CODE
+#endif // defined(ARDUINO) && !defined(ARDUINO_SFE_EDGE)
+
+#ifndef ARDUINO_EXCLUDE_CODE
+
 #include "tensorflow/lite/micro/examples/micro_speech/command_responder.h"
 
 #include "am_bsp.h"  // NOLINT
@@ -53,3 +59,5 @@ void RespondToCommand(tflite::ErrorReporter* error_reporter,
     }
   }
 }
+
+#endif // ARDUINO_EXCLUDE_CODE
