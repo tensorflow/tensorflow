@@ -159,10 +159,10 @@ def MobileNetV2(input_shape=None,
       weights='imagenet'
       
   Usage Example:
-  >> from tensorflow.keras.applications import MobileNetV2
-  >> IMG_SHAPE = (224, 224, 3)
-  >> #include_top should be set True if we want to use the output layer of model otherwise it should be set False.
-  >> model = MobileNetV2(input_shape =IMG_SHAPE , include_top = True)
+  >>> from tensorflow.keras.applications import MobileNetV2
+  >>> IMG_SHAPE = (224, 224, 3)
+  >>> #include_top should be set True if we want to use the output layer of model otherwise it should be set False.
+  >>> model = MobileNetV2(input_shape =IMG_SHAPE , include_top = True)
 
   """
   if 'layers' in kwargs:
