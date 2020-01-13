@@ -54,9 +54,9 @@ class ParseExampleOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     const Tensor* names;
     const Tensor* serialized;
-    std::vector<string> dense_keys_t;
-    std::vector<string> sparse_keys_t;
-    std::vector<string> ragged_keys_t;
+    std::vector<StringPiece> dense_keys_t;
+    std::vector<StringPiece> sparse_keys_t;
+    std::vector<StringPiece> ragged_keys_t;
     OpInputList dense_defaults;
 
     // Grab the inputs.
@@ -97,8 +97,8 @@ class ParseExampleOp : public OpKernel {
 
  protected:
   // Copies keys from tensor to std::vector<string>.
-  Status GetTensorKeys(OpKernelContext* ctx, const string& input_name,
-                       std::vector<string>* keys) const {
+  Status GetTensorKeys(OpKernelContext* ctx, StringPiece input_name,
+                       std::vector<StringPiece>* keys) const {
     const Tensor* key_t;
     TF_RETURN_IF_ERROR(ctx->input(input_name, &key_t));
     keys->reserve(key_t->NumElements());
@@ -110,8 +110,8 @@ class ParseExampleOp : public OpKernel {
   }
 
   // Copies keys from OpInputList of scalar to std::vector<string>.
-  Status GetInputListKeys(OpKernelContext* ctx, const string& input_name,
-                          std::vector<string>* keys) const {
+  Status GetInputListKeys(OpKernelContext* ctx, StringPiece input_name,
+                          std::vector<StringPiece>* keys) const {
     OpInputList key_list;
     TF_RETURN_IF_ERROR(ctx->input_list(input_name, &key_list));
     keys->reserve(key_list.size());
@@ -124,9 +124,9 @@ class ParseExampleOp : public OpKernel {
   // Validates the shapes of input tensors.
   Status CheckInputShapes(const Tensor* serialized, const Tensor* names,
                           const OpInputList& dense_defaults,
-                          const std::vector<string>& dense_keys_t,
-                          const std::vector<string>& sparse_keys_t,
-                          const std::vector<string>& ragged_keys_t) const {
+                          const std::vector<StringPiece>& dense_keys_t,
+                          const std::vector<StringPiece>& sparse_keys_t,
+                          const std::vector<StringPiece>& ragged_keys_t) const {
     if (op_version_ == 2) {
       if (TensorShapeUtils::IsMatrixOrHigher(serialized->shape())) {
         return errors::InvalidArgument(
@@ -205,23 +205,26 @@ class ParseExampleOp : public OpKernel {
 
   // Populates the FastParseExampleConfig from keys & defaults.
   example::FastParseExampleConfig MakeConfig(
-      const std::vector<string>& dense_keys_t,
-      const std::vector<string>& sparse_keys_t,
-      const std::vector<string>& ragged_keys_t,
+      const std::vector<StringPiece>& dense_keys_t,
+      const std::vector<StringPiece>& sparse_keys_t,
+      const std::vector<StringPiece>& ragged_keys_t,
       const OpInputList& dense_defaults) const {
     example::FastParseExampleConfig config;
+    config.dense.reserve(attrs_.num_dense);
     for (int d = 0; d < attrs_.num_dense; ++d) {
-      config.dense.push_back({dense_keys_t[d], attrs_.dense_types[d],
-                              attrs_.dense_shapes[d], dense_defaults[d],
-                              attrs_.variable_length[d],
-                              attrs_.elements_per_stride[d]});
+      config.dense.emplace_back(dense_keys_t[d], attrs_.dense_types[d],
+                                attrs_.dense_shapes[d], dense_defaults[d],
+                                attrs_.variable_length[d],
+                                attrs_.elements_per_stride[d]);
     }
+    config.sparse.reserve(attrs_.num_sparse);
     for (int d = 0; d < attrs_.num_sparse; ++d) {
-      config.sparse.push_back({sparse_keys_t[d], attrs_.sparse_types[d]});
+      config.sparse.emplace_back(sparse_keys_t[d], attrs_.sparse_types[d]);
     }
+    config.sparse.reserve(attrs_.num_ragged);
     for (int d = 0; d < attrs_.num_ragged; ++d) {
-      config.ragged.push_back({ragged_keys_t[d], attrs_.ragged_value_types[d],
-                               attrs_.ragged_split_types[d]});
+      config.ragged.emplace_back(ragged_keys_t[d], attrs_.ragged_value_types[d],
+                                 attrs_.ragged_split_types[d]);
     }
     return config;
   }

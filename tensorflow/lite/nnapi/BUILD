@@ -81,10 +81,19 @@ cc_test(
     ],
 )
 
+# Cannot inject NNAPI instance on ios and windows
 cc_library(
     name = "nnapi_handler",
-    srcs = ["nnapi_handler.cc"],
-    hdrs = ["nnapi_handler.h"],
+    srcs = select({
+        "//tensorflow:ios": [],
+        "//tensorflow:windows": [],
+        "//conditions:default": ["nnapi_handler.cc"],
+    }),
+    hdrs = select({
+        "//tensorflow:ios": [],
+        "//tensorflow:windows": [],
+        "//conditions:default": ["nnapi_handler.h"],
+    }),
     deps = [
         ":nnapi_implementation",
         ":nnapi_lib",
@@ -96,6 +105,11 @@ cc_library(
 cc_test(
     name = "nnapi_handler_test",
     srcs = ["nnapi_handler_test.cc"],
+    tags = [
+        "no_mac",
+        "no_windows",
+        "tflite_not_portable_ios",
+    ],
     deps = [
         ":nnapi_handler",
         ":nnapi_implementation",

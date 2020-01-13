@@ -275,7 +275,7 @@ def _EinsumGrad(op, grad):
         set(output_subs + other_subs + "."))
     # Obtain the input subscripts with the reduced axis labels removed. E.g.
     # "ac" in the above example.
-    left_subs = "".join([s for s in input_subs if s not in reduced_label_set])
+    left_subs = "".join(s for s in input_subs if s not in reduced_label_set)
 
     # Compute the gradient wrt the input, without accounting for the operation
     # "abc->ac". So, now we have the VJP of the operation "ac,cd->ad".

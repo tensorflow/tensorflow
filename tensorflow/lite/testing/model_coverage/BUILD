@@ -18,6 +18,7 @@ py_library(
 py_test(
     name = "model_coverage_lib_test",
     srcs = ["model_coverage_lib_test.py"],
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = [
         "manual",

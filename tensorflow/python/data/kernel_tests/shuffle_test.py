@@ -243,16 +243,14 @@ class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
           combinations.combine(tf_api_version=2, mode="eager"),
           combinations.combine(reshuffle=[True, False], seed=[None, 42])))
   def testReshuffleIterationEpochs(self, reshuffle, seed):
+    # TensorFlow unit tests set the global graph seed. We unset it here so that
+    # we can control determinism via the `seed` parameter.
+    random_seed.set_random_seed(None)
     dataset = dataset_ops.Dataset.range(10).shuffle(
         10, seed=seed, reshuffle_each_iteration=reshuffle)
 
-    first_epoch = []
-    for elem in dataset:
-      first_epoch.append(elem.numpy())
-
-    second_epoch = []
-    for elem in dataset:
-      second_epoch.append(elem.numpy())
+    first_epoch = self.getDatasetOutput(dataset)
+    second_epoch = self.getDatasetOutput(dataset)
 
     self.assertEqual(first_epoch == second_epoch, not reshuffle)
 
@@ -330,6 +328,24 @@ class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
     # Second time around, we get an EOF because the cached dataset is empty.
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(reshuffle=[True, False])))
+  def testRerandomizeOnReplicate(self, reshuffle):
+    random_seed.set_random_seed(None)
+    # When no seeds are fixed, each instantiation of the shuffle dataset should
+    # produce elements in a different order.
+    num_elements = 100
+    dataset = dataset_ops.Dataset.range(num_elements)
+    dataset = dataset.shuffle(num_elements, reshuffle_each_iteration=reshuffle)
+
+    shuffle_1 = self.getDatasetOutput(dataset)
+    dataset = self.graphRoundTrip(dataset, allow_stateful=True)
+    shuffle_2 = self.getDatasetOutput(dataset)
+
+    self.assertCountEqual(shuffle_1, shuffle_2)
+    self.assertNotEqual(shuffle_1, shuffle_2)
 
 
 if __name__ == "__main__":

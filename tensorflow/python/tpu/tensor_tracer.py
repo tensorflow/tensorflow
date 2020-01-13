@@ -33,6 +33,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_io
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
@@ -62,6 +63,7 @@ _TRACE_MODE_PART_TENSOR_SIZE = 3
 _REASON_OUTSIDE_OP_RANGE = 'not-traced-outside-op-range'
 _REASON_UNSAFE_OP = 'not-traced-unsafe-op'
 _REASON_WHILELOOP_OP = 'not-traced-special-whileloop-op'
+_REASON_CONTROLFLOW_OP = 'not-traced-control-flow-op'
 _REASON_UNSAFE_SCALAR = 'not-traced-unsafe-scalar'
 _REASON_SKIP_SCALAR = 'not-traced-scalar'
 _REASON_LESS_INTERESTING_OP = 'not-traced-less-interesting-op'
@@ -288,8 +290,7 @@ class TensorTracer(object):
     Raises:
       ValueError: If the given trace mode is not supported for the device.
     """
-    if trace_mode in (tensor_tracer_flags.TRACE_MODE_SUMMARY,
-                      tensor_tracer_flags.TRACE_MODE_FULL_TENSOR_SUMMARY):
+    if trace_mode == tensor_tracer_flags.TRACE_MODE_FULL_TENSOR_SUMMARY:
       if device_type != _DEVICE_TYPE_TPU:
         raise ValueError('Device_type "%s" is not yet supported for '
                          'trace mode "%s"' % (device_type, trace_mode))
@@ -316,6 +317,21 @@ class TensorTracer(object):
              control_flow_util.IsLoopExit(op) or
              TensorTracer.loop_cond_op(op) or
              op.type in ('RefNextIteration', 'NextIteration'))
+
+  @staticmethod
+  def control_flow_op(op):
+    """Returns true if op is one of the special ops of in a while loop.
+
+    Args:
+       op: A tf.Operation.
+
+    Returns:
+       True if the given op is one of [Switch, Merge, Enter, Exit,
+       NextIteration, LoopCond], which are all building blocks for TF while
+       loops.
+    """
+    return  (control_flow_util.IsSwitch(op) or
+             control_flow_util.IsMerge(op))
 
   @staticmethod
   def unsafe_op(op):
@@ -380,6 +396,7 @@ class TensorTracer(object):
     self._included_op_full_names = set()
     self._host_call_fn = {}
     self._cache_variables = {}
+    self._traced_op_names = set()
 
   def _get_all_cache_variables(self):
     return self._cache_variables
@@ -855,6 +872,10 @@ class TensorTracer(object):
       report_handler.instrument_op(
           op, TensorTracer.reason(op_id, _REASON_WHILELOOP_OP))
       return True
+    if TensorTracer.control_flow_op(op):
+      report_handler.instrument_op(
+          op, TensorTracer.reason(op_id, _REASON_CONTROLFLOW_OP))
+      return True
     if TensorTracer.unsafe_op(op):
       report_handler.instrument_op(
           op, TensorTracer.reason(op_id, _REASON_UNSAFE_OP))
@@ -1054,7 +1075,7 @@ class TensorTracer(object):
               'appropriate properties.'%trace_file_path)
     else:
       if not gfile.Exists(self._parameters.trace_dir):
-        gfile.MkDir(self._parameters.trace_dir)
+        file_io.recursive_create_dir(self._parameters.trace_dir)
         if not gfile.Exists(self._parameters.trace_dir):
           raise RuntimeError('Failed to create %s'%self._parameters.trace_dir)
 
@@ -1344,9 +1365,12 @@ class TensorTracer(object):
               # Expand 1 more dimension so that it will match with the expected
               # structure num_cores x num_traced_tensors x num_signatures.
               value = array_ops.expand_dims(transposed_signatures, axis=0)
-          summary_write_ops.append(summary.write(
-              _TT_SUMMARY_TAG + '/' + key, value, metadata=summary_metadata,
-              step=step[0]))
+
+          with ops.control_dependencies(
+              summary.summary_writer_initializer_op()):
+            summary_write_ops.append(summary.write(
+                _TT_SUMMARY_TAG + '/' + key, value, metadata=summary_metadata,
+                step=step[0]))
       return control_flow_ops.group(summary_write_ops)
 
     step = array_ops.reshape(training_util.get_or_create_global_step(), [1])
@@ -1376,6 +1400,10 @@ class TensorTracer(object):
 
   def host_call_deps_and_fn(self):
     return self._host_call_fn
+
+  def get_traced_op_names(self):
+    """Returns the set of traced op names."""
+    return self._traced_op_names
 
   def _trace_execution(self, graph,
                        tensor_fetches,
@@ -1451,6 +1479,7 @@ class TensorTracer(object):
         tensor_name = out_tensor.name
         if tensor_name not in tensor_trace_order.tensorname_to_cache_idx:
           continue
+        self._traced_op_names.add(op.name)
         # Create the list of consumers before calling _preprocess_traced_tensor.
         # Otherwise, adding control input below, will introduce a cycle in the
         # graph.
@@ -1466,9 +1495,11 @@ class TensorTracer(object):
           continue
 
         op_control_flow_context = self._get_op_control_flow_context(op)
-        # pylint: disable=protected-access
-        graph._set_control_flow_context(op_control_flow_context)
-        # pylint: enable=protected-access
+        if op_control_flow_context:
+          # pylint: disable=protected-access
+          graph._set_control_flow_context(op_control_flow_context)
+          # pylint: enable=protected-access
+
         processed_tensors = self._preprocess_traced_tensor(out_tensor)
 
         if on_tpu:
@@ -1528,6 +1559,11 @@ class TensorTracer(object):
           else:
             trace_op = tpu_wrap_trace_fn(processed_out_tensor, tensor_name)
 
+        if op_control_flow_context:
+          # pylint: disable=protected-access
+          graph._set_control_flow_context(current_control_flow_context)
+          # pylint: enable=protected-access
+
         if is_a_fetched_tensor:
           tracing_ops.append(trace_op)
           continue
@@ -1547,8 +1583,14 @@ class TensorTracer(object):
       processed_t_fetches = control_flow_ops.tuple(processed_t_fetches,
                                                    control_inputs=tracing_ops)
     if self._use_tensor_values_cache() or self._use_tensor_buffer():
-      if self._create_host_call() and on_tpu:
+      if self._create_host_call():
         self._prepare_host_call_fn(processed_t_fetches, op_fetches)
+        if not on_tpu:
+          write_cache, caches_to_write = self._host_call_fn[_TT_HOSTCALL_KEY]
+          cache_write_op = write_cache(**caches_to_write)
+          processed_t_fetches = control_flow_ops.tuple(
+              processed_t_fetches, control_inputs=[cache_write_op])
+          del self._host_call_fn[_TT_HOSTCALL_KEY]
       else:
         processed_t_fetches = self._flush_tensor_values_cache(
             processed_t_fetches, op_fetches, on_tpu=on_tpu)

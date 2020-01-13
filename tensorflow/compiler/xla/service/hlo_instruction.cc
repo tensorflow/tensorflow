@@ -400,6 +400,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           /*replica_groups=*/
           std::vector<ReplicaGroup>(proto.replica_groups().begin(),
                                     proto.replica_groups().end()),
+          /*constrain_layout=*/proto.constrain_layout(),
           /*channel_id=*/channel_id);
       break;
     }
@@ -900,10 +901,11 @@ HloInstruction::CreateReducePrecision(const Shape& shape,
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAllReduce(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     HloComputation* reduce_computation,
-    const std::vector<ReplicaGroup>& replica_groups,
+    const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
     const absl::optional<int64>& channel_id) {
   return absl::make_unique<HloAllReduceInstruction>(
-      shape, operands, reduce_computation, replica_groups, channel_id);
+      shape, operands, reduce_computation, replica_groups, constrain_layout,
+      channel_id);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAllToAll(
@@ -1341,7 +1343,8 @@ bool HloInstruction::HasSideEffectNoRecurse() const {
     case HloOpcode::kTrace:
       return true;
     case HloOpcode::kAllReduce:
-      return channel_id().has_value();
+      return channel_id().has_value() ||
+             Cast<HloAllReduceInstruction>(this)->constrain_layout();
     case HloOpcode::kCustomCall:
       return Cast<HloCustomCallInstruction>(this)
           ->custom_call_has_side_effect();
@@ -1634,7 +1637,7 @@ HloInstruction::~HloInstruction() {
     operands_[operand_num] = nullptr;
   }
 
-  // Update users. Set `nullptr` to the correpsonding operand slot for users.
+  // Update users. Set `nullptr` to the corresponding operand slot for users.
   for (auto& user : this->users()) {
     for (int i = 0; i < user->operand_count(); ++i) {
       if (user->operands_[i] == this) {
@@ -1815,6 +1818,12 @@ void HloInstruction::AddUser(HloInstruction* user) {
     user_map_.emplace(user, users_.size());
     users_.push_back(user);
   }
+}
+
+int64 HloInstruction::UserId(HloInstruction* user) {
+  auto result = user_map_.find(user);
+  CHECK(result != user_map_.end());
+  return result->second;
 }
 
 bool HloInstruction::HasConstantOperand() const {
@@ -2690,7 +2699,7 @@ bool HloInstruction::IsFusible() const {
     case HloOpcode::kReduce:
     case HloOpcode::kReduceWindow:
       return true;
-    // Side effecting instrutions cannot be fused.
+    // Side effecting instructions cannot be fused.
     default:
       return !HasSideEffect();
   }
@@ -2978,8 +2987,8 @@ static Status PostOrderDFS(HloInstruction* root, Visitor* visitor,
         visitor->GetVisitState(current_id);
     if (visit_state == Visitor::kVisited) {
       dfs_stack.pop_back();
-      VLOG(3) << "Not visiting HLO %" << current_node->name()
-              << " as it was already visited.";
+      VLOG(3) << "Not visiting HLO (id = " << current_id
+              << ") as it was already visited.";
       continue;
     }
 

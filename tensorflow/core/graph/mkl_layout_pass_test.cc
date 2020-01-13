@@ -866,897 +866,386 @@ REGISTER_TEST(NodeMerge_PadWithConv2D_Common_InOutput, DT_BFLOAT16,
   }
 REGISTER_TEST_ALL_TYPES(NodeMerge_PadWithConv2D_Negative);
 #undef REGISTER_TEST
+
+#define REGISTER_TEST(NAME, T, INPUT)                                          \
+  TEST_F(MklLayoutPassTest, NAME##_##T) {                                      \
+    InitGraph(                                                                 \
+        "node { name: 'Input0' op: '" #INPUT "'}"                              \
+        "node { name: 'Input1' op: '" #INPUT "'}"                              \
+        "node { name: 'Const0' op: 'Const'"                                    \
+        "  attr {key: 'dtype'                  value { type: DT_INT32 } }"     \
+        "  attr {key: 'value'                  value { "                       \
+        "       tensor {"                                                      \
+        "       dtype: DT_INT32"                                               \
+        "       tensor_shape { dim { size: 4 } }"                              \
+        "       tensor_content: "                                              \
+        "'\\000\\000\\000\\000\\002\\000\\000\\000\\003\\000\\000\\000\\001\\" \
+        "000\\000\\000'"                                                       \
+        "        }"                                                            \
+        "     }"                                                               \
+        "  }"                                                                  \
+        "}"                                                                    \
+        "node { name: 'Const1' op: 'Const'"                                    \
+        "  attr {key: 'dtype'                   value { type: DT_INT32 } }"    \
+        "  attr {key: 'value'"                                                 \
+        "   value {"                                                           \
+        "     tensor {"                                                        \
+        "       dtype: DT_INT32"                                               \
+        "       tensor_shape {dim {size: 4 }}"                                 \
+        "       tensor_content: "                                              \
+        "'\\000\\000\\000\\000\\003\\000\\000\\000\\001"                       \
+        "\\000\\000\\000\\002\\000\\000\\000'"                                 \
+        "     }"                                                               \
+        "   }"                                                                 \
+        " }"                                                                   \
+        "}"                                                                    \
+        "node { name: 'Transpose0' op: 'Transpose'"                            \
+        " input: ['Input0', 'Const0']"                                         \
+        " attr { key: 'T'                       value { type: " #T  "} }"      \
+        " attr { key: 'Tperm'                   value { type: DT_INT32 } } }"  \
+        "node { name: 'Conv2D'     op: 'Conv2D'"                               \
+        " input: ['Transpose0', 'Input1']"                                     \
+        " attr { key: 'T'                       value { type: " #T "} }"       \
+        " attr { key: 'data_format'             value { s: 'NHWC' }}"          \
+        " attr { key: 'dilations'            value {list: {i:1,i:1,i:1,i:1}}}" \
+        " attr { key: 'padding'                 value {s: 'SAME'}}"            \
+        " attr { key: 'strides'              value {list: {i:1,i:1,i:1,i:1}}}" \
+        " attr { key: 'use_cudnn_on_gpu'      value {b: true}}}"               \
+        "node { name: 'Transpose1' op: 'Transpose'"                            \
+        " input: ['Conv2D', 'Const1' ]"                                        \
+        " attr { key: 'T'                       value { type: " #T "}}"        \
+        " attr { key: 'Tperm'                   value { type: DT_INT32  }}}"   \
+        "node { name: 'Relu' op: 'Relu'"                                       \
+        " attr { key: 'T'                value { type: " #T "} }"              \
+        " input: ['Transpose1'] }");                                           \
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                   \
+              "Const0(Const);Const1(Const);Conv2D(_MklConv2D);DMT/_0(Const);"  \
+              "DMT/_1(Const);Input0(" #INPUT ");Input1(" #INPUT ");"           \
+              "Relu(_MklRelu)|Conv2D->Relu;Conv2D:2->Relu:1;DMT/_0->Conv2D:2;" \
+              "DMT/_1->Conv2D:3;Input0->Conv2D;Input0:control->DMT/_0:control;"\
+              "Input0:control->DMT/_1:control;Input1->Conv2D:1");              \
+}
+REGISTER_TEST_ALL_TYPES(NodeMerge_TransposeConv2DTranspose_Positive);
+#undef REGISTER_TEST
+
+#define REGISTER_TEST(NAME, T, INPUT)                                          \
+  TEST_F(MklLayoutPassTest, NAME##_##T) {                                      \
+    InitGraph(                                                                 \
+        "node { name: 'Input0' op: '" #INPUT "'}"                              \
+        "node { name: 'Input1' op: '" #INPUT "'}"                              \
+        "node { name: 'Const0' op: 'Const'"                                    \
+        " attr { key: 'dtype'                   value { type: DT_INT32 } }"    \
+        " attr { key: 'value'"                                                 \
+        "   value {"                                                           \
+        "     tensor {"                                                        \
+        "       dtype: DT_INT32"                                               \
+        "       tensor_shape {dim {size: 4}}"                                  \
+        "       tensor_content: "                                              \
+        "'\\000\\000\\000\\000\\002\\000\\000\\000\\003\\000\\000\\000\\001\\" \
+        "000\\000\\000'"                                                       \
+        "     }"                                                               \
+        "   }"                                                                 \
+        " }"                                                                   \
+        "}"                                                                    \
+        "node { name: 'Const1' op: 'Const'"                                    \
+        "  attr { key: 'dtype'                  value { type: DT_INT32 }}"     \
+        "  attr {"                                                             \
+        "   key: 'value'"                                                      \
+        "   value {"                                                           \
+        "     tensor {"                                                        \
+        "       dtype: DT_INT32"                                               \
+        "       tensor_shape { dim { size: 4 }}"                               \
+        "       tensor_content: "                                              \
+        "'\\000\\000\\000\\000\\002\\000\\000\\000\\003\\000\\000\\000\\001\\" \
+        "000\\000\\000'"                                                       \
+        "     }"                                                               \
+        "   }"                                                                 \
+        " }"                                                                   \
+        "}"                                                                    \
+        "node {name: 'Transpose0'   op: 'Transpose'"                           \
+        " input: ['Input0', 'Const0']"                                         \
+        " attr { key: 'T'                       value { type: " #T " }}"       \
+        " attr { key: 'Tperm'                   value { type: DT_INT32 }}}"    \
+        "node { name: 'Conv2D'  op: 'Conv2D'"                                  \
+        " input: ['Transpose0', 'Input1']"                                     \
+        " attr { key: 'T'                       value { type: " #T "}}"        \
+        " attr { key: 'data_format'             value { s: 'NHWC'  }}"         \
+        " attr { key: 'dilations'           value { list: {i:1,i:1,i:1,i:1}}}" \
+        " attr { key: 'padding'                 value { s: 'SAME' }}"          \
+        " attr { key: 'strides'             value { list: {i:1,i:1,i:1,i:1}}}" \
+        " attr { key: 'use_cudnn_on_gpu'        value { b: true }}}"           \
+        "node {name: 'Transpose1' op: 'Transpose'"                             \
+        " input: ['Conv2D', 'Const1']"                                         \
+        " attr { key: 'T'                       value { type: " #T "}}"        \
+        " attr { key: 'Tperm'                   value { type: DT_INT32 }}}"    \
+        "node { name: 'Relu' op: 'Relu'"                                       \
+        " attr { key: 'T'                       value { type: " #T "}}"        \
+        " input: ['Transpose1'] }");                                           \
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                   \
+              "Const0(Const);Const1(Const);Conv2D(_MklConv2D);DMT/_0(Const);"  \
+              "DMT/_1(Const);DMT/_2(Const);Input0(" #INPUT ");Input1(" #INPUT  \
+              ");Relu(_MklRelu);Transpose0(_MklTranspose);"                    \
+              "Transpose1(_MklTranspose)|Const0->Transpose0:1;"                \
+              "Const1->Transpose1:1;Conv2D->Transpose1;DMT/_0->Conv2D:2;"      \
+              "DMT/_1->Conv2D:3;DMT/_2->Relu:1;Input0->Transpose0;"            \
+              "Input1->Conv2D:1;Transpose0->Conv2D;Transpose0:control->DMT/"   \
+              "_0:control;Transpose0:control->DMT/_1:control;Transpose1->Relu;"\
+              "Transpose1:control->DMT/_2:control");                           \
+}
+REGISTER_TEST_ALL_TYPES(NodeMerge_TransposeConv2DTranspose_Negative);
+#undef REGISTER_TEST
+
+
+#define REGISTER_TEST(NAME, T, INPUT)                                         \
+  TEST_F(MklLayoutPassTest, NAME##_##T) {                                     \
+    InitGraph(                                                                \
+        "node { name: 'Input0' op: '" #INPUT "'}"                             \
+        "node { name: 'Input1' op: '" #INPUT "'}"                             \
+        "node { name: 'Const0' op: 'Const'"                                   \
+        " attr { key: 'dtype' value { type: DT_INT32 } }"                     \
+        " attr { key: 'value'"                                                \
+        "  value {"                                                           \
+        "     tensor {"                                                       \
+        "       dtype: DT_INT32"                                              \
+        "       tensor_shape { dim {size: 5}}"                                \
+        "       tensor_content:"                                              \
+        "'\\000\\000\\000\\000\\002\\000\\000\\000\\003\\000\\000\\000\\004"  \
+        "\\000\\000\\000\\001\\000\\000\\000'"                                \
+        "     }"                                                              \
+        "   }"                                                                \
+        " }"                                                                  \
+        "}"                                                                   \
+        "node { name: 'Const1' op: 'Const'"                                   \
+        " attr { key: 'dtype' value { type: DT_INT32 } }"                     \
+        "  attr { key: 'value'"                                               \
+        "    value {"                                                         \
+        "      tensor {"                                                      \
+        "        dtype: DT_INT32"                                             \
+        "        tensor_shape { dim { size: 5 }}"                             \
+        "        tensor_content: "                                            \
+        "'\\000\\000\\000\\000\\004\\000\\000\\000\\001\\000\\000\\000\\002"  \
+        "\\000\\000\\000\\003\\000\\000\\000'"                                \
+        "      }"                                                             \
+        "    }"                                                               \
+        "  }"                                                                 \
+        "}"                                                                   \
+        "node { name: 'Transpose0' op: 'Transpose'"                           \
+        " input: ['Input0', 'Const0']"                                        \
+        " attr { key: 'T'                       value { type: " #T " }}"      \
+        " attr { key: 'Tperm'                   value { type: DT_INT32 }}}"   \
+        "node { name: 'Conv3D' op: 'Conv3D'"                                  \
+        "input: ['Transpose0', 'Input1']"                                     \
+        " attr { key: 'T'                       value { type: " #T " }}"      \
+        " attr { key: 'data_format'             value { s: 'NDHWC'  }}"       \
+        " attr { key: 'dilations'      value { list: {i:1,i:1,i:1,i:1,i:1}}}" \
+        " attr { key: 'padding'                 value { s: 'SAME' }}"         \
+        " attr { key: 'strides'        value { list: {i:1,i:1,i:1,i:1,i:1}}}" \
+        " attr { key: 'use_cudnn_on_gpu'        value { b: true }}}"          \
+        "node { name: 'Transpose1' op: 'Transpose'"                           \
+        " input: ['Conv3D', 'Const1']"                                        \
+        " attr { key: 'T'                       value { type: " #T " }}"      \
+        " attr { key: 'Tperm'                   value { type: DT_INT32 }}}"   \
+        "node { name: 'Relu' op: 'Relu'"                                      \
+        " attr { key: 'T'                value { type: " #T " } }"            \
+        " input: ['Transpose1'] }");                                          \
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                  \
+              "Const0(Const);Const1(Const);Conv3D(_MklConv3D);DMT/_0(Const);" \
+              "DMT/_1(Const);Input0(" #INPUT ");Input1(" #INPUT ");"          \
+              "Relu(_MklRelu)|Conv3D->Relu;Conv3D:2->Relu:1;"                 \
+              "DMT/_0->Conv3D:2;DMT/_1->Conv3D:3;Input0->Conv3D;"             \
+              "Input0:control->DMT/_0:control;"                               \
+              "Input0:control->DMT/_1:control;Input1->Conv3D:1");             \
+}
+REGISTER_TEST_ALL_TYPES(NodeMerge_TransposeConv3DTranspose_Positive);
+#undef REGISTER_TEST
+
+#define REGISTER_TEST(NAME, T, INPUT)                                         \
+  TEST_F(MklLayoutPassTest, NAME##_##T) {                                     \
+    InitGraph(                                                                \
+        "node { name: 'Input0' op: '" #INPUT "'}"                             \
+        "node { name: 'Input1' op: '" #INPUT "'}"                             \
+        "node { name: 'Const0' op: 'Const'"                                   \
+        " attr { key: 'dtype' value { type: DT_INT32 } }"                     \
+        " attr { key: 'value'"                                                \
+        "  value {"                                                           \
+        "     tensor {"                                                       \
+        "       dtype: DT_INT32"                                              \
+        "       tensor_shape { dim {size: 5}}"                                \
+        "       tensor_content:"                                              \
+        "'\\000\\000\\000\\000\\002\\000\\000\\000\\003\\000\\000\\000\\004"  \
+        "\\000\\000\\000\\001\\000\\000\\000'"                                \
+        "     }"                                                              \
+        "   }"                                                                \
+        " }"                                                                  \
+        "}"                                                                   \
+        "node { name: 'Const1' op: 'Const'"                                   \
+        " attr { key: 'dtype' value { type: DT_INT32 } }"                     \
+        "  attr { key: 'value'"                                               \
+        "    value {"                                                         \
+        "      tensor {"                                                      \
+        "        dtype: DT_INT32"                                             \
+        "        tensor_shape { dim { size: 5 }}"                             \
+        "        tensor_content: "                                            \
+        "'\\000\\000\\000\\000\\002\\000\\000\\000\\003\\000\\000\\000\\004"  \
+        "\\000\\000\\000\\001\\000\\000\\000'"                                \
+        "      }"                                                             \
+        "    }"                                                               \
+        "  }"                                                                 \
+        "}"                                                                   \
+        "node { name: 'Transpose0' op: 'Transpose'"                           \
+        " input: ['Input0', 'Const0']"                                        \
+        " attr { key: 'T'                       value { type: " #T " }}"      \
+        " attr { key: 'Tperm'                   value { type: DT_INT32 }}}"   \
+        "node { name: 'Conv3D' op: 'Conv3D'"                                  \
+        "input: ['Transpose0', 'Input1']"                                     \
+        " attr { key: 'T'                       value { type: " #T " }}"      \
+        " attr { key: 'data_format'             value { s: 'NDHWC'  }}"       \
+        " attr { key: 'dilations'      value { list: {i:1,i:1,i:1,i:1,i:1}}}" \
+        " attr { key: 'padding'                 value { s: 'SAME' }}"         \
+        " attr { key: 'strides'        value { list: {i:1,i:1,i:1,i:1,i:1}}}" \
+        " attr { key: 'use_cudnn_on_gpu'        value { b: true }}}"          \
+        "node { name: 'Transpose1' op: 'Transpose'"                           \
+        " input: ['Conv3D', 'Const1']"                                        \
+        " attr { key: 'T'                       value { type: " #T " }}"      \
+        " attr { key: 'Tperm'                   value { type: DT_INT32 }}}"   \
+        "node { name: 'Relu' op: 'Relu'"                                      \
+        " attr { key: 'T'                value { type: " #T " } }"            \
+        " input: ['Transpose1'] }");                                          \
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                  \
+              "Const0(Const);Const1(Const);Conv3D(_MklConv3D);DMT/_0(Const);" \
+              "DMT/_1(Const);DMT/_2(Const);Input0(" #INPUT ");"               \
+              "Input1(" #INPUT ");Relu(_MklRelu);Transpose0(_MklTranspose);"  \
+              "Transpose1(_MklTranspose)|Const0->Transpose0:1;Const1->"       \
+              "Transpose1:1;Conv3D->Transpose1;DMT/_0->Conv3D:2;"             \
+              "DMT/_1->Conv3D:3;DMT/_2->Relu:1;Input0->Transpose0;Input1->"   \
+              "Conv3D:1;Transpose0->Conv3D;Transpose0:control->"              \
+              "DMT/_0:control;Transpose0:control->DMT/_1:control;"            \
+              "Transpose1->Relu;Transpose1:control->DMT/_2:control");         \
+}
+REGISTER_TEST_ALL_TYPES(NodeMerge_TransposeConv3DTranspose_Negative);
+#undef REGISTER_TEST
+
+#define REGISTER_TEST(NAME, T, INPUT)                                         \
+  TEST_F(MklLayoutPassTest, NAME##_##T) {                                     \
+    InitGraph(                                                                \
+        "node { name: 'Input0' op: '" #INPUT "'}"                             \
+        "node { name: 'Const0' op: 'Const'"                                   \
+        " attr { key: 'dtype' value { type: DT_INT32 } }"                     \
+        " attr { key: 'value'"                                                \
+        "  value {"                                                           \
+        "     tensor {"                                                       \
+        "       dtype: DT_INT32"                                              \
+        "       tensor_shape { dim {size: 5}}"                                \
+        "       tensor_content:"                                              \
+        "'\\000\\000\\000\\000\\002\\000\\000\\000\\003\\000\\000\\000\\004"  \
+        "\\000\\000\\000\\001\\000\\000\\000'"                                \
+        "     }"                                                              \
+        "   }"                                                                \
+        " }"                                                                  \
+        "}"                                                                   \
+        "node { name: 'Const1' op: 'Const'"                                   \
+        " attr { key: 'dtype' value { type: DT_INT32 } }"                     \
+        "  attr { key: 'value'"                                               \
+        "    value {"                                                         \
+        "      tensor {"                                                      \
+        "        dtype: DT_INT32"                                             \
+        "        tensor_shape { dim { size: 5 }}"                             \
+        "        tensor_content: "                                            \
+        "'\\000\\000\\000\\000\\004\\000\\000\\000\\001\\000\\000\\000\\002"  \
+        "\\000\\000\\000\\003\\000\\000\\000'"                                \
+        "      }"                                                             \
+        "    }"                                                               \
+        "  }"                                                                 \
+        "}"                                                                   \
+        "node { name: 'Transpose0' op: 'Transpose'"                           \
+        " input: ['Input0', 'Const0']"                                        \
+        " attr { key: 'T'                       value { type: " #T " }}"      \
+        " attr { key: 'Tperm'                   value { type: DT_INT32 }}}"   \
+        "node { name: 'MaxPool3D'   op: 'MaxPool3D'"                          \
+        "input: ['Transpose0']"                                               \
+        " attr { key: 'T'                       value { type: " #T " }}"      \
+        " attr { key: 'data_format'             value { s: 'NDHWC'  }}"       \
+        " attr { key: 'padding'                 value { s: 'SAME' }}"         \
+        " attr { key: 'strides'        value { list: {i:1,i:2,i:2,i:2,i:1}}}" \
+        " attr { key: 'ksize'          value { list: {i:1,i:1,i:1,i:1,i:1}}}}"\
+        "node { name: 'Transpose1' op: 'Transpose'"                           \
+        " input: ['MaxPool3D', 'Const1']"                                     \
+        " attr { key: 'T'                       value { type: " #T " }}"      \
+        " attr { key: 'Tperm'                   value { type: DT_INT32 }}}"   \
+        "node { name: 'Relu' op: 'Relu'"                                      \
+        " attr { key: 'T'                       value { type: " #T " }}"      \
+        " input: ['Transpose1'] }");                                          \
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                  \
+            "Const0(Const);Const1(Const);DMT/_0(Const);Input0(" #INPUT ");"   \
+            "MaxPool3D(_MklMaxPool3D);Relu(_MklRelu)|DMT/_0->MaxPool3D:1;"    \
+            "Input0->MaxPool3D;Input0:control->DMT/_0:control;"               \
+            "MaxPool3D->Relu;MaxPool3D:2->Relu:1");                           \
+}
+REGISTER_TEST_ALL_TYPES(NodeMerge_TransposeMaxPool3DTranspose_Positive);
+#undef REGISTER_TEST
+
+#define REGISTER_TEST(NAME, T, INPUT)                                         \
+  TEST_F(MklLayoutPassTest, NAME##_##T) {                                     \
+    InitGraph(                                                                \
+        "node { name: 'Input0' op: '" #INPUT "'}"                             \
+        "node { name: 'Const0' op: 'Const'"                                   \
+        " attr { key: 'dtype' value { type: DT_INT32 } }"                     \
+        " attr { key: 'value'"                                                \
+        "  value {"                                                           \
+        "     tensor {"                                                       \
+        "       dtype: DT_INT32"                                              \
+        "       tensor_shape { dim {size: 5}}"                                \
+        "       tensor_content:"                                              \
+        "'\\000\\000\\000\\000\\002\\000\\000\\000\\003\\000\\000\\000\\004"  \
+        "\\000\\000\\000\\001\\000\\000\\000'"                                \
+        "     }"                                                              \
+        "   }"                                                                \
+        " }"                                                                  \
+        "}"                                                                   \
+        "node { name: 'Const1' op: 'Const'"                                   \
+        " attr { key: 'dtype' value { type: DT_INT32 } }"                     \
+        "  attr { key: 'value'"                                               \
+        "    value {"                                                         \
+        "      tensor {"                                                      \
+        "        dtype: DT_INT32"                                             \
+        "        tensor_shape { dim { size: 5 }}"                             \
+        "        tensor_content: "                                            \
+        "'\\000\\000\\000\\000\\002\\000\\000\\000\\003\\000\\000\\000\\004"  \
+        "\\000\\000\\000\\001\\000\\000\\000'"                                \
+        "      }"                                                             \
+        "    }"                                                               \
+        "  }"                                                                 \
+        "}"                                                                   \
+        "node { name: 'Transpose0' op: 'Transpose'"                           \
+        " input: ['Input0', 'Const0']"                                        \
+        " attr { key: 'T'                       value { type: " #T " }}"      \
+        " attr { key: 'Tperm'                   value { type: DT_INT32 }}}"   \
+        "node { name: 'MaxPool3D'   op: 'MaxPool3D'"                          \
+        "input: ['Transpose0']"                                               \
+        " attr { key: 'T'                       value { type: " #T " }}"      \
+        " attr { key: 'data_format'             value { s: 'NDHWC'  }}"       \
+        " attr { key: 'padding'                 value { s: 'SAME' }}"         \
+        " attr { key: 'strides'        value { list: {i:1,i:2,i:2,i:2,i:1}}}" \
+        " attr { key: 'ksize'          value { list: {i:1,i:1,i:1,i:1,i:1}}}}"\
+        "node { name: 'Transpose1' op: 'Transpose'"                           \
+        " input: ['MaxPool3D', 'Const1']"                                     \
+        " attr { key: 'T'                       value { type: " #T " }}"      \
+        " attr { key: 'Tperm'                   value { type: DT_INT32 }}}"   \
+        "node { name: 'Relu' op: 'Relu'"                                      \
+        " attr { key: 'T'                       value { type: " #T " }}"      \
+        " input: ['Transpose1'] }");                                          \
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                  \
+      "Const0(Const);Const1(Const);DMT/_0(Const);DMT/_1(Const);Input0(" #INPUT\
+      ");MaxPool3D(_MklMaxPool3D);Relu(_MklRelu);Transpose0(_MklTranspose);"  \
+      "Transpose1(_MklTranspose)|Const0->Transpose0:1;"                       \
+      "Const1->Transpose1:1;DMT/_0->MaxPool3D:1;DMT/_1->Relu:1;Input0->"      \
+      "Transpose0;MaxPool3D->Transpose1;Transpose0->MaxPool3D;Transpose0:"    \
+      "control->DMT/_0:control;Transpose1->Relu;Transpose1:control->"         \
+      "DMT/_1:control");                                                      \
+}
+REGISTER_TEST_ALL_TYPES(NodeMerge_TransposeMaxPool3DTranspose_Negative);
+#undef REGISTER_TEST
 // clang-format on
-
-TEST_F(MklLayoutPassTest, NodeMerge_TransposeConv2DTranspose_Positive) {
-  InitGraph(
-      "node { name: 'Input0' op: 'Input'}"
-      "node { name: 'Input1' op: 'Input'}"
-      "node { name: 'Const0' op: 'Const'"
-      "  attr {"
-      "   key: 'dtype'"
-      "   value {"
-      "     type: DT_INT32"
-      "   }"
-      "  }"
-      " attr {"
-      "   key: 'value'"
-      "   value {"
-      "     tensor {"
-      "       dtype: DT_INT32"
-      "       tensor_shape {"
-      "         dim {"
-      "           size: 4"
-      "         }"
-      "       }"
-      "       tensor_content: "
-      "'\\000\\000\\000\\000\\002\\000\\000\\000\\003\\000\\000\\000\\001\\000"
-      "\\000\\000'"
-      "     }"
-      "   }"
-      " }"
-      "}"
-      "node { name: 'Const1' op: 'Const'"
-      "  attr {"
-      "   key: 'dtype'"
-      "   value {"
-      "     type: DT_INT32"
-      "   }"
-      "  }"
-      " attr {"
-      "   key: 'value'"
-      "   value {"
-      "     tensor {"
-      "       dtype: DT_INT32"
-      "       tensor_shape {"
-      "         dim {"
-      "           size: 4"
-      "         }"
-      "       }"
-      "       tensor_content: "
-      "'\\000\\000\\000\\000\\003\\000\\000\\000\\001\\000\\000\\000\\002\\000"
-      "\\000\\000'"
-      "     }"
-      "   }"
-      " }"
-      "}"
-      "node {              \
-      name: 'Transpose0' \
-      op: 'Transpose'    \
-      input: 'Input0'    \
-      input: 'Const0'    \
-      attr {             \
-        key: 'T'         \
-        value {          \
-          type: DT_FLOAT \
-        }                \
-      }                  \
-      attr {             \
-        key: 'Tperm'     \
-        value {          \
-          type: DT_INT32 \
-        }                \
-      }                  \
-    }"
-      "node {                 \
-      name: 'Conv2D'        \
-      op: 'Conv2D'          \
-      input: 'Transpose0'   \
-      input: 'Input1'       \
-      attr {                \
-        key: 'T'            \
-        value {             \
-          type: DT_FLOAT    \
-        }                   \
-      }                     \
-      attr {                \
-        key: 'data_format'  \
-        value {             \
-          s: 'NHWC'         \
-        }                   \
-      }                     \
-      attr {                \
-        key: 'dilations'    \
-        value {             \
-          list {            \
-            i: 1            \
-            i: 1            \
-            i: 1            \
-            i: 1            \
-          }                 \
-        }                   \
-      }                     \
-      attr {                \
-        key: 'padding'      \
-        value {             \
-          s: 'SAME'         \
-        }                   \
-      }                     \
-      attr {                \
-        key: 'strides'      \
-        value {             \
-          list {            \
-            i: 1            \
-            i: 1            \
-            i: 1            \
-            i: 1            \
-          }                 \
-        }                   \
-      }                     \
-      attr {                \
-        key: 'use_cudnn_on_gpu' \
-        value {                 \
-          b: true               \
-        }                       \
-      }                         \
-    }"
-      "node {              \
-      name: 'Transpose1' \
-      op: 'Transpose'    \
-      input: 'Conv2D'    \
-      input: 'Const1'    \
-      attr {             \
-        key: 'T'         \
-        value {          \
-          type: DT_FLOAT \
-        }                \
-      }                  \
-      attr {             \
-        key: 'Tperm'     \
-        value {          \
-          type: DT_INT32 \
-        }                \
-      }                  \
-    }"
-      "node { name: 'Relu' op: 'Relu'"
-      " attr { key: 'T'                value { type: DT_FLOAT } }"
-      " input: ['Transpose1'] }");
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),
-            "Const0(Const);Const1(Const);"
-            "Conv2D(_MklConv2D);DMT/_0(Const);DMT/_1(Const);Input0(Input);"
-            "Input1(Input);Relu(_MklRelu)|Conv2D->Relu;Conv2D:2->Relu:1;DMT/"
-            "_0->Conv2D:2;DMT/_1->Conv2D:3;Input0->Conv2D;"
-            "Input0:control->DMT/_0:control;Input0:control->DMT/"
-            "_1:control;Input1->Conv2D:1");
-}
-
-TEST_F(MklLayoutPassTest, NodeMerge_TransposeConv2DTranspose_Negative) {
-  InitGraph(
-      "node { name: 'Input0' op: 'Input'}"
-      "node { name: 'Input1' op: 'Input'}"
-      "node { name: 'Const0' op: 'Const'"
-      "  attr {"
-      "   key: 'dtype'"
-      "   value {"
-      "     type: DT_INT32"
-      "   }"
-      "  }"
-      " attr {"
-      "   key: 'value'"
-      "   value {"
-      "     tensor {"
-      "       dtype: DT_INT32"
-      "       tensor_shape {"
-      "         dim {"
-      "           size: 4"
-      "         }"
-      "       }"
-      "       tensor_content: "
-      "'\\000\\000\\000\\000\\002\\000\\000\\000\\003\\000\\000\\000\\001\\000"
-      "\\000\\000'"
-      "     }"
-      "   }"
-      " }"
-      "}"
-      "node { name: 'Const1' op: 'Const'"
-      "  attr {"
-      "   key: 'dtype'"
-      "   value {"
-      "     type: DT_INT32"
-      "   }"
-      "  }"
-      " attr {"
-      "   key: 'value'"
-      "   value {"
-      "     tensor {"
-      "       dtype: DT_INT32"
-      "       tensor_shape {"
-      "         dim {"
-      "           size: 4"
-      "         }"
-      "       }"
-      "       tensor_content: "
-      "'\\000\\000\\000\\000\\002\\000\\000\\000\\003\\000\\000\\000\\001\\000"
-      "\\000\\000'"
-      "     }"
-      "   }"
-      " }"
-      "}"
-      "node {              \
-      name: 'Transpose0' \
-      op: 'Transpose'    \
-      input: 'Input0'    \
-      input: 'Const0'    \
-      attr {             \
-        key: 'T'         \
-        value {          \
-          type: DT_FLOAT \
-        }                \
-      }                  \
-      attr {             \
-        key: 'Tperm'     \
-        value {          \
-          type: DT_INT32 \
-        }                \
-      }                  \
-    }"
-      "node {                 \
-      name: 'Conv2D'        \
-      op: 'Conv2D'          \
-      input: 'Transpose0'   \
-      input: 'Input1'       \
-      attr {                \
-        key: 'T'            \
-        value {             \
-          type: DT_FLOAT    \
-        }                   \
-      }                     \
-      attr {                \
-        key: 'data_format'  \
-        value {             \
-          s: 'NHWC'         \
-        }                   \
-      }                     \
-      attr {                \
-        key: 'dilations'    \
-        value {             \
-          list {            \
-            i: 1            \
-            i: 1            \
-            i: 1            \
-            i: 1            \
-          }                 \
-        }                   \
-      }                     \
-      attr {                \
-        key: 'padding'      \
-        value {             \
-          s: 'SAME'         \
-        }                   \
-      }                     \
-      attr {                \
-        key: 'strides'      \
-        value {             \
-          list {            \
-            i: 1            \
-            i: 1            \
-            i: 1            \
-            i: 1            \
-          }                 \
-        }                   \
-      }                     \
-      attr {                \
-        key: 'use_cudnn_on_gpu' \
-        value {                 \
-          b: true               \
-        }                       \
-      }                         \
-    }"
-      "node {              \
-      name: 'Transpose1' \
-      op: 'Transpose'    \
-      input: 'Conv2D'    \
-      input: 'Const1'    \
-      attr {             \
-        key: 'T'         \
-        value {          \
-          type: DT_FLOAT \
-        }                \
-      }                  \
-      attr {             \
-        key: 'Tperm'     \
-        value {          \
-          type: DT_INT32 \
-        }                \
-      }                  \
-    }"
-      "node { name: 'Relu' op: 'Relu'"
-      " attr { key: 'T'                value { type: DT_FLOAT } }"
-      " input: ['Transpose1'] }");
-  EXPECT_EQ(
-      DoMklLayoutOptimizationPass(),
-      "Const0(Const);Const1(Const);Conv2D(_MklConv2D);"
-      "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);Input0(Input);"
-      "Input1(Input);Relu(_MklRelu);Transpose0(_MklTranspose);"
-      "Transpose1(_MklTranspose)|Const0->Transpose0:1;"
-      "Const1->Transpose1:1;Conv2D->Transpose1;DMT/_0->Conv2D:2;"
-      "DMT/_1->Conv2D:3;DMT/_2->Relu:1;Input0->Transpose0;"
-      "Input1->Conv2D:1;Transpose0->Conv2D;Transpose0:control->DMT/_0:control;"
-      "Transpose0:control->DMT/_1:control;Transpose1->Relu;"
-      "Transpose1:control->DMT/_2:control");
-}
-
-TEST_F(MklLayoutPassTest, NodeMerge_TransposeConv3DTranspose_Positive) {
-  InitGraph(
-      "node { name: 'Input0' op: 'Input'}                                     \
-       node { name: 'Input1' op: 'Input'}                                     \
-       node { name: 'Const0' op: 'Const'                                      \
-         attr { key: 'dtype' value { type: DT_INT32 } }                       \
-         attr {                                                               \
-           key: 'value'                                                       \
-           value {                                                            \
-             tensor {                                                         \
-               dtype: DT_INT32                                                \
-               tensor_shape {                                                 \
-                 dim {                                                        \
-                   size: 5                                                    \
-                 }                                                            \
-               }                                                              \
-               tensor_content:                                                \
-       '\\000\\000\\000\\000\\002\\000\\000\\000\\003\\000\\000\\000\\004'    \
-       '\\000\\000\\000\\001\\000\\000\\000'                                  \
-             }                                                                \
-           }                                                                  \
-         }                                                                    \
-       }                                                                      \
-       node { name: 'Const1' op: 'Const'                                      \
-         attr { key: 'dtype' value { type: DT_INT32 } }                       \
-         attr {                                                               \
-           key: 'value'                                                       \
-           value {                                                            \
-             tensor {                                                         \
-               dtype: DT_INT32                                                \
-               tensor_shape {                                                 \
-                 dim {                                                        \
-                   size: 5                                                    \
-                 }                                                            \
-               }                                                              \
-               tensor_content:                                                \
-       '\\000\\000\\000\\000\\004\\000\\000\\000\\001\\000\\000\\000\\002'    \
-       '\\000\\000\\000\\003\\000\\000\\000'                                  \
-             }                                                                \
-           }                                                                  \
-         }                                                                    \
-       }"
-      "node {              \
-        name: 'Transpose0' \
-        op: 'Transpose'    \
-        input: 'Input0'    \
-        input: 'Const0'    \
-        attr {             \
-          key: 'T'         \
-          value {          \
-            type: DT_FLOAT \
-          }                \
-        }                  \
-        attr {             \
-          key: 'Tperm'     \
-          value {          \
-            type: DT_INT32 \
-          }                \
-        }                  \
-      }"
-      "node {                 \
-        name: 'Conv3D'        \
-        op: 'Conv3D'          \
-        input: 'Transpose0'   \
-        input: 'Input1'       \
-        attr {                \
-          key: 'T'            \
-          value {             \
-            type: DT_FLOAT    \
-          }                   \
-        }                     \
-        attr {                \
-          key: 'data_format'  \
-          value {             \
-            s: 'NDHWC'        \
-          }                   \
-        }                     \
-        attr {                \
-          key: 'dilations'    \
-          value {             \
-            list {            \
-              i: 1            \
-              i: 1            \
-              i: 1            \
-              i: 1            \
-              i: 1            \
-            }                 \
-          }                   \
-        }                     \
-        attr {                \
-          key: 'padding'      \
-          value {             \
-            s: 'SAME'         \
-          }                   \
-        }                     \
-        attr {                \
-          key: 'strides'      \
-          value {             \
-            list {            \
-              i: 1            \
-              i: 1            \
-              i: 1            \
-              i: 1            \
-              i: 1            \
-            }                 \
-          }                   \
-        }                     \
-        attr {                \
-          key: 'use_cudnn_on_gpu' \
-          value {                 \
-            b: true               \
-          }                       \
-        }                         \
-      }"
-      "node {              \
-        name: 'Transpose1' \
-        op: 'Transpose'    \
-        input: 'Conv3D'    \
-        input: 'Const1'    \
-        attr {             \
-          key: 'T'         \
-          value {          \
-            type: DT_FLOAT \
-          }                \
-        }                  \
-        attr {             \
-          key: 'Tperm'     \
-          value {          \
-            type: DT_INT32 \
-          }                \
-        }                  \
-      }"
-      "node { name: 'Relu' op: 'Relu'"
-      " attr { key: 'T'                value { type: DT_FLOAT } }"
-      " input: ['Transpose1'] }");
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),
-            "Const0(Const);Const1(Const);Conv3D(_MklConv3D);DMT/_0(Const);"
-            "DMT/_1(Const);Input0(Input);Input1(Input);"
-            "Relu(_MklRelu)|Conv3D->Relu;Conv3D:2->Relu:1;"
-            "DMT/_0->Conv3D:2;DMT/_1->Conv3D:3;Input0->Conv3D;"
-            "Input0:control->DMT/_0:control;"
-            "Input0:control->DMT/_1:control;Input1->Conv3D:1");
-}
-
-TEST_F(MklLayoutPassTest, NodeMerge_TransposeConv3DTranspose_Negative) {
-  InitGraph(
-      "node { name: 'Input0' op: 'Input'}                                     \
-       node { name: 'Input1' op: 'Input'}                                     \
-       node { name: 'Const0' op: 'Const'                                      \
-         attr {                                                               \
-           key: 'dtype'                                                       \
-           value {                                                            \
-             type: DT_INT32                                                   \
-           }                                                                  \
-         }                                                                    \
-         attr {                                                               \
-           key: 'value'                                                       \
-           value {                                                            \
-             tensor {                                                         \
-               dtype: DT_INT32                                                \
-               tensor_shape {                                                 \
-                 dim {                                                        \
-                   size: 5                                                    \
-                 }                                                            \
-               }                                                              \
-               tensor_content:                                                \
-       '\\000\\000\\000\\000\\002\\000\\000\\000\\003\\000\\000\\000\\004'    \
-       '\\000\\000\\000\\001\\000\\000\\000'                                  \
-             }                                                                \
-           }                                                                  \
-         }                                                                    \
-       }                                                                      \
-       node { name: 'Const1' op: 'Const'                                      \
-         attr {                                                               \
-           key: 'dtype'                                                       \
-           value {                                                            \
-             type: DT_INT32                                                   \
-           }                                                                  \
-         }                                                                    \
-         attr {                                                               \
-           key: 'value'                                                       \
-           value {                                                            \
-             tensor {                                                         \
-               dtype: DT_INT32                                                \
-               tensor_shape {                                                 \
-                 dim {                                                        \
-                   size: 5                                                    \
-                 }                                                            \
-               }                                                              \
-               tensor_content:                                                \
-       '\\000\\000\\000\\000\\002\\000\\000\\000\\003\\000\\000\\000\\004'    \
-       '\\000\\000\\000\\001\\000\\000\\000'                                  \
-             }                                                                \
-           }                                                                  \
-         }                                                                    \
-       }"
-      "node {              \
-        name: 'Transpose0' \
-        op: 'Transpose'    \
-        input: 'Input0'    \
-        input: 'Const0'    \
-        attr {             \
-          key: 'T'         \
-          value {          \
-            type: DT_FLOAT \
-          }                \
-        }                  \
-        attr {             \
-          key: 'Tperm'     \
-          value {          \
-            type: DT_INT32 \
-          }                \
-        }                  \
-      }"
-      "node {                 \
-        name: 'Conv3D'        \
-        op: 'Conv3D'          \
-        input: 'Transpose0'   \
-        input: 'Input1'       \
-        attr {                \
-          key: 'T'            \
-          value {             \
-            type: DT_FLOAT    \
-          }                   \
-        }                     \
-        attr {                \
-          key: 'data_format'  \
-          value {             \
-            s: 'NDHWC'        \
-          }                   \
-        }                     \
-        attr {                \
-          key: 'dilations'    \
-          value {             \
-            list {            \
-              i: 1            \
-              i: 1            \
-              i: 1            \
-              i: 1            \
-              i: 1            \
-            }                 \
-          }                   \
-        }                     \
-        attr {                \
-          key: 'padding'      \
-          value {             \
-            s: 'SAME'         \
-          }                   \
-        }                     \
-        attr {                \
-          key: 'strides'      \
-          value {             \
-            list {            \
-              i: 1            \
-              i: 1            \
-              i: 1            \
-              i: 1            \
-              i: 1            \
-            }                 \
-          }                   \
-        }                     \
-        attr {                \
-          key: 'use_cudnn_on_gpu' \
-          value {                 \
-            b: true               \
-          }                       \
-        }                         \
-      }"
-      "node {              \
-        name: 'Transpose1' \
-        op: 'Transpose'    \
-        input: 'Conv3D'    \
-        input: 'Const1'    \
-        attr {             \
-          key: 'T'         \
-          value {          \
-            type: DT_FLOAT \
-          }                \
-        }                  \
-        attr {             \
-          key: 'Tperm'     \
-          value {          \
-            type: DT_INT32 \
-          }                \
-        }                  \
-      }"
-      "node { name: 'Relu' op: 'Relu'"
-      " attr { key: 'T'                value { type: DT_FLOAT } }"
-      " input: ['Transpose1'] }");
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),
-            "Const0(Const);Const1(Const);Conv3D(_MklConv3D);"
-            "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);"
-            "Input0(Input);Input1(Input);Relu(_MklRelu);"
-            "Transpose0(_MklTranspose);Transpose1(_MklTranspose)"
-            "|Const0->Transpose0:1;Const1->Transpose1:1;"
-            "Conv3D->Transpose1;DMT/_0->Conv3D:2;DMT/_1->Conv3D:3;"
-            "DMT/_2->Relu:1;Input0->Transpose0;Input1->Conv3D:1;"
-            "Transpose0->Conv3D;Transpose0:control->DMT/_0:control;"
-            "Transpose0:control->DMT/_1:control;Transpose1->Relu;"
-            "Transpose1:control->DMT/_2:control");
-}
-
-TEST_F(MklLayoutPassTest, NodeMerge_TransposeMaxPool3DTranspose_Positive) {
-  InitGraph(
-      "node { name: 'Input0' op: 'Input'}                                     \
-       node { name: 'Const0' op: 'Const'                                      \
-         attr { key: 'dtype' value { type: DT_INT32 } }                       \
-         attr {                                                               \
-           key: 'value'                                                       \
-           value {                                                            \
-             tensor {                                                         \
-               dtype: DT_INT32                                                \
-               tensor_shape {                                                 \
-                 dim {                                                        \
-                   size: 5                                                    \
-                 }                                                            \
-               }                                                              \
-               tensor_content:                                                \
-       '\\000\\000\\000\\000\\002\\000\\000\\000\\003\\000\\000\\000\\004'    \
-       '\\000\\000\\000\\001\\000\\000\\000'                                  \
-             }                                                                \
-           }                                                                  \
-         }                                                                    \
-       }                                                                      \
-       node { name: 'Const1' op: 'Const'                                      \
-         attr { key: 'dtype' value { type: DT_INT32 } }                       \
-         attr {                                                               \
-           key: 'value'                                                       \
-           value {                                                            \
-             tensor {                                                         \
-               dtype: DT_INT32                                                \
-               tensor_shape {                                                 \
-                 dim {                                                        \
-                   size: 5                                                    \
-                 }                                                            \
-               }                                                              \
-               tensor_content:                                                \
-       '\\000\\000\\000\\000\\004\\000\\000\\000\\001\\000\\000\\000\\002'    \
-       '\\000\\000\\000\\003\\000\\000\\000'                                  \
-             }                                                                \
-           }                                                                  \
-         }                                                                    \
-       }"
-      "node {              \
-        name: 'Transpose0' \
-        op: 'Transpose'    \
-        input: 'Input0'    \
-        input: 'Const0'    \
-        attr {             \
-          key: 'T'         \
-          value {          \
-            type: DT_FLOAT \
-          }                \
-        }                  \
-        attr {             \
-          key: 'Tperm'     \
-          value {          \
-            type: DT_INT32 \
-          }                \
-        }                  \
-      }"
-      "node {                 \
-        name: 'MaxPool3D'     \
-        op: 'MaxPool3D'       \
-        input: 'Transpose0'   \
-        attr {                \
-          key: 'T'            \
-          value {             \
-            type: DT_FLOAT    \
-          }                   \
-        }                     \
-        attr {                \
-          key: 'data_format'  \
-          value {             \
-            s: 'NDHWC'        \
-          }                   \
-        }                     \
-        attr {                \
-          key: 'padding'      \
-          value {             \
-            s: 'SAME'         \
-          }                   \
-        }                     \
-        attr {                \
-          key: 'strides'      \
-          value {             \
-            list {            \
-              i: 1            \
-              i: 2            \
-              i: 2            \
-              i: 2            \
-              i: 1            \
-            }                 \
-          }                   \
-        }                     \
-        attr {                \
-          key: 'ksize'        \
-          value {             \
-            list {            \
-              i: 1            \
-              i: 1            \
-              i: 1            \
-              i: 1            \
-              i: 1            \
-            }                 \
-          }                   \
-        }                     \
-        attr {                \
-          key: 'use_cudnn_on_gpu' \
-          value {                 \
-            b: true               \
-          }                       \
-        }                         \
-      }"
-      "node {              \
-        name: 'Transpose1' \
-        op: 'Transpose'    \
-        input: 'MaxPool3D' \
-        input: 'Const1'    \
-        attr {             \
-          key: 'T'         \
-          value {          \
-            type: DT_FLOAT \
-          }                \
-        }                  \
-        attr {             \
-          key: 'Tperm'     \
-          value {          \
-            type: DT_INT32 \
-          }                \
-        }                  \
-      }"
-      "node { name: 'Relu' op: 'Relu'"
-      " attr { key: 'T' value { type: DT_FLOAT } }"
-      " input: ['Transpose1'] }");
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),
-            "Const0(Const);Const1(Const);DMT/_0(Const);Input0(Input);"
-            "MaxPool3D(_MklMaxPool3D);Relu(_MklRelu)"
-            "|DMT/_0->MaxPool3D:1;Input0->MaxPool3D;"
-            "Input0:control->DMT/_0:control;MaxPool3D->Relu;"
-            "MaxPool3D:2->Relu:1");
-}
-
-TEST_F(MklLayoutPassTest, NodeMerge_TransposeMaxPool3DTranspose_Negative) {
-  InitGraph(
-      "node { name: 'Input0' op: 'Input'}                                     \
-       node { name: 'Const0' op: 'Const'                                      \
-         attr { key: 'dtype' value { type: DT_INT32 } }                       \
-         attr {                                                               \
-           key: 'value'                                                       \
-           value {                                                            \
-             tensor {                                                         \
-               dtype: DT_INT32                                                \
-               tensor_shape {                                                 \
-                 dim {                                                        \
-                   size: 5                                                    \
-                 }                                                            \
-               }                                                              \
-               tensor_content:                                                \
-       '\\000\\000\\000\\000\\002\\000\\000\\000\\003\\000\\000\\000\\004'    \
-       '\\000\\000\\000\\001\\000\\000\\000'                                  \
-             }                                                                \
-           }                                                                  \
-         }                                                                    \
-       }                                                                      \
-       node { name: 'Const1' op: 'Const'                                      \
-         attr { key: 'dtype' value { type: DT_INT32 } }                       \
-         attr {                                                               \
-           key: 'value'                                                       \
-           value {                                                            \
-             tensor {                                                         \
-               dtype: DT_INT32                                                \
-               tensor_shape {                                                 \
-                 dim {                                                        \
-                   size: 5                                                    \
-                 }                                                            \
-               }                                                              \
-               tensor_content:                                                \
-       '\\000\\000\\000\\000\\004\\000\\000\\000\\001\\000\\000\\000\\004'    \
-       '\\000\\000\\000\\003\\000\\000\\000'                                  \
-             }                                                                \
-           }                                                                  \
-         }                                                                    \
-       }"
-      "node {              \
-        name: 'Transpose0' \
-        op: 'Transpose'    \
-        input: 'Input0'    \
-        input: 'Const0'    \
-        attr {             \
-          key: 'T'         \
-          value {          \
-            type: DT_FLOAT \
-          }                \
-        }                  \
-        attr {             \
-          key: 'Tperm'     \
-          value {          \
-            type: DT_INT32 \
-          }                \
-        }                  \
-      }"
-      "node {                 \
-        name: 'MaxPool3D'     \
-        op: 'MaxPool3D'       \
-        input: 'Transpose0'   \
-        attr {                \
-          key: 'T'            \
-          value {             \
-            type: DT_FLOAT    \
-          }                   \
-        }                     \
-        attr {                \
-          key: 'data_format'  \
-          value {             \
-            s: 'NDHWC'        \
-          }                   \
-        }                     \
-        attr {                \
-          key: 'padding'      \
-          value {             \
-            s: 'SAME'         \
-          }                   \
-        }                     \
-        attr {                \
-          key: 'strides'      \
-          value {             \
-            list {            \
-              i: 1            \
-              i: 2            \
-              i: 2            \
-              i: 2            \
-              i: 1            \
-            }                 \
-          }                   \
-        }                     \
-        attr {                \
-          key: 'ksize'        \
-          value {             \
-            list {            \
-              i: 1            \
-              i: 1            \
-              i: 1            \
-              i: 1            \
-              i: 1            \
-            }                 \
-          }                   \
-        }                     \
-      }"
-      "node {              \
-        name: 'Transpose1' \
-        op: 'Transpose'    \
-        input: 'MaxPool3D' \
-        input: 'Const1'    \
-        attr {             \
-          key: 'T'         \
-          value {          \
-            type: DT_FLOAT \
-          }                \
-        }                  \
-        attr {             \
-          key: 'Tperm'     \
-          value {          \
-            type: DT_INT32 \
-          }                \
-        }                  \
-      }"
-      "node { name: 'Relu' op: 'Relu'"
-      " attr { key: 'T' value { type: DT_FLOAT } }"
-      " input: ['Transpose1'] }");
-  EXPECT_EQ(
-      DoMklLayoutOptimizationPass(),
-      "Const0(Const);Const1(Const);DMT/_0(Const);DMT/_1(Const);Input0(Input);"
-      "MaxPool3D(_MklMaxPool3D);Relu(_MklRelu);"
-      "Transpose0(_MklTranspose);Transpose1(_MklTranspose)|Const0->Transpose0:"
-      "1;"
-      "Const1->Transpose1:1;DMT/_0->MaxPool3D:1;"
-      "DMT/_1->Relu:1;Input0->Transpose0;MaxPool3D->Transpose1;"
-      "Transpose0->MaxPool3D;Transpose0:control->DMT/_0:control;"
-      "Transpose1->Relu;Transpose1:control->DMT/_1:control");
-}
 
 /////////////////////////////////////////////////////////////////////
 //  Unit tests related to rewriting node to Mkl node

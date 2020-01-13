@@ -304,9 +304,11 @@ def while_loop(cond,
       # exit op as input.
       outputs = tuple(array_ops.identity(t) for t in outputs)
 
-  outputs = _pack_sequence_as(
-      orig_loop_vars, outputs[first_loop_var_index:first_loop_var_index +
-                              num_flattened_outputs])
+  output_loop_vars = outputs[first_loop_var_index:first_loop_var_index +
+                             num_flattened_outputs]
+  if not back_prop:
+    output_loop_vars = [array_ops.stop_gradient(t) for t in output_loop_vars]
+  outputs = _pack_sequence_as(orig_loop_vars, output_loop_vars)
 
   if return_same_structure:
     return outputs

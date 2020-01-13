@@ -35,7 +35,7 @@ class IndexedArrayAnalysisTest : public HloTestBase {
   }
 
  private:
-  // Replaces seqences of whitespace with a single space.  This makes the
+  // Replaces sequences of whitespace with a single space.  This makes the
   // strings being matched against "whitespace insensitive" which lets us indent
   // them for readability.
   string CanonicalizeWhitespace(const string& text) {

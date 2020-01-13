@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 import sys
 import warnings
+
 from absl.testing import parameterized
 import numpy as np
 from tensorflow.python.client import session
@@ -1404,6 +1405,9 @@ class VariablesGradientTest(test_util.TensorFlowTestCase):
     def TestFn(inputs, input_vars):
       return inputs * input_vars
 
+    def TestFnSeq(inputs, input_vars):
+      return (inputs * input_vars, inputs * input_vars * 2.0)
+
     with variable_scope.variable_scope("test", use_resource=True):
       test_var = variable_scope.get_variable(
           name="test_var",
@@ -1423,6 +1427,49 @@ class VariablesGradientTest(test_util.TensorFlowTestCase):
 
       grads_re, grads = self._TestFnVariablesGradient(test_input, TestFn,
                                                       test_var)
+      grads_re = self.evaluate(grads_re)
+      grads = self.evaluate(grads)
+      for g, g_re in zip(grads, grads_re):
+        self.assertAllClose(g, g_re)
+
+      # Regression test for wrapping sequence outputting functions.
+      grads_re, grads = self._TestFnVariablesGradient(test_input, TestFnSeq,
+                                                      test_input)
+      grads_re = self.evaluate(grads_re)
+      grads = self.evaluate(grads)
+      for g, g_re in zip(grads, grads_re):
+        self.assertAllClose(g, g_re)
+
+      grads_re, grads = self._TestFnVariablesGradient(test_input, TestFnSeq,
+                                                      test_var)
+      grads_re = self.evaluate(grads_re)
+      grads = self.evaluate(grads)
+      for g, g_re in zip(grads, grads_re):
+        self.assertAllClose(g, g_re)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testFnRecomputeSameTensor(self):
+    """Check recompute_grad when wrapped f called as f(x, x) - b/147369366."""
+
+    def TestFnMul(x, y):
+      return x * y
+
+    def TestFnSingleVar(x, y):
+      # pylint: disable=unused-argument
+      return x
+
+    with variable_scope.variable_scope("test", use_resource=True):
+      x = array_ops.ones((10))
+
+      grads_re, grads = self._TestFnVariablesGradient(x, TestFnMul,
+                                                      x)
+      grads_re = self.evaluate(grads_re)
+      grads = self.evaluate(grads)
+      for g, g_re in zip(grads, grads_re):
+        self.assertAllClose(g, g_re)
+
+      grads_re, grads = self._TestFnVariablesGradient(x, TestFnSingleVar,
+                                                      x)
       grads_re = self.evaluate(grads_re)
       grads = self.evaluate(grads)
       for g, g_re in zip(grads, grads_re):

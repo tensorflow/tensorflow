@@ -30,6 +30,7 @@ import textwrap
 import traceback
 
 # pylint:disable=g-bad-import-order
+
 import six
 # pylint:enable=g-bad-import-order
 
@@ -312,23 +313,24 @@ def do_not_convert(func=None):
   return autograph_artifact(wrapper)
 
 
-def _attach_metadata(e, f, converted):
+def _attach_metadata(e, f):
   """Augments an error with the metadata necessary for rewrite."""
   if hasattr(e, 'ag_pass_through'):
     return
 
   metadata = getattr(e, 'ag_error_metadata', None)
-  source_map = f.ag_source_map if converted else {}
+  source_map = f.ag_source_map
 
   if metadata is None:
-    logging.log(
-        1, 'Caught error in %s (converted=%s)', f, converted, exc_info=True)
+    logging.log(1, 'Caught error in user callable %s', f, exc_info=True)
     message = '{}: {}'.format(e.__class__.__name__, e)
   else:
     message = None
 
   cause_tb = traceback.extract_tb(sys.exc_info()[2])[1:]
-  e.ag_error_metadata = _ErrorMetadata(cause_tb, metadata, message, source_map)
+
+  e.ag_error_metadata = _ErrorMetadata(
+      cause_tb, metadata, message, source_map, __file__)
 
 
 def _call_unconverted(f, args, kwargs, options, update_cache=True):
@@ -339,14 +341,10 @@ def _call_unconverted(f, args, kwargs, options, update_cache=True):
   if inspect_utils.istfmethodtarget(f):
     return f.__self__.call(args, kwargs)
 
-  try:
-    if kwargs is not None:
-      return f(*args, **kwargs)
-    else:
-      return f(*args)
-  except Exception as e:  # pylint:disable=broad-except
-    _attach_metadata(e, f, False)
-    raise
+  if kwargs is not None:
+    return f(*args, **kwargs)
+  else:
+    return f(*args)
 
 
 def _is_known_loaded_type(f, module_name, entity_name):
@@ -415,12 +413,33 @@ def converted_call(f,
     options = caller_fn_scope.callopts
 
   if conversion.is_in_whitelist_cache(f, options):
-    logging.log(2, 'Whitelisted %s: from cache')
+    logging.log(2, 'Whitelisted %s: from cache', f)
     return _call_unconverted(f, args, kwargs, options, False)
 
   if ag_ctx.control_status_ctx().status == ag_ctx.Status.DISABLED:
     logging.log(2, 'Whitelisted: %s: AutoGraph is disabled in context', f)
     return _call_unconverted(f, args, kwargs, options, False)
+
+  if is_autograph_artifact(f):
+    logging.log(2, 'Permanently whitelisted: %s: AutoGraph artifact', f)
+    return _call_unconverted(f, args, kwargs, options)
+
+  # If this is a partial, unwrap it and redo all the checks.
+  if isinstance(f, functools.partial):
+    new_kwargs = {}
+    if f.keywords is not None:
+      new_kwargs = f.keywords
+    if kwargs is not None:
+      new_kwargs.update(kwargs)
+    new_args = f.args + args
+    logging.log(3, 'Forwarding call of partial %s with\n%s\n%s\n', f, new_args,
+                new_kwargs)
+    return converted_call(
+        f.func,
+        new_args,
+        new_kwargs,
+        caller_fn_scope=caller_fn_scope,
+        options=options)
 
   if inspect_utils.isbuiltin(f):
     if f is eval:
@@ -431,10 +450,6 @@ def converted_call(f,
       return py_builtins.overload_of(f)(*args, **kwargs)
     else:
       return py_builtins.overload_of(f)(*args)
-
-  if is_autograph_artifact(f):
-    logging.log(2, 'Permanently whitelisted: %s: AutoGraph artifact', f)
-    return _call_unconverted(f, args, kwargs, options)
 
   # TODO(b/122265385): Remove this bypass.
   if (_is_known_loaded_type(f, 'wrapt', 'FunctionWrapper') or
@@ -453,7 +468,7 @@ def converted_call(f,
   # Constructors are permanently whitelisted.
   # TODO(mdan): Toggle as experimental feature instead.
   # TODO(b/124016764): Remove this limitation.
-  if tf_inspect.isclass(f):
+  if inspect_utils.isconstructor(f):
     logging.log(2, 'Permanently whitelisted: %s: constructor', f)
     return _call_unconverted(f, args, kwargs, options)
 
@@ -483,19 +498,6 @@ def converted_call(f,
 
   # TODO(mdan): Move this entire block inside to_graph.
   try:  # Begin of transformation error guards
-
-    # Unwrap functools.partial objects
-    # TODO(mdan): Consider sharing unwrapping logic with tf_inspect.
-    # TODO(b/120224672): This unwrapping should be done before the checks above.
-    while isinstance(f, functools.partial):
-      args = f.args + args
-      new_kwargs = {}
-      if f.keywords is not None:
-        new_kwargs.update(f.keywords)
-      if kwargs is not None:
-        new_kwargs.update(kwargs)
-      kwargs = new_kwargs
-      f = f.func
 
     if tf_inspect.isfunction(f) or tf_inspect.ismethod(f):
       # Regular functions
@@ -580,7 +582,7 @@ def converted_call(f,
       else:
         result = converted_f(*effective_args)
     except Exception as e:
-      _attach_metadata(e, converted_f, True)
+      _attach_metadata(e, converted_f)
       raise
 
   return result

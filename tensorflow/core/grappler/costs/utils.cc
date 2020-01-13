@@ -504,5 +504,16 @@ string GetStatsStringFromRunMetadata(const RunMetadata& run_metadata,
   return output.str();
 }
 
+void CombineCostsAndUpdateExecutionTime(bool compute_memory_overlap,
+                                        Costs* costs) {
+  if (compute_memory_overlap) {
+    costs->execution_time =
+        std::max(costs->intermediate_memory_time,
+                 std::max(costs->compute_time, costs->memory_time));
+  } else {
+    costs->execution_time = costs->compute_time + costs->memory_time +
+                            costs->intermediate_memory_time;
+  }
+}
 }  // end namespace grappler
 }  // end namespace tensorflow

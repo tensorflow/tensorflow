@@ -51,7 +51,7 @@ void MklPoolingFwdPrimitive<T>::Setup(const MklPoolingParams& fwdParams) {
   if (std::is_same<T, qint8>::value || std::is_same<T, quint8>::value)
     context_.src_fmt = is_2d ? memory::format::nhwc : memory::format::ndhwc;
   else
-    context_.src_fmt = get_desired_format(fwdParams.src_dims[1], is_2d);
+    context_.src_fmt = fwdParams.src_format;
 
   context_.src_md.reset(new memory::desc({fwdParams.src_dims}, MklDnnType<T>(),
                                          context_.src_fmt));
@@ -144,9 +144,8 @@ void MklPoolingBwdPrimitive<T>::Setup(const MklPoolingParams& bwdParams) {
   // Create memory desc
   context_.diff_src_md.reset(new memory::desc(
       {bwdParams.src_dims}, MklDnnType<T>(), memory::format::any));
-  context_.diff_dst_md.reset(
-      new memory::desc({bwdParams.dst_dims}, MklDnnType<T>(),
-                       get_desired_format(bwdParams.dst_dims[1], is_2d)));
+  context_.diff_dst_md.reset(new memory::desc(
+      {bwdParams.dst_dims}, MklDnnType<T>(), bwdParams.src_format));
   context_.bwd_desc.reset(new pooling_backward::desc(
       bwdParams.alg_kind, *context_.diff_src_md, *context_.diff_dst_md,
       bwdParams.strides, bwdParams.filter_dims, bwdParams.padding_left,
@@ -166,7 +165,7 @@ void MklPoolingBwdPrimitive<T>::Setup(const MklPoolingParams& bwdParams) {
   // store expected primitive format
   context_.diff_src_fmt = static_cast<mkldnn::memory::format>(
       context_.bwd_pd.get()->diff_src_primitive_desc().desc().data.format);
-  context_.diff_dst_fmt = get_desired_format(bwdParams.dst_dims[1], is_2d);
+  context_.diff_dst_fmt = bwdParams.src_format;
 
   // create MKL-DNN internal memory object with dummy data
   context_.diff_src_mem.reset(
@@ -180,7 +179,7 @@ void MklPoolingBwdPrimitive<T>::Setup(const MklPoolingParams& bwdParams) {
   if (bwdParams.alg_kind == pooling_max) {
     auto ws_pd = context_.fwd_pd.get()->workspace_primitive_desc().desc().data;
     context_.ws_dims.assign(ws_pd.dims, ws_pd.dims + ws_pd.ndims);
-    context_.ws_fmt = get_desired_format(context_.ws_dims[1], is_2d);
+    context_.ws_fmt = static_cast<memory::format>(ws_pd.format);
     context_.ws_dt = static_cast<mkldnn::memory::data_type>(ws_pd.data_type);
     context_.ws_mem.reset(new memory(
         {{{context_.ws_dims}, context_.ws_dt, context_.ws_fmt}, cpu_engine},

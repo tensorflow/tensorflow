@@ -34,8 +34,8 @@ upper_tabs:
       - heading: Tutorials
       - title: XLA autoclustering
         path: /xla/tutorials/autoclustering_xla
-      - title: XLA compile API
-        path: /xla/tutorials/xla_compile
+      - title: Using tf.function(experimental_compile=True)
+        path: /xla/tutorials/experimental_compile
         status: experimental
 
 - include: /_upper_tabs_right.yaml

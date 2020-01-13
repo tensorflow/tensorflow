@@ -619,7 +619,7 @@ ENTRY main {
 
 class GatherClientLibraryTest : public ClientLibraryTestBase {};
 
-// Disabled on interpreter since ExectuteAsyncOnStream is not supported.
+// Disabled on interpreter since ExecuteAsyncOnStream is not supported.
 XLA_TEST_F(GatherClientLibraryTest,
            DISABLED_ON_INTERPRETER(DISABLED_ON_GPU(Basic))) {
   // We create this HLO, but using the XlaBuilder API.

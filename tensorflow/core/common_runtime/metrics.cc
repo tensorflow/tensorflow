@@ -54,12 +54,20 @@ auto* graph_run_output_tensor_bytes = monitoring::Sampler<0>::New(
     // Power of 2 with bucket count 14 (256G)
     {monitoring::Buckets::Exponential(1, 4, 14)});
 
+auto* graph_unused_outputs = monitoring::Counter<1>::New(
+    "/tensorflow/core/graph_unused_outputs",
+    "The number of unused outputs for ops of a given type.", "name");
+
 auto* tf_data_autotune_counter = monitoring::Counter<1>::New(
     "/tensorflow/data/autotune", "tf.data autotuning", "name");
 
 auto* tf_data_bytes_read_counter = monitoring::Counter<1>::New(
     "/tensorflow/data/bytes_read",
     "The number of bytes read by tf.data Dataset sources.", "name");
+
+auto* tf_data_bytes_fetched_counter = monitoring::Counter<0>::New(
+    "/tensorflow/data/bytes_fetched",
+    "The number of bytes fetched from tf.data Dataset iterator.");
 
 auto* tf_data_elements_counter = monitoring::Counter<1>::New(
     "/tensorflow/data/elements", "tf.data elements", "name");
@@ -120,6 +128,10 @@ void RecordTFDataAutotune(const string& name) {
 
 void RecordTFDataBytesRead(const string& name, int64 num_bytes) {
   tf_data_bytes_read_counter->GetCell(name)->IncrementBy(num_bytes);
+}
+
+void RecordTFDataBytesFetched(int64 num_bytes) {
+  tf_data_bytes_fetched_counter->GetCell()->IncrementBy(num_bytes);
 }
 
 void RecordTFDataElements(const string& name, int64 num_elements) {
@@ -216,6 +228,10 @@ void IncrementMLIRImportFailureCount() {
   static auto* mlir_import_failure_count_cell =
       mlir_import_failure_count->GetCell();
   mlir_import_failure_count_cell->IncrementBy(1);
+}
+
+void RecordUnusedOutput(const string& op_name) {
+  graph_unused_outputs->GetCell(op_name)->IncrementBy(1);
 }
 
 }  // namespace metrics

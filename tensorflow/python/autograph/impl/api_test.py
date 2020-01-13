@@ -435,10 +435,7 @@ class ApiTest(test.TestCase):
         return inst
 
     tmc = TestMetaclass('TestClass', (), {})
-    # This functools.partial will hide the class form the constructor
-    # check. Not ideal. See b/120224672.
-    tc = api.converted_call(
-        functools.partial(tmc), (), None, options=DEFAULT_RECURSIVE)
+    tc = api.converted_call(tmc, (), None, options=DEFAULT_RECURSIVE)
     self.assertIsInstance(tc, tmc)
 
   def test_converted_call_callable_abc(self):
@@ -499,6 +496,15 @@ class ApiTest(test.TestCase):
       api.converted_call(tc.test_method, (), None, options=DEFAULT_RECURSIVE)
     ag_logging.set_verbosity(0, False)
     os.environ['AUTOGRAPH_STRICT_CONVERSION'] = '1'
+
+  def test_converted_call_partial_of_whitelisted_method(self):
+
+    def test_fn(_):
+      self.assertFalse(converter_testing.is_inside_generated_code())
+
+    converter_testing.whitelist(test_fn)
+    api.converted_call(
+        functools.partial(test_fn, None), (), None, options=DEFAULT_RECURSIVE)
 
   def test_converted_call_already_converted(self):
 
@@ -1006,7 +1012,7 @@ class ApiTest(test.TestCase):
       return x
 
     # Just check that the output is parseable Python code.
-    self.assertIsNotNone(parser.parse_str(api.to_code(test_fn)))
+    self.assertIsNotNone(parser.parse(api.to_code(test_fn)))
 
   def test_to_code_with_wrapped_function(self):
 

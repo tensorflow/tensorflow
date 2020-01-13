@@ -149,6 +149,9 @@ typedef enum {
   kTfLiteBuiltinNonMaxSuppressionV4 = 120,
   kTfLiteBuiltinNonMaxSuppressionV5 = 121,
   kTfLiteBuiltinScatterNd = 122,
+  kTfLiteBuiltinSelectV2 = 123,
+  kTfLiteBuiltinDensify = 124,
+  kTfLiteBuiltinSegmentSum = 125,
 } TfLiteBuiltinOperator;
 
 #ifdef __cplusplus

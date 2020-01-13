@@ -297,7 +297,13 @@ class TextVectorization(CombinerPreprocessingLayer):
           "Saving is not yet supported for TextVectorization layers.")
     self._table._list_extra_dependencies_for_serialization = fail  # pylint: disable=protected-access
 
-    self._add_trackable(self._table, trainable=False)
+    tracked_table = self._add_trackable(self._table, trainable=False)
+
+    # This is a workaround for summary() on this layer. Because the table is
+    # not mutable during training, the effective number of parameters (and so
+    # the weight shape) is 0; we add this as an attr so that the parameter
+    # counting code in the Model object doesn't throw an attribute error.
+    tracked_table.shape = tensor_shape.TensorShape((0,))
 
     # We are adding this here instead of in build() since it does not depend
     # on the input shape at all.
@@ -419,7 +425,7 @@ class TextVectorization(CombinerPreprocessingLayer):
     super(TextVectorization, self).adapt(preprocessed_inputs, reset_state)
 
   def get_vocabulary(self):
-    if self.vocab_size == 0:
+    if self._vocab_size == 0:
       return []
 
     keys, values = self._get_table_data()
@@ -439,6 +445,13 @@ class TextVectorization(CombinerPreprocessingLayer):
     }
     base_config = super(TextVectorization, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
+
+  def count_params(self):
+    # This method counts the number of scalars in the weights of this layer.
+    # Since this layer doesn't have any /actual/ weights (in that there's
+    # nothing in this layer that can be trained - we only use the weight
+    # abstraction for ease of saving!) we return 0.
+    return 0
 
   def set_vocabulary(self,
                      vocab,
@@ -568,7 +581,7 @@ class TextVectorization(CombinerPreprocessingLayer):
       self.set_vocabulary(updates[_VOCAB_NAME])
 
   def _preprocess(self, inputs):
-    if self._standardize is LOWER_AND_STRIP_PUNCTUATION:
+    if self._standardize == LOWER_AND_STRIP_PUNCTUATION:
       lowercase_inputs = gen_string_ops.string_lower(inputs)
       inputs = string_ops.regex_replace(lowercase_inputs, DEFAULT_STRIP_REGEX,
                                         "")
@@ -586,7 +599,7 @@ class TextVectorization(CombinerPreprocessingLayer):
       # so can be squeezed out. We do this here instead of after splitting for
       # performance reasons - it's more expensive to squeeze a ragged tensor.
       inputs = array_ops.squeeze(inputs, axis=1)
-      if self._split is SPLIT_ON_WHITESPACE:
+      if self._split == SPLIT_ON_WHITESPACE:
         # This treats multiple whitespaces as one whitespace, and strips leading
         # and trailing whitespace.
         inputs = ragged_string_ops.string_split_v2(inputs)

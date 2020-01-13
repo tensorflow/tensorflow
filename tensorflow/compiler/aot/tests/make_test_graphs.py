@@ -34,6 +34,7 @@ from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import variables
@@ -184,6 +185,7 @@ def write_graph(build_graph, out_dir):
 
 
 def main(_):
+  control_flow_util.enable_control_flow_v2()
   write_graph(tfadd, FLAGS.out_dir)
   write_graph(tfadd_with_ckpt, FLAGS.out_dir)
   write_graph(tfadd_with_ckpt_saver, FLAGS.out_dir)

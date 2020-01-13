@@ -187,7 +187,7 @@ TEST_F(HloModuleDceTest, OneWhileWithDeadTupleElement) {
 }
 
 // Tests that a tuple element {1} used by condition computation (which appears
-// dead in while.body{1} and at while.result{1}) propgates liveness of this
+// dead in while.body{1} and at while.result{1}) propagates liveness of this
 // tuple element to while.body{1} and at while.result{1}.
 TEST_F(HloModuleDceTest, OneWhileWithTupleElementUsedByCond) {
   auto module = ParseAndReturnVerifiedModule(R"(

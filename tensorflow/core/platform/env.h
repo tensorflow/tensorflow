@@ -431,6 +431,15 @@ class Thread {
   TF_DISALLOW_COPY_AND_ASSIGN(Thread);
 };
 
+/// \brief Cross-platform setenv.
+///
+/// Since setenv() is not available on windows, we provide an
+/// alternative with platform specific implementations here.
+int setenv(const char* name, const char* value, int overwrite);
+
+/// Cross-platform unsetenv.
+int unsetenv(const char* name);
+
 /// \brief Options to configure a Thread.
 ///
 /// Note that the options are all hints, and the

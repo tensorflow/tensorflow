@@ -18,6 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import textwrap
+
+import gast
+
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.platform import test
 
@@ -129,6 +133,43 @@ string""")
     node = parser.parse_expression('a.b')
     self.assertEqual('a', node.value.id)
     self.assertEqual('b', node.attr)
+
+  def test_unparse(self):
+    node = gast.If(
+        test=gast.Constant(1, kind=None),
+        body=[
+            gast.Assign(
+                targets=[
+                    gast.Name(
+                        'a',
+                        ctx=gast.Store(),
+                        annotation=None,
+                        type_comment=None)
+                ],
+                value=gast.Name(
+                    'b', ctx=gast.Load(), annotation=None, type_comment=None))
+        ],
+        orelse=[
+            gast.Assign(
+                targets=[
+                    gast.Name(
+                        'a',
+                        ctx=gast.Store(),
+                        annotation=None,
+                        type_comment=None)
+                ],
+                value=gast.Constant('c', kind=None))
+        ])
+
+    source = parser.unparse(node, indentation='  ')
+    self.assertEqual(
+        textwrap.dedent("""
+            # coding=utf-8
+            if 1:
+              a = b
+            else:
+              a = 'c'
+        """).strip(), source.strip())
 
 
 if __name__ == '__main__':

@@ -144,6 +144,11 @@ void LogUnexpectedSize(int64 actual, int64 expected) {
   LOG(ERROR) << "Input size was " << actual << " and expected " << expected;
 }
 
+bool MemoryLoggingEnabled() {
+  static bool memory_logging_enabled = LogMemory::IsEnabled();
+  return memory_logging_enabled;
+}
+
 // A set of helper functions depending on T.
 template <typename T>
 struct Helper {
@@ -476,7 +481,7 @@ Buffer<T>::Buffer(Allocator* a, int64 n,
 template <typename T>
 Buffer<T>::~Buffer() {
   if (data()) {
-    if (LogMemory::IsEnabled()) {
+    if (MemoryLoggingEnabled()) {
       RecordDeallocation();
     }
     TypedAllocator::Deallocate<T>(alloc_, static_cast<T*>(data()), elem_);
@@ -770,7 +775,7 @@ Tensor::Tensor(Allocator* a, DataType type, const TensorShape& shape)
   if (shape_.num_elements() > 0 || a->AllocatesOpaqueHandle()) {
     CASES(type, buf_ = new Buffer<T>(a, shape.num_elements()));
   }
-  if (buf_ != nullptr && buf_->data() != nullptr && LogMemory::IsEnabled()) {
+  if (MemoryLoggingEnabled() && buf_ != nullptr && buf_->data() != nullptr) {
     LogMemory::RecordTensorAllocation("Unknown", LogMemory::UNKNOWN_STEP_ID,
                                       *this);
   }
@@ -784,8 +789,8 @@ Tensor::Tensor(Allocator* a, DataType type, const TensorShape& shape,
   if (shape_.num_elements() > 0 || a->AllocatesOpaqueHandle()) {
     CASES(type, buf_ = new Buffer<T>(a, shape.num_elements(), allocation_attr));
   }
-  if (!allocation_attr.allocation_will_be_logged && buf_ != nullptr &&
-      buf_->data() != nullptr && LogMemory::IsEnabled()) {
+  if (MemoryLoggingEnabled() && !allocation_attr.allocation_will_be_logged &&
+      buf_ != nullptr && buf_->data() != nullptr) {
     LogMemory::RecordTensorAllocation("Unknown (with attributes)",
                                       LogMemory::UNKNOWN_STEP_ID, *this);
   }
@@ -851,7 +856,6 @@ class SubBuffer : public TensorBuffer {
 
  private:
   TensorBuffer* root_;
-  T* data_;
   int64 elem_;
 
   ~SubBuffer() override { root_->Unref(); }
@@ -937,7 +941,7 @@ bool Tensor::FromProto(Allocator* a, const TensorProto& proto) {
   buf_ = p;
   // TODO(misard) add tracking of which kernels and steps are calling
   // FromProto.
-  if (buf_ != nullptr && buf_->data() != nullptr && LogMemory::IsEnabled()) {
+  if (MemoryLoggingEnabled() && buf_ != nullptr && buf_->data() != nullptr) {
     LogMemory::RecordTensorAllocation("Unknown (from Proto)",
                                       LogMemory::UNKNOWN_STEP_ID, *this);
   }

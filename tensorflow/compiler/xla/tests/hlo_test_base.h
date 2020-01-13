@@ -215,10 +215,13 @@ class HloTestBase : public ::testing::Test {
                                  bool run_hlo_passes = true,
                                  ExecutionProfile* profile = nullptr,
                                  string backend_config = "") TF_MUST_USE_RESULT;
+
+  // If assert_determinism is true, the assertion will fail unless all runs
+  // produce exactly the same output.
   ::testing::AssertionResult RunMultipleTimes(
       const absl::string_view hlo_string, bool run_hlo_passes,
-      std::vector<ExecutionProfile>* profiles,
-      string backend_config = "") TF_MUST_USE_RESULT;
+      std::vector<ExecutionProfile>* profiles, string backend_config = "",
+      bool assert_determinism = false) TF_MUST_USE_RESULT;
   ::testing::AssertionResult RunAndCompareFromFile(
       const string& filename, const absl::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr)
@@ -274,6 +277,8 @@ class HloTestBase : public ::testing::Test {
   // inspect a particular computation or instruction.
   HloComputation* FindComputation(HloModule* module, absl::string_view name);
   HloInstruction* FindInstruction(HloModule* module, absl::string_view name);
+  // Gets the instruction from the given module with the given opcode.
+  HloInstruction* FindInstruction(HloModule* module, HloOpcode opcode);
 
   // Return an HLO verifier constructed for the test backend.
   HloVerifier& verifier() const { return *hlo_verifier_; }

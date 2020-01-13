@@ -50,7 +50,7 @@ void BenchmarkLoggingListener::OnBenchmarkEnd(const BenchmarkResults& results) {
   TFLITE_LOG(INFO) << "Average inference timings in us: "
                    << "Warmup: " << warmup_us.avg() << ", "
                    << "Init: " << init_us << ", "
-                   << "no stats: " << inference_us.avg();
+                   << "Inference: " << inference_us.avg();
 }
 
 std::vector<Flag> BenchmarkModel::GetFlags() {

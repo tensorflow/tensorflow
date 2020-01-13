@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/grappler/clusters/utils.h"
+#include "tensorflow/core/grappler/costs/utils.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -385,6 +386,8 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
   const int quantize_v2_cost =
       EIGEN_COST(scalar_product_op<float>) + EIGEN_COST(scalar_max_op<float>) +
       EIGEN_COST(scalar_min_op<float>) + EIGEN_COST(scalar_round_op<float>);
+  const int quantize_and_dequantize_v2_cost =
+      quantize_v2_cost + EIGEN_COST(scalar_product_op<float>);
 
   // Unary ops alphabetically sorted
   elementwise_ops_.emplace("Acos", EIGEN_COST(scalar_acos_op<float>));
@@ -413,6 +416,8 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
   elementwise_ops_.emplace("Log", EIGEN_COST(scalar_log_op<float>));
   elementwise_ops_.emplace("Log1p", EIGEN_COST(scalar_log1p_op<float>));
   elementwise_ops_.emplace("Neg", EIGEN_COST(scalar_opposite_op<float>));
+  elementwise_ops_.emplace("QuantizeAndDequantizeV2",
+                           quantize_and_dequantize_v2_cost);
   elementwise_ops_.emplace("QuantizeV2", quantize_v2_cost);
   elementwise_ops_.emplace("Reciprocal", EIGEN_COST(scalar_inverse_op<float>));
   elementwise_ops_.emplace("Rint", 1);
@@ -655,12 +660,12 @@ Costs OpLevelCostEstimator::PredictOpCountBasedCost(
       Costs::NanoSeconds(intermediate_read_time);
   costs.intermediate_memory_write_time =
       Costs::NanoSeconds(intermediate_write_time);
-  CombineCostsAndUpdateExecutionTime(&costs);
+  CombineCostsAndUpdateExecutionTime(compute_memory_overlap_, &costs);
   return costs;
 }
 
-int64 OpLevelCostEstimator::CountConv2DOperations(
-    const OpInfo& op_info, bool* found_unknown_shapes) const {
+int64 OpLevelCostEstimator::CountConv2DOperations(const OpInfo& op_info,
+                                                  bool* found_unknown_shapes) {
   return CountConv2DOperations(op_info, nullptr, found_unknown_shapes);
 }
 
@@ -747,7 +752,7 @@ OpLevelCostEstimator::ConvolutionDimensionsFromInputs(
 
 int64 OpLevelCostEstimator::CountConv2DOperations(
     const OpInfo& op_info, ConvolutionDimensions* conv_info,
-    bool* found_unknown_shapes) const {
+    bool* found_unknown_shapes) {
   DCHECK(op_info.op() == kConv2d || op_info.op() == kDepthwiseConv2dNative)
       << "Invalid Operation: not Conv2D nor DepthwiseConv2dNative";
 
@@ -779,15 +784,15 @@ int64 OpLevelCostEstimator::CountConv2DOperations(
   return ops;
 }
 
-int64 OpLevelCostEstimator::CountMatMulOperations(
-    const OpInfo& op_info, bool* found_unknown_shapes) const {
+int64 OpLevelCostEstimator::CountMatMulOperations(const OpInfo& op_info,
+                                                  bool* found_unknown_shapes) {
   return CountMatMulOperations(op_info, nullptr, found_unknown_shapes);
 }
 
 // TODO(nishantpatil): Create separate estimator for Sparse Matmul
-int64 OpLevelCostEstimator::CountMatMulOperations(
-    const OpInfo& op_info, MatMulDimensions* mat_mul,
-    bool* found_unknown_shapes) const {
+int64 OpLevelCostEstimator::CountMatMulOperations(const OpInfo& op_info,
+                                                  MatMulDimensions* mat_mul,
+                                                  bool* found_unknown_shapes) {
   double ops = 0;
 
   if (op_info.inputs_size() < 2) {
@@ -857,13 +862,13 @@ int64 OpLevelCostEstimator::CountMatMulOperations(
 }
 
 int64 OpLevelCostEstimator::CountBatchMatMulOperations(
-    const OpInfo& op_info, bool* found_unknown_shapes) const {
+    const OpInfo& op_info, bool* found_unknown_shapes) {
   return CountBatchMatMulOperations(op_info, nullptr, found_unknown_shapes);
 }
 
 int64 OpLevelCostEstimator::CountBatchMatMulOperations(
     const OpInfo& op_info, BatchMatMulDimensions* batch_mat_mul,
-    bool* found_unknown_shapes) const {
+    bool* found_unknown_shapes) {
   if (op_info.op() != kBatchMatMul) {
     LOG(ERROR) << "Invalid Operation: " << op_info.op();
     // TODO(pcma): Try to separate invalid inputs from unknown shapes
@@ -1037,7 +1042,7 @@ bool GetTensorShapeProtoFromTensorProto(const TensorProto& tensor_proto,
 // TODO(cliffy): Dedup this method and CountConv2DBackpropFilterOperations.
 int64 OpLevelCostEstimator::CountConv2DBackpropInputOperations(
     const OpInfo& op_info, ConvolutionDimensions* returned_conv_dims,
-    bool* found_unknown_shapes) const {
+    bool* found_unknown_shapes) {
   int64 ops = 0;
 
   DCHECK(op_info.op() == kConv2dBackpropInput ||
@@ -1095,7 +1100,7 @@ int64 OpLevelCostEstimator::CountConv2DBackpropInputOperations(
 
 int64 OpLevelCostEstimator::CountConv2DBackpropFilterOperations(
     const OpInfo& op_info, ConvolutionDimensions* returned_conv_dims,
-    bool* found_unknown_shapes) const {
+    bool* found_unknown_shapes) {
   int64 ops = 0;
 
   DCHECK(op_info.op() == kConv2dBackpropFilter ||
@@ -1150,7 +1155,7 @@ int64 OpLevelCostEstimator::CountConv2DBackpropFilterOperations(
 }
 
 int64 OpLevelCostEstimator::CalculateTensorElementCount(
-    const OpInfo::TensorProperties& tensor, bool* found_unknown_shapes) const {
+    const OpInfo::TensorProperties& tensor, bool* found_unknown_shapes) {
   VLOG(2) << "   with " << DataTypeString(tensor.dtype()) << " tensor of shape "
           << tensor.shape().DebugString();
   int64 tensor_size = 1;
@@ -1164,15 +1169,15 @@ int64 OpLevelCostEstimator::CalculateTensorElementCount(
 }
 
 int64 OpLevelCostEstimator::CalculateTensorSize(
-    const OpInfo::TensorProperties& tensor, bool* found_unknown_shapes) const {
+    const OpInfo::TensorProperties& tensor, bool* found_unknown_shapes) {
   int64 count = CalculateTensorElementCount(tensor, found_unknown_shapes);
   int size = DataTypeSize(BaseType(tensor.dtype()));
   VLOG(2) << "Count: " << count << " DataTypeSize: " << size;
   return count * size;
 }
 
-int64 OpLevelCostEstimator::CalculateInputSize(
-    const OpInfo& op_info, bool* found_unknown_shapes) const {
+int64 OpLevelCostEstimator::CalculateInputSize(const OpInfo& op_info,
+                                               bool* found_unknown_shapes) {
   int64 total_input_size = 0;
   for (auto& input : op_info.inputs()) {
     int64 input_size = CalculateTensorSize(input, found_unknown_shapes);
@@ -1184,7 +1189,7 @@ int64 OpLevelCostEstimator::CalculateInputSize(
 }
 
 int64 OpLevelCostEstimator::CalculateLargestInputCount(
-    const OpInfo& op_info, bool* found_unknown_shapes) const {
+    const OpInfo& op_info, bool* found_unknown_shapes) {
   int64 largest_input_count = 0;
   for (auto& input : op_info.inputs()) {
     int64 input_count =
@@ -1198,8 +1203,8 @@ int64 OpLevelCostEstimator::CalculateLargestInputCount(
   return largest_input_count;
 }
 
-int64 OpLevelCostEstimator::CalculateOutputSize(
-    const OpInfo& op_info, bool* found_unknown_shapes) const {
+int64 OpLevelCostEstimator::CalculateOutputSize(const OpInfo& op_info,
+                                                bool* found_unknown_shapes) {
   int64 total_output_size = 0;
   // use float as default for calculations
   for (const auto& output : op_info.outputs()) {
@@ -1711,7 +1716,7 @@ Costs OpLevelCostEstimator::PredictFusedOp(
     fused_cost.intermediate_memory_time += op_cost.intermediate_memory_time;
   }
 
-  CombineCostsAndUpdateExecutionTime(&fused_cost);
+  CombineCostsAndUpdateExecutionTime(compute_memory_overlap_, &fused_cost);
   return fused_cost;
 }
 
@@ -2045,18 +2050,6 @@ Costs OpLevelCostEstimator::PredictFusedBatchNormGrad(
   costs.num_ops_with_unknown_shapes = found_unknown_shapes;
   costs.max_memory = total_output_size;
   return costs;
-}
-
-void OpLevelCostEstimator::CombineCostsAndUpdateExecutionTime(
-    Costs* costs) const {
-  if (compute_memory_overlap_) {
-    costs->execution_time =
-        std::max(costs->intermediate_memory_time,
-                 std::max(costs->compute_time, costs->memory_time));
-  } else {
-    costs->execution_time = costs->compute_time + costs->memory_time +
-                            costs->intermediate_memory_time;
-  }
 }
 }  // end namespace grappler
 }  // end namespace tensorflow

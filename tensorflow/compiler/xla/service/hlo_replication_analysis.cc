@@ -35,13 +35,53 @@ namespace {
 // knowledge in hlo_replication.
 bool DetermineHloInstructionIsReplicated(
     const HloInstruction* hlo, const ShapeIndex& index,
+    bool cross_partition_spmd,
     const absl::flat_hash_map<const HloInstruction*, ShapeTree<bool>>&
         hlo_replication) {
+  // Returns true if all operands are known to be replicated.
+  const auto all_operands_replicated =
+      [&hlo_replication](const HloInstruction* inst) {
+        for (auto operand : inst->operands()) {
+          auto operand_it = hlo_replication.find(operand);
+          if (operand_it == hlo_replication.end() ||
+              !operand_it->second.element({})) {
+            return false;
+          }
+        }
+        return true;
+      };
+
+  if (hlo->opcode() == HloOpcode::kAllReduce) {
+    // All-reduce returns same values across partitions/replicas as long as its
+    // operands are replicated.
+    if (all_operands_replicated(hlo)) {
+      return true;
+    }
+    if (hlo->IsCrossReplicaAllReduce()) {
+      if (cross_partition_spmd) {
+        return false;
+      }
+      // Only all-reduce across all cores are replicated, which means there
+      // is only one subgroup.
+      return hlo->replica_groups().empty() || hlo->replica_groups().size() == 1;
+    } else {
+      CHECK(hlo->IsCrossModuleAllReduce());
+      if (cross_partition_spmd) {
+        return true;
+      }
+      return hlo->replica_groups().empty() || hlo->replica_groups().size() == 1;
+    }
+  }
   if (hlo->HasSideEffectNoRecurse()) {
     return false;
   }
   if (hlo->opcode() == HloOpcode::kReplicaId) {
-    return false;
+    // ReplicaId returns the same value for all partitions in each replica.
+    return cross_partition_spmd;
+  }
+  if (hlo->opcode() == HloOpcode::kPartitionId) {
+    // PartitionId returns the same value for all replicas in each partition.
+    return !cross_partition_spmd;
   }
   auto it = hlo_replication.find(hlo);
   if (hlo->opcode() == HloOpcode::kParameter) {
@@ -54,11 +94,6 @@ bool DetermineHloInstructionIsReplicated(
   }
   if (hlo->opcode() == HloOpcode::kConstant) {
     return true;
-  }
-  if (hlo->opcode() == HloOpcode::kAllReduce) {
-    // Only all-reduce across all cores are replicated, which means there
-    // is only one subgroup.
-    return hlo->replica_groups().empty() || hlo->replica_groups().size() == 1;
   }
 
   if (hlo->IsElementwise() ||                             //
@@ -80,14 +115,7 @@ bool DetermineHloInstructionIsReplicated(
       hlo->opcode() == HloOpcode::kDynamicUpdateSlice ||  //
       hlo->opcode() == HloOpcode::kReduceWindow ||        //
       hlo->opcode() == HloOpcode::kCopy) {
-    for (auto operand : hlo->operands()) {
-      auto operand_it = hlo_replication.find(operand);
-      if (operand_it == hlo_replication.end() ||
-          !operand_it->second.element({})) {
-        return false;
-      }
-    }
-    return true;
+    return all_operands_replicated(hlo);
   }
   return false;
 }
@@ -235,8 +263,8 @@ bool HloReplicationAnalysis::ComputeHloReplicationOnComputation(
         ShapeUtil::ForEachSubshape(
             inst->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
               *shape_tree.mutable_element(index) =
-                  DetermineHloInstructionIsReplicated(inst, index,
-                                                      hlo_replication_);
+                  DetermineHloInstructionIsReplicated(
+                      inst, index, cross_partition_spmd_, hlo_replication_);
               return Status::OK();
             });
         changed |= assign_or_combine_shapetree(std::move(shape_tree), inst);
@@ -248,23 +276,39 @@ bool HloReplicationAnalysis::ComputeHloReplicationOnComputation(
 
 void HloReplicationAnalysis::ComputeHloReplication() {
   // Add entry parameters to the above sets according to user annotation.
+  // Replicated modules read from `parameter_replicated_at_leaf_buffers` whereas
+  // SPMD partitioned modules read from HloSharding attributes.
   auto entry = module_->entry_computation();
   for (int i = 0; i < entry->num_parameters(); ++i) {
     auto param = entry->parameter_instruction(i);
     ShapeTree<bool> shape_tree(param->shape(), false);
-    const auto& replication = param->parameter_replicated_at_leaf_buffers();
-    int leaf_index = 0;
-    ShapeUtil::ForEachSubshape(
-        param->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
-          if (!ShapeUtil::IsLeafIndex(param->shape(), index)) {
+    if (cross_partition_spmd_ && param->has_sharding()) {
+      auto sharding_tree =
+          param->sharding().AsShapeTree(param->shape()).ValueOrDie();
+      ShapeUtil::ForEachSubshape(
+          param->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+            if (!ShapeUtil::IsLeafIndex(param->shape(), index)) {
+              return Status::OK();
+            }
+            *shape_tree.mutable_element(index) =
+                sharding_tree.element(index).IsReplicated();
             return Status::OK();
-          }
-          if (replication && replication->at(leaf_index)) {
-            *shape_tree.mutable_element(index) = true;
-          }
-          ++leaf_index;
-          return Status::OK();
-        });
+          });
+    } else if (!cross_partition_spmd_) {
+      const auto& replication = param->parameter_replicated_at_leaf_buffers();
+      int leaf_index = 0;
+      ShapeUtil::ForEachSubshape(
+          param->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+            if (!ShapeUtil::IsLeafIndex(param->shape(), index)) {
+              return Status::OK();
+            }
+            if (replication && replication->at(leaf_index)) {
+              *shape_tree.mutable_element(index) = true;
+            }
+            ++leaf_index;
+            return Status::OK();
+          });
+    }
     hlo_replication_[param] = std::move(shape_tree);
   }
   ComputeHloReplicationOnComputation(entry,
@@ -281,17 +325,18 @@ bool HloReplicationAnalysis::HloInstructionIsReplicatedAt(
 }
 
 /* static */ StatusOr<std::unique_ptr<HloReplicationAnalysis>>
-HloReplicationAnalysis::Run(const HloModule* module) {
+HloReplicationAnalysis::Run(const HloModule* module,
+                            bool cross_partition_spmd) {
   const absl::flat_hash_set<const HloInstruction*> empty;
-  return Run(module, &empty);
+  return Run(module, cross_partition_spmd, &empty);
 }
 
 /* static */ StatusOr<std::unique_ptr<HloReplicationAnalysis>>
-HloReplicationAnalysis::Run(const HloModule* module,
+HloReplicationAnalysis::Run(const HloModule* module, bool cross_partition_spmd,
                             const absl::flat_hash_set<const HloInstruction*>*
                                 loops_known_with_same_iterations) {
-  auto analysis = absl::WrapUnique(
-      new HloReplicationAnalysis(module, loops_known_with_same_iterations));
+  auto analysis = absl::WrapUnique(new HloReplicationAnalysis(
+      module, cross_partition_spmd, loops_known_with_same_iterations));
   analysis->ComputeHloReplication();
   return analysis;
 }

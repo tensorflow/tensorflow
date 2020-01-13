@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <memory>
 
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
 
 namespace mlir {
 
@@ -46,10 +46,21 @@ std::unique_ptr<OpPassBase<ModuleOp>> CreateTFShapeInferencePass();
 // Optimizes Tensorflow graph.
 std::unique_ptr<OpPassBase<FuncOp>> CreateTFOptimizePass();
 
+struct StandardPipelineOptions
+    : public PassPipelineOptions<StandardPipelineOptions> {
+  Option<bool> enable_inliner{*this, "enable-inliner",
+                              llvm::cl::desc("Enable inliner."),
+                              llvm::cl::init(false)};
+};
+
 // Propagates the pass manager with the passes involved in transforming or
 // optimizing an MLIR graph without any target specialization.
 // NOLINTNEXTLINE - MLIR contract is pass by mutable reference.
-void CreateTFStandardPipeline(OpPassManager& pm);
+void CreateTFStandardPipeline(OpPassManager& pm,
+                              const StandardPipelineOptions& options);
+
+// Propagates device attributes of resources from callers to callees.
+std::unique_ptr<OpPassBase<ModuleOp>> CreateResourceDeviceInferencePass();
 }  // namespace TF
 
 namespace TFControlFlow {
@@ -89,6 +100,11 @@ std::unique_ptr<OpPassBase<FuncOp>> CreateClusterFormationPass();
 // Creates a pass that outlines regions of tf_device.launch operations.
 std::unique_ptr<OpPassBase<ModuleOp>> CreateClusterOutliningPass();
 
+// A pass that decomposes composite resource operations into primitive ones like
+// ReadVariableOp, AssignVariableOp and other computations to facilitate
+// transformations like resource op lifting.
+std::unique_ptr<OpPassBase<FuncOp>> CreateDecomposeResourceOpsPass();
+
 // Creates a pass that lifts operations on external resource variables from
 // device computation nested in `tf_device::LaunchOp` out so that resource
 // variable load operations are all before device computation while resource
@@ -96,9 +112,10 @@ std::unique_ptr<OpPassBase<ModuleOp>> CreateClusterOutliningPass();
 // device computation no longer interacts with external resource variables.
 std::unique_ptr<OpPassBase<FuncOp>> CreateResourceOpLiftingPass();
 
-// Lifts resource variable operations from tf_device.launch_func ops nested in
-// `op`.
-void LiftResourceOps(Operation* op);
+// Lifts resource operations from tf_device.launch_func ops nested in `op`
+// outside. Returns a failure if there are remaining resource-type values that
+// can not be lifted.
+LogicalResult LiftResourceOps(Operation* op);
 
 // Creates a pass that hoists invariant operations in a `tf_device.replicate`.
 std::unique_ptr<OpPassBase<FuncOp>> CreateReplicateInvariantOpHoistingPass();
@@ -107,12 +124,20 @@ std::unique_ptr<OpPassBase<FuncOp>> CreateReplicateInvariantOpHoistingPass();
 // `tf_device.replicate` island.
 std::unique_ptr<OpPassBase<FuncOp>> CreateReplicateToIslandPass();
 
+// Creates a pass that annotates whether a LaunchFuncOp's parameters have the
+// same data across replicas.
+std::unique_ptr<OpPassBase<ModuleOp>> CreateAnnotateParameterReplicationPass();
+
 }  // namespace TFDevice
 
 namespace TFTPU {
 // Creates a pass that forms clusters from operations of the same
 // `_tpu_replicate` attribute.
 std::unique_ptr<OpPassBase<FuncOp>> CreateTPUClusterFormationPass();
+
+// Creates a pass that remaps and assigns padding map from a
+// `tf_device.launch_func` `padding_map` attribute to its encapsulated function.
+std::unique_ptr<OpPassBase<ModuleOp>> CreateTPUDynamicPaddingMapperPass();
 
 // Creates a pass that rewrites `tf_device.launch_func` on TPUs into TPU runtime
 // ops.
@@ -122,6 +147,10 @@ std::unique_ptr<OpPassBase<ModuleOp>> CreateTPURewritePass();
 // TPUExecute node. This allows the execute node to perform in-place variable
 // updates.
 std::unique_ptr<OpPassBase<FuncOp>> CreateTPUMergeVariablesWithExecutePass();
+
+// Creates a pass that adds ops which perform formatting on variables at
+// run-time according to compilation result.
+std::unique_ptr<OpPassBase<ModuleOp>> CreateTPUVariableReformattingPass();
 
 // Populates the supplied passmanager with the passes required to run the
 // bridge. NOLINTNEXTLINE - MLIR contract is pass by mutable reference.

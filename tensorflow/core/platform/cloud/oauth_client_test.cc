@@ -21,7 +21,7 @@ limitations under the License.
 #include <openssl/evp.h>
 #include <openssl/pem.h>
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/strings/base64.h"
+#include "tensorflow/core/platform/base64.h"
 #include "tensorflow/core/platform/cloud/http_request_fake.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/path.h"
@@ -64,7 +64,7 @@ TEST(OAuthClientTest, GetTokenFromRefreshTokenJson) {
   const string credentials_json = R"(
       {
         "client_id": "test_client_id",
-        "client_secret": "test_client_secret",
+        "client_secret": "@@@test_client_secret@@@",
         "refresh_token": "test_refresh_token",
         "type": "authorized_user"
       })";
@@ -75,7 +75,7 @@ TEST(OAuthClientTest, GetTokenFromRefreshTokenJson) {
   std::vector<HttpRequest*> requests({new FakeHttpRequest(
       "Uri: https://www.googleapis.com/oauth2/v3/token\n"
       "Post body: client_id=test_client_id&"
-      "client_secret=test_client_secret&"
+      "client_secret=@@@test_client_secret@@@&"
       "refresh_token=test_refresh_token&grant_type=refresh_token\n",
       kTokenJson)});
   FakeEnv env;

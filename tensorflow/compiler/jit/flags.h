@@ -55,6 +55,9 @@ struct MarkForCompilationPassFlags {
   // Maximum number of operators in an XLA compilation.
   int32 tf_xla_max_cluster_size;
 
+  // If non-empty, limit XLA clustering to the following TF operations.
+  string tf_xla_ops_to_cluster;
+
   // Dump graphs during XLA compilation.
   bool tf_xla_clustering_debug;
 
@@ -84,6 +87,9 @@ struct XlaDeviceFlags {
   // Enabling this mode by a legacy flag is a temporary mechanism. When this
   // feature is battle-tested, we will switch this to be a session option.
   bool tf_xla_compile_on_demand;
+
+  // Enables "XLA" devices if this flag is set.
+  bool tf_xla_enable_xla_devices;
 };
 
 // Flags common to the _Xla* ops and their kernels.

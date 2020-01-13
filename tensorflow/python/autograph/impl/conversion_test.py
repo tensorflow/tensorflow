@@ -30,7 +30,7 @@ from tensorflow.python.autograph.core import config
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.impl import api
 from tensorflow.python.autograph.impl import conversion
-from tensorflow.python.autograph.pyct import compiler
+from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.framework import constant_op
 from tensorflow.python.keras.engine import training
 from tensorflow.python.platform import test
@@ -128,9 +128,8 @@ class ConversionTest(test.TestCase):
     self.assertIsInstance(fn_node, gast.FunctionDef)
     self.assertEqual('tf__f', name)
     self.assertEqual(
-        compiler.ast_to_source(
-            fn_node.args.defaults[0], include_encoding_marker=False).strip(),
-        'None')
+        parser.unparse(fn_node.args.defaults[0],
+                       include_encoding_marker=False).strip(), 'None')
 
   def test_convert_entity_to_ast_call_tree(self):
 

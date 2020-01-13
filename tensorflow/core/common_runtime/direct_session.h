@@ -84,6 +84,14 @@ class DirectSession : public Session {
                            std::vector<Tensor>* outputs,
                            RunMetadata* run_metadata) override;
 
+  // NOTE: Experimental and subject to change.
+  ::tensorflow::Status Run(
+      const ::tensorflow::RunOptions& run_options,
+      const NamedTensorList& inputs, const std::vector<string>& output_names,
+      const std::vector<string>& target_nodes, std::vector<Tensor>* outputs,
+      RunMetadata* run_metadata,
+      const thread::ThreadPoolOptions& threadpool_options) override;
+
   // NOTE: PRunSetup and PRun are added to support partial execution. This
   // feature is experimental and subject to change.
   ::tensorflow::Status PRunSetup(const std::vector<string>& input_names,

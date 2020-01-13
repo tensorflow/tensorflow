@@ -15,23 +15,24 @@
 # limitations under the License.
 # ============================================================================
 
-# Download and build TensorFlow.
-set -euxo pipefail
-git clone --branch=master --depth=1 https://github.com/tensorflow/tensorflow.git /tensorflow
+set -ex
+git clone --branch=master --depth=1 https://github.com/tensorflow/tensorflow.git /tensorflow || true
 cd /tensorflow
+ln -snf $(which ${PYTHON}) /usr/local/bin/python 
+# Run configure.
+export TF_NEED_GCP=1
+export TF_NEED_HDFS=1
+export TF_NEED_S3=1
+export TF_NEED_CUDA=0
+# TensorRT build failing as of 2019-12-18, see
+# https://github.com/tensorflow/tensorflow/issues/35115
+export CC_OPT_FLAGS='-mavx'
+export PYTHON_BIN_PATH=$(which python3.7)
+export TMP=/tmp
+yes "" | /usr/local/bin/python configure.py
 
-ln -s $(which ${PYTHON}) /usr/local/bin/python 
-
-# For optimized builds appropriate for the hardware platform of your choosing, uncomment below...
-# For ivy-bridge or sandy-bridge
-# --copt=-march="ivybridge" \
-# for haswell, broadwell, or skylake
-# --copt=-march="haswell" \
-tensorflow/tools/ci_build/builds/configured CPU \
-  bazel build -c opt --copt=-mavx --cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0" \
-      tensorflow/tools/pip_package:build_pip_package && \
-  bazel-bin/tensorflow/tools/pip_package/build_pip_package /tmp/pip && \
-  pip --no-cache-dir install --upgrade /tmp/pip/tensorflow-*.whl && \
-  rm -rf /tmp/pip && \
-  rm -rf /root/.cache
+# Build the pip package and import
+bazel build --cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0" --config=opt --config=v2 tensorflow/tools/pip_package:build_pip_package
+./bazel-bin/tensorflow/tools/pip_package/build_pip_package pip_pkg --gpu --nightly_flag
+pip --no-cache-dir install --upgrade /tmp/pip_pkg/tensorflow-*.whl
 

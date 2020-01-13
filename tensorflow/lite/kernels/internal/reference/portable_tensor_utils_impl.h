@@ -32,9 +32,15 @@ namespace tensor_utils {
 // Limit a float input f between +abs_limit and -abs_limit.
 float PortableClip(float f, float abs_limit);
 
-bool PortableIsZeroVector(const float* vector, int v_size);
-
-bool PortableIsZeroVector(const int8_t* vector, int v_size);
+template <typename T>
+bool PortableIsZeroVector(const T* vector, int v_size) {
+  for (int i = 0; i < v_size; ++i) {
+    if (vector[i] != 0) {
+      return false;
+    }
+  }
+  return true;
+}
 
 void PortableSymmetricQuantizeFloats(const float* values, const int size,
                                      int8_t* quantized_values, float* min_value,
@@ -78,17 +84,6 @@ void PortableSparseMatrixBatchVectorMultiplyAccumulate(
     const float* scaling_factors, int n_batch, float* __restrict__ result,
     int result_stride);
 
-// Cwise product of two vectors.
-void PortableVectorVectorCwiseProduct(const float* vector1,
-                                      const float* vector2, int v_size,
-                                      float* result);
-
-// Cwise product and accumulate of two vectors. Since it's a MAC opertation, the
-// assumption here is that result array is initialized to valid values.
-void PortableVectorVectorCwiseProductAccumulate(const float* vector1,
-                                                const float* vector2,
-                                                int v_size, float* result);
-
 // Dot product of two vectors.
 float PortableVectorVectorDotProduct(const float* vector1, const float* vector2,
                                      int v_size);
@@ -99,19 +94,9 @@ void PortableBatchVectorBatchVectorDotProduct(const int16_t* vector1,
                                               int32_t* result,
                                               int result_stride);
 
-// Cwise product of a vector and a batch-vector.
-void PortableVectorBatchVectorCwiseProduct(const float* vector, int v_size,
-                                           const float* batch_vector,
-                                           int n_batch, float* result);
-
-// Cwise product and accumulate of a vector and a batch-vector. Since it's a MAC
-// operation, the assumption here is that result array is initialized to valid
-// values.
-void PortableVectorBatchVectorCwiseProductAccumulate(const float* vector,
-                                                     int v_size,
-                                                     const float* batch_vector,
-                                                     int n_batch,
-                                                     float* result);
+void PortableVectorBatchVectorCwiseProductAccumulate(
+    const int16_t* vector, int v_size, const int16_t* batch_vector, int n_batch,
+    int32_t multiplier, int shift, int16_t* result);
 
 void PortableMatrixBatchVectorMultiplyAccumulate(
     const int8_t* input, const int32_t* bias,
@@ -138,14 +123,8 @@ void PortableApplyLayerNorm(const int16_t* input,
 void PortableApplySigmoid(const int16_t* input, int32_t n_batch,
                           int32_t n_input, int16_t* output);
 
-void PortableApplyTanh0(const int16_t* input, int32_t n_batch, int32_t n_input,
-                        int16_t* output);
-
-void PortableApplyTanh3(const int16_t* input, int32_t n_batch, int32_t n_input,
-                        int16_t* output);
-
-void PortableApplyTanh4(const int16_t* input, int32_t n_batch, int32_t n_input,
-                        int16_t* output);
+void PortableApplyTanh(int32_t integer_bits, const int16_t* input,
+                       int32_t n_batch, int32_t n_input, int16_t* output);
 
 void PortableCwiseMul(const int16_t* input_1, const int16_t* input_2,
                       int n_batch, int n_input, int shift, int16_t* output);

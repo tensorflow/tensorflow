@@ -36,7 +36,7 @@ There are example applications available for the following development boards:
 *   [SparkFun Edge](https://www.sparkfun.com/products/15170)
 *   [STM32F746 Discovery kit](https://www.st.com/en/evaluation-tools/32f746gdiscovery.html)
 *   [Adafruit EdgeBadge](https://www.adafruit.com/product/4400)
-*   [Adafruit TensorFlow Lite for Microcontrollers Kit]
+*   [Adafruit TensorFlow Lite for Microcontrollers Kit](https://www.adafruit.com/product/4317)
 
 To learn more about the libraries and examples, see
 [Get started with microcontrollers](get_started.md).

@@ -324,7 +324,7 @@ Status HloCostAnalysis::HandleDot(const HloInstruction* dot) {
   for (auto dim : dnums.lhs_contracting_dimensions()) {
     reduction_width *= lhs_shape.dimensions(dim);
   }
-  // Each output elment requires reduction_width FMA operations.
+  // Each output element requires reduction_width FMA operations.
   current_properties_[kFlopsKey] =
       kFmaFlops * ShapeUtil::ElementsIn(dot_shape) * reduction_width;
   return Status::OK();

@@ -316,7 +316,7 @@ Status ValidateEinsumNumericDimensions(absl::Span<const int64> x_config,
 
 namespace {
 // Helper method to remove dimensions from a shape and dot dimension numbers
-// used to implment implicit broadcasting.
+// used to implement implicit broadcasting.
 template <typename C>
 void DeleteDimsFromContainer(absl::Span<const int64> to_delete, Shape* shape,
                              C* batch_dims, C* contracting_dims) {
@@ -473,7 +473,7 @@ xla::XlaOp Einsum(xla::XlaOp x, absl::Span<const int64> x_config, xla::XlaOp y,
       transpose_dims[output_transpose_dims[i]] = i;
     }
 
-    // Remove ones that where broadcated from the x and the y shape and adjust
+    // Remove ones that where broadcasted from the x and the y shape and adjust
     // the dimension numbers that are more minor than those dimensions.
     DeleteDimsFromContainer(lhs_delete_dims, &x_shape,
                             dnums.mutable_lhs_batch_dimensions(),

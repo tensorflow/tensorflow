@@ -78,8 +78,8 @@ class KerasPremadeModelsTest(test.TestCase, parameterized.TestCase):
       linear_model = linear.LinearModel(units=1)
       dnn_model = sequential.Sequential([core.Dense(units=1)])
       wide_deep_model = wide_deep.WideDeepModel(linear_model, dnn_model)
-      linear_opt = gradient_descent.SGD(learning_rate=0.1)
-      dnn_opt = adagrad.Adagrad(learning_rate=0.2)
+      linear_opt = gradient_descent.SGD(learning_rate=0.05)
+      dnn_opt = adagrad.Adagrad(learning_rate=0.1)
       wide_deep_model.compile(
           optimizer=[linear_opt, dnn_opt],
           loss='mse',

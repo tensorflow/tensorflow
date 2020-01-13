@@ -539,8 +539,8 @@ class AdamOptimizerTest(test.TestCase):
       opt = adam.Adam(1.)
       opt.minimize(lambda: v1 + v2, var_list=[v1, v2])
       # There should be iteration, and two unique slot variables for v1 and v2.
-      self.assertEqual(
-          5, len(set([v.experimental_ref() for v in opt.variables()])))
+      self.assertEqual(5,
+                       len(set(v.experimental_ref() for v in opt.variables())))
       self.assertEqual(
           self.evaluate(opt.variables()[0]), self.evaluate(opt.iterations))
 

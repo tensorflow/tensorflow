@@ -17,13 +17,14 @@ limitations under the License.
 
 #include <numeric>
 
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
+
 namespace mlir {
 namespace xla {
 
-DenseIntElementsAttr getBroadcastDimensionsAttr(Builder *b, Value *x,
-                                                Value *y) {
-  TensorType xType = x->getType().dyn_cast<RankedTensorType>();
-  TensorType yType = y->getType().dyn_cast<RankedTensorType>();
+DenseIntElementsAttr getBroadcastDimensionsAttr(Builder *b, Value x, Value y) {
+  TensorType xType = x.getType().dyn_cast<RankedTensorType>();
+  TensorType yType = y.getType().dyn_cast<RankedTensorType>();
   if (xType == yType || !xType || !yType) return {};
 
   // If the shapes have the same rank, then there is nothing to do.
@@ -49,6 +50,18 @@ DenseIntElementsAttr getBroadcastDimensionsAttr(Builder *b, Value *x,
   RankedTensorType type =
       RankedTensorType::get({minRank}, b->getIntegerType(64));
   return DenseIntElementsAttr::get(type, broadcastDimensions);
+}
+
+DenseElementsAttr GetScalarOfType(Type ty, int64_t raw_value) {
+  RankedTensorType scalar_ty = RankedTensorType::get({}, ty);
+
+  if (auto float_ty = ty.dyn_cast<FloatType>()) {
+    APFloat value(float_ty.getFloatSemantics(), raw_value);
+    return DenseElementsAttr::get(scalar_ty, value);
+  }
+  auto int_ty = ty.cast<IntegerType>();
+  APInt value(int_ty.getWidth(), static_cast<int64_t>(raw_value), true);
+  return DenseElementsAttr::get(scalar_ty, value);
 }
 
 }  // namespace xla

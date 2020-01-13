@@ -25,8 +25,8 @@ from tensorflow.python.util.tf_export import keras_export
 # As long as you depend //third_party/py/tensorflow:tensorflow target
 # everything will work as normal.
 
-_model_to_estiamtor_usage_gauge = monitoring.BoolGauge(
-    '/tensorflow/api/keras/model_to_estiamtor',
+_model_to_estimator_usage_gauge = monitoring.BoolGauge(
+    '/tensorflow/api/keras/model_to_estimator',
     'Whether tf.keras.estimator.model_to_estimator() is called.', 'version')
 
 
@@ -106,7 +106,7 @@ def model_to_estimator(
     raise NotImplementedError(
         'tf.keras.estimator.model_to_estimator function not available in your '
         'installation.')
-  _model_to_estiamtor_usage_gauge.get_cell('v1').set(True)
+  _model_to_estimator_usage_gauge.get_cell('v1').set(True)
   return keras_lib.model_to_estimator(  # pylint:disable=unexpected-keyword-arg
       keras_model=keras_model,
       keras_model_path=keras_model_path,
@@ -191,7 +191,7 @@ def model_to_estimator_v2(
     raise NotImplementedError(
         'tf.keras.estimator.model_to_estimator function not available in your '
         'installation.')
-  _model_to_estiamtor_usage_gauge.get_cell('v2').set(True)
+  _model_to_estimator_usage_gauge.get_cell('v2').set(True)
   return keras_lib.model_to_estimator(  # pylint:disable=unexpected-keyword-arg
       keras_model=keras_model,
       keras_model_path=keras_model_path,

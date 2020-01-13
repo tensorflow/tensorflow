@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 import copy
 import re
+
 import six
 
 from tensorflow.core.framework import attr_value_pb2

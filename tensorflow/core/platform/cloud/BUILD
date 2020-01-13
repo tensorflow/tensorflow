@@ -204,6 +204,7 @@ cc_library(
         ":retrying_utils",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/platform:base64",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:status",
@@ -275,6 +276,7 @@ cc_library(
         ":http_request",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/platform:base64",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
         "@boringssl//:crypto",
@@ -349,6 +351,7 @@ tf_cc_test(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:blocking_counter",
     ],
 )
 
@@ -423,6 +426,7 @@ tf_cc_test(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:base64",
         "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:scanner",
         "@boringssl//:crypto",

@@ -349,7 +349,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createModel(
   if (!model) {
     ThrowException(env, kIllegalArgumentException,
                    "Contents of %s does not encode a valid "
-                   "TensorFlowLite model: %s",
+                   "TensorFlow Lite model: %s",
                    path, error_reporter->CachedErrorMessage());
     env->ReleaseStringUTFChars(model_file, path);
     return 0;
