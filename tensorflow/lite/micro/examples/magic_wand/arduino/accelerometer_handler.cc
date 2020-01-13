@@ -13,6 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#if defined(ARDUINO) && !defined(ARDUINO_ARDUINO_NANO33BLE)
+#define ARDUINO_EXCLUDE_CODE
+#endif // defined(ARDUINO) && !defined(ARDUINO_ARDUINO_NANO33BLE)
+
+#ifndef ARDUINO_EXCLUDE_CODE
+
 #include "tensorflow/lite/micro/examples/magic_wand/accelerometer_handler.h"
 
 #include <Arduino.h>
@@ -117,3 +123,5 @@ bool ReadAccelerometer(tflite::ErrorReporter* error_reporter, float* input,
 
   return true;
 }
+
+#endif // ARDUINO_EXCLUDE_CODE
