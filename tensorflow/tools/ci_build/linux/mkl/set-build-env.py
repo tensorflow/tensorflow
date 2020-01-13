@@ -275,9 +275,9 @@ class BuildEnvSetter(object):
         self._debug("The file {} exists and will be deleted.".format(
             self.args.bazelrc_file))
       elif os.path.isdir(self.args.bazelrc_file):
-        print ("You can't write bazel config to \"{}\" "
-               "because it is a directory".format(
-               self.args.bazelrc_file))
+        print("You can't write bazel config to \"{}\" "
+              "because it is a directory".format(
+                  self.args.bazelrc_file))
         return False
 
     # Validate gcc with the requested platform
