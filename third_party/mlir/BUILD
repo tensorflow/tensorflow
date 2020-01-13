@@ -12,12 +12,8 @@ package_group(
     packages = ["//..."],
 )
 
-# In particular the OWNERS file of the dependent project should be updated.
-# TODO(b/140669524): Use proper MLIR tests instead of end-to-end tests for
-# tf_runtime and tf_runtime_google.
 package_group(
     name = "friends",
-    includes = ["@org_tensorflow//tensorflow/compiler/mlir:subpackages"],
     packages = ["//..."],
 )
 
@@ -607,14 +603,23 @@ cc_library(
 
 cc_library(
     name = "GPUTransforms",
-    srcs = ["lib/Dialect/GPU/Transforms/KernelOutlining.cpp"],
+    srcs = glob(
+        [
+            "lib/Dialect/GPU/Transforms/*.cpp",
+            "lib/Dialect/GPU/Transforms/*.h",
+        ],
+        exclude = ["lib/Dialect/**/DialectRegistration.cpp"],
+    ),
     hdrs = ["include/mlir/Dialect/GPU/Passes.h"],
     includes = ["include"],
     deps = [
+        ":EDSC",
         ":GPUDialect",
         ":IR",
+        ":LoopOps",
         ":Pass",
         ":StandardOps",
+        ":Support",
         ":Transforms",
     ],
     alwayslink = 1,
@@ -963,6 +968,14 @@ gentbl(
             "-gen-enum-defs",
             "include/mlir/Dialect/SPIRV/SPIRVEnums.cpp.inc",
         ),
+        (
+            "-gen-spirv-enum-avail-decls",
+            "include/mlir/Dialect/SPIRV/SPIRVEnumAvailability.h.inc",
+        ),
+        (
+            "-gen-spirv-enum-avail-defs",
+            "include/mlir/Dialect/SPIRV/SPIRVEnumAvailability.cpp.inc",
+        ),
     ],
     tblgen = ":mlir-tblgen",
     td_file = "include/mlir/Dialect/SPIRV/SPIRVOps.td",
@@ -1030,19 +1043,19 @@ gentbl(
 )
 
 gentbl(
-    name = "SPIRVLoweringStructGen",
+    name = "SPIRVTargetAndABIStructGen",
     tbl_outs = [
         (
             "-gen-struct-attr-decls",
-            "include/mlir/Dialect/SPIRV/SPIRVLowering.h.inc",
+            "include/mlir/Dialect/SPIRV/TargetAndABI.h.inc",
         ),
         (
             "-gen-struct-attr-defs",
-            "include/mlir/Dialect/SPIRV/SPIRVLowering.cpp.inc",
+            "include/mlir/Dialect/SPIRV/TargetAndABI.cpp.inc",
         ),
     ],
     tblgen = ":mlir-tblgen",
-    td_file = "include/mlir/Dialect/SPIRV/SPIRVLowering.td",
+    td_file = "include/mlir/Dialect/SPIRV/TargetAndABI.td",
     td_srcs = [
         ":SPIRVOpsTdFiles",
         ":StdOpsTdFiles",
@@ -1116,6 +1129,7 @@ cc_library(
         ":SPIRVOpUtilsIncGen",
         ":SPIRVOpsIncGen",
         ":SPIRVSerializationGen",
+        ":SPIRVTargetAndABIStructGen",
         ":Support",
         ":Transforms",
         "@llvm-project//llvm:support",
@@ -1133,6 +1147,7 @@ cc_library(
     hdrs = [
         "include/mlir/Dialect/SPIRV/Passes.h",
         "include/mlir/Dialect/SPIRV/SPIRVLowering.h",
+        "include/mlir/Dialect/SPIRV/TargetAndABI.h",
     ],
     includes = [
         "include",
@@ -1141,7 +1156,7 @@ cc_library(
         ":IR",
         ":Pass",
         ":SPIRVDialect",
-        ":SPIRVLoweringStructGen",
+        ":SPIRVTargetAndABIStructGen",
         ":StandardOps",
         ":Support",
         ":Transforms",
@@ -1855,35 +1870,8 @@ cc_binary(
 
 cc_library(
     name = "TableGen",
-    srcs = [
-        "lib/TableGen/Argument.cpp",
-        "lib/TableGen/Attribute.cpp",
-        "lib/TableGen/Constraint.cpp",
-        "lib/TableGen/Dialect.cpp",
-        "lib/TableGen/Format.cpp",
-        "lib/TableGen/OpInterfaces.cpp",
-        "lib/TableGen/OpTrait.cpp",
-        "lib/TableGen/Operator.cpp",
-        "lib/TableGen/Pattern.cpp",
-        "lib/TableGen/Predicate.cpp",
-        "lib/TableGen/Type.cpp",
-    ],
-    hdrs = [
-        "include/mlir/TableGen/Argument.h",
-        "include/mlir/TableGen/Attribute.h",
-        "include/mlir/TableGen/Constraint.h",
-        "include/mlir/TableGen/Dialect.h",
-        "include/mlir/TableGen/Format.h",
-        "include/mlir/TableGen/GenInfo.h",
-        "include/mlir/TableGen/GenNameParser.h",
-        "include/mlir/TableGen/OpInterfaces.h",
-        "include/mlir/TableGen/OpTrait.h",
-        "include/mlir/TableGen/Operator.h",
-        "include/mlir/TableGen/Pattern.h",
-        "include/mlir/TableGen/Predicate.h",
-        "include/mlir/TableGen/Region.h",
-        "include/mlir/TableGen/Type.h",
-    ],
+    srcs = glob(["lib/TableGen/*.cpp"]),
+    hdrs = glob(["include/mlir/TableGen/*.h"]),
     includes = ["include"],
     deps = [
         ":Support",
@@ -1909,18 +1897,10 @@ cc_library(
 
 cc_binary(
     name = "mlir-tblgen",
-    srcs = [
-        "tools/mlir-tblgen/DocGenUtilities.h",
-        "tools/mlir-tblgen/EnumsGen.cpp",
-        "tools/mlir-tblgen/LLVMIRConversionGen.cpp",
-        "tools/mlir-tblgen/OpDefinitionsGen.cpp",
-        "tools/mlir-tblgen/OpDocGen.cpp",
-        "tools/mlir-tblgen/OpInterfacesGen.cpp",
-        "tools/mlir-tblgen/ReferenceImplGen.cpp",
-        "tools/mlir-tblgen/RewriterGen.cpp",
-        "tools/mlir-tblgen/SPIRVUtilsGen.cpp",
-        "tools/mlir-tblgen/StructsGen.cpp",
-    ],
+    srcs = glob([
+        "tools/mlir-tblgen/*.h",
+        "tools/mlir-tblgen/*.cpp",
+    ]),
     linkopts = [
         "-lm",
         "-lpthread",

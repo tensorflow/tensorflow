@@ -251,6 +251,8 @@ class EagerContext : public core::RefCounted {
   RunMetadata* RunMetadataProto() { return &run_metadata_; }
   void ClearRunMetadata() EXCLUSIVE_LOCKS_REQUIRED(metadata_mu_);
 
+  void ListDevices(std::vector<tensorflow::DeviceAttributes>* devices);
+
   void StartStep();
   void EndStep();
   ScopedStepContainer* StepContainer();

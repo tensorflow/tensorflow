@@ -67,9 +67,10 @@ py_test(
     name = "control_flow_test",
     srcs = ["control_flow_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = [
         "no_gpu",  # b/127001953
+        "no_oss_py2",
     ],
     deps = [
         ":operators",

@@ -369,12 +369,30 @@ struct Upsample2DAttributes {
   bool align_corners = false;
 };
 
+struct Upsample3DAttributes {
+  HWD new_shape;
+
+  UpsamplingType type = UpsamplingType::NEAREST;
+
+  // If true, the centers of the 8 corner pixels of the input and output tensors
+  // are aligned, preserving the values at the corner pixels. Defaults to false.
+  bool align_corners = false;
+};
+
 float CalculateResizeScale(int32_t input_size, int32_t output_size,
                            const Upsample2DAttributes& attr);
+
+float CalculateResizeScale(int32_t input_size, int32_t output_size,
+                           const Upsample3DAttributes& attr);
 
 // @return shape of a tensor after upscale operation is applied to the given
 // input.
 BHWC CalculateOutputShape(const BHWC& input, const Upsample2DAttributes& attr);
+
+// @return shape of a tensor after upscale operation is applied to the given
+// input.
+BHWDC CalculateOutputShape(const BHWDC& input,
+                           const Upsample3DAttributes& attr);
 
 enum class PaddingContentType {
   ZEROS = 0,

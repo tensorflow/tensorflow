@@ -1977,3 +1977,12 @@ func @testTransposeConvBadOutputShape(%arg1: tensor<32x4x4x128xf32>, %arg2: tens
   %0 = "tfl.transpose_conv"(%cst, %arg1, %arg2) {padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32} : (tensor<4xi32>, tensor<32x4x4x128xf32>, tensor<1x32x42x128xf32>) -> tensor<1x64x84x31xf32>
   return %0 : tensor<1x64x84x31xf32>
 }
+
+// -----
+
+// CHECK-LABEL: testDensify
+func @testDensify(%arg0: tensor<? x f32>) -> tensor<? x f32> {
+  // CHECK: "tfl.densify"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+  %0 = "tfl.densify"(%arg0): (tensor<? x f32>) -> tensor<? x f32>
+  return %0 : tensor<? x f32>
+}

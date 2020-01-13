@@ -291,6 +291,7 @@ bool StreamExecutor::GetConvolveAlgorithms(
 }
 
 bool StreamExecutor::GetMIOpenConvolveAlgorithms(
+<<<<<<< HEAD
     dnn::ConvolutionKind kind, Stream* stream, dnn::DataType element_type,
     const dnn::BatchDescriptor& input_descriptor,
     const dnn::FilterDescriptor& filter_descriptor,
@@ -298,6 +299,15 @@ bool StreamExecutor::GetMIOpenConvolveAlgorithms(
     const dnn::BatchDescriptor& output_descriptor,
     std::vector<dnn::ProfileResult>* out_algorithms) {
   dnn::DnnSupport* dnn_support = AsDnn();
+=======
+    dnn::ConvolutionKind kind, Stream *stream, dnn::DataType element_type,
+    const dnn::BatchDescriptor &input_descriptor,
+    const dnn::FilterDescriptor &filter_descriptor,
+    const dnn::ConvolutionDescriptor &convolution_descriptor,
+    const dnn::BatchDescriptor &output_descriptor,
+    std::vector<dnn::ProfileResult> *out_algorithms) {
+  dnn::DnnSupport *dnn_support = AsDnn();
+>>>>>>> upstream/master
   if (!dnn_support) {
     return false;
   }

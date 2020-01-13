@@ -49,8 +49,8 @@ _TF_BAZELRC_FILENAME = '.tf_configure.bazelrc'
 _TF_WORKSPACE_ROOT = ''
 _TF_BAZELRC = ''
 _TF_CURRENT_BAZEL_VERSION = None
-_TF_MIN_BAZEL_VERSION = '1.0.0'
-_TF_MAX_BAZEL_VERSION = '1.1.0'
+_TF_MIN_BAZEL_VERSION = '1.2.1'
+_TF_MAX_BAZEL_VERSION = '1.2.1'
 
 NCCL_LIB_PATHS = [
     'lib64/', 'lib/powerpc64le-linux-gnu/', 'lib/x86_64-linux-gnu/', ''

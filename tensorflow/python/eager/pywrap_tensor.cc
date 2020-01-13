@@ -90,7 +90,7 @@ TFE_TensorHandle* NumpyToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj) {
                         .c_str());
     return nullptr;
   }
-  return new TFE_TensorHandle(handle);
+  return new TFE_TensorHandle{tensorflow::TensorHandleInterface(handle)};
 }
 
 // Convert a TFE_TensorHandle to a Python numpy.ndarray object.
@@ -250,25 +250,6 @@ TFE_TensorHandle* EagerCast(TFE_Context* ctx, TFE_TensorHandle* handle,
   TFE_DeleteOp(op);
   return output;
 #undef RETURN_ERROR
-}
-
-TFE_TensorHandle* PySeqToTFE_TensorHandle(TFE_Context* ctx, PyObject* value,
-                                          DataType dtype) {
-  tensorflow::TensorHandle* handle = nullptr;
-  tensorflow::Tensor t;
-  // TODO(josh11b): Have PySeqToTensor set python errors instead of
-  // returning Status.
-  auto cppstatus = tensorflow::PySeqToTensor(value, dtype, &t);
-  if (cppstatus.ok()) {
-    cppstatus = tensorflow::TensorHandle::CreateLocalHandle(
-        t, /*d=*/nullptr, /*op_device=*/nullptr, ctx->context, &handle);
-  }
-  if (!cppstatus.ok()) {
-    PyErr_SetString(PyExc_ValueError, cppstatus.error_message().c_str());
-    return nullptr;
-  }
-  CHECK_NE(handle, nullptr);
-  return new TFE_TensorHandle(handle);
 }
 
 TFE_TensorHandle* ConvertToEagerTensorUncached(TFE_Context* ctx,

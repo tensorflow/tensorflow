@@ -1254,6 +1254,7 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
     }
 #elif TENSORFLOW_USE_ROCM
     std::vector<ProfileResult> algorithms;
+<<<<<<< HEAD
     if (TestMIOpenBFloat16Support<T>()) {
       OP_REQUIRES(ctx,
                   stream->parent()->GetMIOpenConvolveAlgorithms(
@@ -1275,6 +1276,17 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
                       "because MIOpen failed to initialize, so try looking to "
                       "see if a warning log message was printed above."));
     }
+=======
+    OP_REQUIRES(ctx,
+                stream->parent()->GetMIOpenConvolveAlgorithms(
+                    se::dnn::ConvolutionKind::BACKWARD_DATA, stream,
+                    se::dnn::ToDataType<T>::value, input_desc, filter_desc,
+                    conv_desc, output_desc, &algorithms),
+                errors::Unknown(
+                    "Failed to get convolution algorithm. This is probably "
+                    "because MIOpen failed to initialize, so try looking to "
+                    "see if a warning log message was printed above."));
+>>>>>>> upstream/master
 
     std::vector<tensorflow::AutotuneResult> results;
     if (algorithms.size() == 1) {
@@ -1296,6 +1308,7 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
                                               ctx);
         ProfileResult profile_result;
         bool miopen_launch_status = true;
+<<<<<<< HEAD
         if (TestMIOpenBFloat16Support<T>()) {
           miopen_launch_status =
               stream
@@ -1315,6 +1328,15 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
                       &profile_result)
                   .ok();
         }
+=======
+        miopen_launch_status =
+            stream
+                ->ThenConvolveBackwardDataWithAlgorithm(
+                    filter_desc, filter_ptr, output_desc, out_backprop_ptr,
+                    conv_desc, input_desc, &in_backprop_ptr, &scratch_allocator,
+                    AlgorithmConfig(profile_algorithm), &profile_result)
+                .ok();
+>>>>>>> upstream/master
 
         if (miopen_launch_status && profile_result.is_valid()) {
           results.emplace_back();
@@ -1336,6 +1358,7 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
     OP_REQUIRES_OK(ctx, BestCudnnConvAlgorithm(results, &algorithm_config));
     AutoTuneConvBwdData::GetInstance()->Insert(conv_parameters,
                                                algorithm_config);
+<<<<<<< HEAD
   }
   bool cudnn_launch_status = true;
   if (TestMIOpenBFloat16Support<T>()) {
@@ -1354,6 +1377,8 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
                 conv_desc, input_desc, &in_backprop_ptr, &scratch_allocator,
                 algorithm_config, nullptr)
             .ok();
+=======
+>>>>>>> upstream/master
   }
 
   if (!cudnn_launch_status) {

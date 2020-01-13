@@ -122,7 +122,7 @@ mlir::LogicalResult EvaluateOperation(
   for (const auto operand : operands) {
     Tensor tensor;
     RETURN_FAILURE_IF_ERROR(ConvertToTensor(operand, &tensor));
-    TF_Tensor* tf_tensor = TF_TensorFromTensor(tensor, status);
+    TF_Tensor* tf_tensor = TF_TensorFromTensor(tensor, &status->status);
     RETURN_FAILURE_IF_ERROR(status);
     auto clean_tensor =
         MakeCleanup([tf_tensor] { TF_DeleteTensor(tf_tensor); });

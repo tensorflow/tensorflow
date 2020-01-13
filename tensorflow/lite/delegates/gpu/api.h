@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/gl/portable_gl31.h"
+#include <vulkan/vulkan.h>
 
 namespace tflite {
 namespace gpu {
@@ -101,6 +102,13 @@ struct OpenClTexture {
 
   cl_mem memobj = nullptr;
   // TODO(akulik): should it specify texture format?
+};
+
+struct VulkanMemory {
+  VulkanMemory() = default;
+  explicit VulkanMemory(VkDeviceMemory new_memory) : memory(new_memory) {}
+
+  VkDeviceMemory memory;
 };
 
 struct CpuMemory {

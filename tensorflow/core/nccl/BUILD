@@ -52,8 +52,18 @@ tf_cuda_cc_test(
     size = "medium",
     srcs = ["nccl_manager_test.cc"],
     tags = tf_cuda_tests_tags() + [
+<<<<<<< HEAD
         "no_cuda_on_cpu_tap",
         "rocm_multi_gpu",
+=======
+        "guitar",
+        "manual",
+        "multi_gpu",
+        "no_oss",
+        # TODO(b/147451637): Replace 'no_rocm' with 'rocm_multi_gpu'.
+        "no_rocm",
+        "notap",
+>>>>>>> upstream/master
     ],
     deps = [
         "//tensorflow/core:test",

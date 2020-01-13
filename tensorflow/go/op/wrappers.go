@@ -11343,6 +11343,44 @@ func AssertNextDataset(scope *Scope, input_dataset tf.Output, transformations tf
 	return op.Output(0)
 }
 
+// ShardDatasetAttr is an optional argument to ShardDataset.
+type ShardDatasetAttr func(optionalAttr)
+
+// ShardDatasetRequireNonEmpty sets the optional require_non_empty attribute to value.
+// If not specified, defaults to false
+func ShardDatasetRequireNonEmpty(value bool) ShardDatasetAttr {
+	return func(m optionalAttr) {
+		m["require_non_empty"] = value
+	}
+}
+
+// Creates a `Dataset` that includes only 1/`num_shards` of this dataset.
+//
+// Arguments:
+//
+//	num_shards: An integer representing the number of shards operating in parallel.
+//	index: An integer representing the current worker index.
+//
+//
+func ShardDataset(scope *Scope, input_dataset tf.Output, num_shards tf.Output, index tf.Output, output_types []tf.DataType, output_shapes []tf.Shape, optional ...ShardDatasetAttr) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "ShardDataset",
+		Input: []tf.Input{
+			input_dataset, num_shards, index,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // AddManySparseToTensorsMapAttr is an optional argument to AddManySparseToTensorsMap.
 type AddManySparseToTensorsMapAttr func(optionalAttr)
 
@@ -12763,6 +12801,21 @@ func RandomGamma(scope *Scope, shape tf.Output, alpha tf.Output, optional ...Ran
 			shape, alpha,
 		},
 		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Returns 0 if x == 0, and x * log1p(y) otherwise, elementwise.
+func Xlog1py(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "Xlog1py",
+		Input: []tf.Input{
+			x, y,
+		},
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -17479,7 +17532,18 @@ func DequantizeAxis(value int64) DequantizeAttr {
 	}
 }
 
-// Dequantize the 'input' tensor into a float Tensor.
+// DequantizeDtype sets the optional dtype attribute to value.
+//
+// value: Type of the output tensor. Currently Dequantize supports float and bfloat16.
+// If 'dtype' is 'bfloat16', it only supports 'MIN_COMBINED' mode.
+// If not specified, defaults to DT_FLOAT
+func DequantizeDtype(value tf.DataType) DequantizeAttr {
+	return func(m optionalAttr) {
+		m["dtype"] = value
+	}
+}
+
+// Dequantize the 'input' tensor into a float or bfloat16 Tensor.
 //
 // [min_range, max_range] are scalar floats that specify the range for
 // the output. The 'mode' attribute controls exactly which calculations are
@@ -36877,44 +36941,6 @@ func Angle(scope *Scope, input tf.Output, optional ...AngleAttr) (output tf.Outp
 		Type: "Angle",
 		Input: []tf.Input{
 			input,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// ShardDatasetAttr is an optional argument to ShardDataset.
-type ShardDatasetAttr func(optionalAttr)
-
-// ShardDatasetRequireNonEmpty sets the optional require_non_empty attribute to value.
-// If not specified, defaults to false
-func ShardDatasetRequireNonEmpty(value bool) ShardDatasetAttr {
-	return func(m optionalAttr) {
-		m["require_non_empty"] = value
-	}
-}
-
-// Creates a `Dataset` that includes only 1/`num_shards` of this dataset.
-//
-// Arguments:
-//
-//	num_shards: An integer representing the number of shards operating in parallel.
-//	index: An integer representing the current worker index.
-//
-//
-func ShardDataset(scope *Scope, input_dataset tf.Output, num_shards tf.Output, index tf.Output, output_types []tf.DataType, output_shapes []tf.Shape, optional ...ShardDatasetAttr) (handle tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "ShardDataset",
-		Input: []tf.Input{
-			input_dataset, num_shards, index,
 		},
 		Attrs: attrs,
 	}

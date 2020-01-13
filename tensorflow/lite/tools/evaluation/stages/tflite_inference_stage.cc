@@ -103,7 +103,7 @@ TfLiteStatus TfliteInferenceStage::Init() {
       LOG(WARNING) << "NNAPI not supported";
     }
   } else if (params.delegate() == TfliteInferenceParams::GPU) {
-    Interpreter::TfLiteDelegatePtr delegate = CreateGPUDelegate(model_.get());
+    Interpreter::TfLiteDelegatePtr delegate = CreateGPUDelegate();
     if (delegate) {
       delegates_.push_back(std::move(delegate));
     } else {

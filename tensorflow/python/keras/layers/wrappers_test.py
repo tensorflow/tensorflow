@@ -1162,6 +1162,27 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
     # pylint: enable=g-long-lambda
 
 
+class ExampleWrapper(keras.layers.Wrapper):
+  """Simple Wrapper subclass."""
+
+  def call(self, inputs, *args, **kwargs):
+    return self.layer(inputs, *args, **kwargs)
+
+
+class WrapperTest(keras_parameterized.TestCase):
+
+  def test_wrapper_from_config_no_mutation(self):
+    wrapper = ExampleWrapper(keras.layers.Dense(1))
+    config = wrapper.get_config()
+    config_copy = config.copy()
+    self.assertEqual(config, config_copy)
+
+    wrapper_from_config = ExampleWrapper.from_config(config)
+    new_config = wrapper.get_config()
+    self.assertEqual(new_config, config_copy)
+    self.assertEqual(config, config_copy)
+
+
 def _to_list(ls):
   if isinstance(ls, list):
     return ls

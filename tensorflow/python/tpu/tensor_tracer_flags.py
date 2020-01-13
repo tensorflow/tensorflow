@@ -424,7 +424,7 @@ class TTParameters(object):
     found, flag_value = self.get_flag_value(flag_name)
     if not found or not flag_value:
       return re_list
-    list_of_values = flag_value.split()
+    list_of_values = flag_value.split(',')
     for v in list_of_values:
       r = re.compile(v)
       re_list.append(r)

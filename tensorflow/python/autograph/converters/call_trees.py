@@ -72,7 +72,11 @@ class _ArgTemplateBuilder(object):
   def add_stararg(self, a):
     self._consume_args()
     self._argspec.append(
-        gast.Call(gast.Name('tuple', gast.Load(), None), [a], ()))
+        gast.Call(
+            gast.Name(
+                'tuple', ctx=gast.Load(), annotation=None, type_comment=None),
+            args=[a],
+            keywords=()))
 
   def finalize(self):
     self._consume_args()
@@ -161,7 +165,10 @@ class CallTreeTransformer(converter.Base):
     """Ties together all keyword and **kwarg arguments in a single dict."""
     if node.keywords:
       return gast.Call(
-          gast.Name('dict', gast.Load(), None), args=(), keywords=node.keywords)
+          gast.Name(
+              'dict', ctx=gast.Load(), annotation=None, type_comment=None),
+          args=(),
+          keywords=node.keywords)
     else:
       return parser.parse_expression('None')
 

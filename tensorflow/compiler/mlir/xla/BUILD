@@ -119,6 +119,7 @@ cc_library(
         "//tensorflow/core/kernels:conv_grad_shape_utils",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:Analysis",
+        "@llvm-project//mlir:Dialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:StandardOps",

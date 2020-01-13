@@ -388,6 +388,14 @@ PyObject* InterpreterWrapper::SetTensor(int i, PyObject* value) {
   }
 
   if (tensor->type != kTfLiteString) {
+    if (tensor->data.raw == nullptr) {
+      PyErr_Format(PyExc_ValueError,
+                   "Cannot set tensor:"
+                   " Tensor is unallocated. Try calling allocate_tensors()"
+                   " first");
+      return nullptr;
+    }
+
     size_t size = PyArray_NBYTES(array);
     if (size != tensor->bytes) {
       PyErr_Format(PyExc_ValueError,
@@ -475,7 +483,9 @@ PyObject* CheckGetTensorArgs(tflite_api_dispatcher::Interpreter* interpreter_,
   }
 
   if (!(*tensor)->data.raw) {
-    PyErr_SetString(PyExc_ValueError, "Tensor data is null.");
+    PyErr_SetString(PyExc_ValueError,
+                    "Tensor data is null."
+                    " Run allocate_tensors() first");
     return nullptr;
   }
 

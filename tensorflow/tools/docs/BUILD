@@ -26,7 +26,11 @@ py_test(
     tags = [
         "no_oss_py2",
         "no_pip",
+<<<<<<< HEAD
         "no_rocm",
+=======
+        "no_windows",  # numpy prints differently on windows.
+>>>>>>> upstream/master
         "noasan",
         "nomsan",
         "notsan",
@@ -119,6 +123,9 @@ py_test(
     srcs = ["parser_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
+    tags = [
+        "no_windows",  # UNIX filepath separators are hardcoded.
+    ],
     deps = [
         ":parser",
         "//tensorflow/python:platform_test",
@@ -157,6 +164,9 @@ py_test(
     srcs = ["generate_lib_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
+    tags = [
+        "no_windows",  # UNIX filepath separators are hardcoded.
+    ],
     deps = [
         ":generate_lib",
         ":parser",
@@ -231,6 +241,9 @@ py_test(
     srcs = ["py_guide_parser_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
+    tags = [
+        "no_windows",  # Windows line endings break comparisons.
+    ],
     deps = [
         ":py_guide_parser",
         "//tensorflow/python:client_testlib",

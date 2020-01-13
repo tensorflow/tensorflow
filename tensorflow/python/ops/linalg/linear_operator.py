@@ -652,6 +652,9 @@ class LinearOperator(module.Module):
 
       return self._matmul(x, adjoint=adjoint, adjoint_arg=adjoint_arg)
 
+  def __matmul__(self, other):
+    return self.matmul(other)
+
   def _matvec(self, x, adjoint=False):
     x_mat = array_ops.expand_dims(x, axis=-1)
     y_mat = self.matmul(x_mat, adjoint=adjoint)

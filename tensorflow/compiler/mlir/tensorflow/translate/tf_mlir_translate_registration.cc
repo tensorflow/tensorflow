@@ -44,8 +44,8 @@ static OwningModuleRef GraphdefToMlirTranslateFunction(llvm::StringRef input,
                                                        MLIRContext* context) {
   return tensorflow::GraphdefToMlirTranslateFunction(
       input, debug_info_file, input_arrays, input_dtypes, input_shapes,
-      output_arrays, prune_unused_nodes, convert_legacy_fed_inputs,
-      graph_as_function, upgrade_legacy, context);
+      output_arrays, control_output_arrays, prune_unused_nodes,
+      convert_legacy_fed_inputs, graph_as_function, upgrade_legacy, context);
 }
 
 static TranslateToMLIRRegistration GraphdefToMlirTranslate(
@@ -55,8 +55,8 @@ static OwningModuleRef GraphdefToSplattedMlirTranslateFunction(
     llvm::StringRef input, MLIRContext* context) {
   return tensorflow::GraphdefToSplattedMlirTranslateFunction(
       input, debug_info_file, input_arrays, input_dtypes, input_shapes,
-      output_arrays, prune_unused_nodes, convert_legacy_fed_inputs,
-      graph_as_function, upgrade_legacy, context);
+      output_arrays, control_output_arrays, prune_unused_nodes,
+      convert_legacy_fed_inputs, graph_as_function, upgrade_legacy, context);
 }
 
 static TranslateToMLIRRegistration GraphdefToSplattedMlirTranslate(

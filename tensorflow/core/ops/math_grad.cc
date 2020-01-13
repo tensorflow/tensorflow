@@ -579,6 +579,25 @@ Status XlogyGrad(const AttrSlice& attrs, FunctionDef* g) {
 }
 REGISTER_OP_GRADIENT("Xlogy", XlogyGrad);
 
+Status Xlog1pyGrad(const AttrSlice& attrs, FunctionDef* g) {
+  // clang-format off
+  return GradForBinaryCwise(g, {
+      FDH::Const("const", 1.0f),
+      {{"one"}, "Cast", {"const"}, {{"SrcT", DT_FLOAT}, {"DstT", "$T"}}},
+      {{"zeros"}, "ZerosLike", {"x"}},
+      {{"yp1"}, "Add", {"y", "one"}},
+      {{"is_x_zero"}, "NotEqual", {"x", "zeros"}},
+      {{"is_zero_cast"}, "Cast", {"is_x_zero"},
+        {{"SrcT", DT_BOOL}, {"DstT", "$T"}}},
+      {{"safe_log1py"}, "Xlog1py", {"is_zero_cast", "y"}},
+      {{"xlog1pygrad"}, "Xdivy", {"x", "yp1"}},
+      {{"gx"}, "Mul", {"safe_log1py", "dz"}},
+      {{"gy"}, "Mul", {"xlog1pygrad", "dz"}},
+  });
+  // clang-format on
+}
+REGISTER_OP_GRADIENT("Xlog1py", Xlog1pyGrad);
+
 Status XdivyGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
   return GradForBinaryCwise(g, {

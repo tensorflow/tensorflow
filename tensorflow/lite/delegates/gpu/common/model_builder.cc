@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
+#include "tensorflow/lite/delegates/gpu/common/transformations/general_transformations.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/util.h"
@@ -2746,6 +2747,20 @@ Status BuildModel(TfLiteContext* context,
       return InternalError(absl::StrCat(GetOpNameByRegistration(registration),
                                         ": ", status.error_message()));
     }
+  }
+  return OkStatus();
+}
+
+Status BuildFinalModel(TfLiteContext* context,
+                       const TfLiteDelegateParams* delegate_params,
+                       GraphFloat32* graph) {
+  RETURN_IF_ERROR(BuildModel(context, delegate_params, graph));
+
+  // Apply general transformations on the graph.
+  NullTransformationReporter reporter;
+  ModelTransformer transformer(graph, &reporter);
+  if (!ApplyGeneralTransformations(&transformer)) {
+    return InternalError("Graph general transformations failed");
   }
   return OkStatus();
 }

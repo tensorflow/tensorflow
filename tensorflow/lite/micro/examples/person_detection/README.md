@@ -208,14 +208,14 @@ Enter the following command to set up some dummy cryptographic keys we can use
 for development:
 
 ```
-cp tensorflow/lite/micro/tools/make/downloads/AmbiqSuite-Rel2.0.0/tools/apollo3_scripts/keys_info0.py \
-tensorflow/lite/micro/tools/make/downloads/AmbiqSuite-Rel2.0.0/tools/apollo3_scripts/keys_info.py
+cp tensorflow/lite/micro/tools/make/downloads/AmbiqSuite-Rel2.2.0/tools/apollo3_scripts/keys_info0.py \
+tensorflow/lite/micro/tools/make/downloads/AmbiqSuite-Rel2.2.0/tools/apollo3_scripts/keys_info.py
 ```
 
 Next, run the following command to create a signed binary:
 
 ```
-python3 tensorflow/lite/micro/tools/make/downloads/AmbiqSuite-Rel2.0.0/tools/apollo3_scripts/create_cust_image_blob.py \
+python3 tensorflow/lite/micro/tools/make/downloads/AmbiqSuite-Rel2.2.0/tools/apollo3_scripts/create_cust_image_blob.py \
 --bin tensorflow/lite/micro/tools/make/gen/sparkfun_edge_cortex-m4/bin/person_detection.bin \
 --load-address 0xC000 \
 --magic-num 0xCB \
@@ -228,7 +228,7 @@ command to create a final version of the file that can be used to flash our
 device with the bootloader script we will use in the next step:
 
 ```
-python3 tensorflow/lite/micro/tools/make/downloads/AmbiqSuite-Rel2.0.0/tools/apollo3_scripts/create_cust_wireupdate_blob.py \
+python3 tensorflow/lite/micro/tools/make/downloads/AmbiqSuite-Rel2.2.0/tools/apollo3_scripts/create_cust_wireupdate_blob.py \
 --load-address 0x20000 \
 --bin main_nonsecure_ota.bin \
 -i 6 \
@@ -264,7 +264,7 @@ hit the button marked `RST`. Continue holding the button marked `14` while
 running the following command:
 
 ```
-python3 tensorflow/lite/micro/tools/make/downloads/AmbiqSuite-Rel2.0.0/tools/apollo3_scripts/uart_wired_update.py \
+python3 tensorflow/lite/micro/tools/make/downloads/AmbiqSuite-Rel2.2.0/tools/apollo3_scripts/uart_wired_update.py \
 -b ${BAUD_RATE} ${DEVICENAME} \
 -r 1 \
 -f main_nonsecure_wire.bin \

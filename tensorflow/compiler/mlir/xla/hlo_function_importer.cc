@@ -265,6 +265,19 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
           ConvertSourceTargetPairs(instruction->source_target_pairs()));
       MakeAndReturn(CollectivePermuteOp);
     }
+    case HloOpcode::kCustomCall: {
+      auto custom_call = static_cast<HloCustomCallInstruction*>(instruction);
+      attributes.push_back(builder_->getNamedAttr(
+          "call_target_name",
+          builder_->getStringAttr(custom_call->custom_call_target())));
+      attributes.push_back(builder_->getNamedAttr(
+          "has_side_effect",
+          builder_->getBoolAttr(custom_call->custom_call_has_side_effect())));
+      attributes.push_back(builder_->getNamedAttr(
+          "backend_config",
+          builder_->getStringAttr(custom_call->raw_backend_config_string())));
+      MakeAndReturn(CustomCallOp);
+    }
     case HloOpcode::kCompare: {
       attributes.push_back(ConvertComparisonDirection(instruction));
       MakeAndReturn(CompareOp);
@@ -435,6 +448,32 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
       attributes.push_back(builder_->getNamedAttr(
           "permutation", ConvertDimensions(instruction->dimensions())));
       MakeAndReturn(TransposeOp);
+    }
+    case HloOpcode::kTriangularSolve: {
+      attributes.push_back(builder_->getNamedAttr(
+          "left_side",
+          builder_->getBoolAttr(
+              instruction->triangular_solve_options().left_side())));
+      attributes.push_back(builder_->getNamedAttr(
+          "lower", builder_->getBoolAttr(
+                       instruction->triangular_solve_options().lower())));
+      attributes.push_back(builder_->getNamedAttr(
+          "unit_diagonal",
+          builder_->getBoolAttr(
+              instruction->triangular_solve_options().unit_diagonal())));
+      auto transpose_a =
+          builder_->getStringAttr(TriangularSolveOptions::Transpose_Name(
+              instruction->triangular_solve_options().transpose_a()));
+      attributes.push_back(builder_->getNamedAttr("transpose_a", transpose_a));
+      MakeAndReturn(TriangularSolveOp);
+    }
+    case HloOpcode::kMap: {
+      auto op = func_builder->create<mlir::xla_hlo::MapOp>(
+          loc, result_type, operands,
+          ConvertDimensions(instruction->dimensions()));
+      TF_RETURN_IF_ERROR(
+          ImportComputation(instruction->to_apply(), &op.computation()));
+      return op.getOperation();
     }
     case HloOpcode::kConvolution: {
       llvm::SmallVector<int64_t, 4> strides, lhs_dilations, rhs_dilations;
@@ -696,7 +735,7 @@ mlir::DenseIntElementsAttr HloFunctionImporter::Convert(
 mlir::NamedAttribute HloFunctionImporter::ConvertPadding(
     llvm::ArrayRef<int64_t> padding) {
   auto ty =
-      mlir::RankedTensorType::get({2, static_cast<int64_t>(padding.size()) / 2},
+      mlir::RankedTensorType::get({static_cast<int64_t>(padding.size()) / 2, 2},
                                   builder_->getIntegerType(64));
   auto attr = DenseIntElementsAttr::get(ty, padding);
   return builder_->getNamedAttr("padding", attr);

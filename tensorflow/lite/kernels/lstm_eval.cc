@@ -53,9 +53,14 @@ inline float GetTensorScale(const TfLiteTensor* tensor) {
 //  - n_output: the output size.
 //  - output_batch_leading_dim: the leading dimension of the output buffer.
 //
+// Input of size 'n_batch * n_input':
+//   input_ptr
+// Input of size 'n_batch * n_aux_input':
+//   aux_input_ptr                     - optional (can be nullptr)
+//
 // LSTM weights:
 // Input weights of size 'n_cell * n_input':
-//   input_to_input_weights            - optional (can be nullptr)
+//   input_to_input_weights            - optional
 //   input_to_forget_weights
 //   input_to_cell_weights
 //   input_to_output_weights
@@ -160,24 +165,29 @@ inline void LstmStepFloat(
   }
 
   // For each batch and cell: compute input_weight * input.
-  if (!use_cifg) {
+  // Skip if input is all zeros.
+  if (!tensor_utils::IsZeroVector(input_ptr, n_batch * n_input)) {
+    if (!use_cifg) {
+      tensor_utils::MatrixBatchVectorMultiplyAccumulate(
+          input_to_input_weights_ptr, n_cell, n_input, input_ptr, n_batch,
+          input_gate_scratch, /*result_stride=*/1);
+    }
+
     tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-        input_to_input_weights_ptr, n_cell, n_input, input_ptr, n_batch,
-        input_gate_scratch, /*result_stride=*/1);
+        input_to_forget_weights_ptr, n_cell, n_input, input_ptr, n_batch,
+        forget_gate_scratch, /*result_stride=*/1);
+    tensor_utils::MatrixBatchVectorMultiplyAccumulate(
+        input_to_cell_weights_ptr, n_cell, n_input, input_ptr, n_batch,
+        cell_scratch, /*result_stride=*/1);
+    tensor_utils::MatrixBatchVectorMultiplyAccumulate(
+        input_to_output_weights_ptr, n_cell, n_input, input_ptr, n_batch,
+        output_gate_scratch, /*result_stride=*/1);
   }
 
-  tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-      input_to_forget_weights_ptr, n_cell, n_input, input_ptr, n_batch,
-      forget_gate_scratch, /*result_stride=*/1);
-  tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-      input_to_cell_weights_ptr, n_cell, n_input, input_ptr, n_batch,
-      cell_scratch, /*result_stride=*/1);
-  tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-      input_to_output_weights_ptr, n_cell, n_input, input_ptr, n_batch,
-      output_gate_scratch, /*result_stride=*/1);
-
-  // If auxiliary input is available then compute aux_input_weight * aux_input
-  if (aux_input_ptr != nullptr) {
+  // For each batch and cell: compute aux_input_weight * aux_input.
+  // Skip if auxiliary input is not available or all zeros.
+  if (aux_input_ptr != nullptr &&
+      !tensor_utils::IsZeroVector(aux_input_ptr, n_batch * n_aux_input)) {
     if (!use_cifg) {
       tensor_utils::MatrixBatchVectorMultiplyAccumulate(
           aux_input_to_input_weights_ptr, n_cell, n_aux_input, aux_input_ptr,
@@ -346,10 +356,12 @@ inline void LstmStepFloat(
 // Same as above but with quantized weight matrices. In detail:
 // Input of size 'n_batch * n_input':
 //   input_ptr
+// Input of size 'n_batch * n_aux_input':
+//   aux_input_ptr                     - optional (can be nullptr)
 //
 // LSTM weights:
 // Quantized input weights of size 'n_cell * n_input':
-//   input_to_input_weights            - optional (can be nullptr)
+//   input_to_input_weights            - optional
 //   input_to_forget_weights
 //   input_to_cell_weights
 //   input_to_input_weights
@@ -485,8 +497,9 @@ inline void LstmStepHybrid(
                                           output_gate_scratch);
   }
 
+  // For each batch and cell: compute input_weight * input.
+  // Skip if input is all zeros.
   if (!tensor_utils::IsZeroVector(input_ptr, n_batch * n_input)) {
-    // Save quantization and matmul computation for all zero input.
     float unused_min, unused_max;
     for (int b = 0; b < n_batch; ++b) {
       const int offset = b * n_input;
@@ -494,7 +507,6 @@ inline void LstmStepHybrid(
           input_ptr + offset, n_input, quantized_input_ptr + offset,
           &unused_min, &unused_max, &scaling_factors[b]);
     }
-    // For each batch and cell: compute input_weight * input.
     if (!use_cifg) {
       for (int b = 0; b < n_batch; ++b) {
         product_scaling_factors[b] =
@@ -533,24 +545,24 @@ inline void LstmStepHybrid(
         /*result_stride=*/1);
   }
 
+  // For each batch and cell: compute aux_input_weight * aux_input.
+  // Skip if auxiliary input is not available or all zeros.
   if (aux_input_ptr != nullptr &&
-      !tensor_utils::IsZeroVector(aux_input_ptr, n_batch * n_input)) {
-    // Save quantization and matmul computation for all zero input.
+      !tensor_utils::IsZeroVector(aux_input_ptr, n_batch * n_aux_input)) {
     float unused_min, unused_max;
     for (int b = 0; b < n_batch; ++b) {
-      const int offset = b * n_input;
+      const int offset = b * n_aux_input;
       tensor_utils::SymmetricQuantizeFloats(
-          aux_input_ptr + offset, n_input, quantized_aux_input_ptr + offset,
+          aux_input_ptr + offset, n_aux_input, quantized_aux_input_ptr + offset,
           &unused_min, &unused_max, &scaling_factors[b]);
     }
-    // For each batch and cell: compute input_weight * input.
     if (!use_cifg) {
       for (int b = 0; b < n_batch; ++b) {
         product_scaling_factors[b] =
             scaling_factors[b] * aux_input_to_input_weights_scale;
       }
       tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-          aux_input_to_input_weights_ptr, n_cell, n_input,
+          aux_input_to_input_weights_ptr, n_cell, n_aux_input,
           quantized_aux_input_ptr, product_scaling_factors, n_batch,
           input_gate_scratch, /*result_stride=*/1);
     }
@@ -560,7 +572,7 @@ inline void LstmStepHybrid(
           scaling_factors[b] * aux_input_to_forget_weights_scale;
     }
     tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-        aux_input_to_forget_weights_ptr, n_cell, n_input,
+        aux_input_to_forget_weights_ptr, n_cell, n_aux_input,
         quantized_aux_input_ptr, product_scaling_factors, n_batch,
         forget_gate_scratch, /*result_stride=*/1);
 
@@ -569,15 +581,16 @@ inline void LstmStepHybrid(
           scaling_factors[b] * aux_input_to_cell_weights_scale;
     }
     tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-        aux_input_to_cell_weights_ptr, n_cell, n_input, quantized_aux_input_ptr,
-        product_scaling_factors, n_batch, cell_scratch, /*result_stride=*/1);
+        aux_input_to_cell_weights_ptr, n_cell, n_aux_input,
+        quantized_aux_input_ptr, product_scaling_factors, n_batch, cell_scratch,
+        /*result_stride=*/1);
 
     for (int b = 0; b < n_batch; ++b) {
       product_scaling_factors[b] =
           scaling_factors[b] * aux_input_to_output_weights_scale;
     }
     tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-        aux_input_to_output_weights_ptr, n_cell, n_input,
+        aux_input_to_output_weights_ptr, n_cell, n_aux_input,
         quantized_aux_input_ptr, product_scaling_factors, n_batch,
         output_gate_scratch, /*result_stride=*/1);
   }
@@ -632,13 +645,9 @@ inline void LstmStepHybrid(
         output_gate_scratch, /*result_stride=*/1);
   }
 
-  // Save quantization and matmul computation for all zero input.
-  bool is_cell_state_all_zeros =
-      tensor_utils::IsZeroVector(cell_state_ptr, n_batch * n_cell);
-
   // For each batch and cell: update input gate.
   if (!use_cifg) {
-    if (use_peephole && !is_cell_state_all_zeros) {
+    if (use_peephole) {
       tensor_utils::VectorScalarMultiply(cell_to_input_weights_ptr, n_cell,
                                          cell_to_input_weights_scale,
                                          recovered_cell_weights);
@@ -660,7 +669,7 @@ inline void LstmStepHybrid(
   }
 
   // For each batch and cell: update forget gate.
-  if (use_peephole && !is_cell_state_all_zeros) {
+  if (use_peephole) {
     tensor_utils::VectorScalarMultiply(cell_to_forget_weights_ptr, n_cell,
                                        cell_to_forget_weights_scale,
                                        recovered_cell_weights);
@@ -681,10 +690,8 @@ inline void LstmStepHybrid(
                                      forget_gate_scratch);
 
   // For each batch and cell: update the cell.
-  if (!is_cell_state_all_zeros) {
-    tensor_utils::VectorVectorCwiseProduct(forget_gate_scratch, cell_state_ptr,
-                                           n_batch * n_cell, cell_state_ptr);
-  }
+  tensor_utils::VectorVectorCwiseProduct(forget_gate_scratch, cell_state_ptr,
+                                         n_batch * n_cell, cell_state_ptr);
   if (use_layer_norm_lstm) {
     tensor_utils::MeanStddevNormalization(cell_scratch, cell_scratch, n_cell,
                                           n_batch);
@@ -710,10 +717,8 @@ inline void LstmStepHybrid(
                              params->cell_clip, cell_state_ptr);
   }
 
-  is_cell_state_all_zeros =
-      tensor_utils::IsZeroVector(cell_state_ptr, n_batch * n_cell);
   // For each batch and cell: update the output gate.
-  if (use_peephole && !is_cell_state_all_zeros) {
+  if (use_peephole) {
     tensor_utils::VectorScalarMultiply(cell_to_output_weights_ptr, n_cell,
                                        cell_to_output_weights_scale,
                                        recovered_cell_weights);
@@ -797,7 +802,7 @@ inline void LstmStepHybrid(
 
 // Fully quantized lstm kernel. Currently supports both cifg and non-cifg.
 //
-// Input activatoin of size n_batch * n_input:
+// Input activation of size n_batch * n_input:
 //   input_ptr
 //
 // LSTM weights:

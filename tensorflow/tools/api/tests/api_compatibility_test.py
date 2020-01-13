@@ -389,11 +389,6 @@ class ApiCompatibilityTest(test.TestCase):
         additional_private_map={'tf.compat': ['v1', 'v2']},
         omit_golden_symbols_map=omit_golden_symbols_map)
 
-    # Also check that V1 API has contrib
-    self.assertTrue(
-        api_version == 2 or
-        'LazyLoader'
-        in str(type(tf.contrib)))
     # Check that V2 API does not have contrib
     self.assertTrue(api_version == 1 or not hasattr(tf, 'contrib'))
 

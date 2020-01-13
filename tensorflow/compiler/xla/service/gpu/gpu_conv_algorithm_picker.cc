@@ -676,7 +676,11 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
       options.algo_override = alg;
       Status launch_status =
           RunGpuConv(instr, absl::MakeSpan(operand_buffers), result_buffer,
+<<<<<<< HEAD
 		     &scratch_allocator, stream, options);
+=======
+                     &scratch_allocator, stream, options);
+>>>>>>> upstream/master
 
       if (!launch_status.ok()) {
         continue;
@@ -690,6 +694,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
       AutotuneResult& result = profile_results.back();
       result.mutable_conv()->set_algorithm(alg.algo_id());
       result.mutable_conv()->set_tensor_ops_enabled(alg.tensor_ops_enabled());
+<<<<<<< HEAD
 
       int64 scratch_bytes_used = scratch_allocator.TotalAllocatedBytes();
       result.set_scratch_bytes(scratch_bytes_used);
@@ -704,6 +709,22 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
                tensorflow::proto_utils::FromDurationProto(rhs.run_time());
       });
 
+=======
+
+      int64 scratch_bytes_used = scratch_allocator.TotalAllocatedBytes();
+      result.set_scratch_bytes(scratch_bytes_used);
+      *result.mutable_run_time() = tensorflow::proto_utils::ToDurationProto(
+          absl::Milliseconds(profile_result.elapsed_time_in_ms()));
+    }
+  }
+  const auto& best_result = absl::c_min_element(
+      profile_results,
+      [&](const AutotuneResult& lhs, const AutotuneResult& rhs) {
+        return tensorflow::proto_utils::FromDurationProto(lhs.run_time()) <
+               tensorflow::proto_utils::FromDurationProto(rhs.run_time());
+      });
+
+>>>>>>> upstream/master
   if (best_result != profile_results.end()) {
     return *best_result;
   }
