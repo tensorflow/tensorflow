@@ -28,13 +28,13 @@ constexpr char kDataFileLoc[] = "core/lib/lmdb/testdata";
 
 class LMDBDatasetParams : public DatasetParams {
  public:
-  LMDBDatasetParams(std::vector<std::string> filenames,
+  LMDBDatasetParams(std::vector<tstring> filenames,
                     DataTypeVector output_dtypes,
                     std::vector<PartialTensorShape> output_shapes,
                     string node_name)
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                       std::move(kNodeName)),
-        filenames_(CreateTensor<std::string>(
+        filenames_(CreateTensor<tstring>(
             TensorShape({static_cast<int>(filenames.size())}), filenames)) {}
 
   virtual std::vector<Tensor> GetInputTensors() const override {
@@ -69,10 +69,10 @@ class LMDBDatasetOpTest : public DatasetOpsTestBase {};
 // directory, and return the full path to the copied file.
 // This copying is necessary because LMDB creates lock files adjacent
 // to files that it reads.
-string MaybeCopyDataFile() {
-  string src_loc = 
+tstring MaybeCopyDataFile() {
+  tstring src_loc = 
       io::JoinPath(testing::TensorFlowSrcRoot(), kDataFileLoc, kDataFileName);
-  string dest_loc = io::JoinPath(testing::TmpDir(), kDataFileName);
+  tstring dest_loc = io::JoinPath(testing::TmpDir(), kDataFileName);
 
   FileSystem* fs;  // Pointer to singleton
   TF_EXPECT_OK(Env::Default()->GetFileSystemForFile(src_loc, &fs));
@@ -128,7 +128,7 @@ LMDBDatasetParams InvalidPathInMiddle() {
 }
 
 // The tensors we expect to see each time we read through the input data file.
-const std::vector<Tensor> kFileOutput = CreateTensors<string>(
+const std::vector<Tensor> kFileOutput = CreateTensors<tstring>(
     TensorShape({}),
     {
         // Each call to GetNext() produces two scalar string tensors, but the
