@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/micro/examples/micro_mnist/model/mnist_model.h"
 #include "tensorflow/lite/micro/examples/micro_mnist/model/mnist_test_data.h"
 #include "tensorflow/lite/micro/kernels/all_ops_resolver.h"
 #include "tensorflow/lite/micro/micro_error_reporter.h"
 #include "tensorflow/lite/micro/micro_interpreter.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/version.h"
 
 // Helper fn to log the shape and datatype of a tensor
@@ -39,8 +39,9 @@ int main(int argc, char* argv[]) {
 
   // Map the model into a usable data structure. This doesn't involve any
   // copying or parsing, it's a very lightweight operation.
-  error_reporter->Report("Parsing MNIST classifier model FlatBuffer,"
-						 " size %d bytes.", mnist_dense_model_tflite_len);
+  error_reporter->Report(
+      "Parsing MNIST classifier model FlatBuffer, size %d bytes.",
+      mnist_dense_model_tflite_len);
   const tflite::Model* model = ::tflite::GetModel(mnist_dense_model_tflite);
   if (model->version() != TFLITE_SCHEMA_VERSION) {
     error_reporter->Report(
@@ -78,7 +79,7 @@ int main(int argc, char* argv[]) {
   for (int s = 0; s < mnistSampleCount; ++s) {
     // Set value of input tensor
     for (int d = 0; d < inputTensorSize; ++d) {
-	  model_input->data.f[d] = mnistInput[s][d];
+      model_input->data.f[d] = mnistInput[s][d];
     }
 
     // perform inference
@@ -99,8 +100,7 @@ int main(int argc, char* argv[]) {
   error_reporter->Report("Test set accuracy was %d percent\n",
                          ((accurateCount * 100) / mnistSampleCount));
 
-  error_reporter->Report(
-      "MNIST classifier example completed successfully.\n");
+  error_reporter->Report("MNIST classifier example completed successfully.\n");
 
   return 0;
 }
