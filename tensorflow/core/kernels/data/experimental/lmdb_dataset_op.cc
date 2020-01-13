@@ -75,6 +75,11 @@ class LMDBDatasetOp::Dataset : public DatasetBase {
       explicit Iterator(const Params& params)
           : DatasetIterator<Dataset>(params) {}
 
+      virtual ~Iterator() {
+        // Close any open database connections.
+        ResetStreamsLocked();
+      }
+
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
                              bool* end_of_sequence) override {
@@ -108,6 +113,7 @@ class LMDBDatasetOp::Dataset : public DatasetBase {
           }
           if (current_file_index_ == dataset()->filenames_.size()) {
             *end_of_sequence = true;
+            ResetStreamsLocked();
             return Status::OK();
           }
 
