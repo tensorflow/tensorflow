@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
-import glob
 import os
 import threading
 
@@ -28,6 +27,7 @@ import six
 from tensorflow.core.protobuf import debug_event_pb2
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.lib.io import tf_record
 from tensorflow.python.util import compat
 
@@ -40,9 +40,10 @@ class DebugEventsReader(object):
   """Reader class for a tfdbg v2 DebugEvents directory."""
 
   def __init__(self, dump_root):
-    if not os.path.isdir(dump_root):
+    if not file_io.is_directory(dump_root):
       raise ValueError("Specified dump_root is not a directory: %s" % dump_root)
-    metadata_paths = glob.glob(os.path.join(dump_root, "*.metadata"))
+    metadata_paths = file_io.get_matching_files(
+        os.path.join(dump_root, "*.metadata"))
     if not metadata_paths:
       raise ValueError("Cannot find any metadata file in directory: %s" %
                        dump_root)
