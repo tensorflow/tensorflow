@@ -27,15 +27,11 @@ py_test(
     ],
     python_version = "PY3",
     srcs_version = "PY2AND3",
-<<<<<<< HEAD
-    tags = ["no_pip"],
-=======
     tags = [
         "no_pip",
         "no_rocm",
         "no_windows",  # Bugs due to some paths.
     ],
->>>>>>> upstream/master
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:client_testlib",

@@ -58,11 +58,7 @@ StatusOr<se::dnn::ConvolutionKind> GetDnnConvolutionKind(
     const HloCustomCallInstruction* instr);
 
 StatusOr<se::dnn::DataType> GetDnnDataType(
-<<<<<<< HEAD
-    const HloCustomCallInstruction* instr);
-=======
     const HloCustomCallInstruction* conv);
->>>>>>> upstream/master
 
 // Converts a CudnnConvKind value to a string.
 string CudnnConvKindToString(CudnnConvKind kind);

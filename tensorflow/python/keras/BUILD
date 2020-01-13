@@ -1449,28 +1449,6 @@ tf_py_test(
 )
 
 tf_py_test(
-<<<<<<< HEAD
-    name = "hdf5_format_test",
-    size = "medium",
-    srcs = ["saving/hdf5_format_test.py"],
-    python_version = "PY3",
-    shard_count = 4,
-    tags = [
-        "no_oss_py35",  # b/147011479
-        "no_rocm",
-        "no_windows",
-    ],
-    deps = [
-        ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_py_test(
-=======
->>>>>>> upstream/master
     name = "sequential_test",
     size = "medium",
     srcs = ["engine/sequential_test.py"],

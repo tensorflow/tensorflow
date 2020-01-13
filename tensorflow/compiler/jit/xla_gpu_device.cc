@@ -64,18 +64,14 @@ class XlaGpuDeviceFactory : public DeviceFactory {
 };
 
 Status XlaGpuDeviceFactory::ListPhysicalDevices(std::vector<string>* devices) {
-<<<<<<< HEAD
-  auto platform =
-      se::MultiPlatformManager::PlatformWithName(tensorflow::GpuPlatformName());
-=======
   XlaDeviceFlags* flags = GetXlaDeviceFlags();
   if (!flags->tf_xla_enable_xla_devices) {
     LOG(INFO) << "Not creating XLA devices, tf_xla_enable_xla_devices not set";
     return Status::OK();
   }
 
-  auto platform = se::MultiPlatformManager::PlatformWithName("CUDA");
->>>>>>> upstream/master
+  auto platform =
+      se::MultiPlatformManager::PlatformWithName(tensorflow::GpuPlatformName());
   if (!platform.ok()) {
     // Treat failures as non-fatal; there might not be a GPU in the machine.
     VLOG(1) << "Failed to create XLA_GPU device: " << platform.status();

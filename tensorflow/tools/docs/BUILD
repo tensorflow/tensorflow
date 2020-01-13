@@ -26,11 +26,8 @@ py_test(
     tags = [
         "no_oss_py2",
         "no_pip",
-<<<<<<< HEAD
         "no_rocm",
-=======
         "no_windows",  # numpy prints differently on windows.
->>>>>>> upstream/master
         "noasan",
         "nomsan",
         "notsan",
