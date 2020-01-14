@@ -1268,6 +1268,42 @@ TEST_P(MemorySpaceAssignmentTest, ControlPredecessorsBug) {
   AssignMemorySpace(module.get());
 }
 
+TEST_P(MemorySpaceAssignmentTest,
+       RequestIdentifierShouldNotBeAllocatedInAlternateMem) {
+  // Ensure that request identifier returned by Send/Recv HLOs are not allocated
+  // in the alternate memory.
+  absl::string_view hlo_string = R"(
+  HloModule SendRecv, is_scheduled=true
+
+  ENTRY %AddDependency (p: f32[3]) -> f32[3] {
+    %p = f32[3]{0} parameter(0)
+    %after-all = token[] after-all()
+    %recv.4 = (f32[3]{0}, u32[], token[]) recv(token[] %after-all), channel_id=7
+    %recv-done.4 = (f32[3]{0}, token[]) recv-done((f32[3]{0}, u32[], token[]) %recv.4), channel_id=7
+    %token.1 = token[] get-tuple-element((f32[3]{0}, token[]) %recv-done.4), index=1
+    %data = f32[3]{0} get-tuple-element((f32[3]{0}, token[]) %recv-done.4), index=0
+    %send = (f32[3]{0}, u32[], token[]) send(f32[3]{0} %data, token[] %token.1), channel_id=2
+    %send-done = token[] send-done((f32[3]{0}, u32[], token[]) %send), channel_id=2
+    ROOT %add = f32[3]{0} add(f32[3]{0} %p, f32[3]{0} %data)
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+
+  for (const HloInstruction* instruction :
+       module->entry_computation()->instructions()) {
+    if (instruction->opcode() == HloOpcode::kSend ||
+        instruction->opcode() == HloOpcode::kRecv) {
+      const Shape& request_identifier_shape =
+          ShapeUtil::GetSubshape(instruction->shape(), {1});
+      EXPECT_NE(request_identifier_shape.layout().memory_space(),
+                kAlternateMemorySpace);
+    }
+  }
+}
+
 TEST_P(MemorySpaceAssignmentTest, LastUseOpt) {
   // Test that checks the last use optimization. It uses two buffers that should
   // be placed in alternate memory.

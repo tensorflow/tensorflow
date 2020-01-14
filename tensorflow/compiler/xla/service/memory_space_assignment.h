@@ -621,6 +621,10 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   // it is a parameter in default memory or an ouput in default memory.
   bool RequiredInDefaultMemory(const HloValue* buffer, int64 time) const;
 
+  // Returns true if this buffer is allowed to be placed in the alternate
+  // memory.
+  bool IsIntervalAllowedInAlternateMemory(const BufferInterval& interval) const;
+
   // Finds an allocation for the given interval. Internally, it will attempt to
   // find a suitable chunk candidate within the heap size and prefetch interval
   // limits, and append the new allocation(s) to allocations. The new
