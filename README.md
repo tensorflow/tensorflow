@@ -80,7 +80,7 @@ For more examples, see the
 
 **If you want to contribute to TensorFlow, be sure to review the
 [contribution guidelines](CONTRIBUTING.md). This project adheres to TensorFlow's
-[code of conduct](CODE_OF_CONDUCT.md). By participating, you are expected to
+[code of conduct](CODE_OF_CONDUCT.md). By participating , you are expected to
 uphold this code.**
 
 **We use [GitHub issues](https://github.com/tensorflow/tensorflow/issues) for
