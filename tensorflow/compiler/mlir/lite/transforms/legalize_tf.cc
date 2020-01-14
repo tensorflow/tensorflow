@@ -73,7 +73,7 @@ bool HasSameStaticShapes(Operation* op) {
   ArrayRef<int64_t> shape;
   for (Value value : values) {
     auto shaped_type = value.getType().dyn_cast<ShapedType>();
-    if (!shaped_type && !shaped_type.hasStaticShape()) {
+    if (!shaped_type || !shaped_type.hasStaticShape()) {
       return false;
     }
     if (index == 0) {

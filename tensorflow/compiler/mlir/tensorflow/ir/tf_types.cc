@@ -19,8 +19,31 @@ limitations under the License.
 #include "mlir/IR/StandardTypes.h"  // TF:llvm-project
 #include "mlir/IR/TypeUtilities.h"  // TF:llvm-project
 
+namespace {
+// Returns the shape of the given value if it's ranked; returns llvm::None
+// otherwise.
+llvm::Optional<llvm::ArrayRef<int64_t>> GetShape(mlir::Value value) {
+  auto shaped_type = value->getType().cast<mlir::ShapedType>();
+  if (shaped_type.hasRank()) return shaped_type.getShape();
+  return llvm::None;
+}
+}  // namespace
+
 namespace mlir {
 namespace TF {
+//===----------------------------------------------------------------------===//
+// Utility iterators
+//===----------------------------------------------------------------------===//
+
+OperandShapeIterator::OperandShapeIterator(Operation::operand_iterator it)
+    : llvm::mapped_iterator<Operation::operand_iterator,
+                            llvm::Optional<ArrayRef<int64_t>> (*)(Value)>(
+          it, &GetShape) {}
+
+ResultShapeIterator::ResultShapeIterator(Operation::result_iterator it)
+    : llvm::mapped_iterator<Operation::result_iterator,
+                            llvm::Optional<ArrayRef<int64_t>> (*)(Value)>(
+          it, &GetShape) {}
 
 //===----------------------------------------------------------------------===//
 // TF types helper functions

@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // TF:llvm-project
 #include "mlir/IR/StandardTypes.h"  // TF:llvm-project
 #include "mlir/IR/SymbolTable.h"  // TF:llvm-project
+#include "mlir/IR/Value.h"  // TF:llvm-project
 #include "mlir/Pass/Pass.h"  // TF:llvm-project
 #include "mlir/Pass/PassRegistry.h"  // TF:llvm-project
 #include "mlir/Support/LLVM.h"  // TF:llvm-project
@@ -118,9 +119,9 @@ void AddCastBackForUnsupportedNonTFUses(Operation* op, Value result,
       cast_op =
           builder.create<TF::CastOp>(op->getLoc(), old_type, result,
                                      /*truncate=*/builder.getBoolAttr(false));
-    return cast_op;
+    return mlir::Value(cast_op);
   };
-  for (OpOperand& use : llvm::make_early_inc_range(result->getUses())) {
+  for (OpOperand& use : llvm::make_early_inc_range(result.getUses())) {
     if (use.getOwner()->getDialect() != tf_dialect &&
         !IsSupportedNonTFOp(use.getOwner()))
       use.set(get_cast_op());

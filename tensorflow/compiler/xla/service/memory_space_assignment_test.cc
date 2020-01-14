@@ -891,6 +891,34 @@ TEST_P(MemorySpaceAssignmentTest, BitcastGetTupleElementTuple) {
   AssignMemorySpace(module.get());
 }
 
+TEST_P(MemorySpaceAssignmentTest, GetSimplifiedOperandBug) {
+  // Test case for a bug finding Bitcasts in GTE(Tuple(...)) pattern.
+  absl::string_view hlo_string = R"(
+  HloModule sort.16, is_scheduled=true
+
+  ENTRY %sort.16 (param.0.1: s32[1], param.1.2: f32[1], param.2.3: u32[1], param.3.4: s32[1]) -> (s32[1], f32[1], u32[1], s32[1]) {
+    %param.3.4 = s32[1]{0:T(128)} parameter(3)
+    %param.2.3 = u32[1]{0:T(128)} parameter(2)
+    %param.1.2 = f32[1]{0:T(128)} parameter(1)
+    %param.0.1 = s32[1]{0:T(128)} parameter(0)
+    %tuple.1 = (s32[1]{0:T(128)}, f32[1]{0:T(128)}, u32[1]{0:T(128)}, s32[1]{0:T(128)}) tuple(s32[1]{0:T(128)} %param.0.1, f32[1]{0:T(128)} %param.1.2, u32[1]{0:T(128)} %param.2.3, s32[1]{0:T(128)} %param.3.4)
+    %get-tuple-element.4 = s32[1]{0:T(128)} get-tuple-element((s32[1]{0:T(128)}, f32[1]{0:T(128)}, u32[1]{0:T(128)}, s32[1]{0:T(128)}) %tuple.1), index=0
+    %get-tuple-element.5 = f32[1]{0:T(128)} get-tuple-element((s32[1]{0:T(128)}, f32[1]{0:T(128)}, u32[1]{0:T(128)}, s32[1]{0:T(128)}) %tuple.1), index=1
+    %get-tuple-element.6 = u32[1]{0:T(128)} get-tuple-element((s32[1]{0:T(128)}, f32[1]{0:T(128)}, u32[1]{0:T(128)}, s32[1]{0:T(128)}) %tuple.1), index=2
+    %get-tuple-element.7 = s32[1]{0:T(128)} get-tuple-element((s32[1]{0:T(128)}, f32[1]{0:T(128)}, u32[1]{0:T(128)}, s32[1]{0:T(128)}) %tuple.1), index=3
+    %copy.4 = s32[1]{0:T(128)} copy(s32[1]{0:T(128)} %get-tuple-element.4)
+    %copy.5 = f32[1]{0:T(128)} copy(f32[1]{0:T(128)} %get-tuple-element.5)
+    %copy.6 = u32[1]{0:T(128)} copy(u32[1]{0:T(128)} %get-tuple-element.6)
+    %copy.7 = s32[1]{0:T(128)} copy(s32[1]{0:T(128)} %get-tuple-element.7)
+    ROOT %tuple.2 = (s32[1]{0:T(128)}, f32[1]{0:T(128)}, u32[1]{0:T(128)}, s32[1]{0:T(128)}) tuple(s32[1]{0:T(128)} %copy.4, f32[1]{0:T(128)} %copy.5, u32[1]{0:T(128)} %copy.6, s32[1]{0:T(128)} %copy.7)
+}
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+}
+
 TEST_P(MemorySpaceAssignmentTest, BitcastMultiUse) {
   // When there is a pattern where a bitcast has multiple uses (negate0 and add)
   // and one is in the default memory and the other is in alternate memory, they
@@ -1056,6 +1084,156 @@ TEST_P(MemorySpaceAssignmentTest, BitcastScheduleBug) {
       EXPECT_EQ(instructions.at(i + 1)->opcode(), HloOpcode::kNegate);
     } else if (instructions.at(i)->opcode() == HloOpcode::kCopyDone) {
       EXPECT_EQ(instructions.at(i - 1)->opcode(), HloOpcode::kNegate);
+    }
+  }
+}
+
+TEST_P(MemorySpaceAssignmentTest, TupleSelect) {
+  // Make sure tuple-select is not optimized away.
+  absl::string_view hlo_string = R"(
+  HloModule tuple, is_scheduled=true
+
+  ENTRY %main (a: f32[2], b: f32[2], c: f32[2], d: f32[2], cond: pred[]) -> f32[2] {
+    %cond = pred[]{:T(128)E(32)} parameter(4)
+    %token0 = token[] after-all()
+    %d = f32[2]{0:T(128)} parameter(3)
+    %c = f32[2]{0:T(128)} parameter(2)
+    %b = f32[2]{0:T(128)} parameter(1)
+    %a = f32[2]{0:T(128)} parameter(0)
+    %tup0 = (f32[2]{0:T(128)}, f32[2]{0:T(128)}) tuple(f32[2]{0:T(128)} %a, f32[2]{0:T(128)} %b)
+    %tup1 = (f32[2]{0:T(128)}, f32[2]{0:T(128)}) tuple(f32[2]{0:T(128)} %c, f32[2]{0:T(128)} %d)
+    %s = (f32[2]{0:T(128)}, f32[2]{0:T(128)}) tuple-select(pred[]{:T(128)E(32)} %cond, (f32[2]{0:T(128)}, f32[2]{0:T(128)}) %tup0, (f32[2]{0:T(128)}, f32[2]{0:T(128)}) %tup1)
+    %gte = f32[2]{0:T(128)} get-tuple-element((f32[2]{0:T(128)}, f32[2]{0:T(128)}) %s), index=0
+    ROOT %negate = f32[2]{0:T(128)} negate(f32[2]{0:T(128)} %gte)
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Negate(op::GetTupleElement(op::TupleSelect())));
+}
+
+TEST_P(MemorySpaceAssignmentTest, AddDependency) {
+  // Make sure add-dependency is not optimized away.
+  absl::string_view hlo_string = R"(
+  HloModule AddDependency, is_scheduled=true
+
+  ENTRY %AddDependency (p: f32[3]) -> f32[3] {
+    %p = f32[3]{0} parameter(0)
+    %neg0 = f32[3]{0} negate(f32[3]{0} %p)
+    %neg1 = f32[3]{0} negate(f32[3]{0} %neg0)
+    %neg2 = f32[3]{0} negate(f32[3]{0} %neg1)
+    %neg3 = f32[3]{0} negate(f32[3]{0} %neg2)
+    %neg4 = f32[3]{0} negate(f32[3]{0} %neg3)
+    %neg5 = f32[3]{0} negate(f32[3]{0} %neg4)
+    %neg6 = f32[3]{0} negate(f32[3]{0} %neg5)
+    %token0 = token[] after-all()
+    %add_dep = f32[3]{0} add-dependency(f32[3]{0} %p, token[] %token0)
+    ROOT %add = f32[3]{0} add(f32[3]{0} %add_dep, f32[3]{0} %neg6)
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Add(op::AddDependency(), op::Negate()));
+}
+
+TEST_P(MemorySpaceAssignmentTest, WhileAllocationBug) {
+  // This test is carefully crafted to include two multiply ops sized [4,3] in a
+  // while body. For testing purposes, we have provided a BufferIntervalCompare
+  // such that first multiply, then tanh, then other HloValues will be
+  // allocated. The memory is sized just enough to fit two [4,3] buffers.
+  // Because the multiplies in the while body are going to be allocated in the
+  // alternate memory first, the tanh that is fed inside the while loop should
+  // not be placed in the alternate memory. Otherwise, we will corrupt memory.
+  absl::string_view hlo_string = R"(
+  HloModule WhileAllocationBug, is_scheduled=true
+
+  %WhileBody (body_param: (f32[4,3], f32[])) -> (f32[4,3], f32[]) {
+    %body_param = (f32[4,3]{1,0}, f32[]) parameter(0)
+    %get-tuple-element.1 = f32[] get-tuple-element((f32[4,3]{1,0}, f32[]) %body_param), index=1
+    %get-tuple-element.2 = f32[4,3]{1,0} get-tuple-element((f32[4,3]{1,0}, f32[]) %body_param), index=0
+    %constant.1 = f32[] constant(1)
+    %add = f32[] add(f32[] %get-tuple-element.1, f32[] %constant.1)
+    %constant.2 = f32[4,3]{1,0} constant({ { 1, 2, 3 }, { 4, 5, 6 }, { 1, 2, 3 }, { 4, 5, 6 } })
+    %multiply = f32[4,3]{1,0} multiply(f32[4,3]{1,0} %get-tuple-element.2, f32[4,3]{1,0} %get-tuple-element.2)
+    %multiply2 = f32[4,3]{1,0} multiply(f32[4,3]{1,0} %multiply, f32[4,3]{1,0} %multiply)
+    %add.1 = f32[4,3]{1,0} add(f32[4,3]{1,0} %get-tuple-element.2, f32[4,3]{1,0} %constant.2)
+    %add.2 = f32[4,3]{1,0} add(f32[4,3]{1,0} %add.1, f32[4,3]{1,0} %multiply2)
+    ROOT %tuple = (f32[4,3]{1,0}, f32[]) tuple(f32[4,3]{1,0} %add.2, f32[] %add)
+  }
+
+  %WhileCond (cond_param: (f32[4,3], f32[])) -> pred[] {
+    %cond_param = (f32[4,3]{1,0}, f32[]) parameter(0)
+    %get-tuple-element = f32[] get-tuple-element((f32[4,3]{1,0}, f32[]) %cond_param), index=1
+    %constant = f32[] constant(50)
+    ROOT %compare = pred[] compare(f32[] %get-tuple-element, f32[] %constant), direction=LT
+  }
+
+  ENTRY %Entry (param_iter: f32[4,3], param_data: f32[], p2: f32[4,3]) -> f32[4,3] {
+    %param_data = f32[] parameter(1)
+    %param_iter = f32[4,3]{1,0} parameter(0)
+    %p2 = f32[4,3]{1,0} parameter(2)
+    %tanh = f32[4,3]{1,0} tanh(f32[4,3]{1,0} %param_iter)
+    %neg0 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %p2)
+    %neg1 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg0)
+    %neg2 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg1)
+    %neg3 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg2)
+    %neg4 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg3)
+    %neg5 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg4)
+    %neg6 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg5)
+    %add.4 = f32[4,3]{1,0} add(f32[4,3]{1,0} %neg6, f32[4,3]{1,0} %tanh)
+    %tuple.1 = (f32[4,3]{1,0}, f32[]) tuple(f32[4,3]{1,0} %tanh, f32[] %param_data)
+    %while = (f32[4,3]{1,0}, f32[]) while((f32[4,3]{1,0}, f32[]) %tuple.1), condition=%WhileCond, body=%WhileBody
+    %get-tuple-element.3 = f32[4,3]{1,0} get-tuple-element((f32[4,3]{1,0}, f32[]) %while), index=0
+    ROOT %add.3 = f32[4,3]{1,0} add(f32[4,3]{1,0} %get-tuple-element.3, f32[4,3]{1,0} %add.4)
+  }
+  )";
+
+  MemorySpaceAssignment::BufferIntervalCompare buffer_interval_compare =
+      [](const MemorySpaceAssignment::BufferInterval& a,
+         const MemorySpaceAssignment::BufferInterval& b) {
+        bool a_is_mul =
+            a.buffer->defining_instruction()->opcode() == HloOpcode::kMultiply;
+        bool b_is_mul =
+            b.buffer->defining_instruction()->opcode() == HloOpcode::kMultiply;
+        if (a_is_mul && !b_is_mul) {
+          return true;
+        }
+        if (!a_is_mul && b_is_mul) {
+          return false;
+        }
+        bool a_is_tanh =
+            a.buffer->defining_instruction()->opcode() == HloOpcode::kTanh;
+        bool b_is_tanh =
+            b.buffer->defining_instruction()->opcode() == HloOpcode::kTanh;
+        if (a_is_tanh && !b_is_tanh) {
+          return true;
+        }
+        if (!a_is_tanh && b_is_tanh) {
+          return false;
+        }
+        return a.buffer->id() < b.buffer->id();
+      };
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  InstructionCountPrefetchIntervalPicker prefetch_interval_picker(2, 10);
+  AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/-1,
+                    buffer_interval_compare, &prefetch_interval_picker);
+
+  for (const HloInstruction* instruction :
+       module->entry_computation()->instructions()) {
+    if (instruction->opcode() == HloOpcode::kWhile) {
+      const Shape& while_subshape =
+          ShapeUtil::GetSubshape(instruction->shape(), {0});
+      EXPECT_NE(while_subshape.layout().memory_space(), kAlternateMemorySpace);
     }
   }
 }

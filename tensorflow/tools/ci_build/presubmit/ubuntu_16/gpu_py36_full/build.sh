@@ -51,7 +51,7 @@ function run_build () {
   source tensorflow/tools/ci_build/build_scripts/PRESUBMIT_BUILD_TARGETS.sh
 
   # Run bazel test command. Double test timeouts to avoid flakes.
-  # //tensorflow/core:platform_setround_test is not supported. See b/64264700
+  # //tensorflow/core/platform:setround_test is not supported. See b/64264700
   # TODO(klimek): Re-enable tensorrt tests (with different runtime image) once
   # we can build them.
   # TODO(klimek): Stop using action_env for things that are only needed during

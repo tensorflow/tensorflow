@@ -35,9 +35,9 @@ std::string GetFullyConnectedKernelCode(
     const OperationDef& op_def,
     const std::vector<ElementwiseOperation*>& linked_operations,
     const int3& work_group_size) {
-  TensorCodeGenerator src_tensor("src_data", {"1", "1", "depthes.x"},
+  TensorCodeGenerator src_tensor("src_data", WHSPoint{"1", "1", "depthes.x"},
                                  op_def.src_tensors[0]);
-  TensorCodeGenerator dst_tensor("dst_data", {"1", "1", "depthes.y"},
+  TensorCodeGenerator dst_tensor("dst_data", WHSPoint{"1", "1", "depthes.y"},
                                  op_def.dst_tensors[0]);
 
   std::string c = GetCommonDefines(op_def.precision);
@@ -67,7 +67,7 @@ std::string GetFullyConnectedKernelCode(
   c += "  uint c2 = tid.y * 2;\n";  // it should be * 4, so as we have FLT4
   // but we keep half8 in float4 so, we have * 2 y_coord for texture
   c += "  for (int i = 0; i < depthes.z; ++i, c += 4, c2 += 8) {\n";
-  c += "    FLT4 v = " + src_tensor.Read3D("0", "0", "c") + ";\n";
+  c += "    FLT4 v = " + src_tensor.ReadWHS("0", "0", "c") + ";\n";
   if (op_def.precision != CalculationsPrecision::F32) {
     c += "   half8 m0 = as_half8(read_imagef(filters, smp_none, (int2)(gid, "
          "c2+0)));\n";
@@ -104,7 +104,7 @@ std::string GetFullyConnectedKernelCode(
        "0));\n";
   const LinkingContext context{"r0", "0", "0", "gid"};
   c += PostProcess(linked_operations, context);
-  c += "  " + dst_tensor.Write3D("r0", "0", "0", "gid") + "\n";
+  c += "  " + dst_tensor.WriteWHS("r0", "0", "0", "gid") + "\n";
   c += "  }\n";
   c += "}\n";
 

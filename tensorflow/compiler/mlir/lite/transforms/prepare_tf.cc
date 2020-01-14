@@ -425,8 +425,7 @@ struct ConvertTFStridedSlice : public RewritePattern {
     // TODO(renjieliu): Consider expand the transformation for ellipsis & shrink
     // mask as well.
     TF::StridedSliceOp strided_slice_op = llvm::cast<TF::StridedSliceOp>(op);
-    const uint64_t new_axis_mask =
-        strided_slice_op.new_axis_mask().getZExtValue();
+    uint64_t new_axis_mask = strided_slice_op.new_axis_mask().getZExtValue();
     if (new_axis_mask == 0) return matchFailure();
 
     // Insert a new reshape op.
@@ -435,22 +434,18 @@ struct ConvertTFStridedSlice : public RewritePattern {
         original_input.getType().cast<RankedTensorType>();
     const ArrayRef<int64_t> &original_input_shape =
         original_input_type.getShape();
-    RankedTensorType begin_type =
-        strided_slice_op.begin().getType().cast<RankedTensorType>();
-    const int dim_size = begin_type.getShape()[0];
     SmallVector<int64_t, 4> new_shape;
-    int mask = 1;
     int index = 0;
-    for (int i = 0; i < dim_size; ++i) {
-      if (mask & new_axis_mask) {
+    while (index < original_input_shape.size() || new_axis_mask) {
+      if (new_axis_mask & 1) {
         new_shape.emplace_back(1);
       } else {
-        new_shape.emplace_back(original_input_shape[index]);
-        ++index;
+        new_shape.emplace_back(original_input_shape[index++]);
       }
-      mask = mask << 1;
+      new_axis_mask >>= 1;
     }
 
+    const int dim_size = new_shape.size();
     Location loc = strided_slice_op.getLoc();
     auto shape_type =
         RankedTensorType::get({dim_size}, rewriter.getIntegerType(32));

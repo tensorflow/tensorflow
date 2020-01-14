@@ -249,11 +249,26 @@ def TFL_ComparisonBinaryBuilder : OpBuilder<
   }]>;
 
 //===----------------------------------------------------------------------===//
-// TFL native op trait for stateful operands and channel indices.
+// TFL op interface for stateful operands.
 
-class StatefulOperands<list<int> operands>
-    : ParamNativeOpTrait<"TFL::StatefulOperands", StrJoinInt<operands>.result>;
+def TFL_StatefulOp : OpInterface<"StatefulOpInterface"> {
+  let description = [{
+    Interface for ops that are stateful and need to identify stateful operands.
 
+    Stateful operands correspond to TF's variables semantics. An op that has 1
+    or more stateful operands is a stateful op.
+  }];
+
+  let methods = [
+    InterfaceMethod<
+      [{Returns the indices of stateful operands.}],
+      "std::vector<int>", "GetStatefulOperands", (ins)
+    >,
+  ];
+}
+
+//===----------------------------------------------------------------------===//
+// TFL native op trait for channel indices.
 
 class ChannelDimIndex<int index>
     : ParamNativeOpTrait<"TFL::ChannelDimIndex", !cast<string>(index)>;
@@ -1208,7 +1223,8 @@ def TFL_FloorModOp : TFL_Op<"floor_mod", [Broadcastable, NoSideEffect]> {
   let builders = [TFL_BroadcastableBinaryBuilder];
 }
 
-def TFL_GreaterOp : TFL_Op<"greater", [NoSideEffect, NoQuantizableResult]> {
+def TFL_GreaterOp : TFL_Op<"greater", [
+    Broadcastable, NoSideEffect, NoQuantizableResult]> {
   let summary = "Greater operator";
 
   let description = [{
@@ -1220,6 +1236,8 @@ def TFL_GreaterOp : TFL_Op<"greater", [NoSideEffect, NoQuantizableResult]> {
     AnyTensor:$rhs);
 
   let results = (outs AnyTensor:$output);
+
+  let builders = [TFL_ComparisonBinaryBuilder];
 
   let parser = [{ return mlir::impl::parseOneResultSameOperandTypeOp(parser, result); }];
 
@@ -1287,7 +1305,8 @@ def TFL_LeakyReluOp: TFL_Op<"leaky_relu", [NoSideEffect, SameOperandsAndResultTy
   let hasOptions = 0b1;
 }
 
-def TFL_LessOp : TFL_Op<"less", [NoSideEffect, NoQuantizableResult]> {
+def TFL_LessOp : TFL_Op<"less", [
+    Broadcastable, NoSideEffect, NoQuantizableResult]> {
   let summary = "Less operator";
 
   let description = [{
@@ -2123,7 +2142,7 @@ def TFL_ReverseV2Op: TFL_Op<"reverse_v2",
 
     Args:
       tensor: A Tensor. Must be one of the following types:
-      int16, int32, int64, float32 Up to 8-D.
+      uint8, int16, int32, int64, float32, bool Up to 8-D.
 
       axis: A Tensor. Must be one of the following types: int32, int64.
       with only 1 element which is the axis index.
@@ -2132,12 +2151,12 @@ def TFL_ReverseV2Op: TFL_Op<"reverse_v2",
 
   let arguments = (
     ins
-    TensorOf<[F32, I16, I32, I64]>:$input,
+    TensorOf<[F32, I16, I32, I64, TFL_Uint8, I1]>:$input,
     TensorOf<[I32, I64]>:$axis
   );
 
   let results = (outs
-  TensorOf<[F32, I16, I32, I64, I8]>:$output
+  TensorOf<[F32, I16, I32, I64, TFL_Uint8, I1]>:$output
   );
 }
 
@@ -2369,7 +2388,7 @@ def TFL_TileOp: TFL_Op<"tile", [NoSideEffect,
 // TODO(jpienaar): Check that k is less or equal the internal dimension
 def TFL_TopKV2Op: TFL_Op<"topk_v2", [NoSideEffect, TFL_OperandHasRank<1,0>,
     PredOpTrait<"result and input element type match",
-                TCresVTEtIsSameAsOp<0,0>>]> {
+                TCresVTEtIsSameAsOp<0,0>>, SameOperandsAndResultsScale]> {
   let summary = "TopK operator";
 
   let description = [{
@@ -2379,11 +2398,11 @@ def TFL_TopKV2Op: TFL_Op<"topk_v2", [NoSideEffect, TFL_OperandHasRank<1,0>,
   }];
 
   let arguments = (ins
-    TensorOf<[F32, I8, I32, I64, TFL_Uint8]>:$input,
+    TensorOf<[F32, I8, I32, I64, TFL_Uint8, QI8, QUI8]>:$input,
     I32Tensor:$k);
 
   let results = (outs
-    AnyTensor:$values,
+    TensorOf<[F32, I8, I32, I64, TFL_Uint8, QI8, QUI8]>:$values,
     I32Tensor:$indices);
 
   let builders = [OpBuilder<"Builder *builder, OperationState &result, "
@@ -2907,6 +2926,20 @@ def TFL_QuantizeOp: TFL_Op<"quantize", [
   let results = (outs AnyTensor:$output);
 }
 
+def TFL_DensifyOp: TFL_Op<"densify", [NoSideEffect,
+                                      SameOperandsAndResultType,
+                                      NoQuantizableResult]> {
+  let summary = "Densify operator";
+
+  let description = [{
+    Converts sparse tensor to dense format.
+  }];
+
+  let arguments = (ins AnyTensor:$input);
+
+  let results = (outs AnyTensor:$output);
+}
+
 //===----------------------------------------------------------------------===//
 // LSTM Ops
 //===----------------------------------------------------------------------===//
@@ -2996,7 +3029,7 @@ def TFL_LSTMOp :
            LstmOptionalPeepholeWeightConstraint,
            LstmProjectionWeightBiasConstraint,
            LstmResultConstraint,
-           StatefulOperands<[18, 19]>]> {
+           TFL_StatefulOp]> {
   let summary = "The full lstm operator";
 
   let description = [{
@@ -3080,6 +3113,11 @@ Ba et al. “Layer Normalization”
   let hasOptions = 1;
 
   let verifier = [{ return Verify(*this); }];
+
+  let extraClassDeclaration = [{
+    // StatefulOpInterface:
+    std::vector<int> GetStatefulOperands() { return {18, 19}; }
+  }];
 }
 
 // UnidirectionalSequenceLstm op.
@@ -3091,7 +3129,7 @@ def TFL_UnidirectionalSequenceLSTMOp :
            LstmOptionalPeepholeWeightConstraint,
            LstmProjectionWeightBiasConstraint,
            LstmResultConstraint,
-           StatefulOperands<[18, 19]>]> {
+           TFL_StatefulOp]> {
   let summary = "Unidirectional sequence lstm operator";
 
   let description = [{
@@ -3160,6 +3198,11 @@ def TFL_UnidirectionalSequenceLSTMOp :
   let hasOptions = 1;
 
   let verifier = [{ return Verify(*this); }];
+
+  let extraClassDeclaration = [{
+    // StatefulOpInterface:
+    std::vector<int> GetStatefulOperands() { return {18, 19}; }
+  }];
 }
 
 def RnnResultConstraint : PredOpTrait<
@@ -3169,7 +3212,7 @@ def RnnResultConstraint : PredOpTrait<
 // UnidirectionalSequenceRNN op.
 def TFL_UnidirectionalSequenceRNNOp :
   TFL_Op<"unidirectional_sequence_rnn",
-         [RnnResultConstraint, StatefulOperands<[4]>]> {
+         [RnnResultConstraint, TFL_StatefulOp]> {
 
   let summary = "Unidirectional sequence rnn operator";
 
@@ -3213,6 +3256,11 @@ def TFL_UnidirectionalSequenceRNNOp :
   let customOption = "SequenceRNNOptions";
 
   let verifier = [{ return Verify(*this); }];
+
+  let extraClassDeclaration = [{
+    // StatefulOpInterface:
+    std::vector<int> GetStatefulOperands() { return {4}; }
+  }];
 }
 
 def TFL_WhereOp : TFL_Op<"where", [NoSideEffect]> {
@@ -3264,7 +3312,7 @@ def SVDFResultConstraint: PredOpTrait<
 // SVDF op.
 def TFL_SVDFOp :
   TFL_Op<"svdf",
-         [SVDFResultConstraint, StatefulOperands<[4]>]> {
+         [SVDFResultConstraint, TFL_StatefulOp]> {
 
   let summary = "Single value decomposition filter operator";
 
@@ -3300,6 +3348,25 @@ def TFL_SVDFOp :
   let hasOptions = 1;
 
   let verifier = [{ return Verify(*this); }];
+
+  let extraClassDeclaration = [{
+    // StatefulOpInterface:
+    std::vector<int> GetStatefulOperands() { return {4}; }
+  }];
+}
+
+def TFL_SegmentSumOp: TFL_Op<"segment_sum", [NoSideEffect]> {
+  let summary = "SegmentSum operator";
+
+  let description = [{
+    Computes the sum along segments of a tensor.
+  }];
+
+  let arguments = (ins
+    TensorOf<[F32, I32]>:$data,
+    I32Tensor:$segment_ids
+  );
+  let results = (outs TensorOf<[F32, I32]>:$output);
 }
 
 #endif // TFL_OPS

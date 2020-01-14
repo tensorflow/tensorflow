@@ -152,7 +152,7 @@ Status GpuCompiler::OptimizeHloModule(
     pipeline.AddPass<ConvolutionGroupConverter>(
         batch_group_cost_model,
         /*convert_batch_groups_only=*/true,
-        /*canonicalize_depthwise_filter=*/false);
+        /*filter_expansion=*/true);
 
     auto cost_model = [](HloInstruction* conv) {
       // We need a cost model for GPUs. Currently, do nothing.

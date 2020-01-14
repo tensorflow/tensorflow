@@ -13,6 +13,7 @@ package_group(
         "//tensorflow/compiler/...",
         "//tensorflow/lite/experimental/tf_runtime/...",
         "//tensorflow/python/...",
+        "//third_party/tf_runtime_google/...",
     ],
 )
 
@@ -227,6 +228,7 @@ cc_library(
 cc_library(
     name = "tensorflow_passes",
     srcs = [
+        "transforms/annotate_parameter_replication.cc",
         "transforms/bridge.cc",
         "transforms/bridge_pass.cc",
         "transforms/cluster_formation.cc",
@@ -256,6 +258,7 @@ cc_library(
         "transforms/tpu_dynamic_padding_mapper.cc",
         "transforms/tpu_merge_variables_with_execute.cc",
         "transforms/tpu_rewrite_pass.cc",
+        "transforms/tpu_variable_runtime_reformatting.cc",
         "translate/breakup-islands.cc",
         "translate/control_to_executor_dialect.cc",
         "translate/executor_to_control_dialect.cc",
@@ -288,8 +291,10 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:random",
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
         "//tensorflow/core/protobuf/tpu:dynamic_padding_proto_cc",
+        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:IR",
@@ -371,7 +376,6 @@ cc_library(
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:StandardDialectRegistration",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
     ],
@@ -422,7 +426,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:StandardDialectRegistration",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
     ],
@@ -566,6 +569,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/stream_executor/lib",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:support",

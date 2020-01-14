@@ -27,10 +27,8 @@ namespace cl {
 namespace {
 
 std::string GetLSTMCode(const OperationDef& op_def, const CLDevice& device) {
-  const TensorCodeGenerator::SizeVariablesNames state_size(
-      "1", "1", "state_size.z", "state_size.w");
-  const TensorCodeGenerator::SizeVariablesNames src_size("1", "1", "src_size.z",
-                                                         "src_size.w");
+  const WHSBPoint state_size{"1", "1", "state_size.z", "state_size.w"};
+  const WHSBPoint src_size{"1", "1", "src_size.z", "src_size.w"};
 
   TensorCodeGenerator intermediate("src_data", src_size, op_def.src_tensors[0]);
   TensorCodeGenerator prev_state("prev_state", state_size,
@@ -53,14 +51,14 @@ std::string GetLSTMCode(const OperationDef& op_def, const CLDevice& device) {
   c += "  int B = get_global_id(0);\n";
   c += "  int Z = get_global_id(1);\n";
   c += "  if (Z >= state_size.z || B >= state_size.w) return;\n";
-  c += "  FLT4 prev_st = " + prev_state.Read4D("0", "0", "Z", "B") + ";\n";
-  c += "  FLT4 r0 = " + intermediate.Read4D("0", "0", "Z", "B") + ";\n";
-  c += "  FLT4 r1 = " + intermediate.Read4D("0", "0", "Z + state_size.z", "B") +
-       ";\n";
+  c += "  FLT4 prev_st = " + prev_state.ReadWHSB("0", "0", "Z", "B") + ";\n";
+  c += "  FLT4 r0 = " + intermediate.ReadWHSB("0", "0", "Z", "B") + ";\n";
+  c += "  FLT4 r1 = " +
+       intermediate.ReadWHSB("0", "0", "Z + state_size.z", "B") + ";\n";
   c += "  FLT4 r2 = " +
-       intermediate.Read4D("0", "0", "Z + state_size.z * 2", "B") + ";\n";
+       intermediate.ReadWHSB("0", "0", "Z + state_size.z * 2", "B") + ";\n";
   c += "  FLT4 r3 = " +
-       intermediate.Read4D("0", "0", "Z + state_size.z * 3", "B") + ";\n";
+       intermediate.ReadWHSB("0", "0", "Z + state_size.z * 3", "B") + ";\n";
   if (op_def.precision != CalculationsPrecision::F32 && device.IsAdreno()) {
     c += "  FLT4 input_gate;\n";
     c += "  FLT4 new_input;\n";
@@ -100,8 +98,8 @@ std::string GetLSTMCode(const OperationDef& op_def, const CLDevice& device) {
   }
   c += "  FLT4 new_st = input_gate * new_input + forget_gate * prev_st;\n";
   c += "  FLT4 activation = output_gate * tanh(new_st);\n";
-  c += "  " + activation.Write4D("activation", "0", "0", "Z", "B");
-  c += "  " + new_state.Write4D("new_st", "0", "0", "Z", "B");
+  c += "  " + activation.WriteWHSB("activation", "0", "0", "Z", "B");
+  c += "  " + new_state.WriteWHSB("new_st", "0", "0", "Z", "B");
   c += "}\n";
   return c;
 }

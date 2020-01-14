@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdarg>
 #include <cstdint>
 #include <cstdlib>
+#include <fstream>
 #include <iostream>
 #include <memory>
 #include <random>
@@ -223,7 +224,7 @@ TfLiteStatus PopulateInputLayerInfo(
 
   // Populate input value range if it's specified.
   std::vector<std::string> value_ranges = Split(value_ranges_string, ':');
-  for (const auto val : value_ranges) {
+  for (const auto& val : value_ranges) {
     std::vector<std::string> name_range = Split(val, ',');
     if (name_range.size() != 3) {
       TFLITE_LOG(FATAL) << "Wrong input value range item specified: " << val;
@@ -280,6 +281,7 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
                           BenchmarkParam::Create<std::string>(""));
   default_params.AddParam("input_layer_value_range",
                           BenchmarkParam::Create<std::string>(""));
+  default_params.AddParam("use_hexagon", BenchmarkParam::Create<bool>(false));
   default_params.AddParam("use_nnapi", BenchmarkParam::Create<bool>(false));
   default_params.AddParam("nnapi_execution_preference",
                           BenchmarkParam::Create<std::string>(""));
@@ -330,6 +332,7 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
         "layers. Each item is separated by ':', and the item value consists of "
         "input layer name and integer-only range values (both low and high are "
         "inclusive) separated by ',', e.g. input1,1,2:input2,0,254"),
+    CreateFlag<bool>("use_hexagon", &params_, "Use Hexagon delegate api"),
     CreateFlag<bool>("use_nnapi", &params_, "use nnapi delegate api"),
     CreateFlag<std::string>(
         "nnapi_execution_preference", &params_,
@@ -374,6 +377,8 @@ void BenchmarkTfLiteModel::LogParams() {
                    << params_.Get<std::string>("input_layer_value_range")
                    << "]";
 #if defined(__ANDROID__)
+  TFLITE_LOG(INFO) << "Use Hexagon : [" << params_.Get<bool>("use_hexagon")
+                   << "]";
   TFLITE_LOG(INFO) << "Use nnapi : [" << params_.Get<bool>("use_nnapi") << "]";
   if (!params_.Get<std::string>("nnapi_execution_preference").empty()) {
     TFLITE_LOG(INFO) << "nnapi execution preference: ["
@@ -435,6 +440,12 @@ uint64_t BenchmarkTfLiteModel::ComputeInputBytes() {
     total_input_bytes += t->bytes;
   }
   return total_input_bytes;
+}
+
+int64_t BenchmarkTfLiteModel::MayGetModelFileSize() {
+  std::ifstream in_file(params_.Get<std::string>("graph"),
+                        std::ios::binary | std::ios::ate);
+  return in_file.tellg();
 }
 
 TfLiteStatus BenchmarkTfLiteModel::PrepareInputData() {
@@ -668,7 +679,7 @@ BenchmarkTfLiteModel::TfLiteDelegatePtrMap BenchmarkTfLiteModel::GetDelegates()
           TFLITE_GPU_INFERENCE_PRIORITY_MAX_PRECISION;
     }
     Interpreter::TfLiteDelegatePtr delegate =
-        evaluation::CreateGPUDelegate(model_.get(), &gpu_opts);
+        evaluation::CreateGPUDelegate(&gpu_opts);
 #elif defined(REAL_IPHONE_DEVICE)
     TFLGpuDelegateOptions gpu_opts = {0};
     gpu_opts.allow_precision_loss =
@@ -694,8 +705,7 @@ BenchmarkTfLiteModel::TfLiteDelegatePtrMap BenchmarkTfLiteModel::GetDelegates()
 #else
     TFLITE_LOG(WARN) << "The GPU delegate compile options are only supported "
                         "to be benchmarked on Android or iOS platforms.";
-    Interpreter::TfLiteDelegatePtr delegate =
-        evaluation::CreateGPUDelegate(model_.get());
+    Interpreter::TfLiteDelegatePtr delegate = evaluation::CreateGPUDelegate();
 #endif
 
     if (!delegate) {
@@ -756,6 +766,22 @@ BenchmarkTfLiteModel::TfLiteDelegatePtrMap BenchmarkTfLiteModel::GetDelegates()
                      << params_.Get<std::string>("nnapi_execution_preference")
                      << ") to be used.";
   }
+
+  if (params_.Get<bool>("use_hexagon")) {
+    const std::string libhexagon_path("/data/local/tmp");
+    Interpreter::TfLiteDelegatePtr delegate =
+        evaluation::CreateHexagonDelegate(libhexagon_path);
+    if (!delegate) {
+      // Refer to the Tensorflow Lite Hexagon delegate documentation for more
+      // information about how to get the required libraries.
+      TFLITE_LOG(WARN)
+          << "Could not create Hexagon delegate: platform may not support "
+             "delegate or required libraries are missing";
+    } else {
+      delegates.emplace("Hexagon", std::move(delegate));
+    }
+  }
+
   return delegates;
 }
 

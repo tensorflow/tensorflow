@@ -35,12 +35,12 @@ std::string GenerateConvolutionTransposedCode(
     ConvolutionTransposed4x4::WeightsUploadType weights_upload_type) {
   std::string c = GetCommonDefines(op_def.precision);
 
-  TensorCodeGenerator src_tensor("src_data",
-                                 {"src_size.x", "src_size.y", "src_size.z"},
-                                 op_def.src_tensors[0]);
-  TensorCodeGenerator dst_tensor("dst_data",
-                                 {"dst_size.x", "dst_size.y", "dst_size.z"},
-                                 op_def.dst_tensors[0]);
+  TensorCodeGenerator src_tensor(
+      "src_data", WHSPoint{"src_size.x", "src_size.y", "src_size.z"},
+      op_def.src_tensors[0]);
+  TensorCodeGenerator dst_tensor(
+      "dst_data", WHSPoint{"dst_size.x", "dst_size.y", "dst_size.z"},
+      op_def.dst_tensors[0]);
 
   const auto src_tensor_type = op_def.src_tensors[0].storage_type;
   const bool manual_clamp = src_tensor_type == TensorStorageType::BUFFER ||
@@ -160,7 +160,7 @@ std::string GenerateConvolutionTransposedCode(
                " && in_y" + std::to_string(y) + "); " + addr + " += dz;";
       }
     } else {
-      return src_tensor.Read3D(
+      return src_tensor.ReadWHS(
           "X + " + std::to_string(x - 1) + "*" + pixel_stride,
           "Y + " + std::to_string(y - 1), "s", TextureAddressMode::ZERO);
     }
@@ -230,27 +230,28 @@ std::string GenerateConvolutionTransposedCode(
   c += "    FLT4 result = TO_FLT4(r0) + bias_val;\n";
   LinkingContext context{"result", "X", "Y", "Z"};
   c += PostProcess(linked_operations, context);
-  c += "  " + dst_tensor.Write3D("result", "X", "Y", "Z") + "\n";
+  c += "  " + dst_tensor.WriteWHS("result", "X", "Y", "Z") + "\n";
   c += "  }\n";
   c += "  if (X + " + pixel_stride + " < dst_size.x && Y >= 0) {\n";
   c += "    FLT4 result = TO_FLT4(r1) + bias_val;\n";
   context = {"result", "X + " + pixel_stride, "Y", "Z"};
   c += PostProcess(linked_operations, context);
-  c += "  " + dst_tensor.Write3D("result", "X + " + pixel_stride, "Y", "Z") +
+  c += "  " + dst_tensor.WriteWHS("result", "X + " + pixel_stride, "Y", "Z") +
        "\n";
   c += "  }\n";
   c += "  if (X >= 0 && Y + 1 < dst_size.y) {\n";
   c += "    FLT4 result = TO_FLT4(r2) + bias_val;\n";
   context = {"result", "X", "Y + 1", "Z"};
   c += PostProcess(linked_operations, context);
-  c += "  " + dst_tensor.Write3D("result", "X", "Y + 1", "Z") + "\n";
+  c += "  " + dst_tensor.WriteWHS("result", "X", "Y + 1", "Z") + "\n";
   c += "  }\n";
   c += "  if (X + " + pixel_stride + " < dst_size.x && Y + 1 < dst_size.y) {\n";
   c += "    FLT4 result = TO_FLT4(r3) + bias_val;\n";
   context = {"result", "X + " + pixel_stride, "Y + 1", "Z"};
   c += PostProcess(linked_operations, context);
   c += "  " +
-       dst_tensor.Write3D("result", "X + " + pixel_stride, "Y + 1", "Z") + "\n";
+       dst_tensor.WriteWHS("result", "X + " + pixel_stride, "Y + 1", "Z") +
+       "\n";
   c += "  }\n";
   c += "}\n";
   return c;

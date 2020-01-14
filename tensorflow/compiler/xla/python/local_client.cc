@@ -681,7 +681,7 @@ PyLocalExecutable::PyLocalExecutable(
       executable_(std::move(executable)),
       device_assignment_(
           std::make_shared<DeviceAssignment>(device_assignment)) {
-  VLOG(1) << "PyLocalExecutable device_assignment:\n"
+  VLOG(1) << "PyLocalExecutable " << name() << " device_assignment:\n"
           << device_assignment_->ToString();
   int num_replicas = device_assignment_->replica_count();
   for (int replica = 0; replica < num_replicas; ++replica) {
@@ -695,6 +695,17 @@ PyLocalExecutable::PyLocalExecutable(
     local_devices_.push_back(device);
   }
   CHECK_GE(local_devices_.size(), 1) << device_assignment_->ToString();
+}
+
+const std::string& PyLocalExecutable::name() const {
+  Executable* executable = executable_->executable();
+  if (executable->has_module()) {
+    return executable->module().name();
+  } else {
+    static const std::string* unknown_name =
+        new std::string("<unknown executable>");
+    return *unknown_name;
+  }
 }
 
 StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalExecutable::ExecuteHelper(

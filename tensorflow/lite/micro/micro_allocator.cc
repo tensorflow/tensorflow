@@ -435,7 +435,7 @@ TfLiteStatus MicroAllocator::InitializeRuntimeTensor(
       (src_quantization->zero_point()->size() > 0)) {
     result->params.scale = src_quantization->scale()->Get(0);
     // This magic handles issues with little-endianness.
-    for (unsigned int b = 0; b < sizeof(int64_t); ++b)
+    for (unsigned int b = 0; b < sizeof(sizeof(result->params.zero_point)); ++b)
       *(reinterpret_cast<char*>(&result->params.zero_point) + b) =
           *(reinterpret_cast<const char*>(
                 src_quantization->zero_point()->Data()) +

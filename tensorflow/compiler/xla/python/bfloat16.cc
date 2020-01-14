@@ -621,6 +621,42 @@ struct TypeDescriptor<bfloat16> {
 };
 
 template <>
+struct TypeDescriptor<uint8> {
+  typedef uint8 T;
+  static int Dtype() { return NPY_UINT8; }
+};
+
+template <>
+struct TypeDescriptor<uint16> {
+  typedef uint16 T;
+  static int Dtype() { return NPY_UINT16; }
+};
+
+template <>
+struct TypeDescriptor<uint32> {
+  typedef uint32 T;
+  static int Dtype() { return NPY_UINT32; }
+};
+
+template <>
+struct TypeDescriptor<uint64> {
+  typedef uint64 T;
+  static int Dtype() { return NPY_UINT64; }
+};
+
+template <>
+struct TypeDescriptor<int8> {
+  typedef int8 T;
+  static int Dtype() { return NPY_INT8; }
+};
+
+template <>
+struct TypeDescriptor<int16> {
+  typedef int16 T;
+  static int Dtype() { return NPY_INT16; }
+};
+
+template <>
 struct TypeDescriptor<int32> {
   typedef int32 T;
   static int Dtype() { return NPY_INT32; }
@@ -1297,6 +1333,24 @@ bool Initialize() {
     return false;
   }
   if (!RegisterBfloat16Cast<bool>(NPY_BOOL, /*cast_is_safe=*/false)) {
+    return false;
+  }
+  if (!RegisterBfloat16Cast<uint8>(NPY_UINT8, /*cast_is_safe=*/false)) {
+    return false;
+  }
+  if (!RegisterBfloat16Cast<uint16>(NPY_UINT16, /*cast_is_safe=*/false)) {
+    return false;
+  }
+  if (!RegisterBfloat16Cast<uint32>(NPY_UINT32, /*cast_is_safe=*/false)) {
+    return false;
+  }
+  if (!RegisterBfloat16Cast<uint64>(NPY_UINT64, /*cast_is_safe=*/false)) {
+    return false;
+  }
+  if (!RegisterBfloat16Cast<int8>(NPY_INT8, /*cast_is_safe=*/false)) {
+    return false;
+  }
+  if (!RegisterBfloat16Cast<int16>(NPY_INT16, /*cast_is_safe=*/false)) {
     return false;
   }
   if (!RegisterBfloat16Cast<int32>(NPY_INT32, /*cast_is_safe=*/false)) {

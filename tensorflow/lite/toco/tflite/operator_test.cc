@@ -727,6 +727,13 @@ TEST_F(OperatorTest, BuiltinUnique) {
   EXPECT_EQ(output_toco_op->idx_out_type, op.idx_out_type);
 }
 
+TEST_F(OperatorTest, BuiltinSegmentSum) {
+  SegmentSumOperator op;
+  auto output_toco_op = SerializeAndDeserialize(
+      GetOperator("SEGMENT_SUM", OperatorType::kSegmentSum), op);
+  ASSERT_NE(nullptr, output_toco_op.get());
+}
+
 TEST_F(OperatorTest, BuiltinReverseSequence) {
   ReverseSequenceOperator op;
   op.seq_dim = 3;

@@ -28,6 +28,14 @@ limitations under the License.
 namespace tflite {
 namespace evaluation {
 
+namespace {
+
+Interpreter::TfLiteDelegatePtr CreateNullDelegate() {
+  return Interpreter::TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
+}
+
+}  // namespace
+
 std::string StripTrailingSlashes(const std::string& path) {
   int end = path.size();
   while (end > 0 && path[end - 1] == '/') {
@@ -105,29 +113,50 @@ Interpreter::TfLiteDelegatePtr CreateNNAPIDelegate(
         delete reinterpret_cast<StatefulNnApiDelegate*>(delegate);
       });
 #else
-  return Interpreter::TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
+  return CreateNullDelegate();
 #endif  // defined(__ANDROID__)
 }
 
 #if defined(__ANDROID__)
 Interpreter::TfLiteDelegatePtr CreateGPUDelegate(
-    tflite::FlatBufferModel* model, TfLiteGpuDelegateOptionsV2* options) {
+    TfLiteGpuDelegateOptionsV2* options) {
   return Interpreter::TfLiteDelegatePtr(TfLiteGpuDelegateV2Create(options),
                                         &TfLiteGpuDelegateV2Delete);
 }
 #endif  // defined(__ANDROID__)
 
-Interpreter::TfLiteDelegatePtr CreateGPUDelegate(
-    tflite::FlatBufferModel* model) {
+Interpreter::TfLiteDelegatePtr CreateGPUDelegate() {
 #if defined(__ANDROID__)
   TfLiteGpuDelegateOptionsV2 options = TfLiteGpuDelegateOptionsV2Default();
   options.inference_priority1 = TFLITE_GPU_INFERENCE_PRIORITY_MIN_LATENCY;
   options.inference_preference =
       TFLITE_GPU_INFERENCE_PREFERENCE_SUSTAINED_SPEED;
 
-  return CreateGPUDelegate(model, &options);
+  return CreateGPUDelegate(&options);
 #else
-  return Interpreter::TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
+  return CreateNullDelegate();
+#endif  // defined(__ANDROID__)
+}
+
+Interpreter::TfLiteDelegatePtr CreateHexagonDelegate(
+    const std::string& library_directory_path) {
+#if defined(__ANDROID__) && (defined(__arm__) || defined(__aarch64__))
+  const TfLiteHexagonDelegateOptions options = {0, 0, false, false};
+  TfLiteDelegate* delegate = TfLiteHexagonDelegateCreate(&options);
+  if (!delegate) {
+    return CreateNullDelegate();
+  }
+  if (library_directory_path.empty()) {
+    TfLiteHexagonInit();
+  } else {
+    TfLiteHexagonInitWithPath(library_directory_path.c_str());
+  }
+  return Interpreter::TfLiteDelegatePtr(delegate, [](TfLiteDelegate* delegate) {
+    TfLiteHexagonTearDown();
+    TfLiteHexagonDelegateDelete(delegate);
+  });
+#else
+  return CreateNullDelegate();
 #endif  // defined(__ANDROID__)
 }
 

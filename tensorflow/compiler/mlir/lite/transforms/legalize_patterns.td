@@ -150,6 +150,7 @@ def : Pat<(TF_RoundOp $arg), (TFL_RoundOp $arg)>;
 def : Pat<(TF_RsqrtOp $arg), (TFL_RsqrtOp $arg)>;
 def : Pat<(TF_SqrtOp $arg), (TFL_SqrtOp $arg)>;
 def : Pat<(TF_SquareOp $arg), (TFL_SquareOp $arg)>;
+def : Pat<(TF_SegmentSumOp $data, I32Tensor:$segment_ids), (TFL_SegmentSumOp $data, $segment_ids)>;
 def : Pat<(TF_SelectOp $cond, $x, $y), (TFL_SelectOp $cond, $x, $y)>;
 def : Pat<(TF_SelectV2Op:$src_op $cond, $x, $y), (TFL_SelectOp $cond, $x, $y), [(HasSameStaticShapes $src_op)]>;
 def : Pat<(TF_SelectV2Op:$src_op $cond, $x, $y), (TFL_SelectV2Op $cond, $x, $y), [(HasNotSameStaticShapes $src_op)]>;

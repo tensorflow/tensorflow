@@ -291,42 +291,56 @@ def disable_tensor_equality():
 
 @tf_export("Tensor")
 class Tensor(_TensorLike):
-  """Represents one of the outputs of an `Operation`.
+  """A tensor represents a rectangular array of data.
 
-  A `Tensor` is a symbolic handle to one of the outputs of an
-  `Operation`. It does not hold the values of that operation's output,
-  but instead provides a means of computing those values in a
-  TensorFlow `tf.compat.v1.Session`.
+  When writing a TensorFlow program, the main object you manipulate and pass
+  around is the `tf.Tensor`. A `tf.Tensor` object represents a rectangular array
+  of arbitrary dimension, filled with data of a specific data type.
 
-  This class has two primary purposes:
+  A `tf.Tensor` has the following properties:
 
-  1. A `Tensor` can be passed as an input to another `Operation`.
-     This builds a dataflow connection between operations, which
-     enables TensorFlow to execute an entire `Graph` that represents a
-     large, multi-step computation.
+  * a data type (float32, int32, or string, for example)
+  * a shape
 
-  2. After the graph has been launched in a session, the value of the
-     `Tensor` can be computed by passing it to
-     `tf.Session.run`.
-     `t.eval()` is a shortcut for calling
-     `tf.compat.v1.get_default_session().run(t)`.
+  Each element in the Tensor has the same data type, and the data type is always
+  known.
 
-  In the following example, `c`, `d`, and `e` are symbolic `Tensor`
-  objects, whereas `result` is a numpy array that stores a concrete
-  value:
+  In eager execution, which is the default mode in TensorFlow, results are
+  calculated immediately.
 
-  ```python
-  # Build a dataflow graph.
-  c = tf.constant([[1.0, 2.0], [3.0, 4.0]])
-  d = tf.constant([[1.0, 1.0], [0.0, 1.0]])
-  e = tf.matmul(c, d)
+  >>> # Compute some values using a Tensor
+  >>> c = tf.constant([[1.0, 2.0], [3.0, 4.0]])
+  >>> d = tf.constant([[1.0, 1.0], [0.0, 1.0]])
+  >>> e = tf.matmul(c, d)
+  >>> print(e)
+  tf.Tensor(
+  [[1. 3.]
+   [3. 7.]], shape=(2, 2), dtype=float32)
 
-  # Construct a `Session` to execute the graph.
-  sess = tf.compat.v1.Session()
 
-  # Execute the graph and store the value that `e` represents in `result`.
-  result = sess.run(e)
-  ```
+  Note that during eager execution, you may discover your `Tensors` are actually
+  of type `EagerTensor`.  This is an internal detail, but it does give you
+  access to a useful function, `numpy`:
+
+  >>> type(e)
+  <class '...ops.EagerTensor'>
+  >>> print(e.numpy())
+    [[1. 3.]
+     [3. 7.]]
+
+  TensorFlow can define computations without immediately executing them, most
+  commonly inside `tf.function`s, as well as in (legacy) Graph mode. In those
+  cases, the shape (that is, the rank of the Tensor and the size of
+  each dimension) might be only partially known.
+
+  Most operations produce tensors of fully-known shapes if the shapes of their
+  inputs are also fully known, but in some cases it's only possible to find the
+  shape of a tensor at execution time.
+
+  There are specialized tensors; for these, see `tf.Variable`, `tf.constant`,
+  `tf.placeholder`, `tf.SparseTensor`, and `tf.RaggedTensor`.
+
+  For more on Tensors, see the [guide](https://tensorflow.org/guide/tensor`).
   """
 
   # List of Python operators that we allow to override.
@@ -777,6 +791,10 @@ class Tensor(_TensorLike):
   def eval(self, feed_dict=None, session=None):
     """Evaluates this tensor in a `Session`.
 
+    Note: If you are not using `compat.v1` libraries, you should not need this,
+    (or `feed_dict` or `Session`).  In eager execution (or within `tf.function`)
+    you do not need to call `eval`.
+
     Calling this method will execute all preceding operations that
     produce the inputs needed for the operation that produces this
     tensor.
@@ -793,7 +811,6 @@ class Tensor(_TensorLike):
 
     Returns:
       A numpy array corresponding to the value of this tensor.
-
     """
     return _eval_using_default_session(self, feed_dict, self.graph, session)
 
@@ -855,8 +872,11 @@ class Tensor(_TensorLike):
 class _EagerTensorBase(Tensor):
   """Base class for EagerTensor."""
 
-  # __int__, __float__ and __index__ may copy the tensor to CPU and
+  # __complex__, __int__, __float__ and __index__ may copy the tensor to CPU and
   # only work for scalars; values are cast as per numpy.
+  def __complex__(self):
+    return complex(self._numpy())
+
   def __int__(self):
     return int(self._numpy())
 
@@ -2785,11 +2805,6 @@ class Graph(object):
     # tuples: (input_shape_tuple, reduction_indices_tuple), and the values
     # are pairs of tuples: (output_shape_kept_dims, tile_scaling).
     self._reduced_shape_cache = {}
-    # In eager mode, the top level graph can still be created. This is
-    # incorrect and undesriable but currently so many places are relying on
-    # this. This is a flag indicating that, and meant to be set manually after
-    # this graph construction.
-    self._is_eager_graph = False
 
     # TODO(skyewm): fold as much of the above as possible into the C
     # implementation
@@ -5361,8 +5376,6 @@ class _DefaultGraphStack(_DefaultStack):  # pylint: disable=protected-access
       #   the global default graph and an explicit graph are combined in the
       #   same process.
       self._global_default_graph = Graph()
-      if context.executing_eagerly():
-        self._global_default_graph._is_eager_graph = True  # pylint: disable=protected-access
     return self._global_default_graph
 
   def reset(self):

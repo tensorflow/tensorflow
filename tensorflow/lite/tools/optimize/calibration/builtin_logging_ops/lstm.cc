@@ -64,7 +64,7 @@ inline void LstmStepWithAuxInput(
     float* output_state_ptr, float* cell_state_ptr, float* input_gate_scratch,
     float* forget_gate_scratch, float* cell_scratch, float* output_gate_scratch,
     float* output_ptr, Logger* logger,
-    std::vector<int> intemediate_tensor_indexes) {
+    const std::vector<int>& intemediate_tensor_indexes) {
   // Since we have already checked that weights are all there or none, we can
   // check the existence of only one to the get the condition.
   const bool use_cifg = (input_to_input_weights_ptr == nullptr);
@@ -317,7 +317,7 @@ TfLiteStatus EvalFloat(
     int output_offset, TfLiteTensor* scratch_buffer,
     TfLiteTensor* activation_state, TfLiteTensor* cell_state,
     TfLiteTensor* output, Logger* logger,
-    std::vector<int> intemediate_tensor_indexes) {
+    const std::vector<int>& intemediate_tensor_indexes) {
   TF_LITE_ASSERT(input->dims->size >= 2 && input->dims->size <= 3);
   int max_time, n_batch;
   if (input->dims->size == 3) {

@@ -1278,6 +1278,14 @@ func @testVariableShapeWrongResultDimDynamic(%arg0: tensor<*x!tf.resource<tensor
 
 // -----
 
+func @testVariableShapeWrongNumResources(%arg0: tensor<1x2x!tf.resource<tensor<1x32x32x16xf32>>>) -> tensor<4xi32> {
+  // expected-error @+1 {{requires input to have one resource}}
+  %0 = "tf.VariableShape"(%arg0)  : (tensor<1x2x!tf.resource<tensor<1x32x32x16xf32>>>) -> tensor<4xi32>
+  return %0 : tensor<4xi32>
+}
+
+// -----
+
 // Test invalid tf.Const
 func @testConst() -> tensor<f32> {
   // expected-error @+1 {{attribute 'value' failed to satisfy constraint: constant vector/tensor}}
@@ -1441,6 +1449,14 @@ func @testConcatV2(%arg0: tensor<8x16xf32>, %arg1: tensor<16x8xf32>, %axis: tens
 func @testConcatV2(%arg0: tensor<8x8xf32>, %arg1: tensor<?x4xf32>, %arg2: tensor<*xf32>, %arg3: tensor<8x?xf32>, %axis: tensor<i32>) -> tensor<*xf32> {
   %0 = "tf.ConcatV2"(%arg0, %arg1, %arg2, %arg3, %axis) : (tensor<8x8xf32>, tensor<?x4xf32>, tensor<*xf32>, tensor<8x?xf32>, tensor<i32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
+}
+
+// -----
+
+func @testInvalidInvertPermutationOp(%arg0: tensor<8x8xi32>) -> tensor<8x8xi32> {
+  // expected-error @+1 {{'tf.InvertPermutation' op requires input x to be 1-dimensional}}
+  %0 = "tf.InvertPermutation"(%arg0) : (tensor<8x8xi32>) -> tensor<8x8xi32>
+  return %0 : tensor<8x8xi32>
 }
 
 // -----
