@@ -300,20 +300,32 @@ cc_library(
     deps = [
         ":hlo",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Transforms",
     ],
-    alwayslink = 1,
+)
+
+cc_library(
+    name = "xla_unfuse_batch_norm",
+    srcs = [
+        "transforms/unfuse_batch_norm.cc",
+    ],
+    deps = [
+        ":hlo",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Transforms",
+    ],
 )
 
 cc_library(
     name = "xla_test_passes",
     srcs = [
         "transforms/materialize_broadcasts_pass.cc",
+        "transforms/unfuse_batch_norm_pass.cc",
     ],
     deps = [
         ":hlo",
         ":xla_materialize_broadcasts",
+        ":xla_unfuse_batch_norm",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Transforms",

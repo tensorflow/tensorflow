@@ -18,7 +18,6 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // TF:llvm-project
 #include "mlir/IR/Operation.h"  // TF:llvm-project
 #include "mlir/IR/PatternMatch.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/rewriters.h"
