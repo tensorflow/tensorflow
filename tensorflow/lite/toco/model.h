@@ -146,6 +146,7 @@ enum class OperatorType : uint8 {
   // instead of being given as plain constant arrays. So we need to insert
   // special nodes in the graph to shuffle axes.
   kReorderAxes,
+  kSegmentSum,
   kSelect,
   kSelectV2,
   kSparseToDense,

@@ -291,13 +291,13 @@ bool StreamExecutor::GetConvolveAlgorithms(
 }
 
 bool StreamExecutor::GetMIOpenConvolveAlgorithms(
-    dnn::ConvolutionKind kind, Stream* stream, dnn::DataType element_type,
-    const dnn::BatchDescriptor& input_descriptor,
-    const dnn::FilterDescriptor& filter_descriptor,
-    const dnn::ConvolutionDescriptor& convolution_descriptor,
-    const dnn::BatchDescriptor& output_descriptor,
-    std::vector<dnn::ProfileResult>* out_algorithms) {
-  dnn::DnnSupport* dnn_support = AsDnn();
+    dnn::ConvolutionKind kind, Stream *stream, dnn::DataType element_type,
+    const dnn::BatchDescriptor &input_descriptor,
+    const dnn::FilterDescriptor &filter_descriptor,
+    const dnn::ConvolutionDescriptor &convolution_descriptor,
+    const dnn::BatchDescriptor &output_descriptor,
+    std::vector<dnn::ProfileResult> *out_algorithms) {
+  dnn::DnnSupport *dnn_support = AsDnn();
   if (!dnn_support) {
     return false;
   }

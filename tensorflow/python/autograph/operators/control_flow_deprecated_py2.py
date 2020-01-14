@@ -356,13 +356,8 @@ def for_stmt(iter_,
         'distributed iterators not supported yet, use the distributed dataset'
         ' directly')
 
-  # Note: This experimental interface is subject to change.
-  custom_handler = getattr(iter_, '_autograph_for_loop', None)
-  if custom_handler is not None:
-    # TODO(mdan): TensorFlow-specific verification - handlers should perform it.
-    _disallow_undefs_into_loop(*init_vars)
-    # TODO(mdan): Enable get_state/set_state separately.
-    return custom_handler(extra_test, body, init_vars)
+  if isinstance(iter_, input_lib.DistributedDataset):
+    return _tf_distributed_dataset_for_stmt(iter_, extra_test, body, init_vars)
 
   return _py_for_stmt(iter_, extra_test, body, get_state, set_state, init_vars)
 
@@ -795,6 +790,29 @@ def _dataset_for_stmt_no_extra_test(ds, body, get_state, set_state, init_vars,
   if no_vars:
     return ()
   return final_vars
+
+
+def _tf_distributed_dataset_for_stmt(iter_, extra_test, body, init_state):
+  """Overload of for..in statement that iterates over the input."""
+  _disallow_undefs_into_loop(*init_state)
+
+  if extra_test is not None:
+    raise NotImplementedError(
+        'break and return statements are not yet supported in '
+        'for ... in distributed input loops.')
+
+  def reduce_body(state, iterate):
+    new_state = body(iterate, *state)
+    return new_state
+
+  if init_state:
+    return iter_.reduce(init_state, reduce_body)
+
+  def reduce_body_with_dummy_state(state, iterate):
+    reduce_body((), iterate)
+    return state
+  iter_.reduce((constant_op.constant(0),), reduce_body_with_dummy_state)
+  return ()
 
 
 def while_stmt(test,

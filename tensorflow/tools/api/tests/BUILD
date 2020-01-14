@@ -27,7 +27,11 @@ py_test(
     ],
     python_version = "PY3",
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "no_rocm",
+        "no_windows",  # Bugs due to some paths.
+    ],
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:client_testlib",
@@ -45,7 +49,10 @@ py_test(
     srcs = ["deprecation_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
-    tags = ["v1only"],
+    tags = [
+        "no_windows",  # Failing due to missing API symbols.
+        "v1only",
+    ],
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:client_testlib",
@@ -59,6 +66,9 @@ py_test(
     srcs = ["module_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
+    tags = [
+        "no_windows",  # Failing due to missing API symbols.
+    ],
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:client_testlib",

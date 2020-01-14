@@ -37,8 +37,12 @@ namespace py = pybind11;
 
 PYBIND11_MODULE(_pywrap_file_io, m) {
   m.def("FileExists", [](const std::string& filename) {
-    tensorflow::MaybeRaiseRegisteredFromStatus(
-        tensorflow::Env::Default()->FileExists(filename));
+    tensorflow::Status status;
+    {
+      py::gil_scoped_release release;
+      status = tensorflow::Env::Default()->FileExists(filename);
+    }
+    tensorflow::MaybeRaiseRegisteredFromStatus(status);
   });
   m.def("DeleteFile", [](const std::string& filename) {
     tensorflow::MaybeRaiseRegisteredFromStatus(

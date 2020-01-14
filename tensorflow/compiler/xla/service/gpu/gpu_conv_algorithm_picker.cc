@@ -676,7 +676,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
       options.algo_override = alg;
       Status launch_status =
           RunGpuConv(instr, absl::MakeSpan(operand_buffers), result_buffer,
-		     &scratch_allocator, stream, options);
+                     &scratch_allocator, stream, options);
 
       if (!launch_status.ok()) {
         continue;

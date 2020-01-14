@@ -206,10 +206,17 @@ std::unique_ptr<OpPassBase<FuncOp>> CreateImportQuantStatsPass(
 std::unique_ptr<OpPassBase<FuncOp>>
 CreateImportQuantStatsPassForTFControlDialect(const std::string &stats_str) {
   auto get_name_func = [](Operation *op) {
-    if (auto name = op->getAttrOfType<StringAttr>("name"))
-      return name.getValue();
-    else
-      return llvm::StringRef("");
+    Location loc = op->getLoc();
+    if (auto name = loc.dyn_cast<NameLoc>()) {
+      return name.getName().strref();
+    } else if (auto fused_name = loc.dyn_cast<FusedLoc>()) {
+      for (auto sub_loc : fused_name.getLocations()) {
+        if (auto named_sub_loc = sub_loc.dyn_cast<NameLoc>()) {
+          return named_sub_loc.getName().strref();
+        }
+      }
+    }
+    return llvm::StringRef("");
   };
 
   return CreateImportQuantStatsPass(get_name_func, stats_str);

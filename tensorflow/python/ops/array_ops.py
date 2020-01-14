@@ -1879,11 +1879,11 @@ unique_with_counts.__doc__ = gen_array_ops.unique_with_counts.__doc__
 
 @tf_export("split")
 def split(value, num_or_size_splits, axis=0, num=None, name="split"):
-  """Splits a tensor into sub tensors.
+  """Splits a tensor `value` into a list of sub tensors.
 
-  If `num_or_size_splits` is an integer, then `value` is split along dimension
-  `axis` into `num_split` smaller tensors. This requires that `num_split` evenly
-  divides `value.shape[axis]`.
+  If `num_or_size_splits` is an integer, then `value` is split along the
+  dimension `axis` into `num_split` smaller tensors. This requires that
+  `value.shape[axis]` is divisible by `num_split`.
 
   If `num_or_size_splits` is a 1-D Tensor (or list), we call it `size_splits`
   and `value` is split into `len(size_splits)` elements. The shape of the `i`-th
@@ -1892,15 +1892,14 @@ def split(value, num_or_size_splits, axis=0, num=None, name="split"):
 
   For example:
 
-  Split `x` into 3 tensors along dimension 1
-
   >>> x = tf.Variable(tf.random.uniform([5, 30], -1, 1))
+
+  Split `x` into 3 tensors along dimension 1
   >>> s0, s1, s2 = tf.split(x, num_or_size_splits=3, axis=1)
   >>> tf.shape(s0).numpy()
   array([ 5, 10], dtype=int32)
 
   Split `x` into 3 tensors with sizes [4, 15, 11] along dimension 1
-
   >>> split0, split1, split2 = tf.split(x, [4, 15, 11], 1)
   >>> tf.shape(split0).numpy()
   array([5, 4], dtype=int32)
@@ -1923,8 +1922,8 @@ def split(value, num_or_size_splits, axis=0, num=None, name="split"):
     name: A name for the operation (optional).
 
   Returns:
-    if `num_or_size_splits` is a scalar returns `num_or_size_splits` `Tensor`
-    objects; if `num_or_size_splits` is a 1-D Tensor returns
+    if `num_or_size_splits` is a scalar returns a list of `num_or_size_splits`
+    `Tensor` objects; if `num_or_size_splits` is a 1-D Tensor returns
     `num_or_size_splits.get_shape[0]` `Tensor` objects resulting from splitting
     `value`.
 
@@ -4983,7 +4982,8 @@ def dequantize(  # pylint: disable=missing-docstring
     mode="MIN_COMBINED",
     name=None,
     axis=None,
-    narrow_range=False):
+    narrow_range=False,
+    dtype=dtypes.float32):
   if axis is None:
     axis = -1
   elif axis < 0:
@@ -4993,10 +4993,17 @@ def dequantize(  # pylint: disable=missing-docstring
 
   if axis >= 0 or narrow_range:
     return gen_array_ops.dequantize(
-        input, min_range, max_range, mode=mode, name=name,
-        narrow_range=narrow_range, axis=axis)
+        input,
+        min_range,
+        max_range,
+        mode=mode,
+        name=name,
+        narrow_range=narrow_range,
+        axis=axis,
+        dtype=dtype)
   return gen_array_ops.dequantize(
-      input, min_range, max_range, mode=mode, name=name)
+      input, min_range, max_range, mode=mode, name=name, dtype=dtype)
+
 
 dequantize.__doc__ = gen_array_ops.dequantize.__doc__
 

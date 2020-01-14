@@ -317,7 +317,8 @@ enum BuiltinOperator : byte {
   NON_MAX_SUPPRESSION_V5 = 121,
   SCATTER_ND = 122,
   SELECT_V2 = 123,
-  DENSIFY = 124
+  DENSIFY = 124,
+  SEGMENT_SUM = 125
 }
 
 
@@ -421,7 +422,8 @@ union BuiltinOptions {
   NonMaxSuppressionV5Options,
   ScatterNdOptions,
   SelectV2Options,
-  DensifyOptions
+  DensifyOptions,
+  SegmentSumOptions
 }
 
 enum Padding : byte { SAME, VALID }
@@ -909,6 +911,9 @@ table SelectV2Options {
 }
 
 table DensifyOptions {
+}
+
+table SegmentSumOptions {
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a

@@ -561,6 +561,40 @@ class XlogyTest(test_util.TensorFlowTestCase):
 
 
 @test_util.run_all_in_graph_and_eager_modes
+class Xlog1pyTest(test_util.TensorFlowTestCase):
+
+  def testXlog1pyNoNeg1(self):
+    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
+      x = constant_op.constant([[0.1, 0.2, 3.5], [-2., -5., 30.]], dtype=dtype)
+      y = constant_op.constant([[-0.1, -0.2, 3.5], [3.1, -0.9, 2.]],
+                               dtype=dtype)
+      with test_util.use_gpu():
+        xlog1py = self.evaluate(math_ops.xlog1py(x, y))
+        xtimeslog1py = self.evaluate(x * math_ops.log1p(y))
+        self.assertAllClose(xlog1py, xtimeslog1py)
+
+  def testXlog1pyWithNegOne(self):
+    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
+      x = constant_op.constant(np.zeros((2, 3)), dtype=dtype)
+      y = constant_op.constant([[0.1, 0.2, 3.5], [-1., 1., 2.]], dtype=dtype)
+      with test_util.use_gpu():
+        xlog1py_tf_np = self.evaluate(math_ops.xlog1py(x, y))
+        zeros_np = self.evaluate(array_ops.zeros_like(y))
+        self.assertAllClose(xlog1py_tf_np, zeros_np)
+
+  def testXlog1pyWithZeroBroadcast(self):
+    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
+      x = constant_op.constant([[0.], [1.]], dtype=dtype)
+      y = constant_op.constant([[-0.1, -0.2, -1.], [0., 1., 2.]], dtype=dtype)
+      with test_util.use_gpu():
+        xlog1py_tf_np = self.evaluate(math_ops.xlog1py(x, y))
+        zeros_np = self.evaluate(array_ops.zeros_like(y[0]))
+        xtimes_log1py = self.evaluate(math_ops.log1p(y[1]))
+        self.assertAllClose(zeros_np, xlog1py_tf_np[0])
+        self.assertAllClose(xtimes_log1py, xlog1py_tf_np[1])
+
+
+@test_util.run_all_in_graph_and_eager_modes
 class XdivyTest(test_util.TensorFlowTestCase):
 
   def testXdivyNoZero(self):

@@ -27,6 +27,19 @@
 namespace tpu_driver {
 namespace {
 
+::TpuAllocationShape GetTpuAllocationShape(const xla::ShapeProto& shape) {
+  ::TpuAllocationShape shape_;
+  shape_.size = shape.ByteSizeLong();
+  shape_.bytes = malloc(shape_.size);
+  if (!shape.SerializeToArray(shape_.bytes, shape_.size)) {
+    LOG(ERROR) << "Unable to serialize shape to array.";
+    free(shape_.bytes);
+    shape_.size = 0;
+    shape_.bytes = nullptr;
+  }
+  return shape_;
+}
+
 class ExternalTpuDriver;
 
 class ExternalEvent : public Event {
@@ -161,6 +174,51 @@ class ExternalLoadedProgramHandle : public LoadedProgramHandle {
   friend ExternalTpuDriver;
 };
 
+class ExternalTpuLinearizer : public TpuLinearizer {
+ public:
+  explicit ExternalTpuLinearizer(::TpuDriver* driver, ::TpuDriverFn* driver_fn)
+      : driver_(driver), driver_fn_(driver_fn) {}
+
+  int64_t ComputeLinearizedBytesFromShape(
+      const xla::ShapeProto& shape) override {
+    ::TpuAllocationShape shape_ = GetTpuAllocationShape(shape);
+    uint64_t size =
+        driver_fn_->TpuDriver_ComputeLinearizedBytesFromShape(driver_, shape_);
+    free(shape_.bytes);
+    return size;
+  }
+
+  xla::Status LinearizeShape(void* dst, const void* src,
+                             const xla::ShapeProto& shape) override {
+    ::TpuAllocationShape shape_ = GetTpuAllocationShape(shape);
+
+    auto tpu_status =
+        driver_fn_->TpuDriver_LinearizeShape(driver_, dst, src, shape_);
+    auto status = xla::Status(tensorflow::error::Code(tpu_status->code),
+                              absl::StrFormat("%s", tpu_status->msg));
+    driver_fn_->TpuDriver_FreeStatus(tpu_status);
+    free(shape_.bytes);
+    return status;
+  }
+
+  xla::Status DelinearizeShape(void* dst, const void* src,
+                               const xla::ShapeProto& shape) override {
+    ::TpuAllocationShape shape_ = GetTpuAllocationShape(shape);
+
+    auto tpu_status =
+        driver_fn_->TpuDriver_DelinearizeShape(driver_, dst, src, shape_);
+    auto status = xla::Status(tensorflow::error::Code(tpu_status->code),
+                              absl::StrFormat("%s", tpu_status->msg));
+    driver_fn_->TpuDriver_FreeStatus(tpu_status);
+    free(shape_.bytes);
+    return status;
+  }
+
+ private:
+  ::TpuDriver* driver_;
+  ::TpuDriverFn* driver_fn_;
+};
+
 class ExternalTpuDriver : public TpuDriver {
  public:
   explicit ExternalTpuDriver(const std::string& so_path) {
@@ -194,23 +252,46 @@ class ExternalTpuDriver : public TpuDriver {
         &driver_fn_,
         driver_fn_.TpuDriver_Allocate(driver_, core_id, region, num_bytes,
                                       wait_for.size(), tpu_events));
-    delete tpu_events;
+    delete[] tpu_events;
     return bh;
   }
 
   std::unique_ptr<BufferHandle> Allocate(
       int32_t core_id, MemoryRegion region, const xla::ShapeProto& shape,
       absl::Span<Event* const> wait_for) override {
-    LOG(FATAL) << "Unimplemented.";
-    return nullptr;
+    auto tpu_events = MakeEventArray(wait_for);
+
+    ::TpuAllocationShape shape_ = GetTpuAllocationShape(shape);
+    auto bh = absl::make_unique<ExternalBufferHandle>(
+        &driver_fn_,
+        driver_fn_.TpuDriver_AllocateShape(driver_, core_id, region, shape_,
+                                           wait_for.size(), tpu_events));
+
+    free(shape_.bytes);
+    delete[] tpu_events;
+    return bh;
   }
 
   std::unique_ptr<BufferHandle> AllocateTuple(
       int32_t core_id, MemoryRegion region,
       absl::Span<BufferHandle* const> children,
       absl::Span<Event* const> wait_for) override {
-    LOG(FATAL) << "Unimplemented.";
-    return nullptr;
+    auto tpu_events = MakeEventArray(wait_for);
+
+    ::TpuBufferHandle** childbuf = new ::TpuBufferHandle*[children.size()];
+    for (int i = 0; i < children.size(); i++) {
+      childbuf[i] =
+          static_cast<ExternalBufferHandle* const>(children[i])->handle_;
+    }
+
+    auto bh = absl::make_unique<ExternalBufferHandle>(
+        &driver_fn_, driver_fn_.TpuDriver_AllocateTuple(
+                         driver_, core_id, region, children.size(), childbuf,
+                         wait_for.size(), tpu_events));
+    delete[] tpu_events;
+    delete[] childbuf;
+
+    return bh;
   }
 
   std::shared_ptr<Event> Deallocate(
@@ -222,7 +303,7 @@ class ExternalTpuDriver : public TpuDriver {
         driver_fn_.TpuDriver_Deallocate(
             driver_, static_cast<ExternalBufferHandle*>(handle.get())->handle_,
             wait_for.size(), tpu_events));
-    delete tpu_events;
+    delete[] tpu_events;
     return event;
   }
 
@@ -235,7 +316,7 @@ class ExternalTpuDriver : public TpuDriver {
         driver_fn_.TpuDriver_TransferToDevice(
             driver_, src, static_cast<ExternalBufferHandle*>(dst)->handle_,
             wait_for.size(), tpu_events));
-    delete tpu_events;
+    delete[] tpu_events;
     return event;
   }
 
@@ -248,7 +329,7 @@ class ExternalTpuDriver : public TpuDriver {
         driver_fn_.TpuDriver_TransferFromDevice(
             driver_, static_cast<const ExternalBufferHandle*>(src)->handle_,
             dst, wait_for.size(), tpu_events));
-    delete tpu_events;
+    delete[] tpu_events;
     return event;
   }
 
@@ -262,7 +343,7 @@ class ExternalTpuDriver : public TpuDriver {
             driver_, static_cast<const ExternalBufferHandle*>(src)->handle_,
             static_cast<ExternalBufferHandle*>(dst)->handle_, wait_for.size(),
             tpu_events));
-    delete tpu_events;
+    delete[] tpu_events;
     return event;
   }
 
@@ -285,7 +366,7 @@ class ExternalTpuDriver : public TpuDriver {
                                             wait_for.size(), tpu_events));
 
     free(hlo.buffer);
-    delete tpu_events;
+    delete[] tpu_events;
     return handle;
   }
   std::unique_ptr<LoadedProgramHandle> LoadProgram(
@@ -300,7 +381,7 @@ class ExternalTpuDriver : public TpuDriver {
             static_cast<const ExternalCompiledProgramHandle*>(handle)->handle_,
             wait_for.size(), tpu_events));
 
-    delete tpu_events;
+    delete[] tpu_events;
     return loaded_handle;
   }
 
@@ -314,7 +395,7 @@ class ExternalTpuDriver : public TpuDriver {
             driver_,
             static_cast<ExternalLoadedProgramHandle*>(handle.get())->handle_,
             wait_for.size(), tpu_events));
-    delete tpu_events;
+    delete[] tpu_events;
     return event;
   }
 
@@ -348,10 +429,13 @@ class ExternalTpuDriver : public TpuDriver {
             inputs.size(), inputv.data(), outputs.size(), outputv.data(), da,
             wait_for.size(), tpu_events));
 
+    delete[] tpu_events;
     return event;
   }
 
-  std::unique_ptr<TpuLinearizer> GetLinearizer() override { return nullptr; }
+  std::unique_ptr<TpuLinearizer> GetLinearizer() override {
+    return std::make_unique<ExternalTpuLinearizer>(driver_, &driver_fn_);
+  }
 
  private:
   ::TpuDriverFn driver_fn_;

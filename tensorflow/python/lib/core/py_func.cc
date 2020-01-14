@@ -95,7 +95,8 @@ Status MakeArgTuple(const PyCall* call, EagerContext* ctx, PyObject** tuple) {
       TensorHandle* handle;
       TF_RETURN_IF_ERROR(TensorHandle::CreateLocalHandle(
           t, ctx->CanonicalDevice(device), ctx, &handle));
-      arg = EagerTensorFromHandle(new TFE_TensorHandle(handle));
+      arg = EagerTensorFromHandle(
+          new TFE_TensorHandle{tensorflow::TensorHandleInterface(handle)});
       if (arg == nullptr) {
         Py_DECREF(lst);
         return errors::Internal("Unable to procure EagerTensor from Tensor.");
@@ -144,7 +145,7 @@ bool IsSingleNone(PyObject* obj) {
 tensorflow::Status ExtractTensorFromEagerTensor(const PyObject* eager_tensor,
                                                 const Device* expected_device,
                                                 const Tensor** output_tensor) {
-  auto handle = EagerTensor_Handle(eager_tensor)->handle;
+  auto handle = EagerTensor_Handle(eager_tensor)->handle.Handle();
   Device* actual_device = handle->device();
   TF_RETURN_IF_ERROR(handle->Tensor(output_tensor));
   // actual_device may be nullptr, which implies local CPU.

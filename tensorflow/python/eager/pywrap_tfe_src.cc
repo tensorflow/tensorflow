@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/eager/tape.h"
 #include "tensorflow/c/tf_status.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/gtl/compactptrset.h"
@@ -1903,18 +1904,28 @@ static PyTapeTensor TapeTensorFromTensor(PyObject* tensor) {
   if (EagerTensor_CheckExact(tensor)) {
     TFE_TensorHandle* t = EagerTensor_Handle(tensor);
     tensorflow::int64 id = PyEagerTensor_ID(tensor);
+    tensorflow::DataType dtype =
+        static_cast<tensorflow::DataType>(t->handle.DataType());
+    if (dtype == tensorflow::DT_VARIANT) {
+      return PyTapeTensor(id, dtype, tensor);
+    }
+
+    tensorflow::Status status;
     tensorflow::TensorShape tensor_shape;
-    const tensorflow::Status status = t->handle->Shape(&tensor_shape);
+    int num_dims = t->handle.NumDims(&status);
+    if (status.ok()) {
+      for (int i = 0; i < num_dims; ++i) {
+        tensorflow::int64 dim_size = t->handle.Dim(i, &status);
+        if (!status.ok()) break;
+        tensor_shape.AddDim(dim_size);
+      }
+    }
 
     if (MaybeRaiseExceptionFromStatus(status, nullptr)) {
       return PyTapeTensor(id, static_cast<tensorflow::DataType>(0),
                           tensorflow::TensorShape({}));
     } else {
-      if (t->handle->dtype == tensorflow::DT_VARIANT) {
-        return PyTapeTensor(id, t->handle->dtype, tensor);
-      } else {
-        return PyTapeTensor(id, t->handle->dtype, tensor_shape);
-      }
+      return PyTapeTensor(id, dtype, tensor_shape);
     }
   }
   tensorflow::int64 id = FastTensorId(tensor);
@@ -3857,16 +3868,21 @@ tensorflow::Status TFE_Py_EncodeTensor(PyObject* arg,
                                        EncodeResult* result) {
   if (EagerTensor_CheckExact(arg)) {
     TFE_TensorHandle* t = EagerTensor_Handle(arg);
-    tensorflow::TensorShape tensor_shape;
-    TF_RETURN_IF_ERROR(t->handle->Shape(&tensor_shape));
 
-    absl::StrAppend(&result->str, kDType, t->handle->dtype);
-
+    absl::StrAppend(&result->str, kDType,
+                    static_cast<tensorflow::DataType>(t->handle.DataType()));
     absl::StrAppend(&result->str, kShape);
+
+    tensorflow::Status status;
+    int num_dims = t->handle.NumDims(&status);
+    if (!status.ok()) return status;
+
     if (include_tensor_ranks_only) {
-      absl::StrAppend(&result->str, tensor_shape.dim_sizes().size());
+      absl::StrAppend(&result->str, num_dims);
     } else {
-      for (tensorflow::int64 dim_size : tensor_shape.dim_sizes()) {
+      for (int i = 0; i < num_dims; ++i) {
+        tensorflow::int64 dim_size = t->handle.Dim(i, &status);
+        if (!status.ok()) return status;
         absl::StrAppend(&result->str, dim_size, kShapeDelim);
       }
     }

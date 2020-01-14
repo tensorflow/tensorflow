@@ -734,10 +734,7 @@ distribute_py_test(
     name = "input_lib_test",
     srcs = ["input_lib_test.py"],
     main = "input_lib_test.py",
-    shard_count = 30,
-    tags = [
-        "no_gpu_presubmit",
-    ],
+    shard_count = 10,
     deps = [
         ":collective_all_reduce_strategy",
         ":mirrored_strategy",
@@ -1210,7 +1207,7 @@ distribute_py_test(
     shard_count = 5,
     deps = [
         ":saved_model_test_base",
-        "//tensorflow/python/keras:saving",
+        "//tensorflow/python/keras/saving",
     ],
 )
 
@@ -1223,7 +1220,7 @@ distribute_py_test(
     shard_count = 5,
     deps = [
         ":saved_model_test_base",
-        "//tensorflow/python/keras:saving",
+        "//tensorflow/python/keras/saving",
         "//tensorflow/python/saved_model",
     ],
 )
@@ -1232,10 +1229,9 @@ distribute_py_test(
     name = "ctl_correctness_test",
     srcs = ["ctl_correctness_test.py"],
     main = "ctl_correctness_test.py",
-    shard_count = 30,
+    shard_count = 10,
     tags = [
         "multi_and_single_gpu",
-        "no_gpu_presubmit",
         "noguitar",  # b/140755528
     ],
     deps = [

@@ -16,7 +16,7 @@ limitations under the License.
 #include "HM01B0.h"
 #include "am_bsp.h" //NOLINT
 #include "am_mcu_apollo.h" //NOLINT
-#include "platform_Sparkfun_Edge.h"
+#include "platform.h"      // TARGET specific implementation
 
 // Image is down-sampled by applying a stride of 2 pixels in both the x and y
 // directions.

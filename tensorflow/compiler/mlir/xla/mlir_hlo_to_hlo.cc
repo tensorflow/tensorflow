@@ -173,6 +173,18 @@ static std::vector<xla::ReplicaGroup> Convert_replica_groups(
   return result;
 }
 
+// Converts StringRef to xla Transpose enum.
+static xla::TriangularSolveOptions::Transpose Convert_transpose_a(
+    llvm::StringRef transpose_str) {
+  xla::TriangularSolveOptions::Transpose transpose_enum;
+  // Illegal tanspose string would be caught by the verifier, so
+  // 'Transpose_Parse' call below should never return false.
+  if (!xla::TriangularSolveOptions::Transpose_Parse(transpose_str,
+                                                    &transpose_enum))
+    return xla::TriangularSolveOptions::NO_TRANSPOSE;
+  return transpose_enum;
+}
+
 #define I64_ELEMENTS_ATTR_TO_VECTOR(attribute)                \
   static std::vector<int64> Convert_##attribute(              \
       llvm::Optional<mlir::DenseIntElementsAttr> attribute) { \
@@ -532,6 +544,17 @@ LogicalResult ExportXlaOp(ConvertOp op, OpLoweringContext ctx) {
   return success();
 }
 
+LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
+  // XLA client builder API does not support generating custom call instructions
+  // with side effect.
+  if (op.has_side_effect()) return failure();
+  auto& value_map = *ctx.values;
+  value_map[op] = xla::CustomCall(
+      ctx.builder, op.call_target_name(), GetTuple(op.args(), ctx),
+      xla::TypeToShape(op.getType()), op.backend_config());
+  return success();
+}
+
 LogicalResult ExportXlaOp(InfeedOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   // The shape argument expected by the xla client API is the type of the first
@@ -546,6 +569,18 @@ LogicalResult ExportXlaOp(IotaOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   value_map[op] = xla::Iota(ctx.builder, xla::TypeToShape(op.getType()),
                             op.iota_dimension().getSExtValue());
+  return success();
+}
+
+LogicalResult ExportXlaOp(MapOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  xla::XlaComputation computation;
+  if (failed(ctx.converter->LowerRegionAsComputation(&op.computation(),
+                                                     &computation))) {
+    return failure();
+  }
+  value_map[op] = xla::Map(ctx.builder, GetTuple(op.operands(), ctx),
+                           computation, Convert_dimensions(op.dimensions()));
   return success();
 }
 
@@ -714,6 +749,12 @@ LogicalResult ExportXlaOp(SortOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   value_map[op] = xla::Sort(GetTuple(op.operands(), ctx), comparator,
                             op.dimension().getSExtValue(), op.is_stable());
+  return success();
+}
+
+LogicalResult ExportXlaOp(TraceOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  xla::Trace(op.tag(), value_map[op.operand()]);
   return success();
 }
 

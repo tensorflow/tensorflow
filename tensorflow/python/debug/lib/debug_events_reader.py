@@ -197,7 +197,7 @@ class BaseDigest(object):
   """Base class for digest.
 
   Properties:
-    wall_time: A timestamp for the digest (unit: s).
+    wall_time: A timestamp for the digest as a `float` (unit: s).
     offset: A offset number in the corresponding file that can be used for
       fast random read access.
   """
@@ -213,6 +213,9 @@ class BaseDigest(object):
   @property
   def offset(self):
     return self._offset
+
+  def to_json(self):
+    return {"wall_time": self.wall_time}
 
 
 class ExecutionDigest(BaseDigest):
@@ -238,7 +241,7 @@ class ExecutionDigest(BaseDigest):
                output_tensor_device_ids=None):
     super(ExecutionDigest, self).__init__(wall_time, offset)
     self._op_type = op_type
-    self._output_tensor_device_ids = output_tensor_device_ids
+    self._output_tensor_device_ids = _tuple_or_none(output_tensor_device_ids)
 
   @property
   def op_type(self):
@@ -248,7 +251,17 @@ class ExecutionDigest(BaseDigest):
   def output_tensor_device_ids(self):
     return self._output_tensor_device_ids
 
-  # TODO(cais): Implement to_json().
+  def to_json(self):
+    output = super(ExecutionDigest, self).to_json()
+    output.update({
+        "op_type": self.op_type,
+        "output_tensor_device_ids": self.output_tensor_device_ids,
+    })
+    return output
+
+
+def _tuple_or_none(data):
+  return tuple(data) if data else None
 
 
 class Execution(ExecutionDigest):
@@ -258,6 +271,7 @@ class Execution(ExecutionDigest):
   number of output tensors.
 
   Properties (beyond the base class `ExecutionDigest`):
+    host_name: Name of the host on which the execution happened.
     stack_frame_ids: Reference IDs for stack frames, ordered from bottommost to
       topmost. Use `DebugDataReader.read_execution_stack_trace()` to load the
       detailed stack frames (filepath, lineno and function name).
@@ -277,6 +291,7 @@ class Execution(ExecutionDigest):
 
   def __init__(self,
                execution_digest,
+               host_name,
                stack_frame_ids,
                tensor_debug_mode,
                graph_id=None,
@@ -288,12 +303,17 @@ class Execution(ExecutionDigest):
         execution_digest.offset,
         execution_digest.op_type,
         output_tensor_device_ids=execution_digest.output_tensor_device_ids)
-    self._stack_frame_ids = stack_frame_ids
+    self._host_name = host_name
+    self._stack_frame_ids = tuple(stack_frame_ids)
     self._tensor_debug_mode = tensor_debug_mode
     self._graph_id = graph_id
-    self._input_tensor_ids = input_tensor_ids
-    self._output_tensor_ids = output_tensor_ids
-    self._debug_tensor_values = debug_tensor_values
+    self._input_tensor_ids = _tuple_or_none(input_tensor_ids)
+    self._output_tensor_ids = _tuple_or_none(output_tensor_ids)
+    self._debug_tensor_values = _tuple_or_none(debug_tensor_values)
+
+  @property
+  def host_name(self):
+    return self._host_name
 
   @property
   def stack_frame_ids(self):
@@ -323,7 +343,18 @@ class Execution(ExecutionDigest):
   def debug_tensor_values(self):
     return self._debug_tensor_values
 
-  # TODO(cais): Implement to_json().
+  def to_json(self):
+    output = super(Execution, self).to_json()
+    output.update({
+        "host_name": self.host_name,
+        "stack_frame_ids": self.stack_frame_ids,
+        "tensor_debug_mode": self.tensor_debug_mode,
+        "graph_id": self.graph_id,
+        "input_tensor_ids": self.input_tensor_ids,
+        "output_tensor_ids": self.output_tensor_ids,
+        "debug_tensor_values": self.debug_tensor_values,
+    })
+    return output
 
 
 class DebuggedGraph(object):
@@ -452,8 +483,8 @@ class GraphOpCreationDigest(BaseDigest):
     self._graph_id = graph_id
     self._op_type = op_type
     self._op_name = op_name
-    self._output_tensor_ids = output_tensor_ids
-    self._input_names = input_names
+    self._output_tensor_ids = _tuple_or_none(output_tensor_ids)
+    self._input_names = _tuple_or_none(input_names)
     self._device_name = device_name
 
   @property
@@ -484,7 +515,17 @@ class GraphOpCreationDigest(BaseDigest):
   def device_name(self):
     return self._device_name
 
-  # TODO(cais): Implement to_json().
+  def to_json(self):
+    output = super(GraphOpCreationDigest, self).to_json()
+    output.update({
+        "graph_id": self.graph_id,
+        "op_type": self.op_type,
+        "op_name": self.op_name,
+        "output_tensor_ids": self.output_tensor_ids,
+        "input_names": self.input_names,
+        "device_name": self.device_name,
+    })
+    return output
 
 
 class GraphExecutionTraceDigest(BaseDigest):
@@ -497,6 +538,8 @@ class GraphExecutionTraceDigest(BaseDigest):
     op_type: Type name of the executed op (e.g., "Conv2D").
     op_name: Name of the op (e.g., "conv_2d_3/Conv2D").
     output_slot: Output slot index of the tensor.
+    graph_id: The debugger-generated ID of the innermost (immediately-enclosing)
+      graph.
   """
 
   def __init__(self,
@@ -504,11 +547,13 @@ class GraphExecutionTraceDigest(BaseDigest):
                offset,
                op_type,
                op_name,
-               output_slot):
+               output_slot,
+               graph_id):
     super(GraphExecutionTraceDigest, self).__init__(wall_time, offset)
     self._op_type = op_type
     self._op_name = op_name
     self._output_slot = output_slot
+    self._graph_id = graph_id
 
   @property
   def op_type(self):
@@ -522,7 +567,19 @@ class GraphExecutionTraceDigest(BaseDigest):
   def output_slot(self):
     return self._output_slot
 
-  # TODO(cais): Implement to_json().
+  @property
+  def graph_id(self):
+    return self._graph_id
+
+  def to_json(self):
+    output = super(GraphExecutionTraceDigest, self).to_json()
+    output.update({
+        "op_type": self.op_type,
+        "op_name": self.op_name,
+        "output_slot": self.output_slot,
+        "graph_id": self.graph_id,
+    })
+    return output
 
 
 class GraphExecutionTrace(GraphExecutionTraceDigest):
@@ -551,8 +608,9 @@ class GraphExecutionTrace(GraphExecutionTraceDigest):
         graph_execution_trace_digest.offset,
         graph_execution_trace_digest.op_type,
         graph_execution_trace_digest.op_name,
-        graph_execution_trace_digest.output_slot)
-    self._graph_ids = graph_ids
+        graph_execution_trace_digest.output_slot,
+        graph_execution_trace_digest.graph_id)
+    self._graph_ids = tuple(graph_ids)
     self._tensor_debug_mode = tensor_debug_mode
     self._debug_tensor_value = debug_tensor_value
     self._device_name = device_name
@@ -571,13 +629,21 @@ class GraphExecutionTrace(GraphExecutionTraceDigest):
 
   @property
   def debug_tensor_value(self):
-    return self._debug_tensor_value
+    return _tuple_or_none(self._debug_tensor_value)
 
   @property
   def device_name(self):
     return self._device_name
 
-  # TODO(cais): Implement to_json().
+  def to_json(self):
+    output = super(GraphExecutionTrace, self).to_json()
+    output.update({
+        "graph_ids": self.graph_ids,
+        "tensor_debug_mode": self.tensor_debug_mode,
+        "debug_tensor_value": self.debug_tensor_value,
+        "device_name": self.device_name,
+    })
+    return output
 
 
 def _parse_tensor_value(tensor_proto, return_list=False):
@@ -740,7 +806,8 @@ class DebugDataReader(object):
           offset,
           op_type,
           op_name,
-          trace_proto.output_slot)
+          trace_proto.output_slot,
+          debug_event.graph_execution_trace.tfdbg_context_id)
       self._graph_execution_trace_digests.append(digest)
 
   def _lookup_op_type(self, graph_id, op_name):
@@ -773,6 +840,14 @@ class DebugDataReader(object):
     self._load_graphs()
     self._load_graph_execution_traces()
     self._load_execution()
+
+  def source_file_list(self):
+    """Get a list of source files known to the debugger data reader.
+
+    Returns:
+      A tuple of `(host_name, file_path)` tuples.
+    """
+    return tuple(self._host_name_file_path_to_offset.keys())
 
   def source_lines(self, host_name, file_path):
     """Read the line-by-line content of a source file.
@@ -819,9 +894,10 @@ class DebugDataReader(object):
     """Get the name of a device by the debugger-generated ID of the device."""
     return self._device_by_id[device_id].device_name
 
-  def device_names(self):
-    """Get a set of all device names known to the debugger."""
-    return set(device.device_name for device in self._device_by_id.values())
+  def device_name_map(self):
+    """Get a map mapping device IDs to device names."""
+    return {device_id: self._device_by_id[device_id].device_name
+            for device_id in self._device_by_id}
 
   def graph_op_digests(self, op_type=None):
     """Get the list of the digests for graph-op creation so far.
@@ -904,13 +980,13 @@ class DebugDataReader(object):
             _parse_tensor_value(tensor_proto, return_list=True))
     return Execution(
         execution_digest,
+        execution_proto.code_location.host_name,
         tuple(execution_proto.code_location.stack_frame_ids),
         execution_proto.tensor_debug_mode,
         graph_id=execution_proto.graph_id,
         input_tensor_ids=tuple(execution_proto.input_tensor_ids),
         output_tensor_ids=tuple(execution_proto.output_tensor_ids),
-        debug_tensor_values=tuple(
-            debug_tensor_values) if debug_tensor_values else None)
+        debug_tensor_values=_tuple_or_none(debug_tensor_values))
 
   def read_graph_execution_trace(self, graph_execution_trace_digest):
     """Read the detailed graph execution trace.
@@ -955,9 +1031,8 @@ class DebugDataReader(object):
       execution: The Execution object of interest.
 
     Returns:
-      A tuple consisting of:
-        1. The host name.
-        2. The stack trace, as a list of (file_path, lineno, func) tuples.
+      1. The host name.
+      2. The stack trace, as a list of (file_path, lineno, func) tuples.
     """
     host_name = self._stack_frame_by_id[execution.stack_frame_ids[0]][0]
     return (host_name, [

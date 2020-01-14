@@ -359,6 +359,20 @@ func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
 // -----
 
 // CHECK:  HloModule
+func @main(%arg0: tensor<2x3xf32>, %arg1: tensor<5x5xf32>) -> tensor<1x2x3xf32> {
+  %0 = "xla_hlo.custom_call"(%arg0, %arg1) {backend_config = "bar", call_target_name = "foo"} : (tensor<2x3xf32>, tensor<5x5xf32>) -> tensor<1x2x3xf32>
+  return %0 : tensor<1x2x3xf32>
+}
+
+// CHECK:  ENTRY
+// CHECK:  [[VAL_1:%.*]] = f32[2,3] parameter(0)
+// CHECK:  [[VAL_2:%.*]] = f32[5,5] parameter(1)
+// CHECK:  ROOT
+// CHECK-SAME:  f32[1,2,3] custom-call(f32[2,3] [[VAL_1]], f32[5,5] [[VAL_2]]), custom_call_target="foo", backend_config="bar"
+
+// -----
+
+// CHECK:  HloModule
 func @main(%arg0: tensor<3x4xi32>, %arg1: tensor<4x5xi32>) -> tensor<3x5xi32> {
   // Simple einsum is lowered to HLO dot op.
   // CHECK:  dot(s32[3,4] %{{.*}}, s32[4,5] %{{.*}}), lhs_contracting_dims={1}, rhs_contracting_dims={0}
@@ -443,6 +457,31 @@ func @main() -> tensor<1x10xf32> {
 
 // CHECK:  ENTRY
 // CHECK:  ROOT %[[RESULT:.*]] = f32[1,10] iota(), iota_dimension=1
+
+// -----
+
+// CHECK:  HloModule
+func @main(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
+  %0 = "xla_hlo.map"(%arg0, %arg1) ( {
+    ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):       // no predecessors
+    %1 = xla_hlo.add %arg2, %arg3 {name = "add"} : tensor<f32>
+    "xla_hlo.return"(%1) : (tensor<f32>) -> ()
+  }) {dimensions = dense<0> : tensor<1xi64>} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+  return %0 : tensor<4xf32>
+}
+
+// CHECK:  [[COMPUTATION:%.*]] ({{.*}}: f32[], {{.*}}: f32[]) -> f32[] {
+// CHECK:  [[ARG_0:%.*]] = f32[] parameter(0)
+// CHECK:  [[ARG_1:%.*]] = f32[] parameter(1)
+// CHECK:  ROOT
+// CHECK-SAME:  f32[] add(f32[] [[ARG_0]], f32[] [[ARG_1]])
+// CHECK:  }
+
+// CHECK:  ENTRY
+// CHECK:  [[ARG_2:%.*]] = f32[4] parameter(0)
+// CHECK:  [[ARG_3:%.*]] = f32[4] parameter(1)
+// CHECK:  ROOT
+// CHECK-SAME:  f32[4] map(f32[4] [[ARG_2]], f32[4] [[ARG_3]]), dimensions={0}, to_apply=[[COMPUTATION]]
 
 // -----
 
@@ -774,6 +813,19 @@ func @main(%arg: tensor<3x4xi32>) -> tensor<1x2xi32> {
 // -----
 
 // CHECK:  HloModule
+func @main(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+  "xla_hlo.trace"(%arg0) {tag = "This is a random test"} : (tensor<2xi32>) -> ()
+  %0 = "xla_hlo.copy"(%arg0) : (tensor<2xi32>) -> tensor<2xi32>
+  return %0: tensor<2xi32>
+}
+
+// CHECK:  ENTRY
+// CHECK:  [[VAL_1:%.*]] = s32[2] parameter(0)
+// CHECK:  () trace(s32[2] [[VAL_1]])
+
+// -----
+
+// CHECK:  HloModule
 func @main(%arg0: tensor<1x2x3x4xi32>) -> tensor<2x1x4x3xi32> {
   // CHECK:  [[ARG:%.*]] = s32[1,2,3,4] parameter(0)
 
@@ -781,6 +833,19 @@ func @main(%arg0: tensor<1x2x3x4xi32>) -> tensor<2x1x4x3xi32> {
   %0 = "xla_hlo.transpose"(%arg0) {permutation = dense<[1, 0, 3, 2]> : tensor<4xi64>} : (tensor<1x2x3x4xi32>) -> tensor<2x1x4x3xi32>
   return %0 : tensor<2x1x4x3xi32>
 }
+
+// -----
+
+// CHECK:  HloModule
+func @main(%arg0: tensor<4x4xf32>, %arg1: tensor<4x3xf32>) -> tensor<4x3xf32> {
+  %0 = "xla_hlo.triangular_solve"(%arg0, %arg1) {left_side = true, lower = true, transpose_a = "NO_TRANSPOSE", unit_diagonal = true} : (tensor<4x4xf32>, tensor<4x3xf32>) -> tensor<4x3xf32>
+  return %0 : tensor<4x3xf32>
+}
+
+// CHECK:  [[ARG_A:%.*]] = f32[4,4] parameter(0)
+// CHECK:  [[ARG_B:%.*]] = f32[4,3] parameter(1)
+// CHECK:  ROOT
+// CHECK-SAME:  f32[4,3] triangular-solve(f32[4,4] [[ARG_A]], f32[4,3] [[ARG_B]]), left_side=true, lower=true, unit_diagonal=true, transpose_a=NO_TRANSPOSE
 
 // -----
 

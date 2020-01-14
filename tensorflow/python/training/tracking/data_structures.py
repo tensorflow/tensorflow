@@ -350,7 +350,7 @@ class List(TrackableDataStructure, collections_abc.Sequence):
     return self
 
   def __add__(self, other):
-    return self.__class__(self._storage + getattr(other, "_storage", other))
+    return self._storage + getattr(other, "_storage", other)
 
   def __imul__(self, y):
     if y <= 0:
@@ -366,13 +366,13 @@ class List(TrackableDataStructure, collections_abc.Sequence):
     return self
 
   def __mul__(self, n):
-    return self.__class__(self._storage * n)
+    return self._storage * n
 
   def __rmul__(self, n):
     return self * n
 
   def __radd__(self, other):
-    return self.__class__(other) + self
+    return other + self._storage
 
   def __getitem__(self, key):
     return self._storage[key]

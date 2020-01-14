@@ -262,9 +262,9 @@ def AreBroadcastableTypes : Constraint<CPred<
   "TFL::IsBroadcastableElementsAttrAndType($0.getType(), $1.getType())">>;
 
 def IsTailOfShape : Constraint<CPred<
-  "TFL::IsTailOfShape($0->getType(), $1->getType())">>;
+  "TFL::IsTailOfShape($0.getType(), $1.getType())">>;
 
-def HaveSameType : Constraint<CPred<"$0->getType(), $1->getType()">>;
+def HaveSameType : Constraint<CPred<"$0.getType(), $1.getType()">>;
 
 // Pattern for skipping Tile if it is mainly for broadcasting and the
 // Op is already supporting broadcasting.
