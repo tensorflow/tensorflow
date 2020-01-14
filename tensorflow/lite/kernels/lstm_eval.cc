@@ -100,6 +100,7 @@ inline float GetTensorScale(const TfLiteTensor* tensor) {
 // for bidirectional LSTMs with merge_outputs. In this case, the batched
 // operations cannot be used since they assume that the batched outputs are
 // contiguous, and we manually loop over the batched outputs.
+// LINT.IfChange
 inline void LstmStepFloat(
     const float* input_ptr, const float* input_to_input_weights_ptr,
     const float* input_to_forget_weights_ptr,
@@ -346,6 +347,7 @@ inline void LstmStepFloat(
                 output_state_ptr + b * n_output);
   }
 }
+// LINT.ThenChange(//tensorflow/lite/tools/optimize/calibration/builtin_logging_ops/lstm.cc)
 
 // Same as above but with quantized weight matrices. In detail:
 // Input of size 'n_batch * n_input':
@@ -1119,6 +1121,7 @@ inline void LstmStepInteger(
 
 }  // namespace
 
+// LINT.IfChange
 TfLiteStatus EvalFloat(
     const TfLiteTensor* input, const TfLiteTensor* input_to_input_weights,
     const TfLiteTensor* input_to_forget_weights,
@@ -1299,6 +1302,7 @@ TfLiteStatus EvalFloat(
   }
   return kTfLiteOk;
 }
+// LINT.ThenChange(//tensorflow/lite/tools/optimize/calibration/builtin_logging_ops/lstm.cc)
 
 TfLiteStatus EvalHybrid(
     const TfLiteTensor* input, const TfLiteTensor* input_to_input_weights,
