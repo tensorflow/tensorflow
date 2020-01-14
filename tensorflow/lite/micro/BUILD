@@ -17,6 +17,7 @@ cc_library(
     hdrs = [
         "compatibility.h",
     ],
+    build_for_embedded = True,
 )
 
 cc_library(
