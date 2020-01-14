@@ -66,9 +66,9 @@ EOF
   # Run bazel test command. Double test timeouts to avoid flakes.
   # //tensorflow/core:platform_setround_test is not supported. See b/64264700
   "${BAZEL_WRAPPER_PATH}" \
-    --incompatible_list_based_execution_strategy_selection \
     --host_jvm_args=-Dbazel.DigestFunction=SHA256 \
     test \
+    --incompatible_list_based_execution_strategy_selection \
     --test_output=all \
     tensorflow/tools/ci_build:${SANITY_OUT_TARGET}
 
