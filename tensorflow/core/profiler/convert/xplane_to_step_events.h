@@ -27,8 +27,7 @@ namespace profiler {
 // use_device_step_events is true, we will filter out events that only happens
 // on CPU.
 StepEvents ConvertHostThreadsXLineToStepEvents(
-    const XLineVisitor& line, int64 correlation_id_stat_id,
-    int64 group_id_stat_id, bool use_device_step_events,
+    const XLineVisitor& line, bool use_device_step_events,
     const StepEvents& device_step_events);
 
 // Convert the host threads in XPlane format to StepEvents format. If
@@ -39,9 +38,7 @@ StepEvents ConvertHostThreadsXPlaneToStepEvents(
     const StepEvents& device_step_events);
 
 // Convert the device trace in XLine format to StepEvents.
-StepEvents ConvertDeviceTraceXLineToStepEvents(const XLineVisitor& line,
-                                               int64 correlation_id_stat_id,
-                                               int64 group_id_stat_id);
+StepEvents ConvertDeviceTraceXLineToStepEvents(const XLineVisitor& line);
 
 // Convert the device trace in XPlane format to StepEvents.
 StepEvents ConvertDeviceTraceXPlaneToStepEvents(const XPlane& device_trace);
