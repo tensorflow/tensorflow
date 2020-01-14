@@ -3,6 +3,7 @@
 This example shows how you can use Tensorflow Lite to run a 250 kilobyte neural
 network to recognize people in images captured by a camera.  It is designed to
 run on systems with small amounts of memory such as microcontrollers and DSPs.
+This uses the experimental int8 quantized version of the person detection model.
 
 ## Table of contents
 -   [Getting started](#getting-started)
@@ -43,7 +44,7 @@ Connect the Arducam pins as follows:
 ### Install the Arduino_TensorFlowLite library
 
 Download the current nightly build of the library:
-[person_detection.zip](https://storage.googleapis.com/tensorflow-nightly/github/tensorflow/tensorflow/lite/micro/tools/make/gen/arduino_x86_64/prj/person_detection/tensorflow_lite.zip)
+[person_detection.zip](https://storage.googleapis.com/download.tensorflow.org/data/tf_lite_micro_person_data_int8_grayscale_2020_01_13.zip)
 
 This example application is included as part of the official TensorFlow Lite
 Arduino library. To install it, open the Arduino library manager in
