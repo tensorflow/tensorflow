@@ -159,6 +159,14 @@ cc_library(
 )
 
 cc_library(
+    name = "casts",
+    hdrs = ["casts.h"],
+    deps = [
+        ":platform",
+    ] + tf_platform_deps("casts"),
+)
+
+cc_library(
     name = "cuda",
     hdrs = ["cuda.h"],
     deps = [
@@ -1060,6 +1068,7 @@ filegroup(
     name = "lib_hdrs",
     srcs = [
         "abi.h",
+        "casts.h",
         "context.h",
         "cpu_feature_guard.h",
         "cpu_info.h",
@@ -1254,6 +1263,7 @@ filegroup(
         "//tensorflow/core/platform:base64.h",
         "//tensorflow/core/platform:blocking_counter.h",
         "//tensorflow/core/platform:byte_order.h",
+        "//tensorflow/core/platform:casts.h",
         "//tensorflow/core/platform:coding.cc",
         "//tensorflow/core/platform:coding.h",
         "//tensorflow/core/platform:context.h",
@@ -1360,6 +1370,7 @@ filegroup(
     name = "legacy_srcs_no_runtime",
     srcs = [
         ":legacy_srcs_common",
+        "//tensorflow/core/platform/default:casts.h",
         "//tensorflow/core/platform/default:context.h",
         "//tensorflow/core/platform/default:cord.h",
         "//tensorflow/core/platform/default:dynamic_annotations.h",

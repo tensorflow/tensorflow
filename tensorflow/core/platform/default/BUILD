@@ -10,6 +10,16 @@ package(
 )
 
 cc_library(
+    name = "casts",
+    hdrs = ["casts.h"],
+    tags = [
+        "manual",
+        "no_oss",
+        "nobuilder",
+    ],
+)
+
+cc_library(
     name = "context",
     hdrs = ["//tensorflow/core/platform:context.h"],
     tags = [

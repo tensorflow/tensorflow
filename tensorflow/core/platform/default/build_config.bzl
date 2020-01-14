@@ -541,6 +541,7 @@ def tf_proto_library(
 
 def tf_additional_lib_hdrs():
     return [
+        "//tensorflow/core/platform/default:casts.h",
         "//tensorflow/core/platform/default:context.h",
         "//tensorflow/core/platform/default:cord.h",
         "//tensorflow/core/platform/default:dynamic_annotations.h",
