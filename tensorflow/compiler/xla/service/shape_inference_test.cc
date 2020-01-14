@@ -1173,6 +1173,18 @@ TEST_F(ShapeInferenceTest, UnchangedDimension) {
             status.ValueOrDie());
 }
 
+TEST_F(ShapeInferenceTest, InferDynamicBroadcast) {
+  // CHECK:
+  // %broadcast = s32[15,<=15]{1,0} broadcast(s32[<=15]{0}), dimensions={1}
+
+  auto operand_shape = ShapeUtil::MakeShape(F32, {15}, {true});
+  auto inferred_status =
+      ShapeInference::InferBroadcastShape(operand_shape, {15});
+  ASSERT_IS_OK(inferred_status.status());
+  Shape inferred = inferred_status.ValueOrDie();
+  ASSERT_EQ(ShapeUtil::MakeShape(F32, {15, 15}, {false, true}), inferred);
+}
+
 TEST_F(ShapeInferenceTest, BroadcastScalar) {
   for (auto element_type : {F32, U32, S8}) {
     const Shape scalar_shape = ShapeUtil::MakeShape(element_type, {});
