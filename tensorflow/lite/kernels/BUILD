@@ -481,6 +481,7 @@ cc_library(
         "reverse_sequence.cc",
         "round.cc",
         "scatter_nd.cc",
+        "segment_sum.cc",
         "select.cc",
         "shape.cc",
         "skip_gram.cc",
@@ -588,6 +589,7 @@ cc_library(
         ":op_macros",
         "//tensorflow/lite:context",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/experimental/kernels:hashtable_op_kernels",
         "//tensorflow/lite/kernels/internal:kernel_utils",
         "//tensorflow/lite/kernels/internal:tensor",
         "//third_party/fft2d:fft2d_headers",
@@ -2051,6 +2053,18 @@ cc_test(
     deps = [
         ":builtin_ops",
         ":kernel_util",
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite:framework",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "segment_sum_test",
+    srcs = ["segment_sum_test.cc"],
+    deps = [
+        ":builtin_ops",
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework",

@@ -239,6 +239,69 @@ class LowerDynamicStitchOp : public OpRewritePattern<TF::DynamicStitchOp> {
   }
 };
 
+// Lowers InvertPermutation op to TensorScatterUpdate op.
+//
+// Example:
+//
+//   %x = "tf.Const"() {value = dense<[3, 4, 0, 1, 2]> : tensor<5xi32>}
+//   "tf.InvertPermutation"(%x) : (tensor<5xi32>) -> tensor<5xi32>
+//
+// is lowered to
+//
+//   %x = "tf.Const"() {value = dense<[3, 4, 0, 1, 2]> : tensor<5xi32>}
+//   %start = "tf.Const"() {value = dense<0> : tensor<i32>}
+//   %limit = "tf.Const"() {value = dense<5> : tensor<i32>}
+//   %delta = "tf.Const"() {value = dense<1> : tensor<i32>}
+//   %updates = "tf.Range"(%start, %limit, %delta) :
+//     (tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<5xi32>
+//   %perm = "tf.Const"() {value = dense<[1, 0]> : tensor<2xi32>}
+//   %indices = "tf.Transpose"(%x, %perm) : (tensor<5xi32, tensor<2xi32) ->
+//     tensor<5x1xi32>
+//   "tf.TensorScatterUpdate"(%x, %indices, %updates) :
+//     (tensor<5xi32>, tensor<5x1xi32>, tensor<5xi32>) -> tensor<5xi32>
+//
+class LowerInvertPermutationOp
+    : public OpRewritePattern<TF::InvertPermutationOp> {
+ public:
+  explicit LowerInvertPermutationOp(MLIRContext *context)
+      : OpRewritePattern<TF::InvertPermutationOp>(context) {}
+
+  PatternMatchResult matchAndRewrite(TF::InvertPermutationOp op,
+                                     PatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    auto x_type = op.x().getType().cast<TensorType>();
+    Type int_type = x_type.getElementType();  // Could be i32 or i64.
+
+    // x input must have static shape.
+    if (!x_type.hasStaticShape()) {
+      return matchFailure();
+    }
+
+    auto result_type = x_type;
+    auto start =
+        rewriter.create<TF::ConstOp>(loc, GetScalarOfType(int_type, 0));
+    Value limit = rewriter.create<TF::ConstOp>(
+        loc, GetScalarOfType(int_type, x_type.getShape()[0]));
+    auto delta =
+        rewriter.create<TF::ConstOp>(loc, GetScalarOfType(int_type, 1));
+    // Construct a sequence of numbers [0, 1, ... len(x)-1].
+    auto updates =
+        rewriter.create<TF::RangeOp>(loc, result_type, start, limit, delta);
+
+    auto perm_type = RankedTensorType::get({2}, int_type);
+    auto perm = rewriter.create<TF::ConstOp>(
+        loc, DenseElementsAttr::get(perm_type, {1, 0}));
+    auto transposed_x_type =
+        RankedTensorType::get({x_type.getShape()[0], 1}, int_type);
+    auto indices =
+        rewriter.create<TF::TransposeOp>(loc, transposed_x_type, op.x(), perm);
+
+    rewriter.replaceOpWithNewOp<TF::TensorScatterUpdateOp>(
+        op, result_type, op.x(), indices, updates);
+    return matchSuccess();
+  }
+};
+
 // Lowers Pack op to ConcatV2 op after changing shape of the inputs with
 // ExpandDims op.
 //
@@ -289,7 +352,8 @@ class LowerPackOp : public OpRewritePattern<TF::PackOp> {
 
 void PopulateLoweringTFPatterns(MLIRContext *context,
                                 OwningRewritePatternList *patterns) {
-  patterns->insert<LowerAddNOp, LowerDynamicStitchOp, LowerPackOp>(context);
+  patterns->insert<LowerAddNOp, LowerDynamicStitchOp, LowerInvertPermutationOp,
+                   LowerPackOp>(context);
   populateWithGenerated(context, patterns);
 }
 

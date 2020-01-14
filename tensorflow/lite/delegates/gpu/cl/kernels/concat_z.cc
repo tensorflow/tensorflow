@@ -47,11 +47,12 @@ std::string GetConcatKernelCode(
   for (int i = 0; i < channels.size(); ++i) {
     const std::string tensor_name = "src_data_" + std::to_string(i);
     srcs[i] = TensorCodeGenerator(
-        tensor_name, {"dst_size.x", "dst_size.y", GetSrcDepthSizeVar(i)},
+        tensor_name,
+        WHSPoint{"dst_size.x", "dst_size.y", GetSrcDepthSizeVar(i)},
         op_def.src_tensors[i]);
   }
   TensorCodeGenerator dst("dst_data",
-                          {"dst_size.x", "dst_size.y", "dst_size.z"},
+                          WHSPoint{"dst_size.x", "dst_size.y", "dst_size.z"},
                           op_def.dst_tensors[0]);
 
   std::string c = GetCommonDefines(op_def.precision);
@@ -83,24 +84,24 @@ std::string GetConcatKernelCode(
         // We can read more at once inside of loop in case depth % 2 == 0
         // it should be better for reading latency hiding
         c += "  for (int i = 0; i < " + GetSrcDepthSizeVar(i) + "; i += 2) {\n";
-        c += "    FLT4 result0 = " + srcs[i].Read3D("X", "Y", "i") + ";\n";
-        c += "    FLT4 result1 = " + srcs[i].Read3D("X", "Y", "i + 1") + ";\n";
-        c += "    " + dst.GetAddress("dst_adr0", "X", "Y", "Z") + "\n";
-        c += "    " + dst.GetAddress("dst_adr1", "X", "Y", "Z + 1") + "\n";
+        c += "    FLT4 result0 = " + srcs[i].ReadWHS("X", "Y", "i") + ";\n";
+        c += "    FLT4 result1 = " + srcs[i].ReadWHS("X", "Y", "i + 1") + ";\n";
+        c += "    " + dst.GetAddressWHS("dst_adr0", "X", "Y", "Z") + "\n";
+        c += "    " + dst.GetAddressWHS("dst_adr1", "X", "Y", "Z + 1") + "\n";
         const LinkingContext context_0{"result0", "X", "Y", "Z"};
         const LinkingContext context_1{"result1", "X", "Y", "Z + 1"};
         c += PostProcess(linked_operations, context_0);
         c += PostProcess(linked_operations, context_1);
-        c += "    " + dst.Write3D("result0", "X", "Y", "Z");
-        c += "    " + dst.Write3D("result1", "X", "Y", "Z + 1");
+        c += "    " + dst.WriteWHS("result0", "X", "Y", "Z");
+        c += "    " + dst.WriteWHS("result1", "X", "Y", "Z + 1");
         c += "    Z += 2;\n";
         c += "  }\n";
       } else {
         c += "  for (int i = 0; i < " + GetSrcDepthSizeVar(i) + "; ++i) {\n";
-        c += "    FLT4 result = " + srcs[i].Read3D("X", "Y", "i") + ";\n";
+        c += "    FLT4 result = " + srcs[i].ReadWHS("X", "Y", "i") + ";\n";
         const LinkingContext context{"result", "X", "Y", "Z"};
         c += PostProcess(linked_operations, context);
-        c += "    " + dst.Write3D("result", "X", "Y", "Z");
+        c += "    " + dst.WriteWHS("result", "X", "Y", "Z");
         c += "    Z++;\n";
         c += "  }\n";
       }
@@ -116,7 +117,7 @@ std::string GetConcatKernelCode(
         const int channels_in_group = std::min(4, channels[i] - d * 4);
         const std::string temp_name = "t" + std::to_string(read_index);
         c += "  FLT4 " + temp_name + " = ";
-        c += srcs[i].Read3D("X", "Y", std::to_string(d)) + ";\n";
+        c += srcs[i].ReadWHS("X", "Y", std::to_string(d)) + ";\n";
         for (int ch = 0; ch < channels_in_group; ++ch) {
           c += "  result" + postfix[out_channel] + " = ";
           c += temp_name + postfix[ch] + ";\n";
@@ -126,7 +127,7 @@ std::string GetConcatKernelCode(
             c += "  {\n";
             const LinkingContext context{"result", "X", "Y", std::to_string(z)};
             c += PostProcess(linked_operations, context);
-            c += "  " + dst.Write3D("result", "X", "Y", std::to_string(z));
+            c += "  " + dst.WriteWHS("result", "X", "Y", std::to_string(z));
             c += "  }\n";
             z++;
           }
@@ -138,7 +139,7 @@ std::string GetConcatKernelCode(
       c += "  {\n";
       const LinkingContext context{"result", "X", "Y", std::to_string(z)};
       c += PostProcess(linked_operations, context);
-      c += "  " + dst.Write3D("result", "X", "Y", std::to_string(z));
+      c += "  " + dst.WriteWHS("result", "X", "Y", std::to_string(z));
       c += "  }\n";
     }
   }

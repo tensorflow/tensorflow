@@ -21,10 +21,6 @@ load("//tensorflow:tensorflow.bzl", "if_nccl")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
 load(
-    "//tensorflow/core/platform/default:cuda_build_defs.bzl",
-    "if_cuda_is_configured",
-)
-load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_kernel_tests_linkstatic",
 )
@@ -243,7 +239,13 @@ tf_cuda_cc_test(
     name = "collective_nccl_test",
     size = "small",
     srcs = ["collective_nccl_test.cc"],
-    tags = tf_cuda_tests_tags() + ["no_cuda_on_cpu_tap"],
+    tags = tf_cuda_tests_tags() + [
+        "guitar",
+        "manual",
+        "multi_gpu",
+        "no_oss",
+        "notap",
+    ],
     deps = [
         "//tensorflow/core:all_kernels",
         "//tensorflow/core:core_cpu",
@@ -522,7 +524,7 @@ cc_library(
 
 tf_cuda_library(
     name = "gpu_utils",
-    srcs = if_cuda_is_configured(["gpu_utils.cc"]),
+    srcs = if_cuda_or_rocm(["gpu_utils.cc"]),
     hdrs = ["gpu_utils.h"],
     deps = [
         ":gpu_util_hdrs",
@@ -6472,6 +6474,7 @@ filegroup(
         "cwise_op_tan.cc",
         "cwise_op_tanh.cc",
         "cwise_op_xlogy.cc",
+        "cwise_op_xlog1py.cc",
         "cwise_op_xdivy.cc",
         "data_format_ops.cc",
         "decode_wav_op.cc",
@@ -8253,11 +8256,13 @@ exports_files([
     "cwise_op_gpu_greater_equal.cu.cc",
     "cwise_op_gpu_less.cu.cc",
     "cwise_op_gpu_less_equal.cu.cc",
+    "cwise_op_gpu_logical_and.cu.cc",
     "cwise_op_gpu_logical_not.cu.cc",
     "cwise_op_gpu_maximum.cu.cc",
     "cwise_op_gpu_minimum.cu.cc",
     "cwise_op_gpu_mul.cu.cc",
     "cwise_op_gpu_neg.cu.cc",
+    "cwise_op_gpu_not_equal_to.cu.cc",
     "cwise_op_gpu_round.cu.cc",
     "cwise_op_gpu_rsqrt.cu.cc",
     "cwise_op_gpu_select.cu.cc",
@@ -8271,12 +8276,14 @@ exports_files([
     "cwise_op_greater_equal.cc",
     "cwise_op_less.cc",
     "cwise_op_less_equal.cc",
+    "cwise_op_logical_and.cc",
     "cwise_op_logical_not.cc",
     "cwise_op_maximum.cc",
     "cwise_op_minimum.cc",
     "cwise_op_mul_1.cc",
     "cwise_op_mul_2.cc",
     "cwise_op_neg.cc",
+    "cwise_op_not_equal_to_1.cc",
     "cwise_op_not_equal_to_2.cc",
     "cwise_op_round.cc",
     "cwise_op_rsqrt.cc",

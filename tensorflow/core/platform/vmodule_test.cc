@@ -16,11 +16,18 @@ limitations under the License.
 // Test that popens a child process with the VLOG-ing environment variable set
 // for the logging framework, and observes VLOG_IS_ON and VLOG macro output.
 
+#include <stdio.h>
+#include <string.h>
+
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/test.h"
 
-#include <string.h>
+// Make sure popen and pclose ara available on windows.
+#ifdef PLATFORM_WINDOWS
+#define popen _popen
+#define pclose _pclose
+#endif
 
 namespace tensorflow {
 namespace {

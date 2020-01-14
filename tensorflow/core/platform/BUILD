@@ -7,13 +7,20 @@
 #
 #   The libraries in this package are not allowed to have ANY dependencies
 #   to any TensorFlow code outside this package.
-load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
+load(
+    "//tensorflow/core/platform:build_config_root.bzl",
+    "if_static",
+    "tf_gpu_tests_tags",
+)
 load(
     "//tensorflow/core/platform:build_config.bzl",
+    "tf_additional_env_hdrs",
     "tf_additional_lib_hdrs",
+    "tf_additional_monitoring_hdrs",
     "tf_additional_tensor_coding_deps",
     "tf_additional_test_srcs",
     "tf_fingerprint_deps",
+    "tf_kernel_tests_linkstatic",
     "tf_legacy_srcs_no_runtime_google",
     "tf_logging_deps",
     "tf_monitoring_deps",
@@ -26,7 +33,10 @@ load(
 load(
     "//tensorflow:tensorflow.bzl",
     "if_not_android",
+    "tf_cc_test",
+    "tf_cc_tests",
     "tf_copts",  # @unused
+    "tf_cuda_library",
 )
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
@@ -34,11 +44,50 @@ load(
 )
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
+
 package(
     default_visibility = [
         "//tensorflow:__subpackages__",
     ],
     licenses = ["notice"],  # Apache 2.0
+)
+
+exports_files(
+    [
+        "context.h",
+        "cpu_info.cc",
+        "cpu_info.h",
+        "cuda_libdevice_path.h",
+        "demangle.h",
+        "env.cc",
+        "env.h",
+        "env_time.h",
+        "file_system.cc",
+        "file_system.h",
+        "file_system_helper.cc",
+        "file_system_helper.h",
+        "host_info.h",
+        "human_readable_json.h",
+        "init_main.h",
+        "load_library.h",
+        "logging.h",
+        "mem.h",
+        "monitoring.h",
+        "mutex.h",
+        "net.h",
+        "numa.h",
+        "snappy.h",
+        "stacktrace_handler.h",
+        "subprocess.h",
+        "test.h",
+        "threadpool.cc",
+        "threadpool.h",
+        "tracing.cc",
+        "tracing.h",
+    ],
+    visibility = ["//tensorflow:__subpackages__"],
 )
 
 cc_library(
@@ -720,6 +769,260 @@ cc_binary(
     ] + if_not_android([":rocm_rocdl_path"]),
 )
 
+tf_cuda_library(
+    name = "stream_executor",
+    srcs = ["stream_executor.h"],
+    hdrs = [
+        "cuda.h",
+        "rocm.h",
+        "stream_executor.h",
+    ],
+    features = ["-parse_headers"],
+    visibility = ["//tensorflow/core:__pkg__"],
+    deps = [
+        "//tensorflow/core/platform/default/build_config:stream_executor",
+    ],
+)
+
+# Like stream_executor library, but compiles without --config=cuda
+# and does not include any cuda dependencies.
+cc_library(
+    name = "stream_executor_no_cuda",
+    srcs = ["stream_executor.h"],
+    hdrs = [
+        "stream_executor_no_cuda.h",
+    ],
+    features = ["-parse_headers"],
+    visibility = ["//tensorflow/core:__pkg__"],
+    deps = [
+        "//tensorflow/core/platform/default/build_config:stream_executor_no_cuda",
+    ],
+)
+
+cc_library(
+    name = "test_main",
+    testonly = 1,
+    srcs = ["test_main.cc"],
+    copts = tf_copts(),
+    linkopts = select({
+        "//tensorflow:windows": [],
+        "//conditions:default": ["-lm"],
+    }),
+    visibility = ["//tensorflow/core:__pkg__"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",  # buildcleaner: keep
+        "//tensorflow/core/platform/default/build_config:test_main",
+    ],
+    alwayslink = 1,
+)
+
+tf_cc_tests(
+    name = "low_level_library_tests",
+    size = "small",
+    srcs = [
+        "fingerprint_test.cc",
+        "integral_types_test.cc",
+        "logging_test.cc",
+        "mutex_test.cc",
+        "net_test.cc",
+        "port_test.cc",
+        "profile_utils/cpu_utils_test.cc",
+        "scanner_test.cc",
+        "stacktrace_handler_test.cc",
+        "stacktrace_test.cc",
+        "str_util_test.cc",
+        "strcat_test.cc",
+        "stringpiece_test.cc",
+        "stringprintf_test.cc",
+        "subprocess_test.cc",
+        "vmodule_benchmark_test.cc",
+    ],
+    create_named_test_suite = True,
+    deps = [
+        ":scanner",
+        ":str_util",
+        ":strcat",
+        ":stringpiece",
+        ":stringprintf",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:lib_test_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//third_party/eigen3",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:optional",
+        "@zlib_archive//:zlib",
+    ],
+)
+
+tf_cc_test(
+    name = "platform_strings_test",
+    size = "small",
+    srcs = ["platform_strings_test.cc"],
+    features = ["-dynamic_link_test_srcs"],  # see go/dynamic_link_test_srcs
+    deps = [
+        "platform_strings",
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "env_test",
+    size = "small",
+    srcs = ["env_test.cc"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:lib_test_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_cc_test(
+    name = "fake_python_env_test",
+    size = "small",
+    srcs = ["fake_python_env_test.cc"],
+    args = [
+        "/some/path/to/pythontest.runfiles/org_tensorflow/stuff/to/run.py",
+    ],
+    tags = [
+        "local",
+        "no_gpu",
+        "no_windows",
+        "nomac",
+        "notap",
+    ],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:lib_test_internal",
+        "//tensorflow/core:test",
+    ],
+)
+
+tf_cc_test(
+    name = "abi_test",
+    size = "small",
+    srcs = ["abi_test.cc"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:lib_test_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_cc_test(
+    name = "numa_test",
+    size = "small",
+    srcs = ["numa_test.cc"],
+    tags = [
+        # This test will not pass unless it has access to all NUMA nodes
+        # on the executing machine.
+        "manual",
+        "notap",
+    ],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:lib_test_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_cc_test(
+    name = "setround_test",
+    size = "small",
+    srcs = ["setround_test.cc"],
+    tags = [
+        "noasan",
+        "noclang",
+        "nomsan",
+        "notsan",
+    ],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:lib_test_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "file_system_test",
+    size = "small",
+    srcs = ["file_system_test.cc"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:lib_test_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "unbounded_work_queue_test",
+    srcs = ["unbounded_work_queue_test.cc"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:lib_test_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/memory",
+    ],
+)
+
+tf_cc_test(
+    name = "vmodule_test",
+    srcs = ["vmodule_test.cc"],
+    tags = ["optonly"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:lib_test_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//third_party/eigen3",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test_gpu(
+    name = "rocm_rocdl_path_test",
+    size = "small",
+    srcs = ["rocm_rocdl_path_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tags = tf_gpu_tests_tags(),
+    deps = [
+        ":rocm_rocdl_path",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
 # --------------------------------------------------------------------------
 #     Below libraries are here only to make sure the legacy build rules
 #     in tensorflow/core/BUILD are working!
@@ -731,6 +1034,207 @@ cc_binary(
 filegroup(
     name = "legacy_platform_lib_hdrs",
     srcs = tf_additional_lib_hdrs(),
+    visibility = ["//tensorflow/core:__pkg__"],
+)
+
+# Header files for tensorflow/core:platform_base.
+filegroup(
+    name = "base_hdrs",
+    srcs = [
+        "byte_order.h",
+        "cord.h",
+        "env_time.h",
+        "logging.h",
+        "macros.h",
+        "platform_strings.h",
+        "threadpool.h",
+        "threadpool_interface.h",
+        "threadpool_options.h",
+        "tstring.h",
+        "types.h",
+    ],
+    visibility = ["//tensorflow/core:__pkg__"],
+)
+
+filegroup(
+    name = "lib_hdrs",
+    srcs = [
+        "abi.h",
+        "context.h",
+        "cpu_feature_guard.h",
+        "cpu_info.h",
+        "dynamic_annotations.h",
+        "env.h",
+        "error.h",
+        "file_statistics.h",
+        "file_system.h",
+        "file_system_helper.h",
+        "fingerprint.h",
+        "init_main.h",
+        "logger.h",
+        "mem.h",
+        "monitoring.h",
+        "mutex.h",
+        "net.h",
+        "notification.h",
+        "null_file_system.h",
+        "numa.h",
+        "path.h",
+        "prefetch.h",
+        "profile_utils/android_armv7a_cpu_utils_helper.h",
+        "profile_utils/clock_cycle_profiler.h",
+        "profile_utils/cpu_utils.h",
+        "profile_utils/i_cpu_utils_helper.h",
+        "protobuf.h",
+        "stacktrace.h",
+        "stacktrace_handler.h",
+        "status.h",
+        "str_util.h",
+        "strcat.h",
+        "stringpiece.h",
+        "stringprintf.h",
+        "strong_hash.h",
+        "subprocess.h",
+        "thread_annotations.h",
+        ":base_hdrs",
+    ] + tf_additional_monitoring_hdrs() + tf_additional_env_hdrs(),
+    visibility = ["//tensorflow/core:__pkg__"],
+)
+
+filegroup(
+    name = "lib_proto_parsing_hdrs",
+    srcs = [
+        "init_main.h",
+        "logging.h",
+        "macros.h",
+        "platform.h",
+        "protobuf.h",
+        "stringpiece.h",
+        "tstring.h",
+        "types.h",
+    ],
+    visibility = ["//tensorflow/core:__pkg__"],
+)
+
+filegroup(
+    name = "test_hdrs",
+    srcs = [
+        "test.h",
+        "test_benchmark.h",
+    ],
+    visibility = ["//tensorflow/core:__pkg__"],
+)
+
+filegroup(
+    name = "android_test_srcs",
+    srcs = [
+        "test.h",
+    ],
+    visibility = ["//tensorflow/core:__pkg__"],
+)
+
+filegroup(
+    name = "framework_lite_hdrs",
+    srcs = [
+        "byte_order.h",
+        "cpu_info.h",
+        "dynamic_annotations.h",
+        "macros.h",
+        "mutex.h",
+        "platform.h",
+        "prefetch.h",
+        "protobuf.h",
+        "thread_annotations.h",
+        "tstring.h",
+        "types.h",
+    ],
+    visibility = ["//tensorflow/core:__pkg__"],
+)
+
+filegroup(
+    name = "lib_internal_private_hdrs",
+    srcs = [
+        "raw_coding.h",
+        "scanner.h",
+        "str_util.h",
+    ],
+    visibility = ["//tensorflow/core:__pkg__"],
+)
+
+filegroup(
+    name = "lib_internal_public_hdrs",
+    srcs = [
+        "blocking_counter.h",
+        "demangle.h",
+        "denormal.h",
+        "host_info.h",
+        "monitoring.h",
+        "platform.h",
+        "protobuf_internal.h",
+        "refcount.h",
+        "setround.h",
+        "snappy.h",
+        "tensor_coding.h",
+        "tracing.h",
+        "unbounded_work_queue.h",
+    ],
+    visibility = ["//tensorflow/core:__pkg__"],
+)
+
+filegroup(
+    name = "jpeg_hdrs",
+    srcs = [
+        "jpeg.h",
+    ],
+    visibility = ["//tensorflow/core:__pkg__"],
+)
+
+filegroup(
+    name = "gif_hdrs",
+    srcs = [
+        "gif.h",
+    ],
+    visibility = ["//tensorflow/core:__pkg__"],
+)
+
+filegroup(
+    name = "tflite_portable_logging_hdrs",
+    srcs = [
+        "logging.h",
+        "macros.h",
+        "platform.h",
+        "tstring.h",
+        "types.h",
+    ],
+    visibility = ["//tensorflow/core:__pkg__"],
+)
+
+filegroup(
+    name = "jpeg_internal_hdrs",
+    srcs = [
+        "dynamic_annotations.h",
+        "logging.h",
+        "macros.h",
+        "mem.h",
+        "platform.h",
+        "stringpiece.h",
+        "tstring.h",
+        "types.h",
+    ],
+    visibility = ["//tensorflow/core:__pkg__"],
+)
+
+filegroup(
+    name = "gif_internal_hdrs",
+    srcs = [
+        "dynamic_annotations.h",
+        "logging.h",
+        "macros.h",
+        "mem.h",
+        "platform.h",
+        "tstring.h",
+        "types.h",
+    ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
 
@@ -920,9 +1424,9 @@ filegroup(
 filegroup(
     name = "legacy_lib_internal_srcs",
     srcs = [
-        "//tensorflow/core/platform:profile_utils/android_armv7a_cpu_utils_helper.cc",
-        "//tensorflow/core/platform:profile_utils/clock_cycle_profiler.cc",
-        "//tensorflow/core/platform:profile_utils/cpu_utils.cc",
+        "profile_utils/android_armv7a_cpu_utils_helper.cc",
+        "profile_utils/clock_cycle_profiler.cc",
+        "profile_utils/cpu_utils.cc",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -949,40 +1453,4 @@ bzl_library(
         "build_config_root.bzl",
         "//tensorflow/core/platform/default:build_config_root.bzl",
     ],
-)
-
-# TODO(gunan): Remove the following once references in core/BUILD is removed.
-exports_files(
-    glob(
-        [
-            "*",
-            "**",
-        ],
-        exclude = [
-            "abi.h",
-            "byte_order.h",
-            "cpu_info.cc",
-            "cpu_info.h",
-            "logging.h",
-            "macros.h",
-            "platform.h",
-            "types.h",
-            "stacktrace.h",
-        ],
-    ),
-)
-
-exports_files(
-    [
-        "abi.h",
-        "byte_order.h",
-        "cpu_info.cc",
-        "cpu_info.h",
-        "logging.h",
-        "macros.h",
-        "platform.h",
-        "stacktrace.h",
-        "types.h",
-    ],
-    visibility = ["//tensorflow:__subpackages__"],
 )

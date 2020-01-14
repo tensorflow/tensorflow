@@ -13,6 +13,13 @@ package(
 )
 
 cc_library(
+    name = "micro_compatibility",
+    hdrs = [
+        "compatibility.h",
+    ],
+)
+
+cc_library(
     name = "micro_framework",
     srcs = [
         "debug_log.cc",
@@ -27,7 +34,6 @@ cc_library(
         "test_helpers.cc",
     ],
     hdrs = [
-        "compatibility.h",
         "debug_log.h",
         "debug_log_numbers.h",
         "memory_helpers.h",
@@ -46,6 +52,7 @@ cc_library(
         "-Wsign-compare",
     ],
     deps = [
+        ":micro_compatibility",
         ":micro_utils",
         "//tensorflow/lite:type_to_tflitetype",
         "//tensorflow/lite/c:common",

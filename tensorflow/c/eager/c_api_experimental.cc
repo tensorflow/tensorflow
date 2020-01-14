@@ -41,7 +41,7 @@ void TFE_OpReset(TFE_Context* ctx, const char* op_or_function_name,
 }
 
 void TFE_OpConsumeInput(TFE_Op* op, TFE_TensorHandle* h, TF_Status* status) {
-  op->operation.ConsumeInput(h->handle);
+  op->operation.ConsumeInput(h->handle.Handle());
 }
 
 TFE_Profiler* TFE_NewProfiler() { return new TFE_Profiler(); }

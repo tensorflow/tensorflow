@@ -98,13 +98,13 @@ TEST_F(MirrorPadOpTest, TestMirrorPadReflectLargeInput) {
   //  ... (altogether 1000 lines)
   //  0, 1, 2, ..., 999
   AddInput<float>(TensorShape({1, kInput, kInput, 1}),
-                  [](int i) -> float { return i % kInput; });
+                  [=](int i) -> float { return i % kInput; });
   AddInputFromArray<int32>(TensorShape({4, 2}),
                            {0, 0, kPad, kPad, kPad, kPad, 0, 0});
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, TensorShape({1, kOutput, kOutput, 1}));
-  test::FillFn<float>(&expected, [](int i) -> float {
+  test::FillFn<float>(&expected, [=](int i) -> float {
     i = i % kOutput;
     if (0 <= i && i < kPad)
       return kPad - i;
@@ -132,13 +132,13 @@ TEST_F(MirrorPadOpTest, TestMirrorPadSymmetricLargeInput) {
   //  ... (altogether 1000 lines)
   //  0, 1, 2, ..., 999
   AddInput<float>(TensorShape({1, kInput, kInput, 1}),
-                  [](int i) -> float { return i % kInput; });
+                  [=](int i) -> float { return i % kInput; });
   AddInputFromArray<int32>(TensorShape({4, 2}),
                            {0, 0, kPad, kPad, kPad, kPad, 0, 0});
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, TensorShape({1, kOutput, kOutput, 1}));
-  test::FillFn<float>(&expected, [](int i) -> float {
+  test::FillFn<float>(&expected, [=](int i) -> float {
     i = i % kOutput;
     if (0 <= i && i < kPad)
       return kPad - i - 1;

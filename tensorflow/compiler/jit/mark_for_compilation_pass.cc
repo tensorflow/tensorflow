@@ -1776,9 +1776,9 @@ absl::flat_hash_map<string, std::vector<string>>* GetWhitelistTable() {
             "Lgamma", "Digamma",
             // Binary
             "Add", "AddV2", "Sub", "Mul", "Div", "Atan2", "Complex", "DivNoNan",
-            "MulNoNan", "FloorDiv", "Xlogy", "Xdivy", "FloorMod", "BitwiseAnd",
-            "BitwiseOr", "BitwiseXor", "LeftShift", "RightShift", "LogicalAnd",
-            "LogicalOr", "Mod", "Maximum", "Minimum", "RealDiv",
+            "MulNoNan", "FloorDiv", "Xlogy", "Xlog1py", "Xdivy", "FloorMod",
+            "BitwiseAnd", "BitwiseOr", "BitwiseXor", "LeftShift", "RightShift",
+            "LogicalAnd", "LogicalOr", "Mod", "Maximum", "Minimum", "RealDiv",
             "ReciprocalGrad", "RsqrtGrad", "SqrtGrad", "TruncateDiv",
             "TruncateMod", "Equal", "NotEqual", "Greater", "GreaterEqual",
             "Less", "LessEqual", "SigmoidGrad", "SoftplusGrad", "SoftsignGrad",

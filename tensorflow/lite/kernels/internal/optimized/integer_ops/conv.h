@@ -43,10 +43,8 @@ inline void ConvPerChannel(
   const int32 input_offset = params.input_offset;
   const int32 output_offset = params.output_offset;
   // Set min and max value of the output.
-  static constexpr int32 output_activation_min =
-      std::numeric_limits<int8_t>::min();
-  static constexpr int32 output_activation_max =
-      std::numeric_limits<int8_t>::max();
+  const int32 output_activation_min = params.quantized_activation_min;
+  const int32 output_activation_max = params.quantized_activation_max;
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);

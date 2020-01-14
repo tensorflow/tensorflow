@@ -28,12 +28,14 @@ namespace {
 std::string GetStridedSliceCode(
     const OperationDef& op_def, bool alignedx4,
     const std::vector<ElementwiseOperation*>& linked_operations) {
-  const TensorCodeGenerator::SizeVariablesNames src_size(
-      "src_size.x", "src_size.y", "src_size.z", "src_size.w");
-  const TensorCodeGenerator::SizeVariablesNames dst_size(
-      "dst_size.x", "dst_size.y", "dst_size.z", "dst_size.w");
-  TensorCodeGenerator src_tensor("src_data", src_size, op_def.src_tensors[0]);
-  TensorCodeGenerator dst_tensor("dst_data", dst_size, op_def.dst_tensors[0]);
+  TensorCodeGenerator src_tensor(
+      "src_data",
+      WHSBPoint{"src_size.x", "src_size.y", "src_size.z", "src_size.w"},
+      op_def.src_tensors[0]);
+  TensorCodeGenerator dst_tensor(
+      "dst_data",
+      WHSBPoint{"dst_size.x", "dst_size.y", "dst_size.z", "dst_size.w"},
+      op_def.dst_tensors[0]);
 
   const std::string dst_batch = op_def.batch_support ? "B" : "";
   std::string c = GetCommonDefines(op_def.precision);
@@ -66,9 +68,8 @@ std::string GetStridedSliceCode(
   const std::string src_batch = op_def.batch_support ? "s_b" : "";
   if (alignedx4) {
     c += "  int s_z = Z + offset.z;\n";
-    c +=
-        "  FLT4 result = " + src_tensor.Read4D("s_x", "s_y", "s_z", src_batch) +
-        ";\n";
+    c += "  FLT4 result = " +
+         src_tensor.ReadWHSB("s_x", "s_y", "s_z", src_batch) + ";\n";
   } else {
     c += "  FLT4 result;\n";
     const std::string postfixes[] = {"x", "y", "z", "w"};
@@ -78,8 +79,8 @@ std::string GetStridedSliceCode(
       c += "    int s_ch = " + channel + " * stride.z + offset.z;\n";
       c += "    int s_z = s_ch >> 2;\n";
       c += "    int s_z_rem = s_ch & 3;\n";
-      c += "    FLT4 t = " + src_tensor.Read4D("s_x", "s_y", "s_z", src_batch) +
-           ";\n";
+      c += "    FLT4 t = " +
+           src_tensor.ReadWHSB("s_x", "s_y", "s_z", src_batch) + ";\n";
       c += "    FLT t_ar[4] = {t.x, t.y, t.z, t.w};\n";
       c += "    result." + postfixes[i] + " = t_ar[s_z_rem];\n";
       c += "  }\n";
@@ -88,7 +89,7 @@ std::string GetStridedSliceCode(
   std::string x_3dcoord = op_def.batch_support ? "X * dst_size.w + B" : "X";
   const LinkingContext context{"result", x_3dcoord, "Y", "Z"};
   c += PostProcess(linked_operations, context);
-  c += "  " + dst_tensor.Write4D("result", "X", "Y", "Z", dst_batch);
+  c += "  " + dst_tensor.WriteWHSB("result", "X", "Y", "Z", dst_batch);
   c += "}\n";
   return c;
 }

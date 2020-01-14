@@ -408,11 +408,10 @@ def : Pat<(TF_SliceOp:$op HLO_Tensor:$input, HLO_Tensor:$starting_indices,
 def BothTypesMatch : Constraint<CPred<"$0.getType() == $1.getType()">,
    "types must be equal">;
 
-foreach src = [TF_SelectOp, TF_SelectV2Op] in
-  def : Pat<(src $cond, $t, $e), (HLO_SelectOp $cond, $t, $e),
-    // TODO(jpienaar): This restriction is to avoid creating a currently
-    // unsupported HLO select.
-    [(BothTypesMatch $t, $e)]>;
+def : Pat<(TF_SelectOp $cond, $t, $e), (HLO_SelectOp $cond, $t, $e),
+  // TODO(jpienaar): This restriction is to avoid creating a currently
+  // unsupported HLO select.
+  [(BothTypesMatch $t, $e)]>;
 
 //===----------------------------------------------------------------------===//
 // Unary op patterns.
@@ -470,6 +469,20 @@ def : Pat<(TF_SignOp $x),
             (HLO_ConstOp (ConstantSplat<"0"> $x)),
             (HLO_SignOp $x)
           )>;
+
+def BothElementTypesSameWidthIntOrFloat : Constraint<CPred<
+  "getElementTypeOrSelf($0.getType()).isIntOrFloat() && "
+  "getElementTypeOrSelf($1.getType()).isIntOrFloat() && "
+  "getElementTypeOrSelf($0.getType()).getIntOrFloatBitWidth() == "
+  "getElementTypeOrSelf($1.getType()).getIntOrFloatBitWidth()">,
+  "element types must be integers or floats of same width">;
+
+// TODO(mgester): Due to restrictions of xla::BitcastConvertType we currently
+// only lower if both input and output types are int or float and have same width
+
+def : Pat<(TF_BitcastOp:$res HLO_Tensor:$arg),
+          (HLO_BitcastConvertOp $arg),
+          [(BothElementTypesSameWidthIntOrFloat $res, $arg)]>;
 
 //===----------------------------------------------------------------------===//
 // RngUniform.

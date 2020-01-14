@@ -115,13 +115,23 @@ struct gemm_pack_colmajor_block<
 
     if (standard_patches && (rhs.patchDepth() % packet_size == 0)) {
       // Single packet always belong to single patch (row, col).
-      packStandardPatches</*patch_depth_is_multiple_of_packet_size*/ true>(
-          block, rhs, rows, cols);
+      if (rhs.hasPadding()) {
+        packStandardPatches</*patch_depth_is_multiple_of_packet_size=*/true,
+                            /*has_padding=*/true>(block, rhs, rows, cols);
+      } else {
+        packStandardPatches</*patch_depth_is_multiple_of_packet_size=*/true,
+                            /*has_padding=*/false>(block, rhs, rows, cols);
+      }
 
     } else if (standard_patches) {
       // Single packet can span across multiple patch rows or columns.
-      packStandardPatches</*patch_depth_is_multiple_of_packet_size*/ false>(
-          block, rhs, rows, cols);
+      if (rhs.hasPadding()) {
+        packStandardPatches</*patch_depth_is_multiple_of_packet_size=*/false,
+                            /*has_padding=*/true>(block, rhs, rows, cols);
+      } else {
+        packStandardPatches</*patch_depth_is_multiple_of_packet_size=*/false,
+                            /*has_padding=*/false>(block, rhs, rows, cols);
+      }
 
     } else if (rhs.patchDepth() % packet_size == 0) {
       // Single packet always belong to single patch (row, col).
@@ -138,8 +148,8 @@ struct gemm_pack_colmajor_block<
  private:
   // (A) Standard image patches:
   //
-  // (1) in_row_stride = 1 && in_col_stide == 1
-  // (2) patch_row_inflate_strides == 1 && patch_col_inflate_strides == 1
+  //  (1) patch_row_inflate_strides == 1    AND
+  //  (2) patch_col_inflate_strides == 1
   //
   // Standard patches guarantee that two inner most dimensions (depth and rows)
   // are contiguous in memory and we can try to squeeze reads from them.
@@ -154,8 +164,11 @@ struct gemm_pack_colmajor_block<
   //   depth dimension size to be a multiple of packet size, so we can skip all
   //   non vectorized loads and checks, because it's guaranteed that block size
   //   will be a multiple of a packet size (see TensorContractionBlocking).
-
-  template <bool patch_depth_is_multiple_of_packet_size>
+  //
+  // - has_padding: Input tensor has non-zero padding. In this case for each
+  //   patch col and row we need to check that it doesn't correspond to the
+  //   padded region of original input.
+  template <bool patch_depth_is_multiple_of_packet_size, bool has_padding>
   EIGEN_ALWAYS_INLINE void packStandardPatches(Scalar* block,
                                                const DataMapper rhs,
                                                StorageIndex rows,
@@ -177,10 +190,14 @@ struct gemm_pack_colmajor_block<
 
         const StorageIndex start_row = (c == start_col) ? rhs.rowOffset() : 0;
         const StorageIndex max_row = rhs.maxRow(peeled_k, c);
-        const bool pad_col = lm.padCol(c);
+        const bool pad_col = has_padding && lm.padCol(c);
+
+        eigen_assert(has_padding || !lm.padCol(c));
+        eigen_assert(has_padding || !lm.padAnyRow(start_row, max_row - 1));
 
         // We can squeeze reads for all rows in [start_row, max_row) range.
-        if (!pad_col && !lm.padAnyRow(start_row, max_row - 1)) {
+        if (!has_padding ||
+            (!pad_col && !lm.padAnyRow(start_row, max_row - 1))) {
           const StorageIndex start_depth =
               (c == start_col) ? rhs.depthOffset() : 0;
 
@@ -196,6 +213,24 @@ struct gemm_pack_colmajor_block<
             eigen_assert((max_depth - start_depth) % packet_size == 0);
             StorageIndex d = start_depth;
 
+            const StorageIndex unrolled_depth = max_depth - 4 * packet_size;
+            for (; d <= unrolled_depth; d += 4 * packet_size) {
+              eigen_assert(k < peeled_k);
+
+              Packet p0 = rhs.packetNoPadding(d + 0 * packet_size, base_idx);
+              Packet p1 = rhs.packetNoPadding(d + 1 * packet_size, base_idx);
+              Packet p2 = rhs.packetNoPadding(d + 2 * packet_size, base_idx);
+              Packet p3 = rhs.packetNoPadding(d + 3 * packet_size, base_idx);
+
+              internal::pstoreu(block + 0 * packet_size, p0);
+              internal::pstoreu(block + 1 * packet_size, p1);
+              internal::pstoreu(block + 2 * packet_size, p2);
+              internal::pstoreu(block + 3 * packet_size, p3);
+
+              block += 4 * packet_size;
+              k += 4 * packet_size;
+            }
+
             for (; d < max_depth; d += packet_size) {
               eigen_assert(k < peeled_k);
               internal::pstoreu(block, rhs.packetNoPadding(d, base_idx));
@@ -205,8 +240,26 @@ struct gemm_pack_colmajor_block<
 
           } else {
             StorageIndex d = start_depth;
-            const StorageIndex vectorized_depth = max_depth - packet_size;
 
+            const StorageIndex unrolled_depth = max_depth - 4 * packet_size;
+            for (; d <= unrolled_depth; d += 4 * packet_size) {
+              eigen_assert(k < peeled_k);
+
+              Packet p0 = rhs.packetNoPadding(d + 0 * packet_size, base_idx);
+              Packet p1 = rhs.packetNoPadding(d + 1 * packet_size, base_idx);
+              Packet p2 = rhs.packetNoPadding(d + 2 * packet_size, base_idx);
+              Packet p3 = rhs.packetNoPadding(d + 3 * packet_size, base_idx);
+
+              internal::pstoreu(block + 0 * packet_size, p0);
+              internal::pstoreu(block + 1 * packet_size, p1);
+              internal::pstoreu(block + 2 * packet_size, p2);
+              internal::pstoreu(block + 3 * packet_size, p3);
+
+              block += 4 * packet_size;
+              k += 4 * packet_size;
+            }
+
+            const StorageIndex vectorized_depth = max_depth - packet_size;
             for (; d <= vectorized_depth; d += packet_size) {
               eigen_assert(k < peeled_k);
               internal::pstoreu(block, rhs.packetNoPadding(d, base_idx));
@@ -237,7 +290,9 @@ struct gemm_pack_colmajor_block<
           const StorageIndex max_depth =
               rhs.maxDepth(peeled_k - k, start_depth);
 
-          const bool pad = pad_col || lm.padRow(r);
+          const bool pad = has_padding && (pad_col || lm.padRow(r));
+          eigen_assert(has_padding || !lm.padRow(r));
+
           const StorageIndex base_idx = lm.baseIndex(r, c);
 
           if (patch_depth_is_multiple_of_packet_size) {
@@ -248,7 +303,8 @@ struct gemm_pack_colmajor_block<
 
             for (; d < max_depth; d += packet_size) {
               eigen_assert(k < peeled_k);
-              const Packet p = pad ? pset1<Packet>(Scalar(0))
+              const Packet p = (has_padding && pad)
+                                   ? pset1<Packet>(Scalar(0))
                                    : rhs.packetNoPadding(d, base_idx);
               internal::pstoreu(block, p);
               block += packet_size;
@@ -256,11 +312,13 @@ struct gemm_pack_colmajor_block<
             }
 
           } else {
-            const StorageIndex vectorized_depth = max_depth - packet_size;
             StorageIndex d = start_depth;
+
+            const StorageIndex vectorized_depth = max_depth - packet_size;
             for (; d <= vectorized_depth; d += packet_size) {
               eigen_assert(k < peeled_k);
-              const Packet p = pad ? pset1<Packet>(Scalar(0))
+              const Packet p = (has_padding && pad)
+                                   ? pset1<Packet>(Scalar(0))
                                    : rhs.packetNoPadding(d, base_idx);
               internal::pstoreu(block, p);
               block += packet_size;
@@ -269,7 +327,7 @@ struct gemm_pack_colmajor_block<
 
             eigen_assert(k <= peeled_k);
             const Index num_coeffs = CoeffFinalizer::finalize(
-                block, rhs, base_idx, d, max_depth, pad);
+                block, rhs, base_idx, d, max_depth, has_padding && pad);
 
             k += num_coeffs;
             block += num_coeffs;

@@ -122,6 +122,18 @@ exports_files(
     ],
 )
 
+exports_files(
+    [
+        "attr_value_util.h",
+        "common_shape_fns.h",
+        "node_def_util.h",
+        "op_def_builder.h",
+        "op_def_util.h",
+        "shape_inference.h",
+    ],
+    visibility = ["//tensorflow/core:__subpackages__"],
+)
+
 # The following filegroups are needed since globbing across packages boundaries
 # will just fail silently (see 3rd caveat at
 # https://docs.bazel.build/versions/master/be/functions.html#glob).
@@ -333,6 +345,7 @@ filegroup(
         "stats_aggregator.h",
         "tensor.cc",
         "tensor.h",
+        "tensor_interface.h",
         "tensor_reference.h",
         "tensor_shape.cc",
         "tensor_shape.h",
@@ -890,6 +903,7 @@ exports_files(
         "resource_handle.h",
         "shape_inference_testutil.h",
         "tensor.h",
+        "tensor_interface.h",
         "tensor_shape.h",
         "tensor_testutil.h",
         "tensor_types.h",

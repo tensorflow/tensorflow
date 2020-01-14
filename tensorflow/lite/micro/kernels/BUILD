@@ -75,6 +75,7 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         ":micro_ops",
+        "//tensorflow/lite/micro:micro_compatibility",
         "//tensorflow/lite/micro:micro_framework",
     ],
 )
@@ -143,6 +144,7 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         ":portable_optimized_micro_ops",
+        "//tensorflow/lite/micro:micro_compatibility",
         "//tensorflow/lite/micro:micro_framework",
     ],
 )

@@ -64,7 +64,7 @@ EOF
   chmod +x tensorflow/tools/ci_build/${SANITY_OUT_TARGET}.sh
 
   # Run bazel test command. Double test timeouts to avoid flakes.
-  # //tensorflow/core:platform_setround_test is not supported. See b/64264700
+  # //tensorflow/core/platform:setround_test is not supported. See b/64264700
   "${BAZEL_WRAPPER_PATH}" \
     --host_jvm_args=-Dbazel.DigestFunction=SHA256 \
     test \

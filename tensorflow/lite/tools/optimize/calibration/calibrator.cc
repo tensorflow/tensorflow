@@ -146,7 +146,7 @@ class GlobalCalibratorRegistry {
           "Failed to create calibrator, context already registered.");
       return kTfLiteError;
     }
-    std::unique_ptr<Calibrator> calibrator = absl::make_unique<Calibrator>(
+    auto calibrator = absl::make_unique<Calibrator>(
         node_to_opinfo, std::move(logging_op_resolver));
     calibrator_registry_[context] = std::move(calibrator);
     *calibrator_ptr = calibrator_registry_.at(context).get();

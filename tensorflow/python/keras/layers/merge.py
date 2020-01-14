@@ -643,7 +643,7 @@ def multiply(inputs, **kwargs):
 
 @keras_export('keras.layers.average')
 def average(inputs, **kwargs):
-  """Functional interface to the `Average` layer.
+  """Functional interface to the `tf.keras.layers.Average` layer.
 
   Arguments:
       inputs: A list of input tensors (at least 2).

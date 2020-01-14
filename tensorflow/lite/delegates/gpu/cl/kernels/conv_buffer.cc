@@ -33,12 +33,12 @@ std::string GenerateConvBuffer(
     int y_elements,
     const std::vector<ElementwiseOperation*>& linked_operations) {
   std::string c = GetCommonDefines(op_def.precision);
-  TensorCodeGenerator src_tensor("src_data",
-                                 {"src_size.x", "src_size.y", "src_size.z"},
-                                 op_def.src_tensors[0]);
-  TensorCodeGenerator dst_tensor("dst_data",
-                                 {"dst_size.x", "dst_size.y", "dst_size.z"},
-                                 op_def.dst_tensors[0]);
+  TensorCodeGenerator src_tensor(
+      "src_data", WHSPoint{"src_size.x", "src_size.y", "src_size.z"},
+      op_def.src_tensors[0]);
+  TensorCodeGenerator dst_tensor(
+      "dst_data", WHSPoint{"dst_size.x", "dst_size.y", "dst_size.z"},
+      op_def.dst_tensors[0]);
 
   switch (op_def.precision) {
     case CalculationsPrecision::F32:
@@ -163,7 +163,7 @@ std::string GenerateConvBuffer(
       c += "    FLT4 res = TO_FLT4(r" + i_s + ");\n";
       const LinkingContext context{"res", "X + " + x_s, "Y + " + y_s, "Z"};
       c += PostProcess(linked_operations, context);
-      c += "  " + dst_tensor.Write3D("res", "X + " + x_s, "Y + " + y_s, "Z") +
+      c += "  " + dst_tensor.WriteWHS("res", "X + " + x_s, "Y + " + y_s, "Z") +
            "\n";
       c += "  }\n";
     }

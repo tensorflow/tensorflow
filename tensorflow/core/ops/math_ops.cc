@@ -522,6 +522,13 @@ REGISTER_OP("Xlogy")
     .Attr("T: {half, float, double, complex64, complex128}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
 
+REGISTER_OP("Xlog1py")
+    .Input("x: T")
+    .Input("y: T")
+    .Output("z: T")
+    .Attr("T: {half, float, double, complex64, complex128}")
+    .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
+
 REGISTER_OP("Xdivy")
     .Input("x: T")
     .Input("y: T")

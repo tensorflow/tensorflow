@@ -39,17 +39,17 @@ std::string GetSrcValue(const TensorCodeGenerator& src_tensor,
   std::string c;
   if (channel_multiplier == 1) {
     c += "      FLT4 src_final =" +
-         src_tensor.Read3D("x_c", "y_c", "Z", address_mode) + ";\n";
+         src_tensor.ReadWHS("x_c", "y_c", "Z", address_mode) + ";\n";
   } else if (channel_multiplier == 2) {
     c += "      int z_layer = Z / 2;\n";
     c += "      FLT4 src =" +
-         src_tensor.Read3D("x_c", "y_c", "z_layer", address_mode) + ";\n";
+         src_tensor.ReadWHS("x_c", "y_c", "z_layer", address_mode) + ";\n";
     c += "      FLT2 t0 = Z % 2 == 0 ? src.xy : src.zw;\n";
     c += "      FLT4 src_final = (FLT4)(t0.x, t0.x, t0.y, t0.y);\n";
   } else if (channel_multiplier == 4) {
     c += "      int z_layer = Z / 4;\n";
     c += "      FLT4 src =" +
-         src_tensor.Read3D("x_c", "y_c", "z_layer", address_mode) + ";\n";
+         src_tensor.ReadWHS("x_c", "y_c", "z_layer", address_mode) + ";\n";
     c += "      FLT t0 = src.x;\n";
     c += "      int reminder = Z % 4;\n";
     c += "      if (reminder == 1) t0 = src.y;\n";
@@ -59,7 +59,7 @@ std::string GetSrcValue(const TensorCodeGenerator& src_tensor,
   } else {
     c += "      int z_layer = Z / channel_multiplier;\n";
     c += "      FLT4 src =" +
-         src_tensor.Read3D("x_c", "y_c", "z_layer", address_mode) + ";\n";
+         src_tensor.ReadWHS("x_c", "y_c", "z_layer", address_mode) + ";\n";
     c += "      int z_offset = (Z % channel_multiplier) * 4;\n";
     c += "      FLT4 src_final;\n";
     c += "      FLT temp_arr[4] = {src.x, src.y, src.z, src.w};\n";
@@ -77,12 +77,12 @@ std::string GenerateDepthWiseConvolutionCode(
     const LinearStorage& biases, int channel_multiplier,
     const std::vector<ElementwiseOperation*>& linked_operations,
     const CLDevice& device) {
-  TensorCodeGenerator src_tensor("src_data",
-                                 {"src_size.x", "src_size.y", "src_size.z"},
-                                 op_def.src_tensors[0]);
-  TensorCodeGenerator dst_tensor("dst_data",
-                                 {"dst_size.x", "dst_size.y", "dst_size.z"},
-                                 op_def.dst_tensors[0]);
+  TensorCodeGenerator src_tensor(
+      "src_data", WHSPoint{"src_size.x", "src_size.y", "src_size.z"},
+      op_def.src_tensors[0]);
+  TensorCodeGenerator dst_tensor(
+      "dst_data", WHSPoint{"dst_size.x", "dst_size.y", "dst_size.z"},
+      op_def.dst_tensors[0]);
   const auto src_tensor_type = op_def.src_tensors[0].storage_type;
 
   std::string c = GetCommonDefines(op_def.precision);
@@ -166,7 +166,7 @@ std::string GenerateDepthWiseConvolutionCode(
   c += "  FLT4 res0 = TO_FLT4(r) + bias_val;\n";
   const LinkingContext context{"res0", "X", "Y", "Z"};
   c += PostProcess(linked_operations, context);
-  c += "  " + dst_tensor.Write3D("res0", "X", "Y", "Z") + "\n";
+  c += "  " + dst_tensor.WriteWHS("res0", "X", "Y", "Z") + "\n";
   c += "}\n";
 
   return c;

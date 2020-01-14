@@ -193,12 +193,12 @@ std::string GenerateConvPowerVR1x1(
     const ConvPowerVR::ConvParams& conv_params,
     const std::vector<ElementwiseOperation*>& linked_operations) {
   std::string c = GetCommonDefines(op_def.precision);
-  TensorCodeGenerator src_tensor("src_data",
-                                 {"src_size.x", "src_size.y", "src_size.z"},
-                                 op_def.src_tensors[0]);
-  TensorCodeGenerator dst_tensor("dst_data",
-                                 {"dst_size.x", "dst_size.y", "dst_size.z"},
-                                 op_def.dst_tensors[0]);
+  TensorCodeGenerator src_tensor(
+      "src_data", WHSPoint{"src_size.x", "src_size.y", "src_size.z"},
+      op_def.src_tensors[0]);
+  TensorCodeGenerator dst_tensor(
+      "dst_data", WHSPoint{"dst_size.x", "dst_size.y", "dst_size.z"},
+      op_def.dst_tensors[0]);
 
   const bool is1x1 = conv_params.x_kernel_is_1 && conv_params.y_kernel_is_1;
   const auto src_tensor_type = op_def.src_tensors[0].storage_type;
@@ -402,10 +402,10 @@ std::string GenerateConvPowerVR1x1(
               is1x1 ? "Y + " + std::to_string(y) : "yck" + std::to_string(y);
           if (op_def.precision == CalculationsPrecision::F32_F16) {
             c += "    src" + id + " = " +
-                 src_tensor.ReadAsFloat3D(xc, yc, "s", mode) + ";\n";
+                 src_tensor.ReadAsFloatWHS(xc, yc, "s", mode) + ";\n";
           } else {
-            c += "    src" + id + " = " + src_tensor.Read3D(xc, yc, "s", mode) +
-                 ";\n";
+            c += "    src" + id + " = " +
+                 src_tensor.ReadWHS(xc, yc, "s", mode) + ";\n";
           }
         }
       }
@@ -509,7 +509,7 @@ std::string GenerateConvPowerVR1x1(
              std::to_string(z) + "]);\n";
         const LinkingContext context{"res", xs, ys, zs};
         c += PostProcess(linked_operations, context);
-        c += "    " + dst_tensor.Write3D("res", xs, ys, zs) + "\n";
+        c += "    " + dst_tensor.WriteWHS("res", xs, ys, zs) + "\n";
         c += "  }\n";
       }
     }

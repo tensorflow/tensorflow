@@ -30,6 +30,7 @@ py_library(
         "gast_util.py",
         "inspect_utils.py",
         "loader.py",
+        "loader_deprecated_py2.py",
         "origin_info.py",
         "parser.py",
         "pretty_printer.py",

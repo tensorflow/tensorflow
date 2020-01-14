@@ -34,7 +34,7 @@ tf_cc_test(
     size = "small",
     srcs = ["backwards_compatibility_test.cc"],
     data = [
-        "//tensorflow/core:ops_txt_pb",
+        "//tensorflow/core:ops/ops.pbtxt",
     ] + glob([
         "ops_history_v*/*.pbtxt",
         "ops_history.v*.pbtxt",

@@ -88,7 +88,7 @@ class PointwiseToLinalgConverter : public OpConversionPattern<LhloOp> {
     }
 
     auto linalgOp = rewriter.create<linalg::GenericOp>(
-        loc, args,
+        loc, ArrayRef<Type>{}, args,
         rewriter.getI64IntegerAttr(bodyArgTypes.size()),     // args_in
         rewriter.getI64IntegerAttr(bodyResultTypes.size()),  // args_out
         rewriter.getArrayAttr(indexingMaps),
@@ -174,7 +174,7 @@ class BroadcastInDimConverter : public OpConversionPattern<BroadcastInDimOp> {
         AffineMapAttr::get(rewriter->getMultiDimIdentityMap(nloops))};
     auto loc = broadcastOp.getLoc();
     auto linalgOp = rewriter->create<linalg::GenericOp>(
-        loc, broadcastOp.output(),
+        loc, ArrayRef<Type>{}, broadcastOp.output(),
         rewriter->getI64IntegerAttr(0),  // args_in
         rewriter->getI64IntegerAttr(1),  // args_out
         rewriter->getArrayAttr(indexingMaps),
@@ -225,7 +225,7 @@ class BroadcastInDimConverter : public OpConversionPattern<BroadcastInDimOp> {
 
     auto loc = broadcastOp.getLoc();
     auto linalgOp = rewriter->create<linalg::GenericOp>(
-        loc, args,
+        loc, ArrayRef<Type>{}, args,
         rewriter->getI64IntegerAttr(bodyArgTypes.size()),  // args_in
         rewriter->getI64IntegerAttr(1),                    // args_out
         rewriter->getArrayAttr(indexingMaps),
@@ -267,7 +267,7 @@ class IotaConverter : public OpConversionPattern<IotaOp> {
 
     auto loc = iotaOp.getLoc();
     auto linalgOp = rewriter.create<linalg::IndexedGenericOp>(
-        loc, args,
+        loc, ArrayRef<Type>{}, args,
         rewriter.getI64IntegerAttr(0),  // args_in
         rewriter.getI64IntegerAttr(1),  // args_out
         rewriter.getArrayAttr(indexingMaps),

@@ -77,7 +77,7 @@ void AverageEvalFloat(const TfLiteContext* context, const TfLiteNode* node,
       GetTensorShape(output), GetTensorData<float>(output));
 }
 
-void AverageEvalUint8(const TfLiteContext* context, const TfLiteNode* node,
+void AverageEvalUint8(TfLiteContext* context, const TfLiteNode* node,
                       const TfLitePoolParams* params, const OpData* data,
                       const TfLiteTensor* input, TfLiteTensor* output) {
   int32_t activation_min, activation_max;

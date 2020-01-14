@@ -455,6 +455,21 @@ class NumericColumnTest(test.TestCase):
         sess.run(price_var.assign([[10.]]))
         self.assertAllClose([[10.], [50.]], self.evaluate(predictions))
 
+  @test_util.run_deprecated_v1
+  def test_linear_model_sanitizes_scope_names(self):
+    price = fc.numeric_column('price > 100')
+    with ops.Graph().as_default():
+      features = {'price > 100': [[1.], [5.]]}
+      model = fc.LinearModel([price])
+      predictions = model(features)
+      price_var, bias = model.variables
+      with _initialized_session() as sess:
+        self.assertAllClose([0.], self.evaluate(bias))
+        self.assertAllClose([[0.]], self.evaluate(price_var))
+        self.assertAllClose([[0.], [0.]], self.evaluate(predictions))
+        sess.run(price_var.assign([[10.]]))
+        self.assertAllClose([[10.], [50.]], self.evaluate(predictions))
+
   def test_old_linear_model(self):
     price = fc.numeric_column('price')
     with ops.Graph().as_default():

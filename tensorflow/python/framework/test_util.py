@@ -1623,14 +1623,14 @@ class ErrorLoggingSession(session.Session):
       raise
 
 
-def use_deterministic_cudnn(func):
+def disable_cudnn_autotune(func):
   """Disable autotuning during the call to this function.
 
   Some tests want to base assertions on a graph being isomorphic with a copy.
   To ensure this, this decorator disables autotuning.
 
   Args:
-    func: Function to run with CUDNN autotuning turned off.
+    func: Function to run with CuDNN autotuning turned off.
 
   Returns:
     Decorated function.
@@ -1639,10 +1639,25 @@ def use_deterministic_cudnn(func):
   def decorator(f):
 
     def decorated(self, *args, **kwargs):
-      original_var = os.environ.get("TF_CUDNN_DETERMINISTIC", "")
-      os.environ["TF_CUDNN_DETERMINISTIC"] = "true"
+      original_tf_cudnn_use_autotune = os.environ.get("TF_CUDNN_USE_AUTOTUNE")
+      os.environ["TF_CUDNN_USE_AUTOTUNE"] = "false"
+      original_xla_flags = os.environ.get("XLA_FLAGS")
+      new_xla_flags = "--xla_gpu_disable_autotune"
+      if original_xla_flags:
+        new_xla_flags += " " + original_xla_flags
+      os.environ["XLA_FLAGS"] = new_xla_flags
+
       result = f(self, *args, **kwargs)
-      os.environ["TF_CUDNN_DETERMINISTIC"] = original_var
+
+      if (original_tf_cudnn_use_autotune is None):
+        del os.environ["TF_CUDNN_USE_AUTOTUNE"]
+      else:
+        os.environ["TF_CUDNN_USE_AUTOTUNE"] = original_tf_cudnn_use_autotune
+      if (original_xla_flags is None):
+        del os.environ["XLA_FLAGS"]
+      else:
+        os.environ["XLA_FLAGS"] = original_xla_flags
+
       return result
 
     return decorated

@@ -56,6 +56,37 @@ class Upsample : public GPUOperation {
 Upsample CreateUpsample(const OperationDef& definition,
                         const Upsample2DAttributes& attr);
 
+class Upsample3D : public GPUOperation {
+ public:
+  Status AddToQueue(CLCommandQueue* queue) override;
+  Status Tune(const TuningParameters& params) override;
+
+  Status Compile(const CreationContext& creation_context) override;
+
+  // Move only
+  Upsample3D(Upsample3D&& operation);
+  Upsample3D& operator=(Upsample3D&& operation);
+  Upsample3D(const Upsample3D&) = delete;
+  Upsample3D& operator=(const Upsample3D&) = delete;
+
+  friend Upsample3D CreateUpsample3D(const OperationDef& definition,
+                                     const Upsample3DAttributes& attr);
+
+ private:
+  Upsample3D(const OperationDef& definition, const Upsample3DAttributes& attr)
+      : GPUOperation(definition), attr_(attr) {}
+
+  Status BindArguments();
+  int3 GetGridSize() const;
+
+  Upsample3DAttributes attr_;
+  CLKernel kernel_;
+  int3 work_group_size_ = int3(8, 4, 1);
+};
+
+Upsample3D CreateUpsample3D(const OperationDef& definition,
+                            const Upsample3DAttributes& attr);
+
 }  // namespace cl
 }  // namespace gpu
 }  // namespace tflite
