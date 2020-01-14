@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test_benchmark.h"
@@ -61,8 +62,9 @@ class DequantizeOpTest : public OpsTestBase {
   // Compares dequantize min vs the same using eigen. This tests that a change
   // to not use eigen gives equivalent results to using eigen.
   template <typename T>
-  void RunDequantizeMinCombinedTest(float min_range, float max_range) {
-    TF_ASSERT_OK(NodeDefBuilder("dequantize_op", "Dequantize")
+  void RunDequantizeMinCombinedTest(float min_range, float max_range,
+                                    const string& op_name) {
+    TF_ASSERT_OK(NodeDefBuilder("dequantize_op", op_name)
                      .Input(FakeInput(DataTypeToEnum<T>::v()))
                      .Input(FakeInput(DT_FLOAT))
                      .Input(FakeInput(DT_FLOAT))
@@ -85,6 +87,40 @@ class DequantizeOpTest : public OpsTestBase {
     ComputeDequantizeMinCombinedUsingEigen<T>(GetInput(0), min_range, max_range,
                                               &expected);
     test::ExpectTensorEqual<float>(expected, *GetOutput(0));
+  }
+
+  // Compares dequantize min vs the same using eigen. This tests that a change
+  // to not use eigen gives equivalent results to using eigen.
+  template <typename T>
+  void RunDequantizeBfloat16MinCombinedTest(float min_range, float max_range) {
+    TF_ASSERT_OK(NodeDefBuilder("dequantize_op_bfloat16", "Dequantize")
+                     .Input(FakeInput(DataTypeToEnum<T>::v()))
+                     .Input(FakeInput(DT_FLOAT))
+                     .Input(FakeInput(DT_FLOAT))
+                     .Attr("T", DataTypeToEnum<T>::v())
+                     .Attr("mode", "MIN_COMBINED")
+                     .Attr("dtype", DT_BFLOAT16)
+                     .Finalize(node_def()));
+    TF_ASSERT_OK(InitOp());
+
+    std::vector<T> input;
+    for (int64 i = std::numeric_limits<T>::min();
+         i < std::numeric_limits<T>::max(); ++i) {
+      input.push_back(static_cast<T>(i));
+    }
+    TensorShape shape({static_cast<int64>(input.size())});
+    AddInputFromArray<T>(shape, input);
+    AddInputFromArray<float>(TensorShape({}), {min_range});
+    AddInputFromArray<float>(TensorShape({}), {max_range});
+    TF_ASSERT_OK(RunOpKernel());
+
+    Tensor expected_float32(allocator(), DT_FLOAT, shape);
+    ComputeDequantizeMinCombinedUsingEigen<T>(GetInput(0), min_range, max_range,
+                                              &expected_float32);
+    Tensor expected(allocator(), DT_BFLOAT16, shape);
+    expected.flat<bfloat16>() = expected_float32.flat<float>().cast<bfloat16>();
+
+    test::ExpectTensorEqual<bfloat16>(expected, *GetOutput(0));
   }
 
   // Creates a tensor with the specified dims, using values chosen from data,
@@ -151,16 +187,29 @@ struct ParameterizedDequantizeOpTest
       public ::testing::WithParamInterface<int> {};
 
 TEST_F(DequantizeOpTest, DequantizeMinCombinedQuint8) {
-  RunDequantizeMinCombinedTest<quint8>(0, 255.0f);
+  RunDequantizeMinCombinedTest<quint8>(0, 255.0f, "Dequantize");
 }
 TEST_F(DequantizeOpTest, DequantizeMinCombinedQint8) {
-  RunDequantizeMinCombinedTest<qint8>(0, 255.0f);
+  RunDequantizeMinCombinedTest<qint8>(0, 255.0f, "Dequantize");
 }
 TEST_F(DequantizeOpTest, DequantizeMinCombinedQint16) {
-  RunDequantizeMinCombinedTest<qint16>(0, 255.0f);
+  RunDequantizeMinCombinedTest<qint16>(0, 255.0f, "Dequantize");
 }
 TEST_F(DequantizeOpTest, DequantizeMinCombinedQuint16) {
-  RunDequantizeMinCombinedTest<quint16>(0, 255.0f);
+  RunDequantizeMinCombinedTest<quint16>(0, 255.0f, "Dequantize");
+}
+
+TEST_F(DequantizeOpTest, DequantizeBfloat16MinCombinedQuint8) {
+  RunDequantizeBfloat16MinCombinedTest<quint8>(0, 255.0f);
+}
+TEST_F(DequantizeOpTest, DequantizeBfloat16MinCombinedQint8) {
+  RunDequantizeBfloat16MinCombinedTest<qint8>(0, 255.0f);
+}
+TEST_F(DequantizeOpTest, DequantizeBfloat16MinCombinedQint16) {
+  RunDequantizeBfloat16MinCombinedTest<qint16>(0, 255.0f);
+}
+TEST_F(DequantizeOpTest, DequantizeBfloat16MinCombinedQuint16) {
+  RunDequantizeBfloat16MinCombinedTest<quint16>(0, 255.0f);
 }
 
 TEST_F(DequantizeOpTest, DequantizeScaledQuint8Zero) {
@@ -202,8 +251,10 @@ static void BM_DequantizeMinCombinedCpu(int iters) {
   auto root = Scope::NewRootScope().ExitOnError();
   const int64 num_values = 1500 * 250;
   std::vector<T> inputs;
+
   inputs.reserve(num_values);
   for (int i = 0; i < num_values; ++i) inputs.push_back(i);
+
   ops::Dequantize(root, test::AsTensor<T>(inputs), test::AsScalar<float>(-1.5f),
                   test::AsScalar<float>(20.5f),
                   ops::Dequantize::Attrs().Mode("MIN_COMBINED"));
@@ -236,6 +287,48 @@ BENCHMARK(BM_DequantizeMinCombinedCpuQuint16);
 BENCHMARK(BM_DequantizeMinCombinedCpuQint16);
 BENCHMARK(BM_DequantizeMinCombinedCpuQuint8);
 BENCHMARK(BM_DequantizeMinCombinedCpuQint8);
+
+template <typename T>
+static void BM_DequantizeBfloat16MinCombinedCpu(int iters) {
+  auto root = Scope::NewRootScope().ExitOnError();
+  const int64 num_values = 1500 * 250;
+  std::vector<T> inputs;
+
+  inputs.reserve(num_values);
+  for (int i = 0; i < num_values; ++i) inputs.push_back(i);
+
+  ops::Dequantize(root, test::AsTensor<T>(inputs), test::AsScalar<float>(-1.5f),
+                  test::AsScalar<float>(20.5f),
+                  ops::Dequantize::Attrs().Dtype(DT_BFLOAT16));
+  TF_CHECK_OK(root.status());
+  Graph* g = new Graph(OpRegistry::Global());
+  TF_CHECK_OK(root.ToGraph(g));
+
+  test::Benchmark("cpu", g).Run(iters);
+  testing::BytesProcessed(iters * num_values * (sizeof(bfloat16) + sizeof(T)));
+  testing::ItemsProcessed(iters);
+}
+
+static void BM_DequantizeBfloat16MinCombinedCpuQuint16(int iters) {
+  BM_DequantizeBfloat16MinCombinedCpu<quint16>(iters);
+}
+
+static void BM_DequantizeBfloat16MinCombinedCpuQint16(int iters) {
+  BM_DequantizeBfloat16MinCombinedCpu<qint16>(iters);
+}
+
+static void BM_DequantizeBfloat16MinCombinedCpuQuint8(int iters) {
+  BM_DequantizeBfloat16MinCombinedCpu<quint8>(iters);
+}
+
+static void BM_DequantizeBfloat16MinCombinedCpuQint8(int iters) {
+  BM_DequantizeBfloat16MinCombinedCpu<qint8>(iters);
+}
+
+BENCHMARK(BM_DequantizeBfloat16MinCombinedCpuQuint16);
+BENCHMARK(BM_DequantizeBfloat16MinCombinedCpuQint16);
+BENCHMARK(BM_DequantizeBfloat16MinCombinedCpuQuint8);
+BENCHMARK(BM_DequantizeBfloat16MinCombinedCpuQint8);
 
 }  // namespace
 }  // namespace tensorflow
