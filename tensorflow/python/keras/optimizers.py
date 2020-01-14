@@ -30,6 +30,7 @@ from tensorflow.python.keras.optimizer_v2 import adam as adam_v2
 from tensorflow.python.keras.optimizer_v2 import adamax as adamax_v2
 from tensorflow.python.keras.optimizer_v2 import ftrl
 from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_v2
+from tensorflow.python.keras.optimizer_v2 import adamod as adamod_v2
 from tensorflow.python.keras.optimizer_v2 import nadam as nadam_v2
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.keras.optimizer_v2 import rmsprop as rmsprop_v2
@@ -46,12 +47,9 @@ from tensorflow.python.util.tf_export import keras_export
 
 class Optimizer(object):
   """Abstract optimizer base class.
-
   Note: this is the parent class of all optimizers, not an actual optimizer
   that can be used for training models.
-
   All Keras optimizers support the following keyword arguments:
-
       clipnorm: float >= 0. Gradients will be clipped
           when their L2 norm exceeds this value.
       clipvalue: float >= 0. Gradients will be clipped
@@ -76,20 +74,17 @@ class Optimizer(object):
 
   def get_gradients(self, loss, params):
     """Returns gradients of `loss` with respect to `params`.
-
     Arguments:
         loss: Loss tensor.
         params: List of variables.
-
     Returns:
         List of gradient tensors.
-
     Raises:
         ValueError: In case any gradient cannot be computed (e.g. if gradient
           function not implemented).
     """
     grads = K.gradients(loss, params)
-    if any(g is None for g in grads):
+    if any([g is None for g in grads]):
       raise ValueError('An operation has `None` for gradient. '
                        'Please make sure that all of your ops have a '
                        'gradient defined (i.e. are differentiable). '
@@ -106,15 +101,12 @@ class Optimizer(object):
 
   def set_weights(self, weights):
     """Sets the weights of the optimizer, from Numpy arrays.
-
     Should only be called after computing the gradients
     (otherwise the optimizer has no weights).
-
     Arguments:
         weights: a list of Numpy arrays. The number of arrays and their shape
           must match number of the dimensions of the weights of the optimizer
           (i.e. it should match the output of `get_weights`).
-
     Raises:
         ValueError: in case of incompatible weight shapes.
     """
@@ -136,7 +128,6 @@ class Optimizer(object):
 
   def get_weights(self):
     """Returns the current value of the weights of the optimizer.
-
     Returns:
         A list of numpy arrays.
     """
@@ -157,10 +148,8 @@ class Optimizer(object):
 
 class SGD(Optimizer):
   """Stochastic gradient descent optimizer.
-
   Includes support for momentum,
   learning rate decay, and Nesterov momentum.
-
   Arguments:
       lr: float >= 0. Learning rate.
       momentum: float >= 0. Parameter that accelerates SGD in the relevant
@@ -222,11 +211,9 @@ class SGD(Optimizer):
 
 class RMSprop(Optimizer):
   """RMSProp optimizer.
-
   It is recommended to leave the parameters of this optimizer
   at their default values
   (except the learning rate, which can be freely tuned).
-
   Arguments:
       lr: float >= 0. Learning rate.
       rho: float >= 0.
@@ -285,20 +272,16 @@ class RMSprop(Optimizer):
 
 class Adagrad(Optimizer):
   """Adagrad optimizer.
-
   Adagrad is an optimizer with parameter-specific learning rates,
   which are adapted relative to how frequently a parameter gets
   updated during training. The more updates a parameter receives,
   the smaller the updates.
-
   It is recommended to leave the parameters of this optimizer
   at their default values.
-
   # Arguments
       lr: float >= 0. Initial learning rate.
       epsilon: float >= 0. If `None`, defaults to `K.epsilon()`.
       decay: float >= 0. Learning rate decay over each update.
-
   # References
       - [Adaptive Subgradient Methods for Online Learning and Stochastic
       Optimization](http://www.jmlr.org/papers/volume12/duchi11a/duchi11a.pdf)
@@ -353,7 +336,6 @@ class Adagrad(Optimizer):
 
 class Adadelta(Optimizer):
   """Adadelta optimizer.
-
   Adadelta is a more robust extension of Adagrad
   that adapts learning rates based on a moving window of gradient updates,
   instead of accumulating all past gradients. This way, Adadelta continues
@@ -361,10 +343,8 @@ class Adadelta(Optimizer):
   original version of Adadelta you don't have to set an initial learning
   rate. In this version, initial learning rate and decay factor can
   be set, as in most other Keras optimizers.
-
   It is recommended to leave the parameters of this optimizer
   at their default values.
-
   # Arguments
       lr: float >= 0. Initial learning rate, defaults to 1.
           It is recommended to leave it at the default value.
@@ -372,7 +352,6 @@ class Adadelta(Optimizer):
           gradient to keep at each time step.
       epsilon: float >= 0. Fuzz factor. If `None`, defaults to `K.epsilon()`.
       decay: float >= 0. Initial learning rate decay.
-
   # References
       - [Adadelta - an adaptive learning rate
       method](http://arxiv.org/abs/1212.5701)
@@ -438,9 +417,7 @@ class Adadelta(Optimizer):
 
 class Adam(Optimizer):
   """Adam optimizer.
-
   Default parameters follow those provided in the original paper.
-
   Arguments:
       lr: float >= 0. Learning rate.
       beta_1: float, 0 < beta < 1. Generally close to 1.
@@ -531,12 +508,132 @@ class Adam(Optimizer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+class AdaMod(Optimizer):
+    """AdaMod optimizer.
+    AdaMod is an adaptive and Momental Bound (AdaMod) method to restrict 
+    the adaptive learning rates with adaptive and momentalupper bounds.
+    Arguments:
+      lr: float >= 0. Learning rate.
+      beta_1: float, 0 < beta < 1. Generally close to 1.
+      beta_2: float, 0 < beta < 1. Generally close to 1.
+      beta_3: float, 0 < beta < 1. Generally close to 1.
+      epsilon: float >= 0. Fuzz factor. If `None`, defaults to `K.epsilon()`.
+      decay: float >= 0. Learning rate decay over each update.
+        from the paper "An Adaptive and Momental Bound Method for Stochastic Learning".
+    """
+    
+    def __init__(self,
+                 learning_rate=0.001,
+                 beta_1=0.9,
+                 beta_2=0.999,
+                 beta_3=0.999,
+                 epsilon=1e-8,
+                 name='AdaMod',
+                 **kwargs):
+        super(AdaMod, self).__init__(name, **kwargs)
+        self._set_hyper('learning_rate', kwargs.get('lr', learning_rate))
+        self._set_hyper('decay', self._initial_decay)
+        self._set_hyper('beta_1', beta_1)
+        self._set_hyper('beta_2', beta_2)
+        self._set_hyper('beta_3', beta_3)
+        self.epsilon = epsilon or backend_config.epsilon()
+
+    def _create_slots(self, var_list):
+        # Create slots for the first and second moments.
+        # Separate for-loops to respect the ordering of slot variables from v1.
+        for var in var_list:
+            self.add_slot(var, 'm')
+        for var in var_list:
+            self.add_slot(var, 'v')
+        for var in var_list:
+            self.add_slot(var, 'exp_avg_lr')
+
+    def _prepare_local(self, var_device, var_dtype, apply_state):
+        super(AdaMod, self)._prepare_local(var_device, var_dtype, apply_state)
+
+        local_step = math_ops.cast(self.iterations + 1, var_dtype)
+        beta_1_t = array_ops.identity(self._get_hyper('beta_1', var_dtype))
+        beta_2_t = array_ops.identity(self._get_hyper('beta_2', var_dtype))
+        beta_3_t = array_ops.identity(self._get_hyper('beta_3', var_dtype))
+        beta_1_power = math_ops.pow(beta_1_t, local_step)
+        beta_2_power = math_ops.pow(beta_2_t, local_step)
+        lr = (apply_state[(var_device, var_dtype)]['lr_t'] *
+              (math_ops.sqrt(1 - beta_2_power) / (1 - beta_1_power)))
+        apply_state[(var_device, var_dtype)].update(dict(
+            lr=lr,
+            epsilon=ops.convert_to_tensor(self.epsilon, var_dtype),
+            beta_1_t=beta_1_t,
+            beta_1_power=beta_1_power,
+            one_minus_beta_1_t=1 - beta_1_t,
+            beta_2_t=beta_2_t,
+            beta_2_power=beta_2_power,
+            one_minus_beta_2_t=1 - beta_2_t,
+            beta_3_t=beta_3_t,
+        ))
+
+    def set_weights(self, weights):
+        params = self.weights
+        num_vars = int((len(params) - 1) / 2)
+        if len(weights) == 3 * num_vars + 1:
+            weights = weights[:len(params)]
+        super(AdaMod, self).set_weights(weights)
+
+    def _resource_apply_dense(self, grad, var, apply_state=None):
+        var_device, var_dtype = var.device, var.dtype.base_dtype
+        coefficients = ((apply_state or {}).get((var_device, var_dtype))
+                        or self._fallback_apply_state(var_device, var_dtype))
+
+        # m_t = beta1 * m + (1 - beta1) * g_t
+        m = self.get_slot(var, 'm')
+        m_scaled_g_values = grad * coefficients['one_minus_beta_1_t']
+        m_t = state_ops.assign(m, m * coefficients['beta_1_t'] + m_scaled_g_values,
+                               use_locking=self._use_locking)
+
+        # v_t = beta2 * v + (1 - beta2) * (g_t * g_t)
+        v = self.get_slot(var, 'v')
+        v_scaled_g_values = (grad * grad) * coefficients['one_minus_beta_2_t']
+        v_t = state_ops.assign(v, v * coefficients['beta_2_t'] + v_scaled_g_values,
+                               use_locking=self._use_locking)
+
+        denom = math_ops.sqrt(v_t) + coefficients['epsilon']
+
+        step_size = coefficients['lr'] / denom
+
+        # exp_avg_lr.mul_(group['beta3']).add_(1 - group['beta3'], step_size)
+        exp_avg_lr = self.get_slot(var, 'exp_avg_lr')
+        exp_avg_lr = state_ops.assign(
+            exp_avg_lr,
+            exp_avg_lr * coefficients['beta_3_t'] + (1.0 - coefficients['beta_3_t']) * step_size,
+            use_locking=self._use_locking)
+
+        step_size = math_ops.minimum(step_size, exp_avg_lr)
+
+        var_update = state_ops.assign_sub(
+            var, m_t * step_size,
+            use_locking=self._use_locking)
+
+        return control_flow_ops.group(*[var_update, m_t, v_t, exp_avg_lr])
+
+    def _resource_apply_sparse(self, grad, var, indices, apply_state=None):
+        raise RuntimeError('This optimizer does not support sparse gradients.')
+
+    def get_config(self):
+        config = super(AdaMod, self).get_config()
+        config.update({
+            'learning_rate': self._serialize_hyperparameter('learning_rate'),
+            'decay': self._serialize_hyperparameter('decay'),
+            'beta_1': self._serialize_hyperparameter('beta_1'),
+            'beta_2': self._serialize_hyperparameter('beta_2'),
+            'beta_3': self._serialize_hyperparameter('beta_3'),
+            'epsilon': self.epsilon,
+        })
+        return config
+
+
 class Adamax(Optimizer):
   """Adamax optimizer from Adam paper's Section 7.
-
   It is a variant of Adam based on the infinity norm.
   Default parameters follow those provided in the paper.
-
   Arguments:
       lr: float >= 0. Learning rate.
       beta_1/beta_2: floats, 0 < beta < 1. Generally close to 1.
@@ -616,14 +713,11 @@ class Adamax(Optimizer):
 
 class Nadam(Optimizer):
   """Nesterov Adam optimizer.
-
   Much like Adam is essentially RMSprop with momentum,
   Nadam is Adam RMSprop with Nesterov momentum.
-
   Default parameters follow those provided in the paper.
   It is recommended to leave the parameters of this optimizer
   at their default values.
-
   Arguments:
       lr: float >= 0. Learning rate.
       beta_1/beta_2: floats, 0 < beta < 1. Generally close to 1.
@@ -775,6 +869,7 @@ adadelta = Adadelta
 adam = Adam
 adamax = Adamax
 nadam = Nadam
+adamod = AdaMod
 
 
 @keras_export('keras.optimizers.serialize')
@@ -785,12 +880,10 @@ def serialize(optimizer):
 @keras_export('keras.optimizers.deserialize')
 def deserialize(config, custom_objects=None):
   """Inverse of the `serialize` function.
-
   Arguments:
       config: Optimizer configuration dictionary.
       custom_objects: Optional dictionary mapping names (strings) to custom
         objects (classes and functions) to be considered during deserialization.
-
   Returns:
       A Keras Optimizer instance.
   """
@@ -805,6 +898,7 @@ def deserialize(config, custom_objects=None):
       'nadam': nadam_v2.Nadam,
       'rmsprop': rmsprop_v2.RMSprop,
       'sgd': gradient_descent_v2.SGD,
+      'adamod' : adamod_v2.AdaMod,
       'ftrl': ftrl.Ftrl,
       'lossscaleoptimizer': loss_scale_optimizer.LossScaleOptimizer,
   }
@@ -822,17 +916,14 @@ def deserialize(config, custom_objects=None):
 @keras_export('keras.optimizers.get')
 def get(identifier):
   """Retrieves a Keras Optimizer instance.
-
   Arguments:
       identifier: Optimizer identifier, one of
           - String: name of an optimizer
           - Dictionary: configuration dictionary. - Keras Optimizer instance (it
             will be returned unchanged). - TensorFlow Optimizer instance (it
             will be wrapped as a Keras Optimizer).
-
   Returns:
       A Keras Optimizer instance.
-
   Raises:
       ValueError: If `identifier` cannot be interpreted.
   """
