@@ -618,7 +618,7 @@ REGISTER_OP("BoostedTreesUpdateEnsemble")
 
 REGISTER_OP("BoostedTreesUpdateEnsembleV2")
     .Input("tree_ensemble_handle: resource")
-    .Input("feature_ids: int32")
+    .Input("feature_ids: num_groups * int32")
     .Input("dimension_ids: num_features * int32")
     .Input("node_ids: num_features * int32")
     .Input("gains: num_features * float")
@@ -631,13 +631,18 @@ REGISTER_OP("BoostedTreesUpdateEnsembleV2")
     .Input("pruning_mode: int32")
     .Attr("num_features: int >= 0")  // Inferred.
     .Attr("logits_dimension: int = 1")
+    .Attr("num_groups: int = 1")  // Number of groups to process.
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle shape_handle;
       int num_features;
       TF_RETURN_IF_ERROR(c->GetAttr("num_features", &num_features));
+      int num_groups;
+      TF_RETURN_IF_ERROR(c->GetAttr("num_groups", &num_groups));
 
       // Feature_ids, should be one for each feature.
       shape_inference::ShapeHandle feature_ids_shape;
+      // TODO(crawles): remove 1 hardcode once kernel operates on multiple
+      // groups.
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &feature_ids_shape));
       TF_RETURN_IF_ERROR(
           c->Merge(c->input(1), c->Vector(num_features), &shape_handle));

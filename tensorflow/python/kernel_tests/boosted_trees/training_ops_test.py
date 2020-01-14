@@ -180,7 +180,7 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           pruning_mode=boosted_trees_ops.PruningMode.NO_PRUNING,
           # Tree will be finalized now, since we will reach depth 1.
           max_depth=1,
-          feature_ids=feature_ids,
+          feature_ids=[feature_ids],
           dimension_ids=[feature1_dimensions, feature2_dimensions],
           node_ids=[feature1_nodes, feature2_nodes],
           gains=[feature1_gains, feature2_gains],
@@ -289,7 +289,7 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           pruning_mode=boosted_trees_ops.PruningMode.NO_PRUNING,
           # Tree will be finalized now, since we will reach depth 1.
           max_depth=1,
-          feature_ids=feature_ids,
+          feature_ids=[feature_ids],
           dimension_ids=[feature1_dimensions, feature2_dimensions],
           node_ids=[feature1_nodes, feature2_nodes],
           gains=[feature1_gains, feature2_gains],
@@ -401,7 +401,7 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           pruning_mode=boosted_trees_ops.PruningMode.NO_PRUNING,
           # Tree will be finalized now, since we will reach depth 1.
           max_depth=1,
-          feature_ids=feature_ids,
+          feature_ids=[feature_ids],
           dimension_ids=[feature1_dimensions, feature2_dimensions],
           node_ids=[feature1_nodes, feature2_nodes],
           gains=[feature1_gains, feature2_gains],
@@ -809,7 +809,7 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           pruning_mode=boosted_trees_ops.PruningMode.NO_PRUNING,
           # tree is going to be finalized now, since we reach depth 2.
           max_depth=2,
-          feature_ids=feature_ids,
+          feature_ids=[feature_ids],
           dimension_ids=[
               feature1_dimensions, feature2_dimensions, feature3_dimensions
           ],
@@ -1014,7 +1014,7 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           pruning_mode=boosted_trees_ops.PruningMode.NO_PRUNING,
           # tree is going to be finalized now, since we reach depth 2.
           max_depth=2,
-          feature_ids=feature_ids,
+          feature_ids=[feature_ids],
           dimension_ids=[
               feature1_dimensions, feature2_dimensions, feature3_dimensions
           ],
@@ -1230,7 +1230,7 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           pruning_mode=boosted_trees_ops.PruningMode.NO_PRUNING,
           # tree is going to be finalized now, since we reach depth 2.
           max_depth=2,
-          feature_ids=feature_ids,
+          feature_ids=[feature_ids],
           dimension_ids=[
               feature1_dimensions, feature2_dimensions, feature3_dimensions
           ],
@@ -1610,7 +1610,7 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           pruning_mode=boosted_trees_ops.PruningMode.NO_PRUNING,
           learning_rate=0.1,
           max_depth=2,
-          feature_ids=feature_ids,
+          feature_ids=[feature_ids],
           dimension_ids=[feature1_dimensions],
           node_ids=[feature1_nodes],
           gains=[feature1_gains],
@@ -1769,7 +1769,7 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           pruning_mode=boosted_trees_ops.PruningMode.NO_PRUNING,
           learning_rate=0.1,
           max_depth=2,
-          feature_ids=feature_ids,
+          feature_ids=[feature_ids],
           dimension_ids=[feature1_dimensions],
           node_ids=[feature1_nodes],
           gains=[feature1_gains],
@@ -1942,7 +1942,7 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           pruning_mode=boosted_trees_ops.PruningMode.NO_PRUNING,
           learning_rate=0.1,
           max_depth=2,
-          feature_ids=feature_ids,
+          feature_ids=[feature_ids],
           dimension_ids=[feature1_dimensions],
           node_ids=[feature1_nodes],
           gains=[feature1_gains],
@@ -2309,7 +2309,7 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           pruning_mode=boosted_trees_ops.PruningMode.PRE_PRUNING,
           # tree is going to be finalized now, since we reach depth 2.
           max_depth=3,
-          feature_ids=feature_ids,
+          feature_ids=[feature_ids],
           dimension_ids=[
               feature1_dimensions, feature2_dimensions, feature3_dimensions
           ],
@@ -3041,7 +3041,7 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           learning_rate=1.0,
           pruning_mode=boosted_trees_ops.PruningMode.POST_PRUNING,
           max_depth=3,
-          feature_ids=feature_ids,
+          feature_ids=[feature_ids],
           dimension_ids=[feature1_dimensions, feature2_dimensions],
           node_ids=[feature1_nodes, feature2_nodes],
           gains=[feature1_gains, feature2_gains],
@@ -3140,7 +3140,7 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           learning_rate=1.0,
           pruning_mode=boosted_trees_ops.PruningMode.POST_PRUNING,
           max_depth=3,
-          feature_ids=feature_ids,
+          feature_ids=[feature_ids],
           dimension_ids=[feature1_dimensions],
           node_ids=[feature1_nodes],
           gains=[feature1_gains],
@@ -3293,7 +3293,7 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           learning_rate=1.0,
           pruning_mode=boosted_trees_ops.PruningMode.POST_PRUNING,
           max_depth=3,
-          feature_ids=feature_ids,
+          feature_ids=[feature_ids],
           dimension_ids=[feature1_dimensions],
           node_ids=[feature1_nodes],
           gains=[feature1_gains],
@@ -3679,7 +3679,7 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           learning_rate=1.0,
           pruning_mode=boosted_trees_ops.PruningMode.POST_PRUNING,
           max_depth=2,
-          feature_ids=feature_ids,
+          feature_ids=[feature_ids],
           dimension_ids=[feature1_dimensions, feature2_dimensions],
           node_ids=[feature1_nodes, feature2_nodes],
           gains=[feature1_gains, feature2_gains],
@@ -3778,7 +3778,7 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           learning_rate=1.0,
           pruning_mode=boosted_trees_ops.PruningMode.POST_PRUNING,
           max_depth=2,
-          feature_ids=feature_ids,
+          feature_ids=[feature_ids],
           dimension_ids=[feature1_dimensions],
           node_ids=[feature1_nodes],
           gains=[feature1_gains],
@@ -4014,7 +4014,7 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           learning_rate=1.0,
           pruning_mode=boosted_trees_ops.PruningMode.POST_PRUNING,
           max_depth=1,
-          feature_ids=feature_ids,
+          feature_ids=[feature_ids],
           dimension_ids=[feature1_dimensions, feature2_dimensions],
           node_ids=[feature1_nodes, feature2_nodes],
           gains=[feature1_gains, feature2_gains],
