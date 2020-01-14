@@ -1350,6 +1350,15 @@ Status MemorySpaceAssignment::SimplifyGraph() {
               << " because it's not in the schedule.";
       continue;
     }
+    // Drop control dependencies. Since the computation is already scheduled, we
+    // don't need control dependencies anymore, and having control
+    // predecessors/successors prevents us from removing instructions without
+    // users (HloComputation::IsSafelyRemovable returns false if there are
+    // control dependencies).
+    for (HloInstruction* instruction :
+         computation->MakeInstructionPostOrder()) {
+      TF_RETURN_IF_ERROR(instruction->DropAllControlDeps());
+    }
     // We perform limited DCE and forward the tuple operand in patterns like
     // GetTupleElement(Tuple(a, b), 0). This is mostly because memory space
     // assignment is ran late in compilation (after DCE and arithmetic
