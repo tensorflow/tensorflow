@@ -69,6 +69,8 @@ inline void ResizeBilinear(int input_height, int input_width,
                            float scale) {
   tflite::ResizeBilinearParams resize_params;
   resize_params.align_corners = false;
+  // TODO(b/143292772): Set this to true for more accurate behavior?
+  resize_params.half_pixel_centers = false;
   tflite::RuntimeShape input_shape(
       {1, input_height, input_width, kNumChannels});
   tflite::RuntimeShape output_size_dims({1, 1, 1, 2});

@@ -1972,6 +1972,22 @@ inline void ScatterNd(const RuntimeShape& indices_shape,
   }
 }
 
+inline void ComputeInterpolationValues(const float value, const float scale,
+                                       const bool half_pixel_centers,
+                                       int32 input_size, float* scaled_value,
+                                       int32* lower_bound, int32* upper_bound) {
+  if (half_pixel_centers) {
+    *scaled_value = (value + 0.5f) * scale - 0.5f;
+  } else {
+    *scaled_value = value * scale;
+  }
+  float scaled_value_floor = std::floor(*scaled_value);
+  *lower_bound =
+      std::max(static_cast<int32>(scaled_value_floor), static_cast<int32>(0));
+  *upper_bound =
+      std::min(static_cast<int32>(std::ceil(*scaled_value)), input_size - 1);
+}
+
 template <typename T>
 inline void ResizeBilinear(const tflite::ResizeBilinearParams& op_params,
                            const RuntimeShape& unextended_input_shape,
@@ -1980,6 +1996,8 @@ inline void ResizeBilinear(const tflite::ResizeBilinearParams& op_params,
                            const int32* output_size_data,
                            const RuntimeShape& unextended_output_shape,
                            T* output_data) {
+  // If half_pixel_centers is True, align_corners must be False.
+  TFLITE_DCHECK(!op_params.half_pixel_centers || !op_params.align_corners);
   TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_output_size_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
@@ -2013,13 +2031,15 @@ inline void ResizeBilinear(const tflite::ResizeBilinearParams& op_params,
 
   for (int b = 0; b < batches; ++b) {
     for (int y = 0; y < output_height; ++y) {
-      float input_y = y * height_scale;
-      int32 y0 = static_cast<int32>(std::floor(input_y));
-      int32 y1 = std::min(y0 + 1, input_height - 1);
+      float input_y;
+      int32 y0, y1;
+      ComputeInterpolationValues(y, height_scale, op_params.half_pixel_centers,
+                                 input_height, &input_y, &y0, &y1);
       for (int x = 0; x < output_width; ++x) {
-        float input_x = x * width_scale;
-        int32 x0 = static_cast<int32>(std::floor(input_x));
-        int32 x1 = std::min(x0 + 1, input_width - 1);
+        float input_x;
+        int32 x0, x1;
+        ComputeInterpolationValues(x, width_scale, op_params.half_pixel_centers,
+                                   input_width, &input_x, &x0, &x1);
         for (int c = 0; c < depth; ++c) {
           T interpolation =
               static_cast<T>(input_data[Offset(input_shape, b, y0, x0, c)] *

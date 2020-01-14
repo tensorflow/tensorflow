@@ -4698,20 +4698,25 @@ inline void ResizeBilinearGeneric(
     int32 batches, int32 input_height, int32 input_width, int32 depth,
     int32 output_height, int32 output_width, float height_scale,
     float width_scale, const RuntimeShape& input_shape, const float* input_data,
-    const RuntimeShape& output_shape, float* output_data) {
+    const RuntimeShape& output_shape, float* output_data,
+    const bool half_pixel_centers) {
   memset(output_data, 0,
          batches * output_height * output_width * depth * sizeof(float));
 
   int32 output_offset = 0;
   for (int b = 0; b < batches; ++b) {
     for (int y = 0; y < output_height; ++y) {
-      float input_y = y * height_scale;
-      int32 y0 = static_cast<int32>(std::floor(input_y));
-      int32 y1 = std::min(y0 + 1, input_height - 1);
+      float input_y;
+      int32 y0, y1;
+      reference_ops::ComputeInterpolationValues(
+          y, height_scale, half_pixel_centers, input_height, &input_y, &y0,
+          &y1);
       for (int x = 0; x < output_width; ++x) {
-        float input_x = x * width_scale;
-        int32 x0 = static_cast<int32>(input_x);
-        int32 x1 = std::min(x0 + 1, input_width - 1);
+        float input_x;
+        int32 x0, x1;
+        reference_ops::ComputeInterpolationValues(
+            x, width_scale, half_pixel_centers, input_width, &input_x, &x0,
+            &x1);
         float* output_ptr = &output_data[output_offset];
 
         // Run kernel on the 4 corners of the bilinear resize algorithm.
@@ -4746,17 +4751,22 @@ inline void ResizeBilinearGenericSmallChannel(
     int32 batches, int32 input_height, int32 input_width, int32 depth,
     int32 output_height, int32 output_width, float height_scale,
     float width_scale, const RuntimeShape& input_shape, const T* input_data,
-    const RuntimeShape& output_shape, T* output_data) {
+    const RuntimeShape& output_shape, T* output_data,
+    const bool half_pixel_centers) {
   T* output_ptr = &output_data[0];
   for (int b = 0; b < batches; ++b) {
     for (int y = 0; y < output_height; ++y) {
-      float input_y = y * height_scale;
-      int32 y0 = static_cast<int32>(std::floor(input_y));
-      int32 y1 = std::min(y0 + 1, input_height - 1);
+      float input_y;
+      int32 y0, y1;
+      reference_ops::ComputeInterpolationValues(
+          y, height_scale, half_pixel_centers, input_height, &input_y, &y0,
+          &y1);
       for (int x = 0; x < output_width; ++x) {
-        float input_x = x * width_scale;
-        int32 x0 = static_cast<int32>(std::floor((input_x)));
-        int32 x1 = std::min(x0 + 1, input_width - 1);
+        float input_x;
+        int32 x0, x1;
+        reference_ops::ComputeInterpolationValues(
+            x, width_scale, half_pixel_centers, input_width, &input_x, &x0,
+            &x1);
 
         int32 input_offset[4] = {Offset(input_shape, b, y0, x0, 0),
                                  Offset(input_shape, b, y0, x1, 0),
@@ -4787,6 +4797,8 @@ inline void ResizeBilinear(const tflite::ResizeBilinearParams& op_params,
                            const RuntimeShape& unextended_output_shape,
                            float* output_data) {
   ruy::profiler::ScopeLabel label("ResizeBilinear");
+  // If half_pixel_centers is True, align_corners must be False.
+  TFLITE_DCHECK(!op_params.half_pixel_centers || !op_params.align_corners);
   TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
   const RuntimeShape input_shape =
@@ -4804,8 +4816,8 @@ inline void ResizeBilinear(const tflite::ResizeBilinearParams& op_params,
   int32 output_width = output_size_data[1];
 
   // Specialize for 2x2 upsample.
-  if (!op_params.align_corners && output_height == 2 * input_height &&
-      output_width == 2 * input_width) {
+  if (!op_params.align_corners && !op_params.half_pixel_centers &&
+      output_height == 2 * input_height && output_width == 2 * input_width) {
     ResizeBilinear2x2(batches, input_height, input_width, depth, output_height,
                       output_width, input_shape, input_data, output_shape,
                       output_data);
@@ -4822,7 +4834,7 @@ inline void ResizeBilinear(const tflite::ResizeBilinearParams& op_params,
     ResizeBilinearGeneric(batches, input_height, input_width, depth,
                           output_height, output_width, height_scale,
                           width_scale, input_shape, input_data, output_shape,
-                          output_data);
+                          output_data, op_params.half_pixel_centers);
   }
 }
 
@@ -4836,6 +4848,8 @@ inline void ResizeBilinear(const tflite::ResizeBilinearParams& op_params,
                            const RuntimeShape& unextended_output_shape,
                            uint8* output_data) {
   ruy::profiler::ScopeLabel label("ResizeBilinear");
+  // If half_pixel_centers is True, align_corners must be False.
+  TFLITE_DCHECK(!op_params.half_pixel_centers || !op_params.align_corners);
   TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
   const RuntimeShape input_shape =
@@ -4865,7 +4879,7 @@ inline void ResizeBilinear(const tflite::ResizeBilinearParams& op_params,
   ResizeBilinearGenericSmallChannel<uint8>(
       batches, input_height, input_width, depth, output_height, output_width,
       height_scale, width_scale, input_shape, input_data, output_shape,
-      output_data);
+      output_data, op_params.half_pixel_centers);
 }
 
 // Helper methods for BatchToSpaceND.
