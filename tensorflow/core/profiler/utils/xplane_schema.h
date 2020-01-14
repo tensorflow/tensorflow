@@ -129,6 +129,8 @@ inline bool IsStatType(StatType stat_type, absl::string_view stat_name) {
   return GetStatTypeStr(stat_type) == stat_name;
 }
 
+StatType GetStatType(absl::string_view stat_name);
+
 }  // namespace profiler
 }  // namespace tensorflow
 

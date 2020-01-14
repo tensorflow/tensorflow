@@ -131,6 +131,8 @@ cc_library(
     visibility = [":friends"],
     deps = [
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
@@ -149,14 +151,17 @@ cc_library(
 
 cc_library(
     name = "xplane_visitor",
+    srcs = ["xplane_visitor.cc"],
     hdrs = ["xplane_visitor.h"],
     visibility = [":friends"],
     deps = [
         ":time_utils",
         ":timespan",
+        ":xplane_schema",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
     ],
 )
