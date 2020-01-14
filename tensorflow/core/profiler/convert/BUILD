@@ -108,6 +108,18 @@ cc_library(
 )
 
 cc_library(
+    name = "step_events_to_steps_db",
+    srcs = ["step_events_to_steps_db.cc"],
+    hdrs = ["step_events_to_steps_db.h"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/profiler/protobuf:steps_db_proto_cc",
+        "//tensorflow/core/profiler/utils:event_span",
+    ],
+)
+
+cc_library(
     name = "xplane_to_op_stats",
     srcs = ["xplane_to_op_stats.cc"],
     hdrs = ["xplane_to_op_stats.h"],
