@@ -637,6 +637,7 @@ bool HloParserImpl::ParseInstructionList(HloComputation** computation,
     if (root_node == nullptr) {
       LOG(FATAL) << "instruction " << root_name
                  << " was marked as ROOT but the parser has not seen it before";
+      return false;
     }
     root = root_node->first;
   }
