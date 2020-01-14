@@ -556,13 +556,7 @@ TfLiteStatus BenchmarkTfLiteModel::ResetInputsAndOutputs() {
 }
 
 TfLiteStatus BenchmarkTfLiteModel::Init() {
-  std::string graph = params_.Get<std::string>("graph");
-  model_ = tflite::FlatBufferModel::BuildFromFile(graph.c_str());
-  if (!model_) {
-    TFLITE_LOG(ERROR) << "Failed to mmap model " << graph;
-    return kTfLiteError;
-  }
-  TFLITE_LOG(INFO) << "Loaded model " << graph;
+  TF_LITE_ENSURE_STATUS(LoadModel());
 
   auto resolver = GetOpResolver();
 
@@ -651,6 +645,17 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
   ruy_profiling_listener_.reset(new RuyProfileListener());
   AddListener(ruy_profiling_listener_.get());
 
+  return kTfLiteOk;
+}
+
+TfLiteStatus BenchmarkTfLiteModel::LoadModel() {
+  std::string graph = params_.Get<std::string>("graph");
+  model_ = tflite::FlatBufferModel::BuildFromFile(graph.c_str());
+  if (!model_) {
+    TFLITE_LOG(ERROR) << "Failed to mmap model " << graph;
+    return kTfLiteError;
+  }
+  TFLITE_LOG(INFO) << "Loaded model " << graph;
   return kTfLiteOk;
 }
 

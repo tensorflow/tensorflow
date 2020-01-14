@@ -70,6 +70,8 @@ class BenchmarkTfLiteModel : public BenchmarkModel {
   using TfLiteDelegatePtrMap = std::map<std::string, TfLiteDelegatePtr>;
   virtual TfLiteDelegatePtrMap GetDelegates() const;
 
+  virtual TfLiteStatus LoadModel();
+
   // Allow subclasses to create a customized Op resolver during init.
   virtual std::unique_ptr<tflite::OpResolver> GetOpResolver() const;
 
