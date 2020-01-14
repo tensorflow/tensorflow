@@ -178,11 +178,6 @@ class TrtShapeOptimizationProfile {
   Status addProfiles(nvinfer1::IBuilder *builder,
                      nvinfer1::IBuilderConfig* config,
                      const nvinfer1::INetworkDefinition *network);
-
-  // Map shapes to profile number, which is also a context number, because
-  // each context has only one associated profile
-  std::unordered_map<std::vector<TensorShape>, int, VectorTensorShapeHasher>
-      profile_map_;
 };
 
 }  // namespace tensorrt

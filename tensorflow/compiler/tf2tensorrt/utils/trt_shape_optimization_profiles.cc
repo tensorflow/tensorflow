@@ -53,8 +53,6 @@ Status TrtShapeOptimizationProfile::addProfiles(
     const nvinfer1::INetworkDefinition *network) {
   // Create a vector of optimization profiles
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
-  profile_map_.clear();
-  auto shape_vec = input_shapes_.begin();
   for (int i = 0; i < profiles_.size(); i++) {
     auto* optProfile = builder->createOptimizationProfile();
     Status status = profiles_[i].setDimensions(network, optProfile);
@@ -73,13 +71,11 @@ Status TrtShapeOptimizationProfile::addProfiles(
       }
       VLOG(1) << "Added optimization profile " << profiles_[i].DebugString()
               << " to builder config.";
-      profile_map_.emplace(std::make_pair(*shape_vec, idx));
     } else {
       VLOG(ERROR) << "Failed to add optimization profile "
                   << profiles_[i].DebugString()
                   << ". This usually happens when profile is invalid.";
     }
-    shape_vec++;
   }
   if (config->getNbOptimizationProfiles() == 0) {
      return errors::Internal("Failure in adding an optimization profile.");
@@ -116,13 +112,6 @@ int TrtShapeOptimizationProfile::getProfileNumber(std::vector<TensorShape> shape
   }
   VLOG(1) << "Profile not found for input shapes " <<  DebugString(shapes) << ".";
   return -1;
-//  auto it = profile_map_.find(shapes);
-//  if (it != profile_map_.end()) {
-//    return it->second;
-//  } else {
-//    VLOG(1) << "Profile not found for input shapes " <<  DebugString(shapes) << ".";
-//    return -1;
-//  }
 }
 
 Status TrtShapeOptimizationProfile::createExcecutionContexts(
@@ -154,7 +143,7 @@ Status TrtShapeOptimizationProfile::createExcecutionContexts(
     exec_context.push_back(
       std::move(TrtUniquePtrType<nvinfer1::IExecutionContext>(ctx)));
     i++;
-  } while (i<profile_map_.size());
+  } while (i<profiles_.size());
 
   return Status::OK();
 }
