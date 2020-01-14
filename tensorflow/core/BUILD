@@ -2779,7 +2779,9 @@ cc_library(
         ":protos_all_cc",
         ":shared_counter",
         "//tensorflow/core/framework:allocator",
+        "//tensorflow/core/profiler/lib:traceme",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
     ],
 )
 

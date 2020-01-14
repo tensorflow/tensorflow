@@ -40,6 +40,8 @@ enum HostEventType {
   kEagerKernelExecute,
   kExecutorStateProcess,
   kExecutorDoneCallback,
+  kMemoryAllocation,
+  kMemoryDeallocation,
   // tf.data captured function events.
   kTfDataCapturedFunctionRun,
   kTfDataCapturedFunctionRunWithBorrowedArgs,
@@ -80,10 +82,12 @@ enum StatType {
   kStepNum,
   kIterNum,
   kIndexOnHost,
+  kAllocatorName,
   kBytesReserved,
   kBytesAllocated,
   kBytesAvailable,
   kFragmentation,
+  kPeakBytesInUse,
   // Device trace arguments.
   kDeviceId,
   kContextId,
