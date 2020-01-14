@@ -585,6 +585,8 @@ class MeanMetricWrapper(Mean):
     [y_true, y_pred], sample_weight = \
         metrics_utils.ragged_assert_compatible_and_get_flat_values(
             [y_true, y_pred], sample_weight)
+    #raises error if `y_true` and `y_pred` have different shapes
+    y_pred.shape.assert_is_compatible_with(y_true.shape)
     y_pred, y_true = tf_losses_utils.squeeze_or_expand_dimensions(
         y_pred, y_true)
 
