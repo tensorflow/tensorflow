@@ -23,8 +23,8 @@ load(
     "tf_logging_absl_deps",
     "tf_platform_hdrs",
     "tf_platform_srcs",
-    "tf_protobuf_deps",
     "tf_protobuf_compiler_deps",
+    "tf_protobuf_deps",
 )
 load(
     "//tensorflow:tensorflow.bzl",

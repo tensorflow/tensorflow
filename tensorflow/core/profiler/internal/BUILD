@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "tf_cc_test", "if_not_windows", "tf_cuda_library")
+load("//tensorflow:tensorflow.bzl", "if_not_windows", "tf_cc_test", "tf_cuda_library")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 
 package(

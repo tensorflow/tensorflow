@@ -58,10 +58,10 @@ cuda_py_test(
         "//tensorflow/python:variables",
     ],
     tags = [
+        "no_mac",
         "no_pip",
         "notap",
         "oss_serial",
-        "no_mac",
     ],
     xla_enable_strict_auto_jit = False,  # Node names are different with autojit
 )

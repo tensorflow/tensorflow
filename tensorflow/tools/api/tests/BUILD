@@ -28,9 +28,9 @@ py_test(
     python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = [
+        "no_mac",  # fails on the branch, failed at release time too
         "no_pip",
         "no_rocm",
-        "no_mac",  # fails on the branch, failed at release time too
     ],
     deps = [
         "//tensorflow:tensorflow_py",
