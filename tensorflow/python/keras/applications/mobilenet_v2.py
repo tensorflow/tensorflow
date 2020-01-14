@@ -160,10 +160,10 @@ def MobileNetV2(input_shape=None,
       
   Usage Example:
   >>> from tensorflow.keras.applications import MobileNetV2
-  >>> IMG_SHAPE = (224, 224, 3)
-  >>> model = MobileNetV2(input_shape =IMG_SHAPE , include_top = True)
+  >>> IMG_SHAPE=(224, 224, 3)
+  >>> model=MobileNetV2(input_shape=IMG_SHAPE , include_top=True)
   >>> model
-  <tensorflow.python.keras.engine.training.Model at 0x7f19e6f42d68>
+  <tensorflow.python.keras.engine.training.Model at ........>
 
   Args:
   input_shape: A 3-Dimensional Tuple of input
