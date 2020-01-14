@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
 
+#include "absl/types/optional.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 
 namespace tensorflow {
@@ -35,20 +36,28 @@ XPlaneVisitor::XPlaneVisitor(const XPlane* plane) : plane_(plane) {
   for (const auto& stat_metadata : plane->stat_metadata()) {
     StatType type =
         tensorflow::profiler::GetStatType(stat_metadata.second.name());
-    stat_metadata_.emplace(stat_metadata.first,
-                           std::make_pair(&stat_metadata.second, type));
+    stat_metadata_id_map_.emplace(stat_metadata.first,
+                                  std::make_pair(&stat_metadata.second, type));
+    stat_type_map_.emplace(type, &stat_metadata.second);
   }
 }
 
 const XStatMetadata* XPlaneVisitor::GetStatMetadata(
     int64 stat_metadata_id) const {
-  const auto* it = gtl::FindOrNull(stat_metadata_, stat_metadata_id);
+  const auto* it = gtl::FindOrNull(stat_metadata_id_map_, stat_metadata_id);
   return it ? it->first : &XStatMetadata::default_instance();
 }
 
 StatType XPlaneVisitor::GetStatType(int64 stat_metadata_id) const {
-  const auto* it = gtl::FindOrNull(stat_metadata_, stat_metadata_id);
+  const auto* it = gtl::FindOrNull(stat_metadata_id_map_, stat_metadata_id);
   return it ? it->second : kUnknownStatType;
+}
+
+absl::optional<int64> XPlaneVisitor::GetStatMetadataId(
+    StatType stat_type) const {
+  const auto* it = gtl::FindOrNull(stat_type_map_, stat_type);
+  if (!it) return absl::nullopt;
+  return (*it)->id();
 }
 
 const XEventMetadata* XPlaneVisitor::GetEventMetadata(
