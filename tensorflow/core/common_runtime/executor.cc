@@ -2958,8 +2958,9 @@ Status CreateNonCachedKernel(Device* device, FunctionLibraryRuntime* flib,
                              OpKernel** kernel) {
   const auto device_type = DeviceType(device->attributes().device_type());
   auto allocator = device->GetAllocator(AllocatorAttributes());
-  return CreateOpKernel(device_type, device, allocator, flib, ndef,
-                        graph_def_version, kernel);
+  return CreateOpKernel(device_type, device, allocator, flib,
+                        device->resource_manager(), ndef, graph_def_version,
+                        kernel);
 }
 
 void DeleteNonCachedKernel(OpKernel* kernel) { delete kernel; }
