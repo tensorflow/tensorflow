@@ -21,7 +21,6 @@ limitations under the License.
 #include <type_traits>
 
 #include "fixedpoint/fixedpoint.h"
-#include "profiling/instrumentation.h"
 #include "tensorflow/lite/experimental/ruy/check_macros.h"
 #include "tensorflow/lite/experimental/ruy/common.h"
 #include "tensorflow/lite/experimental/ruy/internal_matrix.h"
@@ -29,6 +28,7 @@ limitations under the License.
 #include "tensorflow/lite/experimental/ruy/opt_set.h"
 #include "tensorflow/lite/experimental/ruy/path.h"
 #include "tensorflow/lite/experimental/ruy/platform.h"
+#include "tensorflow/lite/experimental/ruy/profiler/instrumentation.h"
 #include "tensorflow/lite/experimental/ruy/side_pair.h"
 #include "tensorflow/lite/experimental/ruy/size_util.h"
 #include "tensorflow/lite/experimental/ruy/spec.h"
@@ -174,7 +174,7 @@ struct Kernel<Path::kStandardCpp, LhsScalar, RhsScalar, DstScalar, Spec> {
     RUY_DCHECK_LE(clamped_end_col, dst->layout.cols);
     RUY_DCHECK_LE(clamped_end_col, end_col);
     RUY_DCHECK_LE(end_col - clamped_end_col, RhsLayout::kCols);
-    gemmlowp::ScopedProfilingLabel label("Kernel (Standard Cpp)");
+    profiler::ScopeLabel label("Kernel (Standard Cpp)");
     const int depth = lhs.layout.rows;
     for (int i = start_row; i < clamped_end_row; i++) {
       for (int j = start_col; j < clamped_end_col; j++) {

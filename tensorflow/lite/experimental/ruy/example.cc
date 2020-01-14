@@ -90,6 +90,7 @@ void ExampleMulUint8AsymmetricQuantized(ruy::Context *context) {
 
   ruy::BasicSpec<std::int32_t, std::uint8_t> spec;
   spec.multiplier_fixedpoint = 1 << 30;
+
   spec.multiplier_exponent = 0;
   ruy::Mul<ruy::kAllPaths>(lhs, rhs, spec, context, &dst);
 
