@@ -362,7 +362,6 @@ cc_library(
         ":spec",
         ":tune",
         "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
-        "@gemmlowp//:fixedpoint",
     ],
 )
 
@@ -665,7 +664,6 @@ cc_library(
         ":spec",
         ":tune",
         "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
-        "@gemmlowp//:fixedpoint",
     ],
 )
 
