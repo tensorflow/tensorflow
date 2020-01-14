@@ -58,5 +58,5 @@ PERSON_MODEL_MD5 := "fe2934bd0788f1dcc7af3f0a954542ab"
 EMBARC_OSP_URL := "https://github.com/foss-for-synopsys-dwc-arc-processors/embarc_osp/archive/embarc_mli.zip"
 EMBARC_OSP_MD5 := "9eaf7b3a1ed05872a03da9796672a776"
 
-EMBARC_MLI_URL := "https://github.com/foss-for-synopsys-dwc-arc-processors/embarc_mli/archive/6316034d421cbbb59756239908d7c9a99075a3bb.zip"
-EMBARC_MLI_MD5 := "db0910cf0e07e43f74ae7a31de485d56"
+EMBARC_MLI_URL := "https://github.com/foss-for-synopsys-dwc-arc-processors/embarc_mli/archive/428cfd6a89f848e403a8b8ca02eab2a897ae8cd3.zip"
+EMBARC_MLI_MD5 := "9c6c8f8877fa6dd738d7ab62665b3a6e"
