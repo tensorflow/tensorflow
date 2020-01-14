@@ -374,7 +374,8 @@ class MaxPooling2D(Pooling2D):
   Usage Example:
   
   >>> model = tf.keras.models.Sequential()
-  >>> model.add(tf.keras.layers.Conv2D(32, kernel_size=(3, 3), input_shape=(28,28,1)))
+  >>> model.add(tf.keras.layers.Conv2D(32, kernel_size=(3, 3), 
+  ...    input_shape=(28,28,1)))
   >>> model.add(tf.keras.layers.MaxPooling2D(pool_size=(2, 2)))
 
   For example, for stride=(1,1) and padding="same":
