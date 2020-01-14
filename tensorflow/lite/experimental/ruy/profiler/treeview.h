@@ -19,8 +19,8 @@ limitations under the License.
 #ifdef RUY_PROFILER
 
 #include <functional>
+#include <map>
 #include <memory>
-#include <unordered_map>
 #include <vector>
 
 #include "tensorflow/lite/experimental/ruy/profiler/instrumentation.h"
@@ -39,8 +39,10 @@ class TreeView {
 
   void Populate(const std::vector<char>& samples_buf_);
 
-  using ThreadRootsMap =
-      std::unordered_map<std::uint32_t, std::unique_ptr<Node>>;
+  // Intentionally an *ordered* map so that threads are enumerated
+  // in an order that's consistent and typically putting the 'main thread'
+  // first.
+  using ThreadRootsMap = std::map<std::uint32_t, std::unique_ptr<Node>>;
 
   const ThreadRootsMap& thread_roots() const { return thread_roots_; }
   ThreadRootsMap* mutable_thread_roots() { return &thread_roots_; }
