@@ -122,7 +122,7 @@ cc_library(
         ":logging",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
-        "@gemmlowp",
+        "//tensorflow/lite/experimental/ruy/profiler",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/kernels:builtin_ops",

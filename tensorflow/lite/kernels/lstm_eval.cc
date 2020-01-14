@@ -17,15 +17,11 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 
-#include "tensorflow/lite/kernels/cpu_backend_context.h"
-#include "tensorflow/lite/kernels/internal/compatibility.h"
-
-#ifdef GEMMLOWP_PROFILING
-#include "profiling/profiler.h"
-#endif
-
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/experimental/ruy/profiler/instrumentation.h"
+#include "tensorflow/lite/kernels/cpu_backend_context.h"
+#include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/kernel_utils.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
@@ -132,9 +128,7 @@ inline void LstmStepFloat(
     float* output_state_ptr, float* cell_state_ptr, float* input_gate_scratch,
     float* forget_gate_scratch, float* cell_scratch, float* output_gate_scratch,
     float* output_ptr) {
-#ifdef GEMMLOWP_PROFILING
-  gemmlowp::ScopedProfilingLabel label("LstmStepFloat");
-#endif
+  ruy::profiler::ScopeLabel label("LstmStepFloat");
   // Since we have already checked that weights are all there or none, we can
   // check the existence of only one to the get the condition.
   const bool use_cifg = (input_to_input_weights_ptr == nullptr);
@@ -466,9 +460,7 @@ inline void LstmStepHybrid(
     int8_t* quantized_aux_input_ptr, int8_t* quantized_output_state_ptr,
     int8_t* quantized_cell_state_ptr, float* output_state_ptr,
     float* cell_state_ptr, float* output_ptr) {
-#ifdef GEMMLOWP_PROFILING
-  gemmlowp::ScopedProfilingLabel label("LstmStepHybrid");
-#endif
+  ruy::profiler::ScopeLabel label("LstmStepHybrid");
   // Since we have already checked that weights are all there or none, we
   // can check the existence of only one to the get the condition.
   const bool use_cifg = (input_to_input_weights_ptr == nullptr);
@@ -954,6 +946,7 @@ inline void LstmStepInteger(
     int16_t* scratch_0_ptr, int16_t* scratch_1_ptr, int16_t* scratch_2_ptr,
     int16_t* scratch_3_ptr, int8_t* scratch_4_ptr, int32_t* scratch_5_ptr,
     CpuBackendContext* context) {
+  ruy::profiler::ScopeLabel label("LstmStepInteger");
   // Get hyper parameters.
   const bool use_cifg = (input_to_input_weight_ptr == nullptr);
   const bool use_peephole = (cell_to_output_weight_ptr != nullptr);

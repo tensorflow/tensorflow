@@ -15,9 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_REDUCE_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_REDUCE_H_
 
+#include "tensorflow/lite/experimental/ruy/profiler/instrumentation.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
-#include "tensorflow/lite/kernels/internal/scoped_profiling_label_wrapper.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
@@ -153,7 +153,7 @@ inline bool Mean(const T* input_data, const int* input_dims,
                  const int* output_dims, const int output_num_dims,
                  const int* axis, const int num_axis_dimensions, bool keep_dims,
                  int* temp_index, int* resolved_axis, U* temp_sum) {
-  ScopedProfilingLabelWrapper label("Mean");
+  ruy::profiler::ScopeLabel label("Mean");
   // Reset output data.
   size_t num_outputs = 1;
   for (int idx = 0; idx < output_num_dims; ++idx) {
@@ -207,7 +207,7 @@ inline void Mean(const tflite::MeanParams& op_params,
                  const RuntimeShape& unextended_input_shape,
                  const T* input_data,
                  const RuntimeShape& unextended_output_shape, T* output_data) {
-  ScopedProfilingLabelWrapper label("Mean4D");
+  ruy::profiler::ScopeLabel label("Mean4D");
 
   // Current implementation only supports dimension equals 4 and simultaneous
   // reduction over width and height.
@@ -252,7 +252,7 @@ inline void Mean(const tflite::MeanParams& op_params,
                  float input_scale, const RuntimeShape& unextended_output_shape,
                  uint8_t* output_data, int32 output_zero_point,
                  float output_scale) {
-  ScopedProfilingLabelWrapper label("Mean4D/Uint8");
+  ruy::profiler::ScopeLabel label("Mean4D/Uint8");
 
   // Current implementation only supports dimension equals 4 and simultaneous
   // reduction over width and height.
@@ -318,9 +318,9 @@ inline bool QuantizedMeanOrSum(const T* input_data, int32 input_zero_point,
                                bool compute_sum) {
   const bool uint8_case = std::is_same<T, int8_t>::value;
   if (uint8_case) {
-    ScopedProfilingLabelWrapper label(compute_sum ? "Sum/Uint8" : "Mean/Uint8");
+    ruy::profiler::ScopeLabel label(compute_sum ? "Sum/Uint8" : "Mean/Uint8");
   } else {
-    ScopedProfilingLabelWrapper label(compute_sum ? "Sum/Int8" : "Mean/Int8");
+    ruy::profiler::ScopeLabel label(compute_sum ? "Sum/Int8" : "Mean/Int8");
   }
   // Reset output data.
   size_t num_outputs = 1;

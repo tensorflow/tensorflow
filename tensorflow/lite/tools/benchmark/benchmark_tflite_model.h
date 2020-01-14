@@ -110,7 +110,7 @@ class BenchmarkTfLiteModel : public BenchmarkModel {
   std::vector<InputLayerInfo> inputs_;
   std::vector<InputTensorData> inputs_data_;
   std::unique_ptr<BenchmarkListener> profiling_listener_ = nullptr;
-  std::unique_ptr<BenchmarkListener> gemmlowp_profiling_listener_ = nullptr;
+  std::unique_ptr<BenchmarkListener> ruy_profiling_listener_ = nullptr;
   TfLiteDelegatePtrMap delegates_;
 
   std::mt19937 random_engine_;

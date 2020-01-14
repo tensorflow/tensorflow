@@ -216,7 +216,7 @@ inline void LegacyDepthwiseConvWithRounding(
     const uint8* filter_data, const RuntimeShape& bias_shape,
     const int32* bias_data, const RuntimeShape& output_shape,
     uint8* output_data, int thread_start, int thread_end, int thread_dim) {
-  gemmlowp::ScopedProfilingLabel label("DepthwiseConv/8bit");
+  ruy::profiler::ScopeLabel label("DepthwiseConv/8bit");
   const int depth_multiplier = params.depth_multiplier;
   const int32 output_activation_min = params.quantized_activation_min;
   const int32 output_activation_max = params.quantized_activation_max;
@@ -248,7 +248,7 @@ inline void LegacyDepthwiseConvWithRounding(
           input_shape, filter_shape, stride_width, stride_height,
           dilation_width_factor, dilation_height_factor, pad_width, pad_height,
           depth_multiplier, output_shape, output_shift)) {
-    gemmlowp::ScopedProfilingLabel specialized_label("DepthwiseConv/8bit/3x3");
+    ruy::profiler::ScopeLabel specialized_label("DepthwiseConv/8bit/3x3");
     depthwise_conv::DepthwiseConv3x3Filter<kOutputRounding>(
         params, input_shape, input_data, filter_shape, filter_data, bias_shape,
         bias_data, output_shape, output_data, thread_start, thread_end,
@@ -257,8 +257,7 @@ inline void LegacyDepthwiseConvWithRounding(
   }
 #endif
 
-  gemmlowp::ScopedProfilingLabel specialized_label(
-      "DepthwiseConv/8bit/General");
+  ruy::profiler::ScopeLabel specialized_label("DepthwiseConv/8bit/General");
   depthwise_conv::DepthwiseConvGeneral(params, input_shape, input_data,
                                        filter_shape, filter_data, bias_shape,
                                        bias_data, output_shape, output_data,
@@ -441,7 +440,7 @@ inline void DepthwiseConv(
     const uint8* filter_data, const RuntimeShape& bias_shape,
     const int32* bias_data, const RuntimeShape& output_shape,
     uint8* output_data, gemmlowp::GemmContext* gemmlowp_context = nullptr) {
-  gemmlowp::ScopedProfilingLabel label("DepthwiseConv");
+  ruy::profiler::ScopeLabel label("DepthwiseConv");
 
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 4);
@@ -542,7 +541,7 @@ inline void DepthwiseConvPerChannel(
     const int8* filter_data, const RuntimeShape& bias_shape,
     const int32* bias_data, const RuntimeShape& output_shape, int8* output_data,
     gemmlowp::GemmContext* gemmlowp_context = nullptr) {
-  gemmlowp::ScopedProfilingLabel label("DepthwiseConvInt8");
+  ruy::profiler::ScopeLabel label("DepthwiseConvInt8");
 
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 4);
@@ -630,10 +629,10 @@ template <typename Lhs, typename Rhs, typename Result>
 void Gemm(const Eigen::MatrixBase<Lhs>& lhs, const Eigen::MatrixBase<Rhs>& rhs,
           Eigen::MatrixBase<Result>* result) {
   if (rhs.cols() == 1) {
-    gemmlowp::ScopedProfilingLabel label("GEMV");
+    ruy::profiler::ScopeLabel label("GEMV");
     result->col(0).noalias() = lhs * rhs.col(0);
   } else {
-    gemmlowp::ScopedProfilingLabel label("GEMM");
+    ruy::profiler::ScopeLabel label("GEMM");
     result->noalias() = lhs * rhs;
   }
 }
@@ -644,7 +643,7 @@ inline void FullyConnected(
     const float* weights_data, const RuntimeShape& bias_shape,
     const float* optional_bias_data, const RuntimeShape& output_shape,
     float* output_data) {
-  gemmlowp::ScopedProfilingLabel label("FullyConnected");
+  ruy::profiler::ScopeLabel label("FullyConnected");
   const float output_activation_min = params.float_activation_min;
   const float output_activation_max = params.float_activation_max;
 
@@ -775,7 +774,7 @@ inline void LegacyFullyConnectedAsGEMVWorkerImpl(
     int32 output_multiplier, int output_shift, int32 output_activation_min,
     int32 output_activation_max, const RuntimeShape& output_shape,
     uint8* output_data, int row_start, int row_end) {
-  gemmlowp::ScopedProfilingLabel label("FullyConnectedAsGEMV/8bit");
+  ruy::profiler::ScopeLabel label("FullyConnectedAsGEMV/8bit");
   TFLITE_DCHECK_GE(input_shape.DimensionsCount(), 1);
   TFLITE_DCHECK_GE(filter_shape.DimensionsCount(), 2);
   TFLITE_DCHECK_GE(output_shape.DimensionsCount(), 1);
@@ -1092,7 +1091,7 @@ inline void FullyConnected(
     const uint8* filter_data, const RuntimeShape& bias_shape,
     const int32* bias_data, const RuntimeShape& output_shape,
     uint8* output_data, gemmlowp::GemmContext* gemmlowp_context) {
-  gemmlowp::ScopedProfilingLabel label("FullyConnected/8bit");
+  ruy::profiler::ScopeLabel label("FullyConnected/8bit");
   const int32 input_offset = params.input_offset;
   const int32 filter_offset = params.weights_offset;
   const int32 output_offset = params.output_offset;
@@ -1158,7 +1157,7 @@ inline void GEMVForLstmCell(const RuntimeShape& input_shape,
                             const int32* bias_data, int32 accum_multiplier,
                             int accum_shift, const RuntimeShape& output_shape,
                             int16* output_data) {
-  gemmlowp::ScopedProfilingLabel label("GEMVForLstmCell");
+  ruy::profiler::ScopeLabel label("GEMVForLstmCell");
   TFLITE_DCHECK_GE(input_shape.DimensionsCount(), 1);
   TFLITE_DCHECK_GE(weights_shape.DimensionsCount(), 2);
   TFLITE_DCHECK_GE(output_shape.DimensionsCount(), 1);
@@ -1345,7 +1344,7 @@ inline void GEMVForLstmCellWithSymmetricRange(
     const RuntimeShape& bias_shape, const int32* bias_data,
     int32 accum_multiplier, int accum_shift, const RuntimeShape& output_shape,
     int16* output_data) {
-  gemmlowp::ScopedProfilingLabel label("GEMVForLstmCellWithSymmetricRange");
+  ruy::profiler::ScopeLabel label("GEMVForLstmCellWithSymmetricRange");
   TFLITE_DCHECK_GE(input_shape.DimensionsCount(), 1);
   TFLITE_DCHECK_GE(weights_shape.DimensionsCount(), 2);
   TFLITE_DCHECK_GE(output_shape.DimensionsCount(), 1);
@@ -1636,7 +1635,7 @@ inline void FullyConnected(
     const uint8* filter_data, const RuntimeShape& bias_shape,
     const int32* bias_data_int32, const RuntimeShape& output_shape,
     int16* output_data, gemmlowp::GemmContext* gemmlowp_context) {
-  gemmlowp::ScopedProfilingLabel label("FullyConnected/Uint8Int16");
+  ruy::profiler::ScopeLabel label("FullyConnected/Uint8Int16");
   const int32 input_offset = params.input_offset;
   const int32 filter_offset = params.weights_offset;
   const int32 output_offset = params.output_offset;
@@ -1797,7 +1796,7 @@ inline void LegacyInt8FullyConnectedAsGEMVWorkerImpl(
     int32 output_multiplier, int output_shift, int32 output_activation_min,
     int32 output_activation_max, const RuntimeShape& output_shape,
     int8_t* output_data, int row_start, int row_end) {
-  gemmlowp::ScopedProfilingLabel label("FullyConnectedAsGEMVInt8/8bit");
+  ruy::profiler::ScopeLabel label("FullyConnectedAsGEMVInt8/8bit");
   TFLITE_DCHECK_GE(input_shape.DimensionsCount(), 1);
   TFLITE_DCHECK_GE(filter_shape.DimensionsCount(), 2);
   TFLITE_DCHECK_GE(output_shape.DimensionsCount(), 1);
@@ -2106,7 +2105,7 @@ inline void FullyConnected(
     const int8* filter_data, const RuntimeShape& bias_shape,
     const int32* bias_data, const RuntimeShape& output_shape, int8* output_data,
     gemmlowp::GemmContext* gemmlowp_context) {
-  gemmlowp::ScopedProfilingLabel label("FullyConnectedInt8/8bit");
+  ruy::profiler::ScopeLabel label("FullyConnectedInt8/8bit");
 
 #ifdef USE_NEON
   const int32 input_offset = params.input_offset;
@@ -2216,7 +2215,7 @@ inline void ShuffledFullyConnected(
     const int32* bias_data, const RuntimeShape& output_shape,
     int16* output_data, uint8* shuffled_input_workspace_data,
     gemmlowp::GemmContext* gemmlowp_context) {
-  gemmlowp::ScopedProfilingLabel label("ShuffledFullyConnected/8bit");
+  ruy::profiler::ScopeLabel label("ShuffledFullyConnected/8bit");
   const int32 output_multiplier = params.output_multiplier;
   const int output_shift = params.output_shift;
   const int32 output_activation_min = params.quantized_activation_min;
@@ -2436,7 +2435,7 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
 
   (void)im2col_data;
   (void)im2col_shape;
-  gemmlowp::ScopedProfilingLabel label("Conv");
+  ruy::profiler::ScopeLabel label("Conv");
 
   // NB: the float 0.0f value is represented by all zero bytes.
   const uint8 float_zero_byte = 0x00;
@@ -2504,13 +2503,13 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
   // The following special casing for when a or b is a vector is required
   // as Eigen seem to fail to make this optimization on its own.
   if (n == 1) {
-    gemmlowp::ScopedProfilingLabel label("GEMV");
+    ruy::profiler::ScopeLabel label("GEMV");
     matrix_c.col(0).noalias() = matrix_a * matrix_b.row(0).transpose();
   } else if (m == 1) {
-    gemmlowp::ScopedProfilingLabel label("GEMV");
+    ruy::profiler::ScopeLabel label("GEMV");
     matrix_c.row(0).noalias() = matrix_a.row(0) * matrix_b.transpose();
   } else {
-    gemmlowp::ScopedProfilingLabel label("GEMM");
+    ruy::profiler::ScopeLabel label("GEMM");
     matrix_c.noalias() = matrix_a * matrix_b.transpose();
   }
 
@@ -2622,7 +2621,7 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
                  const int32* bias_data, const RuntimeShape& output_shape,
                  uint8* output_data, const RuntimeShape& im2col_shape,
                  uint8* im2col_data, gemmlowp::GemmContext* gemmlowp_context) {
-  gemmlowp::ScopedProfilingLabel label("Conv/8bit");
+  ruy::profiler::ScopeLabel label("Conv/8bit");
   const int stride_width = params.stride_width;
   const int stride_height = params.stride_height;
   const int dilation_width_factor = params.dilation_width_factor;
@@ -2841,7 +2840,7 @@ void ConvAsGemm(const float* input_data, const Dims<4>& input_dims,
                 const float* filter_data, const Dims<4>& filter_dims,
                 const float* bias_data, const Dims<4>& bias_dims,
                 float* output_data, const Dims<4>& output_dims) {
-  gemmlowp::ScopedProfilingLabel label("ConvAsGemm");
+  ruy::profiler::ScopeLabel label("ConvAsGemm");
 
   const auto input_matrix_map =
       MapAsMatrixWithFirstDimAsRows(input_data, input_dims);
@@ -2866,7 +2865,7 @@ void ConvAsGemm(const uint8* input_data, const Dims<4>& input_dims,
                 int32 output_activation_min, int32 output_activation_max,
                 uint8* output_data, const Dims<4>& output_dims,
                 gemmlowp::GemmContext* gemmlowp_context) {
-  gemmlowp::ScopedProfilingLabel label("ConvAsGemm/8bit");
+  ruy::profiler::ScopeLabel label("ConvAsGemm/8bit");
   static_assert(Ac == FusedActivationFunctionType::kNone ||
                     Ac == FusedActivationFunctionType::kRelu ||
                     Ac == FusedActivationFunctionType::kRelu6 ||
@@ -2905,7 +2904,7 @@ inline void TransposeConv(
     const float* input_data, const RuntimeShape& filter_shape,
     const float* filter_data, const RuntimeShape& output_shape,
     float* output_data, const RuntimeShape& im2col_shape, float* im2col_data) {
-  gemmlowp::ScopedProfilingLabel label("TransposeConv");
+  ruy::profiler::ScopeLabel label("TransposeConv");
   // Note we could use transposed weights with forward conv for unstrided
   // cases. But we are already getting good performance with this code as-is.
   TFLITE_DCHECK(im2col_data);
@@ -2971,7 +2970,7 @@ inline void LstmCell(
     const RuntimeShape& unextended_output_activ_shape, float* output_activ_data,
     const RuntimeShape& unextended_concat_temp_shape, float* concat_temp_data,
     const RuntimeShape& unextended_activ_temp_shape, float* activ_temp_data) {
-  gemmlowp::ScopedProfilingLabel label("LstmCell");
+  ruy::profiler::ScopeLabel label("LstmCell");
   TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_prev_activ_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_bias_shape.DimensionsCount(), 4);
@@ -3066,7 +3065,7 @@ inline void LstmCell(
       MapAsArrayWithLastDimAsRows(output_activ_data, output_activ_shape);
 
   // Combined memory state and final output calculation
-  gemmlowp::ScopedProfilingLabel label2("MemoryStateAndFinalOutput");
+  ruy::profiler::ScopeLabel label2("MemoryStateAndFinalOutput");
   output_state_map =
       input_gate_sm.unaryExpr(Eigen::internal::scalar_logistic_op<float>()) *
           new_input_sm.tanh() +
@@ -3118,7 +3117,7 @@ inline void LstmCell(
     uint8* concat_temp_data_uint8,
     const RuntimeShape& unextended_activ_temp_shape,
     int16* activ_temp_data_int16, gemmlowp::GemmContext* gemmlowp_context) {
-  gemmlowp::ScopedProfilingLabel label(
+  ruy::profiler::ScopeLabel label(
       "LstmCell/quantized (8bit external, 16bit internal)");
   int32 weights_zero_point = params.weights_zero_point;
   int32 accum_multiplier = params.accum_multiplier;
@@ -3531,7 +3530,7 @@ template <FusedActivationFunctionType Ac>
 void Add(const int32* input1_data, const Dims<4>& input1_dims,
          const int32* input2_data, const Dims<4>& input2_dims,
          int32* output_data, const Dims<4>& output_dims) {
-  gemmlowp::ScopedProfilingLabel label("Add/int32");
+  ruy::profiler::ScopeLabel label("Add/int32");
   TFLITE_DCHECK(Ac == FusedActivationFunctionType::kNone);
 
   tflite::ArithmeticParams op_params;
@@ -3989,7 +3988,7 @@ inline void Softmax(const SoftmaxParams& params,
   using FixedPointAccum = gemmlowp::FixedPoint<int32, kAccumulationIntegerBits>;
   using FixedPoint0 = gemmlowp::FixedPoint<int32, 0>;
 
-  gemmlowp::ScopedProfilingLabel label("Softmax/8bit");
+  ruy::profiler::ScopeLabel label("Softmax/8bit");
   const int trailing_dim = input_shape.DimensionsCount() - 1;
   const int outer_size =
       MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
@@ -4249,7 +4248,7 @@ inline void LogSoftmax(const uint8* input_data, const Dims<4>& input_dims,
 inline void Logistic(const LogisticParams& params,
                      const RuntimeShape& input_shape, const uint8* input_data,
                      const RuntimeShape& output_shape, uint8* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Logistic/Uint8");
+  ruy::profiler::ScopeLabel label("Logistic/Uint8");
   const int32 input_zero_point = params.input_zero_point;
   const int32 input_range_radius = params.input_range_radius;
   const int32 input_multiplier = params.input_multiplier;
@@ -4443,7 +4442,7 @@ inline void Tanh(const TanhParams& params, const RuntimeShape& input_shape,
                  const uint8* input_data, const RuntimeShape& output_shape,
                  uint8* output_data) {
   // Note that this is almost the exact same code as in Logistic().
-  gemmlowp::ScopedProfilingLabel label("Tanh");
+  ruy::profiler::ScopeLabel label("Tanh");
   const int32 input_zero_point = params.input_zero_point;
   const int32 input_range_radius = params.input_range_radius;
   const int32 input_multiplier = params.input_multiplier;
