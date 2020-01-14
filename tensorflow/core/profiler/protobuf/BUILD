@@ -40,7 +40,10 @@ tf_proto_library(
     name = "overview_page_proto",
     srcs = ["overview_page.proto"],
     cc_api_version = 2,
-    protodeps = [":input_pipeline_proto"],
+    protodeps = [
+        ":input_pipeline_proto",
+        ":op_stats_proto",
+    ],
     visibility = [
         ":friends",
     ],
