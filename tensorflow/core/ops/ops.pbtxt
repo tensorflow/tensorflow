@@ -11680,7 +11680,7 @@ op {
   }
   output_arg {
     name: "output"
-    type: DT_FLOAT
+    type_attr: "dtype"
   }
   attr {
     name: "T"
@@ -11721,6 +11721,19 @@ op {
     type: "int"
     default_value {
       i: -1
+    }
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_BFLOAT16
+        type: DT_FLOAT
+      }
     }
   }
 }
@@ -51762,6 +51775,34 @@ op {
 }
 op {
   name: "Xdivy"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "z"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+}
+op {
+  name: "Xlog1py"
   input_arg {
     name: "x"
     type_attr: "T"

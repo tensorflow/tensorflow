@@ -112,9 +112,10 @@ std::unique_ptr<OpPassBase<FuncOp>> CreateDecomposeResourceOpsPass();
 // device computation no longer interacts with external resource variables.
 std::unique_ptr<OpPassBase<FuncOp>> CreateResourceOpLiftingPass();
 
-// Lifts resource variable operations from tf_device.launch_func ops nested in
-// `op`.
-void LiftResourceOps(Operation* op);
+// Lifts resource operations from tf_device.launch_func ops nested in `op`
+// outside. Returns a failure if there are remaining resource-type values that
+// can not be lifted.
+LogicalResult LiftResourceOps(Operation* op);
 
 // Creates a pass that hoists invariant operations in a `tf_device.replicate`.
 std::unique_ptr<OpPassBase<FuncOp>> CreateReplicateInvariantOpHoistingPass();
@@ -122,6 +123,10 @@ std::unique_ptr<OpPassBase<FuncOp>> CreateReplicateInvariantOpHoistingPass();
 // Creates a pass that forms replica `tf_executor.island` from a single
 // `tf_device.replicate` island.
 std::unique_ptr<OpPassBase<FuncOp>> CreateReplicateToIslandPass();
+
+// Creates a pass that annotates whether a LaunchFuncOp's parameters have the
+// same data across replicas.
+std::unique_ptr<OpPassBase<ModuleOp>> CreateAnnotateParameterReplicationPass();
 
 }  // namespace TFDevice
 
@@ -142,6 +147,10 @@ std::unique_ptr<OpPassBase<ModuleOp>> CreateTPURewritePass();
 // TPUExecute node. This allows the execute node to perform in-place variable
 // updates.
 std::unique_ptr<OpPassBase<FuncOp>> CreateTPUMergeVariablesWithExecutePass();
+
+// Creates a pass that adds ops which perform formatting on variables at
+// run-time according to compilation result.
+std::unique_ptr<OpPassBase<ModuleOp>> CreateTPUVariableReformattingPass();
 
 // Populates the supplied passmanager with the passes required to run the
 // bridge. NOLINTNEXTLINE - MLIR contract is pass by mutable reference.

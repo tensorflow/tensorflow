@@ -256,7 +256,7 @@ mlir::AffineForOp TileLoop(mlir::AffineForOp loop, int64_t size,
     SetBoundForSimpleLoop(loop, length.ceilDiv(size), builder);
   }
 
-  for (mlir::IROperand& use :
+  for (auto& use :
        llvm::make_early_inc_range(loop.getInductionVar().getUses())) {
     mlir::Operation* owner = use.getOwner();
     BoundAffineMap affine_map = GetBoundAffineMapFrom(owner);
@@ -329,8 +329,7 @@ mlir::Operation* HoistAndFix(llvm::iplist<mlir::Operation>::iterator begin_op,
     for (auto ancestor : ancestors) {
       indvars.push_back(ancestor.getInductionVar());
     }
-    for (mlir::IROperand& use :
-         llvm::make_early_inc_range(alloc.getResult().getUses())) {
+    for (auto& use : llvm::make_early_inc_range(alloc.getResult().getUses())) {
       mlir::Operation* owner = use.getOwner();
       BoundAffineMap affine_map = GetBoundAffineMapFrom(owner);
       affine_map.operands.insert(affine_map.operands.begin(), indvars.begin(),

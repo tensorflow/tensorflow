@@ -155,6 +155,7 @@ void AllocateAndParseFlags() {
 
   device_flags = new XlaDeviceFlags;
   device_flags->tf_xla_compile_on_demand = false;
+  device_flags->tf_xla_enable_xla_devices = true;
 
   ops_flags = new XlaOpsCommonFlags;
   ops_flags->tf_xla_always_defer_compilation = false;
@@ -186,6 +187,12 @@ void AllocateAndParseFlags() {
        Flag("tf_xla_compile_on_demand", &device_flags->tf_xla_compile_on_demand,
             "Switch a device into 'on-demand' mode, where instead of "
             "autoclustering ops are compiled one by one just-in-time."),
+
+       Flag("tf_xla_enable_xla_devices",
+            &device_flags->tf_xla_enable_xla_devices,
+            "Generate XLA_* devices, where placing a computation on such a "
+            "device"
+            "forces compilation by XLA. Deprecated."),
 
        Flag("tf_xla_always_defer_compilation",
             &ops_flags->tf_xla_always_defer_compilation, ""),

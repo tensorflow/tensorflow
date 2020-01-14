@@ -220,8 +220,10 @@ struct Kernel<Path::kStandardCpp, LhsScalar, RhsScalar, DstScalar, Spec> {
 RUY_INHERIT_KERNEL(Path::kStandardCpp, Path::kNeon)
 RUY_INHERIT_KERNEL(Path::kNeon, Path::kNeonDotprod)
 #elif RUY_PLATFORM(X86)
-RUY_INHERIT_KERNEL(Path::kStandardCpp, Path::kAvx2)
+RUY_INHERIT_KERNEL(Path::kStandardCpp, Path::kSse42)
+RUY_INHERIT_KERNEL(Path::kSse42, Path::kAvx2)
 RUY_INHERIT_KERNEL(Path::kAvx2, Path::kAvx512)
+RUY_INHERIT_KERNEL(Path::kAvx512, Path::kAvxVnni)
 #endif
 
 // KernelParams are shared across 32-bit and 64-bit NEON code, and x86 code.

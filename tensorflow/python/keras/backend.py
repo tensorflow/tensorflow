@@ -1912,9 +1912,9 @@ def gather(reference, indices):
 
   Returns:
       A tensor of same type as `reference`.
-  
+
   Examples:
-  
+
   >>> var = tf.keras.backend.variable([[1, 2, 3], [4, 5, 6]])
   >>> tf.keras.backend.eval(var)
   array([[1., 2., 3.],
@@ -5555,47 +5555,17 @@ def bias_add(x, bias, data_format=None):
     raise ValueError(
         'Unexpected bias dimensions %d, expect to be 1 or %d dimensions' %
         (len(bias_shape), ndim(x)))
-  # pylint: disable=g-no-augmented-assignment
-  if ndim(x) == 5:
+
+  if len(bias_shape) == 1:
     if data_format == 'channels_first':
-      if len(bias_shape) == 1:
-        x = x + reshape(bias, (1, bias_shape[0], 1, 1, 1))
-      else:
-        x = x + reshape(bias, (1, bias_shape[3]) + bias_shape[:3])
-    elif data_format == 'channels_last':
-      if len(bias_shape) == 1:
-        x = x + reshape(bias, (1, 1, 1, bias_shape[0]))
-      else:
-        x = x + reshape(bias, (1,) + bias_shape)
-  elif ndim(x) == 4:
+      return nn.bias_add(x, bias, data_format='NCHW')
+    return nn.bias_add(x, bias, data_format='NHWC')
+  if ndim(x) in (3, 4, 5):
     if data_format == 'channels_first':
-      if len(bias_shape) == 1:
-        if _has_nchw_support():
-          x = nn.bias_add(x, bias, data_format='NCHW')
-        else:
-          x = x + reshape(bias, (1, bias_shape[0], 1, 1))
-      else:
-        x = x + reshape(bias, (1, bias_shape[2]) + bias_shape[:2])
-    elif data_format == 'channels_last':
-      if len(bias_shape) == 1:
-        x = nn.bias_add(x, bias, data_format='NHWC')
-      else:
-        x = x + reshape(bias, (1,) + bias_shape)
-  elif ndim(x) == 3:
-    if data_format == 'channels_first':
-      if len(bias_shape) == 1:
-        x = x + reshape(bias, (1, bias_shape[0], 1))
-      else:
-        x = x + reshape(bias, (1, bias_shape[1], bias_shape[0]))
-    elif data_format == 'channels_last':
-      if len(bias_shape) == 1:
-        x = x + reshape(bias, (1, 1, bias_shape[0]))
-      else:
-        x = x + reshape(bias, (1,) + bias_shape)
-  else:
-    x = nn.bias_add(x, bias)
-  # pylint: enable=g-no-augmented-assignment
-  return x
+      bias_reshape_axis = (1, bias_shape[-1]) + bias_shape[:-1]
+      return x + reshape(bias, bias_reshape_axis)
+    return x + reshape(bias, (1,) + bias_shape)
+  return nn.bias_add(x, bias)
 
 
 # RANDOMNESS

@@ -48,19 +48,20 @@ std::string ApplyMask::GetCoreCode(const LinkingContext& context) const {
   const std::string size_name = "mask_size_op" + std::to_string(link_index_);
   const std::string tensor_name = absl::StrCat("mask_data_op", link_index_);
   TensorCodeGenerator mask(
-      tensor_name, {size_name + ".x", size_name + ".y", size_name + ".z"},
+      tensor_name,
+      WHSPoint{size_name + ".x", size_name + ".y", size_name + ".z"},
       definition_.src_tensors[1]);
   switch (mask_type_) {
     case MaskType::TENSOR:
       return context.var_name + " *= " +
-             mask.Read3D(context.x_coord, context.y_coord, context.z_coord) +
+             mask.ReadWHS(context.x_coord, context.y_coord, context.z_coord) +
              ";\n";
     case MaskType::CHANNELS:
       return context.var_name +
-             " *= " + mask.Read3D("0", "0", context.z_coord) + ";\n";
+             " *= " + mask.ReadWHS("0", "0", context.z_coord) + ";\n";
     case MaskType::LAYER:
       return context.var_name +
-             " *= " + mask.Read3D(context.x_coord, context.y_coord, "0") +
+             " *= " + mask.ReadWHS(context.x_coord, context.y_coord, "0") +
              ".x;\n";
   }
 }

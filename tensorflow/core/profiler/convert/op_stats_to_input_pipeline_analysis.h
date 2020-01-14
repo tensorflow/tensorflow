@@ -33,6 +33,11 @@ StepSummary ComputeStepTimeSummaryInMs(
     const ::tensorflow::protobuf::RepeatedPtrField<PerCoreStepInfo>&
         grouped_by_step);
 
+void GenerateHostResult(const OpMetricsDb& host_tf_metrics_db,
+                        InputPipelineAnalysisResult* result);
+
+InputPipelineAnalysisRecommendation GenerateRecommendation();
+
 }  // namespace profiler
 }  // namespace tensorflow
 

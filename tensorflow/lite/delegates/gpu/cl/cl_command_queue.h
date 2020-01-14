@@ -62,7 +62,7 @@ struct ProfilingInfo {
 class CLCommandQueue {
  public:
   CLCommandQueue() {}
-  explicit CLCommandQueue(cl_command_queue queue);
+  CLCommandQueue(cl_command_queue queue, bool has_ownership);
 
   // Move only
   CLCommandQueue(CLCommandQueue&& queue);
@@ -95,6 +95,7 @@ class CLCommandQueue {
   void Release();
 
   cl_command_queue queue_ = nullptr;
+  bool has_ownership_ = false;
 };
 
 class ProfilingCommandQueue : public CLCommandQueue {

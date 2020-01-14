@@ -1,3 +1,4 @@
 op {
   graph_op_name: "StringLower"
+  description: "Converts each string in the input Tensor to lowercase."
 }

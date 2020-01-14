@@ -63,9 +63,9 @@ TfLiteDelegatePtr CreateGPUDelegate(Settings* s) {
   gpu_opts.inference_priority1 =
       s->allow_fp16 ? TFLITE_GPU_INFERENCE_PRIORITY_MIN_LATENCY
                     : TFLITE_GPU_INFERENCE_PRIORITY_MAX_PRECISION;
-  return evaluation::CreateGPUDelegate(s->model, &gpu_opts);
+  return evaluation::CreateGPUDelegate(&gpu_opts);
 #else
-  return evaluation::CreateGPUDelegate(s->model);
+  return evaluation::CreateGPUDelegate();
 #endif
 }
 

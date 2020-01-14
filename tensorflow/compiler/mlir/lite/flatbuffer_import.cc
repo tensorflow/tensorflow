@@ -389,7 +389,6 @@ StatusOr<mlir::ElementsAttr> ConvertIntBuffer(
     mlir::RankedTensorType shaped_type, mlir::Type elem_type,
     const std::vector<uint8_t>& buffer) {
   unsigned bit_width;
-  mlir::RankedTensorType buffer_type;
   if (auto itype = elem_type.dyn_cast<mlir::IntegerType>()) {
     bit_width = itype.getWidth();
   } else if (auto qtype = elem_type.dyn_cast<QuantizedType>()) {

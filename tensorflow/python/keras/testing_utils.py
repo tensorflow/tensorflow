@@ -71,7 +71,7 @@ def get_test_data(train_samples,
           (x[train_samples:], y[train_samples:]))
 
 
-@test_util.use_deterministic_cudnn
+@test_util.disable_cudnn_autotune
 def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
                input_data=None, expected_output=None,
                expected_output_dtype=None, expected_output_shape=None,

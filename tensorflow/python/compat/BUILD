@@ -15,6 +15,7 @@ py_library(
         "//tensorflow/python:control_flow_v2_toggles",
         "//tensorflow/python:tf2",
         "//tensorflow/python:util",
+        "//tensorflow/python/eager:monitoring",
     ],
 )
 

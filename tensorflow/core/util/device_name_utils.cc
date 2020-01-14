@@ -279,6 +279,27 @@ bool DeviceNameUtils::IsSpecification(const ParsedName& less_specific,
   return true;
 }
 
+/* static */
+bool DeviceNameUtils::AreCompatibleDevNames(const ParsedName& a,
+                                            const ParsedName& b) {
+  if (a.has_job && b.has_job && (a.job != b.job)) {
+    return false;
+  }
+  if (a.has_replica && b.has_replica && (a.replica != b.replica)) {
+    return false;
+  }
+  if (a.has_task && b.has_task && (a.task != b.task)) {
+    return false;
+  }
+  if (a.has_type && b.has_type && (a.type != b.type)) {
+    return false;
+  }
+  if (a.has_id && b.has_id && (a.id != b.id)) {
+    return false;
+  }
+  return true;
+}
+
 void DeviceNameUtils::EnsureSpecification(ParsedName* more_specific,
                                           const ParsedName& less_specific) {
   if (less_specific.has_job) {

@@ -24,5 +24,14 @@ const XPlane* FindPlaneWithName(const XSpace& space, absl::string_view name) {
   return nullptr;
 }
 
+XPlane* GetOrCreatePlane(XSpace* space, absl::string_view name) {
+  for (XPlane& plane : *space->mutable_planes()) {
+    if (plane.name() == name) return &plane;
+  }
+  XPlane* plane = space->add_planes();
+  plane->set_name(std::string(name));
+  return plane;
+}
+
 }  // namespace profiler
 }  // namespace tensorflow

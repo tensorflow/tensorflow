@@ -51,6 +51,8 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif
 
+#include "tensorflow/core/kernels/resource_variable_ops.h"
+
 #include <memory>
 #include <vector>
 
@@ -60,12 +62,12 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/kernels/dense_update_functor.h"
 #include "tensorflow/core/kernels/gather_functor.h"
 #include "tensorflow/core/kernels/gather_nd_op.h"
-#include "tensorflow/core/kernels/resource_variable_ops.h"
 #include "tensorflow/core/kernels/scatter_functor.h"
 #include "tensorflow/core/kernels/training_op_helpers.h"
 #include "tensorflow/core/kernels/variable_ops.h"
@@ -226,10 +228,22 @@ VarHandleOp::VarHandleOp(OpKernelConstruction* context) : OpKernel(context) {
   OP_REQUIRES_OK(context, context->GetAttr("dtype", &dtype_and_shape_.dtype));
   PartialTensorShape shape;
   OP_REQUIRES_OK(context, context->GetAttr("shape", &dtype_and_shape_.shape));
+
+  is_anonymous_ = name_ == ResourceHandle::ANONYMOUS_NAME;
+
+  if (!is_anonymous_) {
+    AllocatorAttributes attr;
+    attr.set_on_host(true);
+    OP_REQUIRES_OK(context, context->allocate_temp(DT_RESOURCE, TensorShape({}),
+                                                   &resource_, attr));
+    resource_.scalar<ResourceHandle>()() = MakeResourceHandle<Var>(
+        context, container_, name_,
+        std::vector<DtypeAndPartialTensorShape>{dtype_and_shape_});
+  }
 }
 
 void VarHandleOp::Compute(OpKernelContext* ctx) {
-  if (name_ == ResourceHandle::ANONYMOUS_NAME) {
+  if (is_anonymous_) {
     AllocatorAttributes attr;
     attr.set_on_host(true);
     Tensor handle;
@@ -240,20 +254,6 @@ void VarHandleOp::Compute(OpKernelContext* ctx) {
         std::vector<DtypeAndPartialTensorShape>{dtype_and_shape_});
     ctx->set_output(0, handle);
   } else {
-    if (!initialized_.load()) {
-      mutex_lock ml(mutex_);
-      // Checking again to see if another thread has initialized the resource.
-      if (!initialized_.load()) {
-        AllocatorAttributes attr;
-        attr.set_on_host(true);
-        OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_RESOURCE, TensorShape({}),
-                                               &resource_, attr));
-        resource_.scalar<ResourceHandle>()() = MakeResourceHandle<Var>(
-            ctx, container_, name_,
-            std::vector<DtypeAndPartialTensorShape>{dtype_and_shape_});
-        initialized_.store(true);
-      }
-    }
     ctx->set_output(0, resource_);
   }
 }

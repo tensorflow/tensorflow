@@ -159,6 +159,13 @@ struct MaxUnpooling2DAttributes {
   Padding2D padding;
 };
 
+struct MaxUnpooling3DAttributes {
+  // Strides for every axis.
+  HWD strides = HWD(0, 0, 0);
+  HWD kernel = HWD(0, 0, 0);
+  Padding3D padding;
+};
+
 struct ConcatAttributes {
   // Defines axis by which to concat on.
   Axis axis = Axis::UNKNOWN;
@@ -168,6 +175,11 @@ struct ConcatAttributes {
 //         the given input.
 BHWC CalculateOutputShape(const BHWC& input,
                           const MaxUnpooling2DAttributes& attr);
+
+// @return shape of a tensor after MaxUnpooling3D operation is applied to
+//         the given input.
+BHWDC CalculateOutputShape(const BHWDC& input,
+                           const MaxUnpooling3DAttributes& attr);
 
 // @return shape of a tensor after Pooling2D operation is applied to the given
 //         input.
@@ -197,6 +209,11 @@ Padding3D CalculateSamePadding(const BHWDC& input,
 Padding2D CalculateSamePadding(const BHWC& input,
                                const MaxUnpooling2DAttributes& attr);
 
+// @return padding for max unpooling operation to make sure output keep the same
+// shape as the given input.
+Padding3D CalculateSamePadding(const BHWDC& input,
+                               const MaxUnpooling3DAttributes& attr);
+
 struct Convolution2DAttributes {
   HW strides = HW(1, 1);    // Along each axis.
   HW dilations = HW(1, 1);  // Along each axis.
@@ -206,15 +223,34 @@ struct Convolution2DAttributes {
   Tensor<Linear, DataType::FLOAT32> bias;  // optional
 };
 
+struct Convolution3DAttributes {
+  HWD strides = HWD(0, 0, 0);    // Along each axis.
+  HWD dilations = HWD(0, 0, 0);  // Along each axis.
+  Padding3D padding;
+
+  Tensor<OHWDI, DataType::FLOAT32> weights;
+  Tensor<Linear, DataType::FLOAT32> bias;  // optional
+};
+
 // @return shape of a tensor after Convolution2D operation is applied to
 //         the given input.
 BHWC CalculateOutputShape(const BHWC& input,
                           const Convolution2DAttributes& attr);
 
+// @return shape of a tensor after Convolution3D operation is applied to
+//         the given input.
+BHWDC CalculateOutputShape(const BHWDC& input,
+                           const Convolution3DAttributes& attr);
+
 // @return padding for convolution operation to make sure output keep the same
 // shape as the given input.
 Padding2D CalculateSamePadding(const BHWC& input,
                                const Convolution2DAttributes& attr);
+
+// @return padding for convolution operation to make sure output keep the same
+// shape as the given input.
+Padding3D CalculateSamePadding(const BHWDC& input,
+                               const Convolution3DAttributes& attr);
 
 struct ConvolutionTransposedAttributes {
   HW stride = HW(1, 1);  // Along each axis.
@@ -225,28 +261,53 @@ struct ConvolutionTransposedAttributes {
   Tensor<Linear, DataType::FLOAT32> bias;  // optional
 };
 
+struct ConvolutionTransposed3DAttributes {
+  HWD stride = HWD(0, 0, 0);  // Along each axis.
+  Padding3D padding;
+
+  Tensor<OHWDI, DataType::FLOAT32> weights;
+  Tensor<Linear, DataType::FLOAT32> bias;  // optional
+};
+
 Padding2D CalculateSamePadding(const BHWC& input,
                                const ConvolutionTransposedAttributes& attr);
+
+Padding3D CalculateSamePadding(const BHWDC& input,
+                               const ConvolutionTransposed3DAttributes& attr);
 
 // @return shape of a tensor after ConvolutionTransposed operation is applied to
 //         the given input.
 BHWC CalculateOutputShape(const BHWC& input,
                           const ConvolutionTransposedAttributes& attr);
 
+// @return shape of a tensor after ConvolutionTransposed3D operation is applied
+// to
+//         the given input.
+BHWDC CalculateOutputShape(const BHWDC& input,
+                           const ConvolutionTransposed3DAttributes& attr);
+
 struct DepthwiseConvolution2DAttributes : public Convolution2DAttributes {};
+struct DepthwiseConvolution3DAttributes : public Convolution3DAttributes {};
 
 // @return shape of a tensor after DepthwiseConvolution2D operation is applied
 //         to the given input.
 BHWC CalculateOutputShape(const BHWC& input,
                           const DepthwiseConvolution2DAttributes& attr);
 
+// @return shape of a tensor after DepthwiseConvolution3D operation is applied
+//         to the given input.
+BHWDC CalculateOutputShape(const BHWDC& input,
+                           const DepthwiseConvolution3DAttributes& attr);
+
 // @return padding for depthwise convolution operation to make sure output keep
 // the same shape as the given input.
 Padding2D CalculateSamePadding(const BHWC& input,
                                const DepthwiseConvolution2DAttributes& attr);
 
-BHWC CalculateOutputShape(const BHWC& input,
-                          const DepthwiseConvolution2DAttributes& attr);
+// @return padding for depthwise convolution operation to make sure output keep
+// the same shape as the given input.
+Padding3D CalculateSamePadding(const BHWDC& input,
+                               const DepthwiseConvolution3DAttributes& attr);
 
 // f(x):= {
 //   if x < 0  : x -> alpha * x
@@ -308,12 +369,30 @@ struct Upsample2DAttributes {
   bool align_corners = false;
 };
 
+struct Upsample3DAttributes {
+  HWD new_shape;
+
+  UpsamplingType type = UpsamplingType::NEAREST;
+
+  // If true, the centers of the 8 corner pixels of the input and output tensors
+  // are aligned, preserving the values at the corner pixels. Defaults to false.
+  bool align_corners = false;
+};
+
 float CalculateResizeScale(int32_t input_size, int32_t output_size,
                            const Upsample2DAttributes& attr);
+
+float CalculateResizeScale(int32_t input_size, int32_t output_size,
+                           const Upsample3DAttributes& attr);
 
 // @return shape of a tensor after upscale operation is applied to the given
 // input.
 BHWC CalculateOutputShape(const BHWC& input, const Upsample2DAttributes& attr);
+
+// @return shape of a tensor after upscale operation is applied to the given
+// input.
+BHWDC CalculateOutputShape(const BHWDC& input,
+                           const Upsample3DAttributes& attr);
 
 enum class PaddingContentType {
   ZEROS = 0,

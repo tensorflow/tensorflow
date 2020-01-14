@@ -15,6 +15,7 @@
 load(
     "//tensorflow:tensorflow.bzl",
     "check_deps",
+    "if_windows",
     "tf_cc_binary",
     "tf_cc_test",
     "tf_copts",
@@ -115,6 +116,7 @@ tf_cuda_library(
     srcs = ["debug_io_utils.cc"],
     hdrs = ["debug_io_utils.h"],
     copts = tf_copts(),
+    linkopts = if_windows(["-DEFAULTLIB:ws2_32.lib"]),
     linkstatic = 1,
     deps = [
         ":debug_callback_registry",

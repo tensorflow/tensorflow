@@ -22,14 +22,14 @@ from absl.testing import parameterized
 from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
-@test_util.run_all_in_graph_and_eager_modes
 class ModelDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
+  @combinations.generate(test_base.default_test_combinations())
   def testAutotuneOption(self):
     dataset = dataset_ops.Dataset.from_tensors(0)
     dataset = dataset.map(lambda x: x).apply(

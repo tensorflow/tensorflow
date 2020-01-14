@@ -267,6 +267,11 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
         return 2;
       }
       return 1;
+    case BuiltinOperator_REVERSE_V2:
+      if (op_sig.input_types.at(0) == TensorType_BOOL) {
+        return 2;
+      }
+      return 1;
 
     case BuiltinOperator_AVERAGE_POOL_2D:
     case BuiltinOperator_ADD:

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/micro/micro_interpreter.h"
 
+#include "tensorflow/lite/micro/micro_optional_debug_tools.h"
 #include "tensorflow/lite/micro/test_helpers.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
 
@@ -102,6 +103,9 @@ TF_LITE_MICRO_TEST(TestInterpreter) {
   TF_LITE_MICRO_EXPECT_EQ(4, output->bytes);
   TF_LITE_MICRO_EXPECT_NE(nullptr, output->data.i32);
   TF_LITE_MICRO_EXPECT_EQ(42, output->data.i32[0]);
+
+  // Just to make sure that this method works.
+  tflite::PrintInterpreterState(&interpreter);
 }
 
 TF_LITE_MICRO_TESTS_END

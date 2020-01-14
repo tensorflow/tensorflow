@@ -316,11 +316,9 @@ def _internal_py_func(func,
   while True:
     current_graph = graph
     if isinstance(graph, function._FuncGraph):  # pylint: disable=protected-access
-      if not graph._outer_graph._is_eager_graph:  # pylint: disable=protected-access
-        graph = graph._outer_graph  # pylint: disable=protected-access
+      graph = graph._outer_graph  # pylint: disable=protected-access
     elif isinstance(graph, func_graph.FuncGraph):
-      if not graph.outer_graph._is_eager_graph:  # pylint: disable=protected-access
-        graph = graph.outer_graph
+      graph = graph.outer_graph
     if graph is current_graph:
       break
 

@@ -27,12 +27,12 @@ namespace {
 std::string GetElementWiseCode(
     const OperationDef& op_def, const ElementwiseOperation& op,
     const std::vector<ElementwiseOperation*>& linked_operations) {
-  TensorCodeGenerator src_tensor("src_data",
-                                 {"src_size.x", "src_size.y", "src_size.z"},
-                                 op_def.src_tensors[0]);
-  TensorCodeGenerator dst_tensor("dst_data",
-                                 {"dst_size.x", "dst_size.y", "dst_size.z"},
-                                 op_def.dst_tensors[0]);
+  TensorCodeGenerator src_tensor(
+      "src_data", WHSPoint{"src_size.x", "src_size.y", "src_size.z"},
+      op_def.src_tensors[0]);
+  TensorCodeGenerator dst_tensor(
+      "dst_data", WHSPoint{"dst_size.x", "dst_size.y", "dst_size.z"},
+      op_def.dst_tensors[0]);
 
   std::string c = GetCommonDefines(op_def.precision);
 
@@ -51,11 +51,11 @@ std::string GetElementWiseCode(
   c += "    return; \n";
   c += "  } \n";
   c += "  FLT4 src = " +
-       src_tensor.Read3D("X", "Y", "Z", TextureAddressMode::DONT_CARE) + ";\n";
+       src_tensor.ReadWHS("X", "Y", "Z", TextureAddressMode::DONT_CARE) + ";\n";
   const LinkingContext context{"src", "X", "Y", "Z"};
   c += "  " + op.GetCoreCode(context);
   c += PostProcess(linked_operations, context);
-  c += "  " + dst_tensor.Write3D("src", "X", "Y", "Z") + "\n";
+  c += "  " + dst_tensor.WriteWHS("src", "X", "Y", "Z") + "\n";
   c += "} \n";
   return c;
 }

@@ -22,6 +22,7 @@ from absl.testing import parameterized
 from tensorflow.python import tf2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
@@ -29,6 +30,7 @@ from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
@@ -241,6 +243,83 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.combine(
+          distribution=strategy_combinations.multidevice_strategies,
+          mode=["eager"]
+      ))
+  def testDynamicShapes(self, distribution):
+    dataset = self._get_dataset_from_tensor_slices([5., 6., 7.]).batch(4)
+    input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
+
+    @def_function.function
+    def run(iterator):
+      def computation(x):
+        return math_ops.reduce_mean(x)
+      inputs = next(iterator)
+      outputs = distribution.experimental_local_results(
+          distribution.experimental_run_v2(computation, args=(inputs,)))
+      return outputs
+
+    # This assumes that there are exactly 2 replicas
+    self.assertAllEqual([5.5, 7.], run(input_iterator))
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.multidevice_strategies,
+          mode=["eager"]
+      ))
+  def testDynamicShapesWithGetNextOutsideFunction(self, distribution):
+    dataset = self._get_dataset_from_tensor_slices([5., 6., 7.]).batch(4)
+    input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
+
+    @def_function.function
+    def run(inputs):
+      def computation(x):
+        return math_ops.reduce_mean(x)
+      outputs = distribution.experimental_local_results(
+          distribution.experimental_run_v2(computation, args=(inputs,)))
+      return outputs
+
+    # This assumes that there are exactly 2 replicas
+    self.assertAllEqual([5.5, 7.], run(next(input_iterator)))
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.multidevice_strategies,
+          mode=["eager"]
+      ))
+  def testStrategyReduceWithDynamicShapes(self, distribution):
+    dataset = self._get_dataset_from_tensor_slices([5., 6., 7.]).batch(4)
+    input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
+
+    @def_function.function
+    def run(iterator):
+      inputs = next(iterator)
+      return distribution.reduce(reduce_util.ReduceOp.MEAN, inputs, axis=0)
+
+    self.assertAllEqual(6., run(input_iterator))
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.multidevice_strategies,
+          mode=["eager"]
+      ))
+  def testDynamicShapesWithSizeOp(self, distribution):
+    dataset = self._get_dataset_from_tensor_slices([5., 6., 7.]).batch(4)
+    input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
+
+    @def_function.function
+    def run(inputs):
+      def computation(x):
+        return array_ops.size_v2(x)
+      outputs = distribution.experimental_local_results(
+          distribution.experimental_run_v2(computation, args=(inputs,)))
+      return outputs
+
+    # This assumes that there are exactly 2 replicas
+    self.assertAllEqual([2, 1], run(next(input_iterator)))
+
+  @combinations.generate(
+      combinations.combine(
           distribution=strategy_combinations.all_strategies,
           mode=["eager"]
       ))
@@ -249,14 +328,8 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
     # drop_remainder=True on the dataset, then DistributedIterator will use a
     # different (and more efficient) code path which avoids some control flow
     # ops.
-
-    dataset = dataset_ops.DatasetV2.from_tensor_slices([5., 6.]).batch(
+    dataset = self._get_dataset_from_tensor_slices([5., 6.]).batch(
         2, drop_remainder=True)
-    # TODO(b/138326910): Remove Dataset V1 version once bug resolved.
-    if not tf2.enabled():
-      dataset = dataset_ops.Dataset.from_tensor_slices([5., 6.]).batch(
-          2, drop_remainder=True)
-
     input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
 
     data = next(input_iterator)
@@ -276,14 +349,8 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
   def testDatasetDistributeNotDivisibleDrop(self, distribution):
     # If each batch is not evenly divisible by the number of workers,
     # the remainder will be dropped.
-
-    dataset = dataset_ops.DatasetV2.from_tensor_slices([5., 6.]).batch(
+    dataset = self._get_dataset_from_tensor_slices([5., 6.]).batch(
         1, drop_remainder=True)
-    # TODO(b/138326910): Remove Dataset V1 version once bug resolved.
-    if not tf2.enabled():
-      dataset = dataset_ops.Dataset.from_tensor_slices([5., 6.]).batch(
-          1, drop_remainder=True)
-
     input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
 
     data = next(input_iterator)
@@ -304,14 +371,8 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
     # Setting drop_remainder=False on the dataset causes DistributedIterator
     # to use get_next_as_optional(), even if the batched dataset is evenly
     # divisible by the number of workers.
-
-    dataset = dataset_ops.DatasetV2.from_tensor_slices([5., 6.]).batch(
+    dataset = self._get_dataset_from_tensor_slices([5., 6.]).batch(
         2, drop_remainder=False)
-    # TODO(b/138326910): Remove Dataset V1 version once bug resolved.
-    if not tf2.enabled():
-      dataset = dataset_ops.Dataset.from_tensor_slices([5., 6.]).batch(
-          2, drop_remainder=False)
-
     input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
 
     data = next(input_iterator)
@@ -384,6 +445,13 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
     else:
       return dataset_ops.Dataset.range(10).\
         map(lambda x: math_ops.cast(x, dtypes.int32)).batch(2)
+
+  def _get_dataset_from_tensor_slices(self, inp_array):
+    dataset = dataset_ops.DatasetV2.from_tensor_slices(inp_array)
+    # TODO(b/138326910): Remove Dataset V1 version once bug resolved.
+    if not tf2.enabled():
+      dataset = dataset_ops.Dataset.from_tensor_slices(inp_array)
+    return dataset
 
   def _validate_outputs(self, actual_results):
     expected_results = [[i**2, (i+1)**2] for i in range(0, 10, 2)]

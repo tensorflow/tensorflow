@@ -23,6 +23,16 @@ from __future__ import print_function
 import tensorflow.compat.v1 as tf
 from tensorflow.compiler.mlir.tensorflow.tests.tf_saved_model import common_v1
 
+# Verify that the tf.versions attribute exists. It is difficult to enforce
+# contents, since the version numbers change over time. The conversion logic
+# itself is verified in the common graphdef converter, so here just assert
+# it is being invoked.
+# CHECK: module
+# CHECK-SAME: tf.versions
+# CHECK-SAME: bad_consumers
+# CHECK-SAME: min_consumer
+# CHECK-SAME: producer
+
 # CHECK: "tf_saved_model.global_tensor"() {is_mutable, sym_name = "y", type = tensor<1x3xf32>, value = {{.*}} : tensor<1x3xf32>} : () -> ()
 # CHECK: func @basic([[ARG0:%.*]]: tensor<3x1xf32>,
 # CHECK-SAME: [[ARG1:%.*]]: tensor<!tf.resource<tensor<1x3xf32>>> {tf_saved_model.bound_input = @y}) -> tensor<3x3xf32>

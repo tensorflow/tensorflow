@@ -241,6 +241,15 @@ class BinaryOpsTest(xla_test.XLATestCase):
             rtol=1e-4,
             atol=1e-6)
 
+        self._testBinary(
+            gen_math_ops.xlog1py,
+            np.array([0, 4, 3, 2, 1, 0], dtype=dtype),
+            np.array([-1, 5, 6, 7, 8, float("NaN")], dtype=dtype),
+            expected=np.array([0, 7.167038, 5.837730, 4.158883, 2.197225, 0],
+                              dtype=dtype),
+            rtol=1e-4,
+            atol=1e-6)
+
   def testIntOps(self):
     for dtype in self.signed_int_types:
       self._testBinary(

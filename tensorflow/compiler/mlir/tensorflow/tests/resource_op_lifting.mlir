@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -split-input-file -tf-resource-op-lifting | FileCheck %s -dump-input-on-failure
+// RUN: tf-opt %s -split-input-file -verify-diagnostics -tf-resource-op-lifting | FileCheck %s -dump-input-on-failure
 
 // Tests that resource load operations are hoisted.
 
@@ -108,4 +108,24 @@ func @internal_resource() -> tensor<*xi32> {
 
   // CHECK: return %[[LAUNCH_RES]]
   return %0 : tensor<*xi32>
+}
+
+// -----
+
+// Tests that pass fails when there are remaining resource operationss that can
+// not be lifted.
+
+func @lifting_failure() -> tensor<*xi32> {
+
+  %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource>
+
+  // expected-error @+1 {{has remaining resource inputs that can not be lifted}}
+  %1 = "tf_device.launch"() ( {
+    %2 = "tf.ReadVariableOp"(%0) {dtype = i32} : (tensor<*x!tf.resource>) -> tensor<*xi32>
+		%3 = "tf.SomeResourceOp"(%0, %2) : (tensor<*x!tf.resource>, tensor<*xi32>) -> tensor<*xi32>
+    "tf.AssignVariableOp"(%0, %3) {dtype = i32} : (tensor<*x!tf.resource>, tensor<*xi32>) -> ()
+    tf_device.return %3 : tensor<*xi32>
+  }) {device = "tpu0", launch_attr = "launch_attr"} : () -> tensor<*xi32>
+
+  return %1 : tensor<*xi32>
 }

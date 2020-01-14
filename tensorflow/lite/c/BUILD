@@ -13,14 +13,6 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-package_group(
-    name = "experimental",
-    packages = [
-        "//tensorflow/lite/...",
-        "//third_party/dart/tflite_native/...",  # whitelisted
-    ],
-)
-
 # Generates a platform-specific shared library containing the TensorFlow Lite C
 # API implementation as define in `c_api.h`. The exact output library name
 # is platform dependent:

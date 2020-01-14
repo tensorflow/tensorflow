@@ -101,6 +101,7 @@ function ctpu_up {
 
   if [[ -v project ]]; then
     args+=("--project=${project}")
+    export TPU_PROJECT="${project}"
     echo "${project}" > "${TF_ARTIFACTS_DIR}/tpu_project"
   fi
 
