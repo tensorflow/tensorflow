@@ -53,7 +53,7 @@ StepEvents ConvertHostThreadsXLineToStepEvents(
     int64 correlation_id = -1;
     int64 group_id = -1;
     event.ForEachStat([&](const XStatVisitor& stat) {
-      if (stat.Id() == StatType::kCorrelationId) {
+      if (stat.Type() == StatType::kCorrelationId) {
         correlation_id = stat.IntValue();
       } else if (stat.Type() == StatType::kGroupId) {
         group_id = stat.IntValue();
