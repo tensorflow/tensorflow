@@ -142,15 +142,14 @@ class InitializeTRTResource : public OpKernel {
       auto raw_engine = engine.get();
       std::vector<TrtUniquePtrType<nvinfer1::IExecutionContext>> ctx_vec;
       if (num_loaded_engine == 0) {
-        // restore profiles if any
-        // Currently only 1 engine is allowed in dynamic mode therefore
-        // it is safe to call only for the first engine
-        // In static mode this will also work
+        // Restore profiles if there are any. Currently only 1 engine is allowed
+        // in dynamic mode therefore we call this only for the 0th engine.
+        // it is a no-op in implicit batch mode.
         resource->profiles_.RestoreProfiles(raw_engine);
-        resource->profiles_.createExcecutionContexts(raw_engine, ctx_vec);
+        resource->profiles_.createExecutionContexts(raw_engine, ctx_vec);
       } else {
-        // Multiple engines are only availabel in static mode
-        // for each engine we have only a single execution context
+        // Multiple engines are only available in static mode. For each engine
+        // we have only a single execution context.
         TrtUniquePtrType<nvinfer1::IExecutionContext> exec_ctx(
             raw_engine->createExecutionContext());
         ctx_vec.push_back(std::move(exec_ctx));
