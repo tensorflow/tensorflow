@@ -834,7 +834,12 @@ class Model(network.Network, version_utils.VersionSelector):
               use_multiprocessing=False):
     """Generates output predictions for the input samples.
 
-    Computation is done in batches.
+    Computation is done in batches. This method is designed for performance in
+    large scale inputs. For small amount of inputs that fit in one batch,
+    directly using `__call__` is recommended for faster execution, e.g.,
+    `model(x)`, or `model(x, training=False)` if you have layers such as
+    `tf.keras.layers.BatchNormalization` that behaves differently during
+    inference.
 
     Arguments:
         x: Input samples. It could be:
