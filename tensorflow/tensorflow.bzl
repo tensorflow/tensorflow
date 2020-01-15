@@ -58,7 +58,7 @@ def register_extension_info(**kwargs):
 # not contain rc or alpha, only numbers.
 # Also update tensorflow/core/public/version.h
 # and tensorflow/tools/pip_package/setup.py
-VERSION = "2.0.0"
+VERSION = "2.0.1"
 VERSION_MAJOR = VERSION.split(".")[0]
 
 def if_v2(a):
