@@ -539,7 +539,7 @@ def converted_call(f,
     if logging.has_verbosity(2):
       logging.log(2, 'Defaults of %s : %s', converted_f,
                   converted_f.__defaults__)
-      if six.PY3:
+      if not six.PY2:
         logging.log(2, 'KW defaults of %s : %s',
                     converted_f, converted_f.__kwdefaults__)
 

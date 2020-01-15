@@ -2920,8 +2920,8 @@ class TensorFlowTestCase(googletest.TestCase):
     else:
       self._assertAllCloseRecursive(a, b, rtol, atol, path, msg)
 
-  # Fix Python 3 compatibility issues
-  if six.PY3:
+  # Fix Python 3+ compatibility issues
+  if not six.PY2:
     # pylint: disable=invalid-name
 
     # Silence a deprecation warning

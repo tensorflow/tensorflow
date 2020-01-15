@@ -436,7 +436,7 @@ class EinsumTest(test.TestCase):
       # with the same input args (as input_1 and input_2 above), and if
       # those tests run before this test, then the call_count for the method
       # mock_contract_path will not increment.
-      if six.PY3:
+      if not six.PY2:
         special_math_ops._get_opt_einsum_contract_path.cache_clear()
 
       self.assertEqual(mock_contract_path.call_count, 0)
@@ -445,15 +445,15 @@ class EinsumTest(test.TestCase):
       # The same input results in no extra call if we're caching the
       # opt_einsum.contract_path call. We only cache in Python3.
       self._check(*input_1)
-      self.assertEqual(mock_contract_path.call_count, 1 if six.PY3 else 2)
+      self.assertEqual(mock_contract_path.call_count, 2 if six.PY2 else 1)
       # New input results in another call to opt_einsum.
       self._check(*input_2)
-      self.assertEqual(mock_contract_path.call_count, 2 if six.PY3 else 3)
+      self.assertEqual(mock_contract_path.call_count, 3 if six.PY2 else 2)
       # No more extra calls as the inputs should be cached.
       self._check(*input_1)
       self._check(*input_2)
       self._check(*input_1)
-      self.assertEqual(mock_contract_path.call_count, 2 if six.PY3 else 6)
+      self.assertEqual(mock_contract_path.call_count, 6 if six.PY2 else 2)
 
   @test_util.disable_xla('b/131919749')
   def test_long_cases_with_repeated_labels(self):
