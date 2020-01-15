@@ -1345,7 +1345,7 @@ void TF_OperationGetAttrString(TF_Operation* oper, const char* attr_name,
     return;
   }
   if (max_length == 0) {
-    InvalidArgument("Attribute '", max_length, "' is zero");
+    status->status = InvalidArgument("Attribute '", max_length, "' is zero");
     return;
   }
   const auto& s = attr->s();

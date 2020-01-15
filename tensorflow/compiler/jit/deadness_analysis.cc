@@ -250,7 +250,7 @@ class NotPredicate : public Predicate {
 class AndRecurrencePredicate : public Predicate {
  public:
   explicit AndRecurrencePredicate(int64 id, Predicate* start, Predicate* step,
-                                  std::vector<string> &frame)
+                                  std::vector<string> frame)
       : Predicate(id), operands_({start, step}), frame_(std::move(frame)) {}
 
   Predicate* start() const { return operands_[0]; }
