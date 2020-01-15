@@ -63,20 +63,17 @@ TEST_F(GpuSliceInputFusionTest, InputFusionWithOnlyOneSlice) {
   auto hlo_module =
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
           .ValueOrDie();
-  CompileAndVerifyIr(std::move(hlo_module),
-#if TENSORFLOW_USE_ROCM
-                     R"(
+  auto expected_ir = is_built_with_rocm_ ? R"(
 ; CHECK-LABEL: define amdgpu_kernel void @fusion
 ; CHECK: slice0
 ; CHECK: }
-)",
-#else
-                     R"(
+)"
+                                         : R"(
 ; CHECK-LABEL: define void @fusion
 ; CHECK: slice0
 ; CHECK: }
-)",
-#endif
+)";
+  CompileAndVerifyIr(std::move(hlo_module), expected_ir,
                      /*match_optimized_ir=*/false);
   // Check that the kernel runs correctly.
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{0, 0}));
@@ -108,20 +105,17 @@ TEST_F(GpuSliceInputFusionTest, InputFusionWithATupleOfSlices) {
   auto hlo_module =
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
           .ValueOrDie();
-  CompileAndVerifyIr(std::move(hlo_module),
-#if TENSORFLOW_USE_ROCM
-                     R"(
+  auto expected_ir = is_built_with_rocm_ ? R"(
 ; CHECK-LABEL: define amdgpu_kernel void @fusion
 ; CHECK: slice2
 ; CHECK: }
-)",
-#else
-                     R"(
+)"
+                                         : R"(
 ; CHECK-LABEL: define void @fusion
 ; CHECK: slice2
 ; CHECK: }
-)",
-#endif
+)";
+  CompileAndVerifyIr(std::move(hlo_module), expected_ir,
                      /*match_optimized_ir=*/false);
   // Check that the kernel runs correctly.
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{0, 0}));
@@ -158,20 +152,17 @@ TEST_F(GpuSliceInputFusionTest, ConcatThenSplit) {
   auto hlo_module =
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
           .ValueOrDie();
-  CompileAndVerifyIr(std::move(hlo_module),
-#if TENSORFLOW_USE_ROCM
-                     R"(
+  auto expected_ir = is_built_with_rocm_ ? R"(
 ; CHECK-LABEL: define amdgpu_kernel void @fusion
 ; CHECK: slice2
 ; CHECK: }
-)",
-#else
-                     R"(
+)"
+                                         : R"(
 ; CHECK-LABEL: define void @fusion
 ; CHECK: slice2
 ; CHECK: }
-)",
-#endif
+)";
+  CompileAndVerifyIr(std::move(hlo_module), expected_ir,
                      /*match_optimized_ir=*/false);
   // Check that the kernel runs correctly.
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{0, 0}));
