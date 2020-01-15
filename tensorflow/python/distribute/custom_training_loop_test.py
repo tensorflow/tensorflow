@@ -41,6 +41,27 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.combine(
+          distribution=strategy_combinations.all_strategies,
+          mode=["eager"]
+      ))
+  def testConstantNumpyInput(self, distribution):
+
+    @def_function.function
+    def run(x):
+
+      def computation(x):
+        return math_ops.square(x)
+
+      outputs = distribution.experimental_local_results(
+          distribution.experimental_run_v2(computation, args=(x,)))
+      return outputs
+
+    self.assertAllEqual(
+        constant_op.constant(4., shape=(distribution.num_replicas_in_sync)),
+        run(2.))
+
+  @combinations.generate(
+      combinations.combine(
           distribution=strategy_combinations.strategies_minus_tpu,
           mode=["eager"]))
   def testFullEager(self, distribution):
