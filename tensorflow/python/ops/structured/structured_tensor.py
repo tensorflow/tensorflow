@@ -62,21 +62,22 @@ class StructuredTensor(composite_tensor.CompositeTensor):
 
   ```python
   >>> # A scalar StructuredTensor describing a single person.
-  >>> s1 = tf.structured.constant({"age": 82, "nicknames": ["Bob", "Bobby"]})
-  >>> print s1.shape
-  ()
-  >>> print s1["age"]
-  tf.Tensor(82, shape=(), dtype=int32)
+  >>> s1 = StructuredTensor.from_pyval(
+  ...     {"age": 82, "nicknames": ["Bob", "Bobby"]})
+  >>> s1.shape
+  TensorShape([])
+  >>> s1["age"]
+  <tf.Tensor: shape=(), dtype=int32, numpy=82>
 
   >>> # A vector StructuredTensor describing three people.
-  >>> s2 = stf.struct.constant([
+  >>> s2 = StructuredTensor.from_pyval([
   ...     {"age": 12, "nicknames": ["Josaphine"]},
   ...     {"age": 82, "nicknames": ["Bob", "Bobby"]},
-  ...     {"age": 82, "nicknames": ["Elmo"]}])
-  >>> print s2.shape
-  (3,)
-  >>> print s2[0]["age"]
-  tf.Tensor(12, shape=(), dtype=int32)
+  ...     {"age": 42, "nicknames": ["Elmo"]}])
+  >>> s2.shape
+  TensorShape([3])
+  >>> s2[0]["age"]
+  <tf.Tensor: shape=(), dtype=int32, numpy=12>
   ```
 
   ### Field Paths
@@ -312,7 +313,7 @@ class StructuredTensor(composite_tensor.CompositeTensor):
     If `field_name` is a `string`, then it names a field directly owned by this
     `StructuredTensor`.  If this `StructuredTensor` has shape `[D1...DN]`, then
     the returned tensor will have shape `[D1...DN, V1...VM]`, where the slice
-    `result[d1...dN]`contains the field value for the structure at
+    `result[d1...dN]` contains the field value for the structure at
     `self[d1...dN]`.
 
     If `field_name` is a `tuple` of `string`, then it specifies a path to a
@@ -458,9 +459,9 @@ class StructuredTensor(composite_tensor.CompositeTensor):
 
     Requires that all fields are Eager tensors.
 
-    >>> print(StructuredTensor.from_fields(
-    ...     {'a': [1, 2, 3]}, [3]).to_pyval())
-    [{b'a': 1}, {b'a': 2}, {b'a': 3}]
+    >>> StructuredTensor.from_fields(
+    ...     {'a': [1, 2, 3]}, [3]).to_pyval()
+    [{'a': 1}, {'a': 2}, {'a': 3}]
 
     Note that `StructuredTensor.from_pyval(pyval).to_pyval() == pyval`.
 
@@ -496,7 +497,7 @@ class StructuredTensor(composite_tensor.CompositeTensor):
   def from_pyval(cls, pyval, typespec=None):
     """Constructs a StructuredTensor from a nested Python structure.
 
-    >>> print StructuredTensor.from_pyval(
+    >>> StructuredTensor.from_pyval(
     ...     {'a': [1, 2, 3], 'b': [[4, 5], [6, 7]]})
     <StructuredTensor {'a': [1, 2, 3], 'b': [[4, 5], [6, 7]]}>
 
