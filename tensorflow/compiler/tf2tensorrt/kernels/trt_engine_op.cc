@@ -509,9 +509,8 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
       cache_res->profiles_.addShape(input_shapes);
       ExecuteNativeSegment(ctx, helper);
       return;
-    }
-    else {
-      // Create profiles out of collected shapes in during profile generation.
+    } else if (cache_res->profiles_.GetNumProfiles() == 0) {
+      // Create profiles out of collected shapes during profile generation.
       cache_res->profiles_.initProfiles();
     }
   }
