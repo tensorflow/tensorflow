@@ -373,6 +373,7 @@ class SingleOpModel {
   // Enables NNAPI delegate application during interpreter creation.
   static void SetForceUseNnapi(bool use_nnapi);
   static bool GetForceUseNnapi();
+  int CountOpsExecutedByCpuKernel();
 
  protected:
   int32_t GetTensorSize(int index) const;
