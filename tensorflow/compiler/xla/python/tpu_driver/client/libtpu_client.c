@@ -13,11 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Before you start, make sure c_api.so, c_api.h and and c_api_client.c are in
-// the same working directory.
+// Before you start, make sure libtpu.so, libtpu.h and and libtpu_client.c are
+// in the same working directory.
 //
-// To compile: gcc -o c_api_client c_api_client.c -ldl
-// To run: sudo ./c_api_client
+// To compile: gcc -o libtpu_client libtpu_client.c -ldl
+// To run: sudo ./libtpu_client
 
 #include <dlfcn.h>
 #include <stdio.h>
@@ -28,7 +28,7 @@ limitations under the License.
 void* LoadAndInitializeDriver(const char* shared_lib,
                               struct TpuDriverFn* driver_fn) {
   void* handle;
-  handle = dlopen("libtpu.so", RTLD_NOW);
+  handle = dlopen(shared_lib, RTLD_NOW);
   if (!handle) {
     fprintf(stderr, "Error: %s\n", dlerror());
     exit(EXIT_FAILURE);
@@ -42,8 +42,13 @@ void* LoadAndInitializeDriver(const char* shared_lib,
 }
 
 int main(int argc, char** argv) {
+  char* api_path = "./libtpu.so";
+  if (argc == 2) {
+    api_path = argv[1];
+  }
+
   struct TpuDriverFn driver_fn;
-  void* handle = LoadAndInitializeDriver("./c_api.so", &driver_fn);
+  void* handle = LoadAndInitializeDriver(api_path, &driver_fn);
 
   fprintf(stdout, "------ Going to Query Version ------\n");
   fprintf(stdout, "TPU Driver Version: %s\n", driver_fn.TpuDriver_Version());

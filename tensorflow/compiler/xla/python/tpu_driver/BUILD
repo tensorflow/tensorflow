@@ -74,8 +74,8 @@ cc_library(
 )
 
 cc_library(
-    name = "external_tpu_driver",
-    srcs = ["external_tpu_driver.cc"],
+    name = "direct_tpu_driver",
+    srcs = ["direct_tpu_driver.cc"],
     deps = [
         ":tpu_driver",
         "@com_google_absl//absl/strings:str_format",
