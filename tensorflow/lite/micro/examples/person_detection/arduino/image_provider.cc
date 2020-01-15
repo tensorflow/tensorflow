@@ -50,14 +50,10 @@ limitations under the License.
 // JPEGDecoder library
 #include <JPEGDecoder.h>
 
-#endif // ARDUINO_EXCLUDE_CODE
-
 // Checks that the Arducam library has been correctly configured
 #if !(defined OV2640_MINI_2MP_PLUS)
 #error Please select the hardware platform and camera module in the Arduino/libraries/ArduCAM/memorysaver.h
 #endif
-
-#ifndef ARDUINO_EXCLUDE_CODE
 
 // The size of our temporary buffer for holding
 // JPEG data received from the Arducam module

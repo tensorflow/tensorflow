@@ -29,8 +29,8 @@ limitations under the License.
 #include "am_util.h"        // NOLINT
 #include "lis2dh12_platform_apollo3.h"
 
-lis2dh12_platform_apollo3_if_t dev_if = {0};  // accelerometer device interface
-lis2dh12_ctx_t dev_ctx = {0};                 // accelerometer device control
+lis2dh12_platform_apollo3_if_t dev_if;  // accelerometer device interface
+lis2dh12_ctx_t dev_ctx;                 // accelerometer device control
 
 // A union representing either int16_t[3] or uint8_t[6],
 // storing the most recent data
@@ -46,7 +46,8 @@ int initAccelerometer(void) {
   uint32_t retVal32 = 0;
   static uint8_t whoamI = 0;
 
-  am_hal_iom_config_t i2cConfig = {0};
+  am_hal_iom_config_t i2cConfig;
+  memset((void*)(&i2cConfig), 0x00, sizeof(am_hal_iom_config_t));
   i2cConfig.eInterfaceMode = AM_HAL_IOM_I2C_MODE;
   i2cConfig.ui32ClockFreq = AM_HAL_IOM_100KHZ;
 
@@ -138,12 +139,12 @@ TfLiteStatus SetupAccelerometer(tflite::ErrorReporter* error_reporter) {
 
   if (lis2dh12_fifo_mode_set(&dev_ctx, LIS2DH12_BYPASS_MODE)) {
     error_reporter->Report("Failed to clear FIFO buffer.");
-    return 0;
+    return kTfLiteError;
   }
 
   if (lis2dh12_fifo_mode_set(&dev_ctx, LIS2DH12_DYNAMIC_STREAM_MODE)) {
     error_reporter->Report("Failed to set streaming mode.");
-    return 0;
+    return kTfLiteError;
   }
 
   error_reporter->Report("Magic starts!");

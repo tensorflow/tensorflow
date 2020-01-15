@@ -148,6 +148,14 @@ endef
 # can invoke to create the standalone project.
 define generate_arduino_project
 
+$(PRJDIR)$(2)/arduino/examples/%.c: tensorflow/lite/micro/examples/%.c
+	@mkdir -p $$(dir $$@)
+	@python tensorflow/lite/micro/tools/make/transform_source.py \
+        --platform=arduino \
+        --is_example_source \
+        --source_path="$$<" \
+        --third_party_headers="$(4)" < $$< > $$@
+
 $(PRJDIR)$(2)/arduino/examples/%.cpp: tensorflow/lite/micro/examples/%.cc
 	@mkdir -p $$(dir $$@)
 	@python tensorflow/lite/micro/tools/make/transform_source.py \
