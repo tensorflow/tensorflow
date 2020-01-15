@@ -1,0 +1,25 @@
+From 4c1a4d676d1633ff9f67bda3540d24ea5fa31c8f Mon Sep 17 00:00:00 2001
+From: Brian Zhao <bmzhao@google.com>
+Date: Tue, 14 Jan 2020 18:23:34 -0800
+Subject: [PATCH] Adding linker_inputs flag to create_linking_context, in
+ preparation for bazel's cc_shared_library rule. Note that this cannot be
+ enabled as of now unless --experimental_cc_shared_library is passed to bazel.
+
+---
+ swift/internal/utils.bzl | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/swift/internal/utils.bzl b/swift/internal/utils.bzl
+index 5cf1498..44d7559 100644
+--- a/swift/internal/utils.bzl
++++ b/swift/internal/utils.bzl
+@@ -98,6 +98,7 @@ def create_cc_info(
+ 
+     this_cc_info = CcInfo(
+         linking_context = cc_common.create_linking_context(
++            linker_inputs = None,
+             additional_inputs = all_additional_inputs,
+             libraries_to_link = libraries_to_link,
+             user_link_flags = all_user_link_flags,
+-- 
+2.25.0.rc1.283.g88dfdc4193-goog

@@ -31,6 +31,11 @@ load(
     "tf_windows_aware_platform_deps",
 )
 load(
+    "//tensorflow/core/platform:rules_cc.bzl",
+    "cc_binary",
+    "cc_library",
+)
+load(
     "//tensorflow:tensorflow.bzl",
     "if_not_android",
     "tf_cc_test",
@@ -1462,6 +1467,12 @@ bzl_library(
     name = "build_config_root_bzl",
     srcs = [
         "build_config_root.bzl",
-        "//tensorflow/core/platform/default:build_config_root.bzl",
-    ],
+    ] + tf_platform_alias("build_config_root.bzl"),
+)
+
+bzl_library(
+    name = "rules_cc_bzl",
+    srcs = [
+        "rules_cc.bzl",
+    ] + tf_platform_alias("rules_cc.bzl"),
 )
