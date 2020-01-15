@@ -3,10 +3,6 @@ load(
     "if_linux_x86_64",
     "tf_copts",
 )
-load(
-    "//tensorflow/core/platform:rules_cc.bzl",
-    "cc_library",
-)
 
 package(
     default_visibility = [

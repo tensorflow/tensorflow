@@ -15,10 +15,6 @@ load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
 )
-load(
-    "//tensorflow/core/platform:rules_cc.bzl",
-    "cc_library",
-)
 
 package(
     default_visibility = [

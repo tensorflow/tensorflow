@@ -1,8 +1,3 @@
-load(
-    "//tensorflow/core/platform:rules_cc.bzl",
-    "cc_library",
-)
-
 package(
     default_visibility = [
         "//tensorflow/c/experimental/filesystem:__pkg__",

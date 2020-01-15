@@ -2,10 +2,6 @@
 #   Libraries for storing tensors in SQL databases.
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_copts")
-load(
-    "//tensorflow/core/platform:rules_cc.bzl",
-    "cc_library",
-)
 
 package(
     default_visibility = ["//tensorflow:internal"],
