@@ -10,9 +10,9 @@ alias(
 
 load(
     "//tensorflow:tensorflow.bzl",
+    "if_cuda_is_configured_compat",
     "tf_copts",
     "tf_cuda_library",
-    "if_cuda_is_configured_compat",
 )
 
 tf_cuda_library(
