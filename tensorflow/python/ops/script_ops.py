@@ -449,9 +449,7 @@ def eager_py_func(func, inp, Tout, name=None):
     A list of `Tensor` or a single `Tensor` which `func` computes; an empty list
     if `func` returns None.
   """
-  with ops.device(context.context().host_address_space()):
-    return _internal_py_func(
-        func=func, inp=inp, Tout=Tout, eager=True, name=name)
+  return _internal_py_func(func=func, inp=inp, Tout=Tout, eager=True, name=name)
 
 
 def py_func_common(func, inp, Tout, stateful=True, name=None):
@@ -520,14 +518,8 @@ def py_func_common(func, inp, Tout, stateful=True, name=None):
       result, = result
     return result
 
-  with ops.device(context.context().host_address_space()):
-    return _internal_py_func(
-        func=func,
-        inp=inp,
-        Tout=Tout,
-        stateful=stateful,
-        eager=False,
-        name=name)
+  return _internal_py_func(
+      func=func, inp=inp, Tout=Tout, stateful=stateful, eager=False, name=name)
 
 
 @deprecation.deprecated(
