@@ -397,7 +397,7 @@ class PredicateFactory {
   }
 
   Predicate* MakeAndRecurrencePredicate(Predicate* start, Predicate* step,
-                                        std::vector<string> &frame) {
+                                        std::vector<string> frame) {
     SignatureForAndRec signature(start, step, std::move(frame));
     auto it = interned_and_rec_instances_.find(signature);
     if (it != interned_and_rec_instances_.end()) {
