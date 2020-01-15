@@ -93,7 +93,7 @@ standard approach for [improving
 performance](https://www.tensorflow.org/tutorials/customization/performance) of
 TF2 programs. You can enable compilation with XLA by setting the
 `experimental_compile` argument of `tf.function` to `True`. See the [tutorial
-colab](./tutorials/experimental_compile.ipynb) for usage examples.
+colab](./tutorials/compile.ipynb) for usage examples.
 
 ### AOT (Ahead-of-time) compilation for CPU with `tfcompile`
 
