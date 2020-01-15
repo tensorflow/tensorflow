@@ -241,7 +241,9 @@ class DirectTpuDriver : public TpuDriver {
   ~DirectTpuDriver() override {}
 
   void QuerySystemInfo(SystemInfo* system_info) override {
-    LOG(FATAL) << "Unimplemented.";
+    ::TpuSystemInfo* info = driver_fn_.TpuDriver_QuerySystemInfo(driver_);
+    system_info->ParseFromArray(info->bytes, info->size);
+    driver_fn_.TpuDriver_FreeSystemInfo(info);
   }
 
   xla::Status Reset() override { LOG(FATAL) << "Unimplemented."; }

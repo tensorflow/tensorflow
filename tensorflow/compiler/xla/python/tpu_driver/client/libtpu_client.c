@@ -56,6 +56,10 @@ int main(int argc, char** argv) {
   fprintf(stdout, "------ Going to Open a TPU Driver ------\n");
   struct TpuDriver* driver = driver_fn.TpuDriver_Open("local://");
 
+  fprintf(stdout, "------ Going to Query for System Information ------\n");
+  struct TpuSystemInfo* info = driver_fn.TpuDriver_QuerySystemInfo(driver);
+  driver_fn.TpuDriver_FreeSystemInfo(info);
+
   // An example of simple program to sum two parameters.
   const char* hlo_module_text = R"(HloModule add_vec_module
     ENTRY %add_vec (a: s32[256], b: s32[256]) -> s32[256] {
