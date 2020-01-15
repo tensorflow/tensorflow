@@ -68,6 +68,8 @@ class MixedPrecisionLossScaleOptimizer(optimizer.Optimizer):
     super(MixedPrecisionLossScaleOptimizer, self).__init__(use_locking, name)
 
     self._loss_scale = loss_scale_module.get(loss_scale)
+    if self._loss_scale is None:
+      raise ValueError('loss_scale cannot be None')
     self._track_trackable(self._optimizer, 'base_optimizer')
     self._track_trackable(self._loss_scale, 'loss_scale')
 

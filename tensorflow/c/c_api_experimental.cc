@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
+#include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_server_lib.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/shape_inference.h"
@@ -634,7 +635,7 @@ TF_Tensor* TF_CheckpointReaderGetTensor(TF_CheckpointReader* reader,
   std::unique_ptr<tensorflow::Tensor> tensor;
   reader->GetTensor(name, &tensor, status);
   if (!status->status.ok()) return nullptr;
-  return tensorflow::TF_TensorFromTensor(*tensor, status);
+  return tensorflow::TF_TensorFromTensor(*tensor, &status->status);
 }
 
 void TF_CheckpointReaderGetVariableShape(TF_CheckpointReader* reader,
@@ -767,8 +768,9 @@ tensorflow::Status EnableCollectiveOps(const tensorflow::ServerDef& server_def,
   } while (0);
 
   // New server created for new server_def. Unused if updating server_def.
+  tensorflow::EagerContext* context = ctx->context;
   tensorflow::GrpcServer* grpc_server =
-      dynamic_cast<tensorflow::GrpcServer*>(ctx->context->GetServer());
+      dynamic_cast<tensorflow::GrpcServer*>(context->GetServer());
   if (grpc_server == nullptr) {
     std::unique_ptr<tensorflow::ServerInterface> new_server;
     LOG_AND_RETURN_IF_ERROR(tensorflow::NewServer(server_def, &new_server));
@@ -779,12 +781,12 @@ tensorflow::Status EnableCollectiveOps(const tensorflow::ServerDef& server_def,
     }
     LOG_AND_RETURN_IF_ERROR(grpc_server->Start());
 
-    LOG_AND_RETURN_IF_ERROR(ctx->context->StoreCollectiveOpsServer(
+    LOG_AND_RETURN_IF_ERROR(context->StoreCollectiveOpsServer(
         std::move(new_server), grpc_server->worker_env()->device_mgr,
         grpc_server->worker_env()->collective_executor_mgr));
   } else {
     LOG_AND_RETURN_IF_ERROR(grpc_server->UpdateServerDef(server_def));
-    LOG_AND_RETURN_IF_ERROR(ctx->context->StoreCollectiveOpsServer(
+    LOG_AND_RETURN_IF_ERROR(context->StoreCollectiveOpsServer(
         /*new_server=*/nullptr, grpc_server->worker_env()->device_mgr,
         grpc_server->worker_env()->collective_executor_mgr));
   }

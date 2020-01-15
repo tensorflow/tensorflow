@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor_type_util.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
+#include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 
 namespace tflite {
@@ -157,7 +158,8 @@ class DefaultTensorTie : public TensorTie {
         const TensorDescriptor desc{
             d.object_def.data_type,
             ToTensorStorageType(d.object_def.object_type,
-                                d.object_def.data_layout)};
+                                d.object_def.data_layout),
+            Layout::BHWC};
         RETURN_IF_ERROR(AllocateTensorMemory(env->context(), env->device(),
                                              shape, desc, &cl_memory_));
         if (d.object_def.object_type == ObjectType::OPENCL_TEXTURE) {
@@ -504,34 +506,6 @@ TensorObjectDef TensorToDef(const Tensor& tensor) {
   return def;
 }
 
-int GetPosition(const InferenceOptions& options, InferencePriority p) {
-  if (options.priority1 == p) return 1;
-  if (options.priority2 == p) return 2;
-  if (options.priority3 == p) return 3;
-  return 4;  // least important
-}
-
-enum class PriorityImportance {
-  UNKNOWN,
-  HIGHER,
-  LOWER,
-};
-
-// If both p1 and p2 are not present in options, return UNKNOWN
-// If p1 is present, but p2 is not, return HIGHER
-// If p2 is present, but p1 is not, return LOWER
-// If both are present, and p1 is more important, return HIGHER, otherwise,
-// LOWER.
-PriorityImportance GetRelativeImportance(const InferenceOptions& options,
-                                         InferencePriority p1,
-                                         InferencePriority p2) {
-  int p1_position = GetPosition(options, p1);
-  int p2_position = GetPosition(options, p2);
-  if (p1_position == p2_position) return PriorityImportance::UNKNOWN;
-  return p1_position < p2_position ? PriorityImportance::HIGHER
-                                   : PriorityImportance::LOWER;
-}
-
 class InferenceBuilderImpl : public InferenceBuilder {
  public:
   explicit InferenceBuilderImpl(Environment* environment)
@@ -730,15 +704,18 @@ class InferenceEnvironmentImpl : public InferenceEnvironment {
     RETURN_IF_ERROR(LoadOpenCL());
     properties_.is_opencl_available = true;
 
-    if (options_.IsGlAware()) {
-      RETURN_IF_ERROR(CreateGLCompatibleEnvironment(
-          reinterpret_cast<cl_context_properties>(options_.egl_context),
-          reinterpret_cast<cl_context_properties>(options_.egl_display),
-          &environment_));
+    CLDevice device;
+    if (options_.device) {
+      cl_platform_id platform;
+      if (!FindPlatform(options_.device, &platform)) {
+        return NotFoundError(
+            "Unable to find cl_platform_id for the given cl_device");
+      }
+      device = CLDevice(options_.device, platform);
     } else {
-      RETURN_IF_ERROR(CreateEnvironment(&environment_));
+      RETURN_IF_ERROR(CreateDefaultGPUDevice(&device));
     }
-    auto& device = environment_.device();
+
     properties_.is_gl_sharing_supported = IsGlSharingSupported(device);
     properties_.is_gl_to_cl_fast_sync_supported =
         IsClEventFromEglSyncSupported(device);
@@ -747,12 +724,50 @@ class InferenceEnvironmentImpl : public InferenceEnvironment {
     if (options_.IsGlAware() && !properties_.is_gl_sharing_supported) {
       return UnavailableError("GL sharing is not supported");
     }
-    return OkStatus();
+
+    CLContext context;
+    if (options_.context) {
+      if (options_.IsGlAware()) {
+        return InvalidArgumentError(
+            "OpenCL context and EGL parameters are set in the same time.");
+      }
+      context = CLContext(options_.context, /* has_ownership = */ false);
+    } else {
+      if (options_.IsGlAware()) {
+        RETURN_IF_ERROR(CreateCLGLContext(
+            device,
+            reinterpret_cast<cl_context_properties>(options_.egl_context),
+            reinterpret_cast<cl_context_properties>(options_.egl_display),
+            &context));
+      } else {
+        RETURN_IF_ERROR(CreateCLContext(device, &context));
+      }
+    }
+
+    CLCommandQueue queue;
+    if (options_.command_queue) {
+      queue =
+          CLCommandQueue(options_.command_queue, /* has_ownership = */ false);
+    } else {
+      RETURN_IF_ERROR(CreateCLCommandQueue(device, context, &queue));
+    }
+    // Profiling queue is used for workgroup size tuning.
+    ProfilingCommandQueue profiling_queue;
+    RETURN_IF_ERROR(
+        CreateProfilingCommandQueue(device, context, &profiling_queue));
+    environment_ = Environment(std::move(device), std::move(context),
+                               std::move(queue), std::move(profiling_queue));
+    return environment_.Init();
   }
 
   Status NewInferenceBuilder(const InferenceOptions& options,
                              GraphFloat32 model,
                              std::unique_ptr<InferenceBuilder>* builder) final {
+    if (!IsValid(options)) {
+      return InvalidArgumentError("InferenceOptions are invalid.");
+    }
+    InferenceOptions resolved_options = options;
+    ResolveAutoPriority(&resolved_options);
     if (environment_.program_cache() &&
         !options_.serialized_binary_cache.empty()) {
       // Ignore returned error. Cache is discarded.
@@ -764,7 +779,8 @@ class InferenceEnvironmentImpl : public InferenceEnvironment {
 
     RETURN_IF_ERROR(RunGraphTransforms(&model));
     auto builder_impl = absl::make_unique<InferenceBuilderImpl>(&environment_);
-    RETURN_IF_ERROR(builder_impl->Initialize(options, options_, model));
+    RETURN_IF_ERROR(
+        builder_impl->Initialize(resolved_options, options_, model));
     *builder = std::move(builder_impl);
     return OkStatus();
   }

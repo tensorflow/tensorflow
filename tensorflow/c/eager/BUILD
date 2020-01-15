@@ -8,11 +8,11 @@ load(
     "tfe_xla_copts",
 )
 load(
-    "//tensorflow/core/platform:default/build_config.bzl",
+    "//tensorflow/core/platform:build_config.bzl",
     "tf_kernel_tests_linkstatic",
 )
 load(
-    "//tensorflow/core/platform:default/build_config_root.bzl",
+    "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
 
@@ -28,6 +28,7 @@ tf_cuda_library(
         "c_api_experimental.h",
         "c_api_internal.cc",
         "c_api_internal.h",
+        "tensor_handle_interface.h",
     ],
     hdrs = ["c_api.h"],
     copts = tf_copts() + tfe_xla_copts(),
@@ -37,9 +38,11 @@ tf_cuda_library(
             "//tensorflow/core:android_tensorflow_lib_lite",
         ],
         "//conditions:default": [
+            "@com_google_absl//absl/algorithm:container",
             "@com_google_absl//absl/container:fixed_array",
             "//tensorflow/c:c_api",
             "//tensorflow/c:c_api_internal",
+            "//tensorflow/c:tf_tensor_internal",
             "//tensorflow/core:core_cpu",
             "//tensorflow/core/common_runtime/eager:attr_builder",
             "//tensorflow/core/common_runtime/eager:context",
@@ -53,6 +56,7 @@ tf_cuda_library(
             "//tensorflow/core:framework_internal",
             "//tensorflow/core:lib",
             "//tensorflow/core:lib_internal",
+            "//tensorflow/core/platform:errors",
             "//tensorflow/core:protos_all_cc",
             "//tensorflow/core/profiler/lib:traceme",
         ],
@@ -85,9 +89,25 @@ tf_cuda_library(
     alwayslink = 1,
 )
 
+filegroup(
+    name = "pywrap_eager_hdrs",
+    srcs = [
+        "c_api_experimental.h",
+        "c_api_internal.h",
+        "tensor_handle_interface.h",
+    ],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/python:__pkg__",
+    ],
+)
+
 tf_cuda_library(
     name = "c_api_internal",
-    srcs = ["c_api_experimental.h"],
+    srcs = [
+        "c_api_experimental.h",
+        "tensor_handle_interface.h",
+    ],
     hdrs = ["c_api_internal.h"],
     visibility = [
         "//learning/deepmind/courier:__subpackages__",

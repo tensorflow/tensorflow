@@ -215,7 +215,7 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
   // would occur if 'fusion' were merged into multiple users.
   //
   // If 'fusion' has just one user, then an earlier fusion pass chose not to
-  // fuse this producer/comsumer pair (likely because of expensive instruction
+  // fuse this producer/consumer pair (likely because of expensive instruction
   // re-use by the consumer), and so we honor that choice here as well.
   if (absl::c_any_of(fusion->fused_instructions(),
                      [](const HloInstruction* instruction) {
@@ -230,7 +230,7 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
 
   // Skip 'fusion' instruction if merging it into all users would result in a
   // net increase in bytes transferred (currently allowing the net bytes
-  // transferred to be exceeded up to ~10% in exhange for eliminating the
+  // transferred to be exceeded up to ~10% in exchange for eliminating the
   // overhead from a GPU kernel launch).
   const double current_bytes_transferred = GetCurrentBytesTransferred(fusion);
   const double merged_bytes_transferred = GetMergedBytesTransferred(fusion);

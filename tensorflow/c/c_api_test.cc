@@ -51,7 +51,7 @@ limitations under the License.
 #include "tensorflow/core/util/equal_graph_def.h"
 
 namespace tensorflow {
-TF_Tensor* TF_TensorFromTensor(const Tensor& src, TF_Status* status);
+TF_Tensor* TF_TensorFromTensor(const Tensor& src, Status* status);
 Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst);
 
 namespace {
@@ -227,7 +227,7 @@ TEST(CAPI, LibraryLoadFunctions) {
 
 void TestEncodeDecode(int line, const std::vector<string>& data) {
   const tensorflow::int64 n = data.size();
-  TF_Status* status = TF_NewStatus();
+  Status status;
   for (const std::vector<tensorflow::int64>& dims :
        std::vector<std::vector<tensorflow::int64>>{
            {n}, {1, n}, {n, 1}, {n / 2, 2}}) {
@@ -236,8 +236,8 @@ void TestEncodeDecode(int line, const std::vector<string>& data) {
     for (tensorflow::int64 i = 0; i < src.NumElements(); ++i) {
       src.flat<tstring>()(i) = data[i];
     }
-    TF_Tensor* dst = TF_TensorFromTensor(src, status);
-    ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+    TF_Tensor* dst = TF_TensorFromTensor(src, &status);
+    ASSERT_TRUE(status.ok()) << status.error_message();
 
     // Convert back to a C++ Tensor and ensure we get expected output.
     Tensor output;
@@ -249,7 +249,6 @@ void TestEncodeDecode(int line, const std::vector<string>& data) {
 
     TF_DeleteTensor(dst);
   }
-  TF_DeleteStatus(status);
 }
 
 TEST(CAPI, TensorEncodeDecodeStrings) {
@@ -1394,8 +1393,9 @@ TEST(CAPI, SavedModel) {
   TF_Operation* input_op =
       TF_GraphOperationByName(graph, input_op_name.c_str());
   ASSERT_TRUE(input_op != nullptr);
-  csession.SetInputs({{input_op, TF_TensorFromTensor(input, s)}});
-  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  Status status;
+  csession.SetInputs({{input_op, TF_TensorFromTensor(input, &status)}});
+  ASSERT_TRUE(status.ok()) << status.error_message();
 
   const tensorflow::string output_op_name(
       tensorflow::ParseTensorName(output_name).first);
@@ -2522,12 +2522,11 @@ TEST(CAPI, TestTensorIsNotAligned) {
 
   // Take an unaligned slice.
   Tensor y = x.Slice(1, 13);
-  TF_Status* status = TF_NewStatus();
-  TF_Tensor* a = TF_TensorFromTensor(y, status);
+  Status status;
+  TF_Tensor* a = TF_TensorFromTensor(y, &status);
   if (EIGEN_MAX_ALIGN_BYTES > 0) {
     EXPECT_FALSE(TF_TensorIsAligned(a));
   }
-  TF_DeleteStatus(status);
   TF_DeleteTensor(a);
 }
 

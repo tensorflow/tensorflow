@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 import tempfile
+
 import numpy as np
 from six.moves import range
 import tensorflow as tf
@@ -30,7 +31,9 @@ from tensorflow.python.platform import test
 FLAGS = flags.FLAGS
 
 # Number of steps to train model.
-TRAIN_STEPS = 1
+# Dial to 0 means no training at all, all the weights will be just using their
+# initial values. This can help make the test smaller.
+TRAIN_STEPS = 0
 
 CONFIG = tf.ConfigProto(device_count={"GPU": 0})
 
@@ -57,7 +60,8 @@ class UnidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
     super(UnidirectionalSequenceRnnTest, self).setUp()
     # Import MNIST dataset
     data_dir = tempfile.mkdtemp(dir=FLAGS.test_tmpdir)
-    self.mnist = input_data.read_data_sets(data_dir, one_hot=True)
+    self.mnist = input_data.read_data_sets(
+        data_dir, fake_data=True, one_hot=True)
 
   def buildRnnLayer(self):
     return tf.keras.layers.StackedRNNCells([
@@ -128,8 +132,10 @@ class UnidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
     sess.run(tf.global_variables_initializer())
     for _ in range(TRAIN_STEPS):
       batch_x, batch_y = self.mnist.train.next_batch(
-          batch_size=self.batch_size, shuffle=False)
+          batch_size=self.batch_size, fake_data=True)
 
+      batch_x = np.array(batch_x)
+      batch_y = np.array(batch_y)
       batch_x = batch_x.reshape((self.batch_size, self.time_steps,
                                  self.n_input))
       sess.run(opt, feed_dict={x: batch_x, y: batch_y})
@@ -179,7 +185,8 @@ class UnidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
       - Expected output.
 
     """
-    b1, _ = self.mnist.train.next_batch(batch_size=1)
+    b1, _ = self.mnist.train.next_batch(batch_size=1, fake_data=True)
+    b1 = np.array(b1, dtype=np.dtype("float32"))
     sample_input = np.reshape(b1, (1, self.time_steps, self.n_input))
 
     expected_output = sess.run(output_class, feed_dict={x: sample_input})
@@ -209,8 +216,8 @@ class UnidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
     """
     converter = tf.lite.TFLiteConverter.from_session(sess, [input_tensor],
                                                      [output_tensor])
-    tflite = converter.convert()
     converter.experimental_new_converter = use_mlir_converter
+    tflite = converter.convert()
 
     interpreter = tf.lite.Interpreter(model_content=tflite)
     interpreter.allocate_tensors()

@@ -321,11 +321,21 @@ def _prefix_to_checkpoint_path(prefix, format_version):
 def latest_checkpoint(checkpoint_dir, latest_filename=None):
   """Finds the filename of latest saved checkpoint file.
 
+  Gets the checkpoint state given the provided checkpoint_dir and looks for a
+  corresponding TensorFlow 2 (preferred) or TensorFlow 1.x checkpoint path.
+  The latest_filename argument is only applicable if you are saving checkpoint
+  using `v1.Saver.save`
+
+
+  See the [Training Checkpoints
+  Guide](https://www.tensorflow.org/guide/checkpoint) for more details and
+  examples.`
+
   Args:
     checkpoint_dir: Directory where the variables were saved.
     latest_filename: Optional name for the protocol buffer file that
       contains the list of most recent checkpoint filenames.
-      See the corresponding argument to `Saver.save()`.
+      See the corresponding argument to `v1.Saver.save`.
 
   Returns:
     The full path to the latest checkpoint or `None` if no checkpoint was found.
@@ -567,7 +577,7 @@ class CheckpointManager(object):
     self._save_counter_assign = None
     if max_to_keep is not None and max_to_keep <= 0:
       raise ValueError(
-          ("Expected a positive integer or `None` for `max_to_max_to_keep`, "
+          ("Expected a positive integer or `None` for `max_to_keep`, "
            "got %d.")
           % (max_to_keep,))
     self._max_to_keep = max_to_keep
@@ -604,6 +614,10 @@ class CheckpointManager(object):
         timestamp = min(timestamp, current_clock)
         if timestamp > self._last_preserved_timestamp:
           self._maybe_delete[filename] = timestamp
+
+  @property
+  def directory(self):
+    return self._directory
 
   @property
   def latest_checkpoint(self):

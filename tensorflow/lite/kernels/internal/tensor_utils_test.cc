@@ -524,7 +524,7 @@ TEST(uKernels, QuantTanh0Test) {
       653,  -29, -53,  1058, -52, -164, -149, -635, 201,  -1297,
   };
   std::vector<int16_t> output(4 * 15, 0);
-  ApplyTanh0(input.data(), 4, 15, output.data());
+  ApplyTanh(0, input.data(), 4, 15, output.data());
   const std::vector<int16_t> expected_output = {
       -136, 904, -176, -40,  260, 292,  8,    28,   -44,  -1304,
       -120, 120, -24,  112,  376, -576, -308, 88,   -544, 544,
@@ -547,7 +547,7 @@ TEST(uKernels, QuantTanh3Test) {
       653,  -29, -53,  1058, -52, -164, -149, -635, 201,  -1297,
   };
   std::vector<int16_t> output(4 * 15, 0);
-  ApplyTanh3(input.data(), 4, 15, output.data());
+  ApplyTanh(3, input.data(), 4, 15, output.data());
   const std::vector<int16_t> expected_output = {
       -1156, 7076, -1412, -276, 2104, 2308,  64,    220,   -288,  -10132,
       -964,  1016, -120,  844,  2944, -4640, -2392, 736,   -4352, 4352,
@@ -568,7 +568,7 @@ TEST(uKernels, QuantTanh4Test) {
       -26, -36, 9,   -73, 25, 14, -2, -1, 29, -10, -12, -18, -29, 51, -92,
   };
   std::vector<int16_t> output(4 * 15, 0);
-  ApplyTanh4(input.data(), 4, 15, output.data());
+  ApplyTanh(4, input.data(), 4, 15, output.data());
   const std::vector<int16_t> expected_output = {
       -76,  2596, -496, -76, 856,  1436, 24,   36,   -64,   -672,
       -120, 456,  0,    752, 2400, -412, -576, 148,  -1168, 400,
@@ -1424,7 +1424,60 @@ TEST(uKernels, Sub1VectorInt16Test) {
       }));
 }
 
-TEST(uKernels, VectorBatchVectorCwiseProductAccumulate) {
+TEST(uKernels, VectorBatchVectorCwiseProductAccumulateInteger) {
+  constexpr int kVectorSize = 29;
+  constexpr int kBatchSize = 4;
+  static int16_t vector[kVectorSize] = {-10, 9,  8,  7,  6,  5,  4,  3,  2, 1,
+                                        0,   1,  2,  3,  4,  5,  6,  7,  8, 9,
+                                        10,  11, 12, 13, 14, 15, 16, 17, 18};
+  const std::vector<int16_t> batch_vector = {
+      /* batch 0 */
+      10, 11, 12, 13, 14, 15, 16, 17, 18, -10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 1,
+      2, 3, 4, 5, 6, 7, 8, 9,
+      /* batch 1 */
+      -10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 10, 11, 12, 13, 14, 15, 16, 17, 18, 0, 1,
+      2, 3, 4, 5, 6, 7, 8, 9,
+      /* batch 2 */
+      0, 1, 2, 3, 4, 5, 6, 7, 8, 9, -10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 10, 11, 12,
+      13, 14, 15, 16, 17, 18,
+      /* batch 3 */
+      0, 1, 2, 3, 4, 5, 6, 7, 8, 9, -10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 10, 11, 12,
+      13, 14, 15, 16, 17, 18};
+  std::vector<int16_t> batch_output = {
+      /* batch 0 */
+      -10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 10, 11, 12, 13, 14, 15, 16, 17, 18, 0, 1,
+      2, 3, 4, 5, 6, 7, 8, 9,
+      /* batch 1 */
+      2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, -10, 9, 8, 7, 6, 5,
+      4, 3, 2, 1, 10, 11, 12,
+      /* batch 2 */
+      0, 1, 2, 3, 4, 5, 6, 7, 8, 9, -10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 10, 11, 12,
+      13, 14, 15, 16, 17, 18,
+      /* batch 3 */
+      10, 11, 12, 13, 14, 15, 16, 17, 18, -10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 1,
+      13, 14, 15, 16, 17, 18};
+  // Test with 0.25 scale, which is decomposed into (1073741824, -1).
+  VectorBatchVectorCwiseProductAccumulate(vector, kVectorSize,
+                                          batch_vector.data(), kBatchSize,
+                                          1073741824, -1, batch_output.data());
+
+  const std::vector<int16_t> expected_output = {
+      /* batch 0 */
+      -35, 34, 32, 30, 27, 24, 20, 16, 11, -2, 10, 13, 16, 18, 19, 20, 21, 21,
+      20, 0, 4, 8, 12, 17, 23, 29, 35, 42, 50,
+      /* batch 1 */
+      27, 24, 20, 18, 15, 14, 12, 12, 1, 2, 2, 6, 10, 15, 20, 26, 32, 39, 26, 9,
+      11, 13, 15, 18, 22, 26, 30, 35, 51,
+      /* batch 2 */
+      11, 15, 4, 7, 8, 10, 10, 11, 10, 10, 8, 12, -6, 15, 14, 14, 12, 11, 8, 6,
+      27, 32, 46, 54, 61, 70, 78, 88, 97,
+      /* batch 3 */
+      17, 21, 14, 17, 18, 20, 20, 21, 20, 20, 18, -7, 13, 14, 13, 13, 11, 10, 7,
+      5, 26, 31, 37, 56, 63, 72, 80, 90, 99};
+  EXPECT_THAT(batch_output, testing::ElementsAreArray(expected_output));
+}
+
+TEST(uKernels, VectorBatchVectorCwiseProductAccumulateFloat) {
   constexpr int kVectorSize = 29;
   constexpr int kBatchSize = 4;
   static float input[kVectorSize] = {
@@ -1554,6 +1607,19 @@ TEST(uKernels, BatchVectorBatchVectorDotProductTest) {
   EXPECT_THAT(output, ElementsAreArray(ArrayFloatNear({0.5, 1.75})));
 }
 
+TEST(uKernels, BatchVectorBatchVectorDotProductIntegerTest) {
+  constexpr int kVectorSize = 5;
+  constexpr int kBatch = 2;
+  static int16_t input1[kVectorSize * kBatch] = {0,   5,  10,  -15, 20,
+                                                 -25, 30, -35, 40,  -45};
+  static int16_t input2[kVectorSize * kBatch] = {1,  -1, 1,  -1, 1,
+                                                 -1, 1,  -1, 1,  1};
+  std::vector<int32_t> output(kBatch);
+  BatchVectorBatchVectorDotProduct(input1, input2, kVectorSize, kBatch,
+                                   output.data(), /*result_stride=*/1);
+  EXPECT_THAT(output, ElementsAreArray(ArrayFloatNear({40, 85})));
+}
+
 TEST(uKernels, VectorShiftLeftTest) {
   constexpr int kVectorSize = 5;
   static float input[kVectorSize] = {0.0, -0.5, 1.0, -1.5, 2.0};
@@ -1582,6 +1648,17 @@ TEST(uKernels, ReductionSumVectorTest) {
   ReductionSumVector(input, result2.data(), kOutputVectorSize2,
                      kReductionSize2);
   EXPECT_THAT(result2, ElementsAreArray(ArrayFloatNear({1.0, 3.5})));
+}
+
+TEST(uKernels, ReductionSumVectorIntegerTest) {
+  constexpr int kInputVectorSize = 10;
+  constexpr int kOutputVectorSize1 = 5;
+  constexpr int kReductionSize1 = 2;
+  static int32_t input[kInputVectorSize] = {1, 2, 1, 5, -3, 2, 1, 2, 5, 10};
+  std::vector<int32_t> result1(kOutputVectorSize1);
+  ReductionSumVector(input, result1.data(), kOutputVectorSize1,
+                     kReductionSize1);
+  EXPECT_THAT(result1, testing::ElementsAreArray({3, 6, -1, 3, 15}));
 }
 
 namespace {

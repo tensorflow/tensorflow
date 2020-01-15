@@ -1,5 +1,5 @@
 load(
-    "//tensorflow/core/platform:default/build_config.bzl",
+    "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library_cc",
     "tf_proto_library_py",
 )
@@ -88,7 +88,7 @@ py_test(
         "//tensorflow/lite/toco/logging/testdata:toco_tf_graph.dot",
         "//tensorflow/lite/toco/logging/testdata:toco_tflite_graph.dot",
     ],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         ":gen_html",

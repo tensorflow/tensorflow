@@ -88,6 +88,9 @@ class TraceMeRecorder {
   // Records an event. Non-blocking.
   static void Record(Event event);
 
+  // Returns an activity_id for TraceMe::ActivityStart.
+  static uint64 NewActivityId();
+
  private:
   class ThreadLocalRecorder;
 
@@ -99,7 +102,7 @@ class TraceMeRecorder {
   TF_DISALLOW_COPY_AND_ASSIGN(TraceMeRecorder);
 
   void RegisterThread(int32 tid, ThreadLocalRecorder* thread);
-  void UnregisterThread(ThreadEvents&& events);
+  void UnregisterThread(int32 tid);
 
   bool StartRecording(int level);
   Events StopRecording();

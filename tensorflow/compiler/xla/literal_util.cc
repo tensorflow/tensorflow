@@ -98,6 +98,11 @@ Literal ConvertType(LiteralSlice literal) {
   return ConvertType<float, bfloat16>(f32_literal);
 }
 
+/* static */ Literal LiteralUtil::ConvertF64ToBF16(
+    const LiteralSlice& f64_literal) {
+  return ConvertType<double, bfloat16>(f64_literal);
+}
+
 /* static */ Literal LiteralUtil::CreateToken() {
   return Literal(ShapeUtil::MakeTokenShape());
 }

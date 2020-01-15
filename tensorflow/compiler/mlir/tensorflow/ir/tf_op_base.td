@@ -39,7 +39,7 @@ This dialect maps to TensorFlow operations.
 Invariants:
 
 * All values are of Tensor type (in particular, scalars are
-  represented using zero-dimentional tensors);
+  represented using zero-dimensional tensors);
 
 TODO: Make invariants more structured so that we can reference them in ops.
   }];
@@ -171,6 +171,8 @@ def TF_FpOrI32OrI64Tensor : TensorOf<[AnyFloat, TF_I32Or64]>;
 // Any integer or floating-point tensor types
 def TF_IntOrFpTensor : TensorOf<[TF_Int, AnyFloat]>;
 
+def TF_SintOrFpTensor : TensorOf<[TF_SInt, AnyFloat]>;
+
 def TF_FpOrComplexTensor : TensorOf<[AnyFloat, TF_AnyComplex]>;
 
 def TF_AnyNumber : AnyTypeOf<[TF_Int, AnyFloat, TF_AnyQuantized, TF_AnyComplex],
@@ -225,7 +227,7 @@ class TF_DerivedOperandTypeAttr<int idx> : DerivedTypeAttr<
   "return mlir::getElementTypeOrSelf(*getODSOperands(" # idx # ").begin());">;
 
 // A derived attribute that returns the element types of the tensors in the
-// dynamic value pack that corresponds to the `idx`-th ODS-declared variadic
+// actual value pack that corresponds to the `idx`-th ODS-declared variadic
 // operand. This returns a list of element types so it is used for variadic
 // operands that can have different element types.
 class TF_DerivedOperandTypeListAttr<int idx> : DerivedAttr<
@@ -233,6 +235,17 @@ class TF_DerivedOperandTypeListAttr<int idx> : DerivedAttr<
   "auto values = getODSOperands(" # idx # ");\n"
   "return {mlir::OperandElementTypeIterator(values.begin()), "
           "mlir::OperandElementTypeIterator(values.end())};"
+>;
+
+// A derived attribute that returns the shapes of the tensors in the actual
+// value pack that corresponds to the `idx`-th ODS-declared variadic operand.
+// This returns a list of shapes so it is used for variadic operands that
+// can have different shapes.
+class TF_DerivedOperandShapeListAttr<int idx> : DerivedAttr<
+  "mlir::TF::OperandShapeRange",
+  "auto values = getODSOperands(" # idx # ");\n"
+  "return {mlir::TF::OperandShapeIterator(values.begin()), "
+          "mlir::TF::OperandShapeIterator(values.end())};"
 >;
 
 // A derived attribute that returns the size of `idx`-th ODS-declared variadic
@@ -251,7 +264,7 @@ class TF_DerivedResultTypeAttr<int idx> : DerivedTypeAttr<
   "return mlir::getElementTypeOrSelf(*getODSResults(" # idx # ").begin());">;
 
 // A derived attribute that returns the element types of the tensors in the
-// dynamic value pack that corresponds to the `idx`-th ODS-declared variadic
+// actual value pack that corresponds to the `idx`-th ODS-declared variadic
 // result. This returns a list of element types so it is used for variadic
 // results that can have different element types.
 class TF_DerivedResultTypeListAttr<int idx> : DerivedAttr<
@@ -259,6 +272,17 @@ class TF_DerivedResultTypeListAttr<int idx> : DerivedAttr<
   "auto values = getODSResults(" # idx # ");\n"
   "return {mlir::ResultElementTypeIterator(values.begin()), "
           "mlir::ResultElementTypeIterator(values.end())};"
+>;
+
+// A derived attribute that returns the shapes of the tensors in the actual
+// value pack that corresponds to the `idx`-th ODS-declared variadic result.
+// This returns a list of shapes so it is used for variadic results that
+// can have different shapes.
+class TF_DerivedResultShapeListAttr<int idx> : DerivedAttr<
+  "mlir::TF::ResultShapeRange",
+  "auto values = getODSResults(" # idx # ");\n"
+  "return {mlir::TF::ResultShapeIterator(values.begin()), "
+          "mlir::TF::ResultShapeIterator(values.end())};"
 >;
 
 // A derived attribute that returns the shape of the first result type.
@@ -297,10 +321,10 @@ def TF_IntTypeAttr : TypeAttrBase<"IntegerType", "integer type"> {
 // behavior. The result type has the same element type as both operands.
 class WithBroadcastableBinOpBuilder {
   list<OpBuilder> builders = [OpBuilder<
-"Builder *builder, OperationState &result, Value* x, Value* y",
+"Builder *builder, OperationState &result, Value  x, Value  y",
 [{
   auto resultType =
-      OpTrait::util::getBroadcastedType(x->getType(), y->getType());
+      OpTrait::util::getBroadcastedType(x.getType(), y.getType());
   if (!resultType)
     mlir::emitError(result.location, "non-broadcastable operands");
   return build(builder, result, resultType, x, y);
@@ -312,17 +336,17 @@ class WithBroadcastableBinOpBuilder {
 // behavior. The result type has bool element type.
 class WithBroadcastableCmpOpBuilder {
   list<OpBuilder> builders = [OpBuilder<
-"Builder *builder, OperationState &result, Value* x, Value* y",
+"Builder *builder, OperationState &result, Value  x, Value  y",
 [{
   Type resultType;
-  if (x->getType().isa<UnrankedTensorType>() ||
-      y->getType().isa<UnrankedTensorType>()) {
+  if (x.getType().isa<UnrankedTensorType>() ||
+      y.getType().isa<UnrankedTensorType>()) {
     resultType = UnrankedTensorType::get(builder->getI1Type());
   } else {
     SmallVector<int64_t, 4> resultShape;
     if (!OpTrait::util::getBroadcastedShape(
-            x->getType().cast<ShapedType>().getShape(),
-            y->getType().cast<ShapedType>().getShape(), resultShape)) {
+            x.getType().cast<ShapedType>().getShape(),
+            y.getType().cast<ShapedType>().getShape(), resultShape)) {
       mlir::emitError(result.location,
                       "operands have no broadcastable shapes");
     }

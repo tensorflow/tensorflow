@@ -223,7 +223,7 @@ static Graph* ParseExampleV2(int batch_size, int num_keys, int feature_size) {
   std::vector<DataType> ragged_split_types;
   std::vector<PartialTensorShape> dense_shapes;
   Tensor keys_t(DT_STRING, {static_cast<int32>(num_keys)});
-  auto keys_flat = keys_t.flat<string>();
+  auto keys_flat = keys_t.flat<tstring>();
   Options opt;
   for (int i = 0; i < num_keys; ++i) {
     keys_flat(i) = strings::Printf("feature_%d", i);

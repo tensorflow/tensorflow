@@ -66,6 +66,16 @@ def make_transpose_conv_tests(options):
           "channel_multiplier": [1],
           "output_shape": [[1, 6, 6, 2]],
           "fully_quantize": [True]
+      },
+      {
+          "input_shape": [[1, 4, 3, 1]],
+          "filter_size": [[3, 3, 2, 1]],
+          "strides": [[1, 2, 2, 1]],
+          "padding": ["SAME"],
+          "data_format": ["NHWC"],
+          "channel_multiplier": [1],
+          "output_shape": [[1, 8, 6, 2]],
+          "fully_quantize": [True]
       }
   ]
 

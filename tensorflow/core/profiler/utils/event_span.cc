@@ -54,7 +54,7 @@ std::vector<Timespan> MakeDisjointTimespans(
 EventType AssignEventType(
     const Timespan& timespan,
     const std::vector<EventTypeSpan>& sorted_overlapped_events) {
-  EventType event_type = BOTH_IDLE;
+  EventType event_type = UNKNOWN_TIME;
   for (const auto& event : sorted_overlapped_events) {
     if (timespan.end_ps() < event.span.begin_ps()) {
       // Because sorted_overlapped_events is sorted in the event's begin time,
@@ -116,23 +116,23 @@ EventType ClassifyGpuEvent(absl::string_view event_name) {
 }
 
 EventType ClassifyCpuEvent(absl::string_view event_name, int64 correlation_id) {
-  if (absl::StartsWithIgnoreCase(event_name, "MEMCPYHtoD"))
+  if (absl::StartsWithIgnoreCase(event_name, "MEMCPYHtoD") ||
+      absl::StrContains(event_name, "Infeed"))
     return HOST_TO_DEVICE;
   if (absl::StartsWithIgnoreCase(event_name, "MEMCPYHtoH")) return HOST_TO_HOST;
   if (correlation_id >= 0 ||
       absl::StartsWithIgnoreCase(event_name, "ExecutorState::Process")) {
     return HOST_PREPARE;
-  } else {
-    if (absl::StartsWithIgnoreCase(event_name, "IteratorGetNext"))
-      return HOST_WAIT_INPUT;
-    return HOST_COMPUTE;
   }
+  if (absl::StartsWithIgnoreCase(event_name, "IteratorGetNext"))
+    return HOST_WAIT_INPUT;
+  return HOST_COMPUTE;
 }
 
 std::string PrintEventType(EventType event_type) {
   switch (event_type) {
-    case BOTH_IDLE:
-      return "both_idle";
+    case UNKNOWN_TIME:
+      return "unknown_time";
     case HOST_COMPUTE:
       return "host_compute";
     case HOST_COMPILE:

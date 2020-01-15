@@ -1,6 +1,6 @@
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
-load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
+load("//tensorflow/lite/micro:build_def.bzl", "flatbuffer_cc_library")
 
 package(
     default_visibility = [
@@ -54,16 +54,17 @@ py_test(
 )
 
 exports_files([
+    "schema.fbs",
     "schema_v0.fbs",
     "schema_v1.fbs",
     "schema_v2.fbs",
     "schema_v3.fbs",
 ])
 
-# Generic schema for inference on device.
 flatbuffer_cc_library(
     name = "schema_fbs",
     srcs = ["schema.fbs"],
+    build_for_embedded = True,
 )
 
 # Generic schema for flatbuffer converter (but with mutable makes bigger).
@@ -88,12 +89,6 @@ flatbuffer_cc_library(
         "--gen-object-api",
     ],
     out_prefix = "reflection/",
-)
-
-# Generic schema for model metadata.
-flatbuffer_cc_library(
-    name = "metadata_schema_fbs",
-    srcs = ["metadata_schema.fbs"],
 )
 
 # Schema test to make sure we don't introduce backward incompatible changes

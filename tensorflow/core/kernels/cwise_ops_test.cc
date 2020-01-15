@@ -86,6 +86,15 @@ BM_UNARY(cpu, Rint, float, DT_FLOAT);
 BM_UNARY(gpu, Rint, float, DT_FLOAT);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+BM_UNARY(cpu, Round, double, DT_DOUBLE);
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+BM_UNARY(gpu, Round, double, DT_DOUBLE);
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+BM_UNARY(cpu, Round, float, DT_FLOAT);
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+BM_UNARY(gpu, Round, float, DT_FLOAT);
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
 // data func scalar.
 Graph* BinaryScalar(int num, const string& func) {
   Graph* g = new Graph(OpRegistry::Global());

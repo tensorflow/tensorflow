@@ -306,7 +306,7 @@ class InferenceContext {
   // idx can be negative for an offset from end of dimensions.
   // idx must be in the range [-1 * s.rank, s.rank).
   DimensionHandle Dim(ShapeHandle s, int64 idx) {
-    if (s->rank_ == kUnknownRank) {
+    if (!s.Handle() || s->rank_ == kUnknownRank) {
       return UnknownDim();
     }
     return DimKnownRank(s, idx);

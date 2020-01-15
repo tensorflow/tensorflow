@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import itertools
 import types
 
 from tensorflow.python.keras import backend as K
@@ -103,6 +104,13 @@ def list_all_layers(obj):
   else:
     return list(
         trackable_layer_utils.filter_empty_layer_containers(obj._layers))  # pylint: disable=protected-access
+
+
+def list_all_layers_and_sublayers(obj):
+  s = set([obj])
+  s.update(itertools.chain.from_iterable(
+      list_all_layers_and_sublayers(layer) for layer in list_all_layers(obj)))
+  return s
 
 
 def maybe_add_training_arg(

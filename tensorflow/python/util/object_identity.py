@@ -172,7 +172,7 @@ class ObjectIdentitySet(collections_abc.MutableSet):
   """Like the built-in set, but compares objects with "is"."""
 
   def __init__(self, *args):
-    self._storage = set([self._wrap_key(obj) for obj in list(*args)])
+    self._storage = set(self._wrap_key(obj) for obj in list(*args))
 
   @staticmethod
   def _from_storage(storage):

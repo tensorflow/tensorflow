@@ -21,9 +21,9 @@ limitations under the License.
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/env.h"
-#if GOOGLE_CUDA
-#include "tensorflow/core/platform/cuda.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#if GOOGLE_CUDA
+#include "tensorflow/stream_executor/cuda/cuda_activation.h"
 #elif TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/rocm.h"
 #endif
@@ -686,7 +686,6 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
                 << " sendbuff " << sendbuff << " recvbuff " << recvbuff
                 << " nccl_comm " << nccl_comm << " comm_stream " << comm_stream
                 << " cuda_stream " << cu_stream;
-        profiler::TraceMe trace_me("ncclAllReduce");
         nccl_result = ncclAllReduce(sendbuff, recvbuff, p->input->NumElements(),
                                     data_type, collective->reduction_op,
                                     nccl_comm, *cu_stream);
@@ -718,7 +717,6 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
                 << " sendbuff " << sendbuff << " recvbuff " << recvbuff
                 << " nccl_comm " << nccl_comm << " comm_stream " << comm_stream
                 << " cuda_stream " << cu_stream;
-        profiler::TraceMe trace_me("ncclBroadcast");
         nccl_result =
             ncclBroadcast(sendbuff, recvbuff, num_elements, data_type,
                           collective->root_rank, nccl_comm, *cu_stream);
@@ -729,7 +727,6 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
         void* recvbuff =
             p->output ? const_cast<char*>(p->output->tensor_data().data())
                       : nullptr;
-        profiler::TraceMe trace_me("ncclReduce");
         nccl_result = ncclReduce(sendbuff, recvbuff, p->input->NumElements(),
                                  data_type, collective->reduction_op,
                                  collective->root_rank, nccl_comm, *cu_stream);
@@ -746,7 +743,6 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
                 << " recvcount " << p->output->NumElements() << " nccl_comm "
                 << nccl_comm << " comm_stream " << comm_stream
                 << " cuda_stream " << cu_stream;
-        profiler::TraceMe trace_me("ncclAllGather");
         nccl_result = ncclAllGather(sendbuff, recvbuff, p->input->NumElements(),
                                     data_type, nccl_comm, *cu_stream);
         break;

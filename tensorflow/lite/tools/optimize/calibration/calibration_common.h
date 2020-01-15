@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_TOOLS_OPTIMIZE_CALIBRATION_COMMON_H_
-#define TENSORFLOW_LITE_TOOLS_OPTIMIZE_CALIBRATION_COMMON_H_
+#ifndef TENSORFLOW_LITE_TOOLS_OPTIMIZE_CALIBRATION_CALIBRATION_COMMON_H_
+#define TENSORFLOW_LITE_TOOLS_OPTIMIZE_CALIBRATION_CALIBRATION_COMMON_H_
 
 #include <unordered_map>
 #include <unordered_set>
@@ -71,4 +71,4 @@ struct OperatorInfo {
 }  // namespace calibration
 }  // namespace optimize
 }  // namespace tflite
-#endif  // TENSORFLOW_LITE_TOOLS_OPTIMIZE_CALIBRATION_COMMON_H_
+#endif  // TENSORFLOW_LITE_TOOLS_OPTIMIZE_CALIBRATION_CALIBRATION_COMMON_H_

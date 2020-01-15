@@ -10,7 +10,7 @@ load(
     "tf_cc_test",
 )
 load(
-    "//tensorflow/core/platform:default/build_config_root.bzl",
+    "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
     "if_static_and_not_mobile",
 )
@@ -118,6 +118,37 @@ cc_library(
     alwayslink = 1,
 )
 
+cc_library(
+    name = "bundle_v2",
+    srcs = ["bundle_v2.cc"],
+    hdrs = ["bundle_v2.h"],
+    deps = [
+        ":constants",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:strcat",
+        "//tensorflow/core/util/tensor_bundle",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+tf_cc_test(
+    name = "bundle_v2_test",
+    srcs = ["bundle_v2_test.cc"],
+    data = [
+        ":saved_model_half_plus_two",
+    ],
+    linkstatic = 1,
+    deps = [
+        ":bundle_v2",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/platform:test",
+    ],
+)
+
 tf_cc_test(
     name = "saved_model_bundle_test",
     srcs = ["saved_model_bundle_test.cc"],
@@ -160,6 +191,26 @@ tf_cc_test(
     ],
 )
 
+# A subset of the TF2 saved models can be generated with this tool.
+py_binary(
+    name = "testdata/generate_saved_models",
+    srcs = ["testdata/generate_saved_models.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/module",
+        "//tensorflow/python/saved_model",
+        "//tensorflow/python/saved_model:save_options",
+        "@absl_py//absl:app",
+    ],
+)
+
 # TODO(b/32673259): add a test to continuously validate these files.
 filegroup(
     name = "saved_model_half_plus_two",
@@ -169,5 +220,7 @@ filegroup(
         "testdata/half_plus_two/**",
         "testdata/half_plus_two_v2/**",
         "testdata/x_plus_y_v2_debuginfo/**",
+        "testdata/CyclicModule/**",
+        "testdata/VarsAndArithmeticObjectGraph/**",
     ]),
 )

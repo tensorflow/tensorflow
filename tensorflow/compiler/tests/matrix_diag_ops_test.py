@@ -21,18 +21,9 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.compiler.tests import xla_test
-from tensorflow.python.compat import compat
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import googletest
 
-
-# LINT.IfChange
-matrix_diag_v3_forward_compat_date = (2019, 12, 6)
-# LINT.ThenChange(
-#   //tensorflow/python/kernel_tests/diag_op_test.py,
-#   //tensorflow/python/ops/array_ops.py,
-#   //tensorflow/python/ops/parallel_for/array_test.py
-# )
 
 default_v2_alignment = "LEFT_LEFT"
 alignment_list = ["RIGHT_LEFT", "LEFT_RIGHT"]
@@ -114,7 +105,7 @@ def square_cases(align=None):
                    [6, 7, 8, 9, 1],
                    [2, 3, 4, 5, 6]]])
   tests = dict()
-  # tests[d_lower, d_upper] = (compact_diagonals, padded_diagnals)
+  # tests[d_lower, d_upper] = (compact_diagonals, padded_diagonals)
   tests[-1, -1] = (np.array([[6, 4, 1, 7],
                              [5, 2, 8, 5]]),
                    np.array([[[0, 0, 0, 0, 0],
@@ -192,7 +183,7 @@ def tall_cases(align=None):
                    [7, 8, 9],
                    [9, 8, 7]]])
   tests = dict()
-  # tests[d_lower, d_upper] = (compact_diagonals, padded_diagnals)
+  # tests[d_lower, d_upper] = (compact_diagonals, padded_diagonals)
   tests[0, 0] = (np.array([[1, 5, 9],
                            [3, 2, 6]]),
                  np.array([[[1, 0, 0],
@@ -276,7 +267,7 @@ def fat_cases(align=None):
                    [8, 9, 1, 2],
                    [3, 4, 5, 6]]])
   tests = dict()
-  # tests[d_lower, d_upper] = (compact_diagonals, padded_diagnals)
+  # tests[d_lower, d_upper] = (compact_diagonals, padded_diagonals)
   tests[0, 0] = (np.array([[1, 6, 2],
                            [4, 9, 5]]),
                  np.array([[[1, 0, 0, 0],
@@ -404,25 +395,20 @@ class MatrixDiagTest(xla_test.XLATestCase):
 
   # From here onwards are v2-only tests.
   def testSquare(self):
-    if compat.forward_compatible(*matrix_diag_v3_forward_compat_date):
-      for align in alignment_list:
-        for _, tests in [square_cases(align)]:
-          for diag_index, (vecs, solution) in tests.items():
-            params = {"diagonal": vecs[0], "k": diag_index, "align": align}
-            self._assertOpOutputMatchesExpected(params, solution[0])
+    for align in alignment_list:
+      for _, tests in [square_cases(align)]:
+        for diag_index, (vecs, solution) in tests.items():
+          params = {"diagonal": vecs[0], "k": diag_index, "align": align}
+          self._assertOpOutputMatchesExpected(params, solution[0])
 
   def testSquareBatch(self):
-    if compat.forward_compatible(*matrix_diag_v3_forward_compat_date):
-      for align in alignment_list:
-        for _, tests in [square_cases(align)]:
-          for diag_index, (vecs, solution) in tests.items():
-            params = {"diagonal": vecs, "k": diag_index, "align": align}
-            self._assertOpOutputMatchesExpected(params, solution)
+    for align in alignment_list:
+      for _, tests in [square_cases(align)]:
+        for diag_index, (vecs, solution) in tests.items():
+          params = {"diagonal": vecs, "k": diag_index, "align": align}
+          self._assertOpOutputMatchesExpected(params, solution)
 
   def testRectangularBatch(self):
-    if not compat.forward_compatible(*matrix_diag_v3_forward_compat_date):
-      return
-
     # Stores expected num_rows and num_cols (when the other is given).
     # expected[(d_lower, d_upper)] = (expected_num_rows, expected_num_cols)
     test_list = list()
@@ -513,22 +499,21 @@ class MatrixDiagTest(xla_test.XLATestCase):
             }, solution_given_num_cols)
 
   def testPadding(self):
-    if compat.forward_compatible(*matrix_diag_v3_forward_compat_date):
-      for padding_value, align in zip_to_first_list_length([555, -11],
-                                                           alignment_list):
-        for _, tests in all_tests(align):
-          for diag_index, (vecs, solution) in tests.items():
-            mask = (solution == 0)
-            solution = solution + (mask * padding_value)
-            self._assertOpOutputMatchesExpected(
-                {
-                    "diagonal": vecs,
-                    "k": diag_index,
-                    "num_rows": solution.shape[-2],
-                    "num_cols": solution.shape[-1],
-                    "padding_value": padding_value,
-                    "align": align
-                }, solution)
+    for padding_value, align in zip_to_first_list_length([555, -11],
+                                                         alignment_list):
+      for _, tests in all_tests(align):
+        for diag_index, (vecs, solution) in tests.items():
+          mask = (solution == 0)
+          solution = solution + (mask * padding_value)
+          self._assertOpOutputMatchesExpected(
+              {
+                  "diagonal": vecs,
+                  "k": diag_index,
+                  "num_rows": solution.shape[-2],
+                  "num_cols": solution.shape[-1],
+                  "padding_value": padding_value,
+                  "align": align
+              }, solution)
 
 
 class MatrixSetDiagTest(xla_test.XLATestCase):
@@ -634,36 +619,34 @@ class MatrixSetDiagTest(xla_test.XLATestCase):
 
   # From here onwards are v2-only tests.
   def testSingleMatrix(self):
-    if compat.forward_compatible(*matrix_diag_v3_forward_compat_date):
-      for align in alignment_list:
-        for _, tests in all_tests(align):
-          for diag_index, (vecs, banded_mat) in tests.items():
-            mask = (banded_mat[0] == 0)
-            input_mat = np.random.randint(10, size=mask.shape)
-            solution = input_mat * mask + banded_mat[0]
-            self._assertOpOutputMatchesExpected(
-                {
-                    "input": input_mat,
-                    "diagonal": vecs[0],
-                    "k": diag_index,
-                    "align": align
-                }, solution)
+    for align in alignment_list:
+      for _, tests in all_tests(align):
+        for diag_index, (vecs, banded_mat) in tests.items():
+          mask = (banded_mat[0] == 0)
+          input_mat = np.random.randint(10, size=mask.shape)
+          solution = input_mat * mask + banded_mat[0]
+          self._assertOpOutputMatchesExpected(
+              {
+                  "input": input_mat,
+                  "diagonal": vecs[0],
+                  "k": diag_index,
+                  "align": align
+              }, solution)
 
   def testBatch(self):
-    if compat.forward_compatible(*matrix_diag_v3_forward_compat_date):
-      for align in alignment_list:
-        for _, tests in all_tests(align):
-          for diag_index, (vecs, banded_mat) in tests.items():
-            mask = (banded_mat == 0)
-            input_mat = np.random.randint(10, size=mask.shape)
-            solution = input_mat * mask + banded_mat
-            self._assertOpOutputMatchesExpected(
-                {
-                    "input": input_mat,
-                    "diagonal": vecs,
-                    "k": diag_index,
-                    "align": align
-                }, solution)
+    for align in alignment_list:
+      for _, tests in all_tests(align):
+        for diag_index, (vecs, banded_mat) in tests.items():
+          mask = (banded_mat == 0)
+          input_mat = np.random.randint(10, size=mask.shape)
+          solution = input_mat * mask + banded_mat
+          self._assertOpOutputMatchesExpected(
+              {
+                  "input": input_mat,
+                  "diagonal": vecs,
+                  "k": diag_index,
+                  "align": align
+              }, solution)
 
 
 class MatrixDiagPartTest(xla_test.XLATestCase):
@@ -705,45 +688,42 @@ class MatrixDiagPartTest(xla_test.XLATestCase):
 
   # From here onwards are v2-only tests.
   def testSingleMatrix(self):
-    if compat.forward_compatible(*matrix_diag_v3_forward_compat_date):
-      for align in alignment_list:
-        test_list = [square_cases(align), tall_cases(align), fat_cases(align)]
-        for mat, tests in test_list:
-          for diag_index, (solution, _) in tests.items():
-            self._assertOpOutputMatchesExpected(
-                {
-                    "input": mat[0],
-                    "k": diag_index,
-                    "align": align
-                }, solution[0])
+    for align in alignment_list:
+      test_list = [square_cases(align), tall_cases(align), fat_cases(align)]
+      for mat, tests in test_list:
+        for diag_index, (solution, _) in tests.items():
+          self._assertOpOutputMatchesExpected(
+              {
+                  "input": mat[0],
+                  "k": diag_index,
+                  "align": align
+              }, solution[0])
 
   def testBatch(self):
-    if compat.forward_compatible(*matrix_diag_v3_forward_compat_date):
-      for align in alignment_list:
-        for mat, tests in all_tests(align):
-          for diag_index, (solution, _) in tests.items():
-            self._assertOpOutputMatchesExpected(
-                {
-                    "input": mat,
-                    "k": diag_index,
-                    "align": align
-                }, solution)
+    for align in alignment_list:
+      for mat, tests in all_tests(align):
+        for diag_index, (solution, _) in tests.items():
+          self._assertOpOutputMatchesExpected(
+              {
+                  "input": mat,
+                  "k": diag_index,
+                  "align": align
+              }, solution)
 
   def testPadding(self):
-    if compat.forward_compatible(*matrix_diag_v3_forward_compat_date):
-      for padding_value, align in zip_to_first_list_length([555, -11],
-                                                           alignment_list):
-        for mat, tests in all_tests(align):
-          for diag_index, (solution, _) in tests.items():
-            mask = (solution == 0)
-            solution = solution + (mask * padding_value)
-            self._assertOpOutputMatchesExpected(
-                {
-                    "input": mat,
-                    "k": diag_index,
-                    "padding_value": padding_value,
-                    "align": align
-                }, solution)
+    for padding_value, align in zip_to_first_list_length([555, -11],
+                                                         alignment_list):
+      for mat, tests in all_tests(align):
+        for diag_index, (solution, _) in tests.items():
+          mask = (solution == 0)
+          solution = solution + (mask * padding_value)
+          self._assertOpOutputMatchesExpected(
+              {
+                  "input": mat,
+                  "k": diag_index,
+                  "padding_value": padding_value,
+                  "align": align
+              }, solution)
 
 
 if __name__ == "__main__":

@@ -6,19 +6,35 @@ package(
 )
 
 cc_library(
-    name = "host_tracer",
-    srcs = ["host_tracer.cc"],
+    name = "host_tracer_utils",
+    srcs = ["host_tracer_utils.cc"],
+    hdrs = ["host_tracer_utils.h"],
+    visibility = ["//tensorflow/core/profiler:friends"],
     deps = [
-        "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/profiler/internal:parse_annotation",
-        "//tensorflow/core/profiler/internal:profiler_interface",
         "//tensorflow/core/profiler/internal:traceme_recorder",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/core/profiler/utils:xplane_builder",
         "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+cc_library(
+    name = "host_tracer",
+    srcs = ["host_tracer.cc"],
+    deps = [
+        ":host_tracer_utils",
+        "//tensorflow/core:core_cpu_lib",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/profiler/internal:profiler_factory",
+        "//tensorflow/core/profiler/internal:profiler_interface",
+        "//tensorflow/core/profiler/internal:traceme_recorder",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/core/profiler/utils:xplane_schema",
+        "//tensorflow/core/profiler/utils:xplane_utils",
         "@com_google_absl//absl/strings",
     ],
     alwayslink = True,
@@ -36,6 +52,7 @@ tf_cc_test(
         "//tensorflow/core/profiler/internal:profiler_interface",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/core/profiler/utils:xplane_schema",
         "@com_google_absl//absl/types:optional",
         "@com_google_googletest//:gtest_main",
     ],

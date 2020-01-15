@@ -23,7 +23,7 @@ import collections
 import gast
 
 from tensorflow.python.autograph.pyct import anno
-from tensorflow.python.autograph.pyct import compiler
+from tensorflow.python.autograph.pyct import loader
 from tensorflow.python.autograph.pyct import pretty_printer
 from tensorflow.python.autograph.pyct import templates
 
@@ -69,7 +69,7 @@ class EntityInfo(
 
 
 class _StateStack(object):
-  """Typed stack abstraction.
+  """Templated context manager.
 
   This class provides syntactic sugar for a stack of objects of known
   type. It allows accessing attributes of the object at the top of the stack
@@ -105,11 +105,18 @@ class _StateStack(object):
     if not hasattr(type_, 'no_root'):
       self.enter()
 
+  def __enter__(self):
+    self.enter()
+    return self
+
+  def __exit__(self, exc_type, exc_value, traceback):
+    self.exit()
+
   def enter(self):
     self._stack.append(self.type())
 
   def exit(self):
-    return self._stack.pop()
+    self._stack.pop()
 
   @property
   def stack(self):
@@ -134,7 +141,7 @@ class _StateStack(object):
 
 
 class _State(object):
-  """Supporting class for nested scope variable space for converter.Base.
+  """Syntactic sugar for accessing an instance of a StateStack context manager.
 
   This structure offers syntactic sugar over a dict of stacks of objects
   of known type. These structures are useful to keep state during AST walks.
@@ -187,13 +194,14 @@ class Base(gast.NodeTransformer):
   You must call enter/exit_local_scope manually, but the transformer detects
   when they are not properly paired.
 
-  The transformer allows keeping state across calls to visit_* that is local to
-  arbitrary nodes and their descendants, using the self.state attribute.
+  The transformer allows keeping state across calls to `visit_*` that is local
+  to arbitrary nodes and their descendants, using the self.state attribute.
   Multiple independent scopes are allowed and automatically constructed.
 
-  For example, to keep track of the If node that encloses any Name node, one can
-  write:
+  For example, to keep track of the `If` node that encloses any `Name` node,
+  one can write:
 
+  ```
     class FooType(object):
 
       def __init__(self):
@@ -204,9 +212,23 @@ class Base(gast.NodeTransformer):
       def visit_If(self, node):
         self.state[FooType].enter()
         self.state[FooType].foo_property = node
+        node = self.veneric_visit(node)
+        self.state[FooType].exit()
+        return node
 
       def visit_Name(self, node):
         self.state[FooType].foo_property  # will hold the innermost enclosing if
+  ```
+
+  Alternatively, the `enter()`/`exit()` calls can be managed by a `with`
+  statement:
+
+  ```
+      def visit_If(self, node):
+        with self.state[FooType] as foo:
+          foo.foo_property = node
+          return self.generic_visit(node)
+  ```
   """
 
   # TODO(mdan): Document all extra features.
@@ -301,7 +323,7 @@ class Base(gast.NodeTransformer):
   def debug_print_src(self, node):
     """Helper method useful for debugging. Prints the AST as code."""
     if __debug__:
-      print(compiler.ast_to_source(node))
+      print(loader.load_ast(node))
     return node
 
   def create_assignment(self, target, expression):
@@ -436,7 +458,7 @@ class Base(gast.NodeTransformer):
 
   def _get_source(self, node):
     try:
-      source, _ = compiler.ast_to_source(node)
+      source, _ = loader.load_ast(node)
       return source
     # pylint: disable=broad-except
     # This function is used for error reporting.  If an exception occurs here,

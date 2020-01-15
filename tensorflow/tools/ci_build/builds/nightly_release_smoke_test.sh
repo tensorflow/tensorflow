@@ -53,10 +53,16 @@ function test_tf_imports() {
      return 1
   fi
 
-  # test basic keras and estimator are available.
-  RET_VAL=$(python -c "import tensorflow as tf; a = (tf.keras.__name__, tf.estimator.__name__); print (a)")
+  # test basic keras is available
+  RET_VAL=$(python -c "import tensorflow as tf; print(tf.keras.__name__)")
+  if ! [[ ${RET_VAL} == *'tensorflow_core.python.keras.api._v2.keras'* ]]; then
+    echo "PIP test on virtualenv FAILED, will not upload ${WHL_NAME} package."
+    return 1
+  fi
 
-  if ! [[ ${RET_VAL} == *'('\''tensorflow_core.keras'\'', '\''tensorflow_core.estimator'\'')'* ]]; then
+  # similar test for estimator
+  RET_VAL=$(python -c "import tensorflow as tf; print(tf.estimator.__name__)")
+  if ! [[ ${RET_VAL} == *'tensorflow_estimator.python.estimator.api._v2.estimator'* ]]; then
     echo "PIP test on virtualenv FAILED, will not upload ${WHL_NAME} package."
     return 1
   fi

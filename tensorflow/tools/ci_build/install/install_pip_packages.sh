@@ -78,8 +78,8 @@ else
   pip3 install --upgrade numpy==1.14.5
 fi
 
-pip2 install scipy==1.1.0
-pip3 install scipy==1.1.0
+pip2 install scipy==1.2.2
+pip3 install scipy==1.4.1
 
 pip2 install scikit-learn==0.18.1
 pip3 install scikit-learn==0.18.1
@@ -89,9 +89,8 @@ pip2 install pandas==0.19.2
 pip3 install pandas==0.19.2
 
 # Benchmark tests require the following:
-# 5.6.4 fails to pip2 install. TODO(b/143872855): remove pinning once fixed.
-pip2 install psutil==5.6.3
-pip3 install psutil==5.6.3
+pip2 install psutil
+pip3 install psutil
 pip2 install py-cpuinfo
 pip3 install py-cpuinfo
 
@@ -128,8 +127,6 @@ pip2 install --upgrade termcolor
 pip3 install --upgrade termcolor
 
 # Keras
-pip2 install keras_applications==1.0.8 --no-deps
-pip3 install keras_applications==1.0.8 --no-deps
 pip2 install keras_preprocessing==1.1.0 --no-deps
 pip3 install keras_preprocessing==1.1.0 --no-deps
 pip2 install --upgrade h5py==2.8.0

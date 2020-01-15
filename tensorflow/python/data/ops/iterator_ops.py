@@ -20,6 +20,7 @@ from __future__ import print_function
 import threading
 import warnings
 
+from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.ops import optional_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import structure
@@ -648,12 +649,7 @@ class OwnedIterator(trackable.Trackable, composite_tensor.CompositeTensor):
         # TODO(ashankar): Consider removing this ops.device() contextmanager
         # and instead mimic ops placement in graphs: Operations on resource
         # handles execute on the same device as where the resource is placed.
-        # NOTE(mrry): Here we use the "_sync" variant of `iterator_get_next`
-        # because in eager mode this code will run synchronously on the calling
-        # thread. Therefore we do not need to make a defensive context switch
-        # to a background thread, and can achieve a small constant performance
-        # boost by invoking the iterator synchronously.
-        ret = gen_dataset_ops.iterator_get_next_sync(
+        ret = gen_dataset_ops.iterator_get_next(
             self._iterator_resource,
             output_types=self._flat_output_types,
             output_shapes=self._flat_output_shapes)
@@ -793,10 +789,19 @@ class IteratorSpec(type_spec.TypeSpec):
 class _IteratorSaveable(BaseSaverBuilder.SaveableObject):
   """SaveableObject for saving/restoring iterator state."""
 
-  def __init__(self, iterator_resource, name):
-    serialized_iterator = gen_dataset_ops.serialize_iterator(iterator_resource)
+  def __init__(
+      self,
+      iterator_resource,
+      name,
+      external_state_policy=distribute_options.ExternalStatePolicy.FAIL):
+    serialized_iterator = gen_dataset_ops.serialize_iterator(
+        iterator_resource, external_state_policy=external_state_policy.value)
     specs = [
-        BaseSaverBuilder.SaveSpec(serialized_iterator, "", name + "_STATE")
+        BaseSaverBuilder.SaveSpec(
+            serialized_iterator,
+            "",
+            name + "_STATE",
+            device=iterator_resource.device)
     ]
     super(_IteratorSaveable, self).__init__(iterator_resource, specs, name)
 

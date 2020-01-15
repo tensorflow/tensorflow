@@ -39,8 +39,8 @@ inline void ConvPerChannel(
   const int32 output_offset = params.output_offset;
 
   // Set min and max value of the output.
-  const int32 output_activation_min = std::numeric_limits<int8_t>::min();
-  const int32 output_activation_max = std::numeric_limits<int8_t>::max();
+  const int32 output_activation_min = params.quantized_activation_min;
+  const int32 output_activation_max = params.quantized_activation_max;
 
   // Sanity check.
   TFLITE_DCHECK_LE(output_activation_min, output_activation_max);

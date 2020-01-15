@@ -21,7 +21,9 @@ limitations under the License.
 
 #include "absl/strings/escaping.h"
 #include "tensorflow/lite/builtin_op_data.h"
+#if !defined(__APPLE__)
 #include "tensorflow/lite/delegates/flex/delegate.h"
+#endif
 #include "tensorflow/lite/kernels/custom_ops_register.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/register_ref.h"
@@ -36,6 +38,22 @@ namespace testing {
 namespace {
 const double kRelativeThreshold = 1e-2f;
 const double kAbsoluteThreshold = 1e-4f;
+
+// For quantized tests, we use a different error measurement from float ones.
+// Assumes the baseline is a always a float TF model.
+// Error of a quantized model compared to the baseline comes from two sources:
+//   1. the math done with quantized inputs, and
+//   2. quantization of the output.
+// Assumes there is no error introduced by source 1, the theoretical maximum
+// error allowed for the output is 0.5 * scale, because scale is equal to the
+// size of the quantization bucket.
+//
+// As a result, we use `scale` as a unit for measuring the quantization error.
+// To add the error introduced by source 1 as well, we need to relax the
+// multiplier from 0.5 to a larger number, which is model/op dependent.
+// The number below is good enough to account for both the two sources of error
+// for most quantized op tests to pass.
+const int kQuantizationErrorMultiplier = 4;
 
 // Returns the value in the given position in a tensor.
 template <typename T>
@@ -58,15 +76,31 @@ unique_void_ptr make_type_erased_array(size_t size) {
                          [](void* data) { delete[] static_cast<T*>(data); });
 }
 
+bool IsQuantized(const TfLiteTensor& tensor) {
+  if (tensor.type != kTfLiteInt8) return false;
+
+  if (tensor.quantization.params != nullptr) {
+    auto* quantization =
+        reinterpret_cast<TfLiteAffineQuantization*>(tensor.quantization.params);
+    if (quantization->scale != nullptr && quantization->scale->size == 1 &&
+        quantization->zero_point != nullptr &&
+        quantization->zero_point->size == 1) {
+      return true;
+    }
+  }
+  return false;
+}
 }  // namespace
 
 class TfLiteDriver::DataExpectation {
  public:
-  DataExpectation(double relative_threshold, double absolute_threshold)
+  DataExpectation(double relative_threshold, double absolute_threshold,
+                  int quantization_error_multiplier)
       : data_(nullptr, nullptr),
         num_elements_(0),
         relative_threshold_(relative_threshold),
-        absolute_threshold_(absolute_threshold) {}
+        absolute_threshold_(absolute_threshold),
+        quantization_error_multiplier_(quantization_error_multiplier) {}
 
   template <typename T>
   void SetData(const string& csv_values) {
@@ -128,11 +162,13 @@ class TfLiteDriver::DataExpectation {
   }
 
   bool TypedCheckString(bool verbose, const TfLiteTensor& tensor);
+  bool QuantizedCheck(bool verbose, const TfLiteTensor& tensor);
 
   unique_void_ptr data_;
   size_t num_elements_;
   double relative_threshold_;
   double absolute_threshold_;
+  int quantization_error_multiplier_;
 };
 
 class TfLiteDriver::ShapeExpectation {
@@ -218,8 +254,37 @@ bool TfLiteDriver::DataExpectation::TypedCheckString(
   return true;
 }
 
+bool TfLiteDriver::DataExpectation::QuantizedCheck(bool verbose,
+                                                   const TfLiteTensor& tensor) {
+  auto* quantization =
+      reinterpret_cast<TfLiteAffineQuantization*>(tensor.quantization.params);
+  const float scale = quantization->scale->data[0];
+  const int32_t zero_point = quantization->zero_point->data[0];
+
+  bool good_result = true;
+  for (int i = 0; i < tensor.bytes; i++) {
+    const int32_t computed = tensor.data.int8[i];
+    const float dequantized =
+        static_cast<float>(scale * (computed - zero_point));
+    const float reference = Value<float>(data_.get(), i);
+    if (std::abs(dequantized - reference) >
+        quantization_error_multiplier_ * scale) {
+      if (verbose) {
+        std::cerr << "  index " << i << ": got " << dequantized
+                  << ", but expected " << reference << std::endl;
+      }
+      good_result = false;
+    }
+  }
+  return good_result;
+}
+
 bool TfLiteDriver::DataExpectation::Check(bool verbose,
                                           const TfLiteTensor& tensor) {
+  if (IsQuantized(tensor)) {
+    return QuantizedCheck(verbose, tensor);
+  }
+
   switch (tensor.type) {
     case kTfLiteFloat32:
       return TypedCheck<float, float>(verbose, tensor);
@@ -247,7 +312,8 @@ bool TfLiteDriver::DataExpectation::Check(bool verbose,
 TfLiteDriver::TfLiteDriver(DelegateType delegate_type, bool reference_kernel)
     : delegate_(nullptr, nullptr),
       relative_threshold_(kRelativeThreshold),
-      absolute_threshold_(kAbsoluteThreshold) {
+      absolute_threshold_(kAbsoluteThreshold),
+      quantization_error_multiplier_(kQuantizationErrorMultiplier) {
   if (reference_kernel) {
     resolver_.reset(new ops::builtin::BuiltinRefOpResolver);
   } else {
@@ -256,6 +322,15 @@ TfLiteDriver::TfLiteDriver(DelegateType delegate_type, bool reference_kernel)
         reinterpret_cast<ops::builtin::BuiltinOpResolver*>(resolver_.get());
     buildinop_resolver_->AddCustom("RFFT2D",
                                    tflite::ops::custom::Register_RFFT2D());
+    buildinop_resolver_->AddCustom("HashTableV2",
+                                   tflite::ops::custom::Register_HASHTABLE());
+    buildinop_resolver_->AddCustom(
+        "LookupTableFindV2", tflite::ops::custom::Register_HASHTABLE_FIND());
+    buildinop_resolver_->AddCustom(
+        "LookupTableImportV2",
+        tflite::ops::custom::Register_HASHTABLE_IMPORT());
+    buildinop_resolver_->AddCustom(
+        "LookupTableSizeV2", tflite::ops::custom::Register_HASHTABLE_SIZE());
   }
 
   switch (delegate_type) {
@@ -265,13 +340,15 @@ TfLiteDriver::TfLiteDriver(DelegateType delegate_type, bool reference_kernel)
       delegate_ = evaluation::CreateNNAPIDelegate();
       break;
     case DelegateType::kGpu:
-      delegate_ = evaluation::CreateGPUDelegate(/*model=*/nullptr);
+      delegate_ = evaluation::CreateGPUDelegate();
       break;
     case DelegateType::kFlex:
+#if !defined(__APPLE__)
       delegate_ = Interpreter::TfLiteDelegatePtr(
           FlexDelegate::Create().release(), [](TfLiteDelegate* delegate) {
             delete static_cast<tflite::FlexDelegate*>(delegate);
           });
+#endif
       break;
   }
 }
@@ -395,6 +472,11 @@ void TfLiteDriver::SetThreshold(double relative_threshold,
   absolute_threshold_ = absolute_threshold;
 }
 
+void TfLiteDriver::SetQuantizationErrorMultiplier(
+    int quantization_error_multiplier) {
+  quantization_error_multiplier_ = quantization_error_multiplier;
+}
+
 void TfLiteDriver::SetExpectation(int id, const string& csv_values) {
   if (!IsValid()) return;
   auto* tensor = interpreter_->tensor(id);
@@ -402,7 +484,14 @@ void TfLiteDriver::SetExpectation(int id, const string& csv_values) {
     Invalidate(absl::StrCat("Overridden expectation for tensor '", id, "'"));
   }
   expected_output_[id].reset(
-      new DataExpectation(relative_threshold_, absolute_threshold_));
+      new DataExpectation(relative_threshold_, absolute_threshold_,
+                          quantization_error_multiplier_));
+
+  if (IsQuantized(*tensor)) {
+    expected_output_[id]->SetData<float>(csv_values);
+    return;
+  }
+
   switch (tensor->type) {
     case kTfLiteFloat32:
       expected_output_[id]->SetData<float>(csv_values);

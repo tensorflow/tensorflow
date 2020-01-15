@@ -31,6 +31,7 @@ py_library(
     srcs = ["__init__.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":get_layer_policy",
         ":loss_scale_optimizer",
         ":policy",
     ],
@@ -43,6 +44,7 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":device_compatibility_check",
         "//tensorflow/python:framework",
         "//tensorflow/python:mixed_precision_global_state",
     ],
@@ -63,6 +65,48 @@ py_test(
         "//tensorflow/python/keras",
         "//tensorflow/python/keras/mixed_precision/experimental:loss_scale_optimizer",
         "//tensorflow/python/keras/optimizer_v2",
+    ],
+)
+
+py_library(
+    name = "device_compatibility_check",
+    srcs = ["device_compatibility_check.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:device_lib",
+        "//tensorflow/python:gpu_util",
+        "//tensorflow/python/eager:context",
+    ],
+)
+
+cuda_py_test(
+    name = "device_compatibility_check_test",
+    srcs = ["device_compatibility_check_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":device_compatibility_check",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_library(
+    name = "get_layer_policy",
+    srcs = ["get_layer_policy.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python/keras:base_layer",
+    ],
+)
+
+py_test(
+    name = "get_layer_policy_test",
+    srcs = ["get_layer_policy_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":get_layer_policy",
+        ":policy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras:layers",
     ],
 )
 
@@ -104,7 +148,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:loss_scale",
-        "//tensorflow/python/keras:generic_utils",
+        "//tensorflow/python/keras/utils:generic_utils",
     ],
 )
 
@@ -124,7 +168,8 @@ cuda_py_test(
     name = "loss_scale_optimizer_test",
     size = "small",
     srcs = ["loss_scale_optimizer_test.py"],
-    additional_deps = [
+    python_version = "PY3",
+    deps = [
         ":loss_scale_optimizer",
         ":test_util",
         "//tensorflow/python:client_testlib",
@@ -133,7 +178,22 @@ cuda_py_test(
         "//tensorflow/python/distribute:one_device_strategy",
         "//tensorflow/python/keras",
     ],
-    python_version = "PY3",
+)
+
+cuda_py_test(
+    name = "loss_scale_benchmark",
+    size = "medium",
+    srcs = ["loss_scale_benchmark.py"],
+    deps = [
+        ":loss_scale_optimizer",
+        ":test_util",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:control_flow_v2_toggles",
+        "//tensorflow/python:loss_scaling_gradient_tape",
+        "//tensorflow/python/distribute:mirrored_strategy",
+        "//tensorflow/python/distribute:one_device_strategy",
+        "//tensorflow/python/keras",
+    ],
 )
 
 py_library(
@@ -150,30 +210,30 @@ cuda_py_test(
     name = "keras_test",
     size = "medium",
     srcs = ["keras_test.py"],
-    additional_deps = [
+    python_version = "PY3",
+    shard_count = 4,
+    tags = ["no_windows"],  # b/139083295: bfloat16 tests fail on Windows
+    deps = [
         ":test_util",
-        "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/distribute:mirrored_strategy",
         "//tensorflow/python/distribute:one_device_strategy",
         "//tensorflow/python/keras",
+        "@absl_py//absl/testing:parameterized",
     ],
-    python_version = "PY3",
-    shard_count = 4,
-    tags = ["no_windows"],  # b/139083295: bfloat16 tests fail on Windows
 )
 
 cuda_py_test(
     name = "layer_correctness_test",
     size = "medium",
     srcs = ["layer_correctness_test.py"],
-    additional_deps = [
-        "@absl_py//absl/testing:parameterized",
+    python_version = "PY3",
+    tags = ["no_rocm"],
+    deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/distribute:mirrored_strategy",
         "//tensorflow/python/distribute:one_device_strategy",
         "//tensorflow/python/keras",
+        "@absl_py//absl/testing:parameterized",
     ],
-    python_version = "PY3",
-    tags = ["no_rocm"],
 )

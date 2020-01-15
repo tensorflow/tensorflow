@@ -158,6 +158,12 @@ class AvgPoolingOp<GPUDevice, T> : public UnaryOp<T> {
                 errors::InvalidArgument("tensor_in must be 4-dimensional"));
 
     TensorShape output_shape = params.forward_output_shape();
+    if (output_shape.num_elements() == 0) {
+      Tensor* output = nullptr;
+      OP_REQUIRES_OK(context,
+                     context->allocate_output(0, output_shape, &output));
+      return;
+    }
 
 #if CUDNN_VERSION >= 7300
     DnnPoolingOp<T>::Compute(context, se::dnn::PoolingMode::kAverage, ksize_,
@@ -279,6 +285,9 @@ class AvgPoolingGradOp : public OpKernel {
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
     output->flat<T>().setZero();
 
+    if (output_shape.num_elements() == 0) {
+      return;
+    }
     const int window_rows = ksize_[1];
     const int window_cols = ksize_[2];
     const int depth_window = ksize_[3];
@@ -428,6 +437,13 @@ class AvgPoolingGradOp<GPUDevice, T> : public OpKernel {
       output_shape.AddDim(shape_vec(i));
     }
 
+    if (output_shape.num_elements() == 0) {
+      Tensor* output = nullptr;
+      OP_REQUIRES_OK(context,
+                     context->allocate_output(0, output_shape, &output));
+      return;
+    }
+
     DnnPoolingGradOp<T>::Compute(context, se::dnn::PoolingMode::kAverage,
                                  ksize_, stride_, padding_, data_format_,
                                  nullptr, nullptr, out_backprop, output_shape,
@@ -505,6 +521,12 @@ class AvgPoolingGradOpCustomGPUKernel : public OpKernel {
     auto shape_vec = tensor_in_shape.vec<int32>();
     for (int64 i = 0; i < tensor_in_shape.NumElements(); ++i) {
       output_shape.AddDim(shape_vec(i));
+    }
+    if (output_shape.num_elements() == 0) {
+      Tensor* output = nullptr;
+      OP_REQUIRES_OK(context,
+                     context->allocate_output(0, output_shape, &output));
+      return;
     }
 
 #if CUDNN_VERSION >= 7300
