@@ -180,52 +180,6 @@ TEST_F(NnApiDeviceSelectionTest, DisallowsCPUBasedOnOptions) {
   EXPECT_EQ(m.GetCompilationStatus(), kTfLiteOk);
 }
 
-TEST_F(NnApiDeviceSelectionTest,
-       DoesNotDelegateIfOnlyReferenceDeviceIsAvailable_CpuEnabled) {
-  // Only nnapi-reference is available on device
-  nnapi_->ANeuralNetworks_getDeviceCount = [](uint32_t* numDevices) -> int {
-    *numDevices = 1;
-    return 0;
-  };
-  nnapi_->ANeuralNetworksDevice_getName =
-      [](const ANeuralNetworksDevice* device, const char** name) -> int {
-    if (device == reinterpret_cast<ANeuralNetworksDevice*>(1)) {
-      *name = "nnapi-reference";
-    }
-    return 0;
-  };
-
-  tflite::StatefulNnApiDelegate::Options options;
-  options.disallow_nnapi_cpu = false;
-  InitWithOptions(options);
-  m.Invoke();
-  EXPECT_EQ(m.GetCompilationStatus(), kTfLiteOk);
-  EXPECT_EQ(m.CountOpsExecutedByCpuKernel(), 1);
-}
-
-TEST_F(NnApiDeviceSelectionTest,
-       DoesNotDelegateIfOnlyReferenceDeviceIsAvailable_CpuDisabled) {
-  // Only nnapi-reference is available on device
-  nnapi_->ANeuralNetworks_getDeviceCount = [](uint32_t* numDevices) -> int {
-    *numDevices = 1;
-    return 0;
-  };
-  nnapi_->ANeuralNetworksDevice_getName =
-      [](const ANeuralNetworksDevice* device, const char** name) -> int {
-    if (device == reinterpret_cast<ANeuralNetworksDevice*>(1)) {
-      *name = "nnapi-reference";
-    }
-    return 0;
-  };
-
-  tflite::StatefulNnApiDelegate::Options options;
-  options.disallow_nnapi_cpu = true;
-  InitWithOptions(options);
-  m.Invoke();
-  EXPECT_EQ(m.GetCompilationStatus(), kTfLiteOk);
-  EXPECT_EQ(m.CountOpsExecutedByCpuKernel(), 1);
-}
-
 }  // namespace
 }  // namespace tflite
 

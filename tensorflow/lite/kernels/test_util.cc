@@ -295,22 +295,6 @@ int CountPartitionsDelegatedTo(Interpreter* interpreter,
   return result;
 }
 
-// Returns the number of nodes that will be executed on the CPU
-int CountPartitionsExecutedByCpuKernel(const Interpreter* interpreter) {
-  int result = 0;
-  for (int node_idx : interpreter->execution_plan()) {
-    TfLiteNode node;
-    TfLiteRegistration reg;
-    std::tie(node, reg) = *(interpreter->node_and_registration(node_idx));
-
-    if (node.delegate == nullptr) {
-      ++result;
-    }
-  }
-
-  return result;
-}
-
 }  // namespace
 
 void SingleOpModel::ExpectOpAcceleratedWithNnapi(const std::string& test_id) {
@@ -336,10 +320,6 @@ void SingleOpModel::ValidateAcceleration() {
   if (force_use_nnapi) {
     ExpectOpAcceleratedWithNnapi(GetCurrentTestId());
   }
-}
-
-int SingleOpModel::CountOpsExecutedByCpuKernel() {
-  return CountPartitionsExecutedByCpuKernel(interpreter_.get());
 }
 
 SingleOpModel::~SingleOpModel() { ValidateAcceleration(); }

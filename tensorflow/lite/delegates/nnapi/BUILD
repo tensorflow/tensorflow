@@ -34,7 +34,6 @@ cc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/nnapi:nnapi_implementation",
-        "//tensorflow/lite/nnapi:nnapi_lib",
         "//tensorflow/lite/nnapi:nnapi_util",
     ],
 )
@@ -106,7 +105,6 @@ cc_library(
         ":nnapi_delegate",
         "//tensorflow/lite/nnapi:nnapi_handler",
         "//tensorflow/lite/nnapi:nnapi_implementation",
-        "//tensorflow/lite/nnapi:nnapi_lib",
         "@com_google_absl//absl/memory",
         "@com_google_googletest//:gtest",
     ],
@@ -124,7 +122,6 @@ cc_test(
     ],
     deps = [
         ":nnapi_delegate",
-        ":nnapi_delegate_mock_test",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/c:common",
