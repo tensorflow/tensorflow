@@ -1805,12 +1805,6 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   dimensions[dnums.output_batch_dimension()] = input_batch / batch_group_count;
   dimensions[dnums.output_feature_dimension()] = kernel_output_features;
 
-  if (batch_group_count > 1) {
-    dimensions[dnums.output_batch_dimension()] =
-        kernel_output_features / batch_group_count;
-    dimensions[dnums.output_feature_dimension()] = batch_group_count;
-  }
-
   for (int i = 0; i < num_spatial_dims; ++i) {
     dimensions[dnums.output_spatial_dimensions(i)] =
         window_output_shape.dimensions(i);
