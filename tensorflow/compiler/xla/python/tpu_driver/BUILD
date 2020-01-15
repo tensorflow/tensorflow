@@ -87,7 +87,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         ":tpu_service_proto_cc",
         ":tpu_driver_proto_cc",
-        "//tensorflow/compiler/xla/python/tpu_driver/client:c_api",
+        "//tensorflow/compiler/xla/python/tpu_driver/client:libtpu",
     ] + external_deps(),
     alwayslink = 1,
 )

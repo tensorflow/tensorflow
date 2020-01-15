@@ -23,12 +23,12 @@ limitations under the License.
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "c_api.h"
+#include "libtpu.h"
 
 void* LoadAndInitializeDriver(const char* shared_lib,
                               struct TpuDriverFn* driver_fn) {
   void* handle;
-  handle = dlopen("./c_api.so", RTLD_NOW);
+  handle = dlopen("libtpu.so", RTLD_NOW);
   if (!handle) {
     fprintf(stderr, "Error: %s\n", dlerror());
     exit(EXIT_FAILURE);

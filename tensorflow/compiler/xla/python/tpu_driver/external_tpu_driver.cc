@@ -17,7 +17,7 @@
 
 #include "absl/strings/str_format.h"
 #include "absl/time/time.h"
-#include "tensorflow/compiler/xla/python/tpu_driver/client/c_api.h"
+#include "tensorflow/compiler/xla/python/tpu_driver/client/libtpu.h"
 #include "tensorflow/compiler/xla/python/tpu_driver/tpu_driver.h"
 #include "tensorflow/compiler/xla/python/tpu_driver/tpu_driver.pb.h"
 #include "tensorflow/compiler/xla/statusor.h"
