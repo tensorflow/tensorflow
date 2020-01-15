@@ -831,17 +831,15 @@ void MakeTPUInitializationFunctionDef(
       "ConfigureDistributedTPU";
 }
 
-/*
-NOTE(iga): ConfigureDistributedTPU is dummy op whose sole purpose is to trigger
-DistributedTPURewritePass. This pass actually adds real ops that initialize the
-TPU system. Thus, we can't simply run ConfigureDistributedTPU eagerly. We need
-to wrap it in a function and trigger the rewrite passes on it. The easiest way
-to trigger a rewrite is to run it in a function.
+// NOTE(iga): ConfigureDistributedTPU is dummy op whose sole purpose is to
+// trigger DistributedTPURewritePass. This pass actually adds real ops that
+// initialize the TPU system. Thus, we can't simply run ConfigureDistributedTPU
+// eagerly. We need to wrap it in a function and trigger the rewrite passes on
+// it. The easiest way to trigger a rewrite is to run it in a function.
 
-Running initialization as an operation rather than calling the underlying C++
-implementation directly allows us to run initialization on a remote device
-without a separate communication channel.
-*/
+// Running initialization as an operation rather than calling the underlying C++
+// implementation directly allows us to run initialization on a remote device
+// without a separate communication channel.
 TF_CAPI_EXPORT extern void TFE_InitializeTPUSystem(TFE_Context* ctx,
                                                    const char* job,
                                                    TF_Buffer* tpu_topology,
