@@ -54,18 +54,25 @@ class TRTEngineResourceOpsTest : public OpsTestBase {
     inputs_.clear();
   }
 
-  TrtUniquePtrType<nvinfer1::ICudaEngine> CreateTRTEngine() {
+  TrtUniquePtrType<nvinfer1::ICudaEngine> CreateTRTEngine(bool dynamic=false) {
     TrtUniquePtrType<nvinfer1::IBuilder> builder(
         nvinfer1::createInferBuilder(logger));
-    TrtUniquePtrType<nvinfer1::INetworkDefinition> network(
-        builder->createNetwork());
-
+    TrtUniquePtrType<nvinfer1::INetworkDefinition> network;
+    if (!dynamic) {
+      network = TrtUniquePtrType<nvinfer1::INetworkDefinition>(
+          builder->createNetwork());
+    } else {
+      network = TrtUniquePtrType<nvinfer1::INetworkDefinition>(
+          builder->createNetworkV2( 1U << static_cast<int>(
+              nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH)));
+    }
     // Add the input.
     nvinfer1::Dims dims;
     dims.nbDims = 1;
-    dims.d[0] = 1;
+    dims.d[0] = dynamic ? -1 : 1;
+    const char *inName = "input";
     nvinfer1::ITensor* input =
-        network->addInput("input", nvinfer1::DataType::kFLOAT, dims);
+        network->addInput(inName, nvinfer1::DataType::kFLOAT, dims);
     EXPECT_NE(nullptr, input);
 
     // Add a unary layer.
@@ -79,10 +86,29 @@ class TRTEngineResourceOpsTest : public OpsTestBase {
     network->markOutput(*output);
 
     // Build the engine
+    TrtUniquePtrType<nvinfer1::IBuilderConfig> builder_config(
+          builder->createBuilderConfig());
+
     builder->setMaxBatchSize(1);
-    builder->setMaxWorkspaceSize(1 << 10);
+    builder_config->setMaxWorkspaceSize(1 << 10);
+
+    if (dynamic) {
+      // Create three profiles
+      for (int i=1; i<=3; i++) {
+        auto* profile = builder->createOptimizationProfile();
+        nvinfer1::Dims dim;
+        dim.nbDims = 1;
+        dim.d[0] = i;
+        profile->setDimensions(inName, nvinfer1::OptProfileSelector::kMIN, dim);
+        profile->setDimensions(inName, nvinfer1::OptProfileSelector::kOPT, dim);
+        profile->setDimensions(inName, nvinfer1::OptProfileSelector::kMAX, dim);
+        int idx = builder_config->addOptimizationProfile(profile);
+        EXPECT_NE(-1, idx);
+      }
+    }
     TrtUniquePtrType<nvinfer1::ICudaEngine> engine(
-        builder->buildCudaEngine(*network));
+        builder->buildEngineWithConfig(*network, *builder_config));
+
     EXPECT_NE(nullptr, engine);
     return engine;
   }
@@ -227,6 +253,124 @@ TEST_F(TRTEngineResourceOpsTest, Basic) {
   // to the resource to destroy resource.
   EXPECT_TRUE(resource->RefCountIsOne());
   resource->Unref();
+}
+
+TEST_F(TRTEngineResourceOpsTest, Profiles) {
+  // Create the GPU device.
+  std::unique_ptr<Device> device(
+      DeviceFactory::NewDevice("GPU", {}, "/job:worker/replica:0/task:0"));
+  ResourceMgr* rm = device->resource_manager();
+  SetDevice(DEVICE_GPU, std::move(device));
+
+  // Create the resource handle.
+  const string container(kTfTrtContainerName);
+  const string resource_name = "myresource";
+  Reset();
+  TF_ASSERT_OK(NodeDefBuilder("op", "CreateTRTResourceHandle")
+                   .Attr("resource_name", resource_name)
+                   .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+  TF_ASSERT_OK(RunOpKernel());
+  ResourceHandle handle =
+      context_->mutable_output(0)->scalar<ResourceHandle>()();
+
+  TRTEngineCacheResource* resource = nullptr;
+  EXPECT_TRUE(
+      errors::IsNotFound(rm->Lookup(container, resource_name, &resource)));
+
+  // Create the resource using an empty file with InitializeTRTResource.
+  Reset();
+  Env* env = Env::Default();
+  const string filename = io::JoinPath(testing::TmpDir(), "trt_engine_file");
+  {
+    std::unique_ptr<WritableFile> file;
+    TF_ASSERT_OK(env->NewWritableFile(filename, &file));
+  }
+  TF_ASSERT_OK(NodeDefBuilder("op", "InitializeTRTResource")
+                   .Input(FakeInput(DT_RESOURCE))
+                   .Input(FakeInput(DT_STRING))
+                   .Attr("max_cached_engines_count", 1)
+                   .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+  AddInputFromArray<ResourceHandle>(TensorShape({}), {handle});
+  AddInputFromArray<tstring>(TensorShape({}), {filename});
+  TF_ASSERT_OK(RunOpKernel());
+  EXPECT_TRUE(rm->Lookup(container, resource_name, &resource).ok());
+  EXPECT_EQ(0, resource->cache_.size());
+
+  // Create a serialized TRT engine file.
+  TrtUniquePtrType<nvinfer1::ICudaEngine> engine = CreateTRTEngine(true);
+  TrtUniquePtrType<nvinfer1::IExecutionContext> context(
+      engine->createExecutionContext());
+  resource->cache_.emplace(
+      std::vector<TensorShape>{TensorShape({1, 1})},
+      absl::make_unique<EngineContext>(std::move(engine), std::move(context)));
+  resource->Unref();
+
+  // Serialize the engine using SerializeTRTResource op.
+  Reset();
+  TF_ASSERT_OK(NodeDefBuilder("op", "SerializeTRTResource")
+                   .Attr("delete_resource", true)
+                   .Input(FakeInput(DT_STRING))
+                   .Input(FakeInput(DT_STRING))
+                   .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+  AddInputFromArray<tstring>(TensorShape({}), {resource_name});
+  AddInputFromArray<tstring>(TensorShape({}), {filename});
+  TF_ASSERT_OK(RunOpKernel());
+
+  // Make sure the cache is deleted.
+  Reset();
+  TF_ASSERT_OK(NodeDefBuilder("op", "DestroyResourceOp")
+                   .Attr("ignore_lookup_error", false)
+                   .Input(FakeInput(DT_RESOURCE))
+                   .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+  AddInputFromArray<ResourceHandle>(TensorShape({}), {handle});
+  EXPECT_TRUE(errors::IsNotFound(RunOpKernel()));
+
+  // Verify the serialized engine file.
+  std::unique_ptr<RandomAccessFile> file;
+  TF_ASSERT_OK(env->NewRandomAccessFile(filename, &file));
+  auto reader = absl::make_unique<io::RecordReader>(file.get());
+  uint64 offset = 0;
+  tstring record;
+  TF_ASSERT_OK(reader->ReadRecord(&offset, &record));
+  TRTEngineInstance engine_instance;
+  engine_instance.ParseFromString(record);
+  EXPECT_EQ(1, engine_instance.input_shapes_size());
+  EXPECT_EQ(2, engine_instance.input_shapes(0).dim_size());
+  EXPECT_EQ(1, engine_instance.input_shapes(0).dim(0).size());
+  EXPECT_EQ(1, engine_instance.input_shapes(0).dim(1).size());
+  EXPECT_TRUE(errors::IsOutOfRange(reader->ReadRecord(&offset, &record)));
+
+  // Recreate the cache resource.
+  Reset();
+  TF_ASSERT_OK(NodeDefBuilder("op", "InitializeTRTResource")
+                   .Input(FakeInput(DT_RESOURCE))
+                   .Input(FakeInput(DT_STRING))
+                   .Attr("max_cached_engines_count", 1)
+                   .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+  AddInputFromArray<ResourceHandle>(TensorShape({}), {handle});
+  AddInputFromArray<tstring>(TensorShape({}), {filename});
+  TF_ASSERT_OK(RunOpKernel());
+  EXPECT_TRUE(rm->Lookup(container, resource_name, &resource).ok());
+  EXPECT_EQ(1, resource->cache_.size());
+  EXPECT_EQ(3, resource->profiles_.GetNumProfiles());
+  //TODO(tamas) Check the number of engine contexts
+  resource->Unref();
+
+  // Destroy the engine cache again.
+  Reset();
+  TF_ASSERT_OK(NodeDefBuilder("op", "DestroyResourceOp")
+                   .Attr("ignore_lookup_error", false)
+                   .Input(FakeInput(DT_RESOURCE))
+                   .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+  AddInputFromArray<ResourceHandle>(TensorShape({}), {handle});
+  TF_ASSERT_OK(RunOpKernel());
+  EXPECT_TRUE(errors::IsNotFound(RunOpKernel()));
 }
 
 }  // namespace tensorrt

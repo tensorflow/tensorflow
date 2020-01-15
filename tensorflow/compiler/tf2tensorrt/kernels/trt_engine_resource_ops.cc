@@ -140,11 +140,25 @@ class InitializeTRTResource : public OpKernel {
               engine_instance.serialized_engine().c_str(),
               engine_instance.serialized_engine().size(), nullptr));
       auto raw_engine = engine.get();
+      std::vector<TrtUniquePtrType<nvinfer1::IExecutionContext>> ctx_vec;
+      if (num_loaded_engine == 0) {
+        // restore profiles if any
+        // Currently only 1 engine is allowed in dynamic mode therefore
+        // it is safe to call only for the first engine
+        // In static mode this will also work
+        resource->profiles_.RestoreProfiles(raw_engine);
+        resource->profiles_.createExcecutionContexts(raw_engine, ctx_vec);
+      } else {
+        // Multiple engines are only availabel in static mode
+        // for each engine we have only a single execution context
+        TrtUniquePtrType<nvinfer1::IExecutionContext> exec_ctx(
+            raw_engine->createExecutionContext());
+        ctx_vec.push_back(std::move(exec_ctx));
+      }
       resource->cache_.emplace(
           engine_input_shapes,
           absl::make_unique<EngineContext>(
-              std::move(engine), TrtUniquePtrType<nvinfer1::IExecutionContext>(
-                                     raw_engine->createExecutionContext())));
+              std::move(engine), std::move(ctx_vec)));
       ++num_loaded_engine;
     } while (1);
     VLOG(1) << "Loaded " << num_loaded_engine << " TRT engines for op "
