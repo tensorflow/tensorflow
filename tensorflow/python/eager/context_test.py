@@ -26,6 +26,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import test
+from tensorflow.python.tpu import tpu
 
 
 class ContextTest(test.TestCase):
@@ -85,6 +86,40 @@ class ContextTest(test.TestCase):
     self.assertLen(graphs, 1)
     graph, = graphs
     self.assertIn('CPU:0', graph.node[0].device)
+
+  def testTPUInitialization(self):
+    """Tests that TPUs are fully functional with no explicit initialization."""
+    ctx = context.context()
+    if not ctx.list_physical_devices('TPU'):
+      self.assertEmpty(ctx.tpu_topologies)
+      self.skipTest('A TPU is required to run this test.')
+
+    @def_function.function
+    def f(x):
+      return x * constant_op.constant(2.)
+
+    @def_function.function
+    def replicated_f():
+      return tpu.replicate(f, inputs=[[constant_op.constant([1., 2., 3., 4.])]])
+
+    y = replicated_f()
+
+    self.assertAllClose([[[2., 4., 6., 8.]]], y)
+
+    with ops.device('TPU:0'):
+      x = constant_op.constant([1., 2., 3., 4.])
+
+    with ops.device('TPU:0'):
+      y = x * constant_op.constant(2.)
+    self.assertIn('TPU:0', y.device)
+
+    with ops.device('TPU:0'):
+      y = f(x)
+      self.assertAllClose([2., 4., 6., 8.], y)
+    self.assertIn('TPU:0', y.device)
+    topology, = ctx.tpu_topologies
+    self.assertGreater(topology.num_tasks, 0)
+    self.assertGreater(topology.num_tpus_per_task, 0)
 
 
 if __name__ == '__main__':
