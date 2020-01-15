@@ -116,7 +116,7 @@ void ExampleMulInt8PerChannelQuantized(ruy::Context *context) {
   ruy::MakeSimpleLayout(2, 2, ruy::Order::kColMajor, &dst.layout);
   dst.data = dst_data;
 
-  ruy::BasicSpec<std::int32_t, std::uint8_t> spec;
+  ruy::BasicSpec<std::int32_t, std::int8_t> spec;
   spec.multiplier_fixedpoint_perchannel = multiplier_data;
   spec.multiplier_exponent_perchannel = exponent_data;
   ruy::Mul<ruy::kAllPaths>(lhs, rhs, spec, context, &dst);

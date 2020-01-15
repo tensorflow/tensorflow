@@ -109,6 +109,7 @@ void EnforceZeroPointSupport(LhsScalar lhs_zero_point, RhsScalar rhs_zero_point,
 
 template <typename Spec, typename DstScalar>
 void EnforceDstSpecSupport(const Spec& spec, DstScalar dst_zero_point) {
+  static_assert(std::is_same<typename Spec::DstScalar, DstScalar>::value, "");
   if (!std::is_same<typename Spec::DstScalar, std::int32_t>::value) return;
 
   // If user is looking for the raw accumulator, zero_point and all the other
