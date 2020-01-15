@@ -117,10 +117,10 @@ StepDatabaseResult ConvertStepEventsToStepDb(
     // we can't separate them anymore. Simply assigns all events to Core-0.
     (*per_core_step_info.mutable_step_info_per_core())[0] =
         std::move(step_info);
-    LOG(INFO) << std::endl
-              << "step_id: " << step << ", step_info:" << std::endl
-              << DebugStepInfo(
-                     (*per_core_step_info.mutable_step_info_per_core())[0]);
+    VLOG(2) << std::endl
+            << "step_id: " << step << ", step_info:" << std::endl
+            << DebugStepInfo(
+                   (*per_core_step_info.mutable_step_info_per_core())[0]);
     // The remaining fields in PerCoreStepInfo are not filled.
     *step_db.add_step_sequence() = per_core_step_info;
   }
