@@ -148,6 +148,34 @@ Status TrtShapeOptimizationProfile::createExcecutionContexts(
   return Status::OK();
 }
 
+Status TrtShapeOptimizationProfile::RestoreProfiles(
+    const nvinfer1::ICudaEngine *engine) {
+  if (!engine || engine->hasImplicitBatchDimension()) {
+    // Nothing to do, we cannot have profiles in implicit batch mode
+    return Status::OK();
+  }
+  int n_profiles = engine->getNbOptimizationProfiles();
+  int n_inputs = GetNumberOfEngineInputs(engine);
+  VLOG(2) << "Attempting to restore " << n_profiles << " profiles, each with "
+          << n_inputs << " inputs";
+  for (int prof_idx=0; prof_idx<n_profiles; prof_idx++) {
+    OptimizationProfileConfig cfg;
+    for (int j=0; j<n_inputs; j++) {
+      nvinfer1::Dims min = engine->getProfileDimensions(
+          j, prof_idx, nvinfer1::OptProfileSelector::kMIN);
+      nvinfer1::Dims max = engine->getProfileDimensions(
+          j, prof_idx, nvinfer1::OptProfileSelector::kMAX);
+      nvinfer1::Dims opt = engine->getProfileDimensions(
+          j, prof_idx, nvinfer1::OptProfileSelector::kOPT);
+      cfg.min.push_back(min);
+      cfg.max.push_back(max);
+      cfg.opt.push_back(opt);
+    }
+    profiles_.push_back(std::move(cfg));
+  }
+  return Status::OK();
+}
+
 int TrtShapeOptimizationProfile::GetNumProfiles() const {
   return profiles_.size();
 }

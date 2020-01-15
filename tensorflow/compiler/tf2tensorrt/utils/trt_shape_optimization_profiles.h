@@ -166,6 +166,9 @@ class TrtShapeOptimizationProfile {
   // Returns number of created profiles.
   int GetNumProfiles() const;
 
+  // Restore profiles from the engine (used after deserialization)
+  Status RestoreProfiles(const nvinfer1::ICudaEngine *engine);
+
  private:
   // Set of input shape vetors that we collect during profile_generation_mode
   std::unordered_set<std::vector<TensorShape>, VectorTensorShapeHasher>
