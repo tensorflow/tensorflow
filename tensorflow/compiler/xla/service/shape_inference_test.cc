@@ -607,7 +607,7 @@ TEST_F(ShapeInferenceTest, ConvolveBatchGroupCountUnequalOutputFeature) {
       window, dnums);
   ASSERT_FALSE(inferred_status.ok());
   ASSERT_THAT(inferred_status.status().error_message(),
-              HasSubstr("to be equal to batch group count"));
+              HasSubstr("to be a multiple of batch group count"));
 }
 
 namespace fft {
