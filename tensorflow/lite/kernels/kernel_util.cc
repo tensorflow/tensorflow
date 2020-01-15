@@ -55,12 +55,16 @@ TfLiteStatus PopulateConvolutionQuantizationParams(
   }
 
   // Populate multiplier and shift using affine quantization.
-  const int num_channels = affine_quantization->scale->size;
+  const int num_channels =
+      filter->dims->data[affine_quantization->quantized_dimension];
   const float input_scale = input->params.scale;
   const float output_scale = output->params.scale;
   const float* filter_scales = affine_quantization->scale->data;
   for (int i = 0; i < num_channels; ++i) {
-    const double filter_scale = static_cast<double>(filter_scales[i]);
+    // If per-tensor quantization parameter is specified, broadcast it along the
+    // quantization dimension (channels_out).
+    const float scale = is_per_channel ? filter_scales[i] : filter_scales[0];
+    const double filter_scale = static_cast<double>(scale);
     const double effective_output_scale = static_cast<double>(input_scale) *
                                           filter_scale /
                                           static_cast<double>(output_scale);
