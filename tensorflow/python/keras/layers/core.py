@@ -132,7 +132,6 @@ class Dropout(Layer):
   which helps prevent overfitting.
   
   Usage Example:
-     import tensorflow as tf
      model = tf.keras.models.Sequential()
      model.add(tf.keras.layers.Dropout(0.2, input_shape=(16,)))
      model.add(tf.keras.layers.Dense(1))
