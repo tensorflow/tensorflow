@@ -90,6 +90,9 @@ class MicroInterpreter {
     return nullptr;
   }
 
+  // Reset all variable tensors to the default value.
+  TfLiteStatus ResetVariableTensors();
+
   TfLiteStatus initialization_status() const { return initialization_status_; }
 
   ErrorReporter* error_reporter() { return error_reporter_; }
