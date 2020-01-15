@@ -1537,10 +1537,6 @@ class ConvTransposeTest(test_lib.TestCase):
     self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
 
   def test3D(self):
-
-    if test_lib.is_built_with_rocm():
-      self.skipTest("5D tensors are not yet supported in ROCm")
-
     t = array_ops.ones([2, 4, 4, 4, 3])
     v = array_ops.ones([2, 2, 2, 5, 3])
     strides = 2
@@ -1551,10 +1547,6 @@ class ConvTransposeTest(test_lib.TestCase):
     self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
 
   def test3DTensor(self):
-
-    if test_lib.is_built_with_rocm():
-      self.skipTest("5D tensors are not yet supported in ROCm")
-
     t = array_ops.ones([2, 4, 4, 4, 3])
     v = array_ops.ones([2, 2, 2, 5, 3])
     strides = 2
