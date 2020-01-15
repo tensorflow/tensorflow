@@ -1106,7 +1106,7 @@ class TrtGraphConverterV2(object):
         Example: `def input_fn(): yield input1, input2, input3`
     """
     def _rebuild_func():
-      # Rebuild function from graph_def
+      # Rebuild function from graph_def.
       reset_converted_func = wrap_function.function_from_graph_def(
           self._converted_graph_def,
           [tensor.name for tensor in self._converted_func.inputs],
@@ -1119,22 +1119,21 @@ class TrtGraphConverterV2(object):
     def _set_profile_generation_mode(value, node):
       node.attr["_profile_generation_mode"].b = value
 
-    # Enable profile generation if needed
     if self._need_trt_profiles:
+      # Enable profile generation.
       self._for_each_trt_node(self._converted_graph_def,
                               partial(_set_profile_generation_mode, True))
       _rebuild_func()
 
-    # Run inference
-    #   - Builds TRT engines if self._need_trt_profiles is False
-    #   - Builds TRT optimization profiles if self._need_trt_profiles is True
+    # Run inference.
+    #   - Builds TRT engines if self._need_trt_profiles is False.
+    #   - Builds TRT optimization profiles if self._need_trt_profiles is True.
     inputs = []
     for inp in input_fn():
       inputs.append(inp)
       self._converted_func(*map(ops.convert_to_tensor, inp))
-
-    # Disable profile generation if needed
     if self._need_trt_profiles:
+      # Disable profile generation.
       self._for_each_trt_node(self._converted_graph_def,
                               partial(_set_profile_generation_mode, False))
       _rebuild_func()

@@ -292,13 +292,15 @@ Status ValidateTensorProperties(const string& producer_node_type,
   }
 
   if (validation_only) return Status::OK();
-  // Following are validations at runtime.
+  // Following are validations for creating TRT network and engine.
 
-  for (int d = first_trt_dim; d < shape.dims(); ++d) {
-    if (shape.dim_size(d) < 0) {
-      return errors::InvalidArgument(
-          "Input tensor with shape ", shape.DebugString(),
-          " has an unknown non-batch dimension at dim ", d);
+  if (use_implicit_batch) {
+    for (int d = first_trt_dim; d < shape.dims(); ++d) {
+      if (shape.dim_size(d) < 0) {
+        return errors::InvalidArgument(
+            "Input tensor with shape ", shape.DebugString(),
+            " has an unknown non-batch dimension at dim ", d);
+      }
     }
   }
   return Status::OK();

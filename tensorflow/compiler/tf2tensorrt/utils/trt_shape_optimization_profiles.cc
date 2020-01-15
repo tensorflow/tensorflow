@@ -44,7 +44,7 @@ void TrtShapeOptimizationProfile::initProfiles() {
     // We set min=opt=max.
     OptimizationProfileConfig profConfig {dimvec, dimvec, dimvec};
     profiles_.push_back(std::move(profConfig));
-    VLOG(1) << "Created profile " << profConfig.DebugString();
+    VLOG(1) << "Created profile " << profiles_.back().DebugString();
   }
 }
 

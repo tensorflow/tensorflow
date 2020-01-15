@@ -40,6 +40,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -170,12 +171,20 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     if not is_tensorrt_enabled():
       return
 
-    def graph_fn(x):
+    def _graph_fn(x):
       x = gen_math_ops.log(x)
-      return gen_math_ops.exp(x)
-    root = tracking.AutoTrackable()
-    input_specs=[tensor_spec.TensorSpec([None, None], dtypes.float32, "input_0")]
-    root.run = def_function.function(graph_fn, input_signature=input_specs)
+      return x
+
+    def _model():
+      class SimpleModel(tracking.AutoTrackable):
+        @def_function.function(input_signature=[
+            tensor_spec.TensorSpec(shape=[None, None], dtype=dtypes.float32),
+        ])
+        def run(self, inp):
+          return _graph_fn(inp)
+      return SimpleModel()
+
+    root = _model()
     input_saved_model_dir = "test_profiles_saved_model_dir"
     save.save(root, input_saved_model_dir,
               {signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY: root.run})

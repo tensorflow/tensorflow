@@ -134,6 +134,15 @@ string DebugString(const std::vector<TensorShape>& shapes) {
   StrAppend(&out, "]");
   return out;
 }
+
+string DebugString(const std::vector<PartialTensorShape>& shapes) {
+  string out = "[";
+  for (auto shape: shapes) {
+    StrAppend(&out, shape.DebugString());
+  }
+  StrAppend(&out, "]");
+  return out;
+}
 #endif
 
 string GetLinkedTensorRTVersion() {
