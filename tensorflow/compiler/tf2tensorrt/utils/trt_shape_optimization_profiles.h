@@ -155,7 +155,7 @@ class TrtShapeOptimizationProfile {
   // Parameters:
   // engine - cuda engine
   // exec_context - we append one execution context for each element in profile_
-  Status createExcecutionContexts(
+  Status createExecutionContexts(
     nvinfer1::ICudaEngine* engine,
     std::vector<TrtUniquePtrType<nvinfer1::IExecutionContext>>& exec_context);
 

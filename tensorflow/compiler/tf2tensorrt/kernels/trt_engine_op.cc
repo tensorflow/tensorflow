@@ -891,7 +891,7 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
       return std::pair<EngineContext*, int>(&empty_context, 0);
     }
     std::vector<TrtUniquePtrType<nvinfer1::IExecutionContext>> exec_context;
-    cache_res->profiles_.createExcecutionContexts(engine.get(), exec_context);
+    cache_res->profiles_.createExecutionContexts(engine.get(), exec_context);
     cache.emplace(input_shapes,
                   absl::make_unique<EngineContext>(std::move(engine),
                                                    std::move(exec_context)));

@@ -132,7 +132,7 @@ TEST_F(TrtShapeOptimizationProfileTest, Static) {
       builder_->buildEngineWithConfig(*network_.get(), *builder_config_.get()));
   EXPECT_NE(nullptr, engine);
 
-  profile.createExcecutionContexts(engine.get(), exec_context_);
+  profile.createExecutionContexts(engine.get(), exec_context_);
   // A single execution context should be created for a graph with static input
   ASSERT_EQ(exec_context_.size(), 1);
   EXPECT_NE(nullptr, exec_context_[0]);
@@ -168,7 +168,7 @@ TEST_F(TrtShapeOptimizationProfileTest, Dynamic) {
       builder_->buildEngineWithConfig(*network_.get(), *builder_config_.get()));
   ASSERT_NE(nullptr, engine);
 
-  profile.createExcecutionContexts(engine.get(), exec_context_);
+  profile.createExecutionContexts(engine.get(), exec_context_);
 
   // Each profile has an associated execution context
   // This test depends on the profile creation strategy:
@@ -222,7 +222,7 @@ TEST_F(TrtShapeOptimizationProfileTest, Switch) {
       builder_->buildEngineWithConfig(*network_.get(), *builder_config_.get()));
   ASSERT_NE(nullptr, engine);
 
-  // Instead of calling profile.createExcecutionContexts, we just create a
+  // Instead of calling profile.createExecutionContexts, we just create a
   // single context and switch profiles there
   TrtUniquePtrType<nvinfer1::IExecutionContext> ctx(
       engine->createExecutionContext());

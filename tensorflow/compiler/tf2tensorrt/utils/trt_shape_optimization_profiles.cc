@@ -114,7 +114,7 @@ int TrtShapeOptimizationProfile::getProfileNumber(std::vector<TensorShape> shape
   return -1;
 }
 
-Status TrtShapeOptimizationProfile::createExcecutionContexts(
+Status TrtShapeOptimizationProfile::createExecutionContexts(
   nvinfer1::ICudaEngine* engine,
   std::vector<TrtUniquePtrType<nvinfer1::IExecutionContext>>& exec_context) {
   int i=0;
