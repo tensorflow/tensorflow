@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/c/tf_tensor.h"
 
+#include <memory>
+
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/c/tf_tensor_internal.h"
