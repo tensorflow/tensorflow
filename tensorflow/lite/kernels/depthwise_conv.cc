@@ -308,8 +308,8 @@ TfLiteStatus EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
   return kTfLiteOk;
 }
 
-template <KernelType kernel_type>
-TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
+template <KernelType kernel_type, TfLiteType input_type>
+TfLiteStatus EvalImpl(TfLiteContext* context, TfLiteNode* node) {
   auto* params =
       reinterpret_cast<TfLiteDepthwiseConvParams*>(node->builtin_data);
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
@@ -319,29 +319,43 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* filter = GetInput(context, node, kFilterTensor);
   const TfLiteTensor* bias =
       (NumInputs(node) == 3) ? GetInput(context, node, kBiasTensor) : nullptr;
+  TFLITE_DCHECK_EQ(input_type, input->type);
 
-  // TODO(aselle): Consider whether float conv and quantized conv should be
-  // separate ops to avoid dispatch overhead here.
-  switch (input->type) {  // Already know in/out types are same.
+  switch (input_type) {  // Already know in/out types are same.
     case kTfLiteFloat32:
-      TF_LITE_ENSURE_STATUS(EvalFloat<kernel_type>(
-          context, node, params, data, input, filter, bias, output));
+      return EvalFloat<kernel_type>(context, node, params, data, input, filter,
+                                    bias, output);
       break;
     case kTfLiteUInt8:
-      TF_LITE_ENSURE_STATUS(EvalQuantized<kernel_type>(
-          context, node, params, data, input, filter, bias, output));
+      return EvalQuantized<kernel_type>(context, node, params, data, input,
+                                        filter, bias, output);
       break;
-    case kTfLiteInt8: {
-      TF_LITE_ENSURE_STATUS(EvalQuantizedPerChannel<kernel_type>(
-          context, node, params, data, input, filter, bias, output));
-      break;
-    }
+    case kTfLiteInt8:
+      return EvalQuantizedPerChannel<kernel_type>(context, node, params, data,
+                                                  input, filter, bias, output);
     default:
       context->ReportError(context, "Type %d not currently supported.",
                            input->type);
       return kTfLiteError;
   }
-  return kTfLiteOk;
+}
+
+template <KernelType kernel_type>
+TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+
+  switch (input->type) {  // Already know in/out types are same.
+    case kTfLiteFloat32:
+      return EvalImpl<kernel_type, kTfLiteFloat32>(context, node);
+    case kTfLiteUInt8:
+      return EvalImpl<kernel_type, kTfLiteUInt8>(context, node);
+    case kTfLiteInt8:
+      return EvalImpl<kernel_type, kTfLiteInt8>(context, node);
+    default:
+      context->ReportError(context, "Type %d not currently supported.",
+                           input->type);
+      return kTfLiteError;
+  }
 }
 
 }  // namespace depthwise_conv
@@ -367,11 +381,29 @@ TfLiteRegistration* Register_DEPTHWISE_CONVOLUTION_NEON_OPT() {
   return &r;
 }
 
+TfLiteRegistration* Register_DEPTHWISE_CONVOLUTION_NEON_OPT_UINT8() {
+  static TfLiteRegistration r = {
+      depthwise_conv::Init, depthwise_conv::Free, depthwise_conv::Prepare,
+      depthwise_conv::EvalImpl<depthwise_conv::kNeonOptimized, kTfLiteUInt8>};
+  return &r;
+}
+
 TfLiteRegistration* Register_DEPTHWISE_CONV_2D() {
 #ifdef USE_NEON
   return Register_DEPTHWISE_CONVOLUTION_NEON_OPT();
 #else
   return Register_DEPTHWISE_CONVOLUTION_GENERIC_OPT();
+#endif
+}
+
+// Warning: Clients using this variant are responsible for ensuring that their
+// models only need the UINT8 type. TFLite's op registration mechanism doesn't
+// yet allow for more nuanced registration mechanisms.
+TfLiteRegistration* Register_DEPTHWISE_CONV_2D_UINT8() {
+#ifdef USE_NEON
+  return Register_DEPTHWISE_CONVOLUTION_NEON_OPT_UINT8();
+#else
+  return Register_DEPTHWISE_CONV_2D();
 #endif
 }
 
