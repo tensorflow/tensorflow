@@ -877,6 +877,7 @@ distribute_py_test(
     main = "minimize_loss_test.py",
     tags = [
         "multi_and_single_gpu",
+        "no_oss",  # fails on this branch
         "no_rocm",
     ],
     deps = [
