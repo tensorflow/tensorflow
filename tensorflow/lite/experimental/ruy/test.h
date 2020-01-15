@@ -1337,30 +1337,6 @@ void AnalyzeTestError(const TestSetType& test_set, int first_bad_result_index,
   }
 }
 
-template <typename LhsScalar, typename RhsScalar, typename SpecType>
-void ComputeAccumRangeBeforeMultiplier(
-    const Matrix<LhsScalar>& lhs, const Matrix<RhsScalar>& rhs,
-    const SpecType& spec, typename SpecType::AccumScalar* accum_min,
-    typename SpecType::AccumScalar* accum_max) {
-  Context context;
-  context.SetRuntimeEnabledPaths(Path::kReference);
-  using AccumScalar = typename SpecType::AccumScalar;
-  Matrix<AccumScalar> dst_before_multiplier;
-  MakeSimpleLayout(lhs.layout.rows, rhs.layout.cols, Order::kColMajor,
-                   &dst_before_multiplier.layout);
-  const int size = FlatSize(dst_before_multiplier.layout);
-  std::vector<AccumScalar> dst_before_multiplier_data(size);
-  dst_before_multiplier.data = dst_before_multiplier_data.data();
-  ruy::BasicSpec<AccumScalar, AccumScalar> spec_before_multiplier;
-  spec_before_multiplier.bias = spec.bias;
-  Mul<Path::kReference>(lhs, rhs, spec_before_multiplier, &context,
-                        &dst_before_multiplier);
-  *accum_min = *std::min_element(dst_before_multiplier_data.begin(),
-                                 dst_before_multiplier_data.end());
-  *accum_max = *std::max_element(dst_before_multiplier_data.begin(),
-                                 dst_before_multiplier_data.end());
-}
-
 template <typename TestSetType>
 void ComputeReasonableMultiplier(
     const Matrix<typename TestSetType::LhsScalar>& lhs,
