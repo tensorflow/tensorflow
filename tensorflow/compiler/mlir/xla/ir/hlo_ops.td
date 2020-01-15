@@ -83,7 +83,7 @@ def HLO_PredIntOrFpTensor : TensorOf<[HLO_Pred, HLO_Int, AnyFloat]>;
 // XLA nullary op definitions.
 //===----------------------------------------------------------------------===//
 
-def HLO_ConstOp : BASE_HLO_ConstOp, HLO_Op<"constant", [NoSideEffect]> {
+def HLO_ConstOp : HLO_Op<"constant", [NoSideEffect]>, BASE_HLO_ConstOp {
   let arguments = (ins
     ElementsAttr:$value
   );
@@ -105,7 +105,7 @@ def HLO_ConstOp : BASE_HLO_ConstOp, HLO_Op<"constant", [NoSideEffect]> {
   let hasCustomHLOConverter = 1;
 }
 
-def HLO_IotaOp : BASE_HLO_IotaOp, HLO_Op<"iota", [NoSideEffect]> {
+def HLO_IotaOp : HLO_Op<"iota", [NoSideEffect]>, BASE_HLO_IotaOp {
   let arguments = (ins I64Attr:$iota_dimension);
 
   let results = (outs HLO_Tensor:$output);
@@ -800,14 +800,13 @@ def HLO_ConcatenateOp : HLO_Op<"concatenate",
 
 }
 
-def HLO_CrossReplicaSumOp : HLO_Op<"cross-replica-sum",
-    [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_CrossReplicaSumOp {
+def HLO_CollectivePermuteOp: HLO_Op<"collective_permute",
+    [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_CollectivePermuteOp {
 
   let arguments = (ins
     HLO_Tensor:$operand,
-    I64ElementsAttr:$replica_groups
+    I64ElementsAttr:$source_target_pairs
   );
-
   let results = (outs HLO_Tensor);
 }
 
@@ -849,25 +848,19 @@ def HLO_ConvOp : HLO_Op<"conv", [NoSideEffect]>, BASE_HLO_ConvOp {
 
 }
 
-def HLO_CollectivePermuteOp: HLO_Op<"collective_permute",
-    [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_CollectivePermuteOp {
-
-  let arguments = (ins
-    HLO_Tensor:$operand,
-    I64ElementsAttr:$source_target_pairs
-  );
+def HLO_CopyOp: HLO_Op<"copy", [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_CopyOp {
+  let arguments = (ins HLO_Tensor);
   let results = (outs HLO_Tensor);
 }
 
+def HLO_CrossReplicaSumOp : HLO_Op<"cross-replica-sum",
+    [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_CrossReplicaSumOp {
 
-def HLO_CopyOp: HLO_Op<"copy", [NoSideEffect, SameOperandsAndResultType]> {
-  string summary = "Copy operator";
+  let arguments = (ins
+    HLO_Tensor:$operand,
+    I64ElementsAttr:$replica_groups
+  );
 
-  string description = [{
-    Returns a copy of `operand`.
-  }];
-
-  let arguments = (ins HLO_Tensor);
   let results = (outs HLO_Tensor);
 }
 
