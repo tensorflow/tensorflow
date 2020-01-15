@@ -111,6 +111,7 @@ class TrtPrecisionMode(object):
 DEFAULT_TRT_MAX_WORKSPACE_SIZE_BYTES = 1 << 30
 
 
+@tf_export("experimental.tensorrt.ConversionParams", v1=[])
 class TrtConversionParams(object):
   """ A class to encapsulate parameters that are used for TF-TRT conversion."""
 
@@ -888,7 +889,7 @@ class TrtGraphConverterV2(object):
   1. FP32/FP16 precision
 
      ```python
-     params = DEFAULT_TRT_CONVERSION_PARAMS._replace(
+     params = tf.experimental.tensorrt.ConversionParams(
          precision_mode='FP16')
      converter = tf.experimental.tensorrt.Converter(
          input_saved_model_dir="my_dir", conversion_params=params)
@@ -904,7 +905,7 @@ class TrtGraphConverterV2(object):
   2. FP32/FP16 precision with pre-built engines
 
      ```python
-     params = DEFAULT_TRT_CONVERSION_PARAMS._replace(
+     params = tf.experimental.tensorrt.ConversionParams(
          precision_mode='FP16',
          # Set this to a large enough number so it can cache all the engines.
          maximum_cached_engines=16)
@@ -936,7 +937,7 @@ class TrtGraphConverterV2(object):
   3. INT8 precision and calibration with pre-built engines
 
      ```python
-     params = DEFAULT_TRT_CONVERSION_PARAMS._replace(
+     params = tf.experimental.tensorrt.ConversionParams(
          precision_mode='INT8',
          # Currently only one INT8 engine is supported in this mode.
          maximum_cached_engines=1,
@@ -974,7 +975,7 @@ class TrtGraphConverterV2(object):
                input_saved_model_dir=None,
                input_saved_model_tags=None,
                input_saved_model_signature_key=None,
-               conversion_params=DEFAULT_TRT_CONVERSION_PARAMS):
+               conversion_params=TrtConversionParams()):
     """Initialize the converter.
 
     Args:
