@@ -1460,16 +1460,21 @@ void MakeSpecClampFields(Spec* spec) {
   using AccumScalar = typename Spec::AccumScalar;
   using DstScalar = typename Spec::DstScalar;
 
-  if (getenv("BENCHMARK_ONLY_MATMUL")) {
-    spec->clamp_min = -std::numeric_limits<DstScalar>::infinity();
-    spec->clamp_max = std::numeric_limits<DstScalar>::infinity();
-    return;
-  }
-
   if (std::is_same<AccumScalar, std::int32_t>::value) {
     // Returning raw accumulators, clamping is not supported.
     spec->clamp_min = std::numeric_limits<DstScalar>::lowest();
     spec->clamp_max = std::numeric_limits<DstScalar>::max();
+    return;
+  }
+
+  if (getenv("BENCHMARK_ONLY_MATMUL")) {
+    if (std::is_floating_point<DstScalar>::value) {
+      spec->clamp_min = -std::numeric_limits<DstScalar>::infinity();
+      spec->clamp_max = std::numeric_limits<DstScalar>::infinity();
+    } else {
+      spec->clamp_min = std::numeric_limits<DstScalar>::lowest();
+      spec->clamp_max = std::numeric_limits<DstScalar>::max();
+    }
     return;
   }
 
@@ -1507,8 +1512,8 @@ template <typename LhsScalar, typename RhsScalar, typename SpecType>
 void TestSet<LhsScalar, RhsScalar, SpecType>::MakeSpec() {
   RUY_CHECK_EQ(life_stage, LifeStage::kHasLhsRhs);
 
-  if (!getenv("BENCHMARK_ONLY_MATMUL") && !benchmark &&
-      (global_random_engine()() & 1)) {
+  if (!getenv("BENCHMARK_ONLY_MATMUL") &&
+      (benchmark || (global_random_engine()() & 1))) {
     MakeRandomVector(RandomRange::kBias, rows, &bias_data);
     spec.bias = bias_data.data();
   }
