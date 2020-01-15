@@ -94,7 +94,7 @@ class tstring {
   explicit tstring(const T& cord) : str_(string(cord)) {}
 #endif  // PLATFORM_GOOGLE
 
-  tstring(tstring&&) noexcept = default;
+  tstring(tstring&&) = default;
 
   ~tstring() = default;
 
@@ -138,7 +138,7 @@ class tstring {
     return *this;
   }
 
-  tstring& operator=(tstring&&) noexcept = default;
+  tstring& operator=(tstring&&) = default;
 
   bool operator<(const tstring& o) const { return str_ < o.str_; }
 
