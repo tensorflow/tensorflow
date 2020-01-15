@@ -14,7 +14,7 @@ ifneq ($(filter cmsis-nn,$(ALL_TAGS)),)
     CMSIS_PATH = $(MAKEFILE_DIR)/downloads/cmsis/
 
     # Include CMSIS-NN files
-    THIRD_PARTY_CC_SRCS := \
+    THIRD_PARTY_CC_SRCS += \
       $(call recursive_find,$(CMSIS_PATH)/CMSIS/NN/Source,*.c)
 
     THIRD_PARTY_CC_HDRS += \
