@@ -1838,7 +1838,7 @@ namespace {
 bool MayPreventVectorization(const HloInstruction& hlo) {
   if (hlo.opcode() == HloOpcode::kFusion) {
     return absl::c_any_of(hlo.fused_instructions_computation()->instructions(),
-                          [&](const HloInstruction* instr) {
+                          [](const HloInstruction* instr) {
                             switch (instr->opcode()) {
                               case HloOpcode::kReduce:
                               case HloOpcode::kReduceWindow:
@@ -1856,7 +1856,7 @@ bool MayPreventVectorization(const HloInstruction& hlo) {
   } else if (hlo.IsElementwise()) {
     // Unfused elementwise operations are usually memory bound, unroll them.
     switch (hlo.opcode()) {
-        // The following elementwise operations implementation contain branches.
+        // The following elementwise operation implementations contain branches.
         // LLVM vectorizer doesn't work in that case.
         // The unrolled code is faster when it isn't vectorized.
       case HloOpcode::kSin:
