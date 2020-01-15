@@ -30,6 +30,16 @@ func @fusion(%multiplier: memref<2x2xf32>, %summand_1: memref<2x2xf32>,
   "xla_lhlo.terminator"() : () -> ()
 }
 
+// CHECK-LABEL: func @copy
+func @copy(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
+  %tensor_operand = tensor_load %operand : memref<2x2xf32>
+  %tensor_result = "xla_hlo.copy"(%tensor_operand)
+      : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  // CHECK-NEXT: "xla_lhlo.copy"(%{{.*}}, %{{.*}})
+  tensor_store %tensor_result, %result : memref<2x2xf32>
+  return
+}
+
 // CHECK-LABEL: func @exp
 func @exp(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
   %tensor_operand = tensor_load %operand : memref<2x2xf32>
