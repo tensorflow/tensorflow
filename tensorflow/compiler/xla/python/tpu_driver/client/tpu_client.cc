@@ -34,14 +34,34 @@ limitations under the License.
 
 namespace xla {
 
+constexpr char kTpuPlatform[] = "tpu";
+
+TpuDevice::TpuDevice(int id, int host_id, const std::array<int, 3>& coords,
+                     int core_on_chip)
+    : xla::Device(id, /*local_device_state=*/nullptr, kTpuPlatform, host_id),
+      coords_(coords),
+      core_on_chip_(core_on_chip) {}
+
 std::string TpuDevice::DebugString() const {
-  return absl::StrCat("TPU_", id());
+  return absl::StrFormat("TPU_%i(host=%i,(%i,%i,%i,%i))", id(), host_id(),
+                         coords_[0], coords_[1], coords_[2], core_on_chip_);
 }
 
-static std::shared_ptr<Device> MakeDevice(const std::string& platform_name,
-                                          int id) {
-  CHECK_EQ(platform_name, "tpu");
-  return std::make_shared<TpuDevice>(id, /*local_device_state=*/nullptr, "tpu");
+xla::StatusOr<std::vector<std::shared_ptr<xla::Device>>>
+TpuDevice::GetTpuDevices(const tpu_driver::SystemInfo& system_info) {
+  std::vector<std::shared_ptr<Device>> devices;
+  for (const auto& chip : system_info.tpu_chip()) {
+    auto& coord = chip.chip_coord();
+    std::array<int, 3> coords_array = {coord.x(), coord.y(), coord.z()};
+    int host_id = chip.host_id();
+    for (const auto& core : chip.core()) {
+      auto device = std::make_shared<TpuDevice>(
+          core.id(), host_id, coords_array, core.core_on_chip_index());
+      devices.push_back(device);
+    }
+  }
+
+  return devices;
 }
 
 StatusOr<std::shared_ptr<PyTpuClient>> PyTpuClient::Get(
@@ -49,7 +69,6 @@ StatusOr<std::shared_ptr<PyTpuClient>> PyTpuClient::Get(
   tpu_driver::TpuDriverConfig driver_config;
   driver_config.set_worker(worker);
   auto client_status = tpu_driver::TpuDriverRegistry::Open(driver_config);
-
   if (!client_status.ok()) {
     return client_status.status();
   }
@@ -58,19 +77,13 @@ StatusOr<std::shared_ptr<PyTpuClient>> PyTpuClient::Get(
 
   tpu_driver::SystemInfo system_info;
   client->QuerySystemInfo(&system_info);
-  int num_cores =
-      system_info.tpu_chip_size() * system_info.tpu_chip(0).core_size();
 
-  std::vector<std::shared_ptr<Device>> devices;
-  CHECK_GE(num_cores, 1);
-  LOG(INFO) << "Creating " << num_cores << " TPU device(s).";
-  devices.reserve(num_cores);
-  for (int i = 0; i < num_cores; ++i) {
-    devices.push_back(MakeDevice("tpu", i));
-  }
+  TF_ASSIGN_OR_RETURN(std::vector<std::shared_ptr<Device>> devices,
+                      TpuDevice::GetTpuDevices(system_info));
 
-  return std::make_shared<PyTpuClient>("tpu", std::move(client),
-                                       std::move(devices), /*host_id=*/0);
+  return std::make_shared<PyTpuClient>(kTpuPlatform, std::move(client),
+                                       std::move(devices),
+                                       system_info.host_id());
 }
 
 PyTpuClient::PyTpuClient(std::string platform_name,
@@ -81,18 +94,21 @@ PyTpuClient::PyTpuClient(std::string platform_name,
       driver_(std::move(driver)),
       devices_(std::move(devices)),
       host_id_(host_id) {
-  local_devices_.resize(devices_.size());
   for (const std::shared_ptr<Device>& device : devices_) {
     CHECK(id_to_device_.insert({device->id(), device}).second)
         << "Duplicate device id: " << device->id();
 
-    if (device->id() != -1) {
-      int idx = device->id();
-      CHECK(local_devices_[idx] == nullptr) << idx;
-      CHECK_LT(idx, local_devices_.size());
-      local_devices_[idx] = device;
+    if (device->host_id() == host_id_) {
+      LOG(INFO) << "Detected local device, host-id: " << host_id_
+                << ". core-id: " << device->id();
+      local_devices_.push_back(device);
+    } else {
+      VLOG(2) << "Other devices, id: " << device->id();
     }
   }
+  CHECK_GE(local_devices_.size(), 1);
+  LOG(INFO) << "Creating " << local_devices_.size() << " TPU device(s).";
+
   for (int idx = 0; idx < local_devices_.size(); ++idx) {
     CHECK(local_devices_[idx] != nullptr) << idx;
   }
@@ -217,8 +233,8 @@ StatusOr<std::unique_ptr<PyTpuBuffer>> PyTpuBuffer::MakeTuple(
     std::shared_ptr<TpuSharedBuffer> child_device_buffer =
         child_buffer->DeviceBuffer();
     // Merge all definition events from all children, so that anyone using this
-    // tuple must wait for all its children to finish receiving transfers.
-    // This works recursively up a nested tuple tree as well.
+    // tuple must wait for all its children to finish receiving transfers. This
+    // works recursively up a nested tuple tree as well.
     for (std::shared_ptr<tpu_driver::Event> child_event :
          child_device_buffer->wait_for_use) {
       child_events.push_back(std::move(child_event));
