@@ -280,8 +280,8 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
     FunctionLibraryRuntime* lib = context->function_library();
     OP_REQUIRES_OK(context,
                    ConstructFunctionHandle(lib, context->device()->name()));
-    OP_REQUIRES_OK(
-        context, FunctionDefToGraphDef(func_handle_, lib, &segment_graph_def_));
+    OP_REQUIRES_OK(context,
+                   FunctionDefToGraphDef(func_handle_, lib, &segment_graph_def_));
   }
   // TODO(laigd): calibration_data is used in TF v1.x and we keep it only for
   // backward compatibility reasons. Remove it once all known users switch to
