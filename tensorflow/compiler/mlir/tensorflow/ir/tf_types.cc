@@ -23,7 +23,7 @@ namespace {
 // Returns the shape of the given value if it's ranked; returns llvm::None
 // otherwise.
 llvm::Optional<llvm::ArrayRef<int64_t>> GetShape(mlir::Value value) {
-  auto shaped_type = value->getType().cast<mlir::ShapedType>();
+  auto shaped_type = value.getType().cast<mlir::ShapedType>();
   if (shaped_type.hasRank()) return shaped_type.getShape();
   return llvm::None;
 }

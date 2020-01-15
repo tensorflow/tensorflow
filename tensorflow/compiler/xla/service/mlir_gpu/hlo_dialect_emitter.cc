@@ -56,6 +56,8 @@ StatusOr<Value> InsertMlirOp(HloOpcode opcode, OpBuilder func_builder,
       return {func_builder.create<hlo::AndOp>(loc, rets, args, attrs)};
     case HloOpcode::kCeil:
       return {func_builder.create<hlo::CeilOp>(loc, rets, args, attrs)};
+    case HloOpcode::kCopy:
+      return {func_builder.create<hlo::CopyOp>(loc, rets, args, attrs)};
     case HloOpcode::kCos:
       return {func_builder.create<hlo::CosOp>(loc, rets, args, attrs)};
     case HloOpcode::kDivide:

@@ -1238,6 +1238,72 @@ TEST_P(MemorySpaceAssignmentTest, WhileAllocationBug) {
   }
 }
 
+TEST_P(MemorySpaceAssignmentTest, ControlPredecessorsBug) {
+  // Having control_predecessors on an HLO was preventing us from DCEing an op
+  // that doesn't have any users (tuple.1). The scheduler assumes the graph is
+  // fully DCEed, which causes some instructions not to be scheduled.
+  absl::string_view hlo_string = R"(
+  HloModule sort.16, is_scheduled=true
+
+  ENTRY %sort.16 (param.0.1: s32[1], param.1.2: f32[1], param.2.3: u32[1], param.3.4: s32[1]) -> (s32[1], f32[1], u32[1], s32[1]) {
+    %param.3.4 = s32[1]{0:T(128)} parameter(3)
+    %param.2.3 = u32[1]{0:T(128)} parameter(2)
+    %param.1.2 = f32[1]{0:T(128)} parameter(1)
+    %param.0.1 = s32[1]{0:T(128)} parameter(0)
+    %tuple.1 = (s32[1]{0:T(128)}, f32[1]{0:T(128)}, u32[1]{0:T(128)}, s32[1]{0:T(128)}) tuple(s32[1]{0:T(128)} %param.0.1, f32[1]{0:T(128)} %param.1.2, u32[1]{0:T(128)} %param.2.3, s32[1]{0:T(128)} %param.3.4), control-predecessors={%param.0.1}
+    %get-tuple-element.4 = s32[1]{0:T(128)} get-tuple-element((s32[1]{0:T(128)}, f32[1]{0:T(128)}, u32[1]{0:T(128)}, s32[1]{0:T(128)}) %tuple.1), index=0
+    %get-tuple-element.5 = f32[1]{0:T(128)} get-tuple-element((s32[1]{0:T(128)}, f32[1]{0:T(128)}, u32[1]{0:T(128)}, s32[1]{0:T(128)}) %tuple.1), index=1
+    %get-tuple-element.6 = u32[1]{0:T(128)} get-tuple-element((s32[1]{0:T(128)}, f32[1]{0:T(128)}, u32[1]{0:T(128)}, s32[1]{0:T(128)}) %tuple.1), index=2
+    %get-tuple-element.7 = s32[1]{0:T(128)} get-tuple-element((s32[1]{0:T(128)}, f32[1]{0:T(128)}, u32[1]{0:T(128)}, s32[1]{0:T(128)}) %tuple.1), index=3
+    %copy.4 = s32[1]{0:T(128)} copy(s32[1]{0:T(128)} %get-tuple-element.4)
+    %copy.5 = f32[1]{0:T(128)} copy(f32[1]{0:T(128)} %get-tuple-element.5)
+    %copy.6 = u32[1]{0:T(128)} copy(u32[1]{0:T(128)} %get-tuple-element.6)
+    %copy.7 = s32[1]{0:T(128)} copy(s32[1]{0:T(128)} %get-tuple-element.7)
+    ROOT %tuple.2 = (s32[1]{0:T(128)}, f32[1]{0:T(128)}, u32[1]{0:T(128)}, s32[1]{0:T(128)}) tuple(s32[1]{0:T(128)} %copy.4, f32[1]{0:T(128)} %copy.5, u32[1]{0:T(128)} %copy.6, s32[1]{0:T(128)} %copy.7)
+}
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+}
+
+TEST_P(MemorySpaceAssignmentTest,
+       RequestIdentifierShouldNotBeAllocatedInAlternateMem) {
+  // Ensure that request identifier returned by Send/Recv HLOs are not allocated
+  // in the alternate memory.
+  absl::string_view hlo_string = R"(
+  HloModule SendRecv, is_scheduled=true
+
+  ENTRY %AddDependency (p: f32[3]) -> f32[3] {
+    %p = f32[3]{0} parameter(0)
+    %after-all = token[] after-all()
+    %recv.4 = (f32[3]{0}, u32[], token[]) recv(token[] %after-all), channel_id=7
+    %recv-done.4 = (f32[3]{0}, token[]) recv-done((f32[3]{0}, u32[], token[]) %recv.4), channel_id=7
+    %token.1 = token[] get-tuple-element((f32[3]{0}, token[]) %recv-done.4), index=1
+    %data = f32[3]{0} get-tuple-element((f32[3]{0}, token[]) %recv-done.4), index=0
+    %send = (f32[3]{0}, u32[], token[]) send(f32[3]{0} %data, token[] %token.1), channel_id=2
+    %send-done = token[] send-done((f32[3]{0}, u32[], token[]) %send), channel_id=2
+    ROOT %add = f32[3]{0} add(f32[3]{0} %p, f32[3]{0} %data)
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+
+  for (const HloInstruction* instruction :
+       module->entry_computation()->instructions()) {
+    if (instruction->opcode() == HloOpcode::kSend ||
+        instruction->opcode() == HloOpcode::kRecv) {
+      const Shape& request_identifier_shape =
+          ShapeUtil::GetSubshape(instruction->shape(), {1});
+      EXPECT_NE(request_identifier_shape.layout().memory_space(),
+                kAlternateMemorySpace);
+    }
+  }
+}
+
 TEST_P(MemorySpaceAssignmentTest, LastUseOpt) {
   // Test that checks the last use optimization. It uses two buffers that should
   // be placed in alternate memory.

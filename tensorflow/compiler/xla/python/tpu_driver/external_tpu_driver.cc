@@ -27,6 +27,8 @@
 namespace tpu_driver {
 namespace {
 
+constexpr char kExternalProtocol[] = "external://";
+
 ::TpuAllocationShape GetTpuAllocationShape(const xla::ShapeProto& shape) {
   ::TpuAllocationShape shape_;
   shape_.size = shape.ByteSizeLong();
@@ -453,12 +455,12 @@ class ExternalTpuDriver : public TpuDriver {
 
 xla::StatusOr<std::unique_ptr<TpuDriver>> RegisterExternalTpuDriver(
     const TpuDriverConfig& config) {
-  std::string shared_lib = config.worker().substr(strlen("external://"));
+  std::string shared_lib = config.worker().substr(strlen(kExternalProtocol));
   return xla::StatusOr<std::unique_ptr<TpuDriver>>(
       absl::make_unique<ExternalTpuDriver>(shared_lib));
 }
 
-REGISTER_TPU_DRIVER("external://", RegisterExternalTpuDriver);
+REGISTER_TPU_DRIVER(kExternalProtocol, RegisterExternalTpuDriver);
 
 }  // namespace
 }  // namespace tpu_driver

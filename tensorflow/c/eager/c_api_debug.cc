@@ -54,7 +54,7 @@ extern "C" {
 
 TF_CAPI_EXPORT extern TFE_TensorDebugInfo* TFE_TensorHandleTensorDebugInfo(
     TFE_TensorHandle* h, TF_Status* status) {
-  return h->handle.TensorDebugInfo(&status->status);
+  return h->handle->TensorDebugInfo(&status->status);
 }
 
 TFE_TensorDebugInfo* tensorflow::TensorHandleInterface::TensorDebugInfo(

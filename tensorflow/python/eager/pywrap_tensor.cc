@@ -90,7 +90,8 @@ TFE_TensorHandle* NumpyToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj) {
                         .c_str());
     return nullptr;
   }
-  return new TFE_TensorHandle{tensorflow::TensorHandleInterface(handle)};
+  return new TFE_TensorHandle{
+      std::make_unique<tensorflow::TensorHandleInterface>(handle)};
 }
 
 // Convert a TFE_TensorHandle to a Python numpy.ndarray object.

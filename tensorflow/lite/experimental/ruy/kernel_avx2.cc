@@ -16,11 +16,11 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 
-#include "profiling/instrumentation.h"
 #include "tensorflow/lite/experimental/ruy/check_macros.h"
 #include "tensorflow/lite/experimental/ruy/kernel.h"
 #include "tensorflow/lite/experimental/ruy/opt_set.h"
 #include "tensorflow/lite/experimental/ruy/platform.h"
+#include "tensorflow/lite/experimental/ruy/profiler/instrumentation.h"
 
 #if RUY_PLATFORM(AVX2) && RUY_OPT_ENABLED(RUY_OPT_ASM)
 #include <immintrin.h>  // IWYU pragma: keep
@@ -355,8 +355,7 @@ inline void mm256_n_storeu_ps(float* dst, int residual_rows, const __m256 v) {
 }  // namespace
 
 void Kernel8bitAvx2(const KernelParams8bit<8, 8>& params) {
-  gemmlowp::ScopedProfilingLabel label("Kernel kAvx2 8-bit");
-
+  profiler::ScopeLabel label("Kernel kAvx2 8-bit");
   const std::int8_t splitter_idx_data[32] = {
       0, 1, 4, 5, 8,  9,  12, 13,  //
       2, 3, 6, 7, 10, 11, 14, 15,  //
@@ -1151,7 +1150,7 @@ void Kernel8bitAvx2(const KernelParams8bit<8, 8>& params) {
 }  // NOLINT(readability/fn_size)
 
 void Kernel8bitAvx2SingleCol(const KernelParams8bit<8, 8>& params) {
-  gemmlowp::ScopedProfilingLabel label("Kernel kAvx2 8-bit GEMV");
+  profiler::ScopeLabel label("Kernel kAvx2 8-bit GEMV");
 
   RUY_DCHECK_EQ(params.dst_cols, 1);
   RUY_DCHECK_EQ(params.last_col, 0);
@@ -1419,7 +1418,7 @@ void Kernel8bitAvx2SingleCol(const KernelParams8bit<8, 8>& params) {
 }  // NOLINT(readability/fn_size)
 
 void KernelFloatAvx2(const KernelParamsFloat<8, 8>& params) {
-  gemmlowp::ScopedProfilingLabel label("Kernel kAvx2 float");
+  profiler::ScopeLabel label("Kernel kAvx2 float");
 
   // As parameters are defined, we need to scale by sizeof(float).
   const std::int64_t lhs_stride = params.lhs_stride >> 2;
@@ -1556,7 +1555,7 @@ void KernelFloatAvx2(const KernelParamsFloat<8, 8>& params) {
 }
 
 void KernelFloatAvx2SingleCol(const KernelParamsFloat<8, 8>& params) {
-  gemmlowp::ScopedProfilingLabel label("Kernel kAvx2 float GEMV");
+  profiler::ScopeLabel label("Kernel kAvx2 float GEMV");
 
   RUY_DCHECK_EQ(params.dst_cols, 1);
   RUY_DCHECK_EQ(params.last_col, 0);

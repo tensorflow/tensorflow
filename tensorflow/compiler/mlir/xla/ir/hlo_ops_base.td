@@ -849,6 +849,24 @@ class BASE_HLO_ConcatenateOp {
    }];
 }
 
+class BASE_HLO_ConvOp {
+  string summary = "Convolution operator";
+
+  string description = [{
+    Computes a convolution of the kind used in neural networks.
+
+    See https://www.tensorflow.org/xla/operation_semantics#conv_convolution.
+  }];
+}
+
+class BASE_HLO_CopyOp {
+  string summary = "Copy operator";
+
+  string description = [{
+    Returns a copy of `operand`.
+  }];
+}
+
 class BASE_HLO_CrossReplicaSumOp {
    string summary = "Sums input across replicated instances.";
 
@@ -865,15 +883,6 @@ class BASE_HLO_CrossReplicaSumOp {
    }];
 }
 
-class BASE_HLO_ConvOp {
-  string summary = "Convolution operator";
-
-  string description = [{
-    Computes a convolution of the kind used in neural networks.
-
-    See https://www.tensorflow.org/xla/operation_semantics#conv_convolution.
-  }];
-}
 
 class BASE_HLO_CustomCallOp {
   string summary = "CustomCall operator";

@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/lib/monitoring/sampler.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/profiler/rpc/client/capture_profile.h"
 #include "tensorflow/core/profiler/rpc/profiler_server.h"
@@ -41,7 +42,9 @@ void TFE_OpReset(TFE_Context* ctx, const char* op_or_function_name,
 }
 
 void TFE_OpConsumeInput(TFE_Op* op, TFE_TensorHandle* h, TF_Status* status) {
-  op->operation.ConsumeInput(h->handle.Handle());
+  op->operation.ConsumeInput(
+      tensorflow::down_cast<tensorflow::TensorHandleInterface*>(h->handle.get())
+          ->Handle());
 }
 
 TFE_Profiler* TFE_NewProfiler() { return new TFE_Profiler(); }

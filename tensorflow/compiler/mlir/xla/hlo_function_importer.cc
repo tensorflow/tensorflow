@@ -658,7 +658,6 @@ StatusOr<mlir::Type> HloFunctionImporter::ConvertType(const Shape& shape) {
     return mlir::xla_hlo::TokenType::get(builder_->getContext());
   }
   if (shape.IsTuple()) {
-    mlir::Type mlir_type;
     llvm::SmallVector<mlir::Type, 4> contents;
     contents.reserve(shape.tuple_shapes_size());
     for (const auto& subtype : shape.tuple_shapes()) {

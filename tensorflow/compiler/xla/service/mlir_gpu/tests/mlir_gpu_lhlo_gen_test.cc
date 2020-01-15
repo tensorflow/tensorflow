@@ -84,6 +84,21 @@ ENTRY %Compare (x: f32[2,2], y: f32[2,2]) -> pred[2,2] {
 )");
 }
 
+TEST_F(LhloGenTest, Copy) {
+  CompileAndVerifyIr(R"(
+HloModule Copy
+
+ENTRY %Copy (x: f32[2,2]) -> f32[2,2] {
+  %x = f32[2,2]{1,0} parameter(0)
+  ROOT %copy = f32[2,2]{1,0} copy(f32[2,2]{1,0} %x)
+})",
+                     R"(
+;CHECK: func @copy(%[[OPERAND:.*]]: [[TYPE:.*]], %[[RESULT:.*]]: [[TYPE]]) {
+;CHECK:   "xla_lhlo.copy"(%[[OPERAND]], %[[RESULT]]) : ([[TYPE]], [[TYPE]]) -> ()
+;CHECK: }
+      )");
+}
+
 TEST_F(LhloGenTest, Select) {
   CompileAndVerifyIr(R"(
 HloModule Select

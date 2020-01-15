@@ -97,6 +97,7 @@ class ParameterServerStrategy(distribute_lib.Strategy):
       experimental_distribute.train_distribute=strategy)
   estimator = tf.estimator.Estimator(config=run_config)
   tf.estimator.train_and_evaluate(estimator,...)
+  ```
   """
 
   def __init__(self, cluster_resolver=None):

@@ -175,13 +175,15 @@ class XPlaneVisitor {
   // TODO(jiesun): use single map look up for both StatMetadata and StatType.
   const XStatMetadata* GetStatMetadata(int64 stat_metadata_id) const;
   StatType GetStatType(int64 stat_metadata_id) const;
+  absl::optional<int64> GetStatMetadataId(StatType stat_type) const;
   const XEventMetadata* GetEventMetadata(int64 event_metadata_id) const;
 
  private:
   const XPlane* plane_;
 
   absl::flat_hash_map<int64, std::pair<const XStatMetadata*, StatType>>
-      stat_metadata_;
+      stat_metadata_id_map_;  // Map with key of stat metadata id.
+  absl::flat_hash_map<StatType, const XStatMetadata*> stat_type_map_;
 };
 
 }  // namespace profiler

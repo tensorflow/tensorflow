@@ -38,8 +38,21 @@ namespace xla {
 
 class TpuDevice : public Device {
  public:
-  using Device::Device;
+  TpuDevice(int id, int host_id, const std::array<int, 3>& coords,
+            int core_on_chip);
+
+  const std::array<int, 3>& coords() const { return coords_; }
+  int core_on_chip() const { return core_on_chip_; }
+
   std::string DebugString() const override;
+
+  static xla::StatusOr<std::vector<std::shared_ptr<xla::Device>>> GetTpuDevices(
+      const tpu_driver::SystemInfo& system_info);
+
+ private:
+  const std::array<int, 3> coords_;
+  // Index of the core of the same chip.
+  int core_on_chip_;
 };
 
 // Encapsulates the state of Python session with XLA.
@@ -50,7 +63,7 @@ class PyTpuClient {
   static StatusOr<std::shared_ptr<PyTpuClient>> Get(const std::string& worker);
 
   explicit PyTpuClient(std::string platform_name,
-                       std::unique_ptr<tpu_driver::TpuDriver> client,
+                       std::unique_ptr<tpu_driver::TpuDriver> driver,
                        std::vector<std::shared_ptr<Device>> devices,
                        int host_id);
   virtual ~PyTpuClient() = default;

@@ -37,8 +37,8 @@ limitations under the License.
 #include "third_party/eigen3/Eigen/Core"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "fixedpoint/fixedpoint.h"
-#include "profiling/instrumentation.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/experimental/ruy/profiler/instrumentation.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm_params.h"
@@ -277,7 +277,7 @@ inline void FullyConnected(
     const float* weights_data, const RuntimeShape& bias_shape,
     const float* optional_bias_data, const RuntimeShape& output_shape,
     float* output_data, CpuBackendContext* cpu_backend_context) {
-  gemmlowp::ScopedProfilingLabel label("FullyConnected");
+  ruy::profiler::ScopeLabel label("FullyConnected");
   const int dims_count = weights_shape.DimensionsCount();
   const int input_rows = weights_shape.Dims(dims_count - 1);
   cpu_backend_gemm::MatrixParams<float> rhs_params;
@@ -309,7 +309,7 @@ inline void FullyConnected(
     const uint8* filter_data, const RuntimeShape& bias_shape,
     const int32* bias_data, const RuntimeShape& output_shape,
     uint8* output_data, CpuBackendContext* cpu_backend_context) {
-  gemmlowp::ScopedProfilingLabel label("FullyConnected/8bit");
+  ruy::profiler::ScopeLabel label("FullyConnected/8bit");
   const int32 input_offset = params.input_offset;
   const int32 filter_offset = params.weights_offset;
   const int32 output_offset = params.output_offset;
@@ -368,7 +368,7 @@ inline void FullyConnected(
     const uint8* filter_data, const RuntimeShape& bias_shape,
     const int32* bias_data_int32, const RuntimeShape& output_shape,
     int16* output_data, CpuBackendContext* cpu_backend_context) {
-  gemmlowp::ScopedProfilingLabel label("FullyConnected/Uint8Int16");
+  ruy::profiler::ScopeLabel label("FullyConnected/Uint8Int16");
   const int32 input_offset = params.input_offset;
   const int32 filter_offset = params.weights_offset;
   const int32 output_offset = params.output_offset;
@@ -745,7 +745,7 @@ inline void ShuffledFullyConnected(
     const int32* bias_data, const RuntimeShape& output_shape,
     int16* output_data, uint8* shuffled_input_workspace_data,
     CpuBackendContext* cpu_backend_context) {
-  gemmlowp::ScopedProfilingLabel label("ShuffledFullyConnected/8bit");
+  ruy::profiler::ScopeLabel label("ShuffledFullyConnected/8bit");
   const int32 output_multiplier = params.output_multiplier;
   const int output_shift = params.output_shift;
   const int32 output_activation_min = params.quantized_activation_min;
@@ -917,7 +917,7 @@ inline void MeanImpl(const tflite::MeanParams& op_params,
                      int32 multiplier, int32 shift, int32 bias,
                      const RuntimeShape& output_shape, uint8_t* output_data,
                      int start_depth, int end_depth) {
-  gemmlowp::ScopedProfilingLabel label("Mean4D/Uint8/MeanImpl");
+  ruy::profiler::ScopeLabel label("Mean4D/Uint8/MeanImpl");
 
   // Current implementation only supports dimension equals 4 and simultaneous
   // reduction over width and height.
@@ -1075,7 +1075,7 @@ inline void Mean(const tflite::MeanParams& op_params,
                  float input_scale, const RuntimeShape& unextended_output_shape,
                  uint8_t* output_data, int32 output_zero_point,
                  float output_scale, CpuBackendContext* cpu_backend_context) {
-  gemmlowp::ScopedProfilingLabel label("Mean4D/Uint8");
+  ruy::profiler::ScopeLabel label("Mean4D/Uint8");
   // Current implementation only supports dimension equals 4 and simultaneous
   // reduction over width and height.
   TFLITE_CHECK_EQ(unextended_input_shape.DimensionsCount(), 4);
@@ -1153,7 +1153,7 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
   TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
 
-  gemmlowp::ScopedProfilingLabel label("Conv");
+  ruy::profiler::ScopeLabel label("Conv");
 
   // NB: the float 0.0f value is represented by all zero bytes.
   const uint8 float_zero_byte = 0x00;
@@ -1392,7 +1392,7 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
                  const int32* bias_data, const RuntimeShape& output_shape,
                  uint8* output_data, const RuntimeShape& im2col_shape,
                  uint8* im2col_data, CpuBackendContext* cpu_backend_context) {
-  gemmlowp::ScopedProfilingLabel label("Conv/8bit");
+  ruy::profiler::ScopeLabel label("Conv/8bit");
 
   const int stride_width = params.stride_width;
   const int stride_height = params.stride_height;
@@ -1496,7 +1496,7 @@ inline void DepthToSpace(const tflite::DepthToSpaceParams& op_params,
                          const T* input_data,
                          const RuntimeShape& unextended_output_shape,
                          T* output_data) {
-  gemmlowp::ScopedProfilingLabel label("DepthToSpace");
+  ruy::profiler::ScopeLabel label("DepthToSpace");
 
   TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
@@ -1537,7 +1537,7 @@ inline void SpaceToDepth(const tflite::SpaceToDepthParams& op_params,
                          const T* input_data,
                          const RuntimeShape& unextended_output_shape,
                          T* output_data) {
-  gemmlowp::ScopedProfilingLabel label("SpaceToDepth");
+  ruy::profiler::ScopeLabel label("SpaceToDepth");
 
   TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
@@ -1574,7 +1574,7 @@ inline void SpaceToDepth(const tflite::SpaceToDepthParams& op_params,
 
 inline void Relu(const RuntimeShape& input_shape, const float* input_data,
                  const RuntimeShape& output_shape, float* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Relu (not fused)");
+  ruy::profiler::ScopeLabel label("Relu (not fused)");
 
   const auto input = MapAsVector(input_data, input_shape);
   auto output = MapAsVector(output_data, output_shape);
@@ -1586,7 +1586,7 @@ inline void L2Normalization(const tflite::L2NormalizationParams& op_params,
                             const float* input_data,
                             const RuntimeShape& output_shape,
                             float* output_data) {
-  gemmlowp::ScopedProfilingLabel label("L2Normalization");
+  ruy::profiler::ScopeLabel label("L2Normalization");
   const int trailing_dim = input_shape.DimensionsCount() - 1;
   const int outer_size =
       MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
@@ -1612,7 +1612,7 @@ inline void L2Normalization(const tflite::L2NormalizationParams& op_params,
                             const uint8* input_data,
                             const RuntimeShape& output_shape,
                             uint8* output_data) {
-  gemmlowp::ScopedProfilingLabel label("L2Normalization/8bit");
+  ruy::profiler::ScopeLabel label("L2Normalization/8bit");
   const int trailing_dim = input_shape.DimensionsCount() - 1;
   const int depth =
       MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
@@ -1701,7 +1701,7 @@ inline void Add(const ArithmeticParams& params,
                 const RuntimeShape& input1_shape, const float* input1_data,
                 const RuntimeShape& input2_shape, const float* input2_data,
                 const RuntimeShape& output_shape, float* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Add");
+  ruy::profiler::ScopeLabel label("Add");
   const int flat_size =
       MatchingElementsSize(input1_shape, input2_shape, output_shape);
   AddElementwise(flat_size, params, input1_data, input2_data, output_data);
@@ -1712,7 +1712,7 @@ inline void Add(const ArithmeticParams& params,
 inline void AddElementwise(int size, const ArithmeticParams& params,
                            const uint8* input1_data, const uint8* input2_data,
                            uint8* output_data) {
-  gemmlowp::ScopedProfilingLabel label("AddElementwise/8bit");
+  ruy::profiler::ScopeLabel label("AddElementwise/8bit");
   int i = 0;
   TFLITE_DCHECK_GT(params.input1_offset, -256);
   TFLITE_DCHECK_GT(params.input2_offset, -256);
@@ -1806,7 +1806,7 @@ inline void AddScalarBroadcast(int size, const ArithmeticParams& params,
                                uint8* output_data) {
   using gemmlowp::RoundingDivideByPOT;
 
-  gemmlowp::ScopedProfilingLabel label("AddScalarBroadcast/8bit");
+  ruy::profiler::ScopeLabel label("AddScalarBroadcast/8bit");
   TFLITE_DCHECK_GT(params.input1_offset, -256);
   TFLITE_DCHECK_GT(params.input2_offset, -256);
   TFLITE_DCHECK_LT(params.input1_offset, 256);
@@ -1940,7 +1940,7 @@ inline void Add(const ArithmeticParams& params,
                 const RuntimeShape& output_shape, uint8* output_data) {
   TFLITE_DCHECK_LE(params.quantized_activation_min,
                    params.quantized_activation_max);
-  gemmlowp::ScopedProfilingLabel label("Add/8bit");
+  ruy::profiler::ScopeLabel label("Add/8bit");
   const int flat_size =
       MatchingElementsSize(input1_shape, input2_shape, output_shape);
 
@@ -1955,7 +1955,7 @@ inline void Add(const ArithmeticParams& params,
                 const RuntimeShape& input1_shape, const int16* input1_data,
                 const RuntimeShape& input2_shape, const int16* input2_data,
                 const RuntimeShape& output_shape, int16* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Add/Int16");
+  ruy::profiler::ScopeLabel label("Add/Int16");
   TFLITE_DCHECK_LE(params.quantized_activation_min,
                    params.quantized_activation_max);
 
@@ -1992,7 +1992,7 @@ inline void Add(const ArithmeticParams& params,
                 const RuntimeShape& input1_shape, const int32* input1_data,
                 const RuntimeShape& input2_shape, const int32* input2_data,
                 const RuntimeShape& output_shape, int32* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Add/int32");
+  ruy::profiler::ScopeLabel label("Add/int32");
 
   auto input1_map = MapAsVector(input1_data, input1_shape);
   auto input2_map = MapAsVector(input2_data, input2_shape);
@@ -2022,7 +2022,7 @@ inline void BroadcastAddFivefold(const ArithmeticParams& unswitched_params,
                                  const uint8* unswitched_input2_data,
                                  const RuntimeShape& output_shape,
                                  uint8* output_data) {
-  gemmlowp::ScopedProfilingLabel label("BroadcastAddFivefold/8bit");
+  ruy::profiler::ScopeLabel label("BroadcastAddFivefold/8bit");
 
   ArithmeticParams switched_params = unswitched_params;
   switched_params.input1_offset = unswitched_params.input2_offset;
@@ -2117,7 +2117,7 @@ inline void BroadcastAddFivefold(const ArithmeticParams& params,
                                  const float* unswitched_input2_data,
                                  const RuntimeShape& output_shape,
                                  float* output_data) {
-  gemmlowp::ScopedProfilingLabel label("BroadcastAddFivefold/float");
+  ruy::profiler::ScopeLabel label("BroadcastAddFivefold/float");
 
   const bool use_unswitched =
       params.broadcast_category ==
@@ -2270,7 +2270,7 @@ inline void Mul(const ArithmeticParams& params,
                 const RuntimeShape& input1_shape, const float* input1_data,
                 const RuntimeShape& input2_shape, const float* input2_data,
                 const RuntimeShape& output_shape, float* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Mul");
+  ruy::profiler::ScopeLabel label("Mul");
 
   const int flat_size =
       MatchingElementsSize(input1_shape, input2_shape, output_shape);
@@ -2281,7 +2281,7 @@ inline void Mul(const ArithmeticParams& params,
                 const RuntimeShape& input1_shape, const int32* input1_data,
                 const RuntimeShape& input2_shape, const int32* input2_data,
                 const RuntimeShape& output_shape, int32* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Mul/int32/activation");
+  ruy::profiler::ScopeLabel label("Mul/int32/activation");
 
   const int flat_size =
       MatchingElementsSize(input1_shape, input2_shape, output_shape);
@@ -2301,7 +2301,7 @@ inline void MulNoActivation(const ArithmeticParams& params,
                             const int32* input2_data,
                             const RuntimeShape& output_shape,
                             int32* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Mul/int32");
+  ruy::profiler::ScopeLabel label("Mul/int32");
 
   auto input1_map = MapAsVector(input1_data, input1_shape);
   auto input2_map = MapAsVector(input2_data, input2_shape);
@@ -2325,7 +2325,7 @@ inline void Mul(const ArithmeticParams& params,
                 const RuntimeShape& input1_shape, const int16* input1_data,
                 const RuntimeShape& input2_shape, const int16* input2_data,
                 const RuntimeShape& output_shape, int16* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Mul/Int16/NoActivation");
+  ruy::profiler::ScopeLabel label("Mul/Int16/NoActivation");
   // This is a copy of the reference implementation. We do not currently have a
   // properly optimized version.
 
@@ -2346,7 +2346,7 @@ inline void Mul(const ArithmeticParams& params,
                 const RuntimeShape& input1_shape, const int16* input1_data,
                 const RuntimeShape& input2_shape, const int16* input2_data,
                 const RuntimeShape& output_shape, uint8* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Mul/Int16Uint8");
+  ruy::profiler::ScopeLabel label("Mul/Int16Uint8");
   // This is a copy of the reference implementation. We do not currently have a
   // properly optimized version.
   const int32 output_activation_min = params.quantized_activation_min;
@@ -2557,7 +2557,7 @@ inline void Mul(const ArithmeticParams& params,
                 const RuntimeShape& output_shape, uint8* output_data) {
   TFLITE_DCHECK_LE(params.quantized_activation_min,
                    params.quantized_activation_max);
-  gemmlowp::ScopedProfilingLabel label("Mul/8bit");
+  ruy::profiler::ScopeLabel label("Mul/8bit");
   const int flat_size =
       MatchingElementsSize(input1_shape, input2_shape, output_shape);
 
@@ -2571,7 +2571,7 @@ inline void BroadcastMulFivefold(const ArithmeticParams& unswitched_params,
                                  const uint8* unswitched_input2_data,
                                  const RuntimeShape& output_shape,
                                  uint8* output_data) {
-  gemmlowp::ScopedProfilingLabel label("BroadcastMulFivefold/8bit");
+  ruy::profiler::ScopeLabel label("BroadcastMulFivefold/8bit");
 
   ArithmeticParams switched_params = unswitched_params;
   switched_params.input1_offset = unswitched_params.input2_offset;
@@ -2642,7 +2642,7 @@ inline void BroadcastMulFivefold(const ArithmeticParams& params,
                                  const float* unswitched_input2_data,
                                  const RuntimeShape& output_shape,
                                  float* output_data) {
-  gemmlowp::ScopedProfilingLabel label("BroadcastMulFivefold/float");
+  ruy::profiler::ScopeLabel label("BroadcastMulFivefold/float");
 
   const bool use_unswitched =
       params.broadcast_category ==
@@ -2732,7 +2732,7 @@ void BroadcastDiv4DSlow(const ArithmeticParams& params,
                         const T* input2_data,
                         const RuntimeShape& unextended_output_shape,
                         T* output_data) {
-  gemmlowp::ScopedProfilingLabel label("BroadcastDiv4DSlow");
+  ruy::profiler::ScopeLabel label("BroadcastDiv4DSlow");
   T output_activation_min;
   T output_activation_max;
   GetActivationParams(params, &output_activation_min, &output_activation_max);
@@ -2845,7 +2845,7 @@ inline void SubNonBroadcast(const ArithmeticParams& params,
                             const float* input2_data,
                             const RuntimeShape& output_shape,
                             float* output_data) {
-  gemmlowp::ScopedProfilingLabel label("SubNonBroadcast");
+  ruy::profiler::ScopeLabel label("SubNonBroadcast");
   const int flat_size =
       MatchingElementsSize(input1_shape, input2_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
@@ -2862,7 +2862,7 @@ inline void SubWithActivation(const ArithmeticParams& params,
                               const int32* input2_data,
                               const RuntimeShape& output_shape,
                               int32* output_data) {
-  gemmlowp::ScopedProfilingLabel label("SubWithActivation/int32");
+  ruy::profiler::ScopeLabel label("SubWithActivation/int32");
   const int flat_size =
       MatchingElementsSize(input1_shape, input2_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
@@ -2879,7 +2879,7 @@ inline void SubWithActivation(const ArithmeticParams& params,
                               const float* input2_data,
                               const RuntimeShape& output_shape,
                               float* output_data) {
-  gemmlowp::ScopedProfilingLabel label("SubWithActivation/float");
+  ruy::profiler::ScopeLabel label("SubWithActivation/float");
   const int flat_size =
       MatchingElementsSize(input1_shape, input2_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
@@ -2894,7 +2894,7 @@ void Sub(const ArithmeticParams& params, const RuntimeShape& input1_shape,
          const T* input1_data, const RuntimeShape& input2_shape,
          const T* input2_data, const RuntimeShape& output_shape,
          T* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Sub");
+  ruy::profiler::ScopeLabel label("Sub");
 
   auto input1_map = MapAsVector(input1_data, input1_shape);
   auto input2_map = MapAsVector(input2_data, input2_shape);
@@ -2925,7 +2925,7 @@ inline void LstmCell(
     const RuntimeShape& unextended_concat_temp_shape, float* concat_temp_data,
     const RuntimeShape& unextended_activ_temp_shape, float* activ_temp_data,
     CpuBackendContext* cpu_backend_context) {
-  gemmlowp::ScopedProfilingLabel label("LstmCell");
+  ruy::profiler::ScopeLabel label("LstmCell");
   TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_prev_activ_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_bias_shape.DimensionsCount(), 4);
@@ -3020,7 +3020,7 @@ inline void LstmCell(
       MapAsArrayWithLastDimAsRows(output_activ_data, output_activ_shape);
 
   // Combined memory state and final output calculation
-  gemmlowp::ScopedProfilingLabel label2("MemoryStateAndFinalOutput");
+  ruy::profiler::ScopeLabel label2("MemoryStateAndFinalOutput");
   output_state_map =
       input_gate_sm.unaryExpr(Eigen::internal::scalar_logistic_op<float>()) *
           new_input_sm.tanh() +
@@ -3049,7 +3049,7 @@ inline void LstmCell(
     uint8* concat_temp_data_uint8,
     const RuntimeShape& unextended_activ_temp_shape,
     int16* activ_temp_data_int16, CpuBackendContext* cpu_backend_context) {
-  gemmlowp::ScopedProfilingLabel label(
+  ruy::profiler::ScopeLabel label(
       "LstmCell/quantized (8bit external, 16bit internal)");
   int32 weights_zero_point = params.weights_zero_point;
   int32 accum_multiplier = params.accum_multiplier;
@@ -3314,7 +3314,7 @@ inline void AveragePool(const PoolParams& params,
                         const RuntimeShape& input_shape,
                         const float* input_data,
                         const RuntimeShape& output_shape, float* output_data) {
-  gemmlowp::ScopedProfilingLabel label("AveragePool");
+  ruy::profiler::ScopeLabel label("AveragePool");
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
   const int batches = MatchingDim(input_shape, 0, output_shape, 0);
@@ -3377,7 +3377,7 @@ inline void AveragePool16(const PoolParams& params,
                           const uint8* input_data,
                           const RuntimeShape& output_shape,
                           uint8* output_data) {
-  gemmlowp::ScopedProfilingLabel label("AveragePool/8bit");
+  ruy::profiler::ScopeLabel label("AveragePool/8bit");
 
   // Here, and in other pooling ops, in order to maintain locality of reference,
   // to minimize some recalculations, and to load into NEON vector registers, we
@@ -3509,7 +3509,7 @@ inline void AveragePool32(const PoolParams& params,
                           const uint8* input_data,
                           const RuntimeShape& output_shape,
                           uint8* output_data) {
-  gemmlowp::ScopedProfilingLabel label("AveragePool/8bit");
+  ruy::profiler::ScopeLabel label("AveragePool/8bit");
 
   // Here, and in other pooling ops, in order to maintain locality of reference,
   // to minimize some recalculations, and to load into NEON vector registers, we
@@ -3656,7 +3656,7 @@ inline void AveragePool(const PoolParams& params,
 inline void MaxPool(const PoolParams& params, const RuntimeShape& input_shape,
                     const float* input_data, const RuntimeShape& output_shape,
                     float* output_data) {
-  gemmlowp::ScopedProfilingLabel label("MaxPool");
+  ruy::profiler::ScopeLabel label("MaxPool");
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
   const int batches = MatchingDim(input_shape, 0, output_shape, 0);
@@ -3710,7 +3710,7 @@ inline void MaxPool(const PoolParams& params, const RuntimeShape& input_shape,
 inline void MaxPool(const PoolParams& params, const RuntimeShape& input_shape,
                     const uint8* input_data, const RuntimeShape& output_shape,
                     uint8* output_data) {
-  gemmlowp::ScopedProfilingLabel label("MaxPool/8bit");
+  ruy::profiler::ScopeLabel label("MaxPool/8bit");
 
   // Here, and in other pooling ops, in order to maintain locality of reference,
   // to minimize some recalculations, and to load into NEON vector registers, we
@@ -3819,7 +3819,7 @@ inline void MaxPool(const PoolParams& params, const RuntimeShape& input_shape,
 inline void L2Pool(const PoolParams& params, const RuntimeShape& input_shape,
                    const float* input_data, const RuntimeShape& output_shape,
                    float* output_data) {
-  gemmlowp::ScopedProfilingLabel label("L2Pool");
+  ruy::profiler::ScopeLabel label("L2Pool");
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
   const int batches = MatchingDim(input_shape, 0, output_shape, 0);
@@ -3887,7 +3887,7 @@ inline void LocalResponseNormalization(
     const tflite::LocalResponseNormalizationParams& op_params,
     const RuntimeShape& input_shape, const float* input_data,
     const RuntimeShape& output_shape, float* output_data) {
-  gemmlowp::ScopedProfilingLabel label("LocalResponseNormalization");
+  ruy::profiler::ScopeLabel label("LocalResponseNormalization");
   MatchingFlatSize(input_shape, output_shape);
 
   const auto data_in = MapAsMatrixWithLastDimAsRows(input_data, input_shape);
@@ -3932,7 +3932,7 @@ inline void SoftmaxImpl(const SoftmaxParams& params,
                         const float* input_data,
                         const RuntimeShape& output_shape, float* output_data,
                         int start_batch, int end_batch) {
-  gemmlowp::ScopedProfilingLabel label("Softmax/Impl");
+  ruy::profiler::ScopeLabel label("Softmax/Impl");
   MatchingFlatSize(input_shape, output_shape);
 
   const int logit_size = input_shape.Dims(input_shape.DimensionsCount() - 1);
@@ -3983,7 +3983,7 @@ inline void Softmax(const SoftmaxParams& params,
                     const RuntimeShape& input_shape, const float* input_data,
                     const RuntimeShape& output_shape, float* output_data,
                     CpuBackendContext* cpu_backend_context = nullptr) {
-  gemmlowp::ScopedProfilingLabel label("Softmax");
+  ruy::profiler::ScopeLabel label("Softmax");
 
   // We picture softmax input as a 2-D matrix while the last dim is the logit
   // dim, and the rest dims will be the batch dim for the 2-D matrix.
@@ -4084,7 +4084,7 @@ inline void Softmax(const SoftmaxParams& params,
 inline void LogSoftmax(const SoftmaxParams& params,
                        const RuntimeShape& input_shape, const float* input_data,
                        const RuntimeShape& output_shape, float* output_data) {
-  gemmlowp::ScopedProfilingLabel label("LogSoftmax");
+  ruy::profiler::ScopeLabel label("LogSoftmax");
   const int trailing_dim = input_shape.DimensionsCount() - 1;
   const int outer_size =
       MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
@@ -4142,7 +4142,7 @@ inline void LogSoftmax(const SoftmaxParams& params,
 inline void LogSoftmax(const SoftmaxParams& params, float input_scale,
                        const RuntimeShape& input_shape, const uint8* input_data,
                        const RuntimeShape& output_shape, uint8* output_data) {
-  gemmlowp::ScopedProfilingLabel label("LogSoftmax/Uint8");
+  ruy::profiler::ScopeLabel label("LogSoftmax/Uint8");
   const int trailing_dim = input_shape.DimensionsCount() - 1;
   const int excluding_last_dim =
       MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
@@ -4192,7 +4192,7 @@ inline void LogSoftmax(const SoftmaxParams& params, float input_scale,
 
 inline void Logistic(const RuntimeShape& input_shape, const float* input_data,
                      const RuntimeShape& output_shape, float* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Logistic");
+  ruy::profiler::ScopeLabel label("Logistic");
   auto input_map = MapAsVector(input_data, input_shape);
   auto output_map = MapAsVector(output_data, output_shape);
   output_map.array() =
@@ -4211,7 +4211,7 @@ inline void Logistic(const LogisticParams&, const RuntimeShape& input_shape,
 inline void Logistic(const LogisticParams& params,
                      const RuntimeShape& input_shape, const int16* input_data,
                      const RuntimeShape& output_shape, int16* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Logistic/Int16");
+  ruy::profiler::ScopeLabel label("Logistic/Int16");
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
 
   for (int i = 0; i < flat_size; i++) {
@@ -4271,7 +4271,7 @@ inline void Logistic(const LogisticParams& params,
 
 inline void Tanh(const RuntimeShape& input_shape, const float* input_data,
                  const RuntimeShape& output_shape, float* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Tanh");
+  ruy::profiler::ScopeLabel label("Tanh");
   auto input_map = MapAsVector(input_data, input_shape);
   auto output_map = MapAsVector(output_data, output_shape);
   output_map.array() = input_map.array().tanh();
@@ -4289,7 +4289,7 @@ inline void Tanh(const TanhParams&, const RuntimeShape& input_shape,
 inline void Tanh(const TanhParams& params, const RuntimeShape& input_shape,
                  const int16* input_data, const RuntimeShape& output_shape,
                  int16* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Tanh/Int16");
+  ruy::profiler::ScopeLabel label("Tanh/Int16");
   const int input_left_shift = params.input_left_shift;
   // Support for shifts is limited until we have a parameterized version of
   // SaturatingRoundingMultiplyByPOT().
@@ -4390,7 +4390,7 @@ inline void Tanh(const TanhParams& params, const RuntimeShape& input_shape,
 template <typename SrcT, typename DstT>
 inline void Cast(const RuntimeShape& input_shape, const SrcT* input_data,
                  const RuntimeShape& output_shape, DstT* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Cast");
+  ruy::profiler::ScopeLabel label("Cast");
   auto input_map = MapAsVector(input_data, input_shape);
   auto output_map = MapAsVector(output_data, output_shape);
   output_map.array() = input_map.array().template cast<DstT>();
@@ -4398,7 +4398,7 @@ inline void Cast(const RuntimeShape& input_shape, const SrcT* input_data,
 
 inline void Floor(const RuntimeShape& input_shape, const float* input_data,
                   const RuntimeShape& output_shape, float* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Floor");
+  ruy::profiler::ScopeLabel label("Floor");
   auto input_map = MapAsVector(input_data, input_shape);
   auto output_map = MapAsVector(output_data, output_shape);
   output_map.array() = Eigen::floor(input_map.array());
@@ -4406,7 +4406,7 @@ inline void Floor(const RuntimeShape& input_shape, const float* input_data,
 
 inline void Ceil(const RuntimeShape& input_shape, const float* input_data,
                  const RuntimeShape& output_shape, float* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Ceil");
+  ruy::profiler::ScopeLabel label("Ceil");
   auto input_map = MapAsVector(input_data, input_shape);
   auto output_map = MapAsVector(output_data, output_shape);
   output_map.array() = Eigen::ceil(input_map.array());
@@ -4698,20 +4698,25 @@ inline void ResizeBilinearGeneric(
     int32 batches, int32 input_height, int32 input_width, int32 depth,
     int32 output_height, int32 output_width, float height_scale,
     float width_scale, const RuntimeShape& input_shape, const float* input_data,
-    const RuntimeShape& output_shape, float* output_data) {
+    const RuntimeShape& output_shape, float* output_data,
+    const bool half_pixel_centers) {
   memset(output_data, 0,
          batches * output_height * output_width * depth * sizeof(float));
 
   int32 output_offset = 0;
   for (int b = 0; b < batches; ++b) {
     for (int y = 0; y < output_height; ++y) {
-      float input_y = y * height_scale;
-      int32 y0 = static_cast<int32>(std::floor(input_y));
-      int32 y1 = std::min(y0 + 1, input_height - 1);
+      float input_y;
+      int32 y0, y1;
+      reference_ops::ComputeInterpolationValues(
+          y, height_scale, half_pixel_centers, input_height, &input_y, &y0,
+          &y1);
       for (int x = 0; x < output_width; ++x) {
-        float input_x = x * width_scale;
-        int32 x0 = static_cast<int32>(input_x);
-        int32 x1 = std::min(x0 + 1, input_width - 1);
+        float input_x;
+        int32 x0, x1;
+        reference_ops::ComputeInterpolationValues(
+            x, width_scale, half_pixel_centers, input_width, &input_x, &x0,
+            &x1);
         float* output_ptr = &output_data[output_offset];
 
         // Run kernel on the 4 corners of the bilinear resize algorithm.
@@ -4746,17 +4751,22 @@ inline void ResizeBilinearGenericSmallChannel(
     int32 batches, int32 input_height, int32 input_width, int32 depth,
     int32 output_height, int32 output_width, float height_scale,
     float width_scale, const RuntimeShape& input_shape, const T* input_data,
-    const RuntimeShape& output_shape, T* output_data) {
+    const RuntimeShape& output_shape, T* output_data,
+    const bool half_pixel_centers) {
   T* output_ptr = &output_data[0];
   for (int b = 0; b < batches; ++b) {
     for (int y = 0; y < output_height; ++y) {
-      float input_y = y * height_scale;
-      int32 y0 = static_cast<int32>(std::floor(input_y));
-      int32 y1 = std::min(y0 + 1, input_height - 1);
+      float input_y;
+      int32 y0, y1;
+      reference_ops::ComputeInterpolationValues(
+          y, height_scale, half_pixel_centers, input_height, &input_y, &y0,
+          &y1);
       for (int x = 0; x < output_width; ++x) {
-        float input_x = x * width_scale;
-        int32 x0 = static_cast<int32>(std::floor((input_x)));
-        int32 x1 = std::min(x0 + 1, input_width - 1);
+        float input_x;
+        int32 x0, x1;
+        reference_ops::ComputeInterpolationValues(
+            x, width_scale, half_pixel_centers, input_width, &input_x, &x0,
+            &x1);
 
         int32 input_offset[4] = {Offset(input_shape, b, y0, x0, 0),
                                  Offset(input_shape, b, y0, x1, 0),
@@ -4786,7 +4796,9 @@ inline void ResizeBilinear(const tflite::ResizeBilinearParams& op_params,
                            const int32* output_size_data,
                            const RuntimeShape& unextended_output_shape,
                            float* output_data) {
-  gemmlowp::ScopedProfilingLabel label("ResizeBilinear");
+  ruy::profiler::ScopeLabel label("ResizeBilinear");
+  // If half_pixel_centers is True, align_corners must be False.
+  TFLITE_DCHECK(!op_params.half_pixel_centers || !op_params.align_corners);
   TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
   const RuntimeShape input_shape =
@@ -4804,8 +4816,8 @@ inline void ResizeBilinear(const tflite::ResizeBilinearParams& op_params,
   int32 output_width = output_size_data[1];
 
   // Specialize for 2x2 upsample.
-  if (!op_params.align_corners && output_height == 2 * input_height &&
-      output_width == 2 * input_width) {
+  if (!op_params.align_corners && !op_params.half_pixel_centers &&
+      output_height == 2 * input_height && output_width == 2 * input_width) {
     ResizeBilinear2x2(batches, input_height, input_width, depth, output_height,
                       output_width, input_shape, input_data, output_shape,
                       output_data);
@@ -4822,7 +4834,7 @@ inline void ResizeBilinear(const tflite::ResizeBilinearParams& op_params,
     ResizeBilinearGeneric(batches, input_height, input_width, depth,
                           output_height, output_width, height_scale,
                           width_scale, input_shape, input_data, output_shape,
-                          output_data);
+                          output_data, op_params.half_pixel_centers);
   }
 }
 
@@ -4835,7 +4847,9 @@ inline void ResizeBilinear(const tflite::ResizeBilinearParams& op_params,
                            const int32* output_size_data,
                            const RuntimeShape& unextended_output_shape,
                            uint8* output_data) {
-  gemmlowp::ScopedProfilingLabel label("ResizeBilinear");
+  ruy::profiler::ScopeLabel label("ResizeBilinear");
+  // If half_pixel_centers is True, align_corners must be False.
+  TFLITE_DCHECK(!op_params.half_pixel_centers || !op_params.align_corners);
   TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
   const RuntimeShape input_shape =
@@ -4865,7 +4879,7 @@ inline void ResizeBilinear(const tflite::ResizeBilinearParams& op_params,
   ResizeBilinearGenericSmallChannel<uint8>(
       batches, input_height, input_width, depth, output_height, output_width,
       height_scale, width_scale, input_shape, input_data, output_shape,
-      output_data);
+      output_data, op_params.half_pixel_centers);
 }
 
 // Helper methods for BatchToSpaceND.
@@ -4895,7 +4909,7 @@ inline void BatchToSpaceND(
     const RuntimeShape& unextended_input2_shape, const int32* block_shape_data,
     const RuntimeShape& unextended_input3_shape, const int32* crops_data,
     const RuntimeShape& unextended_output_shape, T* output_data) {
-  gemmlowp::ScopedProfilingLabel label("BatchToSpaceND");
+  ruy::profiler::ScopeLabel label("BatchToSpaceND");
 
   TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
@@ -4987,7 +5001,7 @@ inline void PadImpl(const tflite::PadParams& op_params,
                     const RuntimeShape& input_shape, const T* input_data,
                     const P* pad_value_ptr, const RuntimeShape& output_shape,
                     T* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Pad4DSlowImpl");
+  ruy::profiler::ScopeLabel label("Pad4DSlowImpl");
   const RuntimeShape ext_input_shape =
       RuntimeShape::ExtendedShape(4, input_shape);
   const RuntimeShape ext_output_shape =
@@ -5137,7 +5151,7 @@ inline void PadImageStyleMemset(const tflite::PadParams& op_params,
                                 const T* input_data, const P* pad_value_ptr,
                                 const RuntimeShape& output_shape,
                                 T* output_data) {
-  gemmlowp::ScopedProfilingLabel label("PadImageStyle");
+  ruy::profiler::ScopeLabel label("PadImageStyle");
   const RuntimeShape ext_input_shape =
       RuntimeShape::ExtendedShape(4, input_shape);
   const RuntimeShape ext_output_shape =
@@ -5279,7 +5293,7 @@ inline void Slice(const tflite::SliceParams& op_params,
                   const RuntimeShape& input_shape,
                   const RuntimeShape& output_shape,
                   SequentialTensorWriter<T>* writer) {
-  gemmlowp::ScopedProfilingLabel label("Slice");
+  ruy::profiler::ScopeLabel label("Slice");
   const RuntimeShape ext_shape = RuntimeShape::ExtendedShape(4, input_shape);
   // TODO(dkalenichenko): This op only supports 4D tensors or smaller.
   TFLITE_DCHECK_LE(op_params.begin_count, 4);
@@ -5335,7 +5349,7 @@ template <typename T>
 void Minimum(const RuntimeShape& input1_shape, const T* input1_data,
              const T* input2_data, const RuntimeShape& output_shape,
              T* output_data) {
-  gemmlowp::ScopedProfilingLabel label("TensorFlowMinimum");
+  ruy::profiler::ScopeLabel label("TensorFlowMinimum");
   auto input1_map = MapAsVector(input1_data, input1_shape);
   auto output_map = MapAsVector(output_data, output_shape);
   auto min_value = input2_data[0];
@@ -5356,7 +5370,7 @@ template <typename T>
 void Maximum(const RuntimeShape& input1_shape, const T* input1_data,
              const T* input2_data, const RuntimeShape& output_shape,
              T* output_data) {
-  gemmlowp::ScopedProfilingLabel label("TensorFlowMaximum");
+  ruy::profiler::ScopeLabel label("TensorFlowMaximum");
   auto input1_map = MapAsVector(input1_data, input1_shape);
   auto output_map = MapAsVector(output_data, output_shape);
   auto max_value = input2_data[0];
@@ -5378,7 +5392,7 @@ void TransposeIm2col(const ConvParams& params, uint8 zero_byte,
                      const RuntimeShape& input_shape, const T* input_data,
                      const RuntimeShape& filter_shape,
                      const RuntimeShape& output_shape, T* im2col_data) {
-  gemmlowp::ScopedProfilingLabel label("TransposeIm2col");
+  ruy::profiler::ScopeLabel label("TransposeIm2col");
   const int stride_width = params.stride_width;
   const int stride_height = params.stride_height;
   const int pad_width = params.padding_values.width;
@@ -5457,7 +5471,7 @@ void Col2im(const T* col_data, const int depth, const int height,
             const int width, const int filter_h, const int filter_w,
             const int pad_t, const int pad_l, const int pad_b, const int pad_r,
             const int stride_h, const int stride_w, T* im_data) {
-  gemmlowp::ScopedProfilingLabel label("Col2im");
+  ruy::profiler::ScopeLabel label("Col2im");
   int height_col = (height + pad_t + pad_b - filter_h) / stride_h + 1;
   int width_col = (width + pad_l + pad_r - filter_w) / stride_w + 1;
   int h_pad = -pad_t;
@@ -5492,7 +5506,7 @@ inline void TransposeConvV2(
     const float* hwoi_ordered_filter_data, const RuntimeShape& output_shape,
     float* output_data, const RuntimeShape& col2im_shape, float* col2im_data,
     CpuBackendContext* cpu_backend_context) {
-  gemmlowp::ScopedProfilingLabel label("TransposeConvV2/float");
+  ruy::profiler::ScopeLabel label("TransposeConvV2/float");
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(hwoi_ordered_filter_shape.DimensionsCount(), 4);
   const int batch_size = input_shape.Dims(0);
@@ -5554,7 +5568,7 @@ inline void TransposeConvV2(
 
 inline void Quantize(int32_t multiplier, int32_t shift, int32_t total_size,
                      int32_t output_zp, int32_t* scratch, uint8_t* output) {
-  gemmlowp::ScopedProfilingLabel label("Quantize/uint8");
+  ruy::profiler::ScopeLabel label("Quantize/uint8");
   int i = 0;
   const int32_t output_min = std::numeric_limits<uint8_t>::min();
   const int32_t output_max = std::numeric_limits<uint8_t>::max();
@@ -5619,7 +5633,7 @@ inline void Quantize(const int32_t* multiplier, const int32_t* shift,
                      int32_t channel_size, int32_t total_size,
                      int32_t output_zp, int32_t output_min, int32_t output_max,
                      int32_t* scratch, int8_t* output) {
-  gemmlowp::ScopedProfilingLabel label("Quantize/int8");
+  ruy::profiler::ScopeLabel label("Quantize/int8");
 
   // Here we're trying to quantize the raw accumulators:
   //        output_channels
@@ -5714,7 +5728,7 @@ inline void TransposeConvV2(
     uint8_t* output_data, const RuntimeShape& col2im_shape,
     int32_t* col2im_data, int32_t* scratch_data,
     CpuBackendContext* cpu_backend_context) {
-  gemmlowp::ScopedProfilingLabel label("TransposeConvV2/uint8");
+  ruy::profiler::ScopeLabel label("TransposeConvV2/uint8");
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(hwoi_ordered_filter_shape.DimensionsCount(), 4);
   const int batch_size = input_shape.Dims(0);
@@ -5871,7 +5885,7 @@ inline void Requantize<int8_t, uint8_t>(const int8_t* input_data, int32_t size,
                                         int32_t input_zeropoint,
                                         int32_t output_zeropoint,
                                         uint8_t* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Requantize/Int8ToUint8");
+  ruy::profiler::ScopeLabel label("Requantize/Int8ToUint8");
 
   static constexpr int32_t kMinOutput = std::numeric_limits<uint8_t>::min();
   static constexpr int32_t kMaxOutput = std::numeric_limits<uint8_t>::max();
@@ -5958,7 +5972,7 @@ inline void Requantize<uint8_t, int8_t>(const uint8_t* input_data, int32_t size,
                                         int32_t input_zeropoint,
                                         int32_t output_zeropoint,
                                         int8_t* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Requantize/Uint8ToInt8");
+  ruy::profiler::ScopeLabel label("Requantize/Uint8ToInt8");
 
   static constexpr int32_t kMinOutput = std::numeric_limits<int8_t>::min();
   static constexpr int32_t kMaxOutput = std::numeric_limits<int8_t>::max();
@@ -6036,7 +6050,7 @@ inline void Requantize<int8_t, int8_t>(const int8_t* input_data, int32_t size,
                                        int32_t input_zeropoint,
                                        int32_t output_zeropoint,
                                        int8_t* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Requantize/Int8ToInt8");
+  ruy::profiler::ScopeLabel label("Requantize/Int8ToInt8");
 
   static constexpr int32_t kMinOutput = std::numeric_limits<int8_t>::min();
   static constexpr int32_t kMaxOutput = std::numeric_limits<int8_t>::max();
@@ -6113,7 +6127,7 @@ inline void Requantize<uint8_t, uint8_t>(
     const uint8_t* input_data, int32_t size, int32_t effective_scale_multiplier,
     int32_t effective_scale_shift, int32_t input_zeropoint,
     int32_t output_zeropoint, uint8_t* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Requantize/Uint8ToUint8");
+  ruy::profiler::ScopeLabel label("Requantize/Uint8ToUint8");
 
   static constexpr int32_t kMinOutput = std::numeric_limits<uint8_t>::min();
   static constexpr int32_t kMaxOutput = std::numeric_limits<uint8_t>::max();
@@ -6195,7 +6209,7 @@ inline void Requantize<uint8_t, uint8_t>(
 
 inline void HardSwish(const RuntimeShape& input_shape, const float* input_data,
                       const RuntimeShape& output_shape, float* output_data) {
-  gemmlowp::ScopedProfilingLabel label("HardSwish/Float");
+  ruy::profiler::ScopeLabel label("HardSwish/Float");
   auto size = MatchingFlatSize(input_shape, output_shape);
   int i = 0;
 #ifdef USE_NEON
@@ -6273,7 +6287,7 @@ template <typename T>
 inline void HardSwish(const HardSwishParams& params,
                       const RuntimeShape& input_shape, const T* input_data,
                       const RuntimeShape& output_shape, T* output_data) {
-  gemmlowp::ScopedProfilingLabel label("HardSwish/Quantized");
+  ruy::profiler::ScopeLabel label("HardSwish/Quantized");
 
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
 
@@ -6464,7 +6478,7 @@ inline void BroadcastPow4D(const RuntimeShape& unextended_input1_shape,
                            const T* input2_data,
                            const RuntimeShape& unextended_output_shape,
                            T* output_data) {
-  gemmlowp::ScopedProfilingLabel label("PowBroadcast");
+  ruy::profiler::ScopeLabel label("PowBroadcast");
 
   if (unextended_input2_shape.FlatSize() == 1) {
     static const float epsilon = 1e-5;
@@ -6510,7 +6524,7 @@ inline void Dequantize(const tflite::DequantizationParams& op_params,
                        const RuntimeShape& input_shape,
                        const uint8_t* input_data,
                        const RuntimeShape& output_shape, float* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Dequantize/Uint8");
+  ruy::profiler::ScopeLabel label("Dequantize/Uint8");
   const int32 zero_point = op_params.zero_point;
   const double scale = op_params.scale;
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
@@ -6550,7 +6564,7 @@ inline void Dequantize(const tflite::DequantizationParams& op_params,
                        const RuntimeShape& input_shape,
                        const int8_t* input_data,
                        const RuntimeShape& output_shape, float* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Dequantize/Int8");
+  ruy::profiler::ScopeLabel label("Dequantize/Int8");
   const int32 zero_point = op_params.zero_point;
   const double scale = op_params.scale;
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
@@ -6589,7 +6603,7 @@ inline void Dequantize(const tflite::DequantizationParams& op_params,
                        const RuntimeShape& input_shape,
                        const int16_t* input_data,
                        const RuntimeShape& output_shape, float* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Dequantize/Int16");
+  ruy::profiler::ScopeLabel label("Dequantize/Int16");
   const int32 zero_point = op_params.zero_point;
   const double scale = op_params.scale;
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
@@ -6643,7 +6657,7 @@ inline void AffineQuantize(const tflite::QuantizationParams& op_params,
                            const float* input_data,
                            const RuntimeShape& output_shape,
                            int8_t* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Quantize/Int8");
+  ruy::profiler::ScopeLabel label("Quantize/Int8");
   const int32 zero_point = op_params.zero_point;
   const double scale = static_cast<double>(op_params.scale);
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
@@ -6700,7 +6714,7 @@ inline void AffineQuantize(const tflite::QuantizationParams& op_params,
                            const float* input_data,
                            const RuntimeShape& output_shape,
                            uint8_t* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Quantize/Uint8");
+  ruy::profiler::ScopeLabel label("Quantize/Uint8");
   const int32 zero_point = op_params.zero_point;
   const double scale = static_cast<double>(op_params.scale);
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
@@ -6758,7 +6772,7 @@ inline void AffineQuantize(const tflite::QuantizationParams& op_params,
                            const float* input_data,
                            const RuntimeShape& output_shape,
                            int16_t* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Quantize/Int16");
+  ruy::profiler::ScopeLabel label("Quantize/Int16");
   const int32 zero_point = op_params.zero_point;
   const double scale = static_cast<double>(op_params.scale);
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
@@ -6960,7 +6974,7 @@ inline void Tanh16bitPercision(const TanhParams& params,
                                const RuntimeShape& output_shape,
                                uint8* output_data) {
   // Note that this is almost the exact same code as in Logistic().
-  gemmlowp::ScopedProfilingLabel label("Tanh/Uint8");
+  ruy::profiler::ScopeLabel label("Tanh/Uint8");
   const int32 input_zero_point = params.input_zero_point;
   const int32 input_range_radius = params.input_range_radius;
   const int16 input_multiplier = static_cast<int16>(params.input_multiplier);
@@ -7067,7 +7081,7 @@ inline void Tanh16bitPercision(const TanhParams& params,
                                const RuntimeShape& output_shape,
                                int8* output_data) {
   // Note that this is almost the exact same code as in Logistic().
-  gemmlowp::ScopedProfilingLabel label("Tanh/Int8");
+  ruy::profiler::ScopeLabel label("Tanh/Int8");
   const int32 input_zero_point = params.input_zero_point;
   const int32 input_range_radius = params.input_range_radius;
   const int16 input_multiplier = static_cast<int16>(params.input_multiplier);
@@ -7159,7 +7173,7 @@ inline void Logistic16bitPercision(const LogisticParams& params,
                                    const uint8* input_data,
                                    const RuntimeShape& output_shape,
                                    uint8* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Logistic/Uint8");
+  ruy::profiler::ScopeLabel label("Logistic/Uint8");
   const int32 input_zero_point = params.input_zero_point;
   const int32 input_range_radius = params.input_range_radius;
   const int32 input_multiplier = params.input_multiplier;
@@ -7251,7 +7265,7 @@ inline void Logistic16bitPercision(const LogisticParams& params,
                                    const int8* input_data,
                                    const RuntimeShape& output_shape,
                                    int8* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Logistic/Int8");
+  ruy::profiler::ScopeLabel label("Logistic/Int8");
   const int32 input_zero_point = params.input_zero_point;
   const int32 input_range_radius = params.input_range_radius;
   const int32 input_multiplier = params.input_multiplier;
@@ -7620,7 +7634,7 @@ template <typename T>
 void Transpose(const TransposeParams& unshrinked_params,
                const RuntimeShape& unshrinked_input_shape, const T* input_data,
                const RuntimeShape& unshrinked_output_shape, T* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Transpose");
+  ruy::profiler::ScopeLabel label("Transpose");
 
   const int output_size = unshrinked_output_shape.DimensionsCount();
   TFLITE_DCHECK_LE(unshrinked_input_shape.DimensionsCount(), 4);

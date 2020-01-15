@@ -3370,7 +3370,7 @@ func BoostedTreesUpdateEnsembleV2LogitsDimension(value int64) BoostedTreesUpdate
 //	pruning_mode: 0-No pruning, 1-Pre-pruning, 2-Post-pruning.
 //
 // Returns the created operation.
-func BoostedTreesUpdateEnsembleV2(scope *Scope, tree_ensemble_handle tf.Output, feature_ids tf.Output, dimension_ids []tf.Output, node_ids []tf.Output, gains []tf.Output, thresholds []tf.Output, left_node_contribs []tf.Output, right_node_contribs []tf.Output, split_types []tf.Output, max_depth tf.Output, learning_rate tf.Output, pruning_mode tf.Output, optional ...BoostedTreesUpdateEnsembleV2Attr) (o *tf.Operation) {
+func BoostedTreesUpdateEnsembleV2(scope *Scope, tree_ensemble_handle tf.Output, feature_ids []tf.Output, dimension_ids []tf.Output, node_ids []tf.Output, gains []tf.Output, thresholds []tf.Output, left_node_contribs []tf.Output, right_node_contribs []tf.Output, split_types []tf.Output, max_depth tf.Output, learning_rate tf.Output, pruning_mode tf.Output, optional ...BoostedTreesUpdateEnsembleV2Attr) (o *tf.Operation) {
 	if scope.Err() != nil {
 		return
 	}
@@ -3381,7 +3381,7 @@ func BoostedTreesUpdateEnsembleV2(scope *Scope, tree_ensemble_handle tf.Output, 
 	opspec := tf.OpSpec{
 		Type: "BoostedTreesUpdateEnsembleV2",
 		Input: []tf.Input{
-			tree_ensemble_handle, feature_ids, tf.OutputList(dimension_ids), tf.OutputList(node_ids), tf.OutputList(gains), tf.OutputList(thresholds), tf.OutputList(left_node_contribs), tf.OutputList(right_node_contribs), tf.OutputList(split_types), max_depth, learning_rate, pruning_mode,
+			tree_ensemble_handle, tf.OutputList(feature_ids), tf.OutputList(dimension_ids), tf.OutputList(node_ids), tf.OutputList(gains), tf.OutputList(thresholds), tf.OutputList(left_node_contribs), tf.OutputList(right_node_contribs), tf.OutputList(split_types), max_depth, learning_rate, pruning_mode,
 		},
 		Attrs: attrs,
 	}

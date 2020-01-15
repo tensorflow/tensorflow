@@ -17,6 +17,7 @@ cc_library(
     hdrs = [
         "compatibility.h",
     ],
+    build_for_embedded = True,
 )
 
 cc_library(
@@ -106,6 +107,7 @@ tflite_micro_cc_test(
     ],
     deps = [
         ":micro_framework",
+        ":micro_utils",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )

@@ -29,7 +29,7 @@ limitations under the License.
 // passed to or returned from C functions *by pointer*. Otherwise, changes to
 // its internal structure will break the C API's binary interface.
 typedef struct TF_Tensor {
-  tensorflow::TensorInterface tensor;
+  std::unique_ptr<AbstractTensorInterface> tensor;
 } TF_Tensor;
 
 class TF_ManagedBuffer : public tensorflow::TensorBuffer {

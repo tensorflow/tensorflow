@@ -207,4 +207,10 @@ extern tflite::ErrorReporter* reporter;
     }                                                                   \
   } while (false)
 
+#define TF_LITE_MICRO_FAIL(msg)                                        \
+  do {                                                                 \
+    micro_test::reporter->Report("FAIL: %s", msg, __FILE__, __LINE__); \
+    micro_test::did_test_fail = true;                                  \
+  } while (false)
+
 #endif  // TENSORFLOW_LITE_MICRO_TESTING_MICRO_TEST_H_

@@ -46,26 +46,25 @@ inline bool IsRealCpuCompute(absl::string_view event_name) {
 }  // namespace
 
 StepEvents ConvertHostThreadsXLineToStepEvents(
-    const XLineVisitor& line, int64 correlation_id_stat_id,
-    int64 group_id_stat_id, bool use_device_step_events,
+    const XLineVisitor& line, bool use_device_step_events,
     const StepEvents& device_step_events) {
   StepEvents result;
   line.ForEachEvent([&](const XEventVisitor& event) {
     int64 correlation_id = -1;
     int64 group_id = -1;
     event.ForEachStat([&](const XStatVisitor& stat) {
-      if (stat.Id() == correlation_id_stat_id) {
+      if (stat.Type() == StatType::kCorrelationId) {
         correlation_id = stat.IntValue();
-      } else if (stat.Id() == group_id_stat_id) {
+      } else if (stat.Type() == StatType::kGroupId) {
         group_id = stat.IntValue();
       }
     });
     if (group_id < 0) return;
-    // Don't add events when either (1) it excludes device step events or
-    // (2) it has a device and that the group_id (i.e. step number) already
+    // Don't add CPU events when (1) it includes device step events and (2) it
+    // doesn't have a device and that the group_id (i.e. step number) already
     // appears on the device. This will filter out all cpu events that do not
     // correspond to any steps executed on the device.
-    if (!use_device_step_events ||
+    if (use_device_step_events &&
         device_step_events.find(group_id) == device_step_events.end())
       return;
     Timespan timespan = Timespan(event.TimestampPs(), event.DurationPs());
@@ -85,35 +84,24 @@ StepEvents ConvertHostThreadsXPlaneToStepEvents(
     const XPlane& host_trace, bool use_device_step_events,
     const StepEvents& device_step_events) {
   StepEvents result;
-  MetadataMatcher metadata_matcher(
-      host_trace,
-      {{GetHostEventTypeStrMap(), HostEventType::kFirstHostEventType}},
-      GetStatTypeStrMap());
-  int64 correlation_id_stat_id =
-      metadata_matcher.GetStatMetadataId(StatType::kCorrelationId).value_or(-1);
-  int64 group_id_stat_id =
-      metadata_matcher.GetStatMetadataId(StatType::kGroupId).value_or(-1);
   XPlaneVisitor plane(&host_trace);
   plane.ForEachLine([&](const XLineVisitor& line) {
     CombineStepEvents(ConvertHostThreadsXLineToStepEvents(
-                          line, correlation_id_stat_id, group_id_stat_id,
-                          use_device_step_events, device_step_events),
+                          line, use_device_step_events, device_step_events),
                       &result);
   });
   return result;
 }
 
-StepEvents ConvertDeviceTraceXLineToStepEvents(const XLineVisitor& line,
-                                               int64 correlation_id_stat_id,
-                                               int64 group_id_stat_id) {
+StepEvents ConvertDeviceTraceXLineToStepEvents(const XLineVisitor& line) {
   int64 correlation_id = -1;
   int64 group_id = -1;
   StepEvents result;
   line.ForEachEvent([&](const XEventVisitor& event) {
     event.ForEachStat([&](const XStatVisitor& stat) {
-      if (stat.Id() == correlation_id_stat_id) {
+      if (stat.Type() == StatType::kCorrelationId) {
         correlation_id = stat.IntValue();
-      } else if (stat.Id() == group_id_stat_id) {
+      } else if (stat.Type() == StatType::kGroupId) {
         group_id = stat.IntValue();
       }
     });
@@ -128,21 +116,11 @@ StepEvents ConvertDeviceTraceXLineToStepEvents(const XLineVisitor& line,
 }
 
 StepEvents ConvertDeviceTraceXPlaneToStepEvents(const XPlane& device_trace) {
-  MetadataMatcher metadata_matcher(
-      device_trace,
-      {{GetHostEventTypeStrMap(), HostEventType::kFirstHostEventType}},
-      GetStatTypeStrMap());
-  int64 correlation_id_stat_id =
-      metadata_matcher.GetStatMetadataId(StatType::kCorrelationId).value_or(-1);
-  int64 group_id_stat_id =
-      metadata_matcher.GetStatMetadataId(StatType::kGroupId).value_or(-1);
   StepEvents result;
   XPlaneVisitor plane(&device_trace);
   plane.ForEachLine([&](const XLineVisitor& line) {
     if (IsDerivedThreadId(line.Id())) return;
-    CombineStepEvents(ConvertDeviceTraceXLineToStepEvents(
-                          line, correlation_id_stat_id, group_id_stat_id),
-                      &result);
+    CombineStepEvents(ConvertDeviceTraceXLineToStepEvents(line), &result);
   });
   return result;
 }
