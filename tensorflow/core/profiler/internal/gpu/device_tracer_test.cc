@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/internal/profiler_interface.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
+#include "tensorflow/core/profiler/utils/xplane_visitor.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
@@ -270,7 +271,18 @@ TEST_F(DeviceTracerTest, TraceToXSpace) {
   TF_ASSERT_OK(tracer->CollectData(&space));
   // At least one gpu plane and one host plane for launching events.
   EXPECT_NE(FindPlaneWithName(space, kHostThreads), nullptr);
-  EXPECT_NE(FindPlaneWithName(space, StrCat(kGpuPlanePrefix, 0)), nullptr);
+
+  const XPlane* device_plane =
+      FindPlaneWithName(space, StrCat(kGpuPlanePrefix, 0));
+  EXPECT_NE(device_plane, nullptr);  // Check if device plane is serialized.
+  // Check if device capacity is serialized.
+  XPlaneVisitor plane(device_plane);
+  EXPECT_NE(plane.GetStats(kDevCapClockRateKHz), nullptr);
+  EXPECT_NE(plane.GetStats(kDevCapCoreCount), nullptr);
+  EXPECT_NE(plane.GetStats(kDevCapMemoryBandwidth), nullptr);
+  EXPECT_NE(plane.GetStats(kDevCapMemorySize), nullptr);
+  EXPECT_NE(plane.GetStats(kDevCapComputeCapMajor), nullptr);
+  EXPECT_NE(plane.GetStats(kDevCapComputeCapMinor), nullptr);
 }
 
 }  // namespace

@@ -27,12 +27,14 @@ XStatVisitor::XStatVisitor(const XPlaneVisitor* plane, const XStat* stat)
 
 XEventVisitor::XEventVisitor(const XPlaneVisitor* plane, const XLine* line,
                              const XEvent* event)
-    : plane_(plane),
+    : XStatsOwner<XEvent>(plane, event),
+      plane_(plane),
       line_(line),
       event_(event),
       metadata_(plane->GetEventMetadata(event_->metadata_id())) {}
 
-XPlaneVisitor::XPlaneVisitor(const XPlane* plane) : plane_(plane) {
+XPlaneVisitor::XPlaneVisitor(const XPlane* plane)
+    : XStatsOwner<XPlane>(this, plane), plane_(plane) {
   for (const auto& stat_metadata : plane->stat_metadata()) {
     StatType type =
         tensorflow::profiler::GetStatType(stat_metadata.second.name());
