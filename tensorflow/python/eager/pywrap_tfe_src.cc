@@ -1905,17 +1905,17 @@ static PyTapeTensor TapeTensorFromTensor(PyObject* tensor) {
     TFE_TensorHandle* t = EagerTensor_Handle(tensor);
     tensorflow::int64 id = PyEagerTensor_ID(tensor);
     tensorflow::DataType dtype =
-        static_cast<tensorflow::DataType>(t->handle.DataType());
+        static_cast<tensorflow::DataType>(t->handle->DataType());
     if (dtype == tensorflow::DT_VARIANT) {
       return PyTapeTensor(id, dtype, tensor);
     }
 
     tensorflow::Status status;
     tensorflow::TensorShape tensor_shape;
-    int num_dims = t->handle.NumDims(&status);
+    int num_dims = t->handle->NumDims(&status);
     if (status.ok()) {
       for (int i = 0; i < num_dims; ++i) {
-        tensorflow::int64 dim_size = t->handle.Dim(i, &status);
+        tensorflow::int64 dim_size = t->handle->Dim(i, &status);
         if (!status.ok()) break;
         tensor_shape.AddDim(dim_size);
       }
@@ -1957,7 +1957,7 @@ static PyTapeTensor TapeTensorFromTensor(PyObject* tensor) {
 
   auto l = MakeIntList(shape_tuple.get());
   // Replace -1, which represents accidental Nones which can occur in graph mode
-  // and can cause errors in shape cosntruction with 0s.
+  // and can cause errors in shape construction with 0s.
   for (auto& c : l) {
     if (c < 0) {
       c = 0;
@@ -3870,18 +3870,18 @@ tensorflow::Status TFE_Py_EncodeTensor(PyObject* arg,
     TFE_TensorHandle* t = EagerTensor_Handle(arg);
 
     absl::StrAppend(&result->str, kDType,
-                    static_cast<tensorflow::DataType>(t->handle.DataType()));
+                    static_cast<tensorflow::DataType>(t->handle->DataType()));
     absl::StrAppend(&result->str, kShape);
 
     tensorflow::Status status;
-    int num_dims = t->handle.NumDims(&status);
+    int num_dims = t->handle->NumDims(&status);
     if (!status.ok()) return status;
 
     if (include_tensor_ranks_only) {
       absl::StrAppend(&result->str, num_dims);
     } else {
       for (int i = 0; i < num_dims; ++i) {
-        tensorflow::int64 dim_size = t->handle.Dim(i, &status);
+        tensorflow::int64 dim_size = t->handle->Dim(i, &status);
         if (!status.ok()) return status;
         absl::StrAppend(&result->str, dim_size, kShapeDelim);
       }

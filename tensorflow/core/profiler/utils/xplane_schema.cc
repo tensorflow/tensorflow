@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/core/lib/gtl/map_util.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -38,6 +40,8 @@ static const absl::string_view kHostEventTypeMetadataMap[] = {
     "EagerKernelExecute",
     "ExecutorState::Process",
     "ExecutorDoneCallback",
+    "MemoryAllocation",
+    "MemoryDeallocation",
     // tf data captured function events.
     "InstantiatedCapturedFunction::Run",
     "InstantiatedCapturedFunction::RunWithBorrowedArgs",
@@ -79,10 +83,12 @@ static const absl::string_view kStatTypeStrMap[] = {
     "step_num",
     "iter_num",
     "index_on_host",
+    "allocator_name",
     "bytes_reserved",
     "bytes_allocated",
     "bytes_available",
     "fragmentation",
+    "peak_bytes_in_use",
     "device_id",
     "context_id",
     "correlation_id",
@@ -113,6 +119,59 @@ absl::Span<const absl::string_view> GetHostEventTypeStrMap() {
 
 absl::Span<const absl::string_view> GetStatTypeStrMap() {
   return absl::MakeConstSpan(kStatTypeStrMap, kNumStatTypes);
+}
+
+const absl::flat_hash_map<absl::string_view, StatType>& GetStatTypeMap() {
+  static absl::flat_hash_map<absl::string_view, StatType>* stats_type_map =
+      new absl::flat_hash_map<absl::string_view, StatType>({
+          {"UnknownStatType", kUnknownStatType},
+          // TraceMe arguments.
+          {"id", kStepId},
+          {"parent_step_id", kParentStepId},
+          {"function_step_id", kFunctionStepId},
+          {"device_ordinal", kDeviceOrdinal},
+          {"chip_ordinal", kChipOrdinal},
+          {"node_ordinal", kNodeOrdinal},
+          {"model_id", kModelId},
+          {"queue_addr", kQueueAddr},
+          {"request_id", kRequestId},
+          {"run_id", kRunId},
+          {"graph_type", kGraphType},
+          {"step_num", kStepNum},
+          {"iter_num", kIterNum},
+          {"index_on_host", kIndexOnHost},
+          {"allocator_name", kAllocatorName},
+          {"bytes_reserved", kBytesReserved},
+          {"bytes_allocated", kBytesAllocated},
+          {"bytes_available", kBytesAvailable},
+          {"fragmentation", kFragmentation},
+          {"peak_bytes_in_use", kPeakBytesInUse},
+          // Device trace arguments.
+          {"device_id", kDeviceId},
+          {"context_id", kContextId},
+          {"correlation_id", kCorrelationId},
+          {"memcpy_details", kMemcpyDetails},
+          {"memalloc_details", kMemallocDetails},
+          {"kernel_details", kKernelDetails},
+          // Stats added when processing traces.
+          {"group_id", kGroupId},
+          {"step_name", kStepName},
+          {"level 0", kLevel0},
+          {"tf_op", kTfOp},
+          {"hlo_op", kHloOp},
+          {"hlo_module", kHloModule},
+          {"clock_rate", kDevCapClockRateKHz},
+          {"core_count", kDevCapCoreCount},
+          {"memory_bandwidth", kDevCapMemoryBandwidth},
+          {"memory_size", kDevCapMemorySize},
+          {"compute_cap_major", kDevCapComputeCapMajor},
+          {"compute_cap_minor", kDevCapComputeCapMinor},
+      });
+  return *stats_type_map;
+}
+
+StatType GetStatType(absl::string_view stat_name) {
+  return gtl::FindWithDefault(GetStatTypeMap(), stat_name, kUnknownStatType);
 }
 
 }  // namespace profiler

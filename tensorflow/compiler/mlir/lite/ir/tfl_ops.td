@@ -3355,4 +3355,18 @@ def TFL_SVDFOp :
   }];
 }
 
+def TFL_SegmentSumOp: TFL_Op<"segment_sum", [NoSideEffect]> {
+  let summary = "SegmentSum operator";
+
+  let description = [{
+    Computes the sum along segments of a tensor.
+  }];
+
+  let arguments = (ins
+    TensorOf<[F32, I32]>:$data,
+    I32Tensor:$segment_ids
+  );
+  let results = (outs TensorOf<[F32, I32]>:$output);
+}
+
 #endif // TFL_OPS

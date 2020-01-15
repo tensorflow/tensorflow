@@ -133,6 +133,10 @@ load(
     "tf_pyclif_proto_library",
 )
 load(
+    "//tensorflow/core/platform:rules_cc.bzl",
+    "cc_library",
+)
+load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_dynamic_kernels",
     "if_static",
@@ -1974,6 +1978,7 @@ cc_library(
         "//tensorflow/core/platform:abi",
         "//tensorflow/core/platform:base64",
         "//tensorflow/core/platform:blocking_counter",
+        "//tensorflow/core/platform:casts",
         "//tensorflow/core/platform:coding",
         "//tensorflow/core/platform:context",
         "//tensorflow/core/platform:cord",
@@ -2779,7 +2784,9 @@ cc_library(
         ":protos_all_cc",
         ":shared_counter",
         "//tensorflow/core/framework:allocator",
+        "//tensorflow/core/profiler/lib:traceme",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
     ],
 )
 

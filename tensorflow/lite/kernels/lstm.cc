@@ -376,6 +376,7 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   return op_data;
 }
 
+// LINT.IfChange
 // Check that input tensor dimensions matches with each other.
 TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
                                         TfLiteNode* node, int n_input,
@@ -637,6 +638,7 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
 
   return kTfLiteOk;
 }
+// LINT.ThenChange(//tensorflow/lite/tools/optimize/calibration/builtin_logging_ops/lstm.cc)
 
 TfLiteStatus PrecomputeZeroPointTimesWeightWithBias(
     TfLiteContext* context, int32_t zero_point,
@@ -783,6 +785,7 @@ TfLiteStatus PopulatePrecomputedZPTimesWeightsWithBias(TfLiteContext* context,
 // Resize the output, state tensors based on the sizes of the input tensors.
 // Allocate a temporary scratch tensor. Also check that the sizes of the input
 // tensors match each other.
+// LINT.IfChange
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   OpData* op_data = static_cast<OpData*>(node->user_data);
 
@@ -1026,7 +1029,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   }
   return kTfLiteOk;
 }
+// LINT.ThenChange(//tensorflow/lite/tools/optimize/calibration/builtin_logging_ops/lstm.cc)
 
+// LINT.IfChange
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const auto* params = static_cast<TfLiteLSTMParams*>(node->builtin_data);
   OpData* op_data = static_cast<OpData*>(node->user_data);
@@ -1181,6 +1186,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   }
   return kTfLiteOk;
 }
+// LINT.ThenChange(//tensorflow/lite/tools/optimize/calibration/builtin_logging_ops/lstm.cc)
 
 }  // namespace full
 

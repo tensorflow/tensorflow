@@ -296,7 +296,7 @@ struct Converter {
     if (!status.ok()) {
       return status;
     }
-    *h = new TFE_TensorHandle{TensorHandleInterface(handle)};
+    *h = new TFE_TensorHandle{std::make_unique<TensorHandleInterface>(handle)};
     return Status::OK();
   }
 };
@@ -728,7 +728,7 @@ TFE_TensorHandle* PySeqToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj,
         PyErr_SetString(PyExc_ValueError, status.error_message().c_str());
         return nullptr;
       }
-      return new TFE_TensorHandle{TensorHandleInterface(h)};
+      return new TFE_TensorHandle{std::make_unique<TensorHandleInterface>(h)};
     }
 
     default:

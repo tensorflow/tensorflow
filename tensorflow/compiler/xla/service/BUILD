@@ -1994,6 +1994,7 @@ cc_library(
     hdrs = ["convolution_group_converter.h"],
     deps = [
         ":hlo",
+        ":hlo_creation_utils",
         ":hlo_pass",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",

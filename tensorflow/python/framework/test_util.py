@@ -2056,7 +2056,7 @@ class TensorFlowTestCase(googletest.TestCase):
   # pylint: disable=g-doc-return-or-yield
   @contextlib.contextmanager
   def session(self, graph=None, config=None, use_gpu=False, force_gpu=False):
-    """Returns a TensorFlow Session for use in executing tests.
+    """A context manager for a TensorFlow Session for use in executing tests.
 
     Note that this will set this session and the graph as global defaults.
 

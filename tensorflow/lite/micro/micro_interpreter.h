@@ -38,6 +38,7 @@ class MicroInterpreter {
   MicroInterpreter(const Model* model, const OpResolver& op_resolver,
                    uint8_t* tensor_arena, size_t tensor_arena_size,
                    ErrorReporter* error_reporter);
+  ~MicroInterpreter();
 
   // Runs through the model and allocates all necessary input, output and
   // intermediate tensors.

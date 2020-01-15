@@ -84,6 +84,12 @@ class MemorySpaceAssignmentCostAnalysis {
       absl::optional<int64> operand_in_alternate_mem = absl::nullopt,
       bool output_in_alternate_mem = false) const;
 
+  // Returns the elapsed time in seconds that other BufferIntervals are slowed
+  // down, due to the prefetching of current bytes. Assuming other
+  // BufferIntervals needs default memory bandwidth, and only current
+  // BufferInterval is prefetched.
+  float GetInstructionElapsedDueToMemorySlowdown(int64 bytes) const;
+
   // Returns the estimated elapsed duration of the instruction in seconds.  It
   // assumes all operands and outputs of the instruction are in the default
   // memory, except for the operand number that is in the alternate memory, if
@@ -620,6 +626,10 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   // particular time. A buffer may be required to be in default memory because
   // it is a parameter in default memory or an ouput in default memory.
   bool RequiredInDefaultMemory(const HloValue* buffer, int64 time) const;
+
+  // Returns true if this buffer is allowed to be placed in the alternate
+  // memory.
+  bool IsIntervalAllowedInAlternateMemory(const BufferInterval& interval) const;
 
   // Finds an allocation for the given interval. Internally, it will attempt to
   // find a suitable chunk candidate within the heap size and prefetch interval

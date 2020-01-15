@@ -40,6 +40,8 @@ enum HostEventType {
   kEagerKernelExecute,
   kExecutorStateProcess,
   kExecutorDoneCallback,
+  kMemoryAllocation,
+  kMemoryDeallocation,
   // tf.data captured function events.
   kTfDataCapturedFunctionRun,
   kTfDataCapturedFunctionRunWithBorrowedArgs,
@@ -80,10 +82,12 @@ enum StatType {
   kStepNum,
   kIterNum,
   kIndexOnHost,
+  kAllocatorName,
   kBytesReserved,
   kBytesAllocated,
   kBytesAvailable,
   kFragmentation,
+  kPeakBytesInUse,
   // Device trace arguments.
   kDeviceId,
   kContextId,
@@ -128,6 +132,8 @@ inline absl::string_view GetStatTypeStr(StatType stat_type) {
 inline bool IsStatType(StatType stat_type, absl::string_view stat_name) {
   return GetStatTypeStr(stat_type) == stat_name;
 }
+
+StatType GetStatType(absl::string_view stat_name);
 
 }  // namespace profiler
 }  // namespace tensorflow

@@ -156,19 +156,29 @@ class ControlFlowTransformer(converter.Base):
 
   def _create_state_functions(
       self, loop_vars, nonlocal_declarations, getter_name, setter_name):
-    template = """
-      def getter_name():
-        return state_vars,
-      def setter_name(loop_vars):
-        nonlocal_declarations
-        state_vars, = loop_vars
-    """
-    return templates.replace(
-        template,
-        nonlocal_declarations=nonlocal_declarations,
-        getter_name=getter_name,
-        setter_name=setter_name,
-        state_vars=tuple(loop_vars))
+    if loop_vars:
+      template = """
+        def getter_name():
+          return state_vars,
+        def setter_name(loop_vars):
+          nonlocal_declarations
+          state_vars, = loop_vars
+      """
+      return templates.replace(
+          template,
+          nonlocal_declarations=nonlocal_declarations,
+          getter_name=getter_name,
+          setter_name=setter_name,
+          state_vars=tuple(loop_vars))
+    else:
+      template = """
+        def getter_name():
+          return ()
+        def setter_name(loop_vars):
+          pass
+      """
+      return templates.replace(
+          template, getter_name=getter_name, setter_name=setter_name)
 
   def _create_loop_options(self, node):
     if not anno.hasanno(node, anno.Basic.DIRECTIVES):

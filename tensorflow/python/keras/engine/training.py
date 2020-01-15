@@ -228,15 +228,32 @@ class Model(network.Network, version_utils.VersionSelector):
         optimizer: String (name of optimizer) or optimizer instance.
             See `tf.keras.optimizers`.
         loss: String (name of objective function), objective function or
-            `tf.keras.losses.Loss` instance. See `tf.keras.losses`. An objective
-            function is any callable with the signature
-            `scalar_loss = fn(y_true, y_pred)`. If the model has multiple
-            outputs, you can use a different loss on each output by passing a
-            dictionary or a list of losses. The loss value that will be
-            minimized by the model will then be the sum of all individual
-            losses.
+            `tf.keras.losses.Loss` instance. See `tf.keras.losses`.
+
+            An objective function is any callable with the signature
+            `loss = fn(y_true, y_pred)`, where
+            y_true = ground truth values with shape = `[batch_size, d0, .. dN]`,
+            except sparse loss functions such as sparse categorical crossentropy
+            where shape = `[batch_size, d0, .. dN-1]`.
+            y_pred = predicted values with shape = `[batch_size, d0, .. dN]`.
+            It returns a weighted loss float tensor.
+
+            If a custom `Loss` instance is used and reduction is set to NONE,
+            return value has the shape [batch_size, d0, .. dN-1] ie. per-sample
+            or per-timestep loss values; otherwise, it is a scalar.
+
+            If the model has multiple outputs, you can use a different loss on
+            each output by passing a dictionary or a list of losses. The loss
+            value that will be minimized by the model will then be the sum of
+            all individual losses.
         metrics: List of metrics to be evaluated by the model during training
-            and testing. Typically you will use `metrics=['accuracy']`.
+            and testing.
+
+            Each of this can be a string (name of a built-in function), function
+            or a `tf.keras.metrics.Metric` instance. See `tf.keras.metrics`.
+            Typically you will use `metrics=['accuracy']`. A function is any
+            callable with the signature `result = fn(y_true, y_pred)`.
+
             To specify different metrics for different outputs of a
             multi-output model, you could also pass a dictionary, such as
             `metrics={'output_a': 'accuracy', 'output_b': ['accuracy', 'mse']}`.
@@ -817,7 +834,12 @@ class Model(network.Network, version_utils.VersionSelector):
               use_multiprocessing=False):
     """Generates output predictions for the input samples.
 
-    Computation is done in batches.
+    Computation is done in batches. This method is designed for performance in
+    large scale inputs. For small amount of inputs that fit in one batch,
+    directly using `__call__` is recommended for faster execution, e.g.,
+    `model(x)`, or `model(x, training=False)` if you have layers such as
+    `tf.keras.layers.BatchNormalization` that behaves differently during
+    inference.
 
     Arguments:
         x: Input samples. It could be:

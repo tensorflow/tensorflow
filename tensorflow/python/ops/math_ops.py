@@ -512,6 +512,45 @@ def complex(real, imag, name=None):
     return gen_math_ops._complex(real, imag, Tout=Tout, name=name)
 
 
+@tf_export("math.sign", "sign")
+@dispatch.add_dispatch_support
+def sign(x, name=None):
+  """Returns an element-wise indication of the sign of a number.
+
+  y = sign(x) = -1 if x < 0; 0 if x == 0; 1 if x > 0.
+
+  For complex numbers, y = sign(x) = x / |x| if x != 0, otherwise y = 0.
+
+  Example usage:
+
+  >>> tf.math.sign([0., 2., -3.])
+  <tf.Tensor: ... numpy=array([ 0.,  1., -1.], dtype=float32)>
+
+  Args:
+   x: A Tensor. Must be one of the following types: bfloat16, half, float32,
+      float64, int32, int64, complex64, complex128.
+   name: A name for the operation (optional).
+
+  Returns:
+   A Tensor. Has the same type as x.
+
+   If x is a SparseTensor, returns SparseTensor(x.indices,
+     tf.math.sign(x.values, ...), x.dense_shape).
+  """
+  x = ops.convert_to_tensor(x)
+  if x.dtype in (dtypes.complex64, dtypes.complex128):
+    return gen_math_ops.div_no_nan(
+        x,
+        cast(
+            gen_math_ops.complex_abs(
+                x,
+                Tout=dtypes.float32
+                if x.dtype == dtypes.complex64 else dtypes.float64),
+            dtype=x.dtype),
+        name=name)
+  return gen_math_ops.sign(x, name=name)
+
+
 @tf_export("math.real", v1=["math.real", "real"])
 @deprecation.deprecated_endpoints("real")
 @dispatch.add_dispatch_support
@@ -1487,9 +1526,12 @@ def range(start, limit=None, delta=1, dtype=None, name="range"):  # pylint: disa
     start, limit = 0, start
 
   with ops.name_scope(name, "Range", [start, limit, delta]) as name:
-    start = ops.convert_to_tensor(start, dtype=dtype, name="start")
-    limit = ops.convert_to_tensor(limit, dtype=dtype, name="limit")
-    delta = ops.convert_to_tensor(delta, dtype=dtype, name="delta")
+    if not isinstance(start, ops.Tensor):
+      start = ops.convert_to_tensor(start, dtype=dtype, name="start")
+    if not isinstance(limit, ops.Tensor):
+      limit = ops.convert_to_tensor(limit, dtype=dtype, name="limit")
+    if not isinstance(delta, ops.Tensor):
+      delta = ops.convert_to_tensor(delta, dtype=dtype, name="delta")
 
     # infer dtype if not explicitly provided
     if dtype is None:
@@ -1499,10 +1541,14 @@ def range(start, limit=None, delta=1, dtype=None, name="range"):  # pylint: disa
       assert all(arg.dtype in dtype_hierarchy for arg in [start, limit, delta])
       inferred_dtype = max([arg.dtype for arg in [start, limit, delta]],
                            key=dtype_hierarchy.index)
-
-      start = cast(start, inferred_dtype)
-      limit = cast(limit, inferred_dtype)
-      delta = cast(delta, inferred_dtype)
+    else:
+      inferred_dtype = dtype
+    # Always try perform a cast even start/limit/delta are already tensors.
+    # This will revole the case where start/limit/delta's original's dtype
+    # is different from provided dtype.
+    start = cast(start, inferred_dtype)
+    limit = cast(limit, inferred_dtype)
+    delta = cast(delta, inferred_dtype)
 
     return gen_math_ops._range(start, limit, delta, name=name)
 
