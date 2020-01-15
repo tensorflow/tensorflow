@@ -114,6 +114,12 @@ string GetLoadedTensorRTVersion();
 bool AreShapesCompatible(const std::vector<TensorShape>& actual_shapes,
                          const std::vector<TensorShape>& cached_shapes);
 
+// Returns the number of inputs for the engine, which also correspends to the
+// number of input tensors for the network.
+// This can differ from the number of input bindings, because each profile has
+// a set of bindings.
+int GetNumberOfEngineInputs(const nvinfer1::ICudaEngine *engine);
+
 #endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
 
 }  // namespace tensorrt
