@@ -84,6 +84,12 @@ class MemorySpaceAssignmentCostAnalysis {
       absl::optional<int64> operand_in_alternate_mem = absl::nullopt,
       bool output_in_alternate_mem = false) const;
 
+  // Returns the elapsed time in seconds that other BufferIntervals are slowed
+  // down, due to the prefetching of current bytes. Assuming other
+  // BufferIntervals needs default memory bandwidth, and only current
+  // BufferInterval is prefetched.
+  float GetInstructionElapsedDueToMemorySlowdown(int64 bytes) const;
+
   // Returns the estimated elapsed duration of the instruction in seconds.  It
   // assumes all operands and outputs of the instruction are in the default
   // memory, except for the operand number that is in the alternate memory, if

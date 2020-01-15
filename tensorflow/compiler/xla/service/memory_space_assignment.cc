@@ -32,6 +32,12 @@ float MemorySpaceAssignmentCostAnalysis::GetInstructionElapsedDueToCompute(
           cost_analysis_.per_second_rate(HloCostAnalysis::kTranscendentalsKey));
 }
 
+float MemorySpaceAssignmentCostAnalysis::
+    GetInstructionElapsedDueToMemorySlowdown(int64 bytes) const {
+  return bytes /
+         cost_analysis_.per_second_rate(HloCostAnalysis::kBytesAccessedKey);
+}
+
 float MemorySpaceAssignmentCostAnalysis::GetInstructionElapsedDueToMemory(
     const HloInstruction& instruction,
     absl::optional<int64> operand_in_alternate_mem,
@@ -1084,7 +1090,13 @@ MemorySpaceAssignment::GetMemoryBoundednessBufferIntervalCompare(
               std::max(alternate_mem_benefit, use_alternate_mem_benefit);
         }
       }
-      return alternate_mem_benefit;
+
+      // Get performance slowdown in seconds of prefetching current
+      // BufferInterval causing to other BufferIntervals.
+      float alternate_mem_slowdown =
+          cost_analysis.GetInstructionElapsedDueToMemorySlowdown(interval.size);
+
+      return alternate_mem_benefit - alternate_mem_slowdown;
     };
 
     float x_memory_boundedness = get_memory_boundedness(x);
