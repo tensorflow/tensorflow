@@ -1480,7 +1480,7 @@ void MakeSpecClampFields(Spec* spec) {
 template <typename LhsScalar, typename RhsScalar, typename SpecType>
 void TestSet<LhsScalar, RhsScalar, SpecType>::MakeZeroPoints() {
   RUY_CHECK_EQ(life_stage, LifeStage::kInitial);
-  if (!use_specified_zero_points) {
+  if (!benchmark && !use_specified_zero_points) {
     MakeRandomScalar(RandomRange::kReasonableSrcZeroPoint, &lhs_zero_point);
     MakeRandomScalar(RandomRange::kReasonableSrcZeroPoint, &rhs_zero_point);
     // If destination is std::int32_t, no dst_zero_point is necessary.
@@ -1507,7 +1507,8 @@ template <typename LhsScalar, typename RhsScalar, typename SpecType>
 void TestSet<LhsScalar, RhsScalar, SpecType>::MakeSpec() {
   RUY_CHECK_EQ(life_stage, LifeStage::kHasLhsRhs);
 
-  if (!getenv("BENCHMARK_ONLY_MATMUL") && (global_random_engine()() & 1)) {
+  if (!getenv("BENCHMARK_ONLY_MATMUL") && !benchmark &&
+      (global_random_engine()() & 1)) {
     MakeRandomVector(RandomRange::kBias, rows, &bias_data);
     spec.bias = bias_data.data();
   }
