@@ -3099,3 +3099,32 @@ func @variable_shape_unknown_resource_shape(%input: tensor<!tf.resource<tensor<?
   %0 = "tf.VariableShape"(%input) : (tensor<!tf.resource<tensor<?x?xf32>>>) -> (tensor<2xi32>)
   return %0: tensor<2xi32>
 }
+
+//===----------------------------------------------------------------------===//
+// tf.AvgPool legalization
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: avgpool_valid_padding
+// CHECK-SAME: [[ARG:%.+]]: tensor<2x12x20x7xf16>
+func @avgpool_valid_padding(%arg0: tensor<2x12x20x7xf16>) -> tensor<2x3x5x7xf16> {
+  // CHECK: [[CONV32:%.+]] = "xla_hlo.convert"(%arg0) : (tensor<2x12x20x7xf16>) -> tensor<2x12x20x7xf32>
+  // CHECK: [[INIT:%.+]] = xla_hlo.constant dense<0.000000e+00> : tensor<f32>
+  // CHECK: [[REDUCE:%.+]] = "xla_hlo.reduce_window"([[CONV32]], [[INIT]]) ( {
+  // CHECK: ^bb0([[ARG1:%.+]]: tensor<f32>, [[ARG2:%.+]]: tensor<f32>):
+  // CHECK:   [[ADD:%.+]] = xla_hlo.add [[ARG1]], [[ARG2]]
+  // CHECK:   "xla_hlo.return"([[ADD]])
+  // CHECK: }) {window_dimensions = dense<[1, 2, 2, 1]> : tensor<4xi64>, window_strides = dense<[1, 4, 4, 1]> : tensor<4xi64>} : (tensor<2x12x20x7xf32>, tensor<f32>) -> tensor<2x3x5x7xf32>
+  // CHECK: [[COUNT:%.+]] = xla_hlo.constant dense<4.000000e+00> : tensor<f32>
+  // CHECK: [[DIV:%.+]] = "xla_hlo.div"([[REDUCE]], [[COUNT]]) {broadcast_dimensions = dense<[0, 1, 2, 3]> : tensor<4xi64>} : (tensor<2x3x5x7xf32>, tensor<f32>) -> tensor<2x3x5x7xf32>
+  // CHECK: [[CONV16:%.+]] = "xla_hlo.convert"([[DIV]]) : (tensor<2x3x5x7xf32>) -> tensor<2x3x5x7xf16>
+  // CHECK: return [[CONV16]]
+  %0 = "tf.AvgPool"(%arg0) {data_format = "NHWC", ksize = [1, 2, 2, 1], padding = "VALID", strides = [1, 4, 4, 1]} : (tensor<2x12x20x7xf16>) -> tensor<2x3x5x7xf16>
+  return %0 : tensor<2x3x5x7xf16>
+}
+
+// CHECK-LABEL: avgpool_same_padding
+func @avgpool_same_padding(%arg0: tensor<2x13x25x7xf32>) -> tensor<2x4x7x7xf32> {
+  // CHECK: tf.AvgPool
+  %0 = "tf.AvgPool"(%arg0) {data_format = "NHWC", ksize = [1, 2, 3, 1], padding = "SAME", strides = [1, 4, 4, 1]} : (tensor<2x13x25x7xf32>) -> tensor<2x4x7x7xf32>
+  return %0 : tensor<2x4x7x7xf32>
+}
