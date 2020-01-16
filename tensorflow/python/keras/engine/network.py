@@ -2043,7 +2043,7 @@ def validate_save_format(filepath, save_format):
   """
   if type(filepath) != str and not isinstance(filepath, h5py.File):
     raise ValueError(
-        'Expected `filepath` to be a String or h5py.File object. Got'
+        'Expected `filepath` to be a String or h5py.File object. Got '
         'unsupported value %s of type %s'
         % (filepath, type(filepath)))
 
