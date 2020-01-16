@@ -23,7 +23,7 @@ VALID_LIBS = [
     "gast_archive",
     "gif_archive",
     "grpc",
-    "jpeg",
+    "libjpeg_turbo",
     "jsoncpp_git",
     "lmdb",
     "nasm",
