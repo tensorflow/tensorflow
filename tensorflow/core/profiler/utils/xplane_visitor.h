@@ -56,6 +56,8 @@ class XStatVisitor {
 
   const XStat& RawStat() const { return *stat_; }
 
+  std::string ToString() const;
+
  private:
   const XStat* stat_;
   const XStatMetadata* metadata_;
