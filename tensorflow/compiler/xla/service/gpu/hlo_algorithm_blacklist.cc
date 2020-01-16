@@ -26,6 +26,20 @@ namespace gpu {
 // MSVC requires the extra const. Without, it reports an
 // "error C2131: expression did not evaluate to a constant".
 constexpr const absl::string_view kDefaultBlacklist = R"pb(
+  entries {
+    hlo: "(f32[4,32,32,32]{2,1,3,0}, u8[0]{0}) custom-call(f32[4,32,32,32]{2,1,3,0}, f32[5,5,32,32]{1,0,2,3}), window={size=5x5 pad=2_2x2_2}, dim_labels=b01f_01io->b01f, custom_call_target=\"__cudnn$convForward\", backend_config=\"{conv_result_scale:1}\""
+    cc { major: 7 }
+    cudnn_version { major: 7 minor: 6 patch: 4 }
+    algos { id: 7 }
+    blas_version: "10201"
+  }
+  entries {
+    hlo: "(f32[4,32,32,32]{2,1,3,0}, u8[0]{0}) custom-call(f32[4,32,32,32]{2,1,3,0}, f32[5,5,32,32]{1,0,2,3}), window={size=5x5 pad=2_2x2_2}, dim_labels=b01f_01io->b01f, custom_call_target=\"__cudnn$convForward\", backend_config=\"{conv_result_scale:1}\""
+    cc { major: 7 }
+    cudnn_version { major: 7 minor: 6 patch: 4 }
+    algos { id: 7 tensor_ops: true }
+    blas_version: "10201"
+  }
 )pb";
 
 absl::Span<const stream_executor::dnn::AlgorithmDesc>
