@@ -501,8 +501,7 @@ def TFL_ArgMaxOp : TFL_Op<"arg_max", [NoSideEffect]> {
   }];
 
   let arguments = (
-    // TODO: Add support for uint8.
-    ins TensorOf<[F32, I32, I8]>:$input,
+    ins TensorOf<[F32, I32, I8, TFL_Uint8, QI8, QUI8]>:$input,
     TFL_I32OrI64Tensor:$dim
   );
 
@@ -530,8 +529,7 @@ def TFL_ArgMinOp : TFL_Op<"arg_min", [NoSideEffect]> {
   }];
 
   let arguments = (
-    // TODO(pkanwar): Add support for uint8.
-    ins TensorOf<[F32, I32, I8]>:$input,
+    ins TensorOf<[F32, I32, I8, TFL_Uint8, QI8, QUI8]>:$input,
     TFL_I32OrI64Tensor:$dim
   );
 
