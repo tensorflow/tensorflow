@@ -4657,13 +4657,6 @@ tf_portable_proto_library(
     deps = ["@com_google_protobuf//:protobuf"],
 )
 
-# There is currently no need for a full proto version of emscripten tf lib lite.
-alias(
-    name = "emscripten_lib_lite_no_runtime",
-    actual = ":emscripten_tensorflow_lib_lite_nortti_lite_protos_no_runtime",
-    visibility = ["//visibility:public"],
-)
-
 alias(
     name = "android_srcs_no_runtime",
     actual = ":mobile_srcs_no_runtime",
