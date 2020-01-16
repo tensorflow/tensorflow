@@ -1032,7 +1032,7 @@ ShapeUtil::InsertedOrDeleted1SizedDimensions(const Shape& shape_pre,
     // Check (modified) dimensions between unmodified_dims[i-1] and
     // unmodified_dims[i].
     auto prior_unmodified_dim_pair =
-        i > 0 ? unmodified_dims[i - 1] : std::make_pair(-1LL, -1LL);
+        i > 0 ? unmodified_dims[i - 1] : std::pair<int64, int64>(-1, -1);
     auto unmodified_dim_pair =
         i < unmodified_dims.size()
             ? unmodified_dims[i]

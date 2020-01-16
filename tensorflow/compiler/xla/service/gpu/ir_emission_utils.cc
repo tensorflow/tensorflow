@@ -128,7 +128,7 @@ bool IsCublasGemm(const HloInstruction& hlo) {
 std::array<int64, 3> GetReductionTiling(
     const ReductionDimensions& reduction_dimensions) {
   if (reduction_dimensions.is_row_reduction) {
-    int64 tile_z = std::min(reduction_dimensions.dimensions[0], 8LL);
+    int64 tile_z = std::min(reduction_dimensions.dimensions[0], int64{8});
     if (reduction_dimensions.dimensions[1] == 1) {
       CHECK_EQ(reduction_dimensions.dimensions[0], 1);
       return {tile_z, 1, 16};
