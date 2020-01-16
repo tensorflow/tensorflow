@@ -20,7 +20,6 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/time/time.h"
 #include "absl/types/optional.h"
-#include "google/protobuf/any.pb.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_comparator.h"
@@ -216,7 +215,6 @@ StatusOr<bool> CheckRedzones(const se::RedzoneAllocator& allocator,
   using RedzoneCheckStatus = se::RedzoneAllocator::RedzoneCheckStatus;
   TF_ASSIGN_OR_RETURN(RedzoneCheckStatus redzone_check,
                       allocator.CheckRedzones());
-
   if (redzone_check.ok()) {
     return true;
   }
@@ -304,10 +302,6 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithm(
     return InternalError("Failed to synchronize GPU for autotuning.");
   }
 
-  // Create a stream for us to do our work on.
-  se::Stream stream{stream_exec_};
-  stream.Init();
-
   // allocator either points to this->allocator_ or, if that's null, to a
   // se::StreamExecutorMemoryAllocator for stream_exec_.
   se::DeviceMemoryAllocator* allocator;
@@ -319,14 +313,16 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithm(
     allocator = &*se_allocator;
   }
 
+  TF_ASSIGN_OR_RETURN(se::Stream* const stream,
+                      allocator->GetStream(stream_exec_->device_ordinal()));
   StatusOr<AutotuneResult> result_or(InternalError("Unknown platform."));
   // Check StreamExecutor on which platform it is. ROCm and Cuda implementation
   // have diverged. Specifically, we need to make sure redzone allocator related
   // utilities are not used in ROCm routine
   if (stream_exec_->platform_kind() == se::PlatformKind::kROCm) {
-    result_or = PickBestAlgorithmNoCacheRocm(instr, allocator, &stream);
+    result_or = PickBestAlgorithmNoCacheRocm(instr, allocator, stream);
   } else if (stream_exec_->platform_kind() == se::PlatformKind::kCuda) {
-    result_or = PickBestAlgorithmNoCacheCuda(instr, allocator, &stream);
+    result_or = PickBestAlgorithmNoCacheCuda(instr, allocator, stream);
   }
 
   if (result_or.ok()) {
@@ -345,8 +341,6 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
       "GpuConvAlgorithmPicker::PickBestAlgorithmImpl for ", instr->ToString()));
 
   const Shape& result_shape = instr->shape().tuple_shapes(0);
-  const auto device_ordinal = stream_exec_->device_ordinal();
-
   int64 rng_state = 0;
 
   const auto initialize_buffer = [&stream, &rng_state](
@@ -535,7 +529,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
       for (int i = 0; i < instr->operand_count(); i++) {
         *instr_log.add_operand_shapes() = instr->operand(i)->shape().ToProto();
         instr_log.add_operand_addresses(
-            reinterpret_cast<uint64>((operand_buffers)[i].opaque()));
+            reinterpret_cast<uint64>(operand_buffers[i].opaque()));
       }
       instr_log.set_result_address(
           reinterpret_cast<uint64>(result_buffer.opaque()));
