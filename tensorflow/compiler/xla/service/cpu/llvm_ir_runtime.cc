@@ -112,7 +112,8 @@ void RewriteCalls(
   }
   for (auto* call_to_inline : calls_to_inline) {
     llvm::InlineFunctionInfo inline_function_info;
-    CHECK(llvm::InlineFunction(call_to_inline, inline_function_info));
+    CHECK(
+        llvm::InlineFunction(call_to_inline, inline_function_info).isSuccess());
   }
   // Delete the function if all uses have been inlined.
   if (fn->use_empty()) {
