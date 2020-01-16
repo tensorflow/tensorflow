@@ -212,9 +212,22 @@ void LogFusedConvForwardAutotuneResults(
   Logger::GetSingleton()->LogProto(log);
 }
 
-// A helper function to decide whether to enable deterministic functionality.
-bool RequireDeterminism() {
-  static bool require_determinism = [] {
+// The following function allows deterministic ops to be implemented relatively
+// quickly using environment variables. It is intended to be temporary. The
+// longer-term intention is to enable deterministic ops via tf.config and
+// appropriate plumbing. See the discussion on PR 34951 for more information:
+// https://github.com/tensorflow/tensorflow/pull/34951#discussion_r355682316
+// This function and associated comment are replicated in the following three
+// places:
+//   1. tensorflow/compiler/xla/service/gpu/gpu_conv_algorithm_picker.cc
+//   2. tensorflow/core/kernels/gpu_utils.cc
+//   3. tensorflow/stream_executor/cuda/cuda_dnn.cc
+// When implementing the plumbing, you should also search for the use of
+// TF_DETERMINISTIC_OPS on its own.
+// TODO(duncanriach): move to an API that uses tf.config and implement the first
+//                    phase of plumbing.
+bool RequireCudnnDeterminism() {
+  static bool require_cudnn_determinism = [] {
     bool deterministic_ops = false;
     TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_DETERMINISTIC_OPS",
                                                /*default_val=*/false,
@@ -225,7 +238,7 @@ bool RequireDeterminism() {
                                                &cudnn_deterministic));
     return deterministic_ops || cudnn_deterministic;
   }();
-  return require_determinism;
+  return require_cudnn_determinism;
 }
 
 Status BestCudnnConvAlgorithm(absl::Span<const AutotuneResult> results,
@@ -244,7 +257,7 @@ Status BestCudnnConvAlgorithm(absl::Span<const AutotuneResult> results,
 
   auto selected_result = filtered_results.begin();
   auto selected_result_no_scratch = filtered_results_no_scratch.begin();
-  if (!RequireDeterminism()) {
+  if (!RequireCudnnDeterminism()) {
     auto compare_run_times = [](const AutotuneResult& lhs,
                                 const AutotuneResult& rhs) {
       return proto_utils::FromDurationProto(lhs.run_time()) <
