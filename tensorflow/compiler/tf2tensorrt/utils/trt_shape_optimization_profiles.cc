@@ -34,8 +34,13 @@ bool isAnyInputDynamic(const nvinfer1::INetworkDefinition *network) {
 /// Create optimization profiles for a list of input shapes.
 /// The list of input shapes are stored in shapes_.
 void TrtShapeOptimizationProfile::initProfiles() {
-  VLOG(1) << "Creating profiles with startegy of one profile "
-          << "for each input shape (min=opt=max).";
+  if (input_shapes_.size()==0) {
+    VLOG(1) << "Not creating profiles without input_shapes. "
+               "You have to enable profile generation mode first (build).";
+  } else {
+    VLOG(1) << "Creating profiles with startegy of one profile "
+            << "for each input shape (min=opt=max).";
+  }
   for (auto& shape_vec: input_shapes_) {
     std::vector<nvinfer1::Dims> dimvec;
     for (auto& shape: shape_vec) {
