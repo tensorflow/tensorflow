@@ -283,7 +283,8 @@ class Model(network.Network, version_utils.VersionSelector):
             dictionary or a list of modes.
         weighted_metrics: List of metrics to be evaluated and weighted
             by sample_weight or class_weight during training and testing.
-        **kwargs: Any additional arguments.
+        **kwargs: Any additional arguments. For eager execution, pass 
+            `run_eagerly=True`.
 
     Raises:
         ValueError: In case of invalid arguments for
