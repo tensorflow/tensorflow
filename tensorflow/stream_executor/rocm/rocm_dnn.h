@@ -675,6 +675,10 @@ class MIOpenSupport : public dnn::DnnSupport {
  private:
   GpuExecutor* parent_;  // Parent executor object. Not owned.
 
+  // Flag to indicate whether Get*Algorithm routines should only return
+  // the best algorithm (as opposed to a list of all applicable ones)
+  bool return_best_algo_only_;
+
   // Provide access to the MIOpen handle.
   std::unique_ptr<class MIOpenAccess> miopen_;
 
