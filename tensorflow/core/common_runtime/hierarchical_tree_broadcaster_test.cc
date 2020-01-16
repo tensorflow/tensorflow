@@ -201,7 +201,7 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
     if (col_exec_) col_exec_->Unref();
   }
 
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   void InitGPUDevices() {
     auto device_factory = DeviceFactory::GetFactory("GPU");
     CHECK(device_factory);
@@ -214,7 +214,7 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
 
   void Init(int num_workers, int num_devices_per_worker, DataType dtype,
             const DeviceType& device_type, int fail_after) {
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
     InitGPUDevices();
 #endif
     VLOG(2) << "num_workers=" << num_workers
@@ -871,7 +871,7 @@ TEST_F(HierarchicalTreeBroadcasterTest, InitializeParams4TasksVariableGPU) {
     }                                                                      \
   }
 
-#ifndef GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
 //       B      T    W  D  L  A  F
 DEF_TEST(FLOAT, CPU, 1, 2, 1, 0, false)
 DEF_TEST(FLOAT, CPU, 1, 2, 1001, 0, true)
@@ -889,7 +889,7 @@ DEF_TEST(FLOAT, CPU, 2, 4, 128, 1, true)
 DEF_TEST(FLOAT, CPU, 2, 4, 128, 5, false)
 #endif
 
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Can only set W=1 for GPU tests.
 //       B      T    W  D  L  A  F
 DEF_TEST(FLOAT, GPU, 1, 2, 1, 0, true)
