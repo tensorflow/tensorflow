@@ -85,7 +85,6 @@ limitations under the License.
 
 #include <cstdint>
 
-#include "profiling/instrumentation.h"
 #include "tensorflow/lite/experimental/ruy/check_macros.h"
 #include "tensorflow/lite/experimental/ruy/common.h"
 #include "tensorflow/lite/experimental/ruy/internal_matrix.h"
@@ -93,6 +92,7 @@ limitations under the License.
 #include "tensorflow/lite/experimental/ruy/opt_set.h"
 #include "tensorflow/lite/experimental/ruy/path.h"
 #include "tensorflow/lite/experimental/ruy/platform.h"
+#include "tensorflow/lite/experimental/ruy/profiler/instrumentation.h"
 #include "tensorflow/lite/experimental/ruy/tune.h"
 
 namespace ruy {
@@ -153,11 +153,19 @@ struct PackedTypeImpl<Path::kNeonDotprod, std::uint8_t> {
 };
 #elif RUY_PLATFORM(X86)
 template <>
+struct PackedTypeImpl<Path::kSse42, std::uint8_t> {
+  using Type = std::int8_t;
+};
+template <>
 struct PackedTypeImpl<Path::kAvx2, std::uint8_t> {
   using Type = std::int8_t;
 };
 template <>
 struct PackedTypeImpl<Path::kAvx512, std::uint8_t> {
+  using Type = std::int8_t;
+};
+template <>
+struct PackedTypeImpl<Path::kAvxVnni, std::uint8_t> {
   using Type = std::int8_t;
 };
 #endif
@@ -188,7 +196,7 @@ struct PackImpl<Path::kStandardCpp, FixedKernelLayout, Scalar, PackedScalar,
   static void Run(Tuning, const Matrix<Scalar>& src_matrix,
                   PackedMatrix<PackedScalar>* packed_matrix, int start_col,
                   int end_col) {
-    gemmlowp::ScopedProfilingLabel label("Pack (generic)");
+    profiler::ScopeLabel label("Pack (generic)");
     RUY_DCHECK_EQ((end_col - start_col) % FixedKernelLayout::kCols, 0);
     SumsType* sums = packed_matrix->sums;
     for (int col = start_col; col < end_col; col++) {
@@ -216,8 +224,10 @@ RUY_INHERIT_PACK(Path::kStandardCpp, Path::kNeon)
 RUY_INHERIT_PACK(Path::kNeon, Path::kNeonDotprod)
 #endif
 #elif RUY_PLATFORM(X86)
-RUY_INHERIT_PACK(Path::kStandardCpp, Path::kAvx2)
+RUY_INHERIT_PACK(Path::kStandardCpp, Path::kSse42)
+RUY_INHERIT_PACK(Path::kSse42, Path::kAvx2)
 RUY_INHERIT_PACK(Path::kAvx2, Path::kAvx512)
+RUY_INHERIT_PACK(Path::kAvx512, Path::kAvxVnni)
 #endif
 
 // Main entry point for packing.

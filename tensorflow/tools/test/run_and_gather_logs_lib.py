@@ -158,7 +158,10 @@ def run_and_gather_logs(name, test_name, test_args,
 
   try:
     if not gfile.Exists(test_executable):
-      raise ValueError("Executable does not exist: %s" % test_executable)
+      test_executable_py3 = test_executable + ".python3"
+      if not gfile.Exists(test_executable_py3):
+        raise ValueError("Executable does not exist: %s" % test_executable)
+      test_executable = test_executable_py3
     test_args = shlex.split(test_args)
 
     # This key is defined in tf/core/util/reporter.h as

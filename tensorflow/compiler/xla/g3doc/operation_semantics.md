@@ -94,7 +94,7 @@ The participating cores can be configured by:
     in the same order of 1, 2, 3. Then, another AllToAll will be applied within
     replicas 4, 5, 0, and the concatenation order is also 4, 5, 0. If
     `replica_groups` is empty, all replicas belong to one group, in the
-    concatenation order of their appearence.
+    concatenation order of their appearance.
 
 Prerequisites:
 
@@ -761,17 +761,12 @@ input feature dimension, and the filter would be reshaped from
 `[filter_height, filter_width, 1, in_channels * channel_multiplier]`. For more
 details, see `tf.nn.depthwise_conv2d`.
 
-The `batch_group_count` (default value 1) argument can be used for depthwise
+The `batch_group_count` (default value 1) argument can be used for grouped
 filters during backpropagation. `batch_group_count` needs to be a divisor of the
 size of the `lhs` (input) batch dimension. If `batch_group_count` is greater
-than 1, it means that the output batch dimension should be of size
-`batch_group_size` where `batch_group_size = input batch / batch_group_count`.
-For convolutions with `batch_group_count` greater than 1, the input batch size
-must evenly divide into batch_group_size and output feature size, which implies
-that the output feature size must be equal to batch_group_count. Conceptually,
-this can be achieved by performing the usual convolution, and then scraping
-`batch_group_size` number of elements on the diagonal of the matrix formed by
-output batch and output feature.
+than 1, it means that the output batch dimension should be of size `input batch
+/ batch_group_count`. The `batch_group_count` must be a divisor of the output
+feature size.
 
 The output shape has these dimensions, in this order:
 
@@ -955,7 +950,7 @@ Arguments           | Type                  | Semantics
 ------------------- | --------------------- | ---------------
 `lhs`               | `XlaOp`               | array of type T
 `rhs`               | `XlaOp`               | array of type T
-`dimension_numbers` | `DotDimensionNumbers` | array of type T
+`dimension_numbers` | `DotDimensionNumbers` | contracting and batch dimension numbers
 
 As Dot, but allows contracting and batch dimension numbers to be specified for
 both the 'lhs' and 'rhs'.
@@ -2053,8 +2048,8 @@ window_strides, padding)` </b>
 :                     :                     : as to have the same output shape :
 :                     :                     : as input if the stride is 1, or  :
 :                     :                     : Padding\:\:kValid, which uses no :
-:                     :                     : no padding and "stops" the       :
-:                     :                     : window once it no longer fits)   :
+:                     :                     : padding and "stops" the window   :
+:                     :                     : once it no longer fits)          :
 
 Below code and figure shows an example of using `ReduceWindow`. Input is a
 matrix of size [4x6] and both window_dimensions and window_stride_dimensions are

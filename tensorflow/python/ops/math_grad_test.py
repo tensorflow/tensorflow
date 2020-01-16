@@ -489,6 +489,56 @@ class XlogyTest(test.TestCase):
       self.assertAllClose(zero, xlogy_ygrad)
 
 
+class Xlog1pyTest(test.TestCase):
+
+  def _xlog1py_gradients(self, x, y):
+    xlog1py_xgrad = self.evaluate(
+        gradients.gradients(math_ops.xlog1py(x, y), x)[0])
+    xlog1py_ygrad = self.evaluate(
+        gradients.gradients(math_ops.xlog1py(x, y), y)[0])
+    return xlog1py_xgrad, xlog1py_ygrad
+
+  @test_util.run_deprecated_v1
+  def testNonZeroValuesGrad(self):
+    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
+      x = constant_op.constant(0.1, dtype=dtype)
+      y = constant_op.constant(3.1, dtype=dtype)
+      xlog1py_xgrad, xlog1py_ygrad = self._xlog1py_gradients(x, y)
+      xlog1py_expected_xgrad = self.evaluate(math_ops.log1p(y))
+      xlog1py_expected_ygrad = self.evaluate(x / (1. + y))
+      self.assertAllClose(xlog1py_expected_xgrad, xlog1py_xgrad)
+      self.assertAllClose(xlog1py_expected_ygrad, xlog1py_ygrad)
+
+  @test_util.run_deprecated_v1
+  def testZeroXGrad(self):
+    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
+      x = constant_op.constant(0., dtype=dtype)
+      y = constant_op.constant(3.1, dtype=dtype)
+      xlog1py_xgrad, xlog1py_ygrad = self._xlog1py_gradients(x, y)
+      zero = self.evaluate(x)
+      self.assertAllClose(zero, xlog1py_xgrad)
+      self.assertAllClose(zero, xlog1py_ygrad)
+
+  @test_util.run_deprecated_v1
+  def testNegOneYGrad(self):
+    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
+      x = constant_op.constant(0.1, dtype=dtype)
+      y = constant_op.constant(-1., dtype=dtype)
+      xlog1py_xgrad, xlog1py_ygrad = self._xlog1py_gradients(x, y)
+      self.assertAllClose(-np.inf, xlog1py_xgrad)
+      self.assertAllClose(np.inf, xlog1py_ygrad)
+
+  @test_util.run_deprecated_v1
+  def testZeroXNegOneYGrad(self):
+    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
+      x = constant_op.constant(0., dtype=dtype)
+      y = constant_op.constant(-1., dtype=dtype)
+      xlog1py_xgrad, xlog1py_ygrad = self._xlog1py_gradients(x, y)
+      zero = self.evaluate(x)
+      self.assertAllClose(zero, xlog1py_xgrad)
+      self.assertAllClose(zero, xlog1py_ygrad)
+
+
 class XdivyTest(test.TestCase):
 
   def _xdivy_gradients(self, x, y):

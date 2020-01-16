@@ -46,9 +46,9 @@ class InterpreterExecutable : public Executable {
                         std::unique_ptr<HloEvaluator> evaluator);
   ~InterpreterExecutable() override;
 
-  StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStream(
+  StatusOr<ExecutionOutput> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
-      absl::Span<const ShapedBuffer* const> arguments,
+      std::vector<ShapeTree<MaybeOwningDeviceMemory>> arguments,
       HloExecutionProfile* hlo_execution_profile) override
       LOCKS_EXCLUDED(evaluator_lock_);
 

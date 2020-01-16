@@ -132,6 +132,8 @@ TfLiteRegistration* Register_MIRROR_PAD();
 TfLiteRegistration* Register_QUANTIZE();
 TfLiteRegistration* Register_HARD_SWISH_REF();
 TfLiteRegistration* Register_DEPTH_TO_SPACE_REF();
+TfLiteRegistration* Register_SELECT_V2();
+TfLiteRegistration* Register_SEGMENT_SUM();
 
 namespace {
 
@@ -284,6 +286,8 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
   AddBuiltin(BuiltinOperator_MIRROR_PAD, Register_MIRROR_PAD());
   AddBuiltin(BuiltinOperator_QUANTIZE, Register_QUANTIZE());
   AddBuiltin(BuiltinOperator_HARD_SWISH, Register_HARD_SWISH_REF());
+  AddBuiltin(BuiltinOperator_SELECT_V2, Register_SELECT_V2());
+  AddBuiltin(BuiltinOperator_SEGMENT_SUM, Register_SEGMENT_SUM());
 
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that
   // custom ops aren't always included by default.

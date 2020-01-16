@@ -22,6 +22,12 @@ limitations under the License.
 namespace stream_executor {
 namespace dnn {
 
+constexpr DataType ToDataType<float>::value;
+constexpr DataType ToDataType<double>::value;
+constexpr DataType ToDataType<Eigen::half>::value;
+constexpr DataType ToDataType<int8>::value;
+constexpr DataType ToDataType<int32>::value;
+
 uint64 AlgorithmDesc::hash() const {
   auto p = std::make_pair(algo_id(), tensor_ops_enabled());
   return absl::Hash<decltype(p)>()(p);
@@ -38,6 +44,17 @@ string AlgorithmDesc::ToString() const {
 bool DnnSupport::GetConvolveAlgorithms(
     bool with_winograd_nonfused, int cc_major, int cc_minor,
     std::vector<AlgorithmDesc>* out_algorithms) {
+  return false;
+}
+
+bool DnnSupport::GetMIOpenConvolveAlgorithms(
+    dnn::ConvolutionKind /*kind*/, Stream* /*stream*/,
+    dnn::DataType /*element_type*/,
+    const dnn::BatchDescriptor& /*input_descriptor*/,
+    const dnn::FilterDescriptor& /*filter_descriptor*/,
+    const dnn::ConvolutionDescriptor& /*convolution_descriptor*/,
+    const dnn::BatchDescriptor& /*output_descriptor*/,
+    std::vector<ProfileResult>* /*out_algorithms*/) {
   return false;
 }
 

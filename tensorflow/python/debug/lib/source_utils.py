@@ -88,8 +88,8 @@ def guess_is_tensorflow_py_library(py_file_path):
 
 
 def load_source(source_file_path):
-  with open(source_file_path, "rU") as f:
-    source_text = f.read()
+  with open(source_file_path, "rb") as f:
+    source_text = f.read().decode("utf-8")
   source_lines = source_text.split("\n")
   line_num_width = int(np.ceil(np.log10(len(source_lines)))) + 3
   return source_lines, line_num_width

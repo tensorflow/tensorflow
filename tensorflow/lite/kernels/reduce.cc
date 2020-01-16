@@ -19,7 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/optimized/integer_ops/mean.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
@@ -445,9 +445,25 @@ TfLiteStatus EvalMean(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteUInt8: {
       // TODO(b/139102329): Handle all the cases in the combined reference
       // method.
-      if (op_context.input->params.zero_point ==
-              op_context.output->params.zero_point &&
-          op_context.input->params.scale == op_context.output->params.scale) {
+      tflite::MeanParams op_params;
+      op_params.axis_count = num_axis;
+      ResolveAxis(GetTensorData<int>(op_context.axis), num_axis, &op_params);
+      if (op_context.params->keep_dims &&
+          NumDimensions(op_context.input) == 4 && op_params.axis_count == 2 &&
+          ((op_params.axis[0] == 1 && op_params.axis[1] == 2) ||
+           (op_params.axis[0] == 2 && op_params.axis[1] == 1))) {
+        reference_ops::Mean(op_params, GetTensorShape(op_context.input),
+                            GetTensorData<uint8_t>(op_context.input),
+                            op_context.input->params.zero_point,
+                            op_context.input->params.scale,
+                            GetTensorShape(op_context.output),
+                            GetTensorData<uint8_t>(op_context.output),
+                            op_context.output->params.zero_point,
+                            op_context.output->params.scale);
+      } else if (op_context.input->params.zero_point ==
+                     op_context.output->params.zero_point &&
+                 op_context.input->params.scale ==
+                     op_context.output->params.scale) {
         TF_LITE_ENSURE(
             context,
             reference_ops::Mean(
@@ -607,7 +623,7 @@ TfLiteStatus EvalGeneric(TfLiteContext* context, TfLiteNode* node) {
 
 TfLiteStatus EvalSum(TfLiteContext* context, TfLiteNode* node) {
   OpContext op_context(context, node);
-  gemmlowp::ScopedProfilingLabel label("Sum");
+  ruy::profiler::ScopeLabel label("Sum");
   const auto& input = op_context.input;
   const auto& output = op_context.output;
   const bool same_scale =
@@ -726,6 +742,7 @@ TfLiteRegistration* Register_MEAN() {
   return Register_MEAN_REF();
 #endif
 }
+
 TfLiteRegistration* Register_SUM() { return Register_SUM_REF(); }
 TfLiteRegistration* Register_REDUCE_PROD() {
   return Register_REDUCE_PROD_REF();

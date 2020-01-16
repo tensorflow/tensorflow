@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOOLS_OPTIMIZE_CALIBRATION_LOGGING_OP_H_
 #define TENSORFLOW_LITE_TOOLS_OPTIMIZE_CALIBRATION_LOGGING_OP_H_
 
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/tools/optimize/calibration/calibration_logger.h"
 
 namespace tflite {
@@ -24,7 +24,8 @@ namespace calibration {
 
 typedef TfLiteStatus (*logging_kernel_func_ptr)(TfLiteContext* context,
                                                 TfLiteNode* node,
-                                                Logger* logger);
+                                                Logger* logger,
+                                                ErrorReporter* error_reporter);
 
 }  // namespace calibration
 }  // namespace optimize

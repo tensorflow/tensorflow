@@ -73,11 +73,6 @@ void Benchmark() {
   static constexpr int cubic_size_multiplier = 8;
 
   if (benchmark_cubic) {
-#ifdef _WIN32
-    _putenv_s("QUICK_BENCHMARK", "1");
-#else
-    setenv("QUICK_BENCHMARK", "1", 0);
-#endif
     std::vector<int> sizes;
     for (int i = 2 * cubic_size_multiplier; i <= (512 * cubic_size_multiplier);
          i *= 2) {

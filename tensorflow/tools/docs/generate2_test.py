@@ -32,6 +32,7 @@ from tensorflow.tools.docs import generate2
 del tf.compat.v2
 del tf.compat.v1
 
+
 class Generate2Test(googletest.TestCase):
 
   def test_end_to_end(self):

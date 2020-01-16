@@ -31,12 +31,14 @@ import sys
 import warnings
 
 import numpy as np
-from six import integer_types
+import six
 
 from tensorflow.core.example import example_pb2
 from tensorflow.core.framework import types_pb2
 from tensorflow.python.client import session
 from tensorflow.python.debug.wrappers import local_cli_wrapper
+from tensorflow.python.eager import def_function
+from tensorflow.python.eager import function as defun
 from tensorflow.python.framework import meta_graph as meta_graph_lib
 from tensorflow.python.framework import ops as ops_lib
 from tensorflow.python.framework import tensor_spec
@@ -62,7 +64,7 @@ def _show_tag_sets(saved_model_dir):
   tag_sets = saved_model_utils.get_saved_model_tag_sets(saved_model_dir)
   print('The given SavedModel contains the following tag-sets:')
   for tag_set in sorted(tag_sets):
-    print(', '.join(sorted(tag_set)))
+    print('%r' % ', '.join(sorted(tag_set)))
 
 
 def _show_signature_def_map_keys(saved_model_dir, tag_set):
@@ -182,14 +184,25 @@ def _show_defined_functions(saved_model_dir):
   functions = sorted(functions.items(), key=lambda x: x[0])
   for name, function in functions:
     print('\n  Function Name: \'%s\'' % name)
-    concrete_functions = \
-        function._list_all_concrete_functions_for_serialization()  # pylint: disable=protected-access
+    concrete_functions = []
+    if isinstance(function, defun.ConcreteFunction):
+      concrete_functions.append(function)
+    if isinstance(function, def_function.Function):
+      concrete_functions.extend(
+          function._list_all_concrete_functions_for_serialization())  # pylint: disable=protected-access
     concrete_functions = sorted(concrete_functions, key=lambda x: x.name)
     for index, concrete_function in enumerate(concrete_functions, 1):
-      args, kwargs = concrete_function.structured_input_signature
-      print('    Option #%d' % index)
-      print('      Callable with:')
-      _print_args(args, indent=4)
+      args, kwargs = None, None
+      if concrete_function.structured_input_signature:
+        args, kwargs = concrete_function.structured_input_signature
+      elif concrete_function._arg_keywords:  # pylint: disable=protected-access
+        # For pure ConcreteFunctions we might have nothing better than
+        # _arg_keywords.
+        args = concrete_function._arg_keywords  # pylint: disable=protected-access
+      if args:
+        print('    Option #%d' % index)
+        print('      Callable with:')
+        _print_args(args, indent=4)
       if kwargs:
         _print_args(kwargs, 'Named Argument', indent=4)
 
@@ -215,7 +228,9 @@ def _print_args(arguments, argument_type='Argument', indent=0):
   for index, element in enumerate(arguments, 1):
     if indent == 4:
       in_print('%s #%d' % (argument_type, index))
-    if isinstance(element, tensor_spec.TensorSpec):
+    if isinstance(element, six.string_types):
+      in_print('  %s' % element)
+    elif isinstance(element, tensor_spec.TensorSpec):
       print((indent + 1) * '  ' + '%s: %s' % (element.name, repr(element)))
     elif (isinstance(element, collections.Iterable) and
           not isinstance(element, dict)):
@@ -567,7 +582,7 @@ def _create_example_string(example_dict):
     elif isinstance(feature_list[0], str):
       example.features.feature[feature_name].bytes_list.value.extend(
           feature_list)
-    elif isinstance(feature_list[0], integer_types):
+    elif isinstance(feature_list[0], six.integer_types):
       example.features.feature[feature_name].int64_list.value.extend(
           feature_list)
     else:
@@ -747,18 +762,18 @@ def convert_with_tensorrt(args):
   """
   # Import here instead of at top, because this will crash if TensorRT is
   # not installed
-  from tensorflow.contrib import tensorrt  # pylint: disable=g-import-not-at-top
-  tensorrt.create_inference_graph(
-      None,
-      None,
-      max_batch_size=args.max_batch_size,
+  from tensorflow.python.compiler.tensorrt import trt_convert as trt  # pylint: disable=g-import-not-at-top
+
+  params = trt.DEFAULT_TRT_CONVERSION_PARAMS._replace(
       max_workspace_size_bytes=args.max_workspace_size_bytes,
       precision_mode=args.precision_mode,
-      minimum_segment_size=args.minimum_segment_size,
-      is_dynamic_op=args.is_dynamic_op,
+      minimum_segment_size=args.minimum_segment_size)
+  converter = trt.TrtGraphConverterV2(
       input_saved_model_dir=args.dir,
       input_saved_model_tags=args.tag_set.split(','),
-      output_saved_model_dir=args.output_dir)
+      conversion_params=params)
+  converter.convert()
+  converter.save(output_saved_model_dir=args.output_dir)
 
 
 def create_parser():
@@ -950,11 +965,6 @@ def create_parser():
       description='Convert the SavedModel with Tensorflow-TensorRT integration',
       formatter_class=argparse.RawTextHelpFormatter)
   parser_convert_with_tensorrt.add_argument(
-      '--max_batch_size',
-      type=int,
-      default=1,
-      help='max size for the input batch')
-  parser_convert_with_tensorrt.add_argument(
       '--max_workspace_size_bytes',
       type=int,
       default=2 << 20,
@@ -971,12 +981,6 @@ def create_parser():
       default=3,
       help=('the minimum number of nodes required for a subgraph to be replaced'
             'in a TensorRT node'))
-  parser_convert_with_tensorrt.add_argument(
-      '--is_dynamic_op',
-      type=bool,
-      default=False,
-      help=('whether to generate dynamic TRT ops which will build the TRT '
-            'network and engine at run time'))
   parser_convert_with_tensorrt.set_defaults(func=convert_with_tensorrt)
 
   return parser

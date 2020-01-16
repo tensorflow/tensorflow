@@ -29,12 +29,16 @@ if [ ! -f $BZL_FILE_PATH ]; then
   exit 1;
 fi
 
-EIGEN_URL="$(grep -o 'http.*bitbucket.org/eigen/eigen/get/.*tar\.gz' "${BZL_FILE_PATH}" | grep -v mirror.tensorflow | head -n1)"
+EIGEN_URL="$(grep -o 'https.*gitlab.com/libeigen/eigen/-/archive/.*tar\.gz' "${BZL_FILE_PATH}" | grep -v mirror.tensorflow | head -n1)"
+EIGEN_SHA="$(eval echo $(grep '# SHARED_EIGEN_SHA' "${BZL_FILE_PATH}" | grep -o '\".*\"'))"
 GEMMLOWP_URL="$(grep -o 'https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/gemmlowp/.*zip' "${BZL_FILE_PATH}" | head -n1)"
+GEMMLOWP_SHA="$(eval echo $(grep '# SHARED_GEMMLOWP_SHA' "${BZL_FILE_PATH}" | grep -o '\".*\"'))"
 GOOGLETEST_URL="https://github.com/google/googletest/archive/release-1.8.0.tar.gz"
 ABSL_URL="$(grep -o 'https://github.com/abseil/abseil-cpp/.*tar.gz' "${BZL_FILE_PATH}" | head -n1)"
+ABSL_SHA="$(eval echo $(grep '# SHARED_ABSL_SHA' "${BZL_FILE_PATH}" | grep -o '\".*\"'))"
 NEON_2_SSE_URL="https://github.com/intel/ARM_NEON_2_x86_SSE/archive/master.zip"
 FARMHASH_URL="https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/farmhash/archive/816a4ae622e964763ca0862d9dbd19324a1eaf45.tar.gz"
+FARMHASH_SHA="$(eval echo $(grep '# SHARED_FARMHASH_SHA' "${BZL_FILE_PATH}" | grep -o '\".*\"'))"
 FLATBUFFERS_URL="https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/flatbuffers/archive/v1.11.0.tar.gz"
 FFT2D_URL="https://storage.googleapis.com/mirror.tensorflow.org/www.kurims.kyoto-u.ac.jp/~ooura/fft2d.tgz"
 
@@ -55,19 +59,25 @@ replace_by_sed() {
 }
 
 download_and_extract() {
-  local usage="Usage: download_and_extract URL DIR"
+  local usage="Usage: download_and_extract URL DIR [SHA256]"
   local url="${1:?${usage}}"
   local dir="${2:?${usage}}"
+  local sha256="${3}"
   echo "downloading ${url}" >&2
   mkdir -p "${dir}"
+  tempdir=$(mktemp -d)
+  filepath="${tempdir}/$(basename ${url})"
+  curl -Lo ${filepath} ${url}
+  if [ -n "${sha256}" ]; then
+    echo "checking sha256 of ${dir}"
+    echo "${sha256} ${filepath}" > "${filepath}.sha256"
+    sha256sum -c "${filepath}.sha256"
+  fi
   if [[ "${url}" == *gz ]]; then
-    curl -Ls "${url}" | tar -C "${dir}" --strip-components=1 -xz
+    tar -C "${dir}" --strip-components=1 -xzf ${filepath}
   elif [[ "${url}" == *zip ]]; then
-    tempdir=$(mktemp -d)
     tempdir2=$(mktemp -d)
-
-    curl -L ${url} > ${tempdir}/zipped.zip
-    unzip ${tempdir}/zipped.zip -d ${tempdir2}
+    unzip ${filepath} -d ${tempdir2}
 
     # If the zip file contains nested directories, extract the files from the
     # inner directory.
@@ -78,19 +88,20 @@ download_and_extract() {
     else
       cp -R ${tempdir2}/* ${dir}/
     fi
-    rm -rf ${tempdir2} ${tempdir}
+    rm -rf ${tempdir2}
   fi
+  rm -rf ${tempdir}
 
   # Delete any potential BUILD files, which would interfere with Bazel builds.
   find "${dir}" -type f -name '*BUILD' -delete
 }
 
-download_and_extract "${EIGEN_URL}" "${DOWNLOADS_DIR}/eigen"
-download_and_extract "${GEMMLOWP_URL}" "${DOWNLOADS_DIR}/gemmlowp"
+download_and_extract "${EIGEN_URL}" "${DOWNLOADS_DIR}/eigen" "${EIGEN_SHA}"
+download_and_extract "${GEMMLOWP_URL}" "${DOWNLOADS_DIR}/gemmlowp" "${GEMMLOWP_SHA}"
 download_and_extract "${GOOGLETEST_URL}" "${DOWNLOADS_DIR}/googletest"
-download_and_extract "${ABSL_URL}" "${DOWNLOADS_DIR}/absl"
+download_and_extract "${ABSL_URL}" "${DOWNLOADS_DIR}/absl" "${ABSL_SHA}"
 download_and_extract "${NEON_2_SSE_URL}" "${DOWNLOADS_DIR}/neon_2_sse"
-download_and_extract "${FARMHASH_URL}" "${DOWNLOADS_DIR}/farmhash"
+download_and_extract "${FARMHASH_URL}" "${DOWNLOADS_DIR}/farmhash" "${FARMHASH_SHA}"
 download_and_extract "${FLATBUFFERS_URL}" "${DOWNLOADS_DIR}/flatbuffers"
 download_and_extract "${FFT2D_URL}" "${DOWNLOADS_DIR}/fft2d"
 

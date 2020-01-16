@@ -17,11 +17,15 @@ limitations under the License.
 
 #include <stdint.h>
 
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif  // __cplusplus
+
+// TfLiteReshapeParams can't have dynamic data so we fix the maximum possible
+// number of dimensions.
+#define TFLITE_RESHAPE_PARAMS_MAX_DIMENSION_COUNT 8
 
 // TODO(aselle): Consider using "if this then that" for testing.
 
@@ -71,12 +75,16 @@ typedef enum {
 } TfLiteFusedActivation;
 
 typedef struct {
+  // Parameters for CONV_2D version 1.
   TfLitePadding padding;
   int stride_width;
   int stride_height;
+  TfLiteFusedActivation activation;
+
+  // Parameters for CONV_2D version 2.
+  // Note: Version 2 supports dilation values not equal to 1.
   int dilation_width_factor;
   int dilation_height_factor;
-  TfLiteFusedActivation activation;
 } TfLiteConvParams;
 
 typedef struct {
@@ -266,7 +274,7 @@ typedef struct {
 typedef struct {
   // TODO(ahentz): We can't have dynamic data in this struct, at least not yet.
   // For now we will fix the maximum possible number of dimensions.
-  int shape[8];
+  int shape[TFLITE_RESHAPE_PARAMS_MAX_DIMENSION_COUNT];
   int num_dimensions;
 } TfLiteReshapeParams;
 

@@ -52,7 +52,6 @@ typedef std::vector<
 
 constexpr int kDefaultCPUNum = 2;
 constexpr int kDefaultThreadNum = 2;
-constexpr char kDefaultIteratorPrefix[] = "Iterator";
 
 // Creates a tensor with the specified dtype, shape, and value.
 template <typename T>
@@ -172,6 +171,9 @@ class RangeDatasetParams : public DatasetParams {
                      string node_name);
 
   RangeDatasetParams(int64 start, int64 stop, int64 step);
+
+  RangeDatasetParams(int64 start, int64 stop, int64 step,
+                     DataTypeVector output_dtypes);
 
   std::vector<Tensor> GetInputTensors() const override;
 
@@ -404,12 +406,6 @@ struct DatasetSaveTestCase {
 };
 
 template <typename T>
-struct IsStatefulTestCase {
-  T dataset_params;
-  bool expected_stateful;
-};
-
-template <typename T>
 struct IteratorOutputDtypesTestCase {
   T dataset_params;
   DataTypeVector expected_output_dtypes;
@@ -506,11 +502,29 @@ class DatasetOpsTestBase : public ::testing::Test {
     allocator_ = device_->GetAllocator(AllocatorAttributes());
   }
 
-  ~DatasetOpsTestBase() {
-    if (dataset_) {
-      dataset_->Unref();
-    }
-  }
+  // Initializes the runtime and creates a dataset and iterator.
+  Status Initialize(const DatasetParams& dataset_params);
+
+  // Initializes the parts of the runtime needed to run dataset ops.
+  Status InitializeRuntime(const DatasetParams& dataset_params);
+
+  // Creates a dataset.
+  Status MakeDataset(const DatasetParams& dataset_params,
+                     std::unique_ptr<TestDataset>* dataset);
+
+  // Creates an iterator for the given dataset.
+  Status MakeIterator(const DatasetParams& dataset_params,
+                      const TestDataset& dataset,
+                      std::unique_ptr<TestIterator>* iterator);
+
+  // Runs the dataset operation according to the predefined dataset params and
+  // produces outputs. Different from `MakeDataset()` which returns a Dataset
+  // object, `RunDatasetOp()` executes the dataset kernel based on the input
+  // DatasetParams and returns the produced outputs as a tensor vector. It can
+  // be used to run some dataset operations that do not have an internal
+  // customized `Dataset` class (e.g. `ReduceDatasetOp`).
+  Status RunDatasetOp(const DatasetParams& dataset_params,
+                      std::vector<Tensor>* outputs);
 
   // The method validates whether the two tensors have the same shape, dtype,
   // and value.
@@ -522,105 +536,6 @@ class DatasetOpsTestBase : public ::testing::Test {
   static Status ExpectEqual(std::vector<Tensor> produced_tensors,
                             std::vector<Tensor> expected_tensors,
                             bool compare_order);
-
-  // Creates a new op kernel based on the node definition.
-  Status CreateOpKernel(const NodeDef& node_def,
-                        std::unique_ptr<OpKernel>* op_kernel);
-
-  // Creates a new op kernel context.
-  Status CreateDatasetContext(
-      OpKernel* const dateset_kernel,
-      gtl::InlinedVector<TensorValue, 4>* const inputs,
-      std::unique_ptr<OpKernelContext::Params>* dataset_context_params,
-      std::unique_ptr<OpKernelContext>* dataset_context);
-
-  // Creates a new dataset.
-  Status CreateDataset(OpKernel* kernel, OpKernelContext* context,
-                       DatasetBase** const dataset);
-
-  // Restores the state of the input iterator. It resets the iterator before
-  // restoring it to make sure the input iterator does not hold any
-  // resources or tasks. Otherwise, restoring an existing iterator may cause
-  // the timeout issue or duplicated elements.
-  Status RestoreIterator(IteratorContext* ctx, IteratorStateReader* reader,
-                         const string& output_prefix,
-                         const DatasetBase& dataset,
-                         std::unique_ptr<IteratorBase>* iterator);
-
-  // Creates a new RangeDataset op kernel. `T` specifies the output dtype of the
-  // op kernel.
-  template <typename T>
-  Status CreateRangeDatasetOpKernel(
-      StringPiece node_name, std::unique_ptr<OpKernel>* range_op_kernel) {
-    DataTypeVector dtypes({tensorflow::DataTypeToEnum<T>::value});
-    std::vector<PartialTensorShape> shapes({{}});
-    NodeDef node_def = test::function::NDef(
-        node_name, name_utils::OpName(RangeDatasetOp::kDatasetType),
-        {RangeDatasetOp::kStart, RangeDatasetOp::kStop, RangeDatasetOp::kStep},
-        {{RangeDatasetOp::kOutputTypes, dtypes},
-         {RangeDatasetOp::kOutputShapes, shapes}});
-
-    TF_RETURN_IF_ERROR(CreateOpKernel(node_def, range_op_kernel));
-    return Status::OK();
-  }
-
-  // Creates a new RangeDataset dataset. `T` specifies the output dtype of the
-  // RangeDataset op kernel.
-  template <typename T>
-  Status CreateRangeDataset(int64 start, int64 end, int64 step,
-                            StringPiece node_name,
-                            DatasetBase** range_dataset) {
-    std::unique_ptr<OpKernel> range_kernel;
-    TF_RETURN_IF_ERROR(CreateRangeDatasetOpKernel<T>(node_name, &range_kernel));
-    gtl::InlinedVector<TensorValue, 4> range_inputs;
-    TF_RETURN_IF_ERROR(AddDatasetInputFromArray<int64>(
-        &range_inputs, range_kernel->input_types(), TensorShape({}), {start}));
-    TF_RETURN_IF_ERROR(AddDatasetInputFromArray<int64>(
-        &range_inputs, range_kernel->input_types(), TensorShape({}), {end}));
-    TF_RETURN_IF_ERROR(AddDatasetInputFromArray<int64>(
-        &range_inputs, range_kernel->input_types(), TensorShape({}), {step}));
-    std::unique_ptr<OpKernelContext::Params> context_params;
-    std::unique_ptr<OpKernelContext> range_context;
-    TF_RETURN_IF_ERROR(CreateOpKernelContext(range_kernel.get(), &range_inputs,
-                                             &context_params, &range_context));
-    TF_RETURN_IF_ERROR(CheckOpKernelInput(*range_kernel, range_inputs));
-    TF_RETURN_IF_ERROR(RunOpKernel(range_kernel.get(), range_context.get()));
-    TF_RETURN_IF_ERROR(
-        GetDatasetFromContext(range_context.get(), 0, range_dataset));
-    return Status::OK();
-  }
-
-  // Creates a new TensorSliceDataset op kernel.
-  Status CreateTensorSliceDatasetKernel(
-      StringPiece node_name, const DataTypeVector& dtypes,
-      const std::vector<PartialTensorShape>& shapes,
-      std::unique_ptr<OpKernel>* tensor_slice_dataset_kernel);
-
-  // Creates a new TensorSliceDataset.
-  Status CreateTensorSliceDataset(StringPiece node_name,
-                                  std::vector<Tensor>* const components,
-                                  DatasetBase** tensor_slice_dataset);
-
-  // TODO(feihugis): remove this function after all related tests switch to
-  // `DatasetOpsTestBaseV2`.
-  // Creates a `RangeDataset` dataset as a variant tensor.
-  Status MakeRangeDataset(const Tensor& start, const Tensor& stop,
-                          const Tensor& step,
-                          const DataTypeVector& output_types,
-                          const std::vector<PartialTensorShape>& output_shapes,
-                          Tensor* range_dataset);
-
-  // TODO(feihugis): remove this function after all related tests switch to
-  // `DatasetOpsTestBaseV2`.
-  // Creates a `TakeDataset` dataset as a variant tensor.
-  Status MakeTakeDataset(const Tensor& input_dataset, int64 count,
-                         const DataTypeVector& output_types,
-                         const std::vector<PartialTensorShape>& output_shapes,
-                         Tensor* take_dataset);
-
-  // Fetches the dataset from the operation context.
-  Status GetDatasetFromContext(OpKernelContext* context, int output_index,
-                               DatasetBase** const dataset);
 
   // Checks `IteratorBase::GetNext()`.
   Status CheckIteratorGetNext(const std::vector<Tensor>& expected_outputs,
@@ -670,6 +585,14 @@ class DatasetOpsTestBase : public ::testing::Test {
       const std::vector<int>& breakpoints, bool compare_order);
 
  protected:
+  // Make destructor protected so that DatasetOpsTestBase objects cannot
+  // be instantiated directly. Only subclasses can be instantiated.
+  ~DatasetOpsTestBase() override {
+    if (dataset_) {
+      dataset_->Unref();
+    }
+  }
+
   // Creates a thread pool for parallel tasks.
   Status InitThreadPool(int thread_num);
 
@@ -678,6 +601,34 @@ class DatasetOpsTestBase : public ::testing::Test {
   // before this method if we want to run the tasks in parallel.
   Status InitFunctionLibraryRuntime(const std::vector<FunctionDef>& flib,
                                     int cpu_num);
+
+  // Creates a new op kernel based on the node definition.
+  Status CreateOpKernel(const NodeDef& node_def,
+                        std::unique_ptr<OpKernel>* op_kernel);
+
+  // Creates a new op kernel context.
+  Status CreateDatasetContext(
+      OpKernel* const dateset_kernel,
+      gtl::InlinedVector<TensorValue, 4>* const inputs,
+      std::unique_ptr<OpKernelContext::Params>* dataset_context_params,
+      std::unique_ptr<OpKernelContext>* dataset_context);
+
+  // Creates a new dataset.
+  Status CreateDataset(OpKernel* kernel, OpKernelContext* context,
+                       DatasetBase** const dataset);
+
+  // Restores the state of the input iterator. It resets the iterator before
+  // restoring it to make sure the input iterator does not hold any
+  // resources or tasks. Otherwise, restoring an existing iterator may cause
+  // the timeout issue or duplicated elements.
+  Status RestoreIterator(IteratorContext* ctx, IteratorStateReader* reader,
+                         const string& output_prefix,
+                         const DatasetBase& dataset,
+                         std::unique_ptr<IteratorBase>* iterator);
+
+  // Fetches the dataset from the operation context.
+  Status GetDatasetFromContext(OpKernelContext* context, int output_index,
+                               DatasetBase** const dataset);
 
   // Runs an operation producing outputs.
   Status RunOpKernel(OpKernel* op_kernel, OpKernelContext* context);
@@ -713,22 +664,34 @@ class DatasetOpsTestBase : public ::testing::Test {
   Status CreateSerializationContext(
       std::unique_ptr<SerializationContext>* context);
 
-  // Adds an arrayslice of data into the input vector. `input_types` describes
-  // the required data type for each input tensor. `shape` and `data`
-  // describes the shape and values of the current input tensor. `T` specifies
-  // the dtype of the input data.
-  template <typename T>
-  Status AddDatasetInputFromArray(gtl::InlinedVector<TensorValue, 4>* inputs,
-                                  DataTypeVector input_types,
-                                  const TensorShape& shape,
-                                  const gtl::ArraySlice<T>& data) {
-    TF_RETURN_IF_ERROR(
-        AddDatasetInput(inputs, input_types, DataTypeToEnum<T>::v(), shape));
-    test::FillValues<T>(inputs->back().tensor, data);
-    return Status::OK();
-  }
-
  private:
+  // Runs the dataset operation according to the predefined dataset params and
+  // the produced outputs will be stored in `dataset_ctx`.
+  Status RunDatasetOp(
+      const DatasetParams& dataset_params,
+      std::unique_ptr<OpKernel>* dataset_kernel,
+      std::unique_ptr<OpKernelContext::Params>* dataset_ctx_params,
+      std::vector<std::unique_ptr<Tensor>>* created_tensors,
+      std::unique_ptr<OpKernelContext>* dataset_ctx);
+
+  Status MakeDataset(
+      const DatasetParams& dataset_params,
+      std::unique_ptr<OpKernel>* dataset_kernel,
+      std::unique_ptr<OpKernelContext::Params>* dataset_ctx_params,
+      std::unique_ptr<OpKernelContext>* dataset_ctx,
+      std::vector<std::unique_ptr<Tensor>>* created_tensors,
+      DatasetBase** dataset);
+
+  // Creates the dataset op kernel.
+  Status MakeDatasetOpKernel(const DatasetParams& dataset_params,
+                             std::unique_ptr<OpKernel>* dataset_kernel);
+
+  // Creates a dataset tensor according to the input dataset params.
+  Status MakeDatasetTensor(
+      const DatasetParams& dataset_params,
+      std::vector<std::unique_ptr<Tensor>>* created_tensors,
+      std::unique_ptr<Tensor>* dataset);
+
   // Adds an empty tensor with the specified dtype and shape to the input
   // vector.
   Status AddDatasetInput(gtl::InlinedVector<TensorValue, 4>* inputs,
@@ -767,68 +730,6 @@ class DatasetOpsTestBase : public ::testing::Test {
   DatasetBase* dataset_ = nullptr;
   std::unique_ptr<IteratorContext> iterator_ctx_;
   std::unique_ptr<IteratorBase> iterator_;
-};
-
-// TODO(feihugis): merge `DatasetOpsTestBaseV2` into `DatasetOpsTestBase` once
-// `DatasetOpsTestBaseV2` becomes stable.
-class DatasetOpsTestBaseV2 : public DatasetOpsTestBase {
- public:
-  // Initializes the runtime and creates a dataset and iterator.
-  Status Initialize(const DatasetParams& dataset_params);
-
-  // Initializes the parts of the runtime needed to run dataset ops.
-  Status InitializeRuntime(const DatasetParams& dataset_params);
-
-  // Creates a dataset.
-  Status MakeDataset(const DatasetParams& dataset_params,
-                     std::unique_ptr<TestDataset>* dataset);
-
-  // Creates an iterator for the given dataset.
-  Status MakeIterator(const DatasetParams& dataset_params,
-                      const TestDataset& dataset,
-                      std::unique_ptr<TestIterator>* iterator);
-
-  // Runs the dataset operation according to the predefined dataset params and
-  // produces outputs. Different from `MakeDataset()` which returns a Dataset
-  // object, `RunDatasetOp()` executes the dataset kernel based on the input
-  // DatasetParams and returns the produced outputs as a tensor vector. It can
-  // be used to run some dataset operations that do not have an internal
-  // customized `Dataset` class (e.g. `ReduceDatasetOp`).
-  Status RunDatasetOp(const DatasetParams& dataset_params,
-                      std::vector<Tensor>* outputs);
-
- protected:
-  // Make destructor protected so that DatasetOpsTestBaseV2 objects cannot
-  // be instantiated directly. Only subclasses can be instantiated.
-  virtual ~DatasetOpsTestBaseV2(){};
-
- private:
-  // Runs the dataset operation according to the predefined dataset params and
-  // the produced outputs will be stored in `dataset_ctx`.
-  Status RunDatasetOp(
-      const DatasetParams& dataset_params,
-      std::unique_ptr<OpKernel>* dataset_kernel,
-      std::unique_ptr<OpKernelContext::Params>* dataset_ctx_params,
-      std::vector<std::unique_ptr<Tensor>>* created_tensors,
-      std::unique_ptr<OpKernelContext>* dataset_ctx);
-
-  Status MakeDataset(
-      const DatasetParams& dataset_params,
-      std::unique_ptr<OpKernel>* dataset_kernel,
-      std::unique_ptr<OpKernelContext::Params>* dataset_ctx_params,
-      std::unique_ptr<OpKernelContext>* dataset_ctx,
-      std::vector<std::unique_ptr<Tensor>>* created_tensors,
-      DatasetBase** dataset);
-
-  // Creates the dataset op kernel.
-  Status MakeDatasetOpKernel(const DatasetParams& dataset_params,
-                             std::unique_ptr<OpKernel>* dataset_kernel);
-
-  // Creates a dataset tensor according to the input dataset params.
-  Status MakeDatasetTensor(
-      const DatasetParams& dataset_params,
-      std::vector<std::unique_ptr<Tensor>>* created_tensors,
-      std::unique_ptr<Tensor>* dataset);
 };
 
 #define ITERATOR_GET_NEXT_TEST_P(dataset_op_test_class, dataset_params_class, \

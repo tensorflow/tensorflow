@@ -18,8 +18,9 @@ limitations under the License.
 
 #include <memory>
 
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
+#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
+#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
+#include "mlir/Transforms/DialectConversion.h"  // TF:llvm-project
 
 namespace mlir {
 namespace xla_hlo {
@@ -28,12 +29,32 @@ namespace xla_hlo {
 void PopulateGeneralDotOpLoweringPatterns(OwningRewritePatternList *patterns,
                                           MLIRContext *ctx);
 
+// Collection of rewrite patterns for lowering complex operations to equivalent
+// float operations.
+void PopulateComplexLoweringPatterns(MLIRContext *context,
+                                     OwningRewritePatternList *patterns);
+
 void PopulateXlaToStdPatterns(OwningRewritePatternList *patterns,
                               MLIRContext *ctx);
 
 // Collection of rewrite patterns for lowering of HLO to LHLO dialect.
 void populateHLOToLHLOConversionPattern(MLIRContext *context,
                                         OwningRewritePatternList *patterns);
+
+// Sets up legality definitions for materializing broadcasts.
+void SetupMaterializeBroadcastsLegality(MLIRContext *context,
+                                        ConversionTarget *conversionTarget);
+
+// Populates a collection of rewrite patterns for materializing broadcast
+// attributes to equivalent sequences of ops.
+void PopulateMaterializeBroadcastsPatterns(MLIRContext *context,
+                                           OwningRewritePatternList *patterns);
+
+// Populate a collection of conversion patterns for un-fusing
+// batch_norm_inference and batch_norm_training into constituent HLO ops.
+// TODO(laurenzo): Implement un-fusing of batch_norm_training.
+void PopulateUnfuseBatchNormPatterns(MLIRContext *context,
+                                     OwningRewritePatternList *patterns);
 
 }  // namespace xla_hlo
 }  // namespace mlir

@@ -19,13 +19,13 @@ limitations under the License.
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/IR/BlockAndValueMapping.h"  // TF:local_config_mlir
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/Diagnostics.h"  // TF:local_config_mlir
-#include "mlir/IR/Module.h"  // TF:local_config_mlir
-#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
-#include "mlir/Transforms/RegionUtils.h"  // TF:local_config_mlir
+#include "mlir/IR/BlockAndValueMapping.h"  // TF:llvm-project
+#include "mlir/IR/Builders.h"  // TF:llvm-project
+#include "mlir/IR/Diagnostics.h"  // TF:llvm-project
+#include "mlir/IR/Module.h"  // TF:llvm-project
+#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/Transforms/RegionUtils.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -77,129 +77,6 @@ struct ResourceOpLiftingPass : public FunctionPass<ResourceOpLiftingPass> {
   void runOnFunction() override;
 };
 
-// Rewrites composite variable op `tf.AssignAddVariableOp` or
-// `tf.AssignSubVariableOp` into primitive resource/computation ops.
-// For example:
-//
-// tf.AssignAddVariableOp(%res, %0)
-//
-// Becomes
-//
-// %res_val = tf.ReadVariableOp(%res)
-// %1 = tf.AddV2(%res_val, %0)
-// tf.AssignVariableOp(%res, %1)
-//
-template <typename T>
-LogicalResult RewriteCompositeAssignVariableOp(T src_op, OpBuilder* builder) {
-  // Read mangled dtype, which indicates type of data stored in resource
-  // variable. It can then be used to construct type needed for both
-  // ReadVariableOp and AssignVariableOp.
-  StringAttr mangled_dtype_attr =
-      src_op.template getAttrOfType<StringAttr>(kDTypeAttr);
-  std::string type_string = mangled_dtype_attr.getValue();
-  tensorflow::DataType dtype_proto;
-  auto s =
-      tensorflow::mangling_util::DemangleDataType(type_string, &dtype_proto);
-  if (!s.ok()) return src_op.emitError() << s.error_message();
-
-  Type type;
-  s = tensorflow::ConvertDataType(dtype_proto, *builder, &type);
-  if (!s.ok()) return src_op.emitError() << s.error_message();
-  type = UnrankedTensorType::get(type);
-
-  builder->setInsertionPoint(src_op);
-
-  auto read_variable_op = builder->create<TF::ReadVariableOp>(
-      src_op.getLoc(), type, src_op.resource());
-  read_variable_op.setAttr(builder->getIdentifier(kDTypeAttr),
-                           mangled_dtype_attr);
-
-  Value* result;
-  if (std::is_same<T, TF::AssignAddVariableOp>()) {
-    result = builder->create<TF::AddV2Op>(
-        src_op.getLoc(), read_variable_op.value(), src_op.value());
-  } else {
-    result = builder->create<TF::SubOp>(
-        src_op.getLoc(), read_variable_op.value(), src_op.value());
-  }
-
-  auto assign_variable_op = builder->create<TF::AssignVariableOp>(
-      src_op.getLoc(), src_op.resource(), result);
-  assign_variable_op.setAttr(builder->getIdentifier(kDTypeAttr),
-                             mangled_dtype_attr);
-
-  src_op.erase();
-  return success();
-}
-
-// Rewrites `tf.ResourceApplyGradientDescent` into primitive resource and
-// computation ops.
-//
-// Specifically:
-//
-// tf.ResourceApplyGradientDescent(%var, %alpha, %delta)
-//
-// Becomes
-//
-// %old_var_val = tf.ReadVariableOp(%var)
-// %gradient_update = tf.Mul(%alpha, %delta)
-// %new_var_val = tf.Sub(%old_var_val, %gradient_update)
-// tf.AssignVariableOp(%var, %new_var_val)
-LogicalResult RewriteResourceApplyGradientDescentOp(
-    TF::ResourceApplyGradientDescentOp op, OpBuilder* builder) {
-  Type type = op.alpha()->getType();
-  auto t = UnrankedTensorType::get(type.cast<TensorType>().getElementType());
-
-  tensorflow::DataType data_type;
-  auto s = tensorflow::ConvertToDataType(type, &data_type);
-  if (!s.ok()) return op.emitError() << s.error_message();
-
-  std::string mangled_data_type =
-      tensorflow::mangling_util::MangleDataType(data_type);
-  auto mangled_dtype_attr = builder->getStringAttr(mangled_data_type);
-
-  builder->setInsertionPoint(op);
-  auto read_variable_op =
-      builder->create<TF::ReadVariableOp>(op.getLoc(), t, op.var());
-  read_variable_op.setAttr(builder->getIdentifier(kDTypeAttr),
-                           mangled_dtype_attr);
-
-  auto mul_op =
-      builder->create<TF::MulOp>(op.getLoc(), t, op.alpha(), op.delta());
-  auto sub_op = builder->create<TF::SubOp>(
-      op.getLoc(), t, read_variable_op.value(), mul_op.z());
-  auto assign_variable_op =
-      builder->create<TF::AssignVariableOp>(op.getLoc(), op.var(), sub_op.z());
-  assign_variable_op.setAttr(builder->getIdentifier(kDTypeAttr),
-                             mangled_dtype_attr);
-
-  op.erase();
-
-  return success();
-}
-
-// Rewrites an operation that updates value of a resource variable into its
-// equivalent primitive ones so that following analysis/rewrite can be easier.
-// If given op is not a composite resource store op or is an unsupported op, no
-// change is applied.
-// TODO(ycao): Explore using pattern rewriter after needed operations are
-// defined.
-// TODO(ycao): Add support for other composite resource store ops.
-LogicalResult MaybeRewriteCompositeResourceStore(Operation* op,
-                                                 OpBuilder* builder) {
-  if (auto assign_add_op = dyn_cast<TF::AssignAddVariableOp>(op)) {
-    return RewriteCompositeAssignVariableOp(assign_add_op, builder);
-  } else if (auto assign_sub_op = dyn_cast<TF::AssignSubVariableOp>(op)) {
-    return RewriteCompositeAssignVariableOp(assign_sub_op, builder);
-  } else if (auto resource_apply_gradient_descent_op =
-                 dyn_cast<TF::ResourceApplyGradientDescentOp>(op)) {
-    return RewriteResourceApplyGradientDescentOp(
-        resource_apply_gradient_descent_op, builder);
-  }
-
-  return success();
-}
-
 // Performs store-load forwarding. This effectively removes
 // 1) Any resource loads after a store to that same resource is done
 // 2) Any resource stores except the last one.
@@ -210,26 +87,26 @@ void ForwardStoreToLoad(tf_device::LaunchOp launch_op) {
   // resource_handle_to_last_store_op keeps track of the most recent (last)
   // store to each resource. Non-existent entry indicates that a resource has
   // not been stored to yet.
-  llvm::SmallDenseMap<Value*, TF::AssignVariableOp>
+  llvm::SmallDenseMap<Value, TF::AssignVariableOp>
       resource_handle_to_last_store_op;
 
   // Only iterate through ops directly in launch_op's body as we can't handle
   // ops nested deeper in regions.
   for (Operation& op : llvm::make_early_inc_range(launch_op.GetBody())) {
     if (auto read_variable_op = dyn_cast<TF::ReadVariableOp>(&op)) {
-      Value* resource = read_variable_op.resource();
+      Value resource = read_variable_op.resource();
       auto last_store = resource_handle_to_last_store_op[resource];
       if (!last_store) continue;
 
       // Use stored value in last_store to replace all uses of current resource
       // load's result, then erase this resource load.
-      read_variable_op.value()->replaceAllUsesWith(last_store.value());
+      read_variable_op.value().replaceAllUsesWith(last_store.value());
       read_variable_op.erase();
       continue;
     }
 
     if (auto assign_variable_op = dyn_cast<TF::AssignVariableOp>(&op)) {
-      Value* resource = assign_variable_op.resource();
+      Value resource = assign_variable_op.resource();
       auto last_store = resource_handle_to_last_store_op[resource];
       // Previous store ops to same resource can be erased.
       if (last_store) last_store.erase();
@@ -243,17 +120,17 @@ void ForwardStoreToLoad(tf_device::LaunchOp launch_op) {
 // forwarding has been performed on this launch_op such that all loads of same
 // resource are on its initial values.
 void HoistResourceLoads(tf_device::LaunchOp launch_op) {
-  llvm::SmallDenseMap<Value*, TF::ReadVariableOp> resource_to_read_ops;
+  llvm::SmallDenseMap<Value, TF::ReadVariableOp> resource_to_read_ops;
 
   // Only iterate through ops directly in launch_op's body as we can't handle
   // ops nested deeper in regions.
   for (Operation& op : llvm::make_early_inc_range(launch_op.GetBody())) {
     auto read_variable_op = dyn_cast<TF::ReadVariableOp>(&op);
     if (!read_variable_op) continue;
-    Value* resource = read_variable_op.resource();
+    Value resource = read_variable_op.resource();
 
     // Skip resources created inside of launch_op.
-    if (resource->getParentRegion() == &launch_op.body()) continue;
+    if (resource.getParentRegion() == &launch_op.body()) continue;
 
     auto p = resource_to_read_ops.insert({resource, read_variable_op});
     if (p.second) {
@@ -279,18 +156,18 @@ bool AppendResourceStoreValueToReturn(tf_device::LaunchOp launch_op) {
   Block* body = &launch_op.GetBody();
   auto old_return = body->getTerminator();
 
-  llvm::SmallVector<Value*, 4> new_return_operands(old_return->getOperands());
+  llvm::SmallVector<Value, 4> new_return_operands(old_return->getOperands());
 
   // Only iterate through ops directly in launch_op's body as we can't handle
   // ops nested deeper in regions.
   for (Operation& op : launch_op.GetBody()) {
     auto assign_variable_op = dyn_cast<TF::AssignVariableOp>(&op);
     if (!assign_variable_op) continue;
-    Value* resource = assign_variable_op.resource();
+    Value resource = assign_variable_op.resource();
     if (!resource) continue;
 
     // Skip resources created inside of launch_op.
-    if (resource->getParentRegion() == &launch_op.body()) continue;
+    if (resource.getParentRegion() == &launch_op.body()) continue;
 
     // TODO(ycao): Prevent same value from being returned multiple times.
     // TODO(ycao): Do not return resource store value if it is defined outside
@@ -312,11 +189,12 @@ bool AppendResourceStoreValueToReturn(tf_device::LaunchOp launch_op) {
 // Moves resource store operations to after launch_op. This assumes load-store
 // forwarding has been performed on this launch_op such that there is at most
 // one resource store operation carrying its final value.
-void SinkResourceStores(tf_device::LaunchOp launch_op, OpBuilder* builder) {
+tf_device::LaunchOp SinkResourceStores(tf_device::LaunchOp launch_op,
+                                       OpBuilder* builder) {
   // Update ReturnOp inside launch_op's body to output final values of updated
   // external resources.
   bool has_resource_store = AppendResourceStoreValueToReturn(launch_op);
-  if (!has_resource_store) return;
+  if (!has_resource_store) return launch_op;
 
   auto new_return_op = launch_op.GetBody().getTerminator();
   llvm::SmallVector<Type, 4> new_launch_return_types(
@@ -325,12 +203,12 @@ void SinkResourceStores(tf_device::LaunchOp launch_op, OpBuilder* builder) {
   builder->setInsertionPoint(launch_op);
   auto new_launch_op = builder->create<tf_device::LaunchOp>(
       launch_op.getLoc(), new_launch_return_types,
-      /*operands=*/llvm::SmallVector<Value*, 4>(), launch_op.getAttrs());
+      /*operands=*/llvm::SmallVector<Value, 4>(), launch_op.getAttrs());
   new_launch_op.body().takeBody(launch_op.body());
 
   // Replace uses of old launch_op results with those of new_launch_op.
   for (auto p : llvm::zip(launch_op.getResults(), new_launch_op.getResults())) {
-    std::get<0>(p)->replaceAllUsesWith(std::get<1>(p));
+    std::get<0>(p).replaceAllUsesWith(std::get<1>(p));
   }
 
   // Create a mapping from operands of new_return_op operands to new_launch_op
@@ -351,16 +229,13 @@ void SinkResourceStores(tf_device::LaunchOp launch_op, OpBuilder* builder) {
   }
 
   launch_op.erase();
+  return new_launch_op;
 }
 
 // Hoists resource variable loads and sinks stores from launch_op.
-void HoistResourceOpsFromLaunchOp(tf_device::LaunchOp launch_op) {
+LogicalResult HoistResourceOpsFromLaunchOp(tf_device::LaunchOp launch_op) {
   ModuleOp m = launch_op.getParentOfType<ModuleOp>();
   OpBuilder builder(m);
-
-  // Rewrite composite resource store operations into primitive ones.
-  launch_op.walk(
-      [&](Operation* op) { MaybeRewriteCompositeResourceStore(op, &builder); });
 
   // Perform store-load forwarding. So that each resource is only loaded with
   // its initial value and is only stored with its final value.
@@ -370,20 +245,45 @@ void HoistResourceOpsFromLaunchOp(tf_device::LaunchOp launch_op) {
   HoistResourceLoads(launch_op);
 
   // Move stores of external resources, if any, to after launch_op.
-  SinkResourceStores(launch_op, &builder);
+  auto new_launch_op = SinkResourceStores(launch_op, &builder);
+
+  llvm::SetVector<Value> captured_values;
+  getUsedValuesDefinedAbove(new_launch_op.body(), new_launch_op.body(),
+                            captured_values);
+
+  for (Value v : captured_values) {
+    auto tensor_type = v.getType().dyn_cast<TensorType>();
+    if (!tensor_type) continue;
+    if (!tensor_type.getElementType().isa<TF::ResourceType>()) continue;
+
+    return new_launch_op.emitOpError()
+           << "has remaining resource inputs that can not be lifted";
+  }
+
+  return success();
 }
 
 }  // namespace
 
 // Lifts resource operation from tf_device.launch_func ops nested in `op`
-// outside.
-void LiftResourceOps(Operation* op) {
-  op->walk([](tf_device::LaunchOp launch_op) {
-    HoistResourceOpsFromLaunchOp(launch_op);
+// outside. Returns failure if there are remaining resource-type values that can
+// not be lifted.
+LogicalResult LiftResourceOps(Operation* op) {
+  auto result = op->walk([](tf_device::LaunchOp launch_op) {
+    if (failed(HoistResourceOpsFromLaunchOp(launch_op))) {
+      return WalkResult::interrupt();
+    }
+    return WalkResult::advance();
   });
+
+  return failure(result.wasInterrupted());
 }
 
-void ResourceOpLiftingPass::runOnFunction() { LiftResourceOps(getFunction()); }
+void ResourceOpLiftingPass::runOnFunction() {
+  if (failed(LiftResourceOps(getFunction()))) {
+    signalPassFailure();
+  }
+}
 
 std::unique_ptr<OpPassBase<FuncOp>> CreateResourceOpLiftingPass() {
   return std::make_unique<ResourceOpLiftingPass>();

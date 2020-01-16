@@ -125,7 +125,7 @@ class SleepDatasetOp : public UnaryDatasetOpKernel {
         RecordStop(ctx);
         bool cancelled = mu_.AwaitWithDeadline(
             Condition(&cancelled_),
-            ctx->env()->NowNanos() +
+            EnvTime::NowNanos() +
                 dataset()->sleep_microseconds_ * EnvTime::kMicrosToNanos);
         RecordStart(ctx);
         if (cancelled) {

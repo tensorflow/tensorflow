@@ -131,6 +131,7 @@ import abc
 import collections
 import math
 
+import re
 import numpy as np
 import six
 
@@ -306,8 +307,14 @@ class _StateManagerImpl(StateManager):
           # specifying a default partitioner for an entire layer. In that case,
           # the default getter for Layers should work.
           getter=variable_scope.get_variable)
-    if isinstance(var, trackable.Trackable):
-      self._layer._track_trackable(var, feature_column.name + '/' + name)  # pylint: disable=protected-access
+    if isinstance(var, variables.PartitionedVariable):
+      for v in var:
+        part_name = name + '/' + str(v._get_save_slice_info().var_offset[0])  # pylint: disable=protected-access
+        self._layer._track_trackable(v, feature_column.name + '/' + part_name)  # pylint: disable=protected-access
+    else:
+      if isinstance(var, trackable.Trackable):
+        self._layer._track_trackable(var, feature_column.name + '/' + name)  # pylint: disable=protected-access
+
     self._cols_to_vars_map[feature_column][name] = var
     return var
 
@@ -375,12 +382,19 @@ class _BaseFeaturesLayer(Layer):
     ValueError: if an item in `feature_columns` doesn't match
       `expected_column_type`.
   """
-  def __init__(self, feature_columns, expected_column_type, trainable, name,
+
+  def __init__(self,
+               feature_columns,
+               expected_column_type,
+               trainable,
+               name,
+               partitioner=None,
                **kwargs):
     super(_BaseFeaturesLayer, self).__init__(
         name=name, trainable=trainable, **kwargs)
     self._feature_columns = _normalize_feature_columns(feature_columns)
     self._state_manager = _StateManagerImpl(self, self.trainable)
+    self._partitioner = partitioner
     for column in self._feature_columns:
       if not isinstance(column, expected_column_type):
         raise ValueError(
@@ -391,8 +405,11 @@ class _BaseFeaturesLayer(Layer):
 
   def build(self, _):
     for column in self._feature_columns:
-      with variable_scope._pure_variable_scope(self.name):  # pylint: disable=protected-access
-        with variable_scope._pure_variable_scope(column.name):  # pylint: disable=protected-access
+      with variable_scope._pure_variable_scope(  # pylint: disable=protected-access
+          self.name,
+          partitioner=self._partitioner):
+        with variable_scope._pure_variable_scope(  # pylint: disable=protected-access
+            _sanitize_column_name_for_variable_scope(column.name)):
           column.create_state(self._state_manager)
     super(_BaseFeaturesLayer, self).build(None)
 
@@ -438,6 +455,8 @@ class _BaseFeaturesLayer(Layer):
     column_configs = serialization.serialize_feature_columns(
         self._feature_columns)
     config = {'feature_columns': column_configs}
+    config['partitioner'] = generic_utils.serialize_keras_object(
+        self._partitioner)
 
     base_config = super(  # pylint: disable=bad-super-call
         _BaseFeaturesLayer, self).get_config()
@@ -450,6 +469,8 @@ class _BaseFeaturesLayer(Layer):
     config_cp = config.copy()
     config_cp['feature_columns'] = serialization.deserialize_feature_columns(
         config['feature_columns'], custom_objects=custom_objects)
+    config_cp['partitioner'] = generic_utils.deserialize_keras_object(
+        config['partitioner'], custom_objects)
 
     return cls(**config_cp)
 
@@ -487,7 +508,8 @@ class _LinearModelLayer(Layer):
     # the ops.
     with variable_scope._pure_variable_scope(self.name):  # pylint: disable=protected-access
       for column in self._feature_columns:
-        with variable_scope._pure_variable_scope(column.name):  # pylint: disable=protected-access
+        with variable_scope._pure_variable_scope(  # pylint: disable=protected-access
+            _sanitize_column_name_for_variable_scope(column.name)):
           # Create the state for each feature column
           column.create_state(self._state_manager)
 
@@ -527,7 +549,8 @@ class _LinearModelLayer(Layer):
       transformation_cache = FeatureTransformationCache(features)
       weighted_sums = []
       for column in self._feature_columns:
-        with ops.name_scope(column.name):
+        with ops.name_scope(
+            _sanitize_column_name_for_variable_scope(column.name)):
           # All the weights used in the linear model are owned by the state
           # manager associated with this Linear Model.
           weight_var = self._state_manager.get_variable(column, 'weights')
@@ -750,7 +773,9 @@ def _transform_features_v2(features, feature_columns, state_manager):
       None, default_name='transform_features', values=features.values()):
     transformation_cache = FeatureTransformationCache(features)
     for column in feature_columns:
-      with ops.name_scope(None, default_name=column.name):
+      with ops.name_scope(
+          None,
+          default_name=_sanitize_column_name_for_variable_scope(column.name)):
         outputs[column] = transformation_cache.get(column, state_manager)
   return outputs
 
@@ -1373,6 +1398,7 @@ def bucketized_column(source_column, boundaries):
   features = tf.io.parse_example(
       ..., features=tf.feature_column.make_parse_example_spec(columns))
   dense_tensor = tf.keras.layers.DenseFeatures(columns)(features)
+  ```
 
   `bucketized_column` can also be crossed with another categorical column using
   `crossed_column`:
@@ -1665,7 +1691,7 @@ def categorical_column_with_vocabulary_file_v2(key,
     if not gfile.Exists(vocabulary_file):
       raise ValueError('vocabulary_file in {} does not exist.'.format(key))
 
-    with gfile.GFile(vocabulary_file) as f:
+    with gfile.GFile(vocabulary_file, mode='rb') as f:
       vocabulary_size = sum(1 for _ in f)
     logging.info(
         'vocabulary_size = %d in %s is inferred from the number of elements '
@@ -1909,7 +1935,15 @@ def indicator_column(categorical_column):
 
   Returns:
     An `IndicatorColumn`.
+
+  Raises:
+    ValueError: If `categorical_column` is not CategoricalColumn type.
   """
+  if not isinstance(categorical_column,
+                    (CategoricalColumn, fc_old._CategoricalColumn)):  # pylint: disable=protected-access
+    raise ValueError(
+        'Unsupported input type. Input must be a CategoricalColumn. '
+        'Given: {}'.format(categorical_column))
   return IndicatorColumn(categorical_column)
 
 
@@ -4238,16 +4272,14 @@ class IndicatorColumn(
     """See `FeatureColumn` base class."""
     return '{}_indicator'.format(self.categorical_column.name)
 
-  def _transform_id_weight_pair(self, id_weight_pair):
+  def _transform_id_weight_pair(self, id_weight_pair, size):
     id_tensor = id_weight_pair.id_tensor
     weight_tensor = id_weight_pair.weight_tensor
 
     # If the underlying column is weighted, return the input as a dense tensor.
     if weight_tensor is not None:
       weighted_column = sparse_ops.sparse_merge(
-          sp_ids=id_tensor,
-          sp_values=weight_tensor,
-          vocab_size=int(self._variable_shape[-1]))
+          sp_ids=id_tensor, sp_values=weight_tensor, vocab_size=int(size))
       # Remove (?, -1) index.
       weighted_column = sparse_ops.sparse_slice(weighted_column, [0, 0],
                                                 weighted_column.dense_shape)
@@ -4263,10 +4295,7 @@ class IndicatorColumn(
     # One hot must be float for tf.concat reasons since all other inputs to
     # input_layer are float32.
     one_hot_id_tensor = array_ops.one_hot(
-        dense_id_tensor,
-        depth=self._variable_shape[-1],
-        on_value=1.0,
-        off_value=0.0)
+        dense_id_tensor, depth=size, on_value=1.0, off_value=0.0)
 
     # Reduce to get a multi-hot per example.
     return math_ops.reduce_sum(one_hot_id_tensor, axis=[-2])
@@ -4288,13 +4317,15 @@ class IndicatorColumn(
     """
     id_weight_pair = self.categorical_column.get_sparse_tensors(
         transformation_cache, state_manager)
-    return self._transform_id_weight_pair(id_weight_pair)
+    return self._transform_id_weight_pair(id_weight_pair,
+                                          self.variable_shape[-1])
 
   @deprecation.deprecated(_FEATURE_COLUMN_DEPRECATION_DATE,
                           _FEATURE_COLUMN_DEPRECATION)
   def _transform_feature(self, inputs):
     id_weight_pair = self.categorical_column._get_sparse_tensors(inputs)  # pylint: disable=protected-access
-    return self._transform_id_weight_pair(id_weight_pair)
+    return self._transform_id_weight_pair(id_weight_pair,
+                                          self._variable_shape[-1])
 
   @property
   def parse_example_spec(self):
@@ -4618,3 +4649,9 @@ def _standardize_and_copy_config(config):
       kwargs[k] = tuple(v)
 
   return kwargs
+
+
+def _sanitize_column_name_for_variable_scope(name):
+  """Sanitizes user-provided feature names for use as variable scopes."""
+  invalid_char = re.compile('[^A-Za-z0-9_.\\-]')
+  return invalid_char.sub('_', name)

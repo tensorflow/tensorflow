@@ -2,7 +2,7 @@
 #   keras/distribute package is intended to serve as the centralized place for things
 #   related to dist-strat used by Keras..
 
-load("//tensorflow/core/platform:default/distribute.bzl", "distribute_py_test")
+load("//tensorflow/core/platform/default:distribute.bzl", "distribute_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 package(
@@ -34,16 +34,16 @@ py_library(
         "//tensorflow/python/keras:callbacks",
         "//tensorflow/python/keras:callbacks_v1",
         "//tensorflow/python/keras:constraints",
-        "//tensorflow/python/keras:engine_utils",
         "//tensorflow/python/keras:initializers",
         "//tensorflow/python/keras:losses",
-        "//tensorflow/python/keras:mode_keys",
         "//tensorflow/python/keras:optimizers",
         "//tensorflow/python/keras:regularizers",
-        "//tensorflow/python/keras:saving",
         "//tensorflow/python/keras/distribute:multi_worker_training_state",
         "//tensorflow/python/keras/mixed_precision/experimental:autocast_variable",
         "//tensorflow/python/keras/mixed_precision/experimental:policy",
+        "//tensorflow/python/keras/saving",
+        "//tensorflow/python/keras/utils:engine_utils",
+        "//tensorflow/python/keras/utils:mode_keys",
         "//tensorflow/python/training/tracking:data_structures",
         "//tensorflow/tools/docs:doc_controls",
     ],
@@ -63,7 +63,8 @@ py_library(
 cuda_py_test(
     name = "multi_worker_training_state_test",
     srcs = ["multi_worker_training_state_test.py"],
-    additional_deps = [
+    shard_count = 4,
+    deps = [
         ":multi_worker_testing_utils",
         ":multi_worker_training_state",
         "//tensorflow/python:platform",
@@ -71,7 +72,6 @@ cuda_py_test(
         "//tensorflow/python/distribute:multi_worker_test_base",
         "//tensorflow/python/keras",
     ],
-    shard_count = 4,
 )
 
 py_library(
@@ -199,7 +199,6 @@ distribute_py_test(
     shard_count = 4,
     tags = [
         "multi_and_single_gpu",
-        "no_rocm",  # times out on ROCm
         "no_windows_gpu",
         "notsan",
     ],
@@ -305,23 +304,27 @@ py_library(
 cuda_py_test(
     name = "keras_optimizer_v2_test",
     srcs = ["keras_optimizer_v2_test.py"],
-    additional_deps = [
-        ":keras_test_lib",
-    ],
     shard_count = 4,
     tags = [
         "multi_and_single_gpu",
         "no_oss",  # http://b/119349471
         "tf_integration_test",
     ],
+    deps = [
+        ":keras_test_lib",
+    ],
 )
 
 cuda_py_test(
     name = "multi_worker_test",
     srcs = ["multi_worker_test.py"],
-    additional_deps = [
+    shard_count = 32,
+    tags = [
+        "no_oss",  # TODO(b/130369494): Investigate why it times out on OSS.
+        # TODO(b/123307453): Add "multi_and_single_gpu",
+    ],
+    deps = [
         ":multi_worker_testing_utils",
-        "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
@@ -343,29 +346,13 @@ cuda_py_test(
         "//tensorflow/python/keras:engine",
         "//tensorflow/python/keras:optimizers",
         "//tensorflow/python/keras/optimizer_v2",
-    ],
-    shard_count = 32,
-    tags = [
-        "no_oss",  # TODO(b/130369494): Investigate why it times out on OSS.
-        "nomsan",  # b/140958724
-        # TODO(b/123307453): Add "multi_and_single_gpu",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
 cuda_py_test(
     name = "multi_worker_callback_tf1_test",
     srcs = ["multi_worker_callback_tf1_test.py"],
-    additional_deps = [
-        ":distribute",
-        "//tensorflow/python:platform",
-        "//tensorflow/python/distribute:collective_all_reduce_strategy",
-        "//tensorflow/python/distribute:combinations",
-        "//tensorflow/python/distribute:multi_worker_test_base",
-        "//tensorflow/python/distribute:distribute_config",
-        "//tensorflow/python/distribute:distribute_coordinator",
-        ":multi_worker_testing_utils",
-        "//tensorflow/python/keras",
-    ],
     # TODO(b/132384649): Enable for guitar and oss tests.
     shard_count = 24,
     tags = [
@@ -374,12 +361,23 @@ cuda_py_test(
         "noguitar",
         "notap",
     ],
+    deps = [
+        ":distribute",
+        ":multi_worker_testing_utils",
+        "//tensorflow/python:platform",
+        "//tensorflow/python/distribute:collective_all_reduce_strategy",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:distribute_config",
+        "//tensorflow/python/distribute:distribute_coordinator",
+        "//tensorflow/python/distribute:multi_worker_test_base",
+        "//tensorflow/python/keras",
+    ],
 )
 
 cuda_py_test(
     name = "multi_worker_callback_tf2_test",
     srcs = ["multi_worker_callback_tf2_test.py"],
-    additional_deps = [
+    deps = [
         "//tensorflow/python/distribute:collective_all_reduce_strategy",
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:multi_process_runner",
@@ -391,43 +389,21 @@ cuda_py_test(
 cuda_py_test(
     name = "multi_worker_fault_tolerance_test",
     srcs = ["multi_worker_fault_tolerance_test.py"],
-    additional_deps = [
-        ":distribute",
-        "//tensorflow/python:platform",
-        "//tensorflow/python/distribute:collective_all_reduce_strategy",
-        "//tensorflow/python/distribute:combinations",
-        "//tensorflow/python/distribute:multi_worker_test_base",
-        "//tensorflow/python/distribute:distribute_config",
-        "//tensorflow/python/distribute:distribute_coordinator",
-        ":multi_worker_testing_utils",
-        "//tensorflow/python/keras",
-    ],
     shard_count = 14,
     # TODO(b/132384649): Enable once fixed.
     tags = [
         "no_oss",
-        "nomsan",  # b/140958724
     ],
-)
-
-cuda_py_test(
-    name = "multi_worker_optimizer_comparison_test",
-    srcs = ["multi_worker_optimizer_comparison_test.py"],
-    additional_deps = [
+    deps = [
+        ":distribute",
+        ":multi_worker_testing_utils",
+        "//tensorflow/python:platform",
         "//tensorflow/python/distribute:collective_all_reduce_strategy",
         "//tensorflow/python/distribute:combinations",
-        "//tensorflow/python/keras/distribute:multi_worker_test",
-        "//tensorflow/python/distribute:multi_worker_test_base",
-        "//tensorflow/python:platform",
+        "//tensorflow/python/distribute:distribute_config",
         "//tensorflow/python/distribute:distribute_coordinator",
+        "//tensorflow/python/distribute:multi_worker_test_base",
         "//tensorflow/python/keras",
-    ],
-    tags = [
-        "manual",  # b/139844866
-        "multi_and_single_gpu",
-        "no_oss",
-        "nomsan",  # b/140958724
-        "notap",
     ],
 )
 

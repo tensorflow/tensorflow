@@ -1911,7 +1911,7 @@ Status GraphProperties::UpdateMerge(SymbolicShapeRefiner* shape_refiner,
     // Infer the shape of the second output once and for all since it never
     // changes.
     ShapeHandle out1 = ic->Scalar();
-    ic->set_output(1, out1);
+    if (ic->num_outputs() >= 2) ic->set_output(1, out1);
   }
 
   ShapeHandle out;

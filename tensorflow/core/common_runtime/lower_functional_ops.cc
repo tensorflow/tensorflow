@@ -20,7 +20,9 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/lower_function_call_op.h"
 #include "tensorflow/core/common_runtime/lower_if_op.h"
 #include "tensorflow/core/common_runtime/lower_while_op.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/graph/graph_node_util.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
@@ -179,7 +181,7 @@ Status LowerFunctionalOpsPass::Run(
   return Status::OK();
 }
 
-REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 0,
+REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 10,
                       LowerFunctionalOpsPass);
 
 }  // namespace tensorflow

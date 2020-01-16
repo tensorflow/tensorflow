@@ -122,61 +122,6 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     self.assertEqual(len(layer.get_updates_for(x1)), 2)
     self.assertEqual(len(layer.get_updates_for(None)), 0)
 
-  @test_util.run_deprecated_v1
-  def test_get_losses(self):
-
-    class MyLayer(keras.layers.Layer):
-
-      def build(self, input_shape):
-        self.a = self.add_variable('a',
-                                   (1, 1),
-                                   'float32',
-                                   trainable=False)
-        self.b = self.add_variable('b',
-                                   (1, 1),
-                                   'float32',
-                                   trainable=False)
-        self.add_loss(math_ops.reduce_sum(self.a))
-        self.built = True
-
-      def call(self, inputs):
-        self.add_loss(math_ops.reduce_sum(inputs),
-                      inputs=True)
-        return inputs + 1
-
-    x1 = input_layer_lib.Input(shape=(1,))
-    layer = MyLayer()
-    _ = layer(x1)
-
-    self.assertEqual(len(layer.losses), 2)
-    self.assertEqual(len(layer.get_losses_for(x1)), 1)
-    self.assertEqual(len(layer.get_losses_for(None)), 1)
-
-    x2 = input_layer_lib.Input(shape=(1,))
-    y2 = layer(x2)
-
-    self.assertEqual(len(layer.losses), 3)
-    self.assertEqual(len(layer.get_losses_for(x1)), 1)
-    self.assertEqual(len(layer.get_losses_for(x2)), 1)
-    self.assertEqual(len(layer.get_losses_for(None)), 1)
-
-    network = network_lib.Network(x2, y2)
-    self.assertEqual(len(network.losses), 3)
-    self.assertEqual(len(network.get_losses_for(x1)), 1)
-    self.assertEqual(len(network.get_losses_for(x2)), 1)
-    self.assertEqual(len(network.get_losses_for(None)), 1)
-
-    x3 = input_layer_lib.Input(shape=(1,))
-    _ = layer(x3)
-    self.assertEqual(len(network.losses), 4)
-
-    x4 = input_layer_lib.Input(shape=(1,))
-    _ = network(x4)
-    self.assertEqual(len(network.losses), 5)
-    self.assertEqual(len(network.get_losses_for(x2)), 1)
-    self.assertEqual(len(network.get_losses_for(x4)), 1)
-    self.assertEqual(len(network.get_losses_for(None)), 1)
-
   @test_util.run_in_graph_and_eager_modes()
   def testTopologicalAttributes(self):
     # test layer attributes / methods related to cross-layer connectivity.
@@ -358,17 +303,17 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     x = keras.layers.Dropout(0.5)(x, training=True)
     model = keras.models.Model(inp, x)
     # Would be `dropout/cond/Merge` by default
-    self.assertTrue(model.output.op.name.endswith('dropout/mul_1'))
+    self.assertIn('dropout', model.output.op.name)
 
     # Test that argument is kept when applying the model
     inp2 = keras.layers.Input(shape=(2,))
     out2 = model(inp2)
-    self.assertTrue(out2.op.name.endswith('dropout/mul_1'))
+    self.assertIn('dropout', out2.op.name)
 
     # Test that argument is kept after loading a model
     config = model.get_config()
     model = keras.models.Model.from_config(config)
-    self.assertTrue(model.output.op.name.endswith('dropout/mul_1'))
+    self.assertIn('dropout', model.output.op.name)
 
   def test_node_construction(self):
     # test basics

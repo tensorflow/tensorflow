@@ -18,7 +18,7 @@ limitations under the License.
 #include <cstdlib>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
@@ -499,10 +499,15 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       auto params = safe_allocator.Allocate<TfLiteReshapeParams>();
       if (const auto* schema_params = op->builtin_options_as_ReshapeOptions()) {
         auto* new_shape = schema_params->new_shape();
-        TF_LITE_ENSURE_STATUS(FlatBufferIntVectorToArray(
-            sizeof(params->shape), new_shape, params->shape, error_reporter,
-            "reshape"));
-        params->num_dimensions = new_shape->size();
+        // TODO(b/147203660): We need to figure out when dynamic reshape
+        // (new_shape is a tensor) happens, why the option is not a nullptr.
+        // But nonethless, we should only copy when new_shape is not a nullptr.
+        if (new_shape) {
+          TF_LITE_ENSURE_STATUS(FlatBufferIntVectorToArray(
+              sizeof(params->shape), new_shape, params->shape, error_reporter,
+              "reshape"));
+          params->num_dimensions = new_shape->size();
+        }
       }
       *builtin_data = reinterpret_cast<void*>(params.release());
       break;
@@ -791,6 +796,7 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_ROUND:
     case BuiltinOperator_RSQRT:
     case BuiltinOperator_SELECT:
+    case BuiltinOperator_SELECT_V2:
     case BuiltinOperator_SIN:
     case BuiltinOperator_SLICE:
     case BuiltinOperator_SPACE_TO_BATCH_ND:
@@ -819,6 +825,8 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_NON_MAX_SUPPRESSION_V4:
     case BuiltinOperator_NON_MAX_SUPPRESSION_V5:
     case BuiltinOperator_SCATTER_ND:
+    case BuiltinOperator_DENSIFY:
+    case BuiltinOperator_SEGMENT_SUM:
       break;
   }
   return kTfLiteOk;

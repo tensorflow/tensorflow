@@ -879,7 +879,12 @@ class RunHandlerPool::Impl {
     return run_handler_thread_pool_.get();
   }
 
-  std::unique_ptr<RunHandler> Get(int64 step_id) LOCKS_EXCLUDED(mu_) {
+  bool has_free_handler() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    return !free_handlers_.empty();
+  }
+
+  std::unique_ptr<RunHandler> Get(int64 step_id, int64 timeout_in_ms)
+      LOCKS_EXCLUDED(mu_) {
     std::unique_ptr<Eigen::MaxSizeVector<ThreadWorkSource*>>
         thread_work_sources;
     uint64 version;
@@ -894,8 +899,10 @@ class RunHandlerPool::Impl {
                                      "#");
             },
             profiler::TraceMeLevel::kInfo);
-        while (free_handlers_.empty()) {
-          one_handler_free_.wait(l);
+        if (!mu_.AwaitWithDeadline(
+                Condition(this, &Impl::has_free_handler),
+                EnvTime::NowNanos() + timeout_in_ms * 1000 * 1000)) {
+          return nullptr;
         }
       }
       // Remove the last entry from free_handlers_ and add to the end of
@@ -948,7 +955,7 @@ class RunHandlerPool::Impl {
       CHECK_EQ(handler->tws()->TaskQueueSize(true), 0);
       CHECK_EQ(handler->tws()->TaskQueueSize(false), 0);
 
-      uint64 now = tensorflow::Env::Default()->NowMicros();
+      uint64 now = tensorflow::EnvTime::NowMicros();
       double elapsed = (now - handler->start_time_us()) / 1000.0;
       time_hist_.Add(elapsed);
 
@@ -992,7 +999,6 @@ class RunHandlerPool::Impl {
       LogInfo();
     }
     RecomputePoolStats(num_active_requests, version, *thread_work_sources);
-    one_handler_free_.notify_one();
   }
 
  private:
@@ -1022,7 +1028,6 @@ class RunHandlerPool::Impl {
   histogram::Histogram time_hist_ GUARDED_BY(mu_);
 
   int64 iterations_ GUARDED_BY(mu_);
-  condition_variable one_handler_free_;
   mutex mu_;
   int64 version_ GUARDED_BY(mu_);
   const std::vector<double> sub_thread_pool_end_request_percentage_;
@@ -1130,8 +1135,9 @@ RunHandlerPool::RunHandlerPool(int num_inter_op_threads,
 
 RunHandlerPool::~RunHandlerPool() {}
 
-std::unique_ptr<RunHandler> RunHandlerPool::Get(int64 step_id) {
-  return impl_->Get(step_id);
+std::unique_ptr<RunHandler> RunHandlerPool::Get(int64 step_id,
+                                                int64 timeout_in_ms) {
+  return impl_->Get(step_id, timeout_in_ms);
 }
 
 RunHandler::RunHandler(Impl* impl) : impl_(impl) {}

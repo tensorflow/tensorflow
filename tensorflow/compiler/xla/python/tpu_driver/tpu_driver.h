@@ -37,12 +37,12 @@
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/logging.h"
 
-// This API is EXPERIMENTAL and under active developement. It is subject to
+// This API is EXPERIMENTAL and under active development. It is subject to
 // change without notice.
 
 namespace tpu_driver {
 
-uint64_t ComputeBytesFromShape(const xla::ShapeProto& shape);
+int64_t ComputeBytesFromShape(const xla::ShapeProto& shape);
 
 // Represents the deferred completion of a scheduled operation.
 //
@@ -120,10 +120,10 @@ class TpuLinearizer {
  public:
   virtual ~TpuLinearizer() {}
 
-  uint64_t ComputeBytesFromShape(const xla::ShapeProto& shape) {
+  int64_t ComputeBytesFromShape(const xla::ShapeProto& shape) {
     return ::tpu_driver::ComputeBytesFromShape(shape);
   }
-  virtual uint64_t ComputeLinearizedBytesFromShape(
+  virtual int64_t ComputeLinearizedBytesFromShape(
       const xla::ShapeProto& shape) = 0;
 
   virtual xla::Status LinearizeShape(void* dst, const void* src,
@@ -153,11 +153,13 @@ class TpuDriver {
   virtual ~TpuDriver() {}
 
   virtual void QuerySystemInfo(SystemInfo* system_info) = 0;
-  // Synchronous. Reset the state of the TPU driver. All running programs
-  // will be terminated and all allocations reset.
+  // Synchronous. Reset the state of the TPU driver. After Reset(), this TPU
+  // driver object is no longer usable. Users must destroy this object and
+  // create a new one.
   //
-  // All events and buffer handles created prior to Reset() will be invalid,
-  // and any use will result in undefined behavior.
+  // All running programs will be terminated and all allocations reset. All
+  // events and buffer handles created prior to Reset() will be invalid, and any
+  // use will result in undefined behavior.
   virtual xla::Status Reset() = 0;
 
   virtual std::unique_ptr<BufferHandle> Allocate(

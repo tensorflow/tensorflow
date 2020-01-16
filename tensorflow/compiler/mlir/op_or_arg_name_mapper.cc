@@ -24,9 +24,10 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
-#include "mlir/IR/Location.h"  // TF:local_config_mlir
-#include "mlir/IR/Operation.h"  // TF:local_config_mlir
-#include "mlir/IR/Value.h"  // TF:local_config_mlir
+#include "llvm/Support/FormatVariadic.h"
+#include "mlir/IR/Location.h"  // TF:llvm-project
+#include "mlir/IR/Operation.h"  // TF:llvm-project
+#include "mlir/IR/Value.h"  // TF:llvm-project
 
 static inline absl::string_view StringRefToView(llvm::StringRef ref) {
   return absl::string_view(ref.data(), ref.size());
@@ -71,26 +72,26 @@ llvm::StringRef OpOrArgNameMapper::GetUniqueName(llvm::StringRef prefix) {
   }
 }
 
-llvm::StringRef OpOrArgNameMapper::GetUniqueName(OpOrArg op_or_arg) {
-  auto& name = op_or_arg_to_name_[op_or_arg];
+llvm::StringRef OpOrArgNameMapper::GetUniqueName(OpOrVal op_or_val) {
+  auto& name = op_or_val_to_name_[op_or_val];
   if (!name.empty()) return StringViewToRef(name);
   // Update the value in the map with unique name.
-  llvm::StringRef ref = GetUniqueName(GetName(op_or_arg));
+  llvm::StringRef ref = GetUniqueName(GetName(op_or_val));
   name = StringRefToView(ref);
   return ref;
 }
 
-absl::string_view OpOrArgNameMapper::GetUniqueNameView(OpOrArg op_or_arg) {
-  auto& name = op_or_arg_to_name_[op_or_arg];
+absl::string_view OpOrArgNameMapper::GetUniqueNameView(OpOrVal op_or_val) {
+  auto& name = op_or_val_to_name_[op_or_val];
   if (!name.empty()) return name;
   // Update the value in the map with unique name.
-  name = StringRefToView(GetUniqueName(GetName(op_or_arg)));
+  name = StringRefToView(GetUniqueName(GetName(op_or_val)));
   return name;
 }
 
-int OpOrArgNameMapper::InitOpName(OpOrArg op_or_arg, llvm::StringRef name) {
+int OpOrArgNameMapper::InitOpName(OpOrVal op_or_val, llvm::StringRef name) {
   auto it = name_to_count_.try_emplace(name, 0);
-  op_or_arg_to_name_[op_or_arg] = StringRefToView(it.first->first());
+  op_or_val_to_name_[op_or_val] = StringRefToView(it.first->first());
   return it.first->second++;
 }
 
@@ -139,22 +140,31 @@ std::string GetNameFromLoc(mlir::Location loc) {
 }
 }  // anonymous namespace
 
-std::string OpOrArgLocNameMapper::GetName(OpOrArg op_or_arg) {
-  if (auto* op = op_or_arg.dyn_cast<mlir::Operation*>()) {
+std::string OpOrArgLocNameMapper::GetName(OpOrVal op_or_val) {
+  if (auto* op = op_or_val.dyn_cast<mlir::Operation*>()) {
     auto name_from_loc = GetNameFromLoc(op->getLoc());
     if (!name_from_loc.empty()) return name_from_loc;
     // If the location is none of the expected types, then simply use name
     // generated using the op type.
     return op->getName().getStringRef();
   }
-
-  if (auto* arg = op_or_arg.dyn_cast<mlir::BlockArgument*>())
-    return GetNameFromLoc(arg->getLoc());
-
+  auto val = op_or_val.dyn_cast<mlir::Value>();
+  auto name_from_loc = GetNameFromLoc(val.getLoc());
+  if (!name_from_loc.empty()) return name_from_loc;
+  // If the location is none of the expected types, then simply use name
+  // generated using the op type. Follow TF convention and append the result
+  // index unless 0.
+  if (auto result = val.dyn_cast<mlir::OpResult>()) {
+    if (result.getResultNumber() > 0)
+      return llvm::formatv("{0}:{1}",
+                           result.getOwner()->getName().getStringRef(),
+                           result.getResultNumber());
+    return result.getOwner()->getName().getStringRef();
+  }
   return "";
 }
 
-std::string OpOrArgStripNameMapper::GetName(OpOrArg op_or_arg) {
+std::string OpOrArgStripNameMapper::GetName(OpOrVal op_or_val) {
   return llvm::APInt(32, count_++).toString(/*Radix=*/36, /*Signed=*/false);
 }
 

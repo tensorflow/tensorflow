@@ -25,9 +25,11 @@ import re
 import textwrap
 import tokenize
 
+import astunparse
 import gast
 import six
 
+from tensorflow.python.autograph.pyct import errors
 from tensorflow.python.autograph.pyct import inspect_utils
 
 
@@ -81,7 +83,7 @@ def dedent_block(code_string):
         # TODO(mdan): We could attempt to convert tabs to spaces by unix rule.
         # See:
         # https://docs.python.org/3/reference/lexical_analysis.html#indentation
-        raise ValueError(
+        raise errors.UnsupportedLanguageElementError(
             'code mixing tabs and spaces for intentation is not allowed')
       if len(tok_string) >= block_level:
         tok_string = tok_string[block_level:]
@@ -108,7 +110,7 @@ def dedent_block(code_string):
 
 
 def _attempt_to_parse_normal_source(source, future_features):
-  return parse_str(source, preamble_len=len(future_features)), source
+  return parse(source, preamble_len=len(future_features)), source
 
 
 def _attempt_to_parse_lambda_source(source, original_source,
@@ -130,20 +132,20 @@ def _attempt_to_parse_lambda_source(source, original_source,
     source: the processed source code of `entity`.
     original_source: the source code of `entity`, as it was reported
         by `inspect.getsource`.
-    future_features: see `parse_str`.
+    future_features: see `parse`.
     try_fallback: whether to attempt to remove extra code from `source` before
         one more attempt to parse it.
   Returns:
-    Same as `parse_str`.
+    Same as `parse`.
   """
 
   try:
-    return parse_str(source, preamble_len=len(future_features)), source
+    return parse(source, preamble_len=len(future_features)), source
 
-  # Note: the ValueError may be raised by parse_str.
+  # Note: the ValueError may be raised by parse.
   except (SyntaxError, ValueError) as e:
     def fail():
-      raise ValueError(
+      raise errors.UnsupportedLanguageElementError(
           'could not parse the source code:'
           '\n\n{}\n'
           'This error may be avoided by creating the lambda in a standalone'
@@ -208,7 +210,7 @@ def parse_entity(entity, future_features):
 
 
 # TODO(mdan): This should take futures as input instead.
-def parse_str(src, preamble_len=0, single_node=True):
+def parse(src, preamble_len=0, single_node=True):
   """Returns the AST of given piece of code.
 
   Args:
@@ -243,9 +245,38 @@ def parse_expression(src):
     ValueError: if src does not consist of a single Expression.
   """
   src = STANDARD_PREAMBLE + src.strip()
-  node = parse_str(src, preamble_len=STANDARD_PREAMBLE_LEN, single_node=True)
+  node = parse(src, preamble_len=STANDARD_PREAMBLE_LEN, single_node=True)
   if __debug__:
     if not isinstance(node, gast.Expr):
       raise ValueError(
           'expected a single expression, found instead {}'.format(node))
   return node.value
+
+
+def unparse(node, indentation=None, include_encoding_marker=True):
+  """Returns the source code of given AST.
+
+  Args:
+    node: The code to compile, as an AST object.
+    indentation: Unused, deprecated. The returning code will always be indented
+      at 4 spaces.
+    include_encoding_marker: Bool, thether to include a comment on the first
+      line to explicitly specify UTF-8 encoding.
+
+  Returns:
+    code: The source code generated from the AST object
+    source_mapping: A mapping between the user and AutoGraph generated code.
+  """
+  del indentation  # astunparse doesn't allow configuring it.
+  if not isinstance(node, (list, tuple)):
+    node = (node,)
+
+  codes = []
+  if include_encoding_marker:
+    codes.append('# coding=utf-8')
+  for n in node:
+    if isinstance(n, gast.AST):
+      n = gast.gast_to_ast(n)
+    codes.append(astunparse.unparse(n).strip())
+
+  return '\n'.join(codes)

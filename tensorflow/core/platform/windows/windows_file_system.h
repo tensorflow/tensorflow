@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_WINDOWS_WINDOWS_FILE_SYSTEM_H_
 #define TENSORFLOW_CORE_PLATFORM_WINDOWS_WINDOWS_FILE_SYSTEM_H_
 
-#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/file_system.h"
+#include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/platform.h"
 
 #ifdef PLATFORM_WINDOWS
@@ -61,6 +61,8 @@ class WindowsFileSystem : public FileSystem {
   Status DeleteDir(const string& name) override;
 
   Status GetFileSize(const string& fname, uint64* size) override;
+
+  Status IsDirectory(const string& fname) override;
 
   Status RenameFile(const string& src, const string& target) override;
 

@@ -15,12 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
 
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/Module.h"  // TF:local_config_mlir
-#include "mlir/Parser.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
-#include "mlir/Support/FileUtilities.h"  // TF:local_config_mlir
-#include "mlir/Transforms/Passes.h"  // TF:local_config_mlir
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/Module.h"  // TF:llvm-project
+#include "mlir/Parser.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/Support/FileUtilities.h"  // TF:llvm-project
+#include "mlir/Transforms/Passes.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/lite/flatbuffer_translate.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
@@ -86,22 +86,22 @@ StatusOr<OwningModuleRef> LoadFromGraphdefOrMlirSource(
   if (use_splatted_constant) {
     return tensorflow::GraphdefToSplattedMlirTranslateFunction(
         file->getBuffer(), debug_info_file, input_arrays, input_dtypes,
-        input_shapes, output_arrays, prune_unused_nodes,
-        /*convert_legacy_fed_inputs=*/true,
+        input_shapes, output_arrays, /*control_output_arrays=*/"",
+        prune_unused_nodes, /*convert_legacy_fed_inputs=*/true,
         /*graph_as_function=*/false, /*upgrade_legacy=*/true, context);
   }
   return tensorflow::GraphdefToMlirTranslateFunction(
       file->getBuffer(), debug_info_file, input_arrays, input_dtypes,
-      input_shapes, output_arrays, prune_unused_nodes,
-      /*convert_legacy_fed_inputs=*/true, /*graph_as_function=*/false,
-      /*upgrade_legacy=*/true, context);
+      input_shapes, output_arrays, /*control_output_arrays=*/"",
+      prune_unused_nodes, /*convert_legacy_fed_inputs=*/true,
+      /*graph_as_function=*/false, /*upgrade_legacy=*/true, context);
 }
 
 Status ConvertTFExecutorToTFLOrFlatbuffer(
     mlir::ModuleOp module, bool export_to_mlir, bool emit_builtin_tflite_ops,
-    bool emit_select_tf_ops, bool emit_custom_ops, bool emit_quant_adaptor_ops,
-    bool lower_tensor_list_ops, const mlir::TFL::QuantizationSpecs& quant_specs,
-    std::string* result, mlir::PassManager* pass_manager) {
+    bool emit_select_tf_ops, bool emit_custom_ops,
+    const mlir::TFL::QuantizationSpecs& quant_specs, std::string* result,
+    mlir::PassManager* pass_manager) {
   mlir::StatusScopedDiagnosticHandler statusHandler(module.getContext(),
                                                     /*propagate=*/true);
   if (failed(pass_manager->run(module))) {

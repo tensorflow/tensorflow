@@ -55,6 +55,9 @@ struct MarkForCompilationPassFlags {
   // Maximum number of operators in an XLA compilation.
   int32 tf_xla_max_cluster_size;
 
+  // If non-empty, limit XLA clustering to the following TF operations.
+  string tf_xla_ops_to_cluster;
+
   // Dump graphs during XLA compilation.
   bool tf_xla_clustering_debug;
 
@@ -84,6 +87,9 @@ struct XlaDeviceFlags {
   // Enabling this mode by a legacy flag is a temporary mechanism. When this
   // feature is battle-tested, we will switch this to be a session option.
   bool tf_xla_compile_on_demand;
+
+  // Enables "XLA" devices if this flag is set.
+  bool tf_xla_enable_xla_devices;
 };
 
 // Flags common to the _Xla* ops and their kernels.
@@ -91,14 +97,6 @@ struct XlaOpsCommonFlags {
   // If true, _XlaCompile always refuses to compile the cluster, which means the
   // XLA clusters always run in the TF executor.  Defaults to false.
   bool tf_xla_always_defer_compilation;
-
-  // If true, sets compile_options.resolve_compile_time_constants to false,
-  // which stops the bridge from using the HloEvaluator for constant resolution
-  // in XlaCompiler::CompileGraph.
-  //
-  // For some models, constant folding during compile graph experiences a
-  // non-linear blow up, which overshadows both compilation and execution.
-  bool tf_xla_noresolve_compile_time_constants;
 };
 
 // Flags for the build_xla_ops pass.

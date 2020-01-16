@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/eager/tape.h"
 #include "tensorflow/c/tf_status.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/gtl/compactptrset.h"
@@ -68,14 +69,19 @@ TFE_Op* ReleaseThreadLocalOp() {
 }
 
 TFE_Op* GetOp(TFE_Context* ctx, const char* op_or_function_name,
-              TF_Status* status) {
+              const char* raw_device_name, TF_Status* status) {
   TFE_Op* maybe_op = ReleaseThreadLocalOp();
   if (maybe_op) {
-    TFE_OpReset(ctx, op_or_function_name, status, maybe_op);
-    return maybe_op;
-  } else {
-    return TFE_NewOp(ctx, op_or_function_name, status);
+    TFE_OpReset(ctx, op_or_function_name, raw_device_name, status, maybe_op);
+    if (status->status.ok()) {
+      return maybe_op;
+    }
+    // Delete op and create a fresh one
+    delete maybe_op;
   }
+
+  return NewOrResetOp(ctx, op_or_function_name, raw_device_name, status,
+                      nullptr);
 }
 
 void ReturnOp(TFE_Op* object) {
@@ -144,6 +150,40 @@ AttrToInputsMap* GetAttrToInputsMap(const tensorflow::OpDef& op_def) {
   return retval;
 }
 
+tensorflow::mutex all_attr_to_defaults_maps_lock(
+    tensorflow::LINKER_INITIALIZED);
+tensorflow::gtl::FlatMap<
+    string, tensorflow::gtl::FlatMap<string, tensorflow::DataType>*>*
+GetAllAttrToDefaultsMaps() {
+  static auto* all_attr_to_defaults_maps = new tensorflow::gtl::FlatMap<
+      string, tensorflow::gtl::FlatMap<string, tensorflow::DataType>*>;
+  return all_attr_to_defaults_maps;
+}
+
+tensorflow::gtl::FlatMap<string, tensorflow::DataType>* GetAttrToDefaultsMap(
+    const tensorflow::OpDef& op_def) {
+  tensorflow::mutex_lock l(all_attr_to_defaults_maps_lock);
+  auto* all_attr_to_defaults_maps = GetAllAttrToDefaultsMaps();
+
+  auto* output =
+      tensorflow::gtl::FindPtrOrNull(*all_attr_to_defaults_maps, op_def.name());
+  if (output != nullptr) {
+    return output;
+  }
+
+  auto* new_map = new tensorflow::gtl::FlatMap<string, tensorflow::DataType>;
+
+  for (const auto& attr : op_def.attr()) {
+    if (attr.type() == "type" && attr.has_default_value()) {
+      new_map->insert({attr.name(), attr.default_value().type()});
+    }
+  }
+
+  (*all_attr_to_defaults_maps)[op_def.name()] = new_map;
+
+  return new_map;
+}
+
 struct FastPathOpExecInfo {
   TFE_Context* ctx;
   const char* device_name;
@@ -164,6 +204,7 @@ struct FastPathOpExecInfo {
   // DTypes can come from another input that has the same attr. So build that
   // map.
   const AttrToInputsMap* attr_to_inputs_map;
+  const tensorflow::gtl::FlatMap<string, tensorflow::DataType>* default_dtypes;
   tensorflow::gtl::FlatMap<string, tensorflow::DataType> cached_dtypes;
 };
 
@@ -799,14 +840,12 @@ void TFE_Py_ExecuteCancelable(TFE_Context* ctx, const char* device_name,
                               TFE_CancellationManager* cancellation_manager,
                               TFE_OutputTensorHandles* outputs,
                               TF_Status* out_status) {
-  TFE_Op* op = GetOp(ctx, op_name, out_status);
+  TFE_Op* op = GetOp(ctx, op_name, device_name, out_status);
   auto cleaner = tensorflow::gtl::MakeCleanup([op] { ReturnOp(op); });
   if (!out_status->status.ok()) return;
-  TFE_OpSetDevice(op, device_name, out_status);
-  if (out_status->status.ok()) {
-    for (int i = 0; i < inputs->size() && out_status->status.ok(); ++i) {
-      TFE_OpAddInput(op, inputs->at(i), out_status);
-    }
+
+  for (int i = 0; i < inputs->size() && out_status->status.ok(); ++i) {
+    TFE_OpAddInput(op, inputs->at(i), out_status);
   }
   if (cancellation_manager && out_status->status.ok()) {
     TFE_OpSetCancellationManager(op, cancellation_manager, out_status);
@@ -969,9 +1008,7 @@ const char* TFE_GetPythonString(PyObject* o) {
 #endif
 }
 
-int64_t get_uid() {
-  return _uid++;
-}
+int64_t get_uid() { return _uid++; }
 
 PyObject* TFE_Py_UID() { return PyLong_FromLongLong(get_uid()); }
 
@@ -1867,18 +1904,28 @@ static PyTapeTensor TapeTensorFromTensor(PyObject* tensor) {
   if (EagerTensor_CheckExact(tensor)) {
     TFE_TensorHandle* t = EagerTensor_Handle(tensor);
     tensorflow::int64 id = PyEagerTensor_ID(tensor);
+    tensorflow::DataType dtype =
+        static_cast<tensorflow::DataType>(t->handle->DataType());
+    if (dtype == tensorflow::DT_VARIANT) {
+      return PyTapeTensor(id, dtype, tensor);
+    }
+
+    tensorflow::Status status;
     tensorflow::TensorShape tensor_shape;
-    const tensorflow::Status status = t->handle->Shape(&tensor_shape);
+    int num_dims = t->handle->NumDims(&status);
+    if (status.ok()) {
+      for (int i = 0; i < num_dims; ++i) {
+        tensorflow::int64 dim_size = t->handle->Dim(i, &status);
+        if (!status.ok()) break;
+        tensor_shape.AddDim(dim_size);
+      }
+    }
 
     if (MaybeRaiseExceptionFromStatus(status, nullptr)) {
       return PyTapeTensor(id, static_cast<tensorflow::DataType>(0),
                           tensorflow::TensorShape({}));
     } else {
-      if (t->handle->dtype == tensorflow::DT_VARIANT) {
-        return PyTapeTensor(id, t->handle->dtype, tensor);
-      } else {
-        return PyTapeTensor(id, t->handle->dtype, tensor_shape);
-      }
+      return PyTapeTensor(id, dtype, tensor_shape);
     }
   }
   tensorflow::int64 id = FastTensorId(tensor);
@@ -1910,7 +1957,7 @@ static PyTapeTensor TapeTensorFromTensor(PyObject* tensor) {
 
   auto l = MakeIntList(shape_tuple.get());
   // Replace -1, which represents accidental Nones which can occur in graph mode
-  // and can cause errors in shape cosntruction with 0s.
+  // and can cause errors in shape construction with 0s.
   for (auto& c : l) {
     if (c < 0) {
       c = 0;
@@ -2838,6 +2885,11 @@ tensorflow::DataType MaybeGetDTypeForAttr(const string& attr,
     }
   }
 
+  auto default_it = op_exec_info->default_dtypes->find(attr);
+  if (default_it != op_exec_info->default_dtypes->end()) {
+    return default_it->second;
+  }
+
   return tensorflow::DT_INVALID;
 }
 
@@ -3468,7 +3520,8 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
     return nullptr;
   }
 
-  TFE_Op* op = GetOp(op_exec_info.ctx, op_name, status);
+  TFE_Op* op =
+      GetOp(op_exec_info.ctx, op_name, op_exec_info.device_name, status);
   auto cleaner = tensorflow::gtl::MakeCleanup([status, op] {
     ReturnStatus(status);
     ReturnOp(op);
@@ -3499,6 +3552,7 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
   }
 
   op_exec_info.attr_to_inputs_map = GetAttrToInputsMap(*op_def);
+  op_exec_info.default_dtypes = GetAttrToDefaultsMap(*op_def);
 
   // Mapping of attr name to size - used to calculate the number of values
   // to be expected by the TFE_Execute run.
@@ -3532,11 +3586,6 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
         break;
       }
     }
-  }
-
-  TFE_OpSetDevice(op, op_exec_info.device_name, status);
-  if (MaybeRaiseExceptionFromTFStatus(status, nullptr)) {
-    return nullptr;
   }
 
   // Flat attrs and inputs as required by the record_gradient call. The attrs
@@ -3819,16 +3868,21 @@ tensorflow::Status TFE_Py_EncodeTensor(PyObject* arg,
                                        EncodeResult* result) {
   if (EagerTensor_CheckExact(arg)) {
     TFE_TensorHandle* t = EagerTensor_Handle(arg);
-    tensorflow::TensorShape tensor_shape;
-    TF_RETURN_IF_ERROR(t->handle->Shape(&tensor_shape));
 
-    absl::StrAppend(&result->str, kDType, t->handle->dtype);
-
+    absl::StrAppend(&result->str, kDType,
+                    static_cast<tensorflow::DataType>(t->handle->DataType()));
     absl::StrAppend(&result->str, kShape);
+
+    tensorflow::Status status;
+    int num_dims = t->handle->NumDims(&status);
+    if (!status.ok()) return status;
+
     if (include_tensor_ranks_only) {
-      absl::StrAppend(&result->str, tensor_shape.dim_sizes().size());
+      absl::StrAppend(&result->str, num_dims);
     } else {
-      for (tensorflow::int64 dim_size : tensor_shape.dim_sizes()) {
+      for (int i = 0; i < num_dims; ++i) {
+        tensorflow::int64 dim_size = t->handle->Dim(i, &status);
+        if (!status.ok()) return status;
         absl::StrAppend(&result->str, dim_size, kShapeDelim);
       }
     }

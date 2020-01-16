@@ -20,7 +20,6 @@ from __future__ import print_function
 
 from tensorflow.python.autograph.converters import directives as directives_converter
 from tensorflow.python.autograph.core import converter_testing
-from tensorflow.python.autograph.core.converter import AgAnno
 from tensorflow.python.autograph.lang import directives
 from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import parser
@@ -42,7 +41,7 @@ class DirectivesTest(converter_testing.TestCase):
     def_, = anno.getanno(node.body[0].targets[0],
                          anno.Static.DEFINITIONS)
     d = def_.directives[directives.set_element_type]
-    self.assertEqual(d['dtype'].s, 'a')
+    self.assertEqual(d['dtype'].value, 'a')
     self.assertEqual(d['shape'].id, 'string_var')
 
   def test_argument_target(self):
@@ -55,8 +54,8 @@ class DirectivesTest(converter_testing.TestCase):
 
     def_, = anno.getanno(node.args.args[0], anno.Static.DEFINITIONS)
     d = def_.directives[directives.set_element_type]
-    self.assertEqual(d['dtype'].n, 1)
-    self.assertEqual(d['shape'].n, 2)
+    self.assertEqual(d['dtype'].value, 1)
+    self.assertEqual(d['shape'].value, 2)
 
   def test_loop_target(self):
 
@@ -68,19 +67,31 @@ class DirectivesTest(converter_testing.TestCase):
     node, ctx = self.prepare(test_fn, {'directives': directives})
     node = directives_converter.transform(node, ctx)
 
-    d = anno.getanno(node.body[1], AgAnno.DIRECTIVES)
+    d = anno.getanno(node.body[1], anno.Basic.DIRECTIVES)
     d = d[directives.set_loop_options]
-    self.assertEqual(d['parallel_iterations'].n, 10)
+    self.assertEqual(d['parallel_iterations'].value, 10)
     self.assertEqual(d['back_prop'].id, 'a')
     self.assertNotIn('swap_memory', d)
 
-  def test_loop_target_with_no_loop(self):
+  def test_loop_target_no_loop(self):
 
     def test_fn():
       directives.set_loop_options()
 
     node, ctx = self.prepare(test_fn, {'directives': directives})
     with self.assertRaisesRegexp(ValueError, 'must be used inside a statement'):
+      node = directives_converter.transform(node, ctx)
+
+  def test_loop_target_not_first(self):
+
+    def test_fn():
+      a = 1
+      while True:
+        a = 2
+        directives.set_loop_options(parallel_iterations=10, back_prop=a)
+
+    node, ctx = self.prepare(test_fn, {'directives': directives})
+    with self.assertRaisesRegexp(ValueError, 'must be the first statement'):
       node = directives_converter.transform(node, ctx)
 
   def test_invalid_default(self):

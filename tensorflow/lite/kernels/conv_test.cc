@@ -26,6 +26,7 @@ namespace tflite {
 namespace ops {
 namespace builtin {
 
+TfLiteRegistration* Register_CONV_2D_UINT8();
 TfLiteRegistration* Register_CONVOLUTION_REF();
 TfLiteRegistration* Register_CONVOLUTION_GENERIC_OPT();
 TfLiteRegistration* Register_CONVOLUTION_MULTITHREADED_OPT();
@@ -1498,9 +1499,66 @@ TEST_P(ConvolutionOpTest, SimpleTestHybridWithPaddingPerChannel) {
                                  0.16)));
 }
 
+const auto kQuantizedKernelMap = new std::map<string, TfLiteRegistration*>({
+    {"GenericOptimized", ops::builtin::Register_CONV_2D_UINT8()},
+});
+
+class QuantizedConvolutionOpTest : public SingleOpTest {
+ protected:
+  const std::map<string, TfLiteRegistration*>& GetKernelMap() override {
+    return *kQuantizedKernelMap;
+  }
+};
+
+// Simple test to ensure that the explicit quantized op registration behaves
+// properly.
+TEST_P(QuantizedConvolutionOpTest, SimpleTestExplicitQuantizedOp) {
+  QuantizedConvolutionOpModel m(GetRegistration(),
+                                {TensorType_UINT8, {2, 2, 4, 1}, -63.5, 64},
+                                {TensorType_UINT8, {3, 2, 2, 1}, -63.5, 64},
+                                {TensorType_UINT8, {}, -127, 128});
+  m.SetInput({
+      // First batch
+      1, 1, 1, 1,  // row = 1
+      2, 2, 2, 2,  // row = 2
+      // Second batch
+      1, 2, 3, 4,  // row = 1
+      1, 2, 3, 4,  // row = 2
+  });
+  m.SetFilter({
+      1, 2, 3, 4,    // first 2x2 filter
+      -1, 1, -1, 1,  // second 2x2 filter
+      -1, -1, 1, 1,  // third 2x2 filter
+  });
+  m.SetBias({1, 2, 3});
+
+  m.Invoke();
+
+  EXPECT_THAT(m.GetDequantizedOutput(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      18, 2, 5,  // first batch, left
+                      18, 2, 5,  // first batch, right
+                      17, 4, 3,  // second batch, left
+                      37, 4, 3,  // second batch, right
+                  },
+                  1e-5)));
+  // For good  measure, let's also verify the quantized values:
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({
+                                 145, 129, 132,  //
+                                 145, 129, 132,  //
+                                 144, 131, 130,  //
+                                 164, 131, 130,  //
+                             }));
+}
+
 INSTANTIATE_TEST_SUITE_P(
     ConvolutionOpTest, ConvolutionOpTest,
     ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kKernelMap)));
+
+INSTANTIATE_TEST_SUITE_P(
+    QuantizedConvolutionOpTest, QuantizedConvolutionOpTest,
+    ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kQuantizedKernelMap)));
 
 }  // namespace
 }  // namespace tflite

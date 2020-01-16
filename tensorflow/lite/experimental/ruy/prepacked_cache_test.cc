@@ -25,7 +25,6 @@ namespace ruy {
 namespace {
 
 TEST(PrepackedCacheTest, TestCacheEjection) {
-  ruy::Context* context = new ruy::Context();
   // Create the cache.
   PrepackedCache prepacked_cache(32);
   // Allocate the prepacked matrix.
@@ -33,7 +32,7 @@ TEST(PrepackedCacheTest, TestCacheEjection) {
   mat1.data_size = 16;
   mat1.sums_size = 8;
   prepacked_cache.AllocatePrepackedMatrix(&mat1);
-  auto cache_key1 = std::make_pair(reinterpret_cast<void*>(0), mat1.data);
+  auto cache_key1 = std::make_pair(nullptr, mat1.data);
   prepacked_cache.Insert(cache_key1, mat1);
   std::this_thread::sleep_for(std::chrono::milliseconds(10));
   // Get a time point after the insertion into the cache.
@@ -49,16 +48,14 @@ TEST(PrepackedCacheTest, TestCacheEjection) {
   mat2.sums_size = 4;
   prepacked_cache.AllocatePrepackedMatrix(&mat2);
 
-  auto cache_key2 = std::make_pair(reinterpret_cast<void*>(0), mat2.data);
+  auto cache_key2 = std::make_pair(nullptr, mat2.data);
   prepacked_cache.Insert(cache_key2, mat2);
   // The cache size was exceeded by inserting mat2. Ensure that mat1 was
   // ejected.
   EXPECT_EQ(prepacked_cache.FindAndUpdate(cache_key1), prepacked_cache.cend());
-  delete context;
 }
 
 TEST(PrepackedCacheTest, TestCacheBasic) {
-  ruy::Context* context = new ruy::Context();
   // Create the cache.
   PrepackedCache prepacked_cache(48);
   // Allocate the prepacked matrix.
@@ -67,7 +64,7 @@ TEST(PrepackedCacheTest, TestCacheBasic) {
   mat1.sums_size = 8;
   prepacked_cache.AllocatePrepackedMatrix(&mat1);
 
-  auto cache_key1 = std::make_pair(reinterpret_cast<void*>(0), mat1.data);
+  auto cache_key1 = std::make_pair(nullptr, mat1.data);
   prepacked_cache.Insert(cache_key1, mat1);
   std::this_thread::sleep_for(std::chrono::milliseconds(10));
   EXPECT_NE(prepacked_cache.FindAndUpdate(cache_key1), prepacked_cache.cend());
@@ -77,17 +74,15 @@ TEST(PrepackedCacheTest, TestCacheBasic) {
   mat2.sums_size = 4;
   prepacked_cache.AllocatePrepackedMatrix(&mat2);
 
-  auto cache_key2 = std::make_pair(reinterpret_cast<void*>(0), mat2.data);
+  auto cache_key2 = std::make_pair(nullptr, mat2.data);
   std::this_thread::sleep_for(std::chrono::milliseconds(10));
   prepacked_cache.Insert(cache_key2, mat2);
   // The cache size was not exceeded by inserting mat2. Ensure that mat1 was not
   // ejected.
   EXPECT_NE(prepacked_cache.FindAndUpdate(cache_key1), prepacked_cache.cend());
-  delete context;
 }
 
 TEST(PrepackedCacheTest, TestCacheEjection2) {
-  ruy::Context* context = new ruy::Context();
   // Create the cache.
   PrepackedCache prepacked_cache(73);
   // Allocate the prepacked matrix 1.
@@ -95,7 +90,7 @@ TEST(PrepackedCacheTest, TestCacheEjection2) {
   mat1.data_size = 16;
   mat1.sums_size = 8;
   prepacked_cache.AllocatePrepackedMatrix(&mat1);
-  auto cache_key1 = std::make_pair(reinterpret_cast<void*>(0), mat1.data);
+  auto cache_key1 = std::make_pair(nullptr, mat1.data);
   prepacked_cache.Insert(cache_key1, mat1);
   std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
@@ -104,7 +99,7 @@ TEST(PrepackedCacheTest, TestCacheEjection2) {
   mat2.data_size = 16;
   mat2.sums_size = 8;
   prepacked_cache.AllocatePrepackedMatrix(&mat2);
-  auto cache_key2 = std::make_pair(reinterpret_cast<void*>(0), mat2.data);
+  auto cache_key2 = std::make_pair(nullptr, mat2.data);
   prepacked_cache.Insert(cache_key2, mat2);
   std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
@@ -113,7 +108,7 @@ TEST(PrepackedCacheTest, TestCacheEjection2) {
   mat31.data_size = 16;
   mat31.sums_size = 8;
   prepacked_cache.AllocatePrepackedMatrix(&mat31);
-  auto cache_key3 = std::make_pair(reinterpret_cast<void*>(0), mat31.data);
+  auto cache_key3 = std::make_pair(nullptr, mat31.data);
   prepacked_cache.Insert(cache_key3, mat31);
   std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
@@ -128,7 +123,7 @@ TEST(PrepackedCacheTest, TestCacheEjection2) {
   mat4.data_size = 16;
   mat4.sums_size = 8;
   prepacked_cache.AllocatePrepackedMatrix(&mat4);
-  auto cache_key4 = std::make_pair(reinterpret_cast<void*>(0), mat4.data);
+  auto cache_key4 = std::make_pair(nullptr, mat4.data);
   prepacked_cache.Insert(cache_key4, mat4);
   std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
@@ -137,7 +132,39 @@ TEST(PrepackedCacheTest, TestCacheEjection2) {
   EXPECT_NE(prepacked_cache.FindAndUpdate(cache_key3), prepacked_cache.cend());
   EXPECT_NE(prepacked_cache.FindAndUpdate(cache_key1), prepacked_cache.cend());
   EXPECT_NE(prepacked_cache.FindAndUpdate(cache_key4), prepacked_cache.cend());
-  delete context;
+}
+
+TEST(PrepackedCacheTest, TestCacheOnCacheable) {
+  // Create context and set the cache policy
+  ruy::Context context;
+  context.cache_policy = ruy::kCacheLHSOnGemV;
+  PrepackedCache* cache = context.GetPrepackedCache();
+  EXPECT_EQ(cache->TotalSize(), 0);
+
+  const float lhs_data[] = {1, 2, 3, 4};
+  const float rhs_data[] = {1, 2};
+  float dst_data[4];
+
+  ruy::Matrix<float> lhs;
+  ruy::MakeSimpleLayout(2, 2, ruy::Order::kRowMajor, &lhs.layout);
+  lhs.data = lhs_data;
+  ruy::Matrix<float> rhs;
+  ruy::MakeSimpleLayout(2, 1, ruy::Order::kColMajor, &rhs.layout);
+  rhs.data = rhs_data;
+  ruy::Matrix<float> dst;
+  ruy::MakeSimpleLayout(2, 1, ruy::Order::kColMajor, &dst.layout);
+  dst.data = dst_data;
+
+  ruy::BasicSpec<float, float> spec;
+  // Perform the multiplication and confirm no caching occured.
+  ruy::Mul<ruy::kAllPaths>(lhs, rhs, spec, &context, &dst);
+  EXPECT_EQ(cache->TotalSize(), 0);
+
+  // Set cacheable for the LHS, repeat the multiplication, and see
+  // that caching did occur.
+  lhs.cacheable = true;
+  ruy::Mul<ruy::kAllPaths>(lhs, rhs, spec, &context, &dst);
+  EXPECT_NE(cache->TotalSize(), 0);
 }
 
 }  // namespace

@@ -269,9 +269,11 @@ class BoostedTreesUpdateEnsembleV2Op : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->input_list("split_types", &split_types_list));
 
-    const Tensor* feature_ids_t;
-    OP_REQUIRES_OK(context, context->input("feature_ids", &feature_ids_t));
-    const auto feature_ids = feature_ids_t->vec<int32>();
+    OpInputList feature_ids_list;
+    OP_REQUIRES_OK(context,
+                   context->input_list("feature_ids", &feature_ids_list));
+    // TODO(crawles): Read groups of feature ids and find best splits among all.
+    const auto feature_ids = feature_ids_list[0].vec<int32>();
 
     const Tensor* max_depth_t;
     OP_REQUIRES_OK(context, context->input("max_depth", &max_depth_t));

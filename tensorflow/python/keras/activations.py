@@ -182,6 +182,19 @@ def softsign(x):
   return nn.softsign(x)
 
 
+@keras_export('keras.activations.swish')
+def swish(x):
+  """Swish activation function.
+
+  Arguments:
+      x: Input tensor.
+
+  Returns:
+      The swish activation applied to `x`.
+  """
+  return nn.swish(x)
+
+
 @keras_export('keras.activations.relu')
 def relu(x, alpha=0., max_value=None, threshold=0):
   """Applies the rectified linear unit activation function.
@@ -260,9 +273,8 @@ def sigmoid(x):
 
   >>> a = tf.constant([-20, -1.0, 0.0, 1.0, 20], dtype = tf.float32)
   >>> b = tf.keras.activations.sigmoid(a)
-  >>> b.numpy()
-  array([0.        , 0.26894143, 0.5       , 0.7310586 , 1.        ],
-         dtype=float32)
+  >>> b.numpy() >= 0.0
+  array([ True,  True,  True,  True,  True])
 
   Arguments:
       x: Input tensor.

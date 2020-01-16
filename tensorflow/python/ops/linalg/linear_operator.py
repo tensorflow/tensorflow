@@ -652,6 +652,9 @@ class LinearOperator(module.Module):
 
       return self._matmul(x, adjoint=adjoint, adjoint_arg=adjoint_arg)
 
+  def __matmul__(self, other):
+    return self.matmul(other)
+
   def _matvec(self, x, adjoint=False):
     x_mat = array_ops.expand_dims(x, axis=-1)
     y_mat = self.matmul(x_mat, adjoint=adjoint)
@@ -1072,6 +1075,31 @@ class LinearOperator(module.Module):
       raise NotImplementedError("Only self-adjoint matrices are supported.")
     with self._name_scope(name):
       return self._eigvals()
+
+  def _cond(self):
+    if not self.is_self_adjoint:
+      # In general the condition number is the ratio of the
+      # absolute value of the largest and smallest singular values.
+      vals = linalg_ops.svd(self.to_dense(), compute_uv=False)
+    else:
+      # For self-adjoint matrices, and in general normal matrices,
+      # we can use eigenvalues.
+      vals = math_ops.abs(self._eigvals())
+
+    return (math_ops.reduce_max(vals, axis=-1) /
+            math_ops.reduce_min(vals, axis=-1))
+
+  def cond(self, name="cond"):
+    """Returns the condition number of this linear operator.
+
+    Args:
+      name:  A name for this `Op`.
+
+    Returns:
+      Shape `[B1,...,Bb]` `Tensor` of same `dtype` as `self`.
+    """
+    with self._name_scope(name):
+      return self._cond()
 
   def _can_use_cholesky(self):
     return self.is_self_adjoint and self.is_positive_definite

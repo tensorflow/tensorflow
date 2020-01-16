@@ -669,7 +669,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, RemF64s) {
 
   ComputeAndCompareR1<double>(
       &builder, {-2.5, 0.0, 0.25, 0.0, -0.0, 1.0, 1.0, -1.0, -0.0}, {},
-      error_spec_);
+      strict_error_spec_);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, MulTwoConstantF32s) {
@@ -3009,7 +3009,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, NonIdentityBroadcastOfSameRankIsDisallowed) {
 
 // Regression test for b/31927799. "slice - y" is fused and requires implicit
 // broadcast.
-XLA_TEST_F(ArrayElementwiseOpTest, ImplictBroadcastInFusedExpressions) {
+XLA_TEST_F(ArrayElementwiseOpTest, ImplicitBroadcastInFusedExpressions) {
   XlaBuilder builder(TestName());
   auto x_literal = LiteralUtil::CreateR1<float>({1, 2, 3});
   auto y_literal = LiteralUtil::CreateR1<float>({4, 5});

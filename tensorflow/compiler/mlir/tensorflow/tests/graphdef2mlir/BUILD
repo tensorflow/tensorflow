@@ -4,7 +4,7 @@ licenses(["notice"])
 
 glob_lit_tests(
     data = [":test_utilities"],
-    driver = "@local_config_mlir//:run_lit.sh",
+    driver = "@llvm-project//mlir:run_lit.sh",
     test_file_exts = ["pbtxt"],
 )
 
@@ -14,6 +14,7 @@ filegroup(
     testonly = True,
     data = [
         "//tensorflow/compiler/mlir:tf-mlir-translate",
-        "@llvm//:FileCheck",
+        "@llvm-project//llvm:FileCheck",
+        "@llvm-project//llvm:not",
     ],
 )

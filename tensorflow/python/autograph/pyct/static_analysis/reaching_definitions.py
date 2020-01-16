@@ -158,18 +158,20 @@ class Analyzer(cfg.GraphVisitor):
       # but are not tracked by activity analysis.
       if node not in self.gen_map:
         node_symbols = {}
+        kill = set()
         for s in node.ast_node.names:
           qn = qual_names.QN(s)
-          if qn in defs_in.value:
-            # In Python 2, this is a syntax warning. In Python 3, it's an error.
-            raise ValueError(
-                '"{}" is assigned before global definition'.format(s))
+          # TODO(mdan): If definitions exist, should we preserve those instead?
+          # Incoming definitions may be present when this is a local function.
+          # In that case, the definitions of the nonlocal symbol from the
+          # enclosing function are available here. See self.extra_in.
+          kill.add(qn)
           def_ = self._definition_factory()
           node_symbols[qn] = def_
         self.gen_map[node] = _NodeState(node_symbols)
 
       gen = self.gen_map[node]
-      defs_out = defs_in | gen
+      defs_out = gen | (defs_in - kill)
 
     else:
       # Nodes that don't have a scope annotation are assumed not to touch any

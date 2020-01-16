@@ -128,7 +128,7 @@ func @multiple_islands_separate_metadata(%arg0 : tensor<i1>) -> (tensor<i1>, ten
   return %0#0, %0#1 : tensor<i1>, tensor<i1>
 }
 
-// CHECK:        %[[ISLAND_1:[0-9]*]]:2 = tf_executor.island {
+// CHECK:        %[[ISLAND_1:.*]], %[[ISLAND_1_control:.*]] = tf_executor.island {
 // CHECK:          "tf.opB"
 // CHECK:          %[[LAUNCH_0:[0-9]*]] = "tf_device.launch"() ( {
 // CHECK-NEXT:       %[[OP_A:[0-9]*]] = "tf.opA"(%[[ARG_0]])
@@ -141,7 +141,7 @@ func @multiple_islands_separate_metadata(%arg0 : tensor<i1>) -> (tensor<i1>, ten
 // CHECK:        tf_executor.island {
 // CHECK:          "tf.opE"
 // CHECK:          %[[LAUNCH_1:[0-9]*]] = "tf_device.launch"() ( {
-// CHECK-NEXT:       %[[OP_D:[0-9]*]] = "tf.opD"(%[[ISLAND_1]]#0)
+// CHECK-NEXT:       %[[OP_D:[0-9]*]] = "tf.opD"(%[[ISLAND_1]])
 // CHECK-NEXT:       %[[OP_F:[0-9]*]] = "tf.opF"(%[[ARG_0]])
 // CHECK-NEXT:       tf_device.return %[[OP_F]]
 // CHECK-NEXT:     _tpu_replicate = "replicate"
@@ -344,7 +344,8 @@ func @replication(%arg0: tensor<i1>, %arg1: tensor<i32>, %arg2: tensor<f32>) -> 
 // CHECK:      %[[OP_B:[0-9]*]] = "tf.opB"
 // CHECK:      %[[OP_C:[0-9]*]] = "tf.opC"
 // CHECK:      %[[REPLICATE:[0-9]*]]:4 = tf_device.replicate
-// CHECK-SAME: ([%[[ARG_0]], %[[OP_A]]] as %[[RI_0:[a-z0-9]*]]: tensor<i1>, [%[[OP_B]], %[[ARG_1]]] as %[[RI_1:[a-z0-9]*]]: tensor<i32>)
+// CHECK-DAG:  [%[[ARG_0]], %[[OP_A]]] as %[[RI_0:[a-z0-9]*]]: tensor<i1>
+// CHECK-DAG:  [%[[OP_B]], %[[ARG_1]]] as %[[RI_1:[a-z0-9]*]]: tensor<i32>
 // CHECK-SAME: n = 2 : i32
 // CHECK-NEXT:   %[[LAUNCH:[0-9]*]]:2 = "tf_device.launch"() ( {
 // CHECK:          %[[OP_D:[0-9]*]] = "tf.opD"(%[[RI_0]], %[[RI_1]], %[[ARG_2]], %[[OP_C]])
@@ -355,6 +356,32 @@ func @replication(%arg0: tensor<i1>, %arg1: tensor<i32>, %arg2: tensor<f32>) -> 
 // CHECK-SAME:   topology = "topology"
 // CHECK:        tf_device.return %[[LAUNCH]]#0, %[[LAUNCH]]#1
 // CHECK:      return %[[REPLICATE]]#0, %[[REPLICATE]]#3
+
+
+// Test `tf.TPUReplicatedInput` ops are sorted by their `index` attribute.
+// Non-negative `index` should preceed `index` of -1, and ordering of ops with
+// `index` of -1 does not matter.
+// CHECK-LABEL: func @sort_replicated_input
+// CHECK-SAME: (%[[ARG_0:.*]]: tensor<i1>, %[[ARG_1:.*]]: tensor<i1>, %[[ARG_2:.*]]: tensor<i1>, %[[ARG_3:.*]]: tensor<i1>, %[[ARG_4:.*]]: tensor<i1>, %[[ARG_5:.*]]: tensor<i1>)
+func @sort_replicated_input(%arg0: tensor<i1>, %arg1: tensor<i1>, %arg2: tensor<i1>, %arg3: tensor<i1>, %arg4: tensor<i1>, %arg5: tensor<i1>) {
+  %0 = "tf.TPUReplicatedInput"(%arg0, %arg0) {index = -1 : i64} : (tensor<i1>, tensor<i1>) -> tensor<i1>
+  %1 = "tf.TPUReplicatedInput"(%arg1, %arg1) {index = 2 : i64} : (tensor<i1>, tensor<i1>) -> tensor<i1>
+  %2 = "tf.TPUReplicatedInput"(%arg2, %arg2) {index = 0 : i64} : (tensor<i1>, tensor<i1>) -> tensor<i1>
+  %3 = "tf.TPUReplicatedInput"(%arg3, %arg3) {index = -1 : i64} : (tensor<i1>, tensor<i1>) -> tensor<i1>
+  %4 = "tf.TPUReplicatedInput"(%arg4, %arg4) {index = 1 : i64} : (tensor<i1>, tensor<i1>) -> tensor<i1>
+  %5 = "tf.TPUReplicatedInput"(%arg5, %arg5) {index = -1 : i64} : (tensor<i1>, tensor<i1>) -> tensor<i1>
+  "tf.opA"(%0, %1, %2, %3, %4, %5) {_tpu_replicate = "replicate", device = "device"} : (tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>) -> ()
+  "tf.TPUReplicateMetadata"() {_tpu_replicate = "replicate", device = "device", num_replicas = 2, topology = "topology"} : () -> ()
+  return
+}
+
+// CHECK:      tf_device.replicate
+// CHECK-SAME: [%[[ARG_2]], %[[ARG_2]]] as %{{[a-z0-9]*}}
+// CHECK-SAME: [%[[ARG_4]], %[[ARG_4]]] as %{{[a-z0-9]*}}
+// CHECK-SAME: [%[[ARG_1]], %[[ARG_1]]] as %{{[a-z0-9]*}}
+// CHECK-DAG:  [%[[ARG_0]], %[[ARG_0]]] as %{{[a-z0-9]*}}
+// CHECK-DAG:  [%[[ARG_3]], %[[ARG_3]]] as %{{[a-z0-9]*}}
+// CHECK-DAG:  [%[[ARG_5]], %[[ARG_5]]] as %{{[a-z0-9]*}}
 
 
 // -----
@@ -441,3 +468,63 @@ func @leftover_replicated_output(%arg0: tensor<i1>) {
   %0:2 = "tf.TPUReplicatedOutput"(%arg0) : (tensor<i1>) -> (tensor<i1>, tensor<i1>)
   return
 }
+
+
+// -----
+
+
+// Test bad TPUReplicatedInput positive `index` attribute.
+func @bad_positive_index_input(%arg0: tensor<i1>) {
+  // expected-error@+1 {{'tf.TPUReplicatedInput' index is not in range [-1, 1), got 1}}
+  %0 = "tf.TPUReplicatedInput"(%arg0, %arg0) {index = 1 : i64} : (tensor<i1>, tensor<i1>) -> tensor<i1>
+  "tf.opA"(%0) {_tpu_replicate = "replicate", device = "device", name = "name"} : (tensor<i1>) -> ()
+  "tf.TPUReplicateMetadata"() {_tpu_replicate = "replicate", device = "device", num_replicas = 2, topology = "topology"} : () -> ()
+  return
+}
+
+
+// -----
+
+
+// Test bad TPUReplicatedInput negative `index` attribute.
+func @bad_negative_index_input(%arg0: tensor<i1>) {
+  // expected-error@+1 {{'tf.TPUReplicatedInput' index is not in range [-1, 1), got -2}}
+  %0 = "tf.TPUReplicatedInput"(%arg0, %arg0) {index = -2 : i64} : (tensor<i1>, tensor<i1>) -> tensor<i1>
+  "tf.opA"(%0) {_tpu_replicate = "replicate", device = "device", name = "name"} : (tensor<i1>) -> ()
+  "tf.TPUReplicateMetadata"() {_tpu_replicate = "replicate", device = "device", num_replicas = 2, topology = "topology"} : () -> ()
+  return
+}
+
+
+// -----
+
+
+// Test TPUReplicatedInput with conflicting `index` attribute. This will result
+// in gaps in the TPUReplicatedInput ordering.
+func @input_index_gaps(%arg0: tensor<i1>) {
+  // expected-error@+1 {{failed to sort 'tf.TPUReplicatedInput' ops, gap(s) found in indices}}
+  %0 = "tf.TPUReplicatedInput"(%arg0, %arg0) {index = 1 : i64} : (tensor<i1>, tensor<i1>) -> tensor<i1>
+  %1 = "tf.TPUReplicatedInput"(%arg0, %arg0) {index = 1 : i64} : (tensor<i1>, tensor<i1>) -> tensor<i1>
+  "tf.opA"(%0, %1) {_tpu_replicate = "replicate", device = "device", name = "name"} : (tensor<i1>, tensor<i1>) -> ()
+  "tf.TPUReplicateMetadata"() {_tpu_replicate = "replicate", device = "device", num_replicas = 2, topology = "topology"} : () -> ()
+  return
+}
+
+// -----
+
+// Test that the `is_mirrored_variable` attribute is preserved in the
+// tf_device.replicate op.
+// CHECK-LABEL: func @mirrored_variables
+// CHECK-SAME: (%[[ARG_0:.*]]: tensor<!tf.resource<tensor<32xf32>>>, %[[ARG_1:.*]]: tensor<!tf.resource<tensor<32xf32>>>, %[[ARG_2:.*]]: tensor<!tf.resource<tensor<32xf32>>>, %[[ARG_3:.*]]: tensor<!tf.resource<tensor<32xf32>>>)
+func @mirrored_variables(%arg0: tensor<!tf.resource<tensor<32xf32>>>, %arg1: tensor<!tf.resource<tensor<32xf32>>>, %arg2: tensor<!tf.resource<tensor<32xf32>>>, %arg3: tensor<!tf.resource<tensor<32xf32>>>) {
+  %0 = "tf.TPUReplicatedInput"(%arg0, %arg1) {index = 0 : i64} : (tensor<!tf.resource<tensor<32xf32>>>, tensor<!tf.resource<tensor<32xf32>>>) -> tensor<!tf.resource<tensor<32xf32>>>
+  %1 = "tf.TPUReplicatedInput"(%arg2, %arg3) {index = 1 : i64, is_mirrored_variable = true} : (tensor<!tf.resource<tensor<32xf32>>>, tensor<!tf.resource<tensor<32xf32>>>) -> tensor<!tf.resource<tensor<32xf32>>>
+  "tf.opA"(%0, %1) {_tpu_replicate = "replicate", device = "device"} : (tensor<!tf.resource<tensor<32xf32>>>, tensor<!tf.resource<tensor<32xf32>>>) -> ()
+  "tf.TPUReplicateMetadata"() {_tpu_replicate = "replicate", device = "device", num_replicas = 2, topology = "topology"} : () -> ()
+  return
+}
+
+// CHECK:      tf_device.replicate
+// CHECK-SAME: [%[[ARG_0]], %[[ARG_1]]] as %{{[a-z0-9]*}}
+// CHECK-SAME: _mirrored_variable_indices = [1]
+

@@ -146,7 +146,7 @@ tf_module {
   }
   member_method {
     name: "make_saveable_from_iterator"
-    argspec: "args=[\'iterator\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'iterator\', \'external_state_policy\'], varargs=None, keywords=None, defaults=[\'fail\'], "
   }
   member_method {
     name: "map_and_batch"

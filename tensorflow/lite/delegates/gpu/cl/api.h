@@ -48,35 +48,7 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-enum class InferenceUsage {
-  // InferenceRunner will be used only once. Therefore, it is important to
-  // minimize bootstrap time as well.
-  FAST_SINGLE_ANSWER,
-
-  // Prefer maximizing the throughput. Same inference runner will be used
-  // repeatedly on different inputs.
-  SUSTAINED_SPEED,
-};
-
-enum class InferencePriority {
-  MIN_LATENCY,
-
-  MAX_PRECISION,
-
-  MIN_MEMORY_USAGE,
-};
-
-struct InferenceOptions {
-  InferenceUsage usage = InferenceUsage::SUSTAINED_SPEED;
-
-  // Ordered priorities provide better understanding of desired semantics,
-  // where priority(n) is more important than priority(n+1).
-  InferencePriority priority1 = InferencePriority::MAX_PRECISION;
-
-  InferencePriority priority2 = InferencePriority::MIN_LATENCY;
-
-  InferencePriority priority3 = InferencePriority::MIN_MEMORY_USAGE;
-};
+struct InferenceOptions : public tflite::gpu::InferenceOptions {};
 
 // Indicates environment
 struct InferenceEnvironmentProperties {
@@ -112,9 +84,18 @@ class InferenceEnvironment {
 };
 
 struct InferenceEnvironmentOptions {
+  // If any of these objects are set, created environment will use them instead
+  // of creating/choosing own instances.
+  cl_device_id device = nullptr;
+  cl_context context = nullptr;
+  cl_command_queue command_queue = nullptr;
+
   // Whenever input and/or output is GL object, EGL display and context must be
   // set to create GL aware OpenCL context. Do not set these variables whenever
   // GL interoperability is not needed.
+  // It is the error to set egl_display, egl_context AND context at the same
+  // time. If egl_display and egl_context are set, they will be used to create
+  // GL-aware CL context.
   EGLDisplay egl_display = EGL_NO_DISPLAY;
   EGLContext egl_context = EGL_NO_CONTEXT;
 

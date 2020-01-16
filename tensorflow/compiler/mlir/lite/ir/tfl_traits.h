@@ -19,31 +19,11 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_LITE_IR_TFL_TRAITS_H_
 
 #include "mlir/IR/OpDefinition.h"
-#include "mlir/Support/LLVM.h"  // TF:local_config_mlir
+#include "mlir/Support/LLVM.h"  // TF:llvm-project
 
 namespace mlir {
 namespace OpTrait {
 namespace TFL {
-
-// The trait to specify that the specified operands of the TFL op are stateful.
-// This is used as a trait like this:
-//
-//   class LSTMOp
-//       : public Op<LSTMOp, OpTrait::TFL::StatefulOperands<18, 19>::Impl> {
-//
-template <int... Operands>
-class StatefulOperands {
- public:
-  template <typename ConcreteType>
-  class Impl
-      : public TraitBase<ConcreteType, StatefulOperands<Operands...>::Impl> {
-   public:
-    static std::vector<int> GetStatefulOperands() {
-      return std::vector<int>({Operands...});
-    }
-  };
-};
-
 // The trait to specify the channel dimension index of the input (first operand)
 // of an affine TFL op (Conv2D, DepthwiseConv2D, FullyConnected).
 //

@@ -28,7 +28,7 @@ import functools
 import numpy as np
 
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.framework import errors
 from tensorflow.python.keras import callbacks as cbks
 from tensorflow.python.keras.distribute import distributed_training_utils as dist_utils
@@ -204,7 +204,7 @@ class Loop(training_utils.TrainingLoop):
     batch_size = model._validate_or_infer_batch_size(
         batch_size, steps_per_epoch, x)
 
-    strategy = _get_distribution_strategy(model)
+    strategy = model.distribute_strategy
     batch_size, steps_per_epoch = dist_utils.process_batch_and_step_size(
         strategy,
         x,
@@ -239,7 +239,7 @@ class Loop(training_utils.TrainingLoop):
       do_validation = (validation_adapter is not None)
 
       recreate_training_iterator = (
-          training_data_adapter.should_recreate_iterator(steps_per_epoch))
+          training_data_adapter.should_recreate_iterator())
       if not steps_per_epoch:
         # TODO(b/139762795): Add step inference for when steps is None to
         # prevent end of sequence warning message.
@@ -320,7 +320,12 @@ class Loop(training_utils.TrainingLoop):
           with training_context.on_epoch(epoch, ModeKeys.TRAIN) as epoch_logs:
             model.reset_metrics()
             if training_data_iter is None or recreate_training_iterator:
-              training_data_iter = iter(training_dataset)
+              if training_data_iter is not None and ds_context.has_strategy():
+                # TODO(kaftan): remove this when MultiDeviceIterator is a
+                ## compositetensor (unless this is more efficient)
+                training_data_iter._initializer  # pylint: disable=pointless-statement
+              else:
+                training_data_iter = iter(training_dataset)
 
             training_result = run_one_epoch(
                 model,
@@ -347,7 +352,12 @@ class Loop(training_utils.TrainingLoop):
             if (do_validation and
                 training_utils.should_run_validation(validation_freq, epoch) and
                 not training_callbacks.model.stop_training):
-              eval_data_iter = iter(validation_dataset)
+              if eval_data_iter is not None and ds_context.has_strategy():
+                # TODO(kaftan): remove this when MultiDeviceIterator is a
+                ## compositetensor (unless this is more efficient)
+                eval_data_iter._initializer  # pylint: disable=pointless-statement
+              else:
+                eval_data_iter = iter(validation_dataset)
 
               validation_callbacks = cbks.configure_callbacks(
                   training_callbacks,
@@ -393,7 +403,7 @@ class Loop(training_utils.TrainingLoop):
 
     batch_size = model._validate_or_infer_batch_size(
         batch_size, steps, x)
-    strategy = _get_distribution_strategy(model)
+    strategy = model.distribute_strategy
     batch_size, steps = dist_utils.process_batch_and_step_size(
         strategy, x, batch_size, steps, mode)
     dist_utils.validate_callbacks(input_callbacks=callbacks,
@@ -486,17 +496,6 @@ class Loop(training_utils.TrainingLoop):
         workers=workers, use_multiprocessing=use_multiprocessing, **kwargs)
 
 
-def _get_distribution_strategy(model):
-  """Get the model's distribution strategy."""
-  if model._compile_time_distribution_strategy:
-    strategy = model._compile_time_distribution_strategy
-  else:
-    # Grab the active strategy if the model was never compiled
-    # but it is now predicting.
-    strategy = distribution_strategy_context.get_strategy()
-  return strategy
-
-
 def _process_training_inputs(model,
                              x,
                              y,
@@ -550,6 +549,7 @@ def _process_training_inputs(model,
         x,
         y,
         batch_size=batch_size,
+        steps=steps_per_epoch,
         epochs=epochs,
         sample_weights=sample_weights,
         sample_weight_modes=sample_weight_modes,
@@ -559,6 +559,7 @@ def _process_training_inputs(model,
     val_adapter = adapter_cls(
         val_x,
         val_y,
+        steps=validation_steps,
         sample_weights=val_sample_weights,
         sample_weight_modes=sample_weight_modes,
         batch_size=batch_size,
@@ -571,10 +572,10 @@ def _process_training_inputs(model,
         y,
         sample_weights=sample_weights,
         batch_size=batch_size,
+        steps=steps_per_epoch,
         epochs=epochs,
         class_weights=class_weights,
         shuffle=shuffle,
-        steps=steps_per_epoch,
         distribution_strategy=distribution_strategy,
         max_queue_size=max_queue_size,
         workers=workers,
@@ -595,10 +596,10 @@ def _process_training_inputs(model,
           ModeKeys.TEST,
           val_x,
           val_y,
+          steps=validation_steps,
           sample_weights=val_sample_weights,
           batch_size=batch_size,
           class_weights=class_weights,
-          steps=validation_steps,
           distribution_strategy=distribution_strategy)
     elif validation_steps:
       raise ValueError('`validation_steps` should not be specified if '
@@ -650,6 +651,12 @@ def _process_inputs(model,
       # Then we map using only the tensor standardization portion.
       def map_fn(x, y=None, sample_weights=None):
         """Tensor manipulation portion of standardization for Dataset.map."""
+        if (y is None and sample_weights is None):
+          # namedtuples are forbidden because it is ambiguous if they should be
+          # unpacked. If y or sample_weights is present then `x` was not the
+          # top level structure, and the correct behavior is unambiguous.
+          data_adapter.assert_not_namedtuple(x)
+
         standardized = model._standardize_tensors(
             x, y, sample_weights,
             run_eagerly=False,

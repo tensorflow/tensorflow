@@ -92,6 +92,9 @@ class EventQueue {
   // Retrieve and remove all events in the queue at the time of invocation.
   // If Push is called while PopAll is active, the new event will not be
   // removed from the queue.
+  // PopAll is only called from ThreadLocalRecorder::Clear, which in turn is
+  // only called while holding TraceMeRecorder::Mutex, so PopAll has a single
+  // caller at a time.
   std::vector<TraceMeRecorder::Event> PopAll() {
     // Read index before contents.
     size_t end = end_.load(std::memory_order_acquire);
@@ -172,7 +175,10 @@ class TraceMeRecorder::ThreadLocalRecorder {
   }
 
   // The destructor is called when the thread shuts down early.
-  ~ThreadLocalRecorder() { TraceMeRecorder::Get()->UnregisterThread(Clear()); }
+  ~ThreadLocalRecorder() {
+    // Unregister the thread. Clear() will be called from TraceMeRecorder.
+    TraceMeRecorder::Get()->UnregisterThread(info_.tid);
+  }
 
   // Record is only called from the owner thread.
   void Record(TraceMeRecorder::Event&& event) { queue_.Push(std::move(event)); }
@@ -196,10 +202,16 @@ void TraceMeRecorder::RegisterThread(int32 tid, ThreadLocalRecorder* thread) {
   threads_.emplace(tid, thread);
 }
 
-void TraceMeRecorder::UnregisterThread(TraceMeRecorder::ThreadEvents&& events) {
+void TraceMeRecorder::UnregisterThread(int32 tid) {
   mutex_lock lock(mutex_);
-  threads_.erase(events.thread.tid);
-  orphaned_events_.push_back(std::move(events));
+  auto it = threads_.find(tid);
+  if (it != threads_.end()) {
+    auto events = it->second->Clear();
+    if (!events.events.empty()) {
+      orphaned_events_.push_back(std::move(events));
+    }
+    threads_.erase(it);
+  }
 }
 
 // This method is performance critical and should be kept fast. It is called
@@ -211,7 +223,10 @@ TraceMeRecorder::Events TraceMeRecorder::Clear() {
   std::swap(orphaned_events_, result);
   for (const auto& entry : threads_) {
     auto* recorder = entry.second;
-    result.push_back(recorder->Clear());
+    TraceMeRecorder::ThreadEvents events = recorder->Clear();
+    if (!events.events.empty()) {
+      result.push_back(std::move(events));
+    }
   }
   return result;
 }
@@ -244,6 +259,18 @@ TraceMeRecorder::Events TraceMeRecorder::StopRecording() {
     events = Clear();
   }
   return events;
+}
+
+/*static*/ uint64 TraceMeRecorder::NewActivityId() {
+  // Activity IDs: To avoid contention over a counter, the top 32 bits identify
+  // the originating thread, the bottom 32 bits name the event within a thread.
+  // IDs may be reused after 4 billion events on one thread, or 4 billion
+  // threads.
+  static std::atomic<uint32> thread_counter(1);  // avoid kUntracedActivity
+  const thread_local static uint32 thread_id =
+      thread_counter.fetch_add(1, std::memory_order_relaxed);
+  thread_local static uint32 per_thread_activity_id = 0;
+  return static_cast<uint64>(thread_id) << 32 | per_thread_activity_id++;
 }
 
 }  // namespace profiler

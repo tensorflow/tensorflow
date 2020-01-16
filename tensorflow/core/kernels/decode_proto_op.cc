@@ -810,7 +810,7 @@ class DecodeProtoOp : public OpKernel {
 
  private:
   // Copy a serialized message to binary, e.g. to handle text proto inputs.
-  void ReserializeMessage(OpKernelContext* ctx, const string& buf,
+  void ReserializeMessage(OpKernelContext* ctx, const tstring& buf,
                           tstring* binary_buf) {
     // Handle text protos by translating them to binary.
     std::unique_ptr<Message> message(message_prototype_->New());
@@ -831,7 +831,7 @@ class DecodeProtoOp : public OpKernel {
   }
 
   // Count the number of occurrences of each requested field in a message batch.
-  void CountFields(OpKernelContext* ctx, int message_index, const string& buf,
+  void CountFields(OpKernelContext* ctx, int message_index, const tstring& buf,
                    Tensor* sizes_tensor, std::vector<int32>* max_sizes) {
     int field_count = fields_.size();
 

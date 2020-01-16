@@ -37,6 +37,7 @@ limitations under the License.
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Intrinsics.h"
+#include "llvm/IR/IntrinsicsX86.h"
 #include "llvm/IR/LLVMContext.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
@@ -1159,7 +1160,7 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
       /*instruction=*/*convolution, /*operands=*/{lhs, rhs},
       /*supported_types=*/{F16, F32, F64, C64, C128}));
 
-  // TODO(tonywy): Add PotentiallyImplementedAsMKLCovolution to support
+  // TODO(tonywy): Add PotentiallyImplementedAsMKLConvolution to support
   // different data layouts.
   if (PotentiallyImplementedAsEigenConvolution(*convolution,
                                                target_machine_features_)) {
@@ -1511,6 +1512,7 @@ Status IrEmitter::HandleAllReduce(HloInstruction* crs) {
 }
 
 Status IrEmitter::HandleReplicaId(HloInstruction* hlo) {
+  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(hlo));
   llvm::Type* i8_ptr_type = llvm::Type::getInt8PtrTy(module_->getContext());
   llvm::FunctionType* replica_id_function_ty =
       llvm::FunctionType::get(b_.getVoidTy(),

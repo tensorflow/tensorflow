@@ -66,23 +66,26 @@ class StackedRNNCells(Layer):
   Examples:
 
   ```python
-  cells = [
-      keras.layers.LSTMCell(output_dim),
-      keras.layers.LSTMCell(output_dim),
-      keras.layers.LSTMCell(output_dim),
-  ]
+  batch_size = 3
+  sentence_max_length = 5
+  n_features = 2
+  new_shape = (batch_size, sentence_max_length, n_features)
+  x = tf.constant(np.reshape(np.arange(30), new_shape), dtype = tf.float32)
 
-  inputs = keras.Input((timesteps, input_dim))
-  x = keras.layers.RNN(cells)(inputs)
+  rnn_cells = [tf.keras.layers.LSTMCell(128) for _ in range(2)]
+  stacked_lstm = tf.keras.layers.StackedRNNCells(rnn_cells)
+  lstm_layer = tf.keras.layers.RNN(stacked_lstm)
+
+  result = lstm_layer(x)
   ```
   """
 
   def __init__(self, cells, **kwargs):
     for cell in cells:
-      if not hasattr(cell, 'call'):
+      if not 'call' in dir(cell):
         raise ValueError('All cells must have a `call` method. '
                          'received cells:', cells)
-      if not hasattr(cell, 'state_size'):
+      if not 'state_size' in dir(cell):
         raise ValueError('All cells must have a '
                          '`state_size` attribute. '
                          'received cells:', cells)
@@ -388,10 +391,10 @@ class RNN(Layer):
                **kwargs):
     if isinstance(cell, (list, tuple)):
       cell = StackedRNNCells(cell)
-    if not hasattr(cell, 'call'):
+    if not 'call' in dir(cell):
       raise ValueError('`cell` should have a `call` method. '
                        'The RNN was passed:', cell)
-    if not hasattr(cell, 'state_size'):
+    if not 'state_size' in dir(cell):
       raise ValueError('The RNN cell should have '
                        'an attribute `state_size` '
                        '(tuple of integers, '
@@ -1267,7 +1270,11 @@ class SimpleRNNCell(DropoutRNNCellMixin, Layer):
                dropout=0.,
                recurrent_dropout=0.,
                **kwargs):
-    self._enable_caching_device = kwargs.pop('enable_caching_device', False)
+    # By default use cached variable under v2 mode, see b/143699808.
+    if ops.executing_eagerly_outside_functions():
+      self._enable_caching_device = kwargs.pop('enable_caching_device', True)
+    else:
+      self._enable_caching_device = kwargs.pop('enable_caching_device', False)
     super(SimpleRNNCell, self).__init__(**kwargs)
     self.units = units
     self.activation = activations.get(activation)
@@ -1320,7 +1327,7 @@ class SimpleRNNCell(DropoutRNNCellMixin, Layer):
     self.built = True
 
   def call(self, inputs, states, training=None):
-    prev_output = states[0]
+    prev_output = states[0] if nest.is_sequence(states) else states
     dp_mask = self.get_dropout_mask_for_cell(inputs, training)
     rec_dp_mask = self.get_recurrent_dropout_mask_for_cell(
         prev_output, training)
@@ -1698,7 +1705,11 @@ class GRUCell(DropoutRNNCellMixin, Layer):
                implementation=1,
                reset_after=False,
                **kwargs):
-    self._enable_caching_device = kwargs.pop('enable_caching_device', False)
+    # By default use cached variable under v2 mode, see b/143699808.
+    if ops.executing_eagerly_outside_functions():
+      self._enable_caching_device = kwargs.pop('enable_caching_device', True)
+    else:
+      self._enable_caching_device = kwargs.pop('enable_caching_device', False)
     super(GRUCell, self).__init__(**kwargs)
     self.units = units
     self.activation = activations.get(activation)
@@ -1767,7 +1778,7 @@ class GRUCell(DropoutRNNCellMixin, Layer):
     self.built = True
 
   def call(self, inputs, states, training=None):
-    h_tm1 = states[0]  # previous memory
+    h_tm1 = states[0] if nest.is_sequence(states) else states  # previous memory
 
     dp_mask = self.get_dropout_mask_for_cell(inputs, training, count=3)
     rec_dp_mask = self.get_recurrent_dropout_mask_for_cell(
@@ -2252,7 +2263,11 @@ class LSTMCell(DropoutRNNCellMixin, Layer):
                recurrent_dropout=0.,
                implementation=1,
                **kwargs):
-    self._enable_caching_device = kwargs.pop('enable_caching_device', False)
+    # By default use cached variable under v2 mode, see b/143699808.
+    if ops.executing_eagerly_outside_functions():
+      self._enable_caching_device = kwargs.pop('enable_caching_device', True)
+    else:
+      self._enable_caching_device = kwargs.pop('enable_caching_device', False)
     super(LSTMCell, self).__init__(**kwargs)
     self.units = units
     self.activation = activations.get(activation)

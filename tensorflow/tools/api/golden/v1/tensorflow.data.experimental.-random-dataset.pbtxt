@@ -109,7 +109,7 @@ tf_class {
   }
   member_method {
     name: "padded_batch"
-    argspec: "args=[\'self\', \'batch_size\', \'padded_shapes\', \'padding_values\', \'drop_remainder\'], varargs=None, keywords=None, defaults=[\'None\', \'False\'], "
+    argspec: "args=[\'self\', \'batch_size\', \'padded_shapes\', \'padding_values\', \'drop_remainder\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\'], "
   }
   member_method {
     name: "prefetch"
@@ -117,7 +117,7 @@ tf_class {
   }
   member_method {
     name: "range"
-    argspec: "args=[], varargs=args, keywords=None, defaults=None"
+    argspec: "args=[], varargs=args, keywords=kwargs, defaults=None"
   }
   member_method {
     name: "reduce"

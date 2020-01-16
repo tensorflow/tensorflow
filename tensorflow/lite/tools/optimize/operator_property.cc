@@ -26,22 +26,38 @@ namespace {
 // TODO(jianlijianli): extend it to support ops that has multiple variants.
 struct OpVariant {
   BuiltinOperator op_code;
+  bool use_layer_norm = false;
+  bool use_projection = false;
+  bool use_peephole = false;
 };
 
 const OpVariant GetOperatorVariant(const ModelT* model, int subgraph_index,
                                    int op_index) {
-  OpVariant op_signature;
+  OpVariant op_variant;
   OperatorT* op =
       model->subgraphs.at(subgraph_index)->operators[op_index].get();
-  op_signature.op_code = model->operator_codes[op->opcode_index]->builtin_code;
-  return op_signature;
+  op_variant.op_code = model->operator_codes[op->opcode_index]->builtin_code;
+  if (op_variant.op_code == BuiltinOperator_LSTM) {
+    const int cell_to_output_weight_index = 11;
+    const int forget_layer_norm_coefficients_index = 21;
+    const int projection_weights_index = 16;
+    op_variant.use_projection = op->inputs[projection_weights_index] != -1;
+    op_variant.use_peephole = op->inputs[cell_to_output_weight_index] != -1;
+    if (op->inputs.size() == 20) {
+      op_variant.use_layer_norm = false;
+    } else {
+      op_variant.use_layer_norm =
+          op->inputs[forget_layer_norm_coefficients_index] != -1;
+    }
+  }
+  return op_variant;
 }
 }  // namespace
 
 OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
                                      int op_index) {
-  OpVariant op_signature = GetOperatorVariant(model, subgraph_index, op_index);
-  BuiltinOperator op_code = op_signature.op_code;
+  OpVariant op_variant = GetOperatorVariant(model, subgraph_index, op_index);
+  BuiltinOperator op_code = op_variant.op_code;
   OperatorProperty property;
   switch (op_code) {
     case BuiltinOperator_ADD:
@@ -70,9 +86,9 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.version = 2;
       break;
     case BuiltinOperator_SPLIT:
-      property.arbitrary_outputs = true;
       // We skip input 0 since it is the split dim which is not real valued.
       property.inputs = {{1, {}}};
+      property.arbitrary_outputs = true;
       property.restrict_same_input_output_scale = true;
       property.version = 2;
       break;
@@ -91,6 +107,16 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.outputs = {{0, {}}};
       property.biases = {2};
       property.version = 3;
+      break;
+    }
+    case BuiltinOperator_TRANSPOSE_CONV: {
+      TensorProperty tensor_property;
+      tensor_property.per_axis = true;
+      tensor_property.per_axis_index = 0;
+      tensor_property.symmetric = true;
+      property.inputs = {{1, tensor_property}, {2, {}}};
+      property.outputs = {{0, {}}};
+      property.version = 2;
       break;
     }
     case BuiltinOperator_DEPTHWISE_CONV_2D: {
@@ -167,75 +193,547 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
     }
     case BuiltinOperator_LSTM: {
       // TODO(jianlijianli): extend LSTM op spec to inlucde input, bias etc.
-      // TODO(jianlijianli): extend this to other variants of LSTM.
       // LSTM needs 5 intermediate tensors. This agrees with the fully quantized
       // kernels in lstm_eval.cc
-      static const float alpha = static_cast<float>(std::pow(2, -10));
+      if (op_variant.use_layer_norm && op_variant.use_projection &&
+          op_variant.use_peephole) {
+        static const float alpha = static_cast<float>(std::pow(2, -10));
+        TensorProperty tensor_property_9;
+        tensor_property_9.number_of_bits = 16;
+        tensor_property_9.symmetric = true;
+        TensorProperty tensor_property_12;
+        tensor_property_12.use_derived_scale = true;
+        tensor_property_12.number_of_bits = 32;
+        tensor_property_12.derived_scale = {{20}, {}, {alpha}};
+        TensorProperty tensor_property_13;
+        tensor_property_13.use_derived_scale = true;
+        tensor_property_13.number_of_bits = 32;
+        tensor_property_13.derived_scale = {{21}, {}, {alpha}};
+        TensorProperty tensor_property_14;
+        tensor_property_14.use_derived_scale = true;
+        tensor_property_14.number_of_bits = 32;
+        tensor_property_14.derived_scale = {{22}, {}, {alpha}};
+        TensorProperty tensor_property_15;
+        tensor_property_15.use_derived_scale = true;
+        tensor_property_15.number_of_bits = 32;
+        tensor_property_15.derived_scale = {{23}, {}, {alpha}};
+        TensorProperty tensor_property_17;
+        tensor_property_17.use_derived_scale = true;
+        tensor_property_17.number_of_bits = 32;
+        tensor_property_17.derived_scale = {{16}, {4}, {}};
+        TensorProperty tensor_property_19;
+        tensor_property_19.extend_to_power_of_two = true;
+        tensor_property_19.number_of_bits = 16;
+        tensor_property_19.state_tensor = true;
+        tensor_property_19.symmetric = true;
+        TensorProperty tensor_property_20;
+        tensor_property_20.number_of_bits = 16;
+        tensor_property_20.symmetric = true;
 
-      TensorProperty tensor_property_12;
-      tensor_property_12.use_derived_scale = true;
-      tensor_property_12.number_of_bits = 32;
-      tensor_property_12.derived_scale = {{20}, {}, {alpha}};
-      TensorProperty tensor_property_13;
-      tensor_property_13.use_derived_scale = true;
-      tensor_property_13.number_of_bits = 32;
-      tensor_property_13.derived_scale = {{21}, {}, {alpha}};
-      TensorProperty tensor_property_14;
-      tensor_property_14.use_derived_scale = true;
-      tensor_property_14.number_of_bits = 32;
-      tensor_property_14.derived_scale = {{22}, {}, {alpha}};
-      TensorProperty tensor_property_15;
-      tensor_property_15.use_derived_scale = true;
-      tensor_property_15.number_of_bits = 32;
-      tensor_property_15.derived_scale = {{23}, {}, {alpha}};
-      TensorProperty tensor_property_17;
-      tensor_property_17.use_derived_scale = true;
-      tensor_property_17.number_of_bits = 32;
-      tensor_property_17.derived_scale = {{16}, {4}, {}};
-      TensorProperty tensor_property_19;
-      tensor_property_19.extend_to_power_of_two = true;
-      tensor_property_19.number_of_bits = 16;
-      tensor_property_19.state_tensor = true;
-      tensor_property_19.symmetric = true;
-      TensorProperty tensor_property_20;
-      tensor_property_20.number_of_bits = 16;
-      tensor_property_20.symmetric = true;
+        property.inputs = {
+            {0, {}},
+            {1, {}},
+            {2, {}},
+            {3, {}},
+            {4, {}},
+            {5, {}},
+            {6, {}},
+            {7, {}},
+            {8, {}},
+            {9, tensor_property_9},
+            {10, tensor_property_9},
+            {11, tensor_property_9},
+            {16, {}},
+            {19, tensor_property_19},
+            {20, tensor_property_20},
+            {21, tensor_property_20},
+            {22, tensor_property_20},
+            {23, tensor_property_20},
+            {12, tensor_property_12},
+            {13, tensor_property_13},
+            {14, tensor_property_14},
+            {15, tensor_property_15},
+            {17, tensor_property_17},
+        };
+        property.outputs = {{0, {}}};
+        property.intermediates = {
+            {0, tensor_property_20},
+            {1, tensor_property_20},
+            {2, tensor_property_20},
+            {3, tensor_property_20},
+            {4, {}},
+        };
+        property.restrict_scale = {{18, 0}};
+        property.version = 2;
+      }
+      if (op_variant.use_layer_norm && op_variant.use_projection &&
+          !op_variant.use_peephole) {
+        static const float alpha = static_cast<float>(std::pow(2, -10));
 
-      property.inputs = {
-          {0, {}},
-          {1, {}},
-          {2, {}},
-          {3, {}},
-          {4, {}},
-          {5, {}},
-          {6, {}},
-          {7, {}},
-          {8, {}},
-          {9, {}},
-          {10, {}},
-          {11, {}},
-          {16, {}},
-          {19, tensor_property_19},
-          {20, tensor_property_20},
-          {21, tensor_property_20},
-          {22, tensor_property_20},
-          {23, tensor_property_20},
-          {12, tensor_property_12},
-          {13, tensor_property_13},
-          {14, tensor_property_14},
-          {15, tensor_property_15},
-          {17, tensor_property_17},
-      };
-      property.outputs = {{0, {}}};
-      property.intermediates = {
-          {0, tensor_property_20},
-          {1, tensor_property_20},
-          {2, tensor_property_20},
-          {3, tensor_property_20},
-          {4, {}},
-      };
-      property.restrict_scale = {{18, 0}};
-      property.version = 2;
+        TensorProperty tensor_property_12;
+        tensor_property_12.use_derived_scale = true;
+        tensor_property_12.number_of_bits = 32;
+        tensor_property_12.derived_scale = {{20}, {}, {alpha}};
+        TensorProperty tensor_property_13;
+        tensor_property_13.use_derived_scale = true;
+        tensor_property_13.number_of_bits = 32;
+        tensor_property_13.derived_scale = {{21}, {}, {alpha}};
+        TensorProperty tensor_property_14;
+        tensor_property_14.use_derived_scale = true;
+        tensor_property_14.number_of_bits = 32;
+        tensor_property_14.derived_scale = {{22}, {}, {alpha}};
+        TensorProperty tensor_property_15;
+        tensor_property_15.use_derived_scale = true;
+        tensor_property_15.number_of_bits = 32;
+        tensor_property_15.derived_scale = {{23}, {}, {alpha}};
+        TensorProperty tensor_property_17;
+        tensor_property_17.use_derived_scale = true;
+        tensor_property_17.number_of_bits = 32;
+        tensor_property_17.derived_scale = {{16}, {4}, {}};
+        TensorProperty tensor_property_19;
+        tensor_property_19.extend_to_power_of_two = true;
+        tensor_property_19.number_of_bits = 16;
+        tensor_property_19.state_tensor = true;
+        tensor_property_19.symmetric = true;
+        TensorProperty tensor_property_20;
+        tensor_property_20.number_of_bits = 16;
+        tensor_property_20.symmetric = true;
+
+        property.inputs = {
+            {0, {}},
+            {1, {}},
+            {2, {}},
+            {3, {}},
+            {4, {}},
+            {5, {}},
+            {6, {}},
+            {7, {}},
+            {8, {}},
+            {16, {}},
+            {19, tensor_property_19},
+            {20, tensor_property_20},
+            {21, tensor_property_20},
+            {22, tensor_property_20},
+            {23, tensor_property_20},
+            {12, tensor_property_12},
+            {13, tensor_property_13},
+            {14, tensor_property_14},
+            {15, tensor_property_15},
+            {17, tensor_property_17},
+        };
+        property.outputs = {{0, {}}};
+        property.intermediates = {
+            {0, tensor_property_20},
+            {1, tensor_property_20},
+            {2, tensor_property_20},
+            {3, tensor_property_20},
+            {4, {}},
+        };
+        property.restrict_scale = {{18, 0}};
+        property.version = 2;
+      }
+      if (op_variant.use_layer_norm && !op_variant.use_projection &&
+          op_variant.use_peephole) {
+        static const float alpha = static_cast<float>(std::pow(2, -10));
+        TensorProperty tensor_property_9;
+        tensor_property_9.number_of_bits = 16;
+        tensor_property_9.symmetric = true;
+        TensorProperty tensor_property_12;
+        tensor_property_12.use_derived_scale = true;
+        tensor_property_12.number_of_bits = 32;
+        tensor_property_12.derived_scale = {{20}, {}, {alpha}};
+        TensorProperty tensor_property_13;
+        tensor_property_13.use_derived_scale = true;
+        tensor_property_13.number_of_bits = 32;
+        tensor_property_13.derived_scale = {{21}, {}, {alpha}};
+        TensorProperty tensor_property_14;
+        tensor_property_14.use_derived_scale = true;
+        tensor_property_14.number_of_bits = 32;
+        tensor_property_14.derived_scale = {{22}, {}, {alpha}};
+        TensorProperty tensor_property_15;
+        tensor_property_15.use_derived_scale = true;
+        tensor_property_15.number_of_bits = 32;
+        tensor_property_15.derived_scale = {{23}, {}, {alpha}};
+        TensorProperty tensor_property_19;
+        tensor_property_19.extend_to_power_of_two = true;
+        tensor_property_19.number_of_bits = 16;
+        tensor_property_19.state_tensor = true;
+        tensor_property_19.symmetric = true;
+        TensorProperty tensor_property_20;
+        tensor_property_20.number_of_bits = 16;
+        tensor_property_20.symmetric = true;
+
+        property.inputs = {
+            {0, {}},
+            {1, {}},
+            {2, {}},
+            {3, {}},
+            {4, {}},
+            {5, {}},
+            {6, {}},
+            {7, {}},
+            {8, {}},
+            {9, tensor_property_9},
+            {10, tensor_property_9},
+            {11, tensor_property_9},
+            {19, tensor_property_19},
+            {20, tensor_property_20},
+            {21, tensor_property_20},
+            {22, tensor_property_20},
+            {23, tensor_property_20},
+            {12, tensor_property_12},
+            {13, tensor_property_13},
+            {14, tensor_property_14},
+            {15, tensor_property_15},
+        };
+        property.outputs = {{0, {}}};
+        property.intermediates = {
+            {0, tensor_property_20},
+            {1, tensor_property_20},
+            {2, tensor_property_20},
+            {3, tensor_property_20},
+            // Without projection, hidden state (4), output (0) and input
+            // activation state (18) are the same except that the very first
+            // inference of input activation is not captured in hidden and
+            // output.
+            // This is not an issue because this intermediate tensor is not used
+            // in the kernel and its quantization parameters are ignored.
+            {4, {}},
+        };
+        property.restrict_scale = {{18, 0}};
+        property.version = 2;
+      }
+      if (op_variant.use_layer_norm && !op_variant.use_projection &&
+          !op_variant.use_peephole) {
+        static const float alpha = static_cast<float>(std::pow(2, -10));
+        TensorProperty tensor_property_12;
+        tensor_property_12.use_derived_scale = true;
+        tensor_property_12.number_of_bits = 32;
+        tensor_property_12.derived_scale = {{20}, {}, {alpha}};
+        TensorProperty tensor_property_13;
+        tensor_property_13.use_derived_scale = true;
+        tensor_property_13.number_of_bits = 32;
+        tensor_property_13.derived_scale = {{21}, {}, {alpha}};
+        TensorProperty tensor_property_14;
+        tensor_property_14.use_derived_scale = true;
+        tensor_property_14.number_of_bits = 32;
+        tensor_property_14.derived_scale = {{22}, {}, {alpha}};
+        TensorProperty tensor_property_15;
+        tensor_property_15.use_derived_scale = true;
+        tensor_property_15.number_of_bits = 32;
+        tensor_property_15.derived_scale = {{23}, {}, {alpha}};
+        TensorProperty tensor_property_19;
+        tensor_property_19.extend_to_power_of_two = true;
+        tensor_property_19.number_of_bits = 16;
+        tensor_property_19.state_tensor = true;
+        tensor_property_19.symmetric = true;
+        TensorProperty tensor_property_20;
+        tensor_property_20.number_of_bits = 16;
+        tensor_property_20.symmetric = true;
+
+        property.inputs = {
+            {0, {}},
+            {1, {}},
+            {2, {}},
+            {3, {}},
+            {4, {}},
+            {5, {}},
+            {6, {}},
+            {7, {}},
+            {8, {}},
+            {19, tensor_property_19},
+            {20, tensor_property_20},
+            {21, tensor_property_20},
+            {22, tensor_property_20},
+            {23, tensor_property_20},
+            {12, tensor_property_12},
+            {13, tensor_property_13},
+            {14, tensor_property_14},
+            {15, tensor_property_15},
+        };
+        property.outputs = {{0, {}}};
+        property.intermediates = {
+            {0, tensor_property_20},
+            {1, tensor_property_20},
+            {2, tensor_property_20},
+            {3, tensor_property_20},
+            // Without projection, hidden state (4), output (0) and input
+            // activation state (18) are the same except that the very first
+            // inference of input activation is not captured in hidden and
+            // output.
+            // This is not an issue because this intermediate tensor is not used
+            // in the kernel and its quantization parameters are ignored.
+            {4, {}},
+        };
+        property.restrict_scale = {{18, 0}};
+        property.version = 2;
+      }
+      if (!op_variant.use_layer_norm && op_variant.use_projection &&
+          op_variant.use_peephole) {
+        TensorProperty tensor_property_9;
+        tensor_property_9.number_of_bits = 16;
+        tensor_property_9.symmetric = true;
+        // Without layer norm, we choose to quantize bias with the scale of
+        // input and its correpsonding weight. The other choice will
+        // be to ues the scale of recurrent and its correpsonding weight but we
+        // choose to use the smaller scale, which means higher resolution.
+        TensorProperty tensor_property_12;
+        tensor_property_12.use_derived_scale = true;
+        tensor_property_12.number_of_bits = 32;
+        tensor_property_12.derived_scale = {{0, 1}, {}, {}};
+        TensorProperty tensor_property_13;
+        tensor_property_13.use_derived_scale = true;
+        tensor_property_13.number_of_bits = 32;
+        tensor_property_13.derived_scale = {{0, 2}, {}, {}};
+        TensorProperty tensor_property_14;
+        tensor_property_14.use_derived_scale = true;
+        tensor_property_14.number_of_bits = 32;
+        tensor_property_14.derived_scale = {{0, 3}, {}, {}};
+        TensorProperty tensor_property_15;
+        tensor_property_15.use_derived_scale = true;
+        tensor_property_15.number_of_bits = 32;
+        tensor_property_15.derived_scale = {{0, 4}, {}, {}};
+        TensorProperty tensor_property_17;
+        tensor_property_17.use_derived_scale = true;
+        tensor_property_17.number_of_bits = 32;
+        tensor_property_17.derived_scale = {{16}, {4}, {}};
+        TensorProperty tensor_property_19;
+        tensor_property_19.extend_to_power_of_two = true;
+        tensor_property_19.number_of_bits = 16;
+        tensor_property_19.state_tensor = true;
+        tensor_property_19.symmetric = true;
+
+        property.inputs = {
+            {0, {}},
+            {1, {}},
+            {2, {}},
+            {3, {}},
+            {4, {}},
+            {5, {}},
+            {6, {}},
+            {7, {}},
+            {8, {}},
+            {9, tensor_property_9},
+            {10, tensor_property_9},
+            {11, tensor_property_9},
+            {16, {}},
+            {19, tensor_property_19},
+            {12, tensor_property_12},
+            {13, tensor_property_13},
+            {14, tensor_property_14},
+            {15, tensor_property_15},
+            {17, tensor_property_17},
+        };
+        property.outputs = {{0, {}}};
+        property.intermediates = {
+            // Without layer normliazation, intermediate tensors 0, 1, 2, 3 are
+            // not used and and their quantization parameters are ignored.
+            {0, {}},
+            {1, {}},
+            {2, {}},
+            {3, {}},
+            // Hidden state is quantized as usual.
+            {4, {}},
+        };
+        property.restrict_scale = {{18, 0}};
+        property.version = 2;
+      }
+      if (!op_variant.use_layer_norm && op_variant.use_projection &&
+          !op_variant.use_peephole) {
+        // Without layer norm, we choose to quantize bias with the scale of
+        // input and its correpsonding weight. The other choice will
+        // be to ues the scale of recurrent and its correpsonding weight but we
+        // choose to use the smaller scale, which means higher resolution.
+        TensorProperty tensor_property_12;
+        tensor_property_12.use_derived_scale = true;
+        tensor_property_12.number_of_bits = 32;
+        tensor_property_12.derived_scale = {{0, 1}, {}, {}};
+        TensorProperty tensor_property_13;
+        tensor_property_13.use_derived_scale = true;
+        tensor_property_13.number_of_bits = 32;
+        tensor_property_13.derived_scale = {{0, 2}, {}, {}};
+        TensorProperty tensor_property_14;
+        tensor_property_14.use_derived_scale = true;
+        tensor_property_14.number_of_bits = 32;
+        tensor_property_14.derived_scale = {{0, 3}, {}, {}};
+        TensorProperty tensor_property_15;
+        tensor_property_15.use_derived_scale = true;
+        tensor_property_15.number_of_bits = 32;
+        tensor_property_15.derived_scale = {{0, 4}, {}, {}};
+        TensorProperty tensor_property_17;
+        tensor_property_17.use_derived_scale = true;
+        tensor_property_17.number_of_bits = 32;
+        tensor_property_17.derived_scale = {{16}, {4}, {}};
+        TensorProperty tensor_property_19;
+        tensor_property_19.extend_to_power_of_two = true;
+        tensor_property_19.number_of_bits = 16;
+        tensor_property_19.state_tensor = true;
+        tensor_property_19.symmetric = true;
+
+        property.inputs = {
+            {0, {}},
+            {1, {}},
+            {2, {}},
+            {3, {}},
+            {4, {}},
+            {5, {}},
+            {6, {}},
+            {7, {}},
+            {8, {}},
+            {16, {}},
+            {19, tensor_property_19},
+            {12, tensor_property_12},
+            {13, tensor_property_13},
+            {14, tensor_property_14},
+            {15, tensor_property_15},
+            {17, tensor_property_17},
+        };
+        property.outputs = {{0, {}}};
+        property.intermediates = {
+            // Without layer normliazation, intermediate tensors 0, 1, 2, 3 are
+            // not used and their quantization parameters are ignored.
+            {0, {}},
+            {1, {}},
+            {2, {}},
+            {3, {}},
+            // Hidden state is quantized as usual.
+            {4, {}},
+        };
+        property.restrict_scale = {{18, 0}};
+        property.version = 2;
+      }
+      if (!op_variant.use_layer_norm && !op_variant.use_projection &&
+          op_variant.use_peephole) {
+        TensorProperty tensor_property_9;
+        tensor_property_9.number_of_bits = 16;
+        tensor_property_9.symmetric = true;
+        // Without layer norm, we choose to quantize bias with the scale of
+        // input and its correpsonding weight. The other choice will
+        // be to ues the scale of recurrent and its correpsonding weight but we
+        // choose to use the smaller scale, which means higher resolution.
+        TensorProperty tensor_property_12;
+        tensor_property_12.use_derived_scale = true;
+        tensor_property_12.number_of_bits = 32;
+        tensor_property_12.derived_scale = {{0, 1}, {}, {}};
+        TensorProperty tensor_property_13;
+        tensor_property_13.use_derived_scale = true;
+        tensor_property_13.number_of_bits = 32;
+        tensor_property_13.derived_scale = {{0, 2}, {}, {}};
+        TensorProperty tensor_property_14;
+        tensor_property_14.use_derived_scale = true;
+        tensor_property_14.number_of_bits = 32;
+        tensor_property_14.derived_scale = {{0, 3}, {}, {}};
+        TensorProperty tensor_property_15;
+        tensor_property_15.use_derived_scale = true;
+        tensor_property_15.number_of_bits = 32;
+        tensor_property_15.derived_scale = {{0, 4}, {}, {}};
+        TensorProperty tensor_property_19;
+        tensor_property_19.extend_to_power_of_two = true;
+        tensor_property_19.number_of_bits = 16;
+        tensor_property_19.state_tensor = true;
+        tensor_property_19.symmetric = true;
+
+        property.inputs = {
+            {0, {}},
+            {1, {}},
+            {2, {}},
+            {3, {}},
+            {4, {}},
+            {5, {}},
+            {6, {}},
+            {7, {}},
+            {8, {}},
+            {9, tensor_property_9},
+            {10, tensor_property_9},
+            {11, tensor_property_9},
+            {19, tensor_property_19},
+            {12, tensor_property_12},
+            {13, tensor_property_13},
+            {14, tensor_property_14},
+            {15, tensor_property_15},
+        };
+        property.outputs = {{0, {}}};
+        property.intermediates = {
+            // Without layer normliazation, intermediate tensors 0, 1, 2, 3 are
+            // not used and their quantization parameters are ignored.
+            {0, {}},
+            {1, {}},
+            {2, {}},
+            {3, {}},
+            // Without projection, hidden state (4), output (0) and input
+            // activation state (18) are the same except that the very first
+            // inference of input activation is not captured in hidden and
+            // output.
+            // This is not an issue because this intermediate tensor is not used
+            // in the kernel and its quantization parameters are ignored.
+            {4, {}},
+        };
+        property.restrict_scale = {{18, 0}};
+        property.version = 2;
+      }
+      if (!op_variant.use_layer_norm && !op_variant.use_projection &&
+          !op_variant.use_peephole) {
+        // Without layer norm, we choose to quantize bias with the scale of
+        // input and its correpsonding weight. The other choice will
+        // be to ues the scale of recurrent and its correpsonding weight but we
+        // choose to use the smaller scale, which means higher resolution.
+        TensorProperty tensor_property_12;
+        tensor_property_12.use_derived_scale = true;
+        tensor_property_12.number_of_bits = 32;
+        tensor_property_12.derived_scale = {{0, 1}, {}, {}};
+        TensorProperty tensor_property_13;
+        tensor_property_13.use_derived_scale = true;
+        tensor_property_13.number_of_bits = 32;
+        tensor_property_13.derived_scale = {{0, 2}, {}, {}};
+        TensorProperty tensor_property_14;
+        tensor_property_14.use_derived_scale = true;
+        tensor_property_14.number_of_bits = 32;
+        tensor_property_14.derived_scale = {{0, 3}, {}, {}};
+        TensorProperty tensor_property_15;
+        tensor_property_15.use_derived_scale = true;
+        tensor_property_15.number_of_bits = 32;
+        tensor_property_15.derived_scale = {{0, 4}, {}, {}};
+        TensorProperty tensor_property_19;
+        tensor_property_19.extend_to_power_of_two = true;
+        tensor_property_19.number_of_bits = 16;
+        tensor_property_19.state_tensor = true;
+        tensor_property_19.symmetric = true;
+
+        property.inputs = {
+            {0, {}},
+            {1, {}},
+            {2, {}},
+            {3, {}},
+            {4, {}},
+            {5, {}},
+            {6, {}},
+            {7, {}},
+            {8, {}},
+            {19, tensor_property_19},
+            {12, tensor_property_12},
+            {13, tensor_property_13},
+            {14, tensor_property_14},
+            {15, tensor_property_15},
+        };
+        property.outputs = {{0, {}}};
+        property.intermediates = {
+            // Without layer normliazation, intermediate tensors 0, 1, 2, 3 are
+            // not used and their quantization parameters are ignored.
+            {0, {}},
+            {1, {}},
+            {2, {}},
+            {3, {}},
+            // Without projection, hidden state (4), output (0) and input
+            // activation state (18) are the same except that the very first
+            // inference of input activation is not captured in hidden and
+            // output.
+            // This is not an issue because this intermediate tensor is not used
+            // in the kernel and its quantization parameters are ignored.
+            {4, {}},
+        };
+        property.restrict_scale = {{18, 0}};
+        property.version = 2;
+      }
       break;
     }
     case BuiltinOperator_L2_NORMALIZATION: {
@@ -255,7 +753,7 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.version = 2;
       break;
     case BuiltinOperator_MAXIMUM:
-      property.inputs = {{0, {}}};
+      property.arbitrary_inputs = true;
       property.outputs = {{0, {}}};
       property.restrict_same_input_output_scale = true;
       property.version = 2;
@@ -266,7 +764,7 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.version = 2;
       break;
     case BuiltinOperator_MINIMUM:
-      property.inputs = {{0, {}}};
+      property.arbitrary_inputs = true;
       property.outputs = {{0, {}}};
       property.restrict_same_input_output_scale = true;
       property.version = 2;
@@ -274,6 +772,12 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
     case BuiltinOperator_MUL:
       property.inputs = {{0, {}}, {1, {}}};
       property.outputs = {{0, {}}};
+      property.version = 2;
+      break;
+    case BuiltinOperator_PACK:
+      property.arbitrary_inputs = true;
+      property.outputs = {{0, {}}};
+      property.restrict_same_input_output_scale = true;
       property.version = 2;
       break;
     case BuiltinOperator_PAD:
@@ -367,11 +871,40 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.version = 2;
       break;
     }
+    case BuiltinOperator_SVDF: {
+      TensorProperty tensor_property_time;
+      // Only 10bits are needed because 6bits are reserved for the reduce
+      // operation after elemement-wise multiplication between state and time
+      // weights.
+      tensor_property_time.number_of_bits = 10;
+      TensorProperty tensor_property_bias;
+      tensor_property_bias.use_derived_scale = true;
+      tensor_property_bias.number_of_bits = 32;
+      tensor_property_bias.derived_scale = {{2, 4}, {}, {}};
+      TensorProperty tensor_property_state;
+      tensor_property_state.number_of_bits = 16;
+      tensor_property_state.state_tensor = true;
+
+      property.inputs = {{0, {}},
+                         {1, {}},
+                         {2, tensor_property_time},
+                         {4, tensor_property_state},
+                         {3, tensor_property_bias}};
+      property.outputs = {{0, {}}};
+      property.version = 3;
+      break;
+    }
     case BuiltinOperator_TRANSPOSE:
       property.inputs = {{0, {}}};
       property.outputs = {{0, {}}};
       property.restrict_same_input_output_scale = true;
       property.version = 2;
+      break;
+    case BuiltinOperator_UNPACK:
+      property.inputs = {{0, {}}};
+      property.arbitrary_outputs = true;
+      property.restrict_same_input_output_scale = true;
+      property.version = 1;
       break;
     default:
       // No quantized implementation exists for this operation.

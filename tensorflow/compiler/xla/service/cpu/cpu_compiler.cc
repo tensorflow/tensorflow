@@ -60,7 +60,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/compiler_functor.h"
 #include "tensorflow/compiler/xla/service/cpu/conv_canonicalization.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_executable.h"
-#include "tensorflow/compiler/xla/service/cpu/cpu_hlo_support_checker.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_layout_assignment.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_options.h"
@@ -248,7 +247,6 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<ZeroSizedHloElimination>();
 
   pipeline.AddPass<DynamicIndexSplitter>();
-  pipeline.AddPass<CpuHloSupportChecker>();
 
   pipeline.AddPass<ConditionalToSelect>();
   pipeline.AddPass<MapInliner>();
@@ -350,7 +348,7 @@ Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   // duplicate or NOPs, so remove them with algebraic simplification and CSE.
   {
     auto& pass = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
-        "simplification after layout assignement");
+        "simplification after layout assignment");
     pass.AddInvariantChecker<HloVerifier>(
         /*layout_sensitive=*/true,
         /*allow_mixed_precision=*/false,
@@ -409,20 +407,8 @@ auto memory_alignment = [](LogicalBuffer::Color) { return kMemoryAlignment; };
 llvm::TargetOptions CompilerTargetOptions(
     const HloModuleConfig& module_config) {
   llvm::TargetOptions target_options;
-  // In LLVM backend flags, UnsafeFPMath does not explicitly imply NoInfs, etc.
-  if (module_config.debug_options().xla_cpu_enable_fast_math()) {
-    target_options.UnsafeFPMath = true;
-    target_options.NoInfsFPMath =
-        !module_config.debug_options().xla_cpu_fast_math_honor_infs();
-    target_options.NoNaNsFPMath =
-        !module_config.debug_options().xla_cpu_fast_math_honor_nans();
-    target_options.NoSignedZerosFPMath = true;
-  } else {
-    target_options.UnsafeFPMath = false;
-    target_options.NoInfsFPMath = false;
-    target_options.NoNaNsFPMath = false;
-    target_options.NoSignedZerosFPMath = false;
-  }
+  // Always allow FMA fusion. This increases precision instead of decreasing it.
+  target_options.AllowFPOpFusion = llvm::FPOpFusion::Fast;
   return target_options;
 }
 

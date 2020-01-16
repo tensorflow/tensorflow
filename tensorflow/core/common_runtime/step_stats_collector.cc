@@ -92,14 +92,14 @@ void NodeExecStatsWrapper::Done(const string& device) {
     string recv_device;
     TF_CHECK_OK(GetNodeAttr(attrs, "recv_device", &recv_device));
     text = strings::StrCat(memory, node_->name(), " = ", node_->op(), "(",
-                           tensor_name, " @", recv_device);
+                           tensor_name, " @", recv_device, ")");
   } else if (IsRecv(node_)) {
     string tensor_name;
     TF_CHECK_OK(GetNodeAttr(attrs, "tensor_name", &tensor_name));
     string send_device;
     TF_CHECK_OK(GetNodeAttr(attrs, "send_device", &send_device));
     text = strings::StrCat(memory, node_->name(), " = ", node_->op(), "(",
-                           tensor_name, " @", send_device);
+                           tensor_name, " @", send_device, ")");
   } else {
     text = strings::StrCat(memory, node_->name(), " = ", node_->op(), "(",
                            absl::StrJoin(node_->input(), ", "), ")");

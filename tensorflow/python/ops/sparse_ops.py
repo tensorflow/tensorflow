@@ -145,6 +145,8 @@ def sparse_expand_dims(sp_input, axis=None, name=None):
     additional dimension of size 1 added.
   """
   rank = sp_input.dense_shape.get_shape()[0]
+  if rank is None:
+    rank = array_ops.shape(sp_input.dense_shape)[0]
   axis = -1 if axis is None else axis
 
   with ops.name_scope(name, default_name="expand_dims", values=[sp_input]):

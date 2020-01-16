@@ -607,7 +607,7 @@ TEST_F(ShapeInferenceTest, ConvolveBatchGroupCountUnequalOutputFeature) {
       window, dnums);
   ASSERT_FALSE(inferred_status.ok());
   ASSERT_THAT(inferred_status.status().error_message(),
-              HasSubstr("to be equal to batch group count"));
+              HasSubstr("to be a multiple of batch group count"));
 }
 
 namespace fft {
@@ -1029,6 +1029,16 @@ TEST_F(ShapeInferenceTest, InferSliceShapeRank2) {
   ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {32, 64}), inferred));
 }
 
+TEST_F(ShapeInferenceTest, InferSliceWithDynamicDimensions) {
+  Shape matrix_shape = ShapeUtil::MakeShape(F32, {128, 64}, {true, true});
+  auto inferred_status =
+      ShapeInference::InferSliceShape(matrix_shape, {32, 0}, {33, 64}, {1, 1});
+  ASSERT_IS_OK(inferred_status.status());
+  Shape inferred = inferred_status.ValueOrDie();
+  ASSERT_TRUE(ShapeUtil::Equal(
+      ShapeUtil::MakeShape(F32, {1, 64}, {false, true}), inferred));
+}
+
 TEST_F(ShapeInferenceTest, InferSliceShapeRank2WithStrides) {
   Shape matrix_shape = ShapeUtil::MakeShape(F32, {128, 64});
   auto inferred_status =
@@ -1161,6 +1171,18 @@ TEST_F(ShapeInferenceTest, UnchangedDimension) {
                                                   /*inferred_dimension=*/-11);
   ASSERT_EQ(ShapeUtil::MakeShape(F32, {2, 3, 10}, {false, false, true}),
             status.ValueOrDie());
+}
+
+TEST_F(ShapeInferenceTest, InferDynamicBroadcast) {
+  // CHECK:
+  // %broadcast = s32[15,<=15]{1,0} broadcast(s32[<=15]{0}), dimensions={1}
+
+  auto operand_shape = ShapeUtil::MakeShape(F32, {15}, {true});
+  auto inferred_status =
+      ShapeInference::InferBroadcastShape(operand_shape, {15});
+  ASSERT_IS_OK(inferred_status.status());
+  Shape inferred = inferred_status.ValueOrDie();
+  ASSERT_EQ(ShapeUtil::MakeShape(F32, {15, 15}, {false, true}), inferred);
 }
 
 TEST_F(ShapeInferenceTest, BroadcastScalar) {
@@ -1344,7 +1366,7 @@ TEST_F(ShapeInferenceTest, DotWithTwoContractingDimsPasses) {
 }
 
 // BatchMatMul with different batch dimension sizes fails.
-TEST_F(ShapeInferenceTest, DotWithMisatchedBatchDimSizesFails) {
+TEST_F(ShapeInferenceTest, DotWithMismatchedBatchDimSizesFails) {
   Shape lhs_shape = ShapeUtil::MakeShape(F32, {2, 11, 3});
   Shape rhs_shape = ShapeUtil::MakeShape(F32, {3, 3, 14});
 
@@ -1363,7 +1385,7 @@ TEST_F(ShapeInferenceTest, DotWithMisatchedBatchDimSizesFails) {
 }
 
 // BatchMatMul with different batch dimension numbers passes
-TEST_F(ShapeInferenceTest, DotWithMisatchedBatchDimNumbersPasses) {
+TEST_F(ShapeInferenceTest, DotWithMismatchedBatchDimNumbersPasses) {
   Shape lhs_shape = ShapeUtil::MakeShape(F32, {2, 11, 3});
   Shape rhs_shape = ShapeUtil::MakeShape(F32, {3, 2, 14});
 
@@ -1580,6 +1602,20 @@ TEST_F(ShapeInferenceTest, WhileWithBadShapes) {
   ASSERT_FALSE(inferred_status_error4.ok());
   ASSERT_THAT(inferred_status_error4.status().error_message(),
               HasSubstr("parameter of condition and body"));
+}
+
+// Tests for the concatenate instruction with dynamic shapes.
+TEST_F(ShapeInferenceTest, ConcatenateWithDynamicShapes) {
+  auto dynamic_shape_1 =
+      ShapeUtil::MakeShape(F32, {32, 160, 10}, {true, false, false});
+  auto dynamic_shape_2 =
+      ShapeUtil::MakeShape(F32, {32, 160, 10}, {false, true, false});
+  auto inferred_status = ShapeInference::InferConcatOpShape(
+      {&dynamic_shape_1, &dynamic_shape_2}, /*dimension=*/0);
+  ASSERT_IS_OK(inferred_status.status());
+  Shape inferred = inferred_status.ValueOrDie();
+  ASSERT_TRUE(ShapeUtil::Equal(
+      ShapeUtil::MakeShape(F32, {64, 160, 10}, {true, true, false}), inferred));
 }
 
 // Tests for the concatenate instruction with proper shapes.

@@ -21,7 +21,7 @@ py_test(
     name = "nest_test",
     size = "small",
     srcs = ["nest_test.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         ":nest",
@@ -54,7 +54,7 @@ py_test(
     name = "sparse_test",
     size = "small",
     srcs = ["sparse_test.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         ":nest",
@@ -90,7 +90,7 @@ py_test(
     name = "structure_test",
     size = "small",
     srcs = ["structure_test.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         ":nest",
@@ -127,7 +127,7 @@ py_test(
     name = "options_test",
     size = "small",
     srcs = ["options_test.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         ":options",
@@ -151,7 +151,7 @@ py_test(
     name = "convert_test",
     size = "small",
     srcs = ["convert_test.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         ":convert",
@@ -176,7 +176,7 @@ py_test(
     name = "random_seed_test",
     size = "small",
     srcs = ["random_seed_test.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         ":random_seed",
@@ -198,7 +198,7 @@ py_test(
     name = "traverse_test",
     size = "small",
     srcs = ["traverse_test.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         ":traverse",

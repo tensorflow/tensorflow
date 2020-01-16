@@ -54,8 +54,8 @@ limitations under the License.
 #include "third_party/lapack/blas.h"
 #endif
 
-#ifdef GEMMLOWP_PROFILING
-#include "profiling/profiler.h"
+#ifdef RUY_PROFILER
+#include "tensorflow/lite/experimental/ruy/profiler/profiler.h"
 #endif
 
 namespace ruy {
@@ -80,8 +80,10 @@ inline const char* PathName(Path path) {
     RUY_PATHNAME_CASE(kNeon)
     RUY_PATHNAME_CASE(kNeonDotprod)
 #elif RUY_PLATFORM(X86)
+    RUY_PATHNAME_CASE(kSse42)
     RUY_PATHNAME_CASE(kAvx2)
     RUY_PATHNAME_CASE(kAvx512)
+    RUY_PATHNAME_CASE(kAvxVnni)
 #endif
     default:
       RUY_CHECK(false);
@@ -492,7 +494,6 @@ struct TestSet final {
   void DoMul(TestResultType* result);
   void Benchmark(TestResultType* result);
   void VerifyTestResults() const;
-  void VerifyNonTrivial() const;
 
  public:
   enum class LifeStage {
@@ -1217,7 +1218,7 @@ bool Agree(const Matrix<Scalar>& matrix1, const Matrix<Scalar>& matrix2,
       }
     }
     tolerated_max_diff = max_abs_val * std::numeric_limits<Scalar>::epsilon() *
-                         4 * std::sqrt(static_cast<float>(depth));
+                         64 * std::sqrt(static_cast<float>(depth));
     tolerated_mean_diff = tolerated_max_diff / std::sqrt(size);
   } else if (RUY_OPT_ENABLED(RUY_OPT_NATIVE_ROUNDING)) {
     tolerated_max_diff = 1;
@@ -1336,69 +1337,22 @@ void AnalyzeTestError(const TestSetType& test_set, int first_bad_result_index,
   }
 }
 
-template <typename LhsScalar, typename RhsScalar, typename SpecType>
-void ComputeAccumRangeBeforeMultiplier(
-    const Matrix<LhsScalar>& lhs, const Matrix<RhsScalar>& rhs,
-    const SpecType& spec, typename SpecType::AccumScalar* accum_min,
-    typename SpecType::AccumScalar* accum_max) {
-  Context context;
-  context.SetRuntimeEnabledPaths(Path::kReference);
-  using AccumScalar = typename SpecType::AccumScalar;
-  Matrix<AccumScalar> dst_before_multiplier;
-  MakeSimpleLayout(lhs.layout.rows, rhs.layout.cols, Order::kColMajor,
-                   &dst_before_multiplier.layout);
-  const int size = FlatSize(dst_before_multiplier.layout);
-  std::vector<AccumScalar> dst_before_multiplier_data(size);
-  dst_before_multiplier.data = dst_before_multiplier_data.data();
-  ruy::BasicSpec<AccumScalar, AccumScalar> spec_before_multiplier;
-  spec_before_multiplier.bias = spec.bias;
-  Mul<Path::kReference>(lhs, rhs, spec_before_multiplier, &context,
-                        &dst_before_multiplier);
-  *accum_min = *std::min_element(dst_before_multiplier_data.begin(),
-                                 dst_before_multiplier_data.end());
-  *accum_max = *std::max_element(dst_before_multiplier_data.begin(),
-                                 dst_before_multiplier_data.end());
-}
-
-template <typename LhsScalar, typename RhsScalar, typename SpecType>
-void ComputeReasonableMultiplier(const Matrix<LhsScalar>& lhs,
-                                 const Matrix<RhsScalar>& rhs,
-                                 typename SpecType::DstScalar dst_zero_point,
-                                 const SpecType& spec, double* multiplier) {
-  using AccumScalar = typename SpecType::AccumScalar;
-  using DstScalar = typename SpecType::DstScalar;
+template <typename TestSetType>
+void ComputeReasonableMultiplier(
+    const Matrix<typename TestSetType::LhsScalar>& lhs,
+    const Matrix<typename TestSetType::RhsScalar>& rhs, double* multiplier) {
+  using LhsScalar = typename TestSetType::LhsScalar;
+  using RhsScalar = typename TestSetType::RhsScalar;
+  using DstScalar = typename TestSetType::DstScalar;
   if (std::is_floating_point<DstScalar>::value ||
       std::is_same<DstScalar, std::int32_t>::value) {
     *multiplier = 0;
     return;
   }
-  if (getenv("QUICK_BENCHMARK")) {
-    *multiplier = static_cast<double>(std::numeric_limits<DstScalar>::max()) /
-                  (static_cast<double>(lhs.layout.cols) *
-                   std::numeric_limits<LhsScalar>::max() *
-                   std::numeric_limits<RhsScalar>::max());
-    return;
-  }
-  AccumScalar accum_min;
-  AccumScalar accum_max;
-  ComputeAccumRangeBeforeMultiplier(lhs, rhs, spec, &accum_min, &accum_max);
-  accum_min = std::min(accum_min, 0);
-  accum_max = std::max(accum_max, 0);
-  const double dst_pos_range_width =
-      static_cast<double>(std::numeric_limits<DstScalar>::max()) -
-      dst_zero_point;
-  const double dst_neg_range_width =
-      dst_zero_point -
-      static_cast<double>(std::numeric_limits<DstScalar>::lowest());
-  if (accum_max == 0 && accum_min == 0) {
-    *multiplier = 1;
-  } else if (std::abs(accum_max) * dst_pos_range_width >
-             std::abs(accum_min) * dst_neg_range_width) {
-    *multiplier = dst_pos_range_width / accum_max;
-  } else {
-    *multiplier = dst_neg_range_width / -accum_min;
-  }
-  RUY_CHECK_GT(*multiplier, 0.0);
+  *multiplier = static_cast<double>(std::numeric_limits<DstScalar>::max()) /
+                (static_cast<double>(lhs.layout.cols) *
+                 std::numeric_limits<LhsScalar>::max() *
+                 std::numeric_limits<RhsScalar>::max());
 }
 
 inline void QuantizeMultiplier(double multiplier_double,
@@ -1456,9 +1410,8 @@ template <typename TestSetType>
 struct MakeSpecMultiplierFieldsImpl<TestSetType, true> {
   static void Run(TestSetType* test_set) {
     double multiplier;
-    ComputeReasonableMultiplier(test_set->lhs.matrix, test_set->rhs.matrix,
-                                test_set->dst_zero_point, test_set->spec,
-                                &multiplier);
+    ComputeReasonableMultiplier<TestSetType>(test_set->lhs.matrix,
+                                             test_set->rhs.matrix, &multiplier);
     QuantizeMultiplier(multiplier, &test_set->spec.multiplier_fixedpoint,
                        &test_set->spec.multiplier_exponent);
     if (!test_set->benchmark) {
@@ -1478,56 +1431,37 @@ struct MakeSpecMultiplierFieldsImpl<TestSetType, false> {
   }
 };
 
-template <typename LhsScalar, typename RhsScalar, typename Spec>
-void MakeSpecClampFields(const Matrix<LhsScalar>& lhs,
-                         const Matrix<RhsScalar>& rhs,
-                         typename Spec::DstScalar dst_zero_point, Spec* spec) {
+template <typename Spec>
+void MakeSpecClampFields(Spec* spec) {
   using AccumScalar = typename Spec::AccumScalar;
   using DstScalar = typename Spec::DstScalar;
 
-  if (getenv("BENCHMARK_ONLY_MATMUL")) {
-    spec->clamp_min = -std::numeric_limits<DstScalar>::infinity();
-    spec->clamp_max = std::numeric_limits<DstScalar>::infinity();
+  if (std::is_same<AccumScalar, std::int32_t>::value) {
+    // Returning raw accumulators, clamping is not supported.
+    spec->clamp_min = std::numeric_limits<DstScalar>::lowest();
+    spec->clamp_max = std::numeric_limits<DstScalar>::max();
     return;
   }
 
-  if (getenv("QUICK_BENCHMARK")) {
-    spec->clamp_min = std::numeric_limits<DstScalar>::lowest() + 1;
-    spec->clamp_max = std::numeric_limits<DstScalar>::max() - 1;
+  if (getenv("BENCHMARK_ONLY_MATMUL")) {
+    if (std::is_floating_point<DstScalar>::value) {
+      spec->clamp_min = -std::numeric_limits<DstScalar>::infinity();
+      spec->clamp_max = std::numeric_limits<DstScalar>::infinity();
+    } else {
+      spec->clamp_min = std::numeric_limits<DstScalar>::lowest();
+      spec->clamp_max = std::numeric_limits<DstScalar>::max();
+    }
     return;
   }
-  Context context;
-  context.SetRuntimeEnabledPaths(Path::kReference);
-  Matrix<DstScalar> unclamped_dst;
-  MakeSimpleLayout(lhs.layout.rows, rhs.layout.cols, Order::kColMajor,
-                   &unclamped_dst.layout);
-  unclamped_dst.zero_point = dst_zero_point;
-  const int size = FlatSize(unclamped_dst.layout);
-  std::vector<DstScalar> unclamped_dst_data(size);
-  unclamped_dst.data = unclamped_dst_data.data();
-  ruy::BasicSpec<AccumScalar, DstScalar> spec_unclamped;
-  spec_unclamped.bias = spec->bias;
-  spec_unclamped.multiplier_fixedpoint = spec->multiplier_fixedpoint;
-  spec_unclamped.multiplier_exponent = spec->multiplier_exponent;
-  spec_unclamped.multiplier_fixedpoint_perchannel =
-      spec->multiplier_fixedpoint_perchannel;
-  spec_unclamped.multiplier_exponent_perchannel =
-      spec->multiplier_exponent_perchannel;
-  Mul<Path::kReference>(lhs, rhs, spec_unclamped, &context, &unclamped_dst);
-  // If dst is std::int32_t, no need to set the clamp min/max.
-  if (!std::is_same<typename Spec::DstScalar, std::int32_t>::value) {
-    std::sort(unclamped_dst_data.begin(), unclamped_dst_data.end());
-    const int clamp_count = static_cast<int>(std::floor(kClampRatio * size));
-    RUY_CHECK_LT(clamp_count, size);
-    spec->clamp_min = unclamped_dst_data[clamp_count];
-    spec->clamp_max = unclamped_dst_data[size - 1 - clamp_count];
-  }
+
+  spec->clamp_min = std::numeric_limits<DstScalar>::lowest() + 1;
+  spec->clamp_max = std::numeric_limits<DstScalar>::max() - 1;
 }
 
 template <typename LhsScalar, typename RhsScalar, typename SpecType>
 void TestSet<LhsScalar, RhsScalar, SpecType>::MakeZeroPoints() {
   RUY_CHECK_EQ(life_stage, LifeStage::kInitial);
-  if (!use_specified_zero_points) {
+  if (!benchmark && !use_specified_zero_points) {
     MakeRandomScalar(RandomRange::kReasonableSrcZeroPoint, &lhs_zero_point);
     MakeRandomScalar(RandomRange::kReasonableSrcZeroPoint, &rhs_zero_point);
     // If destination is std::int32_t, no dst_zero_point is necessary.
@@ -1554,7 +1488,8 @@ template <typename LhsScalar, typename RhsScalar, typename SpecType>
 void TestSet<LhsScalar, RhsScalar, SpecType>::MakeSpec() {
   RUY_CHECK_EQ(life_stage, LifeStage::kHasLhsRhs);
 
-  if (!getenv("BENCHMARK_ONLY_MATMUL") && (global_random_engine()() & 1)) {
+  if (!getenv("BENCHMARK_ONLY_MATMUL") &&
+      (benchmark || (global_random_engine()() & 1))) {
     MakeRandomVector(RandomRange::kBias, rows, &bias_data);
     spec.bias = bias_data.data();
   }
@@ -1563,7 +1498,7 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::MakeSpec() {
     lhs.matrix.zero_point += 1;
   }
   MakeSpecMultiplierFieldsImpl<TestSet>::Run(this);
-  MakeSpecClampFields(lhs.matrix, rhs.matrix, dst_zero_point, &spec);
+  MakeSpecClampFields(&spec);
   life_stage = LifeStage::kHasSpec;
 }
 
@@ -1908,17 +1843,17 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::Benchmark(
   if (!benchmark_min_secs) {
     benchmark_min_secs = 0.5;
   }
-#ifdef GEMMLOWP_PROFILING
-  const char* lhstype = TypeName<LhsScalar>();
-  const char* lhssymm = SymmetryName(lhs.matrix);
-  const char* rhstype = TypeName<RhsScalar>();
-  const char* rhssymm = SymmetryName(rhs.matrix);
+#ifdef RUY_PROFILER
+  {
+    const char* lhstype = TypeName<LhsScalar>();
+    const char* lhssymm = SymmetryName(lhs.matrix);
+    const char* rhstype = TypeName<RhsScalar>();
+    const char* rhssymm = SymmetryName(rhs.matrix);
 
-  printf("Profiling path=%s shape=(%dx%dx%d) lhs=(%s,%s) rhs=(%s,%s)\n",
-         PathName(*result).c_str(), rows, depth, cols, lhstype, lhssymm,
-         rhstype, rhssymm);
-  gemmlowp::RegisterCurrentThreadForProfiling();
-  gemmlowp::StartProfiling();
+    printf("Profiling path=%s shape=(%dx%dx%d) lhs=(%s,%s) rhs=(%s,%s)\n",
+           PathName(*result).c_str(), rows, depth, cols, lhstype, lhssymm,
+           rhstype, rhssymm);
+    ruy::profiler::ScopeProfile profile;
 #endif
 
   float latency = std::numeric_limits<float>::infinity();
@@ -2000,8 +1935,8 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::Benchmark(
     result->backend_stall_rate = backend_stall_rate;
   }
 
-#ifdef GEMMLOWP_PROFILING
-  gemmlowp::FinishProfiling();
+#ifdef RUY_PROFILER
+  }
   fflush(stdout);
 #endif
 
@@ -2104,52 +2039,10 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::VerifyTestResults() const {
 }
 
 template <typename LhsScalar, typename RhsScalar, typename SpecType>
-void TestSet<LhsScalar, RhsScalar, SpecType>::VerifyNonTrivial() const {
-  if (getenv("QUICK_BENCHMARK")) {
-    return;
-  }
-  if (results.front()->path != Path::kReference) {
-    return;
-  }
-  Context context;
-  context.SetRuntimeEnabledPaths(Path::kReference);
-  const auto& dst_storage = results.front()->storage_matrix;
-  const Matrix<DstScalar>& dst = dst_storage.matrix;
-  Matrix<DstScalar> unclamped_dst;
-  unclamped_dst.layout = dst.layout;
-  unclamped_dst.zero_point = dst.zero_point;
-  const int size = FlatSize(unclamped_dst.layout);
-  std::vector<DstScalar> unclamped_dst_data(size);
-  unclamped_dst.data = unclamped_dst_data.data();
-  ruy::BasicSpec<AccumScalar, DstScalar> spec_unclamped;
-  spec_unclamped.bias = spec.bias;
-  spec_unclamped.multiplier_fixedpoint = spec.multiplier_fixedpoint;
-  spec_unclamped.multiplier_exponent = spec.multiplier_exponent;
-  Mul<Path::kReference>(lhs.matrix, rhs.matrix, spec_unclamped, &context,
-                        &unclamped_dst);
-  int count_clamped = 0;
-  bool found_distinct_values = false;
-  for (int row = 0; row < dst.layout.rows; row++) {
-    for (int col = 0; col < dst.layout.cols; col++) {
-      count_clamped +=
-          (Element(dst, row, col) != Element(unclamped_dst, row, col));
-      found_distinct_values |= (Element(dst, row, col) != Element(dst, 0, 0));
-    }
-  }
-  if (!spec.multiplier_exponent_perchannel) {
-    RUY_CHECK_LE(count_clamped, std::floor(2 * kClampRatio * size));
-    if (size > 1000) {
-      RUY_CHECK(found_distinct_values);
-    }
-  }
-}
-
-template <typename LhsScalar, typename RhsScalar, typename SpecType>
 void TestSet<LhsScalar, RhsScalar, SpecType>::Verify() {
   RUY_CHECK_EQ(life_stage, LifeStage::kEvaluated);
   if (expected_outcome == ExpectedOutcome::kSuccess) {
     VerifyTestResults();
-    VerifyNonTrivial();
   }
   life_stage = LifeStage::kFinal;
 }

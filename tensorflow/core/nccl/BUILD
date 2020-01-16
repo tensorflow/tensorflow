@@ -8,7 +8,7 @@ load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("//tensorflow:tensorflow.bzl", "if_cuda_or_rocm")
 load(
-    "//tensorflow/core/platform:default/build_config_root.bzl",
+    "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
 
@@ -31,7 +31,6 @@ cc_library(
     copts = tf_copts(),
     deps = if_cuda([
         "@local_config_nccl//:nccl",
-        "//tensorflow/core/profiler/lib:traceme",
     ]) + if_rocm([
         "@local_config_rocm//rocm:rccl",
         "//tensorflow/core:gpu_runtime",
@@ -43,6 +42,7 @@ cc_library(
         "//tensorflow/core:gpu_headers_lib",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor",
+        "//tensorflow/core/profiler/lib:traceme",
     ]),
     alwayslink = 1,
 )
@@ -52,11 +52,13 @@ tf_cuda_cc_test(
     size = "medium",
     srcs = ["nccl_manager_test.cc"],
     tags = tf_cuda_tests_tags() + [
-        "no_cuda_on_cpu_tap",
-        # TODO(b/120284216): Add 'multi_gpu' tag and replace 'no_rocm' with 'rocm_multi_gpu'.
-        # The test fails on CUDA multi_gpu, and that tag also triggers on rocm_multi_gpu.
-        # The test also fails on ROCm unless 4 GPUs are used.
+        "guitar",
+        "manual",
+        "multi_gpu",
+        "no_oss",
+        # TODO(b/147451637): Replace 'no_rocm' with 'rocm_multi_gpu'.
         "no_rocm",
+        "notap",
     ],
     deps = [
         "//tensorflow/core:test",

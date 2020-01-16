@@ -325,7 +325,7 @@ def _AssertCompatible(values, dtype):
   except ValueError as e:
     [mismatch] = e.args
     if dtype is None:
-      raise TypeError("List of Tensors when single Tensor expected")
+      raise TypeError("Expected any non-tensor type, got a tensor instead.")
     else:
       raise TypeError("Expected %s, got %s of type '%s' instead." %
                       (dtype.name, repr(mismatch), type(mismatch).__name__))
@@ -566,9 +566,9 @@ def MakeNdarray(tensor):
   """Create a numpy ndarray from a tensor.
 
   Create a numpy ndarray with the same shape and data as the tensor.
-  
+
   For example:
-  
+
   ```python
   # Tensor a has shape (2,3)
   a = tf.constant([[1,2,3],[4,5,6]])

@@ -19,8 +19,9 @@ limitations under the License.
 #include <cstdarg>
 #include <cstdint>
 #include <cstring>
+#include <utility>
 
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context_util.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/graph_info.h"
@@ -128,15 +129,15 @@ void Interpreter::SetExternalContext(TfLiteExternalContextType type,
 }
 
 TfLiteStatus Interpreter::SetInputs(std::vector<int> inputs) {
-  return primary_subgraph().SetInputs(inputs);
+  return primary_subgraph().SetInputs(std::move(inputs));
 }
 
 TfLiteStatus Interpreter::SetOutputs(std::vector<int> outputs) {
-  return primary_subgraph().SetOutputs(outputs);
+  return primary_subgraph().SetOutputs(std::move(outputs));
 }
 
 TfLiteStatus Interpreter::SetVariables(std::vector<int> variables) {
-  return primary_subgraph().SetVariables(variables);
+  return primary_subgraph().SetVariables(std::move(variables));
 }
 
 TfLiteStatus Interpreter::AllocateTensors() {
@@ -155,7 +156,7 @@ void Interpreter::AddSubgraphs(int subgraphs_to_add,
   subgraphs_.reserve(base_index + subgraphs_to_add);
   for (int i = 0; i < subgraphs_to_add; ++i) {
     Subgraph* subgraph = new Subgraph(error_reporter_, external_contexts_,
-                                      &subgraphs_, &resource_variables_);
+                                      &subgraphs_, &resources_);
     subgraphs_.emplace_back(subgraph);
   }
 }

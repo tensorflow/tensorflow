@@ -112,6 +112,24 @@ class ComputationPrinting(absltest.TestCase):
     self.assertTrue(hlo_dot_graph.startswith("digraph "))
 
 
+class ComputationHashTest(absltest.TestCase):
+
+  def testHash(self):
+    builder0 = xla_client.ComputationBuilder("computation0")
+    p0 = builder0.ParameterFromNumpy(np.float32(0))
+    p1 = builder0.ParameterFromNumpy(np.zeros((4,), np.float32))
+    builder0.Mul(p0, p1)
+    computation0 = builder0.Build()
+
+    builder1 = xla_client.ComputationBuilder("computation1")
+    p0 = builder1.ParameterFromNumpy(np.float32(0))
+    p1 = builder1.ParameterFromNumpy(np.zeros((4,), np.float32))
+    builder1.Mul(p0, p1)
+    computation1 = builder1.Build()
+
+    self.assertEqual(computation0.Hash(), computation1.Hash())
+
+
 class ComputationsWithConstantsTest(ComputationTest):
   """Tests focusing on Constant ops."""
 
@@ -512,7 +530,8 @@ class BufferTest(ComputationTest):
     )
     b0 = xla_client.Buffer.from_pyval(t[0])
     b1 = xla_client.Buffer.from_pyval(t[1])
-    btup = xla_client.Buffer.make_tuple([b0, b1], device=0)
+    device = xla_client.get_local_backend().local_devices()[0]
+    btup = xla_client.Buffer.make_tuple([b0, b1], device=device)
     pieces = btup.destructure()
     self.assertLen(pieces, 2)
     array0, array1 = pieces
@@ -557,15 +576,6 @@ class BufferTest(ComputationTest):
       buf = xla_client.Buffer.from_pyval(x, device=device)
       self.assertEqual(buf.device(), device)
       np.testing.assert_equal(x, buf.to_py())
-
-  def testInvalidDevice(self):
-    t = np.array(1.)
-    with self.assertRaisesRegexp(
-        RuntimeError,
-        r"PyLocalBuffer::FromLiterals got bad device_ordinal: 100 "
-        r"\(num_local_devices=\d+\)"):
-      # TODO(skyewm): figure out how to test this with a Device
-      xla_client.Buffer.from_pyval(t, device=100)
 
 
 class SingleOpTest(ComputationTest):
@@ -1438,6 +1448,16 @@ class SingleOpTest(ComputationTest):
     eps = np.finfo(np.float32).eps
     np.testing.assert_equal(np.array([eps + 1, 2 - eps], dtype=np.float32), out)
 
+  def testRegularizedIncompleteBeta(self):
+    x = np.array([0.53787335, 0.24015466, 0.47494545, 0.13567594, 0.95114538])
+    a = np.array([0.00753073, 0.34813385, 0.30485708, 1.29298632, 0.51472606])
+    b = np.array([0.55688389, 0.59794214, 0.42661022, 1.59748339, 0.95047677])
+    c = self._NewComputation()
+    c.RegularizedIncompleteBeta(c.Constant(a), c.Constant(b), c.Constant(x))
+    expected = np.array([0.98923271, 0.48575411, 0.57952568, 0.12579775,
+                         0.96989155])
+    self._ExecuteAndCompareClose(c, expected=expected, rtol=1e-4)
+
 
 class EmbeddedComputationsTest(ComputationTest):
   """Tests for XLA graphs with embedded computations (such as maps)."""
@@ -1982,6 +2002,29 @@ class ComputationRootTest(ComputationTest):
     result = c.Add(x, c.ConstantF32Scalar(3.14))
     extra = c.Add(result, c.ConstantF32Scalar(1.618))  # pylint: disable=unused-variable
 
+    arg = NumpyArrayF32(1.0)
+    compiled_c = c.Build(result).Compile()
+    ans = xla_client.execute_with_python_values(compiled_c, [arg])
+    np.testing.assert_allclose(ans, 4.14)
+
+
+class SetShardingTest(ComputationTest):
+  """Tests related to set OpSharding."""
+
+  def testSetSharding(self):
+    c = self._NewComputation()
+    sharding = xla_client.OpSharding()
+    sharding.type = sharding.type.REPLICATED
+    sharding.tile_assignment_dimensions.extend([1])
+    sharding.tile_assignment_devices.extend([0])
+    # Set Sharding.
+    c.SetSharding(sharding)
+    x = c.ParameterFromNumpy(NumpyArrayF32(2.0))
+    # Clear Sharding.
+    c.ClearSharding()
+
+    result = c.Add(x, c.ConstantF32Scalar(3.14))
+    extra = c.Add(result, c.ConstantF32Scalar(1.618))  # pylint: disable=unused-variable
     arg = NumpyArrayF32(1.0)
     compiled_c = c.Build(result).Compile()
     ans = xla_client.execute_with_python_values(compiled_c, [arg])
