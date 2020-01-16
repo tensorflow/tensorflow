@@ -38,7 +38,6 @@ SET PATH=%PATH%;C:\%PYTHON_DIRECTORY%
 %PIP_EXE% install wrapt --upgrade --no-deps
 
 IF "%PYTHON_DIRECTORY%"=="Python37" (
-    %PIP_EXE% install astor==0.7.1
     %PIP_EXE% install absl-py==0.5.0
     %PIP_EXE% install colorama==0.3.9
     %PIP_EXE% install cycler==0.10.0
@@ -57,6 +56,7 @@ IF "%PYTHON_DIRECTORY%"=="Python37" (
 @REM break with gast upgrade to 0.3.2. Need to figure out the right way to
 @REM handle this case.
 %PIP_EXE% install gast==0.3.2
+%PIP_EXE% install astunparse==1.6.3
 
 :: Set cuda related environment variables. If we are not using CUDA, these are not used.
 IF NOT DEFINED TF_CUDA_VERSION (

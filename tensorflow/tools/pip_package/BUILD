@@ -128,6 +128,7 @@ filegroup(
         "//third_party/hadoop:LICENSE.txt",
         "//third_party/icu/data:LICENSE",
         "@arm_neon_2_x86_sse//:LICENSE",
+        "@astunparse_archive//:LICENSE",
         "@astor_archive//:LICENSE",
         "@boringssl//:LICENSE",
         "@com_google_absl//:LICENSE",

@@ -166,9 +166,9 @@ string""")
         textwrap.dedent("""
             # coding=utf-8
             if 1:
-              a = b
+                a = b
             else:
-              a = 'c'
+                a = 'c'
         """).strip(), source.strip())
 
 

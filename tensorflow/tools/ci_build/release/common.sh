@@ -129,6 +129,7 @@ function install_pip_deps {
 
   # LINT.IfChange(ubuntu_pip_installations)
   # TODO(aselle): Change all these to be --user instead of sudo.
+  ${SUDO_CMD} ${PIP_CMD} install astunparse==1.6.3
   ${SUDO_CMD} ${PIP_CMD} install keras_preprocessing==1.1.0 --no-deps
   ${SUDO_CMD} ${PIP_CMD} install gast==0.3.2
   ${SUDO_CMD} ${PIP_CMD} install h5py==2.8.0
@@ -159,6 +160,7 @@ function install_ubuntu_16_pip_deps {
   done
 
   # LINT.IfChange(ubuntu_16_pip_installations)
+  "${PIP_CMD}" install astunparse==1.6.3 --user
   "${PIP_CMD}" install --user --upgrade attrs
   "${PIP_CMD}" install keras_preprocessing==1.1.0 --no-deps --user
   "${PIP_CMD}" install numpy==1.14.5 --user
