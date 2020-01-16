@@ -819,7 +819,6 @@ cuda_py_test(
     ],
     shard_count = 4,
     tags = [
-        "no_rocm",
         "no_windows_gpu",
     ],
     xla_enable_strict_auto_jit = True,
