@@ -27182,6 +27182,41 @@ func MlirPassthroughOp(scope *Scope, inputs []tf.Output, mlir_module string, Tou
 	return outputs
 }
 
+// StringLowerAttr is an optional argument to StringLower.
+type StringLowerAttr func(optionalAttr)
+
+// StringLowerEncoding sets the optional encoding attribute to value.
+// If not specified, defaults to ""
+func StringLowerEncoding(value string) StringLowerAttr {
+	return func(m optionalAttr) {
+		m["encoding"] = value
+	}
+}
+
+// Converts all uppercase characters into their respective lowercase replacements.
+//
+// Example:
+// >>> tf.strings.lower("CamelCase string and ALL CAPS")
+// <tf.Tensor: shape=(), dtype=string, numpy=b'camelcase string and all caps'>
+func StringLower(scope *Scope, input tf.Output, optional ...StringLowerAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "StringLower",
+		Input: []tf.Input{
+			input,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // ParseSequenceExampleV2Attr is an optional argument to ParseSequenceExampleV2.
 type ParseSequenceExampleV2Attr func(optionalAttr)
 
@@ -33665,6 +33700,41 @@ func UnsortedSegmentMax(scope *Scope, data tf.Output, segment_ids tf.Output, num
 		Input: []tf.Input{
 			data, segment_ids, num_segments,
 		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// StringUpperAttr is an optional argument to StringUpper.
+type StringUpperAttr func(optionalAttr)
+
+// StringUpperEncoding sets the optional encoding attribute to value.
+// If not specified, defaults to ""
+func StringUpperEncoding(value string) StringUpperAttr {
+	return func(m optionalAttr) {
+		m["encoding"] = value
+	}
+}
+
+// Converts all lowercase characters into their respective uppercase replacements.
+//
+// Example:
+// >>> tf.strings.upper("CamelCase string and ALL CAPS")
+// <tf.Tensor: shape=(), dtype=string, numpy=b'CAMELCASE STRING AND ALL CAPS'>
+func StringUpper(scope *Scope, input tf.Output, optional ...StringUpperAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "StringUpper",
+		Input: []tf.Input{
+			input,
+		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
