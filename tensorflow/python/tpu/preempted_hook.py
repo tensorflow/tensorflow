@@ -19,11 +19,11 @@ from __future__ import division
 from __future__ import print_function
 
 import logging as _logging
+import os
 import threading
 import time
 
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
-from tensorflow.python.framework import errors
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import session_run_hook
 
@@ -93,20 +93,11 @@ class _TPUPollingThread(threading.Thread):
       if 'state' in response and response['state'] in [
           'TERMINATED', 'PREEMPTED'
       ]:
-        logging.warning('TPU node %s reached an unrecoverable state %s, '
-                        'terminating the session now.', self._cluster._tpu,  # pylint: disable=protected-access
-                        response['state'])
-        # Try to close the session.
-        self._session.close()
-        time.sleep(self._interval)
-
-        if not self._session_closed:
-          # Raise an exception if the session.close() stucks.
-          logging.warning('Cannot close session on TPU node %s.',
-                          self._cluster._tpu)  # pylint: disable=protected-access
-
-          raise errors.UnavailableError(
-              None, None, 'TPU node %s reached an unrecoverable state %s.' %
-              (self._cluster._tpu, response['state']))  # pylint: disable=protected-access
+        logging.warning(
+            'TPU node %s reached an unrecoverable state %s, '
+            'terminating training.',
+            self._cluster._tpu,  # pylint: disable=protected-access
+            response['state'])
+        os._exit(1)  # pylint: disable=protected-access
 
       time.sleep(self._interval)
