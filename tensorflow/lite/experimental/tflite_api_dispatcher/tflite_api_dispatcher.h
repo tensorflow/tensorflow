@@ -38,11 +38,12 @@ namespace tflite_api_dispatcher {
 using Interpreter = tflrt::TfLiteInterpreterAPI;
 using InterpreterBuilder = tflrt::TfLiteInterpreterBuilderAPI;
 using TfLiteModel = tflrt::BEFModel;
+using TfLiteVerifier = tflrt::TfLiteVerifier;
 #else
 using tflite::Interpreter;
 using tflite::InterpreterBuilder;
-
-typedef tflite::FlatBufferModel TfLiteModel;
+using TfLiteModel = tflite::FlatBufferModel;
+using TfLiteVerifier = tflite::TfLiteVerifier;
 #endif
 
 }  // namespace tflite_api_dispatcher
