@@ -2402,11 +2402,14 @@ def sparse_tensor_dense_matmul(sp_a,
     # the transpose of the arguments as well.
     if adjoint_a != adjoint_b:
       return array_ops.transpose(sparse_tensor_dense_matmul(b, sp_a,
-                                               adjoint_a, adjoint_b))
+                                                            adjoint_a,
+                                                            adjoint_b))
     else:
       return array_ops.transpose(sparse_tensor_dense_matmul(b, sp_a,
-                                            adjoint_a=not adjoint_a,
-                                            adjoint_b=not adjoint_b))
+                                                            adjoint_a=
+                                                            not adjoint_a,
+                                                            adjoint_b=
+                                                            not adjoint_b))
 
   else:
     sp_a = _convert_to_sparse_tensor(sp_a)
