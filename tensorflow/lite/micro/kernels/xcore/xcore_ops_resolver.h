@@ -7,15 +7,18 @@
 namespace tflite {
 namespace ops {
 namespace micro {
+namespace xcore {
 
 class XcoreOpsResolver : public MicroMutableOpResolver {
  public:
   XcoreOpsResolver();
 
  private:
+
   TF_LITE_REMOVE_VIRTUAL_DELETE
 };
 
+}  // namespace xcore
 }  // namespace micro
 }  // namespace ops
 }  // namespace tflite
