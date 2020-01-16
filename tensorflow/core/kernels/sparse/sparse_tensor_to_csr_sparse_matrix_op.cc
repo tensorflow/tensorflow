@@ -327,10 +327,8 @@ extern template struct COOSparseMatrixToCSRSparseMatrix<GPUDevice>;
 
 REGISTER_GPU(float)
 REGISTER_GPU(double)
-#if GOOGLE_CUDA
 REGISTER_GPU(complex64)
 REGISTER_GPU(complex128)
-#endif
 
 #undef REGISTER_GPU
 
