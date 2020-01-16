@@ -710,6 +710,9 @@ cc_library(
 cc_library(
     name = "tstring",
     hdrs = ["tstring.h"],
+    deps = [
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 cc_library(
