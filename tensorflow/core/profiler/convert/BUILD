@@ -4,9 +4,9 @@ package(
 )
 
 cc_library(
-    name = "host_threads_xplane_to_tf_metrics_db",
-    srcs = ["host_threads_xplane_to_tf_metrics_db.cc"],
-    hdrs = ["host_threads_xplane_to_tf_metrics_db.h"],
+    name = "xplane_to_op_metrics_db",
+    srcs = ["xplane_to_op_metrics_db.cc"],
+    hdrs = ["xplane_to_op_metrics_db.h"],
     deps = [
         ":op_metrics_db_combiner",
         ":op_stack",
@@ -18,6 +18,7 @@ cc_library(
         "//tensorflow/core/profiler/utils:op_utils",
         "//tensorflow/core/profiler/utils:tf_op_utils",
         "//tensorflow/core/profiler/utils:timespan",
+        "//tensorflow/core/profiler/utils:trace_utils",
         "//tensorflow/core/profiler/utils:xplane_visitor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -147,7 +148,7 @@ cc_library(
     srcs = ["xplane_to_op_stats.cc"],
     hdrs = ["xplane_to_op_stats.h"],
     deps = [
-        ":host_threads_xplane_to_tf_metrics_db",
+        ":xplane_to_op_metrics_db",
         "//tensorflow/core/profiler/protobuf:op_stats_proto_cc",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/core/profiler/utils:xplane_schema",

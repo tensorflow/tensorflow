@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PROFILER_CONVERT_HOST_THREADS_XPLANE_TO_TF_METRICS_DB_H_
-#define TENSORFLOW_CORE_PROFILER_CONVERT_HOST_THREADS_XPLANE_TO_TF_METRICS_DB_H_
+#ifndef TENSORFLOW_CORE_PROFILER_CONVERT_XPLANE_TO_OP_METRICS_DB_H_
+#define TENSORFLOW_CORE_PROFILER_CONVERT_XPLANE_TO_OP_METRICS_DB_H_
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/platform/types.h"
@@ -49,9 +49,13 @@ TfMetricsDbData ConvertHostThreadsXLineToTfMetricsDbData(
 
 void ConsumeTfMetricsDbData(TfMetricsDbData src, OpMetricsDbCombiner* dst);
 
-OpMetricsDb ConvertHostThreadsXPlaneToTfMetricsDb(const XPlane& host_trace);
+OpMetricsDb ConvertHostThreadsXPlaneToOpMetricsDb(const XPlane& host_trace);
+
+OpMetricsDb ConvertDeviceTraceXPlaneToOpMetricsDb(
+    const XPlane& device_trace, double peak_tera_flops_per_second,
+    double peak_hbm_bw_giga_bytes_per_second);
 
 }  // namespace profiler
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_PROFILER_CONVERT_HOST_THREADS_XPLANE_TO_TF_METRICS_DB_H_
+#endif  // TENSORFLOW_CORE_PROFILER_CONVERT_XPLANE_TO_OP_METRICS_DB_H_
