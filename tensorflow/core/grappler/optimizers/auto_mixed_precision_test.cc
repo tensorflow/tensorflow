@@ -17,7 +17,7 @@ limitations under the License.
 // otherwise the optimizer will not turn clearlist nodes to float16. When
 // looking at clearlist nodes, this optimizer checks if the nodes have a float16
 // GPU OpKernel, but without CUDA there are no GPU OpKernels at all.
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include "tensorflow/core/grappler/optimizers/auto_mixed_precision.h"
 
@@ -76,16 +76,20 @@ class AutoMixedPrecisionTest : public GrapplerTest {
   void SetUp() override {
     int num_gpus = GetNumAvailableGPUs();
     // If GPUs are available, require that they all satisfy the min arch.
-    gpu_available_ =
-        num_gpus > 0 && num_gpus == GetNumAvailableGPUs(kMinGPUArch);
-
+    gpu_available_ = (num_gpus > 0);
+#if GOOGLE_CUDA
+    gpu_available_ = gpu_available_ && 
+      (num_gpus == GetNumAvailableGPUs(kMinGPUArch));
+#endif
     if (gpu_available_) {
       virtual_cluster_.reset(new SingleMachine(/* timeout_s = */ 10, 1, 1));
     } else {
       DeviceProperties device_properties;
       device_properties.set_type("GPU");
+#if GOOGLE_CUDA
       device_properties.mutable_environment()->insert({"architecture", "7"});
       device_properties.mutable_environment()->insert({"cuda", "9010"});
+#endif
       virtual_cluster_.reset(
           new VirtualCluster({{"/GPU:1", device_properties}}));
     }
@@ -1078,4 +1082,4 @@ TEST_F(AutoMixedPrecisionTest, TanhOp) {
 }  // namespace grappler
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
