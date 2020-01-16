@@ -192,10 +192,11 @@ class TrtConversionParams(object):
     set parameters:
       DEFAULT_TRT_CONVERSION_PARAMS._replace(...)
     """
+    trt_conversion_params = TrtConversionParams()
     for k, v in vars().items():
       if v and (k != "self"):
-        setattr(self, k, v)
-    return self
+        setattr(trt_conversion_params, k, v)
+    return trt_conversion_params
 
 
 DEFAULT_TRT_CONVERSION_PARAMS = TrtConversionParams()
