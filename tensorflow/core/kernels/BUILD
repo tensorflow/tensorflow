@@ -3588,14 +3588,10 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "matrix_triangular_solve_op",
-    hdrs = ["matrix_triangular_solve_op_impl.h"],
     prefix = "matrix_triangular_solve_op",
     deps = LINALG_DEPS + if_cuda([
         "//tensorflow/core/platform/default/build_config:cublas_plugin",
-    ]) + [
-        ":fill_functor",
-        "//tensorflow/core:stream_executor",
-    ],
+    ]),
 )
 
 tf_kernel_library(
@@ -4171,25 +4167,6 @@ tf_cuda_cc_test(
     deps = [
         ":batch_matmul_op",
         ":broadcast_to_op",
-        ":ops_testutil",
-        ":ops_util",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-    ],
-)
-
-tf_cuda_cc_test(
-    name = "matrix_triangular_solve_op_test",
-    size = "small",
-    srcs = ["matrix_triangular_solve_op_test.cc"],
-    deps = [
-        ":broadcast_to_op",
-        ":matrix_triangular_solve_op",
         ":ops_testutil",
         ":ops_util",
         "//tensorflow/core:core_cpu",

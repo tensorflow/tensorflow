@@ -607,7 +607,6 @@ def _MatrixSolveLsGrad(op, grad):
 def _MatrixTriangularSolveGrad(op, grad):
   """Gradient for MatrixTriangularSolve."""
   a = op.inputs[0]
-  b = op.inputs[1]
   adjoint_a = op.get_attr("adjoint")
   lower_a = op.get_attr("lower")
   c = op.outputs[0]
@@ -621,16 +620,7 @@ def _MatrixTriangularSolveGrad(op, grad):
     grad_a = array_ops.matrix_band_part(grad_a, -1, 0)
   else:
     grad_a = array_ops.matrix_band_part(grad_a, 0, -1)
-  # If the static batch shapes are equal, we don't need to unbroadcast.
-  if (a.shape.is_fully_defined() and b.shape.is_fully_defined() and
-      a.shape[:-2] == b.shape[:-2]):
-    return grad_a, grad_b
-  a_shape = array_ops.shape(a)
-  b_shape = array_ops.shape(b)
-  ra, rb = array_ops.broadcast_gradient_args(a_shape[:-2], b_shape[:-2])
-  grad_a = array_ops.reshape(math_ops.reduce_sum(grad_a, axis=ra), a_shape)
-  grad_b = array_ops.reshape(math_ops.reduce_sum(grad_b, axis=rb), b_shape)
-  return grad_a, grad_b
+  return (grad_a, grad_b)
 
 
 @ops.RegisterGradient("SelfAdjointEigV2")
