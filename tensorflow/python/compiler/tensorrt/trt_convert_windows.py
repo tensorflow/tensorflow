@@ -38,8 +38,7 @@ class TrtConversionParams(object):
                is_dynamic_op=True,
                maximum_cached_engines=1,
                use_calibration=True,
-               max_batch_size=1,
-               allow_build_at_runtime=True):
+               max_batch_size=1):
     """Initialize TrtConversionParams.
 
     Args:
@@ -74,11 +73,6 @@ class TrtConversionParams(object):
         tensors were trained with fake quantization.
       max_batch_size: max size for the input batch. This parameter is only
         effective when is_dynamic_op=False which is not supported in TF 2.0.
-      allow_build_at_runtime: whether to build TensorRT engines during runtime.
-        If no TensorRT engine can be found in cache that can handle the given
-        inputs during runtime, then a new TensorRT engine is built at runtime
-        if allow_build_at_runtime=True, and otherwise native TF is used. This
-        argument is only effective if is_dynamic_op=True.
 
     Raises:
       NotImplementedError: TRT is not supported on Windows.

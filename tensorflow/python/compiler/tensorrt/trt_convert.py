@@ -123,8 +123,7 @@ class TrtConversionParams(object):
                is_dynamic_op=True,
                maximum_cached_engines=1,
                use_calibration=True,
-               max_batch_size=1,
-               allow_build_at_runtime=True):
+               max_batch_size=1):
     """Initialize TrtConversionParams.
 
     Args:
@@ -159,11 +158,6 @@ class TrtConversionParams(object):
         tensors were trained with fake quantization.
       max_batch_size: max size for the input batch. This parameter is only
         effective when is_dynamic_op=False which is not supported in TF 2.0.
-      allow_build_at_runtime: whether to build TensorRT engines during runtime.
-        If no TensorRT engine can be found in cache that can handle the given
-        inputs during runtime, then a new TensorRT engine is built at runtime
-        if allow_build_at_runtime=True, and otherwise native TF is used. This
-        argument is only effective if is_dynamic_op=True.
     """
     self.rewriter_config_template = rewriter_config_template
     self.max_workspace_size_bytes = max_workspace_size_bytes
@@ -173,7 +167,6 @@ class TrtConversionParams(object):
     self.maximum_cached_engines = maximum_cached_engines
     self.use_calibration = use_calibration
     self.max_batch_size = max_batch_size
-    self.allow_build_at_runtime = allow_build_at_runtime
 
   def _replace(self,
                rewriter_config_template=None,
@@ -183,8 +176,7 @@ class TrtConversionParams(object):
                is_dynamic_op=None,
                maximum_cached_engines=None,
                use_calibration=None,
-               max_batch_size=None,
-               allow_build_at_runtime=None):
+               max_batch_size=None):
     """Set value of class data members only if they are passed as arguments.
 
     We need this function for backward compatibility with NamedTuple
