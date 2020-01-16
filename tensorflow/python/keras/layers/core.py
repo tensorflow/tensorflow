@@ -140,6 +140,15 @@ class Dropout(Layer):
       you want the dropout mask to be the same for all timesteps,
       you can use `noise_shape=(batch_size, 1, features)`.
     seed: A Python integer to use as random seed.
+    
+  Examples:
+    ```python
+    # Adding Dropout to a Keras Model
+    >>> import tensorflow as tf
+    >>> model = tf.keras.models.Sequential()
+    >>> model.add(tf.keras.layers.Dense(64))
+    >>> model.add(tf.keras.layers.Dropout(0.2))
+    ```
 
   Call arguments:
     inputs: Input tensor (of any rank).
