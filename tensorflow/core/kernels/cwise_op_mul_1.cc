@@ -44,13 +44,9 @@ REGISTER_KERNEL_BUILDER(Name("Mul")
                         BinaryOp<CPUDevice, functor::mul<int32>>);
 #endif
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 REGISTER5(BinaryOp, GPU, "MulNoNan", functor::mul_no_nan, Eigen::half, float,
           double, complex64, complex128);
-#elif TENSORFLOW_USE_ROCM
-// ROCM TODO: re-enable complex64 / complex128 after compiler fix
-REGISTER3(BinaryOp, GPU, "MulNoNan", functor::mul_no_nan, Eigen::half, float,
-          double);
 #endif
 
 #ifdef TENSORFLOW_USE_SYCL

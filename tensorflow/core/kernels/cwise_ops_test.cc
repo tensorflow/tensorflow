@@ -147,9 +147,9 @@ BM_BINARY_SCALAR(sycl, Add);
 #endif  // TENSORFLOW_USE_SYCL
 
 BM_BINARY_SCALAR(cpu, DivNoNan);
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 BM_BINARY_SCALAR(gpu, DivNoNan);
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #ifdef TENSORFLOW_USE_SYCL
 BM_BINARY_SCALAR(sycl, DivNoNan);
 #endif  // TENSORFLOW_USE_SYCL
@@ -204,11 +204,11 @@ Graph* CubeWithMulSquare(int num) {
 BM_CUBE(cpu, CubeWithPow3);
 BM_CUBE(cpu, CubeWithTwoMuls);
 BM_CUBE(cpu, CubeWithMulSquare);
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 BM_CUBE(gpu, CubeWithPow3);
 BM_CUBE(gpu, CubeWithTwoMuls);
 BM_CUBE(gpu, CubeWithMulSquare);
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #ifdef TENSORFLOW_USE_SYCL
 BM_CUBE(sycl, CubeWithPow3);
 BM_CUBE(sycl, CubeWithTwoMuls);
