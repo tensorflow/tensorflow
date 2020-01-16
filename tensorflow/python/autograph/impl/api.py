@@ -428,7 +428,8 @@ def converted_call(f,
   if isinstance(f, functools.partial):
     new_kwargs = {}
     if f.keywords is not None:
-      new_kwargs = f.keywords
+      # Use copy to avoid mutating the underlying keywords.
+      new_kwargs = f.keywords.copy()
     if kwargs is not None:
       new_kwargs.update(kwargs)
     new_args = f.args + args

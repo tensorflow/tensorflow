@@ -291,6 +291,32 @@ class ApiTest(test.TestCase):
         options=DEFAULT_RECURSIVE)
     self.assertEqual((1, 2, 3), self.evaluate(x))
 
+  @test_util.run_v1_only('b/120545219')
+  def test_converted_call_functools_partial_kwarg_mutation(self):
+    def test_fn(x, y, z):
+      if x < 0:
+        return -x, -y, -z
+      return x, y, z
+
+    partial_fn = functools.partial(test_fn, constant_op.constant(-1), z=-3)
+    # Call using kwargs to assign y first to ensure that partial_fn.keywords is
+    # not mutated for subsequent calls (where y is assign through args).
+    x = api.converted_call(
+        partial_fn,
+        args=(),
+        kwargs={
+            'y': constant_op.constant(-2),
+        },
+        options=DEFAULT_RECURSIVE)
+    self.assertEqual((1, 2, 3), self.evaluate(x))
+
+    x = api.converted_call(
+        partial_fn,
+        args=(constant_op.constant(-4),),
+        kwargs=None,
+        options=DEFAULT_RECURSIVE)
+    self.assertEqual((1, 4, 3), self.evaluate(x))
+
   def test_converted_call_method(self):
 
     class TestClass(object):
