@@ -100,10 +100,10 @@ class TextVectorization(CombinerPreprocessingLayer):
        this object you should only pass functions that are registered Keras
        serializables (see `tf.keras.utils.register_keras_serializable` for more
        details).
-    2) When using a custom callable for `standardize`, the data recieved
+    2) When using a custom callable for `standardize`, the data received
        by the callable will be exactly as passed to this layer. The callable
        should return a tensor of the same shape as the input.
-    3) When using a custom callable for `split`, the data recieved by the
+    3) When using a custom callable for `split`, the data received by the
        callable will have the 1st dimension squeezed out - instead of
        `[["string to split"], ["another string to split"]]`, the Callable will
        see `["string to split", "another string to split"]`. The callable should
