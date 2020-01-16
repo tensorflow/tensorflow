@@ -241,15 +241,29 @@ class SingleOpModel {
   // Quantize and populate data for bias with per channel quantization.
   void PerChannelQuantizeBias(int index, const std::vector<float>& input_data) {
     const int32_t num_inputs = input_data.size();
-    std::vector<int32_t> quantized_output(num_inputs);
     TfLiteTensor* t = interpreter_->tensor(index);
     auto* params =
         reinterpret_cast<TfLiteAffineQuantization*>(t->quantization.params);
-    for (int i = 0; i < num_inputs; ++i) {
-      quantized_output[i] = input_data[i] / params->scale->data[i];
+    CHECK(t->type == kTfLiteInt32 || t->type == kTfLiteInt64);
+    if (t->type == kTfLiteInt32) {
+      std::vector<int32_t> quantized_output(num_inputs);
+      for (int i = 0; i < num_inputs; ++i) {
+        const float scale = params->scale->size == 1 ? params->scale->data[0]
+                                              : params->scale->data[i];
+        quantized_output[i] = input_data[i] / scale;
+      }
+      PopulateTensor(index, /*offset=*/0, quantized_output.data(),
+                     quantized_output.data() + quantized_output.size());
+    } else {
+      std::vector<int64_t> quantized_output(num_inputs);
+      for (int i = 0; i < num_inputs; ++i) {
+        const float scale = params->scale->size == 1 ? params->scale->data[0]
+                                              : params->scale->data[i];
+        quantized_output[i] = input_data[i] / scale;
+      }
+      PopulateTensor(index, /*offset=*/0, quantized_output.data(),
+                     quantized_output.data() + quantized_output.size());
     }
-    PopulateTensor(index, /*offset=*/0, quantized_output.data(),
-                   quantized_output.data() + quantized_output.size());
   }
 
   const std::vector<int>& GetShape(int id) { return tensor_data_.at(id).shape; }
@@ -340,6 +354,14 @@ class SingleOpModel {
   template <typename T>
   void PopulateTensor(int index, int offset, T* begin, T* end) {
     T* v = interpreter_->typed_tensor<T>(index);
+    if (!v) {
+      auto* t = interpreter_->tensor(index);
+      CHECK(t) << "No tensor with index " << index << ".";
+      CHECK(t->data.raw) << "Empty data for tensor with index " << index << ".";
+      CHECK(v) << "Type mismatch for tensor with index " << index
+               << ". Requested " << typeToTfLiteType<T>() << ", got "
+               << t->type;
+    }
     memcpy(v + offset, begin, (end - begin) * sizeof(T));
   }
 

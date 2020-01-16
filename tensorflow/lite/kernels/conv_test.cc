@@ -70,7 +70,12 @@ class BaseConvolutionOpModel : public SingleOpModel {
               input.scale * filter.per_channel_quantization_scales[i];
           bias_zero_points[i] = 0;
         }
-        TensorData bias{TensorType_INT32,
+        tflite::TensorType bias_type = TensorType_INT32;
+        if (input.type == TensorType_INT16) {
+          // In case of 16-bit, the bias type is set to be int 64.
+          bias_type = TensorType_INT64;
+        }
+        TensorData bias{bias_type,
                         {bias_size},
                         /*min=*/0,
                         /*max=*/0,
@@ -1320,12 +1325,13 @@ TEST_P(ConvolutionOpTest, DISABLED_PointwiseMultifilterHybrid) {
                   0.0474)));
 }
 
+template<typename T>
 class PerChannelQuantizedConvolutionOpModel : public BaseConvolutionOpModel {
  public:
   using BaseConvolutionOpModel::BaseConvolutionOpModel;
 
   void SetInput(std::initializer_list<float> data) {
-    QuantizeAndPopulate<int8_t>(input_, data);
+    QuantizeAndPopulate<T>(input_, data);
   }
 
   void SetFilter(std::initializer_list<float> data) {
@@ -1336,15 +1342,15 @@ class PerChannelQuantizedConvolutionOpModel : public BaseConvolutionOpModel {
     PerChannelQuantizeBias(bias_, data);
   }
 
-  std::vector<int8_t> GetOutput() { return ExtractVector<int8_t>(output_); }
+  std::vector<T> GetOutput() { return ExtractVector<T>(output_); }
   std::vector<float> GetDequantizedOutput() {
-    return Dequantize<int8_t>(ExtractVector<int8_t>(output_), GetScale(output_),
+    return Dequantize<T>(ExtractVector<T>(output_), GetScale(output_),
                               GetZeroPoint(output_));
   }
 };
 
 TEST_P(ConvolutionOpTest, SimplePerChannelTest) {
-  PerChannelQuantizedConvolutionOpModel m(
+  PerChannelQuantizedConvolutionOpModel<int8_t> m(
       GetRegistration(), {TensorType_INT8, {1, 2, 3, 2}, -63.5, 64, 0.5, -1},
       {TensorType_INT8,
        // [2 * 2 * 2 * 2] as [output_channel, y, x, input_channel]
@@ -1388,6 +1394,67 @@ TEST_P(ConvolutionOpTest, SimplePerChannelTest) {
   EXPECT_THAT(m.GetDequantizedOutput(),
               ElementsAreArray(ArrayFloatNear({31, 64, -57, -46})));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({61, 127, -115, -93}));
+}
+
+TEST_P(ConvolutionOpTest, SimplePerChannelTest16x8) {
+  const float ulp = (float)1 / (float)512;
+  PerChannelQuantizedConvolutionOpModel<int16_t> m(
+      GetRegistration(),
+      {TensorType_INT16,  // input tensor type
+       {1, 2, 3, 2},      // shape
+       -64 + ulp,
+       64,  // min, max
+       ulp,
+       -1},              // scale, zero point
+      {TensorType_INT8,  // filter tensor type
+                         // [2 * 2 * 2 * 2] as [output_channel, y, x,
+                         // input_channel]
+       {2, 2, 2, 2},  // shape
+       0,
+       0,
+       0,
+       0,
+       /*per_channel=*/true,
+       /*per_channel_scales=*/{1, 2},
+       /*per_channel_zeros=*/{0, 0},
+       /*channel_index=*/0},
+      {TensorType_INT16,  // output tensor type
+       {},                // shape
+       -64 + ulp,
+       64,  // min, max
+       0.5,
+       -1},  // scale, zero point
+      /*stride_width=*/1,
+      /*stride_height=*/1);
+  m.SetInput({
+      // [1 * 2 * 3 * 2] as [batch, y, x, input_channel]
+      3, 2,    // batch = 0, y = 0, x = 0
+      1, -1,   // batch = 0, y = 0, x = 1
+      -2, -3,  // batch = 0, y = 0, x = 2
+      4, 3,    // batch = 0, y = 1, x = 0
+      2, -2,   // batch = 0, y = 1, x = 1
+      -3, -4,  // batch = 0, y = 1, x = 2
+  });
+  m.SetFilter(
+      // [2 * 2 * 2 * 2] as [output_channel, y, x, input_channel]
+      {
+          1, 2,  // out channel = 0, y = 0, x = 0
+          3, 4,  // out channel = 0, y = 0, x = 1
+          3, 4,  // out channel = 0, y = 1, x = 0
+          5, 6,  // out channel = 0, y = 1, x = 1
+          7, 8,  // out channel = 1, y = 0, x = 0
+          5, 6,  // out channel = 1, y = 0, x = 1
+          3, 4,  // out channel = 1, y = 1, x = 0
+          1, 2,  // out channel = 1, y = 1, x = 1
+      });
+  m.SetBias({3, -2});
+  // Invoke and verify output.
+  // output has dimension [1 * 1 * 2 * 2] as [batch, y, x, output_channel]
+  m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutput(),
+              ElementsAreArray(ArrayFloatNear({31, 64, -57, -46})));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({31 * 512 - 1, 32767,
+                                               -57 * 512 - 1, -46 * 512 - 1}));
 }
 
 class HybridPerChannelConvolutionOpModel : public BaseConvolutionOpModel {
