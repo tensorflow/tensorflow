@@ -180,4 +180,20 @@ TF_LITE_MICRO_TEST(TestVariableTensorReset) {
   }
 }
 
+// The interpreter initialization requires multiple steps and this test case
+// ensures that simply creating and destructing an interpreter object is ok.
+// b/147830765 has one example of a change that caused trouble for this simple
+// case.
+TF_LITE_MICRO_TEST(TestIncompleteInitialization) {
+  const tflite::Model* model = tflite::testing::GetComplexMockModel();
+  TF_LITE_MICRO_EXPECT_NE(nullptr, model);
+
+  tflite::MockOpResolver mock_resolver;
+  constexpr size_t allocator_buffer_size = 2048;
+  uint8_t allocator_buffer[allocator_buffer_size];
+  tflite::MicroInterpreter interpreter(model, mock_resolver, allocator_buffer,
+                                       allocator_buffer_size,
+                                       micro_test::reporter);
+}
+
 TF_LITE_MICRO_TESTS_END
