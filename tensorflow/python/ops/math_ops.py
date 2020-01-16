@@ -3253,6 +3253,14 @@ def sigmoid(x, name=None):
 
   Specifically, `y = 1 / (1 + exp(-x))`.
 
+  Example Usage:
+
+  >>> x = tf.constant([0.0, 0.2, 0.3, 0.5, 0.7, 1.0])
+  >>> tf.math.sigmoid(x)
+  <tf.Tensor: shape=(6,), dtype=float32, numpy=
+  array([0.5       , 0.54983395, 0.5744425 , 0.62245935, 0.66818774,
+         0.7310586 ], dtype=float32)>
+
   Args:
     x: A Tensor with type `float16`, `float32`, `float64`, `complex64`, or
       `complex128`.
