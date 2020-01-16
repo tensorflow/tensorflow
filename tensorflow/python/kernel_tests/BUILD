@@ -756,6 +756,7 @@ cuda_py_test(
     name = "matrix_triangular_solve_op_test",
     size = "small",
     srcs = ["matrix_triangular_solve_op_test.py"],
+    shard_count = 2,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:linalg_ops",
