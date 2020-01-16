@@ -91,7 +91,7 @@ cc_library(
         "nobuilder",
     ],
     deps = [
-        "//tensorflow/core/lib/core:error_codes_proto_cc",
+        "//tensorflow/core:error_codes_proto_impl_cc",
         "//tensorflow/core/lib/core:stringpiece",
         "//tensorflow/core/platform",
         "//tensorflow/core/platform:blocking_counter",
