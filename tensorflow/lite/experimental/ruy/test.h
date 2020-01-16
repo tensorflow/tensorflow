@@ -1638,7 +1638,7 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::MakeResultPaths() {
 
   using TestSetType = TestSet<LhsScalar, RhsScalar, SpecType>;
 
-  if (!getenv("NOEXT")) {
+  if (!GetBoolEnvVarOrFalse("NOEXT")) {
     if (SupportsGemmlowp<TestSetType>::kValue) {
 #ifdef GEMMLOWP_SSE4
       const bool gemmlowp_supported = !spec.multiplier_fixedpoint_perchannel;
