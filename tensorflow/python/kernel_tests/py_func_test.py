@@ -31,7 +31,6 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
-from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -561,7 +560,7 @@ class EagerPyFuncTest(PyFuncTestBase):
     with ops.device("/job:worker/task:0/cpu:0"):
       a = array_ops.ones((3, 3), dtype=dtypes.float32)
       x = array_ops.ones((3, 1), dtype=dtypes.float32)
-      output = math_ops.matmul(a, x)
+      output = script_ops.eager_py_func(matmul, inp=[a, x], Tout=dtypes.float32)
     ret = session.run(output)
     self.assertAllClose(ret, [[3.0], [3.0], [3.0]])
 
@@ -739,39 +738,6 @@ class EagerPyFuncTest(PyFuncTestBase):
       y, dy_dx = sess.run([y, dy_dx], feed_dict={x: 1.0, m: 2.0})
       self.assertEqual(y, 1.0)
       self.assertEqual(dy_dx, 2.0)
-
-  def testEagerPyFuncPlacement(self):
-
-    def f(x):
-      return math_ops.square(x)
-
-    def get_device(tensor):
-      if isinstance(tensor, ops.EagerTensor):
-        return tensor.device
-      else:
-        return tensor.op.device
-
-    const_op = constant_op.constant(3.0, dtype=dtypes.float32)
-    # PyFuncOp should be placed on the localhost's address space.
-    py_func_op = script_ops.eager_py_func(
-        func=f, inp=[const_op], Tout=dtypes.float32)
-    self.assertRegexpMatches(
-        get_device(py_func_op), "/job:localhost/replica:0/task:0")
-    self.assertEqual(self.evaluate(py_func_op), 9.0)
-
-    # Only run the remaining test if there exists GPU device.
-    if not config.list_physical_devices("GPU"):
-      return
-
-    with test_util.device(use_gpu=True):
-      py_func_op = script_ops.eager_py_func(
-          func=f, inp=[const_op], Tout=dtypes.float32)
-      # PyFuncOp should be placed on the GPU device within localhost's address
-      # space.
-      self.assertEqual(
-          get_device(py_func_op),
-          "/job:localhost/replica:0/task:0/device:GPU:0")
-      self.assertEqual(self.evaluate(py_func_op), 9.0)
 
   @test_util.run_v1_only("b/120545219")
   def testEagerRespectsDevicePlacmentOfOp(self):
