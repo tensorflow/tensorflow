@@ -224,11 +224,16 @@ struct SerializeGroups<T, Variant> {
 
     int64 last_nonempty_group = -1;
 
+    // The "DataTypeToEnum<T>::value" member is static and defined but not
+    // declared.  This leads to linker errors when a "DataTypeToEnum<T>::value"
+    // reference is passed to a routine. Creating a local variable here to
+    // workaround the linker errors.
+    DataType T_type = DataTypeToEnum<T>::value;
+
     auto serialize_empty_element = [&](int64 b) {
       serialized_sparse_t(b, 0).emplace<Tensor>(DT_INT64,
                                                 TensorShape({0, rank - 1}));
-      serialized_sparse_t(b, 1).emplace<Tensor>(DataTypeToEnum<T>::value,
-                                                TensorShape({0}));
+      serialized_sparse_t(b, 1).emplace<Tensor>(T_type, TensorShape({0}));
       serialized_sparse_t(b, 2).emplace<Tensor>(output_shape);
     };
 
@@ -256,7 +261,7 @@ struct SerializeGroups<T, Variant> {
       Tensor& output_indices = serialized_sparse_t(b, 0).emplace<Tensor>(
           DT_INT64, TensorShape({num_entries, rank - 1}));
       Tensor& output_values = serialized_sparse_t(b, 1).emplace<Tensor>(
-          DataTypeToEnum<T>::value, TensorShape({num_entries}));
+          T_type, TensorShape({num_entries}));
 
       auto output_indices_t = output_indices.matrix<int64>();
       auto output_values_t = output_values.vec<T>();

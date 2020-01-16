@@ -250,8 +250,8 @@ int DataTypeSize(DataType dt) {
 }
 
 // Define DataTypeToEnum<T>::value.
-#define DEFINE_DATATYPETOENUM_VALUE(TYPE)                 \
-  constexpr DataType DataTypeToEnum<TYPE>::value;         \
+#define DEFINE_DATATYPETOENUM_VALUE(TYPE) \
+  constexpr DataType DataTypeToEnum<TYPE>::value;
 
 DEFINE_DATATYPETOENUM_VALUE(float);
 DEFINE_DATATYPETOENUM_VALUE(double);
