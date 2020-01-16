@@ -509,6 +509,16 @@ cc_library(
 )
 
 cc_library(
+    name = "gpu_prim_hdrs",
+    hdrs = ["gpu_prim.h"],
+    deps = if_cuda([
+        "@cub_archive//:cub",
+    ]) + if_rocm([
+        "@local_config_rocm//rocm:rocprim",
+    ]) 
+)
+
+cc_library(
     name = "conv_ops_gpu_hdrs",
     hdrs = ["conv_ops_gpu.h"],
 )
@@ -1354,11 +1364,8 @@ tf_kernel_library(
     ],
     deps = if_cuda_or_rocm([
         ":cuda_solvers",
-    ]) + if_cuda([
-        "@cub_archive//:cub",
-    ]) + if_rocm([
-        "@local_config_rocm//rocm:rocprim",
-    ]) + ARRAY_DEPS,
+    ]) + [":gpu_prim_hdrs",]
+    + ARRAY_DEPS,
 )
 
 cc_library(
@@ -2573,9 +2580,7 @@ tf_kernel_library(
     deps = DYNAMIC_DEPS + [
         ":fill_functor",
         ":gather_functor",
-    ] + if_cuda(["@cub_archive//:cub"]) + if_rocm([
-        "@local_config_rocm//rocm:rocprim",
-    ]),
+        ":gpu_prim_hdrs"],
 )
 
 tf_kernel_library(
@@ -3002,8 +3007,8 @@ tf_kernel_library(
 tf_kernel_library(
     name = "generate_box_proposals_op",
     gpu_srcs = ["generate_box_proposals_op.cu.cc"],
-    deps = if_cuda([
-        "@cub_archive//:cub",
+    deps = [":gpu_prim_hdrs"]
+    + if_cuda_or_rocm([
         ":non_max_suppression_op_gpu",
     ]),
 )
@@ -3011,7 +3016,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "non_max_suppression_op",
     prefix = "non_max_suppression_op",
-    deps = IMAGE_DEPS + if_cuda(["@cub_archive//:cub"]),
+    deps = IMAGE_DEPS + [":gpu_prim_hdrs"],
 )
 
 tf_kernel_library(
@@ -3976,11 +3981,9 @@ tf_kernel_library(
     name = "reduction_ops",
     gpu_srcs = ["reduction_gpu_kernels.cu.h"],
     prefix = "reduction_ops",
-    deps = MATH_DEPS + [":transpose_functor"] + if_cuda([
-        "@cub_archive//:cub",
-    ]) + if_rocm([
-        "@local_config_rocm//rocm:rocprim",
-    ]),
+    deps = MATH_DEPS + 
+    [":gpu_prim_hdrs",
+    ":transpose_functor"],
 )
 
 tf_kernel_library(
@@ -4003,11 +4006,7 @@ tf_kernel_library(
         "scan_ops_gpu_half.cu.cc",
         "scan_ops_gpu_int.cu.cc",
     ],
-    deps = MATH_DEPS + if_cuda([
-        "@cub_archive//:cub",
-    ]) + if_rocm([
-        "@local_config_rocm//rocm:rocprim",
-    ]),
+    deps = MATH_DEPS + [":gpu_prim_hdrs"],
 )
 
 tf_kernel_library(
@@ -4409,6 +4408,7 @@ tf_kernel_library(
     }) + if_cuda([
         "//tensorflow/core/platform/default/build_config:cublas_plugin",
         "//tensorflow/core/platform/default/build_config:cudnn_plugin",
+    ]) + if_cuda_or_rocm([
         "//tensorflow/stream_executor:tf_allocator_adapter",
         "//tensorflow/stream_executor:stream_executor_headers",
         "//tensorflow/core:stream_executor",
@@ -4597,11 +4597,7 @@ tf_kernel_library(
     prefix = "softmax_op",
     deps = NN_DEPS + if_cuda_or_rocm([
         ":reduction_ops",
-    ]) + if_cuda([
-        "@cub_archive//:cub",
-    ]) + if_rocm([
-        "@local_config_rocm//rocm:rocprim",
-    ]),
+    ]) + [":gpu_prim_hdrs"],
 )
 
 tf_kernel_library(
@@ -4633,11 +4629,7 @@ tf_kernel_library(
         "topk_op_gpu_int8.cu.cc",
         "topk_op_gpu_uint8.cu.cc",
     ],
-    deps = NN_DEPS + if_cuda([
-        "@cub_archive//:cub",
-    ]) + if_rocm([
-        "@local_config_rocm//rocm:rocprim",
-    ]),
+    deps = NN_DEPS + [":gpu_prim_hdrs"],
 )
 
 tf_kernel_library(
@@ -4656,26 +4648,24 @@ tf_kernel_library(
     name = "bincount_op",
     prefix = "bincount_op",
     deps = [
+        ":gpu_prim_hdrs",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//third_party/eigen3",
-    ] + if_cuda(["@cub_archive//:cub"]) + if_rocm([
-        "@local_config_rocm//rocm:rocprim",
-    ]),
+    ],
 )
 
 tf_kernel_library(
     name = "histogram_op",
     prefix = "histogram_op",
     deps = [
+        ":gpu_prim_hdrs",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//third_party/eigen3",
-    ] + if_cuda(["@cub_archive//:cub"]) + if_rocm([
-        "@local_config_rocm//rocm:rocprim",
-    ]),
+        ],
 )
 
 tf_kernel_library(
@@ -4683,14 +4673,12 @@ tf_kernel_library(
     prefix = "l2loss_op",
     deps = [
         ":reduction_ops",
+        ":gpu_prim_hdrs",
         "//third_party/eigen3",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:nn_grad",
-    ] + if_cuda(["@cub_archive//:cub"]) + if_rocm([
-        "@local_config_rocm//rocm:rocprim",
-    ]),
+        "//tensorflow/core:nn_grad"],
 )
 
 tf_cuda_cc_test(
@@ -5812,16 +5800,13 @@ tf_kernel_library(
         ":random_op",
         ":random_ops",
         ":stateless_random_ops",
+        ":gpu_prim_hdrs",
         "//third_party/eigen3",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
     ] + if_cuda_or_rocm([
         ":reduction_ops",
-    ]) + if_cuda([
-        "@cub_archive//:cub",
-    ]) + if_rocm([
-        "@local_config_rocm//rocm:rocprim",
     ]),
 )
 

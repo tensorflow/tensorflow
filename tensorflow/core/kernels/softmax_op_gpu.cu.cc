@@ -27,12 +27,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/reduction_ops_common.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
-
-#if GOOGLE_CUDA
-namespace gpuprim = ::cub;
-#elif TENSORFLOW_USE_ROCM
-namespace gpuprim = ::hipcub;
-#endif
+#include "gpu_prim.h"
 
 namespace tensorflow {
 
