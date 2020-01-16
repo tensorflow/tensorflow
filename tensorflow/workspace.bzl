@@ -362,7 +362,7 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         licenses = ["notice"],  # PSFL
         sha256_urls = {
             "92fc0e4f4fa9460558eedf3412b988d433a2dcbb3a9c45402a145a4fab8a6ac6": [
-                "http://mirror.tensorflow.org/raw.githubusercontent.com/simonpercivall/astunparse/v1.6.2/LICENSE",
+                "https://storage.googleapis.com/mirror.tensorflow.org/raw.githubusercontent.com/simonpercivall/astunparse/v1.6.2/LICENSE",
                 "https://raw.githubusercontent.com/simonpercivall/astunparse/v1.6.2/LICENSE",
             ],
         },
