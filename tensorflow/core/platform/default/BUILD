@@ -287,7 +287,7 @@ cc_library(
         "@snappy",
     ] + select({
         # TF Additional NUMA dependencies
-        "//tensorflow:with_numa_support": ["//third_party/hwloc"],
+        "//tensorflow:with_numa_support": ["@hwloc"],
         "//conditions:default": [],
     }),
 )
