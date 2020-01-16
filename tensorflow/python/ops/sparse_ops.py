@@ -2397,23 +2397,16 @@ def sparse_tensor_dense_matmul(sp_a,
 
   if isinstance(b, sparse_tensor.SparseTensor) \
           or isinstance(b, sparse_tensor.SparseTensorValue):
-
-    if adjoint_a == True and adjoint_b == False:
+    # We can do C * D where C is sparse but if we want to do A * B when
+    # B is sparse we have to transpose. But AB = (B'A')' so we have to feed in
+    # the transpose of the arguments as well.
+    if adjoint_a != adjoint_b:
       return array_ops.transpose(sparse_tensor_dense_matmul(b, sp_a,
-                                                            adjoint_a=True,
-                                                            adjoint_b=False))
-    elif adjoint_a == False and adjoint_b == True:
+                                               adjoint_a, adjoint_b))
+    else:
       return array_ops.transpose(sparse_tensor_dense_matmul(b, sp_a,
-                                                            adjoint_a=False,
-                                                            adjoint_b=True))
-    elif adjoint_a == False and adjoint_b == False:
-      return array_ops.transpose(sparse_tensor_dense_matmul(b, sp_a,
-                                                            adjoint_a=True,
-                                                            adjoint_b=True))
-    elif adjoint_a == True and adjoint_b == True:
-      return array_ops.transpose(sparse_tensor_dense_matmul(b, sp_a,
-                                                            adjoint_a=False,
-                                                            adjoint_b=False))
+                                            adjoint_a=not adjoint_a,
+                                            adjoint_b=not adjoint_b))
 
   else:
     sp_a = _convert_to_sparse_tensor(sp_a)
