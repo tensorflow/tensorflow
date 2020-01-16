@@ -3226,9 +3226,9 @@ def sigmoid(x, name=None):
   Usage Example:
 
   >>> tf.math.sigmoid(1.0)
-  tf.Tensor(0.73..., shape=(), dtype=float32)
+  <tf.Tensor: shape=(), dtype=float32, numpy=0.73...>
   >>> tf.math.sigmoid(-1.0)
-  tf.Tensor(0.26..., shape=(), dtype=float32)
+  <tf.Tensor: shape=(), dtype=float32, numpy=0.26...>
 
   @compatibility(scipy)
   Equivalent to scipy.special.expit
