@@ -28,7 +28,6 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -65,7 +64,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
           distribution=strategy_combinations.strategies_minus_tpu,
           mode=["eager"]))
   def testFullEager(self, distribution):
-    dataset = self._get_dataset()
+    dataset = self._get_dataset_from_tensor_slices([5., 6., 7., 8.]).batch(2)
 
     def train_step(data):
       return math_ops.square(data)
@@ -76,7 +75,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
       output = distribution.experimental_local_results(
           distribution.experimental_run_v2(train_step, args=(x,)))
       results.append(output)
-    self._validate_outputs(results)
+    self._assert_equal_flattened([[25., 36.], [49., 64.]], results)
 
   @combinations.generate(
       combinations.combine(
@@ -84,7 +83,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
           mode=["eager"]
       ))
   def testStepInFunction(self, distribution):
-    dataset = self._get_dataset()
+    dataset = self._get_dataset_from_tensor_slices([5., 6., 7., 8.]).batch(2)
 
     @def_function.function
     def train_step(data):
@@ -96,7 +95,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
       output = distribution.experimental_local_results(
           distribution.experimental_run_v2(train_step, args=(x,)))
       results.append(output)
-    self._validate_outputs(results)
+    self._assert_equal_flattened([[25., 36.], [49., 64.]], results)
 
   @combinations.generate(
       combinations.combine(
@@ -104,7 +103,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
           mode=["eager"]
       ))
   def testRunInFunction(self, distribution):
-    dataset = self._get_dataset()
+    dataset = self._get_dataset_from_tensor_slices([5., 6., 7., 8.]).batch(2)
 
     def train_step(data):
       return math_ops.square(data)
@@ -119,7 +118,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
     for x in dist_dataset:
       output = f_train_step(x)
       results.append(output)
-    self._validate_outputs(results)
+    self._assert_equal_flattened([[25., 36.], [49., 64.]], results)
 
   @combinations.generate(
       combinations.combine(
@@ -129,7 +128,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
           ],
           mode=["eager"]))
   def testNestedOutput(self, distribution):
-    dataset = self._get_dataset()
+    dataset = self._get_dataset_from_tensor_slices([0, 1, 2, 3]).batch(2)
     input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
 
     @def_function.function
@@ -148,7 +147,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
 
     results = run(input_iterator)
     for replica in range(distribution.num_replicas_in_sync):
-      # The input dataset is range(10), so the replica id is same as input.
+      # The input dataset is range(4), so the replica id is same as input.
       self.assertAllEqual(results[0]["a"][replica], [replica - 1])
       self.assertAllEqual(results[0]["b"][replica], [replica + 1])
 
@@ -158,7 +157,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
           mode=["eager"]
       ))
   def testRunInFunctionAutoGraphApplication(self, distribution):
-    dataset = self._get_dataset()
+    dataset = self._get_dataset_from_tensor_slices([5., 6., 7., 8.]).batch(2)
 
     def train_step(data):
       return math_ops.square(data)
@@ -173,7 +172,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
     for x in dist_dataset:
       output = f_train_step(x)
       results.append(output)
-    self._validate_outputs(results)
+    self._assert_equal_flattened([[25., 36.], [49., 64.]], results)
 
   @combinations.generate(
       combinations.combine(
@@ -202,20 +201,17 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
 
       return number_of_steps, product_of_means
 
-    dataset = self._get_dataset()
+    dataset = self._get_dataset_from_tensor_slices([5., 6., 7., 8.]).batch(2)
     dist_dataset = distribution.experimental_distribute_dataset(dataset)
 
     number_of_steps, product_of_means = f_train_step(dist_dataset)
-    self.assertEqual(5, number_of_steps.numpy())
+    self.assertEqual(2, number_of_steps.numpy())
+    self.assertNear((2 * (5+6)/2 * (7+8)/2), product_of_means.numpy(), 1e-3)
 
-    # 2.0 * (0+1)/2 * (2+3)/2 * (4+5)/2 * (6+7)/2 * (8+9)/2
-    #  = (5 * 9 * 13 * 17) / 16
-    self.assertNear((5 * 9 * 13 * 17) / 16, product_of_means.numpy(), 1e-3)
-
-    # We set the initial value of `a` to 1 and iterate through the dataset 5
-    # times(10/2 where 10 is the number of dataset elements and 2 is the batch
-    # size). Hence the final result is 6.
-    self.assertEqual(6.0, (a.numpy()))
+    # We set the initial value of `a` to 1 and iterate through the dataset 2
+    # times(4/2 where 4 is the number of dataset elements and 2 is the batch
+    # size). Hence the final result is 3.
+    self.assertEqual(3.0, (a.numpy()))
 
   @combinations.generate(
       combinations.combine(
@@ -464,19 +460,19 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
     def train(dataset):
       results = []
       iterator = iter(dataset)
-      # we iterate through the loop 5 times since we have 10 elements and a
+      # we iterate through the loop 2 times since we have 4 elements and a
       # global batch of 2.
-      for _ in range(5):
+      for _ in range(2):
         elem = next(iterator)
         output = distribution.experimental_local_results(
             distribution.experimental_run_v2(step_fn, args=(elem,)))
         results.append(output)
       return results
 
-    dataset = self._get_dataset()
+    dataset = self._get_dataset_from_tensor_slices([5., 6., 7., 8.]).batch(2)
     dist_dataset = distribution.experimental_distribute_dataset(dataset)
     results = train(dist_dataset)
-    self._validate_outputs(results)
+    self._assert_equal_flattened([[25., 36.], [49., 64.]], results)
 
   @combinations.generate(
       combinations.combine(
@@ -493,24 +489,16 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
       return distribution.experimental_local_results(
           distribution.experimental_run_v2(train_step, args=(input_data,)))
 
-    dataset = self._get_dataset()
+    dataset = self._get_dataset_from_tensor_slices([5., 6., 7., 8.]).batch(2)
     dist_dataset = distribution.experimental_distribute_dataset(dataset)
     iterator = iter(dist_dataset)
     results = []
-    # we iterate through the loop 5 times since we have 10 elements and a
+    # we iterate through the loop 2 times since we have 4 elements and a
     # global batch of 2.
-    for _ in range(5):
+    for _ in range(2):
       output = f_train_step(next(iterator))
       results.append(output)
-    self._validate_outputs(results)
-
-  def _get_dataset(self):
-    if tf2.enabled():
-      return dataset_ops.DatasetV2.range(10).\
-        map(lambda x: math_ops.cast(x, dtypes.int32)).batch(2)
-    else:
-      return dataset_ops.Dataset.range(10).\
-        map(lambda x: math_ops.cast(x, dtypes.int32)).batch(2)
+    self._assert_equal_flattened([[25., 36.], [49., 64.]], results)
 
   def _get_dataset_from_tensor_slices(self, inp_array):
     dataset = dataset_ops.DatasetV2.from_tensor_slices(inp_array)
@@ -519,8 +507,16 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
       dataset = dataset_ops.Dataset.from_tensor_slices(inp_array)
     return dataset
 
-  def _validate_outputs(self, actual_results):
-    expected_results = [[i**2, (i+1)**2] for i in range(0, 10, 2)]
+  def _assert_equal_flattened(self, expected_results, actual_results):
+    """Asserts that flattened results are equal.
+
+    Due to the number of replicas in the strategy, the output may have a
+    different structure and needs to be flattened for comparison.
+
+    Args:
+      expected_results: The results expected as a result of a computation.
+      actual_results: The actual results of a computation.
+    """
     self.assertEqual(len(expected_results), len(actual_results))
 
     for i, expected_result in enumerate(expected_results):
