@@ -53,14 +53,16 @@ typedef struct TpuLoadedProgramHandle {
   TpuEvent* event;
 } TpuLoadedProgramHandle;
 
+// HloProto is a serialized xla::HloProto buffer.
 typedef struct HloProto {
   void* buffer;
   int32_t size;
 } HloProto;
 
+// DeviceAssignment is a serialized xla::DeviceAssignmentProto buffer.
 typedef struct DeviceAssignment {
-  int replica_count;
-  int computation_count;
+  void* bytes;
+  int32_t size;
 } DeviceAssignment;
 
 typedef struct TpuStatus {
@@ -123,6 +125,10 @@ typedef struct TpuLoadedProgramHandle*(PrototypeTpuDriver_LoadProgram)(
     const struct TpuCompiledProgramHandle* compiled_program_handle,
     int32_t eventc, struct TpuEvent** eventv);
 
+/* Note: We are not responsible for freeing the event within the
+ * TpuLoadedProgramHandle. You have to call FreeEvent separately to ensure that
+ * memory does not leak.
+ */
 typedef struct TpuEvent*(PrototypeTpuDriver_UnloadProgram)(
     struct TpuDriver* driver,
     struct TpuLoadedProgramHandle* loaded_program_handle, int32_t eventc,
@@ -149,6 +155,10 @@ typedef struct TpuBufferHandle*(PrototypeTpuDriver_AllocateShape)(
     const struct TpuAllocationShape shape, int32_t eventc,
     struct TpuEvent** eventv);
 
+/* Note: We are not responsible for freeing the event within the
+ * TpuBufferHandle. You have to call FreeEvent separately to ensure that memory
+ * does not leak.
+ */
 typedef struct TpuEvent*(PrototypeTpuDriver_Deallocate)(
     struct TpuDriver* driver, struct TpuBufferHandle* buffer_handle,
     int32_t eventc, struct TpuEvent** eventv);
