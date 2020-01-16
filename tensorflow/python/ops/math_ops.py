@@ -1558,7 +1558,8 @@ def _range_tensor_conversion_function(value, dtype=None, name=None,
   del as_ref
   return range(value.start, value.stop, value.step, dtype=dtype, name=name)
 
-if six.PY3:
+
+if not six.PY2:
   ops.register_tensor_conversion_function(builtins.range,
                                           _range_tensor_conversion_function)
 
