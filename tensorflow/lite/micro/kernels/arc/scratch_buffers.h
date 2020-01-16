@@ -39,4 +39,20 @@ TfLiteStatus get_arc_scratch_buffer_for_conv_tensors(TfLiteContext* context,
     mli_tensor* bias, 
     mli_tensor* out);
 
+/**
+ * @brief Function to allocate scratch buffers for kernels with only input and output buffers
+ *
+ * @detail This function will update the data pointers in the 2 tensors with pointers
+ * to scratch buffers in fast local memory.
+ *
+ * @param context  [I] pointer to TfLite context (needed for error handling)
+ * @param in [IO] pointer to the input tensor
+ * @param output [IO] pointer to the output tensor
+ *
+ * @return Tf Lite status code
+ */
+TfLiteStatus get_arc_scratch_buffer_for_io_tensors(TfLiteContext* context,
+    mli_tensor* in, 
+    mli_tensor* out);
+
 #endif  // TENSORFLOW_LITE_MICRO_ARC_SCRATCH_BUFFERS_H_

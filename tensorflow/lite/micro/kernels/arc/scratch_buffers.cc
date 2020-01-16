@@ -38,7 +38,9 @@ limitations under the License.
 
 #ifndef SCRATCH_MEM_Z_SIZE
 #ifdef core_config_dccm_size
-#define SCRATCH_MEM_Z_SIZE ((core_config_dccm_size) / 2)
+// temporary disable the use of dccm scratch mem
+//#define SCRATCH_MEM_Z_SIZE ((core_config_dccm_size) / 2)
+#define SCRATCH_MEM_Z_SIZE (0)
 #else
 #define SCRATCH_MEM_Z_SIZE (0)
 #endif
@@ -143,4 +145,44 @@ TfLiteStatus get_arc_scratch_buffer_for_conv_tensors(TfLiteContext* context,
 #else
   return kTfLiteOk;
 #endif
+}
+
+TfLiteStatus get_arc_scratch_buffer_for_io_tensors(TfLiteContext* context,
+    mli_tensor* in, 
+    mli_tensor* out) {
+#ifdef __Xxy
+  // Function to assign fast memory from one of 3 scratch buffers.
+  // Best Fit strategy - memory is asigned to those tensor which leave less memory of bank unused
+  mli_tensor* tensors[2] = { in, out };
+  uint32_t tensor_sizes[2] = {
+    mli_hlp_count_elem_num(tensors[0], 0), mli_hlp_count_elem_num(tensors[1], 0)};
+  bool mem_is_free[3] = { true, true, true };
+  int8_t* scratch_mem[] = {scratch_mem_x, scratch_mem_y, scratch_mem_z};
+  uint32_t scratch_sizes[] = {SCRATCH_MEM_X_SIZE, SCRATCH_MEM_Y_SIZE, SCRATCH_MEM_Z_SIZE};
+  int num_tensors = 2;
+  int num_memories = 3;
+  
+
+  for (int i = 0; i < num_tensors; ++i) {
+    int best_mem_idx = -1;
+    int best_mem_delta = INT_MAX;
+	// only for tensors that are not already located in one of the ccm memories, find a local memory that fits the data size.
+	if (inside_arc_ccm(tensors[i]->data)) continue;
+    for (int j = 0; j < num_memories; ++j) {
+       // Best Fit
+       if (mem_is_free[j] && tensor_sizes[i] <= scratch_sizes[j] && scratch_sizes[j] - tensor_sizes[i] < best_mem_delta) {
+          best_mem_idx = j;
+          best_mem_delta = scratch_sizes[j] - tensor_sizes[i];
+       }
+    }
+    if (best_mem_idx >= 0) {
+      tensors[i]->data = static_cast<void*>(scratch_mem[best_mem_idx]);
+      tensors[i]->capacity = scratch_sizes[best_mem_idx];
+      mem_is_free[best_mem_idx] = false;
+    } else {
+        return kTfLiteError;
+    }
+  }
+#endif
+  return kTfLiteOk;
 }
