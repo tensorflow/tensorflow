@@ -28,9 +28,9 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 # Need array_grad to register gradient for Identity.
 from tensorflow.python.ops import array_grad  # pylint: disable=unused-import
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker_v2 as gradient_checker
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import array_ops
 # Need sparse_grad to register gradient for SparseToDense.
 from tensorflow.python.ops import sparse_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import sparse_ops
